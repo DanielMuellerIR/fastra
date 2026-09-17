@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Testing
+@testable import Fastra
 
 private let soakRunnerAppDirectory = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -14,7 +15,7 @@ struct SerialRunnerIntegrationSoakCleanupTests {
         // Der übrige Runner würde echte Preferences sichern und App-Phasen starten.
         let definition = try shellFunction(named: function,
                                            in: soakRunnerAppDirectory.appendingPathComponent("soak-test.sh"))
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-soak-cleanup-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -61,7 +62,7 @@ struct SerialRunnerIntegrationSoakCleanupTests {
     @Test("App-Auswahl folgt dem gestarteten Binary und schützt den Cleanup-Pfad",
           arguments: ["default", "bundle", "binary", "mismatch", "missing", "outside"])
     func resolvesConfiguredApp(mode: String) throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-soak-app-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         for bundle in [".build/debug/Fastra.app", "Configured App.app", "Actual App.app"] {
@@ -108,4 +109,95 @@ struct SerialRunnerIntegrationSoakCleanupTests {
         }
     }
 
+}
+
+/// Ein abgeschossener Dauertest darf seine Befunde nicht verlieren.
+///
+/// Vorher sammelten sie sich bis zum Phasenende ausschließlich im
+/// Arbeitsspeicher; `appendReport` lief nur im Abschlusszweig. Endete die
+/// Phase vorher — die Frist des Runners schießt sie ab —, war ALLES weg, und
+/// im Protokoll stand nur die Ersatzzeile „Zeitüberschreitung". Bei 200 Runden
+/// gingen so bis zu 199 Runden Beobachtung verloren, und das ist beim
+/// Dauertest der teuerste denkbare Verlust: Er läuft eine halbe Stunde, um
+/// seltene Zustände überhaupt zu erreichen.
+@Suite("Dauertest-Befunde überleben den Abbruch")
+@MainActor
+struct SoakFindingDurabilityTests {
+    @Test("Jeder Befund steht sofort im Protokoll, nicht erst am Phasenende")
+    func findingsReachTheLogImmediately() throws {
+        let directory = testTemporaryDirectory()
+            .appendingPathComponent("fastra-soak-durability-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        defer {
+            SoakTest.reset()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let log = directory.appendingPathComponent("report.log")
+
+        SoakTest.reset()
+        SoakTest.currentPhase = "1"
+        SoakTest.beginReport(at: log)
+
+        SoakTest.record("Fenster bleibt unberührt", "Titel geändert")
+        // Genau hier würde die Frist des Runners zuschlagen: noch kein
+        // `appendReport`, Phase noch nicht fertig.
+        let afterFirst = try String(contentsOf: log, encoding: .utf8)
+        #expect(afterFirst.contains("SOAK-BEFUND"), """
+            Der erste Befund steht nicht im Protokoll — ein Abbruch an dieser \
+            Stelle verlöre ihn.
+            """)
+        #expect(afterFirst.contains("invariante=Fenster bleibt unberührt"))
+        #expect(afterFirst.contains("detail=Titel geändert"))
+
+        SoakTest.record("Auswahl bleibt im Text", "Bereich außerhalb")
+        let afterSecond = try String(contentsOf: log, encoding: .utf8)
+        #expect(afterSecond.contains("invariante=Auswahl bleibt im Text"))
+
+        // Der Abschluss ergänzt nur die Zusammenfassung — kein Befund darf
+        // dabei ein zweites Mal erscheinen.
+        try SoakTest.appendReport(to: log)
+        let final = try String(contentsOf: log, encoding: .utf8)
+        let findingLines = final.components(separatedBy: .newlines)
+            .filter { $0.hasPrefix("SOAK-BEFUND") }
+        #expect(findingLines.count == 2, "Befunde doppelt im Protokoll: \(findingLines)")
+        #expect(final.contains("SOAK-ZUSAMMENFASSUNG"))
+        #expect(final.components(separatedBy: "SOAK-ZUSAMMENFASSUNG").count == 2)
+    }
+
+    @Test("Ein fehlgeschlagener Sofort-Flush wird am Phasenende wiederholt")
+    func failedImmediateFlushStaysPending() throws {
+        let directory = testTemporaryDirectory()
+            .appendingPathComponent("fastra-soak-retry-\(UUID().uuidString)")
+        defer {
+            SoakTest.reset()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let log = directory.appendingPathComponent("report.log")
+
+        SoakTest.reset()
+        SoakTest.currentPhase = "1"
+        SoakTest.beginReport(at: log)
+        SoakTest.record("Protokoll bleibt vollständig", "Sofort-Flush scheitert")
+        #expect(!FileManager.default.fileExists(atPath: log.path))
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try SoakTest.appendReport(to: log)
+        let final = try String(contentsOf: log, encoding: .utf8)
+        #expect(final.contains("invariante=Protokoll bleibt vollständig"))
+        #expect(final.components(separatedBy: "SOAK-BEFUND").count == 2)
+        #expect(final.contains("SOAK-ZUSAMMENFASSUNG"))
+    }
+
+    @Test("Ohne angemeldetes Protokoll bleibt das alte Verhalten")
+    func withoutLogNothingIsWritten() throws {
+        SoakTest.reset()
+        defer { SoakTest.reset() }
+        SoakTest.currentPhase = "1"
+        // Kein `beginReport`: Der Befund darf nirgendwohin schreiben und muss
+        // trotzdem im Bericht auftauchen.
+        SoakTest.record("Ohne Protokoll", "kein Ziel")
+        #expect(SoakTest.reportLogURL == nil)
+        #expect(SoakTest.report().contains("invariante=Ohne Protokoll"))
+    }
 }

@@ -365,7 +365,7 @@ struct HexEditLifecycleTests {
     @MainActor func trashOperationIncludesLateWorkspace() throws {
         let workspace = makeWorkspace()
         let lateWorkspace = makeWorkspace()
-        let directory = FileManager.default.temporaryDirectory
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("fastra-late-trash-\(UUID().uuidString)",
                                     isDirectory: true)
         let file = directory.appendingPathComponent("late.bin")
@@ -509,7 +509,7 @@ struct HexEditLifecycleTests {
 
     @Test("Hex-Verwerfen lädt den zuvor bestätigten externen Stand")
     @MainActor func discardReloadsAcceptedExternalState() async throws {
-        let file = FileManager.default.temporaryDirectory
+        let file = testTemporaryDirectory()
             .appendingPathComponent("fastra-hex-discard-external-\(UUID().uuidString).txt")
             .canonicalFileURL
         try Data("alter Stand\n".utf8).write(to: file, options: .atomic)
@@ -543,7 +543,7 @@ struct HexEditLifecycleTests {
 
     @Test("Snapshotloser Hex-Tab lädt den bestätigten Fremdstand")
     @MainActor func snapshotlessHexTabReloadsAcceptedExternalState() async throws {
-        let file = FileManager.default.temporaryDirectory
+        let file = testTemporaryDirectory()
             .appendingPathComponent("fastra-hex-snapshotless-\(UUID().uuidString).bin")
             .canonicalFileURL
         try Data([0x10, 0x20, 0x30, 0x40]).write(to: file, options: .atomic)
@@ -578,7 +578,7 @@ struct HexEditLifecycleTests {
 
     @Test("Hex-Eingabe bis zum Original lädt den bestätigten Fremdstand")
     @MainActor func editingBackToOriginalReloadsAcceptedExternalState() async throws {
-        let file = FileManager.default.temporaryDirectory
+        let file = testTemporaryDirectory()
             .appendingPathComponent("fastra-hex-edit-original-\(UUID().uuidString).txt")
             .canonicalFileURL
         try Data("alter Stand\n".utf8).write(to: file, options: .atomic)
@@ -844,7 +844,7 @@ struct HexEditLifecycleTests {
 
     @Test("Verzögerte Hex-Zeile trifft keine neu geladene Dateibasis")
     @MainActor func staleRowActionDoesNotHitReloadedDocument() async throws {
-        let file = FileManager.default.temporaryDirectory
+        let file = testTemporaryDirectory()
             .appendingPathComponent("fastra-hex-stale-row-\(UUID().uuidString).bin")
         try Data([0x00, 0x01, 0x02, 0x03]).write(to: file, options: .atomic)
         defer { try? FileManager.default.removeItem(at: file) }
@@ -956,7 +956,7 @@ struct HexEditLifecycleTests {
 
     @Test("Hex-Save entwertet betroffene Ordner-Suchvorschau")
     @MainActor func hexWriteInvalidatesFolderPreview() throws {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("fastra-hex-search-\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(
@@ -989,7 +989,7 @@ struct HexEditLifecycleTests {
 
     @Test("Hex-Undo bis leer lädt den zuvor bestätigten externen Stand")
     @MainActor func undoToEmptyReloadsAcceptedExternalState() async throws {
-        let file = FileManager.default.temporaryDirectory
+        let file = testTemporaryDirectory()
             .appendingPathComponent("fastra-hex-undo-external-\(UUID().uuidString).txt")
             .canonicalFileURL
         try Data("vorher\n".utf8).write(to: file, options: .atomic)
@@ -1020,7 +1020,7 @@ struct HexEditLifecycleTests {
 
     @Test("Ordner-Apply und Rückgängig schützen Hex-Tabs in allen Fenstern")
     @MainActor func folderApplyAndUndoProtectAllWorkspaces() async throws {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("fastra-hex-folder-\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(at: directory,
@@ -1106,7 +1106,7 @@ struct HexEditLifecycleTests {
 
     @Test("Hex-Save lädt saubere Tabs derselben Datei in allen Fenstern neu")
     @MainActor func hexWriteReloadsAllWorkspaces() async throws {
-        let file = FileManager.default.temporaryDirectory
+        let file = testTemporaryDirectory()
             .appendingPathComponent("fastra-hex-multiwindow-\(UUID().uuidString).txt")
         try Data("alter Stand\n".utf8).write(to: file, options: .atomic)
         defer { try? FileManager.default.removeItem(at: file) }
@@ -1142,7 +1142,7 @@ struct HexEditLifecycleTests {
 
     @Test("Text-Save aktualisiert Hex-Größe und verwirft alte Byte-Historie")
     @MainActor func textSaveRefreshesHexDiskState() throws {
-        let file = FileManager.default.temporaryDirectory
+        let file = testTemporaryDirectory()
             .appendingPathComponent("fastra-text-save-size-\(UUID().uuidString).txt")
         try Data("a\r\n".utf8).write(to: file, options: .atomic)
         defer { try? FileManager.default.removeItem(at: file) }
@@ -1194,7 +1194,7 @@ struct HexEditLifecycleTests {
 
     @Test("Fremdänderung fragt bei Hex-Arbeit nach und explizites Neuladen verwirft sie")
     @MainActor func externalChangeProtectsHexChangesUntilConfirmedReload() async throws {
-        let url = FileManager.default.temporaryDirectory
+        let url = testTemporaryDirectory()
             .appendingPathComponent("fastra-hex-external-\(UUID().uuidString).bin")
         try Data([0x00, 0x01, 0x02, 0x03]).write(to: url, options: .atomic)
         defer { try? FileManager.default.removeItem(at: url) }

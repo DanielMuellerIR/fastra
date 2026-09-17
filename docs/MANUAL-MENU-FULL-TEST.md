@@ -12,9 +12,12 @@ Menüpfade bedienen. Er gehört bewusst nicht in jeden Build-Lauf.
 - Der Nutzer gibt den Vordergrund ausdrücklich frei. Während des Laufs bedient
   Computer Use Maus und Tastatur; anschließend wird die Test-App mit ⌘H
   ausgeblendet.
-- `app/prepare-manual-menu-test.sh` erzeugt im Projekt-Root einen neuen
-  `.fastra-menu-test.*`-Ordner. Darin liegen eine ad hoc signierte App mit
+- `app/prepare-manual-menu-test.sh` erzeugt im temporären Verzeichnis des
+  Nutzers (`$TMPDIR`) einen neuen `fastra-menu-test.*`-Ordner — bewusst
+  außerhalb des Git-Arbeitsbaums. Darin liegen eine ad hoc signierte App mit
   eigener Bundle-ID, Testdateien sowie ein ausschließlich lokales Git-Remote.
+  Das Skript gibt am Ende die Aufräumzeile aus; ohne sie bleibt die Fixture
+  bis zum nächsten Neustart liegen.
 - Die Test-App wird niemals nach `/Applications` kopiert. Persönliche
   Projekte, App-Einstellungen, Git-Remotes und ungesicherte Nutzerdokumente
   bleiben unberührt.

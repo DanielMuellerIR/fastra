@@ -43,7 +43,10 @@ struct FloatingSearchDialog: View {
     @State private var replaceFieldController = RegexFieldController()
     @State private var showProjectFileSetEditor = false
     @State private var showExtractionDialog = false
-    @StateObject private var patternLibrary = PatternLibrary()
+    // Dieselbe Defaults-Suite wie der Workspace: Im Normalbetrieb `.standard`,
+    // im Selbsttest die isolierte Suite — sonst schrieben Selbsttests eigene
+    // Vorlagen in die echte Bibliothek des Nutzers.
+    @StateObject private var patternLibrary = PatternLibrary(defaults: SelfTest.workspaceDefaults())
     @State private var showPatternEditor = false
     @State private var showExampleTransformation = false
     /// Tastaturfokus der Trefferliste. Solange er aktiv ist, bleiben Return
@@ -78,7 +81,11 @@ struct FloatingSearchDialog: View {
 
             Divider().opacity(0.4)
 
-            templateRow
+            // Kompaktes Formular (Layout-Umbau 2026-09-15): Die Vorlage sitzt
+            // am Ende der Suchen-Zeile, die Gruppen-/Platzhalter-Pillen am
+            // Ende der Ersetzen-Zeile. Jede eingesparte Zeile geht unten an
+            // die Trefferliste — sie ist der einzige Bereich, der mit dem
+            // Fenster wächst.
             findRow
             optionsRow
             replaceRow
@@ -106,14 +113,6 @@ struct FloatingSearchDialog: View {
                 )
             }
 
-            if workspace.useRegex {
-                groupsRow
-            } else if usesWildcard {
-                // Plain-Modus-Pendant zum Gruppen-Tray: nummerierte Pillen
-                // pro `*` (Feature J, todo 1+2).
-                wildcardGroupsRow
-            }
-
             // Inline Live-Vorschau Vorher→Nachher direkt unter den Feldern
             // (Feature J, todo 3) — leer, wenn nicht anwendbar.
             livePreviewStrip
@@ -131,15 +130,53 @@ struct FloatingSearchDialog: View {
             actionRow
         }
         .padding(16 * uiScale)
-        .frame(minWidth: 500 * uiScale, maxWidth: .infinity, alignment: .topLeading)
+        // 520 pt: Die WIRKSAME Mindestbreite des Fensters kommt von hier, nicht
+        // aus `SearchPanelController.minWidth` — NSHostingController schreibt
+        // die SwiftUI-Mindestgröße in `contentMinSize`. Bei 500 pt fehlten der
+        // Projekt-Zeile „Datei-Set … Dateitypen …" wenige Punkte, und sie
+        // brach in zwei Zeilen (Sichtprüfung 2026-09-15).
+        .frame(minWidth: 520 * uiScale, maxWidth: .infinity, alignment: .topLeading)
         .background(Theme.surfaceRaised.ignoresSafeArea())
         .animation(.easeOut(duration: 0.22), value: workspace.scope)
         .animation(.easeOut(duration: 0.18), value: workspace.useRegex)
         // Tokenisierung live nachziehen — beim Öffnen und bei jeder
         // Änderung von Pattern oder RegEx-Schalter.
-        .onAppear { retokenize() }
+        .onAppear {
+            retokenize()
+            focusFindField()
+        }
+        // Fokus ins Suchfeld bei jedem Öffnen und Nach-vorn-Holen (Befund
+        // 2026-09-15): Das Fenster wird beim Schließen nur ausgeblendet
+        // (`orderOut`), und AppKit vergibt beim Wiederanzeigen den Fokus an
+        // das erste Feld der Tab-Reihenfolge — im Projekt-Bereich ist das
+        // „Ausschlüsse", nicht „Suchen". Deshalb ausdrücklich setzen.
+        .onChange(of: workspace.showSearchDialog) { _, visible in
+            if visible { focusFindField() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFile)) { note in
+            if notificationTargetsThisWorkspace(note) { focusFindField() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolder)) { note in
+            if notificationTargetsThisWorkspace(note) { focusFindField() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolderForced)) { note in
+            if notificationTargetsThisWorkspace(note) { focusFindField() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraBringSearchToFront)) { note in
+            if notificationTargetsThisWorkspace(note) { focusFindField() }
+        }
         .onChange(of: workspace.findPattern) { retokenize() }
         .onChange(of: workspace.useRegex) { retokenize() }
+        // Testhaken für den Geometrie-Selbsttest `dialoglayout`: Die Blätter
+        // hängen an privatem @State und sind von außen sonst nicht erreichbar.
+        .onReceive(NotificationCenter.default.publisher(for: .fastraSelfTestSearchSheet)) { note in
+            guard notificationTargetsThisWorkspace(note),
+                  let sheet = note.userInfo?["sheet"] as? String else { return }
+            showExtractionDialog = sheet == "extraction"
+            showPatternEditor = sheet == "patterns"
+            showExampleTransformation = sheet == "example"
+            showProjectFileSetEditor = sheet == "fileset"
+        }
         .sheet(isPresented: $showProjectFileSetEditor) {
             ProjectFileSetEditor { name, paths in
                 var config = workspace.projectSearchConfiguration
@@ -170,6 +207,25 @@ struct FloatingSearchDialog: View {
         }
     }
 
+    /// Macht das Suchfeld zum First Responder. Läuft asynchron, weil beim
+    /// Öffnen das Fenster erst nach dem aktuellen Durchlauf Key wird; bis zu
+    /// zehn kurze Versuche, falls AppKit den Fokus noch einmal umsetzt.
+    private func focusFindField(attempt: Int = 0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0 : 0.05)) {
+            guard let field = findFieldController.textView,
+                  let window = field.window else {
+                if attempt < 10 { focusFindField(attempt: attempt + 1) }
+                return
+            }
+            if window.firstResponder !== field {
+                window.makeFirstResponder(field)
+            }
+            if window.firstResponder !== field, attempt < 10 {
+                focusFindField(attempt: attempt + 1)
+            }
+        }
+    }
+
     /// Tokenisiert das Find-Pattern neu (oder setzt `nil` bei RegEx=aus).
     private func retokenize() {
         findTokenization = (workspace.useRegex && !workspace.findPattern.isEmpty)
@@ -195,12 +251,53 @@ struct FloatingSearchDialog: View {
     // MARK: - Suchbereich-Zeile (Datei / Geöffnet / Ordner)
 
     private var scopeRow: some View {
-        HStack(spacing: 8) {
-            Text("Suchbereich")
-                .fastraFont(.small)
-                .foregroundColor(Theme.textSecondary)
-                .frame(width: 80 * uiScale, alignment: .leading)
+        // Drei Umbruchstufen (Befunde 2026-09-15): (1) alles in einer Zeile;
+        // (2) Datei-Set und Dateitypen in einer eigenen Zeile, deren
+        // Beschriftung „Datei-Set" in der linken Beschriftungsspalte steht;
+        // (3) Datei-Set und Dateitypen je in einer eigenen beschrifteten
+        // Zeile. Die Projekt-Elemente hängen beim Umbruch also nicht
+        // eingerückt unter den Tabs — die Spalte links wäre sonst leer.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                scopeLabel
+                scopeTabs
+                if workspace.scope == .project {
+                    fileSetControls(labelWidth: nil)
+                    fileTypeControls(labelWidth: nil)
+                }
+                Spacer(minLength: 0)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) { scopeLabel; scopeTabs; Spacer(minLength: 0) }
+                if workspace.scope == .project {
+                    ViewThatFits(in: .horizontal) {
+                        // Enger Abstand (6): Bei Mindestbreite entscheiden
+                        // wenige Punkte, ob die Zeile einzeilig bleibt.
+                        HStack(spacing: 6) {
+                            fileSetControls(labelWidth: 80 * uiScale)
+                            fileTypeControls(labelWidth: nil)
+                            Spacer(minLength: 0)
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) { fileSetControls(labelWidth: 80 * uiScale); Spacer(minLength: 0) }
+                            HStack(spacing: 8) { fileTypeControls(labelWidth: 80 * uiScale); Spacer(minLength: 0) }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
+    private var scopeLabel: some View {
+        Text("Suchbereich")
+            .fastraFont(.small)
+            .foregroundColor(Theme.textSecondary)
+            .frame(width: 80 * uiScale, alignment: .leading)
+    }
+
+    /// Die Bereichs-Tabs. Beschriftungen sind `fixedSize`, damit sie nie
+    /// umbrechen; der Umbruch passiert nur zwischen Tabs und Projekt-Elementen.
+    private var scopeTabs: some View {
             HStack(spacing: 4) {
                 // `.open` („Geöffnet") ist noch NICHT wirklich implementiert:
                 // die Such-Engine durchsucht in diesem Scope faktisch nur den
@@ -221,8 +318,10 @@ struct FloatingSearchDialog: View {
                         // über die Sand-Füllung markiert.
                         Text(verbatim: L10n.string(s.rawValue))
                             .fastraFont(.small)
+                            .fixedSize()
                             .padding(.horizontal, 9)
                             .padding(.vertical, 5)
+                            .background(SelfTestMarker(id: "scopeTab-\(s.rawValue)"))
                             .background(
                                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                                     .fill(workspace.scope == s ? Theme.surfaceSand : Color.clear)
@@ -240,8 +339,79 @@ struct FloatingSearchDialog: View {
                     .help(tooltip(for: s))
                 }
             }
-            Spacer()
+    }
+
+    /// Datei-Set-Picker mit Anlegen/Löschen. Die Pfade des aktiven Sets
+    /// stehen als Tooltip am Picker — die frühere eigene „Pfade"-Zeile zeigte
+    /// nur Text ohne Bedienmöglichkeit. `labelWidth`: feste Breite der
+    /// Beschriftung, wenn sie in der linken Spalte des Formulars steht.
+    private func fileSetControls(labelWidth: CGFloat?) -> some View {
+        HStack(spacing: 8) {
+            formLabel("Datei-Set", width: labelWidth)
+            Picker("", selection: Binding(
+                get: { workspace.projectSearchConfiguration.activeSetID },
+                set: { workspace.projectSearchConfiguration.activeSetID = $0 }
+            )) {
+                ForEach(workspace.projectSearchConfiguration.fileSets) { set in
+                    // Gekürzt, weil der Picker unten `.fixedSize()` trägt und
+                    // ein langer Name sonst die Projektzeile sprengt; der
+                    // volle Name des aktiven Sets steht im Tooltip.
+                    Text(verbatim: MenuLabelFit.shortened(
+                        L10n.string(set.name), maxCharacters: MenuLabelFit.fileSetLabelCharacters
+                    )).tag(set.id)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            // fixedSize statt maxWidth: Ein Picker ohne Mindestbreite wird
+            // von SwiftUI bei Platzmangel auf null gedrückt (Befund 2026-09-15).
+            .fixedSize()
+            // Der volle Name steht mit im Tooltip: Zwei Sets, die sich nur in
+            // der gekürzten Mitte unterscheiden, sähen in der Liste sonst
+            // gleich aus (Review-Fund 2026-09-17).
+            .help(L10n.format("Datei-Set „%@“ — Pfade: %@",
+                              L10n.string(workspace.projectSearchConfiguration.activeSet?.name ?? "—"),
+                              workspace.projectSearchConfiguration.activeSet?.paths.joined(separator: ", ") ?? "—"))
+            Button { showProjectFileSetEditor = true } label: {
+                Image(systemName: "plus.circle")
+            }
+            .buttonStyle(.plain)
+            .help("Gespeichertes Datei-Set anlegen")
+            Button { removeActiveProjectFileSet() } label: {
+                Image(systemName: "minus.circle")
+            }
+            .buttonStyle(.plain)
+            .disabled(workspace.projectSearchConfiguration.fileSets.count <= 1)
+            .help("Aktives Datei-Set löschen")
         }
+    }
+
+    private func fileTypeControls(labelWidth: CGFloat?) -> some View {
+        HStack(spacing: 8) {
+            formLabel("Dateitypen", width: labelWidth)
+            Picker("", selection: Binding(
+                get: { workspace.projectSearchConfiguration.fileTypeFilter },
+                set: { workspace.projectSearchConfiguration.fileTypeFilter = $0 }
+            )) {
+                ForEach(FileTypeFilter.allCases) { filter in
+                    Text(verbatim: L10n.string(filter.rawValue)).tag(filter)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            .fixedSize()
+        }
+    }
+
+    /// Beschriftung eines Formularelements: mit `width` in der linken
+    /// Spalte (wie „Suchen", „Optionen"), ohne `width` als Inline-Text.
+    private func formLabel(_ key: LocalizedStringKey, width: CGFloat?) -> some View {
+        Text(key)
+            .fastraFont(.small)
+            .foregroundColor(Theme.textSecondary)
+            .fixedSize()
+            .frame(width: width, alignment: .leading)
     }
 
     private func tooltip(for scope: Workspace.SearchScope) -> String {
@@ -359,80 +529,26 @@ struct FloatingSearchDialog: View {
         }
     }
 
+    /// Nur noch die Ausschlüsse-Zeile: Datei-Set und Dateitypen stehen in
+    /// der Suchbereich-Zeile (`fileSetControls`/`fileTypeControls`). Die frühere
+    /// „Pfade"-Anzeige und der Hinweis „DerivedData wird immer
+    /// ausgeschlossen" sind entfallen — die Pfade zeigt der Picker-Tooltip,
+    /// DerivedData steht ohnehin im Ausschlussfeld (Layout-Umbau 2026-09-15).
     private var projectSourcesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Datei-Set")
-                    .fastraFont(.small)
-                    .foregroundColor(Theme.textSecondary)
-                    .frame(width: 80 * uiScale, alignment: .leading)
-                Picker("", selection: Binding(
-                    get: { workspace.projectSearchConfiguration.activeSetID },
-                    set: { workspace.projectSearchConfiguration.activeSetID = $0 }
-                )) {
-                    ForEach(workspace.projectSearchConfiguration.fileSets) { set in
-                        Text(verbatim: L10n.string(set.name)).tag(set.id)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 220)
-                Button { showProjectFileSetEditor = true } label: {
-                    Image(systemName: "plus.circle")
-                }
-                .buttonStyle(.plain)
-                .help("Gespeichertes Datei-Set anlegen")
-                Button { removeActiveProjectFileSet() } label: {
-                    Image(systemName: "minus.circle")
-                }
-                .buttonStyle(.plain)
-                .disabled(workspace.projectSearchConfiguration.fileSets.count <= 1)
-                .help("Aktives Datei-Set löschen")
-
-                Picker("Dateitypen", selection: Binding(
-                    get: { workspace.projectSearchConfiguration.fileTypeFilter },
-                    set: { workspace.projectSearchConfiguration.fileTypeFilter = $0 }
-                )) {
-                    ForEach(FileTypeFilter.allCases) { filter in
-                        Text(verbatim: L10n.string(filter.rawValue)).tag(filter)
-                    }
-                }
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                Spacer()
-            }
-
-            HStack(spacing: 8) {
-                Text("Pfade")
-                    .fastraFont(.small)
-                    .foregroundColor(Theme.textSecondary)
-                    .frame(width: 80 * uiScale, alignment: .leading)
-                Text(workspace.projectSearchConfiguration.activeSet?.paths.joined(separator: ", ") ?? "—")
-                    .fastraFont(.monoSmall)
-                    .foregroundColor(Theme.textPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer()
-            }
-
-            HStack(spacing: 8) {
-                Text("Ausschlüsse")
-                    .fastraFont(.small)
-                    .foregroundColor(Theme.textSecondary)
-                    .frame(width: 80 * uiScale, alignment: .leading)
-                TextField("z.B. .git, build, *.generated.swift",
-                          text: Binding(
-                            get: { workspace.projectSearchConfiguration.excludePatternsText },
-                            set: { workspace.projectSearchConfiguration.excludePatternsText = $0 }
-                          ))
-                    .textFieldStyle(.roundedBorder)
-                    .fastraFont(.small)
-                    .accessibilityIdentifier("fastra.projectExclusions")
-            }
-
-            Text("DerivedData wird bei Projektsuchen immer ausgeschlossen.")
-                .fastraFont(size: 10)
+        HStack(spacing: 8) {
+            Text("Ausschlüsse")
+                .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
-                .padding(.leading, 88 * uiScale)
+                .frame(width: 80 * uiScale, alignment: .leading)
+            TextField("z.B. .git, build, *.generated.swift",
+                      text: Binding(
+                        get: { workspace.projectSearchConfiguration.excludePatternsText },
+                        set: { workspace.projectSearchConfiguration.excludePatternsText = $0 }
+                      ))
+                .textFieldStyle(.roundedBorder)
+                .fastraFont(.small)
+                .accessibilityIdentifier("fastra.projectExclusions")
+                .help("Ordner oder Muster, die die Projektsuche überspringt. DerivedData wird bei Projektsuchen immer ausgeschlossen.")
         }
     }
 
@@ -448,16 +564,11 @@ struct FloatingSearchDialog: View {
 
     // MARK: - Vorlagen-Dropdown
 
-    /// Zeile mit dem Vorlagen-Picker. Auswahl füllt im Echtbetrieb das
-    /// Find-Feld (und ggf. das Replace-Feld bei `defaultReplacement`).
-    /// Im Grobschnitt: rein visuell, ohne Wirkung.
-    private var templateRow: some View {
-        HStack(spacing: 8) {
-            Text("Vorlage")
-                .fastraFont(.small)
-                .foregroundColor(Theme.textSecondary)
-                .frame(width: 80 * uiScale, alignment: .leading)
-
+    /// Vorlagen-Picker am Ende der Suchen-Zeile (seit dem Layout-Umbau
+    /// 2026-09-15 ohne eigene Zeile). Auswahl füllt das Find-Feld und ggf.
+    /// das Replace-Feld bei `defaultReplacement`.
+    private var templateMenu: some View {
+        HStack(spacing: 4) {
             // Vorlage-Dropdown ist **immer** aktiv. Alle Vorlagen sind
             // RegEx-Patterns — beim Auswählen wird der RegEx-Schalter
             // automatisch eingeschaltet (sonst wirken die Patterns nicht).
@@ -486,17 +597,17 @@ struct FloatingSearchDialog: View {
                 Divider()
                 Button("Vorlagen verwalten…") { showPatternEditor = true }
             } label: {
-                HStack {
+                HStack(spacing: 5) {
                     Text(currentTemplateLabel)
                         .fastraFont(.small)
                         .foregroundColor(Theme.textPrimary)
-                    Spacer()
+                        .lineLimit(1)
                     Image(systemName: "chevron.up.chevron.down")
                         .fastraFont(size: 9, weight: .semibold)
                         .foregroundColor(Theme.textSecondary)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(Theme.surfaceSand)
@@ -507,6 +618,8 @@ struct FloatingSearchDialog: View {
                 )
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
             .help("Fertige Such-Patterns einsetzen — z.B. E-Mail, ISO-Datum, Dateipfad. Auswahl füllt das Suchen-Feld komplett.")
             Button { showPatternEditor = true } label: {
                 Image(systemName: "slider.horizontal.3")
@@ -516,12 +629,17 @@ struct FloatingSearchDialog: View {
         }
     }
 
+    /// Beschriftung des Vorlagenmenüs. Eigene Vorlagen dürfen beliebig lange
+    /// Namen tragen; das Menü steht aber mit `.fixedSize()` in der Suchen-
+    /// Zeile und würde das Suchen-Feld sonst zusammenschieben. Deshalb auf
+    /// eine feste Zeichenzahl mittig gekürzt (Review-Fund 2026-09-16).
     private var currentTemplateLabel: String {
         guard
             let id = workspace.selectedTemplateID,
             let template = (BuiltInPatterns.all + patternLibrary.templates).first(where: { $0.id == id })
-        else { return L10n.string("— Vorlage auswählen —") }
-        return L10n.string(template.name)
+        else { return L10n.string("Vorlage") }
+        return MenuLabelFit.shortened(L10n.string(template.name),
+                                      maxCharacters: MenuLabelFit.templateLabelCharacters)
     }
 
     /// Vorlage anwenden: Find-Pattern setzen, ggf. Replace-Vorschlag
@@ -572,6 +690,9 @@ struct FloatingSearchDialog: View {
                 },
                 accessibilityID: "fastra.findField"
             )
+            // Mindestbreite: Vorlagenmenü und Knöpfe rechts sind `fixedSize`;
+            // ohne Untergrenze bekäme das Feld bei Platzmangel null Breite.
+            .frame(minWidth: 120 * uiScale, maxWidth: .infinity)
             .frame(height: 24 * uiScale)
             .padding(.horizontal, 4)
             .background(
@@ -618,6 +739,9 @@ struct FloatingSearchDialog: View {
             // Such-Verlauf (K4): Uhr-Popup mit den letzten Find-/Replace-
             // Paaren. Auswahl füllt beide Felder (BBEdit „Search History").
             searchHistoryMenu
+
+            // Vorlagen-Picker (Layout-Umbau 2026-09-15: statt eigener Zeile).
+            templateMenu
         }
     }
 
@@ -676,95 +800,106 @@ struct FloatingSearchDialog: View {
 
     // MARK: - Such-Optionen-Toggle-Zeile (BBEdit-Stil)
     //
-    // Zwei feste Zeilen mit deutsch beschrifteten Toggles. RegEx bleibt als
-    // Master-Schalter links oben; die kontextnäheren Optionen stehen links
-    // unten auf derselben Fluchtlinie.
+    // Seit dem Layout-Umbau 2026-09-15 EINE Zeile: Alle Schalter stehen
+    // nebeneinander, solange die Fensterbreite reicht. Erst wenn sie nicht
+    // mehr passen, rückt der zweite Block („Nur in Auswahl", „∗ wörtlich")
+    // in eine zweite Zeile unter RegEx. `ViewThatFits` entscheidet das
+    // anhand der tatsächlichen Breite — kein festes Umbruchmaß.
 
     private var optionsRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 14) {
-                Text("Optionen")
-                    .fastraFont(.small)
-                    .foregroundColor(Theme.textSecondary)
-                    .frame(width: 80 * uiScale, alignment: .leading)
+        HStack(alignment: .top, spacing: 14) {
+            Text("Optionen")
+                .fastraFont(.small)
+                .foregroundColor(Theme.textSecondary)
+                .frame(width: 80 * uiScale, alignment: .leading)
 
-                // Alle Toggles mit fixedSize, damit ihre Labels bei
-                // minimaler Fensterbreite nicht auf mehrere Zeilen umbrechen.
-                Toggle("RegEx", isOn: $workspace.useRegex)
-                    .toggleStyle(.checkbox)
-                    .fastraFont(.small)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .help("Suchausdruck als regulären Ausdruck behandeln. Aus = wörtliche Suche; Sonderzeichen wie . oder ? werden buchstäblich gesucht.")
-                    .background(alignment: .leading) {
-                        SelfTestMarker(id: "searchOptionFirst")
-                            .frame(width: 0, height: 0)
-                    }
-
-                // „Groß = klein" ist die Kompaktform. Achtung: Semantik ist
-                // gegenüber `caseSensitive` invertiert (Toggle AN heißt:
-                // groß und klein als gleich behandeln, also case-insensitiv).
-                Toggle("Groß = klein", isOn: Binding(
-                    get: { !workspace.caseSensitive },
-                    set: { workspace.caseSensitive = !$0 }
-                ))
-                    .toggleStyle(.checkbox)
-                    .fastraFont(.small)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .help("Groß- und Kleinschreibung gleich behandeln. Aus = unterscheiden; „Max\" findet dann nicht „max\". Standard: an.")
-
-                Toggle("Ganzes Wort", isOn: $workspace.wholeWord)
-                    .toggleStyle(.checkbox)
-                    .fastraFont(.small)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .help("Findet nur vollständige Wörter. „Test\" findet „Test\", aber nicht „Tester\" oder „Kontest\".")
-
-                Toggle("Wrap-around", isOn: $workspace.wrapAround)
-                    .toggleStyle(.checkbox)
-                    .fastraFont(.small)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .help("Nach dem letzten Treffer geht die Suche oben wieder von vorn los. Aus = die Suche hält am Dateiende an.")
-
-                Spacer()
-            }
-
-            HStack(spacing: 14) {
-                // „Nur in Auswahl" (K3, BBEdit „Selected Text Only") — nur im
-                // Datei-Scope sinnvoll. Die feste zweite Zeile beginnt exakt
-                // unter RegEx, damit der Dialog beim Tippen nicht springt.
-                if workspace.scope == .file {
-                    Toggle("Nur in Auswahl", isOn: Binding(
-                        get: { workspace.searchInSelectionOnly },
-                        set: { workspace.setSearchInSelectionOnly($0) }
-                    ))
-                        .toggleStyle(.checkbox)
-                        .fastraFont(.small)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .disabled(workspace.selectionRange == nil && !workspace.searchInSelectionOnly)
-                        .help("Suchen und Ersetzen nur innerhalb des aktuell im Editor markierten Texts. Aktivierbar, sobald etwas selektiert ist; die Auswahl wird beim Einschalten eingefroren.")
-                        .background(alignment: .leading) {
-                            SelfTestMarker(id: "searchOptionSecond")
-                                .frame(width: 0, height: 0)
-                        }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) {
+                    primaryOptionToggles
+                    secondaryOptionToggles
                 }
-
-                Toggle("∗ wörtlich", isOn: $workspace.treatWildcardLiterally)
-                    .toggleStyle(.checkbox)
-                    .fastraFont(.small)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .disabled(!workspace.wildcardLiteralOptionIsEnabled)
-                    .help("Den Stern ∗ als gewöhnliches Zeichen suchen statt als Platzhalter für beliebigen Text innerhalb einer Zeile (∗∗ fängt auch über Zeilenumbrüche). Der Schalter ist nur aktiv, wenn RegEx aus ist und der Suchausdruck mindestens einen Stern ∗ enthält; andernfalls ist er ausgeschaltet.")
-                    .background(SelfTestMarker(
-                        id: "wildcardLiteralOption-"
-                            + (workspace.wildcardLiteralOptionIsEnabled ? "enabled" : "disabled")
-                            + (workspace.treatWildcardLiterally ? "-on" : "-off")
-                    ).frame(width: 0, height: 0))
-
-                Spacer()
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 14) { primaryOptionToggles }
+                    HStack(spacing: 14) { secondaryOptionToggles }
+                }
             }
-            // 80 px Labelbreite + 14 px Abstand der ersten Zeile. Der
-            // skalierte Anteil folgt dem Optionen-Label auch bei UI-Zoom.
-            .padding(.leading, 80 * uiScale + 14)
+            Spacer(minLength: 0)
         }
+    }
+
+    /// Die vier Grundschalter. Alle Toggles mit fixedSize, damit ihre Labels
+    /// nie auf mehrere Zeilen umbrechen — der Umbruch passiert nur zwischen
+    /// den Blöcken (`ViewThatFits`).
+    @ViewBuilder
+    private var primaryOptionToggles: some View {
+        Toggle("RegEx", isOn: $workspace.useRegex)
+            .toggleStyle(.checkbox)
+            .fastraFont(.small)
+            .fixedSize(horizontal: true, vertical: false)
+            .help("Suchausdruck als regulären Ausdruck behandeln. Aus = wörtliche Suche; Sonderzeichen wie . oder ? werden buchstäblich gesucht.")
+            .background(alignment: .leading) {
+                SelfTestMarker(id: "searchOptionFirst")
+                    .frame(width: 0, height: 0)
+            }
+
+        // „Groß = klein" ist die Kompaktform. Achtung: Semantik ist
+        // gegenüber `caseSensitive` invertiert (Toggle AN heißt:
+        // groß und klein als gleich behandeln, also case-insensitiv).
+        Toggle("Groß = klein", isOn: Binding(
+            get: { !workspace.caseSensitive },
+            set: { workspace.caseSensitive = !$0 }
+        ))
+            .toggleStyle(.checkbox)
+            .fastraFont(.small)
+            .fixedSize(horizontal: true, vertical: false)
+            .help("Groß- und Kleinschreibung gleich behandeln. Aus = unterscheiden; „Max\" findet dann nicht „max\". Standard: an.")
+
+        Toggle("Ganzes Wort", isOn: $workspace.wholeWord)
+            .toggleStyle(.checkbox)
+            .fastraFont(.small)
+            .fixedSize(horizontal: true, vertical: false)
+            .help("Findet nur vollständige Wörter. „Test\" findet „Test\", aber nicht „Tester\" oder „Kontest\".")
+
+        Toggle("Wrap-around", isOn: $workspace.wrapAround)
+            .toggleStyle(.checkbox)
+            .fastraFont(.small)
+            .fixedSize(horizontal: true, vertical: false)
+            .help("Nach dem letzten Treffer geht die Suche oben wieder von vorn los. Aus = die Suche hält am Dateiende an.")
+    }
+
+    /// Die kontextnahen Schalter: „Nur in Auswahl" (nur im Datei-Bereich)
+    /// und „∗ wörtlich".
+    @ViewBuilder
+    private var secondaryOptionToggles: some View {
+        // „Nur in Auswahl" (K3, BBEdit „Selected Text Only") — nur im
+        // Datei-Scope sinnvoll.
+        if workspace.scope == .file {
+            Toggle("Nur in Auswahl", isOn: Binding(
+                get: { workspace.searchInSelectionOnly },
+                set: { workspace.setSearchInSelectionOnly($0) }
+            ))
+                .toggleStyle(.checkbox)
+                .fastraFont(.small)
+                .fixedSize(horizontal: true, vertical: false)
+                .disabled(workspace.selectionRange == nil && !workspace.searchInSelectionOnly)
+                .help("Suchen und Ersetzen nur innerhalb des aktuell im Editor markierten Texts. Aktivierbar, sobald etwas selektiert ist; die Auswahl wird beim Einschalten eingefroren.")
+                .background(alignment: .leading) {
+                    SelfTestMarker(id: "searchOptionSecond")
+                        .frame(width: 0, height: 0)
+                }
+        }
+
+        Toggle("∗ wörtlich", isOn: $workspace.treatWildcardLiterally)
+            .toggleStyle(.checkbox)
+            .fastraFont(.small)
+            .fixedSize(horizontal: true, vertical: false)
+            .disabled(!workspace.wildcardLiteralOptionIsEnabled)
+            .help("Den Stern ∗ als gewöhnliches Zeichen suchen statt als Platzhalter für beliebigen Text innerhalb einer Zeile (∗∗ fängt auch über Zeilenumbrüche). Der Schalter ist nur aktiv, wenn RegEx aus ist und der Suchausdruck mindestens einen Stern ∗ enthält; andernfalls ist er ausgeschaltet.")
+            .background(SelfTestMarker(
+                id: "wildcardLiteralOption-"
+                    + (workspace.wildcardLiteralOptionIsEnabled ? "enabled" : "disabled")
+                    + (workspace.treatWildcardLiterally ? "-on" : "-off")
+            ).frame(width: 0, height: 0))
     }
 
     // MARK: - Replace-Feld
@@ -809,6 +944,8 @@ struct FloatingSearchDialog: View {
                 controller: replaceFieldController,
                 accessibilityID: "fastra.replaceField"
             )
+            // Mindestbreite gegen die Pillenreihe rechts (siehe `PillTray`).
+            .frame(minWidth: 120 * uiScale, maxWidth: .infinity)
             .frame(height: 24 * uiScale)
             .padding(.horizontal, 4)
             .background(
@@ -832,23 +969,31 @@ struct FloatingSearchDialog: View {
             }
             .buttonStyle(.plain)
             .help("Suchen und Ersetzen vertauschen")
+
+            // Gruppen- bzw. Platzhalter-Pillen direkt am Ersetzen-Feld
+            // (Layout-Umbau 2026-09-15: statt eigener Zeile). Klick oder
+            // Drag fügt `$N` ins Feld ein.
+            if workspace.useRegex {
+                groupsRow
+            } else if usesWildcard {
+                // Plain-Modus-Pendant zum Gruppen-Tray: nummerierte Pillen
+                // pro `*` (Feature J, todo 1+2).
+                wildcardGroupsRow
+            }
         }
     }
 
     // MARK: - Gruppen-Tray (nur bei RegEx=an)
 
+    /// Pills LIVE aus der Tokenisierung (v0.7) — eine pro fangender Gruppe
+    /// im Find-Pattern. Drag ins Replace-Feld ODER Klick fügt dort `$N` ein
+    /// (Low-Friction-Leitplanke: beides geht). Ohne Gruppen bleibt die Stelle
+    /// leer; wie Gruppen entstehen, erklärt der Tooltip von „Gruppe
+    /// definieren" im Detailbereich.
+    @ViewBuilder
     private var groupsRow: some View {
-        HStack(spacing: 8) {
-            Text("GRUPPEN")
-                .fastraFont(size: 10, weight: .semibold)
-                .tracking(0.8)
-                .foregroundColor(Theme.textSecondary)
-                .frame(width: 80 * uiScale, alignment: .leading)
-
-            // Pills LIVE aus der Tokenisierung (v0.7) — eine pro fangender
-            // Gruppe im Find-Pattern. Drag ins Replace-Feld ODER Klick
-            // fügt dort `$N` ein (Low-Friction-Leitplanke: beides geht).
-            if let groups = findTokenization?.groups, !groups.isEmpty {
+        if let groups = findTokenization?.groups, !groups.isEmpty {
+            PillTray(maxWidth: PillTrayLayout.maxWidth * uiScale) {
                 HStack(spacing: 6) {
                     ForEach(groups, id: \.number) { group in
                         GroupPill(group: group,
@@ -857,12 +1002,6 @@ struct FloatingSearchDialog: View {
                         }
                     }
                 }
-            } else {
-                // Kein Klammern-Wissen voraussetzen: sagen, wie Gruppen
-                // entstehen — tippen ODER geführt im Detail-Bereich.
-                Text("Keine Gruppen — (…) im Suchausdruck setzen oder unten im Detail markieren + „Gruppe definieren\".")
-                    .fastraFont(size: 11)
-                    .foregroundColor(Theme.textSecondary)
             }
         }
     }
@@ -876,18 +1015,7 @@ struct FloatingSearchDialog: View {
     // Sichtbar nur, wenn `usesWildcard` true ist (Plain + Schalter aus + `*`
     // vorhanden) → `wildcardStarCount` ist dann ≥ 1.
     private var wildcardGroupsRow: some View {
-        HStack(spacing: 8) {
-            Text("PLATZHALTER")
-                .fastraFont(size: 10, weight: .semibold)
-                .tracking(0.8)
-                .foregroundColor(Theme.textSecondary)
-                // „PLATZHALTER" ist breiter als die 80-pt-Label-Spalte (anders
-                // als „GRUPPEN") und brach sonst hässlich um („PLATZHALTE"/„R").
-                // Eine Zeile erzwingen und bei Bedarf leicht schrumpfen.
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(width: 80 * uiScale, alignment: .leading)
-
+        PillTray(maxWidth: PillTrayLayout.maxWidth * uiScale) {
             // Eine Pille pro Stern. `max(1, …)` ist nur eine defensive Klammer:
             // die Zeile rendert ohnehin nur bei `usesWildcard` (≥ 1 Stern), aber
             // falls sich das Muster zwischen Bedingung und Body-Aufbau ändert,
@@ -1188,6 +1316,7 @@ struct FloatingSearchDialog: View {
             // Flexibel — wächst mit dem Fenster. `maxWidth: .infinity`: die Box
             // füllt immer die volle Maskenbreite, egal wie kurz der Inhalt ist.
             .frame(maxWidth: .infinity, minHeight: 80, maxHeight: .infinity)
+            .background(SelfTestMarker(id: "hitList"))
             // Die Liste ist ein eigener Tastaturbereich: Pfeil hoch/runter
             // navigiert, Return geht zum nächsten Treffer. Der Editor bleibt
             // dabei nur Scroll-/Selektionsziel und erhält keine Eingaben.
@@ -1533,10 +1662,28 @@ struct FloatingSearchDialog: View {
         let lineText = activeMatch.map {
             L10n.format("Zeile %ld · Spalte %ld", $0.line, $0.column)
         } ?? L10n.string("kein Treffer")
-        return VStack(alignment: .leading, spacing: 6) {
-            Text(verbatim: L10n.format("Detail · %@ · %@", fileLabel, lineText))
-                .fastraFont(size: 11, weight: .medium)
-                .foregroundColor(Theme.textSecondary)
+        // Feste Höhe (Layout-Umbau 2026-09-15): Kopfzeile mit den Gruppen-
+        // Knöpfen, darunter genau eine Textzeile. Vorher hatte der Textkasten
+        // keine feste Höhe, und SwiftUI gab ihm die Hälfte jeder zusätzlichen
+        // Fensterhöhe — die Trefferliste bekam nur die andere Hälfte. Längere
+        // oder mehrzeilige Treffer scrollen innerhalb der Zeile.
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(verbatim: L10n.format("Detail · %@ · %@", fileLabel, lineText))
+                    .fastraFont(size: 11, weight: .medium)
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                Button("Gruppe definieren") { defineGroupFromSelection() }
+                    .controlSize(.small)
+                    .disabled(!workspace.useRegex || activeMatch == nil)
+                    .help("Markierten Text-Ausschnitt als Capture Group im Suchausdruck speichern. Die Auswahl snappt automatisch auf ganze RegEx-Bausteine. Gruppen lassen sich auch direkt als (…) im Suchausdruck tippen.")
+                Button("Gruppe löschen") { deleteGroupAtSelection() }
+                    .controlSize(.small)
+                    .disabled(!workspace.useRegex || (findTokenization?.groups.isEmpty ?? true))
+                    .help("Die Capture Group im markierten Bereich wieder auflösen — die Klammern verschwinden, der Inhalt bleibt.")
+            }
 
             // Bei aktivem Treffer: selektierbarer Match-Text mit Gruppen-
             // Hinterlegung. Ohne Treffer: dezenter Hinweis — gleiche Höhe und
@@ -1546,8 +1693,9 @@ struct FloatingSearchDialog: View {
                                     groupRanges: detailGroupRanges,
                                     selection: $detailSelection)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: detailTextHeight)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 4)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(Theme.surfaceSand)
@@ -1561,8 +1709,9 @@ struct FloatingSearchDialog: View {
                     .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: detailTextHeight)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 4)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(Theme.surfaceSand)
@@ -1572,20 +1721,12 @@ struct FloatingSearchDialog: View {
                             )
                     )
             }
-
-            HStack(spacing: 8) {
-                Button("Gruppe definieren") { defineGroupFromSelection() }
-                    .controlSize(.small)
-                    .disabled(!workspace.useRegex || activeMatch == nil)
-                    .help("Markierten Text-Ausschnitt als Capture Group im Suchausdruck speichern. Die Auswahl snappt automatisch auf ganze RegEx-Bausteine.")
-                Button("Gruppe löschen") { deleteGroupAtSelection() }
-                    .controlSize(.small)
-                    .disabled(!workspace.useRegex || (findTokenization?.groups.isEmpty ?? true))
-                    .help("Die Capture Group im markierten Bereich wieder auflösen — die Klammern verschwinden, der Inhalt bleibt.")
-                Spacer()
-            }
         }
     }
+
+    /// Höhe der einen Textzeile im Detailkasten (Monospace 13 pt plus
+    /// Zeilenabstand), skaliert mit dem UI-Zoom.
+    private var detailTextHeight: CGFloat { 18 * uiScale }
 
     /// Ermittelt den Dateinamen für den Detailkopf aus DEMSELBEN
     /// Navigationsziel wie den angezeigten Treffertext. Diese kleine pure
@@ -1742,11 +1883,38 @@ struct FloatingSearchDialog: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // --- Zeile 1 · Such-Cluster: reines Navigieren durch die
-            // Treffer, OHNE zu ersetzen. Deckt den „nur suchen"-Fall ab,
-            // der bisher im Footer fehlte. Wiederverwendet die bestehende
-            // Sprung-Logik (navigateMatch in ContentView, via Notification).
-            HStack(spacing: 8) {
+            // Eine Knopfzeile (Layout-Umbau 2026-09-15): links das Suchen-
+            // Cluster, rechts das Ersetzen-Cluster. Reicht die Breite nicht,
+            // teilt `ViewThatFits` die Zeile in zwei, bei Mindestbreite in
+            // drei — sonst schnitt SwiftUI „Vorschau der Änderungen" ab. Der
+            // frühere Knopf „Abbrechen" ist entfallen — Escape und der rote
+            // Punkt schließen die Maske.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    searchCluster
+                    Spacer()
+                    transformCluster
+                    applyCluster
+                }
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) { searchCluster; Spacer() }
+                    HStack(spacing: 8) { Spacer(); transformCluster; applyCluster }
+                }
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) { searchCluster; Spacer() }
+                    HStack(spacing: 8) { Spacer(); transformCluster }
+                    HStack(spacing: 8) { Spacer(); applyCluster }
+                }
+            }
+        }
+    }
+
+    /// Reines Navigieren durch die Treffer, OHNE zu ersetzen. Wiederverwendet
+    /// die bestehende Sprung-Logik (navigateMatch in ContentView, via
+    /// Notification).
+    @ViewBuilder
+    private var searchCluster: some View {
+        Group {
                 // „Suchen" nur im Ordner-Scope: ab der Live-Mindestlänge sucht
                 // der Ordner zwar automatisch beim Tippen, aber Klick/Return
                 // erzwingen die Suche auch bei kürzeren Pattern (umgeht die
@@ -1781,20 +1949,13 @@ struct FloatingSearchDialog: View {
                                       : KeyboardShortcut(.return, modifiers: []))
                     .disabled(workspace.navMatches.isEmpty)
                     .help("Zum nächsten Treffer springen — im Dokument an die Fundstelle. Tastenkürzel: ⌘G oder Return.")
+        }
+    }
 
-                Spacer()
-            }
-
-            // --- Zeile 2 · Schließen + Ersetzen-Cluster.
-            HStack(spacing: 8) {
-                // Abbrechen links — alternativer Weg raus aus dem Dialog,
-                // falls der Nutzer die Schließen-Punkte oben nicht findet.
-                Button("Abbrechen") { workspace.showSearchDialog = false }
-                    .keyboardShortcut(.cancelAction)   // ESC
-                    .help("Suchmaske ausblenden. Tastenkürzel: Escape.")
-
-                Spacer()
-
+    /// Beispiel-Ableitung und Vorschau — Schritte VOR dem Ersetzen.
+    @ViewBuilder
+    private var transformCluster: some View {
+        Group {
                 Button("Aus Beispiel…") { showExampleTransformation = true }
                     .help("Leitet aus einem Vorher/Nachher-Beispiel ein Platzhalter-Muster ab.")
 
@@ -1805,7 +1966,13 @@ struct FloatingSearchDialog: View {
                               || workspace.searchError != nil
                               || !visibleResultsMatchCurrentSearch)
                     .help("Zeigt im Hauptfenster ein Vorher/Nachher-Diff aller Ersetzungen im aktiven Buffer — jede betroffene Zeile vorher und nachher.")
+        }
+    }
 
+    /// Einzel- und Gesamtersetzung sowie Rückgängig nach einem Ordner-Apply.
+    @ViewBuilder
+    private var applyCluster: some View {
+        Group {
                 // Einzel-Ersetzen (ein Treffer + zum nächsten springen). Nur im
                 // Buffer-Scope (Datei/Geöffnet) — Ordner-Einzelersetzen schreibt
                 // auf die Platte und kommt mit dem Ergebnis-Fenster (Schritt 2).
@@ -1872,7 +2039,6 @@ struct FloatingSearchDialog: View {
                             return L10n.string("Alle Treffer im aktiven Buffer durch das Replace-Pattern ersetzen.")
                         }
                     }())
-            }
         }
     }
 
@@ -1934,6 +2100,53 @@ private struct HitRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+
+/// Reihe der Gruppen- bzw. Platzhalter-Pillen neben dem Ersetzen-Feld.
+///
+/// Die Pillen sind so breit wie ihr Inhalt, aber höchstens `maxWidth`; ab
+/// dort scrollt die Reihe seitlich (ohne Balken, per Trackpad). Ohne diese
+/// Grenze drückte ein Muster mit vielen Gruppen das Ersetzen-Feld auf
+/// Mindestbreite oder schob Pillen aus dem Fenster (Review-Fund 2026-09-16).
+/// Die natürliche Breite kommt per PreferenceKey aus dem Inhalt; die
+/// ScrollView selbst würde sonst gierig jede angebotene Breite nehmen.
+private struct PillTray<Content: View>: View {
+    let maxWidth: CGFloat
+    @ViewBuilder let content: () -> Content
+    @State private var contentWidth: CGFloat = 0
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            content()
+                .fixedSize()
+                .background(GeometryReader { geometry in
+                    Color.clear.preference(key: PillTrayWidthKey.self,
+                                           value: geometry.size.width)
+                })
+        }
+        .onPreferenceChange(PillTrayWidthKey.self) { contentWidth = $0 }
+        .frame(width: min(contentWidth, maxWidth))
+        // Marker in voller Größe der Reihe: Der Selbsttest `searchlayout`
+        // misst daran, dass die Reihe ihre Obergrenze einhält.
+        .background(SelfTestMarker(id: "pillTray"))
+    }
+}
+
+/// Obergrenze der Pillenreihe in Punkt bei `uiScale` 1 — reicht für etwa
+/// vier Pillen. Eigener Typ, weil ein generischer View keine ohne Typargument
+/// erreichbare Konstante haben kann. Bewusst nicht `private`: Der Selbsttest
+/// `searchlayout` misst gegen genau diese Zahl, statt sie abzuschreiben
+/// (Review-Fund 2026-09-17).
+enum PillTrayLayout {
+    static let maxWidth: CGFloat = 220
+}
+
+private struct PillTrayWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

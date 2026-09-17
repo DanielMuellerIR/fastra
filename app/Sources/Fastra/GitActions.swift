@@ -1361,8 +1361,18 @@ extension Workspace {
         let blockingWorktree = gitBranches.first { $0.name == name }?.blockingWorktree
         runGitAction(["switch", name], label: "Branch-Wechsel",
                      refreshOnFailure: true,
-                     failureHandler: { [weak self] _ in
-                         guard let self, let blockingWorktree else { return false }
+                     failureHandler: { [weak self] result in
+                         // Der gemerkte Stand allein reicht als Begründung
+                         // NICHT: Er kann veraltet sein (fremdes Verzeichnis
+                         // inzwischen entfernt), und dann wäre jeder andere
+                         // Fehlschlag — lokale Änderungen, Hook-Abbruch,
+                         // ungültige Referenz — als Worktree-Sperre erklärt
+                         // und die echte git-Meldung unterdrückt. Deshalb muss
+                         // git denselben Pfad selbst nennen.
+                         guard let self, let blockingWorktree,
+                               GitBranchSwitchFailure.isWorktreeBlock(
+                                   result, worktree: blockingWorktree)
+                         else { return false }
                          self.presentBranchWorktreeBlock(branch: name,
                                                          worktree: blockingWorktree)
                          return true
@@ -1384,16 +1394,55 @@ extension Workspace {
     func presentBranchWorktreeBlock(branch: String, worktree: String) {
         let block = GitBranchWorktreeBlock(
             branch: branch, worktree: worktree,
-            worktreeExists: FileManager.default.fileExists(atPath: worktree)
+            worktreeExists: Self.isExistingDirectory(worktree)
         )
         guard gitBranchWorktreeBlockHandler(block) else { return }
+        // Zwischen Dialog und Klick kann der Ordner verschwinden oder durch
+        // eine gleichnamige Datei ersetzt worden sein. `openProject` prüft das
+        // nicht selbst — alle anderen Aufrufer liefern garantiert Verzeichnisse,
+        // und ein Projekt aus einer Datei bliebe einfach leer. Statt still
+        // nichts zu tun, wird der offensichtlich veraltete Stand neu gelesen:
+        // Danach verschwindet auch das Etikett am Branch.
+        guard Self.isExistingDirectory(worktree) else {
+            refreshGitBranches()
+            return
+        }
         openProject(at: URL(fileURLWithPath: worktree))
+    }
+
+    /// `fileExists(atPath:)` allein meldet auch eine DATEI als vorhanden. Ein
+    /// Projekt lässt sich daraus nicht öffnen; es bliebe leer.
+    static func isExistingDirectory(_ path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: path,
+                                                    isDirectory: &isDirectory)
+        return exists && isDirectory.boolValue
     }
 
     /// Produktpfad der Absage. Rückgabe `true`: Der Nutzer will das andere
     /// Arbeitsverzeichnis als Projekt öffnen.
     static func defaultGitBranchWorktreeBlock(_ block: GitBranchWorktreeBlock) -> Bool {
-        guard presentGitDialogs else {
+        gitBranchWorktreeBlockDecision(block, dialogsEnabled: presentGitDialogs) {
+            $0.runModal()
+        }
+    }
+
+    /// Dieselbe Entscheidung, aber mit ausdrücklich übergebenem Anzeigeschritt.
+    /// Nur so ist die eigentliche Zusage prüfbar: Der Dialog muss AUCH dann
+    /// erscheinen, wenn der Ordner fehlt.
+    ///
+    /// Genau daran scheiterte die frühere Fassung. Sie schrieb
+    /// `block.worktreeExists && alert.runModal() == …`, und `&&` wertet die
+    /// rechte Seite nach einem `false` gar nicht mehr aus: Ohne Ordner lief
+    /// `runModal()` nie. Der Nutzer klickte den mit „(anderes
+    /// Arbeitsverzeichnis)" markierten Branch an — kein Dialog, keine Meldung,
+    /// kein Wechsel, beliebig oft wiederholbar.
+    static func gitBranchWorktreeBlockDecision(
+        _ block: GitBranchWorktreeBlock,
+        dialogsEnabled: Bool,
+        present: (NSAlert) -> NSApplication.ModalResponse
+    ) -> Bool {
+        guard dialogsEnabled else {
             FileHandle.standardError.write(
                 Data("GIT-ERROR [Branch-Wechsel]: \(block.informativeText)\n".utf8)
             )
@@ -1403,11 +1452,14 @@ extension Workspace {
         alert.alertStyle = .warning
         alert.messageText = L10n.string("Branch-Wechsel nicht möglich")
         alert.informativeText = block.informativeText
+        // „Öffnen" gibt es nur, wenn der Ordner noch da ist. Der Dialog selbst
+        // erscheint immer — sonst bliebe die Absage unerklärt.
         if block.worktreeExists {
             alert.addButton(withTitle: L10n.string("Arbeitsverzeichnis öffnen"))
         }
         alert.addButton(withTitle: L10n.string("Abbrechen"))
-        return block.worktreeExists && alert.runModal() == .alertFirstButtonReturn
+        let response = present(alert)
+        return block.worktreeExists && response == .alertFirstButtonReturn
     }
 
     /// Pickaxe-Suche (`git log -S<text>`): findet die Commits, die eine

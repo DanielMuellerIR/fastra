@@ -17,7 +17,7 @@ import Testing
 /// Der Aufrufer ist für das Löschen via `try? FileManager.default.removeItem(at:)`
 /// verantwortlich (oder defer).
 private func writeTmp(_ bytes: [UInt8], suffix: String = ".txt") throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-fileloader-\(UUID().uuidString)\(suffix)")
     try Data(bytes).write(to: url)
     return url
@@ -26,7 +26,7 @@ private func writeTmp(_ bytes: [UInt8], suffix: String = ".txt") throws -> URL {
 /// Schreibt `string` mit `encoding` in eine temporäre Datei.
 private func writeTmpText(_ string: String, encoding: String.Encoding,
                           suffix: String = ".txt") throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-fileloader-\(UUID().uuidString)\(suffix)")
     try string.write(to: url, atomically: true, encoding: encoding)
     return url
@@ -36,7 +36,7 @@ private func writeTmpText(_ string: String, encoding: String.Encoding,
 /// Anschließend kann ein Test gezielt einzelne Bytes hinter Probe- oder
 /// Scan-Grenzen überschreiben.
 private func writeTmpRepeatedByteFile(size: UInt64, byte: UInt8 = 0x41) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-fileloader-large-\(UUID().uuidString).bin")
     _ = FileManager.default.createFile(atPath: url.path, contents: nil)
     let handle = try FileHandle(forWritingTo: url)
@@ -108,7 +108,7 @@ func fileLoader_utf16_bom() throws {
     var data = Data([0xFF, 0xFE])
     data.append(body)
 
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-fileloader-utf16-\(UUID().uuidString).txt")
     defer { try? FileManager.default.removeItem(at: url) }
     try data.write(to: url)
@@ -295,7 +295,7 @@ private final class LoadOutcomeBox: @unchecked Sendable {
       .timeLimit(.minutes(1)))
 func fileLoader_fifo_isRejectedWithoutBlocking() throws {
     // Eine FIFO ohne Schreiber lässt schon `open(2)` unbegrenzt warten.
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-fileloader-fifo-\(UUID().uuidString)")
     #expect(mkfifo(url.path, 0o600) == 0, "FIFO konnte nicht angelegt werden")
     defer { try? FileManager.default.removeItem(at: url) }
@@ -323,7 +323,7 @@ func fileLoader_fifo_isRejectedWithoutBlocking() throws {
 
 @Test("FileLoader: Verzeichnis wird als nicht reguläre Datei abgewiesen")
 func fileLoader_directory_isRejected() throws {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-fileloader-dir-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: url) }
@@ -343,7 +343,7 @@ func fileLoader_symlinkToRegularFile_stillLoads() throws {
     // Abschnitts-/Hex-Grenze entscheidet.
     let target = try writeTmpText("Ziel-Inhalt", encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: target) }
-    let link = FileManager.default.temporaryDirectory
+    let link = testTemporaryDirectory()
         .appendingPathComponent("fastra-fileloader-link-\(UUID().uuidString).txt")
     try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
     defer { try? FileManager.default.removeItem(at: link) }
@@ -365,7 +365,7 @@ func fileLoader_unreadableAttributes_doNotBecomeSizeZero() throws {
     // auch gegen den alten Stand grün, weil dort das Öffnen ebenfalls
     // scheitert. Dass die GRÖSSE nicht mehr still auf 0 fällt, belegt der
     // Symlink-Test oben (alt 107 statt 11 Bytes).
-    let parent = FileManager.default.temporaryDirectory
+    let parent = testTemporaryDirectory()
         .appendingPathComponent("fastra-fileloader-locked-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
     defer {

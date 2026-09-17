@@ -17,7 +17,7 @@ private func makeDefaults() -> UserDefaults {
 
 /// Legt einen frischen Temp-Ordner an und räumt ihn nach dem Test-Body ab.
 private func withTempDir(_ body: (URL) throws -> Void) throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-projecttests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }

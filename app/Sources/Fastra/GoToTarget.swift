@@ -416,11 +416,10 @@ final class GoToTargetGesture: NSObject {
             NSWorkspace.shared.open(url)
         case .searchProject(let name):
             // Fallback laut Spez: Suche im Projekt — sichtbar über den
-            // Suchdialog, Wort als Literal-Suchbegriff.
-            workspace.findPattern = name
-            workspace.useRegex = false
-            workspace.scope = .folder
-            workspace.showSearchDialog = true
+            // Suchdialog, Wort als Literal-Suchbegriff. Der Bereich kommt
+            // aus `preferredMultiFileSearchScope`: mit Projekt „Projekt",
+            // sonst die gemerkten Ordner (Review-Fund 2026-09-16).
+            workspace.presentMultiFileContentSearch(pattern: name)
         case .notFound(let message):
             // Dezent, aber NIE still: Beep, kurzes Aufblitzen am Wort,
             // Hinweis in der Seitenleiste.

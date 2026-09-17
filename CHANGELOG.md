@@ -7,6 +7,239 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.126.6] — 2026-09-17
+
+### Behoben
+
+- „Im Inhalt suchen…" im Dateibaum, die Projektsuche nach Alt-Doppelklick auf
+  einen unbekannten 4D-Methodennamen und ⌘E („Auswahl als Suchbegriff") holen
+  die Suchmaske jetzt nach vorn. Lag die Maske offen hinter dem
+  Dokumentfenster, wurden Suchbegriff und Bereich bisher unsichtbar im
+  Hintergrund gesetzt.
+- Der Tooltip des Datei-Set-Menüs nennt jetzt den vollen Namen des aktiven
+  Sets. Zwei lange Namen, die sich nur in der gekürzten Mitte unterscheiden,
+  waren in der Liste sonst nicht auseinanderzuhalten.
+- Die Vorlagenbibliothek lädt nur noch nach, wenn sich die gespeicherten
+  Vorlagen wirklich geändert haben. Bisher dekodierte jedes Suchfenster bei
+  jeder Einstellungsänderung (etwa pro Bild beim Ziehen der Seitenleiste) alle
+  eigenen Vorlagen und kompilierte ihre Muster neu.
+
+---
+
+## [v1.126.5] — 2026-09-16
+
+### Behoben
+
+- „Suche im Projekt" nach Alt-Doppelklick auf einen unbekannten 4D-Methodennamen
+  und der Link „Im Inhalt suchen…" im leeren Dateibaumfilter setzten den Bereich
+  fest auf „Ordner". Bei offenem Projekt durchsuchten sie damit die gemerkten
+  Ordner statt des Projekts. Beide Einstiege wählen jetzt wie ⇧⌘F mit Projekt
+  den Projekt-Bereich, ohne Projekt die Ordner.
+- Lange eigene Namen im Vorlagenmenü und im Datei-Set-Menü schoben das Suchen-
+  Feld beziehungsweise die Projektzeile zusammen. Die Beschriftungen werden
+  jetzt mittig auf 24 beziehungsweise 28 Zeichen gekürzt; Suchen- und
+  Ersetzen-Feld behalten mindestens 120 pt Breite.
+- Die Gruppen- und Platzhalter-Pillen neben dem Ersetzen-Feld wuchsen mit jeder
+  Gruppe unbegrenzt und drückten das Feld auf null Breite. Die Pillenreihe ist
+  jetzt auf 220 pt begrenzt und scrollt seitlich.
+- Eigene Vorlagen, die ein anderes Fenster speichert, erscheinen jetzt sofort
+  im Vorlagenmenü aller Fenster. Selbsttests schreiben Vorlagen nicht mehr in
+  die echte Bibliothek, sondern in ihre isolierte Einstellungs-Suite.
+
+### Intern
+
+- Hilfe (DE/EN): DerivedData-Hinweis steht im Tooltip des Ausschlussfelds, die
+  Pillen liegen rechts neben dem Ersetzen-Feld.
+- Selbsttest `searchlayout` prüft zusätzlich acht RegEx-Gruppen, acht
+  Platzhalter sowie 60 und 70 Zeichen lange Vorlagen- und Datei-Set-Namen je
+  Bereich und Breite; Feld- und Pillenbreiten werden gemessen.
+- Selbsttest-Poller in `projectinput` und `searchfocus` zählen ausgeführte
+  Prüfläufe statt Wanduhrzeit und werden unter Fremdlast nicht mehr falsch rot.
+
+---
+
+## [v1.126.4] — 2026-09-15
+
+### Geändert
+
+- Mindestbreite der Suchmaske von 500 auf 520 pt. Bei 500 pt fehlten der
+  Projekt-Zeile „Datei-Set … Dateitypen …" wenige Punkte, und sie brach in
+  zwei Zeilen; jetzt bleibt sie auch bei kleinstmöglichem Fenster einzeilig.
+
+---
+
+## [v1.126.3] — 2026-09-15
+
+### Behoben
+
+- Projekt-Bereich bei schmalem Suchfenster: Datei-Set und Dateitypen hingen
+  beim Umbruch eingerückt unter den Bereichs-Tabs, links davon blieb die
+  Beschriftungsspalte leer, und die Elemente brauchten zwei Zeilen. Beim
+  Umbruch stehen „Datei-Set" und „Dateitypen" jetzt als Zeilenbeschriftung
+  in der linken Spalte, wie „Suchen" und „Optionen".
+
+---
+
+## [v1.126.2] — 2026-09-15
+
+### Behoben
+
+- Nach dem Schließen der Suchmaske stand der Cursor beim nächsten ⌘F oder
+  ⇧⌘F im Feld „Ausschlüsse" oder nirgends. Das Fenster wird beim Schließen
+  nur ausgeblendet, und AppKit vergab beim Wiederanzeigen den Fokus an das
+  erste Feld der Tab-Reihenfolge. Die Maske setzt den Fokus jetzt bei jedem
+  Öffnen und Nach-vorn-Holen ausdrücklich ins Suchfeld. Neuer Selbsttest
+  `searchfocus`.
+
+- Im Vorlagen-Editor („Vorlagen verwalten…") waren alle sechs Knöpfe auf „…"
+  gekürzt: Die Knopfzeile stand innerhalb des Formulars und bekam nur dessen
+  Wertespalte. Sie steht jetzt unter dem Formular in voller Breite und bricht
+  bei Platzmangel in zwei Zeilen um (gefunden durch die Sichtprüfung des neuen
+  Selbsttests `dialoglayout`).
+
+### Intern
+
+- Neuer Selbsttest `dialoglayout`: vermisst Einstellungen, Dateivergleich und
+  die vier Blätter der Suchmaske (kein Bedienelement außerhalb des Inhalts,
+  keines mit null Breite) und legt auf Wunsch PNGs ab.
+
+---
+
+## [v1.126.1] — 2026-09-15
+
+### Behoben
+
+- Im Projekt-Bereich bei schmalem Suchfenster (500 pt) brachen die
+  Bereichs-Tabs auf mehrere Zeilen um, der Datei-Set-Picker schrumpfte auf
+  null Breite und der Dateitypen-Picker ragte aus dem Fenster: Die neue
+  Suchbereich-Zeile aus v1.126.0 hatte keine Umbruchstufe. Jetzt rücken
+  Datei-Set und Dateitypen bei Platzmangel in eine eigene Zeile und bei
+  Mindestbreite untereinander. Neuer Selbsttest `searchlayout` vermisst jeden
+  Bereich bei Mindestbreite und 1000 pt und legt auf Wunsch PNGs ab.
+
+---
+
+## [v1.126.0] — 2026-09-15
+
+### Geändert
+
+- Die Suchmaske nutzt ihre Höhe für die Trefferliste. Vorher hatte der
+  Detailkasten unter der Liste keine feste Höhe, und SwiftUI gab ihm die Hälfte
+  jeder zusätzlichen Fensterhöhe; die Liste blieb bei rund vier Zeilen. Jetzt
+  ist der Detailkasten eine feste Zeile (längere Treffer scrollen darin), die
+  Knöpfe „Gruppe definieren" und „Gruppe löschen" stehen in seiner Kopfzeile,
+  und allein die Trefferliste wächst mit dem Fenster.
+- Kompakteres Formular: Datei-Set und Dateitypen stehen hinter den
+  Bereichs-Tabs, die Vorlage am Ende der Suchen-Zeile, die Gruppen- und
+  Platzhalter-Pillen am Ende der Ersetzen-Zeile. Alle Optionen inklusive
+  „∗ wörtlich" stehen in einer Zeile und brechen nur um, wenn die Fensterbreite
+  nicht reicht. Die Knöpfe unten bilden eine Zeile; „Abbrechen" ist entfallen
+  (Escape und der rote Punkt schließen die Maske). Die reine Anzeige „Pfade"
+  und der Hinweis „DerivedData wird immer ausgeschlossen" sind entfallen; die
+  Pfade des Datei-Sets zeigt der Tooltip des Pickers.
+- ⇧⌘F und der Menüpunkt „In Projekt oder Ordnern suchen…" (vorher „In
+  Ordnern suchen…") öffnen den Projekt-Bereich, sobald das Fenster ein Projekt
+  hat. Nur ohne Projekt wählen sie die gespeicherten Ordner.
+
+---
+
+## [v1.125.2] — 2026-09-10
+
+### Behoben
+
+- Die VoiceOver-Bedienung des Trenners in der Vergleichsansicht lief in eine
+  Totzone: Sie rechnete vom gespeicherten Rohwert aus, und der steht nach einem
+  Zug bis zum Anschlag auf 0, während sichtbar 96 pt stehen bleiben. Die ersten
+  beiden Schritte „mehr Platz links" bewegten dadurch gar nichts. Der Schritt
+  geht jetzt vom sichtbaren Stand aus und bleibt im sichtbaren Bereich.
+
+---
+
+## [v1.125.1] — 2026-09-10
+
+### Behoben
+
+- Wird die Ausgabe der Branch-Liste an der Byte-Grenze gekürzt, endet der
+  letzte Datensatz unvollständig. Sein halber Branchname stand bis jetzt im
+  Auswahlmenü, und ein Klick darauf startete `git switch` mit einem Namen, den
+  es nicht gibt. Unvollständige Datensätze zählen nicht mehr mit.
+
+---
+
+## [v1.125.0] — 2026-09-10
+
+### Behoben
+
+- Ein Branch, der in einem anderen Arbeitsverzeichnis ausgecheckt ist, dessen
+  Ordner aber gelöscht wurde, reagierte gar nicht mehr: kein Dialog, keine
+  Meldung, kein Wechsel — beliebig oft wiederholbar. Der Rückgabewert des
+  Dialogs lautete „Ordner vorhanden UND Knopf geklickt", und die zweite Hälfte
+  wurde nach einem „nein" gar nicht mehr ausgewertet. Jetzt erscheint die
+  Erklärung auch dann, samt dem einzigen brauchbaren Rat: den verwaisten
+  Eintrag mit `git worktree prune` abmelden.
+- Scheiterte ein Branch-Wechsel aus einem ANDEREN Grund — lokale Änderungen,
+  Hook-Abbruch, ungültige Referenz —, zeigte Fastra trotzdem die Erklärung zur
+  Worktree-Sperre und verschluckte die echte git-Meldung. Die Zuordnung hängt
+  jetzt daran, dass git dieses Verzeichnis selbst nennt.
+- Der Knopf „Git-Status neu einlesen" frischt jetzt auch die Branch-Liste auf.
+  Das Etikett „(anderes Arbeitsverzeichnis)" blieb sonst stehen, nachdem der
+  fremde Worktree entfernt war, und fehlte umgekehrt für einen frisch
+  angelegten.
+- Ein Worktree-Pfad mit Zeilenumbruch im Namen erzeugte einen erfundenen
+  zweiten Eintrag im Branch-Menü; ein Klick darauf startete `git switch` mit
+  dem Pfadrest als Branchnamen. Die Branch-Liste trennt ihre Datensätze jetzt
+  am Nullbyte statt an Zeilenumbrüchen.
+- „Gruppe definieren" und „Gruppe löschen" verweigern jetzt, wenn das
+  Suchmuster einen Rückverweis (`\1`, `\k<name>`) enthält. Beide Aktionen
+  verschieben die Gruppennummern, ließen den Rückverweis aber stehen: Aus
+  `(a)b\1` (trifft „aba") wurde `((a)b)\1`, das „aba" nicht mehr trifft,
+  dafür „abab"; aus `(a)(b)\1` wurde `a(b)\1` mit derselben Wirkung.
+- Beide Aktionen prüfen jetzt am Ergebnis nach, dass die Ersetzung denselben
+  Text erzeugt wie vorher. Eine Referenz auf eine nicht vorhandene Gruppe
+  liefert leeren Text; sie muss das danach auch tun. Bei zwei Gruppen ergab
+  `X$3Y` nichts — nach „Gruppe definieren" plötzlich den Inhalt der neuen
+  dritten Gruppe. Umgekehrt beim Löschen: Mit zehn Gruppen zeigte `<$11>` ins
+  Leere, mit neun las Foundation daraus Gruppe 1 plus das Literal „1". Wo sich
+  das nicht gleichbedeutend umschreiben lässt, verweigert Fastra die Aktion,
+  statt still einen anderen Text zu schreiben.
+- Ein Klick auf den Trenner der Vergleichsansicht konnte das ganze Fenster
+  verschieben, statt die Spalten zu verteilen: Dokumentfenster sind über ihren
+  Hintergrund beweglich, und der Griff hatte das nicht abbestellt. Der Zug
+  rechnet zudem in Bildschirm- statt Fensterkoordinaten — hätte AppKit das
+  Fenster mitgezogen, wäre der Unterschied immer null gewesen.
+- VoiceOver las beim Trenner den gespeicherten Rohwert vor („Linke Seite
+  0 Prozent"), obwohl sichtbar rund 10 Prozent stehen blieben. Vorgelesen wird
+  jetzt die tatsächlich sichtbare Teilung.
+
+### Neu
+
+- Ein Doppelklick auf den Trenner der Vergleichsansicht stellt die
+  Werksteilung (halbe-halbe) wieder her. Bisher traf man sie nach dem ersten
+  Zug nur noch zufällig — und zwar dauerhaft, weil die Teilung für alle
+  Vergleiche gemerkt wird.
+
+### Intern
+
+- Der Bildpunkt-Vergleich des `diffnowrap`-Selbsttests nahm als Bezugsfarbe die
+  Untergrenze des häufigsten Farbeimers. Ein Eimer ist mit 1/31 aber breiter
+  als die Toleranz von 0,03: Bei bestimmten Hintergrundfarben galt jeder Punkt
+  einer leeren Fläche als fremde Schrift, und der Selbsttest wäre mit
+  „100 % Fremdtext" rot geworden, ohne dass am Produkt etwas defekt ist.
+  Bezugsfarbe ist jetzt der Mittelwert des Eimers; ein neuer Unit-Test prüft
+  die Rechnung an synthetischen Bitmaps.
+- Aufräum-`defer` in Selbsttests entfernt: Jeder Ausgang geht über `finish`,
+  und das endet in `exit()` — der Stack wird nicht abgewickelt, die Blöcke
+  liefen nie. Aufgeräumt wird jetzt vor jedem `finish`.
+- `diffwide` nutzt dieselbe Messbasis und dieselbe Fixture-Erzeugung wie
+  `diffnowrap` und `diffsplit`.
+- Neue Tests: Rückverweis- und Referenz-Verweigerungen an echten Ersetzungen,
+  Zuordnung der Branch-Absage an echtem git, Dialog-Entscheidung der
+  Worktree-Sperre, Git-Diff-Tab im Soft-Wrap-Profil, Randfälle der
+  Spaltenrechnung. Der Lokalisierungstest der Branch-Absage prüfte auf der
+  deutschen Seite sein eigenes Testliteral gegen sich selbst.
+
+---
+
 ## [v1.124.0] — 2026-09-09
 
 ### Neu

@@ -1,8 +1,16 @@
 #!/bin/bash
 #
 # Baut eine wegwerfbare, realistische Fixture für den gelegentlichen
-# Computer-Use-Menüvolltest. Die Test-App bleibt im Projekt-Root, besitzt eine
-# eigene Bundle-ID und darf niemals nach /Applications kopiert werden.
+# Computer-Use-Menüvolltest. Die Test-App besitzt eine eigene Bundle-ID und
+# darf niemals nach /Applications kopiert werden.
+#
+# Die Fixture liegt AUSSERHALB des Git-Arbeitsbaums, im temporären Verzeichnis
+# des Nutzers. Früher entstand sie im Projekt-Root; aufgeräumt wurde sie nur
+# von Hand über die ausgegebene CLEANUP-Zeile, und ein vergessener Lauf ließ
+# dort 93 MB samt einem verschachtelten Git-Repo und einem bare-Remote liegen
+# (gefunden am 2026-09-10, angelegt am 2026-07-20). Ein Git-Wurzelverzeichnis
+# ist der falsche Ort für so etwas: Der Flotten-Sync erfasst es, und ein
+# verschachteltes Repo verwirrt jedes Werkzeug, das den Baum durchläuft.
 
 set -euo pipefail
 
@@ -14,7 +22,7 @@ if [[ ! -d "$SOURCE_APP" ]]; then
     exit 1
 fi
 
-TEST_ROOT="$(mktemp -d "$APP_DIR/.fastra-menu-test.XXXXXX")"
+TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/fastra-menu-test.XXXXXX")"
 TEST_APP="$TEST_ROOT/Fastra-MenuTest.app"
 PROJECT="$TEST_ROOT/project"
 REMOTE="$TEST_ROOT/remote.git"

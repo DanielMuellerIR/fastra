@@ -282,7 +282,7 @@ struct GitConflictMarkerTests {
     @Test("Git-eigener update-index-Lock koppelt Prüfung und Stage-0-Mutation",
           .timeLimit(.minutes(1)))
     func gitIntegration_interactiveUpdateIndexHoldsOfficialLock() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-IndexLock-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -578,7 +578,7 @@ struct GitConflictMarkerTests {
 
     @Test("Verify-only-Reftransaktion sperrt auch einen detached HEAD")
     func gitIntegration_lockedSessionSupportsDetachedHead() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-DetachedLock-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -626,7 +626,7 @@ struct GitConflictMarkerTests {
 
     @Test("HEAD-Race vor Prepare scheitert geschlossen und räumt eigene Locks")
     func gitIntegration_symbolicHeadRaceBeforePrepareFailsClosed() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-HeadRaceBeforePrepare-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -677,7 +677,7 @@ struct GitConflictMarkerTests {
 
     @Test("Fremder Branch-Lock bleibt erhalten und verhindert den sicheren Start")
     func gitIntegration_preexistingBranchLockFailsClosed() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-PreexistingRefLock-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -715,7 +715,7 @@ struct GitConflictMarkerTests {
 
     @Test("Abbruch gewinnt deterministisch gegen einen bereits vorhandenen Index-Lock")
     func gitIntegration_cancellationWinsPreexistingIndexLockCollision() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-CancelIndexCollision-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -757,7 +757,7 @@ struct GitConflictMarkerTests {
 
     @Test("Timeout gewinnt deterministisch gegen einen bereits vorhandenen Ref-Lock")
     func gitIntegration_timeoutWinsPreexistingRefLockCollision() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-TimeoutRefCollision-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -825,7 +825,7 @@ struct GitConflictMarkerTests {
     @Test("Symbolischer Worktree-HEAD bleibt unter derselben Reftransaktion unverändert",
           .timeLimit(.minutes(1)))
     func gitIntegration_lockedTransactionProtectsSymbolicWorktreeHead() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-SymbolicHeadLock-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -887,7 +887,7 @@ struct GitConflictMarkerTests {
     @Test("Hängende Prozesse nach Submit enden bounded mit ungewissem Ergebnis",
           .timeLimit(.minutes(1)))
     func gitIntegration_postSubmitDeadlineKillsStoppedProcessGroups() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-PostSubmitDeadline-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -944,7 +944,7 @@ struct GitConflictMarkerTests {
 
     @Test("Timeout vor der Prepare-Phase bleibt ein Timeout")
     func gitIntegration_timeoutBeforePrepareIsClassified() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-PrePrepareTimeout-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -974,7 +974,7 @@ struct GitConflictMarkerTests {
 
     @Test("Timeout unter Index- und Ref-Lock bleibt von Nutzerabbruch unterscheidbar")
     func gitIntegration_lockedTransactionReportsTimeout() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-LockTimeout-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -1053,7 +1053,7 @@ struct GitConflictMarkerTests {
 
     @Test("Pfadspezifische .gitattributes-Markerbreite entspricht realer Git-Ausgabe")
     func gitIntegration_realPathSpecificMarkerWidth() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-MarkerWidth-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -1273,7 +1273,7 @@ struct GitConflictMarkerTests {
         Workspace.presentGitDialogs = false
         defer { Workspace.presentGitDialogs = oldDialogs }
         for mode in [EditorDisplayMode.hex, .chunkedText] {
-            let root = FileManager.default.temporaryDirectory
+            let root = testTemporaryDirectory()
                 .appendingPathComponent("Fastra-BinaryConflict-\(UUID().uuidString)")
             let file = root.appendingPathComponent("binär.dat")
             let (defaults, suite) = makeDefaults("binary")
@@ -1305,7 +1305,7 @@ struct GitConflictMarkerTests {
 
     @Test("Workspace-Konfliktaktion nutzt nativen Editor-Undo/Redo-Pfad")
     func workspaceConflictActionUsesNativeUndoRedo() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-WorkspaceUndo-\(UUID().uuidString)")
         let file = root.appendingPathComponent("undo.txt")
         let text = "<<<<<<< A\noben\n=======\nunten\n>>>>>>> B\n"
@@ -1345,7 +1345,7 @@ struct GitConflictMarkerTests {
 
     @Test("Späte Attributantwort eines alten Tabs überschreibt den aktiven Konflikt nicht")
     func staleConflictAttributeResponseIsIgnored() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-ConflictAttrRace-\(UUID().uuidString)")
         let firstFile = root.appendingPathComponent("eins.txt")
         let secondFile = root.appendingPathComponent("zwei.dat")
@@ -1408,7 +1408,7 @@ struct GitConflictMarkerTests {
         let oldDialogs = Workspace.presentGitDialogs
         Workspace.presentGitDialogs = false
         defer { Workspace.presentGitDialogs = oldDialogs }
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-Resolve-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -1443,7 +1443,7 @@ struct GitConflictMarkerTests {
 
     @Test("Exact-byte-Staging schreibt genau die geprüften Sonderpfad-Bytes nach Stage 0")
     func gitIntegration_exactByteStagingRealRepository() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-ExactStage-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -1525,7 +1525,7 @@ struct GitConflictMarkerTests {
              ])
         ]
         for value in cases {
-            let root = FileManager.default.temporaryDirectory
+            let root = testTemporaryDirectory()
                 .appendingPathComponent("Fastra-Conversion-\(value.name)-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: root) }
@@ -1586,7 +1586,7 @@ struct GitConflictMarkerTests {
 
     @Test("Absichtlich verbleibende Marker brauchen eine bewusste Ausnahme")
     func intentionalMarkersNeedConfirmation() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-Markers-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -1642,7 +1642,7 @@ struct GitConflictMarkerTests {
 
     @Test("Echte Merge- und Rebase-Konflikte werden aus Git und Markern erkannt")
     func gitIntegration_realMergeAndRebaseConflict() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-RealConflict-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -1715,7 +1715,7 @@ struct GitConflictMarkerTests {
 
     @Test("Reales diff3 liefert mehrere Blöcke über mehrere Konfliktdateien")
     func gitIntegration_realDiff3MultipleFilesAndBlocks() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-Diff3Multiple-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -1766,9 +1766,9 @@ struct GitConflictMarkerTests {
     @Test("Linked Worktree bestätigt verbleibende Marker bewusst und staged exakt Stage 0",
           .timeLimit(.minutes(1)))
     func gitIntegration_linkedWorktreeIntentionalMarkersReachStageZero() async throws {
-        let primary = FileManager.default.temporaryDirectory
+        let primary = testTemporaryDirectory()
             .appendingPathComponent("Fastra-LinkedPrimary-\(UUID().uuidString)")
-        let linked = FileManager.default.temporaryDirectory
+        let linked = testTemporaryDirectory()
             .appendingPathComponent("Fastra-LinkedWorktree-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: primary, withIntermediateDirectories: true)
         defer {
@@ -1839,7 +1839,7 @@ struct GitConflictMarkerTests {
 
     @Test("Realer Binärkonflikt bleibt unverändert und bietet nur die sichere Hilfe an")
     func gitIntegration_realBinaryConflictIsUnsupported() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-RealBinaryConflict-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -1881,7 +1881,7 @@ struct GitConflictMarkerTests {
     @Test("Git-Attribut binary sperrt auch UTF-8-Inhalt, Textaktionen und Stage 0",
           .timeLimit(.minutes(1)))
     func gitIntegration_attributedTextualBinaryConflictIsUnsupported() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-AttributedBinary-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -1983,7 +1983,7 @@ struct GitConflictMarkerTests {
     @Test("merge=binary sperrt gültigen UTF-8-Konflikt ohne binary-Makro",
           .timeLimit(.minutes(1)))
     func gitIntegration_binaryMergeDriverBlocksDirectStaging() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-BinaryMergeDriver-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -2115,7 +2115,7 @@ struct GitValidatedMutationTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let workspace = Workspace(defaults: defaults,
                                   gitOperationsCoordinator: coordinator)
-        workspace.projectURL = FileManager.default.temporaryDirectory
+        workspace.projectURL = testTemporaryDirectory()
             .appendingPathComponent("Fastra-GraphDouble-\(UUID().uuidString)")
         let commit = GitCommit(hash: "abcdef123456", parents: [], author: "Ada",
                                date: "2026-07-16", refs: [], subject: "Sicher")
@@ -2178,7 +2178,7 @@ struct GitValidatedMutationTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let workspace = Workspace(defaults: defaults,
                                   gitOperationsCoordinator: coordinator)
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-BusyEntry-\(UUID().uuidString)")
         workspace.projectURL = root
         workspace.gitBranches = [GitBranch(name: "main", isCurrent: true),
@@ -2202,7 +2202,7 @@ struct GitValidatedMutationTests {
     func revalidatesThenMutates() async throws {
         let executor = AdvancedControlledExecutor()
         let coordinator = GitOperationsCoordinator(executor: executor)
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-Validated-\(UUID().uuidString)")
         var outcome: GitValidatedMutationOutcome?
         _ = GitValidatedMutationRunner.run(
@@ -2230,7 +2230,7 @@ struct GitValidatedMutationTests {
     func cancellationPath() async throws {
         let executor = AdvancedControlledExecutor()
         let coordinator = GitOperationsCoordinator(executor: executor)
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-Cancel-\(UUID().uuidString)")
         var outcome: GitValidatedMutationOutcome?
         _ = GitValidatedMutationRunner.run(
@@ -2250,7 +2250,7 @@ struct GitValidatedMutationTests {
     func changedRepositoryBlocks() async throws {
         let executor = AdvancedControlledExecutor()
         let coordinator = GitOperationsCoordinator(executor: executor)
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-Changed-\(UUID().uuidString)")
         var outcome: GitValidatedMutationOutcome?
         _ = GitValidatedMutationRunner.run(
@@ -2294,7 +2294,7 @@ struct GitValidatedMutationTests {
     @Test("Reale App-Pfade erstellen Branch, stashen, poppen, cherry-picken und reverten",
           .timeLimit(.minutes(1)))
     func gitIntegration_realWorkspaceMutationMatrix() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-AppMutationMatrix-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -2414,9 +2414,9 @@ struct GitValidatedMutationTests {
     @Test("Reale Workspace-Aktionen setzen Merge fort und brechen Merge ab",
           .timeLimit(.minutes(1)))
     func gitIntegration_realWorkspaceMergeContinueAndAbort() async throws {
-        let continueRoot = FileManager.default.temporaryDirectory
+        let continueRoot = testTemporaryDirectory()
             .appendingPathComponent("Fastra-MergeContinue-\(UUID().uuidString)")
-        let abortRoot = FileManager.default.temporaryDirectory
+        let abortRoot = testTemporaryDirectory()
             .appendingPathComponent("Fastra-MergeAbort-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: continueRoot,
                                                 withIntermediateDirectories: true)
@@ -2500,7 +2500,7 @@ struct GitValidatedMutationTests {
 
     @Test("Normaler Rebase-Pick zeigt die unveränderte Nachricht und wird nichtinteraktiv fortgesetzt")
     func gitIntegration_realRebasePickContinue() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-RebaseContinue-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -2534,7 +2534,7 @@ struct GitValidatedMutationTests {
 
     @Test("Rebase-Apply liest final-commit und setzt einen normalen Pick nichtinteraktiv fort")
     func gitIntegration_realRebaseApplyContinue() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-RebaseApplyContinue-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -2570,7 +2570,7 @@ struct GitValidatedMutationTests {
 
     @Test("Rebase-Apply Skip zeigt den frisch geprüften Commit-Betreff und lässt ihn aus")
     func gitIntegration_realRebaseApplySkip() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-RebaseApplySkip-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -2602,7 +2602,7 @@ struct GitValidatedMutationTests {
 
     @Test("Rebase-Apply Abort stellt den Zustand vor dem Rebase wieder her")
     func gitIntegration_realRebaseApplyAbort() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-RebaseApplyAbort-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -2630,7 +2630,7 @@ struct GitValidatedMutationTests {
 
     @Test("Edit-Rebase bleibt im Terminalpfad und startet kein automatisches Continue")
     func gitIntegration_editRebaseRequiresTerminal() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-RebaseEdit-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -2669,9 +2669,9 @@ struct GitValidatedMutationTests {
 
     @Test("Force Push löst trotz Push-Konfig exakt Upstream-Remote, Ref und Lease-OID auf")
     func gitIntegration_forcePushResolvesExactConfiguredTarget() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-ForceLease-\(UUID().uuidString)")
-        let remote = FileManager.default.temporaryDirectory
+        let remote = testTemporaryDirectory()
             .appendingPathComponent("Fastra-ForceRemote-\(UUID().uuidString).git")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer {
@@ -2815,11 +2815,11 @@ struct GitValidatedMutationTests {
 
     @Test("Force Push bricht ab, wenn sich die bestätigte Push-Adresse ändert")
     func gitIntegration_forcePushRejectsChangedRemoteAddress() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-ForceAddress-\(UUID().uuidString)")
-        let originalRemote = FileManager.default.temporaryDirectory
+        let originalRemote = testTemporaryDirectory()
             .appendingPathComponent("Fastra-ForceAddressOriginal-\(UUID().uuidString).git")
-        let replacementRemote = FileManager.default.temporaryDirectory
+        let replacementRemote = testTemporaryDirectory()
             .appendingPathComponent("Fastra-ForceAddressReplacement-\(UUID().uuidString).git")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer {
@@ -2887,9 +2887,9 @@ struct GitValidatedMutationTests {
 struct GitIdentityTests {
     @Test("Lokale und globale Identity-Paare werden mit isoliertem HOME real geschrieben")
     func gitIntegration_realLocalAndGlobalPairWrites() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-RealIdentityRepo-\(UUID().uuidString)")
-        let isolatedHome = FileManager.default.temporaryDirectory
+        let isolatedHome = testTemporaryDirectory()
             .appendingPathComponent("Fastra-RealIdentityHome-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer {
@@ -2957,9 +2957,9 @@ struct GitIdentityTests {
 
     @Test("Später Include-Wert lässt reale Configbytes unverändert und gilt im Commit")
     func gitIntegration_realLaterIncludeFailsBeforeWriteAndSuppliesCommitIdentity() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-RealIdentityInclude-\(UUID().uuidString)")
-        let isolatedHome = FileManager.default.temporaryDirectory
+        let isolatedHome = testTemporaryDirectory()
             .appendingPathComponent("Fastra-RealIdentityIncludeHome-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer {
@@ -3041,9 +3041,9 @@ struct GitIdentityTests {
     func commitWaitsForIdentityPairAcrossRepositories() async throws {
         let executor = AdvancedControlledExecutor()
         let coordinator = GitOperationsCoordinator(executor: executor)
-        let repositoryA = FileManager.default.temporaryDirectory
+        let repositoryA = testTemporaryDirectory()
             .appendingPathComponent("Fastra-IdentityWriter-\(UUID().uuidString)")
-        let repositoryB = FileManager.default.temporaryDirectory
+        let repositoryB = testTemporaryDirectory()
             .appendingPathComponent("Fastra-IdentityCommit-\(UUID().uuidString)")
         let configuration = GitIdentityConfiguration(
             name: "Neuer Name", email: "neu@example.test",
@@ -3110,7 +3110,7 @@ struct GitIdentityTests {
 
     @Test("Identity-Reader berücksichtigt lokale include- und includeIf-Dateien")
     func gitIntegration_configuredIdentityReadsIncludes() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-IdentityIncludes-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -3162,7 +3162,7 @@ struct GitIdentityTests {
     @Test("Automatische Git-Fallbackidentität zählt ohne lokale/globale Konfiguration nicht")
     func fallbackIdentityDoesNotCount() async throws {
         let executor = AdvancedControlledExecutor()
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
         var result: GitConfiguredIdentityResult?
         _ = GitConfiguredIdentityReader.read(repository: root, executor: executor) {
             result = $0
@@ -3189,7 +3189,7 @@ struct GitIdentityTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let workspace = Workspace(defaults: defaults,
                                   gitOperationsCoordinator: coordinator)
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-IdentityPrompt-\(UUID().uuidString)")
         workspace.projectURL = root
         var promptCount = 0
@@ -3226,7 +3226,7 @@ struct GitIdentityTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let workspace = Workspace(defaults: defaults,
                                   gitOperationsCoordinator: coordinator)
-        workspace.projectURL = FileManager.default.temporaryDirectory
+        workspace.projectURL = testTemporaryDirectory()
             .appendingPathComponent("Fastra-IdentityCancel-\(UUID().uuidString)")
         workspace.gitIdentityPromptHandler = { _ in nil }
         var continued = false
@@ -3243,7 +3243,7 @@ struct GitIdentityTests {
     func localGlobalRead() async throws {
         let executor = AdvancedControlledExecutor()
         let coordinator = GitOperationsCoordinator(executor: executor)
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
         var outcome: GitIdentityReadOutcome?
         _ = GitIdentityReader.read(repository: root, coordinator: coordinator) {
             outcome = $0
@@ -3296,7 +3296,7 @@ struct GitIdentityTests {
                                               scope: .repository,
                                               globalConfirmed: false)
         var outcome: GitIdentityWriteOutcome?
-        _ = GitIdentityWriter.write(config, repository: FileManager.default.temporaryDirectory,
+        _ = GitIdentityWriter.write(config, repository: testTemporaryDirectory(),
                                     coordinator: coordinator) { outcome = $0 }
         #expect(executor.arguments[0] == [
             "config", "--local", "--show-origin", "-z", "--get-all", "user.name"
@@ -3328,7 +3328,7 @@ struct GitIdentityTests {
                                               scope: .repository,
                                               globalConfirmed: false)
         var outcome: GitIdentityWriteOutcome?
-        _ = GitIdentityWriter.write(config, repository: FileManager.default.temporaryDirectory,
+        _ = GitIdentityWriter.write(config, repository: testTemporaryDirectory(),
                                     coordinator: coordinator) { outcome = $0 }
         executor.complete(0, advancedSuccess(directIdentityOriginData("Alt")))
         executor.complete(1, advancedSuccess(directIdentityOriginData("alt@example.test")))
@@ -3354,9 +3354,9 @@ struct GitIdentityTests {
     func includedOverrideFailsBeforeWriteAndBarrierRelease() async throws {
         let executor = AdvancedControlledExecutor()
         let coordinator = GitOperationsCoordinator(executor: executor)
-        let repositoryA = FileManager.default.temporaryDirectory
+        let repositoryA = testTemporaryDirectory()
             .appendingPathComponent("Fastra-IncludeOverride-\(UUID().uuidString)")
-        let repositoryB = FileManager.default.temporaryDirectory
+        let repositoryB = testTemporaryDirectory()
             .appendingPathComponent("Fastra-IncludeFollower-\(UUID().uuidString)")
         let configuration = GitIdentityConfiguration(
             name: "Neu", email: "neu@example.test", scope: .repository,
@@ -3410,9 +3410,9 @@ struct GitIdentityTests {
     func cancellationAfterMutationCannotInterruptRollback() async throws {
         let executor = AdvancedControlledExecutor()
         let coordinator = GitOperationsCoordinator(executor: executor)
-        let repositoryA = FileManager.default.temporaryDirectory
+        let repositoryA = testTemporaryDirectory()
             .appendingPathComponent("Fastra-IdentityCancelCleanup-\(UUID().uuidString)")
-        let repositoryB = FileManager.default.temporaryDirectory
+        let repositoryB = testTemporaryDirectory()
             .appendingPathComponent("Fastra-IdentityCancelFollower-\(UUID().uuidString)")
         var outcome: GitIdentityWriteOutcome?
         let lease = try #require(GitIdentityWriter.write(

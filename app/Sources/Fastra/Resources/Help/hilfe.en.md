@@ -61,11 +61,13 @@ handles that through “PDF” in its bottom-left corner.
 
 ## Search and Replace
 
-⌘F opens the search panel in file scope, ⇧⌘F in folder scope; ⌘E uses the
-current selection as the search term. If the panel is already open and its
-search field is populated, ⌘F and ⇧⌘F only bring it forward — the selected
-scope and results stay intact; the menu item “Search in Folders…” always
-switches to folder scope. Search runs **live while you type**. The results list
+⌘F opens the search panel in file scope, ⇧⌘F in project scope (or folder
+scope when no project is open); ⌘E uses the current selection as the search
+term. If the panel is already open and its search field is populated, ⌘F and
+⇧⌘F only bring it forward — the selected scope and results stay intact; the
+menu item “Search in Project or Folders…” always switches to project or folder
+scope. Close the panel with Escape or the red button; the results list is the
+only area that grows with the window. Search runs **live while you type**. The results list
 shows the remainder of the line after every match for context; on very long
 lines it ends after about 400 characters with “…”. The first 2,000 matches in
 the currently visible document are highlighted immediately — in folder and
@@ -92,8 +94,8 @@ suffix such as `.json` is shorthand for `*.json`; explicit globs such as
 `userPreferences.*`, `foo?.txt`, and `**` remain unchanged. Matching
 directories exclude their complete subtree, while patterns containing a slash
 are relative to the project root. Case is respected as entered. `DerivedData`
-is always excluded from project searches at any depth and is therefore stated
-below the input field. When you change the search term, file type, or
+is always excluded from project searches at any depth; the tooltip of the
+exclusions field says so. When you change the search term, file type, or
 exclusions, Fastra removes the old results immediately; navigation, preview,
 and “Replace All” become available again only for the new result.
 
@@ -108,8 +110,9 @@ again afterward.
 
 **Wildcards:** With regex mode off, `*` matches any text **within a
 line**, `**` also matches **across line breaks**. Every wildcard
-automatically becomes a capture group: the pills (`$1`, `$2` …) below
-the replace field can be **clicked or dragged** into the replace field.
+automatically becomes a capture group: the pills (`$1`, `$2` …) to the
+right of the replace field can be **clicked or dragged** into the replace
+field; with many groups the row of pills scrolls sideways.
 Example: search `*, the`, replace `The *` turns “ring, The” into
 “The ring”. The always-visible “∗ literal” switch treats `*` as a normal
 character. It is enabled only while regex is off and the search expression
@@ -191,7 +194,9 @@ pre-fills the left side.
 - **Column width:** the divider between the two sides can be dragged—the
   pointer turns into a resize arrow there. The left side gains room without
   widening the window, and the right side gives up exactly that room. The
-  split applies to every comparison and survives restarts.
+  split applies to every comparison and survives restarts. A **double-click on
+  the divider** restores the default half-and-half split. With VoiceOver the
+  divider can also be moved without a mouse, in five-percent steps.
 - **Soft wrap:** the footer switch works here too and keeps a separate
   setting for the comparison view, independent of the language of the files
   being compared. Switched on, long text wraps inside its column (the
@@ -835,7 +840,7 @@ no fuzzy matching); a wider sidebar gives it more room. Matches appear
 with their parent folders expanded; everything else is hidden, and the
 counter above the tree shows “N of M files”. Escape or the X
 clears the filter and restores the previous expansion state. The filter
-only searches NAMES — for contents, use “Find in Folders…” (⇧⌘F, also
+only searches NAMES — for contents, use “Search in Project or Folders…” (⇧⌘F, also
 offered as a link when the filter finds nothing).
 
 Switching between the sidebar tabs is not a fresh start: the filter text
@@ -859,7 +864,10 @@ open. In detail:
   same repository (`git worktree`) already has a branch checked out, the picker
   says so next to its name: Git allows the same branch in only one place at a
   time. Fastra then offers to open that working tree as a project — the state
-  you are looking for is already there.
+  you are looking for is already there. If the folder has been deleted in the
+  meantime and Git does not know yet, Fastra says so as well and names the way
+  forward: deregister the stale entry with `git worktree prune`, and the branch
+  is free again.
 - **Changes:** stage/unstage files, discard, and commit right from the
   sidebar. After a local commit, the Commit button becomes a Push button:
   every locally configured remote gets its own fully clickable surface with

@@ -200,6 +200,15 @@ Testumfang nach Risiko:
   In-App-Selbsttests.
 - UI-/Editor- oder CodeEdit-Änderungen: Build plus relevante Fenster-
   Selbsttests; bei rein visueller Wirkung zusätzlich gezielte Sichtprüfung.
+  Bei Änderungen an der Suchmaske heißt das konkret: `searchlayout` laufen
+  lassen (mit `FASTRA_SEARCHLAYOUT_DIR` für PNGs), bei anderen Dialogen
+  `dialoglayout` (mit `FASTRA_DIALOGLAYOUT_DIR`), und JEDE Bereichsvariante
+  (Datei, Ordner, Projekt) bei Mindestbreite und breit selbst ansehen —
+  nicht nur die README-Aufnahmen des Datei-Bereichs. Am 2026-09-15 war der
+  Projekt-Bereich nach dem Layout-Umbau bei 500 pt unbrauchbar, obwohl alle
+  Aufnahmen und Funktions-Selbsttests grün waren: Ein Funktionstest misst
+  keine Geometrie, und eine Aufnahme zeigt nur den einen Bereich, den sie
+  zeigt.
 - Ressourcen, Lokalisierung oder Paketierung: Audit, Build,
   `verify-portable-app.sh` und `localization` aus dem gepackten Bundle.
 - Git-Funktionen: Tests gegen temporäre lokale Repos/Remotes; niemals das echte
@@ -305,7 +314,11 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
 - Synthetische Klicks in Fenster-Selbsttests: `window.sendEvent` setzt
   `NSApp.currentEvent` NICHT. Liest der geklickte Code Modifier oder
   Klickzahl daraus, muss der Test die Events mit `NSApp.postEvent` in die
-  echte Event-Queue legen (`sendMouseClick(..., viaApp: true)`).
+  echte Event-Queue legen (`sendMouseClick(..., viaApp: true)`). Dasselbe
+  gilt für AppKit-gestützte Knöpfe (NSButton, Checkbox): Ihr Maus-Tracking
+  wartet in einer eigenen Schleife auf das Mouse-up aus der Queue, und
+  `sendEvent(down)` kehrt erst danach zurück — der Test hängt bis zum
+  Runner-Timeout (searchoptions, 2026-09-15).
 - **SwiftUI-`List` verschluckt Pfeiltasten.** Die zugrunde liegende
   `NSOutlineView` verarbeitet Auf-/Abwärtspfeil selbst, `onMoveCommand` feuert
   nie. Pfeilnavigation in der Suchmaske deshalb über
@@ -622,7 +635,16 @@ Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
   `ENV` und `SKIP` echte Fehler — und aus einem beschädigten Maschinenstatus einen
   **grünen** Lauf, weil er auf eine ältere PASS-Zeile zurückfiel. Maßgeblich ist
   allein das versionierte, vollständig validierte `SELFTEST-RESULT`-Protokoll;
-  fehlende oder beschädigte Pflichtfelder schlagen geschlossen fehl.
+  beschädigte Pflichtfelder schlagen geschlossen fehl. Genau EINE Ausnahme
+  besteht: Fehlt die Maschinenzeile vollständig, greift die alte Textheuristik
+  auf die Begleitzeile — sie ist die Verständigung mit einem installierten
+  Bundle aus der Zeit vor dem Protokoll (`tools/selftest-results.sh`, Kommentar
+  im Dateikopf, gepinnt von `SelfTestPerformanceTests`). In diesem Pfad sind
+  die beiden oben genannten Fehleinstufungen weiterhin möglich; ein Lauf gegen
+  ein aktuelles Bundle erreicht ihn nie. Ob ein Ergebnis überhaupt vorliegt,
+  entscheidet dagegen seit 2026-09-10 die Pflichtzeile — vorher hing selbst das
+  am Freitext, und eine App, die nur die Maschinenzeile hinterließ, lief in den
+  Timeout-Zweig und wurde dort hart als Funktionsfehler gemeldet.
 
 ## Verhaltensevals
 

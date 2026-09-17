@@ -18,7 +18,7 @@ private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
 }
 
 private func writeTmpUTF8(_ content: String) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-extchange-\(UUID().uuidString).txt")
     try content.write(to: url, atomically: true, encoding: .utf8)
     // Kanonische Form — genau die trägt der Tab nach loadFile (siehe
@@ -655,7 +655,7 @@ func workspace_folderApplyBlocksDirtyTab() throws {
     ws.folderResults = [result]
     ws.folderSearching = false
     ws.folderNeedsSearch = false
-    let backupRoot = FileManager.default.temporaryDirectory
+    let backupRoot = testTemporaryDirectory()
         .appendingPathComponent("fastra-workspace-undo-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: backupRoot, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: backupRoot) }
@@ -688,7 +688,7 @@ func workspace_folderApplyRejectsStaleVisibleResult() async throws {
     // Die Fixture setzt ein bereits abgeschlossenes Suchergebnis direkt ein.
     ws.folderSearching = false
     ws.folderNeedsSearch = false
-    let backups = FileManager.default.temporaryDirectory
+    let backups = testTemporaryDirectory()
         .appendingPathComponent("fastra-visible-undo-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: backups) }
@@ -727,7 +727,7 @@ func workspace_folderApplyRunsAsynchronously() async throws {
     // Die Fixture setzt ein bereits abgeschlossenes Suchergebnis direkt ein.
     ws.folderSearching = false
     ws.folderNeedsSearch = false
-    let backups = FileManager.default.temporaryDirectory
+    let backups = testTemporaryDirectory()
         .appendingPathComponent("fastra-async-undo-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: backups) }
@@ -766,7 +766,7 @@ func workspace_folderUndoInvalidatesVisibleResults() async throws {
     ws.folderResults = [FolderSearch.searchOneFile(at: url, options: options)]
     ws.folderSearching = false
     ws.folderNeedsSearch = false
-    let backups = FileManager.default.temporaryDirectory
+    let backups = testTemporaryDirectory()
         .appendingPathComponent("fastra-undo-stale-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: backups) }
@@ -825,7 +825,7 @@ func workspace_saveDeletedDocumentRequiresConfirmation() async throws {
 @Test("Save-As überschreibt kein Ziel, das nach dem Abwesenheitscheck entsteht")
 @MainActor
 func workspace_saveAsTargetAppearingBeforeCoordinateIsPreserved() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-save-as-race-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -875,7 +875,7 @@ func workspace_saveForeignReplaceAfterFinalPreflightIsPreserved() async throws {
 @Test("Save-As ersetzt kein Ziel, das erst nach der Panel-Validierung entsteht")
 @MainActor
 func workspace_saveAsTargetAppearingAfterPanelValidationIsPreserved() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-save-panel-race-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }

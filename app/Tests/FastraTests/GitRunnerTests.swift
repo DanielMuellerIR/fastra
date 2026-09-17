@@ -181,7 +181,7 @@ func serialRunnerIntegration_resolvedPathMatchesPureResolution() {
 }
 
 private func temporaryExecutable(_ body: String) throws -> URL {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("Fastra-GitRunner-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory,
                                             withIntermediateDirectories: true)
@@ -294,7 +294,7 @@ func gitRunner_cancelsRunningProcess() async {
         // nicht, läuft der Aufruf 30 s und der Test schlägt eindeutig fehl.
         let token = GitRunner.runExecutable(URL(fileURLWithPath: "/bin/sleep"),
                                             arguments: ["30"],
-                                            in: FileManager.default.temporaryDirectory) {
+                                            in: testTemporaryDirectory()) {
             continuation.resume(returning: $0)
         }
         // Bewusst ein echter Thread statt DispatchQueue.global(): Jeder laufende
@@ -327,7 +327,7 @@ func gitRunner_cancelsBeforeAttach() async {
     let outcome = await withCheckedContinuation { continuation in
         let token = GitRunner.runExecutable(URL(fileURLWithPath: "/bin/sleep"),
                                             arguments: ["5"],
-                                            in: FileManager.default.temporaryDirectory) {
+                                            in: testTemporaryDirectory()) {
             continuation.resume(returning: $0)
         }
         token.cancel()
@@ -384,7 +384,7 @@ func gitRunner_writesExplicitStandardInput() async throws {
 
 @Test("Abbruch beendet auch einen gestarteten Helferprozess derselben Gruppe")
 func gitRunner_cancellationKillsDescendantGroup() async throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("Fastra-ProcessGroup-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -430,7 +430,7 @@ func gitRunner_descendantPipeDoesNotBlockCompletion() async throws {
     // Das abgekoppelte Kind lebt deutlich länger als das Budget: Hält es Pipe
     // und Slot doch offen, wartet der Aufruf 30 s statt weniger als 10 s. Der
     // Abstand macht die Aussage unabhängig von der Startlatenz der Maschine.
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("Fastra-NormalProcessGroup-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -634,7 +634,7 @@ private func runGit(_ arguments: [String], in repository: URL,
 
 @Test("core.askPass kann trotz lokaler Konfiguration kein Prompt-Programm starten")
 func gitIntegration_runnerBlocksConfiguredCoreAskPass() async throws {
-    let repo = FileManager.default.temporaryDirectory
+    let repo = testTemporaryDirectory()
         .appendingPathComponent("Fastra-CoreAskPass-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: repo) }
@@ -679,7 +679,7 @@ func gitIntegration_runnerBlocksConfiguredCoreAskPass() async throws {
 
 @Test("Wörtliche Pathspecs schützen Magic-Namen und führenden Bindestrich")
 func gitIntegration_runnerUsesLiteralPathspecs() async throws {
-    let repo = FileManager.default.temporaryDirectory
+    let repo = testTemporaryDirectory()
         .appendingPathComponent("Fastra-Literal-Pathspec-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: repo) }

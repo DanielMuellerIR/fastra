@@ -37,7 +37,18 @@ enum TestDefaultsPurge {
         explicit: URL? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
-        if let explicit { return explicit.standardizedFileURL }
+        // Ausdrücklich als VERZEICHNIS normalisieren, damit der
+        // Containment-Vergleich in `purge` nicht vom Dateisystem abhängt.
+        // Gemessen am 2026-09-10: `standardizedFileURL` setzt das
+        // Verzeichnis-Merkmal, indem es nachsieht, ob der Pfad existiert. Für
+        // ein VORHANDENES Verzeichnis ging der alte URL-Vergleich deshalb auf;
+        // fehlte das Verzeichnis, schlug er fehl — dann gibt es aber ohnehin
+        // nichts zu löschen. Also kein belegter Fehler, sondern eine Zusage,
+        // die still am Dateisystemzustand hing.
+        if let explicit {
+            return URL(fileURLWithPath: explicit.path, isDirectory: true)
+                .standardizedFileURL
+        }
         if let fixedHome = environment["CFFIXED_USER_HOME"], !fixedHome.isEmpty {
             return URL(fileURLWithPath: fixedHome, isDirectory: true)
                 .appendingPathComponent("Library/Preferences", isDirectory: true)
@@ -186,11 +197,13 @@ enum TestDefaultsPurge {
             // `removePersistentDomain` LEERT die Domain, lässt aber die dann
             // inhaltslose Plist-Datei liegen — genau daraus entstand der
             // 3713-Dateien-Berg. Die eigene Datei deshalb mit entfernen.
-            let normalizedDirectory = directory
-            let plist = normalizedDirectory
+            let plist = directory
                 .appendingPathComponent(name + ".plist", isDirectory: false)
                 .standardizedFileURL
-            guard plist.deletingLastPathComponent() == normalizedDirectory else {
+            // Über die PFADE vergleichen, nicht über die URLs: Zwei URLs auf
+            // dasselbe Verzeichnis gelten als verschieden, sobald eine davon
+            // den Schrägstrich am Ende trägt.
+            guard plist.deletingLastPathComponent().path == directory.path else {
                 remaining.append(name)
                 continue
             }
@@ -225,6 +238,17 @@ enum TestDefaultsPurge {
     static func purgeStale(olderThan age: TimeInterval = 3600,
                            preferencesDirectory: URL? = nil) -> Int {
         let directory = resolvedPreferencesDirectory(explicit: preferencesDirectory)
+        // Zeigt das Verzeichnis woanders hin als das Preferences-Home DIESES
+        // Prozesses, bleibt es beim reinen Dateiaufräumen. Vorher folgte der
+        // Dateipfad dem Argument, `removePersistentDomain` aber immer dem
+        // eigenen Home — die Funktion räumte also an einer Stelle auf und
+        // fasste eine ganz andere an. Ein Schaden ließ sich nicht nachweisen:
+        // Ein Testlauf gegen die alte Fassung erzeugte im eigenen Home keine
+        // Datei (die leere Plist, vor der `test-sandbox.sh` warnt, entsteht
+        // nur zeitweise und nicht bei jedem Aufruf). Die Unstimmigkeit bleibt
+        // trotzdem eine Falle für den nächsten Aufrufer.
+        let ownDirectory = resolvedPreferencesDirectory()
+        let touchesOwnDomains = directory.path == ownDirectory.path
         let cutoff = Date().addingTimeInterval(-age)
         let entries = (try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.contentModificationDateKey],
@@ -236,7 +260,14 @@ enum TestDefaultsPurge {
             let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
                 .contentModificationDate ?? .distantPast
             guard modified < cutoff else { continue }
-            UserDefaults.standard.removePersistentDomain(forName: domain)
+            if touchesOwnDomains {
+                // Denselben Weg wie `purge` gehen: eine eigene Suite-Instanz
+                // plus `synchronize()`. Über `.standard` blieben beschriebene
+                // Suiten beim Prozessende stehen (siehe Begründung dort).
+                let defaults = UserDefaults(suiteName: domain)
+                defaults?.removePersistentDomain(forName: domain)
+                defaults?.synchronize()
+            }
             // Die leere Plist kann cfprefsd liegen lassen — dann gezielt weg;
             // ein Scheitern räumt der nächste Lauf ab.
             if (try? FileManager.default.removeItem(at: url)) != nil {

@@ -28,7 +28,7 @@ final class TestCorpus {
     private(set) var files: [CorpusFile] = []
 
     init() throws {
-        root = FileManager.default.temporaryDirectory
+        root = testTemporaryDirectory()
             .appendingPathComponent("fastra-corpus-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try build()

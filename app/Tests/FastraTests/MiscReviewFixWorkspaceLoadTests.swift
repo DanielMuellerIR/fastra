@@ -23,7 +23,7 @@ func miscReviewFix_loadFileReportsAfterWorkspaceDisappears() async throws {
     let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
 
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-miscfix-load-\(UUID().uuidString).txt")
     try "Inhalt der Testdatei\n".write(to: url, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: url) }
@@ -68,7 +68,7 @@ func miscReviewFix_loadFileStillReportsSuccessOnce() async throws {
     let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
 
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-miscfix-load-ok-\(UUID().uuidString).txt")
     try "Zeile\n".write(to: url, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: url) }

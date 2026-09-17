@@ -94,7 +94,7 @@ func detachedFilterScanCancellation() async {
 private func makeFixtureTree() throws -> URL {
     // Kanonische Form (`/private/var/…`) — dieselbe Pfadform, die auch
     // `contentsOfDirectory` für die echten Baumknoten liefert.
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .canonicalFileURL
         .appendingPathComponent("fastra-treefilter-\(UUID().uuidString)")
     let fm = FileManager.default

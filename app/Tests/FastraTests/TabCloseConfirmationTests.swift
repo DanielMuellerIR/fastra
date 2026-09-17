@@ -79,7 +79,7 @@ func close_dirtySaveWritesAndCloses() throws {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .save }
     ws.closeWindowHandler = {}
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-close-\(UUID().uuidString).txt")
     try "alt".write(to: url, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: url) }
@@ -264,7 +264,7 @@ func quit_dirtyDontSaveTerminates() {
 func quit_dirtySaveWritesAndTerminates() throws {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .save }
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-quit-\(UUID().uuidString).txt")
     try "alt".write(to: url, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: url) }
@@ -297,7 +297,7 @@ func quit_cancelAfterSaveRestoresActive() throws {
     // Pro Tab unterschiedlich antworten: den ersten Dirty-Tab sichern (setzt
     // intern activeTabID um), den zweiten abbrechen (löst den Befund aus).
     ws.confirmCloseHandler = { title in title == "save.txt" ? .save : .cancel }
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-quit-restore-\(UUID().uuidString).txt")
     try "alt".write(to: url, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: url) }

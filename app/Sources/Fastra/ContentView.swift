@@ -152,17 +152,25 @@ struct ContentView: View {
             workspace.presentSearch(requestedScope: .file, captureSelection: true)
             searchPanel?.show()
         }
+        // ⇧⌘F: Mehrdatei-Suche. Hat das Fenster ein Projekt, ist der Bereich
+        // „Projekt" (der Ordner, in dem gearbeitet wird); nur ohne Projekt
+        // die gespeicherten Ordner (Produktentscheidung 2026-09-15).
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolder)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
-            workspace.presentSearch(requestedScope: .folder)
+            workspace.presentSearch(requestedScope: workspace.preferredMultiFileSearchScope)
             searchPanel?.show()
         }
-        // Menüpunkt „In Ordnern suchen…": Sein sichtbarer Text verspricht die
-        // Ordnersuche, deshalb wird der Bereich hier erzwungen — anders als
-        // beim bereichserhaltenden Kurzbefehl darüber.
+        // Menüpunkt „In Projekt oder Ordnern suchen…": Sein sichtbarer Text
+        // verspricht die Mehrdatei-Suche, deshalb wird der Bereich hier
+        // erzwungen — anders als beim bereichserhaltenden Kurzbefehl darüber.
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolderForced)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
-            workspace.presentSearch(requestedScope: .folder, forceScope: true)
+            workspace.presentSearch(requestedScope: workspace.preferredMultiFileSearchScope,
+                                    forceScope: true)
+            searchPanel?.show()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fastraBringSearchToFront)) { note in
+            guard notificationTargetsThisWorkspace(note) else { return }
             searchPanel?.show()
         }
         .onReceive(NotificationCenter.default.publisher(for: .fastraHideSearch)) { note in

@@ -1714,19 +1714,22 @@ final class Workspace: ObservableObject {
             : activeDocumentFormat.displayName
     }
 
-    /// Gespeicherte Formatwahl für das aktive effektive Dokumentformat.
-    var configuredSoftWrapEnabled: Bool {
-        softWrapProfiles.isEnabled(for: softWrapScopeFormatID)
-    }
-
+    /// Gespeicherte Umbruchwahl des gerade bedienten Profils.
     var softWrapEnabled: Bool {
-        configuredSoftWrapEnabled
+        softWrapProfiles.isEnabled(for: softWrapScopeFormatID)
     }
 
     var softWrapHasOverride: Bool {
         softWrapProfiles.hasOverride(for: softWrapScopeFormatID)
     }
 
+    // Umbruchziel, feste Breite und Einrückung gehören zum EDITOR, und ein
+    // Vergleich hat keinen. Sie fragen deshalb bewusst das Dokumentformat und
+    // nicht `softWrapScopeFormatID`; die Fußzeile blendet sie im Vergleich aus
+    // (siehe `StatusBarView.softWrapOptions`). Wer diese Einstellungen einmal
+    // auch im Vergleich wirken lässt, muss hier auf den Bereich umstellen —
+    // sonst schriebe der Vergleich still in das Profil der verglichenen
+    // Sprache.
     var softWrapTarget: SoftWrapTarget {
         softWrapProfiles.target(for: activeDocumentFormat.id)
     }
@@ -6080,6 +6083,18 @@ final class Workspace: ObservableObject {
     /// befüllte Suchmaske bereits offen, bedeutet ⌘F bzw. ⇧⌘F nur noch
     /// „Maske nach vorn“: Ein unbemerkter Wechsel von Ordner zu Datei würde
     /// sonst die Ergebnisliste neu aufbauen und den aktiven Treffer verlieren.
+    /// Bereich für ⇧⌘F und den Menüpunkt „In Projekt oder Ordnern suchen…":
+    /// Mit Projekt ist das der Projekt-Bereich (die Suche im Ordner, in dem
+    /// gerade gearbeitet wird), ohne Projekt die gespeicherten Ordner.
+    /// Pure Funktion, damit die Entscheidung ohne Fenster testbar ist.
+    static func multiFileSearchScope(hasProject: Bool) -> SearchScope {
+        hasProject ? .project : .folder
+    }
+
+    var preferredMultiFileSearchScope: SearchScope {
+        Self.multiFileSearchScope(hasProject: projectURL != nil)
+    }
+
     static func searchScopeWhenPresenting(requested: SearchScope,
                                           current: SearchScope,
                                           dialogOpen: Bool,
@@ -6108,6 +6123,31 @@ final class Workspace: ObservableObject {
             captureSelectionForSearch()
         }
         showSearchDialog = true
+    }
+
+    /// Gemeinsamer Einstieg für Aktionen, die ausdrücklich „im Projekt bzw.
+    /// in den Ordnern suchen" versprechen: der Go-to-Target-Rückfall bei
+    /// unbekanntem 4D-Methodennamen und der Link „Im Inhalt suchen…" des
+    /// leeren Dateibaumfilters. Beide setzten den Bereich früher fest auf
+    /// `.folder` und durchsuchten so bei offenem Projekt die unabhängige
+    /// Liste gemerkter Ordner statt des Projekts (Review-Fund 2026-09-16).
+    /// Der Bereich wird erzwungen, weil die Aktion ihn verspricht.
+    /// `pattern` ersetzt den Suchbegriff als Klartext; `nil` lässt ihn stehen.
+    func presentMultiFileContentSearch(pattern: String? = nil) {
+        if let pattern {
+            findPattern = pattern
+            useRegex = false
+        }
+        presentSearch(requestedScope: preferredMultiFileSearchScope, forceScope: true)
+        requestSearchPanelToFront()
+    }
+
+    /// Holt die Suchmaske dieses Fensters sichtbar nach vorn. `presentSearch`
+    /// setzt nur `showSearchDialog`; war die Maske schon offen, aber hinter
+    /// das Dokumentfenster gerutscht, änderte sich nichts Sichtbares — der
+    /// neue Suchbegriff landete unsichtbar im Hintergrundfenster.
+    func requestSearchPanelToFront() {
+        NotificationCenter.default.post(name: .fastraBringSearchToFront, object: self)
     }
 
     // MARK: - Ordner-Quellen (Sichtbar nur bei scope == .folder)

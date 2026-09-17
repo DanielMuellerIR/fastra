@@ -192,7 +192,7 @@ func nonCancellableOverloadMatches() throws {
 
 @Test("Ladepfad: Abbruch beim Dateilesen kommt als Abbruch zurück, nicht als „unlesbar“")
 func loadPathReportsCancellationHonestly() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-filediff-cancel-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -457,7 +457,7 @@ func bookkeepingDoesNotGrow() async {
 @Test("Externes Vergleichsfenster: Schließen bricht die Berechnung ab")
 @MainActor
 func externalDiffCancelsOnClose() throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-external-diff-cancel-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }

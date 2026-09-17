@@ -235,7 +235,7 @@ struct BuildInstallationPolicyTests {
         imageBelongsToDevice: Bool = true,
         info: FakeInfoBehavior = .reportsImage
     ) throws -> (status: Int32, attachedDevice: String, error: String) {
-        let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(
+        let sandbox = testTemporaryDirectory().appendingPathComponent(
             "fastra-release-detach-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: sandbox,
                                                 withIntermediateDirectories: true)
@@ -301,12 +301,15 @@ struct BuildInstallationPolicyTests {
         let errorPipe = Pipe()
         process.standardError = errorPipe
         try process.run()
-        process.waitUntilExit()
-        #expect(process.terminationStatus == 0)
+        // Review 2026-09-17: Erst leeren, dann warten. Andersherum blockiert
+        // das Skript im write(), sobald seine Ausgabe die Pipe füllt, und
+        // `waitUntilExit` kehrt nie zurück.
         let error = String(
             data: errorPipe.fileHandleForReading.readDataToEndOfFile(),
             encoding: .utf8
         ) ?? ""
+        process.waitUntilExit()
+        #expect(process.terminationStatus == 0)
 
         let lines = (try String(contentsOf: resultFile, encoding: .utf8))
             .split(separator: "\n", omittingEmptySubsequences: false)
@@ -323,7 +326,7 @@ struct BuildInstallationPolicyTests {
         attachedDevice: String,
         imageBelongsToDevice: Bool = true
     ) throws -> [String] {
-        let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(
+        let sandbox = testTemporaryDirectory().appendingPathComponent(
             "fastra-release-trap-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: sandbox,
                                                 withIntermediateDirectories: true)

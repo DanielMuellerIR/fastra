@@ -83,6 +83,33 @@ enum DiffColumnLayout {
         return min(max(width / usable, 0), 1)
     }
 
+    /// Anteil der linken Spalte in Prozent, wie er WIRKLICH zu sehen ist.
+    /// `ratio` allein taugt dafür nicht: Es ist nur auf 0…1 begrenzt, die
+    /// Mindestbreite von 96 pt setzt erst `leadingWidth` durch. Ein Zug bis an
+    /// den Anschlag merkt sich also 0, sichtbar bleiben aber rund 10 Prozent.
+    static func visibleLeadingPercent(contentWidth: CGFloat, ratio: CGFloat) -> Int {
+        let usable = usableWidth(contentWidth: contentWidth)
+        guard usable > 0 else { return Int((defaultRatio * 100).rounded()) }
+        let leading = leadingWidth(contentWidth: contentWidth, ratio: ratio)
+        return Int((leading / usable * 100).rounded())
+    }
+
+    /// Verhältnis nach EINEM Schritt der VoiceOver-Bedienung.
+    ///
+    /// Gerechnet wird vom SICHTBAREN Stand aus und im sichtbaren Bereich
+    /// geklemmt. Vom gespeicherten Rohwert aus liefe die Bedienung sonst in
+    /// eine Totzone: Ein Zug bis an den Anschlag merkt sich 0, sichtbar bleiben
+    /// aber 96 pt (rund 10 Prozent) — die ersten zwei Schritte „mehr Platz
+    /// links" bewegten dann gar nichts.
+    static func adjustedRatio(contentWidth: CGFloat, ratio: CGFloat,
+                              by step: CGFloat) -> CGFloat {
+        let usable = usableWidth(contentWidth: contentWidth)
+        guard usable > minimumPaneWidth * 2 else { return defaultRatio }
+        let visible = leadingWidth(contentWidth: contentWidth, ratio: ratio) / usable
+        let lower = minimumPaneWidth / usable
+        return min(max(visible + step, lower), 1 - lower)
+    }
+
     /// Mitte der Trennlinie in Flächenkoordinaten — Zeichen- und Greifpunkt
     /// des Splitters.
     static func splitterCenterX(contentWidth: CGFloat, ratio: CGFloat) -> CGFloat {

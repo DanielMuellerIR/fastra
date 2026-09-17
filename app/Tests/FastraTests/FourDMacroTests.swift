@@ -325,7 +325,7 @@ func macroNormalizedMethodName() {
 // MARK: - Fundorte
 
 private func makeMacroScratch() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-4dmacros-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

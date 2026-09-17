@@ -48,7 +48,7 @@ private func pathIgnoringForeignFastraProcess(in root: URL) throws -> String {
 /// App-Fenster zu öffnen.
 private func runSelfTestResultFixture(_ payload: String) throws
     -> TestProcessResult {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-selftest-result-\(UUID().uuidString)")
     let sandboxParent = root.appendingPathComponent("sandboxes")
     let lock = root.appendingPathComponent("gui.lock")
@@ -74,6 +74,9 @@ private func runSelfTestResultFixture(_ payload: String) throws
             "FASTRA_GUI_LOCK_DIR": lock.path,
             "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
             "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+            "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+            "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                throwawayProductSavedStateDirectory(in: sandboxParent).path,
             "FASTRA_TEST_RESULT_PAYLOAD": payload,
         ]
     )
@@ -178,7 +181,7 @@ struct SelfTestOutcomeTests {
 struct SelfTestRunnerSkipTests {
     @Test("Vollständig übersprungener Fensterlauf schreibt beide Ergebnisformate")
     func lockedWindowOnlyRunEmitsStructuredSkip() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-selftest-locked-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let fakeApp = root.appendingPathComponent("Fastra")
@@ -200,6 +203,9 @@ struct SelfTestRunnerSkipTests {
                 "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
                 "FASTRA_SELFTEST_TEST_CONSOLE_LOCKED": "1",
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
             ]
         )
 
@@ -213,7 +219,7 @@ struct SelfTestRunnerSkipTests {
 
     @Test("Leerer Auftrag bleibt unter bash 3.2 ein Umgebungsabbruch")
     func lockedEmptyRunDoesNotExpandUnboundArray() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-selftest-empty-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let fakeApp = root.appendingPathComponent("Fastra")
@@ -236,6 +242,9 @@ struct SelfTestRunnerSkipTests {
                 "FASTRA_SELFTEST_TEST_CONSOLE_LOCKED": "1",
                 "FASTRA_SELFTEST_TEST_EMPTY_SKIPPED": "1",
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
             ]
         )
 
@@ -249,6 +258,231 @@ struct SelfTestRunnerSkipTests {
 
 @Suite("Lokale Selbsttest-Performance", .serialized)
 struct SerialRunnerIntegrationSelfTestPerformanceTests {
+    /// Gemischter Auftrag bei gesperrtem Bildschirm: Der fensterlose Test
+    /// läuft, der Fenstertest wird herausgefiltert und als Skip gezählt. Die
+    /// Schlussrechnung verglich dabei gegen die GEFILTERTE Liste und warnte
+    /// deshalb bei jedem solchen Lauf über eine Buchhaltung, die in
+    /// Wirklichkeit aufging (Review-Fund 2026-09-17).
+    @Test("Gemischter Lauf bei gesperrtem Bildschirm rechnet gegen die Auftragszahl")
+    func lockedMixedRunAccountsAgainstRequestedTests() throws {
+        let root = testTemporaryDirectory()
+            .appendingPathComponent("fastra-selftest-locked-mixed-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let lock = root.appendingPathComponent("gui.lock")
+        let fakeApp = root.appendingPathComponent("Fastra")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(
+            at: sandboxParent, withIntermediateDirectories: true
+        )
+        // Ersatz-Binary: meldet für den Namen aus `-selftest` ein PASS.
+        try """
+        #!/bin/bash
+        test_name=''
+        while [ "$#" -gt 0 ]; do
+          if [ "$1" = -selftest ] && [ "$#" -ge 2 ]; then
+            test_name="$2"
+            break
+          fi
+          shift
+        done
+        [ -n "$test_name" ] || exit 86
+        printf 'SELFTEST-RESULT v=1 test=%s status=PASS\n' "$test_name" >&2
+        printf 'SELFTEST %s: PASS — Ersatz-Binary\n' "$test_name" >&2
+        """.write(to: fakeApp, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeApp.path
+        )
+        let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
+        let result = try runTestProcess(
+            // `search` ist fensterlos und läuft, `findbar` braucht ein Fenster
+            // und wird bei gesperrtem Bildschirm übersprungen.
+            "/bin/bash", arguments: [runner.path, "search", "findbar"], environment: [
+                "PATH": isolatedPath,
+                "FASTRA_GUI_LOCK_DIR": lock.path,
+                "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
+                "FASTRA_SELFTEST_TEST_CONSOLE_LOCKED": "1",
+                "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
+            ]
+        )
+
+        // Unvollständiger Lauf: Exit 2, aber ohne falsche Buchhaltungswarnung.
+        #expect(result.status == 2, "Runner-Ausgabe: \(result.output)")
+        #expect(result.output.contains("PASS: 1"))
+        #expect(result.output.contains("übersprungen: 1"))
+        #expect(!result.output.contains("Buchhaltung geht nicht auf"),
+                "Runner-Ausgabe: \(result.output)")
+    }
+
+    /// Mehrtestlauf gegen das Ersatz-Binary. Jede geprüfte Ausgangslage
+    /// braucht denselben Aufbau: eigener Elternordner, eigene GUI-Sperre,
+    /// ausgeblendete fremde Fastra-Prozesse. `leaveBehindPasteboardBackup`
+    /// lässt das Ersatz-Binary eine Zwischenablage-Sicherung zurück; der
+    /// Runner betritt dadurch vor dem NÄCHSTEN Test seinen
+    /// Wiederherstellungspfad und scheitert dort an der immer noch
+    /// vorhandenen Sicherung (Review-Hinweis 2026-09-17).
+    private func runSelfTestAccountingFixture(
+        _ tests: [String],
+        leaveBehindPasteboardBackup: Bool = false,
+        extraEnvironment: [String: String] = [:]
+    ) throws -> TestProcessResult {
+        let root = testTemporaryDirectory()
+            .appendingPathComponent("fastra-selftest-accounting-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let lock = root.appendingPathComponent("gui.lock")
+        let fakeApp = root.appendingPathComponent("Fastra")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(
+            at: sandboxParent, withIntermediateDirectories: true
+        )
+        try #"""
+        #!/bin/bash
+        test_name=''
+        while [ "$#" -gt 0 ]; do
+          if [ "$1" = -selftest ] && [ "$#" -ge 2 ]; then
+            test_name="$2"
+            break
+          fi
+          shift
+        done
+        [ -n "$test_name" ] || exit 86
+        # Nur auf Verlangen: eine Sicherung hinterlassen, die der Runner vor dem
+        # nächsten Test wiederherstellen will. Der Wiederherstellungs-Helfer
+        # selbst darf sie nicht erneut anlegen.
+        if [ "${FASTRA_TEST_FIXTURE_LEAVE_PASTEBOARD_BACKUP:-0}" = "1" ] \
+           && [ -n "${FASTRA_SELFTEST_PASTEBOARD_DIR:-}" ] \
+           && [ "$test_name" != soakpasteboardrestore ]; then
+          mkdir -p "$FASTRA_SELFTEST_PASTEBOARD_DIR" || exit 87
+          : > "$FASTRA_SELFTEST_PASTEBOARD_DIR/pasteboard-backup.plist"
+        fi
+        printf 'SELFTEST-RESULT v=1 test=%s status=PASS\n' "$test_name" >&2
+        printf 'SELFTEST %s: PASS — Ersatz-Binary\n' "$test_name" >&2
+        """#.write(to: fakeApp, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeApp.path
+        )
+        let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
+        var environment = [
+            "PATH": isolatedPath,
+            "FASTRA_GUI_LOCK_DIR": lock.path,
+            "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
+            // Der Sperrzustand des Test-Macs darf die Buchhaltung nicht
+            // verschieben: Alle geprüften Namen sind fensterlos.
+            "FASTRA_SELFTEST_TEST_CONSOLE_UNLOCKED": "1",
+            "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+            "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+            "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                throwawayProductSavedStateDirectory(in: sandboxParent).path,
+        ]
+        if leaveBehindPasteboardBackup {
+            environment["FASTRA_TEST_FIXTURE_LEAVE_PASTEBOARD_BACKUP"] = "1"
+        }
+        environment.merge(extraEnvironment) { _, new in new }
+        return try runTestProcess(
+            "/bin/bash", arguments: [runner.path] + tests, environment: environment
+        )
+    }
+
+    /// Bisher prüfte kein Test einen Lauf über MEHRERE Tests hinweg: Die
+    /// Summenzeile und die Gegenprobe gegen die Auftragszahl sahen immer nur
+    /// einen einzigen Test.
+    @Test("Grüner Mehrtestlauf weist jeden angeforderten Test genau einmal aus")
+    func multiTestRunAccountsEveryRequestedTest() throws {
+        let tests = ["search", "project", "localization"]
+        let result = try runSelfTestAccountingFixture(tests)
+
+        #expect(result.status == 0, "Runner-Ausgabe: \(result.output)")
+        #expect(result.output.contains(
+            "PASS: 3 · echte FAILs: 0 · Umgebungs-FAILs: 0 · übersprungen: 0"
+        ), "Summenzeile: \(result.output)")
+        #expect(!result.output.contains("nicht ausgeführt"))
+        #expect(!result.output.contains("Aufräumfehler"))
+        #expect(!result.output.contains("Buchhaltung geht nicht auf"),
+                "Runner-Ausgabe: \(result.output)")
+        for test in tests {
+            #expect(result.output.components(separatedBy:
+                "SELFTEST-RESULT v=1 test=\(test) status=PASS").count - 1 == 1,
+                "Ergebniszeile für \(test): \(result.output)")
+        }
+    }
+
+    /// Bricht der Lauf MITTEN in der Liste ab, sind die restlichen Tests weder
+    /// bestanden noch übersprungen. Genau dieser `break`-Pfad und die daraus
+    /// abgeleitete Zahl `not_run_count` waren ungetestet.
+    @Test("Abbruch mitten im Lauf zählt die restlichen Tests als nicht ausgeführt")
+    func abortedRunCountsRemainingTestsAsNotRun() throws {
+        let result = try runSelfTestAccountingFixture(
+            ["search", "project", "localization"],
+            leaveBehindPasteboardBackup: true
+        )
+
+        #expect(result.status == 2, "Runner-Ausgabe: \(result.output)")
+        #expect(result.output.contains("PASS: 1"), "Summenzeile: \(result.output)")
+        #expect(result.output.contains("Umgebungs-FAILs: 1"))
+        #expect(result.output.contains("nicht ausgeführt: 1"),
+                "Summenzeile: \(result.output)")
+        #expect(result.output.contains(
+            "SELFTEST-RESULT v=1 test=project status=ENV"))
+        #expect(result.output.contains(
+            "SELFTEST project: Umgebungsproblem — Zwischenablage konnte nicht zurückgegeben werden"
+        ))
+        #expect(result.output.contains(
+            "1 weitere(r) Test(s) nach dem Abbruch nicht ausgeführt"))
+        // Der dritte Test darf nach dem Abbruch nicht mehr gestartet worden sein.
+        #expect(!result.output.contains("test=localization"),
+                "Runner-Ausgabe: \(result.output)")
+        #expect(!result.output.contains("Buchhaltung geht nicht auf"),
+                "Runner-Ausgabe: \(result.output)")
+
+        // Für die nicht zurückgegebene Sicherung legt der Runner einen
+        // Befundordner unter /tmp an und nennt ihn in der Ausgabe. Ein
+        // Unit-Test darf ihn nicht stehen lassen.
+        let evidenceMarker = "Zwischenablage-Sicherung: "
+        let evidenceLine = try #require(
+            result.output.components(separatedBy: .newlines)
+                .first { $0.contains(evidenceMarker) },
+            "Befundordner nicht gemeldet: \(result.output)"
+        )
+        let evidence = try #require(
+            evidenceLine.components(separatedBy: evidenceMarker).last
+        )
+        #expect(evidence.hasPrefix("/tmp/fastra-selftest-befunde-"))
+        if evidence.hasPrefix("/tmp/fastra-selftest-befunde-") {
+            try? FileManager.default.removeItem(atPath: evidence)
+        }
+    }
+
+    /// Ein Aufräumfehler gehört keinem einzelnen Test: Er tritt zusätzlich zu
+    /// den Ergebnissen auf. In `env_fail_count` gezählt, überstieg die Summe
+    /// die Zahl der gelaufenen Tests. Trotzdem darf er einen sonst grünen Lauf
+    /// nie als bestanden durchgehen lassen.
+    @Test("Aufräumfehler nach grünem Lauf bleibt außerhalb der Pro-Test-Summe")
+    func cleanupFailureAfterGreenRunStaysOutsideTestCounts() throws {
+        let result = try runSelfTestAccountingFixture(
+            ["search", "project"],
+            extraEnvironment: ["FASTRA_SELFTEST_TEST_FINAL_CLEANUP_FAILURE": "1"]
+        )
+
+        #expect(result.status == 2, "Runner-Ausgabe: \(result.output)")
+        #expect(result.output.contains(
+            "PASS: 2 · echte FAILs: 0 · Umgebungs-FAILs: 0 · übersprungen: 0"
+        ), "Summenzeile: \(result.output)")
+        #expect(result.output.contains("Aufräumfehler: 1"),
+                "Summenzeile: \(result.output)")
+        #expect(result.output.contains("Abschließendes Runner-Aufräumen fehlgeschlagen"))
+        #expect(!result.output.contains("nicht ausgeführt"))
+        #expect(!result.output.contains("Buchhaltung geht nicht auf"),
+                "Runner-Ausgabe: \(result.output)")
+    }
+
     @Test("Maschinenstatus bestimmt Ergebnis ohne mehrdeutige Textsuche")
     func structuredSelfTestResultStatusWins() throws {
         let realFailure = try runSelfTestResultFixture("""
@@ -317,7 +551,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         ]
     )
     func backgroundWindowTestsUseDirectLaunch(testName: String) throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-background-routing-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let lock = root.appendingPathComponent("gui.lock")
@@ -384,6 +618,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
                 "FASTRA_TEST_OPEN_PROBE": openProbe.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
             ]
         )
         #expect(result.status == 0, "Hintergrundstart \(testName): \(result.output)")
@@ -411,6 +648,66 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(limits[1] >= 240)
         #expect(limits[2] == 37)
         #expect(limits[3] >= 120)
+    }
+
+    @Test("Ergebniswartezeit beobachtet die App statt des Aufnahmehelfers")
+    func resultWaitUsesExplicitAppPID() throws {
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        let functions = try ["selftest_result_line_present", "wait_for_result"]
+            .map { try shellFunction(named: $0, in: runner) }
+            .joined(separator: "\n")
+        let script = functions + #"""
+
+        set -u
+        CURRENT_LAUNCH_MODE=direct
+        errfile="$1"
+        : > "$errfile"
+        sleep 3 & app_pid=$!
+        /usr/bin/false & FASTRA_TEST_STARTED_PID=$!
+        fastra_test_pid_is_live() { kill -0 "$1" 2>/dev/null; }
+        wait_for_result "$errfile" 1 "$app_pid"
+        status=$?
+        kill "$app_pid" 2>/dev/null || true
+        wait "$app_pid" 2>/dev/null || true
+        [ "$status" -eq 1 ]
+        """#
+        let root = testTemporaryDirectory()
+            .appendingPathComponent("fastra-result-pid-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let result = try runTestProcess(
+            "/bin/bash",
+            arguments: ["-c", script, "result-pid", root.appendingPathComponent("result.log").path]
+        )
+        #expect(result.status == 0, "App-PID beim Ergebniswarten: \(result.output)")
+    }
+
+    /// Der Test darüber prüft `wait_for_result` selbst. Er bliebe aber grün,
+    /// wenn der einzige Aufruf im Runner das dritte Argument wegließe — dann
+    /// fiele die Funktion auf `FASTRA_TEST_STARTED_PID` zurück, und das ist
+    /// beim Screenshot-Lauf die PID des Aufnahmehelfers statt der der App.
+    /// Deshalb hier eine Quellprüfung wie bei `windowDumpIsNotPartOfStandardRun`
+    /// (Review-Fund 2026-09-17).
+    @Test("Jeder Aufruf von wait_for_result übergibt die App-PID ausdrücklich")
+    func resultWaitCallsPassAppPIDExplicitly() throws {
+        let appDirectory = performanceToolsDirectory.deletingLastPathComponent()
+        let runnerSource = try String(
+            contentsOf: appDirectory.appendingPathComponent("selftest.sh"),
+            encoding: .utf8
+        )
+        let calls = runnerSource.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.hasPrefix("wait_for_result ") }
+        #expect(!calls.isEmpty, "Kein Aufruf von wait_for_result gefunden")
+        for call in calls {
+            // Alles ab `||`, `&&`, `;` oder `#` gehört schon zur
+            // Fehlerbehandlung und ist kein Argument mehr.
+            let tokens = call.split(whereSeparator: { $0 == " " || $0 == "\t" })
+                .prefix { !["||", "&&", ";", "|", "#"].contains(String($0)) }
+            #expect(tokens.count >= 4,
+                    Comment(rawValue: "wait_for_result ohne App-PID: \(call)"))
+        }
     }
 
     @Test("Reiner Fenster-Dump bleibt ein gezielter Diagnosemodus")
@@ -511,7 +808,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(updatesBody.contains("waitForUpdatesMenu()"))
         #expect(!updatesBody.contains("asyncAfter"))
         let updatesHelperStart = try #require(source.range(
-            of: "    private static func waitForUpdatesMenu(tick: Int = 0)"
+            of: "    private static func waitForUpdatesMenu()"
         ))
         let updatesHelperTail = source[updatesHelperStart.lowerBound...]
         let updatesHelperEnd = try #require(updatesHelperTail.range(
@@ -520,10 +817,12 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         let updatesHelper = updatesHelperTail[..<updatesHelperEnd.lowerBound]
         #expect(updatesHelper.contains("item.action == #selector"))
         #expect(updatesHelper.contains("item.target is SPUStandardUpdaterController"))
-        #expect(updatesHelper.contains("if tick >= 100"))
-        #expect(updatesHelper.contains("runUpdatesTest()"))
-        #expect(updatesHelper.contains("deadline: .now() + 0.05"))
-        #expect(updatesHelper.contains("waitForUpdatesMenu(tick: tick + 1)"))
+        // Seit Stapel 3 der Polling-Migration (2026-09-17) über `waitFor`:
+        // 5 s bedienter Zeit im 50-ms-Takt, beide Ausgänge in den Test.
+        #expect(updatesHelper.contains("waitFor(budget: 5, pause: 0.05"))
+        #expect(updatesHelper.contains("onTimeout: { _ in runUpdatesTest() }"))
+        #expect(updatesHelper.contains("then: { runUpdatesTest() }"))
+        #expect(!updatesHelper.contains("asyncAfter"))
 
         // `loadperf` misst Main-Thread-Lücken. Seine bisherige Startpause darf
         // erst entfallen, wenn ein eigener stabiler Heartbeat-Guard existiert.
@@ -535,7 +834,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Fertiger Fokustest wartet nicht mehr auf die Aktivierung")
     func finishedForegroundSelftestSkipsActivationDelay() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-focus-result-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let lock = root.appendingPathComponent("gui.lock")
@@ -612,6 +911,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
                 "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
             ]
         )
         #expect(result.status == 0, "Frühes Ergebnis: \(result.output)")
@@ -623,7 +925,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         arguments: [false, true]
     )
     func knownForegroundProcessIsActivatedImmediately(delayedLaunch: Bool) throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-focus-immediate-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let lock = root.appendingPathComponent("gui.lock")
@@ -775,6 +1077,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
                 "FASTRA_TEST_PREMATURE_SLEEP_PROBE": prematureSleep.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
             ]
         )
         #expect(result.status == 0, "Sofortige Aktivierung: \(result.output)")
@@ -797,7 +1102,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Früh beendeter LaunchServices-Test wird ohne Wanduhr-Timeout gemeldet")
     func launchServicesProcessDeathIsReportedImmediately() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-focus-early-exit-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let lock = root.appendingPathComponent("gui.lock")
@@ -907,6 +1212,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
                 "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
             ]
         )
         #expect(result.status == 1, "Frühes LaunchServices-Ende: \(result.output)")
@@ -927,7 +1235,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Signal beendet den noch wartenden System-Events-Helfer")
     func signalCleanupStopsActivationProcess() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-activation-signal-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let lock = root.appendingPathComponent("gui.lock")
@@ -1064,6 +1372,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
             "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
             "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+            "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+            "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                throwawayProductSavedStateDirectory(in: sandboxParent).path,
         ], timeout: 20)
 
         try #require(FileManager.default.fileExists(atPath: activationPrebookReady.path))
@@ -1152,7 +1463,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Soak-Kopie löst Links auf und lässt Originale unangetastet")
     func soakFixtureCopyResolvesSymlinks() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-soak-copy-test-\(UUID().uuidString)")
         let source = root.appendingPathComponent("source")
         let destination = root.appendingPathComponent("destination")
@@ -1186,9 +1497,80 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(result.status == 0, "Sichere Soak-Kopie: \(result.output)")
     }
 
+    /// Der Stale-Aufräumer der Test-Sandboxen entscheidet über zwei Dinge:
+    /// die 24-Stunden-Frist und den Besitznachweis aus `owner-pid` plus
+    /// `owner-started`. Beides war ungetestet. Der Test stellt alle vier
+    /// Ausgangslagen in einem eigenen Elternordner her; das Alter kommt per
+    /// `touch -t` (Review-Hinweis 2026-09-17).
+    @Test("Stale-Aufräumer achtet auf 24-Stunden-Frist und Besitznachweis")
+    func staleSandboxPurgeRespectsAgeAndOwnership() throws {
+        let root = testTemporaryDirectory()
+            .appendingPathComponent("fastra-stale-sandbox-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let helper = performanceToolsDirectory.appendingPathComponent("test-sandbox.sh")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: sandboxParent, withIntermediateDirectories: true
+        )
+
+        // Rohes Literal: Die `\n` im `printf` und die Zeilenfortsetzung gehören
+        // der Shell, nicht Swift.
+        let script = #"""
+        set -u
+        . "$1"
+        FASTRA_TEST_SANDBOX_PARENT="$2"
+        kind=unit-tests
+        # Genau die Startzeit-Schreibweise, die `create_fastra_test_sandbox`
+        # in `owner-started` ablegt — inklusive derselben Trimmung.
+        own_started=$(ps -p $$ -o lstart= 2>/dev/null \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [ -n "$own_started" ] || exit 90
+        # Ein sofort abgeholtes Kind: Diese PID lebt danach sicher nicht mehr.
+        /bin/sh -c 'exit 0' &
+        dead_pid=$!
+        wait "$dead_pid" 2>/dev/null || true
+
+        make_sandbox() {
+          local directory="$FASTRA_TEST_SANDBOX_PARENT/fastra-$kind.$1"
+          mkdir -p "$directory" || exit 91
+          printf '%s\n' "$2" > "$directory/owner-pid" || exit 91
+          printf '%s\n' "$3" > "$directory/owner-started" || exit 91
+          # Das Alter ZULETZT setzen: Jede Datei darin frischt die mtime auf.
+          touch -t "$(date -r "$4" +%Y%m%d%H%M.%S)" "$directory" || exit 91
+        }
+
+        now=$(date +%s)
+        make_sandbox dead "$dead_pid" "$own_started" $((now - 90000))
+        make_sandbox live "$$" "$own_started" $((now - 90000))
+        make_sandbox restarted "$$" 'Mon Jan  1 00:00:00 2001' $((now - 90000))
+        # 86000 Sekunden sind knapp unter der Frist: bleibt trotz toten Besitzers.
+        make_sandbox young "$dead_pid" "$own_started" $((now - 86000))
+
+        purge_stale_fastra_test_sandboxes "$kind" || exit 92
+
+        [ ! -d "$FASTRA_TEST_SANDBOX_PARENT/fastra-$kind.dead" ] || exit 1
+        [ -d "$FASTRA_TEST_SANDBOX_PARENT/fastra-$kind.live" ] || exit 2
+        [ ! -d "$FASTRA_TEST_SANDBOX_PARENT/fastra-$kind.restarted" ] || exit 3
+        [ -d "$FASTRA_TEST_SANDBOX_PARENT/fastra-$kind.young" ] || exit 4
+
+        # Eine unbekannte Art räumt nichts ab und meldet 2.
+        purge_stale_fastra_test_sandboxes nonsense
+        [ "$?" -eq 2 ] || exit 5
+        """#
+        let result = try runTestProcess(
+            "/bin/bash",
+            arguments: ["-c", script, "stale-sandbox", helper.path, sandboxParent.path]
+        )
+        #expect(result.status == 0, "Stale-Aufräumer: \(result.output)")
+        let remaining = try FileManager.default
+            .contentsOfDirectory(atPath: sandboxParent.path).sorted()
+        #expect(remaining == ["fastra-unit-tests.live", "fastra-unit-tests.young"],
+                "Übrig geblieben: \(remaining)")
+    }
+
     @Test("Defaults-Registry wird vor dem Nachlauf stabil dedupliziert")
     func defaultsRegistryIsDeduplicatedBeforeCleanup() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-defaults-dedup-\(UUID().uuidString)")
         let registry = root.appendingPathComponent("registry.txt")
         let deduplicated = root.appendingPathComponent("deduplicated.txt")
@@ -1227,7 +1609,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Nur registrierte Defaults brauchen einen Nachlauf", arguments: ["", "\n\n", "registered"])
     func defaultsCleanupWaitsOnlyForRegisteredDomains(_ contents: String) throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-defaults-observation-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -1275,7 +1657,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Beschädigte Defaults-Registry bleibt beim Nachlauf fail-closed")
     func unsafeDefaultsRegistryStillFailsCleanup() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-defaults-unsafe-\(UUID().uuidString)")
         let fixedHome = root.appendingPathComponent("fixed-home")
         let preferences = root.appendingPathComponent("preferences")
@@ -1315,7 +1697,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("LaunchServices-Abmeldung schützt installierte und fremde Bundles")
     func launchServicesCleanupRejectsUnsafeBundles() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-ls-safety-test-\(UUID().uuidString)")
         let wrongApp = root.appendingPathComponent("Wrong.app")
         let wrongInfo = wrongApp.appendingPathComponent("Contents/Info.plist")
@@ -1373,7 +1755,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Portabilitäts-Frühfehler meldet kein nie gestartetes Bundle ab")
     func portableRunnerDoesNotUnregisterBeforeStart() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-portable-early-test-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let fakeApp = root.appendingPathComponent("Fastra.app")
@@ -1424,7 +1806,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Direkter Selbsttest meldet nur das Bundle seines überschriebenen Binarys ab")
     func directSelftestUnregistersActualExecutableBundle() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-direct-bundle-test-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let lock = root.appendingPathComponent("gui.lock")
@@ -1467,6 +1849,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_GUI_LOCK_DIR": lock.path,
                 "FASTRA_SELFTEST_APP_BIN": fakeBinary.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
                 "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
                 "FASTRA_TEST_LSREGISTER_LOG": unregisterProbe.path,
             ]
@@ -1482,7 +1867,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("LaunchServices-Signal meldet nur den belegten Test-Bundlepfad ab")
     func launchServicesSignalTracksBundleBeforeNormalBookkeeping() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-ls-signal-test-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let lock = root.appendingPathComponent("gui.lock")
@@ -1638,6 +2023,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_TEST_TRACKED_PID_PRETOKEN_HOOK": trackingHook.path,
                 "FASTRA_TEST_TRACKING_HOOK_PROBE": trackingHookProbe.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
                 "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
                 "FASTRA_TEST_LSREGISTER_LOG": unregisterProbe.path,
                 "FASTRA_SELFTEST_TEST_CONSOLE_UNLOCKED": "1",
@@ -1716,7 +2104,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Fehlgeschlagener Clipboard-Helfer blockiert Zustands- und Sandbox-Cleanup")
     func clipboardHelperCleanupFailureKeepsRecoverySandbox() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-helper-cleanup-test-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let lock = root.appendingPathComponent("gui.lock")
@@ -1751,6 +2139,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_GUI_LOCK_DIR": lock.path,
                 "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
                 "FASTRA_SELFTEST_TEST_HELPER_CLEANUP_FAILURE": "1",
             ]
         )
@@ -1766,7 +2157,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Fehlende Clipboard-Helfer-Identität bleibt im Pending-Handshake gebunden")
     func clipboardHelperTrackingFailureDiscardsPendingProcess() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-helper-tracking-test-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let lock = root.appendingPathComponent("gui.lock")
@@ -1808,6 +2199,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
                 "FASTRA_TEST_HELPER_PID": helperPIDFile.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
                 "FASTRA_SELFTEST_TEST_HELPER_TRACK_FAILURE": "1",
             ]
         )
@@ -1827,7 +2221,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Prozessbaum-Cleanup beendet TERM-resistente Prozessgruppe")
     func processTreeCleanupStopsDescendants() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-process-tree-test-\(UUID().uuidString)")
         let probe = root.appendingPathComponent("pids.txt")
         let helper = performanceToolsDirectory
@@ -1879,11 +2273,56 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             "/bin/bash", arguments: ["-c", script, "test", helper.path, probe.path]
         )
         #expect(result.status == 0, "Prozessbaum-Helfer: \(result.output)")
+        // Bash meldet den KILL eines eigenen Hintergrundjobs samt vollem
+        // Befehlstext auf stderr; das Reaping im Helfer verschluckt die Zeile.
+        #expect(!result.output.contains("Killed: 9"),
+                "Bash-Jobmeldung im Runner-Protokoll: \(result.output)")
+    }
+
+    /// Ein zugestelltes KILL beweist nur die Annahme des Signals. Bleibt das
+    /// Kind trotzdem lebendig (ununterbrechbares Kernel-Warten), blockierte
+    /// das frühere sofortige `wait` nach dem KILL den ganzen Runner ohne
+    /// Frist (Review-Fund 2026-09-17). Ein solches Kind ist nicht herstellbar;
+    /// der Test verschluckt stattdessen jedes KILL über eine Shell-Funktion,
+    /// die dem Builtin vorgeht. Das Kind überlebt, und die Schleife muss
+    /// trotzdem nach ihren 40 Durchläufen mit „nicht beendet" zurückkehren —
+    /// mit dem alten Code hing der Aufruf bis zum Timeout des Testprozesses.
+    @Test("KILL-resistentes Kind lässt das Prozessbaum-Aufräumen nicht hängen")
+    func processTreeCleanupDoesNotHangOnKillResistantChild() throws {
+        let helper = performanceToolsDirectory
+            .appendingPathComponent("test-process-tree.sh")
+        let script = """
+        set -u
+        . "$1"
+        /usr/bin/python3 -c 'import signal, time
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        time.sleep(600)' &
+        child_pid=$!
+        # Jedes KILL verpufft; TERM und CONT laufen normal weiter.
+        kill() {
+          case "${1:-}" in -KILL) return 0 ;; esac
+          builtin kill "$@"
+        }
+        started=$(date +%s)
+        terminate_fastra_test_process_trees "$child_pid"
+        status=$?
+        elapsed=$(( $(date +%s) - started ))
+        builtin kill -KILL "$child_pid" 2>/dev/null || true
+        wait "$child_pid" 2>/dev/null || true
+        printf 'STATUS %s ELAPSED %s\\n' "$status" "$elapsed"
+        [ "$status" -ne 0 ] || exit 91
+        [ "$elapsed" -lt 20 ] || exit 92
+        """
+        let result = try runTestProcess(
+            "/bin/bash", arguments: ["-c", script, "test", helper.path], timeout: 40
+        )
+        #expect(result.status == 0, "Prozessbaum-Helfer: \(result.output)")
+        #expect(result.output.contains("STATUS 1 "), "Rückgabe: \(result.output)")
     }
 
     @Test("Runner räumt Kindprozess auch nach frühem Ende des Gruppenleiters auf")
     func runnerCleansDescendantAfterRootExit() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-dead-root-cleanup-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let lock = root.appendingPathComponent("gui.lock")
@@ -1941,6 +2380,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
                 "FASTRA_TEST_CHILD_PID": childPIDFile.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+                "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                    throwawayProductSavedStateDirectory(in: sandboxParent).path,
             ]
         )
         #expect(result.status == 1, "Frühes Root-Ende: \(result.output)")
@@ -1960,7 +2402,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Signal nach Prozessfreigabe räumt auch vor der Übernahme auf")
     func pendingProcessStartRemainsOwnedUntilAdoption() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-pending-start-test-\(UUID().uuidString)")
         let sandbox = root.appendingPathComponent("sandbox")
         let temporaryDirectory = sandbox.appendingPathComponent("tmp")
@@ -2057,7 +2499,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Signal während Handshake-Löschung bleibt ein sicherer No-op")
     func pendingHandshakeDiscardIsSignalSafe() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-discard-signal-test-\(UUID().uuidString)")
         let temporaryDirectory = root.appendingPathComponent("tmp")
         let handshake = temporaryDirectory.appendingPathComponent("process-start.fixture")
@@ -2112,7 +2554,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Soak-Hilfsprozess bleibt während der Übernahme global gebunden")
     func soakHelperRemainsOwnedDuringAdoption() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-soak-helper-signal-test-\(UUID().uuidString)")
         let temporaryDirectory = root.appendingPathComponent("tmp")
         let bin = root.appendingPathComponent("bin")
@@ -2192,7 +2634,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Soak-Adoptionsfehler beendet den Helfer und sperrt Folgestarts")
     func soakAdoptionFailureStopsHelperAndFollowups() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-soak-adopt-failure-\(UUID().uuidString)")
         let temporaryDirectory = root.appendingPathComponent("tmp")
         let bin = root.appendingPathComponent("bin")
@@ -2320,7 +2762,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Unit-Test-Runner entfernt Temp- und Preferences-Sandbox auch bei Fehler")
     func unitTestRunnerRemovesSandboxOnFailure() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-unit-runner-test-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let bin = root.appendingPathComponent("bin")
@@ -2400,7 +2842,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Portabilitätsprüfung isoliert beide App-Starts und räumt verzögerte Plists")
     func portableRunnerLeavesNoPreferencesOrFixtures() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-portable-runner-test-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let fakeApp = root.appendingPathComponent("Fastra.app")
@@ -2568,7 +3010,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Unit-Test-Runner beendet verwaistes Kind nach Ende des Testprozesses")
     func unitTestRunnerStopsOrphanAfterRootExit() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-unit-orphan-test-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let bin = root.appendingPathComponent("bin")
@@ -2613,7 +3055,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Unit-Test-Runner beendet beim Signal auch gestoppte Kindprozesse")
     func unitTestRunnerStopsChildrenOnSignal() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-unit-signal-test-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
         let bin = root.appendingPathComponent("bin")
@@ -2648,16 +3090,49 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
             "FASTRA_TEST_PROBE": probe.path,
         ], uniquingKeysWith: { _, new in new })
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        // Review 2026-09-17: Die Runner-Ausgabe geht in Dateien im
+        // Testverzeichnis, nicht in ungelesene Pipes. Eine Pipe, die niemand
+        // leert, ist nach rund 64 KB voll und blockiert test.sh im write() —
+        // beobachtet als über acht Minuten hängender serieller Testlauf.
+        let outputLog = root.appendingPathComponent("runner.out")
+        let errorLog = root.appendingPathComponent("runner.err")
+        FileManager.default.createFile(atPath: outputLog.path, contents: nil)
+        FileManager.default.createFile(atPath: errorLog.path, contents: nil)
+        process.standardOutput = try FileHandle(forWritingTo: outputLog)
+        process.standardError = try FileHandle(forWritingTo: errorLog)
+        // Gelesen wird die Ausgabe nur für die Fehlermeldung: Ohne sie steht im
+        // Protokoll bloß „Datei fehlt" und nicht, woran der Runner scheiterte.
+        func runnerLog() -> String {
+            let out = (try? String(contentsOf: outputLog, encoding: .utf8)) ?? ""
+            let error = (try? String(contentsOf: errorLog, encoding: .utf8)) ?? ""
+            return String((out + error).suffix(2_000))
+        }
         try process.run()
-        let deadline = Date().addingTimeInterval(3)
-        while !FileManager.default.fileExists(atPath: probe.path), Date() < deadline {
+        // Frist bewusst weit: Im seriellen Gesamtlauf mit Fremdlast braucht der
+        // Start von test.sh deutlich länger als die früheren drei Sekunden.
+        let probeDeadline = Date().addingTimeInterval(30)
+        while !FileManager.default.fileExists(atPath: probe.path),
+              Date() < probeDeadline {
             usleep(20_000)
         }
-        #expect(FileManager.default.fileExists(atPath: probe.path))
+        #expect(FileManager.default.fileExists(atPath: probe.path),
+                "Runner erreichte die Probe nicht: \(runnerLog())")
         process.terminate()
-        process.waitUntilExit()
+        // Kein `waitUntilExit`: Das wartet unbegrenzt und nimmt bei einem
+        // hängenden Runner den ganzen Testlauf mit. Stattdessen begrenzt
+        // pollen und die Frist danach hart durchsetzen.
+        let exitDeadline = Date().addingTimeInterval(30)
+        while process.isRunning, Date() < exitDeadline { usleep(20_000) }
+        if process.isRunning {
+            // Ein Gruppensignal nur an eine EIGENE Gruppe des Runners; eine mit
+            // dem Unit-Runner geteilte Gruppe würde diesen selbst treffen.
+            let group = getpgid(process.processIdentifier)
+            if group > 0, group != getpgid(0) { kill(-group, SIGKILL) }
+            kill(process.processIdentifier, SIGKILL)
+            Issue.record("test.sh endete 30 s nach dem Signal nicht: \(runnerLog())")
+            let killDeadline = Date().addingTimeInterval(5)
+            while process.isRunning, Date() < killDeadline { usleep(20_000) }
+        }
 
         let pids = try String(contentsOf: probe, encoding: .utf8)
             .split(separator: " ").compactMap { Int32($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
@@ -2697,7 +3172,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Fenster-Sperre blockiert Parallelbetrieb und übernimmt tote Besitzer")
     func guiLockSerializesAcrossRunners() throws {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("fastra-gui-lock-test-\(UUID().uuidString)")
         let release = directory.appendingPathExtension("release")
         let script = performanceToolsDirectory.appendingPathComponent("gui-test-lock.sh")
@@ -2923,7 +3398,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
 
     @Test("Abgewiesener Runner beendet den Prozess des Sperrenbesitzers nicht")
     func rejectedRunnerDoesNotKillLockOwnersApp() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-runner-lock-test-\(UUID().uuidString)")
         let lock = root.appendingPathComponent("runner.lock")
         let fakeApp = root.appendingPathComponent("Fastra")
@@ -2987,5 +3462,173 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         try Data().write(to: release)
         holder.waitUntilExit()
         #expect(holder.terminationStatus == 0)
+    }
+}
+
+/// Die Runner-Fixtures fahren das echte `selftest.sh`. Ohne Umlenkung sicherte
+/// und restaurierte es dabei die ECHTEN Einstellungen des Entwicklers — ein
+/// Unit-Testlauf schrieb Nutzerzustand (Review-Fund 2026-09-17). Die Suite
+/// belegt den Wächter im Runner und den vollständigen Weg über die
+/// Wegwerf-Domain samt Saved-State-Ordner.
+@Suite("Umlenkung der echten Einstellungen in Runner-Fixtures", .serialized)
+struct SelfTestRunnerProductStateOverrideTests {
+    private struct Fixture {
+        let root: URL
+        let sandboxParent: URL
+        let fakeApp: URL
+        let probe: URL
+        let runner: URL
+        var environment: [String: String]
+    }
+
+    /// Ersatz-Binary, das seinen Start beweist (Probe-Datei) und auf Wunsch
+    /// einen Schlüssel in die umgelenkte Domain und eine Datei in den
+    /// umgelenkten Saved State schreibt — beides über den ECHTEN Home-Pfad,
+    /// weil der Runner dem Testprozess ein Sandbox-Home unterschiebt.
+    private func makeFixture() throws -> Fixture {
+        let root = testTemporaryDirectory()
+            .appendingPathComponent("fastra-selftest-override-\(UUID().uuidString)")
+        let sandboxParent = root.appendingPathComponent("sandboxes")
+        let lock = root.appendingPathComponent("gui.lock")
+        let fakeApp = root.appendingPathComponent("Fastra")
+        let probe = root.appendingPathComponent("started.probe")
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        try FileManager.default.createDirectory(
+            at: sandboxParent, withIntermediateDirectories: true
+        )
+        try #"""
+        #!/bin/bash
+        : > "$FASTRA_TEST_STARTED_PROBE"
+        if [ -n "${FASTRA_TEST_WRITE_DOMAIN:-}" ]; then
+          env -u CFFIXED_USER_HOME -u CFPREFERENCES_AVOID_DAEMON \
+            HOME="$FASTRA_TEST_REAL_HOME" \
+            /usr/bin/defaults write "$FASTRA_TEST_WRITE_DOMAIN" addedDuringRun -int 2 || exit 87
+        fi
+        if [ -n "${FASTRA_TEST_WRITE_SAVED_STATE:-}" ]; then
+          : > "$FASTRA_TEST_WRITE_SAVED_STATE/added-during-run.data" || exit 88
+        fi
+        printf 'SELFTEST-RESULT v=1 test=search status=PASS\n' >&2
+        printf 'SELFTEST search: PASS — Ersatz-Binary\n' >&2
+        """#.write(to: fakeApp, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: fakeApp.path
+        )
+        let isolatedPath = try pathIgnoringForeignFastraProcess(in: root)
+        return Fixture(
+            root: root, sandboxParent: sandboxParent, fakeApp: fakeApp, probe: probe,
+            runner: runner,
+            environment: [
+                "PATH": isolatedPath,
+                "FASTRA_GUI_LOCK_DIR": lock.path,
+                "FASTRA_SELFTEST_APP_BIN": fakeApp.path,
+                "FASTRA_SELFTEST_TEST_CONSOLE_UNLOCKED": "1",
+                "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
+                "FASTRA_TEST_STARTED_PROBE": probe.path,
+            ]
+        )
+    }
+
+    @Test("Eine Fixture ohne Umlenkung wird abgewiesen, bevor irgendetwas startet")
+    func fixtureWithoutOverrideIsRejected() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let result = try runTestProcess(
+            "/bin/bash", arguments: [fixture.runner.path, "search"],
+            environment: fixture.environment
+        )
+        #expect(result.status == 2, "Runner-Ausgabe: \(result.output)")
+        #expect(result.output.contains("ohne Umlenkung der echten Einstellungen"),
+                "Runner-Ausgabe: \(result.output)")
+        // Die Abweisung kommt vor Sandbox, Sperre und Snapshot — es gibt
+        // nichts aufzuräumen, also auch keinen Aufräumfehler.
+        #expect(!result.output.contains("Aufräumen"), "Runner-Ausgabe: \(result.output)")
+        #expect(!FileManager.default.fileExists(atPath: fixture.probe.path),
+                "Ersatz-Binary lief trotz Abweisung")
+        // Auch nur EINE der beiden Umlenkungen genügt nicht.
+        var half = fixture.environment
+        half["FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN"] = throwawayProductDefaultsDomain()
+        let halfResult = try runTestProcess(
+            "/bin/bash", arguments: [fixture.runner.path, "search"], environment: half
+        )
+        #expect(halfResult.status == 2, "Runner-Ausgabe: \(halfResult.output)")
+        #expect(!FileManager.default.fileExists(atPath: fixture.probe.path))
+    }
+
+    @Test("Unsichere Umlenkziele werden abgewiesen")
+    func unsafeOverrideTargetsAreRejected() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let savedState = throwawayProductSavedStateDirectory(in: fixture.sandboxParent)
+
+        // Die echte Domain und eine Test-Domain ohne UUID sind beide unsicher.
+        for domain in ["de.dm0.fastra", "FastraTests.RunnerFixture.ohne-uuid"] {
+            var environment = fixture.environment
+            environment["FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN"] = domain
+            environment["FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR"] = savedState.path
+            let result = try runTestProcess(
+                "/bin/bash", arguments: [fixture.runner.path, "search"], environment: environment
+            )
+            #expect(result.status == 2, "Domain \(domain): \(result.output)")
+            #expect(result.output.contains("Unsichere Einstellungs-Domain"),
+                    "Domain \(domain): \(result.output)")
+        }
+        // Ein Saved-State-Ordner außerhalb des Sandbox-Elternordners ebenso.
+        var environment = fixture.environment
+        environment["FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN"] = throwawayProductDefaultsDomain()
+        environment["FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR"] =
+            fixture.root.appendingPathComponent("elsewhere.savedState").path
+        let outside = try runTestProcess(
+            "/bin/bash", arguments: [fixture.runner.path, "search"], environment: environment
+        )
+        #expect(outside.status == 2, "Runner-Ausgabe: \(outside.output)")
+        #expect(outside.output.contains("Unsicherer Saved-State-Ordner"),
+                "Runner-Ausgabe: \(outside.output)")
+        #expect(!FileManager.default.fileExists(atPath: fixture.probe.path))
+    }
+
+    @Test("Umgelenkte Einstellungen und Saved State werden gesichert und wiederhergestellt")
+    func overriddenStateIsSnapshottedAndRestored() throws {
+        var fixture = try makeFixture()
+        let domain = throwawayProductDefaultsDomain()
+        let savedState = throwawayProductSavedStateDirectory(in: fixture.sandboxParent)
+        defer {
+            try? FileManager.default.removeItem(at: fixture.root)
+            _ = try? runTestProcess("/usr/bin/defaults", arguments: ["delete", domain], timeout: 10)
+        }
+        // Ausgangszustand: ein Schlüssel in der Wegwerf-Domain, eine Datei im
+        // Wegwerf-Saved-State.
+        let seed = try runTestProcess(
+            "/usr/bin/defaults", arguments: ["write", domain, "kept", "-int", "1"], timeout: 10
+        )
+        try #require(seed.status == 0, "defaults write: \(seed.output)")
+        try FileManager.default.createDirectory(at: savedState, withIntermediateDirectories: true)
+        try "original".write(to: savedState.appendingPathComponent("window.data"),
+                             atomically: true, encoding: .utf8)
+        let realHome = try #require(ProcessInfo.processInfo.environment["HOME"])
+        fixture.environment["FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN"] = domain
+        fixture.environment["FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR"] = savedState.path
+        fixture.environment["FASTRA_TEST_WRITE_DOMAIN"] = domain
+        fixture.environment["FASTRA_TEST_WRITE_SAVED_STATE"] = savedState.path
+        fixture.environment["FASTRA_TEST_REAL_HOME"] = realHome
+
+        let result = try runTestProcess(
+            "/bin/bash", arguments: [fixture.runner.path, "search"],
+            environment: fixture.environment
+        )
+        #expect(result.status == 0, "Runner-Ausgabe: \(result.output)")
+        #expect(!result.output.contains("Aufräumfehler"), "Runner-Ausgabe: \(result.output)")
+        #expect(FileManager.default.fileExists(atPath: fixture.probe.path), "Ersatz-Binary lief nicht")
+        // Der vom „Lauf" ergänzte Schlüssel ist weg, der Ausgangswert steht.
+        let kept = try runTestProcess("/usr/bin/defaults", arguments: ["read", domain, "kept"], timeout: 10)
+        #expect(kept.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1",
+                "kept: \(kept.output)")
+        let added = try runTestProcess("/usr/bin/defaults",
+                                       arguments: ["read", domain, "addedDuringRun"], timeout: 10)
+        #expect(added.status != 0, "addedDuringRun blieb stehen: \(added.output)")
+        // Der Saved-State-Ordner ist wieder der Ausgangsstand.
+        let entries = try FileManager.default.contentsOfDirectory(atPath: savedState.path).sorted()
+        #expect(entries == ["window.data"], "Saved State: \(entries)")
     }
 }

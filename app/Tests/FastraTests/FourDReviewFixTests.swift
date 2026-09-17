@@ -107,7 +107,7 @@ func fourDReviewFix_shortNamesUnchanged() {
 @Test("Index nimmt echte Dateien und gültige Symlinks, aber keine toten Links")
 func fourDReviewFix_indexRejectsBrokenSymlink() throws {
     let manager = FileManager.default
-    let root = manager.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-4d-reviewfix-\(UUID().uuidString)")
     defer { try? manager.removeItem(at: root) }
     let methods = root.appendingPathComponent("Project/Sources/Methods")

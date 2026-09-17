@@ -17,7 +17,7 @@ private final class ScreenshotRunnerFixture {
     let lock: URL
 
     init() throws {
-        root = FileManager.default.temporaryDirectory.appendingPathComponent("fastra-shots-\(UUID().uuidString)")
+        root = testTemporaryDirectory().appendingPathComponent("fastra-shots-\(UUID().uuidString)")
         app = root.appendingPathComponent("Fastra")
         capture = root.appendingPathComponent("capture")
         output = root.appendingPathComponent("images")
@@ -35,6 +35,19 @@ private final class ScreenshotRunnerFixture {
         [[ "$TMPDIR" == "$FASTRA_TEST_SANDBOX_PARENT/"* ]] || exit 92
         [[ "$FASTRA_SELFTEST_DEFAULTS_SUITE" == Fastra-* ]] || exit 93
         [[ " $* " == *" -app.appearance light "* ]] || exit 94
+        # Die OBERFLÄCHENSPRACHE der Aufnahme hängt allein an diesen beiden
+        # Argumenten. `FASTRA_SCREENSHOT_LANGUAGE` unten steuert im Produkt nur
+        # die BEISPIELDATEN — fiele `-AppleLanguages` weg, entstünden `.en.png`
+        # mit deutscher Oberfläche, und bis 2026-09-10 wäre trotzdem jeder Test
+        # grün geblieben. `README.md` verlangt aber ausdrücklich, dass die
+        # Aufnahme die Sprache ihrer README wirklich zeigt.
+        [[ " $* " == *" -AppleLanguages ($FASTRA_SCREENSHOT_LANGUAGE) "* ]] || exit 96
+        case "$FASTRA_SCREENSHOT_LANGUAGE" in
+          de) expected_locale=de_DE ;;
+          en) expected_locale=en_US ;;
+          *) exit 97 ;;
+        esac
+        [[ " $* " == *" -AppleLocale $expected_locale "* ]] || exit 98
         test_name="$2"
         case "$test_name" in
           projectshot) marker=PROJECTSHOT-WINDOW ;;
@@ -96,6 +109,12 @@ private final class ScreenshotRunnerFixture {
             "FASTRA_TEST_SHOT_PROBE": probe.path,
             "FASTRA_TEST_SHOT_PIDS": pids.path,
             "FASTRA_TEST_SANDBOX_PARENT": sandbox.path,
+            // `screenshot-run.sh` fährt das echte `selftest.sh`; ohne diese
+            // Umlenkung weist es den Lauf ab (und sicherte früher die ECHTEN
+            // Einstellungen, Review-Fund 2026-09-17).
+            "FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN": throwawayProductDefaultsDomain(),
+            "FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR":
+                throwawayProductSavedStateDirectory(in: sandbox).path,
             "FASTRA_GUI_LOCK_DIR": lock.path,
         ])
     }

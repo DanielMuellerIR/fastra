@@ -52,6 +52,34 @@
 #   2 = Umgebungsfehler (kein Bundle, kein Fensterfokus)
 
 set -u
+
+# Darf dieser Dauertest als Baseline in die Historie? Gegenstueck zu
+# `performance_run_is_qualified` in selftest.sh, aus demselben Grund eine
+# eigene Funktion: Die Zusage war ungeprueft.
+#   ROUNDS >= 60                                  — genug Arbeitsrunden?
+#   FINDINGS, ENVIRONMENT_PHASES, ACTIONS          — Lauf wirklich gruen?
+#   SOAK_HEAD_START/END, SOAK_BINARY_SHA_START/END — Stand unveraendert?
+#   SOAK_DIRTY_START/END                           — Arbeitsbaum sauber?
+#   FASTRA_PERFORMANCE_BASELINE_RUN                — ausdruecklich gewollt?
+# Die drei Ergebniszahlen stehen bewusst HIER und nicht nur in
+# `check_soak_result`: Bis zum Review 2026-09-17 haengte die Qualifikation
+# allein daran, dass `SOAK_PERFORMANCE_RECORD_PENDING` erst nach der Pruefung
+# gesetzt wird. Eine umgestellte Zeile haette einen roten Lauf zur Baseline
+# gemacht, ohne dass irgendetwas rot geworden waere — genau die Luecke, die
+# `performance_run_is_qualified` in selftest.sh mit seinen Zaehlern schliesst.
+soak_run_is_qualified() {
+  [ "${ROUNDS:-0}" -ge 60 ] || return 1
+  [ "${FINDINGS:-1}" -eq 0 ] || return 1
+  [ "${ENVIRONMENT_PHASES:-1}" -eq 0 ] || return 1
+  [ "${ACTIONS:-0}" -gt 0 ] || return 1
+  [ "${SOAK_HEAD_START:-x}" = "${SOAK_HEAD_END:-y}" ] || return 1
+  [ "${SOAK_BINARY_SHA_START:-x}" = "${SOAK_BINARY_SHA_END:-y}" ] || return 1
+  [ -n "${SOAK_DIRTY_START+gesetzt}" ] && [ -z "$SOAK_DIRTY_START" ] || return 1
+  [ -n "${SOAK_DIRTY_END+gesetzt}" ] && [ -z "$SOAK_DIRTY_END" ] || return 1
+  [ "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" = "1" ] || return 1
+  return 0
+}
+
 umask 077
 
 cd "$(dirname "$0")"
@@ -183,6 +211,20 @@ restore_product_defaults() {
   if [ "$SOAK_PRODUCT_DEFAULTS_EXISTED" -eq 1 ]; then
     /usr/bin/defaults import "$SOAK_PRODUCT_DEFAULTS_DOMAIN" \
       "$SOAK_PRODUCT_DEFAULTS_BACKUP" >/dev/null 2>&1 || return 2
+    # `defaults import` FÜHRT ZUSAMMEN: Ein Schlüssel, den der Lauf neu
+    # angelegt hat (etwa der Fensterrahmen des Einstellungsfensters aus
+    # `dialoglayout`), bliebe sonst in den echten Einstellungen stehen, und die
+    # Nachprüfung meldete Aufräumfehler (belegt 2026-09-17). Deshalb danach
+    # genau diese Schlüssel einzeln löschen. Bewusst NICHT die ganze Domain vor
+    # dem Import leeren: Ein Abbruch zwischen Leeren und Import hinterließe
+    # leere Einstellungen (Review-Fund 2026-09-17).
+    local added_key
+    while IFS= read -r -d '' added_key; do
+      /usr/bin/defaults delete "$SOAK_PRODUCT_DEFAULTS_DOMAIN" "$added_key" >/dev/null 2>&1 || return 2
+    done < <(/usr/bin/defaults export "$SOAK_PRODUCT_DEFAULTS_DOMAIN" - 2>/dev/null \
+      | /usr/bin/python3 -c 'import plistlib,sys
+a=plistlib.load(open(sys.argv[1],"rb")); b=plistlib.loads(sys.stdin.buffer.read())
+sys.stdout.write("".join(k+"\0" for k in b if k not in a))' "$SOAK_PRODUCT_DEFAULTS_BACKUP")
     /usr/bin/defaults export "$SOAK_PRODUCT_DEFAULTS_DOMAIN" - 2>/dev/null \
       | /usr/bin/python3 -c \
           'import datetime,plistlib,sys
@@ -357,6 +399,17 @@ cleanup() {
       cleanup_soak_process "$cleanup_pid" || cleanup_failed=1
     done
   fi
+  # Erst die Nachräumchance, DANN die Wiederherstellungen. Vorher standen
+  # `fastra_test_discard_pending_session` und `restore_soak_pasteboard` davor:
+  # Scheiterte der erste `cleanup_soak_process` nur vorübergehend, setzte das
+  # `SOAK_PROCESS_CLEANUP_BLOCKED`, beide Blöcke fielen aus — und
+  # `retry_soak_cleanup_failures` räumte die Sperre gleich danach wieder ab.
+  # Die Zwischenablage des Nutzers blieb dann mit Testinhalt überschrieben,
+  # während die Sicherung mit der Sandbox gelöscht wurde. Die Blöcke DAHINTER
+  # bekamen ihre zweite Chance seit jeher (Kommentar unten).
+  if [ "${#SOAK_REMAINING_PIDS[@]}" -gt 0 ]; then
+    retry_soak_cleanup_failures || cleanup_failed=1
+  fi
   if [ "$process_cleanup_failed" -eq 0 ] \
      && [ "$SOAK_PROCESS_CLEANUP_BLOCKED" -eq 0 ] \
      && [[ "${FASTRA_TEST_PENDING_PID:-}" =~ ^[0-9]+$ ]]; then
@@ -464,10 +517,7 @@ cleanup() {
     SOAK_BINARY_SHA_END=$(shasum -a 256 "$BINARY" | awk '{print $1}')
     SOAK_DIRTY_END=$(git -C .. status --porcelain 2>/dev/null || true)
     SOAK_QUALIFIED=""
-    if [ "$ROUNDS" -ge 60 ] && [ "$SOAK_HEAD_START" = "$SOAK_HEAD_END" ] \
-       && [ "$SOAK_BINARY_SHA_START" = "$SOAK_BINARY_SHA_END" ] \
-       && [ -z "$SOAK_DIRTY_START" ] && [ -z "$SOAK_DIRTY_END" ] \
-       && [ "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" = "1" ]; then
+    if soak_run_is_qualified; then
       SOAK_QUALIFIED="--qualified"
     fi
     SOAK_RECORDER_STATUS=0
@@ -701,9 +751,13 @@ run_phase() {
   echo "→ Phase $phase: $label"
   # `-selftest soak` beendet die App am Ende selbst. Die Frist ist großzügig:
   # Der Lauf soll an einer echten Hängerei scheitern, nicht an Langsamkeit.
+  #
+  # Gezählt werden die eigenen Schleifendurchläufe, NICHT die Wanduhr. Das war
+  # bis 2026-09-10 die einzige Wanduhr-Frist im ganzen Dauertest-Aufbau — die
+  # beiden Nachbarschleifen dieser Datei und sämtliche Warteschleifen der App
+  # zählen längst Durchläufe. Unter Fremdlast verbrauchte sie Zeit, die die App
+  # nie bekommen hat, und schoss eine regulär fortschreitende Phase ab.
   local timeout=$(( ROUNDS * 3 + 120 ))
-  local start
-  start=$(date +%s)
   local findings_before
   findings_before=$(grep -c '^SOAK-BEFUND' "$LOG" 2>/dev/null)
   findings_before=${findings_before:-0}
@@ -734,7 +788,7 @@ run_phase() {
   local status=0
   while kill -0 "$pid" 2>/dev/null; do
     sleep 1
-    waited=$(( $(date +%s) - start ))
+    waited=$(( waited + 1 ))
     if [ "$waited" -gt "$timeout" ]; then
       echo "   ✗ Phase $phase hängt seit ${waited}s — abgebrochen" >&2
       if cleanup_soak_process "$pid"; then
@@ -833,7 +887,14 @@ check_soak_result() {
   # meldet, ist schlimmer als keiner.
   if [ "$PHASES_FAILED" -gt 0 ]; then
     KEEP_EVIDENCE=1
-    echo "SOAK FAIL — $PHASES_FAILED von 3 Phasen sind nicht durchgelaufen." >&2
+    # Beide Zähler nennen: Ein gemischter Lauf (eine Phase FAIL, eine Phase
+    # Umgebung) erreicht nur diesen Zweig. Mit „$PHASES_FAILED von 3" allein
+    # las sich das, als seien die beiden anderen Phasen durchgelaufen — und
+    # die Umgebungszeilen blieben unsichtbar, weil sie erst weiter unten
+    # ausgegeben werden.
+    incomplete=$((PHASES_FAILED + ENVIRONMENT_PHASES))
+    echo "SOAK FAIL — $incomplete von 3 Phasen sind nicht durchgelaufen" \
+         "($PHASES_FAILED Fehler, $ENVIRONMENT_PHASES Umgebung)." >&2
     echo "Ausgaben der Phasen:" >&2
     for phase in 1 2 3; do
       echo "  ── Phase $phase ──" >&2
@@ -842,6 +903,9 @@ check_soak_result() {
     if [ "$FINDINGS" -gt 0 ]; then
       echo "Befunde im Report-Log: $FINDINGS" >&2
       grep '^SOAK-BEFUND' "$LOG" | sed 's/^/  /' >&2
+    fi
+    if [ "$ENVIRONMENT_PHASES" -gt 0 ]; then
+      grep '^SOAK-UMGEBUNG' "$LOG" | sed 's/^/  /' >&2
     fi
     return 1
   fi

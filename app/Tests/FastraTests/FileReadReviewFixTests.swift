@@ -19,7 +19,7 @@ import Testing
 
 /// Legt ein frisches, leeres Testverzeichnis im Temp-Ordner an.
 private func makeReviewFixDirectory() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-readfix-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

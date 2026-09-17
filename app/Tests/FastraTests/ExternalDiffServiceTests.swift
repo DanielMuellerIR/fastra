@@ -11,9 +11,18 @@ import FastraDiffProtocol
 
 @Suite("External diff service", .serialized)
 struct ExternalDiffServiceTests {
-    /// Zwei echte Dateien: `validate()` öffnet die Pfade.
-    private func makeRequest(deadlineIn seconds: TimeInterval = DiffProtocol.timeout) throws -> DiffWireRequest {
-        let directory = FileManager.default.temporaryDirectory
+    /// Zwei echte Dateien: `validate()` öffnet die Pfade. Der Ordner gehört
+    /// zum Ergebnis, damit jeder Test ihn per `defer` wieder abräumt — bis
+    /// 2026-09-17 blieb er nach jedem Aufruf liegen, 168 Reste im Benutzer-Temp
+    /// (CodeQA-Fund test-temp-leaks).
+    private struct RequestFixture {
+        let request: DiffWireRequest
+        let directory: URL
+        func cleanUp() { try? FileManager.default.removeItem(at: directory) }
+    }
+
+    private func makeRequest(deadlineIn seconds: TimeInterval = DiffProtocol.timeout) throws -> RequestFixture {
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("fastra-diff-service-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let left = directory.appendingPathComponent("links.txt")
@@ -24,7 +33,7 @@ struct ExternalDiffServiceTests {
             ["--", left.path, right.path], directory: directory))
         var request = DiffWireRequest(invocation)
         request.deadline = Date().timeIntervalSince1970 + seconds
-        return request
+        return RequestFixture(request: request, directory: directory)
     }
 
     private func reply(_ data: Data) throws -> Int32 {
@@ -38,7 +47,9 @@ struct ExternalDiffServiceTests {
 
     @Test("Die Strikt-Prüfung leitet ihre Feldmenge aus dem Protokoll ab")
     func wireKeysMatchEncoding() throws {
-        let request = try makeRequest()
+        let fixture = try makeRequest()
+        defer { fixture.cleanUp() }
+        let request = fixture.request
         let object = try #require(try JSONSerialization.jsonObject(
             with: JSONEncoder().encode(request)) as? [String: Any])
         #expect(Set(object.keys) == DiffWireRequest.wireKeys)
@@ -50,7 +61,9 @@ struct ExternalDiffServiceTests {
         final class Opened: @unchecked Sendable { var requests: [DiffWireRequest] = [] }
         let opened = Opened()
         let service = ExternalDiffService(endpoint: nil) { opened.requests.append($0) }
-        let request = try makeRequest()
+        let fixture = try makeRequest()
+        defer { fixture.cleanUp() }
+        let request = fixture.request
         let data = try JSONEncoder().encode(request)
 
         #expect(try reply(await handleOffMain(service, data)) == 0)
@@ -75,7 +88,9 @@ struct ExternalDiffServiceTests {
         final class Opened: @unchecked Sendable { var count = 0 }
         let opened = Opened()
         let service = ExternalDiffService(endpoint: nil) { _ in opened.count += 1 }
-        let request = try makeRequest(deadlineIn: 0.15)
+        let fixture = try makeRequest(deadlineIn: 0.15)
+        defer { fixture.cleanUp() }
+        let request = fixture.request
         let data = try JSONEncoder().encode(request)
         // Main ist länger belegt, als die Frist reicht — der Helfer hat dann
         // längst aufgegeben.

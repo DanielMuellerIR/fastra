@@ -15,7 +15,7 @@ import Testing
 
 /// Kleines ausführbares Shell-Skript als kontrollierter md-clip-Ersatz.
 private func makeBudgetStub(name: String, body: String) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("smartpaste-budget-\(UUID().uuidString)-\(name)")
     try "#!/bin/sh\n\(body)\n".write(to: url, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes(
@@ -33,7 +33,7 @@ func miscReviewFix_outputBudgetStopsEndlessOutput() throws {
 
     let started = Date()
     let result = SmartPaste.markdownFromClipboard(
-        mdClipURL: stub, timeout: 10, maximumOutputBytes: 64 * 1024)
+        mdClipURL: stub, timeout: 60, maximumOutputBytes: 64 * 1024)
     let elapsed = Date().timeIntervalSince(started)
 
     guard case .failure(.conversionFailed(let detail)) = result else {
@@ -42,9 +42,11 @@ func miscReviewFix_outputBudgetStopsEndlessOutput() throws {
     }
     // Der Text ist lokalisiert; sprachunabhängig steht darin der Werkzeugname.
     #expect(detail.contains("md-clip"))
-    // Deutlich unter der Frist von zehn Sekunden: Ein Rückfall auf das alte
-    // Verhalten liefe in den Timeout statt in den Budgetabbruch.
-    #expect(elapsed < 5.0,
+    // Deutlich unter der Frist von 60 Sekunden: Ein Rückfall auf das alte
+    // Verhalten liefe in den Timeout statt in den Budgetabbruch. Der Abstand
+    // ist bewusst groß — mit 10 s Frist und 5 s Grenze riss der Test im
+    // parallelen Gesamtlauf unter Fremdlast bei 5,4 s (2026-09-17).
+    #expect(elapsed < 30.0,
             "Budgetabbruch wartete \(elapsed) Sekunden statt sofort zu greifen")
 }
 

@@ -127,7 +127,7 @@ func workspace_setCustomOverride() {
 /// Eigener Temp-Ordner je Test. Der Speicher schlüsselt über den kanonischen
 /// Pfad, und den gibt es nur für wirklich vorhandene Dateien.
 private func makeChoiceTestDirectory() throws -> URL {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-lang-choice-\(UUID().uuidString)",
                                 isDirectory: true)
     try FileManager.default.createDirectory(at: directory,

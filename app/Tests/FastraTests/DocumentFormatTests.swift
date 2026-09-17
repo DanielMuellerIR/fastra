@@ -78,6 +78,27 @@ struct DocumentFormatTests {
                 "Neue/entfernte Sprache braucht eine bewusste Soft-Wrap-Default-Entscheidung")
     }
 
+    /// Die Zusatzprofile (`.xml`, `.csv`, `.diff`) sind KEINE auswählbaren
+    /// Sprachen — sie tragen aber dieselbe Art von Kennung wie die
+    /// CodeEdit-Grammatiken. Bekäme eine künftige Grammatik dieselbe Zeichenkette,
+    /// teilten sich zwei ganz verschiedene Dinge ein Profil: Der Soft-Wrap-Schalter
+    /// der Vergleichsansicht änderte dann still die Einstellung einer Sprache.
+    /// Der Test prüft die Trennung mechanisch, statt sie zu behaupten.
+    @Test("Zusatzprofile teilen keine Kennung mit einer auswählbaren Sprache")
+    func additionalProfilesDoNotCollideWithLanguages() {
+        let selectable = Set(
+            LanguageMenuSupport.selectableEntries
+                .map { DocumentFormatResolver.format(for: $0).id }
+        )
+        for id in DocumentFormatResolver.additionalProfileIDs {
+            #expect(!selectable.contains(id),
+                    "Zusatzprofil \(id.rawValue) kollidiert mit einer auswählbaren Sprache")
+        }
+        // Und die Grammatik-Kennungen untereinander sind ebenfalls eindeutig:
+        // Zwei Sprachen mit derselben Zeichenkette teilten sich sonst ein Profil.
+        #expect(selectable.count == LanguageMenuSupport.selectableEntries.count)
+    }
+
     @Test("Alle eingebauten Formate liegen in der spezifizierten Default-Klasse")
     func factoryDefaults() {
         // `.diff` ist kein Dateiformat, sondern die Vergleichsansicht. Sie

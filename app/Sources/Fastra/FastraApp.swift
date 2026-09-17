@@ -360,16 +360,17 @@ struct FastraApp: App {
                 .disabled(commandWorkspace == nil)
                 .keyboardShortcut("f", modifiers: .command)
 
-                // CMD+SHIFT+F: Suchen in Ordnern (erweiterter Modus).
-                // Beim Öffnen wird der Scope auf „Ordner" gesetzt — das
-                // Fenster wächst automatisch, falls noch zu klein.
+                // CMD+SHIFT+F: Mehrdatei-Suche (erweiterter Modus). Beim
+                // Öffnen wird der Scope auf „Projekt" gesetzt, wenn das
+                // Fenster ein Projekt hat, sonst auf „Ordner" — das Fenster
+                // wächst automatisch, falls noch zu klein.
                 //
                 // Der Menüklick nutzt bewusst die ERZWINGENDE Notification:
                 // Der Kurzbefehl ⇧⌘F holt eine bereits befüllte Maske nur nach
                 // vorn und behält ihren Bereich, ein ausdrücklich mit „In
-                // Ordnern suchen…" beschrifteter Menüpunkt muss dagegen immer
-                // die Ordnersuche zeigen (Review 2026-08-06).
-                Button("In Ordnern suchen…") {
+                // Projekt oder Ordnern suchen…" beschrifteter Menüpunkt muss
+                // dagegen immer die Mehrdatei-Suche zeigen (Review 2026-08-06).
+                Button("In Projekt oder Ordnern suchen…") {
                     guard let commandWorkspace else { return }
                     NotificationCenter.default.post(name: .fastraShowSearchFolderForced,
                                                     object: commandWorkspace)
@@ -391,6 +392,8 @@ struct FastraApp: App {
                     // fände er nur sich selbst). „Nur in Auswahl" daher aus.
                     commandWorkspace.setSearchInSelectionOnly(false)
                     commandWorkspace.showSearchDialog = true
+                    // Eine offene, aber verdeckte Maske sonst unsichtbar befüllt.
+                    commandWorkspace.requestSearchPanelToFront()
                 }
                 .keyboardShortcut("e", modifiers: .command)
 

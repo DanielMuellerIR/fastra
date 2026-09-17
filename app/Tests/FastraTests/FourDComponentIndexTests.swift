@@ -119,7 +119,7 @@ private func rawDeflate(_ data: Data) -> Data {
 }
 
 private func makeTempDirectory(_ label: String) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-\(label)-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

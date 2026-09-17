@@ -20,7 +20,7 @@ private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
 
 /// Legt einen temporären Ordner an und gibt seine kanonische URL zurück.
 private func makeTmpDirectory(_ name: String = UUID().uuidString) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-sidebarux-\(name)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url.canonicalFileURL

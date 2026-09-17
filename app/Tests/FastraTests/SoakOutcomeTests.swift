@@ -9,7 +9,7 @@ struct SerialRunnerIntegrationSoakOutcomeTests {
     @Test("Runner erhält Umgebung und gibt echten Fehlern Vorrang",
           arguments: ["pass", "empty", "env", "env_report", "mixed", "fail", "cleanup", "priorfailure", "sequence"])
     func preservesPhaseAndOverallOutcome(_ mode: String) throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-soak-outcome-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }

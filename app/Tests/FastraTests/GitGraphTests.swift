@@ -341,7 +341,7 @@ func layoutHeadRefresh() {
 
 @Test("Reales Graph-Protokoll öffnet Rename mit Leerraum, Unicode, Tab und Zeilenumbruch")
 func gitIntegration_graphRealRepositorySpecialRenameAndCommitDiff() async throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-graph-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }

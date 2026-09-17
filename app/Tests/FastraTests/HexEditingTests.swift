@@ -20,7 +20,7 @@ struct HexEditingTests {
 
     @Test("Session speichert atomar und leert die sichtbare Änderungsliste")
     @MainActor func sessionSave() throws {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let url = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
         try Data([0, 1, 2, 3]).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         var session = HexEditSession()
@@ -37,7 +37,7 @@ struct HexEditingTests {
 
     @Test("Ungültige Offsets lassen die Originaldatei unverändert")
     @MainActor func sessionRefusesOutOfBoundsSave() throws {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let url = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
         let original = Data([0, 1, 2, 3])
         try original.write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -53,7 +53,7 @@ struct HexEditingTests {
 
     @Test("Zwischen Vorschau und Speichern geänderte Bytes bleiben unangetastet")
     @MainActor func sessionRefusesChangedPreviewByte() throws {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let url = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
         try Data([0, 1, 2, 3]).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         var session = HexEditSession()
@@ -73,7 +73,7 @@ struct HexEditingTests {
 
     @Test("Fremd-Replace nach dem letzten Hex-Preflight bleibt erhalten")
     func saveForeignReplaceAfterFinalPreflightIsPreserved() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        let directory = testTemporaryDirectory().appendingPathComponent(
             "fastra-hex-commit-race-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory,
                                                 withIntermediateDirectories: true)
@@ -99,7 +99,7 @@ struct HexEditingTests {
 
     @Test("Speichern erhält die Zugriffsrechte der Datei")
     @MainActor func sessionPreservesPermissions() throws {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let url = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
         try Data([0, 1]).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         try FileManager.default.setAttributes([.posixPermissions: 0o640], ofItemAtPath: url.path)
@@ -127,7 +127,7 @@ struct HexEditingTests {
 
     @Test("Große Hex-Datei wird über Abschnittsgrenzen bytegenau geändert")
     func saveStreamsAcrossChunkBoundaries() throws {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let url = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
         let size = HexEditing.saveChunkSize * 2 + 17
         let original = Data(repeating: 0x41, count: size)
         try original.write(to: url)

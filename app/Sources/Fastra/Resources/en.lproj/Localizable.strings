@@ -16,7 +16,6 @@
 "Andere Tabs schließen" = "Close Other Tabs";
 "Aus Bereitstellung nehmen" = "Unstage";
 "Ausschlüsse" = "Exclusions";
-"DerivedData wird bei Projektsuchen immer ausgeschlossen." = "DerivedData is always excluded from project searches.";
 "Auswahl als Suchbegriff" = "Use Selection for Find";
 "Bereitgestellte Änderungen committen (nichts bereitgestellt → alles)" = "Commit staged changes (if nothing is staged, commit everything)";
 "Commit" = "Commit";
@@ -58,7 +57,6 @@
 "Findet nur vollständige Wörter. „Test\" findet „Test\", aber nicht „Tester\" oder „Kontest\"." = "Match whole words only. ‘Test’ matches ‘Test’, but not ‘Tester’ or ‘contest’.";
 "Formatiert als Markdown einfügen" = "Paste Formatted as Markdown";
 "GEÖFFNET" = "OPEN";
-"GRUPPEN" = "GROUPS";
 "Ganzes Wort" = "Whole Word";
 "Gespeichertes Datei-Set anlegen" = "Create Saved File Set";
 "Git" = "Git";
@@ -70,12 +68,11 @@
 "Gruppe definieren" = "Define Group";
 "Gruppe löschen" = "Remove Group";
 "Hex + ASCII · schreibgeschützt" = "Hex + ASCII · read-only";
-"In Ordnern suchen…" = "Search in Folders…";
+"In Projekt oder Ordnern suchen…" = "Search in Project or Folders…";
 "In den Papierkorb legen…" = "Move to Trash…";
 "Im Finder zeigen…" = "Show in Finder…";
 "Kein Treffer ausgewählt." = "No match selected.";
 "Keine Ersetzungen in der aktuellen Datei." = "No replacements in the current file.";
-"Keine Gruppen — (…) im Suchausdruck setzen oder unten im Detail markieren + „Gruppe definieren\"." = "No groups—add (…) to the search expression or select text in the detail view and choose ‘Define Group’.";
 "Keine lokalen Branches" = "No Local Branches";
 "Keine Änderungen" = "No Changes";
 "Lange Zeilen am Fensterrand umbrechen" = "Wrap long lines at the window edge";
@@ -84,7 +81,7 @@
 "Lokale Commits zum entfernten Repository hochladen (git push)." = "Upload local commits to the remote repository (git push).";
 "Lokalen Branch auswählen" = "Select Local Branch";
 "Markdown-Vorschau ein-/ausblenden" = "Toggle Markdown Preview";
-"Markierten Text-Ausschnitt als Capture Group im Suchausdruck speichern. Die Auswahl snappt automatisch auf ganze RegEx-Bausteine." = "Save the selected text range as a capture group in the search expression. The selection automatically snaps to complete regex elements.";
+"Markierten Text-Ausschnitt als Capture Group im Suchausdruck speichern. Die Auswahl snappt automatisch auf ganze RegEx-Bausteine. Gruppen lassen sich auch direkt als (…) im Suchausdruck tippen." = "Save the selected text range as a capture group in the search expression. The selection automatically snaps to complete regex elements. You can also type groups directly as (…) in the search expression.";
 "Minimap anzeigen" = "Show Minimap";
 "Nach dem letzten Treffer geht die Suche oben wieder von vorn los. Aus = die Suche hält am Dateiende an." = "After the last match, continue from the beginning. Off = stop at the end of the file.";
 "Nachher" = "After";
@@ -106,8 +103,6 @@
 "Ordner hinzufügen…" = "Add Folder…";
 "Ordner öffnen…" = "Open Folder…";
 "Originalgröße" = "Actual Size";
-"PLATZHALTER" = "WILDCARDS";
-"Pfade" = "Paths";
 "Projekt schließen (Dateibaum ausblenden)" = "Close Project (hide file tree)";
 "Projekt-Datei-Set" = "Project File Set";
 "Projekt-relative Dateien oder Ordner, durch Komma oder Zeilenumbruch getrennt:" = "Project-relative files or folders, separated by commas or line breaks:";
@@ -208,7 +203,6 @@
 "Über Fastra" = "About Fastra";
 "Nach Updates suchen …" = "Check for Updates…";
 "— Keine —" = "— None —";
-"— Vorlage auswählen —" = "— Choose Template —";
 "„Bekannte Textformate\" ignoriert Binärdateien automatisch. „Alle Dateien\" sucht überall — Binärdateien werden trotzdem übersprungen, kein Crash." = "‘Known Text Formats’ automatically ignores binary files. ‘All Files’ searches everywhere—binary files are still skipped safely.";
 "∗ wörtlich" = "∗ literal";
 
@@ -1207,7 +1201,7 @@
 
 /* Seitenleisten-Dateifilter (Etappe 3 Wunschpaket 2026-07c) */
 "Dateien filtern" = "Filter files";
-"Filtert den Dateibaum nach Dateinamen (Teilstring, Groß-/Kleinschreibung egal). Inhalte durchsucht „In Ordnern suchen…“ (⇧⌘F)." = "Filters the file tree by file name (substring, case-insensitive). To search contents, use “Find in Folders…” (⇧⌘F).";
+"Filtert den Dateibaum nach Dateinamen (Teilstring, Groß-/Kleinschreibung egal). Inhalte durchsucht „In Projekt oder Ordnern suchen…“ (⇧⌘F)." = "Filters the file tree by file name (substring, case-insensitive). To search contents, use “Search in Project or Folders…” (⇧⌘F).";
 "Filter leeren (Escape)" = "Clear filter (Escape)";
 "Filter leeren" = "Clear filter";
 "%ld von %ld Dateien" = "%ld of %ld files";
@@ -1216,7 +1210,7 @@
 "%ld von %ld Dateien — nur die ersten %ld geprüft" = "%ld of %ld files — only the first %ld checked";
 "Keine Dateinamen passen zu „%@“." = "No file names match “%@”.";
 "Im Inhalt suchen…" = "Search in contents…";
-"Öffnet den Suchdialog mit Ordner-Bereich für die Volltextsuche." = "Opens the search dialog with folder scope for full-text search.";
+"Öffnet den Suchdialog für die Volltextsuche im Projekt beziehungsweise in den Ordnern." = "Opens the search dialog for full-text search in the project or in the folders.";
 
 /* tool4d-Ersteinrichtungshilfe (Etappe 4 Wunschpaket 2026-07c) */
 "tool4d finden…" = "Find tool4d…";
@@ -1581,4 +1575,6 @@
 
 "Linke Seite %ld Prozent" = "Left side %ld percent";
 
-"Trenner ziehen: verteilt die Breite zwischen linker und rechter Seite." = "Drag the divider to share the width between the left and right side.";
+"Trenner ziehen: verteilt die Breite zwischen linker und rechter Seite. Doppelklick stellt die Werksteilung wieder her." = "Drag the divider to share the width between the left and right side. Double-click restores the default split.";
+"Ordner oder Muster, die die Projektsuche überspringt. DerivedData wird bei Projektsuchen immer ausgeschlossen." = "Folders or patterns the project search skips. DerivedData is always excluded from project searches.";
+"Datei-Set „%@“ — Pfade: %@" = "File set “%@” — paths: %@";

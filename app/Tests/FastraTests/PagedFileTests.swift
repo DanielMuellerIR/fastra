@@ -144,7 +144,7 @@ private final class CooperativePageReader: @unchecked Sendable {
 }
 
 private func temporaryPageFile(_ data: Data) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-text-page-\(UUID().uuidString)")
     try data.write(to: url)
     return url
@@ -177,7 +177,7 @@ private func decodedPages(url: URL, data: Data, encoding: String.Encoding,
 }
 
 private func writeLargeUTF16File(encoding: String.Encoding, bom: Data) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-large-utf16-\(UUID().uuidString)")
     FileManager.default.createFile(atPath: url.path, contents: bom)
     let handle = try FileHandle(forWritingTo: url)
@@ -251,7 +251,7 @@ struct PagedFileTests {
 
     @Test("Byte- und Textseiten weisen FIFO ab, statt beim Öffnen zu blockieren")
     func pageReadersRejectFIFO() throws {
-        let url = FileManager.default.temporaryDirectory
+        let url = testTemporaryDirectory()
             .appendingPathComponent("fastra-page-fifo-\(UUID().uuidString)")
         #expect(mkfifo(url.path, 0o600) == 0)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -346,7 +346,7 @@ struct PagedFileTests {
     @Test("Seitenmodell lädt nur die angeforderte Byte-Seite")
     @MainActor
     func loadsRequestedPage() async throws {
-        let url = FileManager.default.temporaryDirectory
+        let url = testTemporaryDirectory()
             .appendingPathComponent("fastra-page-\(UUID().uuidString)")
         let bytes = Data(0..<32)
         try bytes.write(to: url)
@@ -391,7 +391,7 @@ struct PagedFileTests {
         // Hex-Ansicht hängt deshalb am Ladezähler statt an einer
         // Datenänderung — sonst behielte er die alten Basisadressen
         // (Reviewfund 2026-08-18).
-        let url = FileManager.default.temporaryDirectory
+        let url = testTemporaryDirectory()
             .appendingPathComponent("fastra-zero-page-\(UUID().uuidString)")
         try Data(repeating: 0, count: 16).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }

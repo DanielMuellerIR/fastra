@@ -75,16 +75,54 @@ func references_leadingZeros() throws {
 }
 
 @Test("Nur ASCII-Ziffern und Skalare vor dem Akzent zählen zur Nummer")
-func references_unicodeScalars() {
+func references_unicodeScalars() throws {
+    // Jede Zusage hier gilt einer Foundation-Regel, die sich ändern KÖNNTE —
+    // die ASCII-Beschränkung lief ICU-seitig historisch über die
+    // Unicode-Kategorie Nd. Der Scanner allein bewiese das nicht; deshalb
+    // steht neben jeder Scanner-Zeile eine echte Ersetzung.
+    let pattern = "(a)b(c)"
+
     // Kombinierender Akzent (U+0301) hinter der Ziffer: Die Referenz ist
     // gültig, der Akzent ist literaler Text dahinter.
     #expect(scannedNumbers("$2\u{0301}", groupCount: 2) == [2])
+    #expect(try replaced(pattern, "abc", "$2\u{0301}") == "c\u{0301}")
+
     // Arabisch-indische Ziffern sind für Foundation kein Gruppenindex.
     #expect(scannedNumbers("$\u{0660}", groupCount: 2) == [])
+    #expect(try replaced(pattern, "abc", "$\u{0660}") == "$\u{0660}")
     #expect(scannedNumbers("$1\u{0660}", groupCount: 2) == [1])
+    #expect(try replaced(pattern, "abc", "$1\u{0660}") == "a\u{0660}")
+
     // Escapes bleiben Escapes.
     #expect(scannedNumbers("\\$1", groupCount: 2) == [])
+    #expect(try replaced(pattern, "abc", "\\$1") == "$1")
     #expect(scannedNumbers("\\\\$1", groupCount: 2) == [1])
+    #expect(try replaced(pattern, "abc", "\\\\$1") == "\\a")
+}
+
+@Test("Randfälle der Schreibweise: `$` am Ende, `$$1`, `$-1`, Backslash am Ende")
+func references_edgeSpellings() throws {
+    // Bisher ungepinnt, obwohl das Verhalten stimmt: Ohne diese Paare aus
+    // Scanner- und echter Ersetzungsprüfung bliebe ein Foundation-Wechsel an
+    // genau diesen Stellen unbemerkt.
+    let pattern = "(a)b(c)"
+
+    // Ein `$` ganz am Ende hat keine Ziffer — es ist literaler Text.
+    #expect(scannedNumbers("x$", groupCount: 2) == [])
+    #expect(try replaced(pattern, "abc", "x$") == "x$")
+
+    // `$$1`: Das erste `$` ist keine Referenz (dahinter steht ein `$`), das
+    // zweite ist Gruppe 1.
+    #expect(scannedNumbers("$$1", groupCount: 2) == [1])
+    #expect(try replaced(pattern, "abc", "$$1") == "$a")
+
+    // `$-1` ist keine negative Nummer, sondern literaler Text.
+    #expect(scannedNumbers("$-1", groupCount: 2) == [])
+    #expect(try replaced(pattern, "abc", "$-1") == "$-1")
+
+    // Ein Backslash am Stringende hat kein Zeichen mehr zum Escapen.
+    #expect(scannedNumbers("$1\\", groupCount: 2) == [1])
+    #expect(try replaced(pattern, "abc", "$1\\") == "a")
 }
 
 // ─────────────────────────────────────────────────────────────────────────

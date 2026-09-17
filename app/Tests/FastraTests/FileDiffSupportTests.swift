@@ -74,7 +74,7 @@ func optionsSummary() {
 
 @Test("Feldprüfung: fehlende Datei, Ordner und Binärdatei werden erkannt")
 func fieldProblems() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-filediff-test-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -130,7 +130,7 @@ func requestMatching() {
 
 @Test("Ladepfad: zwei Textdateien liefern ein Ergebnis")
 func computeWithFiles() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-filediff-load-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -148,7 +148,7 @@ func computeWithFiles() throws {
 
 @Test("Ladepfad: fehlende Datei → unreadable mit richtiger Seite")
 func computeMissingFile() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-filediff-miss-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -166,7 +166,7 @@ func computeMissingFile() throws {
 
 @Test("Ladepfad: Binärdatei → binary-Grenze statt Zeilendiff")
 func computeBinaryFile() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-filediff-bin-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -183,7 +183,7 @@ func computeBinaryFile() throws {
 
 @Test("Ladepfad: Text-Seite (Editor-Inhalt) braucht keine Datei")
 func computeWithTextSide() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-filediff-text-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }

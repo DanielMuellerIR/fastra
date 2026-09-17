@@ -430,6 +430,24 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Das Skript braucht `rg`; fehlt ripgrep im PATH (nicht jeder Mac hat es
   installiert), nimmt es das im Repo mitgelieferte Binary unter
   `app/Sources/Fastra/Resources/ripgrep` (seit 2026-09-02).
+- **Suchmasken-Layout:** `./selftest.sh searchlayout` vermisst die Suchmaske
+  in jedem Bereich (Datei, Ordner, Projekt) bei Mindestbreite und 1000 pt:
+  Tab-Beschriftungen einzeilig, kein Bedienelement außerhalb des Fensters,
+  Trefferliste mindestens 25 % der Höhe. Mit
+  `FASTRA_SEARCHLAYOUT_DIR=<ordner>` legt er je Kombination ein PNG des
+  Fensterinhalts ab (`search-<Bereich>-<Breite>.png`) — nach jeder Änderung
+  an der Suchmaske alle sechs ansehen (Befund 2026-09-15).
+- **Übrige Dialoge:** `./selftest.sh dialoglayout` öffnet Einstellungen,
+  Dateivergleich und die vier Blätter der Suchmaske (Extraktion, Vorlagen,
+  Beispiel-Ableitung, Datei-Set) und prüft, dass kein Bedienelement über den
+  Inhalt hinausragt oder auf null Breite gedrückt ist. Mit
+  `FASTRA_DIALOGLAYOUT_DIR=<ordner>` entsteht je Dialog `dialog-<name>.png`.
+  Die Blätter öffnet der Test über die Notification
+  `fastraSelfTestSearchSheet` (reiner Testhaken in `FloatingSearchDialog`).
+- **Fokus der Suchmaske:** `./selftest.sh searchfocus` schließt und öffnet die
+  Maske per ⌘F, ⇧⌘F und Menüpunkt in Datei- und Projekt-Bereich und verlangt
+  jedes Mal das Suchfeld als First Responder, auch nach einem Klick in
+  „Ausschlüsse" (Befund 2026-09-15).
 - **README-Aufnahmen:** `./screenshot-run.sh [all|de|en] [all|search]` verwendet
   den gemeinsamen Selbsttest-Runner mit GUI-Sperre, Test-Sandbox und begrenztem
   Prozess-Cleanup. `search` erzeugt nur die beiden Suchmasken. Die Sprachwahl
@@ -696,6 +714,14 @@ eigenes Core-Foundation-Preferences-Verzeichnis. Die schnelle und die serielle
 Git-Phase von `./test.sh` teilen sich genau diese eine Sandbox; zwischen ihnen
 wird der Prozessbaum der abgeschlossenen Phase vollständig beendet. Am Ende
 wird die Sandbox entfernt, auch bei einem roten Lauf oder Signal.
+Foundation beachtet `TMPDIR` dabei nicht: `FileManager.default.temporaryDirectory`
+und `NSTemporaryDirectory()` liefern auf macOS immer den Benutzer-Temp-Ordner
+(`getconf DARWIN_USER_TEMP_DIR`; belegt 2026-09-17, rund 250 Fixture-Reste
+lagen dort). Fixtures der Unit-Tests holen ihre Wurzel deshalb über
+`testTemporaryDirectory()` (`Tests/FastraTests/Support/`), die Selbsttests
+über `selfTestTemporaryDirectory()`; beide lesen `TMPDIR` selbst. Der Wächter
+`TestTemporaryDirectoryTests` lehnt jeden direkten Zugriff in Tests und
+`SelfTest.swift` ab.
 Benannte `UserDefaults`-Suiten können diese Umleitung auf macOS umgehen und
 lassen über `cfprefsd` nach dem Prozessende nochmals eine leere Plist entstehen.
 Der Testcode meldet seine exakten UUID-Domains deshalb zusätzlich an den
@@ -712,6 +738,17 @@ dateigetreu wieder her. Der Lauf beginnt nur, wenn keine andere Fastra-Instanz
 läuft und der Snapshot vollständig belegt ist; ein Lese- oder Kopierfehler
 bricht ab, ohne den Originalzustand anzufassen. Die maschinenweite GUI-Sperre
 wird vor diesen Snapshots erworben.
+
+Die Runner-Fixtures der Unit-Tests (`SelfTestPerformanceTests`) fahren das
+echte `selftest.sh` gegen ein Ersatz-Binary. Sie dürfen dabei die echten
+Einstellungen nie erreichen: Jede Fixture lenkt Domain und Saved-State-Ordner
+über `FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN` (Testpräfix plus UUID, wie alle
+Test-Domains) und `FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR` (direkt unter dem
+Sandbox-Elternordner der Fixture) auf Wegwerfziele. Ein Lauf mit umgelenktem
+`FASTRA_TEST_SANDBOX_PARENT`, dem eine der beiden Variablen fehlt oder deren
+Ziel unsicher ist, endet mit Exit 2, bevor er etwas sichert oder startet
+(`configure_product_state_overrides`; Review-Fund 2026-09-17: Unit-Tests
+schrieben bis dahin Nutzereinstellungen zurück).
 
 `cfprefsd` kann eine bereits geleerte Test-Domain erst nach dem Ende des
 Testprozesses nochmals als leere Plist schreiben. Der äußere Runner beobachtet

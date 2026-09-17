@@ -34,7 +34,7 @@ enum TestFixtureProcessJanitor {
     @discardableResult
     static func purgeStaleFixtures(
         olderThan age: TimeInterval = 3600,
-        in directory: URL = FileManager.default.temporaryDirectory
+        in directory: URL = testTemporaryDirectory()
     ) throws -> PurgeResult {
         let regex = try NSRegularExpression(pattern: scriptPattern)
         let cutoff = Date().addingTimeInterval(-age)
@@ -112,7 +112,7 @@ enum TestFixtureProcessJanitor {
 @Test("Janitor beendet verwaiste Fixture-Prozesse, verschont frische",
       .timeLimit(.minutes(1)))
 func serialRunnerIntegrationJanitorPurgesOnlyStaleFixtureProcesses() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-fixture-janitor-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -261,7 +261,7 @@ func purgeStaleFixtureProcesses() throws {
 
 @Test("Janitor entfernt verwaiste Test-Domains, verschont aktive und fremde")
 func janitorPurgesOnlyStaleTestDomains() throws {
-    let preferences = FileManager.default.temporaryDirectory
+    let preferences = testTemporaryDirectory()
         .appendingPathComponent("fastra-preferences-test-\(UUID().uuidString)",
                               isDirectory: true)
     try FileManager.default.createDirectory(
@@ -375,7 +375,7 @@ func purgeKeepsFailedSuiteRegistered() {
 
 @Test("Runner-Registry wird nach einem Schreibfehler erneut versucht")
 func defaultsRunnerRegistrationRetriesAfterFailure() throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-defaults-registry-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root,
                                             withIntermediateDirectories: false)
@@ -394,4 +394,158 @@ func defaultsRunnerRegistrationRetriesAfterFailure() throws {
     let recorded = try String(contentsOf: registry, encoding: .utf8)
     #expect(recorded.split(whereSeparator: \.isNewline).map(String.init)
         == [name])
+}
+
+/// Der `preferencesDirectory`-Pfad hatte bis zum Infrastruktur-Review
+/// 2026-09-10 KEINE Abdeckung — im Repo belegt ihn kein Produktaufrufer. Zwei
+/// Zusagen hingen dort in der Luft, beide inzwischen abgesichert:
+///
+/// 1. `purge` löscht die Plist im übergebenen Verzeichnis und meldet nichts
+///    als verbleibend. Der Containment-Vergleich lief über URLs, und ob zwei
+///    URLs auf dasselbe Verzeichnis als gleich gelten, entschied das
+///    Dateisystem: `standardizedFileURL` setzt das Verzeichnis-Merkmal nur für
+///    einen vorhandenen Pfad. Ein Fehler war daraus nicht ableitbar — fehlt
+///    das Verzeichnis, gibt es nichts zu löschen —, aber die Zusage hing an
+///    einem Zustand, den der Aufrufer nicht sieht.
+/// 2. `purgeStale` räumt im übergebenen Verzeichnis auf, ohne im eigenen
+///    Preferences-Home eine Domain anzufassen. Vorher folgte nur der Dateipfad
+///    dem Argument.
+@Test("purge und purgeStale arbeiten in einem ausdrücklich übergebenen Verzeichnis")
+func purgeHonoursAnExplicitPreferencesDirectory() throws {
+    let root = testTemporaryDirectory()
+        .appendingPathComponent("fastra-purge-dir-\(UUID().uuidString)")
+    // BEWUSST ohne `isDirectory: true` — genau die Schreibweise, an der der
+    // Vergleich zerbrach.
+    let preferences = root.appendingPathComponent("Library/Preferences")
+    try FileManager.default.createDirectory(at: preferences,
+                                            withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let name = "FastraTests.PurgeDir.\(UUID().uuidString)"
+    let plist = preferences.appendingPathComponent(name + ".plist")
+    try Data("<plist/>".utf8).write(to: plist)
+
+    // `purge` muss die Datei löschen und nichts als verbleibend melden.
+    let remaining = TestDefaultsPurge.purgeRegistered(
+        only: name, preferencesDirectory: preferences)
+    #expect(remaining.isEmpty, "purge meldete \(remaining) als verbleibend")
+    #expect(!FileManager.default.fileExists(atPath: plist.path))
+
+    // `purgeStale` räumt eine alte Datei im FREMDEN Verzeichnis ab, ohne im
+    // eigenen Preferences-Home eine Domain anzufassen.
+    let stale = preferences.appendingPathComponent(
+        "FastraTests.PurgeStale.\(UUID().uuidString).plist")
+    try Data("<plist/>".utf8).write(to: stale)
+    try FileManager.default.setAttributes(
+        [.modificationDate: Date().addingTimeInterval(-7200)],
+        ofItemAtPath: stale.path)
+    let removed = TestDefaultsPurge.purgeStale(preferencesDirectory: preferences)
+    #expect(removed == 1)
+    #expect(!FileManager.default.fileExists(atPath: stale.path))
+    let ownHome = TestDefaultsPurge.resolvedPreferencesDirectory()
+    let strayInOwnHome = ownHome.appendingPathComponent(stale.lastPathComponent)
+    #expect(!FileManager.default.fileExists(atPath: strayInOwnHome.path), """
+        purgeStale hat im eigenen Preferences-Home eine Domain angefasst, \
+        obwohl ein fremdes Verzeichnis übergeben wurde
+        """)
+}
+
+/// Die Liste der Test-Domain-Präfixe steht ZWEIMAL: in `TestDefaultsPurge`
+/// (Swift) und als `case`-Muster in `tools/test-sandbox.sh`. Beide Seiten sind
+/// heute gleich, werden aber unabhängig gepflegt — und eine Drift ist teuer:
+/// Kommt in Swift ein Präfix dazu, hält `fastra_test_defaults_domain_is_safe`
+/// jeden so benannten Registry-Eintrag für unsicher, `purge_fastra_registered_
+/// test_defaults` setzt `failed=1`, und JEDER Selbsttestlauf endet mit Exit 2.
+/// Fehlt umgekehrt in Swift, was die Shell kennt, bleiben Plists liegen.
+@Test("Test-Domain-Präfixe stimmen zwischen Swift und Sandbox-Skript überein")
+func testDomainPrefixesMatchTheSandboxScript() throws {
+    let script = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("tools/test-sandbox.sh")
+    let body = try shellFunction(named: "fastra_test_defaults_domain_is_safe", in: script)
+
+    // Die `case`-Zeile listet die Präfixe als `Muster*|Muster*|…`.
+    let patternLine = try #require(
+        body.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { $0.hasSuffix("*) ;;") && $0.contains("|") },
+        "Die case-Zeile mit den Präfixen steht nicht mehr in der Funktion"
+    )
+    let shellPrefixes = Set(
+        patternLine
+            .replacingOccurrences(of: ") ;;", with: "")
+            .components(separatedBy: "|")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.hasSuffix("*") }
+            .map { String($0.dropLast()) }
+    )
+    #expect(shellPrefixes.count > 3, "Präfix-Erkennung greift nicht mehr")
+    #expect(shellPrefixes == Set(TestDefaultsPurge.prefixes), """
+        Swift kennt \(Set(TestDefaultsPurge.prefixes).sorted()), \
+        das Sandbox-Skript \(shellPrefixes.sorted()). Läuft das auseinander, \
+        endet entweder jeder Lauf mit Exit 2 oder es bleiben Plists liegen.
+        """)
+}
+
+/// Der atexit-Hook aus `TestSuiteDefaults.swift` war ungeprüft: Ein
+/// atexit-Handler läuft nur beim echten Prozessende, und `purgeRegistered()`
+/// gegen die ECHTE Registry würde mitten im parallelen Lauf allen anderen
+/// Tests ihre Suiten wegräumen. Sein Rumpf liegt deshalb jetzt in
+/// `runTestDefaultsExitCleanup`; der Test setzt eine Attrappen-Registry ein
+/// und liest die Warnung mit (Review-Hinweis 2026-09-17).
+@Test("Prozessende räumt die Registry ab und meldet Übriggebliebene")
+func exitCleanupReportsRemainingDomains() {
+    /// Ein Durchlauf der ausgelagerten atexit-Logik gegen die Attrappe.
+    func cleanup(remaining: [String]) -> (registry: Int, stale: Int, warnings: [String]) {
+        var registryCalls = 0
+        var staleCalls = 0
+        var warnings: [String] = []
+        runTestDefaultsExitCleanup(
+            purgeRegistered: {
+                registryCalls += 1
+                // Die Attrappe fasst keine echte Domain an; sie meldet nur,
+                // was sich angeblich nicht entfernen ließ.
+                return remaining
+            },
+            purgeStale: { staleCalls += 1 },
+            warn: { warnings.append($0) }
+        )
+        return (registryCalls, staleCalls, warnings)
+    }
+
+    let clean = cleanup(remaining: [])
+    #expect(clean.registry == 1)
+    #expect(clean.stale == 1)
+    #expect(clean.warnings.isEmpty, "Ein sauberer Abschluss darf nicht warnen")
+
+    let leftovers = ["Fastra-\(UUID().uuidString)",
+                     "FastraTests.Rest.\(UUID().uuidString)"]
+    let dirty = cleanup(remaining: leftovers)
+    #expect(dirty.registry == 1)
+    // Die Reste früherer Läufe müssen auch dann abgeräumt werden, wenn die
+    // eigene Registry gerade etwas übrig gelassen hat.
+    #expect(dirty.stale == 1)
+    #expect(dirty.warnings.count == 1)
+    let warning = dirty.warnings.first ?? ""
+    #expect(warning.hasPrefix("WARNUNG: Test-Preferences-Domains blieben übrig: "))
+    for domain in leftovers {
+        #expect(warning.contains(domain), "Domain \(domain) fehlt in: \(warning)")
+    }
+    #expect(warning.hasSuffix("\n"), "Die Diagnose braucht ihren Zeilenumbruch")
+}
+
+/// Gegenprobe zur Auslagerung: `atexit` darf nur noch den Aufruf registrieren.
+/// Wandert Logik zurück in die Closure, ist sie wieder unprüfbar.
+@Test("Der atexit-Hook enthält nur noch den Aufruf der geprüften Funktion")
+func exitHookDelegatesToTestedFunction() throws {
+    let source = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .appendingPathComponent("TestSuiteDefaults.swift")
+    let body = try String(contentsOf: source, encoding: .utf8)
+    #expect(body.contains("atexit { runTestDefaultsExitCleanup() }"), """
+        Der atexit-Hook in TestSuiteDefaults.swift ruft nicht mehr nur \
+        runTestDefaultsExitCleanup() auf — Logik in der Closure selbst ist im \
+        eigenen Prozess nicht prüfbar.
+        """)
 }

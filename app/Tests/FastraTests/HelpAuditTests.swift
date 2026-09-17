@@ -45,7 +45,7 @@ private func run(_ launchPath: String, _ arguments: [String], cwd: URL,
 /// Baut ein temporäres Git-Repo im Fastra-Layout (app/Sources + Marker).
 /// Gibt Root und den Hash des ersten Commits zurück.
 private func makeFixtureRepo() throws -> (root: URL, firstCommit: String) {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-helpaudit-\(UUID().uuidString)")
     let sources = root.appendingPathComponent("app/Sources/Fastra")
     try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)

@@ -28,7 +28,7 @@ private func makeToolBundle(at appURL: URL, version: String?) throws -> URL {
 }
 
 private func makeScratch() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-tool4d-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

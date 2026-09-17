@@ -6,7 +6,7 @@
 //
 // Sicherheits-Philosophie wie überall in Fastra: Lieber eine Aktion
 // VERWEIGERN (nil + Beep/Hinweis in der UI) als ein Pattern erzeugen,
-// das still etwas anderes matcht. Drei Verweigerungs-Gründe:
+// das still etwas anderes matcht. Fünf Verweigerungs-Gründe:
 //
 //   1. Das Replace-Template referenziert die Gruppe (`$k`) — nach dem
 //      Löschen wäre die Referenz kaputt. Erst Replace anpassen.
@@ -19,6 +19,17 @@
 //      auch eine Alternation in einer nicht-fangenden Untergruppe führt
 //      zur Verweigerung — falsch-negativ ist hier billiger als ein
 //      verändertes Suchverhalten.)
+//   4. Das SUCHMUSTER enthält einen Rückverweis (`\1`, `\k<name>`).
+//      Rückverweise zeigen wie `$N` auf Gruppennummern, nur eben innerhalb
+//      des Suchausdrucks — und das Auflösen einer Gruppe verschiebt genau
+//      diese Nummerierung. Gemessen: `(a)(b)\1` trifft „aba", das daraus
+//      gebaute `a(b)\1` trifft „aba" nicht mehr, dafür „abb"; `(a)(b)\2`
+//      ergäbe `a(b)\2` und ließe sich gar nicht mehr übersetzen.
+//   5. Das Replace-Template ließe sich nicht gleichbedeutend umschreiben.
+//      Das betrifft Referenzen auf nicht vorhandene Gruppen: Mit zehn
+//      Gruppen zeigt `$11` ins Leere, mit neun liest Foundation daraus
+//      Gruppe 1 plus das Literal „1" — und eine einstellige Ausweichnummer
+//      über neun gibt es nicht.
 
 import Foundation
 
@@ -75,6 +86,9 @@ enum GroupRemoval {
         }
         if hasTopLevelAlternation { return nil }
 
+        // Verweigerungs-Grund 4: Rückverweis im Suchmuster.
+        if RegexBackreferences.contains(in: tokenization) { return nil }
+
         // Pattern umbauen: Präfix (`(` bzw. `(?<name>`) und Suffix (`)`)
         // der Gruppe entfernen, Inhalt behalten. Alles in UTF-16-Indizes
         // (NSString), passend zu den Token-Ranges.
@@ -86,10 +100,16 @@ enum GroupRemoval {
         var newPattern = ns.replacingCharacters(in: suffixRange, with: "")
         newPattern = (newPattern as NSString).replacingCharacters(in: prefixRange, with: "")
 
-        // Replace-Template: alle Referenzen ÜBER der gelöschten Nummer
-        // eins herunterschieben.
-        let rewritten = shiftReferencesDown(in: replacement, above: number,
-                                            groupCount: tokenization.groups.count)
+        // Replace-Template: alle Referenzen ÜBER der gelöschten Nummer eins
+        // herunterschieben. Verweigerungs-Grund 5 steckt in `rewritten`: Es
+        // prüft am Ergebnis nach, dass die Ersetzung denselben Text erzeugt wie
+        // vorher — nicht am Ziffernbudget. So fällt auch der Fall auf, in dem
+        // die unveränderte Schreibweise unter der kleineren Gruppenzahl anders
+        // gelesen wird.
+        let groupCount = tokenization.groups.count
+        guard let rewritten = ReplacementReferences.rewritten(
+            replacement, by: renumbering(removing: number, groupCount: groupCount)
+        ) else { return nil }
 
         return Result(newPattern: newPattern, rewrittenReplacement: rewritten)
     }
@@ -115,11 +135,21 @@ enum GroupRemoval {
     ///   danach ist es genau eine weniger.
     static func shiftReferencesDown(in replacement: String, above: Int,
                                     groupCount: Int) -> String {
-        ReplacementReferences.rewrite(in: replacement,
-                                      groupCount: groupCount,
-                                      newGroupCount: max(groupCount - 1, 0)) { number in
-            // Referenzen auf nicht vorhandene Gruppen bleiben stehen.
-            number > above && number <= groupCount ? number - 1 : nil
-        }
+        ReplacementReferences.rewriteText(
+            replacement, by: renumbering(removing: above, groupCount: groupCount)
+        )
+    }
+
+    /// Die Umnummerierung des Auflösens: Jede Gruppe ÜBER der gelöschten rückt
+    /// um eins nach vorn, `$0` und alles darunter bleibt. Wie ins Leere
+    /// zeigende Referenzen behandelt werden, entscheidet
+    /// `ReplacementReferences` einheitlich für beide Aktionen.
+    private static func renumbering(removing number: Int,
+                                    groupCount: Int) -> ReplacementReferences.Renumbering {
+        ReplacementReferences.Renumbering(
+            groupCount: groupCount,
+            newGroupCount: max(groupCount - 1, 0),
+            move: { reference in reference > number ? reference - 1 : reference }
+        )
     }
 }

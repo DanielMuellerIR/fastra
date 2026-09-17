@@ -105,7 +105,13 @@ func presentingSearchUsesShortcutScopeWhenEmptyOrClosed() {
     ) == .folder)
 }
 
-@Test("Der Menüpunkt „In Ordnern suchen…“ erzwingt den Ordner-Bereich")
+@Test("⇧⌘F wählt mit Projekt den Projekt-Bereich, ohne Projekt die Ordner")
+func multiFileScopePrefersProject() {
+    #expect(Workspace.multiFileSearchScope(hasProject: true) == .project)
+    #expect(Workspace.multiFileSearchScope(hasProject: false) == .folder)
+}
+
+@Test("Der Menüpunkt „In Projekt oder Ordnern suchen…“ erzwingt den Mehrdatei-Bereich")
 @MainActor
 func menuEntryForcesFolderScope() {
     let suiteName = "fastra-test-presentsearch-\(UUID().uuidString)"
@@ -124,6 +130,49 @@ func menuEntryForcesFolderScope() {
     // deshalb auch herstellen (Review 2026-08-06).
     ws.presentSearch(requestedScope: .folder, forceScope: true)
     #expect(ws.scope == .folder)
+    #expect(ws.showSearchDialog)
+}
+
+@Test("„Im Inhalt suchen“ und der Go-to-Target-Rückfall suchen mit Projekt im Projekt")
+@MainActor
+func multiFileContentSearchUsesProjectScope() {
+    let suiteName = "fastra-test-contentsearch-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let ws = Workspace(defaults: defaults)
+    // Gemerkte Ordner zeigen woandershin als das Projekt — genau die Lage,
+    // in der ein fester `.folder`-Bereich die falschen Wurzeln durchsucht.
+    ws.recentSearchFolders = [SearchFolderEntry(path: "/tmp/fremder-ordner", enabled: true)]
+    ws.projectURL = URL(fileURLWithPath: "/tmp/projekt")
+    ws.scope = .file
+    ws.useRegex = true
+
+    // Die Maske kann offen, aber hinter dem Dokumentfenster liegen; dann
+    // ändert sich `showSearchDialog` nicht. Der Einstieg muss deshalb
+    // ausdrücklich das Nach-vorn-Holen für GENAU diesen Workspace anfordern.
+    var frontRequests: [ObjectIdentifier] = []
+    let observer = NotificationCenter.default.addObserver(
+        forName: .fastraBringSearchToFront, object: nil, queue: nil
+    ) { note in
+        if let target = note.object as AnyObject? { frontRequests.append(ObjectIdentifier(target)) }
+    }
+    defer { NotificationCenter.default.removeObserver(observer) }
+    ws.showSearchDialog = true
+
+    ws.presentMultiFileContentSearch(pattern: "GibtsNicht")
+    #expect(frontRequests == [ObjectIdentifier(ws)])
+    #expect(ws.scope == .project)
+    #expect(ws.findPattern == "GibtsNicht")
+    #expect(ws.useRegex == false)
+    #expect(ws.showSearchDialog)
+
+    // Ohne Projekt bleibt es die Ordnersuche; ohne Muster bleibt der
+    // Suchbegriff stehen (Dateibaum-Link).
+    ws.projectURL = nil
+    ws.showSearchDialog = false
+    ws.presentMultiFileContentSearch()
+    #expect(ws.scope == .folder)
+    #expect(ws.findPattern == "GibtsNicht")
     #expect(ws.showSearchDialog)
 }
 
@@ -312,7 +361,7 @@ func patternChangeInvalidatesPendingFolderMatchJump() async throws {
     // Hintergrund und meldet sich erst später auf dem Main-Thread zurück —
     // genau dieses Fenster nutzt der Ablauf.
     let content = "eins TREFFER zwei TREFFER"
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-stale-jump-\(UUID().uuidString).txt")
     try content.write(to: url, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: url) }

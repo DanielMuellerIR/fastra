@@ -10,7 +10,7 @@ private func homeWorkspace() -> (Workspace, UserDefaults, String) {
 }
 
 private func homeFile(_ name: String, content: String) throws -> URL {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-home-\(UUID().uuidString)",
                                 isDirectory: true)
     try FileManager.default.createDirectory(at: directory,
@@ -218,7 +218,7 @@ func projectOpenKeepsScratchAndPlaceholder() throws {
 func fileLoadKeepsScratchAndRestoresItAfterFailure() async {
     let (workspace, defaults, suite) = homeWorkspace()
     defer { defaults.removePersistentDomain(forName: suite) }
-    let missing = FileManager.default.temporaryDirectory
+    let missing = testTemporaryDirectory()
         .appendingPathComponent("fastra-fehlt-\(UUID().uuidString).txt")
         .canonicalFileURL
     var result: Bool?

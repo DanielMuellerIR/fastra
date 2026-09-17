@@ -215,7 +215,15 @@ fastra_test_tree_collect() {
     local parent="$1"
     local runner_group="$2"
     local child
-    fastra_test_tree_append_unique_pid "$parent"
+    # Der Runner darf sich nicht selbst signalisieren. Nur die EIGENE PID wird
+    # ausgeschlossen, nicht die ganze Runner-Prozessgruppe: Helfer der Tests
+    # laufen teils bewusst in derselben Gruppe (belegt am Regressionstest
+    # „Signal beendet den noch wartenden System-Events-Helfer"), ein
+    # Gruppenfilter ließe sie am Leben. Die weitergehende Zusage im Kommentar
+    # an `terminate_fastra_test_process_trees` gilt allein für Gruppensignale.
+    if [ "$parent" != "$$" ]; then
+        fastra_test_tree_append_unique_pid "$parent"
+    fi
     while IFS= read -r child; do
         [[ "$child" =~ ^[0-9]+$ ]] || continue
         fastra_test_tree_collect "$child" "$runner_group"
@@ -280,12 +288,44 @@ fastra_test_group_is_live() {
         | awk -v wanted="$group" '$1 == wanted && $2 !~ /^Z/ { found=1 } END { exit !found }'
 }
 
+# Reapt die eigenen Hintergrundjobs, denen `terminate_fastra_test_process_trees`
+# ein KILL zugestellt hat — aber erst, wenn `ps` ihr Ende bestätigt.
+#
+# Bash meldet den Signaltod eines EIGENEN Hintergrundjobs von sich aus auf
+# stderr: „Killed: 9" samt vollständigem Befehlstext — hier rund ein Kilobyte
+# Python-Quelltext je Job. Die Meldung erscheint beim nächsten externen
+# Befehl, also am `sleep` der Schleife. Ein `wait` mit umgeleitetem stderr
+# verschluckt genau diese Statuszeile — aber nur ein `wait`, das nicht
+# blockiert. Ein zugestelltes KILL beweist bloß die Annahme des Signals: Ein
+# Kind im ununterbrechbaren Kernel-Warten (Zustand U) stirbt erst später, und
+# ein sofortiges `wait` hätte den ganzen Runner ohne Frist blockiert
+# (Review-Fund 2026-09-17). Deshalb wartet diese Funktion nur auf Kandidaten,
+# die `ps` als verschwunden oder Zombie meldet — dann hat bash den Tod schon
+# intern verbucht, und `wait` liefert nur noch den gespeicherten Status.
+# Bleibt ein Kandidat lebendig, bleibt er vorgemerkt; die begrenzte Schleife
+# läuft weiter und meldet ihn am Ende als nicht beendet. Die Statuszeile ist
+# in diesem Ausnahmefall das kleinere Übel. Fremde PIDs (gesammelte Enkel)
+# sind keine Jobs dieser Shell; `wait` kehrt für sie sofort zurück.
+FASTRA_TEST_REAP_PENDING=""
+fastra_test_reap_killed_jobs() {
+    local pid remaining=""
+    for pid in $FASTRA_TEST_REAP_PENDING; do
+        if fastra_test_pid_is_live "$pid"; then
+            remaining="$remaining $pid"
+        else
+            wait "$pid" 2>/dev/null || true
+        fi
+    done
+    FASTRA_TEST_REAP_PENDING="$remaining"
+}
+
 # Aufruf: terminate_fastra_test_process_trees PID [PID ...]
 # Rückgabe 2 bedeutet, dass die eigene Prozessgruppe nicht sicher feststellbar
 # war. In diesem Fall werden absichtlich nur die exakten PIDs signalisiert;
 # ein Gruppensignal könnte sonst den Runner oder seine aufrufende Shell treffen.
 terminate_fastra_test_process_trees() {
     local runner_group root group pid tick live group_signals=1 index token
+    FASTRA_TEST_REAP_PENDING=""
     runner_group=$(ps -p $$ -o pgid= 2>/dev/null | tr -d ' ' || true)
     if ! [[ "$runner_group" =~ ^[0-9]+$ ]] || [ "$runner_group" -le 1 ]; then
         group_signals=0
@@ -363,6 +403,7 @@ terminate_fastra_test_process_trees() {
             done
         fi
         if [ "$live" -eq 0 ]; then
+            fastra_test_reap_killed_jobs
             [ "$group_signals" -eq 1 ] && return 0
             return 2
         fi
@@ -378,12 +419,15 @@ terminate_fastra_test_process_trees() {
                 while [ "$index" -lt "${#FASTRA_TEST_TREE_PIDS[@]}" ]; do
                     pid="${FASTRA_TEST_TREE_PIDS[$index]}"
                     token="${FASTRA_TEST_TREE_PID_TOKENS[$index]}"
-                    fastra_test_pid_matches_token "$pid" "$token" \
-                        && kill -KILL "$pid" 2>/dev/null || true
+                    if fastra_test_pid_matches_token "$pid" "$token"; then
+                        kill -KILL "$pid" 2>/dev/null || true
+                        FASTRA_TEST_REAP_PENDING="$FASTRA_TEST_REAP_PENDING $pid"
+                    fi
                     index=$((index + 1))
                 done
             fi
         fi
+        fastra_test_reap_killed_jobs
         sleep 0.05
         tick=$((tick + 1))
     done

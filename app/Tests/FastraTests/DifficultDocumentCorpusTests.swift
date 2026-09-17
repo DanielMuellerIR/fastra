@@ -156,7 +156,7 @@ struct DifficultDocumentCorpusTests {
             let content = fixture.makeContent()
             #expect(content.utf8.count == DifficultDocumentFixture.targetByteSize,
                     "\(fixture.label) hat die falsche Größenklasse")
-            let url = FileManager.default.temporaryDirectory
+            let url = testTemporaryDirectory()
                 .appendingPathComponent("\(UUID().uuidString)-\(fixture.filename)")
             defer { try? FileManager.default.removeItem(at: url) }
             try Data(content.utf8).write(to: url)

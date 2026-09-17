@@ -37,6 +37,28 @@ private struct SelfTestParserFixture: Sendable, CustomStringConvertible {
         .init(description: "Beschädigtes Präfix", payload:
               "SELFTEST-RESULTX v=1 test=search status=PASS",
               legacyLine: "SELFTEST search: PASS", expected: "FAIL", protocolError: true),
+        // Ab hier: Zweige, die der Parser hat, aber bis 2026-09-10 kein
+        // Fixture erreichte.
+        .init(description: "Unbekannter Statuswert bei gültigem Rahmen", payload:
+              "SELFTEST-RESULT v=1 test=search status=WEIRD",
+              legacyLine: "SELFTEST search: PASS", expected: "FAIL", protocolError: true),
+        .init(description: "Fremder Testname in der Maschinenzeile", payload:
+              "SELFTEST-RESULT v=1 test=project status=PASS",
+              legacyLine: "SELFTEST search: PASS", expected: "FAIL", protocolError: true),
+        .init(description: "Fünftes Feld hinter dem Status", payload:
+              "SELFTEST-RESULT v=1 test=search status=PASS zusatz=1",
+              legacyLine: "SELFTEST search: PASS", expected: "FAIL", protocolError: true),
+        // Der wichtigste der vier: Eine gültige PASS-Zeile darf einen
+        // Protokollfehler in derselben Ausgabe NICHT überstimmen.
+        .init(description: "Gültige PASS-Zeile neben einer beschädigten", payload: """
+            SELFTEST-RESULT v=1 test=search status=PASS
+            SELFTEST-RESULT v=1 test=search status=KAPUTT
+            """, legacyLine: "SELFTEST search: PASS", expected: "FAIL", protocolError: true),
+        // Und die Gegenprobe zur Bereitschaftsprüfung des Runners: Eine
+        // Maschinenzeile ohne Begleitzeile ist vollwertig.
+        .init(description: "Maschinenzeile ohne Begleitzeile", payload:
+              "SELFTEST-RESULT v=1 test=search status=ENV",
+              legacyLine: "", expected: "ENV"),
     ]
 }
 
@@ -44,7 +66,7 @@ private struct SelfTestParserFixture: Sendable, CustomStringConvertible {
 struct SelfTestResultParserTests {
     @Test("Protokollfehler, Altbundles und Fehlerpriorität", arguments: SelfTestParserFixture.cases)
     fileprivate func parsesResult(fixture: SelfTestParserFixture) throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-result-parser-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }

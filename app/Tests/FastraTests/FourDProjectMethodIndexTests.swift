@@ -22,7 +22,7 @@ private let fourDIndexWait: TimeInterval = 30
 
 @Test("Index liest 4dm-Dateinamen case-insensitiv aus dem Methodenordner")
 func fourDMethodIndex_readsProjectMethods() throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-4d-index-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: root) }
     let methods = root.appendingPathComponent("Project/Sources/Methods")
@@ -267,8 +267,8 @@ func fourDProjectIndexController_rejectsStaleWatcherCallback() async throws {
 @MainActor
 func fourDMethodIndex_workspaceWatcherRefreshesAndStops() async throws {
     let fm = FileManager.default
-    let root = fm.temporaryDirectory.appendingPathComponent("fastra-4d-watch-\(UUID().uuidString)")
-    let nextRoot = fm.temporaryDirectory.appendingPathComponent("fastra-4d-watch-next-\(UUID().uuidString)")
+    let root = testTemporaryDirectory().appendingPathComponent("fastra-4d-watch-\(UUID().uuidString)")
+    let nextRoot = testTemporaryDirectory().appendingPathComponent("fastra-4d-watch-next-\(UUID().uuidString)")
     let methods = root.appendingPathComponent("Project/Sources/Methods")
     let nextMethods = nextRoot.appendingPathComponent("Project/Sources/Methods")
     let suiteName = "fastra-4d-watch-defaults-\(UUID().uuidString)"
@@ -369,7 +369,7 @@ private let sharedFourDSource = "//%attributes = {\"shared\":true}\n"
 private func makeFourDIndexProject(label: String,
                                    projectMethods: [String],
                                    componentMethods: [String]) throws -> URL {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-4d-\(label)-\(UUID().uuidString)")
     let methods = root.appendingPathComponent("Project/Sources/Methods")
     let components = root.appendingPathComponent(

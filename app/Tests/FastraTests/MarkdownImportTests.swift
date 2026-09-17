@@ -313,7 +313,7 @@ struct MarkdownImportOutputGuardTests {
 
     /// Legt `<tmp>/staging/out` an und liefert beide Ordner.
     private func makeStaging() throws -> (staging: URL, output: URL) {
-        let staging = FileManager.default.temporaryDirectory
+        let staging = testTemporaryDirectory()
             .appendingPathComponent("fastra-mdguard-\(UUID().uuidString)")
         let output = staging.appendingPathComponent("out", isDirectory: true)
         try FileManager.default.createDirectory(at: output,
@@ -373,10 +373,10 @@ struct MarkdownImportOutputGuardTests {
     @Test("Ein Ausgabeordner, der selbst ein Verweis ist, wird abgewiesen")
     func symlinkedOutputDirectoryIsRejected() throws {
         let fm = FileManager.default
-        let staging = fm.temporaryDirectory
+        let staging = testTemporaryDirectory()
             .appendingPathComponent("fastra-mdguard-\(UUID().uuidString)",
                                     isDirectory: true)
-        let foreign = fm.temporaryDirectory
+        let foreign = testTemporaryDirectory()
             .appendingPathComponent("fastra-mdforeign-\(UUID().uuidString)",
                                     isDirectory: true)
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
@@ -459,7 +459,7 @@ struct MarkdownImportServiceGuardTests {
 
     /// Ein Ordner mit einer Quelldatei darin.
     private func makeSourceFolder() throws -> (folder: URL, source: URL) {
-        let folder = FileManager.default.temporaryDirectory
+        let folder = testTemporaryDirectory()
             .appendingPathComponent("fastra-mdservice-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder,
                                                 withIntermediateDirectories: true)
@@ -582,7 +582,7 @@ struct MarkdownImportOwnershipTests {
     @Test("Geschlossenes Besitzerfenster macht einen Lauf nicht global")
     @MainActor
     func ownerIdentitySurvivesWorkspaceDeallocation() throws {
-        let folder = FileManager.default.temporaryDirectory
+        let folder = testTemporaryDirectory()
             .appendingPathComponent("fastra-mdowner-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder,
                                                 withIntermediateDirectories: true)

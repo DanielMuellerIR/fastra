@@ -8,7 +8,7 @@ import Testing
 @testable import Fastra
 
 private func withTempDir(_ body: (URL) throws -> Void) throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-filetreetests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -145,7 +145,7 @@ func fileTree_duplicateWithoutExtension() throws {
 @MainActor
 func fileTree_watcherRefreshesRecursively() async throws {
     let fm = FileManager.default
-    let dir = fm.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-filetreewatch-\(UUID().uuidString)")
     let subdir = dir.appendingPathComponent("tief")
     try fm.createDirectory(at: subdir, withIntermediateDirectories: true)

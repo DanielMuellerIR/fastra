@@ -11,7 +11,7 @@ private func sessionDefaults() -> (UserDefaults, String) {
 }
 
 private func sessionFile(_ name: String, content: String) throws -> URL {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-session-\(UUID().uuidString)",
                                 isDirectory: true)
     try FileManager.default.createDirectory(at: directory,
@@ -199,10 +199,7 @@ func sessionWorkspaceRestore() async throws {
     )
     var finished = false
     workspace.restore(state) { finished = true }
-    let deadline = Date().addingTimeInterval(5)
-    while !finished, Date() < deadline {
-        await Task.yield()
-    }
+    _ = await waitUntil { finished }
 
     #expect(finished)
     #expect(workspace.tabs.compactMap(\.url).map(\.lastPathComponent)
@@ -218,7 +215,7 @@ func sessionRestoreCannotClobberNewProject() async throws {
     defer { defaults.removePersistentDomain(forName: suite) }
     let restoredFile = try sessionFile("alt.txt", content: "Alt")
     let oldDirectory = restoredFile.deletingLastPathComponent()
-    let newProject = FileManager.default.temporaryDirectory
+    let newProject = testTemporaryDirectory()
         .appendingPathComponent("fastra-new-project-\(UUID().uuidString)",
                                 isDirectory: true)
     try FileManager.default.createDirectory(at: newProject,
@@ -242,8 +239,7 @@ func sessionRestoreCannotClobberNewProject() async throws {
     workspace.openProject(at: newProject)
     let expectedTabs = workspace.tabs
     let expectedActiveTabID = workspace.activeTabID
-    let deadline = Date().addingTimeInterval(5)
-    while !finished, Date() < deadline { await Task.yield() }
+    _ = await waitUntil { finished }
 
     #expect(finished)
     #expect(workspace.projectURL?.canonicalFileURL == newProject.canonicalFileURL)
@@ -278,8 +274,7 @@ func sessionRestoreCannotReopenClosedProject() async throws {
     #expect(workspace.tabs.contains { $0.isLoading })
     workspace.closeProject()
 
-    let deadline = Date().addingTimeInterval(5)
-    while !finished, Date() < deadline { await Task.yield() }
+    _ = await waitUntil { finished }
 
     #expect(finished)
     #expect(workspace.projectURL == nil,
@@ -294,7 +289,7 @@ func sessionRestoreCannotReopenClosedProject() async throws {
 func sessionWorkspaceRestoreSelectsActiveRepositoryContext() async throws {
     let (defaults, suite) = sessionDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
-    let base = FileManager.default.temporaryDirectory
+    let base = testTemporaryDirectory()
         .appendingPathComponent("fastra-session-repos-\(UUID().uuidString)")
     let repoA = base.appendingPathComponent("repo-a", isDirectory: true)
     let repoB = base.appendingPathComponent("repo-b", isDirectory: true)
@@ -333,10 +328,7 @@ func sessionWorkspaceRestoreSelectsActiveRepositoryContext() async throws {
     )
     var finished = false
     workspace.restore(state) { finished = true }
-    let deadline = Date().addingTimeInterval(5)
-    while !finished, Date() < deadline {
-        await Task.yield()
-    }
+    _ = await waitUntil { finished }
 
     #expect(finished)
     #expect(workspace.activeTab?.url?.canonicalFileURL == fileA.canonicalFileURL)
@@ -437,8 +429,7 @@ func sessionAllLoadsFailReturnsToWelcome() async throws {
     let workspace = Workspace(defaults: defaults)
     var finished = false
     workspace.restore(state) { finished = true }
-    let deadline = Date().addingTimeInterval(5)
-    while !finished, Date() < deadline { await Task.yield() }
+    _ = await waitUntil { finished }
 
     #expect(finished)
     #expect(workspace.projectURL == nil)
@@ -452,7 +443,7 @@ func sessionAllLoadsFailReturnsToWelcome() async throws {
 func sessionEmptyRestorePreservesNewDraft() throws {
     let (defaults, suite) = sessionDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-session-race-\(UUID().uuidString)",
                                 isDirectory: true)
     try FileManager.default.createDirectory(at: directory,

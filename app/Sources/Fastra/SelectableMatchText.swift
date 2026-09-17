@@ -28,27 +28,45 @@ struct SelectableMatchText: NSViewRepresentable {
     /// Group baut.
     @Binding var selection: NSRange
 
-    typealias NSViewType = NSTextView
+    typealias NSViewType = NSScrollView
 
-    func makeNSView(context: Context) -> NSTextView {
+    /// Der Textkasten hat seit dem Layout-Umbau 2026-09-15 eine FESTE Höhe
+    /// von einer Zeile (siehe `FloatingSearchDialog.detailTextHeight`).
+    /// Damit ein langer oder mehrzeiliger Treffer (`**` über Zeilengrenzen)
+    /// trotzdem vollständig erreichbar bleibt, liegt die NSTextView in einer
+    /// NSScrollView ohne sichtbare Balken: Der Inhalt scrollt per Trackpad
+    /// in beide Richtungen, nichts wird still abgeschnitten. Ohne ScrollView
+    /// zeichnete AppKit den Überhang über die Nachbarn, weil NSViews ihre
+    /// Subviews nicht beschneiden.
+    func makeNSView(context: Context) -> NSScrollView {
         let textView = NSTextView()
         textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.font = .fastraMonospaced(size: 13, scale: uiScale)
-        // Kein Umbruch nötig — Treffer sind kurz; bei Überlänge bricht
-        // NSTextView von selbst um (View wächst mit dem SwiftUI-Layout).
         textView.textContainerInset = .zero
         textView.textContainer?.lineFragmentPadding = 0
         textView.delegate = context.coordinator
-        // Höhe an den Inhalt koppeln, damit SwiftUI das Layout bestimmt.
-        textView.isVerticallyResizable = false
-        textView.isHorizontallyResizable = false
-        textView.setContentHuggingPriority(.required, for: .vertical)
-        return textView
+        // Kein Umbruch: Die Zeile läuft nach rechts weiter und scrollt.
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = true
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                                       height: CGFloat.greatestFiniteMagnitude)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                  height: CGFloat.greatestFiniteMagnitude)
+
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = false
+        scrollView.borderType = .noBorder
+        scrollView.documentView = textView
+        return scrollView
     }
 
-    func updateNSView(_ textView: NSTextView, context: Context) {
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView else { return }
         context.coordinator.parent = self
         textView.font = .fastraMonospaced(size: 13, scale: uiScale)
         // Inhalt + Attribute komplett neu setzen — der Text ist read-only
@@ -56,6 +74,8 @@ struct SelectableMatchText: NSViewRepresentable {
         // der springen könnte).
         if textView.string != matchText {
             textView.string = matchText
+            // Neuer Treffer → wieder an den Anfang scrollen.
+            scrollView.contentView.scroll(to: .zero)
         }
         applyGroupHighlights(to: textView)
     }

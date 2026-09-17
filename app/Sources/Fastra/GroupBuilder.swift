@@ -133,6 +133,14 @@ enum GroupBuilder {
                         matchText: String,
                         replacement: String,
                         caseSensitive: Bool) -> Proposal? {
+        // Verweigerung: Rückverweise (`\1`, `\k<name>`) im SUCHMUSTER zeigen
+        // ebenfalls auf Gruppennummern. Eine neue Klammer verschiebt diese
+        // Nummerierung, `insertParentheses` fasst das Muster aber nur an der
+        // Klammerstelle an. Gemessen: `(a)b\1` trifft „aba", `((a)b)\1` nicht
+        // mehr — es trifft „abab". Lieber verweigern als still eine andere
+        // Textmenge treffen (dieselbe Zusage wie in GroupRemoval).
+        if RegexBackreferences.contains(in: tokenization) { return nil }
+
         guard let snapUnits = units(pattern: pattern,
                                     tokenization: tokenization,
                                     matchText: matchText,
@@ -176,9 +184,16 @@ enum GroupBuilder {
 
         // Schritt 5c: Replace-Template anheben — alle `$N` mit N >= neuer
         // Nummer werden N+1, weil ab hier eine fangende Klammer dazukommt.
-        let rewritten = shiftBackreferencesUp(in: replacement,
-                                              atOrAbove: newGroupNumber,
-                                              groupCount: tokenization.groups.count)
+        // `rewritten` prüft dabei am Ergebnis nach, dass die Ersetzung
+        // denselben Text erzeugt wie vorher; wo das nicht geht, verweigern wir.
+        // Bei acht Gruppen zeigt `$9` zum Beispiel ins Leere, nach dem Einfügen
+        // gäbe es aber neun, und eine einstellige Ausweichnummer darüber
+        // existiert nicht.
+        let groupCount = tokenization.groups.count
+        guard let rewritten = ReplacementReferences.rewritten(
+            replacement, by: renumbering(insertingAt: newGroupNumber,
+                                         groupCount: groupCount)
+        ) else { return nil }
 
         return Proposal(snappedMatchRange: snappedMatchRange,
                         newPattern: newPattern,
@@ -206,15 +221,23 @@ enum GroupBuilder {
     static func shiftBackreferencesUp(in replacement: String,
                                       atOrAbove: Int,
                                       groupCount: Int) -> String {
-        ReplacementReferences.rewrite(in: replacement,
-                                      groupCount: groupCount,
-                                      newGroupCount: groupCount + 1) { number in
-            // Eine Referenz auf eine nicht vorhandene Gruppe zeigt ins Leere.
-            // Sie bleibt unangetastet — Verschieben würde nur den literalen
-            // Text daneben verändern, ohne etwas zu reparieren.
-            guard number > 0, number <= groupCount, number >= atOrAbove else { return nil }
-            return number + 1
-        }
+        ReplacementReferences.rewriteText(
+            replacement,
+            by: renumbering(insertingAt: atOrAbove, groupCount: groupCount)
+        )
+    }
+
+    /// Die Umnummerierung des Einfügens: Ab der neuen Nummer rückt jede
+    /// vorhandene Gruppe um eins nach hinten, `$0` und alles davor bleibt.
+    /// Wie ins Leere zeigende Referenzen behandelt werden, entscheidet
+    /// `ReplacementReferences` einheitlich für beide Aktionen.
+    private static func renumbering(insertingAt newNumber: Int,
+                                    groupCount: Int) -> ReplacementReferences.Renumbering {
+        ReplacementReferences.Renumbering(
+            groupCount: groupCount,
+            newGroupCount: groupCount + 1,
+            move: { number in number >= newNumber ? number + 1 : number }
+        )
     }
 
     // ─────────────────────────────────────────────────────────────────────

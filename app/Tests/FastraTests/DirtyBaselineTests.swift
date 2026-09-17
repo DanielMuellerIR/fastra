@@ -80,7 +80,7 @@ func dirtyStaysForSameLengthDifferentContent() {
 func baselineMovesToSavedState() throws {
     let (ws, suite) = makeWorkspace()
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-dirty-\(UUID().uuidString).txt")
     try "Start\n".write(to: url, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: url) }

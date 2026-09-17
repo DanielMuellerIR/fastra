@@ -62,11 +62,14 @@ Systemdialog über „PDF“ unten links.
 
 ## Suchen und Ersetzen
 
-⌘F öffnet die Suchmaske im Datei-Bereich, ⇧⌘F im Ordner-Bereich; ⌘E übernimmt
-die aktuelle Auswahl als Suchbegriff. Ist die Maske bereits offen und das
-Suchfeld befüllt, holen ⌘F und ⇧⌘F sie nur nach vorn — der gewählte Bereich und
-die Treffer bleiben erhalten; der Menüpunkt „In Ordnern suchen…“ wechselt
-dagegen immer in den Ordner-Bereich. Die Suche läuft **live beim Tippen**. In
+⌘F öffnet die Suchmaske im Datei-Bereich, ⇧⌘F im Projekt-Bereich (ohne
+geöffnetes Projekt im Ordner-Bereich); ⌘E übernimmt die aktuelle Auswahl als
+Suchbegriff. Ist die Maske bereits offen und das Suchfeld befüllt, holen ⌘F und
+⇧⌘F sie nur nach vorn — der gewählte Bereich und die Treffer bleiben erhalten;
+der Menüpunkt „In Projekt oder Ordnern suchen…“ wechselt dagegen immer in den
+Projekt- beziehungsweise Ordner-Bereich. Die Maske schließt mit Escape oder
+dem roten Punkt; die Trefferliste ist der einzige Bereich, der mit dem Fenster
+wächst. Die Suche läuft **live beim Tippen**. In
 der Trefferliste steht hinter jedem Fund der restliche Zeileninhalt als
 Kontext; bei sehr langen Zeilen endet er nach rund 400 Zeichen mit „…“. Im
 gerade sichtbaren Dokument werden die ersten 2 000 Treffer sofort farbig
@@ -95,8 +98,8 @@ Globs wie `userPreferences.*`, `foo?.txt` und `**` bleiben unverändert.
 Ordner-Treffer schließen den ganzen Unterbaum aus, Slash-Muster beziehen sich
 auf die Projektwurzel. Groß-/Kleinschreibung wird wie eingegeben beachtet.
 `DerivedData` bleibt bei jeder Projekt-Suche unabhängig von der Tiefe
-verbindlich ausgeschlossen und wird deshalb auch unter dem Eingabefeld
-angezeigt. Änderst du Suchbegriff, Dateityp oder Ausschlüsse, entfernt Fastra
+verbindlich ausgeschlossen; der Tooltip des Ausschlussfelds nennt das.
+Änderst du Suchbegriff, Dateityp oder Ausschlüsse, entfernt Fastra
 die alte Trefferliste sofort; Navigation, Vorschau und „Alle ersetzen“ werden
 erst mit dem Ergebnis des neuen Laufs wieder aktiv.
 
@@ -112,8 +115,9 @@ zur sichtbaren Trefferbasis; suche danach erneut.
 **Platzhalter (Wildcards):** Ohne RegEx-Modus steht `*` für beliebigen
 Text **innerhalb einer Zeile**, `**` auch **über Zeilengrenzen hinweg**.
 Jeder Platzhalter wird automatisch zu einer Capture-Gruppe: Die Pillen
-(`$1`, `$2` …) unter dem Ersetzen-Feld lassen sich **anklicken oder per
-Drag-and-drop** ins Ersetzen-Feld ziehen. Beispiel: Suchen `*, the`,
+(`$1`, `$2` …) rechts neben dem Ersetzen-Feld lassen sich **anklicken oder
+per Drag-and-drop** ins Ersetzen-Feld ziehen; bei vielen Gruppen scrollt die
+Pillenreihe seitlich. Beispiel: Suchen `*, the`,
 Ersetzen `The *` macht aus „ring, The“ → „The ring“. Der immer sichtbare
 Schalter „∗ wörtlich“ behandelt `*` als normales Zeichen. Er ist nur aktiv,
 wenn RegEx aus ist und der Suchausdruck mindestens ein `*` enthält.
@@ -203,7 +207,9 @@ der aktive Tab ist links vorbelegt.
   der Mauszeiger wird dort zum Verschiebe-Pfeil. Die linke Seite bekommt so
   mehr Platz, ohne dass das Fenster breiter werden muss; die rechte gibt
   genau diesen Platz ab. Die Aufteilung gilt für alle Vergleiche und bleibt
-  über Neustarts erhalten.
+  über Neustarts erhalten. Ein **Doppelklick auf den Trenner** stellt die
+  Werksteilung (halbe-halbe) wieder her. Mit VoiceOver lässt sich der Trenner
+  auch ohne Maus in Fünf-Prozent-Schritten verschieben.
 - **Soft Wrap:** Der Schalter in der Fußzeile wirkt auch hier und hat für die
   Vergleichsansicht eine eigene Einstellung, unabhängig von der Sprache der
   verglichenen Dateien. Eingeschaltet bricht zu langer Text in seiner Spalte
@@ -885,7 +891,7 @@ alles andere ist ausgeblendet; der Zähler über dem Baum zeigt
 „N von M Dateien“.
 Escape oder das X leeren den Filter und stellen den vorigen
 Aufklappzustand wieder her. Der Filter durchsucht nur NAMEN — für
-Inhalte gibt es „In Ordnern suchen…“ (⇧⌘F, auch als Link am leeren
+Inhalte gibt es „In Projekt oder Ordnern suchen…“ (⇧⌘F, auch als Link am leeren
 Filterergebnis).
 
 Ein Wechsel zwischen den Seitenleisten-Tabs ist kein Neuanfang: Filtertext
@@ -910,6 +916,10 @@ sichtbar, während der Dateien- oder Graph-Tab offen ist. Im Einzelnen:
   ausgecheckt, steht das im Auswahlmenü hinter seinem Namen: Git lässt denselben
   Branch nur an einer Stelle gleichzeitig zu. Fastra bietet dann an, dieses
   Verzeichnis als Projekt zu öffnen — der gesuchte Stand liegt dort schon.
+  Ist der Ordner inzwischen gelöscht, git aber noch nicht darüber informiert,
+  sagt Fastra das ebenfalls und nennt den Weg nach vorn: den verwaisten
+  Eintrag mit `git worktree prune` abmelden, danach ist der Branch wieder
+  frei.
 - **Änderungen:** Dateien bereitstellen/entnehmen, verwerfen und direkt
   committen. Nach einem lokalen Commit wird der Commit-Knopf zum Push-Knopf:
   Jeder lokal konfigurierte Remote erhält eine eigene vollständig klickbare

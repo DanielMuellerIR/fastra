@@ -5,7 +5,6 @@ set -o pipefail
 umask 077
 cd "$(dirname "$0")"
 . ./tools/gui-test-lock.sh
-acquire_fastra_gui_test_lock || exit 2
 TEST_PID=""
 cleanup() {
     local result=$?
@@ -19,6 +18,11 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 130' INT
+# Erst jetzt die maschinenweite Sperre erwerben: Vorher gehörte sie keinem
+# Trap, und ein Signal zwischen Erwerb und Trap-Installation ließ
+# `/tmp/fastra-gui-tests-$UID.lock` liegen. `soak-test.sh` und `selftest.sh`
+# machen es in dieser Reihenfolge.
+acquire_fastra_gui_test_lock || exit 2
 trap 'exit 143' TERM
 trap 'exit 129' HUP
 python3 tools/external-diff-test.py "$@" &

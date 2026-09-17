@@ -13,12 +13,22 @@ extension Notification.Name {
     /// befüllte Maske offen, holt der Kurzbefehl sie nur nach vorn und behält
     /// ihren Bereich (siehe `Workspace.searchScopeWhenPresenting`).
     static let fastraShowSearchFolder = Notification.Name("fastra.show.search.folder")
-    /// Menüpunkt „In Ordnern suchen…“ — anders als der Kurzbefehl ERZWINGT er
+    /// Nur für Selbsttests (`dialoglayout`): öffnet oder schließt eines der
+    /// Blätter der Suchmaske. `userInfo["sheet"]` ist "extraction",
+    /// "patterns", "example", "fileset" oder "close".
+    static let fastraSelfTestSearchSheet = Notification.Name("fastra.selftest.search.sheet")
+    /// Menüpunkt „In Projekt oder Ordnern suchen…“ — anders als der Kurzbefehl ERZWINGT er
     /// den Ordner-Bereich. Ein so beschrifteter Menüpunkt muss auch wirklich
     /// die Ordnersuche zeigen; bisher blieb er bei offener, befüllter Maske im
     /// Datei- oder Projektbereich stehen (Review 2026-08-06).
     static let fastraShowSearchFolderForced =
         Notification.Name("fastra.show.search.folder.forced")
+    /// Die Suchmaske des in `object` enthaltenen Workspace nach vorn holen und
+    /// das Suchfeld fokussieren. Nötig, wenn eine Aktion die Maske bei schon
+    /// gesetztem `showSearchDialog` braucht: Das Suchfenster ist kein
+    /// Floating-Panel und kann hinter dem Dokumentfenster liegen, und ein
+    /// unveränderter Wert löst kein `onChange` aus (Review-Fund 2026-09-17).
+    static let fastraBringSearchToFront = Notification.Name("fastra.bring.search.to.front")
     /// ESC im Suchfenster — Suchmaske ausblenden.
     static let fastraHideSearch       = Notification.Name("fastra.hide.search")
     /// CMD+G — zum nächsten Treffer springen.

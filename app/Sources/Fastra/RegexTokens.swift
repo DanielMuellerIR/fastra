@@ -82,3 +82,20 @@ struct RegexTokenization: Equatable {
 
     static let empty = RegexTokenization(tokens: [], groups: [], hasErrors: false)
 }
+
+/// Rückverweise im SUCHMUSTER (`\1`, `\k<name>`, `(?P=name)`). Sie zeigen
+/// wie `$N` im Replace-Template auf Gruppennummern — nur eben innerhalb des
+/// Suchausdrucks. Wer eine Gruppe einfügt oder auflöst, verschiebt genau
+/// diese Nummerierung; ein stehengebliebener Rückverweis trifft danach eine
+/// andere Textmenge oder lässt sich gar nicht mehr übersetzen.
+enum RegexBackreferences {
+    /// `true`, wenn das Muster überhaupt einen Rückverweis enthält.
+    ///
+    /// Bewusst grob: Ob ein einzelner Verweis von einer bestimmten Umnummerierung
+    /// betroffen wäre, hinge an Nummer, Name und Position. Fastra verweigert die
+    /// Aktion lieber einmal zu oft — ein falsch-negativer Fall kostet einen Beep,
+    /// ein falsch-positiver ein still verändertes Suchergebnis.
+    static func contains(in tokenization: RegexTokenization) -> Bool {
+        tokenization.tokens.contains { $0.kind == .backreference }
+    }
+}

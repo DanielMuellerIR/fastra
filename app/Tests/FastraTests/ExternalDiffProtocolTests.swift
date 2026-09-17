@@ -51,7 +51,7 @@ struct ExternalDiffProtocolTests {
 
     @Test("Dateiprüfung liest reguläre Dateien, folgt Links und weist FIFO sowie fehlende Rechte ab")
     func files() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let file = root.appendingPathComponent("ä text.txt")

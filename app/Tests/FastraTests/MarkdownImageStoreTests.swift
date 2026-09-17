@@ -11,7 +11,7 @@ import CodeEditTextView
 @testable import Fastra
 
 private func withTempDir(_ body: (URL) throws -> Void) throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-mdimage-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -124,7 +124,7 @@ func store_pastedData() throws {
 
 @Test("storePastedData: parallele Ablagen erhalten verschiedene Suffixnamen")
 func store_parallelPastedDataUsesSuffix() async throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-mdimage-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -214,7 +214,7 @@ func store_fileCollisionAndDedup() throws {
         let doc = dir.appendingPathComponent("Seite.md")
         try "x".write(to: doc, atomically: true, encoding: .utf8)
         // Quelle außerhalb des Dokumentordners.
-        let outside = FileManager.default.temporaryDirectory
+        let outside = testTemporaryDirectory()
             .appendingPathComponent("fastra-mdimage-src-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: outside) }
@@ -252,7 +252,7 @@ func store_fileCollisionAndDedup() throws {
 
 @Test("storeImageFile: parallele Namenskollision wird per Suffix aufgelöst")
 func store_parallelFileCollisionUsesSuffix() async throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-mdimage-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }

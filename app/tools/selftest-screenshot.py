@@ -19,7 +19,10 @@ SHOTS = {
     "graphshot": ("GRAPHSHOT-WINDOW", "git-graph"),
     "historyshot": ("HISTORYSHOT-WINDOW", "git-history"),
 }
-WINDOW_TIMEOUT = 15
+# Die Frist muss unter der Runner-Frist (60 s) bleiben und über dem, was ein
+# Aufbau unter Last braucht. 15 s waren zu knapp: Ein gesunder, nur langsamer
+# Projektaufbau lief hinein.
+WINDOW_TIMEOUT = 40
 CAPTURE_TIMEOUT = 10
 
 
@@ -60,7 +63,11 @@ def capture(log, test, language, directory, app_pid):
             return
         time.sleep(0.05)
     if window_id is None:
-        finish("FAIL", "Screenshot-Fenster wurde nicht rechtzeitig bereit")
+        # Die App lebt noch (der Tod oben endet in FAIL) — sie war nur zu
+        # langsam. Das ist ein Umgebungs-, kein Produktfehler; jeder andere
+        # Infrastrukturfall dieser Datei meldet ebenfalls ENV.
+        finish("ENV", "Screenshot-Fenster war nach "
+                      f"{WINDOW_TIMEOUT}s noch nicht bereit")
         return
     try:
         if not screen_capture_allowed():

@@ -384,7 +384,7 @@ func sideBySideCommitParents() {
 
 @Test("Reale Git-Diffs funktionieren für Sonderpfad, Index, Arbeitsbaum und Root-Commit")
 func gitIntegration_sideBySideRealRepository() async throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-diff-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -431,7 +431,7 @@ func gitIntegration_sideBySideRealRepository() async throws {
 
 @Test("Realer Merge-Konflikt wird nicht als leerer strukturierter Diff missverstanden")
 func gitIntegration_sideBySideRealMergeConflict() async throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-conflict-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -532,7 +532,7 @@ private func makeDiffWorkspace() async throws
     let defaults = testSuiteDefaults(named: suite)
     let workspace = Workspace(defaults: defaults, gitOperationsCoordinator: coordinator,
                               gitRepositoryStore: store)
-    let repo = FileManager.default.temporaryDirectory
+    let repo = testTemporaryDirectory()
         .appendingPathComponent("fastra-controlled-diff-\(UUID().uuidString)")
     workspace.openProject(at: repo)
     let oid = "abc123"
@@ -543,7 +543,7 @@ private func makeDiffWorkspace() async throws
                                            stdoutData: Data(),
                                            stderrData: Data()))
     executor.complete(2, result: GitResult(exitCode: 0,
-                                           stdoutData: Data("main\t*\n".utf8),
+                                           stdoutData: Data("main\t*\0\n".utf8),
                                            stderrData: Data()))
     executor.complete(3, result: GitResult(exitCode: 0,
                                            stdoutData: graphDiffSnapshot(oid),

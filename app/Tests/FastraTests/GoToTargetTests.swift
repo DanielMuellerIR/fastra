@@ -23,7 +23,7 @@ func phraseUnderCursor() {
 // MARK: - 4D-Provider
 
 private func makeFourDProject() throws -> URL {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .canonicalFileURL
         .appendingPathComponent("fastra-gototarget-\(UUID().uuidString)")
     let methods = root.appendingPathComponent("Project/Sources/Methods")
@@ -168,7 +168,7 @@ func markdownURLAndAnchor() {
 
 @Test("Markdown: relative Datei öffnet im Editor; fehlende meldet sich")
 func markdownRelativeFiles() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .canonicalFileURL
         .appendingPathComponent("fastra-mdtarget-\(UUID().uuidString)")
     try FileManager.default.createDirectory(

@@ -128,7 +128,12 @@ class ScreenshotTests(unittest.TestCase):
                 patch.object(screenshot.subprocess, "run") as command:
             self.capture()
             command.assert_not_called()
-        self.assertIn("status=FAIL", self.log.read_text())
+        # Kein Erfolg — und zwar als Umgebungsfehler: Die App lebt noch, sie
+        # war nur nicht rechtzeitig bereit. Ein FAIL behauptete einen
+        # Produktfehler, den es nicht gibt.
+        text = self.log.read_text()
+        self.assertIn("status=ENV", text)
+        self.assertNotIn("status=PASS", text)
         original = "SELFTEST-RESULT v=1 test=wildcardshot status=FAIL\nSELFTEST wildcardshot: FAIL\n"
         self.log.write_text(original)
         self.capture()

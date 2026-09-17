@@ -82,7 +82,7 @@ func welcomeTab_placeholderShowsInProjectWindow() throws {
     // lautet aber „alle neuen Dateien".
     let (ws, defaults, suite) = makeWelcomeWorkspace()
     defer { defaults.removePersistentDomain(forName: suite) }
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-welcometab-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root,
                                             withIntermediateDirectories: true)

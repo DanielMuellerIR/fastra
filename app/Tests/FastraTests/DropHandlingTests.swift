@@ -13,7 +13,7 @@ import Foundation
 /// am Ende wieder auf. Gibt den Wurzel-Ordner zurück.
 private func withTempDir(_ body: (URL) throws -> Void) rethrows {
     let fm = FileManager.default
-    let root = fm.temporaryDirectory.appendingPathComponent("fastra-drop-\(UUID().uuidString)")
+    let root = testTemporaryDirectory().appendingPathComponent("fastra-drop-\(UUID().uuidString)")
     try? fm.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? fm.removeItem(at: root) }
     try body(root)

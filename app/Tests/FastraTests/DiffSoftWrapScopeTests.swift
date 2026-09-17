@@ -45,6 +45,39 @@ struct DiffSoftWrapScopeTests {
         // Das Profil der verglichenen Sprache bleibt unberührt.
         #expect(ws.softWrapProfiles.isEnabled(for: .diff) == false)
         #expect(!ws.softWrapProfiles.hasOverride(for: .grammar(.swift)))
+
+        // Umbruchziel und feste Breite gehören dagegen zum Editor und bleiben
+        // am Dokumentformat. Die Fußzeile blendet sie im Vergleich aus; würde
+        // jemand sie dort später anbieten, müsste er sie mit umstellen — sonst
+        // schriebe der Vergleich still in das Sprachprofil.
+        ws.selectSoftWrapTarget(.fixedColumn)
+        ws.setSoftWrapFixedColumn(72)
+        #expect(ws.softWrapProfiles.target(for: .grammar(.swift)) == .fixedColumn)
+        #expect(ws.softWrapProfiles.fixedColumn(for: .grammar(.swift)) == 72)
+        #expect(ws.softWrapProfiles.target(for: .diff) == .window)
+    }
+
+    /// `activeTabShowsDiff` hat ZWEI Zweige. Ein Git-Diff-Tab, der versehentlich
+    /// auf das Sprachprofil statt auf `.diff` abbildete, fiele sonst keinem
+    /// Unit-Test auf — nur einem Fenster-Selbsttest mit laufender UI-Sitzung.
+    @Test("Auch ein Git-Diff-Tab nutzt das Vergleichsprofil")
+    @MainActor
+    func gitDiffTabUsesDiffProfile() {
+        let (defaults, suite) = freshDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let ws = Workspace(defaults: defaults)
+
+        let request = GitDiffRequest(repositoryPath: "/tmp/repo",
+                                     source: .unstaged(path: "quelle.swift"))
+        ws.tabs = [EditorTab(title: "Git-Diff: quelle.swift", path: "Vergleich",
+                             gitDiff: GitDiffTabState(request: request))]
+        ws.activeTabID = ws.tabs.first?.id
+
+        #expect(ws.activeTabShowsDiff)
+        #expect(ws.softWrapScopeFormatID == .diff)
+        ws.setSoftWrapEnabled(false)
+        #expect(ws.softWrapProfiles.isEnabled(for: .diff) == false)
+        #expect(!ws.softWrapProfiles.hasOverride(for: .grammar(.swift)))
     }
 
     @Test("Ein Textdokument bleibt beim Profil seines Formats")

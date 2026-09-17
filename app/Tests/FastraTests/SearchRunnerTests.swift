@@ -77,7 +77,7 @@ func searchInputsAreScopeSpecific() {
 @MainActor
 func projectFilterChangeInvalidatesVisiblePreviewImmediately() async throws {
     let fm = FileManager.default
-    let root = fm.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-runner-\(UUID().uuidString)", isDirectory: true)
     try fm.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? fm.removeItem(at: root) }
@@ -182,7 +182,7 @@ func bufferInputChangeInvalidatesNavigationImmediately() throws {
 @MainActor
 func folderPreviewSurvivesOpeningMatchedFile() async throws {
     let fm = FileManager.default
-    let root = fm.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-folder-hit-\(UUID().uuidString)",
                               isDirectory: true)
     try fm.createDirectory(at: root, withIntermediateDirectories: true)
@@ -406,7 +406,7 @@ func validationError_plainTextNeverInvalid() {
 @Test("Manuelle Kurzsuche überlebt einen wartenden Live-Auslöser")
 @MainActor
 func manualShortFolderSearchSurvivesDebounce() async throws {
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let root = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
     try "abc".write(to: root.appendingPathComponent("sample.txt"), atomically: true, encoding: .utf8)

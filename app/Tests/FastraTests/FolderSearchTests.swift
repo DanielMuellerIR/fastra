@@ -13,7 +13,7 @@ import Foundation
 private final class FolderCorpus {
     let root: URL
     init() throws {
-        root = FileManager.default.temporaryDirectory
+        root = testTemporaryDirectory()
             .appendingPathComponent("fastra-folder-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
@@ -40,7 +40,7 @@ private final class FolderCorpus {
 }
 
 private func makeRipgrepStub(_ body: String) throws -> URL {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-rg-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory,
                                             withIntermediateDirectories: true)
@@ -177,9 +177,12 @@ func ripgrepEnumerationDrainsBothPipes() throws {
     """)
     defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
 
+    // Großzügige Frist: Ein echter Pipe-Deadlock hängt unbegrenzt und reißt
+    // auch 60 s. Mit 5 s riss die Shell-Schleife aus 4000 `printf` im
+    // parallelen Gesamtlauf unter Last (2026-09-17, isoliert 0,2–0,9 s).
     let files = try RipgrepFileEnumerator.files(in: c.root,
                                                  executableURL: fixture,
-                                                 timeout: 5)
+                                                 timeout: 60)
     #expect(files.count == 4_000)
 }
 
@@ -467,7 +470,7 @@ func find_totalCap_usesTrueCountAcrossFiles() throws {
 
 @Test("Ordnersuche meldet Dateien über der navigierbaren Editorgrenze als zu groß")
 func folderSearchRejectsFilesThatOnlyChunkedEditorCouldOpen() throws {
-    let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let url = testTemporaryDirectory().appendingPathComponent(
         "fastra-folder-large-\(UUID().uuidString).txt")
     FileManager.default.createFile(atPath: url.path, contents: Data("Nadel".utf8))
     defer { try? FileManager.default.removeItem(at: url) }

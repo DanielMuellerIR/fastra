@@ -104,7 +104,7 @@ func routing_effectiveModePrefersValidChoice() {
 /// Schreibt ein einfarbiges PNG mit den gewünschten Pixelmaßen.
 private func writePNG(width: Int, height: Int,
                       color: NSColor = .systemRed) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-viewmode-\(UUID().uuidString).png")
     guard let rep = NSBitmapImageRep(
         bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
@@ -158,7 +158,7 @@ func saving_refusesBinaryDisplayModes() throws {
     let suite = "fastra-viewmode-\(UUID().uuidString)"
     let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
-    let target = FileManager.default.temporaryDirectory
+    let target = testTemporaryDirectory()
         .appendingPathComponent("fastra-viewmode-save-\(UUID().uuidString).png")
 
     let ws = Workspace(defaults: defaults)
@@ -179,7 +179,7 @@ func saving_refusesBinaryDisplayModes() throws {
 
 @Test("Kaputte Bilddatei → nil statt Crash oder Platzhalter")
 func downsampling_rejectsCorruptData() throws {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-viewmode-broken-\(UUID().uuidString).png")
     try Data([0x00, 0x01, 0x02, 0x03]).write(to: url)
     defer { try? FileManager.default.removeItem(at: url) }

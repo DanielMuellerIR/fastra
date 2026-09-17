@@ -833,7 +833,7 @@ struct AtomicFileCommitTests {
     }
 
     private func makeDirectory(_ suffix: String) throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+        let url = testTemporaryDirectory().appendingPathComponent(
             "fastra-atomic-commit-\(suffix)-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url,
                                                 withIntermediateDirectories: true)

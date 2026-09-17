@@ -222,7 +222,7 @@ struct MarkdownHTMLWhitelistStructureTests {
 
     @Test("Ein lokales Bild aus rohem HTML bekommt ein internes Token")
     func localImageFromRawHTMLIsTokenized() throws {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("fastra-whitelist-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }

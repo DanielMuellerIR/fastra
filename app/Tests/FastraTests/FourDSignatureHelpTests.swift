@@ -207,7 +207,7 @@ func contextSkipsMembersAndVariables() {
 
 @Test("methodFileURL findet die Methode unter Project/Sources/Methods")
 func resolvesMethodFile() throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-sig-\(UUID().uuidString)")
     let methods = root.appendingPathComponent("Project/Sources/Methods")
     try FileManager.default.createDirectory(
@@ -232,7 +232,7 @@ func resolvesMethodFile() throws {
 
 @Test("Signatur-Cache folgt einem umgehängten Methoden-Symlink")
 func signatureCache_resolvesSymlinkBeforeKeying() throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-siglink-\(UUID().uuidString)")
     let methods = root.appendingPathComponent("Project/Sources/Methods")
     try FileManager.default.createDirectory(at: methods,
@@ -273,7 +273,7 @@ func signatureCache_resolvesSymlinkBeforeKeying() throws {
 
 @Test("Signatur-Cache folgt auch einem umgehängten Archiv-Symlink")
 func signatureCache_resolvesArchiveSymlinkBeforeKeying() throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-sigziplink-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root,
                                             withIntermediateDirectories: true)
@@ -324,7 +324,7 @@ func signatureCache_resolvesArchiveSymlinkBeforeKeying() throws {
 
 @Test("Signaturhilfe lädt keine übergroße Methodendatei vollständig")
 func signatureResolverRejectsOversizeFile() throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-signature-limit-\(UUID().uuidString)")
     let methods = root.appendingPathComponent("Project/Sources/Methods")
     try FileManager.default.createDirectory(at: methods,

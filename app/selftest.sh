@@ -44,6 +44,16 @@ umask 077
 
 cd "$(dirname "$0")"
 
+# Ein von außen umgelenkter Sandbox-Elternordner kommt ausschließlich aus den
+# Runner-Fixtures der Unit-Tests (`SelfTestPerformanceTests`); kein
+# Produktlauf setzt ihn. Solche Läufe dürfen die echten Einstellungen und den
+# echten Saved State nie erreichen — `configure_product_state_overrides`
+# verlangt von ihnen deshalb eine Umlenkung auf Wegwerfziele. Die Abfrage
+# muss VOR `tools/test-sandbox.sh` stehen: Das Sourcing füllt die Variable
+# sonst mit ihrem Vorgabewert `/tmp`.
+SELFTEST_RUNS_INSIDE_TEST_FIXTURE=0
+[ -z "${FASTRA_TEST_SANDBOX_PARENT:-}" ] || SELFTEST_RUNS_INSIDE_TEST_FIXTURE=1
+
 # Gemeinsame, worktreeübergreifende Sperre für Fensterläufe.
 # shellcheck source=tools/gui-test-lock.sh
 . ./tools/gui-test-lock.sh
@@ -79,7 +89,7 @@ case "${FASTRA_SELFTEST_LANGUAGE:-}" in
     *) echo "Selbsttest-Sprache muss de oder en sein." >&2; exit 2 ;;
 esac
 
-ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions projectinput tabswitch tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit markdownimport filemodes selsearch wildcard openscope loadperf contrast cmdw)
+ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions searchlayout searchfocus dialoglayout projectinput tabswitch tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit markdownimport filemodes selsearch wildcard openscope loadperf contrast cmdw)
 # `windows` bleibt als gezielter Diagnosemodus verfügbar, prüft aber keine
 # Produktfunktion und startet deshalb nicht mehr in jedem Standardlauf.
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
@@ -100,7 +110,13 @@ BACKGROUND_ACTIVATION_BLOCKED_TESTS=(externaldiff newwindow finderreopen welcome
 # nicht auskommt, meldet dann einen Umgebungsfehler statt eines Erfolgs.
 if [[ -n "${FASTRA_SELFTEST_NO_ACTIVATION:-}" ]]; then
     read -r -a extra_no_activation_tests <<< "$FASTRA_SELFTEST_NO_ACTIVATION"
-    BACKGROUND_ACTIVATION_BLOCKED_TESTS+=("${extra_no_activation_tests[@]}")
+    # macOS liefert bash 3.2: Ein LEERES Array gilt unter `set -u` als unbound,
+    # und der Prozess stirbt hier mit Exit 1 — noch vor dem EXIT-Trap, also
+    # ohne Diagnose und ohne Zusammenfassung. Ein Wert aus lauter Leerzeichen
+    # ist genau dieser Fall (`-n` ist wahr, `read -a` liefert nichts).
+    if [[ ${#extra_no_activation_tests[@]} -gt 0 ]]; then
+        BACKGROUND_ACTIVATION_BLOCKED_TESTS+=("${extra_no_activation_tests[@]}")
+    fi
 fi
 # Diese Tests starten das konfigurierte App-Bundle über LaunchServices. Für sie
 # reicht ein vorhandenes separates Binary nicht: Der Bundle-Pfad muss ebenfalls
@@ -159,6 +175,11 @@ else
     STANDARD_RUN=1
     TESTS=("${ALL_TESTS[@]}")
 fi
+# Die BEAUFTRAGTE Zahl bleibt hier stehen. `TESTS` schrumpft bei gesperrtem
+# Bildschirm auf die fensterlosen Tests; die Schlussrechnung muss trotzdem
+# gegen alles Beauftragte aufgehen, sonst warnt sie fälschlich über die
+# herausgefilterten Skips (Review-Fund 2026-09-17).
+REQUESTED_TEST_COUNT=${#TESTS[@]}
 # Screenshot-Diagnosen verwenden denselben isolierten Start und dasselbe
 # Cleanup. Nur ausdrücklich gewählte Shot-Namen dürfen Bilddateien schreiben.
 SCREENSHOT_DIR="${FASTRA_SELFTEST_SCREENSHOT_DIR:-}"
@@ -548,9 +569,20 @@ kill_leftovers() {
 # LaunchServices-Prozess endete vorzeitig. Dessen Exit-Code kann der Runner
 # nicht abfragen, weil `open` statt des App-Prozesses sein Kind ist.
 WAIT_FOR_RESULT_EXIT=""
+# Liegt ein Ergebnis vor? Maßgeblich ist die PFLICHTZEILE des Protokolls; die
+# frei formulierte Begleitzeile zählt nur zusätzlich. Bis 2026-09-10 suchte die
+# Bereitschaftsprüfung ausschließlich `^SELFTEST ` — eine App, die nur die
+# Maschinenzeile schreibt (etwa weil die Begleitzeile beim Beenden verloren
+# geht), lief damit in den Timeout-Zweig, und der meldet hart FAIL. Ein per
+# Protokoll gemeldeter Umgebungsfehler wäre so zum Funktionsfehler geworden.
+selftest_result_line_present() {
+    grep -qE '^SELFTEST(-RESULT)? ' "$1" 2>/dev/null
+}
+
 wait_for_result() {
     local errfile="$1"
     local timeout_secs="${2:-$TIMEOUT_SECS}"
+    local direct_test_pid="${3:-${FASTRA_TEST_STARTED_PID:-}}"
     local waited_ticks=0
     local max_ticks=$((timeout_secs * 10))
     WAIT_FOR_RESULT_EXIT=""
@@ -559,7 +591,7 @@ wait_for_result() {
            && [ "${#STARTED_PIDS[@]}" -eq 0 ]; then
             remember_bundle_pids
         fi
-        if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
+        if selftest_result_line_present "$errfile"; then
             return 0
         fi
         if [ "${CURRENT_LAUNCH_MODE:-direct}" = "launchservices" ] \
@@ -580,7 +612,7 @@ wait_for_result() {
                 # Die App schreibt Maschinen- und Begleitzeile in einem
                 # gemeinsamen Block. Trotzdem nach dem beobachteten Ende ein
                 # letztes Mal lesen, bevor der Prozessabbruch gewinnt.
-                if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
+                if selftest_result_line_present "$errfile"; then
                     return 0
                 fi
                 return 4
@@ -595,14 +627,14 @@ wait_for_result() {
         # print-Test vier Minuten (Reviewfund 2026-08-19). Stattdessen wird
         # der Exit-Code sofort eingesammelt und getrennt gemeldet.
         if [ "${CURRENT_LAUNCH_MODE:-direct}" = "direct" ] \
-           && [ -n "${FASTRA_TEST_STARTED_PID:-}" ] \
-           && ! fastra_test_pid_is_live "$FASTRA_TEST_STARTED_PID"; then
+           && [ -n "$direct_test_pid" ] \
+           && ! fastra_test_pid_is_live "$direct_test_pid"; then
             # Die Ergebnis-Zeile kann unmittelbar vor dem Prozessende noch
             # geschrieben worden sein — einmal nachlesen, bevor der Tod zählt.
-            if grep -q '^SELFTEST ' "$errfile" 2>/dev/null; then
+            if selftest_result_line_present "$errfile"; then
                 return 0
             fi
-            wait "$FASTRA_TEST_STARTED_PID" 2>/dev/null
+            wait "$direct_test_pid" 2>/dev/null
             WAIT_FOR_RESULT_EXIT=$?
             return 3
         fi
@@ -930,6 +962,50 @@ PRODUCT_SAVED_STATE_BACKUP=""
 PRODUCT_SAVED_STATE_EXISTED=0
 PRODUCT_SAVED_STATE_SNAPSHOT_READY=0
 
+# Umlenkung der Produkt-Domain und des Saved-State-Ordners auf Wegwerfziele —
+# nur für Tests. Bis 2026-09-17 fuhren die Runner-Fixtures der Unit-Tests
+# dieses Skript gegen die ECHTE Domain `de.dm0.fastra`: Der Lauf importierte
+# beim Aufräumen den älteren Snapshot zurück und ersetzte den echten
+# Saved-State-Ordner, und das Test-`defer` löschte die einzige Sicherung
+# (Review-Fund 2026-09-17). Regeln:
+#   - Läuft das Skript in einer Fixture (Sandbox-Elternordner umgelenkt),
+#     MÜSSEN beide Variablen gesetzt sein; sonst Exit 2, bevor irgendetwas
+#     gesichert oder gestartet wird.
+#   - Die Domain muss die Sicherheitsregel der Test-Domains erfüllen
+#     (Testpräfix plus UUID, `fastra_test_defaults_domain_is_safe`), damit sie
+#     nie die echte Domain und nach einem Absturz vom Aufräumer erfasst wird.
+#   - Der Saved-State-Ordner muss direkt unter dem Sandbox-Elternordner liegen.
+#     `product_saved_state_path_is_safe` vergleicht weiterhin exakt gegen den
+#     dann gesetzten Pfad.
+configure_product_state_overrides() {
+    local domain="${FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN:-}"
+    local saved_state="${FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR:-}"
+    if [ "$SELFTEST_RUNS_INSIDE_TEST_FIXTURE" -eq 1 ] \
+       && { [ -z "$domain" ] || [ -z "$saved_state" ]; }; then
+        echo "✗ Testfixture ohne Umlenkung der echten Einstellungen: FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN und FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR müssen gesetzt sein." >&2
+        return 2
+    fi
+    if [ -n "$domain" ]; then
+        if ! fastra_test_defaults_domain_is_safe "$domain"; then
+            echo "✗ Unsichere Einstellungs-Domain für die Umlenkung: '$domain' (Testpräfix und UUID nötig)." >&2
+            return 2
+        fi
+        PRODUCT_DEFAULTS_DOMAIN="$domain"
+    fi
+    if [ -n "$saved_state" ]; then
+        case "$saved_state" in /*) ;; *)
+            echo "✗ Unsicherer Saved-State-Ordner für die Umlenkung: '$saved_state' ist kein absoluter Pfad." >&2
+            return 2 ;;
+        esac
+        if [ "$(dirname "$saved_state")" != "$FASTRA_TEST_SANDBOX_PARENT" ]; then
+            echo "✗ Unsicherer Saved-State-Ordner für die Umlenkung: '$saved_state' liegt nicht direkt unter dem Sandbox-Elternordner." >&2
+            return 2
+        fi
+        PRODUCT_SAVED_STATE_PARENT="$(dirname "$saved_state")"
+        PRODUCT_SAVED_STATE_DIR="$saved_state"
+    fi
+}
+
 foreign_fastra_process_is_running() {
     # Snapshot und Restore laufen nur, wenn alle runner-eigenen App-Prozesse
     # bereits beendet sind. Jede jetzt sichtbare Fastra-Instanz ist daher
@@ -967,6 +1043,20 @@ restore_product_defaults() {
         [ -f "$PRODUCT_DEFAULTS_BACKUP" ] || return 2
         /usr/bin/defaults import "$PRODUCT_DEFAULTS_DOMAIN" \
             "$PRODUCT_DEFAULTS_BACKUP" >/dev/null 2>&1 || return 2
+        # `defaults import` FÜHRT ZUSAMMEN: Ein Schlüssel, den der Lauf neu
+        # angelegt hat (etwa der Fensterrahmen des Einstellungsfensters aus
+        # `dialoglayout`), bliebe sonst in den echten Einstellungen stehen, und die
+        # Nachprüfung meldete Aufräumfehler (belegt 2026-09-17). Deshalb danach
+        # genau diese Schlüssel einzeln löschen. Bewusst NICHT die ganze Domain vor
+        # dem Import leeren: Ein Abbruch zwischen Leeren und Import hinterließe
+        # leere Einstellungen (Review-Fund 2026-09-17).
+        local added_key
+        while IFS= read -r -d '' added_key; do
+            /usr/bin/defaults delete "$PRODUCT_DEFAULTS_DOMAIN" "$added_key" >/dev/null 2>&1 || return 2
+        done < <(/usr/bin/defaults export "$PRODUCT_DEFAULTS_DOMAIN" - 2>/dev/null \
+            | /usr/bin/python3 -c 'import plistlib,sys
+a=plistlib.load(open(sys.argv[1],"rb")); b=plistlib.loads(sys.stdin.buffer.read())
+sys.stdout.write("".join(k+"\0" for k in b if k not in a))' "$PRODUCT_DEFAULTS_BACKUP")
         # Semantischer Vergleich statt Binärhash: plist-Ausgabe darf ihre
         # interne Reihenfolge ändern, Schlüssel und Werte aber nicht.
         /usr/bin/defaults export "$PRODUCT_DEFAULTS_DOMAIN" - 2>/dev/null \
@@ -1091,6 +1181,38 @@ preserve_selftest_pasteboard_recovery() {
 # Der Exit-Code des Abbruchs bleibt erhalten: Bei einem regulären Ende wird der
 # vorliegende Status weitergereicht, bei einem Signal beendet sich der Runner
 # selbst mit demselben Signal (der Aufrufer sieht also 128 + Signalnummer).
+# Darf dieser Lauf als Performance-Baseline in die Historie?
+#
+# Bewusst eine eigene Funktion und keine Bedingung mitten im Aufräumpfad: Das
+# ist die einzige Stelle, die die Zusage „nur ein vollständig grüner Lauf von
+# einem sauberen, währenddessen unveränderten Stand wird Baseline" durchsetzt,
+# und sie war bis 2026-09-10 vollständig ungetestet. Als Funktion lässt sie
+# sich gegen eine Matrix prüfen (SelfTestPerformanceTests).
+#
+# Alle Bedingungen lesen Variablen des Laufs:
+#   real_fail_count/env_fail_count/skip_count/not_run_count — vollständig grün?
+#   cleanup_env_errors                                      — sauber beendet?
+#   RUN_HEAD_START/END, RUN_BINARY_SHA_START/END            — Stand unverändert?
+#   RUN_DIRTY_START/END                                     — Arbeitsbaum sauber?
+# Achtung bei den beiden Dirty-Werten: LEER ist hier der Erfolgsfall, deshalb
+# `${VAR+gesetzt}` statt `${VAR:-…}` — die `:-`-Form greift auch bei leerem
+# Wert und hätte genau den sauberen Arbeitsbaum als schmutzig gewertet (vom
+# neuen Matrix-Test sofort gefunden).
+#   FASTRA_PERFORMANCE_BASELINE_RUN                         — ausdrücklich gewollt?
+performance_run_is_qualified() {
+    [ "${real_fail_count:-1}" -eq 0 ] || return 1
+    [ "${env_fail_count:-1}" -eq 0 ] || return 1
+    [ "${skip_count:-1}" -eq 0 ] || return 1
+    [ "${not_run_count:-0}" -eq 0 ] || return 1
+    [ "${cleanup_env_errors:-0}" -eq 0 ] || return 1
+    [ "${RUN_HEAD_START:-x}" = "${RUN_HEAD_END:-y}" ] || return 1
+    [ "${RUN_BINARY_SHA_START:-x}" = "${RUN_BINARY_SHA_END:-y}" ] || return 1
+    [ -n "${RUN_DIRTY_START+gesetzt}" ] && [ -z "$RUN_DIRTY_START" ] || return 1
+    [ -n "${RUN_DIRTY_END+gesetzt}" ] && [ -z "$RUN_DIRTY_END" ] || return 1
+    [ "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" = "1" ] || return 1
+    return 0
+}
+
 cleanup_on_exit() {
     local original_status=$?
     local sandbox_status=0
@@ -1167,11 +1289,7 @@ cleanup_on_exit() {
         RUN_BINARY_SHA_END="$(shasum -a 256 "$APP_BIN_ABSOLUTE" | awk '{print $1}')"
         RUN_DIRTY_END="$(git -C .. status --porcelain 2>/dev/null || true)"
         PERFORMANCE_QUALIFIED=""
-        if [[ $real_fail_count -eq 0 && $env_fail_count -eq 0 && $skip_count -eq 0 \
-              && "$RUN_HEAD_START" == "$RUN_HEAD_END" \
-              && "$RUN_BINARY_SHA_START" == "$RUN_BINARY_SHA_END" \
-              && -z "$RUN_DIRTY_START" && -z "$RUN_DIRTY_END" \
-              && "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" == "1" ]]; then
+        if performance_run_is_qualified; then
             PERFORMANCE_QUALIFIED="--qualified"
         fi
         PERFORMANCE_RECORDER_STATUS=0
@@ -1195,7 +1313,14 @@ cleanup_on_exit() {
     [[ -z "$performance_copy" ]] || rm -f -- "$performance_copy"
     if [[ "$sandbox_status" -ne 0 || "${SELFTEST_CLEANUP_FAILED:-0}" -ne 0 ]]; then
         echo "✗ Selbsttest-Aufräumen konnte nicht vollständig abgeschlossen werden." >&2
-        [ "$original_status" -ne 0 ] || exit 2
+        if [ "$original_status" -eq 0 ]; then
+            # Die Zusammenfassung steht zu diesem Zeitpunkt längst gedruckt und
+            # zeigt lauter Nullen. Ohne diese Korrektur läse sie sich als
+            # grüner Lauf, während der Prozess mit 2 endet.
+            echo "⚠ Ergebnis korrigiert: Der Lauf gilt trotz grüner Zusammenfassung" \
+                 "als Umgebungsfehler (Exit 2), weil das Aufräumen scheiterte." >&2
+            exit 2
+        fi
     fi
     exit "$original_status"
 }
@@ -1265,6 +1390,10 @@ cleanup_on_signal() {
     kill -"$signal" $$
 }
 
+# Vor Sperre, Sandbox und EXIT-Trap: Eine abgewiesene Umlenkung hinterlässt
+# so nichts, was aufzuräumen wäre.
+configure_product_state_overrides || exit 2
+
 trap cleanup_on_exit EXIT
 trap 'handle_runner_signal INT' INT
 trap 'handle_runner_signal TERM' TERM
@@ -1291,6 +1420,16 @@ pass_count=0
 real_fail_count=0
 env_fail_count=0
 skip_count=0
+# Aufräumfehler gehören NICHT in die Pro-Test-Summe: Sie treten zusätzlich zu
+# einem Testergebnis auf (ein Test kann in den Timeout laufen UND danach das
+# Aufräumen scheitern lassen) oder ganz ohne Test am Ende des Laufs. In
+# `env_fail_count` gezählt, überstieg die Summe die Zahl der gelaufenen Tests.
+cleanup_env_errors=0
+# Bricht der Lauf mitten in der Liste ab, sind die restlichen Tests weder
+# bestanden noch übersprungen — sie liefen nie. Ohne diese Zahl endete ein Lauf,
+# der beim ersten von 90 Tests abbrach, mit „PASS: 0 · … · übersprungen: 0",
+# und die Teilsummen gingen gegen die angeforderte Zahl nicht auf.
+not_run_count=0
 summary=""
 PERFORMANCE_SAMPLES_FILE="$(mktemp "$FASTRA_TEST_TMPDIR/performance.XXXXXX")"
 RUN_HEAD_START="$(git -C .. rev-parse HEAD 2>/dev/null || true)"
@@ -1324,8 +1463,10 @@ if [[ ${#SKIPPED_TESTS[@]} -gt 0 ]]; then
     done
 fi
 
+test_index=0
 for t in "${TESTS[@]}"; do
     CURRENT_TEST_NAME="$t"
+    test_index=$((test_index + 1))
     safe_test_name=$(printf '%s' "$t" | tr -c 'A-Za-z0-9._-' '_')
     [ -n "$safe_test_name" ] || safe_test_name="unknown"
     iteration_started="$(now_milliseconds)"
@@ -1451,10 +1592,13 @@ for t in "${TESTS[@]}"; do
         fi
     fi
 
+    # Der Aufnahmehelfer überschreibt `FASTRA_TEST_STARTED_PID` mit seiner
+    # eigenen PID. Für die Ergebnisprüfung bleibt deshalb die App-PID separat.
+    test_app_pid="$FASTRA_TEST_STARTED_PID"
     if [[ -n "$SCREENSHOT_DIR" ]]; then
         # Der Aufnahmehelfer gehört ebenfalls zur Prozessbuchhaltung. Ein
         # Signal beendet damit App und Capture-Werkzeug über denselben Pfad.
-        screenshot_app_pid="$FASTRA_TEST_STARTED_PID"
+        screenshot_app_pid="$test_app_pid"
         if ! TMPDIR="$FASTRA_TEST_TMPDIR/" \
             CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
             CFPREFERENCES_AVOID_DAEMON=1 HOME="$FASTRA_TEST_CF_HOME" \
@@ -1465,6 +1609,7 @@ for t in "${TESTS[@]}"; do
             || ! fastra_test_adopt_started_session; then
             emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: ENV — Aufnahmehelfer konnte nicht sicher gestartet werden"
+            summary+="⚠ $t (Aufnahmehelfer fehlgeschlagen)\n"
             env_fail_count=$((env_fail_count + 1))
             break
         fi
@@ -1472,7 +1617,7 @@ for t in "${TESTS[@]}"; do
 
     test_timeout_secs="$(timeout_for_test "$t")"
     wait_result=0
-    wait_for_result "$errfile" "$test_timeout_secs" || wait_result=$?
+    wait_for_result "$errfile" "$test_timeout_secs" "$test_app_pid" || wait_result=$?
     if [ "$wait_result" -ne 0 ]; then
         result_finished="$(now_milliseconds)"
         if [ "$wait_result" -eq 3 ]; then
@@ -1506,7 +1651,7 @@ for t in "${TESTS[@]}"; do
         echo "PERFORMANCE $t cleanup_ms=$cleanup_ms launch_to_result_ms=$launch_ms app_ms=-1 total_ms=$total_ms"
         if ! kill_leftovers 80; then
             summary+="⚠ Runner-Aufräumen nach $t fehlgeschlagen\n"
-            env_fail_count=$((env_fail_count + 1))
+            cleanup_env_errors=$((cleanup_env_errors + 1))
             break
         fi
         # Erst nach TERM/KILL und wait kopieren: Kindprozesse dürfen ihre
@@ -1573,9 +1718,19 @@ for t in "${TESTS[@]}"; do
     cleanup_coldopen_fixture
 done
 
-if ! kill_leftovers; then
+final_cleanup_failed=0
+kill_leftovers || final_cleanup_failed=1
+# Ein Prozess, der sich wirklich nicht beenden lässt, ist im Test nicht
+# verlässlich herstellbar. Dieser Hook stellt allein den Aufräumfehler NACH
+# einem grünen Lauf her — die Zeile prüft, dass er außerhalb der Pro-Test-Summe
+# bleibt und trotzdem Exit 2 erzwingt. Produktläufe setzen ihn nie
+# (Review-Hinweis 2026-09-17).
+if [ "${FASTRA_SELFTEST_TEST_FINAL_CLEANUP_FAILURE:-0}" = "1" ]; then
+    final_cleanup_failed=1
+fi
+if [ "$final_cleanup_failed" -ne 0 ]; then
     summary+="⚠ Abschließendes Runner-Aufräumen fehlgeschlagen\n"
-    env_fail_count=$((env_fail_count + 1))
+    cleanup_env_errors=$((cleanup_env_errors + 1))
 fi
 cleanup_coldopen_fixture
 
@@ -1583,14 +1738,34 @@ cleanup_coldopen_fixture
 
 [[ $STANDARD_RUN -eq 1 ]] && PERFORMANCE_RECORD_PENDING=1
 
+# Nach einem Abbruch mitten in der Liste sind die restlichen Tests nie
+# gelaufen. Sie werden ausdrücklich ausgewiesen, damit die Teilzahlen gegen die
+# Zahl der angeforderten Tests aufgehen.
+not_run_count=$(( ${#TESTS[@]} - test_index ))
+if [[ $not_run_count -gt 0 ]]; then
+    summary+="⚠ $not_run_count weitere(r) Test(s) nach dem Abbruch nicht ausgeführt\n"
+fi
+
 echo ""
 echo "── Selbsttest-Zusammenfassung ──"
 printf "%b" "$summary"
-echo "PASS: $pass_count · echte FAILs: $real_fail_count · Umgebungs-FAILs: $env_fail_count · übersprungen: $skip_count"
+summary_line="PASS: $pass_count · echte FAILs: $real_fail_count"
+summary_line+=" · Umgebungs-FAILs: $env_fail_count · übersprungen: $skip_count"
+[[ $not_run_count -eq 0 ]] || summary_line+=" · nicht ausgeführt: $not_run_count"
+[[ $cleanup_env_errors -eq 0 ]] || summary_line+=" · Aufräumfehler: $cleanup_env_errors"
+echo "$summary_line"
+# Gegenprobe: Die Pro-Test-Zahlen müssen die angeforderten Tests genau ergeben.
+# Aufräumfehler stehen bewusst daneben, sie gehören keinem einzelnen Test.
+accounted=$((pass_count + real_fail_count + env_fail_count + skip_count + not_run_count))
+if [[ $accounted -ne $REQUESTED_TEST_COUNT ]]; then
+    echo "⚠ Buchhaltung geht nicht auf: $accounted von $REQUESTED_TEST_COUNT angeforderten Tests ausgewiesen." >&2
+    cleanup_env_errors=$((cleanup_env_errors + 1))
+fi
 
 if [[ $real_fail_count -gt 0 ]]; then
     exit 1
-elif [[ $env_fail_count -gt 0 || $skip_count -gt 0 ]]; then
+elif [[ $env_fail_count -gt 0 || $skip_count -gt 0 || $not_run_count -gt 0 \
+        || $cleanup_env_errors -gt 0 ]]; then
     exit 2
 fi
 exit 0

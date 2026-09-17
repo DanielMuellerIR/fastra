@@ -7,7 +7,7 @@ import Testing
 @Test("Dauertest-Protokoll erhält frühere Phasen und meldet Schreibfehler")
 @MainActor
 func soakReportPreservesEarlierPhasesAndReportsWriteFailures() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-soak-report-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -257,7 +257,7 @@ func soakFocusOutcomePreservesFailures(_ failureFirst: Bool) {
 @MainActor
 func soakChecksVisibleTextAndFileRepresentation(_ mode: String) throws {
     _ = NSApplication.shared
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent("fastra-soak-content-\(UUID().uuidString)")
+    let root = testTemporaryDirectory().appendingPathComponent("fastra-soak-content-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let file = root.appendingPathComponent("document.txt")
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
@@ -579,7 +579,7 @@ func externalDiffHelperHasBoundedExecution(_ mode: String) async throws {
     var errors: [String]?
     let token = SelfTest.runExternalDiffHelper(
         URL(fileURLWithPath: "/bin/zsh"), arguments: ["-f", "-c", script],
-        in: FileManager.default.temporaryDirectory
+        in: testTemporaryDirectory()
     ) { result in
         DispatchQueue.main.async { errors = result }
     }
@@ -631,7 +631,7 @@ func typeScrollPixelsRequireTextChanges(_ mode: String) throws {
 @Test("Screenshot-Fixtures behalten sichtbare Namen ohne fremde Dateien zu verändern")
 @MainActor
 func screenshotFixtureDirectoriesAreOwned() throws {
-    let parent = FileManager.default.temporaryDirectory
+    let parent = testTemporaryDirectory()
         .appendingPathComponent("fastra-shot-isolation-test-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: false)
     defer {
@@ -650,7 +650,12 @@ func screenshotFixtureDirectoriesAreOwned() throws {
     let sandbox = parent.appendingPathComponent("runner-tmp")
     try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: false)
     let fromRunner = SelfTest.makeScreenshotFixtureDirectory(environment: ["TMPDIR": sandbox.path])
-    #expect(fromRunner.deletingLastPathComponent().standardizedFileURL == sandbox.standardizedFileURL)
+    // Pfadvergleich statt URL-Vergleich: `standardizedFileURL` hängt unter
+    // `/var/folders` einen Schrägstrich an, unter der `/tmp`-Sandbox von
+    // `test.sh` nicht (belegt 2026-09-17) — der URL-Vergleich hing damit am
+    // Ort der Sandbox, nicht am geprüften Verhalten.
+    #expect(fromRunner.deletingLastPathComponent().standardizedFileURL.path
+            == sandbox.standardizedFileURL.path)
     #expect(first != second)
     for root in [first, second, fromRunner] {
         let file = root.appendingPathComponent("Filmliste.txt")

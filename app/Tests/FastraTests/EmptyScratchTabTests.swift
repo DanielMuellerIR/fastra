@@ -84,7 +84,7 @@ func loadFile_removesEmptyScratchTab() async throws {
     ws.tabs = [scratch]
     ws.activeTabID = scratch.id
 
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-scratch-\(UUID().uuidString).txt")
     try "echte Datei\nZeile 2\n".write(to: url, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: url) }
@@ -113,7 +113,7 @@ func loadFile_keepsTypedUntitledTab() async throws {
     ws.tabs = [typed]
     ws.activeTabID = typed.id
 
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-scratch-\(UUID().uuidString).txt")
     try "echte Datei\n".write(to: url, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: url) }

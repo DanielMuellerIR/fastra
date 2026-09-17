@@ -15,9 +15,16 @@ struct TestProcessTimeout: Error, CustomStringConvertible {
 /// Gemeinsamer Prozesshelfer für CLI-Fixtures. Die Frist gilt auch dann, wenn
 /// der Elternprozess bereits endet, aber ein Kind seine Ausgabepipe offen hält.
 /// Eine eigene Prozessgruppe begrenzt die Aufräumarbeit auf dieses Fixture.
+///
+/// `operations` bündelt die Kernel-Abfragen der Wiederverwendungs-Wächter
+/// (Startzeit einer PID, Mitglieder der Prozessgruppe, Signal an genau eine
+/// PID). Standard sind die echten Aufrufe; nur Tests setzen Attrappen ein und
+/// spielen damit eine neu vergebene PID oder Gruppen-ID deterministisch durch
+/// (Review-Hinweis 2026-09-17).
 func runTestProcess(_ executable: String, arguments: [String],
                     environment: [String: String]? = nil,
-                    timeout: TimeInterval = 120) throws -> TestProcessResult {
+                    timeout: TimeInterval = 120,
+                    operations: ProcessGroupOperations = .live) throws -> TestProcessResult {
     precondition(timeout.isFinite && timeout > 0)
     func checked(_ status: Int32) throws {
         guard status == 0 else { throw POSIXError(POSIXErrorCode(rawValue: status) ?? .EIO) }
@@ -63,7 +70,6 @@ func runTestProcess(_ executable: String, arguments: [String],
     var pid: pid_t = 0
     try checked(posix_spawn(&pid, executable, &actions, &attributes, argv, envp))
     precondition(pid > 0)
-    let operations = ProcessGroupOperations.live
     // Vor waitpid merken: Selbst ein sofort beendetes Kind gehört bis zum
     // Abholen seines Status noch uns; seine PID kann nicht neu vergeben werden.
     let leaderToken = operations.startToken(pid)
@@ -153,8 +159,11 @@ func runTestProcess(_ executable: String, arguments: [String],
 /// Ohne diesen Nachweis bleibt die PID unberührt. Bei einem Gruppenleiter
 /// prüfen wir jedes Mitglied einzeln; ein beliebiges Kind legitimiert dagegen
 /// niemals das Beenden seiner gesamten (möglicherweise fremden) Prozessgruppe.
-func stopTestFixtureProcess(_ pid: pid_t, marker: String) {
-    let operations = ProcessGroupOperations.live
+/// `operations` ist wie bei `runTestProcess` nur für Attrappen in Tests da.
+/// Der Nachweis über `/bin/ps` bleibt absichtlich ein echter Prozessstart:
+/// Er muss die WIRKLICHE Kommandozeile der PID lesen.
+func stopTestFixtureProcess(_ pid: pid_t, marker: String,
+                            operations: ProcessGroupOperations = .live) {
     guard pid > 1, !marker.isEmpty,
           let token = operations.startToken(pid),
           let command = try? runTestProcess("/bin/ps", arguments: ["-ww", "-p", "\(pid)", "-o", "command="],

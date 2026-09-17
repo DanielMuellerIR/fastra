@@ -56,6 +56,41 @@ struct PatternLibraryTests {
         #expect(reloaded.templates.map(\.id) == [two.id, three.id])
     }
 
+    @Test("Eine bestehende Instanz sieht Speichern und Löschen eines anderen Fensters")
+    @MainActor func existingInstanceFollowsOtherWindow() async throws {
+        let store = defaults()
+        let writer = PatternLibrary(defaults: store)
+        let reader = PatternLibrary(defaults: store)
+        let template = PatternTemplate(id: "live", name: "Live", category: .words,
+                                       regex: "live", exampleMatch: "live")
+
+        try writer.save(template)
+        #expect(await waitUntil { reader.templates == [template] })
+        writer.delete(id: template.id)
+        #expect(await waitUntil { reader.templates.isEmpty })
+    }
+
+    @Test("Fremde Defaults-Schlüssel lösen kein Nachladen der Bibliothek aus")
+    @MainActor func foreignDefaultsChangeSkipsDecode() throws {
+        let store = defaults()
+        let library = PatternLibrary(defaults: store)
+        try library.save(PatternTemplate(id: "keep", name: "Bleibt", category: .words,
+                                         regex: "keep", exampleMatch: "keep"))
+        let before = library.reloadDecodeCount
+
+        store.set(42, forKey: "sidebarWidth")
+        library.reloadIfChanged()
+        #expect(library.reloadDecodeCount == before)
+
+        // Gegenprobe: Ein echter Fremdstand wird weiterhin dekodiert.
+        let other = PatternTemplate(id: "other", name: "Anders", category: .words,
+                                    regex: "other", exampleMatch: "other")
+        store.set(try JSONEncoder().encode([other]), forKey: PatternLibrary.defaultsKey)
+        library.reloadIfChanged()
+        #expect(library.reloadDecodeCount == before + 1)
+        #expect(library.templates == [other])
+    }
+
     @Test("Leere und eingebaute IDs können nicht als eigene Vorlage gespeichert werden")
     @MainActor func rejectsInvalidUserIDs() {
         let library = PatternLibrary(defaults: defaults())
@@ -74,7 +109,7 @@ struct PatternLibraryTests {
 
     @Test("Importdateien werden begrenzt gelesen")
     func boundsImportFileRead() throws {
-        let url = FileManager.default.temporaryDirectory
+        let url = testTemporaryDirectory()
             .appendingPathComponent("fastra-patterns-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
         try Data(repeating: 0x20,

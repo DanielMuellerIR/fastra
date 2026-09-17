@@ -36,9 +36,10 @@ final class SearchPanelController {
     private let compactMinHeight: CGFloat = 450
     private let folderMinHeight: CGFloat = 650
 
-    /// Mindestbreite der Maske. Bei unter ~620 px wickeln Toggles wie
-    /// „Groß-/Kleinschreibung" auf mehrere Zeilen um — das Layout
-    /// rutscht und sieht hässlich aus.
+    /// Untergrenze für ein degeneriertes gespeichertes Frame. Die WIRKSAME
+    /// Mindestbreite des Fensters setzt NSHostingController aus der
+    /// SwiftUI-Mindestgröße (`FloatingSearchDialog`, `.frame(minWidth:)`);
+    /// dieser Wert greift nur beim Reparieren eines kaputten Autosave-Frames.
     private let minWidth: CGFloat = 640
 
     init(workspace: Workspace) {

@@ -19,7 +19,7 @@ import Testing
 // MARK: - Gemeinsame Helfer
 
 private func reviewFixTempDirectory(_ suffix: String) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("Fastra-ReviewFix-\(suffix)-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

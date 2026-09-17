@@ -163,7 +163,7 @@ func plan_handlesUtf16WithBom() throws {
 
 @Test("plan()/apply()/undo() behandeln UTF-32 LE und BE symmetrisch und bytegenau")
 func plan_applyUndoHandlesUtf32BothEndiannesses() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-utf32-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -369,7 +369,7 @@ func plan_caseInsensitive() throws {
 @Test("wholeWord schließt 'foo' in 'foobar' aus")
 func plan_wholeWordExcludesSubstring() throws {
     // Eigener Mini-Korpus, damit der Test sich nicht auf many.txt verlässt.
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-wholeword-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -410,7 +410,7 @@ func plan_capturesAreInterpolated() throws {
 
 /// Liefert einen isolierten Backup-Root für einen einzelnen Test.
 private func makeBackupRoot() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-undo-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
@@ -622,7 +622,7 @@ func apply_doesNotLeakTempFilesNextToOriginal() throws {
 
 @Test("apply() bricht bei einem seit der Planung geänderten Ziel vollständig ab")
 func apply_staleTargetDoesNotStartTransaction() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-stale-apply-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -653,7 +653,7 @@ func apply_staleTargetDoesNotStartTransaction() throws {
 
 @Test("undo() überschreibt keine Änderung nach dem Apply und startet nicht partiell")
 func undo_changedTargetAbortsBeforeFirstRestore() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-stale-undo-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -687,7 +687,7 @@ private enum ApplyTestFailure: Error { case injected }
 
 @Test("partielle Apply-Session enthält nur wirklich geschriebene Dateien")
 func apply_partialSessionExcludesNeverWrittenTargets() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-partial-apply-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -736,7 +736,7 @@ func apply_partialSessionExcludesNeverWrittenTargets() throws {
 
 @Test("Apply verwirft pending nach einem Fehler vor dem atomaren Tausch")
 func apply_preSwapFailureExcludesNeverWrittenTarget() throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let directory = testTemporaryDirectory().appendingPathComponent(
         "fastra-apply-pre-swap-failure-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: directory,
@@ -767,7 +767,7 @@ func apply_preSwapFailureExcludesNeverWrittenTarget() throws {
 
 @Test("Crash-Fenster nach Replace bleibt als pending manifestiert und rückgängig")
 func apply_manifestFailureAfterReplaceRecoversPendingEntry() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-pending-apply-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -809,7 +809,7 @@ func apply_manifestFailureAfterReplaceRecoversPendingEntry() throws {
 
 @Test("Apply behält pending, wenn Replace erst schreibt und dann fehlschlägt")
 func apply_replaceFailureAfterSideEffectKeepsPendingEntry() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-replace-side-effect-\(UUID().uuidString)",
                                 isDirectory: true)
     let backups = try makeBackupRoot()
@@ -851,7 +851,7 @@ func apply_replaceFailureAfterSideEffectKeepsPendingEntry() throws {
 
 @Test("Partielles Undo persistiert Fortschritt und setzt beim Retry fort")
 func undo_partialFailureResumesFromPersistedState() throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = testTemporaryDirectory()
         .appendingPathComponent("fastra-partial-undo-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -967,7 +967,7 @@ private func makeTransaction(
 
 @Test("ApplyTransaction plant/sichert dateiweise und journalisiert den Erfolg")
 func transactionStagesSequentiallyAndApplies() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-transaction-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: directory,
@@ -1003,7 +1003,7 @@ func transactionStagesSequentiallyAndApplies() throws {
 
 @Test("ApplyTransaction behält pending nach wirksamem Replace-Fehler")
 func transactionReplaceFailureAfterSideEffectKeepsPendingEntry() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-transaction-side-effect-\(UUID().uuidString)",
                                 isDirectory: true)
     let backups = try makeBackupRoot()
@@ -1042,7 +1042,7 @@ func transactionReplaceFailureAfterSideEffectKeepsPendingEntry() throws {
 
 @Test("ApplyTransaction-Abbruch vor Preflight ist vollständig write-frei")
 func transactionCancellationBeforePreflightWritesNothing() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-transaction-cancel-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: directory,
@@ -1077,7 +1077,7 @@ func transactionCancellationBeforePreflightWritesNothing() throws {
 
 @Test("ApplyTransaction bricht während der RegEx-Planung einer großen Datei ab")
 func transactionCancellationInterruptsLargeFilePlanning() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-transaction-scan-cancel-\(UUID().uuidString)",
                                 isDirectory: true)
     let backups = try makeBackupRoot()
@@ -1112,7 +1112,7 @@ func transactionCancellationInterruptsLargeFilePlanning() throws {
 
 @Test("ApplyTransaction prüft alle Ziele erneut vor dem ersten Write")
 func transactionGlobalPreflightRejectsLateConflict() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-transaction-preflight-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: directory,
@@ -1144,7 +1144,7 @@ func transactionGlobalPreflightRejectsLateConflict() throws {
 
 @Test("Fremd-Replace nach dem letzten Apply-Preflight bleibt erhalten")
 func transactionForeignReplaceAfterPerFilePreflightIsPreserved() throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let directory = testTemporaryDirectory().appendingPathComponent(
         "fastra-apply-commit-race-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: directory,
@@ -1181,7 +1181,7 @@ func transactionForeignReplaceAfterPerFilePreflightIsPreserved() throws {
 
 @Test("Fremd-Replace nach dem letzten Undo-Preflight bleibt erhalten")
 func undoForeignReplaceAfterPerFilePreflightIsPreserved() throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let directory = testTemporaryDirectory().appendingPathComponent(
         "fastra-undo-commit-race-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: directory,
@@ -1220,7 +1220,7 @@ func undoForeignReplaceAfterPerFilePreflightIsPreserved() throws {
 
 @Test("Globaler Preflight prüft auch die wirkungslosen Eingaben")
 func transactionGlobalPreflightCoversEffectlessInputs() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-transaction-effectless-\(UUID().uuidString)",
                                 isDirectory: true)
     let backups = try makeBackupRoot()
@@ -1291,7 +1291,7 @@ private func makePreviewTransaction(files: [URL],
 
 @Test("Eine wirkungslose Datei wird übersprungen, die übrigen werden ersetzt")
 func transaction_skipsUnchangedFileAndAppliesTheRest() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-noop-mix-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: directory,
@@ -1325,7 +1325,7 @@ func transaction_skipsUnchangedFileAndAppliesTheRest() throws {
 
 @Test("Ändert sich keine einzige Datei, wird der Auftrag ehrlich abgelehnt")
 func transaction_refusesWhenNothingWouldChange() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-noop-all-\(UUID().uuidString)", isDirectory: true)
     let backups = try makeBackupRoot()
     try FileManager.default.createDirectory(at: directory,

@@ -11,7 +11,7 @@ import Testing
 @MainActor
 func openFileOrFolder_directoryOpensProject() throws {
     let fm = FileManager.default
-    let dir = fm.temporaryDirectory.appendingPathComponent("ff-\(UUID().uuidString)")
+    let dir = testTemporaryDirectory().appendingPathComponent("ff-\(UUID().uuidString)")
     try fm.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? fm.removeItem(at: dir) }
 
@@ -25,7 +25,7 @@ func openFileOrFolder_directoryOpensProject() throws {
 @MainActor
 func openFileOrFolder_fileOpensTab() async throws {
     let fm = FileManager.default
-    let file = fm.temporaryDirectory.appendingPathComponent("ff-\(UUID().uuidString).txt")
+    let file = testTemporaryDirectory().appendingPathComponent("ff-\(UUID().uuidString).txt")
     try "hallo".write(to: file, atomically: true, encoding: .utf8)
     defer { try? fm.removeItem(at: file) }
 
@@ -44,7 +44,7 @@ func openFileOrFolder_fileOpensTab() async throws {
 @Test("Projektwechsel schließt nur saubere Dateien außerhalb des neuen Ordners")
 @MainActor
 func openProject_prunesOnlyCleanOutsideFiles() throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("ff-project-\(UUID().uuidString)")
     let inside = root.appendingPathComponent("inside.txt")
     let outside = root.deletingLastPathComponent().appendingPathComponent("outside-\(UUID()).txt")

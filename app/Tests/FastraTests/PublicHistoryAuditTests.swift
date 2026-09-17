@@ -62,7 +62,7 @@ private func fixtureGit(_ arguments: [String], in root: URL) throws -> HistoryAu
 /// relativ zu SEINEM eigenen Ort (`cd "$(dirname "$0")/.."`), deshalb wird es
 /// in das `app/`-Verzeichnis des Fixtures kopiert.
 private func makeHistoryFixtureRepo() throws -> URL {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-historyaudit-\(UUID().uuidString)")
     let appDirectory = root.appendingPathComponent("app")
     try FileManager.default.createDirectory(at: appDirectory,

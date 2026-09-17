@@ -161,7 +161,6 @@ func workspaceKeepsSoftWrapAvailableForLongLine() {
     workspace.activeTabID = tab.id
 
     #expect(workspace.activeDocumentFormat.id == .plainText)
-    #expect(workspace.configuredSoftWrapEnabled)
     #expect(workspace.softWrapEnabled)
     #expect(workspace.softWrapTarget == .window)
     #expect(workspace.effectiveSoftWrapColumn == nil)

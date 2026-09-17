@@ -54,7 +54,7 @@ private func syncFailure(_ stderr: String) -> GitExecutionOutcome {
 }
 
 private func syncRepository(_ suffix: String) -> URL {
-    FileManager.default.temporaryDirectory
+    testTemporaryDirectory()
         .appendingPathComponent("Fastra-GitSync-\(suffix)-\(UUID().uuidString)")
 }
 
@@ -315,7 +315,7 @@ struct GitFetchStoreTests {
             exitCode: 0, stdoutData: syncPorcelain(oid: head), stderrData: Data()
         )))
         executor.complete(1, syncSuccess())
-        executor.complete(2, syncSuccess("main\t*\n"))
+        executor.complete(2, syncSuccess("main\t*\0\n"))
         executor.complete(3, .completed(GitResult(
             exitCode: 0, stdoutData: syncGraph(head), stderrData: Data()
         )))
@@ -469,7 +469,7 @@ struct GitFetchStoreTests {
                                                    stdoutData: syncPorcelain(),
                                                    stderrData: Data())))
         executor.complete(1, syncSuccess())
-        executor.complete(2, syncSuccess("main\t*\n"))
+        executor.complete(2, syncSuccess("main\t*\0\n"))
         executor.complete(3, .completed(GitResult(exitCode: 0,
                                                    stdoutData: syncGraph(),
                                                    stderrData: Data())))
@@ -823,7 +823,7 @@ struct GitWorkspacePullTests {
             .map { root.appendingPathComponent($0.1).path }
             .joined(separator: "\n") + "\n"
         executor.complete(1, syncSuccess(absentMarkers))
-        executor.complete(2, syncSuccess("main\t*\n"))
+        executor.complete(2, syncSuccess("main\t*\0\n"))
         executor.complete(3, .completed(GitResult(exitCode: 0,
                                                    stdoutData: syncGraph(),
                                                    stderrData: Data())))

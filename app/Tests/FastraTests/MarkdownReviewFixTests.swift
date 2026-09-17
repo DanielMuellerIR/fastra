@@ -22,7 +22,7 @@ import Testing
 
 /// Temporäres Arbeitsverzeichnis, das am Ende wieder verschwindet.
 private func makeTempDirectory() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-mdreview-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
@@ -213,7 +213,11 @@ func imageStore_serializesDirectoryCreationAndCopy() async throws {
     let mayFinishCopy = DispatchSemaphore(value: 0)
     let outcomes = StoreOutcomes()
 
-    DispatchQueue.global().async {
+    // Eigene Threads statt `DispatchQueue.global()`: Im parallelen Gesamtlauf
+    // war der globale Pool so ausgelastet, dass der Block nicht binnen zehn
+    // Sekunden startete (2026-09-17, isoliert grün). Die Semaphore-Wartezeiten
+    // messen dann Fremdlast statt des Ordner-Locks.
+    Thread {
         do {
             _ = try MarkdownImageStore.storeImageFile(first, documentURL: document,
                 hooks: .init(afterOpeningImagesDirectory: {
@@ -224,13 +228,15 @@ func imageStore_serializesDirectoryCreationAndCopy() async throws {
         } catch {
             outcomes.finish("erster", error: error)
         }
-    }
+    }.start()
     // Ab hier hat der erste Vorgang den `images`-Ordner angelegt und hängt
     // mitten im Kopieren.
-    #expect(reachedCopy.wait(timeout: .now() + 10) == .success)
+    // Nicht blockierend warten: Ein `wait` mit Frist hielte einen Thread des
+    // kooperativen Pools fest, den der parallele Lauf gerade braucht.
+    #expect(await waitUntil(timeout: 30) { reachedCopy.wait(timeout: .now()) == .success })
 
     let secondStarted = DispatchSemaphore(value: 0)
-    DispatchQueue.global().async {
+    Thread {
         secondStarted.signal()
         do {
             _ = try MarkdownImageStore.storeImageFile(second, documentURL: document,
@@ -239,10 +245,10 @@ func imageStore_serializesDirectoryCreationAndCopy() async throws {
         } catch {
             outcomes.finish("zweiter", error: error)
         }
-    }
+    }.start()
     // Ohne diesen Beweis könnte der Test grün sein, weil der zweite Vorgang
     // gar nicht erst losgelaufen ist.
-    #expect(secondStarted.wait(timeout: .now() + 10) == .success)
+    #expect(await waitUntil(timeout: 30) { secondStarted.wait(timeout: .now()) == .success })
     // Reichlich Zeit: Ohne Lock wäre der zweite Vorgang längst durch (er
     // kopiert nur wenige Bytes) — und genau dann könnte das `defer` des
     // ersten Vorgangs ihm den Zielordner unter den Füßen wegnehmen.

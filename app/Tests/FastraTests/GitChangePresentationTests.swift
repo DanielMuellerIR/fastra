@@ -96,7 +96,7 @@ func gitFileSnapshot_loadsDeletedFileIntoReadOnlyTab() async {
     let executor = GitSnapshotTestExecutor()
     let coordinator = GitOperationsCoordinator(executor: executor)
     let ws = Workspace(defaults: defaults, gitOperationsCoordinator: coordinator)
-    let repository = FileManager.default.temporaryDirectory
+    let repository = testTemporaryDirectory()
         .appendingPathComponent("fastra-deleted-preview-\(UUID().uuidString)")
     ws.projectURL = repository
 
@@ -151,7 +151,7 @@ func gitFileSnapshot_mixedDeletionUsesIndexForStagedRow() async {
     let executor = GitSnapshotTestExecutor()
     let ws = Workspace(defaults: defaults,
                        gitOperationsCoordinator: GitOperationsCoordinator(executor: executor))
-    ws.projectURL = FileManager.default.temporaryDirectory
+    ws.projectURL = testTemporaryDirectory()
         .appendingPathComponent("fastra-mixed-delete-\(UUID().uuidString)")
     let mixed = GitChange(path: "gemischt.txt", staged: .modified,
                           unstaged: .deleted)
@@ -173,7 +173,7 @@ func gitFileSnapshot_projectCloseFinalizesCancelledTab() async {
     let executor = GitSnapshotTestExecutor()
     let ws = Workspace(defaults: defaults,
                        gitOperationsCoordinator: GitOperationsCoordinator(executor: executor))
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-snapshot-close-\(UUID().uuidString)")
     ws.projectURL = root
     let deleted = GitChange(path: "weg.txt", staged: nil, unstaged: .deleted)
@@ -197,7 +197,7 @@ func gitFileSnapshot_refreshGenerationRejectsOldCompletion() async {
     let executor = GitSnapshotTestExecutor()
     let ws = Workspace(defaults: defaults,
                        gitOperationsCoordinator: GitOperationsCoordinator(executor: executor))
-    ws.projectURL = FileManager.default.temporaryDirectory
+    ws.projectURL = testTemporaryDirectory()
         .appendingPathComponent("fastra-snapshot-generation-\(UUID().uuidString)")
     let deleted = GitChange(path: "weg.txt", staged: nil, unstaged: .deleted)
     ws.openGitChangeFile(change: deleted, staged: false, preview: true)
@@ -221,7 +221,7 @@ func gitChangePreview_reusesThenPinsTab() async throws {
     let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let ws = Workspace(defaults: defaults)
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-change-preview-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory,
                                             withIntermediateDirectories: true)
@@ -258,7 +258,7 @@ func gitChangePreview_reuseChangesDocumentIdentity() async throws {
     let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let ws = Workspace(defaults: defaults)
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-preview-document-id-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory,
                                             withIntermediateDirectories: true)
@@ -288,7 +288,7 @@ func gitChangePreview_projectCloseDoesNotReopenRepository() async throws {
     let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let ws = Workspace(defaults: defaults)
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-preview-context-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory,
                                             withIntermediateDirectories: true)
@@ -313,7 +313,7 @@ func gitChangePreview_failedReplacementRestoresScratch() async throws {
     let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let ws = Workspace(defaults: defaults)
-    let existing = FileManager.default.temporaryDirectory
+    let existing = testTemporaryDirectory()
         .appendingPathComponent("fastra-preview-ok-\(UUID().uuidString).txt")
     defer { try? FileManager.default.removeItem(at: existing) }
     try "vorhanden".write(to: existing, atomically: true, encoding: .utf8)
@@ -323,7 +323,7 @@ func gitChangePreview_failedReplacementRestoresScratch() async throws {
     await waitUntil { firstDone }
     #expect(ws.tabs.count == 1)
 
-    let missing = FileManager.default.temporaryDirectory
+    let missing = testTemporaryDirectory()
         .appendingPathComponent("fastra-preview-fehlt-\(UUID().uuidString).txt")
     var secondResult: Bool?
     ws.loadFile(at: missing, preview: true) { secondResult = $0 }

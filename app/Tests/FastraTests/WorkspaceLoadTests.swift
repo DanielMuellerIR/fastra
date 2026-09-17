@@ -22,7 +22,7 @@ private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
 /// nicht als zwei Dateien gelten). Ohne diese Angleichung schlügen die
 /// `$0.url == url`-Vergleiche in Temp-Verzeichnissen fehl.
 private func writeTmpUTF8(_ content: String) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-wsload-\(UUID().uuidString).txt")
     try content.write(to: url, atomically: true, encoding: .utf8)
     return url.canonicalFileURL
@@ -71,10 +71,7 @@ func wsLoad_placeholderIsLoadingImmediately() async throws {
             "während des Ladens darf kein Willkommens-Platzhalter sichtbar sein")
 
     // Jetzt auf die Completion warten (max. 5 s).
-    let deadline = Date().addingTimeInterval(5)
-    while !completionCalled, Date() < deadline {
-        await Task.yield()
-    }
+    _ = await waitUntil { completionCalled }
     #expect(completionCalled, "Completion wurde nie aufgerufen")
     // Nach erfolgreichem Laden ist der unberührte Start-Tab abgeräumt.
     #expect(ws.tabs.count == 1, "Start-Tab muss nach dem Laden abgeräumt sein")
@@ -96,10 +93,7 @@ func wsLoad_afterCompletionContentLoaded() async throws {
     ws.loadFile(at: url) { ok in completionResult = ok }
 
     // Auf Completion warten.
-    let deadline = Date().addingTimeInterval(5)
-    while completionResult == nil, Date() < deadline {
-        await Task.yield()
-    }
+    _ = await waitUntil { completionResult != nil }
 
     // Nach der Completion: Tab fertig geladen.
     #expect(completionResult == true, "Completion soll true liefern")
@@ -160,10 +154,7 @@ func wsLoad_nonexistentFile_placeholderRemoved() async throws {
     ws.loadFile(at: ghost) { ok in completionResult = ok }
 
     // Auf Completion warten.
-    let deadline = Date().addingTimeInterval(5)
-    while completionResult == nil, Date() < deadline {
-        await Task.yield()
-    }
+    _ = await waitUntil { completionResult != nil }
 
     #expect(completionResult == false, "Fehlerfall: Completion soll false liefern")
     #expect(ws.tabs.count == tabsBefore,
@@ -229,10 +220,7 @@ func wsLoad_discardedPlaceholderKeepsUserChosenActiveTab() async throws {
     for url in [urlA, urlB] {
         var done: Bool? = nil
         ws.loadFile(at: url) { ok in done = ok }
-        let deadline = Date().addingTimeInterval(5)
-        while done == nil, Date() < deadline {
-            await Task.yield()
-        }
+        _ = await waitUntil { done != nil }
         #expect(done == true, "Vorbereitendes Laden muss gelingen")
     }
 
@@ -255,10 +243,7 @@ func wsLoad_discardedPlaceholderKeepsUserChosenActiveTab() async throws {
 
     // Großzügige Frist: Unter paralleler Testlast kann der Hintergrund-Task
     // des Ladevorgangs deutlich später drankommen als auf leerer Maschine.
-    let deadline = Date().addingTimeInterval(30)
-    while completionResult == nil, Date() < deadline {
-        await Task.yield()
-    }
+    _ = await waitUntil(timeout: 30) { completionResult != nil }
     #expect(completionResult == false, "Entwerteter Ladevorgang muss false melden")
     #expect(ws.tabs.first(where: { $0.url == urlC }) == nil,
             "Der verworfene Platzhalter darf nicht zurückbleiben")

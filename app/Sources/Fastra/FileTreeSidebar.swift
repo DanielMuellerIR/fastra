@@ -238,6 +238,13 @@ struct FileTreeSidebar: View {
 
                         Button {
                             workspace.refreshGitStatus()
+                            // Der Status-Scope behält die Branch-Liste aus dem
+                            // letzten vollständigen Snapshot. Ohne diesen
+                            // zweiten Aufruf bliebe das Etikett „(anderes
+                            // Arbeitsverzeichnis)" auch dann stehen, wenn der
+                            // fremde Worktree längst entfernt ist — und für
+                            // einen frisch angelegten fehlte es genauso lange.
+                            workspace.refreshGitBranches()
                         } label: {
                             Image(systemName: "arrow.clockwise")
                                 .fastraFont(size: 9, weight: .semibold)
@@ -395,7 +402,7 @@ struct FileTreeSidebar: View {
                 // Escape leert den Filter — der Baum zeigt danach wieder
                 // seinen alten Aufklappzustand (der blieb unangetastet).
                 .onExitCommand { workspace.fileTreeFilterQuery = "" }
-                .help("Filtert den Dateibaum nach Dateinamen (Teilstring, Groß-/Kleinschreibung egal). Inhalte durchsucht „In Ordnern suchen…“ (⇧⌘F).")
+                .help("Filtert den Dateibaum nach Dateinamen (Teilstring, Groß-/Kleinschreibung egal). Inhalte durchsucht „In Projekt oder Ordnern suchen…“ (⇧⌘F).")
             if !workspace.fileTreeFilterQuery.isEmpty {
                 Button {
                     workspace.fileTreeFilterQuery = ""
@@ -455,14 +462,15 @@ struct FileTreeSidebar: View {
             // Brücke zur Volltextsuche: Der Dateibaum filtert nur NAMEN —
             // wer Inhalte sucht, landet hier richtig.
             Button {
-                workspace.scope = .folder
-                workspace.showSearchDialog = true
+                // Mit Projekt im Projekt-Bereich, sonst in den gemerkten
+                // Ordnern — derselbe Einstieg wie ⇧⌘F (Review-Fund 2026-09-16).
+                workspace.presentMultiFileContentSearch()
             } label: {
                 Label(L10n.string("Im Inhalt suchen…"), systemImage: "text.magnifyingglass")
                     .fastraFont(.small)
             }
             .buttonStyle(.link)
-            .help("Öffnet den Suchdialog mit Ordner-Bereich für die Volltextsuche.")
+            .help("Öffnet den Suchdialog für die Volltextsuche im Projekt beziehungsweise in den Ordnern.")
             Spacer()
         }
         .padding(.horizontal, 14)

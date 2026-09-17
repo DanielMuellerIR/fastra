@@ -6,21 +6,35 @@ import Testing
 struct GitBranchTests {
     @Test("Parser erkennt aktuellen Branch und behält Leerzeichen")
     func parsesBranches() {
-        let branches = GitBranchList.parse("feature/eins\t \nmain\t*\nmit leerzeichen\t \n")
+        let branches = GitBranchList.parse(
+            "feature/eins\t \0\nmain\t*\0\nmit leerzeichen\t \0\n"
+        )
         #expect(branches.map(\.name) == ["feature/eins", "main", "mit leerzeichen"])
         #expect(branches.map(\.isCurrent) == [false, true, false])
         #expect(branches.allSatisfy { $0.blockingWorktree == nil })
     }
 
-    @Test("Leere Zeilen werden ignoriert")
+    @Test("Leere Datensätze werden ignoriert")
     func ignoresEmptyLines() {
-        #expect(GitBranchList.parse("\n\n").isEmpty)
+        #expect(GitBranchList.parse("\0\n\0\n").isEmpty)
+        // Ein Repository ohne lokale Branches liefert gar nichts.
+        #expect(GitBranchList.parse("").isEmpty)
+    }
+
+    /// Kürzt `GitRunner` die Ausgabe an der Byte-Grenze, endet der letzte
+    /// Datensatz ohne Nullbyte. Sein halber Branchname darf nicht ins Menü —
+    /// ein Klick darauf startete `git switch` mit einem Namen, den es nicht
+    /// gibt.
+    @Test("Ein abgeschnittener letzter Datensatz zählt nicht")
+    func ignoresTruncatedTrailingRecord() {
+        let branches = GitBranchList.parse("main\t*\0\nfeature/lang")
+        #expect(branches.map(\.name) == ["main"])
     }
 
     @Test("Ein fremdes Arbeitsverzeichnis blockiert den Branch")
     func marksBranchHeldByAnotherWorktree() {
         let branches = GitBranchList.parse(
-            "feature\t \t/pfad/zum/worktree\nmain\t*\t/pfad/zum/projekt\n"
+            "feature\t \t/pfad/zum/worktree\0\nmain\t*\t/pfad/zum/projekt\0\n"
         )
         #expect(branches.first?.blockingWorktree == "/pfad/zum/worktree")
         // Der EIGENE Worktree steht ebenfalls in der Ausgabe. Er blockiert
@@ -31,13 +45,27 @@ struct GitBranchTests {
 
     @Test("Ein Tab im Verzeichnisnamen zerlegt die Zeile nicht")
     func keepsTabsInsideWorktreePath() {
-        let branches = GitBranchList.parse("feature\t \t/pfad/mit\ttab\n")
+        let branches = GitBranchList.parse("feature\t \t/pfad/mit\ttab\0\n")
         #expect(branches.first?.blockingWorktree == "/pfad/mit\ttab")
+    }
+
+    /// macOS erlaubt in Verzeichnisnamen jedes Zeichen außer `/` und NUL —
+    /// auch Zeilenumbrüche und die exotischen Trenner U+0085/U+2028/U+2029.
+    /// Eine zeilenweise Zerlegung hätte daraus einen zweiten, erfundenen
+    /// Branch gemacht, dessen Anklicken `git switch <Pfadrest>` gestartet
+    /// hätte. Der Datensatz endet deshalb am Nullbyte.
+    @Test("Zeilentrenner im Verzeichnisnamen erzeugen keinen Phantom-Branch",
+          arguments: ["\n", "\r", "\u{0085}", "\u{2028}", "\u{2029}"])
+    func keepsLineSeparatorsInsideWorktreePath(separator: String) {
+        let pfad = "/pfad/mit\(separator)umbruch"
+        let branches = GitBranchList.parse("feature\t \t\(pfad)\0\nmain\t*\t/projekt\0\n")
+        #expect(branches.map(\.name) == ["feature", "main"])
+        #expect(branches.first?.blockingWorktree == pfad)
     }
 
     @Test("Ohne Worktree-Feld bleibt der Branch frei (ältere git-Ausgabe)")
     func toleratesMissingWorktreeField() {
-        let branches = GitBranchList.parse("feature\t \n")
+        let branches = GitBranchList.parse("feature\t \0\n")
         #expect(branches.first?.blockingWorktree == nil)
     }
 
@@ -56,27 +84,24 @@ struct GitBranchTests {
         #expect(gone.informativeText != existing.informativeText)
     }
 
-    /// Beide Sprachfassungen müssen den Absagetext vollständig führen — ein
-    /// fehlender Eintrag fiele sonst erst dem englischsprachigen Nutzer auf.
-    @Test("Absagetext ist in Deutsch und Englisch übersetzt", arguments: ["de", "en"])
-    func blockTextIsLocalized(language: String) {
+    /// Nur die ENGLISCHE Seite ist hier prüfbar: Deutsch ist die Quellsprache,
+    /// unter `Resources/` liegt allein `en.lproj`, und `L10n.string(_:language:)`
+    /// gibt ohne passendes `lproj` den Schlüssel selbst zurück. Ein „de"-Arm
+    /// vergliche also das Testliteral mit sich selbst und könnte nie
+    /// fehlschlagen. Dass die deutschen Quellstrings vollständig sind, hält
+    /// stattdessen `localization-audit.sh` durch.
+    @Test("Absagetext ist ins Englische übersetzt")
+    func blockTextIsLocalized() {
         let advice = L10n.string("Du kannst dieses Arbeitsverzeichnis als Projekt öffnen — der gesuchte Stand liegt dort schon.",
-                                 language: language)
+                                 language: "en")
         let prune = L10n.string("Der Ordner existiert nicht mehr. Melde ihn mit „git worktree prune“ ab, danach ist der Branch wieder frei.",
-                                language: language)
-        let title = L10n.string("Branch-Wechsel nicht möglich", language: language)
-        let button = L10n.string("Arbeitsverzeichnis öffnen", language: language)
-        if language == "en" {
-            #expect(advice.contains("working tree"))
-            #expect(prune.contains("prune"))
-            #expect(title == "Cannot Switch Branch")
-            #expect(button == "Open Working Tree")
-        } else {
-            #expect(advice.contains("Projekt"))
-            #expect(prune.contains("prune"))
-            #expect(title.contains("nicht möglich"))
-            #expect(button.contains("Arbeitsverzeichnis"))
-        }
+                                language: "en")
+        let title = L10n.string("Branch-Wechsel nicht möglich", language: "en")
+        let button = L10n.string("Arbeitsverzeichnis öffnen", language: "en")
+        #expect(advice.contains("working tree"))
+        #expect(prune.contains("prune"))
+        #expect(title == "Cannot Switch Branch")
+        #expect(button == "Open Working Tree")
     }
 
     /// Der Beweis, dass die Zerlegung oben die echte git-Ausgabe trifft — und
@@ -85,7 +110,7 @@ struct GitBranchTests {
     @Test("Echtes git: verlinkter Worktree belegt den Branch")
     func realGitReportsBlockingWorktree() async throws {
         guard GitRunner.isAvailable else { return }
-        let base = FileManager.default.temporaryDirectory
+        let base = testTemporaryDirectory()
             .appendingPathComponent("Fastra-BranchWorktree-\(UUID().uuidString)")
         let primary = base.appendingPathComponent("projekt")
         let linked = base.appendingPathComponent("zweitkopie")

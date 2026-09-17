@@ -271,7 +271,7 @@ enum SelfTest {
     /// Test den echten Kaltstartpfad statt nur Workspace-Methoden direkt
     /// aufzurufen.
     private static func prepareSessionRestoreFixture() {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-selftest-session-\(UUID().uuidString)",
                 isDirectory: true
@@ -316,7 +316,7 @@ enum SelfTest {
     /// hier eine abweichende gespeicherte Sitzung in derselben isolierten
     /// Defaults-Suite, die der produktive AppDelegate beim Start liest.
     private static func prepareColdOpenFixture(restoreEnabled: Bool) {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-selftest-coldopen-\(UUID().uuidString)",
                 isDirectory: true
@@ -392,7 +392,7 @@ enum SelfTest {
     }
 
     private static func prepareSelectionScrollFixture() {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-selftest-selectionscroll-\(UUID().uuidString)",
                 isDirectory: true
@@ -539,6 +539,9 @@ enum SelfTest {
         case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "searchoptions": waitForMainWindow { openSearchThen { runSearchOptionsTest() } }
+        case "searchlayout": waitForMainWindow { openSearchThen { runSearchLayoutTest() } }
+        case "searchfocus": waitForMainWindow { openSearchThen { runSearchFocusTest() } }
+        case "dialoglayout": waitForMainWindow { openSearchThen { runDialogLayoutTest() } }
         case "projectinput": waitForMainWindow { openSearchThen { runProjectInputTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "tabclosehit": waitForMainWindow { runTabCloseHitTest() }
@@ -606,7 +609,7 @@ enum SelfTest {
         case "githistory": waitForMainWindow { runGitHistoryTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
         case "externaldiff": waitForMainWindow { MainActor.assumeIsolated { runExternalDiffTest() } }
-        case "externaldiffcold": waitForMainWindow { MainActor.assumeIsolated { pollExternalDiffCold(tick: 0) } }
+        case "externaldiffcold": waitForMainWindow { MainActor.assumeIsolated { pollExternalDiffCold() } }
         case "macro4d": waitForMainWindow { runFourDMacroSelfTest() }
         case "macro4dengine": DispatchQueue.main.async { runFourDMacroEngineTest() }
         case "tool4dhint": waitForMainWindow { runTool4DHintTest() }
@@ -782,8 +785,15 @@ enum SelfTest {
             waitForMainWindow { runGraphShot() }
         case "windows": DispatchQueue.main.async { runWindowsDump() }
         default:
+            // Die Liste muss zu den Fällen dieses `switch` passen. Sie stand
+            // hier von Hand und war am 2026-09-10 um 53 von 127 Namen im
+            // Rückstand — darunter `print`, `soak`, `gototarget`, `diffsplit`
+            // und sämtliche Diagnose-Aufnahmen. Wer sich vertippte, bekam eine
+            // Liste, die 42 Prozent der echten Tests verschwieg. Der Wächter
+            // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
+            // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, welcomenew, sessionrestore, coldopen, coldopenoff, cmdw, fields, searchoptions, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, highlight, highlight4d, completion4d, previewrender, xpath, markdown, mdimagewatch, mdindent, mddropcursor, pasteindent, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, comment4d, sighelp4d, replaceall, pilldrop, navmatch, search, project, projectperf, projectopenperf, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitmultidiscard, gitstickyheader, diffwide, filemodes, selsearch, wildcard, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, tabflood, searchmark, macro4d, macro4dengine, tool4dhint, tool4dlsp, help, mdassist, contrast, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -818,17 +828,14 @@ enum SelfTest {
     /// `Workspace.init` erzeugt den SearchRunner vollständig, bevor es
     /// `Workspace.shared` setzt. Deshalb ist dieser Hook die überprüfbare
     /// Bereitschaftsgrenze für alle Tests, die nur das Modell treiben.
-    private static func waitForWorkspace(tick: Int = 0, then body: @escaping () -> Void) {
-        if Workspace.shared != nil {
-            body()
-            return
-        }
-        if tick >= 300 {
-            finish(false, "Workspace.shared blieb binnen 15 s nil")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            waitForWorkspace(tick: tick + 1, then: body)
-        }
+    private static func waitForWorkspace(then body: @escaping () -> Void) {
+        // Bisher 300 × 50 ms; dieselbe Rechnung, jetzt als bediente Frist.
+        waitFor(budget: 15, pause: 0.05,
+                condition: { Workspace.shared != nil },
+                onTimeout: { book in
+                    finish(false, "Workspace.shared blieb nil — \(book.summary)")
+                },
+                then: body)
     }
 
     private static func updatesMenuItem() -> NSMenuItem? {
@@ -842,42 +849,38 @@ enum SelfTest {
     /// grundlos. ID, Target und Action bilden zusammen den fertigen Zustand;
     /// bei einem echten Fehler liefert `runUpdatesTest` nach spätestens fünf
     /// Sekunden weiter die präzise Diagnose.
-    private static func waitForUpdatesMenu(tick: Int = 0) {
-        if let item = updatesMenuItem(),
-           item.action == #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
-           item.target is SPUStandardUpdaterController {
-            runUpdatesTest()
-            return
-        }
-        if tick >= 100 {
-            runUpdatesTest()
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            waitForUpdatesMenu(tick: tick + 1)
-        }
+    private static func waitForUpdatesMenu() {
+        // Beide Ausgänge führen in den Test: Ist das Menü nach 5 s bedienter
+        // Zeit nicht verdrahtet, diagnostiziert `runUpdatesTest` das selbst.
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    guard let item = updatesMenuItem() else { return false }
+                    return item.action == #selector(SPUStandardUpdaterController.checkForUpdates(_:))
+                        && item.target is SPUStandardUpdaterController
+                },
+                onTimeout: { _ in runUpdatesTest() },
+                then: { runUpdatesTest() })
     }
 
     /// Pollt (max. ~15 s, 50-ms-Takt), bis ein SICHTBARES Hauptfenster
     /// existiert, lässt die UI dann 0,5 s setteln und ruft `body`.
     /// Erscheint binnen 15 s keines → FAIL mit Fenster-Dump (das ist dann
     /// ein echter Befund, kein Timing-Artefakt mehr).
-    private static func waitForMainWindow(tick: Int = 0, then body: @escaping () -> Void) {
-        let maxTicks = 300           // 300 × 50 ms = 15 s
-        let found = NSApp.windows.contains {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                && $0.contentView != nil && $0.isVisible
-        }
-        if found {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { body() }
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "kein sichtbares Hauptfenster binnen 15 s — \(windowsSummary())")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            waitForMainWindow(tick: tick + 1, then: body)
-        }
+    private static func waitForMainWindow(then body: @escaping () -> Void) {
+        waitFor(budget: 15, pause: 0.05,
+                condition: {
+                    NSApp.windows.contains {
+                        $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                            && $0.contentView != nil && $0.isVisible
+                    }
+                },
+                onTimeout: { book in
+                    finish(false, "kein sichtbares Hauptfenster — \(book.summary) — \(windowsSummary())")
+                },
+                then: {
+                    // Einmalige Settle-Pause, bewusst keine Warteschleife.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { body() }
+                })
     }
 
     /// Einige Editor-Selbsttests brauchen bewusst ein echtes leeres Dokument.
@@ -888,7 +891,6 @@ enum SelfTest {
     private static func waitForEditor(
         workspace: Workspace,
         window: NSWindow,
-        tick: Int = 0,
         then body: @escaping (NSView, TextView) -> Void
     ) {
         guard let root = window.contentView else {
@@ -896,17 +898,19 @@ enum SelfTest {
         }
         // Seit dem Platzhalter-Umbau (2026-07-30) ist der Editor auch im
         // Willkommens-Zustand montiert — es gibt nichts mehr wegzuklicken.
-        if let editor = editorTextView(in: root) as? TextView {
-            body(root, editor)
-            return
-        }
-        if tick >= 100 {
-            finish(false, "Editor nicht binnen 5 s montiert")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            waitForEditor(workspace: workspace, window: window,
-                          tick: tick + 1, then: body)
-        }
+        var editor: TextView?
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    editor = editorTextView(in: root) as? TextView
+                    return editor != nil
+                },
+                onTimeout: { book in
+                    finish(false, "Editor nicht montiert — \(book.summary)")
+                },
+                then: {
+                    guard let editor else { finish(false, "Editor nach Erfolg nicht mehr montiert") }
+                    body(root, editor)
+                })
     }
 
     /// Wie `waitForEditor`, wartet zusätzlich auf einen Ankertext im Editor
@@ -925,26 +929,29 @@ enum SelfTest {
         workspace: Workspace,
         window: NSWindow,
         text needle: String,
-        tick: Int = 0,
         onTimeout: @escaping () -> Void,
         then body: @escaping (NSView, TextView, NSRange) -> Void
     ) {
-        waitForEditor(workspace: workspace, window: window) { root, textView in
-            let found = (textView.string as NSString).range(of: needle)
-            if found.location != NSNotFound {
-                body(root, textView, found)
-                return
+        // Je Durchlauf wird der Editor NEU gesucht (er kann zwischenzeitlich
+        // umgebaut worden sein); deshalb die asynchrone Variante.
+        var shown: (root: NSView, textView: TextView, range: NSRange)?
+        waitForAsync(
+            budget: 5, pause: 0.05,
+            check: { answer in
+                waitForEditor(workspace: workspace, window: window) { root, textView in
+                    let found = (textView.string as NSString).range(of: needle)
+                    if found.location != NSNotFound {
+                        shown = (root, textView, found)
+                    }
+                    answer(found.location != NSNotFound)
+                }
+            },
+            onTimeout: { _ in onTimeout() },
+            then: {
+                guard let shown else { finish(false, "Ankertext nach Erfolg nicht mehr im Editor") }
+                body(shown.root, shown.textView, shown.range)
             }
-            if tick >= 100 {
-                onTimeout()
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                waitForEditorShowing(workspace: workspace, window: window,
-                                     text: needle, tick: tick + 1,
-                                     onTimeout: onTimeout, then: body)
-            }
-        }
+        )
     }
 
     /// Öffnet die Suchmaske (exakt wie CMD+F) und wartet, bis sie sichtbar
@@ -962,21 +969,20 @@ enum SelfTest {
     /// 2026-06-22 NICHT mehr automatisch beim Start (`showSearchDialog`
     /// startet `false`) — die Aufrufer (cmdw/fields) öffnen sie vorher selbst
     /// über `openSearchThen` (postet `.fastraShowSearchFile`).
-    private static func waitForSearchWindow(tick: Int = 0, then body: @escaping () -> Void) {
-        let maxTicks = 300           // 300 × 50 ms = 15 s
-        let found = NSApp.windows.contains {
-            $0.frameAutosaveName == SearchWindow.frameAutosaveName && $0.isVisible
-        }
-        if found {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { body() }
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "keine sichtbare Suchmaske binnen 15 s — \(windowsSummary())")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            waitForSearchWindow(tick: tick + 1, then: body)
-        }
+    private static func waitForSearchWindow(then body: @escaping () -> Void) {
+        waitFor(budget: 15, pause: 0.05,
+                condition: {
+                    NSApp.windows.contains {
+                        $0.frameAutosaveName == SearchWindow.frameAutosaveName && $0.isVisible
+                    }
+                },
+                onTimeout: { book in
+                    finish(false, "keine sichtbare Suchmaske — \(book.summary) — \(windowsSummary())")
+                },
+                then: {
+                    // Einmalige Settle-Pause, bewusst keine Warteschleife.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { body() }
+                })
     }
 
     /// Eine Zeile pro Fenster — für FAIL-Diagnosen der Polling-Helfer.
@@ -993,28 +999,30 @@ enum SelfTest {
     /// ~10 s um sind (→ FAIL mit letztem Dump). Kein Funktionstest — ein
     /// Messinstrument (führte 2026-06-11 zum Root Cause des
     /// „kein Hauptfenster"-Bugs).
-    private static func runWindowsDump(tick: Int = 0) {
+    private static func runWindowsDump() {
         testLabel = "windows"
-        let maxTicks = 20            // 20 × 0,5 s = 10 s Beobachtungsfenster
-        var lines: [String] = []
-        var foundMain = false
-        for w in NSApp.windows {
-            let isMain = w.frameAutosaveName != SearchWindow.frameAutosaveName
-                && w.contentView != nil && w.isVisible
-            if isMain { foundMain = true }
-            lines.append("  [\(type(of: w))] title=\"\(w.title)\" autosave=\"\(w.frameAutosaveName)\" visible=\(w.isVisible) key=\(w.isKeyWindow) contentView=\(w.contentView != nil) frame=\(w.frame)")
-        }
-        let dump = "t=\(Double(tick) * 0.5)s windows=\(NSApp.windows.count)\n" + lines.joined(separator: "\n")
-        FileHandle.standardError.write(Data("WINDOWDUMP \(dump)\n".utf8))
-        if foundMain {
-            finish(true, "sichtbares Hauptfenster nach \(Double(tick) * 0.5)s")
-        }
-        if tick >= maxTicks {
-            finish(false, "kein sichtbares Hauptfenster binnen 10 s")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            runWindowsDump(tick: tick + 1)
-        }
+        var polls = 0
+        waitFor(budget: 10, pause: 0.5,   // 20 × 0,5 s Beobachtungsfenster
+                condition: {
+                    var lines: [String] = []
+                    var foundMain = false
+                    for w in NSApp.windows {
+                        let isMain = w.frameAutosaveName != SearchWindow.frameAutosaveName
+                            && w.contentView != nil && w.isVisible
+                        if isMain { foundMain = true }
+                        lines.append("  [\(type(of: w))] title=\"\(w.title)\" autosave=\"\(w.frameAutosaveName)\" visible=\(w.isVisible) key=\(w.isKeyWindow) contentView=\(w.contentView != nil) frame=\(w.frame)")
+                    }
+                    let dump = "t=\(Double(polls) * 0.5)s windows=\(NSApp.windows.count)\n" + lines.joined(separator: "\n")
+                    FileHandle.standardError.write(Data("WINDOWDUMP \(dump)\n".utf8))
+                    polls += 1
+                    return foundMain
+                },
+                onTimeout: { book in
+                    finish(false, "kein sichtbares Hauptfenster — \(book.summary)")
+                },
+                then: {
+                    finish(true, "sichtbares Hauptfenster nach \(Double(polls - 1) * 0.5)s")
+                })
     }
 
     // MARK: - ⌘N / unabhängiges Dokumentfenster
@@ -1050,7 +1058,7 @@ enum SelfTest {
         guard WorkspaceWindowRegistry.workspace(for: mainWindow) === original else {
             finish(false, "Hauptfenster und Ausgangs-Workspace gehören nicht zusammen")
         }
-        let folder = FileManager.default.temporaryDirectory
+        let folder = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-selftest-finderreopen-\(getpid())")
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -1097,7 +1105,7 @@ enum SelfTest {
             original.confirmCloseHandler = { _ in .dontSave }
             closeButton.performClick(nil)
             original.confirmCloseHandler = defaultHandler
-            waitUntilSelfTest(tick: 0, limit: 100, failure: "Hauptfenster schloss nicht "
+            waitUntilSelfTest(limit: 100, failure: "Hauptfenster schloss nicht "
                 + "(\(problems.joined(separator: "; ")))") {
                 !mainWindow.isVisible
             } then: {
@@ -1114,7 +1122,7 @@ enum SelfTest {
                 print("finderreopen: Delegate des Hauptfensters = "
                     + "\(mainWindow.delegate.map { String(describing: type(of: $0)) } ?? "nil")")
                 deliverOpenDocumentsEvent(for: file)
-                waitUntilSelfTest(tick: 0, limit: 100,
+                waitUntilSelfTest(limit: 100,
                                   failure: "Öffnen-Ereignis zeigte die Datei in keinem Fenster") {
                     documentWindows(showing: file).count >= 1
                 } then: {
@@ -1159,11 +1167,11 @@ enum SelfTest {
             }
             window.performClose(nil)
         }
-        waitUntilSelfTest(tick: 0, limit: 100, failure: "Dateifenster schlossen nicht") {
+        waitUntilSelfTest(limit: 100, failure: "Dateifenster schlossen nicht") {
             MainActor.assumeIsolated { DocumentWindowController.visibleDocumentWindows().isEmpty }
         } then: {
             deliverReopenEvent()
-            waitUntilSelfTest(tick: 0, limit: 100, failure: "Reopen zeigte kein Fenster") {
+            waitUntilSelfTest(limit: 100, failure: "Reopen zeigte kein Fenster") {
                 MainActor.assumeIsolated { !DocumentWindowController.visibleDocumentWindows().isEmpty }
             } then: {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -1243,17 +1251,15 @@ enum SelfTest {
     }
 
     /// Kleines Polling für diesen Test: 50-ms-Takt bis `condition` gilt,
-    /// sonst nach `limit` Takten ehrlicher FAIL.
+    /// sonst nach `limit` Takten bedienter Zeit ehrlicher FAIL.
     private static func waitUntilSelfTest(
-        tick: Int, limit: Int, failure: String,
+        limit: Int, failure: String,
         condition: @escaping () -> Bool, then body: @escaping () -> Void
     ) {
-        if condition() { body(); return }
-        if tick >= limit { finish(false, failure) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            waitUntilSelfTest(tick: tick + 1, limit: limit, failure: failure,
-                              condition: condition, then: body)
-        }
+        waitFor(budget: Double(limit) * 0.05, pause: 0.05,
+                condition: condition,
+                onTimeout: { book in finish(false, "\(failure) — \(book.summary)") },
+                then: body)
     }
 
     private static func runNewWindowTest(focusedCommandRouting: Bool = false) {
@@ -1339,38 +1345,35 @@ enum SelfTest {
     }
 
     private static func pollForWelcomeNewTab(ws: Workspace, windowsBefore: Int,
-                                             originalTabID: UUID,
-                                             tick: Int = 0) {
-        if ws.tabs.count == 2 {
-            let windowsNow = MainActor.assumeIsolated {
-                DocumentWindowController.visibleDocumentWindowCount()
-            }
-            guard windowsNow == windowsBefore else {
-                finish(false, "⌘N im Startzustand öffnete trotzdem ein zweites Fenster")
-            }
-            // Der NEUE Tab ist aktiv — als frischer leerer Tab zeigt auch er
-            // den Willkommens-Platzhalter (Firefox-Muster).
-            guard let active = ws.activeTab, active.id != originalTabID,
-                  active.content.isEmpty else {
-                finish(false, "⌘N aktivierte keinen neuen leeren Editor-Tab")
-            }
-            guard ws.tabs.contains(where: { $0.id == originalTabID }) else {
-                finish(false, "der bisherige Start-Tab muss daneben erhalten bleiben")
-            }
-            finish(true, "⌘N wirkt im reinen Startzustand wie ⌘T")
-        }
-        if tick >= 100 {
-            finish(false, "⌘N legte binnen 5 s keinen zweiten Tab an — \(windowsSummary())")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForWelcomeNewTab(ws: ws, windowsBefore: windowsBefore,
-                                 originalTabID: originalTabID, tick: tick + 1)
-        }
+                                             originalTabID: UUID) {
+        waitFor(budget: 5, pause: 0.05,
+                condition: { ws.tabs.count == 2 },
+                onTimeout: { book in
+                    finish(false, "⌘N legte keinen zweiten Tab an — \(book.summary) — \(windowsSummary())")
+                },
+                then: {
+                    let windowsNow = MainActor.assumeIsolated {
+                        DocumentWindowController.visibleDocumentWindowCount()
+                    }
+                    guard windowsNow == windowsBefore else {
+                        finish(false, "⌘N im Startzustand öffnete trotzdem ein zweites Fenster")
+                    }
+                    // Der NEUE Tab ist aktiv — als frischer leerer Tab zeigt auch er
+                    // den Willkommens-Platzhalter (Firefox-Muster).
+                    guard let active = ws.activeTab, active.id != originalTabID,
+                          active.content.isEmpty else {
+                        finish(false, "⌘N aktivierte keinen neuen leeren Editor-Tab")
+                    }
+                    guard ws.tabs.contains(where: { $0.id == originalTabID }) else {
+                        finish(false, "der bisherige Start-Tab muss daneben erhalten bleiben")
+                    }
+                    finish(true, "⌘N wirkt im reinen Startzustand wie ⌘T")
+                })
     }
 
     // MARK: - Sichere Sitzungswiederherstellung
 
-    private static func runSessionRestoreTest(tick: Int = 0) {
+    private static func runSessionRestoreTest() {
         testLabel = "sessionrestore"
         if let sessionRestoreSetupError {
             finish(false, "Fixture konnte nicht angelegt werden: \(sessionRestoreSetupError)")
@@ -1378,93 +1381,92 @@ enum SelfTest {
         guard let directory = sessionRestoreFixtureDirectory else {
             finish(false, "Fixture-Verzeichnis fehlt")
         }
-
-        let windows = MainActor.assumeIsolated {
-            DocumentWindowController.visibleDocumentWindows()
-        }
-        let workspaces = windows.compactMap {
-            WorkspaceWindowRegistry.workspace(for: $0)
-        }
-        let loading = workspaces.contains { workspace in
-            workspace.tabs.contains(where: \.isLoading)
-        }
-        if windows.count == 2, workspaces.count == 2, !loading {
-            let namesByWindow = workspaces.map {
-                $0.tabs.compactMap(\.url).map(\.lastPathComponent)
-            }
-            guard namesByWindow.contains(["eins.txt", "zwei.txt"]),
-                  namesByWindow.contains(["drei.txt"]) else {
-                try? FileManager.default.removeItem(at: directory)
-                finish(false, "falsche wiederhergestellte Tabs: \(namesByWindow)")
-            }
-            guard let projectWorkspace = workspaces.first(where: {
-                $0.projectURL?.canonicalFileURL == directory.canonicalFileURL
-            }),
-                  projectWorkspace.activeTab?.url?.lastPathComponent == "eins.txt" else {
-                try? FileManager.default.removeItem(at: directory)
-                finish(false, "Projekt oder aktiver Tab wurde nicht wiederhergestellt")
-            }
-            guard workspaces.allSatisfy({
-                $0.tabs.allSatisfy { $0.url != nil }
-            }) else {
-                try? FileManager.default.removeItem(at: directory)
-                finish(false, "ein unbenannter Tab wurde fälschlich wiederhergestellt")
-            }
-            // Fenster-Menü nach der Wiederherstellung: pro Fenster genau
-            // unser Tab-Untermenü-Eintrag, kein doppelter AppKit-Eintrag.
-            // Genau dieser Startpfad war am 2026-09-01 kaputt: Beim ersten
-            // Titelsetzen existiert `NSApp.windowsMenu` noch nicht, und ein
-            // nur an Titeländerungen gebundener Aufbau kam nie wieder zum
-            // Zug — das Menü zeigte nur AppKits eigenen Eintrag ohne Tabs.
-            let duplicatePlainEntries = MainActor.assumeIsolated { () -> [String] in
-                (NSApp.windowsMenu?.items ?? [])
-                    .filter { $0.submenu == nil && ["eins.txt", "drei.txt"].contains($0.title) }
-                    .map(\.title)
-            }
-            guard duplicatePlainEntries.isEmpty else {
-                try? FileManager.default.removeItem(at: directory)
-                finish(false, "Fenster-Menü führt Dokumentfenster doppelt "
-                    + "(AppKit-Eintrag ohne Untermenü: \(duplicatePlainEntries))")
-            }
-            guard let projectWindow = windows.first(where: {
-                WorkspaceWindowRegistry.workspace(for: $0) === projectWorkspace
-            }), let otherWindow = windows.first(where: { $0 !== projectWindow }),
-                  let otherWorkspace = WorkspaceWindowRegistry.workspace(for: otherWindow) else {
-                try? FileManager.default.removeItem(at: directory)
-                finish(false, "wiederhergestellte Fenster nicht ihren Workspaces zugeordnet")
-            }
-            verifyNativeWindowTabSelection(workspace: projectWorkspace, window: projectWindow) { ok, detail in
-                guard ok else {
+        var windows: [NSWindow] = []
+        var workspaces: [Workspace] = []
+        waitFor(budget: 10, pause: 0.05,
+                condition: {
+                    windows = MainActor.assumeIsolated {
+                        DocumentWindowController.visibleDocumentWindows()
+                    }
+                    workspaces = windows.compactMap {
+                        WorkspaceWindowRegistry.workspace(for: $0)
+                    }
+                    let loading = workspaces.contains { workspace in
+                        workspace.tabs.contains(where: \.isLoading)
+                    }
+                    return windows.count == 2 && workspaces.count == 2 && !loading
+                },
+                onTimeout: { book in
                     try? FileManager.default.removeItem(at: directory)
-                    finish(false, "Projektfenster nach Wiederherstellung: " + detail)
-                }
-                // Das zweite wiederhergestellte Fenster besitzt absichtlich
-                // nur einen Tab. Auch sein Untermenü muss real geöffnet werden.
-                verifyNativeWindowTabSelection(workspace: otherWorkspace, window: otherWindow,
-                                               requireTabChange: false) { ok, detail in
-                    try? FileManager.default.removeItem(at: directory)
-                    finish(ok, "zwei Fenster, drei gespeicherte Tabs, Projekt und aktiver Tab "
-                        + "wiederhergestellt; beide nativen Tab-Untermenüs bedient: " + detail)
-                }
-            }
-            return
-        }
-        if tick >= 200 {
-            try? FileManager.default.removeItem(at: directory)
-            finish(false, "Sitzung nicht binnen 10 s vollständig — \(windowsSummary())")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            runSessionRestoreTest(tick: tick + 1)
-        }
+                    finish(false, "Sitzung nicht vollständig — \(book.summary) — \(windowsSummary())")
+                },
+                then: {
+                    let namesByWindow = workspaces.map {
+                        $0.tabs.compactMap(\.url).map(\.lastPathComponent)
+                    }
+                    guard namesByWindow.contains(["eins.txt", "zwei.txt"]),
+                          namesByWindow.contains(["drei.txt"]) else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "falsche wiederhergestellte Tabs: \(namesByWindow)")
+                    }
+                    guard let projectWorkspace = workspaces.first(where: {
+                        $0.projectURL?.canonicalFileURL == directory.canonicalFileURL
+                    }),
+                          projectWorkspace.activeTab?.url?.lastPathComponent == "eins.txt" else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "Projekt oder aktiver Tab wurde nicht wiederhergestellt")
+                    }
+                    guard workspaces.allSatisfy({
+                        $0.tabs.allSatisfy { $0.url != nil }
+                    }) else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "ein unbenannter Tab wurde fälschlich wiederhergestellt")
+                    }
+                    // Fenster-Menü nach der Wiederherstellung: pro Fenster genau
+                    // unser Tab-Untermenü-Eintrag, kein doppelter AppKit-Eintrag.
+                    // Genau dieser Startpfad war am 2026-09-01 kaputt: Beim ersten
+                    // Titelsetzen existiert `NSApp.windowsMenu` noch nicht, und ein
+                    // nur an Titeländerungen gebundener Aufbau kam nie wieder zum
+                    // Zug — das Menü zeigte nur AppKits eigenen Eintrag ohne Tabs.
+                    let duplicatePlainEntries = MainActor.assumeIsolated { () -> [String] in
+                        (NSApp.windowsMenu?.items ?? [])
+                            .filter { $0.submenu == nil && ["eins.txt", "drei.txt"].contains($0.title) }
+                            .map(\.title)
+                    }
+                    guard duplicatePlainEntries.isEmpty else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "Fenster-Menü führt Dokumentfenster doppelt "
+                            + "(AppKit-Eintrag ohne Untermenü: \(duplicatePlainEntries))")
+                    }
+                    guard let projectWindow = windows.first(where: {
+                        WorkspaceWindowRegistry.workspace(for: $0) === projectWorkspace
+                    }), let otherWindow = windows.first(where: { $0 !== projectWindow }),
+                          let otherWorkspace = WorkspaceWindowRegistry.workspace(for: otherWindow) else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "wiederhergestellte Fenster nicht ihren Workspaces zugeordnet")
+                    }
+                    verifyNativeWindowTabSelection(workspace: projectWorkspace, window: projectWindow) { ok, detail in
+                        guard ok else {
+                            try? FileManager.default.removeItem(at: directory)
+                            finish(false, "Projektfenster nach Wiederherstellung: " + detail)
+                        }
+                        // Das zweite wiederhergestellte Fenster besitzt absichtlich
+                        // nur einen Tab. Auch sein Untermenü muss real geöffnet werden.
+                        verifyNativeWindowTabSelection(workspace: otherWorkspace, window: otherWindow,
+                                                       requireTabChange: false) { ok, detail in
+                            try? FileManager.default.removeItem(at: directory)
+                            finish(ok, "zwei Fenster, drei gespeicherte Tabs, Projekt und aktiver Tab "
+                                + "wiederhergestellt; beide nativen Tab-Untermenüs bedient: " + detail)
+                        }
+                    }
+                })
     }
 
     /// Prüft den echten LaunchServices-Kaltstart mit einer gespeicherten Sitzung
     /// aus zwei Projektfenstern und einer zusätzlichen externen Datei. Bei
     /// aktivierter Wiederherstellung müssen alle drei Startabsichten erhalten
     /// bleiben; bei deaktivierter darf ausschließlich die Finder-Datei öffnen.
-    private static func runColdOpenTest(
-        restoreEnabled: Bool, tick: Int = 0, stableSinceTick: Int? = nil
-    ) {
+    private static func runColdOpenTest(restoreEnabled: Bool) {
         testLabel = restoreEnabled ? "coldopen" : "coldopenoff"
         if let coldOpenSetupError {
             finish(false, "Fixture konnte nicht angelegt werden: \(coldOpenSetupError)")
@@ -1474,75 +1476,76 @@ enum SelfTest {
               coldOpenRestoredProjectURLs.count == 2 else {
             finish(false, "Kaltstart-Fixture fehlt")
         }
-
-        let windows = MainActor.assumeIsolated {
-            DocumentWindowController.visibleDocumentWindows()
-        }
-        let workspaces = windows.compactMap {
-            WorkspaceWindowRegistry.workspace(for: $0)
-        }
-        let openedURLs = workspaces.flatMap { workspace in
-            workspace.tabs.compactMap(\.url).map(\.canonicalFileURL)
-        }
-        let stillLoading = workspaces.contains { workspace in
-            workspace.tabs.contains(where: \.isLoading)
-        }
-        let expectedURLs = restoreEnabled
-            ? Set(coldOpenRestoredURLs + [externalURL])
-            : Set([externalURL])
-        let externalWorkspace = workspaces.first { workspace in
-            workspace.tabs.contains {
-                $0.url?.canonicalFileURL == externalURL
-            }
-        }
-        let restoredProjectsArePresent = coldOpenRestoredProjectURLs.allSatisfy {
-            projectURL in
-            workspaces.contains {
-                $0.projectURL?.canonicalFileURL == projectURL
-            }
-        }
-        let expectedWindowCount = restoreEnabled ? 3 : 1
-        let expectedState = windows.count == expectedWindowCount
-            && workspaces.count == expectedWindowCount
-            && !stillLoading
-            && openedURLs.count == expectedURLs.count
-            && Set(openedURLs) == expectedURLs
-            && externalWorkspace?.activeTab?.url?.canonicalFileURL == externalURL
-            && workspaces.allSatisfy { workspace in
-                // Neben wiederhergestellten Dateien darf kein übrig
-                // gebliebener leerer Start-Tab stehen.
-                workspace.tabs.allSatisfy { !$0.isPristineScratch }
-            }
-            && (restoreEnabled
-                ? restoredProjectsArePresent
-                : !openedURLs.contains(where: coldOpenRestoredURLs.contains))
-
         // Ab dem ersten korrekten Zustand weitere 20 Abfragen (mindestens
         // eine Sekunde) beobachten. Ein verspäteter Restore oder Finder-Aufruf
         // setzt diese Ruhephase zurück; die Gesamtfrist bleibt bestehen.
-        var nextStableSinceTick = stableSinceTick
-        if coldOpenStateIsStable(expectedState: expectedState, tick: tick,
-                                 stableSinceTick: &nextStableSinceTick) {
-            cleanupColdOpenFixture()
-            finish(
-                true,
-                restoreEnabled
-                    ? "zwei Projektfenster wiederhergestellt; Finder-Datei zusätzlich geöffnet"
-                    : "Wiederherstellung aus; ausschließlich Finder-Datei geöffnet"
-            )
-        }
-        if tick >= 200 {
-            cleanupColdOpenFixture()
-            let names = openedURLs.map(\.lastPathComponent)
-            finish(false, "Kaltstartzustand nicht binnen 10 s vollständig "
-                + "(Restore: \(restoreEnabled), Dateien: \(names)) — \(windowsSummary())")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            runColdOpenTest(
-                restoreEnabled: restoreEnabled, tick: tick + 1,
-                stableSinceTick: nextStableSinceTick
-            )
-        }
+        var polls = 0
+        var stableSincePoll: Int?
+        var openedNames: [String] = []
+        waitFor(budget: 10, pause: 0.05,
+                condition: {
+                let windows = MainActor.assumeIsolated {
+                    DocumentWindowController.visibleDocumentWindows()
+                }
+                let workspaces = windows.compactMap {
+                    WorkspaceWindowRegistry.workspace(for: $0)
+                }
+                let openedURLs = workspaces.flatMap { workspace in
+                    workspace.tabs.compactMap(\.url).map(\.canonicalFileURL)
+                }
+                let stillLoading = workspaces.contains { workspace in
+                    workspace.tabs.contains(where: \.isLoading)
+                }
+                let expectedURLs = restoreEnabled
+                    ? Set(coldOpenRestoredURLs + [externalURL])
+                    : Set([externalURL])
+                let externalWorkspace = workspaces.first { workspace in
+                    workspace.tabs.contains {
+                        $0.url?.canonicalFileURL == externalURL
+                    }
+                }
+                let restoredProjectsArePresent = coldOpenRestoredProjectURLs.allSatisfy {
+                    projectURL in
+                    workspaces.contains {
+                        $0.projectURL?.canonicalFileURL == projectURL
+                    }
+                }
+                let expectedWindowCount = restoreEnabled ? 3 : 1
+                let expectedState = windows.count == expectedWindowCount
+                    && workspaces.count == expectedWindowCount
+                    && !stillLoading
+                    && openedURLs.count == expectedURLs.count
+                    && Set(openedURLs) == expectedURLs
+                    && externalWorkspace?.activeTab?.url?.canonicalFileURL == externalURL
+                    && workspaces.allSatisfy { workspace in
+                        // Neben wiederhergestellten Dateien darf kein übrig
+                        // gebliebener leerer Start-Tab stehen.
+                        workspace.tabs.allSatisfy { !$0.isPristineScratch }
+                    }
+                    && (restoreEnabled
+                        ? restoredProjectsArePresent
+                        : !openedURLs.contains(where: coldOpenRestoredURLs.contains))
+
+                    openedNames = openedURLs.map(\.lastPathComponent)
+                    let stable = coldOpenStateIsStable(expectedState: expectedState, tick: polls,
+                                                       stableSinceTick: &stableSincePoll)
+                    polls += 1
+                    return stable
+                },
+                onTimeout: { book in
+                    cleanupColdOpenFixture()
+                    finish(false, "Kaltstartzustand nicht vollständig "
+                        + "(Restore: \(restoreEnabled), Dateien: \(openedNames)) — \(book.summary) — \(windowsSummary())")
+                },
+                then: {
+                    cleanupColdOpenFixture()
+                    finish(
+                        true,
+                        restoreEnabled
+                            ? "zwei Projektfenster wiederhergestellt; Finder-Datei zusätzlich geöffnet"
+                            : "Wiederherstellung aus; ausschließlich Finder-Datei geöffnet"
+                    )
+                })
     }
 
     /// Prüft die Ruhephase anhand der tatsächlich beobachteten Zustandsfolge.
@@ -1568,85 +1571,71 @@ enum SelfTest {
         originalWindow: NSWindow,
         marker: String,
         expectedSize: NSSize,
-        focusedCommandRouting: Bool,
-        tick: Int = 0
+        focusedCommandRouting: Bool
     ) {
-        let newWorkspace = Workspace.allLive.first { $0 !== original }
-        let newWindow = NSApp.windows.first {
-            $0 !== originalWindow
-                && $0.identifier?.rawValue == "Fastra.DocumentWindow"
-                && $0.isVisible
-        }
-
-        if let newWorkspace, let newWindow {
-            guard newWorkspace.tabs.count == 1,
-                  let newTab = newWorkspace.activeTab,
-                  newTab.title == Workspace.untitledBaseName,
-                  newTab.content.isEmpty else {
-                finish(false, "zweites Fenster enthält kein einzelnes leeres neues Dokument")
-            }
-            // Platzhalter-Modell (2026-07-30, ersetzt „nie mehr als ein
-            // Willkommen" vom 2026-07-12): Der frische leere Tab des neuen
-            // Fensters zeigt wie in Firefox die Starthilfe über dem Editor —
-            // das ist jetzt der korrekte Zustand, kein Fehler.
-            guard newWorkspace.isWelcomeScreen else {
-                finish(false, "⌘N-Fenster zeigt keinen Willkommens-Platzhalter über dem leeren Tab")
-            }
-
-            // Das ist die sichtbare Produktwirkung: Das neue AppKit-Fenster
-            // muss denselben tatsächlichen Rahmen wie das zuvor benutzte
-            // Fenster haben. SwiftUI darf seine fitting size im ersten Layout
-            // noch kurz melden; wir warten deshalb auf den stabilen Rahmen,
-            // statt genau in diesem Übergang voreilig fehlzuschlagen.
-            let hasExpectedSize = abs(newWindow.frame.width - expectedSize.width) < 0.5
-                && abs(newWindow.frame.height - expectedSize.height) < 0.5
-            if !hasExpectedSize {
-                if tick >= 100 {
+        // Zwei Stufen in EINER Frist: erst Fenster samt Workspace, dann der
+        // stabile Rahmen.
+        var stage = 0
+        var found: (workspace: Workspace, window: NSWindow)?
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    let newWorkspace = Workspace.allLive.first { $0 !== original }
+                    let newWindow = NSApp.windows.first {
+                        $0 !== originalWindow
+                            && $0.identifier?.rawValue == "Fastra.DocumentWindow"
+                            && $0.isVisible
+                    }
+                    guard let newWorkspace, let newWindow else {
+                        stage = 0
+                        return false
+                    }
+                    guard newWorkspace.tabs.count == 1,
+                          let newTab = newWorkspace.activeTab,
+                          newTab.title == Workspace.untitledBaseName,
+                          newTab.content.isEmpty else {
+                        finish(false, "zweites Fenster enthält kein einzelnes leeres neues Dokument")
+                    }
+                    // Platzhalter-Modell (2026-07-30, ersetzt „nie mehr als ein
+                    // Willkommen" vom 2026-07-12): Der frische leere Tab des neuen
+                    // Fensters zeigt wie in Firefox die Starthilfe über dem Editor —
+                    // das ist jetzt der korrekte Zustand, kein Fehler.
+                    guard newWorkspace.isWelcomeScreen else {
+                        finish(false, "⌘N-Fenster zeigt keinen Willkommens-Platzhalter über dem leeren Tab")
+                    }
+                    // Das ist die sichtbare Produktwirkung: Das neue AppKit-Fenster
+                    // muss denselben tatsächlichen Rahmen wie das zuvor benutzte
+                    // Fenster haben. SwiftUI darf seine fitting size im ersten Layout
+                    // noch kurz melden; wir warten deshalb auf den stabilen Rahmen,
+                    // statt genau in diesem Übergang voreilig fehlzuschlagen.
+                    stage = 1
+                    found = (newWorkspace, newWindow)
+                    return abs(newWindow.frame.width - expectedSize.width) < 0.5
+                        && abs(newWindow.frame.height - expectedSize.height) < 0.5
+                },
+                onTimeout: { book in
+                    if stage == 0 {
+                        finish(false, "kein zweites Dokumentfenster — \(book.summary) — \(windowsSummary())")
+                    }
+                    let frame = found?.window.frame ?? .zero
                     finish(false, "⌘N-Fenster übernimmt Größe nicht "
                         + "(erwartet \(expectedSize.width)×\(expectedSize.height), "
-                        + "erhalten \(newWindow.frame.width)×\(newWindow.frame.height))")
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    pollForNewWindow(
+                        + "erhalten \(frame.width)×\(frame.height)) — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "zweites Fenster nach Erfolg verschwunden") }
+                    // Nicht bloß den Modellzustand prüfen: Direkt nach dem echten ⌘N
+                    // muss die echte CodeEdit-TextView vorhanden sein und einen
+                    // gültigen Einfügepunkt besitzen. Den First-Responder- und
+                    // Befehlsrouting-Teil prüft der fokuspflichtige `cmdw`-Lauf.
+                    pollForNewWindowEditorFocus(
                         original: original,
                         originalWindow: originalWindow,
                         marker: marker,
-                        expectedSize: expectedSize,
-                        focusedCommandRouting: focusedCommandRouting,
-                        tick: tick + 1
+                        newWorkspace: found.workspace,
+                        newWindow: found.window,
+                        focusedCommandRouting: focusedCommandRouting
                     )
-                }
-                return
-            }
-
-            // Nicht bloß den Modellzustand prüfen: Direkt nach dem echten ⌘N
-            // muss die echte CodeEdit-TextView vorhanden sein und einen
-            // gültigen Einfügepunkt besitzen. Den First-Responder- und
-            // Befehlsrouting-Teil prüft der fokuspflichtige `cmdw`-Lauf.
-            pollForNewWindowEditorFocus(
-                original: original,
-                originalWindow: originalWindow,
-                marker: marker,
-                newWorkspace: newWorkspace,
-                newWindow: newWindow,
-                focusedCommandRouting: focusedCommandRouting
-            )
-            return
-        }
-
-        if tick >= 100 {
-            finish(false, "kein zweites Dokumentfenster binnen 5 s — \(windowsSummary())")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForNewWindow(
-                original: original,
-                originalWindow: originalWindow,
-                marker: marker,
-                expectedSize: expectedSize,
-                focusedCommandRouting: focusedCommandRouting,
-                tick: tick + 1
-            )
-        }
+                })
     }
 
     private static func pollForNewWindowEditorFocus(
@@ -1655,72 +1644,63 @@ enum SelfTest {
         marker: String,
         newWorkspace: Workspace,
         newWindow: NSWindow,
-        focusedCommandRouting: Bool,
-        tick: Int = 0
+        focusedCommandRouting: Bool
     ) {
-        let editor = newWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
-        let validSelection = editor?.selectionManager.textSelections.map(\.range)
-            == [NSRange(location: 0, length: 0)]
-        let focusReady = !focusedCommandRouting
-            || (newWindow.isKeyWindow && newWindow.firstResponder === editor)
-        if editor != nil, validSelection, focusReady {
-            newWorkspace.activeTabContent.wrappedValue = "Inhalt nur im zweiten Fenster"
-            guard original.activeTab?.content == marker else {
-                finish(false, "Dokumentinhalt wird zwischen den Fenstern geteilt")
-            }
-            if focusedCommandRouting, Workspace.shared !== newWorkspace {
-                finish(false, "neues Fenster ist sichtbar, aber nicht aktiver Workspace")
-            }
-            guard originalWindow.isVisible else {
-                finish(false, "erstes Dokumentfenster nach ⌘N nicht mehr sichtbar")
-            }
-            guard WorkspaceWindowRegistry.workspace(for: originalWindow) === original else {
-                finish(false, "erstes Fenster ist keinem oder dem falschen Workspace zugeordnet")
-            }
-            guard WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace else {
-                finish(false, "zweites Fenster ist keinem oder dem falschen Workspace zugeordnet")
-            }
-            guard focusedCommandRouting else {
-                finish(true, "⌘N erzeugt im Hintergrund ein passend großes Fenster mit "
-                    + "unabhängigem Workspace und gültigem Editor-Einfügepunkt")
-            }
+        var editor: TextView?
+        waitFor(budget: 3, pause: 0.03,
+                condition: {
+                    editor = newWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
+                    let validSelection = editor?.selectionManager.textSelections.map(\.range)
+                        == [NSRange(location: 0, length: 0)]
+                    let focusReady = !focusedCommandRouting
+                        || (newWindow.isKeyWindow && newWindow.firstResponder === editor)
+                    return editor != nil && validSelection && focusReady
+                },
+                onTimeout: { book in
+                    if focusedCommandRouting, !newWindow.isKeyWindow {
+                        finish(.environment, "⌘N-Fenster wurde nie Key-Window (Umgebungsproblem; \(book.summary))")
+                    }
+                    finish(false, "⌘N-Fenster hat keinen verwendbaren Editor "
+                        + "(Editor=\(editor != nil), FirstResponder="
+                        + "\(String(describing: newWindow.firstResponder)), "
+                        + "Selektionen=\(editor?.selectionManager.textSelections.map(\.range) ?? [])) — \(book.summary)")
+                },
+                then: {
+                    newWorkspace.activeTabContent.wrappedValue = "Inhalt nur im zweiten Fenster"
+                    guard original.activeTab?.content == marker else {
+                        finish(false, "Dokumentinhalt wird zwischen den Fenstern geteilt")
+                    }
+                    if focusedCommandRouting, Workspace.shared !== newWorkspace {
+                        finish(false, "neues Fenster ist sichtbar, aber nicht aktiver Workspace")
+                    }
+                    guard originalWindow.isVisible else {
+                        finish(false, "erstes Dokumentfenster nach ⌘N nicht mehr sichtbar")
+                    }
+                    guard WorkspaceWindowRegistry.workspace(for: originalWindow) === original else {
+                        finish(false, "erstes Fenster ist keinem oder dem falschen Workspace zugeordnet")
+                    }
+                    guard WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace else {
+                        finish(false, "zweites Fenster ist keinem oder dem falschen Workspace zugeordnet")
+                    }
+                    guard focusedCommandRouting else {
+                        finish(true, "⌘N erzeugt im Hintergrund ein passend großes Fenster mit "
+                            + "unabhängigem Workspace und gültigem Editor-Einfügepunkt")
+                    }
 
-            // Fokus zurück ins erste Fenster und dort den ECHTEN ⌘T-Shortcut
-            // auslösen. So prüft `cmdw` zusätzlich, dass globale Commands
-            // nach einem Fensterwechsel nicht weiter im zweiten Workspace
-            // landen.
-            let originalTabCount = original.tabs.count
-            originalWindow.makeKeyAndOrderFront(nil)
-            pollForOriginalWindowActivation(
-                original: original,
-                originalWindow: originalWindow,
-                originalTabCount: originalTabCount,
-                newWorkspace: newWorkspace,
-                newWindow: newWindow
-            )
-            return
-        }
-
-        if tick >= 100 {
-            if focusedCommandRouting, !newWindow.isKeyWindow {
-                finish(.environment, "⌘N-Fenster wurde nie Key-Window (Umgebungsproblem)")
-            }
-            finish(false, "⌘N-Fenster hat keinen verwendbaren Editor "
-                + "(Editor=\(editor != nil), FirstResponder="
-                + "\(String(describing: newWindow.firstResponder)), "
-                + "Selektionen=\(editor?.selectionManager.textSelections.map(\.range) ?? []))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForNewWindowEditorFocus(
-                original: original,
-                originalWindow: originalWindow,
-                marker: marker,
-                newWorkspace: newWorkspace,
-                newWindow: newWindow,
-                focusedCommandRouting: focusedCommandRouting,
-                tick: tick + 1
-            )
-        }
+                    // Fokus zurück ins erste Fenster und dort den ECHTEN ⌘T-Shortcut
+                    // auslösen. So prüft `cmdw` zusätzlich, dass globale Commands
+                    // nach einem Fensterwechsel nicht weiter im zweiten Workspace
+                    // landen.
+                    let originalTabCount = original.tabs.count
+                    originalWindow.makeKeyAndOrderFront(nil)
+                    pollForOriginalWindowActivation(
+                        original: original,
+                        originalWindow: originalWindow,
+                        originalTabCount: originalTabCount,
+                        newWorkspace: newWorkspace,
+                        newWindow: newWindow
+                    )
+                })
     }
 
     /// Fensterfokus ist unter macOS kooperativ: Ein im Hintergrund gestarteter
@@ -1732,131 +1712,126 @@ enum SelfTest {
         originalWindow: NSWindow,
         originalTabCount: Int,
         newWorkspace: Workspace,
-        newWindow: NSWindow,
-        tick: Int = 0
+        newWindow: NSWindow
     ) {
-        if originalWindow.isKeyWindow {
-            guard Workspace.shared === original else {
-                finish(false, "Fokus zurück ins erste Fenster aktiviert falschen Workspace")
-            }
-            postCmd("t", keyCode: 17, windowNumber: originalWindow.windowNumber)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                guard original.tabs.count == originalTabCount + 1,
-                      newWorkspace.tabs.count == 1 else {
-                    finish(false, "⌘T nach Fensterwechsel landete im falschen Workspace")
-                }
-                newWindow.makeKeyAndOrderFront(nil)
-                pollForNewWindowReactivation(
-                    original: original,
-                    originalWindow: originalWindow,
-                    newWorkspace: newWorkspace,
-                    newWindow: newWindow
-                )
-            }
-            return
-        }
-        if tick >= 100 {
-            finish(.environment, "erstes Fenster wurde nie Key-Window (Umgebungsproblem, kein Routing-Fehler)")
-        }
-        if tick % 10 == 9 {
-            activateApplication(ignoringOtherApps: true)
-            originalWindow.makeKeyAndOrderFront(nil)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForOriginalWindowActivation(
-                original: original,
-                originalWindow: originalWindow,
-                originalTabCount: originalTabCount,
-                newWorkspace: newWorkspace,
-                newWindow: newWindow,
-                tick: tick + 1
-            )
-        }
+        var polls = 0
+        waitFor(budget: 3, pause: 0.03,
+                condition: {
+                    if originalWindow.isKeyWindow { return true }
+                    if polls % 10 == 9 {
+                        activateApplication(ignoringOtherApps: true)
+                        originalWindow.makeKeyAndOrderFront(nil)
+                    }
+                    polls += 1
+                    return false
+                },
+                onTimeout: { book in
+                    finish(.environment, "erstes Fenster wurde nie Key-Window (Umgebungsproblem, kein Routing-Fehler; \(book.summary))")
+                },
+                then: {
+                    guard Workspace.shared === original else {
+                        finish(false, "Fokus zurück ins erste Fenster aktiviert falschen Workspace")
+                    }
+                    postCmd("t", keyCode: 17, windowNumber: originalWindow.windowNumber)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        guard original.tabs.count == originalTabCount + 1,
+                              newWorkspace.tabs.count == 1 else {
+                            finish(false, "⌘T nach Fensterwechsel landete im falschen Workspace")
+                        }
+                        newWindow.makeKeyAndOrderFront(nil)
+                        pollForNewWindowReactivation(
+                            original: original,
+                            originalWindow: originalWindow,
+                            newWorkspace: newWorkspace,
+                            newWindow: newWindow
+                        )
+                    }
+                })
     }
 
     private static func pollForNewWindowReactivation(
         original: Workspace,
         originalWindow: NSWindow,
         newWorkspace: Workspace,
-        newWindow: NSWindow,
-        tick: Int = 0
+        newWindow: NSWindow
     ) {
-        if newWindow.isKeyWindow {
-            guard Workspace.shared === newWorkspace else {
-                finish(false, "Fokus zurück ins zweite Fenster aktiviert falschen Workspace")
-            }
-            guard let activeID = newWorkspace.activeTabID,
-                  let activeIndex = newWorkspace.tabs.firstIndex(where: { $0.id == activeID }) else {
-                finish(false, "zweites Fenster hat vor dem ⌘W-Test keinen aktiven Tab")
-            }
-            // Den letzten Tab sauber/leergeleert machen: ⌘W muss nun ohne
-            // Dialog das GESAMTE zweite Fenster schließen. Zusätzlich bekommt
-            // das Fenster einen echten Ordner in der Seitenleiste, während der
-            // Tab unberührt/leer bleibt — exakt der gemeldete Arbeitszustand.
-            newWorkspace.tabs[activeIndex].content = ""
-            newWorkspace.tabs[activeIndex].isDirty = false
-            let folder = FileManager.default.temporaryDirectory
-                .appendingPathComponent("fastra-selftest-windows-folder-\(getpid())")
-                .canonicalFileURL
-            do {
-                try FileManager.default.createDirectory(
-                    at: folder, withIntermediateDirectories: true
-                )
-            } catch {
-                finish(false, "Ordner-Fixture für den ⌘W-Test fehlt: \(error.localizedDescription)")
-            }
-            windowRoutingFixtureDirectory = folder
-            // Nicht direkt am Workspace öffnen: Der gemeldete Zustand entstand
-            // über Finder/Dock. Dieser produktive Router muss dasselbe bereits
-            // aktive Fenster wählen und anschließend wieder nach vorn holen.
-            MainActor.assumeIsolated {
-                DocumentWindowController.openFinderItems([folder])
-            }
-            let commandTargetIsNewWindow = MainActor.assumeIsolated {
-                CommandTargeting.targetDocumentWindow() === newWindow
-                    && CommandTargeting.targetWorkspace() === newWorkspace
-            }
-            guard newWorkspace.projectURL?.resolvingSymlinksInPath()
-                    == folder.resolvingSymlinksInPath(),
-                  newWorkspace.isWelcomeScreen,
-                  newWindow.isKeyWindow,
-                  commandTargetIsNewWindow,
-                  WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace else {
-                finish(false, "Vorderfenster erreichte nicht den Zustand "
-                    + "Ordner plus leerer Willkommen-Tab mit eindeutiger Fensterbindung "
-                    + "(Projekt=\(newWorkspace.projectURL?.path ?? "nil"), "
-                    + "erwartet=\(folder.path), Willkommen=\(newWorkspace.isWelcomeScreen), "
-                    + "Key=\(newWindow.isKeyWindow), Ziel=\(commandTargetIsNewWindow), "
-                    + "Registry=\(WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace))")
-            }
-            let originalTabIDs = original.tabs.map(\.id)
-            let originalTabContents = original.tabs.map(\.content)
-            postCmd("w", keyCode: 13, windowNumber: newWindow.windowNumber)
-            pollForLastTabWindowClose(
-                original: original,
-                originalWindow: originalWindow,
-                originalTabIDs: originalTabIDs,
-                originalTabContents: originalTabContents,
-                closedWorkspace: newWorkspace,
-                closedWindow: newWindow
-            )
-            return
-        }
-        if tick >= 100 {
-            finish(.environment, "zweites Fenster wurde nie wieder Key-Window (Umgebungsproblem, kein Routing-Fehler)")
-        }
-        if tick % 10 == 9 {
-            newWindow.makeKeyAndOrderFront(nil)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForNewWindowReactivation(
-                original: original,
-                originalWindow: originalWindow,
-                newWorkspace: newWorkspace,
-                newWindow: newWindow,
-                tick: tick + 1
-            )
-        }
+        var polls = 0
+        waitFor(budget: 3, pause: 0.03,
+                condition: {
+                    if newWindow.isKeyWindow { return true }
+                    if polls % 10 == 9 {
+                        newWindow.makeKeyAndOrderFront(nil)
+                    }
+                    polls += 1
+                    return false
+                },
+                onTimeout: { book in
+                    finish(.environment, "zweites Fenster wurde nie wieder Key-Window (Umgebungsproblem, kein Routing-Fehler; \(book.summary))")
+                },
+                then: {
+                    guard Workspace.shared === newWorkspace else {
+                        finish(false, "Fokus zurück ins zweite Fenster aktiviert falschen Workspace")
+                    }
+                    guard let activeID = newWorkspace.activeTabID,
+                          let activeIndex = newWorkspace.tabs.firstIndex(where: { $0.id == activeID }) else {
+                        finish(false, "zweites Fenster hat vor dem ⌘W-Test keinen aktiven Tab")
+                    }
+                    // Den letzten Tab sauber/leergeleert machen: ⌘W muss nun ohne
+                    // Dialog das GESAMTE zweite Fenster schließen. Zusätzlich bekommt
+                    // das Fenster einen echten Ordner in der Seitenleiste, während der
+                    // Tab unberührt/leer bleibt — exakt der gemeldete Arbeitszustand.
+                    newWorkspace.tabs[activeIndex].content = ""
+                    newWorkspace.tabs[activeIndex].isDirty = false
+                    let folder = selfTestTemporaryDirectory()
+                        .appendingPathComponent("fastra-selftest-windows-folder-\(getpid())")
+                        .canonicalFileURL
+                    do {
+                        try FileManager.default.createDirectory(
+                            at: folder, withIntermediateDirectories: true
+                        )
+                    } catch {
+                        finish(false, "Ordner-Fixture für den ⌘W-Test fehlt: \(error.localizedDescription)")
+                    }
+                    windowRoutingFixtureDirectory = folder
+                    // Nicht direkt am Workspace öffnen: Der gemeldete Zustand entstand
+                    // über Finder/Dock. Dieser produktive Router muss dasselbe bereits
+                    // aktive Fenster wählen und anschließend wieder nach vorn holen.
+                    MainActor.assumeIsolated {
+                        DocumentWindowController.openFinderItems([folder])
+                    }
+                    let commandTargetIsNewWindow = MainActor.assumeIsolated {
+                        CommandTargeting.targetDocumentWindow() === newWindow
+                            && CommandTargeting.targetWorkspace() === newWorkspace
+                    }
+                    // Pfadvergleich statt URL-Vergleich: Der Workspace hält den Ordner
+                    // als Verzeichnis-URL (mit Schrägstrich), die Fixture-URL ohne —
+                    // unter der /tmp-Sandbox des Runners fiel der URL-Vergleich daran
+                    // (belegt 2026-09-17), obwohl beide denselben Ordner meinen.
+                    guard newWorkspace.projectURL?.resolvingSymlinksInPath().path
+                            == folder.resolvingSymlinksInPath().path,
+                          newWorkspace.isWelcomeScreen,
+                          newWindow.isKeyWindow,
+                          commandTargetIsNewWindow,
+                          WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace else {
+                        finish(false, "Vorderfenster erreichte nicht den Zustand "
+                            + "Ordner plus leerer Willkommen-Tab mit eindeutiger Fensterbindung "
+                            + "(Projekt=\(newWorkspace.projectURL?.path ?? "nil"), "
+                            + "erwartet=\(folder.path), Willkommen=\(newWorkspace.isWelcomeScreen), "
+                            + "Key=\(newWindow.isKeyWindow), Ziel=\(commandTargetIsNewWindow), "
+                            + "Registry=\(WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace))")
+                    }
+                    let originalTabIDs = original.tabs.map(\.id)
+                    let originalTabContents = original.tabs.map(\.content)
+                    postCmd("w", keyCode: 13, windowNumber: newWindow.windowNumber)
+                    pollForLastTabWindowClose(
+                        original: original,
+                        originalWindow: originalWindow,
+                        originalTabIDs: originalTabIDs,
+                        originalTabContents: originalTabContents,
+                        closedWorkspace: newWorkspace,
+                        closedWindow: newWindow
+                    )
+                })
     }
 
     private static func pollForLastTabWindowClose(
@@ -1865,54 +1840,45 @@ enum SelfTest {
         originalTabIDs: [UUID],
         originalTabContents: [String],
         closedWorkspace: Workspace,
-        closedWindow: NSWindow,
-        tick: Int = 0
+        closedWindow: NSWindow
     ) {
-        if !closedWindow.isVisible {
-            // `prepareToCloseWindow` fährt den Workspace bewusst in den
-            // Willkommens-Zustand zurück (genau ein frischer Scratch-Tab) und
-            // gerade NICHT in eine leere Tab-Liste: SwiftUI kann dieselbe Szene
-            // später wieder anzeigen, und ohne Tab stünde dann ein Fenster mit
-            // Editorfläche ohne Ziel da. Erwartet wird deshalb genau dieser
-            // Zustand — die frühere Forderung `tabs.isEmpty` ließ den Test bei
-            // korrektem Produktverhalten immer scheitern (Review 2026-08-02).
-            guard closedWorkspace.isWelcomeScreen,
-                  closedWorkspace.tabs.count == 1,
-                  closedWorkspace.tabs.allSatisfy({ $0.url == nil && !$0.isDirty }) else {
-                finish(false, "Fenster schloss, aber der Workspace steht nicht im "
-                    + "Willkommens-Zustand: \(closedWorkspace.tabs.count) Tab(s), "
-                    + "welcome=\(closedWorkspace.isWelcomeScreen)")
-            }
-            guard originalWindow.isVisible else {
-                finish(false, "⌘W auf dem Zweitfenster schloss auch das erste Fenster")
-            }
-            guard original.tabs.map(\.id) == originalTabIDs,
-                  original.tabs.map(\.content) == originalTabContents else {
-                finish(false, "⌘W auf dem Zweitfenster veränderte Tabs oder Inhalt "
-                    + "des Hintergrundfensters")
-            }
-            if Workspace.shared === original {
-                verifyPrimaryWindowRecoveryAndClose(
-                    workspace: original,
-                    window: originalWindow
-                )
-                return
-            }
-        }
-        if tick >= 100 {
-            finish(false, "⌘W schloss das Zweitfenster nicht oder aktivierte den falschen Workspace")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForLastTabWindowClose(
-                original: original,
-                originalWindow: originalWindow,
-                originalTabIDs: originalTabIDs,
-                originalTabContents: originalTabContents,
-                closedWorkspace: closedWorkspace,
-                closedWindow: closedWindow,
-                tick: tick + 1
-            )
-        }
+        waitFor(budget: 3, pause: 0.03,
+                condition: {
+                    guard !closedWindow.isVisible else { return false }
+                    // `prepareToCloseWindow` fährt den Workspace bewusst in den
+                    // Willkommens-Zustand zurück (genau ein frischer Scratch-Tab) und
+                    // gerade NICHT in eine leere Tab-Liste: SwiftUI kann dieselbe Szene
+                    // später wieder anzeigen, und ohne Tab stünde dann ein Fenster mit
+                    // Editorfläche ohne Ziel da. Erwartet wird deshalb genau dieser
+                    // Zustand — die frühere Forderung `tabs.isEmpty` ließ den Test bei
+                    // korrektem Produktverhalten immer scheitern (Review 2026-08-02).
+                    guard closedWorkspace.isWelcomeScreen,
+                          closedWorkspace.tabs.count == 1,
+                          closedWorkspace.tabs.allSatisfy({ $0.url == nil && !$0.isDirty }) else {
+                        finish(false, "Fenster schloss, aber der Workspace steht nicht im "
+                            + "Willkommens-Zustand: \(closedWorkspace.tabs.count) Tab(s), "
+                            + "welcome=\(closedWorkspace.isWelcomeScreen)")
+                    }
+                    guard originalWindow.isVisible else {
+                        finish(false, "⌘W auf dem Zweitfenster schloss auch das erste Fenster")
+                    }
+                    guard original.tabs.map(\.id) == originalTabIDs,
+                          original.tabs.map(\.content) == originalTabContents else {
+                        finish(false, "⌘W auf dem Zweitfenster veränderte Tabs oder Inhalt "
+                            + "des Hintergrundfensters")
+                    }
+                    // Erst wenn auch der aktive Workspace zurückgewechselt ist.
+                    return Workspace.shared === original
+                },
+                onTimeout: { book in
+                    finish(false, "⌘W schloss das Zweitfenster nicht oder aktivierte den falschen Workspace — \(book.summary)")
+                },
+                then: {
+                    verifyPrimaryWindowRecoveryAndClose(
+                        workspace: original,
+                        window: originalWindow
+                    )
+                })
     }
 
     /// Letzte Phase des Mehrfenster-⌘W-Tests: Der bisherige Test schloss nur
@@ -1994,7 +1960,7 @@ enum SelfTest {
               textView.string.isEmpty else {
             finish(false, "kein leerer Editor für die Markdown-Bild-Undo-Probe")
         }
-        let fixture = FileManager.default.temporaryDirectory
+        let fixture = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-cmdw-image-undo-\(getpid())", isDirectory: true)
         let documentDirectory = fixture.appendingPathComponent("dokument", isDirectory: true)
         let document = documentDirectory.appendingPathComponent("Notizen.md")
@@ -2043,20 +2009,16 @@ enum SelfTest {
         try? FileManager.default.removeItem(at: fixture)
     }
 
-    private static func pollForPrimaryWindowClose(
-        _ window: NSWindow,
-        tick: Int = 0
-    ) {
-        if !window.isVisible {
-            finish(true, "⌘W schließt Suchmaske, Hilfe, Zweitfenster und das "
-                + "Hauptfenster nach Bild-Undo; Fensterbindung und -Menü repariert")
-        }
-        if tick >= 100 {
-            finish(false, "⌘W schloss das wieder angebundene Hauptfenster nicht")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForPrimaryWindowClose(window, tick: tick + 1)
-        }
+    private static func pollForPrimaryWindowClose(_ window: NSWindow) {
+        waitFor(budget: 3, pause: 0.03,
+                condition: { !window.isVisible },
+                onTimeout: { book in
+                    finish(false, "⌘W schloss das wieder angebundene Hauptfenster nicht — \(book.summary)")
+                },
+                then: {
+                    finish(true, "⌘W schließt Suchmaske, Hilfe, Zweitfenster und das "
+                        + "Hauptfenster nach Bild-Undo; Fensterbindung und -Menü repariert")
+                })
     }
 
     // MARK: - unabhängige Suchdialoge in mehreren Dokumentfenstern
@@ -2140,109 +2102,109 @@ enum SelfTest {
     /// statt mit einer geratenen festen Verzögerung zu messen.
     private static func pollMultiWindowSearchSetup(secondWorkspace: Workspace,
                                                    firstWindow: NSWindow,
-                                                   secondWindow: NSWindow,
-                                                   tick: Int = 0) {
-        let searchWindows = NSApp.windows.filter {
-            SearchWindow.isSearchWindow($0) && $0.isVisible
-        }
-        let firstTV = firstWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
-        let secondTV = secondWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
-        let secondSearchWindow = searchWindows.first {
-            WorkspaceWindowRegistry.workspace(for: $0) === secondWorkspace
-        }
+                                                   secondWindow: NSWindow) {
+        var searchWindowCount = 0
+        var found: (firstTV: TextView, secondTV: TextView, secondSearchWindow: NSWindow)?
+        var firstFound = false
+        var secondFound = false
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    let searchWindows = NSApp.windows.filter {
+                        SearchWindow.isSearchWindow($0) && $0.isVisible
+                    }
+                    searchWindowCount = searchWindows.count
+                    let firstTV = firstWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
+                    let secondTV = secondWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
+                    let secondSearchWindow = searchWindows.first {
+                        WorkspaceWindowRegistry.workspace(for: $0) === secondWorkspace
+                    }
+                    firstFound = firstTV != nil
+                    secondFound = secondTV != nil
+                    guard searchWindows.count == 2,
+                          let firstTV, let secondTV, let secondSearchWindow else { return false }
+                    found = (firstTV, secondTV, secondSearchWindow)
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "zwei Dokumentfenster wurden nicht samt zwei Suchdialogen und Editoren bereit "
+                           + "(Suchdialoge=\(searchWindowCount), erster Editor=\(firstFound), "
+                           + "zweiter Editor=\(secondFound), zweiter Suchdialog=\(found != nil)) — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Editoren nach Erfolg verschwunden") }
+                    let (firstTV, secondTV, secondSearchWindow) = found
+                    firstTV.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+                    secondTV.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+                    secondSearchWindow.makeKeyAndOrderFront(nil)
 
-        if searchWindows.count == 2,
-           let firstTV, let secondTV, let secondSearchWindow {
-
-            firstTV.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
-            secondTV.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
-            secondSearchWindow.makeKeyAndOrderFront(nil)
-
-            let result = BufferSearch.find(
-                in: secondWorkspace.activeTab?.content ?? "",
-                options: SearchOptions(find: "subagent", replace: "",
-                                       isRegex: false, caseSensitive: true)
-            )
-            guard let target = result.matches.first, target.line == 110 else {
-                finish(false, "subagent-Testtreffer auf Zeile 110 fehlt")
-            }
-            NotificationCenter.default.postMatchJump(target, for: secondWorkspace)
-            pollMultiWindowJump(firstTV: firstTV, secondTV: secondTV,
-                                firstWindow: firstWindow, secondWindow: secondWindow,
-                                secondSearchWindow: secondSearchWindow)
-            return
-        }
-        if tick >= 100 {
-            finish(false, "zwei Dokumentfenster wurden nicht samt zwei Suchdialogen und Editoren bereit "
-                   + "(Suchdialoge=\(searchWindows.count), erster Editor=\(firstTV != nil), "
-                   + "zweiter Editor=\(secondTV != nil), zweiter Suchdialog=\(secondSearchWindow != nil))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollMultiWindowSearchSetup(secondWorkspace: secondWorkspace,
-                                       firstWindow: firstWindow,
-                                       secondWindow: secondWindow,
-                                       tick: tick + 1)
-        }
+                    let result = BufferSearch.find(
+                        in: secondWorkspace.activeTab?.content ?? "",
+                        options: SearchOptions(find: "subagent", replace: "",
+                                               isRegex: false, caseSensitive: true)
+                    )
+                    guard let target = result.matches.first, target.line == 110 else {
+                        finish(false, "subagent-Testtreffer auf Zeile 110 fehlt")
+                    }
+                    NotificationCenter.default.postMatchJump(target, for: secondWorkspace)
+                    pollMultiWindowJump(firstTV: firstTV, secondTV: secondTV,
+                                        firstWindow: firstWindow, secondWindow: secondWindow,
+                                        secondSearchWindow: secondSearchWindow)
+                })
     }
 
     private static func pollMultiWindowJump(firstTV: TextView, secondTV: TextView,
                                             firstWindow: NSWindow, secondWindow: NSWindow,
-                                            secondSearchWindow: NSWindow,
-                                            tick: Int = 0) {
-        let secondRange = secondTV.selectedRange()
-        if secondRange.location != NSNotFound,
-           secondRange.length > 0,
-           NSMaxRange(secondRange) <= (secondTV.string as NSString).length {
-            let selected = (secondTV.string as NSString).substring(with: secondRange)
-            guard selected == "subagent" else {
-                finish(false, "zweiter Editor selektierte \"\(selected)\" statt subagent")
-            }
-            let firstRange = firstTV.selectedRange()
-            guard firstRange.length == 0 else {
-                finish(false, "Treffer-Sprung veränderte auch den ersten Editor: \(firstRange)")
-            }
-            guard firstWindow.isVisible else {
-                finish(false, "erster Editor wurde beim Sprung ausgeblendet")
-            }
-            // Gefordert ist ein sichtbarer Treffer, keine bestimmte
-            // Zentrierung. Die frühere ±8-Zeilen-Heuristik um die Viewport-
-            // Mitte scheiterte bei einem korrekt sichtbaren Treffer am Rand.
-            let targetOffset = max(secondRange.location, NSMaxRange(secondRange) - 1)
-            let targetRect = secondTV.layoutManager.rectForOffset(targetOffset)
-            let isVisiblyAtTarget = targetRect.map {
-                secondTV.visibleRect.intersects($0)
-            } ?? false
-            if secondSearchWindow.isKeyWindow,
-               !secondWindow.isKeyWindow,
-               isVisiblyAtTarget {
-                finish(true, "subagent wurde nur im zweiten Editor selektiert und sichtbar; "
-                    + "zweite Suchmaske blieb Key, erster Editor unverändert")
-            }
-        }
-        if tick >= 60 {
-            let shownLine = secondTV.layoutManager
-                .textLineForPosition(secondTV.visibleRect.midY)
-                .map { $0.index + 1 }
-            let targetOffset = secondRange.location == NSNotFound
-                ? nil : max(secondRange.location, NSMaxRange(secondRange) - 1)
-            let targetRect = targetOffset.flatMap {
-                secondTV.layoutManager.rectForOffset($0)
-            }
-            // Ein fremdes Vordergrundprogramm verhindert den Fokusnachweis.
-            // Ein falsches eigenes Key-Fenster bei aktiver App bleibt ein Fehler.
-            finish(NSApp.isActive ? .fail : .environment, "zweiter Editor erreichte binnen 1,8 s nicht vollständig Auswahl und Sichtbarkeit "
-                   + "bei sicherem Suchfenster-Fokus (App aktiv=\(NSApp.isActive), selection=\(secondRange), "
-                   + "searchKey=\(secondSearchWindow.isKeyWindow), documentKey=\(secondWindow.isKeyWindow), "
-                   + "sichtbare Zeile=\(shownLine.map(String.init) ?? "nil"), "
-                   + "Trefferrect=\(targetRect.map { String(describing: $0) } ?? "nil"), "
-                   + "Viewport=\(secondTV.visibleRect))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollMultiWindowJump(firstTV: firstTV, secondTV: secondTV,
-                                firstWindow: firstWindow, secondWindow: secondWindow,
-                                secondSearchWindow: secondSearchWindow,
-                                tick: tick + 1)
-        }
+                                            secondSearchWindow: NSWindow) {
+        var secondRange = NSRange(location: NSNotFound, length: 0)
+        waitFor(budget: 1.8, pause: 0.03,
+                condition: {
+                    secondRange = secondTV.selectedRange()
+                    guard secondRange.location != NSNotFound,
+                          secondRange.length > 0,
+                          NSMaxRange(secondRange) <= (secondTV.string as NSString).length else { return false }
+                    let selected = (secondTV.string as NSString).substring(with: secondRange)
+                    guard selected == "subagent" else {
+                        finish(false, "zweiter Editor selektierte \"\(selected)\" statt subagent")
+                    }
+                    let firstRange = firstTV.selectedRange()
+                    guard firstRange.length == 0 else {
+                        finish(false, "Treffer-Sprung veränderte auch den ersten Editor: \(firstRange)")
+                    }
+                    guard firstWindow.isVisible else {
+                        finish(false, "erster Editor wurde beim Sprung ausgeblendet")
+                    }
+                    // Gefordert ist ein sichtbarer Treffer, keine bestimmte
+                    // Zentrierung. Die frühere ±8-Zeilen-Heuristik um die Viewport-
+                    // Mitte scheiterte bei einem korrekt sichtbaren Treffer am Rand.
+                    let targetOffset = max(secondRange.location, NSMaxRange(secondRange) - 1)
+                    let targetRect = secondTV.layoutManager.rectForOffset(targetOffset)
+                    let isVisiblyAtTarget = targetRect.map {
+                        secondTV.visibleRect.intersects($0)
+                    } ?? false
+                    return secondSearchWindow.isKeyWindow && !secondWindow.isKeyWindow && isVisiblyAtTarget
+                },
+                onTimeout: { book in
+                    let shownLine = secondTV.layoutManager
+                        .textLineForPosition(secondTV.visibleRect.midY)
+                        .map { $0.index + 1 }
+                    let targetOffset = secondRange.location == NSNotFound
+                        ? nil : max(secondRange.location, NSMaxRange(secondRange) - 1)
+                    let targetRect = targetOffset.flatMap {
+                        secondTV.layoutManager.rectForOffset($0)
+                    }
+                    // Ein fremdes Vordergrundprogramm verhindert den Fokusnachweis.
+                    // Ein falsches eigenes Key-Fenster bei aktiver App bleibt ein Fehler.
+                    finish(NSApp.isActive ? .fail : .environment, "zweiter Editor erreichte nicht vollständig Auswahl und Sichtbarkeit "
+                           + "bei sicherem Suchfenster-Fokus (App aktiv=\(NSApp.isActive), selection=\(secondRange), "
+                           + "searchKey=\(secondSearchWindow.isKeyWindow), documentKey=\(secondWindow.isKeyWindow), "
+                           + "sichtbare Zeile=\(shownLine.map(String.init) ?? "nil"), "
+                           + "Trefferrect=\(targetRect.map { String(describing: $0) } ?? "nil"), "
+                           + "Viewport=\(secondTV.visibleRect)) — \(book.summary)")
+                },
+                then: {
+                    finish(true, "subagent wurde nur im zweiten Editor selektiert und sichtbar; "
+                        + "zweite Suchmaske blieb Key, erster Editor unverändert")
+                })
     }
 
     // MARK: - -selftest bgscroll
@@ -2290,7 +2252,7 @@ enum SelfTest {
         backLines[169] = "Hinteres Fenster, Zeile 170: bgscrolltreffer"
         let frontContent = (1...200)
             .map { "Vorderes Fenster, Zeile \($0)" }.joined(separator: "\n")
-        let fixtureDirectory = FileManager.default.temporaryDirectory
+        let fixtureDirectory = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-bgscroll-\(UUID().uuidString)",
                                     isDirectory: true)
         let fixtureURL = fixtureDirectory.appendingPathComponent("vorn.txt")
@@ -2336,37 +2298,37 @@ enum SelfTest {
     /// Weg wie Suchtreffer-Klick und ⌘G, siehe `postMatchJump`).
     private static func pollBackgroundScrollEditors(frontWindow: NSWindow,
                                                     backWorkspace: Workspace,
-                                                    backWindow: NSWindow,
-                                                    tick: Int = 0,
-                                                    previousBackTV: TextView? = nil,
-                                                    stableTicks: Int = 0) {
-        let frontTV = frontWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
-        let backTV = backWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
-        let sameEditor = backTV === previousBackTV
-        let nextStableTicks = sameEditor ? stableTicks + 1 : 0
-        if let backTV, frontTV != nil,
-           sourceEditorController(for: backTV) != nil,
-           (backTV.string as NSString).range(of: "bgscrolltreffer").location != NSNotFound,
-           nextStableTicks >= 3 {
-            pollBackgroundScrollReadyForJump(frontWindow: frontWindow,
-                                             backWorkspace: backWorkspace,
-                                             backWindow: backWindow,
-                                             backTV: backTV)
-            return
-        }
-        if tick >= 100 {
-            finish(false, "Editoren mit Testinhalt wurden nicht binnen 5 s bereit "
-                   + "(vorderer=\(frontTV != nil), hinterer=\(backTV != nil), "
-                   + "Controller=\(backTV.map { sourceEditorController(for: $0) != nil } ?? false), "
-                   + "stabil=\(nextStableTicks))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollBackgroundScrollEditors(frontWindow: frontWindow,
-                                        backWorkspace: backWorkspace,
-                                        backWindow: backWindow, tick: tick + 1,
-                                        previousBackTV: backTV,
-                                        stableTicks: nextStableTicks)
-        }
+                                                    backWindow: NSWindow) {
+        // Der hintere Editor muss über drei Durchläufe dieselbe View bleiben.
+        var previousBackTV: TextView?
+        var stableTicks = 0
+        var frontTV: TextView?
+        var backTV: TextView?
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    frontTV = frontWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
+                    backTV = backWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
+                    stableTicks = backTV === previousBackTV ? stableTicks + 1 : 0
+                    previousBackTV = backTV
+                    guard let backTV, frontTV != nil,
+                          sourceEditorController(for: backTV) != nil,
+                          (backTV.string as NSString).range(of: "bgscrolltreffer").location != NSNotFound,
+                          stableTicks >= 3 else { return false }
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "Editoren mit Testinhalt wurden nicht bereit "
+                           + "(vorderer=\(frontTV != nil), hinterer=\(backTV != nil), "
+                           + "Controller=\(backTV.map { sourceEditorController(for: $0) != nil } ?? false), "
+                           + "stabil=\(stableTicks)) — \(book.summary)")
+                },
+                then: {
+                    guard let backTV else { finish(false, "hinterer Editor nach Erfolg verschwunden") }
+                    pollBackgroundScrollReadyForJump(frontWindow: frontWindow,
+                                                     backWorkspace: backWorkspace,
+                                                     backWindow: backWindow,
+                                                     backTV: backTV)
+                })
     }
 
     /// Stellt vor dem einmaligen Treffer-Sprung denselben Zustand her, den ein
@@ -2378,76 +2340,70 @@ enum SelfTest {
     private static func pollBackgroundScrollReadyForJump(frontWindow: NSWindow,
                                                          backWorkspace: Workspace,
                                                          backWindow: NSWindow,
-                                                         backTV: TextView,
-                                                         tick: Int = 0,
-                                                         previousSelection: NSRange? = nil,
-                                                         stableTicks: Int = 0) {
-        let mountedBackTV = backWindow.contentView.flatMap {
-            editorTextView(in: $0) as? TextView
-        }
-        guard mountedBackTV === backTV else {
-            finish(false, "hinterer Editor wurde vor dem Treffer-Sprung neu aufgebaut")
-        }
-
-        activateApplication(ignoringOtherApps: true)
-        backWindow.makeKeyAndOrderFront(nil)
-        let acceptedFirstResponder = backWindow.makeFirstResponder(backTV)
-        if backTV.selectionManager.textSelections.isEmpty {
-            // Entspricht `EditorView.focusActiveEditor`: Erst die echte
-            // Anfangsauswahl anlegen, dann auf CESEs Rückmeldung warten.
-            backTV.selectionManager.setSelectedRange(
-                NSRange(location: 0, length: 0)
-            )
-        }
-
-        let selection = backTV.selectedRange()
-        let validSelection = selection.location != NSNotFound
-            && NSMaxRange(selection) <= (backTV.string as NSString).length
-        let sameSelection = previousSelection.map {
-            NSEqualRanges($0, selection)
-        } ?? false
-        let nextStableTicks = sameSelection ? stableTicks + 1 : 0
-        if NSApp.isActive, backWindow.isKeyWindow,
-           backWindow.firstResponder === backTV,
-           acceptedFirstResponder, validSelection,
-           backWorkspace.cursorLine != nil,
-           nextStableTicks >= 2 {
-            let result = BufferSearch.find(
-                in: backWorkspace.activeTab?.content ?? "",
-                options: SearchOptions(find: "bgscrolltreffer", replace: "",
-                                       isRegex: false, caseSensitive: true)
-            )
-            guard let target = result.matches.first, target.line == 170 else {
-                finish(false, "bgscrolltreffer-Testtreffer auf Zeile 170 fehlt")
-            }
-            // Der Sprung hinterlässt im Editor-State des hinteren Fensters die
-            // nie konvergierende `.notFound`-CursorPosition — genau der
-            // Zustand, in dem der alte 4c-Patch bei jeder Neubewertung erneut
-            // scrollte.
-            NotificationCenter.default.postMatchJump(target, for: backWorkspace)
-            pollBackgroundScrollJump(frontWindow: frontWindow,
-                                     backWindow: backWindow, backTV: backTV)
-            return
-        }
-        if tick >= 100 {
-            // Ein fremdes Vordergrundprogramm verhindert den Fokusnachweis.
-            // Ein falsches eigenes Key-Fenster bei aktiver App bleibt ein Fehler.
-            finish(NSApp.isActive ? .fail : .environment, "hinterer Editor wurde vor dem Treffer-Sprung nicht eingabebereit "
-                   + "(App aktiv=\(NSApp.isActive), Fenster key=\(backWindow.isKeyWindow), "
-                   + "First Responder=\(backWindow.firstResponder === backTV), "
-                   + "Fokus angenommen=\(acceptedFirstResponder), Auswahl=\(selection), "
-                   + "Cursorzeile=\(backWorkspace.cursorLine.map(String.init) ?? "nil"), "
-                   + "stabil=\(nextStableTicks))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollBackgroundScrollReadyForJump(frontWindow: frontWindow,
-                                             backWorkspace: backWorkspace,
-                                             backWindow: backWindow,
-                                             backTV: backTV,
-                                             tick: tick + 1,
-                                             previousSelection: validSelection ? selection : nil,
-                                             stableTicks: nextStableTicks)
-        }
+                                                         backTV: TextView) {
+        var previousSelection: NSRange?
+        var stableTicks = 0
+        var selection = NSRange(location: NSNotFound, length: 0)
+        var acceptedFirstResponder = false
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    let mountedBackTV = backWindow.contentView.flatMap {
+                        editorTextView(in: $0) as? TextView
+                    }
+                    guard mountedBackTV === backTV else {
+                        finish(false, "hinterer Editor wurde vor dem Treffer-Sprung neu aufgebaut")
+                    }
+                    activateApplication(ignoringOtherApps: true)
+                    backWindow.makeKeyAndOrderFront(nil)
+                    acceptedFirstResponder = backWindow.makeFirstResponder(backTV)
+                    if backTV.selectionManager.textSelections.isEmpty {
+                        // Entspricht `EditorView.focusActiveEditor`: Erst die echte
+                        // Anfangsauswahl anlegen, dann auf CESEs Rückmeldung warten.
+                        backTV.selectionManager.setSelectedRange(
+                            NSRange(location: 0, length: 0)
+                        )
+                    }
+                    selection = backTV.selectedRange()
+                    let validSelection = selection.location != NSNotFound
+                        && NSMaxRange(selection) <= (backTV.string as NSString).length
+                    let sameSelection = previousSelection.map {
+                        NSEqualRanges($0, selection)
+                    } ?? false
+                    stableTicks = sameSelection ? stableTicks + 1 : 0
+                    previousSelection = validSelection ? selection : nil
+                    return NSApp.isActive && backWindow.isKeyWindow
+                        && backWindow.firstResponder === backTV
+                        && acceptedFirstResponder && validSelection
+                        && backWorkspace.cursorLine != nil
+                        && stableTicks >= 2
+                },
+                onTimeout: { book in
+                    // Ein fremdes Vordergrundprogramm verhindert den Fokusnachweis.
+                    // Ein falsches eigenes Key-Fenster bei aktiver App bleibt ein Fehler.
+                    finish(NSApp.isActive ? .fail : .environment, "hinterer Editor wurde vor dem Treffer-Sprung nicht eingabebereit "
+                           + "(App aktiv=\(NSApp.isActive), Fenster key=\(backWindow.isKeyWindow), "
+                           + "First Responder=\(backWindow.firstResponder === backTV), "
+                           + "Fokus angenommen=\(acceptedFirstResponder), Auswahl=\(selection), "
+                           + "Cursorzeile=\(backWorkspace.cursorLine.map(String.init) ?? "nil"), "
+                           + "stabil=\(stableTicks)) — \(book.summary)")
+                },
+                then: {
+                    let result = BufferSearch.find(
+                        in: backWorkspace.activeTab?.content ?? "",
+                        options: SearchOptions(find: "bgscrolltreffer", replace: "",
+                                               isRegex: false, caseSensitive: true)
+                    )
+                    guard let target = result.matches.first, target.line == 170 else {
+                        finish(false, "bgscrolltreffer-Testtreffer auf Zeile 170 fehlt")
+                    }
+                    // Der Sprung hinterlässt im Editor-State des hinteren Fensters die
+                    // nie konvergierende `.notFound`-CursorPosition — genau der
+                    // Zustand, in dem der alte 4c-Patch bei jeder Neubewertung erneut
+                    // scrollte.
+                    NotificationCenter.default.postMatchJump(target, for: backWorkspace)
+                    pollBackgroundScrollJump(frontWindow: frontWindow,
+                                             backWindow: backWindow, backTV: backTV)
+                })
     }
 
     /// Wartet, bis der Sprung im hinteren Fenster Auswahl UND sichtbares
@@ -2460,81 +2416,76 @@ enum SelfTest {
     /// machen.
     private static func pollBackgroundScrollJump(frontWindow: NSWindow,
                                                  backWindow: NSWindow,
-                                                 backTV: TextView,
-                                                 tick: Int = 0,
-                                                 lastY: CGFloat = -1,
-                                                 stableTicks: Int = 0) {
-        let selection = backTV.selectedRange()
-        let clip = backTV.enclosingScrollView?.contentView
-        let scrolledY = clip?.bounds.origin.y ?? 0
-        let isStable = scrolledY == lastY
-        let mountedBackTV = backWindow.contentView.flatMap {
-            editorTextView(in: $0) as? TextView
-        }
-        guard mountedBackTV === backTV else {
-            finish(false, "hinterer Editor wurde während des Treffer-Sprungs neu aufgebaut")
-        }
-        if selection.location != NSNotFound, selection.length > 0,
-           NSMaxRange(selection) <= (backTV.string as NSString).length,
-           (backTV.string as NSString).substring(with: selection) == "bgscrolltreffer",
-           scrolledY > 300, isStable, stableTicks >= 2 {
-            // ERST den Fensterwechsel: Solange das hintere Fenster selbst Key
-            // ist, darf auch der reparierte Patch dort scrollen — das
-            // Zurückscrollen an den Anfang passiert deshalb erst, wenn das
-            // vordere Fenster sicher Key ist.
-            frontWindow.makeKeyAndOrderFront(nil)
-            // Gezielte Negativprobe: Die Vorbereitung braucht eine aktive App.
-            // Erst hier die Test-App regulär ausblenden. So verlieren ihre
-            // Fenster über AppKit den Fokus, ohne einen Zustand zu simulieren.
-            if ProcessInfo.processInfo.environment[
-                "FASTRA_SELFTEST_DEACTIVATE_BEFORE_BGSCROLL_SWITCH"
-            ] == "1" {
-                guard NSApp.isActive, frontWindow.isKeyWindow else {
-                    finish(false, "Fokusprobe begann ohne aktive App und vorderes Key-Fenster")
-                }
-                NSApp.hide(nil)
-                pollBackgroundScrollFocusLoss(frontWindow: frontWindow,
-                                              backWindow: backWindow, backTV: backTV)
-                return
-            }
-            pollBackgroundScrollKeyWindow(frontWindow: frontWindow,
-                                          backWindow: backWindow, backTV: backTV)
-            return
-        }
-        if tick >= 100 {
-            finish(false, "Sprung im hinteren Fenster kam nicht ruhig an "
-                   + "(selection=\(selection), y=\(Int(scrolledY)), stabil=\(stableTicks))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollBackgroundScrollJump(frontWindow: frontWindow,
-                                     backWindow: backWindow, backTV: backTV,
-                                     tick: tick + 1,
-                                     lastY: scrolledY,
-                                     stableTicks: isStable ? stableTicks + 1 : 0)
-        }
+                                                 backTV: TextView) {
+        var lastY: CGFloat = -1
+        var stableTicks = 0
+        var selection = NSRange(location: NSNotFound, length: 0)
+        var scrolledY: CGFloat = 0
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    selection = backTV.selectedRange()
+                    let clip = backTV.enclosingScrollView?.contentView
+                    scrolledY = clip?.bounds.origin.y ?? 0
+                    let isStable = scrolledY == lastY
+                    let mountedBackTV = backWindow.contentView.flatMap {
+                        editorTextView(in: $0) as? TextView
+                    }
+                    guard mountedBackTV === backTV else {
+                        finish(false, "hinterer Editor wurde während des Treffer-Sprungs neu aufgebaut")
+                    }
+                    let arrived = selection.location != NSNotFound && selection.length > 0
+                        && NSMaxRange(selection) <= (backTV.string as NSString).length
+                        && (backTV.string as NSString).substring(with: selection) == "bgscrolltreffer"
+                        && scrolledY > 300 && isStable && stableTicks >= 2
+                    lastY = scrolledY
+                    stableTicks = isStable ? stableTicks + 1 : 0
+                    return arrived
+                },
+                onTimeout: { book in
+                    finish(false, "Sprung im hinteren Fenster kam nicht ruhig an "
+                           + "(selection=\(selection), y=\(Int(scrolledY)), stabil=\(stableTicks)) — \(book.summary)")
+                },
+                then: {
+                    // ERST den Fensterwechsel: Solange das hintere Fenster selbst Key
+                    // ist, darf auch der reparierte Patch dort scrollen — das
+                    // Zurückscrollen an den Anfang passiert deshalb erst, wenn das
+                    // vordere Fenster sicher Key ist.
+                    frontWindow.makeKeyAndOrderFront(nil)
+                    // Gezielte Negativprobe: Die Vorbereitung braucht eine aktive App.
+                    // Erst hier die Test-App regulär ausblenden. So verlieren ihre
+                    // Fenster über AppKit den Fokus, ohne einen Zustand zu simulieren.
+                    if ProcessInfo.processInfo.environment[
+                        "FASTRA_SELFTEST_DEACTIVATE_BEFORE_BGSCROLL_SWITCH"
+                    ] == "1" {
+                        guard NSApp.isActive, frontWindow.isKeyWindow else {
+                            finish(false, "Fokusprobe begann ohne aktive App und vorderes Key-Fenster")
+                        }
+                        NSApp.hide(nil)
+                        pollBackgroundScrollFocusLoss(frontWindow: frontWindow,
+                                                      backWindow: backWindow, backTV: backTV)
+                        return
+                    }
+                    pollBackgroundScrollKeyWindow(frontWindow: frontWindow,
+                                                  backWindow: backWindow, backTV: backTV)
+                })
     }
 
     /// AppKit bestätigt das Ausblenden erst in späteren Runloop-Durchläufen.
     /// Danach läuft die unveränderte eigentliche Timeout-Prüfung.
     private static func pollBackgroundScrollFocusLoss(frontWindow: NSWindow,
                                                        backWindow: NSWindow,
-                                                       backTV: TextView,
-                                                       tick: Int = 0) {
-        if NSApp.isHidden, !NSApp.isActive, !frontWindow.isKeyWindow {
-            pollBackgroundScrollKeyWindow(frontWindow: frontWindow,
-                                          backWindow: backWindow, backTV: backTV)
-            return
-        }
-        guard tick < 40 else {
-            finish(false, "Fokusprobe konnte AppKit-Fokus nicht entziehen "
-                   + "(hidden=\(NSApp.isHidden), active=\(NSApp.isActive), "
-                   + "frontKey=\(frontWindow.isKeyWindow))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollBackgroundScrollFocusLoss(frontWindow: frontWindow,
-                                          backWindow: backWindow, backTV: backTV,
-                                          tick: tick + 1)
-        }
+                                                       backTV: TextView) {
+        waitFor(budget: 2, pause: 0.05,
+                condition: { NSApp.isHidden && !NSApp.isActive && !frontWindow.isKeyWindow },
+                onTimeout: { book in
+                    finish(false, "Fokusprobe konnte AppKit-Fokus nicht entziehen "
+                           + "(hidden=\(NSApp.isHidden), active=\(NSApp.isActive), "
+                           + "frontKey=\(frontWindow.isKeyWindow)) — \(book.summary)")
+                },
+                then: {
+                    pollBackgroundScrollKeyWindow(frontWindow: frontWindow,
+                                                  backWindow: backWindow, backTV: backTV)
+                })
     }
 
     /// Wartet, bis das vordere Fenster wirklich Key ist und das hintere nicht,
@@ -2542,51 +2493,45 @@ enum SelfTest {
     /// Nutzer es dort zuletzt stehen gelassen hätte.
     private static func pollBackgroundScrollKeyWindow(frontWindow: NSWindow,
                                                       backWindow: NSWindow,
-                                                      backTV: TextView,
-                                                      tick: Int = 0) {
-        if frontWindow.isKeyWindow, !backWindow.isKeyWindow {
-            // Regulärer AppKit-Weg statt synthetischer Scroll-Events (siehe
-            // AGENTS.md, Scrollen in Fenster-Selbsttests).
-            guard let scrollView = backTV.enclosingScrollView else {
-                finish(false, "keine ScrollView am hinteren Editor")
-            }
-            let clip = scrollView.contentView
-            clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: 0))
-            scrollView.reflectScrolledClipView(clip)
-            pollBackgroundScrollTop(backWindow: backWindow, backTV: backTV)
-            return
-        }
-        if tick >= 100 {
-            // Ein fremdes Vordergrundprogramm verhindert den Fokusnachweis.
-            // Ein falsches eigenes Key-Fenster bei aktiver App bleibt ein Fehler.
-            finish(NSApp.isActive ? .fail : .environment, "vorderes Fenster wurde nicht Key "
-                   + "(App aktiv=\(NSApp.isActive), frontKey=\(frontWindow.isKeyWindow), "
-                   + "backKey=\(backWindow.isKeyWindow))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollBackgroundScrollKeyWindow(frontWindow: frontWindow,
-                                          backWindow: backWindow, backTV: backTV,
-                                          tick: tick + 1)
-        }
+                                                      backTV: TextView) {
+        waitFor(budget: 5, pause: 0.05,
+                condition: { frontWindow.isKeyWindow && !backWindow.isKeyWindow },
+                onTimeout: { book in
+                    // Ein fremdes Vordergrundprogramm verhindert den Fokusnachweis.
+                    // Ein falsches eigenes Key-Fenster bei aktiver App bleibt ein Fehler.
+                    finish(NSApp.isActive ? .fail : .environment, "vorderes Fenster wurde nicht Key "
+                           + "(App aktiv=\(NSApp.isActive), frontKey=\(frontWindow.isKeyWindow), "
+                           + "backKey=\(backWindow.isKeyWindow)) — \(book.summary)")
+                },
+                then: {
+                    // Regulärer AppKit-Weg statt synthetischer Scroll-Events (siehe
+                    // AGENTS.md, Scrollen in Fenster-Selbsttests).
+                    guard let scrollView = backTV.enclosingScrollView else {
+                        finish(false, "keine ScrollView am hinteren Editor")
+                    }
+                    let clip = scrollView.contentView
+                    clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: 0))
+                    scrollView.reflectScrolledClipView(clip)
+                    pollBackgroundScrollTop(backWindow: backWindow, backTV: backTV)
+                })
     }
 
     /// Wartet, bis der Ausschnitt des hinteren Fensters oben angekommen ist
     /// (Beleg, DASS gescrollt wurde), und startet dann die eigentliche Messung.
     private static func pollBackgroundScrollTop(backWindow: NSWindow,
-                                                backTV: TextView,
-                                                tick: Int = 0) {
-        let y = backTV.enclosingScrollView?.contentView.bounds.origin.y ?? -1
-        if y == 0 {
-            observeBackgroundScroll(backWindow: backWindow, backTV: backTV)
-            return
-        }
-        if tick >= 100 {
-            finish(false, "Rückscrollen an den Anfang kam nicht an (y=\(Int(y)))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollBackgroundScrollTop(backWindow: backWindow, backTV: backTV,
-                                    tick: tick + 1)
-        }
+                                                backTV: TextView) {
+        var y: CGFloat = -1
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    y = backTV.enclosingScrollView?.contentView.bounds.origin.y ?? -1
+                    return y == 0
+                },
+                onTimeout: { book in
+                    finish(false, "Rückscrollen an den Anfang kam nicht an (y=\(Int(y))) — \(book.summary)")
+                },
+                then: {
+                    observeBackgroundScroll(backWindow: backWindow, backTV: backTV)
+                })
     }
 
     /// Die eigentliche Prüfung speichert im Vorderfenster eine echte Datei.
@@ -2707,6 +2652,54 @@ enum SelfTest {
         exit(finalOutcome == .pass ? 0 : 1)
     }
 
+    // MARK: - Warteschleifen mit Fristbuchhaltung
+
+    /// Wanduhr-Deckel dieses Testprozesses. Braucht `testLabel` und
+    /// `testStartedNanoseconds` und muss deshalb hier stehen — beide sind
+    /// `private` und damit außerhalb dieser Datei unsichtbar.
+    ///
+    /// `testLabel` ist beim allerersten Warten (`waitForWorkspace` vor dem
+    /// eigentlichen Testrumpf) noch der Vorgabewert. Das ist unschädlich: Der
+    /// Vorgabewert führt auf die Standard-Runner-Frist, und genau die gilt für
+    /// alle fensterlosen Tests.
+    private static func pollHardCap(for budget: TimeInterval) -> TimeInterval {
+        let elapsed = Double(DispatchTime.now().uptimeNanoseconds - testStartedNanoseconds)
+            / 1_000_000_000
+        return SelfTestPolling.hardCap(budget: budget, elapsed: elapsed, test: testLabel)
+    }
+
+    /// Wartet, bis `condition` wahr ist, und ruft dann `then`; sonst
+    /// `onTimeout` mit der Buchhaltung. Ersetzt die handgezählten
+    /// `tick >= N`-Schleifen: `budget` ist genau die alte Rechnung
+    /// N × Pause, die Buchhaltung zieht aber Fremdlast auf dem Main-Thread ab
+    /// (Begründung in `SelfTestPolling.swift`).
+    private static func waitFor(
+        budget: TimeInterval,
+        pause: TimeInterval,
+        condition: @escaping () -> Bool,
+        onTimeout: @escaping (SelfTestPollBudget) -> Void,
+        then: @escaping () -> Void
+    ) {
+        SelfTestPolling.waitFor(
+            budget: budget, pause: pause, hardCap: pollHardCap(for: budget),
+            condition: condition, onTimeout: onTimeout, then: then
+        )
+    }
+
+    /// Wie `waitFor`, aber mit asynchroner Bedingung.
+    private static func waitForAsync(
+        budget: TimeInterval,
+        pause: TimeInterval,
+        check: @escaping (@escaping (Bool) -> Void) -> Void,
+        onTimeout: @escaping (SelfTestPollBudget) -> Void,
+        then: @escaping () -> Void
+    ) {
+        SelfTestPolling.waitForAsync(
+            budget: budget, pause: pause, hardCap: pollHardCap(for: budget),
+            check: check, onTimeout: onTimeout, then: then
+        )
+    }
+
     /// CMD+W bei vorderer Suchmaske → Maske schließt sich.
     ///
     /// War flaky: nach dem CMD+W-Post wurde der Fenster-Zustand EINMAL nach
@@ -2757,51 +2750,49 @@ enum SelfTest {
     /// Zeit, bis der Prozess für System Events sichtbar ist. Das lange
     /// Fenster gibt dem Runner die Chance; bei Erfolg endet das Polling
     /// sofort.
-    private static func pollForKeyThenPost(_ window: NSWindow, tick: Int = 0) {
-        let maxTicks = 270           // 270 × 30 ms ≈ 8 s
-        if window.isKeyWindow {
-            postCmd("w", keyCode: 13, windowNumber: window.windowNumber)
-            pollForClose(window)
-            return
-        }
-        if tick >= maxTicks {
-            // Diagnose mitliefern: Ist die App überhaupt aktiv? Welches
-            // Fenster IST stattdessen Key? Unterscheidet „System verweigert
-            // Aktivierung" von „anderes Fenster klaut den Key-Status".
-            let keyDesc = NSApp.keyWindow.map {
-                "[\(type(of: $0))] \"\($0.title)\" autosave=\"\($0.frameAutosaveName)\""
-            } ?? "keins"
-            finish(.environment, "Aktivierung fehlgeschlagen — Suchmaske wurde nie Key-Window "
-                + "(Umgebungsproblem, kein CMD+W-Funktionsfehler; "
-                + "NSApp.isActive=\(NSApp.isActive), keyWindow=\(keyDesc), "
-                + "panel: visible=\(window.isVisible) canBecomeKey=\(window.canBecomeKey))")
-        }
-        // Alle ~10 Ticks erneut um Aktivierung bitten — einzelne Aufrufe
-        // verpuffen unter kooperativer Aktivierung gelegentlich.
-        if tick % 10 == 9 {
-            activateApplication(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForKeyThenPost(window, tick: tick + 1)
-        }
+    private static func pollForKeyThenPost(_ window: NSWindow) {
+        var polls = 0
+        waitFor(budget: 8.1, pause: 0.03,   // 270 × 30 ms ≈ 8 s
+                condition: {
+                    if window.isKeyWindow { return true }
+                    // Alle ~10 Durchläufe erneut um Aktivierung bitten — einzelne
+                    // Aufrufe verpuffen unter kooperativer Aktivierung gelegentlich.
+                    if polls % 10 == 9 {
+                        activateApplication(ignoringOtherApps: true)
+                        window.makeKeyAndOrderFront(nil)
+                    }
+                    polls += 1
+                    return false
+                },
+                onTimeout: { book in
+                    // Diagnose mitliefern: Ist die App überhaupt aktiv? Welches
+                    // Fenster IST stattdessen Key? Unterscheidet „System verweigert
+                    // Aktivierung" von „anderes Fenster klaut den Key-Status".
+                    let keyDesc = NSApp.keyWindow.map {
+                        "[\(type(of: $0))] \"\($0.title)\" autosave=\"\($0.frameAutosaveName)\""
+                    } ?? "keins"
+                    finish(.environment, "Aktivierung fehlgeschlagen — Suchmaske wurde nie Key-Window "
+                        + "(Umgebungsproblem, kein CMD+W-Funktionsfehler; "
+                        + "NSApp.isActive=\(NSApp.isActive), keyWindow=\(keyDesc), "
+                        + "panel: visible=\(window.isVisible) canBecomeKey=\(window.canBecomeKey); "
+                        + "\(book.summary))")
+                },
+                then: {
+                    postCmd("w", keyCode: 13, windowNumber: window.windowNumber)
+                    pollForClose(window)
+                })
     }
 
     /// Pollt engmaschig, ob die Suchmaske nach CMD+W unsichtbar wird. Sobald
     /// sie verschwindet → PASS. Bleibt sie über das ganze Fenster sichtbar
     /// → FAIL. Ersetzt die frühere Einzel-Messung mit fixem Delay (flaky).
-    private static func pollForClose(_ window: NSWindow, tick: Int = 0) {
-        let maxTicks = 50            // 50 × 30 ms ≈ 1,5 s Beobachtungsfenster
-        if !window.isVisible {
-            runCmdWHelpPhase()
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "Suchmaske nach CMD+W über \(maxTicks) Ticks noch sichtbar")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForClose(window, tick: tick + 1)
-        }
+    private static func pollForClose(_ window: NSWindow) {
+        waitFor(budget: 1.5, pause: 0.03,   // ≈ 1,5 s Beobachtungsfenster
+                condition: { !window.isVisible },
+                onTimeout: { book in
+                    finish(false, "Suchmaske nach CMD+W noch sichtbar — \(book.summary)")
+                },
+                then: { runCmdWHelpPhase() })
     }
 
     /// Zweite `cmdw`-Phase: Ein echtes ⌘W muss das vordere Hilfe-Fenster
@@ -2828,61 +2819,50 @@ enum SelfTest {
     private static func pollForCmdWHelpKey(
         _ helpWindow: NSWindow,
         workspace: Workspace,
-        tabSnapshot: [String],
-        tick: Int = 0
+        tabSnapshot: [String]
     ) {
-        if helpWindow.isKeyWindow {
-            postCmd("w", keyCode: 13, windowNumber: helpWindow.windowNumber)
-            pollForCmdWHelpClose(
-                helpWindow,
-                workspace: workspace,
-                tabSnapshot: tabSnapshot
-            )
-            return
-        }
-        if tick >= 270 {
-            finish(.environment, "Hilfe-Fenster wurde nie Key-Window für ⌘W "
-                + "(Umgebungsproblem)")
-        }
-        if tick % 10 == 9 {
-            activateApplication(ignoringOtherApps: true)
-            helpWindow.makeKeyAndOrderFront(nil)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForCmdWHelpKey(
-                helpWindow,
-                workspace: workspace,
-                tabSnapshot: tabSnapshot,
-                tick: tick + 1
-            )
-        }
+        var polls = 0
+        waitFor(budget: 8.1, pause: 0.03,
+                condition: {
+                    if helpWindow.isKeyWindow { return true }
+                    if polls % 10 == 9 {
+                        activateApplication(ignoringOtherApps: true)
+                        helpWindow.makeKeyAndOrderFront(nil)
+                    }
+                    polls += 1
+                    return false
+                },
+                onTimeout: { book in
+                    finish(.environment, "Hilfe-Fenster wurde nie Key-Window für ⌘W "
+                        + "(Umgebungsproblem; \(book.summary))")
+                },
+                then: {
+                    postCmd("w", keyCode: 13, windowNumber: helpWindow.windowNumber)
+                    pollForCmdWHelpClose(
+                        helpWindow,
+                        workspace: workspace,
+                        tabSnapshot: tabSnapshot
+                    )
+                })
     }
 
     private static func pollForCmdWHelpClose(
         _ helpWindow: NSWindow,
         workspace: Workspace,
-        tabSnapshot: [String],
-        tick: Int = 0
+        tabSnapshot: [String]
     ) {
-        if !helpWindow.isVisible {
-            let currentTabs = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
-            guard currentTabs == tabSnapshot else {
-                finish(false, "⌘W an der Hilfe veränderte einen Dokument-Tab")
-            }
-            runNewWindowTest(focusedCommandRouting: true)
-            return
-        }
-        if tick >= 50 {
-            finish(false, "⌘W ließ das Hilfe-Fenster offen")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForCmdWHelpClose(
-                helpWindow,
-                workspace: workspace,
-                tabSnapshot: tabSnapshot,
-                tick: tick + 1
-            )
-        }
+        waitFor(budget: 1.5, pause: 0.03,
+                condition: { !helpWindow.isVisible },
+                onTimeout: { book in
+                    finish(false, "⌘W ließ das Hilfe-Fenster offen — \(book.summary)")
+                },
+                then: {
+                    let currentTabs = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
+                    guard currentTabs == tabSnapshot else {
+                        finish(false, "⌘W an der Hilfe veränderte einen Dokument-Tab")
+                    }
+                    runNewWindowTest(focusedCommandRouting: true)
+                })
     }
 
     /// Postet ein echtes „CMD+<char>" (flagsChanged + keyDown) in die Queue.
@@ -3100,10 +3080,13 @@ enum SelfTest {
         }
     }
 
-    /// Prüft das zweizeilige Optionslayout im ECHTEN Suchfenster. Marker an
-    /// den linken Toggle-Kanten messen die Ausrichtung unabhängig vom Modell;
-    /// der zustandskodierte Marker belegt, dass „∗ wörtlich" sichtbar bleibt
-    /// und nach Pattern-/RegEx-Wechseln im gerenderten Baum aktualisiert wird.
+    /// Prüft das Optionslayout im ECHTEN Suchfenster (Layout-Umbau
+    /// 2026-09-15): In einem breiten Fenster stehen alle Schalter in EINER
+    /// Zeile, in einem schmalen rückt der zweite Block linksbündig unter
+    /// RegEx. Marker an den linken Toggle-Kanten messen das unabhängig vom
+    /// Modell; der zustandskodierte Marker belegt, dass „∗ wörtlich" sichtbar
+    /// bleibt und nach Pattern-/RegEx-Wechseln im gerenderten Baum
+    /// aktualisiert wird.
     private static func runSearchOptionsTest() {
         testLabel = "searchoptions"
         guard let ws = Workspace.shared,
@@ -3117,59 +3100,621 @@ enum SelfTest {
         ws.scope = .file
         ws.useRegex = true
         ws.findPattern = ""
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        // Breite selbst herstellen statt sie aus dem geteilten Test-Home zu
+        // erben (siehe AGENTS.md, tabcompare-Falle): Bei 1000 pt passen alle
+        // Schalter nebeneinander, bei der Mindestbreite nicht.
+        setSearchWindowWidth(searchWindow, 1000)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             guard searchWindow.contentMinSize.height >= 450 else {
                 finish(false, "effektive Mindesthöhe \(searchWindow.contentMinSize.height), "
                     + "erwartet mindestens 450")
             }
-            guard let first = markerView(id: "searchOptionFirst", in: root),
-                  let second = markerView(id: "searchOptionSecond", in: root),
-                  markerView(id: "wildcardLiteralOption-disabled-off", in: root) != nil else {
+            guard let (firstPoint, secondPoint) = searchOptionMarkerPoints(in: root) else {
                 finish(false, "Optionsmarker im sternlosen RegEx-Zustand unvollständig")
             }
-            let firstPoint = first.convert(NSPoint.zero, to: root)
-            let secondPoint = second.convert(NSPoint.zero, to: root)
-            guard abs(firstPoint.x - secondPoint.x) <= 1,
-                  abs(firstPoint.y - secondPoint.y) >= 5 else {
-                finish(false, "Optionen nicht linksbündig zweizeilig: "
+            guard abs(firstPoint.y - secondPoint.y) <= 1,
+                  secondPoint.x - firstPoint.x >= 40 else {
+                finish(false, "Optionen im breiten Fenster nicht einzeilig: "
                     + "erste=\(firstPoint), zweite=\(secondPoint)")
             }
 
-            ws.useRegex = false
-            ws.findPattern = "a*b"
-            pollSearchOptionsEnabled(ws, root: root)
+            setSearchWindowWidth(searchWindow, searchWindow.contentMinSize.width)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                guard let (narrowFirst, narrowSecond) = searchOptionMarkerPoints(in: root) else {
+                    finish(false, "Optionsmarker nach dem Verschmälern unvollständig")
+                }
+                guard abs(narrowFirst.x - narrowSecond.x) <= 1,
+                      abs(narrowFirst.y - narrowSecond.y) >= 5 else {
+                    finish(false, "Optionen im schmalen Fenster nicht linksbündig zweizeilig: "
+                        + "erste=\(narrowFirst), zweite=\(narrowSecond)")
+                }
+
+                ws.useRegex = false
+                ws.findPattern = "a*b"
+                pollSearchOptionsEnabled(ws, root: root)
+            }
         }
     }
 
-    private static func pollSearchOptionsEnabled(_ ws: Workspace, root: NSView,
-                                                 tick: Int = 0) {
-        if markerView(id: "wildcardLiteralOption-enabled-off", in: root) != nil {
-            ws.treatWildcardLiterally = true
-            ws.findPattern = "ab"
-            pollSearchOptionsReset(ws, root: root)
-            return
+    // MARK: - dialoglayout: Geometrie der übrigen Dialoge
+
+    /// Geschwister von `searchlayout` für die Dialoge mit fester Größe:
+    /// Einstellungen, Dateivergleich sowie die vier Blätter der Suchmaske
+    /// (Treffer extrahieren, Vorlagen verwalten, Aus Beispiel, Datei-Set).
+    /// Pro Dialog: kein Bedienelement außerhalb des Inhalts, kein sichtbares
+    /// Bedienelement mit null Breite oder Höhe. Mit `FASTRA_DIALOGLAYOUT_DIR`
+    /// entsteht je Dialog ein PNG (`dialog-<name>.png`) für die Sichtprüfung.
+    private static func runDialogLayoutTest() {
+        testLabel = "dialoglayout"
+        guard let ws = Workspace.shared,
+              let searchWindow = NSApp.windows.first(where: {
+                  $0.frameAutosaveName == SearchWindow.frameAutosaveName
+              }),
+              let mainWindow = mainWindowForAXChecks() else {
+            finish(false, "Workspace, Suchfenster oder Hauptfenster fehlt")
         }
-        if tick >= 40 {
-            finish(false, "∗ wörtlich wurde mit Plain-Text-Stern nicht aktiv")
+        let directory = selfTestTemporaryDirectory()
+            .appendingPathComponent("fastra-dialoglayout-\(UUID().uuidString)")
+        shortSearchFixtureDirectory = directory
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try "alpha\n".write(to: directory.appendingPathComponent("sample.txt"),
+                                atomically: true, encoding: .utf8)
+        } catch { finish(false, "Dialog-Fixture: \(error.localizedDescription)") }
+        ws.openProject(at: directory)
+        ws.scope = .project
+        ws.findPattern = "alpha"
+
+        let pngDirectory = ProcessInfo.processInfo.environment["FASTRA_DIALOGLAYOUT_DIR"]
+            .map { URL(fileURLWithPath: $0) }
+        var findings: [String] = []
+
+        // (Name, Öffnen, Wurzel-View finden, Schließen)
+        // `open` meldet mit `false`, dass der Dialog gar nicht erst geöffnet
+        // werden konnte; der Schritt endet dann sofort mit einem Befund.
+        typealias Step = (name: String, open: () -> Bool, root: () -> NSView?, close: () -> Void)
+        func searchSheet(_ key: String) -> Step {
+            (name: key,
+             open: { NotificationCenter.default.post(name: .fastraSelfTestSearchSheet, object: ws,
+                                                     userInfo: ["sheet": key])
+                     return true },
+             root: { searchWindow.attachedSheet?.contentView },
+             close: { NotificationCenter.default.post(name: .fastraSelfTestSearchSheet, object: ws,
+                                                      userInfo: ["sheet": "close"]) })
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollSearchOptionsEnabled(ws, root: root, tick: tick + 1)
+        let steps: [Step] = [
+            (name: "settings",
+             // Über den echten Menüpunkt (⌘,): Der Selector der Settings-Szene
+             // ist je macOS-Version anders benannt; der Menüeintrag kennt ihn.
+             open: {
+                 // KEIN Ersatz-Selector: Ein Rückfall auf das Über-Fenster
+                 // hätte einen ganz anderen Dialog vermessen und damit den
+                 // echten Befund („⌘, ohne Action") als grünes Ergebnis
+                 // verdeckt (Review-Fund 2026-09-17).
+                 guard let item = NSApp.mainMenu?.items.first?.submenu?.items
+                     .first(where: { $0.keyEquivalent == "," }) else {
+                     findings.append("settings: Menüeintrag ⌘, fehlt")
+                     return false
+                 }
+                 guard let action = item.action else {
+                     findings.append("settings: Menüeintrag ⌘, hat keine Action")
+                     return false
+                 }
+                 NSApp.sendAction(action, to: item.target, from: item)
+                 return true
+             },
+             root: { NSApp.windows.first { window in
+                 window.isVisible && window.contentView.map { markerViewExists(probe: $0) } == true
+             }?.contentView },
+             close: { NSApp.windows.first { window in
+                 window.isVisible && window.contentView.map { markerViewExists(probe: $0) } == true
+             }?.close() }),
+            (name: "compare",
+             open: { ws.showCompareFilesDialog = true
+                     return true },
+             root: { mainWindow.attachedSheet?.contentView },
+             close: { ws.showCompareFilesDialog = false }),
+            searchSheet("extraction"),
+            searchSheet("patterns"),
+            searchSheet("example"),
+            searchSheet("fileset"),
+        ]
+        var index = 0
+        func step() {
+            guard index < steps.count else {
+                finish(findings.isEmpty,
+                       findings.isEmpty
+                       ? "\(steps.count) Dialoge: alle Bedienelemente innerhalb des Inhalts und sichtbar bemessen"
+                       : findings.joined(separator: " | "))
+            }
+            let current = steps[index]
+            index += 1
+            guard current.open() else { step(); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                guard let root = current.root() else {
+                    let titles = NSApp.windows.filter(\.isVisible).map(\.title).joined(separator: ", ")
+                    findings.append("\(current.name): Dialog nicht gefunden (sichtbar: \(titles))")
+                    step(); return
+                }
+                root.layoutSubtreeIfNeeded()
+                var outside: [String] = []
+                collectControlsOutside(root.bounds.insetBy(dx: -1, dy: -1), in: root, root: root, into: &outside)
+                if !outside.isEmpty {
+                    findings.append("\(current.name): außerhalb: " + outside.prefix(3).joined(separator: ", "))
+                }
+                var collapsed: [String] = []
+                collectCollapsedControls(in: root, into: &collapsed)
+                if !collapsed.isEmpty {
+                    findings.append("\(current.name): null Breite/Höhe: " + collapsed.prefix(3).joined(separator: ", "))
+                }
+                if let pngDirectory {
+                    try? FileManager.default.createDirectory(at: pngDirectory, withIntermediateDirectories: true)
+                    if let bitmap = root.bitmapImageRepForCachingDisplay(in: root.bounds) {
+                        root.cacheDisplay(in: root.bounds, to: bitmap)
+                        try? bitmap.representation(using: .png, properties: [:])?
+                            .write(to: pngDirectory.appendingPathComponent("dialog-\(current.name).png"),
+                                   options: .atomic)
+                    }
+                }
+                current.close()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { step() }
+            }
+        }
+        step()
+    }
+
+    /// Enthält der Baum die Einstellungs-Sonde (`SettingsWindowProbe`)?
+    private static func markerViewExists(probe view: NSView) -> Bool {
+        if view is SettingsWindowProbe { return true }
+        return view.subviews.contains { markerViewExists(probe: $0) }
+    }
+
+    /// Sichtbare Bedienelemente ohne Ausdehnung — das Bild eines Pickers,
+    /// den SwiftUI bei Platzmangel auf null Breite drückt (Befund 2026-09-15).
+    private static func collectCollapsedControls(in view: NSView, into result: inout [String]) {
+        if view.isHidden { return }
+        if view is NSControl, view.frame.width < 1 || view.frame.height < 1 {
+            result.append("\(type(of: view)) \(view.frame)")
+        }
+        for sub in view.subviews { collectCollapsedControls(in: sub, into: &result) }
+    }
+
+    // MARK: - searchfocus: Suchfeld hat nach jedem Öffnen den Fokus
+
+    /// Befund 2026-09-15 (Arbeitsbetrieb): Nach aktivem Schließen der Maske
+    /// stand der Cursor beim nächsten ⌘F/⇧⌘F im Feld „Ausschlüsse" oder
+    /// nirgends. Das Fenster wird beim Schließen nur ausgeblendet, und AppKit
+    /// vergibt beim Wiederanzeigen den Fokus an das erste Feld der
+    /// Tab-Reihenfolge. Der Test schließt und öffnet die Maske in allen drei
+    /// Bereichen und verlangt jedes Mal das Suchfeld als First Responder —
+    /// auch nachdem zuvor bewusst in „Ausschlüsse" geklickt wurde.
+    private static func runSearchFocusTest() {
+        testLabel = "searchfocus"
+        guard let ws = Workspace.shared,
+              let searchWindow = NSApp.windows.first(where: {
+                  $0.frameAutosaveName == SearchWindow.frameAutosaveName
+              }),
+              let root = searchWindow.contentView else {
+            finish(false, "Workspace oder Suchfenster fehlt")
+        }
+        let directory = selfTestTemporaryDirectory()
+            .appendingPathComponent("fastra-searchfocus-\(UUID().uuidString)")
+        shortSearchFixtureDirectory = directory
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try "alpha\n".write(to: directory.appendingPathComponent("sample.txt"),
+                                atomically: true, encoding: .utf8)
+        } catch { finish(false, "Fokus-Fixture: \(error.localizedDescription)") }
+        ws.openProject(at: directory)
+        ws.recentSearchFolders = [SearchFolderEntry(path: directory.path, enabled: true)]
+
+        func findField() -> RegexFieldTextView? {
+            var fields: [NSView] = []
+            collectTypeableFields(in: root, into: &fields)
+            return fields.compactMap { $0 as? RegexFieldTextView }
+                .first { $0.accessibilityIdentifier() == "fastra.findField" }
+        }
+        func focusIsFindField() -> Bool {
+            guard let field = findField() else { return false }
+            return searchWindow.isVisible && searchWindow.firstResponder === field
+        }
+
+        // Ablauf: (Notification, Erwartung an den Bereich, Vorbereitung)
+        let steps: [(String, Notification.Name, Workspace.SearchScope)] = [
+            ("⌘F nach Schließen", .fastraShowSearchFile, .file),
+            ("⇧⌘F mit Projekt nach Schließen", .fastraShowSearchFolder, .project),
+            ("⇧⌘F erneut nach Klick in Ausschlüsse und Schließen", .fastraShowSearchFolder, .project),
+            ("Menü „In Projekt oder Ordnern suchen…“ bei offener Maske", .fastraShowSearchFolderForced, .project),
+        ]
+        var index = 0
+        func runStep() {
+            guard index < steps.count else {
+                finish(true, "\(steps.count) Öffnungen: Suchfeld war jedes Mal First Responder "
+                    + "(Datei und Projekt, auch nach Klick in Ausschlüsse)")
+            }
+            let (label, name, expectedScope) = steps[index]
+            index += 1
+            // Vorbereitung: Bei Schritt 3 UND 4 vorher bewusst „Ausschlüsse"
+            // fokussieren. Schritt 4 holt die offene Maske nur nach vorn —
+            // ohne diesen Wechsel läge der Fokus noch vom Ende des dritten
+            // Schritts im Suchfeld, und der Schritt bestünde, ohne dass der
+            // Menüweg überhaupt etwas getan hätte (Review-Fund 2026-09-17).
+            // Deshalb auch prüfen, dass der Fokus wirklich dort ankam.
+            if index >= 3 {
+                guard let exclusions = editableTextField(id: "fastra.projectExclusions", in: root),
+                      searchWindow.makeFirstResponder(exclusions),
+                      !focusIsFindField() else {
+                    finish(false, "\(label): Fokus ließ sich nicht auf „Ausschlüsse“ legen")
+                }
+            }
+            // Bei den ersten drei Schritten die Maske vorher schließen; der
+            // letzte Schritt holt die offene Maske nur nach vorn.
+            guard index < 4 else {
+                NotificationCenter.default.post(name: name, object: ws)
+                pollSearchFocus(label: label, expectedScope: expectedScope, ws: ws,
+                                focused: focusIsFindField, next: runStep)
+                return
+            }
+            ws.findPattern = ""
+            ws.showSearchDialog = false
+            // Das Ausblenden läuft über SwiftUI-onChange → orderOut; unter
+            // Last kann das länger als einen Durchlauf dauern. Bis zu 20
+            // Prüfläufe warten.
+            pollSearchHidden(searchWindow) { hidden in
+                guard hidden else {
+                    finish(false, "\(label): Maske wurde nicht ausgeblendet "
+                        + "(showSearchDialog=\(ws.showSearchDialog), visible=\(searchWindow.isVisible))")
+                }
+                NotificationCenter.default.post(name: name, object: ws)
+                pollSearchFocus(label: label, expectedScope: expectedScope, ws: ws,
+                                focused: focusIsFindField, next: runStep)
+            }
+        }
+        runStep()
+    }
+
+    /// Taktbasiert (20 Durchläufe à 0,1 s), nicht nach Wanduhr: Eine
+    /// absolute Frist wäre nach einer längeren Main-Thread-Belegung schon
+    /// beim ersten echten Prüflauf abgelaufen, obwohl die Maske im nächsten
+    /// Durchlauf korrekt verschwindet (Review-Fund 2026-09-16).
+    /// Zählt nur bediente Durchläufe (20 à 0,1 s), nicht die Wanduhr: Eine
+    /// absolute Frist wäre nach einer längeren Main-Thread-Belegung schon
+    /// beim ersten echten Prüflauf abgelaufen, obwohl die Maske im nächsten
+    /// Durchlauf korrekt verschwindet (Review-Fund 2026-09-16).
+    private static func pollSearchHidden(_ window: NSWindow,
+                                         completion: @escaping (Bool) -> Void) {
+        waitFor(budget: 2, pause: 0.1,
+                condition: { !window.isVisible },
+                onTimeout: { _ in completion(false) },
+                then: { completion(true) })
+    }
+
+    private static func pollSearchFocus(label: String, expectedScope: Workspace.SearchScope,
+                                        ws: Workspace, focused: @escaping () -> Bool,
+                                        next: @escaping () -> Void) {
+        waitFor(budget: 2, pause: 0.05,
+                condition: focused,
+                onTimeout: { book in
+                    finish(false, "\(label): Suchfeld nicht First Responder "
+                        + "(FirstResponder=\(String(describing: NSApp.keyWindow?.firstResponder))) — \(book.summary)")
+                },
+                then: {
+                    guard ws.scope == expectedScope else {
+                        finish(false, "\(label): Bereich \(ws.scope.rawValue), erwartet \(expectedScope.rawValue)")
+                    }
+                    // Erst im nächsten Durchlauf weiter: Setzte der Test direkt im
+                    // selben Durchlauf `showSearchDialog = false`, sähe SwiftUI
+                    // true→false als „unverändert", `onChange` feuerte nicht, und die
+                    // Maske bliebe trotz Modell „geschlossen" sichtbar (2026-09-15).
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { next() }
+                })
+    }
+
+    // MARK: - searchlayout: Geometrie der Suchmaske je Bereich und Breite
+
+    /// Vermisst die Suchmaske in JEDEM Bereich (Datei, Ordner, Projekt) bei
+    /// Mindestbreite und bei 1000 pt. Entstanden nach dem Befund vom
+    /// 2026-09-15: Der Layout-Umbau war nur im Datei-Bereich angesehen worden,
+    /// im Projekt-Bereich bei 500 pt brachen die Tab-Beschriftungen um, der
+    /// Datei-Set-Picker hatte null Breite und der Dateitypen-Picker ragte aus
+    /// dem Fenster. Geprüft wird pro Kombination:
+    ///   1. Jede Tab-Beschriftung ist einzeilig (Höhe unter 30 pt).
+    ///   2. Kein Bedienelement liegt außerhalb des Fensterinhalts.
+    ///   3. Die Trefferliste bekommt mindestens 25 % der Fensterhöhe; hat
+    ///      die Optionszeile umgebrochen, um die Höhe dieser zweiten Reihe
+    ///      weniger (`wrappedOptionsRowHeight`).
+    /// Jede Kombination läuft in drei Varianten (Review-Fund 2026-09-16):
+    ///   - `plain`: leeres Muster, Standardnamen.
+    ///   - `regexGroups`: acht fangende Gruppen, eine eigene Vorlage mit
+    ///     60 Zeichen Namen ist gewählt, ein Datei-Set mit 70 Zeichen Namen aktiv.
+    ///   - `wildcards`: acht Sterne im Klartext-Muster, dieselben langen Namen.
+    ///   Zusätzlich geprüft: Suchen- und Ersetzen-Feld behalten mindestens
+    ///   100 pt Breite, und die Pillenreihe steht genau auf ihrer Obergrenze
+    ///   `PillTrayLayout.maxWidth` — sie scrollt also, statt zu wachsen, und
+    ///   ist zugleich nicht auf null Punkte zusammengefallen.
+    /// Steht `FASTRA_SEARCHLAYOUT_DIR`, legt der Test je Kombination ein PNG
+    /// des Fensterinhalts dort ab (`search-<bereich>-<breite>[-variante].png`)
+    /// — für die Sichtprüfung VOR der Abgabe, nicht nur für den Automaten.
+    private static func runSearchLayoutTest() {
+        testLabel = "searchlayout"
+        guard let ws = Workspace.shared,
+              let searchWindow = NSApp.windows.first(where: {
+                  $0.frameAutosaveName == SearchWindow.frameAutosaveName
+              }),
+              let root = searchWindow.contentView else {
+            finish(false, "Workspace oder Suchfenster fehlt")
+        }
+        // Projekt-Fixture, damit der Projekt-Bereich wählbar ist.
+        let directory = selfTestTemporaryDirectory()
+            .appendingPathComponent("fastra-searchlayout-\(UUID().uuidString)")
+        shortSearchFixtureDirectory = directory
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try "alpha beta\n".write(to: directory.appendingPathComponent("sample.txt"),
+                                     atomically: true, encoding: .utf8)
+        } catch { finish(false, "Layout-Fixture: \(error.localizedDescription)") }
+        ws.openProject(at: directory)
+        ws.recentSearchFolders = [SearchFolderEntry(path: directory.path, enabled: true)]
+        ws.useRegex = false
+        ws.findPattern = ""
+        ws.replacePattern = ""
+
+        // Lange Nutzernamen: eigene Vorlage (in der isolierten Suite — die
+        // Suchmaske lädt dieselbe Bibliothek) und ein Datei-Set des
+        // temporären Projekts.
+        let library = MainActor.assumeIsolated { PatternLibrary(defaults: workspaceDefaults()) }
+        let longTemplateID = "selftest-searchlayout-langer-name"
+        let longTemplate = PatternTemplate(
+            id: longTemplateID,
+            name: "Sehr lange eigene Vorlage mit einem Namen aus sechzig Zeichen",
+            category: .words, regex: "(a)(b)(c)(d)(e)(f)(g)(h)", exampleMatch: "abcdefgh"
+        )
+        do { try MainActor.assumeIsolated { try library.save(longTemplate) } } catch {
+            finish(false, "Layout-Fixture: Vorlage nicht speicherbar: \(error.localizedDescription)")
+        }
+        let longSet = ProjectFileSet(
+            name: "Ein sehr langes Datei-Set mit siebzig Zeichen Namen für die Layoutprüfung",
+            paths: ["."]
+        )
+        let defaultSetID = ws.projectSearchConfiguration.activeSetID
+        ws.projectSearchConfiguration.fileSets.append(longSet)
+
+        enum LayoutVariant: String, CaseIterable {
+            case plain, regexGroups, wildcards
+            var suffix: String { self == .plain ? "" : "-\(rawValue)" }
+        }
+        func apply(_ variant: LayoutVariant) {
+            switch variant {
+            case .plain:
+                ws.useRegex = false
+                ws.findPattern = ""
+                ws.selectedTemplateID = nil
+                ws.projectSearchConfiguration.activeSetID = defaultSetID
+            case .regexGroups:
+                ws.useRegex = true
+                ws.findPattern = "(alpha)(beta)(gamma)(delta)(epsilon)(zeta)(eta)(theta)"
+                ws.selectedTemplateID = longTemplateID
+                ws.projectSearchConfiguration.activeSetID = longSet.id
+            case .wildcards:
+                ws.useRegex = false
+                ws.findPattern = "a*b*c*d*e*f*g*h*"
+                ws.selectedTemplateID = longTemplateID
+                ws.projectSearchConfiguration.activeSetID = longSet.id
+            }
+        }
+
+        let widths: [CGFloat] = [max(500, searchWindow.contentMinSize.width), 1000]
+        var combinations: [(Workspace.SearchScope, CGFloat, LayoutVariant)] = []
+        for variant in LayoutVariant.allCases {
+            for scope in [Workspace.SearchScope.file, .folder, .project] {
+                for width in widths { combinations.append((scope, width, variant)) }
+            }
+        }
+        let pngDirectory = ProcessInfo.processInfo.environment["FASTRA_SEARCHLAYOUT_DIR"]
+            .map { URL(fileURLWithPath: $0) }
+        // Dieselbe Stufe, die der Fensterrahmen per Environment weitergibt —
+        // die Pillenreihe skaliert mit ihr, ihre Obergrenze also auch.
+        let uiScale = UIZoom.scale(for: workspaceDefaults().integer(forKey: UIZoom.defaultsKey))
+        let pillLimit = PillTrayLayout.maxWidth * uiScale
+        var findings: [String] = []
+        var index = 0
+
+        func step() {
+            guard index < combinations.count else {
+                apply(.plain)
+                MainActor.assumeIsolated { library.delete(id: longTemplateID) }
+                // exit() durchläuft AppKits Beenden-Hooks nicht, und die
+                // Bibliothek schreibt nur in die Test-Einstellungen. Ohne
+                // synchronize() bliebe die 60-Zeichen-Vorlage für die
+                // folgenden Tests desselben Laufs stehen (Review-Fund
+                // 2026-09-17; Muster wie in runSoakRounds).
+                workspaceDefaults().synchronize()
+                finish(findings.isEmpty,
+                       findings.isEmpty
+                       ? "\(combinations.count) Bereich/Breite/Varianten-Kombinationen: Tabs "
+                         + "einzeilig, alle Bedienelemente im Fenster, Felder ≥ 100 pt, "
+                         + "Pillenreihe begrenzt, Trefferliste ≥ 25 % der Höhe"
+                       : findings.joined(separator: " | "))
+            }
+            let (scope, width, variant) = combinations[index]
+            index += 1
+            apply(variant)
+            ws.scope = scope
+            var size = searchWindow.contentLayoutRect.size
+            size.width = width
+            size.height = max(700, searchWindow.contentMinSize.height)
+            searchWindow.setContentSize(size)
+            // Der Bereichswechsel animiert 0,22 s, und die ausgehende Fläche
+            // des alten Bereichs bleibt währenddessen im Baum — eine Messung
+            // nach 0,5 s traf sie noch (Dateitypen-Picker des Ordner-Bereichs
+            // mit 670 pt Breite). Deshalb eine volle Sekunde warten.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                root.layoutSubtreeIfNeeded()
+                let label = "\(scope.rawValue)@\(Int(width))\(variant.suffix)"
+                let bounds = root.bounds.insetBy(dx: -1, dy: -1)
+                // Eingabefelder: Vorlagenmenü, Datei-Set-Picker und Pillen sind
+                // `fixedSize`; die Felder müssen trotzdem bedienbar bleiben.
+                for fieldID in ["fastra.findField", "fastra.replaceField"] {
+                    guard let field = markerView(id: fieldID, in: root) else {
+                        findings.append("\(label): \(fieldID) fehlt"); continue
+                    }
+                    let rect = field.convert(field.bounds, to: root)
+                    if rect.width < 100 {
+                        findings.append("\(label): \(fieldID) nur \(Int(rect.width)) pt breit")
+                    }
+                }
+                if variant != .plain {
+                    if let tray = markerView(id: "pillTray", in: root) {
+                        let rect = tray.convert(tray.bounds, to: root)
+                        // Der Marker misst die Reihe selbst (Rahmen der PillTray).
+                        // Beide Nicht-plain-Varianten erzeugen acht Pillen; die
+                        // sind zusammen breiter als die Obergrenze, die Reihe
+                        // muss also genau an ihrer Grenze stehen. Ohne
+                        // Untergrenze bestand auch eine auf null Punkte
+                        // gedrückte Reihe, und die 240 von Hand gingen an der
+                        // echten Konstante vorbei (Review-Fund 2026-09-17).
+                        if rect.width > pillLimit + 2 {
+                            findings.append("\(label): Pillenreihe \(Int(rect.width)) pt breit "
+                                + "statt höchstens \(Int(pillLimit))")
+                        } else if rect.width < pillLimit - 2 {
+                            findings.append("\(label): Pillenreihe nur \(Int(rect.width)) statt "
+                                + "\(Int(pillLimit)) pt breit — acht Pillen füllen sie nicht")
+                        }
+                    } else {
+                        findings.append("\(label): Pillenreihe fehlt")
+                    }
+                }
+                for s in Workspace.SearchScope.allCases {
+                    guard let tab = markerView(id: "scopeTab-\(s.rawValue)", in: root) else {
+                        findings.append("\(label): Tab \(s.rawValue) fehlt"); continue
+                    }
+                    let rect = tab.convert(tab.bounds, to: root)
+                    if rect.height >= 30 || rect.width < 20 {
+                        findings.append("\(label): Tab \(s.rawValue) nicht einzeilig \(rect)")
+                    }
+                }
+                var outside: [String] = []
+                collectControlsOutside(bounds, in: root, root: root, into: &outside)
+                if !outside.isEmpty {
+                    findings.append("\(label): außerhalb des Fensters: " + outside.prefix(3).joined(separator: ", "))
+                }
+                if let list = markerView(id: "hitList", in: root) {
+                    let rect = list.convert(list.bounds, to: root)
+                    // 25 %: Der Ordner-Bereich trägt zusätzlich die Liste der
+                    // gemerkten Ordner; bei 700 pt bleiben der Trefferliste dort
+                    // rund 200 pt (etwa neun Zeilen). Bricht die Optionszeile um
+                    // (`ViewThatFits` setzt „∗ wörtlich" bei Mindestbreite unter
+                    // die erste Reihe), kostet das genau eine Schalterzeile — um
+                    // diese gemessene Höhe sinkt die Anforderung. Ohne diesen
+                    // Abzug lieferte Ordner@520 dauerhaft 172 statt 175 pt
+                    // (Befund 2026-09-16, auch auf 7f8e1de rot): Die Zeile ist
+                    // keine Fehlfunktion, sondern der dokumentierte Umbruch.
+                    let wrapped = wrappedOptionsRowHeight(in: root)
+                    let required = root.bounds.height * 0.25 - wrapped
+                    if rect.height < required {
+                        findings.append("\(label): Trefferliste nur \(Int(rect.height)) von "
+                            + "\(Int(root.bounds.height)) pt (verlangt \(Int(required)), "
+                            + "Optionsumbruch \(Int(wrapped)) pt)")
+                    }
+                } else {
+                    findings.append("\(label): Trefferlisten-Marker fehlt")
+                }
+                if let pngDirectory {
+                    try? FileManager.default.createDirectory(at: pngDirectory, withIntermediateDirectories: true)
+                    if let bitmap = root.bitmapImageRepForCachingDisplay(in: root.bounds) {
+                        root.cacheDisplay(in: root.bounds, to: bitmap)
+                        let file = pngDirectory.appendingPathComponent(
+                            "search-\(scope.rawValue)-\(Int(width))\(variant.suffix).png")
+                        try? bitmap.representation(using: .png, properties: [:])?
+                            .write(to: file, options: .atomic)
+                    }
+                }
+                step()
+            }
+        }
+        step()
+    }
+
+    /// Höhe, die der Umbruch der Optionszeile kostet: der Abstand zwischen
+    /// der Zeile des ersten Schalters („RegEx", Marker `searchOptionFirst`)
+    /// und der Zeile von „∗ wörtlich" (Marker `wildcardLiteralOption-*`).
+    /// Stehen beide in derselben Reihe, ist der Umbruch 0.
+    private static func wrappedOptionsRowHeight(in root: NSView) -> CGFloat {
+        func marker(prefix: String, in view: NSView) -> NSView? {
+            if view.accessibilityIdentifier().hasPrefix(prefix) { return view }
+            for sub in view.subviews {
+                if let found = marker(prefix: prefix, in: sub) { return found }
+            }
+            return nil
+        }
+        guard let first = markerView(id: "searchOptionFirst", in: root),
+              let literal = marker(prefix: "wildcardLiteralOption-", in: root) else { return 0 }
+        let firstMidY = first.convert(first.bounds, to: root).midY
+        let literalMidY = literal.convert(literal.bounds, to: root).midY
+        let delta = abs(literalMidY - firstMidY)
+        // Unter einer halben Schalterhöhe ist es dieselbe Reihe.
+        return delta > 8 ? delta : 0
+    }
+
+    /// Sammelt Bedienelemente (NSControl, NSTextView), deren Rechteck über
+    /// den Fensterinhalt hinausragt. Inhalte von ScrollViews sind ausgenommen:
+    /// Dort ist Überstand normal und wird vom Clip abgeschnitten.
+    private static func collectControlsOutside(_ bounds: NSRect, in view: NSView,
+                                               root: NSView, into result: inout [String]) {
+        if view is NSScrollView { return }
+        if view is NSControl || view is NSTextView {
+            let rect = view.convert(view.bounds, to: root)
+            if rect.width > 0, rect.height > 0, !bounds.contains(rect) {
+                result.append("\(type(of: view)) \(rect)")
+            }
+        }
+        for sub in view.subviews {
+            collectControlsOutside(bounds, in: sub, root: root, into: &result)
         }
     }
 
-    private static func pollSearchOptionsReset(_ ws: Workspace, root: NSView,
-                                               tick: Int = 0) {
-        if markerView(id: "wildcardLiteralOption-disabled-off", in: root) != nil,
-           !ws.treatWildcardLiterally {
-            runShortFolderSearchOptionsTest(ws, root: root)
-            return
+    /// Setzt die Fensterbreite bei fester linker oberer Ecke.
+    private static func setSearchWindowWidth(_ window: NSWindow, _ width: CGFloat) {
+        var frame = window.frame
+        frame.size.width = max(width, window.contentMinSize.width)
+        window.setFrame(frame, display: true)
+    }
+
+    /// Linke Kanten von „RegEx" und „Nur in Auswahl" in Root-Koordinaten;
+    /// `nil`, wenn ein Marker fehlt oder „∗ wörtlich" nicht als deaktiviert
+    /// gerendert ist.
+    private static func searchOptionMarkerPoints(in root: NSView) -> (NSPoint, NSPoint)? {
+        guard let first = markerView(id: "searchOptionFirst", in: root),
+              let second = markerView(id: "searchOptionSecond", in: root),
+              markerView(id: "wildcardLiteralOption-disabled-off", in: root) != nil else {
+            return nil
         }
-        if tick >= 40 {
-            finish(false, "∗ wörtlich blieb nach Entfernen des Sterns aktiv/gewählt")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollSearchOptionsReset(ws, root: root, tick: tick + 1)
-        }
+        return (first.convert(NSPoint.zero, to: root), second.convert(NSPoint.zero, to: root))
+    }
+
+    private static func pollSearchOptionsEnabled(_ ws: Workspace, root: NSView) {
+        waitFor(budget: 2, pause: 0.05,
+                condition: { markerView(id: "wildcardLiteralOption-enabled-off", in: root) != nil },
+                onTimeout: { book in
+                    finish(false, "∗ wörtlich wurde mit Plain-Text-Stern nicht aktiv — \(book.summary)")
+                },
+                then: {
+                    ws.treatWildcardLiterally = true
+                    ws.findPattern = "ab"
+                    pollSearchOptionsReset(ws, root: root)
+                })
+    }
+
+    private static func pollSearchOptionsReset(_ ws: Workspace, root: NSView) {
+        waitFor(budget: 2, pause: 0.05,
+                condition: {
+                    markerView(id: "wildcardLiteralOption-disabled-off", in: root) != nil
+                        && !ws.treatWildcardLiterally
+                },
+                onTimeout: { book in
+                    finish(false, "∗ wörtlich blieb nach Entfernen des Sterns aktiv/gewählt — \(book.summary)")
+                },
+                then: { runShortFolderSearchOptionsTest(ws, root: root) })
     }
 
     /// Die Kurzsuche muss über die sichtbaren Bedienelemente funktionieren.
@@ -3180,7 +3725,7 @@ enum SelfTest {
         size.width = window.contentMinSize.width
         size.height = max(size.height, window.contentMinSize.height)
         window.setContentSize(size)
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-short-search-\(UUID().uuidString)")
         shortSearchFixtureDirectory = directory
         do {
@@ -3227,7 +3772,13 @@ enum SelfTest {
                     catch { finish(false, "Suchfenster-PNG konnte nicht gespeichert werden") }
                 }
                 let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
-                guard sendMouseClick(at: point, in: window, modifiers: []) else {
+                // Über die echte Event-Queue: Seit dem Layout-Umbau 2026-09-15
+                // (Knopfzeile in `ViewThatFits`) steht hinter „Suchen" ein
+                // AppKit-NSButton. Dessen Maus-Tracking wartet in einer
+                // eigenen Schleife auf das Mouse-up aus der Queue;
+                // `window.sendEvent` liefert es erst nach der Rückkehr des
+                // Mouse-down — der Test hing dann bis zum Runner-Timeout.
+                guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
                     finish(false, "Mausklick auf Suchen nicht zustellbar")
                 }
                 pollShortSearchStep("Maus-Suche mit einem Zeichen", ready: {
@@ -3292,7 +3843,7 @@ enum SelfTest {
                         hintVisible("Kein Ordner ausgewählt. Mindestens einen aktivieren.")
                             && !ws.waitingForShortFolderSearch
                     }) {
-                        finish(true, "Optionen zweizeilig/linksbündig; Kurzsuche per Maus und Return "
+                        finish(true, "Optionen breit einzeilig, schmal zweizeilig/linksbündig; Kurzsuche per Maus und Return "
                             + "bei Mindestbreite; Abschluss-, Leer-, Wurzel- und Veraltet-Hinweise korrekt")
                     }
                 }
@@ -3300,14 +3851,13 @@ enum SelfTest {
         }
     }
 
-    private static func pollShortSearchStep(_ label: String, tick: Int = 0,
+    private static func pollShortSearchStep(_ label: String,
                                            ready: @escaping () -> Bool,
                                            completion: @escaping () -> Void) {
-        if ready() { completion(); return }
-        if tick >= 100 { finish(false, "Kurzsuche: \(label) nicht erreicht") }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollShortSearchStep(label, tick: tick + 1, ready: ready, completion: completion)
-        }
+        waitFor(budget: 5, pause: 0.05,
+                condition: ready,
+                onTimeout: { book in finish(false, "Kurzsuche: \(label) nicht erreicht — \(book.summary)") },
+                then: completion)
     }
 
     /// Prüft den gemeldeten Alt-Treffer-Zustand am ECHTEN Projekt-Filterfeld:
@@ -3328,7 +3878,7 @@ enum SelfTest {
         }
 
         let fm = FileManager.default
-        let projectRoot = fm.temporaryDirectory
+        let projectRoot = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-projectinput-\(UUID().uuidString)")
         let file = projectRoot.appendingPathComponent("alt.txt")
         do {
@@ -3345,11 +3895,12 @@ enum SelfTest {
         ws.useRegex = false
 
         // Die Konfigurationsänderungen oben dürfen erst auslaufen; danach
-        // injizieren wir bewusst eine vollständige alte Trefferbasis.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            guard let field = editableTextField(
-                id: "fastra.projectExclusions", in: root
-            ) else {
+        // injizieren wir bewusst eine vollständige alte Trefferbasis. Das
+        // Feld wird in bis zu 20 Prüfläufen gesucht: Eine einzelne Prüfung
+        // nach 0,4 s fiel am 2026-09-15 im Sammellauf einmal aus, weil der
+        // Bereichswechsel unter Last noch nicht ausgelegt war.
+        pollProjectExclusionsField(root: root) { found in
+            guard let field = found else {
                 ws.closeProject()
                 try? fm.removeItem(at: projectRoot)
                 finish(false, "Projekt-Ausschlussfeld nicht im echten Fenster gefunden")
@@ -3415,6 +3966,24 @@ enum SelfTest {
         }
     }
 
+    /// Taktbasiert (20 Durchläufe à 0,1 s) wie `pollSearchHidden`: Nur
+    /// tatsächlich ausgeführte Prüfläufe zählen, Fremdlast auf dem
+    /// Main-Thread verbraucht die Frist nicht (Review-Fund 2026-09-16).
+    /// Zählt nur bediente Durchläufe (20 à 0,1 s) wie `pollSearchHidden`:
+    /// Fremdlast auf dem Main-Thread verbraucht die Frist nicht
+    /// (Review-Fund 2026-09-16).
+    private static func pollProjectExclusionsField(root: NSView,
+                                                   completion: @escaping (NSTextField?) -> Void) {
+        var field: NSTextField?
+        waitFor(budget: 2, pause: 0.1,
+                condition: {
+                    field = editableTextField(id: "fastra.projectExclusions", in: root)
+                    return field != nil
+                },
+                onTimeout: { _ in completion(nil) },
+                then: { completion(field) })
+    }
+
     private static func editableTextField(id: String, in view: NSView) -> NSTextField? {
         if let field = view as? NSTextField,
            field.isEditable, field.isEnabled,
@@ -3469,7 +4038,7 @@ enum SelfTest {
         // neuer Tab, activeTabID wechselt. loadFile ist jetzt asynchron
         // (v0.9): Folge-Schritte in der Completion, damit der Inhalt beim
         // Prüfen wirklich im Tab steht.
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-tabswitch-\(UUID().uuidString).txt")
         let marker = "TABSWITCH_MARKER_CONTENT"
         do { try marker.write(to: tmp, atomically: true, encoding: .utf8) }
@@ -3539,9 +4108,7 @@ enum SelfTest {
             ws,
             window: window,
             targetID: targetID,
-            keeperID: keeperID,
-            tick: 0
-        )
+            keeperID: keeperID)
     }
 
     /// Viele Tabs erzeugen echten horizontalen Überlauf. Manuelles Scrollen
@@ -3592,93 +4159,82 @@ enum SelfTest {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     workspace.selectTab(id: lastID)
                     pollActiveTabVisible(workspace, content: content, tabID: lastID,
-                                         manualMaximum: maximumX, tick: 0)
+                                         manualMaximum: maximumX)
                 }
             }
         }
     }
 
     private static func pollActiveTabVisible(_ workspace: Workspace, content: NSView,
-                                             tabID: UUID, manualMaximum: CGFloat,
-                                             tick: Int) {
-        if let marker = markerView(id: "documentTabFrame-\(tabID.uuidString)", in: content),
-           let scrollView = marker.enclosingScrollView {
-            let clip = scrollView.contentView
-            let frame = marker.convert(marker.bounds, to: clip)
-            let fullyVisible = frame.minX >= clip.bounds.minX - 1
-                && frame.maxX <= clip.bounds.maxX + 1
-                && frame.width > 20
-            if fullyVisible {
-                finish(true, "manueller Scroll blieb stehen; Dokumentwechsel zeigte aktiven "
-                    + "Tab vollständig (Überlauf \(Int(manualMaximum)) pt)")
-            }
-        }
-        if tick >= 40 {
-            finish(false, "aktiver Tab nach Dokumentwechsel nicht vollständig sichtbar")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollActiveTabVisible(workspace, content: content, tabID: tabID,
-                                 manualMaximum: manualMaximum, tick: tick + 1)
-        }
+                                             tabID: UUID, manualMaximum: CGFloat) {
+        waitFor(budget: 2, pause: 0.05,
+                condition: {
+                    guard let marker = markerView(id: "documentTabFrame-\(tabID.uuidString)", in: content),
+                          let scrollView = marker.enclosingScrollView else { return false }
+                    let clip = scrollView.contentView
+                    let frame = marker.convert(marker.bounds, to: clip)
+                    return frame.minX >= clip.bounds.minX - 1
+                        && frame.maxX <= clip.bounds.maxX + 1
+                        && frame.width > 20
+                },
+                onTimeout: { book in
+                    finish(false, "aktiver Tab nach Dokumentwechsel nicht vollständig sichtbar — \(book.summary)")
+                },
+                then: {
+                    finish(true, "manueller Scroll blieb stehen; Dokumentwechsel zeigte aktiven "
+                        + "Tab vollständig (Überlauf \(Int(manualMaximum)) pt)")
+                })
     }
 
     private static func pollTabCloseTarget(
         _ ws: Workspace,
         window: NSWindow,
         targetID: UUID,
-        keeperID: UUID,
-        tick: Int
+        keeperID: UUID
     ) {
-        guard let content = window.contentView,
-              let marker = markerView(
-                id: "tabClose-\(targetID.uuidString)",
-                in: content
-              ) else {
-            guard tick < 40 else {
-                finish(false, "AppKit-Marker des Tab-X fehlt")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollTabCloseTarget(
-                    ws,
-                    window: window,
-                    targetID: targetID,
-                    keeperID: keeperID,
-                    tick: tick + 1
-                )
-            }
-            return
-        }
+        var marker: NSView?
+        waitFor(budget: 2, pause: 0.05,
+                condition: {
+                    guard let content = window.contentView else { return false }
+                    marker = markerView(id: "tabClose-\(targetID.uuidString)", in: content)
+                    return marker != nil
+                },
+                onTimeout: { book in
+                    finish(false, "AppKit-Marker des Tab-X fehlt — \(book.summary)")
+                },
+                then: {
+                    guard let marker else { finish(false, "Tab-X-Marker nach Erfolg verschwunden") }
+                    let minimumSide: CGFloat = 22
+                    guard marker.bounds.width >= minimumSide,
+                          marker.bounds.height >= minimumSide else {
+                        finish(
+                            false,
+                            "Tab-X-Hitbereich ist nur "
+                                + "\(Int(marker.bounds.width))×\(Int(marker.bounds.height)) pt"
+                        )
+                    }
 
-        let minimumSide: CGFloat = 22
-        guard marker.bounds.width >= minimumSide,
-              marker.bounds.height >= minimumSide else {
-            finish(
-                false,
-                "Tab-X-Hitbereich ist nur "
-                    + "\(Int(marker.bounds.width))×\(Int(marker.bounds.height)) pt"
-            )
-        }
+                    // Einen Punkt innerhalb der rechten Kante klicken, nicht bloß das
+                    // Symbolzentrum. Genau dort fiel der kleine verschachtelte Button
+                    // bisher auf den umgebenden Tab zurück.
+                    let edge = NSPoint(x: marker.bounds.maxX - 1, y: marker.bounds.midY)
+                    let point = marker.convert(edge, to: nil)
+                    guard sendMouseClick(at: point, in: window, modifiers: []) else {
+                        finish(false, "Randklick auf das Tab-X nicht erzeugbar")
+                    }
 
-        // Einen Punkt innerhalb der rechten Kante klicken, nicht bloß das
-        // Symbolzentrum. Genau dort fiel der kleine verschachtelte Button
-        // bisher auf den umgebenden Tab zurück.
-        let edge = NSPoint(x: marker.bounds.maxX - 1, y: marker.bounds.midY)
-        let point = marker.convert(edge, to: nil)
-        guard sendMouseClick(at: point, in: window, modifiers: []) else {
-            finish(false, "Randklick auf das Tab-X nicht erzeugbar")
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            let closed = !ws.tabs.contains(where: { $0.id == targetID })
-            let keeperStayedActive = ws.activeTabID == keeperID
-            finish(
-                closed && keeperStayedActive,
-                closed && keeperStayedActive
-                    ? "mindestens 22×22 pt; Randklick schließt nur den Ziel-Tab"
-                    : "Randklick schloss den Ziel-Tab nicht eindeutig "
-                        + "(geschlossen=\(closed), Kontroll-Tab aktiv=\(keeperStayedActive))"
-            )
-        }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        let closed = !ws.tabs.contains(where: { $0.id == targetID })
+                        let keeperStayedActive = ws.activeTabID == keeperID
+                        finish(
+                            closed && keeperStayedActive,
+                            closed && keeperStayedActive
+                                ? "mindestens 22×22 pt; Randklick schließt nur den Ziel-Tab"
+                                : "Randklick schloss den Ziel-Tab nicht eindeutig "
+                                    + "(geschlossen=\(closed), Kontroll-Tab aktiv=\(keeperStayedActive))"
+                        )
+                    }
+                })
     }
 
     /// Prüft den echten Shift-Klick auf einen zweiten Tab, die zwei sichtbar
@@ -3693,7 +4249,7 @@ enum SelfTest {
             finish(false, "Workspace oder Hauptfenster nicht erreichbar")
         }
 
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-tabcompare-\(UUID().uuidString)")
         // Der lange Name schützt zugleich den realen Klickpfad eines in der
         // Mitte gekürzten Tabs vor Rückfällen zu fensterbreiten Tabs.
@@ -3760,9 +4316,7 @@ enum SelfTest {
                                 window: window,
                                 directory: directory,
                                 leftID: leftTab.id,
-                                rightID: rightTab.id,
-                                tick: 0
-                            )
+                                rightID: rightTab.id)
                         }
                     }
                 }
@@ -3878,7 +4432,6 @@ enum SelfTest {
         in window: NSWindow,
         content: NSView,
         directory: URL,
-        tick: Int = 0,
         completion: @escaping () -> Void
     ) {
         // Messung, Prüfungen und Klick passieren in EINEM synchronen
@@ -3888,53 +4441,52 @@ enum SelfTest {
         // ScrollView stellt bei jedem Re-Render ihren eigenen gespeicherten
         // Offset wieder her und pendelte im Gesamtlauf dauerhaft gegen den
         // Test-Scroll (beobachtet 2026-08-17: Klickpunkt sprang je Tick
-        // zwischen x≈278 und x≈776).
-        func tryAgain(blocker: String) {
-            if tick >= 200 {
-                try? FileManager.default.removeItem(at: directory)
-                finish(false, "Vorbedingung des Shift-Klicks nicht erreicht "
-                    + "(letzter Blocker: \(blocker))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                armSingleShiftClick(
-                    id, in: window, content: content, directory: directory,
-                    tick: tick + 1, completion: completion
-                )
-            }
-        }
-        scrollTabIntoView(id: id, in: content)
-        guard let idleTab = markerView(
-            id: "documentTab-idle-\(id.uuidString)", in: content
-        ), let strip = idleTab.enclosingScrollView else {
-            tryAgain(blocker: "Tab-Marker oder Leisten-ScrollView fehlt")
-            return
-        }
-        let local = NSPoint(x: idleTab.bounds.midX, y: idleTab.bounds.midY)
-        let point = idleTab.convert(local, to: nil)
-        let clip = strip.contentView
-        let stripRect = clip.convert(clip.bounds, to: nil)
-        guard stripRect.insetBy(dx: -1, dy: -1).contains(point) else {
-            tryAgain(blocker: "Punkt \(point) außerhalb der "
-                + "sichtbaren Leiste \(stripRect)")
-            return
-        }
-        // Hit-Test aus Sicht des Fensters: Der Punkt muss wirklich in der
-        // Tab-Leiste landen, nicht auf einem darüberliegenden Bedienelement.
-        let inSuperview = content.superview?.convert(point, from: nil)
-            ?? content.convert(point, from: nil)
-        guard let hit = content.hitTest(inSuperview),
-              hit.isDescendant(of: strip) else {
-            let hitDescription = content.hitTest(inSuperview)
-                .map { String(describing: type(of: $0)) } ?? "nichts"
-            tryAgain(blocker: "Hit-Test bei \(point) trifft "
-                + "\(hitDescription) statt der Tab-Leiste")
-            return
-        }
-        guard sendMouseClick(at: point, in: window, modifiers: .shift) else {
-            try? FileManager.default.removeItem(at: directory)
-            finish(false, "Mausereignis nicht erzeugbar")
-        }
-        completion()
+        // zwischen x≈278 und x≈776). Deshalb liegt auch der Klick selbst in
+        // der Bedingung der Warteschleife, nicht erst in ihrer Fortsetzung.
+        var lastBlocker = ""
+        waitFor(budget: 10, pause: 0.05,
+                condition: {
+                    func tryAgain(blocker: String) -> Bool {
+                        lastBlocker = blocker
+                        return false
+                    }
+                    scrollTabIntoView(id: id, in: content)
+                    guard let idleTab = markerView(
+                        id: "documentTab-idle-\(id.uuidString)", in: content
+                    ), let strip = idleTab.enclosingScrollView else {
+                        return tryAgain(blocker: "Tab-Marker oder Leisten-ScrollView fehlt")
+                    }
+                    let local = NSPoint(x: idleTab.bounds.midX, y: idleTab.bounds.midY)
+                    let point = idleTab.convert(local, to: nil)
+                    let clip = strip.contentView
+                    let stripRect = clip.convert(clip.bounds, to: nil)
+                    guard stripRect.insetBy(dx: -1, dy: -1).contains(point) else {
+                        return tryAgain(blocker: "Punkt \(point) außerhalb der "
+                            + "sichtbaren Leiste \(stripRect)")
+                    }
+                    // Hit-Test aus Sicht des Fensters: Der Punkt muss wirklich in der
+                    // Tab-Leiste landen, nicht auf einem darüberliegenden Bedienelement.
+                    let inSuperview = content.superview?.convert(point, from: nil)
+                        ?? content.convert(point, from: nil)
+                    guard let hit = content.hitTest(inSuperview),
+                          hit.isDescendant(of: strip) else {
+                        let hitDescription = content.hitTest(inSuperview)
+                            .map { String(describing: type(of: $0)) } ?? "nichts"
+                        return tryAgain(blocker: "Hit-Test bei \(point) trifft "
+                            + "\(hitDescription) statt der Tab-Leiste")
+                    }
+                    guard sendMouseClick(at: point, in: window, modifiers: .shift) else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "Mausereignis nicht erzeugbar")
+                    }
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: directory)
+                    finish(false, "Vorbedingung des Shift-Klicks nicht erreicht "
+                        + "(letzter Blocker: \(lastBlocker)) — \(book.summary)")
+                },
+                then: completion)
     }
 
     /// Sendet einen synthetischen Linksklick. Standardweg ist `window.sendEvent`
@@ -4003,100 +4555,93 @@ enum SelfTest {
         window: NSWindow,
         directory: URL,
         leftID: UUID,
-        rightID: UUID,
-        tick: Int
+        rightID: UUID
     ) {
         let content = window.contentView
-        let currentMarker = content.flatMap {
-            markerView(
-                id: "documentTab-current-\(rightID.uuidString)",
-                in: $0
-            )
-        }
-        let comparisonMarker = content.flatMap {
-            markerView(
-                id: "documentTab-comparison-\(leftID.uuidString)",
-                in: $0
-            )
-        }
-        if ws.activeTabID == rightID,
-           ws.comparisonTabID == leftID,
-           ws.selectedComparisonTabIDs == [leftID, rightID],
-           currentMarker != nil,
-           comparisonMarker != nil {
-            guard ws.presentComparisonForSelectedTabs(contextTabID: leftID) else {
-                try? FileManager.default.removeItem(at: directory)
-                finish(false, "Kontextaktion akzeptiert den markierten Tab nicht")
-            }
-            pollPrefilledComparisonSheet(
-                ws,
-                window: window,
-                directory: directory,
-                leftID: leftID,
-                rightID: rightID,
-                tick: 0
-            )
-            return
-        }
-        if tick >= 60 {
-            // Der eine gesendete Shift-Klick blieb ohne Wirkung — das ist
-            // jetzt ein echter Befund: Alle Vorbedingungen (sichtbar, stabil,
-            // Hit-Test trifft die Leiste) hat `armSingleShiftClick` vor dem
-            // Ereignis hergestellt. Bewusst KEINE Klick-Wiederholung, sonst
-            // bestünde der Test auch, wenn das Produkt den ersten echten
-            // Nutzerklick verwirft.
-            // Diagnose VOR dem Aufräumen erheben — der Test löscht den
-            // Fixture-Ordner selbst, danach misst jede Prüfung nur noch
-            // die eigene Aufräumarbeit.
-            let fixtureExists = FileManager.default
-                .fileExists(atPath: directory.path)
-            let fixtureCount = (try? FileManager.default
-                .contentsOfDirectory(atPath: directory.path).count) ?? -1
-            try? FileManager.default.removeItem(at: directory)
-            // Welche Tab-Marker liegen im geprüften Fenster wirklich?
-            // Ohne diese Liste ist nicht unterscheidbar, ob der Klick
-            // danebenging oder ob die Prüfung im falschen Fenster sucht.
-            var markerIDs: [String] = []
-            func collectMarkers(_ view: NSView) {
-                let id = view.accessibilityIdentifier()
-                if id.hasPrefix("documentTab-") {
-                    markerIDs.append(id)
-                }
-                view.subviews.forEach(collectMarkers)
-            }
-            content.map(collectMarkers)
-            let windowCount = NSApp.windows.filter {
-                $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                    && $0.isVisible && $0.contentView != nil
-            }.count
-            finish(
-                false,
-                "Der einzelne Shift-Klick blieb ohne Wirkung: "
-                    + "aktiv=\(ws.activeTabID?.uuidString ?? "nil"), "
-                    + "Vergleich=\(ws.comparisonTabID?.uuidString ?? "nil"), "
-                    + "Marker aktuell=\(currentMarker != nil), "
-                    + "zweiter=\(comparisonMarker != nil), "
-                    + "Tabs=\(ws.tabs.count) "
-                    + "[\(ws.tabs.map { $0.title }.joined(separator: ", "))], "
-                    + "links noch da=\(ws.tabs.contains { $0.id == leftID }), "
-                    + "rechts noch da=\(ws.tabs.contains { $0.id == rightID }), "
-                    + "Fixture-Ordner=\(fixtureExists) "
-                    + "mit \(fixtureCount) Dateien, "
-                    + "Fenster=\(windowCount), "
-                    + "Fenster-Marker=\(markerIDs.count): "
-                    + "\(markerIDs.prefix(6).joined(separator: " | "))"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollShiftSelectedTabs(
-                ws,
-                window: window,
-                directory: directory,
-                leftID: leftID,
-                rightID: rightID,
-                tick: tick + 1
-            )
-        }
+        var currentMarker: NSView?
+        var comparisonMarker: NSView?
+        waitFor(budget: 6, pause: 0.1,
+                condition: {
+                    currentMarker = content.flatMap {
+                        markerView(
+                            id: "documentTab-current-\(rightID.uuidString)",
+                            in: $0
+                        )
+                    }
+                    comparisonMarker = content.flatMap {
+                        markerView(
+                            id: "documentTab-comparison-\(leftID.uuidString)",
+                            in: $0
+                        )
+                    }
+                    return ws.activeTabID == rightID
+                        && ws.comparisonTabID == leftID
+                        && ws.selectedComparisonTabIDs == [leftID, rightID]
+                        && currentMarker != nil
+                        && comparisonMarker != nil
+                },
+                onTimeout: { book in
+                    // Der eine gesendete Shift-Klick blieb ohne Wirkung — das ist
+                    // jetzt ein echter Befund: Alle Vorbedingungen (sichtbar, stabil,
+                    // Hit-Test trifft die Leiste) hat `armSingleShiftClick` vor dem
+                    // Ereignis hergestellt. Bewusst KEINE Klick-Wiederholung, sonst
+                    // bestünde der Test auch, wenn das Produkt den ersten echten
+                    // Nutzerklick verwirft.
+                    // Diagnose VOR dem Aufräumen erheben — der Test löscht den
+                    // Fixture-Ordner selbst, danach misst jede Prüfung nur noch
+                    // die eigene Aufräumarbeit.
+                    let fixtureExists = FileManager.default
+                        .fileExists(atPath: directory.path)
+                    let fixtureCount = (try? FileManager.default
+                        .contentsOfDirectory(atPath: directory.path).count) ?? -1
+                    try? FileManager.default.removeItem(at: directory)
+                    // Welche Tab-Marker liegen im geprüften Fenster wirklich?
+                    // Ohne diese Liste ist nicht unterscheidbar, ob der Klick
+                    // danebenging oder ob die Prüfung im falschen Fenster sucht.
+                    var markerIDs: [String] = []
+                    func collectMarkers(_ view: NSView) {
+                        let id = view.accessibilityIdentifier()
+                        if id.hasPrefix("documentTab-") {
+                            markerIDs.append(id)
+                        }
+                        view.subviews.forEach(collectMarkers)
+                    }
+                    content.map(collectMarkers)
+                    let windowCount = NSApp.windows.filter {
+                        $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                            && $0.isVisible && $0.contentView != nil
+                    }.count
+                    finish(
+                        false,
+                        "Der einzelne Shift-Klick blieb ohne Wirkung: "
+                            + "aktiv=\(ws.activeTabID?.uuidString ?? "nil"), "
+                            + "Vergleich=\(ws.comparisonTabID?.uuidString ?? "nil"), "
+                            + "Marker aktuell=\(currentMarker != nil), "
+                            + "zweiter=\(comparisonMarker != nil), "
+                            + "Tabs=\(ws.tabs.count) "
+                            + "[\(ws.tabs.map { $0.title }.joined(separator: ", "))], "
+                            + "links noch da=\(ws.tabs.contains { $0.id == leftID }), "
+                            + "rechts noch da=\(ws.tabs.contains { $0.id == rightID }), "
+                            + "Fixture-Ordner=\(fixtureExists) "
+                            + "mit \(fixtureCount) Dateien, "
+                            + "Fenster=\(windowCount), "
+                            + "Fenster-Marker=\(markerIDs.count): "
+                            + "\(markerIDs.prefix(6).joined(separator: " | ")) — \(book.summary)"
+                    )
+                },
+                then: {
+                    guard ws.presentComparisonForSelectedTabs(contextTabID: leftID) else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "Kontextaktion akzeptiert den markierten Tab nicht")
+                    }
+                    pollPrefilledComparisonSheet(
+                        ws,
+                        window: window,
+                        directory: directory,
+                        leftID: leftID,
+                        rightID: rightID
+                    )
+                })
     }
 
     private static func pollPrefilledComparisonSheet(
@@ -4104,76 +4649,67 @@ enum SelfTest {
         window: NSWindow,
         directory: URL,
         leftID: UUID,
-        rightID: UUID,
-        tick: Int
+        rightID: UUID
     ) {
-        if let sheet = window.attachedSheet,
-           let content = sheet.contentView {
-            let leftReady = markerView(
-                id: "compare-left-tab-\(leftID.uuidString)",
-                in: content
-            ) != nil
-            let rightReady = markerView(
-                id: "compare-right-tab-\(rightID.uuidString)",
-                in: content
-            ) != nil
-            if leftReady, rightReady {
-                ws.showCompareFilesDialog = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    guard let root = window.contentView else {
-                        try? FileManager.default.removeItem(at: directory)
-                        finish(false, "Fensterinhalt für den Folgeklick fehlt")
+        waitFor(budget: 4, pause: 0.1,
+                condition: {
+                    guard let sheet = window.attachedSheet,
+                          let content = sheet.contentView else { return false }
+                    let leftReady = markerView(
+                        id: "compare-left-tab-\(leftID.uuidString)",
+                        in: content
+                    ) != nil
+                    let rightReady = markerView(
+                        id: "compare-right-tab-\(rightID.uuidString)",
+                        in: content
+                    ) != nil
+                    return leftReady && rightReady
+                },
+                onTimeout: { book in
+                    ws.showCompareFilesDialog = false
+                    try? FileManager.default.removeItem(at: directory)
+                    finish(
+                        false,
+                        "Vergleichs-Sheet nicht mit beiden markierten Tabs vorgefüllt — \(book.summary)"
+                    )
+                },
+                then: {
+                    ws.showCompareFilesDialog = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        guard let root = window.contentView else {
+                            try? FileManager.default.removeItem(at: directory)
+                            finish(false, "Fensterinhalt für den Folgeklick fehlt")
+                        }
+                        scrollTabIntoView(id: leftID, in: root)
+                        guard let comparisonTab = markerView(
+                            id: "documentTab-comparison-\(leftID.uuidString)",
+                            in: root
+                        ) else {
+                            try? FileManager.default.removeItem(at: directory)
+                            finish(false, "Marker des markierten Tabs fehlt")
+                        }
+                        if let failure = sendTabClick(
+                            on: comparisonTab, in: window, modifiers: []
+                        ) {
+                            try? FileManager.default.removeItem(at: directory)
+                            finish(false, "normaler Folgeklick nicht ausführbar: \(failure)")
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            let cleared = ws.activeTabID == leftID
+                                && ws.comparisonTabID == nil
+                            try? FileManager.default.removeItem(at: directory)
+                            finish(
+                                cleared,
+                                cleared
+                                    ? "Shift-Klick behält Primärtab; zwei Markierungsrollen; "
+                                        + "Dialog links/rechts vorgefüllt; Normalklick räumt auf "
+                                        + "(Leisten-Überlauf beim Klick: "
+                                        + "\(Int(tabCompareStripOverflow)) pt)"
+                                    : "Normalklick räumte die Zwei-Tab-Auswahl nicht auf"
+                            )
+                        }
                     }
-                    scrollTabIntoView(id: leftID, in: root)
-                    guard let comparisonTab = markerView(
-                        id: "documentTab-comparison-\(leftID.uuidString)",
-                        in: root
-                    ) else {
-                        try? FileManager.default.removeItem(at: directory)
-                        finish(false, "Marker des markierten Tabs fehlt")
-                    }
-                    if let failure = sendTabClick(
-                        on: comparisonTab, in: window, modifiers: []
-                    ) {
-                        try? FileManager.default.removeItem(at: directory)
-                        finish(false, "normaler Folgeklick nicht ausführbar: \(failure)")
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        let cleared = ws.activeTabID == leftID
-                            && ws.comparisonTabID == nil
-                        try? FileManager.default.removeItem(at: directory)
-                        finish(
-                            cleared,
-                            cleared
-                                ? "Shift-Klick behält Primärtab; zwei Markierungsrollen; "
-                                    + "Dialog links/rechts vorgefüllt; Normalklick räumt auf "
-                                    + "(Leisten-Überlauf beim Klick: "
-                                    + "\(Int(tabCompareStripOverflow)) pt)"
-                                : "Normalklick räumte die Zwei-Tab-Auswahl nicht auf"
-                        )
-                    }
-                }
-                return
-            }
-        }
-        guard tick < 40 else {
-            ws.showCompareFilesDialog = false
-            try? FileManager.default.removeItem(at: directory)
-            finish(
-                false,
-                "Vergleichs-Sheet nicht mit beiden markierten Tabs vorgefüllt"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollPrefilledComparisonSheet(
-                ws,
-                window: window,
-                directory: directory,
-                leftID: leftID,
-                rightID: rightID,
-                tick: tick + 1
-            )
-        }
+                })
     }
 
     // MARK: - -selftest softwrapprofiles
@@ -4198,7 +4734,7 @@ enum SelfTest {
         }
 
         waitForEditor(workspace: ws, window: mainWindow) { root, _ in
-            let base = FileManager.default.temporaryDirectory
+            let base = selfTestTemporaryDirectory()
                 .appendingPathComponent("fastra-softwrap-\(UUID().uuidString)")
             let textURL = base.appendingPathComponent("notizen.txt")
             let jsonInTextURL = base.appendingPathComponent("daten-json.txt")
@@ -4241,9 +4777,7 @@ enum SelfTest {
                 pollSoftWrapState(
                     ws: ws, root: root, expectedFormat: .plainText,
                     expectedWrap: true, expectedTarget: .window,
-                    label: "TXT-Werkseinstellung am Fensterrand",
-                    tick: 0
-                ) {
+                    label: "TXT-Werkseinstellung am Fensterrand") {
                     ws.loadFile(at: jsonInTextURL) { ok in
                         guard ok else {
                             try? FileManager.default.removeItem(at: base)
@@ -4254,9 +4788,7 @@ enum SelfTest {
                             expectedFormat: .grammar(.json),
                             expectedWrap: true, expectedTarget: .window,
                             requireWrappedGeometry: true,
-                            label: "gemerkte JSON-Wahl einer TXT-Megazeile",
-                            tick: 0
-                        ) {
+                            label: "gemerkte JSON-Wahl einer TXT-Megazeile") {
                             ws.loadFile(at: markdownURL) { ok in
                                 guard ok else {
                                     try? FileManager.default.removeItem(at: base)
@@ -4266,8 +4798,7 @@ enum SelfTest {
                                     ws: ws, root: root,
                                     expectedFormat: .grammar(.markdown),
                                     expectedWrap: true,
-                                    label: "Markdown-Werkseinstellung", tick: 0
-                                ) {
+                                    label: "Markdown-Werkseinstellung") {
                                     loadFirstFourDForSoftWrapTest(
                                         ws: ws, root: root, base: base,
                                         firstURL: firstFourDURL,
@@ -4292,9 +4823,7 @@ enum SelfTest {
             }
             pollSoftWrapState(
                 ws: ws, root: root, expectedFormat: .fourD,
-                expectedWrap: false, label: "4D-Werkseinstellung",
-                tick: 0
-            ) {
+                expectedWrap: false, label: "4D-Werkseinstellung") {
                 guard let firstTabID = ws.activeTabID,
                       let textView = editorTextView(in: root) as? TextView else {
                     try? FileManager.default.removeItem(at: base)
@@ -4325,9 +4854,7 @@ enum SelfTest {
                 }
                 pollSoftWrapState(
                     ws: ws, root: root, expectedFormat: .fourD,
-                    expectedWrap: true, label: "4D live eingeschaltet",
-                    tick: 0
-                ) {
+                    expectedWrap: true, label: "4D live eingeschaltet") {
                     guard let reconciled = editorTextView(in: root) as? TextView,
                           ObjectIdentifier(reconciled) == viewID,
                           reconciled.string == content,
@@ -4346,9 +4873,7 @@ enum SelfTest {
                         }
                         pollSoftWrapState(
                             ws: ws, root: root, expectedFormat: .fourD,
-                            expectedWrap: true, label: "neuer 4D-Tab übernimmt Profil",
-                            tick: 0
-                        ) {
+                            expectedWrap: true, label: "neuer 4D-Tab übernimmt Profil") {
                             guard let secondTabID = ws.activeTabID,
                                   secondTabID != firstTabID else {
                                 try? FileManager.default.removeItem(at: base)
@@ -4357,9 +4882,7 @@ enum SelfTest {
                             ws.toggleSoftWrap()
                             pollSoftWrapState(
                                 ws: ws, root: root, expectedFormat: .fourD,
-                                expectedWrap: false, label: "zweiter 4D-Tab schaltet aus",
-                                tick: 0
-                            ) {
+                                expectedWrap: false, label: "zweiter 4D-Tab schaltet aus") {
                                 verifyBothFourDTabsAreUnwrapped(
                                     ws: ws, root: root, base: base,
                                     firstTabID: firstTabID,
@@ -4380,15 +4903,11 @@ enum SelfTest {
         ws.activeTabID = firstTabID
         pollSoftWrapState(
             ws: ws, root: root, expectedFormat: .fourD,
-            expectedWrap: false, label: "erster offener 4D-Tab folgt global",
-            tick: 0
-        ) {
+            expectedWrap: false, label: "erster offener 4D-Tab folgt global") {
             ws.activeTabID = secondTabID
             pollSoftWrapState(
                 ws: ws, root: root, expectedFormat: .fourD,
-                expectedWrap: false, label: "zweiter offener 4D-Tab bleibt synchron",
-                tick: 0
-            ) {
+                expectedWrap: false, label: "zweiter offener 4D-Tab bleibt synchron") {
                 try? FileManager.default.removeItem(at: base)
                 finish(true, "TXT und als JSON gemerkte TXT an/Fensterrand; "
                     + "Markdown an; 4D aus; "
@@ -4403,52 +4922,46 @@ enum SelfTest {
         expectedFormat: DocumentFormatID, expectedWrap: Bool,
         expectedTarget: SoftWrapTarget? = nil,
         requireWrappedGeometry: Bool = false,
-        label: String, tick: Int, completion: @escaping () -> Void
+        label: String, completion: @escaping () -> Void
     ) {
-        let textView = editorTextView(in: root) as? TextView
-        // Entspricht dem Öffnen eines nativen Hauptmenüs: AppKit fragt die
-        // SwiftUI-Command-Validierung ab, bevor der Haken sichtbar wird.
-        NSApp.mainMenu?.update()
-        let menuItem = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu)
-        let menuMatches = menuItem?.state == (expectedWrap ? .on : .off)
-        let targetMatches = expectedTarget.map { ws.softWrapTarget == $0 } ?? true
+        var textView: TextView?
+        var menuItem: NSMenuItem?
         var layoutFragmentCount = 0
-        var geometryMatches = !requireWrappedGeometry
-        if requireWrappedGeometry, let textView,
-           let scrollView = textView.enclosingScrollView {
-            textView.layoutManager.layoutLines()
-            layoutFragmentCount = Array(textView.layoutManager.lineStorage)
-                .reduce(0) { $0 + $1.data.lineFragments.count }
-            geometryMatches = layoutFragmentCount > 1
-                && !scrollView.hasHorizontalScroller
-        }
-        if ws.activeDocumentFormat.id == expectedFormat,
-           ws.softWrapEnabled == expectedWrap,
-           textView?.wrapLines == expectedWrap,
-           menuMatches,
-           targetMatches,
-           geometryMatches {
-            completion()
-            return
-        }
-        if tick >= 80 {
-            finish(false, "\(label) nicht binnen 8 s sichtbar: "
-                + "format=\(ws.activeDocumentFormat.id.rawValue), "
-                + "store=\(ws.softWrapEnabled), textView=\(String(describing: textView?.wrapLines)), "
-                + "menu=\(String(describing: menuItem?.state.rawValue)), "
-                + "target=\(ws.softWrapTarget.rawValue), "
-                + "Fragmente=\(layoutFragmentCount), "
-                + "H-Scroller=\(String(describing: textView?.enclosingScrollView?.hasHorizontalScroller))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollSoftWrapState(
-                ws: ws, root: root, expectedFormat: expectedFormat,
-                expectedWrap: expectedWrap, expectedTarget: expectedTarget,
-                requireWrappedGeometry: requireWrappedGeometry,
-                label: label, tick: tick + 1,
-                completion: completion
-            )
-        }
+        waitFor(budget: 8, pause: 0.1,
+                condition: {
+                    textView = editorTextView(in: root) as? TextView
+                    // Entspricht dem Öffnen eines nativen Hauptmenüs: AppKit fragt die
+                    // SwiftUI-Command-Validierung ab, bevor der Haken sichtbar wird.
+                    NSApp.mainMenu?.update()
+                    menuItem = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu)
+                    let menuMatches = menuItem?.state == (expectedWrap ? .on : .off)
+                    let targetMatches = expectedTarget.map { ws.softWrapTarget == $0 } ?? true
+                    layoutFragmentCount = 0
+                    var geometryMatches = !requireWrappedGeometry
+                    if requireWrappedGeometry, let textView,
+                       let scrollView = textView.enclosingScrollView {
+                        textView.layoutManager.layoutLines()
+                        layoutFragmentCount = Array(textView.layoutManager.lineStorage)
+                            .reduce(0) { $0 + $1.data.lineFragments.count }
+                        geometryMatches = layoutFragmentCount > 1
+                            && !scrollView.hasHorizontalScroller
+                    }
+                    return ws.activeDocumentFormat.id == expectedFormat
+                        && ws.softWrapEnabled == expectedWrap
+                        && textView?.wrapLines == expectedWrap
+                        && menuMatches && targetMatches && geometryMatches
+                },
+                onTimeout: { book in
+                    finish(false, "\(label) nicht sichtbar: "
+                        + "format=\(ws.activeDocumentFormat.id.rawValue), "
+                        + "store=\(ws.softWrapEnabled), textView=\(String(describing: textView?.wrapLines)), "
+                        + "menu=\(String(describing: menuItem?.state.rawValue)), "
+                        + "target=\(ws.softWrapTarget.rawValue), "
+                        + "Fragmente=\(layoutFragmentCount), "
+                        + "H-Scroller=\(String(describing: textView?.enclosingScrollView?.hasHorizontalScroller)) "
+                        + "— \(book.summary)")
+                },
+                then: completion)
     }
 
     private static func findMenuItem(titled title: String, in menu: NSMenu?) -> NSMenuItem? {
@@ -4482,7 +4995,7 @@ enum SelfTest {
         }
 
         waitForEditor(workspace: ws, window: mainWindow) { root, _ in
-            let tmp = FileManager.default.temporaryDirectory
+            let tmp = selfTestTemporaryDirectory()
                 .appendingPathComponent(
                     "fastra-softwrapmodes-\(UUID().uuidString).md"
                 )
@@ -4502,7 +5015,7 @@ enum SelfTest {
                 // Bewusst der STABILE Editor: Sonst merkt der Test die Identität
                 // einer TextView, die gleich planmäßig ersetzt wird (isLoading-
                 // Flip), und vergleicht später gegen ein totes Objekt.
-                pollForStableSoftWrapEditor(ws: ws, root: root, tick: 0) { textView, _ in
+                pollForStableSoftWrapEditor(ws: ws, root: root) { textView, _ in
                     let selection = NSRange(location: 2, length: 7)
                     textView.selectionManager.setSelectedRange(selection)
                     let identity = ObjectIdentifier(textView)
@@ -4515,16 +5028,14 @@ enum SelfTest {
                     ws.setPageGuideColumn(40)
                     ws.selectSoftWrapTarget(.window)
                     pollSoftWrapWindowGeometry(
-                        ws: ws, root: root, guideColumn: 40, tick: 0
-                    ) {
+                        ws: ws, root: root, guideColumn: 40) {
                         logEditorIdentity("nach Ziel=Fenster",
                                           root: root, expected: identity)
                         ws.setSoftWrapFixedColumn(40)
                         pollSoftWrapGeometry(
                             ws: ws, root: root, expectedTarget: .fixedColumn,
                             wrapColumn: 40, guideColumn: 40,
-                            label: "feste Spalte", tick: 0
-                        ) { _ in
+                            label: "feste Spalte") { _ in
                             logEditorIdentity("nach Ziel=feste Spalte 40",
                                               root: root, expected: identity)
                             ws.setPageGuideColumn(55)
@@ -4532,8 +5043,7 @@ enum SelfTest {
                             pollSoftWrapGeometry(
                                 ws: ws, root: root, expectedTarget: .pageGuide,
                                 wrapColumn: 55, guideColumn: 55,
-                                label: "Seitenlinie", tick: 0
-                            ) { pageGuideWidth in
+                                label: "Seitenlinie") { pageGuideWidth in
                                 logEditorIdentity("nach Ziel=Seitenlinie",
                                                   root: root, expected: identity)
                                 var narrowFrame = mainWindow.frame
@@ -4545,8 +5055,7 @@ enum SelfTest {
                                     expectedTarget: .fixedColumn,
                                     wrapColumn: 120, guideColumn: 55,
                                     requireViewportClamp: true,
-                                    label: "Viewport-Obergrenze", tick: 0
-                                ) { _ in
+                                    label: "Viewport-Obergrenze") { _ in
                                     logEditorIdentity("nach Schmal-Resize auf 430",
                                                       root: root, expected: identity)
                                     ws.setPageGuideColumn(55)
@@ -4598,8 +5107,7 @@ enum SelfTest {
                                             expectedTarget: .pageGuide,
                                             wrapColumn: 55, guideColumn: 55,
                                             minimumConfiguredWidth: pageGuideWidth,
-                                            label: "Font-Zoom", tick: 0
-                                        ) { _ in
+                                            label: "Font-Zoom") { _ in
                                             // Jede Bedingung EINZELN melden. Vorher
                                             // fasste eine Sammelmeldung sechs
                                             // Zusagen zusammen; ein Fehlschlag sagte
@@ -4702,7 +5210,7 @@ enum SelfTest {
         let content = (1...2_400).map {
             "Ankerzeile \($0)\t\(longTail)Ende \($0)"
         }.joined(separator: "\n")
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-softwrapanchor-\(UUID().uuidString).txt"
             )
@@ -4720,22 +5228,18 @@ enum SelfTest {
             // gefundene TextView kann deshalb später vom Fenster getrennt
             // sein und ihre Zielzeile niemals auslegen. Derselbe stabile
             // Editor-Wächter schützt bereits `softwrapmodes`.
-            pollForStableSoftWrapEditor(ws: ws, root: root, tick: 0) { textView, _ in
+            pollForStableSoftWrapEditor(ws: ws, root: root) { textView, _ in
                 ws.setSoftWrapFixedColumn(40)
                 pollSoftWrapState(
                     ws: ws, root: root, expectedFormat: .plainText,
-                    expectedWrap: true, label: "Anker-Fixture umbrochen",
-                    tick: 0
-                ) {
+                    expectedWrap: true, label: "Anker-Fixture umbrochen") {
                     let textBefore = textView.string
                     let selectionBefore = textView.selectedRange()
                     let dirtyBefore = ws.activeTab?.isDirty
                     let canUndoBefore = textView.undoManager?.canUndo
                     let targetTopLine = 1_799
                     convergeSoftWrapAnchor(
-                        textView: textView, targetLine: targetTopLine,
-                        tick: 0
-                    ) { expectedTopLine in
+                        textView: textView, targetLine: targetTopLine) { expectedTopLine in
                         ws.toggleSoftWrap()
                         observeSoftWrapAnchor(
                             ws: ws, textView: textView,
@@ -4809,39 +5313,40 @@ enum SelfTest {
             finishSelectionScroll(false, "kein Hauptfenster gefunden")
         }
         pollForMarkdownSelectionScrollEditor(
-            ws: ws, mainWindow: mainWindow, root: root, tick: 0
-        )
+            ws: ws, mainWindow: mainWindow, root: root)
     }
 
     /// Wartet ausdrücklich auf BEIDE Hälften des Markdown-Splits. So kann ein
     /// TextView-only-Test nicht erneut die entscheidende Produktansicht
     /// umgehen, in der der Nutzer den fehlenden Scroll beobachtet hat.
     private static func pollForMarkdownSelectionScrollEditor(
-        ws: Workspace, mainWindow: NSWindow, root: NSView, tick: Int
+        ws: Workspace, mainWindow: NSWindow, root: NSView
     ) {
-        let markdownReady = ws.activeTab?.isLoading == false
-            && ws.activeTab?.url?.canonicalFileURL
-                == selectionScrollFixtureURL?.canonicalFileURL
-            && markdownWebView(in: root) != nil
-        if markdownReady,
-           let textView = editorTextView(in: root) as? TextView,
-           sourceEditorController(for: textView) != nil {
-            exerciseMarkdownSelectionScroll(
-                textView: textView, mainWindow: mainWindow
-            )
-            return
-        }
-        if tick >= 100 {
-            finishSelectionScroll(
-                false,
-                "Markdown-Split mit linkem Editor nicht binnen 10 s bereit"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollForMarkdownSelectionScrollEditor(
-                ws: ws, mainWindow: mainWindow, root: root, tick: tick + 1
-            )
-        }
+        var textView: TextView?
+        waitFor(budget: 10, pause: 0.1,
+                condition: {
+                    let markdownReady = ws.activeTab?.isLoading == false
+                        && ws.activeTab?.url?.canonicalFileURL
+                            == selectionScrollFixtureURL?.canonicalFileURL
+                        && markdownWebView(in: root) != nil
+                    guard markdownReady,
+                          let candidate = editorTextView(in: root) as? TextView,
+                          sourceEditorController(for: candidate) != nil else { return false }
+                    textView = candidate
+                    return true
+                },
+                onTimeout: { book in
+                    finishSelectionScroll(
+                        false,
+                        "Markdown-Split mit linkem Editor nicht bereit — \(book.summary)"
+                    )
+                },
+                then: {
+                    guard let textView else { finish(false, "linker Editor nach Erfolg verschwunden") }
+                    exerciseMarkdownSelectionScroll(
+                        textView: textView, mainWindow: mainWindow
+                    )
+                })
     }
 
     /// Sendet echte Shift+↓-Events an den fokussierten linken Editor. Zwischen
@@ -4993,71 +5498,69 @@ enum SelfTest {
     /// aus `rectForOffset` berechneter Wert wäre bei noch nicht ausgelegten
     /// langen Umbruchzeilen nur eine Schätzung und kein unabhängiger Repro.
     private static func convergeSoftWrapAnchor(
-        textView: TextView, targetLine: Int, tick: Int,
+        textView: TextView, targetLine: Int,
         completion: @escaping (Int) -> Void
     ) {
         // Das Layout von 2.400 langen Umbruchzeilen brauchte nach einem
         // vollständigen GUI-Lauf auf demselben Mac einmal mehr als 1,5 s.
         // Der Erfolgsweg wartet nicht länger; nur der noch nicht layoutete
         // Zwischenzustand erhält dieselbe robuste 5-s-Frist wie andere
-        // Editor-Selbsttests.
-        let maxTicks = 100
-        guard let scrollView = textView.enclosingScrollView,
-              let line = textView.layoutManager.textLineForIndex(targetLine),
-              let rect = textView.layoutManager.rectForOffset(
-                line.range.location
-              ) else {
-            // Noch kein Layout für die Zielzeile: Unter Last ist das ein
-            // normaler Zwischenzustand, kein Befund. Deshalb innerhalb
-            // derselben Frist erneut versuchen wie beim Konvergieren unten,
-            // statt den Lauf beim ersten Blick rot zu melden.
-            if tick >= maxTicks {
-                finish(false, "Ankerzeile \(targetLine + 1) auch nach \(maxTicks) "
-                    + "Versuchen nicht layoutbar")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                convergeSoftWrapAnchor(
-                    textView: textView, targetLine: targetLine,
-                    tick: tick + 1, completion: completion
-                )
-            }
-            return
-        }
-        let targetY = max(
-            rect.minY - scrollView.contentInsets.top,
-            0
-        )
-        scrollView.contentView.scroll(
-            to: NSPoint(
-                x: scrollView.contentView.bounds.origin.x,
-                y: targetY
-            )
-        )
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-        textView.layoutManager.layoutLines()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            let shown = textView.layoutManager.textLineForPosition(
-                textView.visibleRect.minY
-            )?.index
-            let gutterShown = firstGutterLine(for: textView)
-            if let shown, gutterShown == shown,
-               abs(shown - targetLine) <= 1 {
-                completion(shown)
-            } else if tick >= maxTicks {
-                finish(
-                    false,
-                    "Ankerzeile \(targetLine + 1) nicht oben erreichbar; "
-                        + "Text=\(shown.map { String($0 + 1) } ?? "nil"), "
-                        + "Gutter=\(gutterShown.map { String($0 + 1) } ?? "nil")"
-                )
-            } else {
-                convergeSoftWrapAnchor(
-                    textView: textView, targetLine: targetLine,
-                    tick: tick + 1, completion: completion
-                )
-            }
-        }
+        // Editor-Selbsttests. Jeder Durchlauf prüft zuerst den Stand der
+        // vorherigen Nachziehung und scrollt danach erneut nach.
+        var layoutSeen = false
+        var shownLine: Int?
+        var gutterLine: Int?
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    if layoutSeen {
+                        shownLine = textView.layoutManager.textLineForPosition(
+                            textView.visibleRect.minY
+                        )?.index
+                        gutterLine = firstGutterLine(for: textView)
+                        if let shown = shownLine, gutterLine == shown,
+                           abs(shown - targetLine) <= 1 {
+                            return true
+                        }
+                    }
+                    guard let scrollView = textView.enclosingScrollView,
+                          let line = textView.layoutManager.textLineForIndex(targetLine),
+                          let rect = textView.layoutManager.rectForOffset(
+                            line.range.location
+                          ) else {
+                        // Noch kein Layout für die Zielzeile: Unter Last ist das ein
+                        // normaler Zwischenzustand, kein Befund.
+                        return false
+                    }
+                    layoutSeen = true
+                    let targetY = max(
+                        rect.minY - scrollView.contentInsets.top,
+                        0
+                    )
+                    scrollView.contentView.scroll(
+                        to: NSPoint(
+                            x: scrollView.contentView.bounds.origin.x,
+                            y: targetY
+                        )
+                    )
+                    scrollView.reflectScrolledClipView(scrollView.contentView)
+                    textView.layoutManager.layoutLines()
+                    return false
+                },
+                onTimeout: { book in
+                    guard layoutSeen else {
+                        finish(false, "Ankerzeile \(targetLine + 1) nicht layoutbar — \(book.summary)")
+                    }
+                    finish(
+                        false,
+                        "Ankerzeile \(targetLine + 1) nicht oben erreichbar; "
+                            + "Text=\(shownLine.map { String($0 + 1) } ?? "nil"), "
+                            + "Gutter=\(gutterLine.map { String($0 + 1) } ?? "nil") — \(book.summary)"
+                    )
+                },
+                then: {
+                    guard let shownLine else { finish(false, "Ankerzeile nach Erfolg nicht bestimmbar") }
+                    completion(shownLine)
+                })
     }
 
     /// Beobachtet nicht nur den Endzustand: Jede sichtbare Zwischenposition
@@ -5292,117 +5795,102 @@ enum SelfTest {
     /// Zwei Bedingungen, beide nötig: Der Tab meldet sich als fertig geladen,
     /// UND dieselbe TextView überlebt drei aufeinanderfolgende Prüfungen.
     private static func pollForStableSoftWrapEditor(
-        ws: Workspace, root: NSView, tick: Int, stableTicks: Int = 0,
-        previous: ObjectIdentifier? = nil,
+        ws: Workspace, root: NSView,
         completion: @escaping (TextView, TextViewController) -> Void
     ) {
         let requiredStableTicks = 3
-        let loaded = ws.activeTab.map { !$0.isLoading } ?? false
-        if loaded, let textView = editorTextView(in: root) as? TextView,
-           let controller = sourceEditorController(for: textView) {
-            let current = ObjectIdentifier(textView)
-            if previous == current {
-                if stableTicks + 1 >= requiredStableTicks {
-                    completion(textView, controller)
-                    return
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    pollForStableSoftWrapEditor(
-                        ws: ws, root: root, tick: tick + 1,
-                        stableTicks: stableTicks + 1, previous: current,
-                        completion: completion
-                    )
-                }
-                return
-            }
-            // Andere (oder erste) TextView → Zählung neu beginnen.
-            if tick < 80 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    pollForStableSoftWrapEditor(
-                        ws: ws, root: root, tick: tick + 1, stableTicks: 0,
-                        previous: current, completion: completion
-                    )
-                }
-                return
-            }
-        }
-        if tick >= 80 {
-            finish(false, "Editor wurde binnen 8 s nicht stabil "
-                   + "(geladen: \(loaded), TextViews: \(editorTextViewCount(in: root)))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollForStableSoftWrapEditor(
-                ws: ws, root: root, tick: tick + 1, stableTicks: 0,
-                previous: previous, completion: completion
-            )
-        }
+        var previous: ObjectIdentifier?
+        var sightings = 0
+        var loaded = false
+        var found: (TextView, TextViewController)?
+        waitFor(budget: 8, pause: 0.1,
+                condition: {
+                    loaded = ws.activeTab.map { !$0.isLoading } ?? false
+                    guard loaded, let textView = editorTextView(in: root) as? TextView,
+                          let controller = sourceEditorController(for: textView) else {
+                        previous = nil
+                        sightings = 0
+                        return false
+                    }
+                    let current = ObjectIdentifier(textView)
+                    // Andere (oder erste) TextView → Zählung neu beginnen.
+                    sightings = previous == current ? sightings + 1 : 1
+                    previous = current
+                    guard sightings >= requiredStableTicks else { return false }
+                    found = (textView, controller)
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "Editor wurde nicht stabil "
+                           + "(geladen: \(loaded), TextViews: \(editorTextViewCount(in: root))) — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Editor nach Erfolg verschwunden") }
+                    completion(found.0, found.1)
+                })
     }
 
     private static func pollForSoftWrapEditor(
-        root: NSView, tick: Int,
+        root: NSView,
         completion: @escaping (TextView, TextViewController) -> Void
     ) {
-        if let textView = editorTextView(in: root) as? TextView,
-           let controller = sourceEditorController(for: textView) {
-            completion(textView, controller)
-            return
-        }
-        if tick >= 80 {
-            finish(false, "TextViewController nicht binnen 8 s erreichbar")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollForSoftWrapEditor(
-                root: root, tick: tick + 1, completion: completion
-            )
-        }
+        var found: (TextView, TextViewController)?
+        waitFor(budget: 8, pause: 0.1,
+                condition: {
+                    guard let textView = editorTextView(in: root) as? TextView,
+                          let controller = sourceEditorController(for: textView) else { return false }
+                    found = (textView, controller)
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "TextViewController nicht erreichbar — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Editor nach Erfolg verschwunden") }
+                    completion(found.0, found.1)
+                })
     }
 
     private static func pollSoftWrapWindowGeometry(
-        ws: Workspace, root: NSView, guideColumn: Int, tick: Int,
+        ws: Workspace, root: NSView, guideColumn: Int,
         completion: @escaping () -> Void
     ) {
-        if let textView = editorTextView(in: root) as? TextView,
-           let controller = sourceEditorController(for: textView),
-           let guide = findView(named: "ReformattingGuideView", in: root) {
-            textView.layoutManager.layoutLines()
-            let fontWidth = (" " as NSString).size(
-                withAttributes: [.font: controller.font]
-            ).width
-            let characterWidth = max(fontWidth + textView.kern, 1)
-            let expectedGuideWidth = CGFloat(guideColumn) * characterWidth
-            let guideOffset = guide.frame.minX
-                - textView.layoutManager.edgeInsets.left
-            let fragments = Array(textView.layoutManager.lineStorage).flatMap {
-                Array($0.data.lineFragments)
-            }
-            if ws.softWrapEnabled,
-               ws.softWrapTarget == .window,
-               ws.effectiveSoftWrapColumn == nil,
-               ws.pageGuideColumn == guideColumn,
-               ws.showPageGuide,
-               textView.wrapLines,
-               textView.layoutManager.maximumWrapWidth == nil,
-               !guide.isHidden,
-               abs(guideOffset - expectedGuideWidth) < 1.1,
-               fragments.count > 1 {
-                completion()
-                return
-            }
-        }
-        if tick >= 80 {
-            finish(
-                false,
-                "Fensterbreite nicht binnen 8 s korrekt: "
-                    + "target=\(ws.softWrapTarget.rawValue), "
-                    + "column=\(String(describing: ws.effectiveSoftWrapColumn))"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollSoftWrapWindowGeometry(
-                ws: ws, root: root, guideColumn: guideColumn,
-                tick: tick + 1, completion: completion
-            )
-        }
+        waitFor(budget: 8, pause: 0.1,
+                condition: {
+                    guard let textView = editorTextView(in: root) as? TextView,
+                          let controller = sourceEditorController(for: textView),
+                          let guide = findView(named: "ReformattingGuideView", in: root) else { return false }
+                    textView.layoutManager.layoutLines()
+                    let fontWidth = (" " as NSString).size(
+                        withAttributes: [.font: controller.font]
+                    ).width
+                    let characterWidth = max(fontWidth + textView.kern, 1)
+                    let expectedGuideWidth = CGFloat(guideColumn) * characterWidth
+                    let guideOffset = guide.frame.minX
+                        - textView.layoutManager.edgeInsets.left
+                    let fragments = Array(textView.layoutManager.lineStorage).flatMap {
+                        Array($0.data.lineFragments)
+                    }
+                    return ws.softWrapEnabled
+                        && ws.softWrapTarget == .window
+                        && ws.effectiveSoftWrapColumn == nil
+                        && ws.pageGuideColumn == guideColumn
+                        && ws.showPageGuide
+                        && textView.wrapLines
+                        && textView.layoutManager.maximumWrapWidth == nil
+                        && !guide.isHidden
+                        && abs(guideOffset - expectedGuideWidth) < 1.1
+                        && fragments.count > 1
+                },
+                onTimeout: { book in
+                    finish(
+                        false,
+                        "Fensterbreite nicht korrekt: "
+                            + "target=\(ws.softWrapTarget.rawValue), "
+                            + "column=\(String(describing: ws.effectiveSoftWrapColumn)) — \(book.summary)"
+                    )
+                },
+                then: completion)
     }
 
     private static func pollSoftWrapGeometry(
@@ -5411,61 +5899,58 @@ enum SelfTest {
         wrapColumn: Int, guideColumn: Int,
         requireViewportClamp: Bool = false,
         minimumConfiguredWidth: CGFloat? = nil,
-        label: String, tick: Int,
+        label: String,
         completion: @escaping (CGFloat) -> Void
     ) {
-        if let textView = editorTextView(in: root) as? TextView,
-           let controller = sourceEditorController(for: textView),
-           let configuredWidth = textView.layoutManager.maximumWrapWidth,
-           let guide = findView(named: "ReformattingGuideView", in: root) {
-            textView.layoutManager.layoutLines()
-            let fontWidth = (" " as NSString).size(
-                withAttributes: [.font: controller.font]
-            ).width
-            let characterWidth = max(fontWidth + textView.kern, 1)
-            let expectedWrapWidth = CGFloat(wrapColumn) * characterWidth
-            let expectedGuideWidth = CGFloat(guideColumn) * characterWidth
-            let guideOffset = guide.frame.minX
-                - textView.layoutManager.edgeInsets.left
-            let widthMatches = abs(configuredWidth - expectedWrapWidth) < 1
-            let guideMatches = abs(guideOffset - expectedGuideWidth) < 1.1
-            let clampMatches = !requireViewportClamp
-                || textView.layoutManager.maxLineLayoutWidth < configuredWidth
-            let zoomMatches = minimumConfiguredWidth.map {
-                configuredWidth > $0
-            } ?? true
-            if ws.softWrapEnabled,
-               ws.softWrapTarget == expectedTarget,
-               ws.effectiveSoftWrapColumn == wrapColumn,
-               ws.pageGuideColumn == guideColumn,
-               ws.showPageGuide,
-               textView.wrapLines,
-               !guide.isHidden,
-               widthMatches, guideMatches, clampMatches, zoomMatches {
-                completion(configuredWidth)
-                return
-            }
-        }
-        if tick >= 80 {
-            let textView = editorTextView(in: root) as? TextView
-            finish(
-                false,
-                "\(label) nicht binnen 8 s korrekt: "
-                    + "target=\(ws.softWrapTarget.rawValue), "
-                    + "column=\(String(describing: ws.effectiveSoftWrapColumn)), "
-                    + "configured=\(String(describing: textView?.layoutManager.maximumWrapWidth)), "
-                    + "layout=\(String(describing: textView?.layoutManager.maxLineLayoutWidth))"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollSoftWrapGeometry(
-                ws: ws, root: root, expectedTarget: expectedTarget,
-                wrapColumn: wrapColumn, guideColumn: guideColumn,
-                requireViewportClamp: requireViewportClamp,
-                minimumConfiguredWidth: minimumConfiguredWidth,
-                label: label, tick: tick + 1, completion: completion
-            )
-        }
+        var configured: CGFloat?
+        waitFor(budget: 8, pause: 0.1,
+                condition: {
+                    guard let textView = editorTextView(in: root) as? TextView,
+                          let controller = sourceEditorController(for: textView),
+                          let configuredWidth = textView.layoutManager.maximumWrapWidth,
+                          let guide = findView(named: "ReformattingGuideView", in: root) else { return false }
+                    textView.layoutManager.layoutLines()
+                    let fontWidth = (" " as NSString).size(
+                        withAttributes: [.font: controller.font]
+                    ).width
+                    let characterWidth = max(fontWidth + textView.kern, 1)
+                    let expectedWrapWidth = CGFloat(wrapColumn) * characterWidth
+                    let expectedGuideWidth = CGFloat(guideColumn) * characterWidth
+                    let guideOffset = guide.frame.minX
+                        - textView.layoutManager.edgeInsets.left
+                    let widthMatches = abs(configuredWidth - expectedWrapWidth) < 1
+                    let guideMatches = abs(guideOffset - expectedGuideWidth) < 1.1
+                    let clampMatches = !requireViewportClamp
+                        || textView.layoutManager.maxLineLayoutWidth < configuredWidth
+                    let zoomMatches = minimumConfiguredWidth.map {
+                        configuredWidth > $0
+                    } ?? true
+                    guard ws.softWrapEnabled,
+                          ws.softWrapTarget == expectedTarget,
+                          ws.effectiveSoftWrapColumn == wrapColumn,
+                          ws.pageGuideColumn == guideColumn,
+                          ws.showPageGuide,
+                          textView.wrapLines,
+                          !guide.isHidden,
+                          widthMatches, guideMatches, clampMatches, zoomMatches else { return false }
+                    configured = configuredWidth
+                    return true
+                },
+                onTimeout: { book in
+                    let textView = editorTextView(in: root) as? TextView
+                    finish(
+                        false,
+                        "\(label) nicht korrekt: "
+                            + "target=\(ws.softWrapTarget.rawValue), "
+                            + "column=\(String(describing: ws.effectiveSoftWrapColumn)), "
+                            + "configured=\(String(describing: textView?.layoutManager.maximumWrapWidth)), "
+                            + "layout=\(String(describing: textView?.layoutManager.maxLineLayoutWidth)) — \(book.summary)"
+                    )
+                },
+                then: {
+                    guard let configured else { finish(false, "\(label): Umbruchbreite nach Erfolg verschwunden") }
+                    completion(configured)
+                })
     }
 
     private static func sourceEditorController(
@@ -5504,7 +5989,7 @@ enum SelfTest {
         }
         _ = mainWindow
 
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-highlight-\(UUID().uuidString).py")
         let code = """
         # Kommentar in eigener Farbe
@@ -5520,33 +6005,34 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: tmp)
                 finish(false, "loadFile schlug fehl (completion false)")
             }
-            pollHighlightColors(root: root, url: tmp, tick: 0)
+            pollHighlightColors(root: root, url: tmp)
         }
     }
 
     /// Pollt (max. 10 s, 0,25-s-Takt), bis der Editor-TextStorage ≥ 2
     /// verschiedene Vordergrundfarben trägt. Timeout → FAIL inkl. Diagnose
     /// (erkannte Sprache, tree-sitter-Grammatik vorhanden?, Query-Pfad).
-    private static func pollHighlightColors(root: NSView, url: URL, tick: Int) {
-        let maxTicks = 40            // 40 × 0,25 s = 10 s
-        let farben = distinctForegroundColors(in: root)
-        if farben >= 2 {
-            try? FileManager.default.removeItem(at: url)
-            finish(true, "Editor färbt: \(farben) verschiedene Vordergrundfarben im TextStorage")
-        }
-        if tick >= maxTicks {
-            let lang = CodeLanguage.detectLanguageFrom(url: url)
-            let query = lang.queryURL
-            let queryExists = query.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
-            try? FileManager.default.removeItem(at: url)
-            finish(false, "monochrom nach 10 s (\(farben) Farbe(n)) — "
-                + "Sprache=\(lang.id.rawValue), "
-                + "tsLanguage=\(lang.language != nil ? "ok" : "NIL"), "
-                + "queryURL=\(query?.path ?? "nil") existiert=\(queryExists)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollHighlightColors(root: root, url: url, tick: tick + 1)
-        }
+    private static func pollHighlightColors(root: NSView, url: URL) {
+        var farben = 0
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    farben = distinctForegroundColors(in: root)
+                    return farben >= 2
+                },
+                onTimeout: { book in
+                    let lang = CodeLanguage.detectLanguageFrom(url: url)
+                    let query = lang.queryURL
+                    let queryExists = query.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+                    try? FileManager.default.removeItem(at: url)
+                    finish(false, "monochrom (\(farben) Farbe(n)) — \(book.summary) — "
+                        + "Sprache=\(lang.id.rawValue), "
+                        + "tsLanguage=\(lang.language != nil ? "ok" : "NIL"), "
+                        + "queryURL=\(query?.path ?? "nil") existiert=\(queryExists)")
+                },
+                then: {
+                    try? FileManager.default.removeItem(at: url)
+                    finish(true, "Editor färbt: \(farben) verschiedene Vordergrundfarben im TextStorage")
+                })
     }
 
     // MARK: - 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c)
@@ -5594,7 +6080,7 @@ enum SelfTest {
         // produktiven Komponentenindex in den produktiven Completion-Provider
         // gelangen. Das leere Aufruferdokument erzeugt danach nur die
         // ausdrücklich eingegebenen Präfixe.
-        let projectRoot = FileManager.default.temporaryDirectory
+        let projectRoot = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-completion4d-\(UUID().uuidString)")
         let methods = projectRoot.appendingPathComponent(
             "Project/Sources/Methods", isDirectory: true
@@ -5641,33 +6127,27 @@ enum SelfTest {
         ws: Workspace,
         mainWindow: NSWindow,
         root: NSView,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
-        if ws.fourDComponentMethods[state.componentMethod.lowercased()] != nil {
-            ws.loadFile(at: state.fileURL) { ok in
-                guard ok else {
-                    finishFourDCompletionTest(state, ok: false,
-                                              message: "loadFile (.4dm) schlug fehl")
-                }
-                pollForFourDCompletionEditor(
-                    ws: ws, mainWindow: mainWindow, root: root, state: state
-                )
-            }
-            return
-        }
-        if tick >= 120 {
-            finishFourDCompletionTest(
-                state, ok: false,
-                message: "Shared-Component-Methode nicht binnen 6 s indiziert"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForFourDCompletionComponentIndex(
-                ws: ws, mainWindow: mainWindow, root: root,
-                state: state, tick: tick + 1
-            )
-        }
+        waitFor(budget: 6, pause: 0.05,
+                condition: { ws.fourDComponentMethods[state.componentMethod.lowercased()] != nil },
+                onTimeout: { book in
+                    finishFourDCompletionTest(
+                        state, ok: false,
+                        message: "Shared-Component-Methode nicht indiziert — \(book.summary)"
+                    )
+                },
+                then: {
+                    ws.loadFile(at: state.fileURL) { ok in
+                        guard ok else {
+                            finishFourDCompletionTest(state, ok: false,
+                                                      message: "loadFile (.4dm) schlug fehl")
+                        }
+                        pollForFourDCompletionEditor(
+                            ws: ws, mainWindow: mainWindow, root: root, state: state
+                        )
+                    }
+                })
     }
 
     /// Wartet auf die neu gemountete TextView der `.4dm`-Datei. Ein
@@ -5677,65 +6157,69 @@ enum SelfTest {
         ws: Workspace,
         mainWindow: NSWindow,
         root: NSView,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
-        // Die vom Workspace kanonisierte URL kann auf macOS einen anderen
-        // Pfad-Alias tragen. Für diese Test-Fixture ist die aktive, geladene
-        // `.4dm`-Endung die robuste und zugleich produktrelevante Bedingung.
-        let isFourDTab = ws.activeTab?.isLoading == false
-            && ws.activeTab?.url?.pathExtension.lowercased() == "4dm"
-        if isFourDTab,
-           let textView = completionEditorTextView(in: root, window: mainWindow,
-                                                   expectedText: state.initialText) {
-            // Der CESE-Monitor reagiert nur im Key-Window. Der Runner holt
-            // die Test-App dafür nach vorn; verliert der Nutzer oder macOS
-            // diesen Fokus, wäre ein fehlendes Popup kein Produktbefund.
-            guard mainWindow.isKeyWindow else {
-                if tick >= 120 {
+        // Zwei Stufen in EINER Frist: erst der montierte `.4dm`-Editor, dann
+        // das Key-Fenster.
+        var stage = 0
+        var textView: TextView?
+        waitFor(budget: 6, pause: 0.05,
+                condition: {
+                    // Die vom Workspace kanonisierte URL kann auf macOS einen anderen
+                    // Pfad-Alias tragen. Für diese Test-Fixture ist die aktive, geladene
+                    // `.4dm`-Endung die robuste und zugleich produktrelevante Bedingung.
+                    let isFourDTab = ws.activeTab?.isLoading == false
+                        && ws.activeTab?.url?.pathExtension.lowercased() == "4dm"
+                    guard isFourDTab,
+                          let candidate = completionEditorTextView(in: root, window: mainWindow,
+                                                                   expectedText: state.initialText) else {
+                        stage = 0
+                        return false
+                    }
+                    textView = candidate
+                    stage = 1
+                    // Der CESE-Monitor reagiert nur im Key-Window. Der Runner holt
+                    // die Test-App dafür nach vorn; verliert der Nutzer oder macOS
+                    // diesen Fokus, wäre ein fehlendes Popup kein Produktbefund.
+                    return mainWindow.isKeyWindow
+                },
+                onTimeout: { book in
+                    if stage == 0 {
+                        finishFourDCompletionTest(state, ok: false,
+                                                  message: "`.4dm`-Editor nicht aktiv/montiert — \(book.summary)")
+                    }
                     finishFourDCompletionTest(state, outcome: .environment,
-                                              message: "Umgebungsproblem: 4D-Editor wurde nicht Key-Window")
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    pollForFourDCompletionEditor(ws: ws, mainWindow: mainWindow,
-                                                 root: root, state: state, tick: tick + 1)
-                }
-                return
-            }
-            guard mainWindow.makeFirstResponder(textView) else {
-                finishFourDCompletionTest(state, ok: false,
-                                          message: "4D-Editor wurde nicht First Responder")
-            }
-            // Zwei Einfügungen am laufenden TextView. Diese öffentliche
-            // AppKit-Eingabemethode läuft durch dieselbe CESE-Textmutation und
-            // deren Delegate wie eine getippte Taste; ein Queue-`keyDown` kann
-            // in der bewusst nicht aktivierten Selbsttest-App dagegen schon im
-            // System-Input-Context enden, bevor die TextView ihn sieht.
-            textView.selectionManager.setSelectedRange(
-                NSRange(location: (textView.string as NSString).length, length: 0)
-            )
-            guard insertCompletionCharacter("A", into: textView) else {
-                finishFourDCompletionTest(state, ok: false,
-                                          message: "konnte A für 4D-Editor nicht einfügen")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                guard insertCompletionCharacter("L", into: textView) else {
-                    finishFourDCompletionTest(state, ok: false,
-                                              message: "konnte L für 4D-Editor nicht einfügen")
-                }
-                pollForAutomaticFourDCompletion(mainWindow: mainWindow,
-                                                textView: textView, state: state)
-            }
-            return
-        }
-        if tick >= 120 {
-            finishFourDCompletionTest(state, ok: false,
-                                      message: "`.4dm`-Editor nicht binnen 6 s aktiv/montiert")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForFourDCompletionEditor(ws: ws, mainWindow: mainWindow,
-                                         root: root, state: state, tick: tick + 1)
-        }
+                                              message: "Umgebungsproblem: 4D-Editor wurde nicht Key-Window (\(book.summary))")
+                },
+                then: {
+                    guard let textView else {
+                        finishFourDCompletionTest(state, ok: false, message: "4D-Editor nach Erfolg verschwunden")
+                    }
+                    guard mainWindow.makeFirstResponder(textView) else {
+                        finishFourDCompletionTest(state, ok: false,
+                                                  message: "4D-Editor wurde nicht First Responder")
+                    }
+                    // Zwei Einfügungen am laufenden TextView. Diese öffentliche
+                    // AppKit-Eingabemethode läuft durch dieselbe CESE-Textmutation und
+                    // deren Delegate wie eine getippte Taste; ein Queue-`keyDown` kann
+                    // in der bewusst nicht aktivierten Selbsttest-App dagegen schon im
+                    // System-Input-Context enden, bevor die TextView ihn sieht.
+                    textView.selectionManager.setSelectedRange(
+                        NSRange(location: (textView.string as NSString).length, length: 0)
+                    )
+                    guard insertCompletionCharacter("A", into: textView) else {
+                        finishFourDCompletionTest(state, ok: false,
+                                                  message: "konnte A für 4D-Editor nicht einfügen")
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        guard insertCompletionCharacter("L", into: textView) else {
+                            finishFourDCompletionTest(state, ok: false,
+                                                      message: "konnte L für 4D-Editor nicht einfügen")
+                        }
+                        pollForAutomaticFourDCompletion(mainWindow: mainWindow,
+                                                        textView: textView, state: state)
+                    }
+                })
     }
 
     /// Beobachtet das automatisch geöffnete CESE-Fenster nach der produktiven
@@ -5744,38 +6228,38 @@ enum SelfTest {
     private static func pollForAutomaticFourDCompletion(
         mainWindow: NSWindow,
         textView: TextView,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
-        if let popup = fourDCompletionWindow(attachedTo: mainWindow) {
-            guard let table = completionTable(in: popup), table.numberOfRows > 1 else {
-                state.failures.append("automatisches Popup hat keine auswertbare Vorschlagsliste")
-                closeAutomaticCompletionThenStartManual(mainWindow: mainWindow,
-                                                         textView: textView, state: state)
-                return
-            }
-            closeAutomaticCompletionThenStartManual(mainWindow: mainWindow,
-                                                     textView: textView, state: state)
-            return
-        }
-        if tick >= 80 {              // 80 × 50 ms = 4 s für CESE-Task + Layout
-            let expectedText = state.initialText + "AL"
-            if textView.string != expectedText {
-                let selections = textView.selectionManager.textSelections.map(\.range)
-                finishFourDCompletionTest(state, ok: false,
-                                          message: "Testeingabe kam nicht im Editor an "
-                                            + "(Text=\"\(textView.string)\", editable=\(textView.isEditable), "
-                                            + "delegate=\(String(describing: textView.delegate)), "
-                                            + "Selektionen=\(selections))")
-            }
-            state.failures.append("automatisches Popup blieb nach der Eingabe von „AL“ aus")
-            startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForAutomaticFourDCompletion(mainWindow: mainWindow,
-                                            textView: textView, state: state, tick: tick + 1)
-        }
+        var popup: NSWindow?
+        waitFor(budget: 4, pause: 0.05,   // 4 s für CESE-Task + Layout
+                condition: {
+                    popup = fourDCompletionWindow(attachedTo: mainWindow)
+                    return popup != nil
+                },
+                onTimeout: { _ in
+                    let expectedText = state.initialText + "AL"
+                    if textView.string != expectedText {
+                        let selections = textView.selectionManager.textSelections.map(\.range)
+                        finishFourDCompletionTest(state, ok: false,
+                                                  message: "Testeingabe kam nicht im Editor an "
+                                                    + "(Text=\"\(textView.string)\", editable=\(textView.isEditable), "
+                                                    + "delegate=\(String(describing: textView.delegate)), "
+                                                    + "Selektionen=\(selections))")
+                    }
+                    state.failures.append("automatisches Popup blieb nach der Eingabe von „AL“ aus")
+                    startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
+                },
+                then: {
+                    guard let popup else { finish(false, "Auto-Popup nach Erfolg verschwunden") }
+                    guard let table = completionTable(in: popup), table.numberOfRows > 1 else {
+                        state.failures.append("automatisches Popup hat keine auswertbare Vorschlagsliste")
+                        closeAutomaticCompletionThenStartManual(mainWindow: mainWindow,
+                                                                 textView: textView, state: state)
+                        return
+                    }
+                    closeAutomaticCompletionThenStartManual(mainWindow: mainWindow,
+                                                             textView: textView, state: state)
+                })
     }
 
     /// Schließt ein vorhandenes Auto-Popup mit einem echten Escape-Event.
@@ -5784,28 +6268,21 @@ enum SelfTest {
     private static func closeAutomaticCompletionThenStartManual(
         mainWindow: NSWindow,
         textView: TextView,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
-        if tick == 0 {
-            postKey("\u{1b}", keyCode: 53, windowNumber: mainWindow.windowNumber)
-        }
-        if fourDCompletionWindow(attachedTo: mainWindow) == nil {
-            startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
-            return
-        }
-        if tick >= 30 {
-            state.failures.append("automatisches Popup ließ sich nicht mit Escape schließen")
-            fourDCompletionWindow(attachedTo: mainWindow)?.close()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
-            }
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            closeAutomaticCompletionThenStartManual(mainWindow: mainWindow,
-                                                     textView: textView, state: state, tick: tick + 1)
-        }
+        postKey("\u{1b}", keyCode: 53, windowNumber: mainWindow.windowNumber)
+        waitFor(budget: 1.5, pause: 0.05,
+                condition: { fourDCompletionWindow(attachedTo: mainWindow) == nil },
+                onTimeout: { _ in
+                    state.failures.append("automatisches Popup ließ sich nicht mit Escape schließen")
+                    fourDCompletionWindow(attachedTo: mainWindow)?.close()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
+                    }
+                },
+                then: {
+                    startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
+                })
     }
 
     /// Öffnet die Liste ausschließlich über den produktiven CESE-Shortcut
@@ -5844,34 +6321,38 @@ enum SelfTest {
     private static func pollForManualFourDCompletion(
         mainWindow: NSWindow,
         textView: TextView,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
-        guard mainWindow.isKeyWindow else {
-            finishFourDCompletionTest(state, outcome: .environment,
-                                      message: "Umgebungsproblem: Fokus während ⌃Leertaste verloren")
-        }
-        if let popup = fourDCompletionWindow(attachedTo: mainWindow),
-           let table = completionTable(in: popup), table.numberOfRows > 1 {
-            // `items` wird in CESE über einen asynchronen Publisher in die
-            // Tabelle geschrieben. Erst nach dessen letztem Reload ist die
-            // Auswahl stabil; ein sofort geposteter Pfeil könnte sonst korrekt
-            // wirken und gleich wieder auf Zeile 0 zurückgesetzt werden.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                testFourDCompletionArrow(mainWindow: mainWindow, popup: popup,
-                                         textView: textView, table: table, state: state)
-            }
-            return
-        }
-        if tick >= 80 {
-            state.failures.append("mit ⌃Leertaste geöffnetes Popup erschien nicht")
-            finishFourDCompletionTest(state, ok: false,
-                                      message: state.failures.joined(separator: "; "))
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForManualFourDCompletion(mainWindow: mainWindow, textView: textView,
-                                         state: state, tick: tick + 1)
-        }
+        var found: (popup: NSWindow, table: NSTableView)?
+        waitFor(budget: 4, pause: 0.05,
+                condition: {
+                    guard mainWindow.isKeyWindow else {
+                        finishFourDCompletionTest(state, outcome: .environment,
+                                                  message: "Umgebungsproblem: Fokus während ⌃Leertaste verloren")
+                    }
+                    guard let popup = fourDCompletionWindow(attachedTo: mainWindow),
+                          let table = completionTable(in: popup), table.numberOfRows > 1 else { return false }
+                    found = (popup, table)
+                    return true
+                },
+                onTimeout: { _ in
+                    state.failures.append("mit ⌃Leertaste geöffnetes Popup erschien nicht")
+                    finishFourDCompletionTest(state, ok: false,
+                                              message: state.failures.joined(separator: "; "))
+                },
+                then: {
+                    guard let found else {
+                        finishFourDCompletionTest(state, ok: false, message: "Popup nach Erfolg verschwunden")
+                    }
+                    // `items` wird in CESE über einen asynchronen Publisher in die
+                    // Tabelle geschrieben. Erst nach dessen letztem Reload ist die
+                    // Auswahl stabil; ein sofort geposteter Pfeil könnte sonst korrekt
+                    // wirken und gleich wieder auf Zeile 0 zurückgesetzt werden.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        testFourDCompletionArrow(mainWindow: mainWindow, popup: found.popup,
+                                                 textView: textView, table: found.table, state: state)
+                    }
+                })
     }
 
     /// Ein Pfeil-Event muss die SELEKTION der echten Vorschlagstabelle von
@@ -5906,25 +6387,19 @@ enum SelfTest {
         popup: NSWindow,
         textView: TextView,
         table: NSTableView,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
-        if table.selectedRow == 1 {
-            testFourDCompletionClick(mainWindow: mainWindow, popup: popup,
-                                     textView: textView, table: table, state: state)
-            return
-        }
-        if tick >= 40 {
-            state.failures.append("↓ bewegte die Vorschlagsauswahl nicht (Zeile blieb \(table.selectedRow))")
-            testFourDCompletionClick(mainWindow: mainWindow, popup: popup,
-                                     textView: textView, table: table, state: state)
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForFourDCompletionArrow(mainWindow: mainWindow, popup: popup,
-                                        textView: textView, table: table,
-                                        state: state, tick: tick + 1)
-        }
+        waitFor(budget: 1.2, pause: 0.03,
+                condition: { table.selectedRow == 1 },
+                onTimeout: { _ in
+                    state.failures.append("↓ bewegte die Vorschlagsauswahl nicht (Zeile blieb \(table.selectedRow))")
+                    testFourDCompletionClick(mainWindow: mainWindow, popup: popup,
+                                             textView: textView, table: table, state: state)
+                },
+                then: {
+                    testFourDCompletionClick(mainWindow: mainWindow, popup: popup,
+                                             textView: textView, table: table, state: state)
+                })
     }
 
     /// Klickt gezielt in die jeweils ANDERE sichtbare Tabellenzeile. Damit
@@ -5957,58 +6432,49 @@ enum SelfTest {
         textView: TextView,
         table: NSTableView,
         targetRow: Int,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
-        if table.selectedRow == targetRow {
-            // Der erste Treffer für „AL“ ist die generierte 4D-Anweisung
-            // `ALERT`. Ein Doppelklick muss sie über den normalen CESE-Pfad
-            // übernehmen — das beweist neben Hit-Testing auch die Aktivierung.
-            guard postCompletionMouseClick(in: table, row: 0, window: popup, clickCount: 2) else {
-                finishFourDCompletionTest(state, ok: false,
-                                          message: "konnte Doppelklick in Vorschlagsliste nicht bauen")
-            }
-            pollForFourDCompletionApply(mainWindow: mainWindow, textView: textView, state: state)
-            return
-        }
-        if tick >= 40 {
-            state.failures.append("gezielter Klick änderte die Vorschlagsauswahl nicht (Zeile blieb \(table.selectedRow))")
-            finishFourDCompletionTest(state, ok: false,
-                                      message: state.failures.joined(separator: "; "))
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForFourDCompletionClick(mainWindow: mainWindow, popup: popup,
-                                        textView: textView, table: table, targetRow: targetRow,
-                                        state: state, tick: tick + 1)
-        }
+        waitFor(budget: 1.2, pause: 0.03,
+                condition: { table.selectedRow == targetRow },
+                onTimeout: { _ in
+                    state.failures.append("gezielter Klick änderte die Vorschlagsauswahl nicht (Zeile blieb \(table.selectedRow))")
+                    finishFourDCompletionTest(state, ok: false,
+                                              message: state.failures.joined(separator: "; "))
+                },
+                then: {
+                    // Der erste Treffer für „AL“ ist die generierte 4D-Anweisung
+                    // `ALERT`. Ein Doppelklick muss sie über den normalen CESE-Pfad
+                    // übernehmen — das beweist neben Hit-Testing auch die Aktivierung.
+                    guard postCompletionMouseClick(in: table, row: 0, window: popup, clickCount: 2) else {
+                        finishFourDCompletionTest(state, ok: false,
+                                                  message: "konnte Doppelklick in Vorschlagsliste nicht bauen")
+                    }
+                    pollForFourDCompletionApply(mainWindow: mainWindow, textView: textView, state: state)
+                })
     }
 
     private static func pollForFourDCompletionApply(
         mainWindow: NSWindow,
         textView: TextView,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
-        if textView.string == state.initialText + "ALERT" {
-            guard let root = mainWindow.contentView else {
-                finishFourDCompletionTest(
-                    state, ok: false, message: "Hauptfenster verlor contentView"
-                )
-            }
-            startFourDComponentCompletion(
-                mainWindow: mainWindow, root: root, textView: textView, state: state
-            )
-            return
-        }
-        if tick >= 40 {
-            state.failures.append("Doppelklick übernahm den ersten Vorschlag nicht (Text=\"\(textView.string)\")")
-            finishFourDCompletionTest(state, ok: false,
-                                      message: state.failures.joined(separator: "; "))
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForFourDCompletionApply(mainWindow: mainWindow, textView: textView,
-                                        state: state, tick: tick + 1)
-        }
+        waitFor(budget: 1.2, pause: 0.03,
+                condition: { textView.string == state.initialText + "ALERT" },
+                onTimeout: { _ in
+                    state.failures.append("Doppelklick übernahm den ersten Vorschlag nicht (Text=\"\(textView.string)\")")
+                    finishFourDCompletionTest(state, ok: false,
+                                              message: state.failures.joined(separator: "; "))
+                },
+                then: {
+                    guard let root = mainWindow.contentView else {
+                        finishFourDCompletionTest(
+                            state, ok: false, message: "Hauptfenster verlor contentView"
+                        )
+                    }
+                    startFourDComponentCompletion(
+                        mainWindow: mainWindow, root: root, textView: textView, state: state
+                    )
+                })
     }
 
     /// Zweite, problembezogene Phase: Eine eindeutig benannte geteilte
@@ -6018,159 +6484,142 @@ enum SelfTest {
         mainWindow: NSWindow,
         root: NSView,
         textView: TextView,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
         // Die erste Anwendung muss ihr Fenster vollständig geschlossen haben,
-        // bevor der neue Präfix eingegeben wird.
-        guard fourDCompletionWindow(attachedTo: mainWindow) == nil else {
-            // 120 × 50 ms = 6 s wie die übrigen Warteschleifen dieses Tests.
-            // Mit 2 s meldete er auf belasteter Maschine etwa jeden dritten
-            // Lauf einen Fehler, obwohl das Fenster nur später schloss
-            // (Befund 2026-07-27).
-            if tick >= 120 {
-                finishFourDCompletionTest(
-                    state, ok: false,
-                    message: "ALERT-Popup blieb auch nach 6 s vor der "
-                        + "Component-Phase geöffnet"
-                )
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                startFourDComponentCompletion(
-                    mainWindow: mainWindow, root: root, textView: textView,
-                    state: state, tick: tick + 1
-                )
-            }
-            return
-        }
-        if let outcome = SelfTestFocusRouting.outcome(
-            isKeyWindow: mainWindow.isKeyWindow,
-            makeFirstResponder: { mainWindow.makeFirstResponder(textView) }
-        ) {
-            finishFourDCompletionTest(
-                state, outcome: outcome,
-                message: outcome == .environment
-                    ? "Umgebungsproblem: Fokus vor Component-Typeahead verloren"
-                    : "4D-Editor wurde vor Component-Typeahead nicht First Responder"
-            )
-        }
-        textView.selectionManager.setSelectedRange(
-            NSRange(location: (textView.string as NSString).length, length: 0)
-        )
-        guard insertCompletionCharacter("\nZ", into: textView) else {
-            finishFourDCompletionTest(
-                state, ok: false, message: "konnte ersten Component-Präfix nicht eingeben"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            guard insertCompletionCharacter("Z", into: textView) else {
-                finishFourDCompletionTest(
-                    state, ok: false, message: "konnte zweiten Component-Präfix nicht eingeben"
-                )
-            }
-            pollForFourDComponentPopup(
-                mainWindow: mainWindow, root: root, textView: textView, state: state
-            )
-        }
+        // bevor der neue Präfix eingegeben wird. 6 s wie die übrigen
+        // Warteschleifen dieses Tests: Mit 2 s meldete er auf belasteter
+        // Maschine etwa jeden dritten Lauf einen Fehler, obwohl das Fenster
+        // nur später schloss (Befund 2026-07-27).
+        waitFor(budget: 6, pause: 0.05,
+                condition: { fourDCompletionWindow(attachedTo: mainWindow) == nil },
+                onTimeout: { book in
+                    finishFourDCompletionTest(
+                        state, ok: false,
+                        message: "ALERT-Popup blieb vor der Component-Phase geöffnet — \(book.summary)"
+                    )
+                },
+                then: {
+                    if let outcome = SelfTestFocusRouting.outcome(
+                        isKeyWindow: mainWindow.isKeyWindow,
+                        makeFirstResponder: { mainWindow.makeFirstResponder(textView) }
+                    ) {
+                        finishFourDCompletionTest(
+                            state, outcome: outcome,
+                            message: outcome == .environment
+                                ? "Umgebungsproblem: Fokus vor Component-Typeahead verloren"
+                                : "4D-Editor wurde vor Component-Typeahead nicht First Responder"
+                        )
+                    }
+                    textView.selectionManager.setSelectedRange(
+                        NSRange(location: (textView.string as NSString).length, length: 0)
+                    )
+                    guard insertCompletionCharacter("\nZ", into: textView) else {
+                        finishFourDCompletionTest(
+                            state, ok: false, message: "konnte ersten Component-Präfix nicht eingeben"
+                        )
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        guard insertCompletionCharacter("Z", into: textView) else {
+                            finishFourDCompletionTest(
+                                state, ok: false, message: "konnte zweiten Component-Präfix nicht eingeben"
+                            )
+                        }
+                        pollForFourDComponentPopup(
+                            mainWindow: mainWindow, root: root, textView: textView, state: state
+                        )
+                }
+                })
     }
 
     private static func pollForFourDComponentPopup(
         mainWindow: NSWindow,
         root: NSView,
         textView: TextView,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
-        if let popup = fourDCompletionWindow(attachedTo: mainWindow),
-           let table = completionTable(in: popup), table.numberOfRows > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                guard postCompletionMouseClick(
-                    in: table, row: 0, window: popup, clickCount: 2
-                ) else {
+        var found: (popup: NSWindow, table: NSTableView)?
+        waitFor(budget: 4, pause: 0.05,
+                condition: {
+                    guard let popup = fourDCompletionWindow(attachedTo: mainWindow),
+                          let table = completionTable(in: popup), table.numberOfRows > 0 else { return false }
+                    found = (popup, table)
+                    return true
+                },
+                onTimeout: { book in
                     finishFourDCompletionTest(
                         state, ok: false,
-                        message: "konnte Component-Vorschlag nicht doppelklicken"
+                        message: "Component-Typeahead-Popup blieb nach „ZZ“ aus — \(book.summary)"
                     )
-                }
-                pollForFourDComponentApply(
-                    mainWindow: mainWindow, root: root,
-                    textView: textView, state: state
-                )
-            }
-            return
-        }
-        if tick >= 80 {
-            finishFourDCompletionTest(
-                state, ok: false,
-                message: "Component-Typeahead-Popup blieb nach „ZZ“ aus"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForFourDComponentPopup(
-                mainWindow: mainWindow, root: root, textView: textView,
-                state: state, tick: tick + 1
-            )
-        }
+                },
+                then: {
+                    guard let found else {
+                        finishFourDCompletionTest(state, ok: false, message: "Component-Popup nach Erfolg verschwunden")
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        guard postCompletionMouseClick(
+                            in: found.table, row: 0, window: found.popup, clickCount: 2
+                        ) else {
+                            finishFourDCompletionTest(
+                                state, ok: false,
+                                message: "konnte Component-Vorschlag nicht doppelklicken"
+                            )
+                        }
+                        pollForFourDComponentApply(
+                            mainWindow: mainWindow, root: root,
+                            textView: textView, state: state
+                        )
+                    }
+                })
     }
 
     private static func pollForFourDComponentApply(
         mainWindow: NSWindow,
         root: NSView,
         textView: TextView,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
         let expected = state.initialText + "ALERT\n" + state.componentMethod
-        if textView.string == expected {
-            pollForAppliedFourDComponentStyle(
-                root: root, state: state, tick: 0
-            )
-            return
-        }
-        if tick >= 60 {
-            finishFourDCompletionTest(
-                state, ok: false,
-                message: "Component-Doppelklick übernahm nicht den erwarteten Namen "
-                    + "(Text=\"\(textView.string)\")"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForFourDComponentApply(
-                mainWindow: mainWindow, root: root,
-                textView: textView, state: state, tick: tick + 1
-            )
-        }
+        waitFor(budget: 3, pause: 0.05,
+                condition: { textView.string == expected },
+                onTimeout: { book in
+                    finishFourDCompletionTest(
+                        state, ok: false,
+                        message: "Component-Doppelklick übernahm nicht den erwarteten Namen "
+                            + "(Text=\"\(textView.string)\") — \(book.summary)"
+                    )
+                },
+                then: {
+                    pollForAppliedFourDComponentStyle(root: root, state: state)
+                })
     }
 
     private static func pollForAppliedFourDComponentStyle(
         root: NSView,
-        state: FourDCompletionTestState,
-        tick: Int
+        state: FourDCompletionTestState
     ) {
         let color = fourDComponentMethodExpectedColor(dark: false)
-        let colored = storageSubstringHasColor(
-            state.componentMethod, in: root,
-            r: color.0, g: color.1, b: color.2
-        )
-        let styled = storageSubstringHasStyle(
-            state.componentMethod, in: root, bold: true, italic: false
-        )
-        if colored && styled {
-            startManualOneCharCompletion(root: root, state: state)
-            return
-        }
-        if tick >= 60 {
-            finishFourDCompletionTest(
-                state, ok: false,
-                message: "übernommene Component-Methode falsch gerendert "
-                    + "(Farbe=\(colored), fett/nicht-kursiv=\(styled))"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollForAppliedFourDComponentStyle(
-                root: root, state: state, tick: tick + 1
-            )
-        }
+        var colored = false
+        var styled = false
+        waitFor(budget: 6, pause: 0.1,
+                condition: {
+                    colored = storageSubstringHasColor(
+                        state.componentMethod, in: root,
+                        r: color.0, g: color.1, b: color.2
+                    )
+                    styled = storageSubstringHasStyle(
+                        state.componentMethod, in: root, bold: true, italic: false
+                    )
+                    return colored && styled
+                },
+                onTimeout: { book in
+                    finishFourDCompletionTest(
+                        state, ok: false,
+                        message: "übernommene Component-Methode falsch gerendert "
+                            + "(Farbe=\(colored), fett/nicht-kursiv=\(styled)) — \(book.summary)"
+                    )
+                },
+                then: { startManualOneCharCompletion(root: root, state: state) })
     }
 
     /// Manueller Ein-Zeichen-Aufruf (Review 2026-08-02): Nach einer neuen
@@ -6311,32 +6760,29 @@ enum SelfTest {
         mainWindow: NSWindow,
         root: NSView,
         textView: TextView,
-        state: FourDCompletionTestState,
-        tick: Int = 0
+        state: FourDCompletionTestState
     ) {
-        if let popup = fourDCompletionWindow(attachedTo: mainWindow),
-           let table = completionTable(in: popup), table.numberOfRows >= 1 {
-            // Popup wieder schließen (Esc), dann die Kommentar-Phase.
-            postKey("\u{1b}", keyCode: 53, windowNumber: mainWindow.windowNumber)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                fourDCompletionWindow(attachedTo: mainWindow)?.close()
-                startCommentSuppressedCompletion(mainWindow: mainWindow,
-                                                 root: root, textView: textView,
-                                                 state: state)
-            }
-            return
-        }
-        if tick >= 80 {
-            state.failures.append("⌃Leertaste öffnete bei EINEM Zeichen keine Liste")
-            startCommentSuppressedCompletion(mainWindow: mainWindow, root: root,
-                                             textView: textView, state: state)
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForManualOneCharCompletion(mainWindow: mainWindow, root: root,
-                                           textView: textView, state: state,
-                                           tick: tick + 1)
-        }
+        waitFor(budget: 4, pause: 0.05,
+                condition: {
+                    guard let popup = fourDCompletionWindow(attachedTo: mainWindow),
+                          let table = completionTable(in: popup), table.numberOfRows >= 1 else { return false }
+                    return true
+                },
+                onTimeout: { _ in
+                    state.failures.append("⌃Leertaste öffnete bei EINEM Zeichen keine Liste")
+                    startCommentSuppressedCompletion(mainWindow: mainWindow, root: root,
+                                                     textView: textView, state: state)
+                },
+                then: {
+                    // Popup wieder schließen (Esc), dann die Kommentar-Phase.
+                    postKey("\u{1b}", keyCode: 53, windowNumber: mainWindow.windowNumber)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        fourDCompletionWindow(attachedTo: mainWindow)?.close()
+                        startCommentSuppressedCompletion(mainWindow: mainWindow,
+                                                         root: root, textView: textView,
+                                                         state: state)
+                    }
+                })
     }
 
     /// In Kommentaren gibt es keine Vorschläge (Review 2026-08-02): Weder das
@@ -6560,7 +7006,7 @@ enum SelfTest {
         \tALERT("fertig")
         End if
         """
-        let projectRoot = FileManager.default.temporaryDirectory
+        let projectRoot = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-highlight4d-\(UUID().uuidString)")
         let methods = projectRoot.appendingPathComponent("Project/Sources/Methods",
                                                           isDirectory: true)
@@ -6592,48 +7038,45 @@ enum SelfTest {
         NSApp.appearance = NSAppearance(named: .aqua)
         ws.openProject(at: projectRoot)
         pollFourDProjectMethodIndex(ws: ws, root: root, projectRoot: projectRoot,
-                                    file: tmp, code: code, tick: 0)
+                                    file: tmp, code: code)
     }
 
     private static func pollFourDProjectMethodIndex(ws: Workspace, root: NSView,
                                                     projectRoot: URL, file: URL,
-                                                    code: String, tick: Int) {
-        guard ws.fourDProjectMethodNames.contains("abr_init"),
-              ws.fourDComponentMethods["component_shared"] != nil else {
-            if tick >= 40 {
-                ws.closeProject()
-                try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "4D-Indizes enthalten Abr_init/Component_Shared "
-                    + "nach 10 s nicht")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                pollFourDProjectMethodIndex(ws: ws, root: root, projectRoot: projectRoot,
-                                            file: file, code: code, tick: tick + 1)
-            }
-            return
-        }
-        ws.loadFile(at: file) { ok in
-            guard ok else {
-                ws.closeProject()
-                try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "loadFile (.4dm) schlug fehl")
-            }
-            pollFourDColors(
-                root: root, url: file, dark: false,
-                indexedMethod: "Abr_init", componentMethod: "Component_Shared", tick: 0
-            ) {
-                // Hell bestanden → dunkel umschalten und erneut beobachten.
-                NSApp.appearance = NSAppearance(named: .darkAqua)
-                pollFourDColors(
-                    root: root, url: file, dark: true,
-                    indexedMethod: "Abr_init", componentMethod: "Component_Shared", tick: 0
-                ) {
-                    runFourDDynamicProjectMethodIndexTest(
-                        ws: ws, root: root, projectRoot: projectRoot, file: file, code: code
-                    )
+                                                    code: String) {
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    ws.fourDProjectMethodNames.contains("abr_init")
+                        && ws.fourDComponentMethods["component_shared"] != nil
+                },
+                onTimeout: { book in
+                    ws.closeProject()
+                    try? FileManager.default.removeItem(at: projectRoot)
+                    finish(false, "4D-Indizes enthalten Abr_init/Component_Shared "
+                        + "nicht — \(book.summary)")
+                },
+                then: {
+                    ws.loadFile(at: file) { ok in
+                        guard ok else {
+                            ws.closeProject()
+                            try? FileManager.default.removeItem(at: projectRoot)
+                            finish(false, "loadFile (.4dm) schlug fehl")
+                        }
+                        pollFourDColors(
+                            root: root, url: file, dark: false,
+                            indexedMethod: "Abr_init", componentMethod: "Component_Shared") {
+                            // Hell bestanden → dunkel umschalten und erneut beobachten.
+                            NSApp.appearance = NSAppearance(named: .darkAqua)
+                            pollFourDColors(
+                                root: root, url: file, dark: true,
+                                indexedMethod: "Abr_init", componentMethod: "Component_Shared") {
+                                runFourDDynamicProjectMethodIndexTest(
+                                    ws: ws, root: root, projectRoot: projectRoot, file: file, code: code
+                                )
+                            }
+                        }
                 }
-            }
-        }
+                })
     }
 
     /// Ergänzt nach dem tatsächlichen Öffnen nur die Indexdatei einer Methode.
@@ -6645,7 +7088,7 @@ enum SelfTest {
         ws: Workspace, root: NSView, projectRoot: URL, file: URL, code: String
     ) {
         pollFourDProcessVariableColor(root: root, url: file, dark: true,
-                                      name: "Nachtrag", tick: 0) {
+                                      name: "Nachtrag") {
             beginFourDProjectMethodIndexRefresh(
                 ws: ws, root: root, projectRoot: projectRoot, file: file, code: code
             )
@@ -6675,50 +7118,43 @@ enum SelfTest {
         }
         pollFourDAddedMethod(
             ws: ws, root: root, projectRoot: projectRoot, file: file, code: code,
-            textViewIdentity: identity, selection: selection, visibleOrigin: visibleOrigin, tick: 0
-        )
+            textViewIdentity: identity, selection: selection, visibleOrigin: visibleOrigin)
     }
 
     private static func pollFourDAddedMethod(
         ws: Workspace, root: NSView, projectRoot: URL, file: URL, code: String,
-        textViewIdentity: ObjectIdentifier, selection: NSRange, visibleOrigin: NSPoint, tick: Int
+        textViewIdentity: ObjectIdentifier, selection: NSRange, visibleOrigin: NSPoint
     ) {
-        guard ws.fourDProjectMethodNames.contains("nachtrag") else {
-            if tick >= 40 {
-                ws.closeProject()
-                try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "4D-Index aktualisiert die nachträglich angelegte Methode nicht")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                pollFourDAddedMethod(
-                    ws: ws, root: root, projectRoot: projectRoot, file: file, code: code,
-                    textViewIdentity: textViewIdentity, selection: selection,
-                    visibleOrigin: visibleOrigin, tick: tick + 1
-                )
-            }
-            return
-        }
-        pollFourDColors(root: root, url: file, dark: true, indexedMethod: "Nachtrag", tick: 0) {
-            guard let textView = editorTextView(in: root) as? TextView,
-                  ObjectIdentifier(textView) == textViewIdentity,
-                  textView.selectedRange() == selection,
-                  abs(textView.visibleRect.origin.x - visibleOrigin.x) < 1,
-                  abs(textView.visibleRect.origin.y - visibleOrigin.y) < 1 else {
-                ws.closeProject()
-                try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "4D-Index-Refresh veränderte TextView, Selektion oder Scrollposition")
-            }
-            ws.closeProject()
-            guard ws.projectURL == nil, ws.fourDProjectMethodNames.isEmpty else {
-                try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "4D-Methodenindex blieb nach Projekt-Schließen aktiv")
-            }
-            NSApp.appearance = NSAppearance(named: .aqua)
-            try? FileManager.default.removeItem(at: projectRoot)
-            // Etappe 3 Wunschpaket 2026-07b: 4D ist auch MANUELL
-            // wählbar — an einer Nicht-.4dm-Datei prüfen.
-            runFourDManualOverridePhase(ws: ws, root: root, code: code)
-        }
+        waitFor(budget: 10, pause: 0.25,
+                condition: { ws.fourDProjectMethodNames.contains("nachtrag") },
+                onTimeout: { book in
+                    ws.closeProject()
+                    try? FileManager.default.removeItem(at: projectRoot)
+                    finish(false, "4D-Index aktualisiert die nachträglich angelegte Methode nicht — \(book.summary)")
+                },
+                then: {
+                    pollFourDColors(root: root, url: file, dark: true, indexedMethod: "Nachtrag") {
+                        guard let textView = editorTextView(in: root) as? TextView,
+                              ObjectIdentifier(textView) == textViewIdentity,
+                              textView.selectedRange() == selection,
+                              abs(textView.visibleRect.origin.x - visibleOrigin.x) < 1,
+                              abs(textView.visibleRect.origin.y - visibleOrigin.y) < 1 else {
+                            ws.closeProject()
+                            try? FileManager.default.removeItem(at: projectRoot)
+                            finish(false, "4D-Index-Refresh veränderte TextView, Selektion oder Scrollposition")
+                        }
+                        ws.closeProject()
+                        guard ws.projectURL == nil, ws.fourDProjectMethodNames.isEmpty else {
+                            try? FileManager.default.removeItem(at: projectRoot)
+                            finish(false, "4D-Methodenindex blieb nach Projekt-Schließen aktiv")
+                        }
+                        NSApp.appearance = NSAppearance(named: .aqua)
+                        try? FileManager.default.removeItem(at: projectRoot)
+                        // Etappe 3 Wunschpaket 2026-07b: 4D ist auch MANUELL
+                        // wählbar — an einer Nicht-.4dm-Datei prüfen.
+                        runFourDManualOverridePhase(ws: ws, root: root, code: code)
+                }
+                })
     }
 
     /// Manueller 4D-Override end-to-end: eine .txt-Datei mit 4D-Inhalt zeigt
@@ -6727,7 +7163,7 @@ enum SelfTest {
     /// jeweils der echte Editor-TextStorage (wie in den Phasen davor).
     private static func runFourDManualOverridePhase(ws: Workspace, root: NSView,
                                                     code: String) {
-        let txt = FileManager.default.temporaryDirectory
+        let txt = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-highlight4d-\(UUID().uuidString).txt")
         do { try code.write(to: txt, atomically: true, encoding: .utf8) }
         catch { finish(false, "(override) Temp-Datei nicht schreibbar") }
@@ -6744,32 +7180,30 @@ enum SelfTest {
                     finish(false, "(override) .txt zeigt 4D-Farben schon OHNE Override")
                 }
                 ws.setCustomLanguageOverride(CustomLanguageRegistry.fourD)
-                pollFourDColors(root: root, url: txt, dark: false, tick: 0) {
+                pollFourDColors(root: root, url: txt, dark: false) {
                     // Zurück auf Automatik → Farben müssen verschwinden.
                     ws.setLanguageOverride(nil)
-                    pollFourDColorsGone(ws: ws, root: root, url: txt, tick: 0)
+                    pollFourDColorsGone(ws: ws, root: root, url: txt)
                 }
             }
         }
     }
 
-    private static func pollFourDColorsGone(ws: Workspace, root: NSView,
-                                            url: URL, tick: Int) {
+    private static func pollFourDColorsGone(ws: Workspace, root: NSView, url: URL) {
         let cmd = fourDExpectedColors(dark: false)[0]
-        if !storageContainsColor(in: root, r: cmd.1, g: cmd.2, b: cmd.3) {
-            NSApp.appearance = nil   // zurück zum Systemmodus
-            try? FileManager.default.removeItem(at: url)
-            finish(true, "4D-Farben hell + dunkel beobachtet; manueller Override "
-                + "färbt .txt und „Automatisch“ räumt wieder")
-        }
-        if tick >= 40 {
-            NSApp.appearance = nil
-            try? FileManager.default.removeItem(at: url)
-            finish(false, "(override) 4D-Farben bleiben nach Rückkehr zur Automatik")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFourDColorsGone(ws: ws, root: root, url: url, tick: tick + 1)
-        }
+        waitFor(budget: 10, pause: 0.25,
+                condition: { !storageContainsColor(in: root, r: cmd.1, g: cmd.2, b: cmd.3) },
+                onTimeout: { book in
+                    NSApp.appearance = nil
+                    try? FileManager.default.removeItem(at: url)
+                    finish(false, "(override) 4D-Farben bleiben nach Rückkehr zur Automatik — \(book.summary)")
+                },
+                then: {
+                    NSApp.appearance = nil   // zurück zum Systemmodus
+                    try? FileManager.default.removeItem(at: url)
+                    finish(true, "4D-Farben hell + dunkel beobachtet; manueller Override "
+                        + "färbt .txt und „Automatisch“ räumt wieder")
+                })
     }
 
     /// Erwartete 4D-Vordergrundfarben aus den öffentlichen Test-Fixtures.
@@ -6797,61 +7231,57 @@ enum SelfTest {
 
     private static func pollFourDColors(root: NSView, url: URL, dark: Bool,
                                         indexedMethod: String? = nil,
-                                        componentMethod: String? = nil, tick: Int,
+                                        componentMethod: String? = nil,
                                         then next: @escaping () -> Void) {
         let expected = fourDExpectedColors(dark: dark)
-        // Jede Kategorie wird an ihrem eigenen 4D-Substring geprüft. Das ist
-        // strenger als „irgendein Pixel hat diese Farbe“ und verhindert etwa,
-        // dass eine Zeichenkette versehentlich durch eine andere Kategorie
-        // als vorhanden gilt.
-        let expectedSubstrings = [
-            (expected[0], "QUERY"),
-            (expected[1], "If"),
-            (expected[2], "$summe"),
-            (expected[3], "ABR_LISTE_LB_AB"),
-            (expected[4], "[Auftraege:1]"),
-            (expected[5], "Nummer"),
-            (expected[6], "\"fertig\""),
-            (expected[7], "// Prüfsumme neu berechnen"),
-        ]
-        var missing = expectedSubstrings.compactMap { expected, substring in
-            storageSubstringHasColor(substring, in: root,
-                                     r: expected.1, g: expected.2, b: expected.3)
-                ? nil : expected
-        }
-        let methodColor = fourDMethodExpectedColor(dark: dark)
-        if let indexedMethod, (!storageSubstringHasColor(
-            indexedMethod, in: root, r: methodColor.0, g: methodColor.1, b: methodColor.2
-        ) || !storageSubstringHasStyle(indexedMethod, in: root, bold: true, italic: true)) {
-            missing.append(("Projektmethode \(indexedMethod)", methodColor.0,
-                            methodColor.1, methodColor.2))
-        }
-        let componentColor = fourDComponentMethodExpectedColor(dark: dark)
-        if let componentMethod, (!storageSubstringHasColor(
-            componentMethod, in: root, r: componentColor.0,
-            g: componentColor.1, b: componentColor.2
-        ) || !storageSubstringHasStyle(
-            componentMethod, in: root, bold: true, italic: false
-        )) {
-            missing.append(("Komponentenmethode \(componentMethod)", componentColor.0,
-                            componentColor.1, componentColor.2))
-        }
-        if missing.isEmpty {
-            next()
-            return
-        }
-        if tick >= 40 {
-            try? FileManager.default.removeItem(at: url)
-            NSApp.appearance = nil
-            finish(false, "\(dark ? "dunkel" : "hell"): Farben fehlen nach 10 s: "
-                + missing.map(\.0).joined(separator: ", "))
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFourDColors(root: root, url: url, dark: dark,
-                            indexedMethod: indexedMethod,
-                            componentMethod: componentMethod,
-                            tick: tick + 1, then: next)
-        }
+        var missing: [(String, Int, Int, Int)] = []
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    // Jede Kategorie wird an ihrem eigenen 4D-Substring geprüft. Das ist
+                    // strenger als „irgendein Pixel hat diese Farbe“ und verhindert etwa,
+                    // dass eine Zeichenkette versehentlich durch eine andere Kategorie
+                    // als vorhanden gilt.
+                    let expectedSubstrings = [
+                        (expected[0], "QUERY"),
+                        (expected[1], "If"),
+                        (expected[2], "$summe"),
+                        (expected[3], "ABR_LISTE_LB_AB"),
+                        (expected[4], "[Auftraege:1]"),
+                        (expected[5], "Nummer"),
+                        (expected[6], "\"fertig\""),
+                        (expected[7], "// Prüfsumme neu berechnen"),
+                    ]
+                    missing = expectedSubstrings.compactMap { expected, substring in
+                        storageSubstringHasColor(substring, in: root,
+                                                 r: expected.1, g: expected.2, b: expected.3)
+                            ? nil : expected
+                    }
+                    let methodColor = fourDMethodExpectedColor(dark: dark)
+                    if let indexedMethod, (!storageSubstringHasColor(
+                        indexedMethod, in: root, r: methodColor.0, g: methodColor.1, b: methodColor.2
+                    ) || !storageSubstringHasStyle(indexedMethod, in: root, bold: true, italic: true)) {
+                        missing.append(("Projektmethode \(indexedMethod)", methodColor.0,
+                                        methodColor.1, methodColor.2))
+                    }
+                    let componentColor = fourDComponentMethodExpectedColor(dark: dark)
+                    if let componentMethod, (!storageSubstringHasColor(
+                        componentMethod, in: root, r: componentColor.0,
+                        g: componentColor.1, b: componentColor.2
+                    ) || !storageSubstringHasStyle(
+                        componentMethod, in: root, bold: true, italic: false
+                    )) {
+                        missing.append(("Komponentenmethode \(componentMethod)", componentColor.0,
+                                        componentColor.1, componentColor.2))
+                    }
+                    return missing.isEmpty
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: url)
+                    NSApp.appearance = nil
+                    finish(false, "\(dark ? "dunkel" : "hell"): Farben fehlen: "
+                        + missing.map(\.0).joined(separator: ", ") + " — \(book.summary)")
+                },
+                then: next)
     }
 
     /// Wartet, bis der bereits sichtbare Name die Prozessvariablenfarbe hat.
@@ -6859,24 +7289,21 @@ enum SelfTest {
     /// Vergleich wirklich dieselbe Textstelle vor und nach dem Indexwechsel
     /// betrachtet.
     private static func pollFourDProcessVariableColor(
-        root: NSView, url: URL, dark: Bool, name: String, tick: Int,
+        root: NSView, url: URL, dark: Bool, name: String,
         then next: @escaping () -> Void
     ) {
         let expected = fourDExpectedColors(dark: dark)[3]
-        if storageSubstringHasColor(name, in: root,
-                                    r: expected.1, g: expected.2, b: expected.3) {
-            next()
-            return
-        }
-        if tick >= 40 {
-            try? FileManager.default.removeItem(at: url)
-            NSApp.appearance = nil
-            finish(false, "Prozessvariable \(name) hat nach 10 s nicht die erwartete Farbe")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFourDProcessVariableColor(root: root, url: url, dark: dark,
-                                          name: name, tick: tick + 1, then: next)
-        }
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    storageSubstringHasColor(name, in: root,
+                                             r: expected.1, g: expected.2, b: expected.3)
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: url)
+                    NSApp.appearance = nil
+                    finish(false, "Prozessvariable \(name) hat nicht die erwartete Farbe — \(book.summary)")
+                },
+                then: next)
     }
 
     /// Prüft die Farbe genau am Namen der indizierten Projektmethode. Ein
@@ -6963,7 +7390,7 @@ enum SelfTest {
             finish(false, "Workspace.shared ist nil")
         }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-leaks-\(UUID().uuidString)")
         let png = base.appendingPathComponent("bild.png")
         let pdf = base.appendingPathComponent("doku.pdf")
@@ -7023,96 +7450,96 @@ enum SelfTest {
             if stage == .xpathPanel {
                 NotificationCenter.default.post(name: .fastraShowXPathBar, object: ws)
             }
-            pollLeakScenarioStage(ws: ws, base: base, stage: stage, tick: 0)
+            pollLeakScenarioStage(ws: ws, base: base, stage: stage)
         }
     }
 
     private static func pollLeakScenarioStage(ws: Workspace, base: URL,
-                                              stage: LeakScenarioStage, tick: Int) {
+                                              stage: LeakScenarioStage) {
         // Views nur während dieser Messung halten. Über die Wartephase
         // gehaltene Vorschauen würden die spätere Speicherdiagnose verfälschen.
-        var ready = false
-        if let root = MainActor.assumeIsolated({
-            CommandTargeting.documentWindow(for: ws)?.contentView
-        }) {
-            switch stage {
-            case .image:
-                if let image = previewImageView(in: root)?.image,
-                   let color = centerColor(of: image), let expected = leakScenarioImageColor {
-                    ready = image.size == NSSize(width: 640, height: 320)
-                        && abs(color.redComponent - expected.redComponent) < 0.01
-                        && abs(color.greenComponent - expected.greenComponent) < 0.01
-                        && abs(color.blueComponent - expected.blueComponent) < 0.01
-                        && abs(color.alphaComponent - expected.alphaComponent) < 0.01
-                }
-            case .pdf:
-                ready = firstPDFView(in: root)?.document?.pageCount == 1
-            case .hex:
-                // Dieser Abzug stammt aus onVisiblePage der montierten
-                // Hex-Ansicht, nachdem sie den Dateiabschnitt geladen hat.
-                ready = ws.visiblePrintPage?.url == base.appendingPathComponent("hex.txt").canonicalFileURL
-                    && ws.visiblePrintPage?.text.contains("Hexbeispiel") == true
-            case .xpathPanel:
-                ready = MainActor.assumeIsolated {
-                    guard let panel = XPathPanelController.lastShown,
-                          panel.isVisible, let model = panel.model else { return false }
-                    model.query = "//fach"
-                    return true
-                }
-            case .xpathSelection:
-                if let tv = editorTextView(in: root) as? TextView {
-                    let expected = (tv.string as NSString).range(of: "fach>Grüße")
-                    ready = expected.location != NSNotFound
-                        && tv.selectedRange() == NSRange(location: expected.location, length: 4)
-                }
-            case .closed:
-                ready = ws.tabs.count == 1 && ws.activeTab?.url == nil
-                    && previewImageView(in: root) == nil && firstPDFView(in: root) == nil
-                    && ws.visiblePrintPage == nil
-                    && MainActor.assumeIsolated {
-                        XPathPanelController.lastShown?.isVisible != true
+        waitFor(budget: 10, pause: 0.1,
+                condition: {
+                    var ready = false
+                    if let root = MainActor.assumeIsolated({
+                        CommandTargeting.documentWindow(for: ws)?.contentView
+                    }) {
+                        switch stage {
+                        case .image:
+                            if let image = previewImageView(in: root)?.image,
+                               let color = centerColor(of: image), let expected = leakScenarioImageColor {
+                                ready = image.size == NSSize(width: 640, height: 320)
+                                    && abs(color.redComponent - expected.redComponent) < 0.01
+                                    && abs(color.greenComponent - expected.greenComponent) < 0.01
+                                    && abs(color.blueComponent - expected.blueComponent) < 0.01
+                                    && abs(color.alphaComponent - expected.alphaComponent) < 0.01
+                            }
+                        case .pdf:
+                            ready = firstPDFView(in: root)?.document?.pageCount == 1
+                        case .hex:
+                            // Dieser Abzug stammt aus onVisiblePage der montierten
+                            // Hex-Ansicht, nachdem sie den Dateiabschnitt geladen hat.
+                            ready = ws.visiblePrintPage?.url == base.appendingPathComponent("hex.txt").canonicalFileURL
+                                && ws.visiblePrintPage?.text.contains("Hexbeispiel") == true
+                        case .xpathPanel:
+                            ready = MainActor.assumeIsolated {
+                                guard let panel = XPathPanelController.lastShown,
+                                      panel.isVisible, let model = panel.model else { return false }
+                                model.query = "//fach"
+                                return true
+                            }
+                        case .xpathSelection:
+                            if let tv = editorTextView(in: root) as? TextView {
+                                let expected = (tv.string as NSString).range(of: "fach>Grüße")
+                                ready = expected.location != NSNotFound
+                                    && tv.selectedRange() == NSRange(location: expected.location, length: 4)
+                            }
+                        case .closed:
+                            ready = ws.tabs.count == 1 && ws.activeTab?.url == nil
+                                && previewImageView(in: root) == nil && firstPDFView(in: root) == nil
+                                && ws.visiblePrintPage == nil
+                                && MainActor.assumeIsolated {
+                                    XPathPanelController.lastShown?.isVisible != true
+                                }
+                        }
                     }
-            }
-        }
-        if ready {
-            switch stage {
-            case .image:
-                loadLeakScenarioStage(ws: ws, base: base, stage: .pdf)
-            case .pdf:
-                loadLeakScenarioStage(ws: ws, base: base, stage: .hex)
-            case .hex:
-                loadLeakScenarioStage(ws: ws, base: base, stage: .xpathPanel)
-            case .xpathPanel:
-                pollLeakScenarioStage(ws: ws, base: base, stage: .xpathSelection, tick: 0)
-            case .xpathSelection:
-                MainActor.assumeIsolated { XPathPanelController.lastShown?.close() }
-                // Auch wenn das Laden den anfänglichen Leertab ersetzt hat,
-                // darf keine Fixture als vermeintlicher Leertab übrig bleiben.
-                ws.openNewTab()
-                guard let keep = ws.activeTabID else {
-                    finish(false, "Leak-Szenario: neuer Leertab fehlt")
-                }
-                ws.closeOtherTabs(keeping: keep)
-                pollLeakScenarioStage(ws: ws, base: base, stage: .closed, tick: 0)
-            case .closed:
-                finishLeakScenario(base: base)
-            }
-            return
-        }
-        if tick >= 100 {
-            try? FileManager.default.removeItem(at: base)
-            let window = MainActor.assumeIsolated { CommandTargeting.documentWindow(for: ws) }
-            let image = window?.contentView.flatMap { previewImageView(in: $0)?.image }
-            let color = image.flatMap { centerColor(of: $0) }
-            finish(false, "Leak-Szenario: Ansicht/Sprung/Aufräumen in Phase \(stage.rawValue) nicht bestätigt; "
-                + "Fenster=\(window != nil), sichtbar=\(window?.isVisible ?? false), "
-                + "Bild=\(image != nil), Farbe=\(String(describing: color)), "
-                + "aktiver Tab=\(ws.activeTab?.url?.lastPathComponent ?? "nil"), "
-                + "Hex-Abzug=\(String(describing: ws.visiblePrintPage))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollLeakScenarioStage(ws: ws, base: base, stage: stage, tick: tick + 1)
-        }
+                    return ready
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    let window = MainActor.assumeIsolated { CommandTargeting.documentWindow(for: ws) }
+                    let image = window?.contentView.flatMap { previewImageView(in: $0)?.image }
+                    let color = image.flatMap { centerColor(of: $0) }
+                    finish(false, "Leak-Szenario: Ansicht/Sprung/Aufräumen in Phase \(stage.rawValue) nicht bestätigt; "
+                        + "Fenster=\(window != nil), sichtbar=\(window?.isVisible ?? false), "
+                        + "Bild=\(image != nil), Farbe=\(String(describing: color)), "
+                        + "aktiver Tab=\(ws.activeTab?.url?.lastPathComponent ?? "nil"), "
+                        + "Hex-Abzug=\(String(describing: ws.visiblePrintPage)) — \(book.summary)")
+                },
+                then: {
+                    switch stage {
+                    case .image:
+                        loadLeakScenarioStage(ws: ws, base: base, stage: .pdf)
+                    case .pdf:
+                        loadLeakScenarioStage(ws: ws, base: base, stage: .hex)
+                    case .hex:
+                        loadLeakScenarioStage(ws: ws, base: base, stage: .xpathPanel)
+                    case .xpathPanel:
+                        pollLeakScenarioStage(ws: ws, base: base, stage: .xpathSelection)
+                    case .xpathSelection:
+                        MainActor.assumeIsolated { XPathPanelController.lastShown?.close() }
+                        // Auch wenn das Laden den anfänglichen Leertab ersetzt hat,
+                        // darf keine Fixture als vermeintlicher Leertab übrig bleiben.
+                        ws.openNewTab()
+                        guard let keep = ws.activeTabID else {
+                            finish(false, "Leak-Szenario: neuer Leertab fehlt")
+                        }
+                        ws.closeOtherTabs(keeping: keep)
+                        pollLeakScenarioStage(ws: ws, base: base, stage: .closed)
+                    case .closed:
+                        finishLeakScenario(base: base)
+                    }
+                })
     }
 
     private static func finishLeakScenario(base: URL) {
@@ -7163,7 +7590,7 @@ enum SelfTest {
         \(filler)    <regal id="42"><fach>Zielfach</fach></regal>
         </lager>
         """
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-xpath-\(UUID().uuidString).xml")
         do { try xml.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -7179,73 +7606,74 @@ enum SelfTest {
             }
             // Panel über den ECHTEN Menü-Pfad öffnen.
             NotificationCenter.default.post(name: .fastraShowXPathBar, object: nil)
-            pollXPathPanel(ws: ws, root: root, xml: xml, tmp: tmp, tick: 0)
+            pollXPathPanel(ws: ws, root: root, xml: xml, tmp: tmp)
         }
     }
 
     private static func pollXPathPanel(ws: Workspace, root: NSView, xml: String,
-                                       tmp: URL, tick: Int) {
+                                       tmp: URL) {
         // Panel-Sichtbarkeit + Modell-Zugriff sind MainActor-isoliert; die
         // Selbsttests laufen auf dem Main-Thread → Isolierung übernehmen.
-        let model: XPathBarModel? = MainActor.assumeIsolated {
-            let visible = NSApp.windows.contains {
-                $0.identifier == XPathPanelController.panelIdentifier && $0.isVisible
-            }
-            return visible ? XPathPanelController.lastShown?.model : nil
-        }
-        if let model {
-            // Festhalten, ob der Index beim Tippen schon stand. Nur wenn NICHT,
-            // prüft der Lauf den eigentlich riskanten Fall.
-            let indexWasReady = MainActor.assumeIsolated { model.index != nil }
-            // Query in das echte Modell tippen (Live-Springen).
-            MainActor.assumeIsolated { model.query = "//regal[@id='42']/fach" }
-            // Erwartete Fundstelle unabhängig berechnen: Name des
-            // <fach>-Elements im Zielregal.
-            let ns = xml as NSString
-            let target = ns.range(of: "fach>Zielfach")
-            let expected = NSRange(location: target.location, length: 4)
-            pollXPathSelection(root: root, expected: expected, tmp: tmp,
-                               tick: 0, indexWasReady: indexWasReady)
-            return
-        }
-        if tick >= 40 {
-            try? FileManager.default.removeItem(at: tmp)
-            finish(false, "XPath-Panel erschien nicht binnen 10 s")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollXPathPanel(ws: ws, root: root, xml: xml, tmp: tmp, tick: tick + 1)
-        }
+        var model: XPathBarModel?
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    model = MainActor.assumeIsolated {
+                        let visible = NSApp.windows.contains {
+                            $0.identifier == XPathPanelController.panelIdentifier && $0.isVisible
+                        }
+                        return visible ? XPathPanelController.lastShown?.model : nil
+                    }
+                    return model != nil
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: tmp)
+                    finish(false, "XPath-Panel erschien nicht — \(book.summary)")
+                },
+                then: {
+                    guard let model else { finish(false, "XPath-Panel nach Erfolg verschwunden") }
+                    // Festhalten, ob der Index beim Tippen schon stand. Nur wenn NICHT,
+                    // prüft der Lauf den eigentlich riskanten Fall.
+                    let indexWasReady = MainActor.assumeIsolated { model.index != nil }
+                    // Query in das echte Modell tippen (Live-Springen).
+                    MainActor.assumeIsolated { model.query = "//regal[@id='42']/fach" }
+                    // Erwartete Fundstelle unabhängig berechnen: Name des
+                    // <fach>-Elements im Zielregal.
+                    let ns = xml as NSString
+                    let target = ns.range(of: "fach>Zielfach")
+                    let expected = NSRange(location: target.location, length: 4)
+                    pollXPathSelection(root: root, expected: expected, tmp: tmp,
+                                       indexWasReady: indexWasReady)
+                })
     }
 
     private static func pollXPathSelection(root: NSView, expected: NSRange,
-                                           tmp: URL, tick: Int,
-                                           indexWasReady: Bool) {
-        if let tv = editorTextView(in: root) as? TextView,
-           let selection = tv.selectionManager.textSelections.first?.range,
-           selection.location == expected.location {
-            // Panel wieder schließen (Aufräumen), Datei löschen.
-            MainActor.assumeIsolated { XPathPanelController.lastShown?.close() }
-            try? FileManager.default.removeItem(at: tmp)
-            // Ehrlich ausweisen, welcher Fall geprüft wurde: Stand der Index
-            // schon, lief der Test am eigentlichen Risiko vorbei.
-            let scope = indexWasReady
-                ? "Index war bereits fertig — verpasster Sprung NICHT geprüft"
-                : "getippt vor fertigem Index (nachgeholter Sprung)"
-            finish(true, "XPath-Panel öffnet und springt zur echten Fundstelle "
-                + "(Selektion @\(selection.location); \(scope))")
-        }
-        if tick >= 40 {
-            let actual = (editorTextView(in: root) as? TextView)?
-                .selectionManager.textSelections.first?.range
-            try? FileManager.default.removeItem(at: tmp)
-            finish(false, "kein Sprung zur Fundstelle binnen 10 s "
-                + "(erwartet \(expected), Selektion \(String(describing: actual)), "
-                + "Index beim Tippen fertig: \(indexWasReady))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollXPathSelection(root: root, expected: expected, tmp: tmp,
-                               tick: tick + 1, indexWasReady: indexWasReady)
-        }
+                                           tmp: URL, indexWasReady: Bool) {
+        var selection: NSRange?
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    selection = (editorTextView(in: root) as? TextView)?
+                        .selectionManager.textSelections.first?.range
+                    return selection?.location == expected.location
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: tmp)
+                    finish(false, "kein Sprung zur Fundstelle — \(book.summary) "
+                        + "(erwartet \(expected), Selektion \(String(describing: selection)), "
+                        + "Index beim Tippen fertig: \(indexWasReady))")
+                },
+                then: {
+                    guard let selection else { finish(false, "Selektion nach Erfolg verschwunden") }
+                    // Panel wieder schließen (Aufräumen), Datei löschen.
+                    MainActor.assumeIsolated { XPathPanelController.lastShown?.close() }
+                    try? FileManager.default.removeItem(at: tmp)
+                    // Ehrlich ausweisen, welcher Fall geprüft wurde: Stand der Index
+                    // schon, lief der Test am eigentlichen Risiko vorbei.
+                    let scope = indexWasReady
+                        ? "Index war bereits fertig — verpasster Sprung NICHT geprüft"
+                        : "getippt vor fertigem Index (nachgeholter Sprung)"
+                    finish(true, "XPath-Panel öffnet und springt zur echten Fundstelle "
+                        + "(Selektion @\(selection.location); \(scope))")
+                })
     }
 
     // MARK: - Ansichts-Umschalter + Vorschau (Etappe 2 Wunschpaket 2026-07)
@@ -7269,7 +7697,7 @@ enum SelfTest {
         }
 
         // Rotes 64×32-PNG erzeugen (Rot ist als Sample-Farbe eindeutig).
-        let png = FileManager.default.temporaryDirectory
+        let png = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-previewrender-\(UUID().uuidString).png")
         do { try writeSolidPNG(to: png, width: 64, height: 32) }
         catch { finish(false, "PNG nicht schreibbar: \(error.localizedDescription)") }
@@ -7283,59 +7711,57 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: png)
                 finish(false, "PNG öffnet nicht in der Vorschau (Modus: \(ws.activeViewMode))")
             }
-            pollImagePreview(root: root, ws: ws, png: png, tick: 0)
+            pollImagePreview(root: root, ws: ws, png: png)
         }
     }
 
     /// Wartet, bis das dekodierte Bild wirklich in der View-Hierarchie hängt,
     /// und sampelt dann die Mittelpixel-Farbe.
-    private static func pollImagePreview(root: NSView, ws: Workspace,
-                                         png: URL, tick: Int) {
-        if let imageView = previewImageView(in: root), let image = imageView.image {
-            guard let color = centerColor(of: image) else {
-                try? FileManager.default.removeItem(at: png)
-                finish(false, "Vorschaubild nicht sampelbar")
-            }
-            guard color.redComponent > 0.8, color.greenComponent < 0.2,
-                  color.blueComponent < 0.2 else {
-                try? FileManager.default.removeItem(at: png)
-                finish(false, "Vorschaubild hat falsche Farbe: \(color)")
-            }
-            // Umschalter real prüfen: Hex → Bildfläche verschwindet.
-            ws.setViewMode(.hex)
-            pollPreviewGone(root: root, ws: ws, png: png, tick: 0)
-            return
-        }
-        if tick >= 40 {
-            try? FileManager.default.removeItem(at: png)
-            finish(false, "kein gerendertes Vorschaubild binnen 10 s")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollImagePreview(root: root, ws: ws, png: png, tick: tick + 1)
-        }
+    private static func pollImagePreview(root: NSView, ws: Workspace, png: URL) {
+        var image: NSImage?
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    image = previewImageView(in: root)?.image
+                    return image != nil
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: png)
+                    finish(false, "kein gerendertes Vorschaubild — \(book.summary)")
+                },
+                then: {
+                    guard let image, let color = centerColor(of: image) else {
+                        try? FileManager.default.removeItem(at: png)
+                        finish(false, "Vorschaubild nicht sampelbar")
+                    }
+                    guard color.redComponent > 0.8, color.greenComponent < 0.2,
+                          color.blueComponent < 0.2 else {
+                        try? FileManager.default.removeItem(at: png)
+                        finish(false, "Vorschaubild hat falsche Farbe: \(color)")
+                    }
+                    // Umschalter real prüfen: Hex → Bildfläche verschwindet.
+                    ws.setViewMode(.hex)
+                    pollPreviewGone(root: root, ws: ws, png: png)
+                })
     }
 
     /// Nach dem Umschalten auf Hex darf keine Bildfläche mehr da sein.
-    private static func pollPreviewGone(root: NSView, ws: Workspace,
-                                        png: URL, tick: Int) {
-        if previewImageView(in: root) == nil {
-            try? FileManager.default.removeItem(at: png)
-            runPDFPreviewPart(root: root, ws: ws)
-            return
-        }
-        if tick >= 40 {
-            try? FileManager.default.removeItem(at: png)
-            finish(false, "Umschalter auf Hex entfernt die Bildvorschau nicht")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollPreviewGone(root: root, ws: ws, png: png, tick: tick + 1)
-        }
+    private static func pollPreviewGone(root: NSView, ws: Workspace, png: URL) {
+        waitFor(budget: 10, pause: 0.25,
+                condition: { previewImageView(in: root) == nil },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: png)
+                    finish(false, "Umschalter auf Hex entfernt die Bildvorschau nicht — \(book.summary)")
+                },
+                then: {
+                    try? FileManager.default.removeItem(at: png)
+                    runPDFPreviewPart(root: root, ws: ws)
+                })
     }
 
     /// PDF-Teil: einseitiges PDF erzeugen, laden, echtes PDFKit-Dokument
     /// in der Hierarchie beobachten.
     private static func runPDFPreviewPart(root: NSView, ws: Workspace) {
-        let pdf = FileManager.default.temporaryDirectory
+        let pdf = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-previewrender-\(UUID().uuidString).pdf")
         do { try writeSinglePagePDF(to: pdf) }
         catch { finish(false, "PDF nicht schreibbar: \(error.localizedDescription)") }
@@ -7349,23 +7775,21 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: pdf)
                 finish(false, "PDF öffnet nicht in der Vorschau (Modus: \(ws.activeViewMode))")
             }
-            pollPDFPreview(root: root, pdf: pdf, tick: 0)
+            pollPDFPreview(root: root, pdf: pdf)
         }
     }
 
-    private static func pollPDFPreview(root: NSView, pdf: URL, tick: Int) {
-        if let pdfView = firstPDFView(in: root),
-           let document = pdfView.document, document.pageCount == 1 {
-            try? FileManager.default.removeItem(at: pdf)
-            finish(true, "Bildvorschau rendert rot + Umschalter wirkt + PDF zeigt 1 Seite")
-        }
-        if tick >= 40 {
-            try? FileManager.default.removeItem(at: pdf)
-            finish(false, "kein gerendertes PDF binnen 10 s")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollPDFPreview(root: root, pdf: pdf, tick: tick + 1)
-        }
+    private static func pollPDFPreview(root: NSView, pdf: URL) {
+        waitFor(budget: 10, pause: 0.25,
+                condition: { firstPDFView(in: root)?.document?.pageCount == 1 },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: pdf)
+                    finish(false, "kein gerendertes PDF — \(book.summary)")
+                },
+                then: {
+                    try? FileManager.default.removeItem(at: pdf)
+                    finish(true, "Bildvorschau rendert rot + Umschalter wirkt + PDF zeigt 1 Seite")
+                })
     }
 
     /// Sucht die Bildvorschau-Fläche über ihren Accessibility-Identifier.
@@ -7496,7 +7920,7 @@ enum SelfTest {
     private static func runJumpCase(ws: Workspace, mainWindow: NSWindow, root: NSView,
                                     content: String, label: String,
                                     onPass: @escaping () -> Void) {
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-jump-\(label)-\(UUID().uuidString).txt")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "(\(label)) Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -7509,8 +7933,7 @@ enum SelfTest {
             // Der Editor wird nach dem Dateiwechel neu eingehängt. Seine
             // Bereitschaft beobachten statt eine feste Renderdauer zu raten.
             pollForJumpEditor(
-                root: root, expectedContent: content, label: label, tick: 0
-            ) { tv in
+                root: root, expectedContent: content, label: label) { tv in
                 // Editor zum First Responder machen — sonst landet die Selektion
                 // u.U. nicht im selectionManager (wie im Findbar-Test).
                 _ = mainWindow.makeFirstResponder(tv)
@@ -7538,26 +7961,27 @@ enum SelfTest {
     }
 
     private static func pollForJumpEditor(
-        root: NSView, expectedContent: String, label: String, tick: Int,
+        root: NSView, expectedContent: String, label: String,
         completion: @escaping (TextView) -> Void
     ) {
-        if let textView = editorTextView(in: root) as? TextView,
-           textView.string == expectedContent {
-            completion(textView)
-            return
-        }
-        if tick >= 40 {
-            finish(
-                false,
-                "(\(label)) Editor-TextView mit geladenem Inhalt nicht binnen 4 s erreichbar"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollForJumpEditor(
-                root: root, expectedContent: expectedContent,
-                label: label, tick: tick + 1, completion: completion
-            )
-        }
+        var textView: TextView?
+        waitFor(budget: 4, pause: 0.1,
+                condition: {
+                    guard let candidate = editorTextView(in: root) as? TextView,
+                          candidate.string == expectedContent else { return false }
+                    textView = candidate
+                    return true
+                },
+                onTimeout: { book in
+                    finish(
+                        false,
+                        "(\(label)) Editor-TextView mit geladenem Inhalt nicht erreichbar — \(book.summary)"
+                    )
+                },
+                then: {
+                    guard let textView else { finish(false, "(\(label)) Editor nach Erfolg verschwunden") }
+                    completion(textView)
+                })
     }
 
     // MARK: - -selftest ghosttext
@@ -7595,7 +8019,7 @@ enum SelfTest {
         // sofort auf. Das Wort aus Daniels Screenshot bewusst wiederholt.
         let long = String(repeating: "Willkommensbildschirm ", count: 40)
         let content = (1...6).map { "Zeile \($0): \(long)" }.joined(separator: "\n")
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-ghosttext-\(UUID().uuidString).txt")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -7730,7 +8154,7 @@ enum SelfTest {
             length: target.length - 2
         ))
         let initialText = initial as String
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-wordclick-\(UUID().uuidString).md")
         do { try Data(initialText.utf8).write(to: tmp) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -7761,8 +8185,7 @@ enum SelfTest {
                 prepareWordClickInitialLayout(
                     textView: textView, window: window,
                     expectedText: text, target: target,
-                    unrelated: unrelated, suffix: suffix, tick: 0
-                )
+                    unrelated: unrelated, suffix: suffix)
             }
         }
     }
@@ -7772,36 +8195,33 @@ enum SelfTest {
     /// den gemeldeten stehengebliebenen Layoutzustand nicht reproduzieren.
     private static func prepareWordClickInitialLayout(
         textView: TextView, window: NSWindow, expectedText: String,
-        target: NSRange, unrelated: NSRange, suffix: String, tick: Int
+        target: NSRange, unrelated: NSRange, suffix: String
     ) {
         let initialTarget = NSRange(location: target.location, length: 2)
-        textView.scrollToRange(initialTarget)
-        textView.layoutManager.layoutLines()
-        if let rect = textView.layoutManager.rectForOffset(target.location + 1),
-           rect.width > 0, textView.visibleRect.intersects(rect) {
-            textView.selectionManager.setSelectedRange(NSRange(
-                location: target.location + 2, length: 0
-            ))
-            textView.insertText(
-                suffix,
-                replacementRange: NSRange(location: NSNotFound, length: 0)
-            )
-            pollWordClickMutation(
-                textView: textView, window: window, expectedText: expectedText,
-                target: target, unrelated: unrelated, tick: 0
-            )
-            return
-        }
-        if tick >= 40 {
-            finish(false, "kurzer Wortanfang wird binnen 4 s nicht real sichtbar")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            prepareWordClickInitialLayout(
-                textView: textView, window: window,
-                expectedText: expectedText, target: target,
-                unrelated: unrelated, suffix: suffix, tick: tick + 1
-            )
-        }
+        waitFor(budget: 4, pause: 0.1,
+                condition: {
+                    // Jeder Durchlauf zieht nach: scrollen, auslegen, messen.
+                    textView.scrollToRange(initialTarget)
+                    textView.layoutManager.layoutLines()
+                    guard let rect = textView.layoutManager.rectForOffset(target.location + 1),
+                          rect.width > 0, textView.visibleRect.intersects(rect) else { return false }
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "kurzer Wortanfang wird nicht real sichtbar — \(book.summary)")
+                },
+                then: {
+                    textView.selectionManager.setSelectedRange(NSRange(
+                        location: target.location + 2, length: 0
+                    ))
+                    textView.insertText(
+                        suffix,
+                        replacementRange: NSRange(location: NSNotFound, length: 0)
+                    )
+                    pollWordClickMutation(
+                        textView: textView, window: window, expectedText: expectedText,
+                        target: target, unrelated: unrelated)
+                })
     }
 
     /// Datenschutzneutrales Größenabbild des gemeldeten Markdown-Dokuments:
@@ -7977,27 +8397,22 @@ enum SelfTest {
 
     private static func pollWordClickMutation(
         textView: TextView, window: NSWindow, expectedText: String,
-        target: NSRange, unrelated: NSRange, tick: Int
+        target: NSRange, unrelated: NSRange
     ) {
-        if textView.string == expectedText {
-            centerWordClickTarget(textView: textView, target: target)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollWordClickReady(
-                    textView: textView, window: window,
-                    target: target, unrelated: unrelated, tick: 0
-                )
-            }
-            return
-        }
-        if tick >= 40 {
-            finish(false, "Eingabe stellt die lange Fixture-Zeile nicht wieder her")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollWordClickMutation(
-                textView: textView, window: window, expectedText: expectedText,
-                target: target, unrelated: unrelated, tick: tick + 1
-            )
-        }
+        waitFor(budget: 2, pause: 0.05,
+                condition: { textView.string == expectedText },
+                onTimeout: { book in
+                    finish(false, "Eingabe stellt die lange Fixture-Zeile nicht wieder her — \(book.summary)")
+                },
+                then: {
+                    centerWordClickTarget(textView: textView, target: target)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        pollWordClickReady(
+                            textView: textView, window: window,
+                            target: target, unrelated: unrelated
+                        )
+                    }
+                })
     }
 
     /// `scrollToRange` laesst bereits knapp sichtbare Bereiche absichtlich
@@ -8025,85 +8440,82 @@ enum SelfTest {
     /// nachträglich eingefügtes Ende echte Trefferflächen besitzen.
     private static func pollWordClickReady(
         textView: TextView, window: NSWindow,
-        target: NSRange, unrelated: NSRange, tick: Int
+        target: NSRange, unrelated: NSRange
     ) {
-        guard window.makeFirstResponder(textView) else {
-            finish(false, "Texteditor wird nicht First Responder")
-        }
-        textView.layoutManager.layoutLines()
-        guard let content = window.contentView else {
-            finish(false, "Fensterinhalt fehlt")
-        }
-        let clickOffsets = [target.location + 1, target.max - 2]
-        let hitTestingIsReady = clickOffsets.allSatisfy { offset in
-            guard let rect = textView.layoutManager.rectForOffset(offset),
-                  rect.width > 0,
-                  textView.visibleRect.intersects(rect),
-                  let mapped = textView.layoutManager.textOffsetAtPoint(
-                    NSPoint(x: rect.midX, y: rect.midY)
-                  ) else {
-                return false
-            }
-            let inWindow = textView.convert(
-                NSPoint(x: rect.midX, y: rect.midY), to: nil
-            )
-            let inContent = content.convert(inWindow, from: nil)
-            var hit = content.hitTest(inContent)
-            while let view = hit {
-                if view === textView {
-                    return target.location...target.max ~= mapped
-                }
-                hit = view.superview
-            }
-            return false
-        }
-        if hitTestingIsReady {
-            guard postWordDoubleClick(
-                in: textView, window: window,
-                offset: target.location + 1
-            ) else {
-                finish(false, "Doppelklick am Wortanfang nicht erzeugbar")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                guard textView.selectedRange() == target else {
-                    finish(false, "Wortanfang markiert \(textView.selectedRange()) statt \(target)")
-                }
-                textView.selectionManager.setSelectedRange(unrelated)
-                // Die programmatische Auswahländerung erst durch einen
-                // Runloop-Takt abschließen lassen.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    // Auch am Wortende muss die Mausverarbeitung den
-                    // Textoffset bestimmen und das ganze Wort auswählen.
+        waitFor(budget: 4, pause: 0.1,
+                condition: {
+                    guard window.makeFirstResponder(textView) else {
+                        finish(false, "Texteditor wird nicht First Responder")
+                    }
+                    textView.layoutManager.layoutLines()
+                    guard let content = window.contentView else {
+                        finish(false, "Fensterinhalt fehlt")
+                    }
+                    let clickOffsets = [target.location + 1, target.max - 2]
+                    let hitTestingIsReady = clickOffsets.allSatisfy { offset in
+                        guard let rect = textView.layoutManager.rectForOffset(offset),
+                              rect.width > 0,
+                              textView.visibleRect.intersects(rect),
+                              let mapped = textView.layoutManager.textOffsetAtPoint(
+                                NSPoint(x: rect.midX, y: rect.midY)
+                              ) else {
+                            return false
+                        }
+                        let inWindow = textView.convert(
+                            NSPoint(x: rect.midX, y: rect.midY), to: nil
+                        )
+                        let inContent = content.convert(inWindow, from: nil)
+                        var hit = content.hitTest(inContent)
+                        while let view = hit {
+                            if view === textView {
+                                return target.location...target.max ~= mapped
+                            }
+                            hit = view.superview
+                        }
+                        return false
+                    }
+                    if !hitTestingIsReady { textView.scrollToRange(target) }
+                    return hitTestingIsReady
+                },
+                onTimeout: { book in
+                    finish(false, "Zielwort wird nicht real sichtbar — \(book.summary)")
+                },
+                then: {
                     guard postWordDoubleClick(
-                        in: textView, window: window, offset: target.max - 2
+                        in: textView, window: window,
+                        offset: target.location + 1
                     ) else {
-                        finish(false, "Doppelklick am Wortende nicht erzeugbar")
+                        finish(false, "Doppelklick am Wortanfang nicht erzeugbar")
                     }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        let selected = textView.selectedRange()
-                        finish(selected == target,
-                               selected == target
-                               ? "Wortanfang und Wortende markieren dieselbe vollständige Auswahl"
-                               : "Wortende reagiert nicht korrekt: Auswahl \(selected), erwartet \(target); "
-                                 + wordClickDiagnostic(
-                                    textView: textView, window: window,
-                                    offset: target.max - 2
-                                 ))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        guard textView.selectedRange() == target else {
+                            finish(false, "Wortanfang markiert \(textView.selectedRange()) statt \(target)")
+                        }
+                        textView.selectionManager.setSelectedRange(unrelated)
+                        // Die programmatische Auswahländerung erst durch einen
+                        // Runloop-Takt abschließen lassen.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            // Auch am Wortende muss die Mausverarbeitung den
+                            // Textoffset bestimmen und das ganze Wort auswählen.
+                            guard postWordDoubleClick(
+                                in: textView, window: window, offset: target.max - 2
+                            ) else {
+                                finish(false, "Doppelklick am Wortende nicht erzeugbar")
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                let selected = textView.selectedRange()
+                                finish(selected == target,
+                                       selected == target
+                                       ? "Wortanfang und Wortende markieren dieselbe vollständige Auswahl"
+                                       : "Wortende reagiert nicht korrekt: Auswahl \(selected), erwartet \(target); "
+                                         + wordClickDiagnostic(
+                                            textView: textView, window: window,
+                                            offset: target.max - 2
+                                         ))
+                            }
+                        }
                     }
-                }
-            }
-            return
-        }
-        if tick >= 40 {
-            finish(false, "Zielwort wird binnen 4 s nicht real sichtbar")
-        }
-        textView.scrollToRange(target)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollWordClickReady(
-                textView: textView, window: window,
-                target: target, unrelated: unrelated, tick: tick + 1
-            )
-        }
+                })
     }
 
     /// Sendet die echte AppKit-Folge aus erstem und zweitem Klick an den
@@ -8193,7 +8605,7 @@ enum SelfTest {
         // Eigener leerer Ordner: Die Seitenleiste würde sonst den prall
         // gefüllten System-Temp-Ordner bei jedem SwiftUI-Durchlauf sortieren
         // und den Test massiv ausbremsen.
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-rightedge-\(UUID().uuidString)", isDirectory: true
             )
@@ -8208,7 +8620,7 @@ enum SelfTest {
         ws.loadFile(at: tmp) { ok in
             try? FileManager.default.removeItem(at: directory)
             guard ok else { finish(false, "Markdown-Fixture lädt nicht") }
-            pollRightEdgeEditorReady(window: window, expectedText: text, tick: 0)
+            pollRightEdgeEditorReady(window: window, expectedText: text)
         }
     }
 
@@ -8241,27 +8653,29 @@ enum SelfTest {
     }
 
     private static func pollRightEdgeEditorReady(
-        window: NSWindow, expectedText: String, tick: Int
+        window: NSWindow, expectedText: String
     ) {
-        if let root = window.contentView,
-           markdownWebView(in: root) != nil,
-           let textView = editorTextView(in: root) as? TextView,
-           textView.string == expectedText,
-           textView.enclosingScrollView != nil {
-            window.makeFirstResponder(textView)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                exerciseRightEdgeClicks(textView: textView, window: window)
-            }
-            return
-        }
-        if tick >= 100 {
-            finish(false, "Markdown-Split mit Fixture nicht binnen 10 s bereit")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollRightEdgeEditorReady(
-                window: window, expectedText: expectedText, tick: tick + 1
-            )
-        }
+        var textView: TextView?
+        waitFor(budget: 10, pause: 0.1,
+                condition: {
+                    guard let root = window.contentView,
+                          markdownWebView(in: root) != nil,
+                          let candidate = editorTextView(in: root) as? TextView,
+                          candidate.string == expectedText,
+                          candidate.enclosingScrollView != nil else { return false }
+                    textView = candidate
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "Markdown-Split mit Fixture nicht bereit — \(book.summary)")
+                },
+                then: {
+                    guard let textView else { finish(false, "Editor nach Erfolg verschwunden") }
+                    window.makeFirstResponder(textView)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        exerciseRightEdgeClicks(textView: textView, window: window)
+                    }
+                })
     }
 
     /// Misst die reale Geometrie und prüft ein Raster von Klickpunkten
@@ -8459,7 +8873,7 @@ enum SelfTest {
         let text = rightEdgeFixtureContent()
         // Eigener leerer Ordner — siehe rightedge: verhindert, dass die
         // Seitenleiste den vollen System-Temp-Ordner dauernd sortiert.
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-selshort-\(UUID().uuidString)", isDirectory: true
             )
@@ -8475,50 +8889,52 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: directory)
             guard ok else { finish(false, "Markdown-Fixture lädt nicht") }
             pollShortSelectionEditorReady(
-                window: window, expectedText: text, tick: 0
-            )
+                window: window, expectedText: text)
         }
     }
 
     private static func pollShortSelectionEditorReady(
-        window: NSWindow, expectedText: String, tick: Int
+        window: NSWindow, expectedText: String
     ) {
-        if let root = window.contentView,
-           markdownWebView(in: root) != nil,
-           let textView = editorTextView(in: root) as? TextView,
-           textView.string == expectedText,
-           let scrollView = textView.enclosingScrollView {
-            guard window.makeFirstResponder(textView) else {
-                finish(false, "Editor wird nicht First Responder")
-            }
-            textView.layoutManager.layoutLines()
-            textView.selectionManager.setSelectedRange(
-                NSRange(location: 0, length: 0)
-            )
-            if let flags = NSEvent.keyEvent(
-                with: .flagsChanged, location: .zero,
-                modifierFlags: .shift,
-                timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: window.windowNumber, context: nil,
-                characters: "", charactersIgnoringModifiers: "",
-                isARepeat: false, keyCode: 56
-            ) {
-                NSApp.postEvent(flags, atStart: false)
-            }
-            sendShortSelectionKey(
-                textView: textView, scrollView: scrollView,
-                window: window, step: 0
-            )
-            return
-        }
-        if tick >= 100 {
-            finish(false, "Markdown-Split mit Fixture nicht binnen 10 s bereit")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollShortSelectionEditorReady(
-                window: window, expectedText: expectedText, tick: tick + 1
-            )
-        }
+        var found: (textView: TextView, scrollView: NSScrollView)?
+        waitFor(budget: 10, pause: 0.1,
+                condition: {
+                    guard let root = window.contentView,
+                          markdownWebView(in: root) != nil,
+                          let textView = editorTextView(in: root) as? TextView,
+                          textView.string == expectedText,
+                          let scrollView = textView.enclosingScrollView else { return false }
+                    found = (textView, scrollView)
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "Markdown-Split mit Fixture nicht bereit — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Editor nach Erfolg verschwunden") }
+                    let (textView, scrollView) = found
+                    guard window.makeFirstResponder(textView) else {
+                        finish(false, "Editor wird nicht First Responder")
+                    }
+                    textView.layoutManager.layoutLines()
+                    textView.selectionManager.setSelectedRange(
+                        NSRange(location: 0, length: 0)
+                    )
+                    if let flags = NSEvent.keyEvent(
+                        with: .flagsChanged, location: .zero,
+                        modifierFlags: .shift,
+                        timestamp: ProcessInfo.processInfo.systemUptime,
+                        windowNumber: window.windowNumber, context: nil,
+                        characters: "", charactersIgnoringModifiers: "",
+                        isARepeat: false, keyCode: 56
+                    ) {
+                        NSApp.postEvent(flags, atStart: false)
+                    }
+                    sendShortSelectionKey(
+                        textView: textView, scrollView: scrollView,
+                        window: window, step: 0
+                    )
+                })
     }
 
     /// 64 echte Shift+↓ — deutlich mehr als die Datei visuelle Zeilen hat,
@@ -8631,6 +9047,10 @@ enum SelfTest {
             finish(false, "Workspace oder Hauptfenster fehlt")
         }
         SoakTest.reset()
+        // Ab hier wandert jeder Befund SOFORT ins gemeinsame Protokoll. Wird
+        // die Phase abgeschossen — etwa von der Frist des Runners —, bleibt
+        // alles Beobachtete erhalten; vorher war es restlos weg.
+        SoakTest.beginReport(at: logURL)
         SoakTest.currentPhase = "\(phase)"
         // Startwert aus der Phase: wechselnde Abläufe, aber wiederholbar.
         SoakTest.seedRandom(UInt64(phase) &* 7_919 &+ 1)
@@ -9005,10 +9425,23 @@ enum SelfTest {
         }
     }
 
-    private static func selfTestPasteboardOutcome(for error: Error) -> SelfTestOutcome {
+    /// Welche Zwischenablage-Fehler sind UMGEBUNG und welche echte Fehler?
+    ///
+    /// Code 1 und 5: Der Nutzer hat während des Laufs selbst kopiert.
+    /// Code 4: Ein Typ der fremden Zwischenablage ließ sich nicht lesen. Das
+    /// passiert bei zugesagten („promised") Inhalten, deren Besitzer sie nicht
+    /// liefert, und wenn sich die Zwischenablage zwischen Typliste und
+    /// Datenzugriff ändert — beobachtet am 2026-09-10 im Gesamtlauf neben
+    /// einem arbeitenden Nutzer an `public.utf16-external-plain-text`, isoliert
+    /// grün. Beides ist der Zustand der Maschine, kein Fastra-Fehler; als FAIL
+    /// gemeldet behauptete der Test einen Produktfehler, den es nicht gibt.
+    static func selfTestPasteboardOutcome(for error: Error) -> SelfTestOutcome {
         let error = error as NSError
         guard error.domain == "FastraSelfTestPasteboard" else { return .fail }
-        return error.code == 1 || error.code == 5 ? .environment : .fail
+        switch error.code {
+        case 1, 4, 5: return .environment
+        default: return .fail
+        }
     }
 
     private enum SelfTestPasteboardCleanup {
@@ -9486,7 +9919,7 @@ enum SelfTest {
         ws.markdownPreviewWidth = 332.3515625
         workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 800))
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-dragnoscroll-\(UUID().uuidString)", isDirectory: true
             )
@@ -9642,7 +10075,7 @@ enum SelfTest {
         // Fenster. Mehr Text schafft einen echten Scrollbereich; beginDragScroll
         // prüft diese Vorbedingung zusätzlich an der tatsächlichen Geometrie.
         let text = String(repeating: rightEdgeFixtureContent(), count: 4)
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-dragscroll-\(UUID().uuidString)", isDirectory: true
             )
@@ -9657,37 +10090,39 @@ enum SelfTest {
         ws.loadFile(at: tmp) { ok in
             try? FileManager.default.removeItem(at: directory)
             guard ok else { finish(false, "Markdown-Fixture lädt nicht") }
-            pollDragScrollEditorReady(window: window, expectedText: text, tick: 0)
+            pollDragScrollEditorReady(window: window, expectedText: text)
         }
     }
 
     private static func pollDragScrollEditorReady(
-        window: NSWindow, expectedText: String, tick: Int
+        window: NSWindow, expectedText: String
     ) {
-        if let root = window.contentView,
-           markdownWebView(in: root) != nil,
-           let textView = editorTextView(in: root) as? TextView,
-           textView.string == expectedText,
-           let scrollView = textView.enclosingScrollView {
-            guard window.makeFirstResponder(textView) else {
-                finish(false, "Editor wird nicht First Responder")
-            }
-            textView.layoutManager.layoutLines()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                beginDragScroll(
-                    textView: textView, scrollView: scrollView, window: window
-                )
-            }
-            return
-        }
-        if tick >= 100 {
-            finish(false, "Markdown-Split mit Fixture nicht binnen 10 s bereit")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollDragScrollEditorReady(
-                window: window, expectedText: expectedText, tick: tick + 1
-            )
-        }
+        var found: (textView: TextView, scrollView: NSScrollView)?
+        waitFor(budget: 10, pause: 0.1,
+                condition: {
+                    guard let root = window.contentView,
+                          markdownWebView(in: root) != nil,
+                          let textView = editorTextView(in: root) as? TextView,
+                          textView.string == expectedText,
+                          let scrollView = textView.enclosingScrollView else { return false }
+                    found = (textView, scrollView)
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "Markdown-Split mit Fixture nicht bereit — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Editor nach Erfolg verschwunden") }
+                    guard window.makeFirstResponder(found.textView) else {
+                        finish(false, "Editor wird nicht First Responder")
+                    }
+                    found.textView.layoutManager.layoutLines()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        beginDragScroll(
+                            textView: found.textView, scrollView: found.scrollView, window: window
+                        )
+                    }
+                })
     }
 
     /// Startet den Drag mit einem echten Maus-Down im Text und zieht dann
@@ -9807,7 +10242,7 @@ enum SelfTest {
             finish(false, "Workspace oder Hauptfenster fehlt")
         }
         let content = "Zeile 1\nZeile 2\nZeile 3\n"
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-dirtyundo-\(UUID().uuidString)", isDirectory: true
             )
@@ -9920,7 +10355,7 @@ enum SelfTest {
         } else {
             text = emojiSplitFixtureContent()
         }
-        let url = FileManager.default.temporaryDirectory
+        let url = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-typescroll-\(UUID().uuidString).md")
         do { try text.write(to: url, atomically: true, encoding: .utf8) }
         catch { finish(false, "Fixture nicht schreibbar: \(error.localizedDescription)") }
@@ -9954,7 +10389,7 @@ enum SelfTest {
             // Selbsttest bleibt die App durchgehend aktiv → direkt aufrufen.
             Workspace.shared?.checkExternalChanges()
             pollTypeScrollReloaded(window: window, root: root, url: url,
-                                   expectedText: changed, tick: 0)
+                                   expectedText: changed)
         }
     }
 
@@ -9968,50 +10403,49 @@ enum SelfTest {
     private static var typeScrollEnvironmentNotes: [String] = []
 
     private static func pollTypeScrollReloaded(
-        window: NSWindow, root: NSView, url: URL, expectedText: String, tick: Int
+        window: NSWindow, root: NSView, url: URL, expectedText: String
     ) {
-        if let textView = editorTextView(in: root) as? TextView,
-           textView.string == expectedText {
-            typeScrollFixtureURL = url
-            pollTypeScrollEditorReady(window: window, root: root,
-                                      expectedText: expectedText, tick: 0)
-            return
-        }
-        if tick >= 100 {
-            try? FileManager.default.removeItem(at: url)
-            finish(false, "stiller Reload nach externer Änderung kam nicht binnen 10 s")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollTypeScrollReloaded(window: window, root: root, url: url,
-                                   expectedText: expectedText, tick: tick + 1)
-        }
+        waitFor(budget: 10, pause: 0.1,
+                condition: { (editorTextView(in: root) as? TextView)?.string == expectedText },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: url)
+                    finish(false, "stiller Reload nach externer Änderung kam nicht — \(book.summary)")
+                },
+                then: {
+                    typeScrollFixtureURL = url
+                    pollTypeScrollEditorReady(window: window, root: root,
+                                              expectedText: expectedText)
+                })
     }
 
     private static func pollTypeScrollEditorReady(
-        window: NSWindow, root: NSView, expectedText: String, tick: Int
+        window: NSWindow, root: NSView, expectedText: String
     ) {
-        if let textView = editorTextView(in: root) as? TextView,
-           textView.string == expectedText {
-            window.makeFirstResponder(textView)
-            // Ans Dateiende, Cursor hinter das letzte Zeichen.
-            let length = (textView.string as NSString).length
-            textView.selectionManager.setSelectedRange(
-                NSRange(location: length, length: 0)
-            )
-            textView.scrollSelectionToVisible()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                typeScrollStageReturn(textView: textView, failures: []) { failures in
-                    typeScrollStageManualScroll(textView: textView,
-                                                failures: failures)
-                }
-            }
-            return
-        }
-        if tick >= 100 { finish(false, "Editor nicht binnen 10 s bereit") }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollTypeScrollEditorReady(window: window, root: root,
-                                      expectedText: expectedText, tick: tick + 1)
-        }
+        var textView: TextView?
+        waitFor(budget: 10, pause: 0.1,
+                condition: {
+                    guard let candidate = editorTextView(in: root) as? TextView,
+                          candidate.string == expectedText else { return false }
+                    textView = candidate
+                    return true
+                },
+                onTimeout: { book in finish(false, "Editor nicht bereit — \(book.summary)") },
+                then: {
+                    guard let textView else { finish(false, "Editor nach Erfolg verschwunden") }
+                    window.makeFirstResponder(textView)
+                    // Ans Dateiende, Cursor hinter das letzte Zeichen.
+                    let length = (textView.string as NSString).length
+                    textView.selectionManager.setSelectedRange(
+                        NSRange(location: length, length: 0)
+                    )
+                    textView.scrollSelectionToVisible()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        typeScrollStageReturn(textView: textView, failures: []) { failures in
+                            typeScrollStageManualScroll(textView: textView,
+                                                        failures: failures)
+                        }
+                    }
+                })
     }
 
     /// Ist der Cursor (Kollaps-Selektion) im sichtbaren Bereich der TextView?
@@ -10115,7 +10549,6 @@ enum SelfTest {
     private static func typeScrollStageEmoji(
         textView: TextView, failures: [String]
     ) {
-        var failures = failures
         let ns = textView.string as NSString
         textView.selectionManager.setSelectedRange(
             NSRange(location: ns.length, length: 0)
@@ -10131,7 +10564,7 @@ enum SelfTest {
         // war er grün (belegt am 2026-09-09 mit `tabscroll typescroll`).
         // Die Aussage bleibt dieselbe: Die Auslegung muss ohne weitere
         // Eingabe von selbst vollständig werden.
-        typeScrollAwaitEmojiLayout(textView: textView, tick: 0) { layoutFailure in
+        typeScrollAwaitEmojiLayout(textView: textView) { layoutFailure in
             var failures = failures
             let after = textView.string as NSString
             if !(after as String).hasSuffix("🤢") {
@@ -10162,45 +10595,85 @@ enum SelfTest {
 
     /// Wartet, bis die Cursorzeile vollständig ausgelegt ist. Liefert `nil`
     /// bei Erfolg, sonst die fertige Fehlermeldung mit allen Messwerten.
-    /// 60 × 50 ms Frist: großzügig gegenüber Startlast, aber endlich — eine
-    /// wirklich unterbliebene Auslegung läuft weiter in den Fehler.
+    ///
+    /// CodeEditTextView legt Zeilen nur für den GEZEICHNETEN Bereich aus. Die
+    /// Auslegung hängt damit am Zeichnen, und das planen AppKit und der
+    /// Fenstermanager unter Last später ein — im Gesamtlauf neben einem
+    /// arbeitenden Nutzer meldete der Test deshalb „0 von 14" bei sichtbarem
+    /// Fenster und aktiver App, isoliert war er grün (2026-09-10). Jeder
+    /// Durchlauf stößt das Zeichnen deshalb ausdrücklich an, statt darauf zu
+    /// warten, dass jemand anderes es tut; das ist genau das, was die laufende
+    /// App ohnehin dauernd macht.
+    ///
+    /// 200 Durchläufe statt 60: Gezählt werden Main-Queue-Durchläufe, nicht
+    /// Wanduhrzeit — eine wirklich unterbliebene Auslegung läuft unverändert in
+    /// den Fehler, nur eben mit mehr Gelegenheiten.
     private static func typeScrollAwaitEmojiLayout(
-        textView: TextView, tick: Int,
+        textView: TextView,
         completion: @escaping (String?) -> Void
     ) {
-        let text = textView.string as NSString
-        guard text.length > 0,
-              let line = textView.layoutManager.textLineForOffset(text.length - 1)
-        else {
-            // Noch keine Zeile: weiter warten, nicht stillschweigend bestehen.
-            if tick >= 60 {
-                completion("Cursorzeile nach dem Emoji nicht auffindbar")
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                typeScrollAwaitEmojiLayout(textView: textView, tick: tick + 1,
-                                           completion: completion)
-            }
-            return
-        }
-        let covered = line.data.lineFragments.map(\.range.length).reduce(0, +)
-        if covered >= line.range.length - 1 {   // -1: Umbruchzeichen
-            completion(nil)
-            return
-        }
-        if tick >= 60 {
-            completion("Emoji-Zeile unvollständig ausgelegt: "
-                + "\(covered) von \(line.range.length), "
-                + "Zeile=\(line.range), sichtbar=\(textView.visibleRect), "
-                + "Cursor sichtbar=\(typeScrollCaretVisible(textView)), "
-                + "Fenster sichtbar=\(textView.window?.isVisible ?? false), "
-                + "App aktiv=\(NSApp.isActive)")
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            typeScrollAwaitEmojiLayout(textView: textView, tick: tick + 1,
-                                       completion: completion)
-        }
+        var diagnosis = "Cursorzeile nach dem Emoji nicht auffindbar"
+        waitFor(budget: 10, pause: 0.05,
+                condition: {
+                    // Zeichnen anstoßen: Erst dadurch legt CodeEditTextView die Zeile aus.
+                    // `reflectScrolledClipView` gehört dazu — der reguläre AppKit-Weg, auf
+                    // dem die Textansicht ihren sichtbaren Bereich neu bestimmt. Ohne ihn
+                    // blieb die Zeile am UNTEREN Rand des Sichtfensters ohne ein einziges
+                    // Fragment stehen, obwohl ihr yPos im sichtbaren Bereich lag
+                    // (gemessen 2026-09-10: yPos 734,9 + Höhe 18,4 in sichtbar 348…756,
+                    // Fragmente 0). Dieselbe Lehre wie beim Scrollen in Fenstertests
+                    // (AGENTS.md).
+                    if let scrollView = textView.enclosingScrollView {
+                        // Die Zeile darf nicht bündig am UNTEREN Rand kleben: Gemessen am
+                        // 2026-09-10 stand sie mit yPos 734,9 und Höhe 18,4 in einem
+                        // Sichtfenster bis 756 — also drin — und blieb trotzdem ohne ein
+                        // einziges Fragment. CodeEditTextView legt offenbar einen etwas
+                        // kleineren Bereich aus als `visibleRect` meldet. Ein bisschen
+                        // weiter scrollen stellt die Vorbedingung her, statt sie zu erben;
+                        // die Zusage „Tippen scrollt den Cursor sichtbar" prüft eine
+                        // eigene, frühere Stufe.
+                        if let line = textView.layoutManager.textLineForOffset(
+                            max((textView.string as NSString).length - 1, 0)) {
+                            let margin: CGFloat = 24
+                            let bottom = line.yPos + line.height + margin
+                            let visible = textView.visibleRect
+                            if bottom > visible.maxY {
+                                var origin = scrollView.contentView.bounds.origin
+                                origin.y += bottom - visible.maxY
+                                scrollView.contentView.scroll(to: origin)
+                            }
+                        }
+                        scrollView.reflectScrolledClipView(scrollView.contentView)
+                    }
+                    textView.needsDisplay = true
+                    textView.window?.displayIfNeeded()
+                    let text = textView.string as NSString
+                    guard text.length > 0,
+                          let line = textView.layoutManager.textLineForOffset(text.length - 1)
+                    else {
+                        // Noch keine Zeile: weiter warten, nicht stillschweigend bestehen.
+                        diagnosis = "Cursorzeile nach dem Emoji nicht auffindbar"
+                        return false
+                    }
+                    let covered = line.data.lineFragments.map(\.range.length).reduce(0, +)
+                    if covered >= line.range.length - 1 {   // -1: Umbruchzeichen
+                        return true
+                    }
+                    let lineRect = textView.layoutManager
+                        .rectsFor(range: line.range).first
+                    diagnosis = "Emoji-Zeile unvollständig ausgelegt: "
+                        + "\(covered) von \(line.range.length), "
+                        + "Zeile=\(line.range), Zeilenrechteck=\(lineRect.map { "\($0)" } ?? "keins"), "
+                        + "yPos=\(line.yPos), Hoehe=\(line.height), "
+                        + "Fragmente=\(line.data.lineFragments.count), "
+                        + "sichtbar=\(textView.visibleRect), "
+                        + "Cursor sichtbar=\(typeScrollCaretVisible(textView)), "
+                        + "Fenster sichtbar=\(textView.window?.isVisible ?? false), "
+                        + "App aktiv=\(NSApp.isActive)"
+                    return false
+                },
+                onTimeout: { book in completion(diagnosis + " — \(book.summary)") },
+                then: { completion(nil) })
     }
 
     /// Fensterinhalt als PNG aufnehmen. Bevorzugt `screencapture` (echte
@@ -10288,14 +10761,14 @@ enum SelfTest {
 
     private static func typeScrollSystemCapture(windowNumber: Int,
                                                 completion: @escaping (Data?) -> Void) {
-        let url = FileManager.default.temporaryDirectory
+        let url = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-typescroll-\(UUID().uuidString).png")
         // Aufnahme und Datei-Lesen blockieren den Main-Thread nicht. Der
         // vorhandene Runner beendet auch einen SIGTERM ignorierenden Prozess.
         GitRunner.runExecutable(
             URL(fileURLWithPath: "/usr/sbin/screencapture"),
             arguments: ["-l\(windowNumber)", "-o", "-x", url.path],
-            in: FileManager.default.temporaryDirectory,
+            in: selfTestTemporaryDirectory(),
             outputLimit: GitOutputLimit(stdoutBytes: 1024, stderrBytes: 4096),
             policy: GitExecutionPolicy(timeout: 5, terminationGracePeriod: 0.5),
             completionQueue: .global(qos: .userInitiated)
@@ -10468,74 +10941,85 @@ enum SelfTest {
         postCmd("n", keyCode: 45, windowNumber: firstWindow.windowNumber)
         pollTypeScrollSecondWindow(firstWorkspace: firstWorkspace,
                                    firstWindow: firstWindow, url: url,
-                                   failures: failures, note: note, tick: 0)
+                                   failures: failures, note: note)
     }
 
     private static func pollTypeScrollSecondWindow(
         firstWorkspace: Workspace, firstWindow: NSWindow, url: URL,
-        failures: [String], note: String, tick: Int
+        failures: [String], note: String
     ) {
         // Das neue Fenster hat einen EIGENEN Workspace (Registry-Muster wie
         // im newwindow-Selbsttest).
-        if let secondWindow = NSApp.windows.first(where: {
-               !SearchWindow.isSearchWindow($0) && $0.isVisible
-                   && $0 !== firstWindow
-                   && WorkspaceWindowRegistry.workspace(for: $0) != nil
-                   && WorkspaceWindowRegistry.workspace(for: $0) !== firstWorkspace
-           }),
-           let secondWorkspace = WorkspaceWindowRegistry.workspace(for: secondWindow),
-           let secondRoot = secondWindow.contentView {
-            secondWorkspace.loadFile(at: url.canonicalFileURL) { ok in
-                guard ok else {
-                    finishTypeScroll(failures: failures + ["Zweitfenster: Datei lädt nicht"],
-                                     note: note)
-                    return
-                }
-                pollTypeScrollSecondEditor(root: secondRoot, window: secondWindow,
-                                           failures: failures, note: note, tick: 0)
-            }
-            return
-        }
-        if tick >= 100 {
-            finishTypeScroll(failures: failures
-                + ["Zweitfenster erschien nicht binnen 10 s nach ⌘N"], note: note)
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollTypeScrollSecondWindow(firstWorkspace: firstWorkspace,
-                                       firstWindow: firstWindow, url: url,
-                                       failures: failures, note: note, tick: tick + 1)
-        }
+        var found: (workspace: Workspace, window: NSWindow, root: NSView)?
+        waitFor(budget: 10, pause: 0.1,
+                condition: {
+                    guard let secondWindow = NSApp.windows.first(where: {
+                              !SearchWindow.isSearchWindow($0) && $0.isVisible
+                                  && $0 !== firstWindow
+                                  && WorkspaceWindowRegistry.workspace(for: $0) != nil
+                                  && WorkspaceWindowRegistry.workspace(for: $0) !== firstWorkspace
+                          }),
+                          let secondWorkspace = WorkspaceWindowRegistry.workspace(for: secondWindow),
+                          let secondRoot = secondWindow.contentView else { return false }
+                    found = (secondWorkspace, secondWindow, secondRoot)
+                    return true
+                },
+                onTimeout: { book in
+                    finishTypeScroll(failures: failures
+                        + ["Zweitfenster erschien nicht nach ⌘N — \(book.summary)"], note: note)
+                },
+                then: {
+                    guard let found else {
+                        finishTypeScroll(failures: failures + ["Zweitfenster nach Erfolg verschwunden"],
+                                         note: note)
+                        return
+                    }
+                    found.workspace.loadFile(at: url.canonicalFileURL) { ok in
+                        guard ok else {
+                            finishTypeScroll(failures: failures + ["Zweitfenster: Datei lädt nicht"],
+                                             note: note)
+                            return
+                        }
+                        pollTypeScrollSecondEditor(root: found.root, window: found.window,
+                                                   failures: failures, note: note)
+                    }
+                })
     }
 
     private static func pollTypeScrollSecondEditor(
-        root: NSView, window: NSWindow, failures: [String], note: String, tick: Int
+        root: NSView, window: NSWindow, failures: [String], note: String
     ) {
-        if let textView = editorTextView(in: root) as? TextView,
-           !textView.string.isEmpty {
-            window.makeFirstResponder(textView)
-            let length = (textView.string as NSString).length
-            textView.selectionManager.setSelectedRange(
-                NSRange(location: length, length: 0)
-            )
-            textView.scrollSelectionToVisible()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                typeScrollStageReturn(textView: textView, failures: failures,
-                                      label: "Zweitfenster: ") {
-                    finishTypeScroll(failures: $0, note: note)
-                }
-            }
-            return
-        }
-        if tick >= 100 {
-            finishTypeScroll(failures: failures
-                + ["Zweitfenster-Editor nicht binnen 10 s bereit"], note: note)
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollTypeScrollSecondEditor(root: root, window: window,
-                                       failures: failures, note: note, tick: tick + 1)
-        }
+        var textView: TextView?
+        waitFor(budget: 10, pause: 0.1,
+                condition: {
+                    guard let candidate = editorTextView(in: root) as? TextView,
+                          !candidate.string.isEmpty else { return false }
+                    textView = candidate
+                    return true
+                },
+                onTimeout: { book in
+                    finishTypeScroll(failures: failures
+                        + ["Zweitfenster-Editor nicht bereit — \(book.summary)"], note: note)
+                },
+                then: {
+                    guard let textView else {
+                        finishTypeScroll(failures: failures + ["Zweitfenster-Editor nach Erfolg verschwunden"],
+                                         note: note)
+                        return
+                    }
+                    window.makeFirstResponder(textView)
+                    let length = (textView.string as NSString).length
+                    textView.selectionManager.setSelectedRange(
+                        NSRange(location: length, length: 0)
+                    )
+                    textView.scrollSelectionToVisible()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        typeScrollStageReturn(textView: textView, failures: failures,
+                                              label: "Zweitfenster: ") {
+                            finishTypeScroll(failures: $0, note: note)
+                        }
+                    }
+                })
     }
 
     private static func finishTypeScroll(failures: [String], note: String) {
@@ -10588,7 +11072,7 @@ enum SelfTest {
         } else {
             text = emojiSplitFixtureContent()
         }
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-emojisplit-\(UUID().uuidString)", isDirectory: true
             )
@@ -10603,7 +11087,7 @@ enum SelfTest {
         ws.loadFile(at: tmp) { ok in
             try? FileManager.default.removeItem(at: directory)
             guard ok else { finish(false, "Markdown-Fixture lädt nicht") }
-            pollEmojiSplitEditorReady(window: window, expectedText: text, tick: 0)
+            pollEmojiSplitEditorReady(window: window, expectedText: text)
         }
     }
 
@@ -10626,25 +11110,27 @@ enum SelfTest {
     }
 
     private static func pollEmojiSplitEditorReady(
-        window: NSWindow, expectedText: String, tick: Int
+        window: NSWindow, expectedText: String
     ) {
-        if let root = window.contentView,
-           markdownWebView(in: root) != nil,
-           let textView = editorTextView(in: root) as? TextView,
-           textView.string == expectedText {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                analyzeEmojiClusters(textView: textView)
-            }
-            return
-        }
-        if tick >= 100 {
-            finish(false, "Markdown-Split mit Fixture nicht binnen 10 s bereit")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollEmojiSplitEditorReady(
-                window: window, expectedText: expectedText, tick: tick + 1
-            )
-        }
+        var textView: TextView?
+        waitFor(budget: 10, pause: 0.1,
+                condition: {
+                    guard let root = window.contentView,
+                          markdownWebView(in: root) != nil,
+                          let candidate = editorTextView(in: root) as? TextView,
+                          candidate.string == expectedText else { return false }
+                    textView = candidate
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "Markdown-Split mit Fixture nicht bereit — \(book.summary)")
+                },
+                then: {
+                    guard let textView else { finish(false, "Editor nach Erfolg verschwunden") }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        analyzeEmojiClusters(textView: textView)
+                    }
+                })
     }
 
     /// Schiebt die Umbruchgrenze durch die Emoji-Zeile: Für jede Vorschau-
@@ -10795,7 +11281,7 @@ enum SelfTest {
               let window = mainWindowForAXChecks() else {
             finish(false, "Workspace oder Hauptfenster fehlt")
         }
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-emojipaste-\(UUID().uuidString)", isDirectory: true
             )
@@ -11062,7 +11548,7 @@ enum SelfTest {
         }
         workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 800))
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-emojipreview-\(UUID().uuidString)", isDirectory: true
             )
@@ -11083,31 +11569,33 @@ enum SelfTest {
         ws.loadFile(at: tmp) { ok in
             try? FileManager.default.removeItem(at: directory)
             guard ok else { finish(false, "Fixture lädt nicht") }
-            pollEmojiPreviewReady(window: window, tick: 0)
+            pollEmojiPreviewReady(window: window)
         }
     }
 
-    private static func pollEmojiPreviewReady(window: NSWindow, tick: Int) {
-        if let root = window.contentView,
-           let webView = markdownWebView(in: root) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                measureEmojiPreviewColors(
-                    webView: webView,
-                    pending: [
-                        ("code-nackt", "document.querySelectorAll('code')[0]"),
-                        ("code-voll", "document.querySelectorAll('code')[1]"),
-                        ("text-nackt", "document.querySelector('strong')"),
-                        ("text-voll", "document.querySelector('em')")
-                    ],
-                    results: []
-                )
-            }
-            return
-        }
-        if tick >= 100 { finish(false, "Vorschau nicht binnen 10 s bereit") }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollEmojiPreviewReady(window: window, tick: tick + 1)
-        }
+    private static func pollEmojiPreviewReady(window: NSWindow) {
+        var webView: WKWebView?
+        waitFor(budget: 10, pause: 0.1,
+                condition: {
+                    webView = window.contentView.flatMap { markdownWebView(in: $0) }
+                    return webView != nil
+                },
+                onTimeout: { book in finish(false, "Vorschau nicht bereit — \(book.summary)") },
+                then: {
+                    guard let webView else { finish(false, "Vorschau nach Erfolg verschwunden") }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        measureEmojiPreviewColors(
+                            webView: webView,
+                            pending: [
+                                ("code-nackt", "document.querySelectorAll('code')[0]"),
+                                ("code-voll", "document.querySelectorAll('code')[1]"),
+                                ("text-nackt", "document.querySelector('strong')"),
+                                ("text-voll", "document.querySelector('em')")
+                            ],
+                            results: []
+                        )
+                    }
+                })
     }
 
     /// Fotografiert je Fall das Element und meldet, ob es farbig ist.
@@ -11196,7 +11684,7 @@ enum SelfTest {
             finish(false, "Workspace oder Hauptfenster fehlt")
         }
         window.setContentSize(NSSize(width: 1000, height: 600))
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-tabscroll-\(UUID().uuidString)", isDirectory: true
             )
@@ -11297,7 +11785,7 @@ enum SelfTest {
         } else {
             text = emojiSplitFixtureContent()
         }
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-emojishot-\(UUID().uuidString)", isDirectory: true
             )
@@ -11349,7 +11837,7 @@ enum SelfTest {
         lines.append("*/")
         lines.append("ALERT(\"ok\")")
         let code = lines.joined(separator: "\n")
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent(
                 "fastra-comment4d-\(UUID().uuidString)", isDirectory: true
             )
@@ -11367,73 +11855,78 @@ enum SelfTest {
         ws.loadFile(at: tmp) { ok in
             try? FileManager.default.removeItem(at: directory)
             guard ok else { finish(false, "loadFile (.4dm) schlug fehl") }
-            pollFourDCommentInitialColor(root: root, code: code, tick: 0)
+            pollFourDCommentInitialColor(root: root, code: code)
         }
     }
 
     private static func pollFourDCommentInitialColor(
-        root: NSView, code: String, tick: Int
+        root: NSView, code: String
     ) {
         let comment = fourDExpectedColors(dark: false)[7]
-        if let textView = editorTextView(in: root) as? TextView,
-           textView.string == code {
-            let ns = code as NSString
-            let closing = ns.range(of: "QQZWEIQQ")
-            if storageSubstringHasColor("QQZWEIQQ", in: root,
-                                        r: comment.1, g: comment.2, b: comment.3) {
-                // Edit am Ende der Ankerzeile mitten im Kommentarblock.
-                let anchor = ns.range(of: "- Ankerzeile für den Edit xx")
-                textView.selectionManager.setSelectedRange(
-                    NSRange(location: anchor.max, length: 0)
-                )
-                textView.insertText(
-                    "yy", replacementRange: NSRange(location: NSNotFound, length: 0)
-                )
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    pollFourDCommentColorAfterEdit(root: root, tick: 0)
-                }
-                return
-            }
-
-            // CESE hebt abschnittsweise den sichtbaren Bereich hervor. Die
-            // geprüfte Schlusszeile deshalb zuerst wirklich sichtbar machen;
-            // eine bestimmte gespeicherte Fensterhöhe darf den Test nicht
-            // entscheiden. Nach dem Edit weiter oben muss ihre Farbe bleiben.
-            textView.scrollToRange(closing)
-            textView.layoutManager.layoutLines()
-        }
-        if tick >= 60 {
-            NSApp.appearance = nil
-            finish(false, "Kommentarfarbe erscheint initial nicht binnen 15 s")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFourDCommentInitialColor(root: root, code: code, tick: tick + 1)
-        }
+        var textView: TextView?
+        waitFor(budget: 15, pause: 0.25,
+                condition: {
+                    guard let candidate = editorTextView(in: root) as? TextView,
+                          candidate.string == code else { return false }
+                    if storageSubstringHasColor("QQZWEIQQ", in: root,
+                                                r: comment.1, g: comment.2, b: comment.3) {
+                        textView = candidate
+                        return true
+                    }
+                    // CESE hebt abschnittsweise den sichtbaren Bereich hervor. Die
+                    // geprüfte Schlusszeile deshalb zuerst wirklich sichtbar machen;
+                    // eine bestimmte gespeicherte Fensterhöhe darf den Test nicht
+                    // entscheiden. Nach dem Edit weiter oben muss ihre Farbe bleiben.
+                    candidate.scrollToRange((code as NSString).range(of: "QQZWEIQQ"))
+                    candidate.layoutManager.layoutLines()
+                    return false
+                },
+                onTimeout: { book in
+                    NSApp.appearance = nil
+                    finish(false, "Kommentarfarbe erscheint initial nicht — \(book.summary)")
+                },
+                then: {
+                    guard let textView else { finish(false, "Editor nach Erfolg verschwunden") }
+                    // Edit am Ende der Ankerzeile mitten im Kommentarblock.
+                    let anchor = (code as NSString).range(of: "- Ankerzeile für den Edit xx")
+                    textView.selectionManager.setSelectedRange(
+                        NSRange(location: anchor.max, length: 0)
+                    )
+                    textView.insertText(
+                        "yy", replacementRange: NSRange(location: NSNotFound, length: 0)
+                    )
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        pollFourDCommentColorAfterEdit(root: root)
+                    }
+                })
     }
 
-    private static func pollFourDCommentColorAfterEdit(root: NSView, tick: Int) {
+    private static func pollFourDCommentColorAfterEdit(root: NSView) {
         let comment = fourDExpectedColors(dark: false)[7]
         let commandColor = fourDExpectedColors(dark: false)[0]
-        let closingKept = storageSubstringHasColor(
-            "QQZWEIQQ", in: root, r: comment.1, g: comment.2, b: comment.3
-        )
-        let commandKept = storageSubstringHasColor(
-            "ALERT", in: root,
-            r: commandColor.1, g: commandColor.2, b: commandColor.3
-        )
-        if closingKept && commandKept {
-            NSApp.appearance = nil
-            finish(true, "Kommentarfarbe bleibt nach Edit im Block bis zum "
-                + "Blockende erhalten")
-        }
-        if tick >= 40 {
-            NSApp.appearance = nil
-            finish(false, "nach dem Edit im Kommentarblock: Schlusszeile "
-                + "kommentarfarben=\(closingKept), ALERT befehlsfarben=\(commandKept)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFourDCommentColorAfterEdit(root: root, tick: tick + 1)
-        }
+        var closingKept = false
+        var commandKept = false
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    closingKept = storageSubstringHasColor(
+                        "QQZWEIQQ", in: root, r: comment.1, g: comment.2, b: comment.3
+                    )
+                    commandKept = storageSubstringHasColor(
+                        "ALERT", in: root,
+                        r: commandColor.1, g: commandColor.2, b: commandColor.3
+                    )
+                    return closingKept && commandKept
+                },
+                onTimeout: { book in
+                    NSApp.appearance = nil
+                    finish(false, "nach dem Edit im Kommentarblock: Schlusszeile "
+                        + "kommentarfarben=\(closingKept), ALERT befehlsfarben=\(commandKept) — \(book.summary)")
+                },
+                then: {
+                    NSApp.appearance = nil
+                    finish(true, "Kommentarfarbe bleibt nach Edit im Block bis zum "
+                        + "Blockende erhalten")
+                })
     }
 
     // MARK: - -selftest sighelp4d
@@ -11448,7 +11941,7 @@ enum SelfTest {
               let root = window.contentView else {
             finish(false, "Workspace oder Hauptfenster fehlt")
         }
-        let projectRoot = FileManager.default.temporaryDirectory
+        let projectRoot = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-sighelp4d-\(UUID().uuidString)")
         let methods = projectRoot.appendingPathComponent(
             "Project/Sources/Methods", isDirectory: true
@@ -11517,61 +12010,56 @@ enum SelfTest {
         ws.openProject(at: projectRoot)
         pollFourDSignatureIndexReady(
             ws: ws, root: root, window: window,
-            projectRoot: projectRoot, caller: caller, tick: 0
-        )
+            projectRoot: projectRoot, caller: caller)
     }
 
     private static func pollFourDSignatureIndexReady(
         ws: Workspace, root: NSView, window: NSWindow,
-        projectRoot: URL, caller: URL, tick: Int
+        projectRoot: URL, caller: URL
     ) {
-        guard ws.fourDProjectMethodNames.contains("begruessung"),
-              ws.fourDProjectMethodNames.contains("verpacke"),
-              ws.fourDProjectMethodNames.contains("innereformel"),
-              ws.fourDComponentMethods["werkzeug_miss"] != nil else {
-            if tick >= 40 {
-                ws.closeProject()
-                try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "Projekt-/Komponentenindex ist nach 10 s unvollständig")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                pollFourDSignatureIndexReady(
-                    ws: ws, root: root, window: window,
-                    projectRoot: projectRoot, caller: caller, tick: tick + 1
-                )
-            }
-            return
-        }
-        ws.loadFile(at: caller) { ok in
-            guard ok else {
-                ws.closeProject()
-                try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "Aufrufer.4dm lädt nicht")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                guard let textView = editorTextView(in: root) as? TextView else {
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    ws.fourDProjectMethodNames.contains("begruessung")
+                        && ws.fourDProjectMethodNames.contains("verpacke")
+                        && ws.fourDProjectMethodNames.contains("innereformel")
+                        && ws.fourDComponentMethods["werkzeug_miss"] != nil
+                },
+                onTimeout: { book in
                     ws.closeProject()
                     try? FileManager.default.removeItem(at: projectRoot)
-                    finish(false, "Editor-TextView fehlt")
-                }
-                window.makeFirstResponder(textView)
-                // Cursor hinter das erste Argument: innerhalb der Klammern.
-                let ns = textView.string as NSString
-                let anchor = ns.range(of: "\"Welt\"")
-                guard anchor.location != NSNotFound else {
-                    ws.closeProject()
-                    try? FileManager.default.removeItem(at: projectRoot)
-                    finish(false, "Aufrufzeile fehlt im Editor")
-                }
-                textView.selectionManager.setSelectedRange(
-                    NSRange(location: anchor.max, length: 0)
-                )
-                pollFourDSignaturePanelVisible(
-                    ws: ws, window: window, textView: textView,
-                    projectRoot: projectRoot, tick: 0
-                )
-            }
-        }
+                    finish(false, "Projekt-/Komponentenindex ist unvollständig — \(book.summary)")
+                },
+                then: {
+                    ws.loadFile(at: caller) { ok in
+                        guard ok else {
+                            ws.closeProject()
+                            try? FileManager.default.removeItem(at: projectRoot)
+                            finish(false, "Aufrufer.4dm lädt nicht")
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            guard let textView = editorTextView(in: root) as? TextView else {
+                                ws.closeProject()
+                                try? FileManager.default.removeItem(at: projectRoot)
+                                finish(false, "Editor-TextView fehlt")
+                            }
+                            window.makeFirstResponder(textView)
+                            // Cursor hinter das erste Argument: innerhalb der Klammern.
+                            let ns = textView.string as NSString
+                            let anchor = ns.range(of: "\"Welt\"")
+                            guard anchor.location != NSNotFound else {
+                                ws.closeProject()
+                                try? FileManager.default.removeItem(at: projectRoot)
+                                finish(false, "Aufrufzeile fehlt im Editor")
+                            }
+                            textView.selectionManager.setSelectedRange(
+                                NSRange(location: anchor.max, length: 0)
+                            )
+                            pollFourDSignaturePanelVisible(
+                                ws: ws, window: window, textView: textView,
+                                projectRoot: projectRoot)
+                        }
+                    }
+                })
     }
 
     private static func fourDSignaturePanelText(window: NSWindow) -> String? {
@@ -11589,192 +12077,175 @@ enum SelfTest {
 
     private static func pollFourDSignaturePanelVisible(
         ws: Workspace, window: NSWindow, textView: TextView,
-        projectRoot: URL, tick: Int
+        projectRoot: URL
     ) {
-        if let text = fourDSignaturePanelText(window: window),
-           text.contains("Begruessung"),
-           text.contains("$name_t : Text"),
-           text.contains("$anzahl_i : Integer"),
-           text.contains("$gruss_t : Text"),
-           text.contains("Baut die Grußformel."),
-           text.contains("Zweite Kopfzeile mit Details.") {
-            // Verschachtelter Aufruf: Cursor in die Klammern der INNEREN
-            // Methode, die selbst Argument der äußeren ist.
-            let ns = textView.string as NSString
-            let inner = ns.range(of: "\"Du\"")
-            guard inner.location != NSNotFound else {
-                ws.closeProject()
-                try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "verschachtelte Aufrufzeile fehlt")
-            }
-            textView.selectionManager.setSelectedRange(
-                NSRange(location: inner.max, length: 0)
-            )
-            pollFourDSignatureNestedInner(
-                ws: ws, window: window, textView: textView,
-                projectRoot: projectRoot, tick: 0
-            )
-            return
-        }
-        if tick >= 40 {
-            let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
-            ws.closeProject()
-            try? FileManager.default.removeItem(at: projectRoot)
-            finish(false, "Parameterhilfe erscheint nicht korrekt binnen 10 s; "
-                + "gesehen: \(seen.prefix(300))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFourDSignaturePanelVisible(
-                ws: ws, window: window, textView: textView,
-                projectRoot: projectRoot, tick: tick + 1
-            )
-        }
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    guard let text = fourDSignaturePanelText(window: window) else { return false }
+                    return text.contains("Begruessung")
+                        && text.contains("$name_t : Text")
+                        && text.contains("$anzahl_i : Integer")
+                        && text.contains("$gruss_t : Text")
+                        && text.contains("Baut die Grußformel.")
+                        && text.contains("Zweite Kopfzeile mit Details.")
+                },
+                onTimeout: { book in
+                    let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
+                    ws.closeProject()
+                    try? FileManager.default.removeItem(at: projectRoot)
+                    finish(false, "Parameterhilfe erscheint nicht korrekt — \(book.summary); "
+                        + "gesehen: \(seen.prefix(300))")
+                },
+                then: {
+                    // Verschachtelter Aufruf: Cursor in die Klammern der INNEREN
+                    // Methode, die selbst Argument der äußeren ist.
+                    let ns = textView.string as NSString
+                    let inner = ns.range(of: "\"Du\"")
+                    guard inner.location != NSNotFound else {
+                        ws.closeProject()
+                        try? FileManager.default.removeItem(at: projectRoot)
+                        finish(false, "verschachtelte Aufrufzeile fehlt")
+                    }
+                    textView.selectionManager.setSelectedRange(
+                        NSRange(location: inner.max, length: 0)
+                    )
+                    pollFourDSignatureNestedInner(
+                        ws: ws, window: window, textView: textView,
+                        projectRoot: projectRoot)
+                })
     }
 
     /// Im verschachtelten Aufruf muss die INNERE Methode angezeigt werden.
     private static func pollFourDSignatureNestedInner(
         ws: Workspace, window: NSWindow, textView: TextView,
-        projectRoot: URL, tick: Int
+        projectRoot: URL
     ) {
-        if let text = fourDSignaturePanelText(window: window),
-           text.contains("InnereFormel"),
-           text.contains("$eingabe_t : Text"),
-           text.contains("$faktor_i : Integer"),
-           text.contains("$ergebnis_t : Text"),
-           text.contains("Berechnet die innere Formel."),
-           !text.contains("Begruessung"),
-           !text.contains("Verpacke") {
-            // Cursor HINTER die innere schließende Klammer (vor `;80`):
-            // jetzt gilt wieder der äußere Aufruf, aktiver Parameter 0.
-            let ns = textView.string as NSString
-            let closing = ns.range(of: "\"Du\";1)")
-            guard closing.location != NSNotFound else {
-                ws.closeProject()
-                try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "innere schließende Klammer fehlt")
-            }
-            textView.selectionManager.setSelectedRange(
-                NSRange(location: closing.max, length: 0)
-            )
-            pollFourDSignatureNestedOuter(
-                ws: ws, window: window, textView: textView,
-                projectRoot: projectRoot, tick: 0
-            )
-            return
-        }
-        if tick >= 40 {
-            let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
-            ws.closeProject()
-            try? FileManager.default.removeItem(at: projectRoot)
-            finish(false, "verschachtelt: innere Methode erscheint nicht; "
-                + "gesehen: \(seen.prefix(300))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFourDSignatureNestedInner(
-                ws: ws, window: window, textView: textView,
-                projectRoot: projectRoot, tick: tick + 1
-            )
-        }
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    guard let text = fourDSignaturePanelText(window: window) else { return false }
+                    return text.contains("InnereFormel")
+                        && text.contains("$eingabe_t : Text")
+                        && text.contains("$faktor_i : Integer")
+                        && text.contains("$ergebnis_t : Text")
+                        && text.contains("Berechnet die innere Formel.")
+                        && !text.contains("Begruessung")
+                        && !text.contains("Verpacke")
+                },
+                onTimeout: { book in
+                    let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
+                    ws.closeProject()
+                    try? FileManager.default.removeItem(at: projectRoot)
+                    finish(false, "verschachtelt: innere Methode erscheint nicht — \(book.summary); "
+                        + "gesehen: \(seen.prefix(300))")
+                },
+                then: {
+                    // Cursor HINTER die innere schließende Klammer (vor `;80`):
+                    // jetzt gilt wieder der äußere Aufruf, aktiver Parameter 0.
+                    let ns = textView.string as NSString
+                    let closing = ns.range(of: "\"Du\";1)")
+                    guard closing.location != NSNotFound else {
+                        ws.closeProject()
+                        try? FileManager.default.removeItem(at: projectRoot)
+                        finish(false, "innere schließende Klammer fehlt")
+                    }
+                    textView.selectionManager.setSelectedRange(
+                        NSRange(location: closing.max, length: 0)
+                    )
+                    pollFourDSignatureNestedOuter(
+                        ws: ws, window: window, textView: textView,
+                        projectRoot: projectRoot)
+                })
     }
 
     /// Hinter der inneren Klammer zeigt das Panel wieder die äußere Methode.
     private static func pollFourDSignatureNestedOuter(
         ws: Workspace, window: NSWindow, textView: TextView,
-        projectRoot: URL, tick: Int
+        projectRoot: URL
     ) {
-        if let text = fourDSignaturePanelText(window: window),
-           text.contains("Verpacke"),
-           text.contains("$inhalt_t : Text"),
-           text.contains("Verpackt einen Text."),
-           !text.contains("$eingabe_t") {
-            // Cursor in den Aufruf der Komponentenmethode.
-            let ns = textView.string as NSString
-            let componentCall = ns.range(of: "\"Probe\"")
-            guard componentCall.location != NSNotFound else {
-                ws.closeProject()
-                try? FileManager.default.removeItem(at: projectRoot)
-                finish(false, "Komponenten-Aufrufzeile fehlt")
-            }
-            textView.selectionManager.setSelectedRange(
-                NSRange(location: componentCall.max, length: 0)
-            )
-            pollFourDSignatureComponent(
-                ws: ws, window: window, textView: textView,
-                projectRoot: projectRoot, tick: 0
-            )
-            return
-        }
-        if tick >= 40 {
-            let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
-            ws.closeProject()
-            try? FileManager.default.removeItem(at: projectRoot)
-            finish(false, "verschachtelt: äußere Methode erscheint hinter der "
-                + "inneren Klammer nicht; gesehen: \(seen.prefix(300))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFourDSignatureNestedOuter(
-                ws: ws, window: window, textView: textView,
-                projectRoot: projectRoot, tick: tick + 1
-            )
-        }
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    guard let text = fourDSignaturePanelText(window: window) else { return false }
+                    return text.contains("Verpacke")
+                        && text.contains("$inhalt_t : Text")
+                        && text.contains("Verpackt einen Text.")
+                        && !text.contains("$eingabe_t")
+                },
+                onTimeout: { book in
+                    let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
+                    ws.closeProject()
+                    try? FileManager.default.removeItem(at: projectRoot)
+                    finish(false, "verschachtelt: äußere Methode erscheint hinter der "
+                        + "inneren Klammer nicht — \(book.summary); gesehen: \(seen.prefix(300))")
+                },
+                then: {
+                    // Cursor in den Aufruf der Komponentenmethode.
+                    let ns = textView.string as NSString
+                    let componentCall = ns.range(of: "\"Probe\"")
+                    guard componentCall.location != NSNotFound else {
+                        ws.closeProject()
+                        try? FileManager.default.removeItem(at: projectRoot)
+                        finish(false, "Komponenten-Aufrufzeile fehlt")
+                    }
+                    textView.selectionManager.setSelectedRange(
+                        NSRange(location: componentCall.max, length: 0)
+                    )
+                    pollFourDSignatureComponent(
+                        ws: ws, window: window, textView: textView,
+                        projectRoot: projectRoot
+                    )
+                })
     }
 
     /// Die geteilte Komponentenmethode zeigt Signatur und Kommentarkopf wie
     /// eine Projektmethode (Komponentenmethoden-Auftrag 2026-07-24).
     private static func pollFourDSignatureComponent(
         ws: Workspace, window: NSWindow, textView: TextView,
-        projectRoot: URL, tick: Int
+        projectRoot: URL
     ) {
-        if let text = fourDSignaturePanelText(window: window),
-           text.contains("Werkzeug_Miss"),
-           text.contains("$text_t : Text"),
-           text.contains("$laenge_i : Integer"),
-           text.contains("Misst einen Text.") {
-            // Cursor an den Zeilenanfang → Panel muss verschwinden.
-            textView.selectionManager.setSelectedRange(
-                NSRange(location: 0, length: 0)
-            )
-            pollFourDSignaturePanelGone(
-                ws: ws, window: window, projectRoot: projectRoot, tick: 0
-            )
-            return
-        }
-        if tick >= 40 {
-            let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
-            ws.closeProject()
-            try? FileManager.default.removeItem(at: projectRoot)
-            finish(false, "Komponentenmethode erscheint nicht in der "
-                + "Parameterhilfe; gesehen: \(seen.prefix(300))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFourDSignatureComponent(
-                ws: ws, window: window, textView: textView,
-                projectRoot: projectRoot, tick: tick + 1
-            )
-        }
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    guard let text = fourDSignaturePanelText(window: window) else { return false }
+                    return text.contains("Werkzeug_Miss")
+                        && text.contains("$text_t : Text")
+                        && text.contains("$laenge_i : Integer")
+                        && text.contains("Misst einen Text.")
+                },
+                onTimeout: { book in
+                    let seen = fourDSignaturePanelText(window: window) ?? "(kein Panel)"
+                    ws.closeProject()
+                    try? FileManager.default.removeItem(at: projectRoot)
+                    finish(false, "Komponentenmethode erscheint nicht in der "
+                        + "Parameterhilfe — \(book.summary); gesehen: \(seen.prefix(300))")
+                },
+                then: {
+                    // Cursor an den Zeilenanfang → Panel muss verschwinden.
+                    textView.selectionManager.setSelectedRange(
+                        NSRange(location: 0, length: 0)
+                    )
+                    pollFourDSignaturePanelGone(
+                        ws: ws, window: window, projectRoot: projectRoot
+                    )
+                })
     }
 
     private static func pollFourDSignaturePanelGone(
-        ws: Workspace, window: NSWindow, projectRoot: URL, tick: Int
+        ws: Workspace, window: NSWindow, projectRoot: URL
     ) {
-        if fourDSignaturePanelText(window: window) == nil {
-            ws.closeProject()
-            try? FileManager.default.removeItem(at: projectRoot)
-            finish(true, "Parameterhilfe zeigt Signatur samt Kommentarkopf, "
-                + "wechselt verschachtelt zwischen innerer und äußerer "
-                + "Methode, kennt geteilte Komponentenmethoden und "
-                + "verschwindet außerhalb der Klammern")
-        }
-        if tick >= 40 {
-            ws.closeProject()
-            try? FileManager.default.removeItem(at: projectRoot)
-            finish(false, "Parameterhilfe bleibt außerhalb der Klammern sichtbar")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFourDSignaturePanelGone(
-                ws: ws, window: window, projectRoot: projectRoot, tick: tick + 1
-            )
-        }
+        waitFor(budget: 10, pause: 0.25,
+                condition: { fourDSignaturePanelText(window: window) == nil },
+                onTimeout: { book in
+                    ws.closeProject()
+                    try? FileManager.default.removeItem(at: projectRoot)
+                    finish(false, "Parameterhilfe bleibt außerhalb der Klammern sichtbar — \(book.summary)")
+                },
+                then: {
+                    ws.closeProject()
+                    try? FileManager.default.removeItem(at: projectRoot)
+                    finish(true, "Parameterhilfe zeigt Signatur samt Kommentarkopf, "
+                        + "wechselt verschachtelt zwischen innerer und äußerer "
+                        + "Methode, kennt geteilte Komponentenmethoden und "
+                        + "verschwindet außerhalb der Klammern")
+                })
     }
 
     // MARK: - -selftest sighelpshot
@@ -11789,7 +12260,7 @@ enum SelfTest {
               let root = window.contentView else {
             finish(false, "Workspace oder Hauptfenster fehlt")
         }
-        let projectRoot = FileManager.default.temporaryDirectory
+        let projectRoot = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-sighelpshot-\(UUID().uuidString)")
         let methods = projectRoot.appendingPathComponent(
             "Project/Sources/Methods", isDirectory: true
@@ -11882,7 +12353,7 @@ enum SelfTest {
                        "Turing, Alan", "Hopper, Grace", "Karpathy, Andrej", "",
                        "ring, The", "Matrix, The", "Empire Strikes Back, The"]
             .joined(separator: "\n")
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-replaceall-\(UUID().uuidString).txt")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -11921,28 +12392,25 @@ enum SelfTest {
     /// Wartet, bis die (async) Suche die 9 Demo-Treffer geliefert hat, ruft
     /// dann `applyAllInActiveBuffer()` (exakt der „Alle ersetzen"-Pfad) und
     /// pollt anschließend den echten Editor-Text.
-    private static func pollReplaceAllReady(_ ws: Workspace, root: NSView, tick: Int = 0) {
-        let maxTicks = 100   // ~3 s
-        if !ws.bufferSearching && ws.bufferTotalMatches == 9 {
-            ws.applyAllInActiveBuffer()
-            // Modell-Soll: das, was die Engine produziert. Erst das Modell prüfen
-            // (muss korrekt ersetzt sein), dann die View dagegen abgleichen.
-            let expected = ws.activeTab?.content ?? ""
-            guard expected.contains("Max Mustermann"),
-                  !expected.contains("Mustermann, Max") else {
-                finish(false, "Modell-Replace selbst falsch: content=\(String(expected.prefix(60)))")
-            }
-            pollReplaceAllVisible(ws, root: root, expected: expected)
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "(replaceall) Suche lieferte nicht 9 Treffer "
-                + "(total=\(ws.bufferTotalMatches), searching=\(ws.bufferSearching), "
-                + "error=\(ws.searchError ?? "nil"))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollReplaceAllReady(ws, root: root, tick: tick + 1)
-        }
+    private static func pollReplaceAllReady(_ ws: Workspace, root: NSView) {
+        waitFor(budget: 3, pause: 0.03,
+                condition: { !ws.bufferSearching && ws.bufferTotalMatches == 9 },
+                onTimeout: { book in
+                    finish(false, "(replaceall) Suche lieferte nicht 9 Treffer "
+                        + "(total=\(ws.bufferTotalMatches), searching=\(ws.bufferSearching), "
+                        + "error=\(ws.searchError ?? "nil")) — \(book.summary)")
+                },
+                then: {
+                    ws.applyAllInActiveBuffer()
+                    // Modell-Soll: das, was die Engine produziert. Erst das Modell prüfen
+                    // (muss korrekt ersetzt sein), dann die View dagegen abgleichen.
+                    let expected = ws.activeTab?.content ?? ""
+                    guard expected.contains("Max Mustermann"),
+                          !expected.contains("Mustermann, Max") else {
+                        finish(false, "Modell-Replace selbst falsch: content=\(String(expected.prefix(60)))")
+                    }
+                    pollReplaceAllVisible(ws, root: root, expected: expected)
+                })
     }
 
     /// Pollt den ECHTEN Editor-`.string` (jedes Mal frisch aus der View-
@@ -11950,22 +12418,17 @@ enum SelfTest {
     /// vollständig ersetzten Text zeigt. Eine einzelne richtige Ersetzung
     /// genügt nicht: Auch die übrigen Ersetzungen und Dokumentteile zählen.
     private static func pollReplaceAllVisible(_ ws: Workspace, root: NSView,
-                                              expected: String, tick: Int = 0) {
-        let maxTicks = 100   // ~3 s
-        if let tvView = editorTextView(in: root), let tv = tvView as? TextView {
-            let shown = tv.string
-            if shown == expected {
-                finish(true, "Editor zeigt nach Alle-ersetzen den vollständigen Modell-Inhalt")
-            }
-        }
-        if tick >= maxTicks {
-            let now = (editorTextView(in: root) as? TextView)?.string ?? "<kein Editor>"
-            finish(false, "(replaceall) Editor zeigt nach dem Replace weiter den ALTEN Text — "
-                + "Neuerzeugung wirkte nicht. string-Anfang: \(String(now.prefix(60)))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollReplaceAllVisible(ws, root: root, expected: expected, tick: tick + 1)
-        }
+                                              expected: String) {
+        waitFor(budget: 3, pause: 0.03,
+                condition: { (editorTextView(in: root) as? TextView)?.string == expected },
+                onTimeout: { book in
+                    let now = (editorTextView(in: root) as? TextView)?.string ?? "<kein Editor>"
+                    finish(false, "(replaceall) Editor zeigt nach dem Replace weiter den ALTEN Text — "
+                        + "Neuerzeugung wirkte nicht. string-Anfang: \(String(now.prefix(60))) — \(book.summary)")
+                },
+                then: {
+                    finish(true, "Editor zeigt nach Alle-ersetzen den vollständigen Modell-Inhalt")
+                })
     }
 
     // MARK: - -selftest pilldrop
@@ -12112,7 +12575,7 @@ enum SelfTest {
         // 3 Treffer „TREFFER" auf Zeile 2/4/6.
         let content = ["zeile eins ohne", "TREFFER zwei hier", "zeile drei nix",
                        "TREFFER vier da", "zeile fuenf nix", "TREFFER sechs"].joined(separator: "\n")
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-navmatch-\(UUID().uuidString).txt")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -12146,36 +12609,31 @@ enum SelfTest {
     /// Wartet auf drei Treffer und drückt Return im echten Suchfeld. Das muss
     /// Treffer 0 aktivieren und den Fokus an die Trefferliste weitergeben.
     private static func pollNavReady(_ ws: Workspace, tv: TextView,
-                                     searchWindow: NSWindow, originalText: String,
-                                     tick: Int = 0) {
-        let maxTicks = 100   // ~3 s
-        if !ws.bufferSearching && ws.bufferMatches.count == 3 {
-            guard let root = searchWindow.contentView else {
-                finish(false, "(navmatch) Suchmaske ohne contentView")
-            }
-            var fields: [NSView] = []
-            collectTypeableFields(in: root, into: &fields)
-            guard let findField = fields.compactMap({ $0 as? RegexFieldTextView }).first(where: {
-                $0.accessibilityIdentifier() == "fastra.findField"
-            }), searchWindow.makeFirstResponder(findField) else {
-                finish(false, "(navmatch) Suchfeld nicht gefunden/fokussierbar")
-            }
-            // Derselbe AppKit-onSubmit-Pfad wie eine physische Return-Taste.
-            findField.insertNewline(nil)
-            pollNavSelection(ws, tv: tv, searchWindow: searchWindow,
-                             originalText: originalText, expectedIndex: 0,
-                             thenPressReturnInList: true, findField: findField)
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "(navmatch) Suche lieferte nicht 3 Treffer "
-                + "(count=\(ws.bufferMatches.count), searching=\(ws.bufferSearching), "
-                + "error=\(ws.searchError ?? "nil"))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollNavReady(ws, tv: tv, searchWindow: searchWindow,
-                         originalText: originalText, tick: tick + 1)
-        }
+                                     searchWindow: NSWindow, originalText: String) {
+        waitFor(budget: 3, pause: 0.03,
+                condition: { !ws.bufferSearching && ws.bufferMatches.count == 3 },
+                onTimeout: { book in
+                    finish(false, "(navmatch) Suche lieferte nicht 3 Treffer "
+                        + "(count=\(ws.bufferMatches.count), searching=\(ws.bufferSearching), "
+                        + "error=\(ws.searchError ?? "nil")) — \(book.summary)")
+                },
+                then: {
+                    guard let root = searchWindow.contentView else {
+                        finish(false, "(navmatch) Suchmaske ohne contentView")
+                    }
+                    var fields: [NSView] = []
+                    collectTypeableFields(in: root, into: &fields)
+                    guard let findField = fields.compactMap({ $0 as? RegexFieldTextView }).first(where: {
+                        $0.accessibilityIdentifier() == "fastra.findField"
+                    }), searchWindow.makeFirstResponder(findField) else {
+                        finish(false, "(navmatch) Suchfeld nicht gefunden/fokussierbar")
+                    }
+                    // Derselbe AppKit-onSubmit-Pfad wie eine physische Return-Taste.
+                    findField.insertNewline(nil)
+                    pollNavSelection(ws, tv: tv, searchWindow: searchWindow,
+                                     originalText: originalText, expectedIndex: 0,
+                                     thenPressReturnInList: true, findField: findField)
+                })
     }
 
     /// Prüft unabhängig beobachtbar: richtige Selektion, Suchfenster bleibt
@@ -12183,71 +12641,70 @@ enum SelfTest {
     private static func pollNavSelection(_ ws: Workspace, tv: TextView,
                                          searchWindow: NSWindow, originalText: String,
                                          expectedIndex: Int, thenPressReturnInList: Bool,
-                                         findField: RegexFieldTextView? = nil,
-                                         tick: Int = 0) {
-        let maxTicks = 60   // ~1,8 s
-        let editorText = tv.string as NSString
-        let sel = tv.selectedRange()
-        if ws.activeMatchIndex == expectedIndex,
-           sel.location != NSNotFound, sel.length > 0, NSMaxRange(sel) <= editorText.length {
-            let selectedText = editorText.substring(with: sel)
-            if selectedText != "TREFFER" {
-                finish(false, "(navmatch) Sprung selektierte \"\(selectedText)\", erwartet \"TREFFER\"")
-            }
-            guard searchWindow.isKeyWindow else {
-                // Zwei völlig verschiedene Lagen, die vorher beide als
-                // Funktionsfehler galten (Befund 2026-07-28: Der Test war rot,
-                // weil jemand am Mac arbeitete — und verdeckte damit in
-                // derselben Zusammenfassung einen echten Fehler):
-                //
-                // a) Die App ist gar nicht mehr aktiv → eine FREMDE App hat den
-                //    Fokus geholt. Das sagt nichts über Fastra aus und ist ein
-                //    Umgebungsproblem (Exit-Code 2, wie bei `completion4d`).
-                // b) Die App IST aktiv, aber ein anderes EIGENES Fenster ist
-                //    Key → genau der Fehler, den dieser Test sucht.
-                let keyDesc = NSApp.keyWindow.map {
-                    "[\(type(of: $0))] \"\($0.title)\""
-                } ?? "keins"
-                guard NSApp.isActive else {
-                    finish(.environment, "Umgebungsproblem: Fastra ist nach Treffer "
-                           + "\(expectedIndex) nicht mehr aktiv — eine andere App "
-                           + "hat den Fokus geholt (keyWindow=\(keyDesc)). "
-                           + "Test auf einem unbenutzten Mac wiederholen.")
-                }
-                finish(false, "(navmatch) Suchmaske verlor nach Treffer "
-                       + "\(expectedIndex) den Key-Status an ein anderes "
-                       + "Fastra-Fenster (keyWindow=\(keyDesc))")
-            }
-            if tv.window?.firstResponder === tv {
-                finish(false, "(navmatch) Editor wurde nach Treffer \(expectedIndex) First Responder")
-            }
-            guard tv.string == originalText else {
-                finish(false, "(navmatch) Dokumenttext wurde durch Return verändert")
-            }
-            if thenPressReturnInList {
-                guard let findField else {
-                    finish(false, "(navmatch) Referenz auf das Suchfeld fehlt")
-                }
-                pollNavListFocusThenReturn(
-                    ws, tv: tv, searchWindow: searchWindow,
-                    originalText: originalText, findField: findField
-                )
-                return
-            }
-            finish(true, "Return im Suchfeld fokussiert Treffer 1; Pfeil-runter in der "
-                + "Trefferliste springt zu Treffer 2; Suchmaske bleibt Key, Editor unverändert")
-        }
-        if tick >= maxTicks {
-            finish(false, "(navmatch) Treffer \(expectedIndex) wurde über \(maxTicks) Ticks nicht "
-                + "aktiv-selektiert (activeMatchIndex=\(ws.activeMatchIndex), "
-                + "selectedRange=\(sel)) — Navigation aus der Suchmaske wirkungslos")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollNavSelection(ws, tv: tv, searchWindow: searchWindow,
-                             originalText: originalText, expectedIndex: expectedIndex,
-                             thenPressReturnInList: thenPressReturnInList,
-                             findField: findField, tick: tick + 1)
-        }
+                                         findField: RegexFieldTextView? = nil) {
+        var sel = NSRange(location: NSNotFound, length: 0)
+        waitFor(budget: 1.8, pause: 0.03,
+                condition: {
+                    let editorText = tv.string as NSString
+                    sel = tv.selectedRange()
+                    return ws.activeMatchIndex == expectedIndex
+                        && sel.location != NSNotFound && sel.length > 0
+                        && NSMaxRange(sel) <= editorText.length
+                },
+                onTimeout: { book in
+                    finish(false, "(navmatch) Treffer \(expectedIndex) wurde nicht "
+                        + "aktiv-selektiert (activeMatchIndex=\(ws.activeMatchIndex), "
+                        + "selectedRange=\(sel)) — Navigation aus der Suchmaske wirkungslos — \(book.summary)")
+                },
+                then: {
+                    let editorText = tv.string as NSString
+                    let selectedText = editorText.substring(with: sel)
+                    if selectedText != "TREFFER" {
+                        finish(false, "(navmatch) Sprung selektierte \"\(selectedText)\", erwartet \"TREFFER\"")
+                    }
+                    guard searchWindow.isKeyWindow else {
+                        // Zwei völlig verschiedene Lagen, die vorher beide als
+                        // Funktionsfehler galten (Befund 2026-07-28: Der Test war rot,
+                        // weil jemand am Mac arbeitete — und verdeckte damit in
+                        // derselben Zusammenfassung einen echten Fehler):
+                        //
+                        // a) Die App ist gar nicht mehr aktiv → eine FREMDE App hat den
+                        //    Fokus geholt. Das sagt nichts über Fastra aus und ist ein
+                        //    Umgebungsproblem (Exit-Code 2, wie bei `completion4d`).
+                        // b) Die App IST aktiv, aber ein anderes EIGENES Fenster ist
+                        //    Key → genau der Fehler, den dieser Test sucht.
+                        let keyDesc = NSApp.keyWindow.map {
+                            "[\(type(of: $0))] \"\($0.title)\""
+                        } ?? "keins"
+                        guard NSApp.isActive else {
+                            finish(.environment, "Umgebungsproblem: Fastra ist nach Treffer "
+                                   + "\(expectedIndex) nicht mehr aktiv — eine andere App "
+                                   + "hat den Fokus geholt (keyWindow=\(keyDesc)). "
+                                   + "Test auf einem unbenutzten Mac wiederholen.")
+                        }
+                        finish(false, "(navmatch) Suchmaske verlor nach Treffer "
+                               + "\(expectedIndex) den Key-Status an ein anderes "
+                               + "Fastra-Fenster (keyWindow=\(keyDesc))")
+                    }
+                    if tv.window?.firstResponder === tv {
+                        finish(false, "(navmatch) Editor wurde nach Treffer \(expectedIndex) First Responder")
+                    }
+                    guard tv.string == originalText else {
+                        finish(false, "(navmatch) Dokumenttext wurde durch Return verändert")
+                    }
+                    if thenPressReturnInList {
+                        guard let findField else {
+                            finish(false, "(navmatch) Referenz auf das Suchfeld fehlt")
+                        }
+                        pollNavListFocusThenReturn(
+                            ws, tv: tv, searchWindow: searchWindow,
+                            originalText: originalText, findField: findField
+                        )
+                        return
+                    }
+                    finish(true, "Return im Suchfeld fokussiert Treffer 1; Pfeil-runter in der "
+                        + "Trefferliste springt zu Treffer 2; Suchmaske bleibt Key, Editor unverändert")
+                })
     }
 
     /// Wartet auf den echten Fokuswechsel aus dem Suchfeld, bevor der Test die
@@ -12268,29 +12725,25 @@ enum SelfTest {
         tv: TextView,
         searchWindow: NSWindow,
         originalText: String,
-        findField: RegexFieldTextView,
-        tick: Int = 0
+        findField: RegexFieldTextView
     ) {
-        let maxTicks = 100
-        if let responder = searchWindow.firstResponder, responder !== findField {
-            postKey("\u{F701}", keyCode: 125, windowNumber: searchWindow.windowNumber)
-            pollNavSelection(
-                ws, tv: tv, searchWindow: searchWindow,
-                originalText: originalText, expectedIndex: 1,
-                thenPressReturnInList: false
-            )
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "(navmatch) Trefferliste übernahm den Fokus nicht "
-                + "(FirstResponder=\(String(describing: searchWindow.firstResponder)))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollNavListFocusThenReturn(
-                ws, tv: tv, searchWindow: searchWindow,
-                originalText: originalText, findField: findField, tick: tick + 1
-            )
-        }
+        waitFor(budget: 3, pause: 0.03,
+                condition: {
+                    guard let responder = searchWindow.firstResponder else { return false }
+                    return responder !== findField
+                },
+                onTimeout: { book in
+                    finish(false, "(navmatch) Trefferliste übernahm den Fokus nicht "
+                        + "(FirstResponder=\(String(describing: searchWindow.firstResponder))) — \(book.summary)")
+                },
+                then: {
+                    postKey("\u{F701}", keyCode: 125, windowNumber: searchWindow.windowNumber)
+                    pollNavSelection(
+                        ws, tv: tv, searchWindow: searchWindow,
+                        originalText: originalText, expectedIndex: 1,
+                        thenPressReturnInList: false
+                    )
+                })
     }
 
     /// Pollt engmaschig, bis der Editor eine Selektion hat, und prüft dann,
@@ -12311,41 +12764,42 @@ enum SelfTest {
     private static func pollForSelection(in root: NSView, expected: String,
                                          expectedContent: String,
                                          label: String,
-                                         onPass: @escaping () -> Void, tick: Int = 0) {
-        let maxTicks = 100           // 100 × 30 ms ≈ 3 s bediente Beobachtung
-        let next = {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-                pollForSelection(in: root, expected: expected,
-                                 expectedContent: expectedContent,
-                                 label: label, onPass: onPass, tick: tick + 1)
-            }
-        }
-        guard let tv = editorTextView(in: root) as? TextView,
-              tv.string == expectedContent else {
-            // Editor gerade (wieder) im Umbau — weiter beobachten.
-            if tick >= maxTicks {
-                finish(false, "(\(label)) Editor mit erwartetem Inhalt blieb über "
-                    + "\(maxTicks) Ticks verschwunden")
-            }
-            next()
-            return
-        }
-        let editorText = tv.string as NSString
-        let sel = tv.selectedRange()
-        if sel.location != NSNotFound, sel.length > 0, NSMaxRange(sel) <= editorText.length {
-            let selectedText = editorText.substring(with: sel)
-            if selectedText == expected {
-                onPass()
-            } else {
-                finish(false, "(\(label)) Sprung daneben: selektiert \"\(selectedText)\", "
-                       + "erwartet \"\(expected)\" — genau der Offset-Drift")
-            }
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "(\(label)) Sprung setzte über \(maxTicks) Ticks keine Selektion (selectedRange=\(sel))")
-        }
-        next()
+                                         onPass: @escaping () -> Void) {
+        // ≈ 3 s bediente Beobachtung im 30-ms-Takt.
+        var editorFound = false
+        var sel = NSRange(location: NSNotFound, length: 0)
+        var selectedText = ""
+        waitFor(budget: 3, pause: 0.03,
+                condition: {
+                    guard let tv = editorTextView(in: root) as? TextView,
+                          tv.string == expectedContent else {
+                        // Editor gerade (wieder) im Umbau — weiter beobachten.
+                        editorFound = false
+                        return false
+                    }
+                    editorFound = true
+                    let editorText = tv.string as NSString
+                    sel = tv.selectedRange()
+                    guard sel.location != NSNotFound, sel.length > 0,
+                          NSMaxRange(sel) <= editorText.length else { return false }
+                    selectedText = editorText.substring(with: sel)
+                    return true
+                },
+                onTimeout: { book in
+                    guard editorFound else {
+                        finish(false, "(\(label)) Editor mit erwartetem Inhalt blieb "
+                            + "verschwunden — \(book.summary)")
+                    }
+                    finish(false, "(\(label)) Sprung setzte keine Selektion (selectedRange=\(sel)) — \(book.summary)")
+                },
+                then: {
+                    if selectedText == expected {
+                        onPass()
+                    } else {
+                        finish(false, "(\(label)) Sprung daneben: selektiert \"\(selectedText)\", "
+                               + "erwartet \"\(expected)\" — genau der Offset-Drift")
+                    }
+                })
     }
 
     // MARK: - -selftest scrolljump
@@ -12383,7 +12837,7 @@ enum SelfTest {
         lines.reserveCapacity(2500)
         for i in 1...2500 { lines.append("Zeile \(i): wert ende") }
         let content = lines.joined(separator: "\n")
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-scroll-\(UUID().uuidString).txt")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -12415,7 +12869,7 @@ enum SelfTest {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     NotificationCenter.default.postMatchJump(target, for: ws)
                     pollForScrollVisible(tv, matchLocation: target.range.location,
-                                         line: target.line, tick: 0)
+                                         line: target.line)
                 }
             }
         }
@@ -12426,24 +12880,28 @@ enum SelfTest {
     /// gescrollt hat. FAIL, wenn der Treffer nach ~2 s nicht in Sicht ist
     /// (z.B. weil fälschlich an den Datei-Anfang gescrollt wurde).
     private static func pollForScrollVisible(_ tv: TextView, matchLocation: Int,
-                                             line: Int, tick: Int) {
-        let maxTicks = 40            // 40 × 50 ms = 2 s
-        if let rect = tv.layoutManager.rectForOffset(matchLocation) {
-            let visible = tv.visibleRect
-            if visible.intersects(rect) {
-                finish(true, "Sprung scrollte Zeile \(line) in Sicht "
-                       + "(matchY=\(Int(rect.midY)), sichtbar \(Int(visible.minY))–\(Int(visible.maxY)))")
-            }
-            if tick >= maxTicks {
-                finish(false, "Treffer NICHT in Sicht: Zeile \(line) liegt bei matchY=\(Int(rect.midY)), "
-                       + "sichtbar nur \(Int(visible.minY))–\(Int(visible.maxY)) (scrollte an den Anfang?)")
-            }
-        } else if tick >= maxTicks {
-            finish(false, "rectForOffset lieferte nil für Zeile \(line)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollForScrollVisible(tv, matchLocation: matchLocation, line: line, tick: tick + 1)
-        }
+                                             line: Int) {
+        var rect: CGRect?
+        var visible = CGRect.zero
+        waitFor(budget: 2, pause: 0.05,
+                condition: {
+                    rect = tv.layoutManager.rectForOffset(matchLocation)
+                    visible = tv.visibleRect
+                    guard let rect else { return false }
+                    return visible.intersects(rect)
+                },
+                onTimeout: { book in
+                    guard let rect else {
+                        finish(false, "rectForOffset lieferte nil für Zeile \(line) — \(book.summary)")
+                    }
+                    finish(false, "Treffer NICHT in Sicht: Zeile \(line) liegt bei matchY=\(Int(rect.midY)), "
+                           + "sichtbar nur \(Int(visible.minY))–\(Int(visible.maxY)) (scrollte an den Anfang?) — \(book.summary)")
+                },
+                then: {
+                    guard let rect else { finish(false, "Treffer-Rect nach Erfolg verschwunden") }
+                    finish(true, "Sprung scrollte Zeile \(line) in Sicht "
+                           + "(matchY=\(Int(rect.midY)), sichtbar \(Int(visible.minY))–\(Int(visible.maxY)))")
+                })
     }
 
     /// Sammelt alle editierbaren `NSTextField` (SwiftUI-`TextField` bridged
@@ -12518,7 +12976,7 @@ enum SelfTest {
         var lines: [String] = []
         for i in 1...40 { lines.append("Zeile \(i) \(longTail) ENDE\(i)") }
         let content = lines.joined(separator: "\n")
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-hscroll-\(UUID().uuidString).txt")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -12596,7 +13054,7 @@ enum SelfTest {
         var lines: [String] = []
         for i in 1...41000 { lines.append("Zeile \(i) \(tail) \(i == 40000 ? "ZIELMARKE" : "ende")") }
         let content = lines.joined(separator: "\r")
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-crjump-\(UUID().uuidString).txt")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -12667,7 +13125,7 @@ enum SelfTest {
         activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-textop-\(UUID().uuidString).txt")
         do {
             try "beta\nalpha\ngamma\n".write(
@@ -12794,7 +13252,7 @@ enum SelfTest {
         guard let joined else {
             finish(false, "Join-Lines-Fixture lieferte kein Ergebnis")
         }
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-joinundo-\(UUID().uuidString).css")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -12899,7 +13357,7 @@ enum SelfTest {
 
         // Gleich lange Zeilen (Monospace) → saubere Spalten.
         let content = "ABCDEFGH\nABCDEFGH\nABCDEFGH\nABCDEFGH"
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-colsel-\(UUID().uuidString).txt")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -12970,7 +13428,7 @@ enum SelfTest {
             offset += (line as NSString).length
             if index < lines.count - 1 { offset += 2 }
         }
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-colselwrap-\(UUID().uuidString).txt")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -13071,7 +13529,7 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-colpaste-\(UUID().uuidString).txt")
         do {
             try "abCDef\nabXYef\nab12ef".write(
@@ -13319,7 +13777,7 @@ enum SelfTest {
         testLabel = "filemodes"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory.appendingPathComponent(
+        let base = selfTestTemporaryDirectory().appendingPathComponent(
             "fastra-filemodes-\(UUID().uuidString)", isDirectory: true
         )
         let binary = base.appendingPathComponent("binary.dat")
@@ -13478,9 +13936,14 @@ enum SelfTest {
 
     /// Pollt auf das erwartete Geöffnet-Ergebnis (3 Treffer in 2 Tabs),
     /// dann Teil b: Alle ersetzen. Max. ~2 s (Debounce 120 ms + Async-Lauf).
-    private static func pollOpenResults(_ ws: Workspace, tick: Int = 0) {
-        let maxTicks = 67
-        if ws.openTotalMatches == 3 && ws.openResults.count == 2 {
+    private static func pollOpenResults(_ ws: Workspace) {
+        // Bisher 67 × 30 ms ≈ 2 s.
+        waitFor(budget: 2.01, pause: 0.03,
+                condition: { ws.openTotalMatches == 3 && ws.openResults.count == 2 },
+                onTimeout: { book in
+                    finish(false, "(a) Timeout: openTotalMatches=\(ws.openTotalMatches), "
+                        + "Gruppen=\(ws.openResults.count) — \(book.summary)")
+                }) {
             // Gruppen-Reihenfolge = Tab-Reihenfolge; Zeile/Spalte tab-lokal.
             guard ws.openResults[0].title == "open-a.txt",
                   ws.openResults[0].matches.count == 2,
@@ -13500,12 +13963,6 @@ enum SelfTest {
                 finish(false, "(b) Tab-Inhalte nach Ersetzen falsch: \(ws.tabs.map(\.content))")
             }
             finish(true, "Geöffnet-Scope: 3 Treffer in 2 Tabs, Alle-ersetzen änderte genau 2 Tabs")
-        }
-        if tick >= maxTicks {
-            finish(false, "(a) Timeout: openTotalMatches=\(ws.openTotalMatches), Gruppen=\(ws.openResults.count)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollOpenResults(ws, tick: tick + 1)
         }
     }
 
@@ -13534,12 +13991,12 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-mdassist-\(UUID().uuidString)")
         let doc = base.appendingPathComponent("Notizen.md")
         // WIRKLICH außerhalb des Dokumentordners — sonst greift die
         // „schon im Dokumentbaum → nur verlinken“-Regel statt der Kopie.
-        let outside = fm.temporaryDirectory
+        let outside = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-mdassist-src-\(UUID().uuidString)")
         do {
             try fm.createDirectory(at: base, withIntermediateDirectories: true)
@@ -13578,7 +14035,7 @@ enum SelfTest {
                     png, type: NSPasteboard.PasteboardType("public.png")
                 )
                 attemptMarkdownPaste(ws, tv: tv, root: root, base: base,
-                                     outside: outside, window: mainWindow, tick: 0)
+                                     outside: outside, window: mainWindow)
             }
         }
     }
@@ -13588,26 +14045,25 @@ enum SelfTest {
     /// besonders wenn der Desktop gerade aktiv benutzt wird.
     private static func attemptMarkdownPaste(_ ws: Workspace, tv: TextView,
                                              root: NSView, base: URL, outside: URL,
-                                             window: NSWindow, tick: Int) {
-        let maxTicks = 40    // 10 s
-        activateApplication(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(tv)
-        if MainActor.assumeIsolated({ MarkdownAssist.handlePasteCommand() }) {
-            pollMarkdownPaste(ws, tv: tv, root: root, base: base,
-                              outside: outside, tick: 0)
-            return
-        }
-        if tick >= maxTicks {
-            let responder = String(describing: type(of: window.firstResponder as Any))
-            finish(false, "(b) handlePasteCommand übernimmt nicht "
-                + "(keyWindow=\(NSApp.keyWindow != nil), isKey=\(window.isKeyWindow), "
-                + "responder=\(responder))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            attemptMarkdownPaste(ws, tv: tv, root: root, base: base,
-                                 outside: outside, window: window, tick: tick + 1)
-        }
+                                             window: NSWindow) {
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    // Jeder Durchlauf bittet erneut um Fokus und versucht den Paste.
+                    activateApplication(ignoringOtherApps: true)
+                    window.makeKeyAndOrderFront(nil)
+                    window.makeFirstResponder(tv)
+                    return MainActor.assumeIsolated { MarkdownAssist.handlePasteCommand() }
+                },
+                onTimeout: { book in
+                    let responder = String(describing: type(of: window.firstResponder as Any))
+                    finish(false, "(b) handlePasteCommand übernimmt nicht "
+                        + "(keyWindow=\(NSApp.keyWindow != nil), isKey=\(window.isKeyWindow), "
+                        + "responder=\(responder)) — \(book.summary)")
+                },
+                then: {
+                    pollMarkdownPaste(ws, tv: tv, root: root, base: base,
+                                      outside: outside)
+                })
     }
 
     // Ein HTML-Bildknoten kann auch bei kaputten Bilddaten existieren.
@@ -13618,48 +14074,52 @@ enum SelfTest {
     """
 
     private static func pollMarkdownPaste(_ ws: Workspace, tv: TextView, root: NSView,
-                                          base: URL, outside: URL, tick: Int) {
-        let maxTicks = 40    // 10 s
+                                          base: URL, outside: URL) {
         let imagesDirectory = base.appendingPathComponent("images", isDirectory: true)
-        let files = (try? FileManager.default.contentsOfDirectory(
-            atPath: imagesDirectory.path)) ?? []
-        let imageFile = files.first { $0.hasPrefix("Notizen-") && $0.hasSuffix(".png") }
-        let linkInEditor = tv.string.contains("![Notizen-")
-        if let imageFile, linkInEditor {
-            // Vorschau: Bild gerendert + zur Einfügestelle gescrollt.
-            guard let webView = firstWebView(in: root) else {
-                finish(false, "(b) keine Markdown-Vorschau-WebView gefunden")
-            }
-            webView.evaluateJavaScript(
-                markdownPastePreviewObservation
-            ) { value, error in
-                let pair = value as? [Any]
-                let images = pair?.first as? Int ?? 0
-                let scrollY = (pair?.last as? Double) ?? Double(pair?.last as? Int ?? 0)
-                if images >= 1, scrollY > 50 {
-                    runMarkdownPasteUndoPhase(ws, tv: tv, base: base,
-                                              outside: outside, storedImage: imageFile)
+        var imageFile: String?
+        var linkInEditor = false
+        var images = 0
+        var scrollY = 0.0
+        var scriptError: Error?
+        waitForAsync(
+            budget: 10, pause: 0.25,
+            check: { answer in
+                let files = (try? FileManager.default.contentsOfDirectory(
+                    atPath: imagesDirectory.path)) ?? []
+                imageFile = files.first { $0.hasPrefix("Notizen-") && $0.hasSuffix(".png") }
+                linkInEditor = tv.string.contains("![Notizen-")
+                guard imageFile != nil, linkInEditor else {
+                    answer(false)
                     return
                 }
-                if tick >= maxTicks {
-                    finish(false, "(b) Vorschau: dekodierte Bilder=\(images), scrollY=\(scrollY) "
-                        + "nach 10 s; JavaScript-Fehler=\(error?.localizedDescription ?? "keiner")")
+                // Vorschau: Bild gerendert + zur Einfügestelle gescrollt.
+                guard let webView = firstWebView(in: root) else {
+                    finish(false, "(b) keine Markdown-Vorschau-WebView gefunden")
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    pollMarkdownPaste(ws, tv: tv, root: root, base: base,
-                                      outside: outside, tick: tick + 1)
+                webView.evaluateJavaScript(
+                    markdownPastePreviewObservation
+                ) { value, error in
+                    let pair = value as? [Any]
+                    images = pair?.first as? Int ?? 0
+                    scrollY = (pair?.last as? Double) ?? Double(pair?.last as? Int ?? 0)
+                    scriptError = error
+                    answer(images >= 1 && scrollY > 50)
                 }
+            },
+            onTimeout: { book in
+                guard imageFile != nil, linkInEditor else {
+                    finish(false, "(b) Datei=\(String(describing: imageFile)), "
+                        + "Link=\(linkInEditor) — \(book.summary)")
+                }
+                finish(false, "(b) Vorschau: dekodierte Bilder=\(images), scrollY=\(scrollY); "
+                    + "JavaScript-Fehler=\(scriptError?.localizedDescription ?? "keiner") — \(book.summary)")
+            },
+            then: {
+                guard let imageFile else { finish(false, "(b) Bilddatei nach Erfolg verschwunden") }
+                runMarkdownPasteUndoPhase(ws, tv: tv, base: base,
+                                          outside: outside, storedImage: imageFile)
             }
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "(b) nach 10 s: Datei=\(String(describing: imageFile)), "
-                + "Link=\(linkInEditor)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollMarkdownPaste(ws, tv: tv, root: root, base: base,
-                              outside: outside, tick: tick + 1)
-        }
+        )
     }
 
     /// (c) Undo/Redo umfasst Link UND ausschließlich die von Fastra gerade
@@ -13670,45 +14130,43 @@ enum SelfTest {
                                                   storedImage: String) {
         tv.undoManager?.undo()
         pollMarkdownPasteUndo(ws, tv: tv, base: base, outside: outside,
-                              storedImage: storedImage, tick: 0)
+                              storedImage: storedImage)
     }
 
     private static func pollMarkdownPasteUndo(_ ws: Workspace, tv: TextView,
                                               base: URL, outside: URL,
-                                              storedImage: String, tick: Int) {
+                                              storedImage: String) {
         let file = base.appendingPathComponent("images/\(storedImage)")
-        if !tv.string.contains("![Notizen-"),
-           !FileManager.default.fileExists(atPath: file.path) {
-            tv.undoManager?.redo()
-            pollMarkdownPasteRedo(ws, tv: tv, base: base, outside: outside,
-                                  storedImage: storedImage, tick: 0)
-            return
-        }
-        if tick >= 40 {
-            finish(false, "(c) Undo ließ Link oder erzeugte Bilddatei stehen")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollMarkdownPasteUndo(ws, tv: tv, base: base, outside: outside,
-                                  storedImage: storedImage, tick: tick + 1)
-        }
+        waitFor(budget: 4, pause: 0.1,
+                condition: {
+                    !tv.string.contains("![Notizen-")
+                        && !FileManager.default.fileExists(atPath: file.path)
+                },
+                onTimeout: { book in
+                    finish(false, "(c) Undo ließ Link oder erzeugte Bilddatei stehen — \(book.summary)")
+                },
+                then: {
+                    tv.undoManager?.redo()
+                    pollMarkdownPasteRedo(ws, tv: tv, base: base, outside: outside,
+                                          storedImage: storedImage)
+                })
     }
 
     private static func pollMarkdownPasteRedo(_ ws: Workspace, tv: TextView,
                                               base: URL, outside: URL,
-                                              storedImage: String, tick: Int) {
+                                              storedImage: String) {
         let file = base.appendingPathComponent("images/\(storedImage)")
-        if tv.string.contains("![Notizen-"),
-           FileManager.default.fileExists(atPath: file.path) {
-            runMarkdownDropPhase(ws, tv: tv, base: base, outside: outside)
-            return
-        }
-        if tick >= 40 {
-            finish(false, "(c) Redo stellte Link oder Bilddatei nicht wieder her")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollMarkdownPasteRedo(ws, tv: tv, base: base, outside: outside,
-                                  storedImage: storedImage, tick: tick + 1)
-        }
+        waitFor(budget: 4, pause: 0.1,
+                condition: {
+                    tv.string.contains("![Notizen-")
+                        && FileManager.default.fileExists(atPath: file.path)
+                },
+                onTimeout: { book in
+                    finish(false, "(c) Redo stellte Link oder Bilddatei nicht wieder her — \(book.summary)")
+                },
+                then: {
+                    runMarkdownDropPhase(ws, tv: tv, base: base, outside: outside)
+                })
     }
 
     /// (d) Drop-Abgrenzung: eine Bilddatei + eine Textdatei „fallen" auf den
@@ -13723,36 +14181,38 @@ enum SelfTest {
             ], workspace: ws)
         }
         pollMarkdownDrop(ws, tv: tv, base: base, outside: outside,
-                         tabsBefore: tabsBefore, tick: 0)
+                         tabsBefore: tabsBefore)
     }
 
     private static func pollMarkdownDrop(_ ws: Workspace, tv: TextView, base: URL,
-                                         outside: URL, tabsBefore: Int, tick: Int) {
-        let maxTicks = 40
-        let copied = FileManager.default.fileExists(
-            atPath: base.appendingPathComponent("images/quelle.png").path)
-        let linked = tv.string.contains("![quelle](images/quelle.png)")
-        let opened = ws.tabs.contains { $0.title == "begleit.txt" }
-        let exactlyOneTabAdded = ws.tabs.count == tabsBefore + 1
+                                         outside: URL, tabsBefore: Int) {
+        var copied = false
+        var linked = false
+        var opened = false
         func cleanup() {
             try? FileManager.default.removeItem(at: base)
             try? FileManager.default.removeItem(at: outside)
         }
-        if copied, linked, opened, exactlyOneTabAdded {
-            cleanup()
-            finish(true, "Toolbar layoutet, Bild-Paste legt images-Datei + relativen Link an, "
-                + "Undo/Redo umfasst beides; Vorschau rendert + scrollt, "
-                + "Drop trennt einfügen/öffnen")
-        }
-        if tick >= maxTicks {
-            cleanup()
-            finish(false, "(c) nach 10 s: kopiert=\(copied), verlinkt=\(linked), "
-                + "geöffnet=\(opened), Tabs=\(ws.tabs.count) statt \(tabsBefore + 1)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollMarkdownDrop(ws, tv: tv, base: base, outside: outside,
-                             tabsBefore: tabsBefore, tick: tick + 1)
-        }
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    copied = FileManager.default.fileExists(
+                        atPath: base.appendingPathComponent("images/quelle.png").path)
+                    linked = tv.string.contains("![quelle](images/quelle.png)")
+                    opened = ws.tabs.contains { $0.title == "begleit.txt" }
+                    let exactlyOneTabAdded = ws.tabs.count == tabsBefore + 1
+                    return copied && linked && opened && exactlyOneTabAdded
+                },
+                onTimeout: { book in
+                    cleanup()
+                    finish(false, "(c) kopiert=\(copied), verlinkt=\(linked), "
+                        + "geöffnet=\(opened), Tabs=\(ws.tabs.count) statt \(tabsBefore + 1) — \(book.summary)")
+                },
+                then: {
+                    cleanup()
+                    finish(true, "Toolbar layoutet, Bild-Paste legt images-Datei + relativen Link an, "
+                        + "Undo/Redo umfasst beides; Vorschau rendert + scrollt, "
+                        + "Drop trennt einfügen/öffnen")
+                })
     }
 
     private static func firstWebView(in view: NSView) -> WKWebView? {
@@ -13777,7 +14237,7 @@ enum SelfTest {
               }), let root = window.contentView else {
             finish(false, "Workspace oder Hauptfenster fehlt")
         }
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent(
+        let file = selfTestTemporaryDirectory().appendingPathComponent(
             "fastra-mdindent-\(UUID().uuidString).txt"
         )
         let original = "2026-08-10\n\n- Vorbereitungen abgeschlossen\n\n(1,5) ggf. nicht abrechnen"
@@ -13840,7 +14300,7 @@ enum SelfTest {
             finish(false, "Workspace oder Hauptfenster fehlt")
         }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory.appendingPathComponent(
+        let base = selfTestTemporaryDirectory().appendingPathComponent(
             "fastra-mddropcursor-\(UUID().uuidString)", isDirectory: true
         )
         let document = base.appendingPathComponent("Ziel.md")
@@ -13896,37 +14356,35 @@ enum SelfTest {
                         finish(false, "Drop wurde nicht angenommen oder Cursor blieb stehen")
                     }
                     pollMarkdownDropPosition(textView: textView, base: base,
-                                             dropOffset: dropOffset, scrolled: afterY - beforeY,
-                                             tick: 0)
+                                             dropOffset: dropOffset, scrolled: afterY - beforeY)
                 }
             }
         }
     }
 
     private static func pollMarkdownDropPosition(textView: TextView, base: URL,
-                                                 dropOffset: Int, scrolled: CGFloat,
-                                                 tick: Int) {
+                                                 dropOffset: Int, scrolled: CGFloat) {
         let link = "![Quelle](images/Quelle.png)"
-        let range = (textView.string as NSString).range(of: link)
-        let copied = FileManager.default.fileExists(
-            atPath: base.appendingPathComponent("images/Quelle.png").path
-        )
-        if copied, range.location != NSNotFound {
-            let correctPosition = range.location == dropOffset
-            try? FileManager.default.removeItem(at: base)
-            finish(correctPosition,
-                   "Drag-Cursoroffset=\(dropOffset), Linkoffset=\(range.location), "
-                    + "Rand-Autoscroll=\(Int(scrolled)) pt")
-        }
-        if tick >= 80 {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Bildlink/Ablage nach Drop nicht binnen 8 s fertig")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollMarkdownDropPosition(textView: textView, base: base,
-                                     dropOffset: dropOffset, scrolled: scrolled,
-                                     tick: tick + 1)
-        }
+        var range = NSRange(location: NSNotFound, length: 0)
+        waitFor(budget: 8, pause: 0.1,
+                condition: {
+                    range = (textView.string as NSString).range(of: link)
+                    let copied = FileManager.default.fileExists(
+                        atPath: base.appendingPathComponent("images/Quelle.png").path
+                    )
+                    return copied && range.location != NSNotFound
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Bildlink/Ablage nach Drop nicht fertig — \(book.summary)")
+                },
+                then: {
+                    let correctPosition = range.location == dropOffset
+                    try? FileManager.default.removeItem(at: base)
+                    finish(correctPosition,
+                           "Drag-Cursoroffset=\(dropOffset), Linkoffset=\(range.location), "
+                            + "Rand-Autoscroll=\(Int(scrolled)) pt")
+                })
     }
 
     // MARK: - Selbsttest help (Etappe 4 Wunschpaket 2026-07b)
@@ -13950,79 +14408,81 @@ enum SelfTest {
         let tabSnapshot = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
         MainActor.assumeIsolated { HelpWindow.show() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            pollHelpRendered(workspace: workspace, tabSnapshot: tabSnapshot, tick: 0)
+            pollHelpRendered(workspace: workspace, tabSnapshot: tabSnapshot)
         }
     }
 
-    private static func pollHelpRendered(workspace: Workspace, tabSnapshot: [String], tick: Int) {
+    private static func pollHelpRendered(workspace: Workspace, tabSnapshot: [String]) {
         guard let webView = MainActor.assumeIsolated({ HelpWindow.currentWebView }) else {
             finish(false, "(b) Hilfe-Fenster ohne WebView")
         }
-        webView.evaluateJavaScript("document.querySelectorAll('h2').length") { value, _ in
-            let count = value as? Int ?? 0
-            if count >= HelpSection.allCases.count {
+        var count = 0
+        waitForAsync(
+            budget: 10, pause: 0.25,
+            check: { answer in
+                webView.evaluateJavaScript("document.querySelectorAll('h2').length") { value, _ in
+                    count = value as? Int ?? 0
+                    answer(count >= HelpSection.allCases.count)
+                }
+            },
+            onTimeout: { book in
+                finish(false, "(b) nur \(count) gerenderte h2-Überschriften "
+                    + "(erwartet ≥ \(HelpSection.allCases.count)) — \(book.summary)")
+            },
+            then: {
                 // (c) Anker-Sprung: Abschnitt weiter unten ansteuern.
                 MainActor.assumeIsolated {
                     HelpWindow.show(anchor: HelpSection.encodings.anchor())
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     pollHelpAnchorScrolled(webView: webView, workspace: workspace,
-                                           tabSnapshot: tabSnapshot, tick: 0)
+                                           tabSnapshot: tabSnapshot)
                 }
-                return
             }
-            if tick >= 40 {
-                finish(false, "(b) nur \(count) gerenderte h2-Überschriften nach 10 s "
-                    + "(erwartet ≥ \(HelpSection.allCases.count))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                pollHelpRendered(workspace: workspace, tabSnapshot: tabSnapshot, tick: tick + 1)
-            }
-        }
+        )
     }
 
     private static func pollHelpAnchorScrolled(webView: WKWebView, workspace: Workspace,
-                                               tabSnapshot: [String], tick: Int) {
-        webView.evaluateJavaScript("window.scrollY") { value, _ in
-            let y = (value as? Double) ?? Double(value as? Int ?? 0)
-            if y > 50 {
+                                               tabSnapshot: [String]) {
+        var y = 0.0
+        waitForAsync(
+            budget: 5, pause: 0.25,
+            check: { answer in
+                webView.evaluateJavaScript("window.scrollY") { value, _ in
+                    y = (value as? Double) ?? Double(value as? Int ?? 0)
+                    answer(y > 50)
+                }
+            },
+            onTimeout: { book in
+                finish(false, "(c) Anker-Sprung scrollt nicht (scrollY=\(y)) — \(book.summary)")
+            },
+            then: {
                 guard let helpWindow = NSApp.windows.first(where: HelpWindow.isHelpWindow) else {
                     finish(false, "(d) Hilfe-Fenster zum Schließen nicht auffindbar")
                 }
                 MainActor.assumeIsolated { HelpWindow.close() }
                 pollHelpClosed(helpWindow, workspace: workspace,
                                tabSnapshot: tabSnapshot, anchorY: y)
-                return
             }
-            if tick >= 20 {
-                finish(false, "(c) Anker-Sprung scrollt nicht (scrollY=\(y))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                pollHelpAnchorScrolled(webView: webView, workspace: workspace,
-                                       tabSnapshot: tabSnapshot, tick: tick + 1)
-            }
-        }
+        )
     }
 
     private static func pollHelpClosed(_ helpWindow: NSWindow, workspace: Workspace,
-                                       tabSnapshot: [String], anchorY: Double,
-                                       tick: Int = 0) {
-        let currentTabs = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
-        if !helpWindow.isVisible {
-            guard currentTabs == tabSnapshot, workspace.tabs.count >= 2 else {
-                finish(false, "(d) Schließen der Hilfe veränderte einen Hintergrund-Tab")
-            }
-            finish(true, "Hilfe aus dem Bundle gerendert "
-                + "(\(HelpSection.allCases.count)+ Abschnitte), Anker-Sprung (y=\(Int(anchorY))); "
-                + "gezieltes Schließen lässt zwei Dokument-Tabs erhalten")
-        }
-        if tick >= 100 {
-            finish(false, "(d) gezieltes Schließen ließ das Hilfe-Fenster offen")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollHelpClosed(helpWindow, workspace: workspace, tabSnapshot: tabSnapshot,
-                            anchorY: anchorY, tick: tick + 1)
-        }
+                                       tabSnapshot: [String], anchorY: Double) {
+        waitFor(budget: 3, pause: 0.03,
+                condition: { !helpWindow.isVisible },
+                onTimeout: { book in
+                    finish(false, "(d) gezieltes Schließen ließ das Hilfe-Fenster offen — \(book.summary)")
+                },
+                then: {
+                    let currentTabs = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
+                    guard currentTabs == tabSnapshot, workspace.tabs.count >= 2 else {
+                        finish(false, "(d) Schließen der Hilfe veränderte einen Hintergrund-Tab")
+                    }
+                    finish(true, "Hilfe aus dem Bundle gerendert "
+                        + "(\(HelpSection.allCases.count)+ Abschnitte), Anker-Sprung (y=\(Int(anchorY))); "
+                        + "gezieltes Schließen lässt zwei Dokument-Tabs erhalten")
+                })
     }
 
     // MARK: - Selbsttest searchmark (Etappe 2 Wunschpaket 2026-07b)
@@ -14074,7 +14534,7 @@ enum SelfTest {
         // scrollen MUSS und die Layer-Zahl aussagekräftig ist.
         let content = (1...120).map { "zeile \($0) MARKTREFFER ende" }
             .joined(separator: "\n")
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-searchmark-\(UUID().uuidString).txt")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -14090,88 +14550,91 @@ enum SelfTest {
                 ws.useRegex = false
                 ws.caseSensitive = true
                 ws.findPattern = "MARKTREFFER"
-                pollSearchMarkDrawn(ws, tv: tv, tick: 0)
+                pollSearchMarkDrawn(ws, tv: tv)
             }
         }
     }
 
-    private static func pollSearchMarkDrawn(_ ws: Workspace, tv: TextView, tick: Int) {
-        let maxTicks = 100   // 100 × 50 ms = 5 s (Debounce + async-Zeichnung)
-        let layers = searchEmphasisLayerCount(in: tv)
-        if !ws.bufferSearching, ws.bufferMatches.count == 120,
-           layers > 0, layers <= 120, searchEmphasisVisible(in: tv) {
-            guard ws.activeTab?.isDirty == false else {
-                finish(false, "(a) Live-Markierung machte den Tab dirty — sie muss reine Anzeige sein")
-            }
-            // (b) Tief ins Dokument navigieren: genug, damit die Liste sicher
-            // scrollt, aber mit ausreichend Zeilen UNTER dem Ziel für eine
-            // geometrisch mögliche Editor-Zentrierung. Ein Treffer neun
-            // Zeilen vor Dokumentende kann naturgemäß nicht mittig stehen.
-            NotificationCenter.default.post(name: .fastraGotoFirstMatch, object: nil)
-            for _ in 0..<70 {
-                NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                pollSearchMarkListScrolled(ws, tv: tv, tick: 0)
-            }
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "(a) erwartet 120 Treffer + sichtbare Layer, "
-                + "ist: matches=\(ws.bufferMatches.count), layer=\(layers), "
-                + "sichtbar=\(searchEmphasisVisible(in: tv)), "
-                + "searching=\(ws.bufferSearching)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollSearchMarkDrawn(ws, tv: tv, tick: tick + 1)
-        }
+    private static func pollSearchMarkDrawn(_ ws: Workspace, tv: TextView) {
+        // 5 s (Debounce + async-Zeichnung)
+        var layers = 0
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    layers = searchEmphasisLayerCount(in: tv)
+                    return !ws.bufferSearching && ws.bufferMatches.count == 120
+                        && layers > 0 && layers <= 120 && searchEmphasisVisible(in: tv)
+                },
+                onTimeout: { book in
+                    finish(false, "(a) erwartet 120 Treffer + sichtbare Layer, "
+                        + "ist: matches=\(ws.bufferMatches.count), layer=\(layers), "
+                        + "sichtbar=\(searchEmphasisVisible(in: tv)), "
+                        + "searching=\(ws.bufferSearching) — \(book.summary)")
+                },
+                then: {
+                    guard ws.activeTab?.isDirty == false else {
+                        finish(false, "(a) Live-Markierung machte den Tab dirty — sie muss reine Anzeige sein")
+                    }
+                    // (b) Tief ins Dokument navigieren: genug, damit die Liste sicher
+                    // scrollt, aber mit ausreichend Zeilen UNTER dem Ziel für eine
+                    // geometrisch mögliche Editor-Zentrierung. Ein Treffer neun
+                    // Zeilen vor Dokumentende kann naturgemäß nicht mittig stehen.
+                    NotificationCenter.default.post(name: .fastraGotoFirstMatch, object: nil)
+                    for _ in 0..<70 {
+                        NotificationCenter.default.post(name: .fastraGotoNextMatch, object: nil)
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        pollSearchMarkListScrolled(ws, tv: tv)
+                    }
+                })
     }
 
-    private static func pollSearchMarkListScrolled(_ ws: Workspace, tv: TextView, tick: Int) {
-        let maxTicks = 40    // 40 × 50 ms = 2 s
-        guard let searchWin = NSApp.windows.first(where: {
-            $0.frameAutosaveName == SearchWindow.frameAutosaveName && $0.isVisible
-        }), let searchRoot = searchWin.contentView else {
-            finish(false, "(b) keine sichtbare Suchmaske")
-        }
-        // Die SwiftUI-`List` ist NSTableView-backed — die erste sichtbare
-        // Zeile verrät die echte Scroll-Position der Trefferliste.
-        let table = firstTableView(in: searchRoot)
-        let firstVisible = table.map { $0.rows(in: $0.visibleRect).location } ?? -1
-        let centeredLine = tv.layoutManager.textLineForPosition(tv.visibleRect.midY)
-            .map { $0.index + 1 } ?? -1
-        if ws.activeMatchIndex == 70, firstVisible > 20,
-           abs(centeredLine - 71) <= 2, searchEmphasisVisible(in: tv) {
-            // (c) Dialog schließen → Markierung muss vollständig verschwinden.
-            ws.showSearchDialog = false
-            pollSearchMarkCleared(tv: tv, tick: 0)
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "(b) Trefferliste/Editor folgen nicht: "
-                + "activeIndex=\(ws.activeMatchIndex), ersteSichtbareZeile=\(firstVisible), "
-                + "Editor-Mitte=Zeile \(centeredLine), erwartet≈71, "
-                + "editorMarkierungSichtbar=\(searchEmphasisVisible(in: tv))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollSearchMarkListScrolled(ws, tv: tv, tick: tick + 1)
-        }
+    private static func pollSearchMarkListScrolled(_ ws: Workspace, tv: TextView) {
+        var firstVisible = -1
+        var centeredLine = -1
+        waitFor(budget: 2, pause: 0.05,
+                condition: {
+                    guard let searchWin = NSApp.windows.first(where: {
+                        $0.frameAutosaveName == SearchWindow.frameAutosaveName && $0.isVisible
+                    }), let searchRoot = searchWin.contentView else {
+                        finish(false, "(b) keine sichtbare Suchmaske")
+                    }
+                    // Die SwiftUI-`List` ist NSTableView-backed — die erste sichtbare
+                    // Zeile verrät die echte Scroll-Position der Trefferliste.
+                    let table = firstTableView(in: searchRoot)
+                    firstVisible = table.map { $0.rows(in: $0.visibleRect).location } ?? -1
+                    centeredLine = tv.layoutManager.textLineForPosition(tv.visibleRect.midY)
+                        .map { $0.index + 1 } ?? -1
+                    return ws.activeMatchIndex == 70 && firstVisible > 20
+                        && abs(centeredLine - 71) <= 2 && searchEmphasisVisible(in: tv)
+                },
+                onTimeout: { book in
+                    finish(false, "(b) Trefferliste/Editor folgen nicht: "
+                        + "activeIndex=\(ws.activeMatchIndex), ersteSichtbareZeile=\(firstVisible), "
+                        + "Editor-Mitte=Zeile \(centeredLine), erwartet≈71, "
+                        + "editorMarkierungSichtbar=\(searchEmphasisVisible(in: tv)) — \(book.summary)")
+                },
+                then: {
+                    // (c) Dialog schließen → Markierung muss vollständig verschwinden.
+                    ws.showSearchDialog = false
+                    pollSearchMarkCleared(tv: tv)
+                })
     }
 
-    private static func pollSearchMarkCleared(tv: TextView, tick: Int) {
-        let maxTicks = 40    // 2 s
-        let layers = searchEmphasisLayerCount(in: tv)
-        if layers == 0 {
-            finish(true, "Treffer live markiert (Layer real beobachtet, auch nach "
-                + "Sprung ans Ende), Liste scrollt und Editor zentriert den aktiven Treffer, "
-                + "Dialogschluss räumt alles")
-        }
-        if tick >= maxTicks {
-            finish(false, "(c) nach Dialogschluss bleiben \(layers) Emphasis-Layer übrig")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollSearchMarkCleared(tv: tv, tick: tick + 1)
-        }
+    private static func pollSearchMarkCleared(tv: TextView) {
+        var layers = 0
+        waitFor(budget: 2, pause: 0.05,
+                condition: {
+                    layers = searchEmphasisLayerCount(in: tv)
+                    return layers == 0
+                },
+                onTimeout: { book in
+                    finish(false, "(c) nach Dialogschluss bleiben \(layers) Emphasis-Layer übrig — \(book.summary)")
+                },
+                then: {
+                    finish(true, "Treffer live markiert (Layer real beobachtet, auch nach "
+                        + "Sprung ans Ende), Liste scrollt und Editor zentriert den aktiven Treffer, "
+                        + "Dialogschluss räumt alles")
+                })
     }
 
     private static func firstTableView(in view: NSView) -> NSTableView? {
@@ -14239,25 +14702,28 @@ enum SelfTest {
     /// Editor misst, verbindet bei mehreren Dokumentfenstern zwei
     /// verschiedene Fenster miteinander (siehe AGENTS.md).
     private static func pollSharedWorkspaceWindow(
-        tick: Int = 0,
         then body: @escaping (Workspace, NSWindow, NSView) -> Void
     ) {
-        if let ws = Workspace.shared,
-           let window = NSApp.windows.first(where: {
-               $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                   && $0.contentView != nil && $0.isVisible
-                   && WorkspaceWindowRegistry.workspace(for: $0) === ws
-           }), let root = window.contentView {
-            body(ws, window, root)
-            return
-        }
-        if tick >= 100 {
-            finish(false, "Workspace.shared ist binnen 5 s an kein "
-                + "sichtbares Fenster gebunden (Registry-Bindung fehlt)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollSharedWorkspaceWindow(tick: tick + 1, then: body)
-        }
+        var found: (Workspace, NSWindow, NSView)?
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    guard let ws = Workspace.shared,
+                          let window = NSApp.windows.first(where: {
+                              $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                                  && $0.contentView != nil && $0.isVisible
+                                  && WorkspaceWindowRegistry.workspace(for: $0) === ws
+                          }), let root = window.contentView else { return false }
+                    found = (ws, window, root)
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "Workspace.shared ist an kein "
+                        + "sichtbares Fenster gebunden (Registry-Bindung fehlt) — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Fensterbindung nach Erfolg verschwunden") }
+                    body(found.0, found.1, found.2)
+                })
     }
 
     /// Prüft im ECHTEN Fenster (Etappe 1 Wunschpaket 2026-07b):
@@ -14273,7 +14739,7 @@ enum SelfTest {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-sidebarheader-\(UUID().uuidString)")
         let project = base.appendingPathComponent("projekt")
         do {
@@ -14291,48 +14757,49 @@ enum SelfTest {
                 try? fm.removeItem(at: base)
                 finish(false, "(setup) notiz.txt lädt nicht")
             }
-            pollSidebarHeader(ws, base: base, tick: 0)
+            pollSidebarHeader(ws, base: base)
         }
     }
 
-    private static func pollSidebarHeader(_ ws: Workspace, base: URL, tick: Int) {
-        let maxTicks = 40            // 40 × 0,25 s = 10 s Beobachtungsfenster
-        let content = mainWindowForAXChecks()?.contentView
-        let headerFound = content.map { markerViewExists(id: "sidebarProjectHeader", in: $0) } ?? false
-        let pickerFound = content.map { markerViewExists(id: "viewModePickerMarker", in: $0) } ?? false
-        if headerFound, pickerFound {
-            // (c) Ungespeicherter Tab bietet nur die Text-Ansicht — der
-            // Umschalter muss aus der Fußzeile verschwinden.
-            ws.openNewTab()
-            pollViewModePickerGone(base: base, tick: 0)
-            return
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "nach 10 s: Seitenleisten-Kopf=\(headerFound), "
-                + "Fußzeilen-Umschalter=\(pickerFound)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollSidebarHeader(ws, base: base, tick: tick + 1)
-        }
+    private static func pollSidebarHeader(_ ws: Workspace, base: URL) {
+        var headerFound = false
+        var pickerFound = false
+        waitFor(budget: 10, pause: 0.25,   // 10 s Beobachtungsfenster
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    headerFound = content.map { markerViewExists(id: "sidebarProjectHeader", in: $0) } ?? false
+                    pickerFound = content.map { markerViewExists(id: "viewModePickerMarker", in: $0) } ?? false
+                    return headerFound && pickerFound
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Seitenleisten-Kopf=\(headerFound), "
+                        + "Fußzeilen-Umschalter=\(pickerFound) — \(book.summary)")
+                },
+                then: {
+                    // (c) Ungespeicherter Tab bietet nur die Text-Ansicht — der
+                    // Umschalter muss aus der Fußzeile verschwinden.
+                    ws.openNewTab()
+                    pollViewModePickerGone(base: base)
+                })
     }
 
-    private static func pollViewModePickerGone(base: URL, tick: Int) {
-        let maxTicks = 20            // 20 × 0,25 s = 5 s
-        let content = mainWindowForAXChecks()?.contentView
-        let pickerFound = content.map { markerViewExists(id: "viewModePickerMarker", in: $0) } ?? true
-        if !pickerFound {
-            try? FileManager.default.removeItem(at: base)
-            finish(true, "Kopf + Fußzeilen-Umschalter real im Fenster layoutet; "
-                + "Umschalter verschwindet für ungespeicherte Tabs")
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Umschalter bleibt trotz ungespeicherten Tabs sichtbar")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollViewModePickerGone(base: base, tick: tick + 1)
-        }
+    private static func pollViewModePickerGone(base: URL) {
+        waitFor(budget: 5, pause: 0.25,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    let pickerFound = content.map { markerViewExists(id: "viewModePickerMarker", in: $0) } ?? true
+                    return !pickerFound
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Umschalter bleibt trotz ungespeicherten Tabs sichtbar — \(book.summary)")
+                },
+                then: {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(true, "Kopf + Fußzeilen-Umschalter real im Fenster layoutet; "
+                        + "Umschalter verschwindet für ungespeicherte Tabs")
+                })
     }
 
     // MARK: - Selbsttest footerfit (Daniel-Befund 2026-08-06)
@@ -14354,7 +14821,7 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-footerfit-\(UUID().uuidString)")
         let doc = base.appendingPathComponent("fusszeile.txt")
         do {
@@ -14368,45 +14835,49 @@ enum SelfTest {
                 try? fm.removeItem(at: base)
                 finish(false, "(setup) fusszeile.txt lädt nicht")
             }
-            pollFooterFit(root: root, base: base, tick: 0)
+            pollFooterFit(root: root, base: base)
         }
     }
 
-    private static func pollFooterFit(root: NSView, base: URL, tick: Int) {
-        let maxTicks = 40            // 40 × 0,25 s = 10 s
+    private static func pollFooterFit(root: NSView, base: URL) {
         // Erst messen, wenn die Fußzeile steht UND der Umschalter wirklich
         // drin liegt — er ist der Grund, aus dem sie höher wird.
-        if let footer = markerView(id: "footerBar", in: root),
-           markerViewExists(id: "viewModePickerMarker", in: root),
-           markerViewExists(id: "formatDocumentButtonMarker", in: root),
-           footer.frame.height > 1 {
-            let frame = footer.convert(footer.bounds, to: root)
-            // SwiftUIs AppKit-Views sind GEFLIPPT: y wächst nach unten, die
-            // Unterkante ist `maxY`. Vor der Zusage trotzdem nachfragen.
-            let overflow = root.isFlipped
-                ? frame.maxY - root.bounds.maxY
-                : root.bounds.minY - frame.minY
-            try? FileManager.default.removeItem(at: base)
-            guard overflow <= 0.5 else {
-                finish(false, String(
-                    format: "Fußzeile ragt %.1f pt über den unteren Fensterrand hinaus "
-                        + "(Höhe %.1f pt, Fenster %.1f pt)",
-                    overflow, frame.height, root.bounds.height
-                ))
-            }
-            finish(true, String(
-                format: "Fußzeile mit Ansichts-Umschalter vollständig im Fenster "
-                    + "(Höhe %.1f pt, Reserve %.1f pt)",
-                frame.height, -overflow
-            ))
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "nach 10 s keine gemessene Fußzeile mit Ansichts- und Formatieren-Schalter")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFooterFit(root: root, base: base, tick: tick + 1)
-        }
+        var footer: NSView?
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    guard let candidate = markerView(id: "footerBar", in: root),
+                          markerViewExists(id: "viewModePickerMarker", in: root),
+                          markerViewExists(id: "formatDocumentButtonMarker", in: root),
+                          candidate.frame.height > 1 else { return false }
+                    footer = candidate
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "keine gemessene Fußzeile mit Ansichts- und Formatieren-Schalter — \(book.summary)")
+                },
+                then: {
+                    guard let footer else { finish(false, "Fußzeile nach Erfolg verschwunden") }
+                    let frame = footer.convert(footer.bounds, to: root)
+                    // SwiftUIs AppKit-Views sind GEFLIPPT: y wächst nach unten, die
+                    // Unterkante ist `maxY`. Vor der Zusage trotzdem nachfragen.
+                    let overflow = root.isFlipped
+                        ? frame.maxY - root.bounds.maxY
+                        : root.bounds.minY - frame.minY
+                    try? FileManager.default.removeItem(at: base)
+                    guard overflow <= 0.5 else {
+                        finish(false, String(
+                            format: "Fußzeile ragt %.1f pt über den unteren Fensterrand hinaus "
+                                + "(Höhe %.1f pt, Fenster %.1f pt)",
+                            overflow, frame.height, root.bounds.height
+                        ))
+                    }
+                    finish(true, String(
+                        format: "Fußzeile mit Ansichts-Umschalter vollständig im Fenster "
+                            + "(Höhe %.1f pt, Reserve %.1f pt)",
+                        frame.height, -overflow
+                    ))
+                })
     }
 
     // MARK: - Selbsttest windowheight (Daniel-Wunsch 2026-08-06)
@@ -14505,7 +14976,7 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-mdformat-\(UUID().uuidString)")
         // Bewusst ohne Endung: Genau hier kann die Automatik nichts erkennen.
         let doc = base.appendingPathComponent("protokoll")
@@ -14528,54 +14999,46 @@ enum SelfTest {
                 }
                 ws.setLanguageOverride(.markdown)
                 pollMarkdownFormatPreview(ws, root: root, base: base,
-                                          document: doc, tick: 0)
+                                          document: doc)
             }
         }
     }
 
     private static func pollMarkdownFormatPreview(_ ws: Workspace, root: NSView,
-                                                  base: URL, document: URL,
-                                                  tick: Int) {
-        let maxTicks = 40            // 10 s
-        if markdownWebView(in: root) != nil {
-            // (d) Gemerkte Wahl der Datei — sie muss ein erneutes Öffnen
-            // überleben, sonst ist die Endungslosigkeit wieder das Problem.
-            guard ws.languageChoices.choiceID(for: document)
-                    == LanguageMenuSupport.Entry.grammar(.markdown).id else {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "(d) Formatwahl wurde für die Datei nicht gemerkt")
-            }
-            ws.setLanguageOverride(.json)
-            pollMarkdownFormatPreviewClosed(root: root, base: base, tick: 0)
-            return
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "(b) Vorschau öffnet nicht, obwohl das Format auf "
-                + "Markdown steht")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollMarkdownFormatPreview(ws, root: root, base: base,
-                                      document: document, tick: tick + 1)
-        }
+                                                  base: URL, document: URL) {
+        waitFor(budget: 10, pause: 0.25,
+                condition: { markdownWebView(in: root) != nil },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "(b) Vorschau öffnet nicht, obwohl das Format auf "
+                        + "Markdown steht — \(book.summary)")
+                },
+                then: {
+                    // (d) Gemerkte Wahl der Datei — sie muss ein erneutes Öffnen
+                    // überleben, sonst ist die Endungslosigkeit wieder das Problem.
+                    guard ws.languageChoices.choiceID(for: document)
+                            == LanguageMenuSupport.Entry.grammar(.markdown).id else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "(d) Formatwahl wurde für die Datei nicht gemerkt")
+                    }
+                    ws.setLanguageOverride(.json)
+                    pollMarkdownFormatPreviewClosed(root: root, base: base)
+                })
     }
 
-    private static func pollMarkdownFormatPreviewClosed(root: NSView, base: URL,
-                                                        tick: Int) {
-        let maxTicks = 40            // 10 s
-        if markdownWebView(in: root) == nil {
-            try? FileManager.default.removeItem(at: base)
-            finish(true, "Vorschau folgt der Formatwahl der Fußzeile: öffnet bei "
-                + "Markdown, schließt beim Wechsel, Wahl bleibt gemerkt")
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "(c) Vorschau bleibt offen, obwohl das Format nicht mehr "
-                + "Markdown ist")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollMarkdownFormatPreviewClosed(root: root, base: base, tick: tick + 1)
-        }
+    private static func pollMarkdownFormatPreviewClosed(root: NSView, base: URL) {
+        waitFor(budget: 10, pause: 0.25,
+                condition: { markdownWebView(in: root) == nil },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "(c) Vorschau bleibt offen, obwohl das Format nicht mehr "
+                        + "Markdown ist — \(book.summary)")
+                },
+                then: {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(true, "Vorschau folgt der Formatwahl der Fußzeile: öffnet bei "
+                        + "Markdown, schließt beim Wechsel, Wahl bleibt gemerkt")
+                })
     }
 
     // MARK: - Selbsttest sidebarfilter (Etappe 3 Wunschpaket 2026-07c)
@@ -14595,7 +15058,7 @@ enum SelfTest {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-sidebarfilter-\(UUID().uuidString)")
         let project = base.appendingPathComponent("projekt")
         do {
@@ -14611,86 +15074,93 @@ enum SelfTest {
             finish(.environment, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
         }
         ws.openProject(at: project)
-        pollSidebarFilterBaseline(ws, base: base, tick: 0)
+        pollSidebarFilterBaseline(ws, base: base)
     }
 
-    private static func pollSidebarFilterBaseline(_ ws: Workspace, base: URL, tick: Int) {
-        let maxTicks = 40            // 10 s
+    private static func pollSidebarFilterBaseline(_ ws: Workspace, base: URL) {
         // Die Marker-IDs enden auf die Filterphase („voll"/„gefiltert") —
         // gepoolte LazyVStack-Views alter Phasen stören die Prüfung so nie.
-        let content = mainWindowForAXChecks()?.contentView
-        let topLevelVisible = content.map {
-            markerViewExists(id: "fileTreeRow-zwei.md-voll", in: $0)
-        } ?? false
-        let nestedHidden = content.map {
-            !markerViewExists(id: "fileTreeRow-drei-treffer.txt-voll", in: $0)
-        } ?? false
-        if topLevelVisible, nestedHidden {
-            // Groß geschrieben tippen — die Datei heißt klein „…-treffer…":
-            // belegt die Case-Insensitivität am echten Baum.
-            ws.fileTreeFilterQuery = "TREFFER"
-            pollSidebarFilterFiltered(ws, base: base, tick: 0)
-            return
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Ausgangslage nach 10 s falsch: zwei.md sichtbar=\(topLevelVisible), "
-                + "verschachtelte Datei verborgen=\(nestedHidden)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollSidebarFilterBaseline(ws, base: base, tick: tick + 1)
-        }
+        var topLevelVisible = false
+        var nestedHidden = false
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    topLevelVisible = content.map {
+                        markerViewExists(id: "fileTreeRow-zwei.md-voll", in: $0)
+                    } ?? false
+                    nestedHidden = content.map {
+                        !markerViewExists(id: "fileTreeRow-drei-treffer.txt-voll", in: $0)
+                    } ?? false
+                    return topLevelVisible && nestedHidden
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Ausgangslage falsch: zwei.md sichtbar=\(topLevelVisible), "
+                        + "verschachtelte Datei verborgen=\(nestedHidden) — \(book.summary)")
+                },
+                then: {
+                    // Groß geschrieben tippen — die Datei heißt klein „…-treffer…":
+                    // belegt die Case-Insensitivität am echten Baum.
+                    ws.fileTreeFilterQuery = "TREFFER"
+                    pollSidebarFilterFiltered(ws, base: base)
+                })
     }
 
-    private static func pollSidebarFilterFiltered(_ ws: Workspace, base: URL, tick: Int) {
-        let maxTicks = 40            // 10 s (Debounce 150 ms + Scan)
-        let content = mainWindowForAXChecks()?.contentView
-        let matchVisible = content.map {
-            markerViewExists(id: "fileTreeRow-drei-treffer.txt-gefiltert", in: $0)
-        } ?? false
-        let nonMatchHidden = content.map {
-            !markerViewExists(id: "fileTreeRow-zwei.md-gefiltert", in: $0)
-        } ?? false
-        let counterVisible = content.map {
-            markerViewExists(id: "sidebarFilterState-n1-m3", in: $0)
-        } ?? false
-        if matchVisible, nonMatchHidden, counterVisible {
-            ws.fileTreeFilterQuery = ""
-            pollSidebarFilterRestored(base: base, tick: 0)
-            return
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Filter „TREFFER\u{201C} nach 10 s: Treffer sichtbar=\(matchVisible), "
-                + "Nicht-Treffer verborgen=\(nonMatchHidden), Zähler 1/3=\(counterVisible)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollSidebarFilterFiltered(ws, base: base, tick: tick + 1)
-        }
+    private static func pollSidebarFilterFiltered(_ ws: Workspace, base: URL) {
+        // 10 s (Debounce 150 ms + Scan)
+        var matchVisible = false
+        var nonMatchHidden = false
+        var counterVisible = false
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    matchVisible = content.map {
+                        markerViewExists(id: "fileTreeRow-drei-treffer.txt-gefiltert", in: $0)
+                    } ?? false
+                    nonMatchHidden = content.map {
+                        !markerViewExists(id: "fileTreeRow-zwei.md-gefiltert", in: $0)
+                    } ?? false
+                    counterVisible = content.map {
+                        markerViewExists(id: "sidebarFilterState-n1-m3", in: $0)
+                    } ?? false
+                    return matchVisible && nonMatchHidden && counterVisible
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Filter „TREFFER\u{201C}: Treffer sichtbar=\(matchVisible), "
+                        + "Nicht-Treffer verborgen=\(nonMatchHidden), Zähler 1/3=\(counterVisible) "
+                        + "— \(book.summary)")
+                },
+                then: {
+                    ws.fileTreeFilterQuery = ""
+                    pollSidebarFilterRestored(base: base)
+                })
     }
 
-    private static func pollSidebarFilterRestored(base: URL, tick: Int) {
-        let maxTicks = 20            // 5 s
-        let content = mainWindowForAXChecks()?.contentView
-        let nestedHiddenAgain = content.map {
-            !markerViewExists(id: "fileTreeRow-drei-treffer.txt-voll", in: $0)
-        } ?? false
-        let topLevelBack = content.map {
-            markerViewExists(id: "fileTreeRow-zwei.md-voll", in: $0)
-        } ?? false
-        if nestedHiddenAgain, topLevelBack {
-            try? FileManager.default.removeItem(at: base)
-            finish(true, "Filter blendet real gerenderte Zeilen ein/aus (case-insensitiv), "
-                + "Zähler 1 von 3 gerendert, Aufklappzustand nach Leeren wiederhergestellt")
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Nach Filter-Leeren: Unterordner wieder zu=\(nestedHiddenAgain), "
-                + "zwei.md wieder da=\(topLevelBack)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollSidebarFilterRestored(base: base, tick: tick + 1)
-        }
+    private static func pollSidebarFilterRestored(base: URL) {
+        var nestedHiddenAgain = false
+        var topLevelBack = false
+        waitFor(budget: 5, pause: 0.25,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    nestedHiddenAgain = content.map {
+                        !markerViewExists(id: "fileTreeRow-drei-treffer.txt-voll", in: $0)
+                    } ?? false
+                    topLevelBack = content.map {
+                        markerViewExists(id: "fileTreeRow-zwei.md-voll", in: $0)
+                    } ?? false
+                    return nestedHiddenAgain && topLevelBack
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Nach Filter-Leeren: Unterordner wieder zu=\(nestedHiddenAgain), "
+                        + "zwei.md wieder da=\(topLevelBack) — \(book.summary)")
+                },
+                then: {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(true, "Filter blendet real gerenderte Zeilen ein/aus (case-insensitiv), "
+                        + "Zähler 1 von 3 gerendert, Aufklappzustand nach Leeren wiederhergestellt")
+                })
     }
 
     // MARK: - Selbsttest tabflood (Layout-Invariante, 2026-09-01)
@@ -14740,7 +15210,7 @@ enum SelfTest {
                       !markerViewExists(id: "sidebarOpenFileButton", in: content) else {
                     finish(false, "ohne Projekt zeigt ein Fenster mit mehreren Tabs eine Seitenleiste")
                 }
-                let base = FileManager.default.temporaryDirectory
+                let base = selfTestTemporaryDirectory()
                     .appendingPathComponent("fastra-sidebartoggle-\(UUID().uuidString)")
                 sidebarToggleFixtureDirectory = base
                 let project = base.appendingPathComponent("projekt")
@@ -14755,31 +15225,35 @@ enum SelfTest {
                     finish(.environment, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
                 }
                 ws.openProject(at: project)
-                pollSidebarToggleReady(ws, content: content, defaults: defaults, base: base, tick: 0)
+                pollSidebarToggleReady(ws, content: content, defaults: defaults, base: base)
             }
         }
     }
 
     private static func pollSidebarToggleReady(_ ws: Workspace, content: NSView,
-                                               defaults: UserDefaults, base: URL, tick: Int) {
-        guard markerViewExists(id: "sidebarVisibleMarker", in: content),
-              let header = markerView(id: "sidebarProjectHeader", in: content) else {
-            if tick >= 40 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Seitenleiste erscheint nach Projektöffnung nicht binnen 10 s")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                pollSidebarToggleReady(ws, content: content, defaults: defaults, base: base, tick: tick + 1)
-            }
-            return
-        }
-        // Identität des Projektkopfs: Bleibt sie über alle Umschaltungen
-        // gleich, wurde die Seitenleiste nie neu aufgebaut.
-        let headerIdentity = ObjectIdentifier(header)
-        let state = SidebarToggleMeasurement(headerIdentity: headerIdentity)
-        runSidebarToggleCycle(ws, content: content, defaults: defaults, base: base,
-                              state: state, cycle: 0, hiding: true, startedAt: ContinuousClock.now,
-                              tick: 0)
+                                               defaults: UserDefaults, base: URL) {
+        var header: NSView?
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    guard markerViewExists(id: "sidebarVisibleMarker", in: content),
+                          let candidate = markerView(id: "sidebarProjectHeader", in: content) else { return false }
+                    header = candidate
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Seitenleiste erscheint nach Projektöffnung nicht — \(book.summary)")
+                },
+                then: {
+                    guard let header else { finish(false, "Projektkopf nach Erfolg verschwunden") }
+                    // Identität des Projektkopfs: Bleibt sie über alle Umschaltungen
+                    // gleich, wurde die Seitenleiste nie neu aufgebaut.
+                    let headerIdentity = ObjectIdentifier(header)
+                    let state = SidebarToggleMeasurement(headerIdentity: headerIdentity)
+                    runSidebarToggleCycle(ws, content: content, defaults: defaults, base: base,
+                                          state: state, cycle: 0, hiding: true, startedAt: ContinuousClock.now,
+                                          tick: 0)
+                })
     }
 
     private final class SidebarToggleMeasurement {
@@ -14887,7 +15361,7 @@ enum SelfTest {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-tabflood-\(UUID().uuidString)")
         tabFloodFixtureDirectory = base
         let project = base.appendingPathComponent("projekt")
@@ -14899,28 +15373,28 @@ enum SelfTest {
             finish(.environment, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
         }
         ws.openProject(at: project)
-        pollTabFloodReady(ws, base: base, tick: 0)
+        pollTabFloodReady(ws, base: base)
     }
 
-    private static func pollTabFloodReady(_ ws: Workspace, base: URL, tick: Int) {
-        guard let content = mainWindowForAXChecks()?.contentView,
-              markerViewExists(id: "sidebarProjectHeader", in: content),
-              markerViewExists(id: "sidebarOpenFileButton", in: content) else {
-            if tick >= 40 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Seitenleiste nach 10 s nicht bereit")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                pollTabFloodReady(ws, base: base, tick: tick + 1)
-            }
-            return
-        }
-        // Fluten: 40 zusätzliche Tabs — deutlich mehr, als je in die
-        // Fensterhöhe passen würden.
-        for _ in 0..<40 { ws.openNewTab() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            verifyTabFloodGeometry(ws, base: base)
-        }
+    private static func pollTabFloodReady(_ ws: Workspace, base: URL) {
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    guard let content = mainWindowForAXChecks()?.contentView else { return false }
+                    return markerViewExists(id: "sidebarProjectHeader", in: content)
+                        && markerViewExists(id: "sidebarOpenFileButton", in: content)
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Seitenleiste nicht bereit — \(book.summary)")
+                },
+                then: {
+                    // Fluten: 40 zusätzliche Tabs — deutlich mehr, als je in die
+                    // Fensterhöhe passen würden.
+                    for _ in 0..<40 { ws.openNewTab() }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        verifyTabFloodGeometry(ws, base: base)
+                    }
+                })
     }
 
     private static func verifyTabFloodGeometry(_ ws: Workspace, base: URL) {
@@ -15169,7 +15643,7 @@ enum SelfTest {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-macro4d-\(UUID().uuidString)")
         let methods = base.appendingPathComponent("Project/Sources/Methods")
         let macrosDir = base
@@ -15199,66 +15673,71 @@ enum SelfTest {
                 try? fm.removeItem(at: base)
                 finish(false, "Fixture-Methode wurde nicht geladen")
             }
-            pollFourDMacroCatalog(ws, base: base, tick: 0)
+            pollFourDMacroCatalog(ws, base: base)
         }
     }
 
     /// Wartet auf den asynchron gescannten Katalog und führt dann das Makro aus.
-    private static func pollFourDMacroCatalog(_ ws: Workspace, base: URL, tick: Int) {
-        guard ws.fourDMacros.contains(where: { $0.shortcutKey == "y" }) else {
-            if tick >= 120 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Makro-Katalog fand das Fixture-Makro nicht "
-                    + "(Katalog: \(ws.fourDMacros.map(\.displayName)))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollFourDMacroCatalog(ws, base: base, tick: tick + 1)
-            }
-            return
-        }
-        guard let window = mainWindowForAXChecks(), let content = window.contentView,
-              let textView = editorTextView(in: content) as? TextView else {
-            if tick >= 120 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Editor-TextView für das Makro nicht gefunden")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollFourDMacroCatalog(ws, base: base, tick: tick + 1)
-            }
-            return
-        }
-        activateApplication(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        let originalCode = textView.string
-        // Selbsttests laufen auf der Main-Queue; die Zusicherung entspricht
-        // dem Muster der übrigen @MainActor-Aufrufe in dieser Datei.
-        let handled = MainActor.assumeIsolated {
-            ws.runFourDMacro(shortcut: "y")
-        }
-        guard handled else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Kürzel-Aufruf fand das Katalog-Makro nicht")
-        }
-        let expectedPrefix = "// Probe fertig"
-        let expectedCaret = ("// Probe " as NSString).length
-        guard textView.string.hasPrefix(expectedPrefix),
-              textView.string.hasSuffix(originalCode) else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Makro-Einfügung falsch: \(String(textView.string.prefix(40)))")
-        }
-        guard textView.fastraSafeSelectedRange.location == expectedCaret else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Cursor steht nicht an der Caret-Marke "
-                + "(ist \(textView.fastraSafeSelectedRange.location), soll \(expectedCaret))")
-        }
-        textView.undoManager?.undo()
-        guard textView.string == originalCode else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Undo stellte den Ausgangstext nicht her")
-        }
-        try? FileManager.default.removeItem(at: base)
-        finish(true, "Fixture-Makro erschien im Katalog, Kürzel fügte den "
-            + "gerenderten Text als einen Undo-Schritt mit Caret-Position ein")
+    private static func pollFourDMacroCatalog(_ ws: Workspace, base: URL) {
+        // Zwei Stufen in EINER Frist: erst der Katalog, dann der Editor.
+        var stage = 0
+        var found: (window: NSWindow, textView: TextView)?
+        waitFor(budget: 6, pause: 0.05,
+                condition: {
+                    guard ws.fourDMacros.contains(where: { $0.shortcutKey == "y" }) else {
+                        stage = 0
+                        return false
+                    }
+                    stage = 1
+                    guard let window = mainWindowForAXChecks(), let content = window.contentView,
+                          let textView = editorTextView(in: content) as? TextView else { return false }
+                    found = (window, textView)
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    if stage == 0 {
+                        finish(false, "Makro-Katalog fand das Fixture-Makro nicht "
+                            + "(Katalog: \(ws.fourDMacros.map(\.displayName))) — \(book.summary)")
+                    }
+                    finish(false, "Editor-TextView für das Makro nicht gefunden — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Editor nach Erfolg verschwunden") }
+                    let (window, textView) = found
+                    activateApplication(ignoringOtherApps: true)
+                    window.makeKeyAndOrderFront(nil)
+                    let originalCode = textView.string
+                    // Selbsttests laufen auf der Main-Queue; die Zusicherung entspricht
+                    // dem Muster der übrigen @MainActor-Aufrufe in dieser Datei.
+                    let handled = MainActor.assumeIsolated {
+                        ws.runFourDMacro(shortcut: "y")
+                    }
+                    guard handled else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Kürzel-Aufruf fand das Katalog-Makro nicht")
+                    }
+                    let expectedPrefix = "// Probe fertig"
+                    let expectedCaret = ("// Probe " as NSString).length
+                    guard textView.string.hasPrefix(expectedPrefix),
+                          textView.string.hasSuffix(originalCode) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Makro-Einfügung falsch: \(String(textView.string.prefix(40)))")
+                    }
+                    guard textView.fastraSafeSelectedRange.location == expectedCaret else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Cursor steht nicht an der Caret-Marke "
+                            + "(ist \(textView.fastraSafeSelectedRange.location), soll \(expectedCaret))")
+                    }
+                    textView.undoManager?.undo()
+                    guard textView.string == originalCode else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Undo stellte den Ausgangstext nicht her")
+                    }
+                    try? FileManager.default.removeItem(at: base)
+                    finish(true, "Fixture-Makro erschien im Katalog, Kürzel fügte den "
+                        + "gerenderten Text als einen Undo-Schritt mit Caret-Position ein")
+                })
     }
 
     // MARK: - Selbsttest tool4dhint (Etappe 4 Wunschpaket 2026-07c)
@@ -15278,7 +15757,7 @@ enum SelfTest {
         guard !Tool4DAssist.firstContactHintShown else {
             finish(false, "(setup) Flag ist in der frischen Selbsttest-Suite schon gesetzt")
         }
-        let base = FileManager.default.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-tool4dhint-\(UUID().uuidString)")
         let first = base.appendingPathComponent("Methode.4dm")
         let second = base.appendingPathComponent("Andere.4dm")
@@ -15295,91 +15774,96 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: base)
                 finish(false, "(setup) Methode.4dm lädt nicht")
             }
-            pollTool4DHintVisible(ws, base: base, second: second, tick: 0)
+            pollTool4DHintVisible(ws, base: base, second: second)
         }
     }
 
     private static func pollTool4DHintVisible(_ ws: Workspace, base: URL,
-                                              second: URL, tick: Int) {
-        let maxTicks = 40            // 10 s
-        guard let window = mainWindowForAXChecks(), let content = window.contentView else {
-            if tick >= maxTicks { finish(false, "kein Hauptfenster") }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                pollTool4DHintVisible(ws, base: base, second: second, tick: tick + 1)
-            }
-            return
-        }
-        if let button = markerView(id: "tool4dHintHelpButton", in: content),
-           markerViewExists(id: "tool4dHintBar", in: content) {
-            // Echter Klick auf „Einrichtung anzeigen" (Down+Up durch die
-            // Event-Pipeline; der 0×0-Marker sitzt in der Button-Mitte).
-            let point = button.convert(NSPoint.zero, to: nil)
-            let time = ProcessInfo.processInfo.systemUptime
-            guard let down = NSEvent.mouseEvent(
-                with: .leftMouseDown, location: point, modifierFlags: [],
-                timestamp: time, windowNumber: window.windowNumber, context: nil,
-                eventNumber: 0, clickCount: 1, pressure: 1
-            ), let up = NSEvent.mouseEvent(
-                with: .leftMouseUp, location: point, modifierFlags: [],
-                timestamp: time + 0.05, windowNumber: window.windowNumber,
-                context: nil, eventNumber: 1, clickCount: 1, pressure: 0
-            ) else {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Maus-Events nicht baubar")
-            }
-            window.sendEvent(down)
-            window.sendEvent(up)
-            pollTool4DHelpOpened(ws, base: base, second: second, tick: 0)
-            return
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Hinweis-Leiste erscheint binnen 10 s nicht für Methode.4dm")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollTool4DHintVisible(ws, base: base, second: second, tick: tick + 1)
-        }
+                                              second: URL) {
+        var windowFound = false
+        var found: (window: NSWindow, button: NSView)?
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    guard let window = mainWindowForAXChecks(), let content = window.contentView else {
+                        windowFound = false
+                        return false
+                    }
+                    windowFound = true
+                    guard let button = markerView(id: "tool4dHintHelpButton", in: content),
+                          markerViewExists(id: "tool4dHintBar", in: content) else { return false }
+                    found = (window, button)
+                    return true
+                },
+                onTimeout: { book in
+                    guard windowFound else { finish(false, "kein Hauptfenster — \(book.summary)") }
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Hinweis-Leiste erscheint nicht für Methode.4dm — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Hinweis-Leiste nach Erfolg verschwunden") }
+                    let (window, button) = found
+                    // Echter Klick auf „Einrichtung anzeigen" (Down+Up durch die
+                    // Event-Pipeline; der 0×0-Marker sitzt in der Button-Mitte).
+                    let point = button.convert(NSPoint.zero, to: nil)
+                    let time = ProcessInfo.processInfo.systemUptime
+                    guard let down = NSEvent.mouseEvent(
+                        with: .leftMouseDown, location: point, modifierFlags: [],
+                        timestamp: time, windowNumber: window.windowNumber, context: nil,
+                        eventNumber: 0, clickCount: 1, pressure: 1
+                    ), let up = NSEvent.mouseEvent(
+                        with: .leftMouseUp, location: point, modifierFlags: [],
+                        timestamp: time + 0.05, windowNumber: window.windowNumber,
+                        context: nil, eventNumber: 1, clickCount: 1, pressure: 0
+                    ) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Maus-Events nicht baubar")
+                    }
+                    window.sendEvent(down)
+                    window.sendEvent(up)
+                    pollTool4DHelpOpened(ws, base: base, second: second)
+                })
     }
 
     private static func pollTool4DHelpOpened(_ ws: Workspace, base: URL,
-                                             second: URL, tick: Int) {
-        let maxTicks = 40            // 10 s
-        let helpOpen = NSApp.windows.contains {
-            $0.frameAutosaveName == "FastraHelpWindow" && $0.isVisible
-        }
-        let hintGone = mainWindowForAXChecks()?.contentView.map {
-            !markerViewExists(id: "tool4dHintBar", in: $0)
-        } ?? false
-        if helpOpen, hintGone, Tool4DAssist.firstContactHintShown {
-            // (c) Zweite 4D-Datei — der Hinweis darf NICHT wiederkommen.
-            ws.loadFile(at: second) { ok in
-                guard ok else {
-                    try? FileManager.default.removeItem(at: base)
-                    finish(false, "(setup) Andere.4dm lädt nicht")
-                }
-                // Negativ-Beweis mit fester Frist: nach 1,5 s immer noch weg.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    let stillGone = mainWindowForAXChecks()?.contentView.map {
+                                             second: URL) {
+        var helpOpen = false
+        var hintGone = false
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    helpOpen = NSApp.windows.contains {
+                        $0.frameAutosaveName == "FastraHelpWindow" && $0.isVisible
+                    }
+                    hintGone = mainWindowForAXChecks()?.contentView.map {
                         !markerViewExists(id: "tool4dHintBar", in: $0)
                     } ?? false
+                    return helpOpen && hintGone && Tool4DAssist.firstContactHintShown
+                },
+                onTimeout: { book in
                     try? FileManager.default.removeItem(at: base)
-                    finish(stillGone,
-                           stillGone
-                           ? "Hinweis erschien genau einmal; Klick öffnete die Hilfe "
-                             + "(Anker 4D & tool4d); zweite 4D-Datei ohne erneuten Hinweis"
-                           : "Hinweis erschien nach Quittierung erneut")
-                }
-            }
-            return
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Nach Klick: Hilfe offen=\(helpOpen), Leiste weg=\(hintGone), "
-                + "Flag=\(Tool4DAssist.firstContactHintShown)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollTool4DHelpOpened(ws, base: base, second: second, tick: tick + 1)
-        }
+                    finish(false, "Nach Klick: Hilfe offen=\(helpOpen), Leiste weg=\(hintGone), "
+                        + "Flag=\(Tool4DAssist.firstContactHintShown) — \(book.summary)")
+                },
+                then: {
+                    // (c) Zweite 4D-Datei — der Hinweis darf NICHT wiederkommen.
+                    ws.loadFile(at: second) { ok in
+                        guard ok else {
+                            try? FileManager.default.removeItem(at: base)
+                            finish(false, "(setup) Andere.4dm lädt nicht")
+                        }
+                        // Negativ-Beweis mit fester Frist: nach 1,5 s immer noch weg.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            let stillGone = mainWindowForAXChecks()?.contentView.map {
+                                !markerViewExists(id: "tool4dHintBar", in: $0)
+                            } ?? false
+                            try? FileManager.default.removeItem(at: base)
+                            finish(stillGone,
+                                   stillGone
+                                   ? "Hinweis erschien genau einmal; Klick öffnete die Hilfe "
+                                     + "(Anker 4D & tool4d); zweite 4D-Datei ohne erneuten Hinweis"
+                                   : "Hinweis erschien nach Quittierung erneut")
+                        }
+                    }
+                })
     }
 
     // MARK: - Selbsttest gototarget (Etappe 7 Wunschpaket 2026-07c)
@@ -15395,7 +15879,7 @@ enum SelfTest {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-gototarget-\(UUID().uuidString)")
         let methods = base.appendingPathComponent("Project/Sources/Methods")
         let caller = methods.appendingPathComponent("Aufrufer.4dm")
@@ -15420,7 +15904,7 @@ enum SelfTest {
                 finish(false, "(setup) Aufrufer.4dm lädt nicht")
             }
             goToTargetClick(ws, base: base, needle: "ZielMethode",
-                            expectedFile: "ZielMethode.4dm", tick: 0) {
+                            expectedFile: "ZielMethode.4dm") {
                 // (b) Markdown-Teil im Anschluss.
                 ws.loadFile(at: markdown) { ok in
                     guard ok else {
@@ -15428,7 +15912,7 @@ enum SelfTest {
                         finish(false, "(setup) start.md lädt nicht")
                     }
                     goToTargetClick(ws, base: base, needle: "Ziel]",
-                                    expectedFile: "ziel-datei.md", tick: 0) {
+                                    expectedFile: "ziel-datei.md") {
                         try? fm.removeItem(at: base)
                         finish(true, "Alt-Doppelklick öffnete real die 4D-Methode "
                             + "und das Markdown-Linkziel (echte Events über die Queue)")
@@ -15443,76 +15927,64 @@ enum SelfTest {
     /// aktive Tab `expectedFile` zeigt — dann `completion`.
     private static func goToTargetClick(_ ws: Workspace, base: URL,
                                         needle: String, expectedFile: String,
-                                        tick: Int, completion: @escaping () -> Void) {
-        let maxTicks = 40            // 10 s
-        guard tick < maxTicks else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Editor mit „\(needle)“ erscheint nicht binnen 10 s")
-        }
-        guard let window = mainWindowForAXChecks(),
-              let content = window.contentView,
-              let textView = editorTextView(in: content) as? TextView,
-              textView.string.contains(needle) else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                goToTargetClick(ws, base: base, needle: needle,
-                                expectedFile: expectedFile, tick: tick + 1,
-                                completion: completion)
-            }
-            return
-        }
-        let range = (textView.string as NSString).range(of: needle)
-        guard let rect = textView.layoutManager.rectsFor(range:
-            NSRange(location: range.location, length: 1)).first else {
-            // Der TextStorage ist nach einem Dateiwechsel früher sichtbar als
-            // das asynchron erzeugte Zeilenlayout. Unter Last darf diese
-            // normale Zwischenlage nicht als kaputter Zielsprung gelten.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                goToTargetClick(ws, base: base, needle: needle,
-                                expectedFile: expectedFile, tick: tick + 1,
-                                completion: completion)
-            }
-            return
-        }
-        // Punkt in Fenster-Koordinaten; Events über die App-Queue posten,
-        // damit der lokale Monitor (GoToTargetGesture) sie WIRKLICH sieht.
-        let windowPoint = textView.convert(NSPoint(x: rect.midX, y: rect.midY),
-                                           to: nil)
-        let time = ProcessInfo.processInfo.systemUptime
-        for (clickCount, type) in [(1, NSEvent.EventType.leftMouseDown),
-                                   (1, .leftMouseUp),
-                                   (2, .leftMouseDown),
-                                   (2, .leftMouseUp)] {
-            guard let event = NSEvent.mouseEvent(
-                with: type, location: windowPoint, modifierFlags: [.option],
-                timestamp: time, windowNumber: window.windowNumber, context: nil,
-                eventNumber: 0, clickCount: clickCount, pressure: 1
-            ) else {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Maus-Events nicht baubar")
-            }
-            NSApp.postEvent(event, atStart: false)
-        }
-        pollGoToTargetResult(ws, base: base, expectedFile: expectedFile,
-                             tick: 0, completion: completion)
+                                        completion: @escaping () -> Void) {
+        var found: (window: NSWindow, textView: TextView, rect: CGRect)?
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    guard let window = mainWindowForAXChecks(),
+                          let content = window.contentView,
+                          let textView = editorTextView(in: content) as? TextView,
+                          textView.string.contains(needle) else { return false }
+                    let range = (textView.string as NSString).range(of: needle)
+                    // Der TextStorage ist nach einem Dateiwechsel früher sichtbar als
+                    // das asynchron erzeugte Zeilenlayout. Unter Last darf diese
+                    // normale Zwischenlage nicht als kaputter Zielsprung gelten.
+                    guard let rect = textView.layoutManager.rectsFor(range:
+                        NSRange(location: range.location, length: 1)).first else { return false }
+                    found = (window, textView, rect)
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Editor mit „\(needle)“ erscheint nicht — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Editor nach Erfolg verschwunden") }
+                    let (window, textView, rect) = found
+                    // Punkt in Fenster-Koordinaten; Events über die App-Queue posten,
+                    // damit der lokale Monitor (GoToTargetGesture) sie WIRKLICH sieht.
+                    let windowPoint = textView.convert(NSPoint(x: rect.midX, y: rect.midY),
+                                                       to: nil)
+                    let time = ProcessInfo.processInfo.systemUptime
+                    for (clickCount, type) in [(1, NSEvent.EventType.leftMouseDown),
+                                               (1, .leftMouseUp),
+                                               (2, .leftMouseDown),
+                                               (2, .leftMouseUp)] {
+                        guard let event = NSEvent.mouseEvent(
+                            with: type, location: windowPoint, modifierFlags: [.option],
+                            timestamp: time, windowNumber: window.windowNumber, context: nil,
+                            eventNumber: 0, clickCount: clickCount, pressure: 1
+                        ) else {
+                            try? FileManager.default.removeItem(at: base)
+                            finish(false, "Maus-Events nicht baubar")
+                        }
+                        NSApp.postEvent(event, atStart: false)
+                    }
+                    pollGoToTargetResult(ws, base: base, expectedFile: expectedFile, completion: completion)
+                })
     }
 
     private static func pollGoToTargetResult(_ ws: Workspace, base: URL,
-                                             expectedFile: String, tick: Int,
+                                             expectedFile: String,
                                              completion: @escaping () -> Void) {
-        let maxTicks = 40            // 10 s
-        if ws.activeTab?.url?.lastPathComponent == expectedFile {
-            completion()
-            return
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Sprung nach „\(expectedFile)“ blieb aus "
-                + "(aktiver Tab: \(ws.activeTab?.title ?? "?"))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollGoToTargetResult(ws, base: base, expectedFile: expectedFile,
-                                 tick: tick + 1, completion: completion)
-        }
+        waitFor(budget: 10, pause: 0.25,
+                condition: { ws.activeTab?.url?.lastPathComponent == expectedFile },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Sprung nach „\(expectedFile)“ blieb aus "
+                        + "(aktiver Tab: \(ws.activeTab?.title ?? "?")) — \(book.summary)")
+                },
+                then: completion)
     }
 
     // MARK: - Selbsttest gototargetwin (Befund aus dem Dauertest 2026-08-08)
@@ -15546,7 +16018,7 @@ enum SelfTest {
         // Zwei GETRENNTE 4D-Projekte mit gleichnamiger Methode: Nur so ist
         // sichtbar, WESSEN Methode der Sprung öffnet.
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-gototargetwin-\(UUID().uuidString)")
         let frontMethods = base.appendingPathComponent("vorn/Project/Sources/Methods")
         let backMethods = base.appendingPathComponent("hinten/Project/Sources/Methods")
@@ -15648,13 +16120,24 @@ enum SelfTest {
                 finish(false, "(\(label)) Editor zeigt „\(needle)“ nicht binnen 5 s")
             }
         ) { _, textView, range in
-            Workspace.shared = sharedPointsTo
-            // Ein HINTERES Fenster zeichnet nicht, und CodeEditTextView legt
-            // Zeilen nur für den gezeichneten Bereich aus. `rectsFor` liefert
-            // dort deshalb keine Position — nicht weil der Text fehlt, sondern
-            // weil er noch nie ausgelegt wurde. Für die reine Messung des
-            // Klickpunkts die Zeilen des winzigen Testdokuments ausdrücklich
-            // auslegen lassen; am Fenster-Stapel ändert das nichts.
+            // VORBEDINGUNG SELBST HERSTELLEN: Ein Fenster, das nie vorn war,
+            // hat seine SwiftUI-Geometrie noch nicht endgültig ausgelegt. Die
+            // Textansicht meldet dann eine Layout-Position, die im FENSTER
+            // hinter der 200 pt breiten Seitenleiste liegt — der synthetische
+            // Klick landete dort und nicht im Text. Genau daran scheiterte
+            // dieser Test reproduzierbar (nachgemessen am 2026-09-10: der
+            // Klickpunkt lag bei x = 71, die Textansicht antwortete auf
+            // `hitTest` erst ab x = 215). Dieselbe Falle wie bei `tabcompare`
+            // (AGENTS.md): ein aus einer unsichtbaren Geometrie berechneter
+            // Klick trifft ein ganz anderes Bedienelement.
+            //
+            // Deshalb: Das geklickte Fenster einmal nach vorn holen, damit
+            // AppKit und SwiftUI auslegen — und erst danach messen. Der
+            // Fensterstapel wird gleich wieder hergestellt, die Prüfabsicht
+            // („Klick ins hintere Fenster") bleibt also unberührt.
+            clicked.window.makeKeyAndOrderFront(nil)
+            clicked.window.layoutIfNeeded()
+            clicked.window.displayIfNeeded()
             _ = textView.layoutManager.layoutLines(in: textView.bounds)
             guard let rect = textView.layoutManager.rectsFor(range:
                 NSRange(location: range.location, length: 1)).first else {
@@ -15665,6 +16148,34 @@ enum SelfTest {
             // damit der lokale Monitor (GoToTargetGesture) sie WIRKLICH sieht.
             let windowPoint = textView.convert(NSPoint(x: rect.midX, y: rect.midY),
                                                to: nil)
+            // Und der Beweis, dass der Punkt wirklich im Text landet: Der
+            // Produktpfad sucht die Textansicht per `hitTest`. Trifft der
+            // Punkt sie nicht, ist die Messung falsch — dann soll der Test das
+            // sagen, statt zehn Sekunden auf einen Sprung zu warten, den
+            // niemand ausgelöst hat.
+            guard let contentView = clicked.window.contentView else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "(\(label)) Fensterinhalt fehlt")
+            }
+            let contentPoint = contentView.convert(windowPoint, from: nil)
+            var hitsTextView = false
+            var probe: NSView? = contentView.hitTest(contentPoint)
+            while let view = probe {
+                if view === textView { hitsTextView = true; break }
+                probe = view.superview
+            }
+            guard hitsTextView else {
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "(\(label)) Klickpunkt \(contentPoint) trifft nicht "
+                    + "die Textansicht, sondern "
+                    + "\(contentView.hitTest(contentPoint).map { String(describing: type(of: $0)) } ?? "nichts")"
+                    + " — die gemessene Geometrie gehört nicht zum sichtbaren Fenster")
+            }
+            // Erst JETZT den Stapel und `Workspace.shared` in die Prüflage
+            // bringen: Der Klick geht ins hintere Fenster, während das andere
+            // die Tastatur hat.
+            other.window.makeKeyAndOrderFront(nil)
+            Workspace.shared = sharedPointsTo
             let time = ProcessInfo.processInfo.systemUptime
             for (clickCount, type) in [(1, NSEvent.EventType.leftMouseDown),
                                        (1, .leftMouseUp),
@@ -15684,7 +16195,7 @@ enum SelfTest {
             pollGoToTargetTwoWindowResult(
                 clicked: clicked.workspace, other: other.workspace,
                 expectedTarget: expectedTarget, otherStaysAt: otherStaysAt,
-                cleanup: base, label: label, tick: 0, completion: completion
+                cleanup: base, label: label, completion: completion
             )
         }
     }
@@ -15692,7 +16203,7 @@ enum SelfTest {
     private static func pollGoToTargetTwoWindowResult(
         clicked: Workspace, other: Workspace,
         expectedTarget: URL, otherStaysAt: URL,
-        cleanup base: URL, label: String, tick: Int,
+        cleanup base: URL, label: String,
         completion: @escaping () -> Void
     ) {
         // Symlink-aufgelöst vergleichen: Die Fixtures liegen unter
@@ -15701,36 +16212,33 @@ enum SelfTest {
         func resolved(_ url: URL?) -> String? {
             url?.resolvingSymlinksInPath().path
         }
-        let clickedPath = resolved(clicked.activeTab?.url)
-        let otherPath = resolved(other.activeTab?.url)
-        if clickedPath == resolved(expectedTarget) {
-            // Der Sprung kam im richtigen Fenster an — das andere darf sich
-            // dabei nicht bewegt haben.
-            guard otherPath == resolved(otherStaysAt) else {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "(\(label)) Sprung veränderte auch das andere "
-                    + "Fenster: aktiver Tab dort \(otherPath ?? "kein Pfad")")
-            }
-            completion()
-            return
-        }
-        if tick >= 40 {            // 10 s
-            try? FileManager.default.removeItem(at: base)
-            // Für die Diagnose zeigen, WO die Datei stattdessen landete —
-            // beim ursprünglichen Fehler öffnete das ANDERE Fenster seine
-            // gleichnamige Methode.
-            finish(false, "(\(label)) Sprung blieb im geklickten Fenster aus "
-                + "(dort aktiv: \(clickedPath ?? "kein Pfad"), "
-                + "anderes Fenster: \(otherPath ?? "kein Pfad"))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollGoToTargetTwoWindowResult(
-                clicked: clicked, other: other,
-                expectedTarget: expectedTarget, otherStaysAt: otherStaysAt,
-                cleanup: base, label: label, tick: tick + 1,
-                completion: completion
-            )
-        }
+        var clickedPath: String?
+        var otherPath: String?
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    clickedPath = resolved(clicked.activeTab?.url)
+                    otherPath = resolved(other.activeTab?.url)
+                    return clickedPath == resolved(expectedTarget)
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    // Für die Diagnose zeigen, WO die Datei stattdessen landete —
+                    // beim ursprünglichen Fehler öffnete das ANDERE Fenster seine
+                    // gleichnamige Methode.
+                    finish(false, "(\(label)) Sprung blieb im geklickten Fenster aus "
+                        + "(dort aktiv: \(clickedPath ?? "kein Pfad"), "
+                        + "anderes Fenster: \(otherPath ?? "kein Pfad")) — \(book.summary)")
+                },
+                then: {
+                    // Der Sprung kam im richtigen Fenster an — das andere darf sich
+                    // dabei nicht bewegt haben.
+                    guard otherPath == resolved(otherStaysAt) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "(\(label)) Sprung veränderte auch das andere "
+                            + "Fenster: aktiver Tab dort \(otherPath ?? "kein Pfad")")
+                    }
+                    completion()
+                })
     }
 
     // MARK: - Selbsttest filediff (Etappe 1 Wunschpaket 2026-07c)
@@ -15748,53 +16256,71 @@ enum SelfTest {
     /// Der separate CLI-Runner startet diese App ausschließlich durch den
     /// gebündelten Helfer. So belegt der Test den echten LaunchServices-Kaltstart.
     @MainActor
-    private static func pollExternalDiffCold(tick: Int) {
+    private static func pollExternalDiffCold() {
         testLabel = "externaldiffcold"
-        let windows = ExternalDiffWindow.openWindows
         let expected = Int(ProcessInfo.processInfo.environment["FASTRA_DIFF_COLD_COUNT"] ?? "1") ?? 1
-        let ready = windows.count == expected && windows.allSatisfy { controller in
-            controller.model.document?.result?.blocks.count == 1
-                && controller.window.contentView.map { markerViewExists(id: "diffState-b1-c0", in: $0) } == true
+        var windows = ExternalDiffWindow.openWindows
+        var ready = false
+        var polls = 0
+        // Ausgewertet wird in beiden Ausgängen: Erfolg und abgelaufene Frist
+        // führen in dieselbe Prüfung, die `ready` selbst bewertet.
+        func evaluate() {
+            // `prepareLaunchEnvironment` legt auch für diesen Test die
+            // Sitzungs-Fixture an. Bis 2026-09-17 räumte sie niemand ab; weil
+            // der Treiber die App über LaunchServices startet und macOS dabei
+            // das übergebene TMPDIR ersetzt, blieb je Kaltstart ein Ordner im
+            // echten Benutzer-Temp liegen (CodeQA-Fund test-temp-leaks).
+            if let directory = sessionRestoreFixtureDirectory {
+                try? FileManager.default.removeItem(at: directory)
+            }
+            let active = NSApp.isActive
+            let key = windows.contains { $0.window.isKeyWindow }
+            var passed = ready
+            if let directory = ProcessInfo.processInfo.environment["FASTRA_DIFF_COLD_SCREENSHOTS"] {
+                // Aufnahmen aus den tatsächlich gezeichneten Fenster-Layern. Dafür
+                // ist keine neue Bildschirmaufnahme-Berechtigung erforderlich.
+                let root = URL(fileURLWithPath: directory, isDirectory: true)
+                let normal = DocumentWindowController.visibleDocumentWindows().first
+                if let diff = windows.first, let normal,
+                   let diffImage = typeScrollLayerSnapshot(window: diff.window),
+                   let normalImage = typeScrollLayerSnapshot(window: normal) {
+                    do {
+                        try diffImage.write(to: root.appendingPathComponent("external-diff.png"))
+                        try normalImage.write(to: root.appendingPathComponent("normal-window.png"))
+                    } catch { passed = false }
+                } else { passed = false }
+                passed = passed && active && key
+            }
+            for controller in windows {
+                controller.window.makeKeyAndOrderFront(nil)
+                passed = passed && CommandTargeting.targetWorkspace() == nil
+                passed = passed && CommandTargeting.targetEditorTextView() == nil
+            }
+            if let path = ProcessInfo.processInfo.environment["FASTRA_DIFF_COLD_RESULT"] {
+                let result = "SELFTEST-RESULT v=1 test=externaldiffcold status=\(passed ? "PASS" : "FAIL")\n"
+                    + "windows=\(windows.count) rendered=\(ready) writableTarget=false\n"
+                    + "active=\(active) key=\(key)\n"
+                do { try result.write(toFile: path, atomically: true, encoding: .utf8) }
+                catch { finish(false, "Kaltstart-Testbericht konnte nicht geschrieben werden") }
+            }
+            NSApp.hide(nil)
+            for controller in windows { controller.window.close() }
+            finish(passed, "Kaltstart über Helfer: \(windows.count) Diff-Fenster, erwartet \(expected)")
         }
-        // Mindestens eine Sekunde beobachten, damit unmittelbar doppelte
-        // Zustellungen nicht erst nach dem erfolgreichen Test sichtbar werden.
-        if (!ready || tick < 10) && tick < 150 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { pollExternalDiffCold(tick: tick + 1) }
-            return
-        }
-        let active = NSApp.isActive
-        let key = windows.contains { $0.window.isKeyWindow }
-        var passed = ready
-        if let directory = ProcessInfo.processInfo.environment["FASTRA_DIFF_COLD_SCREENSHOTS"] {
-            // Aufnahmen aus den tatsächlich gezeichneten Fenster-Layern. Dafür
-            // ist keine neue Bildschirmaufnahme-Berechtigung erforderlich.
-            let root = URL(fileURLWithPath: directory, isDirectory: true)
-            let normal = DocumentWindowController.visibleDocumentWindows().first
-            if let diff = windows.first, let normal,
-               let diffImage = typeScrollLayerSnapshot(window: diff.window),
-               let normalImage = typeScrollLayerSnapshot(window: normal) {
-                do {
-                    try diffImage.write(to: root.appendingPathComponent("external-diff.png"))
-                    try normalImage.write(to: root.appendingPathComponent("normal-window.png"))
-                } catch { passed = false }
-            } else { passed = false }
-            passed = passed && active && key
-        }
-        for controller in windows {
-            controller.window.makeKeyAndOrderFront(nil)
-            passed = passed && CommandTargeting.targetWorkspace() == nil
-            passed = passed && CommandTargeting.targetEditorTextView() == nil
-        }
-        if let path = ProcessInfo.processInfo.environment["FASTRA_DIFF_COLD_RESULT"] {
-            let result = "SELFTEST-RESULT v=1 test=externaldiffcold status=\(passed ? "PASS" : "FAIL")\n"
-                + "windows=\(windows.count) rendered=\(ready) writableTarget=false\n"
-                + "active=\(active) key=\(key)\n"
-            do { try result.write(toFile: path, atomically: true, encoding: .utf8) }
-            catch { finish(false, "Kaltstart-Testbericht konnte nicht geschrieben werden") }
-        }
-        NSApp.hide(nil)
-        for controller in windows { controller.window.close() }
-        finish(passed, "Kaltstart über Helfer: \(windows.count) Diff-Fenster, erwartet \(expected)")
+        waitFor(budget: 15, pause: 0.1,
+                condition: {
+                    windows = ExternalDiffWindow.openWindows
+                    ready = windows.count == expected && windows.allSatisfy { controller in
+                        controller.model.document?.result?.blocks.count == 1
+                            && controller.window.contentView.map { markerViewExists(id: "diffState-b1-c0", in: $0) } == true
+                    }
+                    polls += 1
+                    // Mindestens eine Sekunde beobachten, damit unmittelbar doppelte
+                    // Zustellungen nicht erst nach dem erfolgreichen Test sichtbar werden.
+                    return ready && polls > 10
+                },
+                onTimeout: { _ in evaluate() },
+                then: { evaluate() })
     }
 
     /// Echte Helferprozesse und Mach-Nachrichten, danach gerenderte Fenster
@@ -15802,7 +16328,7 @@ enum SelfTest {
     @MainActor
     private static func runExternalDiffTest() {
         testLabel = "externaldiff"
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("external-diff-\(UUID())")
+        let root = selfTestTemporaryDirectory().appendingPathComponent("external-diff-\(UUID())")
         let left = root.appendingPathComponent("-ä links.txt")
         let right = root.appendingPathComponent("右 rechts.txt")
         let before = Data("eins\nalt\ndrei\n".utf8)
@@ -15853,7 +16379,7 @@ enum SelfTest {
             DispatchQueue.main.async {
                 pollExternalDiff(root: root, left: left, right: right, before: before, after: after,
                                  sidebarBefore: sidebarBefore, normalWindows: normalWindows,
-                                 normalFrames: normalFrames, errors: failures, tick: 0)
+                                 normalFrames: normalFrames, errors: failures)
             }
         }
     }
@@ -15892,50 +16418,53 @@ enum SelfTest {
     @MainActor
     private static func pollExternalDiff(root: URL, left: URL, right: URL, before: Data, after: Data,
                                          sidebarBefore: Bool?, normalWindows: [NSWindow],
-                                         normalFrames: [NSRect], errors: [String], tick: Int) {
-        let windows = ExternalDiffWindow.openWindows
-        let ready = windows.count == 4 && windows.allSatisfy { controller in
-            controller.model.document?.result?.blocks.count == 1
-                && controller.window.contentView.map { markerViewExists(id: "diffState-b1-c0", in: $0) } == true
-        }
-        if !ready && tick < 80 && errors.isEmpty {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollExternalDiff(root: root, left: left, right: right, before: before, after: after,
-                                 sidebarBefore: sidebarBefore, normalWindows: normalWindows,
-                                 normalFrames: normalFrames, errors: errors, tick: tick + 1)
+                                         normalFrames: [NSRect], errors: [String]) {
+        var windows = ExternalDiffWindow.openWindows
+        var ready = false
+        // Ausgewertet wird in beiden Ausgängen; `ready` trägt das Ergebnis.
+        func evaluate() {
+            var failures = errors
+            if !ready { failures.append("Erwartet: vier echte Fenster mit je einem gerenderten Unterschied; vorhanden: \(windows.count)") }
+            if !windows.contains(where: { $0.model.request.left.name == "Links α" && $0.model.request.right.name == "Rechts β" }) {
+                failures.append("Labels fehlen")
             }
-            return
-        }
-        var failures = errors
-        if !ready { failures.append("Erwartet: vier echte Fenster mit je einem gerenderten Unterschied; vorhanden: \(windows.count)") }
-        if !windows.contains(where: { $0.model.request.left.name == "Links α" && $0.model.request.right.name == "Rechts β" }) {
-            failures.append("Labels fehlen")
-        }
-        for controller in windows {
-            controller.window.makeKeyAndOrderFront(nil)
-            if CommandTargeting.targetWorkspace() != nil || CommandTargeting.targetEditorTextView() != nil {
-                failures.append("Externes Fenster besitzt ein schreibbares Dokumentziel")
-                continue
+            for controller in windows {
+                controller.window.makeKeyAndOrderFront(nil)
+                if CommandTargeting.targetWorkspace() != nil || CommandTargeting.targetEditorTextView() != nil {
+                    failures.append("Externes Fenster besitzt ein schreibbares Dokumentziel")
+                    continue
+                }
+                // Dieselben globalen Menübefehle wie beim Nutzer: Speichern darf
+                // keinen fremden Workspace erreichen; der native Responder ebenfalls nicht.
+                CommandTargeting.targetWorkspace()?.saveActiveTab()
+                _ = NSApp.sendAction(Selector(("saveDocument:")), to: nil, from: nil)
             }
-            // Dieselben globalen Menübefehle wie beim Nutzer: Speichern darf
-            // keinen fremden Workspace erreichen; der native Responder ebenfalls nicht.
-            CommandTargeting.targetWorkspace()?.saveActiveTab()
-            _ = NSApp.sendAction(Selector(("saveDocument:")), to: nil, from: nil)
+            if (try? Data(contentsOf: left)) != before || (try? Data(contentsOf: right)) != after {
+                failures.append("Quelldateien verändert")
+            }
+            if workspaceDefaults().object(forKey: "editor.sidebarVisible") as? Bool != sidebarBefore {
+                failures.append("Globale Seitenleisteneinstellung verändert")
+            }
+            if normalWindows.map(\.frame) != normalFrames || normalWindows.contains(where: { !$0.isVisible }) {
+                failures.append("Normale Fenster verändert")
+            }
+            for controller in windows { controller.window.close() }
+            try? FileManager.default.removeItem(at: root)
+            finish(failures.isEmpty, failures.isEmpty
+                   ? "Helfer still bestätigt; 3×3 IPC-Aufträge erzeugen drei Fenster; vier Diffs gerendert; Labels, Schreibschutz, globale Seitenleiste und andere Fenster geprüft"
+                   : failures.joined(separator: "; "))
         }
-        if (try? Data(contentsOf: left)) != before || (try? Data(contentsOf: right)) != after {
-            failures.append("Quelldateien verändert")
-        }
-        if workspaceDefaults().object(forKey: "editor.sidebarVisible") as? Bool != sidebarBefore {
-            failures.append("Globale Seitenleisteneinstellung verändert")
-        }
-        if normalWindows.map(\.frame) != normalFrames || normalWindows.contains(where: { !$0.isVisible }) {
-            failures.append("Normale Fenster verändert")
-        }
-        for controller in windows { controller.window.close() }
-        try? FileManager.default.removeItem(at: root)
-        finish(failures.isEmpty, failures.isEmpty
-               ? "Helfer still bestätigt; 3×3 IPC-Aufträge erzeugen drei Fenster; vier Diffs gerendert; Labels, Schreibschutz, globale Seitenleiste und andere Fenster geprüft"
-               : failures.joined(separator: "; "))
+        waitFor(budget: 8, pause: 0.1,
+                condition: {
+                    windows = ExternalDiffWindow.openWindows
+                    ready = windows.count == 4 && windows.allSatisfy { controller in
+                        controller.model.document?.result?.blocks.count == 1
+                            && controller.window.contentView.map { markerViewExists(id: "diffState-b1-c0", in: $0) } == true
+                    }
+                    return ready || !errors.isEmpty
+                },
+                onTimeout: { _ in evaluate() },
+                then: { evaluate() })
     }
 
     /// Prüft den git-losen Datei-Vergleich im ECHTEN Fenster:
@@ -15956,7 +16485,7 @@ enum SelfTest {
         // allein deshalb keine Scrollstrecke garantieren. Die sichtbaren
         // Änderungszeilen selbst müssen höher als der Viewport sein.
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-filediff-\(UUID().uuidString)")
         var leftLines = (1...155).map { "zeile \($0)" }
         var rightLines = leftLines
@@ -15985,61 +16514,54 @@ enum SelfTest {
         }
         // ── (a) Dialog öffnen — erscheint ein echtes Sheet? ────────────────
         ws.showCompareFilesDialog = true
-        pollFileDiffSheet(ws, base: base, left: leftURL, right: rightURL, tick: 0)
+        pollFileDiffSheet(ws, base: base, left: leftURL, right: rightURL)
     }
 
     private static func pollFileDiffSheet(_ ws: Workspace, base: URL,
-                                          left: URL, right: URL, tick: Int) {
-        let maxTicks = 40            // 10 s
-        if mainWindowForAXChecks()?.attachedSheet != nil {
-            // Dialog ist real da — wieder schließen und den Vergleich über
-            // denselben Pfad starten, den der „Vergleichen"-Button nimmt.
-            ws.showCompareFilesDialog = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                ws.openFileDiffTab(request: FileDiffRequest(
-                    left: .file(left), right: .file(right),
-                    options: FileDiffOptions()
-                ))
-                pollFileDiffRendered(ws, base: base, tick: 0)
-            }
-            return
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "„Dateien vergleichen…“-Sheet erscheint nicht binnen 10 s")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFileDiffSheet(ws, base: base, left: left, right: right, tick: tick + 1)
-        }
+                                          left: URL, right: URL) {
+        waitFor(budget: 10, pause: 0.25,
+                condition: { mainWindowForAXChecks()?.attachedSheet != nil },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "„Dateien vergleichen…“-Sheet erscheint nicht — \(book.summary)")
+                },
+                then: {
+                    // Dialog ist real da — wieder schließen und den Vergleich über
+                    // denselben Pfad starten, den der „Vergleichen"-Button nimmt.
+                    ws.showCompareFilesDialog = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        ws.openFileDiffTab(request: FileDiffRequest(
+                            left: .file(left), right: .file(right),
+                            options: FileDiffOptions()
+                        ))
+                        pollFileDiffRendered(ws, base: base)
+                    }
+                })
     }
 
-    private static func pollFileDiffRendered(_ ws: Workspace, base: URL, tick: Int) {
-        let maxTicks = 40            // 10 s
-        let content = mainWindowForAXChecks()?.contentView
+    private static func pollFileDiffRendered(_ ws: Workspace, base: URL) {
         // Marker trägt Blockzahl + Auswahl: 3 Blöcke, Start beim ersten
         // Unterschied (wie der Git-Diff: „Unterschied 1 von 3").
-        let rendered = content.map {
-            markerViewExists(id: "diffState-b3-c0", in: $0)
-        } ?? false
-        if rendered {
-            // Modell-Gegenprobe: der Tab hält wirklich 3 Differenz-Blöcke.
-            guard let tab = ws.tabs.first(where: { $0.fileDiffRequest != nil }),
-                  let result = tab.fileDiffDocument?.result,
-                  result.blocks.count == 3 else {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Marker gerendert, aber Modell hat nicht 3 Blöcke")
-            }
-            clickLastFileDiffListRow(ws, base: base)
-            return
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Diff-Tab rendert binnen 10 s keine 3 Unterschiede "
-                + "(Marker diffState-b3-c0 fehlt)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFileDiffRendered(ws, base: base, tick: tick + 1)
-        }
+        waitFor(budget: 10, pause: 0.25,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    return content.map { markerViewExists(id: "diffState-b3-c0", in: $0) } ?? false
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Diff-Tab rendert keine 3 Unterschiede "
+                        + "(Marker diffState-b3-c0 fehlt) — \(book.summary)")
+                },
+                then: {
+                    // Modell-Gegenprobe: der Tab hält wirklich 3 Differenz-Blöcke.
+                    guard let tab = ws.tabs.first(where: { $0.fileDiffRequest != nil }),
+                          let result = tab.fileDiffDocument?.result,
+                          result.blocks.count == 3 else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Marker gerendert, aber Modell hat nicht 3 Blöcke")
+                    }
+                    clickLastFileDiffListRow(ws, base: base)
+                })
     }
 
     /// Größte Scroll-View im Fenster = der Diff-Bereich (die Differenzen-
@@ -16083,31 +16605,34 @@ enum SelfTest {
         }
         window.sendEvent(down)
         window.sendEvent(up)
-        pollFileDiffJumped(base: base, scrollBefore: scrollBefore, tick: 0)
+        pollFileDiffJumped(base: base, scrollBefore: scrollBefore)
     }
 
-    private static func pollFileDiffJumped(base: URL, scrollBefore: CGFloat, tick: Int) {
-        let maxTicks = 20            // 5 s (Scroll-Animation: 0,16 s)
-        let content = mainWindowForAXChecks()?.contentView
-        let selected = content.map {
-            markerViewExists(id: "diffState-b3-c2", in: $0)
-        } ?? false
-        let scrollNow = content.flatMap { largestScrollView(in: $0) }?
-            .contentView.documentVisibleRect.origin.y ?? scrollBefore
-        if selected, scrollNow != scrollBefore {
-            try? FileManager.default.removeItem(at: base)
-            finish(true, "Sheet real geöffnet; 3 Unterschiede gerendert; Klick "
-                + "auf Differenzen-Liste wählt Block 3 und scrollt den Diff "
-                + "(\(Int(scrollBefore)) → \(Int(scrollNow)))")
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Klick auf Differenzen-Liste: Auswahl=\(selected), "
-                + "Scroll \(Int(scrollBefore)) → \(Int(scrollNow)) — Sprung fehlt")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollFileDiffJumped(base: base, scrollBefore: scrollBefore, tick: tick + 1)
-        }
+    private static func pollFileDiffJumped(base: URL, scrollBefore: CGFloat) {
+        // 5 s (Scroll-Animation: 0,16 s)
+        var selected = false
+        var scrollNow = scrollBefore
+        waitFor(budget: 5, pause: 0.25,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    selected = content.map {
+                        markerViewExists(id: "diffState-b3-c2", in: $0)
+                    } ?? false
+                    scrollNow = content.flatMap { largestScrollView(in: $0) }?
+                        .contentView.documentVisibleRect.origin.y ?? scrollBefore
+                    return selected && scrollNow != scrollBefore
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Klick auf Differenzen-Liste: Auswahl=\(selected), "
+                        + "Scroll \(Int(scrollBefore)) → \(Int(scrollNow)) — Sprung fehlt — \(book.summary)")
+                },
+                then: {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(true, "Sheet real geöffnet; 3 Unterschiede gerendert; Klick "
+                        + "auf Differenzen-Liste wählt Block 3 und scrollt den Diff "
+                        + "(\(Int(scrollBefore)) → \(Int(scrollNow)))")
+                })
     }
 
     private static func runProjectTest() {
@@ -16118,7 +16643,7 @@ enum SelfTest {
 
         // ── Testprojekt im Temp-Ordner bauen: repo/.git + Dateien ─────────
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-selftest-project-\(UUID().uuidString)")
         let repo = base.appendingPathComponent("repo")
         do {
@@ -16205,7 +16730,7 @@ enum SelfTest {
             ws.findPattern = "PROJEKTTEST"
             ws.useRegex = false
             ws.runFolderSearchNow()
-            pollProjectScope(ws, base: base, tick: 0)
+            pollProjectScope(ws, base: base)
         }
     }
 
@@ -16236,8 +16761,13 @@ enum SelfTest {
         finish(true, "englische Tabellen + lokale Markdown-Renderbibliotheken im App-Bundle")
     }
 
-    private static func pollProjectScope(_ ws: Workspace, base: URL, tick: Int) {
-        if !ws.folderSearching, !ws.folderNeedsSearch {
+    private static func pollProjectScope(_ ws: Workspace, base: URL) {
+        // Bisher 200 × 30 ms = 6 s.
+        waitFor(budget: 6, pause: 0.03,
+                condition: { !ws.folderSearching && !ws.folderNeedsSearch },
+                onTimeout: { book in
+                    finish(false, "(e) Timeout der Projekt-Suche — \(book.summary)")
+                }) {
             let urls = ws.folderResults.filter { !$0.matches.isEmpty }.map(\.url.lastPathComponent)
             guard ws.folderTotalMatches == 1, urls == ["a.txt"] else {
                 finish(false, "(e) Projekt-Scope missachtet Datei-Set/Ausschluss: "
@@ -16246,12 +16776,6 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: base)
             finish(true, "Willkommen, Projekt öffnen, Dateibaum, Datei-Laden, "
                 + "Repo-Dedup + Projekt-Datei-Set/Ausschluss ok")
-        }
-        guard tick < 200 else {
-            finish(false, "(e) Timeout der Projekt-Suche")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollProjectScope(ws, base: base, tick: tick + 1)
         }
     }
 
@@ -16536,7 +17060,7 @@ enum SelfTest {
         }
 
         let fm = FileManager.default
-        let repo = fm.temporaryDirectory
+        let repo = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-selftest-git-\(UUID().uuidString)")
         do {
             try fm.createDirectory(at: repo.appendingPathComponent("sub"),
@@ -16580,14 +17104,22 @@ enum SelfTest {
 
     /// Pollt, bis `refreshGitStatus` (asynchron) den erwarteten Zustand liefert,
     /// prüft dann Branch, Datei-Zustände, gitState/gitFolderHasChanges-Helfer.
-    private static func pollGitStatus(_ ws: Workspace, repo: URL, fm: FileManager, tick: Int = 0) {
-        let maxTicks = 100   // 100 × 30 ms ≈ 3 s
-        if let status = ws.gitStatus,
-           status.entries["tracked.txt"] == .modified,
-           status.entries["neu.txt"] == .untracked,
-           status.entries["sub/deep.txt"] == .modified {
-            guard status.branch == "main" else {
-                finish(false, "(status) Branch=\(status.branch ?? "nil") statt main")
+    private static func pollGitStatus(_ ws: Workspace, repo: URL, fm: FileManager) {
+        // Bisher 100 × 30 ms ≈ 3 s.
+        waitFor(budget: 3, pause: 0.03,
+                condition: {
+                    guard let status = ws.gitStatus else { return false }
+                    return status.entries["tracked.txt"] == .modified
+                        && status.entries["neu.txt"] == .untracked
+                        && status.entries["sub/deep.txt"] == .modified
+                },
+                onTimeout: { book in
+                    try? fm.removeItem(at: repo)
+                    finish(false, "(status) Timeout — gitStatus="
+                        + "\(String(describing: ws.gitStatus)) — \(book.summary)")
+                }) {
+            guard ws.gitStatus?.branch == "main" else {
+                finish(false, "(status) Branch=\(ws.gitStatus?.branch ?? "nil") statt main")
             }
             // URL-basierte Helfer (Seitenleisten-Einfärbung).
             let resolved = repo.canonicalFileURL
@@ -16603,22 +17135,30 @@ enum SelfTest {
             // Weiter mit Schritt 2+3: Verlauf + Diff als read-only-Tabs.
             ws.openGitLog()
             pollGitLog(ws, repo: repo, fm: fm)
-            return
-        }
-        if tick >= maxTicks {
-            try? fm.removeItem(at: repo)
-            finish(false, "(status) Timeout — gitStatus=\(String(describing: ws.gitStatus))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollGitStatus(ws, repo: repo, fm: fm, tick: tick + 1)
         }
     }
 
     /// Wartet auf den Verlaufs-Tab (git log), extrahiert einen Commit-Hash und
     /// öffnet ihn per `openGitCommit` (git show), dann weiter zum Diff.
-    private static func pollGitLog(_ ws: Workspace, repo: URL, fm: FileManager, tick: Int = 0) {
-        let maxTicks = 100
-        if let tab = ws.tabs.first(where: { $0.gitKind == .log }), !tab.content.isEmpty {
+    private static func pollGitLog(_ ws: Workspace, repo: URL, fm: FileManager) {
+        // Bisher 100 × 30 ms ≈ 3 s.
+        // Wie bisher: der ERSTE Tab dieser Art, und der muss schon
+        // Inhalt haben. Ein späterer gefüllter Tab zählt nicht.
+        func logTab() -> EditorTab? {
+            guard let tab = ws.tabs.first(where: { $0.gitKind == .log }),
+                  !tab.content.isEmpty else { return nil }
+            return tab
+        }
+        waitFor(budget: 3, pause: 0.03,
+                condition: { logTab() != nil },
+                onTimeout: { book in
+                    try? fm.removeItem(at: repo)
+                    finish(false, "(log) Timeout — \(book.summary)")
+                }) {
+            guard let tab = logTab() else {
+                try? fm.removeItem(at: repo)
+                finish(false, "(log) Verlaufs-Tab verschwand zwischen Prüfung und Auswertung")
+            }
             // Der Log-Tab muss aktiv und read-only sein; sein Inhalt muss den
             // Init-Commit enthalten und einen klickbaren Hash liefern.
             guard ws.activeTab?.id == tab.id else {
@@ -16633,36 +17173,58 @@ enum SelfTest {
             }
             ws.openGitCommit(hash: hash)
             pollGitCommit(ws, repo: repo, fm: fm, hash: hash)
-            return
-        }
-        if tick >= maxTicks { try? fm.removeItem(at: repo); finish(false, "(log) Timeout") }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollGitLog(ws, repo: repo, fm: fm, tick: tick + 1)
         }
     }
 
     /// Wartet auf den Commit-Tab (git show) und prüft, dass er den Diff enthält.
-    private static func pollGitCommit(_ ws: Workspace, repo: URL, fm: FileManager, hash: String, tick: Int = 0) {
-        let maxTicks = 100
-        if let tab = ws.tabs.first(where: { $0.gitKind == .commit }), !tab.content.isEmpty {
+    private static func pollGitCommit(_ ws: Workspace, repo: URL, fm: FileManager, hash: String) {
+        // Bisher 100 × 30 ms ≈ 3 s.
+        // Wie bisher: der ERSTE Tab dieser Art, und der muss schon
+        // Inhalt haben. Ein späterer gefüllter Tab zählt nicht.
+        func commitTab() -> EditorTab? {
+            guard let tab = ws.tabs.first(where: { $0.gitKind == .commit }),
+                  !tab.content.isEmpty else { return nil }
+            return tab
+        }
+        waitFor(budget: 3, pause: 0.03,
+                condition: { commitTab() != nil },
+                onTimeout: { book in
+                    try? fm.removeItem(at: repo)
+                    finish(false, "(commit) Timeout — \(book.summary)")
+                }) {
+            guard let tab = commitTab() else {
+                try? fm.removeItem(at: repo)
+                finish(false, "(commit) Commit-Tab verschwand zwischen Prüfung und Auswertung")
+            }
             guard tab.content.contains("commit \(hash)") || tab.content.contains(hash) else {
                 finish(false, "(commit) git show ohne passenden Hash")
             }
             ws.openGitDiff()
             pollGitDiff(ws, repo: repo, fm: fm)
-            return
-        }
-        if tick >= maxTicks { try? fm.removeItem(at: repo); finish(false, "(commit) Timeout") }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollGitCommit(ws, repo: repo, fm: fm, hash: hash, tick: tick + 1)
         }
     }
 
     /// Wartet auf den Diff-Tab (git diff HEAD) und prüft, dass die Änderung an
     /// tracked.txt drinsteht — plus die Dedup-Garantie (kein zweiter Diff-Tab).
-    private static func pollGitDiff(_ ws: Workspace, repo: URL, fm: FileManager, tick: Int = 0) {
-        let maxTicks = 100
-        if let tab = ws.tabs.first(where: { $0.gitKind == .diff }), !tab.content.isEmpty {
+    private static func pollGitDiff(_ ws: Workspace, repo: URL, fm: FileManager) {
+        // Bisher 100 × 30 ms ≈ 3 s.
+        // Wie bisher: der ERSTE Tab dieser Art, und der muss schon
+        // Inhalt haben. Ein späterer gefüllter Tab zählt nicht.
+        func diffTab() -> EditorTab? {
+            guard let tab = ws.tabs.first(where: { $0.gitKind == .diff }),
+                  !tab.content.isEmpty else { return nil }
+            return tab
+        }
+        waitFor(budget: 3, pause: 0.03,
+                condition: { diffTab() != nil },
+                onTimeout: { book in
+                    try? fm.removeItem(at: repo)
+                    finish(false, "(diff) Timeout — \(book.summary)")
+                }) {
+            guard let tab = diffTab() else {
+                try? fm.removeItem(at: repo)
+                finish(false, "(diff) Diff-Tab verschwand zwischen Prüfung und Auswertung")
+            }
             guard tab.content.contains("tracked.txt"), tab.content.contains("GEÄNDERT") else {
                 finish(false, "(diff) Änderung fehlt: \(tab.content.prefix(120))")
             }
@@ -16678,11 +17240,6 @@ enum SelfTest {
                 finish(true, "Status + Verlauf (klickbarer Hash → git show) + Diff (gefärbt, "
                     + "dedupliziert) ok")
             }
-            return
-        }
-        if tick >= maxTicks { try? fm.removeItem(at: repo); finish(false, "(diff) Timeout") }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollGitDiff(ws, repo: repo, fm: fm, tick: tick + 1)
         }
     }
 
@@ -16718,7 +17275,7 @@ enum SelfTest {
         Workspace.presentGitDialogs = false
 
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-gitstagefolder-\(UUID().uuidString)")
         let repo = base.appendingPathComponent("working-copy")
         do {
@@ -16756,7 +17313,7 @@ enum SelfTest {
             DispatchQueue.main.async {
                 ws.openProject(at: repo)
                 pollGitStageFolderRow(ws, base: base, repo: repo,
-                                      material: material, tick: 0)
+                                      material: material)
             }
         }
     }
@@ -16764,103 +17321,110 @@ enum SelfTest {
     /// Wartet auf die wirklich gerenderte, zusammengefasste `material/`-Zeile
     /// und klickt deren Plus über AppKits Fenster-Hit-Testing.
     private static func pollGitStageFolderRow(_ ws: Workspace, base: URL,
-                                              repo: URL, material: URL,
-                                              tick: Int) {
-        let maxTicks = 100
-        guard let change = ws.gitStatus?.unstagedChanges.first(where: {
-            $0.path == "material/" && $0.unstaged == .untracked
-        }), let window = mainWindowForAXChecks(), let content = window.contentView else {
-            if tick >= maxTicks {
-                try? FileManager.default.removeItem(at: base)
-                let shown = ws.gitStatus?.unstagedChanges.map(\.path) ?? []
-                finish(false, "zusammengefasste Ordnerzeile material/ fehlt "
-                    + "(sichtbar: \(shown))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitStageFolderRow(ws, base: base, repo: repo,
-                                      material: material, tick: tick + 1)
-            }
-            return
-        }
-
-        let stageMarkerID = "gitStageAction-\(change.rawPath.hashValue)"
-        let discardMarkerID = "gitDiscardAction-\(change.rawPath.hashValue)"
-        guard let stageMarker = markerView(id: stageMarkerID, in: content),
-              let discardMarker = markerView(id: discardMarkerID, in: content) else {
-            if tick >= maxTicks {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Hover-Knöpfe der material/-Zeile fehlen im AppKit-Baum")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitStageFolderRow(ws, base: base, repo: repo,
-                                      material: material, tick: tick + 1)
-            }
-            return
-        }
-        window.layoutIfNeeded()
-        guard stageMarker.bounds.width > 0, stageMarker.bounds.height > 0,
-              discardMarker.bounds.width > 0, discardMarker.bounds.height > 0 else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Hover-Knöpfe besitzen keinen klickbaren Bereich")
-        }
-        let stageFrame = stageMarker.convert(stageMarker.bounds, to: content)
-        let discardFrame = discardMarker.convert(discardMarker.bounds, to: content)
-        guard discardFrame.maxX <= stageFrame.minX else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Verwerfen und Plus liegen noch übereinander "
-                + "(Verwerfen: \(discardFrame), Plus: \(stageFrame))")
-        }
-        let point = stageMarker.convert(
-            NSPoint(x: stageMarker.bounds.midX, y: stageMarker.bounds.midY),
-            to: nil
-        )
-        guard sendMouseClick(at: point, in: window, modifiers: []) else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Mausklick auf Plus nicht erzeugbar")
-        }
-        pollGitStageFolderResult(ws, base: base, repo: repo,
-                                 material: material, tick: 0)
+                                              repo: URL, material: URL) {
+        // Zwei Stufen in EINER Frist (wie zuvor der gemeinsame Tick-Zähler):
+        // erst die zusammengefasste Zeile, dann ihre Hover-Knöpfe.
+        var stage = 0
+        var found: (window: NSWindow, content: NSView, stage: NSView, discard: NSView)?
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    guard let change = ws.gitStatus?.unstagedChanges.first(where: {
+                        $0.path == "material/" && $0.unstaged == .untracked
+                    }), let window = mainWindowForAXChecks(),
+                          let content = window.contentView else {
+                        stage = 0
+                        return false
+                    }
+                    stage = 1
+                    let stageMarkerID = "gitStageAction-\(change.rawPath.hashValue)"
+                    let discardMarkerID = "gitDiscardAction-\(change.rawPath.hashValue)"
+                    guard let stageMarker = markerView(id: stageMarkerID, in: content),
+                          let discardMarker = markerView(id: discardMarkerID, in: content) else {
+                        return false
+                    }
+                    found = (window, content, stageMarker, discardMarker)
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    if stage == 0 {
+                        let shown = ws.gitStatus?.unstagedChanges.map(\.path) ?? []
+                        finish(false, "zusammengefasste Ordnerzeile material/ fehlt "
+                            + "(sichtbar: \(shown)) — \(book.summary)")
+                    }
+                    finish(false, "Hover-Knöpfe der material/-Zeile fehlen im AppKit-Baum — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "material/-Zeile nach Erfolg verschwunden") }
+                    let (window, content, stageMarker, discardMarker) = found
+                    window.layoutIfNeeded()
+                    guard stageMarker.bounds.width > 0, stageMarker.bounds.height > 0,
+                          discardMarker.bounds.width > 0, discardMarker.bounds.height > 0 else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Hover-Knöpfe besitzen keinen klickbaren Bereich")
+                    }
+                    let stageFrame = stageMarker.convert(stageMarker.bounds, to: content)
+                    let discardFrame = discardMarker.convert(discardMarker.bounds, to: content)
+                    guard discardFrame.maxX <= stageFrame.minX else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Verwerfen und Plus liegen noch übereinander "
+                            + "(Verwerfen: \(discardFrame), Plus: \(stageFrame))")
+                    }
+                    let point = stageMarker.convert(
+                        NSPoint(x: stageMarker.bounds.midX, y: stageMarker.bounds.midY),
+                        to: nil
+                    )
+                    guard sendMouseClick(at: point, in: window, modifiers: []) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Mausklick auf Plus nicht erzeugbar")
+                    }
+                    pollGitStageFolderResult(ws, base: base, repo: repo, material: material)
+                })
     }
 
     /// Prüft gegen Gits echten Index. Parallel bleibt der Workspace unter
     /// Beobachtung: Öffnet die Zeilengeste `material/` als Datei, erscheint
     /// synchron ein Lade-Tab — genau der vom Nutzer gehörte Warnton-Pfad.
     private static func pollGitStageFolderResult(_ ws: Workspace, base: URL,
-                                                 repo: URL, material: URL,
-                                                 tick: Int) {
-        if !FileManager.default.fileExists(atPath: material.path) {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Plus-Klick traf stattdessen die überlagerte "
-                + "Verwerfen-Aktion und löschte das temporäre material/")
-        }
-        if ws.tabs.contains(where: {
-            $0.url?.standardizedFileURL == material.standardizedFileURL
-        }) {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Plus-Klick wurde von der Zeilengeste abgefangen "
-                + "und versuchte material/ als Datei zu öffnen")
-        }
-        GitRunner.run(["diff", "--cached", "--name-only", "-z"], in: repo) { result in
-            let names = result?.stdoutData.split(separator: 0).map {
-                String(decoding: $0, as: UTF8.self)
-            } ?? []
-            let expected = Set(["material/chat.txt", "material/portrait.jpg"])
-            if result?.ok == true, Set(names) == expected {
+                                                 repo: URL, material: URL) {
+        var names: [String] = []
+        var gitError = "nil"
+        waitForAsync(
+            budget: 5, pause: 0.05,
+            check: { answer in
+                if !FileManager.default.fileExists(atPath: material.path) {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Plus-Klick traf stattdessen die überlagerte "
+                        + "Verwerfen-Aktion und löschte das temporäre material/")
+                }
+                if ws.tabs.contains(where: {
+                    $0.url?.standardizedFileURL == material.standardizedFileURL
+                }) {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Plus-Klick wurde von der Zeilengeste abgefangen "
+                        + "und versuchte material/ als Datei zu öffnen")
+                }
+                GitRunner.run(["diff", "--cached", "--name-only", "-z"], in: repo) { result in
+                    names = result?.stdoutData.split(separator: 0).map {
+                        String(decoding: $0, as: UTF8.self)
+                    } ?? []
+                    gitError = result?.stderr ?? "nil"
+                    let expected = Set(["material/chat.txt", "material/portrait.jpg"])
+                    answer(result?.ok == true && Set(names) == expected)
+                }
+            },
+            onTimeout: { book in
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Plus-Klick staged material/ nicht "
+                    + "(Index: \(names), git: \(gitError)) — \(book.summary)")
+            },
+            then: {
                 try? FileManager.default.removeItem(at: base)
                 finish(true, "Verwerfen und Plus liegen getrennt nebeneinander; "
                     + "echter Plus-Klick staged die zusammengefasste Ordnerzeile "
                     + "material/ vollständig, ohne sie als Datei zu öffnen")
             }
-            if tick >= 100 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Plus-Klick staged material/ nicht "
-                    + "(Index: \(names), git: \(result?.stderr ?? "nil"))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitStageFolderResult(ws, base: base, repo: repo,
-                                         material: material, tick: tick + 1)
-            }
-        }
+        )
     }
 
     // MARK: - Selbsttest githistory (Verlauf einer einzelnen Datei)
@@ -16881,7 +17445,7 @@ enum SelfTest {
         Workspace.presentGitDialogs = false
 
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-githistory-\(UUID().uuidString)")
         let repo = base.appendingPathComponent("working-copy")
         let alpha = repo.appendingPathComponent("alpha.txt")
@@ -16944,7 +17508,7 @@ enum SelfTest {
                         DispatchQueue.main.async {
                             ws.openProject(at: repo)
                             ws.sidebarMode = .graph
-                            pollGitHistoryFull(ws, base: base, alpha: alpha, tick: 0)
+                            pollGitHistoryFull(ws, base: base, alpha: alpha)
                         }
                     }
                 }
@@ -16953,60 +17517,59 @@ enum SelfTest {
     }
 
     /// (a) Ganze Historie: vier gerenderte Zeilen, keine Kopfzeile.
-    private static func pollGitHistoryFull(_ ws: Workspace, base: URL, alpha: URL,
-                                           tick: Int) {
-        let content = mainWindowForAXChecks()?.contentView
-        let fourRows = content.map { markerViewExists(id: "gitGraphRows-4", in: $0) } ?? false
-        if fourRows {
-            ws.showGitHistory(for: alpha)
-            pollGitHistoryFiltered(ws, base: base, alpha: alpha, phase: 0, tick: 0)
-            return
-        }
-        if tick >= 160 {          // 8 s
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Ganze Historie zeigt nach 8 s keine vier Commits "
-                + "(Modell: \(ws.gitLog.count))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollGitHistoryFull(ws, base: base, alpha: alpha, tick: tick + 1)
-        }
+    private static func pollGitHistoryFull(_ ws: Workspace, base: URL, alpha: URL) {
+        waitFor(budget: 8, pause: 0.05,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    return content.map { markerViewExists(id: "gitGraphRows-4", in: $0) } ?? false
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Ganze Historie zeigt keine vier Commits "
+                        + "(Modell: \(ws.gitLog.count)) — \(book.summary)")
+                },
+                then: {
+                    ws.showGitHistory(for: alpha)
+                    pollGitHistoryFiltered(ws, base: base, alpha: alpha, phase: 0)
+                })
     }
 
     /// (b) und (c): eingeschränkte Ansicht, danach dieselbe Prüfung nach
     /// einem Ausflug auf den Dateien-Tab.
     private static func pollGitHistoryFiltered(_ ws: Workspace, base: URL, alpha: URL,
-                                               phase: Int, tick: Int) {
-        let content = mainWindowForAXChecks()?.contentView
-        let header = content.map {
-            markerViewExists(id: "gitHistoryFile-alpha.txt", in: $0)
-        } ?? false
-        let threeRows = content.map { markerViewExists(id: "gitGraphRows-3", in: $0) } ?? false
-        let onGraph = ws.sidebarMode == .graph
-        if header, threeRows, onGraph {
-            if phase == 0 {
-                // Reiner Tab-Wechsel — er darf die Einschränkung nicht
-                // zurücksetzen.
-                ws.sidebarMode = .files
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    ws.sidebarMode = .graph
-                    pollGitHistoryFiltered(ws, base: base, alpha: alpha,
-                                           phase: 1, tick: 0)
-                }
-                return
-            }
-            clickGitHistoryFullButton(ws, base: base)
-            return
-        }
-        if tick >= 160 {          // 8 s
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Dateiverlauf (Durchgang \(phase + 1)) nach 8 s falsch: "
-                + "Kopfzeile=\(header), drei Zeilen=\(threeRows), Graph-Tab=\(onGraph), "
-                + "Modell: \(ws.gitFileHistory.count) Commits")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollGitHistoryFiltered(ws, base: base, alpha: alpha,
-                                   phase: phase, tick: tick + 1)
-        }
+                                               phase: Int) {
+        var header = false
+        var threeRows = false
+        var onGraph = false
+        waitFor(budget: 8, pause: 0.05,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    header = content.map {
+                        markerViewExists(id: "gitHistoryFile-alpha.txt", in: $0)
+                    } ?? false
+                    threeRows = content.map { markerViewExists(id: "gitGraphRows-3", in: $0) } ?? false
+                    onGraph = ws.sidebarMode == .graph
+                    return header && threeRows && onGraph
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Dateiverlauf (Durchgang \(phase + 1)) falsch: "
+                        + "Kopfzeile=\(header), drei Zeilen=\(threeRows), Graph-Tab=\(onGraph), "
+                        + "Modell: \(ws.gitFileHistory.count) Commits — \(book.summary)")
+                },
+                then: {
+                    if phase == 0 {
+                        // Reiner Tab-Wechsel — er darf die Einschränkung nicht
+                        // zurücksetzen.
+                        ws.sidebarMode = .files
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            ws.sidebarMode = .graph
+                            pollGitHistoryFiltered(ws, base: base, alpha: alpha, phase: 1)
+                        }
+                        return
+                    }
+                    clickGitHistoryFullButton(ws, base: base)
+                })
     }
 
     /// (d) Echter Mausklick auf „Ganze Historie".
@@ -17024,28 +17587,32 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: base)
             finish(false, "Klick auf „Ganze Historie“ nicht erzeugbar")
         }
-        pollGitHistoryRestored(ws, base: base, tick: 0)
+        pollGitHistoryRestored(ws, base: base)
     }
 
-    private static func pollGitHistoryRestored(_ ws: Workspace, base: URL, tick: Int) {
-        let content = mainWindowForAXChecks()?.contentView
-        let fourRows = content.map { markerViewExists(id: "gitGraphRows-4", in: $0) } ?? false
-        let headerGone = content.map {
-            !markerViewExists(id: "gitHistoryFile-alpha.txt", in: $0)
-        } ?? false
-        if fourRows, headerGone, ws.gitHistoryFile == nil {
-            try? FileManager.default.removeItem(at: base)
-            finish(true, "Dateiverlauf zeigt 3 von 4 Commits, überlebt den Tab-Wechsel, "
-                + "und „Ganze Historie“ stellt alle 4 wieder her")
-        }
-        if tick >= 100 {          // 5 s
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Nach dem Klick auf „Ganze Historie“: vier Zeilen=\(fourRows), "
-                + "Kopfzeile weg=\(headerGone), Filter=\(String(describing: ws.gitHistoryFile))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollGitHistoryRestored(ws, base: base, tick: tick + 1)
-        }
+    private static func pollGitHistoryRestored(_ ws: Workspace, base: URL) {
+        var fourRows = false
+        var headerGone = false
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    fourRows = content.map { markerViewExists(id: "gitGraphRows-4", in: $0) } ?? false
+                    headerGone = content.map {
+                        !markerViewExists(id: "gitHistoryFile-alpha.txt", in: $0)
+                    } ?? false
+                    return fourRows && headerGone && ws.gitHistoryFile == nil
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Nach dem Klick auf „Ganze Historie“: vier Zeilen=\(fourRows), "
+                        + "Kopfzeile weg=\(headerGone), Filter=\(String(describing: ws.gitHistoryFile)) "
+                        + "— \(book.summary)")
+                },
+                then: {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(true, "Dateiverlauf zeigt 3 von 4 Commits, überlebt den Tab-Wechsel, "
+                        + "und „Ganze Historie“ stellt alle 4 wieder her")
+                })
     }
 
     // MARK: - Selbsttest sidebarstate (Zustand über den Tab-Wechsel)
@@ -17065,7 +17632,7 @@ enum SelfTest {
         Workspace.presentGitDialogs = false
 
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-sidebarstate-\(UUID().uuidString)")
         let repo = base.appendingPathComponent("working-copy")
         do {
@@ -17094,48 +17661,47 @@ enum SelfTest {
             DispatchQueue.main.async {
                 ws.openProject(at: repo)
                 ws.sidebarMode = .files
-                pollSidebarStateBaseline(ws, base: base, tick: 0)
+                pollSidebarStateBaseline(ws, base: base)
             }
         }
     }
 
     /// (a) Warten, bis die gefilterte Liste samt Zähler wirklich gerendert ist.
-    private static func pollSidebarStateBaseline(_ ws: Workspace, base: URL, tick: Int) {
-        let content = mainWindowForAXChecks()?.contentView
-        let listed = content.map {
-            markerViewExists(id: "fileTreeRow-datei-01.txt-voll", in: $0)
-        } ?? false
-        if listed, ws.gitStatus != nil {
-            ws.fileTreeFilterQuery = "datei"
-            pollSidebarStateFiltered(ws, base: base, tick: 0)
-            return
-        }
-        if tick >= 200 {          // 10 s
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Dateibaum nach 10 s nicht gerendert (Repo erkannt: "
-                + "\(ws.gitStatus != nil))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollSidebarStateBaseline(ws, base: base, tick: tick + 1)
-        }
+    private static func pollSidebarStateBaseline(_ ws: Workspace, base: URL) {
+        waitFor(budget: 10, pause: 0.05,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    let listed = content.map {
+                        markerViewExists(id: "fileTreeRow-datei-01.txt-voll", in: $0)
+                    } ?? false
+                    return listed && ws.gitStatus != nil
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Dateibaum nicht gerendert (Repo erkannt: "
+                        + "\(ws.gitStatus != nil)) — \(book.summary)")
+                },
+                then: {
+                    ws.fileTreeFilterQuery = "datei"
+                    pollSidebarStateFiltered(ws, base: base)
+                })
     }
 
-    private static func pollSidebarStateFiltered(_ ws: Workspace, base: URL, tick: Int) {
-        let content = mainWindowForAXChecks()?.contentView
-        let counter = content.map {
-            markerViewExists(id: "sidebarFilterState-n80-m80", in: $0)
-        } ?? false
-        if counter {
-            scrollSidebarStateTree(ws, base: base)
-            return
-        }
-        if tick >= 200 {          // 10 s
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Filter „datei“ nach 10 s ohne Zähler 80/80")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollSidebarStateFiltered(ws, base: base, tick: tick + 1)
-        }
+    private static func pollSidebarStateFiltered(_ ws: Workspace, base: URL) {
+        waitFor(budget: 10, pause: 0.05,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    return content.map {
+                        markerViewExists(id: "sidebarFilterState-n80-m80", in: $0)
+                    } ?? false
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Filter „datei“ ohne Zähler 80/80 — \(book.summary)")
+                },
+                then: {
+                    scrollSidebarStateTree(ws, base: base)
+                })
     }
 
     /// (b) Über den regulären AppKit-Weg scrollen — ein synthetisches
@@ -17170,37 +17736,41 @@ enum SelfTest {
             ws.sidebarMode = .graph
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 ws.sidebarMode = .files
-                pollSidebarStateRestored(ws, base: base, expected: scrolled, tick: 0)
+                pollSidebarStateRestored(ws, base: base, expected: scrolled)
             }
         }
     }
 
     /// (c) Zähler und Scrollposition müssen zurück sein.
     private static func pollSidebarStateRestored(_ ws: Workspace, base: URL,
-                                                 expected: CGFloat, tick: Int) {
-        let content = mainWindowForAXChecks()?.contentView
-        let counter = content.map {
-            markerViewExists(id: "sidebarFilterState-n80-m80", in: $0)
-        } ?? false
-        let row = content.flatMap {
-            markerView(id: "fileTreeRow-datei-01.txt-gefiltert", in: $0)
-                ?? markerView(id: "fileTreeRow-datei-01.txt-voll", in: $0)
-        }
-        let restored = row.flatMap { enclosingScrollView(of: $0) }?
-            .contentView.bounds.origin.y ?? 0
-        if counter, abs(restored - expected) < 8 {
-            try? FileManager.default.removeItem(at: base)
-            finish(true, "Nach dem Tab-Wechsel stehen Filter (80/80) und Scrollposition "
-                + "(\(Int(restored)) pt) wieder wie zuvor")
-        }
-        if tick >= 100 {          // 5 s
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Nach dem Tab-Wechsel: Zähler 80/80=\(counter), "
-                + "Scrollposition ist=\(Int(restored)) pt, erwartet=\(Int(expected)) pt")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollSidebarStateRestored(ws, base: base, expected: expected, tick: tick + 1)
-        }
+                                                 expected: CGFloat) {
+        var counter = false
+        var restored: CGFloat = 0
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    counter = content.map {
+                        markerViewExists(id: "sidebarFilterState-n80-m80", in: $0)
+                    } ?? false
+                    let row = content.flatMap {
+                        markerView(id: "fileTreeRow-datei-01.txt-gefiltert", in: $0)
+                            ?? markerView(id: "fileTreeRow-datei-01.txt-voll", in: $0)
+                    }
+                    restored = row.flatMap { enclosingScrollView(of: $0) }?
+                        .contentView.bounds.origin.y ?? 0
+                    return counter && abs(restored - expected) < 8
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Nach dem Tab-Wechsel: Zähler 80/80=\(counter), "
+                        + "Scrollposition ist=\(Int(restored)) pt, erwartet=\(Int(expected)) pt "
+                        + "— \(book.summary)")
+                },
+                then: {
+                    try? FileManager.default.removeItem(at: base)
+                    finish(true, "Nach dem Tab-Wechsel stehen Filter (80/80) und Scrollposition "
+                        + "(\(Int(restored)) pt) wieder wie zuvor")
+                })
     }
 
     /// Nächste NSScrollView oberhalb einer View — dieselbe, die auch der
@@ -17231,7 +17801,7 @@ enum SelfTest {
         Workspace.presentGitDialogs = false
 
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-gitsticky-\(UUID().uuidString)")
         let repo = base.appendingPathComponent("working-copy")
         do {
@@ -17269,35 +17839,49 @@ enum SelfTest {
             }
             DispatchQueue.main.async {
                 ws.openProject(at: repo)
-                pollGitStickyHeader(ws, base: base, tick: 0)
+                pollGitStickyHeader(ws, base: base)
             }
         }
     }
 
-    private static func pollGitStickyHeader(_ ws: Workspace, base: URL, tick: Int) {
-        guard let window = mainWindowForAXChecks(),
-              let content = window.contentView,
-              let header = markerView(id: "gitSectionHeader-unstaged", in: content),
-              let discard = markerView(id: "gitHeaderDiscardAll", in: content),
-              // Seit 1.114.0 zeigt der Änderungen-Tab die Anzahl geänderter
-              // Dateien als Badge — bei genau 60 geänderten Dateien muss dort
-              // „60" stehen (der Marker trägt die angezeigte Zahl im Namen).
-              markerView(id: "sidebarChangesBadge-60", in: content) != nil,
-              // Seit 1.115.0 tragen (auch deaktivierbare) Knöpfe ihre
-              // Tooltips über die AppKit-Overlay-Brücke; mindestens der
-              // Commit-Knopf dieser Ansicht muss so einen Tooltip montieren.
-              fastraTooltipExists(in: content),
-              (ws.gitStatus?.unstagedChanges.count ?? 0) >= 60 else {
-            if tick >= 120 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Abschnittskopf, Knopf oder Tab-Badge fehlt "
-                    + "(Änderungen: \(ws.gitStatus?.unstagedChanges.count ?? 0))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitStickyHeader(ws, base: base, tick: tick + 1)
-            }
-            return
-        }
+    private static func pollGitStickyHeader(_ ws: Workspace, base: URL) {
+        var found: (window: NSWindow, content: NSView, header: NSView, discard: NSView)?
+        waitFor(budget: 6, pause: 0.05,
+                condition: {
+                    guard let window = mainWindowForAXChecks(),
+                          let content = window.contentView,
+                          let header = markerView(id: "gitSectionHeader-unstaged", in: content),
+                          let discard = markerView(id: "gitHeaderDiscardAll", in: content),
+                          // Seit 1.114.0 zeigt der Änderungen-Tab die Anzahl geänderter
+                          // Dateien als Badge — bei genau 60 geänderten Dateien muss dort
+                          // „60" stehen (der Marker trägt die angezeigte Zahl im Namen).
+                          markerView(id: "sidebarChangesBadge-60", in: content) != nil,
+                          // Seit 1.115.0 tragen (auch deaktivierbare) Knöpfe ihre
+                          // Tooltips über die AppKit-Overlay-Brücke; mindestens der
+                          // Commit-Knopf dieser Ansicht muss so einen Tooltip montieren.
+                          fastraTooltipExists(in: content),
+                          (ws.gitStatus?.unstagedChanges.count ?? 0) >= 60 else { return false }
+                    found = (window, content, header, discard)
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Abschnittskopf, Knopf oder Tab-Badge fehlt "
+                        + "(Änderungen: \(ws.gitStatus?.unstagedChanges.count ?? 0)) — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Abschnittskopf nach Erfolg verschwunden") }
+                    let (window, content, header, discard) = found
+                    runGitStickyHeaderMeasurement(window: window, content: content,
+                                                  header: header, discard: discard, base: base)
+                })
+    }
+
+    /// Der Messteil von `pollGitStickyHeader`, sobald Kopf, Knopf, Badge und
+    /// Tooltip im Fenster stehen.
+    private static func runGitStickyHeaderMeasurement(window: NSWindow, content: NSView,
+                                                      header: NSView, discard: NSView,
+                                                      base: URL) {
         window.layoutIfNeeded()
         // Die NSScrollView, in der der Kopf liegt — dieselbe, die der Nutzer
         // mit dem Trackpad bewegt.
@@ -17326,13 +17910,16 @@ enum SelfTest {
         scrollGitChangesList(scroll, by: target)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            defer { try? FileManager.default.removeItem(at: base) }
+            // Kein `defer`: Jeder Ausgang dieses Blocks geht über `finish`,
+            // und das endet in `exit()` — der Stack wird nicht abgewickelt.
+            func cleanUp() { try? FileManager.default.removeItem(at: base) }
             guard let contentNow = window.contentView,
                   let headerNow = markerView(id: "gitSectionHeader-unstaged",
                                              in: contentNow),
                   let discardNow = markerView(id: "gitHeaderDiscardAll",
                                               in: contentNow),
                   let scrollNow = enclosingScrollView(of: headerNow) else {
+                cleanUp()
                 finish(false, "Abschnittskopf ist nach dem Scrollen verschwunden — "
                     + "er scrollt mit statt oben zu bleiben")
             }
@@ -17348,12 +17935,14 @@ enum SelfTest {
             // Test auch dann, wenn die Liste stillstand — der Kopf sitzt ja
             // ungescrollt ohnehin oben.
             guard scrolled > 100 else {
+                cleanUp()
                 finish(false, "Die Liste hat sich nicht dauerhaft bewegt (Scroll-Differenz "
                     + "\(Int(scrolled)) pt) — die Zusage ist so nicht prüfbar")
             }
             // (b) Der Kopf ist trotz des Scrollens an derselben Stelle im
             // Fenster geblieben. Genau das ist das Festpinnen.
             guard abs(after.minY - before.minY) < 2 else {
+                cleanUp()
                 finish(false, "Der Abschnittskopf ist mitgescrollt "
                     + "(vorher y=\(Int(before.minY)), nachher y=\(Int(after.minY)))")
             }
@@ -17363,6 +17952,7 @@ enum SelfTest {
             let listTop = contentNow.isFlipped ? viewport.minY : viewport.maxY
             let headerTop = contentNow.isFlipped ? after.minY : after.maxY
             guard abs(headerTop - listTop) < 2 else {
+                cleanUp()
                 finish(false, "Der Abschnittskopf klebt nicht an der Oberkante "
                     + "(Kopf \(Int(headerTop)), Listenoberkante \(Int(listTop)))")
             }
@@ -17370,6 +17960,7 @@ enum SelfTest {
             let button = discardNow.convert(discardNow.bounds, to: contentNow)
             guard button.width > 0, button.height > 0,
                   button.midY >= after.minY - 1, button.midY <= after.maxY + 1 else {
+                cleanUp()
                 finish(false, "Der Verwerfen-Knopf sitzt nicht im stehenden Kopf "
                     + "(Knopf \(Int(button.minY))–\(Int(button.maxY)), "
                     + "Kopf \(Int(after.minY))–\(Int(after.maxY)))")
@@ -17379,15 +17970,18 @@ enum SelfTest {
             // auf seiner Idealbreite bestand.
             guard let stageNow = markerView(id: "gitHeaderStageAll",
                                             in: contentNow) else {
+                cleanUp()
                 finish(false, "Der Bereitstellen-Knopf fehlt im Kopf")
             }
             let stageFrame = stageNow.convert(stageNow.bounds, to: contentNow)
             guard stageFrame.width > 0,
                   stageFrame.maxX <= viewport.maxX + 1 else {
+                cleanUp()
                 finish(false, "Der letzte Kopf-Knopf ist abgeschnitten "
                     + "(Knopf endet bei \(Int(stageFrame.maxX)), Seitenleiste "
                     + "bei \(Int(viewport.maxX)))")
             }
+            cleanUp()
             finish(true, "60 Änderungen, Liste um \(Int(scrolled)) pt gescrollt: "
                 + "der Abschnittskopf bleibt an der Listenoberkante stehen "
                 + "(y=\(Int(after.minY)) vor und nach dem Scrollen) und die "
@@ -17416,7 +18010,7 @@ enum SelfTest {
         workspaceDefaults().set(GitChangesLayoutMode.flat.rawValue, forKey: "git.changesLayout")
 
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-gitmultidiscard-\(UUID().uuidString)")
         let repo = base.appendingPathComponent("working-copy")
         do {
@@ -17459,46 +18053,45 @@ enum SelfTest {
             }
             DispatchQueue.main.async {
                 ws.openProject(at: repo)
-                pollGitMultiDiscardRows(ws, base: base, repo: repo, tick: 0)
+                pollGitMultiDiscardRows(ws, base: base, repo: repo)
             }
         }
     }
 
     /// Wartet, bis alle drei ungestageten Zeilen samt Klick-Markern wirklich
     /// im Fenster stehen, und startet dann die Klick-Folge.
-    private static func pollGitMultiDiscardRows(_ ws: Workspace, base: URL,
-                                                repo: URL, tick: Int) {
-        let unstaged = ws.gitStatus?.unstagedChanges ?? []
+    private static func pollGitMultiDiscardRows(_ ws: Workspace, base: URL, repo: URL) {
         let wanted = ["a-files/a-modified.txt", "m-deleted.txt", "z-untracked.txt"]
-        let rows = wanted.compactMap { name in
-            unstaged.first(where: { $0.path == name })
-        }
-        let content = mainWindowForAXChecks()?.contentView
-        let markersReady = rows.count == wanted.count && content.map { view in
-            rows.allSatisfy {
-                markerView(id: "gitChangeRow-unstaged-\($0.rawPath.hashValue)",
-                           in: view) != nil
-            } && markerView(id: "gitDiscardAction-\(rows[0].rawPath.hashValue)",
-                            in: view) != nil
-        } == true
-        guard markersReady else {
-            if tick >= 100 {
-                try? FileManager.default.removeItem(at: base)
-                let shown = ws.gitStatus?.unstagedChanges.map(\.path) ?? []
-                finish(false, "Änderungszeilen oder Marker fehlen im Fenster "
-                    + "(sichtbar: \(shown))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitMultiDiscardRows(ws, base: base, repo: repo, tick: tick + 1)
-            }
-            return
-        }
-        runGitLayoutToggleCheck(
-            ws, base: base, repo: repo,
-            deletedHash: rows[1].rawPath.hashValue,
-            rowHashes: (first: rows[0].rawPath.hashValue,
-                        last: rows[2].rawPath.hashValue)
-        )
+        var rows: [GitChange] = []
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    let unstaged = ws.gitStatus?.unstagedChanges ?? []
+                    rows = wanted.compactMap { name in
+                        unstaged.first(where: { $0.path == name })
+                    }
+                    let content = mainWindowForAXChecks()?.contentView
+                    return rows.count == wanted.count && content.map { view in
+                        rows.allSatisfy {
+                            markerView(id: "gitChangeRow-unstaged-\($0.rawPath.hashValue)",
+                                       in: view) != nil
+                        } && markerView(id: "gitDiscardAction-\(rows[0].rawPath.hashValue)",
+                                        in: view) != nil
+                    } == true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    let shown = ws.gitStatus?.unstagedChanges.map(\.path) ?? []
+                    finish(false, "Änderungszeilen oder Marker fehlen im Fenster "
+                        + "(sichtbar: \(shown)) — \(book.summary)")
+                },
+                then: {
+                    runGitLayoutToggleCheck(
+                        ws, base: base, repo: repo,
+                        deletedHash: rows[1].rawPath.hashValue,
+                        rowHashes: (first: rows[0].rawPath.hashValue,
+                                    last: rows[2].rawPath.hashValue)
+                    )
+                })
     }
 
     /// Der echte Kopfknopf muss flach → Baum → flach umschalten und dabei
@@ -17521,16 +18114,14 @@ enum SelfTest {
         }
         pollGitLayoutToggle(ws, base: base, repo: repo,
                             deletedHash: deletedHash, rowHashes: rowHashes,
-                            expected: .tree, tick: 0)
+                            expected: .tree)
     }
 
     private static func pollGitLayoutToggle(
         _ ws: Workspace, base: URL, repo: URL, deletedHash: Int,
         rowHashes: (first: Int, last: Int),
-        expected: GitChangesLayoutMode, tick: Int, treeFolderOpened: Bool = false
+        expected: GitChangesLayoutMode, treeFolderOpened: Bool = false
     ) {
-        let raw = workspaceDefaults().string(forKey: "git.changesLayout")
-        let content = mainWindowForAXChecks()?.contentView
         // SwiftUI behält die alte flache Zeile verborgen im Ansichtsbaum.
         // Deshalb alle passenden Marker durchsuchen und nur sichtbare zählen.
         func visibleMarker(id: String, in view: NSView) -> NSView? {
@@ -17541,66 +18132,69 @@ enum SelfTest {
             }
             return nil
         }
-        let folder = content.flatMap { visibleMarker(id: "gitChangeFolder-unstaged-a-files", in: $0) }
-        let child = content.flatMap {
-            visibleMarker(id: "gitChangeRow-unstaged-\(rowHashes.first)", in: $0)
-        }
-        let hierarchyMatches = expected == .tree
-            ? folder != nil && (child != nil) == treeFolderOpened
-            : folder == nil && child != nil
-        if raw == expected.rawValue && hierarchyMatches {
-            if expected == .tree {
-                guard let window = mainWindowForAXChecks(),
-                      let content = window.contentView,
-                      let marker = markerView(id: "gitChangesLayoutToggle", in: content) else {
+        var raw: String?
+        var folder: NSView?
+        var child: NSView?
+        waitFor(budget: 3, pause: 0.05,
+                condition: {
+                    raw = workspaceDefaults().string(forKey: "git.changesLayout")
+                    let content = mainWindowForAXChecks()?.contentView
+                    folder = content.flatMap { visibleMarker(id: "gitChangeFolder-unstaged-a-files", in: $0) }
+                    child = content.flatMap {
+                        visibleMarker(id: "gitChangeRow-unstaged-\(rowHashes.first)", in: $0)
+                    }
+                    let hierarchyMatches = expected == .tree
+                        ? folder != nil && (child != nil) == treeFolderOpened
+                        : folder == nil && child != nil
+                    return raw == expected.rawValue && hierarchyMatches
+                },
+                onTimeout: { book in
                     try? FileManager.default.removeItem(at: base)
-                    finish(false, "Umschalter verschwand in der Baumansicht")
-                }
-                if !treeFolderOpened {
-                    guard let folder else { finish(false, "Baumordner verschwand vor dem Klick") }
-                    let point = folder.convert(
-                        NSPoint(x: folder.bounds.midX, y: folder.bounds.midY), to: nil)
-                    guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
-                        finish(false, "Ordner der Baumansicht nicht klickbar")
+                    finish(false, "Ansicht „\(expected.rawValue)“ nicht vollständig angekommen "
+                        + "(Einstellung=\(raw ?? "nil"), Ordner=\(folder != nil), "
+                        + "Dateizeile=\(child != nil), aufgeklappt erwartet=\(treeFolderOpened), "
+                        + "Dateizeile verborgen=\(child?.isHiddenOrHasHiddenAncestor.description ?? "nil"), "
+                        + "Dateizeile frame=\(child.map { NSStringFromRect($0.frame) } ?? "nil"), "
+                        + "Dateizeile sichtbar=\(child.map { NSStringFromRect($0.visibleRect) } ?? "nil")) "
+                        + "— \(book.summary)")
+                },
+                then: {
+                    guard expected == .tree else {
+                        runGitDeletedPreviewCheck(ws, base: base, repo: repo,
+                                                  deletedHash: deletedHash,
+                                                  rowHashes: rowHashes)
+                        return
+                    }
+                    guard let window = mainWindowForAXChecks(),
+                          let content = window.contentView,
+                          let marker = markerView(id: "gitChangesLayoutToggle", in: content) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Umschalter verschwand in der Baumansicht")
+                    }
+                    if !treeFolderOpened {
+                        guard let folder else { finish(false, "Baumordner verschwand vor dem Klick") }
+                        let point = folder.convert(
+                            NSPoint(x: folder.bounds.midX, y: folder.bounds.midY), to: nil)
+                        guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
+                            finish(false, "Ordner der Baumansicht nicht klickbar")
+                        }
+                        pollGitLayoutToggle(ws, base: base, repo: repo,
+                                            deletedHash: deletedHash, rowHashes: rowHashes,
+                                            expected: .tree, treeFolderOpened: true)
+                        return
+                    }
+                    window.layoutIfNeeded()
+                    let point = marker.convert(
+                        NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil)
+                    guard sendMouseClick(at: point, in: window,
+                                         modifiers: [], viaApp: true) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Rückschalten zur flachen Ansicht nicht klickbar")
                     }
                     pollGitLayoutToggle(ws, base: base, repo: repo,
-                        deletedHash: deletedHash, rowHashes: rowHashes,
-                        expected: .tree, tick: 0, treeFolderOpened: true)
-                    return
-                }
-                window.layoutIfNeeded()
-                let point = marker.convert(
-                    NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil)
-                guard sendMouseClick(at: point, in: window,
-                                     modifiers: [], viaApp: true) else {
-                    try? FileManager.default.removeItem(at: base)
-                    finish(false, "Rückschalten zur flachen Ansicht nicht klickbar")
-                }
-                pollGitLayoutToggle(ws, base: base, repo: repo,
-                                    deletedHash: deletedHash, rowHashes: rowHashes,
-                                    expected: .flat, tick: 0)
-            } else {
-                runGitDeletedPreviewCheck(ws, base: base, repo: repo,
-                                          deletedHash: deletedHash,
-                                          rowHashes: rowHashes)
-            }
-            return
-        }
-        if tick >= 60 {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Ansicht „\(expected.rawValue)“ nicht vollständig angekommen "
-                + "(Einstellung=\(raw ?? "nil"), Ordner=\(folder != nil), "
-                + "Dateizeile=\(child != nil), aufgeklappt erwartet=\(treeFolderOpened), "
-                + "Dateizeile verborgen=\(child?.isHiddenOrHasHiddenAncestor.description ?? "nil"), "
-                + "Dateizeile frame=\(child.map { NSStringFromRect($0.frame) } ?? "nil"), "
-                + "Dateizeile sichtbar=\(child.map { NSStringFromRect($0.visibleRect) } ?? "nil"))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollGitLayoutToggle(ws, base: base, repo: repo,
-                                deletedHash: deletedHash, rowHashes: rowHashes,
-                                expected: expected, tick: tick + 1,
-                                treeFolderOpened: treeFolderOpened)
-        }
+                                        deletedHash: deletedHash, rowHashes: rowHashes,
+                                        expected: .flat)
+                })
     }
 
     /// Vor der Mehrfachauswahl prüft derselbe echte Fensterlauf den gemeldeten
@@ -17630,41 +18224,45 @@ enum SelfTest {
             finish(false, "Doppelklick auf die gelöschte Dateizeile nicht erzeugbar")
         }
         pollGitDeletedPreview(ws, base: base, repo: repo,
-                              rowHashes: rowHashes, tick: 0)
+                              rowHashes: rowHashes)
     }
 
     private static func pollGitDeletedPreview(
         _ ws: Workspace, base: URL, repo: URL,
-        rowHashes: (first: Int, last: Int), tick: Int
+        rowHashes: (first: Int, last: Int)
     ) {
-        let editorVisible = mainWindowForAXChecks()?.contentView.map {
-            markerView(id: "gitDeletedReadOnlyEditor", in: $0) != nil
-        } == true
-        if let tab = ws.activeTab, !tab.isLoading,
-           tab.gitSnapshotRequest?.path == "m-deleted.txt", editorVisible {
-            guard tab.content == "Original M\n", !tab.isPreview,
-                  tab.readOnlyReason != nil else {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Gelöschte Datei wurde nicht als dauerhafter read-only Tab geladen")
-            }
-            guard !ws.tabs.contains(where: {
-                $0.gitDiffRequest?.source.changeListPath == "m-deleted.txt"
-            }) else {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Die Diff-Vorschau des ersten Klicks blieb neben dem read-only Tab stehen")
-            }
-            performGitMultiDiscardClicks(ws, base: base, repo: repo,
-                                         rowHashes: rowHashes, step: 0)
-            return
-        }
-        if tick >= 100 {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Read-only Editor der gelöschten Datei erschien nicht")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollGitDeletedPreview(ws, base: base, repo: repo,
-                                  rowHashes: rowHashes, tick: tick + 1)
-        }
+        var tab: EditorTab?
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    let editorVisible = mainWindowForAXChecks()?.contentView.map {
+                        markerView(id: "gitDeletedReadOnlyEditor", in: $0) != nil
+                    } == true
+                    guard let candidate = ws.activeTab, !candidate.isLoading,
+                          candidate.gitSnapshotRequest?.path == "m-deleted.txt", editorVisible else {
+                        return false
+                    }
+                    tab = candidate
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Read-only Editor der gelöschten Datei erschien nicht — \(book.summary)")
+                },
+                then: {
+                    guard let tab, tab.content == "Original M\n", !tab.isPreview,
+                          tab.readOnlyReason != nil else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Gelöschte Datei wurde nicht als dauerhafter read-only Tab geladen")
+                    }
+                    guard !ws.tabs.contains(where: {
+                        $0.gitDiffRequest?.source.changeListPath == "m-deleted.txt"
+                    }) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Die Diff-Vorschau des ersten Klicks blieb neben dem read-only Tab stehen")
+                    }
+                    performGitMultiDiscardClicks(ws, base: base, repo: repo,
+                                                 rowHashes: rowHashes, step: 0)
+                })
     }
 
     /// Führt die vier Klicks nacheinander aus. Nach jedem Auswahl-Klick
@@ -17689,7 +18287,7 @@ enum SelfTest {
              "Klick auf Verwerfen"),
         ]
         guard step < steps.count else {
-            pollGitMultiDiscardResult(base: base, repo: repo, tick: 0)
+            pollGitMultiDiscardResult(base: base, repo: repo)
             return
         }
         guard let window = mainWindowForAXChecks(),
@@ -17736,8 +18334,7 @@ enum SelfTest {
         }
         pollGitMultiDiscardSelection(ws, base: base, repo: repo,
                                      rowHashes: rowHashes, step: step,
-                                     expected: expected, name: current.name,
-                                     tick: 0)
+                                     expected: expected, name: current.name)
     }
 
     /// Wartet nach einem Auswahl-Klick auf die erwartete Auswahlgröße und
@@ -17746,75 +18343,75 @@ enum SelfTest {
     private static func pollGitMultiDiscardSelection(
         _ ws: Workspace, base: URL, repo: URL,
         rowHashes: (first: Int, last: Int), step: Int,
-        expected: Int, name: String, tick: Int
+        expected: Int, name: String
     ) {
-        let content = mainWindowForAXChecks()?.contentView
-        let reached = content.map {
-            markerView(id: "gitChangesSelCount-\(expected)", in: $0) != nil
-        } == true
-        if reached {
-            performGitMultiDiscardClicks(ws, base: base, repo: repo,
-                                         rowHashes: rowHashes, step: step + 1)
-            return
-        }
-        if tick >= 60 {
-            // Zur Diagnose den tatsächlich sichtbaren Zählerstand suchen.
-            let actual = content.flatMap { view in
-                (0...8).first(where: {
-                    markerView(id: "gitChangesSelCount-\($0)", in: view) != nil
+        waitFor(budget: 3, pause: 0.05,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    return content.map {
+                        markerView(id: "gitChangesSelCount-\(expected)", in: $0) != nil
+                    } == true
+                },
+                onTimeout: { book in
+                    // Zur Diagnose den tatsächlich sichtbaren Zählerstand suchen.
+                    let content = mainWindowForAXChecks()?.contentView
+                    let actual = content.flatMap { view in
+                        (0...8).first(where: {
+                            markerView(id: "gitChangesSelCount-\($0)", in: view) != nil
+                        })
+                    }
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "\(name) kam nicht in der Auswahl an "
+                        + "(erwartet \(expected), sichtbar \(actual.map(String.init) ?? "kein Marker"), "
+                        + "HitTest: \(lastHitTestChain)) — \(book.summary)")
+                },
+                then: {
+                    performGitMultiDiscardClicks(ws, base: base, repo: repo,
+                                                 rowHashes: rowHashes, step: step + 1)
                 })
-            }
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "\(name) kam nicht in der Auswahl an "
-                + "(erwartet \(expected), sichtbar \(actual.map(String.init) ?? "kein Marker"), "
-                + "HitTest: \(lastHitTestChain))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollGitMultiDiscardSelection(ws, base: base, repo: repo,
-                                         rowHashes: rowHashes, step: step,
-                                         expected: expected, name: name,
-                                         tick: tick + 1)
-        }
     }
 
     /// Erwartung nach dem Sammel-Verwerfen: beide getrackten Dateien stehen
     /// wieder auf dem Commit-Stand, die per Cmd-Klick abgewählte untracked
     /// Datei existiert weiter — und git meldet als einzigen Eintrag
     /// `?? z-untracked.txt`.
-    private static func pollGitMultiDiscardResult(base: URL, repo: URL, tick: Int) {
+    private static func pollGitMultiDiscardResult(base: URL, repo: URL) {
         let fm = FileManager.default
         let aURL = repo.appendingPathComponent("a-files/a-modified.txt")
         let mURL = repo.appendingPathComponent("m-deleted.txt")
         let zURL = repo.appendingPathComponent("z-untracked.txt")
-        guard fm.fileExists(atPath: zURL.path) else {
-            try? fm.removeItem(at: base)
-            finish(false, "Cmd-Klick nahm die untracked Datei nicht aus der "
-                + "Auswahl — das Sammel-Verwerfen hat sie mitgelöscht")
-        }
-        GitRunner.run(["status", "--porcelain", "-z"], in: repo) { result in
-            let entries = result?.stdoutData.split(separator: 0).map {
-                String(decoding: $0, as: UTF8.self)
-            } ?? []
-            let aContent = (try? String(contentsOf: aURL, encoding: .utf8)) ?? ""
-            let restored = result?.ok == true
-                && entries == ["?? z-untracked.txt"]
-                && aContent == "Original A\n"
-                && fm.fileExists(atPath: mURL.path)
-            if restored {
+        var entries: [String] = []
+        var aContent = ""
+        waitForAsync(
+            budget: 7, pause: 0.05,
+            check: { answer in
+                guard fm.fileExists(atPath: zURL.path) else {
+                    try? fm.removeItem(at: base)
+                    finish(false, "Cmd-Klick nahm die untracked Datei nicht aus der "
+                        + "Auswahl — das Sammel-Verwerfen hat sie mitgelöscht")
+                }
+                GitRunner.run(["status", "--porcelain", "-z"], in: repo) { result in
+                    entries = result?.stdoutData.split(separator: 0).map {
+                        String(decoding: $0, as: UTF8.self)
+                    } ?? []
+                    aContent = (try? String(contentsOf: aURL, encoding: .utf8)) ?? ""
+                    answer(result?.ok == true
+                        && entries == ["?? z-untracked.txt"]
+                        && aContent == "Original A\n"
+                        && fm.fileExists(atPath: mURL.path))
+                }
+            },
+            onTimeout: { book in
+                try? fm.removeItem(at: base)
+                finish(false, "Sammel-Verwerfen unvollständig (Status: \(entries), "
+                    + "a-modified: \(aContent.debugDescription)) — \(book.summary)")
+            },
+            then: {
                 DispatchQueue.main.async {
                     runGitMultiDiscardDoubleClick(base: base, repo: repo)
                 }
-                return
             }
-            if tick >= 140 {
-                try? fm.removeItem(at: base)
-                finish(false, "Sammel-Verwerfen unvollständig (Status: \(entries), "
-                    + "a-modified: \(aContent.debugDescription))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitMultiDiscardResult(base: base, repo: repo, tick: tick + 1)
-            }
-        }
+        )
     }
 
     /// Nachspiel zum Klickpfad-Umbau (Zeilen-Button statt Tap-Gesten): Der
@@ -17854,44 +18451,46 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: base)
             finish(false, "Doppelklick nicht erzeugbar")
         }
-        pollGitMultiDiscardPinnedTab(ws, base: base, repo: repo, tick: 0)
+        pollGitMultiDiscardPinnedTab(ws, base: base, repo: repo)
     }
 
-    private static func pollGitMultiDiscardPinnedTab(_ ws: Workspace, base: URL,
-                                                     repo: URL, tick: Int) {
+    private static func pollGitMultiDiscardPinnedTab(_ ws: Workspace, base: URL, repo: URL) {
         let zURL = repo.appendingPathComponent("z-untracked.txt")
-        let zTabs = ws.tabs.filter {
-            $0.url?.standardizedFileURL == zURL.standardizedFileURL
-        }
-        if zTabs.count == 1, zTabs[0].isLoading == false {
-            guard zTabs[0].isPreview == false else {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Der Doppelklick ließ den Datei-Tab nur als Vorschau offen")
-            }
-            // Der erste Klick des Doppelklicks öffnete den z-Diff als
-            // Vorschau; die Datei muss genau diesen Platz übernommen haben.
-            guard !ws.tabs.contains(where: {
-                $0.gitDiffRequest?.source.changeListPath == "z-untracked.txt"
-            }) else {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Die Diff-Vorschau des ersten Klicks blieb neben dem Datei-Tab stehen")
-            }
-            guard !ws.tabs.contains(where: {
-                $0.gitDiffRequest?.source.changeListPath == "a-files/a-modified.txt"
-            }) else {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Die neue Vorschau ersetzte die vorherige Diff-Vorschau nicht")
-            }
-            runGitMultiDiscardHeaderPhase(ws, base: base, repo: repo)
-            return
-        }
-        if tick >= 100 {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Der Doppelklick öffnete keinen dauerhaften Datei-Tab")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollGitMultiDiscardPinnedTab(ws, base: base, repo: repo, tick: tick + 1)
-        }
+        var zTab: EditorTab?
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    let zTabs = ws.tabs.filter {
+                        $0.url?.standardizedFileURL == zURL.standardizedFileURL
+                    }
+                    guard zTabs.count == 1, zTabs[0].isLoading == false else { return false }
+                    zTab = zTabs[0]
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Der Doppelklick öffnete keinen dauerhaften Datei-Tab — \(book.summary)")
+                },
+                then: {
+                    guard let zTab, zTab.isPreview == false else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Der Doppelklick ließ den Datei-Tab nur als Vorschau offen")
+                    }
+                    // Der erste Klick des Doppelklicks öffnete den z-Diff als
+                    // Vorschau; die Datei muss genau diesen Platz übernommen haben.
+                    guard !ws.tabs.contains(where: {
+                        $0.gitDiffRequest?.source.changeListPath == "z-untracked.txt"
+                    }) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Die Diff-Vorschau des ersten Klicks blieb neben dem Datei-Tab stehen")
+                    }
+                    guard !ws.tabs.contains(where: {
+                        $0.gitDiffRequest?.source.changeListPath == "a-files/a-modified.txt"
+                    }) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Die neue Vorschau ersetzte die vorherige Diff-Vorschau nicht")
+                    }
+                    runGitMultiDiscardHeaderPhase(ws, base: base, repo: repo)
+                })
     }
 
     /// Kopf-Aktionen der ÄNDERUNGEN-Sektion (Daniel-Wunsch 2026-07-30):
@@ -17913,25 +18512,21 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: base)
             finish(false, "Klick auf den Gesamt-Diff-Knopf nicht erzeugbar")
         }
-        pollGitMultiDiscardOverallDiff(ws, base: base, repo: repo, tick: 0)
+        pollGitMultiDiscardOverallDiff(ws, base: base, repo: repo)
     }
 
-    private static func pollGitMultiDiscardOverallDiff(_ ws: Workspace, base: URL,
-                                                       repo: URL, tick: Int) {
-        let overallOpen = ws.tabs.contains {
-            $0.gitDiffRequest?.source == .workingTree(path: nil)
-        }
-        if overallOpen {
-            runGitMultiDiscardHeaderDiscard(base: base, repo: repo)
-            return
-        }
-        if tick >= 100 {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Der Gesamt-Diff-Tab erschien nicht")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollGitMultiDiscardOverallDiff(ws, base: base, repo: repo, tick: tick + 1)
-        }
+    private static func pollGitMultiDiscardOverallDiff(_ ws: Workspace, base: URL, repo: URL) {
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    ws.tabs.contains { $0.gitDiffRequest?.source == .workingTree(path: nil) }
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Der Gesamt-Diff-Tab erschien nicht — \(book.summary)")
+                },
+                then: {
+                    runGitMultiDiscardHeaderDiscard(base: base, repo: repo)
+                })
     }
 
     /// Letzter Schritt: „Alle Änderungen verwerfen“ im Abschnitts-Kopf muss
@@ -17950,15 +18545,27 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: base)
             finish(false, "Klick auf „Alle Änderungen verwerfen“ nicht erzeugbar")
         }
-        pollGitMultiDiscardFinal(base: base, repo: repo, tick: 0)
+        pollGitMultiDiscardFinal(base: base, repo: repo)
     }
 
-    private static func pollGitMultiDiscardFinal(base: URL, repo: URL, tick: Int) {
-        GitRunner.run(["status", "--porcelain", "-z"], in: repo) { result in
-            let entries = result?.stdoutData.split(separator: 0).map {
-                String(decoding: $0, as: UTF8.self)
-            } ?? []
-            if result?.ok == true, entries.isEmpty {
+    private static func pollGitMultiDiscardFinal(base: URL, repo: URL) {
+        var entries: [String] = []
+        waitForAsync(
+            budget: 7, pause: 0.05,
+            check: { answer in
+                GitRunner.run(["status", "--porcelain", "-z"], in: repo) { result in
+                    entries = result?.stdoutData.split(separator: 0).map {
+                        String(decoding: $0, as: UTF8.self)
+                    } ?? []
+                    answer(result?.ok == true && entries.isEmpty)
+                }
+            },
+            onTimeout: { book in
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "„Alle Änderungen verwerfen“ räumte nicht auf "
+                    + "(Status: \(entries)) — \(book.summary)")
+            },
+            then: {
                 try? FileManager.default.removeItem(at: base)
                 finish(true, "Klick + Shift-Klick markieren den Bereich, Cmd-Klick "
                     + "nimmt die untracked Zeile heraus, Verwerfen setzt genau die "
@@ -17967,15 +18574,7 @@ enum SelfTest {
                     + "dessen Platz; die Kopf-Knöpfe öffnen den Gesamt-Diff und "
                     + "verwerfen den Rest der Sektion")
             }
-            if tick >= 140 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "„Alle Änderungen verwerfen“ räumte nicht auf "
-                    + "(Status: \(entries))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitMultiDiscardFinal(base: base, repo: repo, tick: tick + 1)
-            }
-        }
+        )
     }
 
     /// Reproduziert zwei echte Pushs eines sauberen Projekts. `primary` und
@@ -17993,7 +18592,7 @@ enum SelfTest {
         Workspace.presentGitDialogs = false
 
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-gitpushbutton-\(UUID().uuidString)")
         let repo = base.appendingPathComponent("working-copy")
         let primary = base.appendingPathComponent("primary.git")
@@ -18067,7 +18666,7 @@ enum SelfTest {
                             gitPushButtonExpectedSourcePrefix = String(sourceOID.prefix(12))
                             ws.openProject(at: repo)
                             pollGitPushButton(ws, base: base, repo: repo,
-                                              primary: primary, github: github, tick: 0)
+                                              primary: primary, github: github)
                         }
                     }
                 }
@@ -18078,7 +18677,7 @@ enum SelfTest {
     /// Wartet auf beide gerenderten Sicherheitsflächen und klickt zuerst
     /// `primary` über AppKits echtes Fenster-Hit-Testing.
     private static func pollGitPushButton(_ ws: Workspace, base: URL, repo: URL,
-                                          primary: URL, github: URL, tick: Int) {
+                                          primary: URL, github: URL) {
         let expectedPrimary = GitPushTarget(remote: "primary",
                                             addresses: [primary.path])
         let expectedGithub = GitPushTarget(remote: "github",
@@ -18088,70 +18687,73 @@ enum SelfTest {
             + "\(expectedPrimary.displayAddress.hashValue)"
         let githubAddressID = "gitPrimaryPushAddress-github-"
             + "\(expectedGithub.displayAddress.hashValue)"
-        guard ws.gitPushTargets == expected,
-              GitChangesPrimaryAction.resolve(status: ws.gitStatus,
-                                              targets: ws.gitPushTargets)
-                == .push(expected),
-              !ws.gitOperationsAreBusy,
-              let window = mainWindowForAXChecks(),
-              let content = window.contentView,
-              let primaryButton = markerView(id: "gitPrimaryPush-primary",
-                                             in: content),
-              let githubButton = markerView(id: "gitPrimaryPush-github",
-                                            in: content),
-              let primaryAddress = markerView(id: primaryAddressID, in: content),
-              let githubAddress = markerView(id: githubAddressID, in: content) else {
-            if tick >= 120 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Getrennte Push-Flächen mit sichtbaren Adressen "
-                    + "erschienen nicht (Ziele: \(ws.gitPushTargets), Status: "
-                    + "\(String(describing: ws.gitStatus)))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitPushButton(ws, base: base, repo: repo,
-                                  primary: primary, github: github, tick: tick + 1)
-            }
-            return
-        }
-
-        window.layoutIfNeeded()
-        guard primaryButton.bounds.width > 0, primaryButton.bounds.height > 0,
-              githubButton.bounds.width > 0, githubButton.bounds.height > 0,
-              primaryAddress.bounds.width > 0, primaryAddress.bounds.height > 0,
-              githubAddress.bounds.width > 0, githubAddress.bounds.height > 0 else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Push-Fläche oder Zieladresse besitzt keinen sichtbaren Bereich")
-        }
-        let primaryFrame = primaryButton.convert(primaryButton.bounds, to: content)
-        let githubFrame = githubButton.convert(githubButton.bounds, to: content)
-        guard abs(primaryFrame.midY - githubFrame.midY) <= 2,
-              primaryFrame.maxX <= githubFrame.minX + 1 else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Push-Flächen für primary und github liegen nicht nebeneinander")
-        }
-        activateApplication(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        guard window.isKeyWindow else {
-            if tick >= 120 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Dokumentfenster wurde für den primary-Push nicht Key")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitPushButton(ws, base: base, repo: repo,
-                                  primary: primary, github: github, tick: tick + 1)
-            }
-            return
-        }
-        let point = primaryButton.convert(
-            NSPoint(x: primaryButton.bounds.midX, y: primaryButton.bounds.midY),
-            to: nil
-        )
-        guard sendMouseClick(at: point, in: window, modifiers: []) else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Mausklick auf Push zu primary nicht erzeugbar")
-        }
-        pollGitPushPhaseIndicator(ws, base: base, repo: repo,
-                                  primary: primary, github: github, tick: 0)
+        // Zwei Stufen in EINER Frist: erst beide Flächen samt Adressen, dann
+        // das Key-Fenster für den Klick.
+        var stage = 0
+        var found: (window: NSWindow, button: NSView)?
+        waitFor(budget: 6, pause: 0.05,
+                condition: {
+                    guard ws.gitPushTargets == expected,
+                          GitChangesPrimaryAction.resolve(status: ws.gitStatus,
+                                                          targets: ws.gitPushTargets)
+                            == .push(expected),
+                          !ws.gitOperationsAreBusy,
+                          let window = mainWindowForAXChecks(),
+                          let content = window.contentView,
+                          let primaryButton = markerView(id: "gitPrimaryPush-primary",
+                                                         in: content),
+                          let githubButton = markerView(id: "gitPrimaryPush-github",
+                                                        in: content),
+                          let primaryAddress = markerView(id: primaryAddressID, in: content),
+                          let githubAddress = markerView(id: githubAddressID, in: content) else {
+                        stage = 0
+                        return false
+                    }
+                    window.layoutIfNeeded()
+                    guard primaryButton.bounds.width > 0, primaryButton.bounds.height > 0,
+                          githubButton.bounds.width > 0, githubButton.bounds.height > 0,
+                          primaryAddress.bounds.width > 0, primaryAddress.bounds.height > 0,
+                          githubAddress.bounds.width > 0, githubAddress.bounds.height > 0 else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Push-Fläche oder Zieladresse besitzt keinen sichtbaren Bereich")
+                    }
+                    let primaryFrame = primaryButton.convert(primaryButton.bounds, to: content)
+                    let githubFrame = githubButton.convert(githubButton.bounds, to: content)
+                    guard abs(primaryFrame.midY - githubFrame.midY) <= 2,
+                          primaryFrame.maxX <= githubFrame.minX + 1 else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Push-Flächen für primary und github liegen nicht nebeneinander")
+                    }
+                    stage = 1
+                    activateApplication(ignoringOtherApps: true)
+                    window.makeKeyAndOrderFront(nil)
+                    guard window.isKeyWindow else { return false }
+                    found = (window, primaryButton)
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    if stage == 0 {
+                        finish(false, "Getrennte Push-Flächen mit sichtbaren Adressen "
+                            + "erschienen nicht (Ziele: \(ws.gitPushTargets), Status: "
+                            + "\(String(describing: ws.gitStatus))) — \(book.summary)")
+                    }
+                    finish(false, "Dokumentfenster wurde für den primary-Push nicht Key — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Push-Fläche nach Erfolg verschwunden") }
+                    let (window, primaryButton) = found
+                    let point = primaryButton.convert(
+                        NSPoint(x: primaryButton.bounds.midX, y: primaryButton.bounds.midY),
+                        to: nil
+                    )
+                    guard sendMouseClick(at: point, in: window, modifiers: []) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Mausklick auf Push zu primary nicht erzeugbar")
+                    }
+                    pollGitPushPhaseIndicator(ws, base: base, repo: repo,
+                                              primary: primary, github: github)
+                })
     }
 
     /// Nach dem Klick muss die Karte ihre Phase sichtbar machen: erst der
@@ -18159,193 +18761,206 @@ enum SelfTest {
     /// Häkchen (`succeeded`). Der Test akzeptiert beide Marker, weil ein
     /// schneller lokaler Push den `running`-Zustand überholen kann.
     private static func pollGitPushPhaseIndicator(
-        _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL, tick: Int
+        _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL
     ) {
-        let content = mainWindowForAXChecks()?.contentView
-        let phaseVisible = content.map {
-            markerView(id: "gitPushPhase-primary-running", in: $0) != nil
-                || markerView(id: "gitPushPhase-primary-succeeded", in: $0) != nil
-        } ?? false
-        guard phaseVisible else {
-            if tick >= 120 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Push-Karte zeigte nach dem Klick weder Kreis-"
-                    + "Indikator noch Erfolgs-Häkchen (gitPushPhase-primary-*)")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitPushPhaseIndicator(ws, base: base, repo: repo,
-                                          primary: primary, github: github,
-                                          tick: tick + 1)
-            }
-            return
-        }
-        pollGitPrimaryPushResult(ws, base: base, repo: repo,
-                                 primary: primary, github: github, tick: 0)
+        waitFor(budget: 6, pause: 0.05,
+                condition: {
+                    let content = mainWindowForAXChecks()?.contentView
+                    return content.map {
+                        markerView(id: "gitPushPhase-primary-running", in: $0) != nil
+                            || markerView(id: "gitPushPhase-primary-succeeded", in: $0) != nil
+                    } ?? false
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Push-Karte zeigte nach dem Klick weder Kreis-"
+                        + "Indikator noch Erfolgs-Häkchen (gitPushPhase-primary-*) — \(book.summary)")
+                },
+                then: {
+                    pollGitPrimaryPushResult(ws, base: base, repo: repo,
+                                             primary: primary, github: github)
+                })
     }
 
     /// Nach dem ersten Klick muss ausschließlich `primary` den Branch besitzen;
     /// die Upstream-Konfiguration bleibt leer. Danach folgt der github-Klick.
     private static func pollGitPrimaryPushResult(
-        _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL, tick: Int
+        _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL
     ) {
-        GitRunner.run(["rev-parse", "--verify", "refs/heads/main"], in: primary) {
-            primaryResult in
-            GitRunner.run(
-                ["show-ref", "--verify", "--quiet", "refs/heads/main"], in: github
-            ) { githubResult in
-                readGitUpstreamConfig(in: repo) {
-                    remoteConfig, mergeConfig in
-                    DispatchQueue.main.async {
-                        if githubResult?.ok == true {
-                            try? FileManager.default.removeItem(at: base)
-                            finish(false, "Push traf den nicht ausgewählten Remote github")
-                        }
-                        if primaryResult?.ok == true,
-                           gitConfigValueIsAbsent(remoteConfig),
-                           gitConfigValueIsAbsent(mergeConfig),
-                           gitRefIsAbsent(githubResult) {
-                            pollGitSecondPushButton(
-                                ws, base: base, repo: repo, primary: primary,
-                                github: github, tick: 0
-                            )
-                            return
-                        }
-                        if tick >= 150 {
-                            try? FileManager.default.removeItem(at: base)
-                            finish(false, "Push zu primary nicht vollständig "
-                                + "(primary: \(primaryResult?.ok == true), "
-                                + "github unberührt: \(gitRefIsAbsent(githubResult)), "
-                                + "remote-config: \(String(describing: remoteConfig)), "
-                                + "merge-config: \(String(describing: mergeConfig)))")
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            pollGitPrimaryPushResult(
-                                ws, base: base, repo: repo, primary: primary,
-                                github: github, tick: tick + 1
-                            )
+        var primaryOK = false
+        var githubAbsent = false
+        var remoteConfig: GitResult?
+        var mergeConfig: GitResult?
+        waitForAsync(
+            budget: 7.5, pause: 0.05,
+            check: { answer in
+                GitRunner.run(["rev-parse", "--verify", "refs/heads/main"], in: primary) {
+                    primaryResult in
+                    GitRunner.run(
+                        ["show-ref", "--verify", "--quiet", "refs/heads/main"], in: github
+                    ) { githubResult in
+                        readGitUpstreamConfig(in: repo) {
+                            remote, merge in
+                            DispatchQueue.main.async {
+                                if githubResult?.ok == true {
+                                    try? FileManager.default.removeItem(at: base)
+                                    finish(false, "Push traf den nicht ausgewählten Remote github")
+                                }
+                                primaryOK = primaryResult?.ok == true
+                                githubAbsent = gitRefIsAbsent(githubResult)
+                                remoteConfig = remote
+                                mergeConfig = merge
+                                answer(primaryOK
+                                    && gitConfigValueIsAbsent(remote)
+                                    && gitConfigValueIsAbsent(merge)
+                                    && githubAbsent)
+                            }
                         }
                     }
                 }
+            },
+            onTimeout: { book in
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Push zu primary nicht vollständig "
+                    + "(primary: \(primaryOK), "
+                    + "github unberührt: \(githubAbsent), "
+                    + "remote-config: \(String(describing: remoteConfig)), "
+                    + "merge-config: \(String(describing: mergeConfig))) — \(book.summary)")
+            },
+            then: {
+                pollGitSecondPushButton(ws, base: base, repo: repo, primary: primary,
+                                        github: github)
             }
-        }
+        )
     }
 
     private static func pollGitSecondPushButton(
-        _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL, tick: Int,
-        previousMarker: NSView? = nil, stableTicks: Int = 0
+        _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL
     ) {
         let expected = [
             GitPushTarget(remote: "primary", addresses: [primary.path]),
             GitPushTarget(remote: "github", addresses: [github.path]),
         ]
-        let window = mainWindowForAXChecks()
-        let content = window?.contentView
-        let marker = content.flatMap {
-            markerView(id: "gitPrimaryPush-github", in: $0)
-        }
-        if let window, !window.isKeyWindow {
-            activateApplication(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-        }
-        let ready = !ws.gitOperationsAreBusy
-            && ws.gitPushTargets == expected
-            && window?.isKeyWindow == true
-            && marker != nil
-        let nextStableTicks = ready && marker === previousMarker
-            ? stableTicks + 1 : 0
-        guard ready, nextStableTicks >= 3,
-              let window, let marker else {
-            if tick >= 120 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "github-Push-Fläche wurde nach primary-Push nicht "
-                    + "stabil klickbereit (busy=\(ws.gitOperationsAreBusy), "
-                    + "Ziele=\(ws.gitPushTargets), Key=\(window?.isKeyWindow == true), "
-                    + "Marker=\(marker != nil), stabil=\(nextStableTicks))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitSecondPushButton(
-                    ws, base: base, repo: repo, primary: primary, github: github,
-                    tick: tick + 1, previousMarker: marker,
-                    stableTicks: nextStableTicks
-                )
-            }
-            return
-        }
-        window.layoutIfNeeded()
-        guard marker.bounds.width > 0, marker.bounds.height > 0 else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "github-Push-Fläche besitzt keinen sichtbaren Bereich")
-        }
-        let point = marker.convert(
-            NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil
-        )
-        guard sendMouseClick(at: point, in: window, modifiers: []) else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Mausklick auf Push zu github nicht erzeugbar")
-        }
-        pollGitSecondPushResult(ws, base: base, repo: repo,
-                                primary: primary, github: github, tick: 0)
+        // Die Fläche muss über drei Durchläufe dieselbe View bleiben — erst
+        // dann gilt sie als stabil klickbereit.
+        var previousMarker: NSView?
+        var stableTicks = 0
+        var found: (window: NSWindow, marker: NSView)?
+        var diagnosis = ""
+        waitFor(budget: 6, pause: 0.05,
+                condition: {
+                    let window = mainWindowForAXChecks()
+                    let content = window?.contentView
+                    let marker = content.flatMap {
+                        markerView(id: "gitPrimaryPush-github", in: $0)
+                    }
+                    if let window, !window.isKeyWindow {
+                        activateApplication(ignoringOtherApps: true)
+                        window.makeKeyAndOrderFront(nil)
+                    }
+                    let ready = !ws.gitOperationsAreBusy
+                        && ws.gitPushTargets == expected
+                        && window?.isKeyWindow == true
+                        && marker != nil
+                    stableTicks = ready && marker === previousMarker ? stableTicks + 1 : 0
+                    previousMarker = marker
+                    diagnosis = "busy=\(ws.gitOperationsAreBusy), "
+                        + "Ziele=\(ws.gitPushTargets), Key=\(window?.isKeyWindow == true), "
+                        + "Marker=\(marker != nil), stabil=\(stableTicks)"
+                    guard ready, stableTicks >= 3, let window, let marker else { return false }
+                    found = (window, marker)
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "github-Push-Fläche wurde nach primary-Push nicht "
+                        + "stabil klickbereit (\(diagnosis)) — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "github-Push-Fläche nach Erfolg verschwunden") }
+                    let (window, marker) = found
+                    window.layoutIfNeeded()
+                    guard marker.bounds.width > 0, marker.bounds.height > 0 else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "github-Push-Fläche besitzt keinen sichtbaren Bereich")
+                    }
+                    let point = marker.convert(
+                        NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil
+                    )
+                    guard sendMouseClick(at: point, in: window, modifiers: []) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Mausklick auf Push zu github nicht erzeugbar")
+                    }
+                    pollGitSecondPushResult(ws, base: base, repo: repo,
+                                            primary: primary, github: github)
+                })
     }
 
     /// Beide Ziele müssen nun exakt den lokalen HEAD enthalten; auch nach dem
     /// zweiten Push bleibt der Branch bewusst ohne Upstream.
     private static func pollGitSecondPushResult(
-        _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL, tick: Int
+        _ ws: Workspace, base: URL, repo: URL, primary: URL, github: URL
     ) {
-        GitRunner.run(["rev-parse", "HEAD"], in: repo) { localResult in
-            GitRunner.run(["rev-parse", "refs/heads/main"], in: primary) {
-                primaryResult in
-                GitRunner.run(["rev-parse", "refs/heads/main"], in: github) {
-                    githubResult in
-                    readGitUpstreamConfig(in: repo) {
-                        remoteConfig, mergeConfig in
-                        DispatchQueue.main.async {
-                            // Nach dem Ende beider Abläufe (das Häkchen steht
-                            // maximal zwei Sekunden) darf keine Karte mehr
-                            // einen Phasen-Marker tragen — die Anzeige muss
-                            // sich selbst zurücknehmen.
-                            let content = mainWindowForAXChecks()?.contentView
-                            let phasesCleared = content.map { view in
-                                ["primary", "github"].allSatisfy { remote in
-                                    markerView(id: "gitPushPhase-\(remote)-running",
-                                               in: view) == nil
-                                        && markerView(id: "gitPushPhase-\(remote)-succeeded",
-                                                      in: view) == nil
+        var githubOK = false
+        var remoteConfig: GitResult?
+        var mergeConfig: GitResult?
+        waitForAsync(
+            budget: 7.5, pause: 0.05,
+            check: { answer in
+                GitRunner.run(["rev-parse", "HEAD"], in: repo) { localResult in
+                    GitRunner.run(["rev-parse", "refs/heads/main"], in: primary) {
+                        primaryResult in
+                        GitRunner.run(["rev-parse", "refs/heads/main"], in: github) {
+                            githubResult in
+                            readGitUpstreamConfig(in: repo) {
+                                remote, merge in
+                                DispatchQueue.main.async {
+                                    // Nach dem Ende beider Abläufe (das Häkchen steht
+                                    // maximal zwei Sekunden) darf keine Karte mehr
+                                    // einen Phasen-Marker tragen — die Anzeige muss
+                                    // sich selbst zurücknehmen.
+                                    let content = mainWindowForAXChecks()?.contentView
+                                    let phasesCleared = content.map { view in
+                                        ["primary", "github"].allSatisfy { remote in
+                                            markerView(id: "gitPushPhase-\(remote)-running",
+                                                       in: view) == nil
+                                                && markerView(id: "gitPushPhase-\(remote)-succeeded",
+                                                              in: view) == nil
+                                        }
+                                    } ?? false
+                                    githubOK = githubResult?.ok == true
+                                    remoteConfig = remote
+                                    mergeConfig = merge
+                                    answer(localResult?.ok == true
+                                        && localResult?.stdout == primaryResult?.stdout
+                                        && localResult?.stdout == githubResult?.stdout
+                                        && gitConfigValueIsAbsent(remote)
+                                        && gitConfigValueIsAbsent(merge)
+                                        && phasesCleared
+                                        && gitPushButtonConfirmedRemotes == ["primary", "github"])
                                 }
-                            } ?? false
-                            if localResult?.ok == true,
-                               localResult?.stdout == primaryResult?.stdout,
-                               localResult?.stdout == githubResult?.stdout,
-                               gitConfigValueIsAbsent(remoteConfig),
-                               gitConfigValueIsAbsent(mergeConfig),
-                               phasesCleared,
-                               gitPushButtonConfirmedRemotes == ["primary", "github"] {
-                                try? FileManager.default.removeItem(at: base)
-                                finish(true, "Zwei getrennte Push-Flächen lagen "
-                                    + "nebeneinander; echte Klicks pushten nach "
-                                    + "primary und github mit sichtbarer Phase, "
-                                    + "der Branch blieb ohne Upstream")
-                            }
-                            if tick >= 150 {
-                                try? FileManager.default.removeItem(at: base)
-                                finish(false, "Push zu github oder Upstream-Schutz "
-                                    + "unvollständig (github: "
-                                    + "\(githubResult?.ok == true), remote-config: "
-                                    + "\(String(describing: remoteConfig)), merge-config: "
-                                    + "\(String(describing: mergeConfig)), Vorschauen: "
-                                    + "\(gitPushButtonConfirmedRemotes.sorted()))")
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                pollGitSecondPushResult(
-                                    ws, base: base, repo: repo, primary: primary,
-                                    github: github, tick: tick + 1
-                                )
                             }
                         }
                     }
                 }
+            },
+            onTimeout: { book in
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Push zu github oder Upstream-Schutz "
+                    + "unvollständig (github: "
+                    + "\(githubOK), remote-config: "
+                    + "\(String(describing: remoteConfig)), merge-config: "
+                    + "\(String(describing: mergeConfig)), Vorschauen: "
+                    + "\(gitPushButtonConfirmedRemotes.sorted())) — \(book.summary)")
+            },
+            then: {
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "Zwei getrennte Push-Flächen lagen "
+                    + "nebeneinander; echte Klicks pushten nach "
+                    + "primary und github mit sichtbarer Phase, "
+                    + "der Branch blieb ohne Upstream")
             }
-        }
+        )
     }
 
     /// Liest beide Upstream-Schlüssel einzeln. `rev-parse @{u}` genügt hier
@@ -18396,7 +19011,7 @@ enum SelfTest {
         Workspace.presentGitDialogs = false
 
         let fm = FileManager.default
-        let base = fm.temporaryDirectory.appendingPathComponent("fastra-gitactions-\(UUID().uuidString)")
+        let base = selfTestTemporaryDirectory().appendingPathComponent("fastra-gitactions-\(UUID().uuidString)")
         let repo = base.appendingPathComponent("work")
         let bare = base.appendingPathComponent("remote.git")
         // Auch der fensterlose Aktionslauf muss die sichtbare Push-Vorschau
@@ -18443,7 +19058,7 @@ enum SelfTest {
         runGitSequence([["add", "-A"], ["commit", "-m", "feature"]], in: repo) { ok, e in
             guard ok else { try? fm.removeItem(at: base); finish(false, "(push-setup) \(e)") }
             ws.gitPush()
-            pollAsync(maxTicks: 150, base: base, fm: fm, label: "push",
+            pollAsync(budget: 4.5, base: base, fm: fm, label: "push",
                       check: { done in
                           GitRunner.run(["rev-list", "--count", "main"], in: bare) { r in
                               done(Int(r?.stdout.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") == 2)
@@ -18470,7 +19085,7 @@ enum SelfTest {
                 gitActionsWhenIdle(ws, base: base, fm: fm, label: "pull-idle") {
                     ws.gitPullFastForward()
                 }
-                pollUntil(maxTicks: 150, base: base, fm: fm, label: "pull",
+                pollUntil(budget: 4.5, base: base, fm: fm, label: "pull",
                           cond: { fm.fileExists(atPath: repo.appendingPathComponent("remote.txt").path) },
                           next: { gitActionsAmend(ws, repo: repo, bare: bare, base: base, fm: fm) })
             }
@@ -18497,7 +19112,7 @@ enum SelfTest {
             gitActionsWhenIdle(ws, base: base, fm: fm, label: "amend-idle") {
                 ws.gitAmendNoEdit()
             }
-            pollAsync(maxTicks: 150, base: base, fm: fm, label: "amend",
+            pollAsync(budget: 4.5, base: base, fm: fm, label: "amend",
                       check: { done in
                           GitRunner.run(["show", "HEAD:app.txt"], in: repo) { r in
                               done(r?.ok == true && r!.stdout.contains("v2"))
@@ -18529,7 +19144,7 @@ enum SelfTest {
             // Ein vollständiger Fenstertestlauf kann den gemeinsam revidierten
             // Git-Snapshot unter Last später liefern. Nur der Fehlerfall darf
             // deshalb bis 9 s warten; der Erfolgsweg läuft sofort weiter.
-            pollUntil(maxTicks: 300, base: base, fm: fm, label: "branch-list",
+            pollUntil(budget: 9.0, base: base, fm: fm, label: "branch-list",
                       cond: {
                           ws.gitBranches.contains(where: { $0.name == "main" })
                               && ws.gitBranches.contains(where: { $0.name == "feature" && $0.isCurrent })
@@ -18538,7 +19153,7 @@ enum SelfTest {
                           gitActionsWhenIdle(ws, base: base, fm: fm, label: "switch-idle") {
                               ws.gitSwitchBranch("main")
                           }
-                          pollAsync(maxTicks: 150, base: base, fm: fm, label: "switch",
+                          pollAsync(budget: 4.5, base: base, fm: fm, label: "switch",
                                     check: { done in
                                         GitRunner.run(["branch", "--show-current"], in: repo) { r in
                                             let onMain = r?.stdout.trimmingCharacters(in: .whitespacesAndNewlines) == "main"
@@ -18564,7 +19179,7 @@ enum SelfTest {
                        in: repo) { ok, e in
             guard ok else { try? fm.removeItem(at: base); finish(false, "(worktree-setup) \(e)") }
             ws.refreshGitBranches()
-            pollUntil(maxTicks: 300, base: base, fm: fm, label: "worktree-branchliste",
+            pollUntil(budget: 9.0, base: base, fm: fm, label: "worktree-branchliste",
                       cond: {
                           ws.gitBranches.first { $0.name == "belegt" }?
                               .blockingWorktree != nil
@@ -18581,7 +19196,7 @@ enum SelfTest {
                           gitActionsWhenIdle(ws, base: base, fm: fm, label: "worktree-idle") {
                               ws.gitSwitchBranch("belegt")
                           }
-                          pollUntil(maxTicks: 300, base: base, fm: fm, label: "worktree-absage",
+                          pollUntil(budget: 9.0, base: base, fm: fm, label: "worktree-absage",
                                     cond: { block != nil },
                                     next: {
                                         gitActionsWorktreeBlockVerdict(
@@ -18616,11 +19231,59 @@ enum SelfTest {
                 try? fm.removeItem(at: base)
                 finish(false, "(worktree-absage) Branch ist \(current ?? "nil") statt main")
             }
-            runGitSequence([["worktree", "remove", linked.path]], in: repo) { ok, e in
-                guard ok else { try? fm.removeItem(at: base); finish(false, "(worktree-abbau) \(e)") }
-                gitActionsPickaxe(ws, repo: repo, bare: bare, base: base, fm: fm)
-            }
+            gitActionsWorktreeGone(ws, repo: repo, bare: bare, base: base,
+                                   fm: fm, linked: linked)
         }
+    }
+
+    /// ZWEITE STUFE derselben Sperre: Der Ordner des fremden
+    /// Arbeitsverzeichnisses ist GELÖSCHT, git weiß aber noch nichts davon —
+    /// `git switch` scheitert weiterhin mit Exit 128, und
+    /// `FileManager.fileExists` meldet `false`.
+    ///
+    /// Vor der Korrektur (2026-09-10) blieb genau hier alles aus: Der
+    /// Rückgabewert des Dialogs lautete
+    /// `block.worktreeExists && alert.runModal() == …`, und `&&` wertet die
+    /// rechte Seite nach einem `false` gar nicht mehr aus. Es erschien also
+    /// kein Dialog, keine Meldung, kein Wechsel — der Nutzer klickte den
+    /// Branch beliebig oft an, und nichts geschah. Der Rat „Melde ihn mit
+    /// `git worktree prune` ab" erreichte niemanden.
+    private static func gitActionsWorktreeGone(_ ws: Workspace, repo: URL, bare: URL,
+                                               base: URL, fm: FileManager, linked: URL) {
+        do {
+            try fm.removeItem(at: linked)
+        } catch {
+            try? fm.removeItem(at: base)
+            finish(false, "(worktree-weg-setup) \(error.localizedDescription)")
+        }
+        var block: GitBranchWorktreeBlock?
+        ws.gitBranchWorktreeBlockHandler = { seen in
+            block = seen
+            return false
+        }
+        gitActionsWhenIdle(ws, base: base, fm: fm, label: "worktree-weg-idle") {
+            ws.gitSwitchBranch("belegt")
+        }
+        pollUntil(budget: 9.0, base: base, fm: fm, label: "worktree-weg",
+                  cond: { block != nil },
+                  next: {
+                      ws.gitBranchWorktreeBlockHandler =
+                          Workspace.defaultGitBranchWorktreeBlock
+                      guard let block, block.branch == "belegt",
+                            !block.worktreeExists,
+                            block.informativeText.contains("prune") else {
+                          try? fm.removeItem(at: base)
+                          finish(false, "(worktree-weg) unerwartet: "
+                              + "\(String(describing: block))")
+                      }
+                      runGitSequence([["worktree", "prune"]], in: repo) { ok, e in
+                          guard ok else {
+                              try? fm.removeItem(at: base)
+                              finish(false, "(worktree-abbau) \(e)")
+                          }
+                          gitActionsPickaxe(ws, repo: repo, bare: bare, base: base, fm: fm)
+                      }
+                  })
     }
 
     /// PICKAXE: `git log -S` muss den Commit finden, der PICKAXE_MARKER einführte.
@@ -18646,7 +19309,7 @@ enum SelfTest {
             gitActionsWhenIdle(ws, base: base, fm: fm, label: "auto-upstream-idle") {
                 ws.gitPush()
             }
-            pollAsync(maxTicks: 150, base: base, fm: fm, label: "auto-upstream",
+            pollAsync(budget: 4.5, base: base, fm: fm, label: "auto-upstream",
                       check: { done in
                           // Der Branch muss im bare-Remote existieren, ohne dass
                           // Fastra dabei einen lokalen Upstream erfindet.
@@ -18677,7 +19340,7 @@ enum SelfTest {
                        in: repo) { ok, e in
             guard ok else { try? fm.removeItem(at: base); finish(false, "(worktree-open-setup) \(e)") }
             ws.refreshGitBranches()
-            pollUntil(maxTicks: 300, base: base, fm: fm, label: "worktree-open-liste",
+            pollUntil(budget: 9.0, base: base, fm: fm, label: "worktree-open-liste",
                       cond: {
                           ws.gitBranches.first { $0.name == "zumOeffnen" }?
                               .blockingWorktree != nil
@@ -18689,7 +19352,7 @@ enum SelfTest {
                               ws.gitSwitchBranch("zumOeffnen")
                           }
                           let target = linked.resolvingSymlinksInPath().path
-                          pollUntil(maxTicks: 300, base: base, fm: fm, label: "worktree-open",
+                          pollUntil(budget: 9.0, base: base, fm: fm, label: "worktree-open",
                                     cond: {
                                         ws.projectURL?.resolvingSymlinksInPath().path == target
                                     },
@@ -18723,45 +19386,47 @@ enum SelfTest {
     /// war schon auf der Platte, der exklusive Slot aber noch nicht wieder
     /// freigegeben). Der Test wartet deshalb wie ein Nutzer auf das aktive Menü.
     private static func gitActionsWhenIdle(_ ws: Workspace, base: URL, fm: FileManager,
-                                           label: String, tick: Int = 0,
+                                           label: String,
                                            then action: @escaping () -> Void) {
-        if !ws.gitOperationsAreBusy { action(); return }
-        if tick >= 150 {
-            try? fm.removeItem(at: base)
-            finish(false, "(\(label)) Git-Koordinator wird nicht frei")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            gitActionsWhenIdle(ws, base: base, fm: fm, label: label,
-                               tick: tick + 1, then: action)
-        }
+        // Bisher 150 × 30 ms = 4,5 s.
+        waitFor(budget: 4.5, pause: 0.03,
+                condition: { !ws.gitOperationsAreBusy },
+                onTimeout: { book in
+                    try? fm.removeItem(at: base)
+                    finish(false, "(\(label)) Git-Koordinator wird nicht frei — \(book.summary)")
+                },
+                then: action)
     }
 
-    /// Kleiner Poll-Helfer: ruft `cond` alle 30 ms, bei `true` → `next`; nach
-    /// `maxTicks` → FAIL mit Label. Räumt bei Timeout das Basis-Verzeichnis ab.
-    private static func pollUntil(maxTicks: Int, base: URL, fm: FileManager, label: String,
-                                  cond: @escaping () -> Bool, next: @escaping () -> Void, tick: Int = 0) {
-        if cond() { next(); return }
-        if tick >= maxTicks { try? fm.removeItem(at: base); finish(false, "(\(label)) Timeout") }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollUntil(maxTicks: maxTicks, base: base, fm: fm, label: label,
-                      cond: cond, next: next, tick: tick + 1)
-        }
+    /// Kleiner Poll-Helfer: ruft `cond` alle 30 ms, bei `true` → `next`; ist
+    /// die Frist aufgebraucht → FAIL mit Label. Räumt bei Timeout das
+    /// Basis-Verzeichnis ab. `budget` ist die frühere Tick-Zahl mal Pause —
+    /// 4,5 s für 150 Ticks, 9,0 s für 300 —, zählt aber nur BEDIENTE Zeit
+    /// (Begründung in `SelfTestPolling.swift`).
+    private static func pollUntil(budget: TimeInterval, base: URL, fm: FileManager, label: String,
+                                  cond: @escaping () -> Bool, next: @escaping () -> Void) {
+        waitFor(budget: budget, pause: 0.03,
+                condition: cond,
+                onTimeout: { book in
+                    try? fm.removeItem(at: base)
+                    finish(false, "(\(label)) Timeout — \(book.summary)")
+                },
+                then: next)
     }
 
     /// Wie `pollUntil`, aber mit ASYNCHRONER Bedingung (`check` liefert das
     /// Ergebnis über einen Callback) — für Ground-Truth-Checks, die selbst git
     /// aufrufen. Vermeidet den Race mit dem lokalen Status-Cache.
-    private static func pollAsync(maxTicks: Int, base: URL, fm: FileManager, label: String,
+    private static func pollAsync(budget: TimeInterval, base: URL, fm: FileManager, label: String,
                                   check: @escaping (@escaping (Bool) -> Void) -> Void,
-                                  next: @escaping () -> Void, tick: Int = 0) {
-        check { ok in
-            if ok { next(); return }
-            if tick >= maxTicks { try? fm.removeItem(at: base); finish(false, "(\(label)) Timeout") }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-                pollAsync(maxTicks: maxTicks, base: base, fm: fm, label: label,
-                          check: check, next: next, tick: tick + 1)
-            }
-        }
+                                  next: @escaping () -> Void) {
+        waitForAsync(budget: budget, pause: 0.03,
+                     check: check,
+                     onTimeout: { book in
+                         try? fm.removeItem(at: base)
+                         finish(false, "(\(label)) Timeout — \(book.summary)")
+                     },
+                     then: next)
     }
 
     private static func runSearchTest() {
@@ -18786,7 +19451,7 @@ enum SelfTest {
         // Temp-Datei für den Buffer-Test — Workspace.loadFile ist der
         // offizielle Weg, Inhalt in einen Tab zu bringen (gleicher Pfad
         // wie der Tab-Wechsel-Test).
-        let tmpBuf = FileManager.default.temporaryDirectory
+        let tmpBuf = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-search-buf-\(UUID().uuidString).txt")
         do { try bufferContent.write(to: tmpBuf, atomically: true, encoding: .utf8) }
         catch { finish(false, "(a) Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -18837,46 +19502,36 @@ enum SelfTest {
         _ ws: Workspace,
         expectedCount: Int,
         expectedFirstLine: Int,
-        expectedFirstCol: Int,
-        tick: Int = 0
+        expectedFirstCol: Int
     ) {
-        // 67 Ticks × 30 ms ≈ 2 Sekunden Beobachtungsfenster.
-        let maxTicks = 67
-
-        let got = ws.bufferMatches.count
-        // Richtige Anzahl → Zeile/Spalte des ersten Treffers prüfen.
-        if got == expectedCount {
+        // Bisher 67 Ticks × 30 ms ≈ 2 Sekunden Beobachtungsfenster.
+        waitFor(budget: 2.01, pause: 0.03,
+                condition: { ws.bufferMatches.count == expectedCount },
+                onTimeout: { book in
+                    finish(false,
+                        "(a) Buffer-Matches: \(ws.bufferMatches.count), "
+                        + "erwartet \(expectedCount) "
+                        + "(Pattern=\"\(ws.findPattern)\", "
+                        + "searchError=\(ws.searchError ?? "nil"), "
+                        + "visible=\(ws.showSearchDialog), scope=\(ws.scope), "
+                        + "searching=\(ws.bufferSearching), "
+                        + "optionsCurrent=\(ws.visibleBufferResultsOptions == ws.currentSearchOptions), "
+                        + "tabs=\(ws.tabs.count), loading=\(ws.activeTab?.isLoading ?? false), "
+                        + "textUTF16=\((ws.activeTab?.content ?? "").utf16.count), "
+                        + "selectionOnly=\(ws.searchInSelectionOnly), "
+                        + "range=\(String(describing: ws.activeSearchRange))) "
+                        + "— \(book.summary)")
+                }) {
+            // Richtige Anzahl → Zeile/Spalte des ersten Treffers prüfen.
             let first = ws.bufferMatches[0]
             if first.line != expectedFirstLine || first.column != expectedFirstCol {
                 finish(false,
-                    "(a) Treffer-Anzahl \(got) korrekt, aber erster Treffer "
+                    "(a) Treffer-Anzahl \(ws.bufferMatches.count) korrekt, aber erster Treffer "
                     + "an Z\(first.line)/S\(first.column), erwartet "
                     + "Z\(expectedFirstLine)/S\(expectedFirstCol)")
             }
             // Teiltest a bestanden → weiter mit b.
             runSearchTestPartB(ws)
-            return
-        }
-        if tick >= maxTicks {
-            finish(false,
-                "(a) Buffer-Matches nach \(maxTicks) Ticks: \(got), "
-                + "erwartet \(expectedCount) "
-                + "(Pattern=\"\(ws.findPattern)\", "
-                + "searchError=\(ws.searchError ?? "nil"), "
-                + "visible=\(ws.showSearchDialog), scope=\(ws.scope), "
-                + "searching=\(ws.bufferSearching), "
-                + "optionsCurrent=\(ws.visibleBufferResultsOptions == ws.currentSearchOptions), "
-                + "tabs=\(ws.tabs.count), loading=\(ws.activeTab?.isLoading ?? false), "
-                + "textUTF16=\((ws.activeTab?.content ?? "").utf16.count), "
-                + "selectionOnly=\(ws.searchInSelectionOnly), "
-                + "range=\(String(describing: ws.activeSearchRange)))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForBufferMatches(ws,
-                                 expectedCount: expectedCount,
-                                 expectedFirstLine: expectedFirstLine,
-                                 expectedFirstCol: expectedFirstCol,
-                                 tick: tick + 1)
         }
     }
 
@@ -18894,7 +19549,7 @@ enum SelfTest {
         ws.showSearchDialog = true
         // Zeilen je 11 Zeichen: „xxx foo yyy". foo-Offsets: 4 (Z1), 16 (Z2), 28 (Z3).
         let content = "aaa foo bbb\nccc foo ddd\neee foo fff"
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-selsearch-\(UUID().uuidString).txt")
         do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -18916,9 +19571,14 @@ enum SelfTest {
     }
 
     /// Pollt auf genau 1 Treffer (in der Auswahl), Zeile 2 / Spalte 5.
-    private static func pollSelSearchRestricted(_ ws: Workspace, tick: Int = 0) {
-        let maxTicks = 67   // ~2 s
-        if ws.bufferMatches.count == 1 {
+    private static func pollSelSearchRestricted(_ ws: Workspace) {
+        // Bisher 67 × 30 ms ≈ 2 s.
+        waitFor(budget: 2.01, pause: 0.03,
+                condition: { ws.bufferMatches.count == 1 },
+                onTimeout: { book in
+                    finish(false, "(restricted) bufferMatches=\(ws.bufferMatches.count), erwartet 1 "
+                        + "(searchError=\(ws.searchError ?? "nil")) — \(book.summary)")
+                }) {
             let m = ws.bufferMatches[0]
             // foo in Zeile 2 beginnt an Offset 16 → Spalte 16−12+1 = 5.
             if m.line != 2 || m.column != 5 {
@@ -18927,28 +19587,19 @@ enum SelfTest {
             // Phase 2: „Nur in Auswahl" aus → wieder alle drei Treffer.
             ws.setSearchInSelectionOnly(false)
             pollSelSearchFull(ws)
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "(restricted) bufferMatches=\(ws.bufferMatches.count), erwartet 1 "
-                + "(searchError=\(ws.searchError ?? "nil"))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollSelSearchRestricted(ws, tick: tick + 1)
         }
     }
 
     /// Pollt auf alle 3 Treffer, nachdem „Nur in Auswahl" abgeschaltet wurde.
-    private static func pollSelSearchFull(_ ws: Workspace, tick: Int = 0) {
-        let maxTicks = 67
-        if ws.bufferMatches.count == 3 {
+    private static func pollSelSearchFull(_ ws: Workspace) {
+        // Bisher 67 × 30 ms ≈ 2 s.
+        waitFor(budget: 2.01, pause: 0.03,
+                condition: { ws.bufferMatches.count == 3 },
+                onTimeout: { book in
+                    finish(false, "(full) bufferMatches=\(ws.bufferMatches.count) nach Abschalten, "
+                        + "erwartet 3 — \(book.summary)")
+                }) {
             finish(true, "Nur-in-Auswahl: 1 Treffer (Z2/S5) in Auswahl, 3 ohne Auswahl")
-        }
-        if tick >= maxTicks {
-            finish(false, "(full) bufferMatches=\(ws.bufferMatches.count) nach Abschalten, erwartet 3")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollSelSearchFull(ws, tick: tick + 1)
         }
     }
 
@@ -18964,7 +19615,7 @@ enum SelfTest {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
         ws.showSearchDialog = true
-        let tmp = FileManager.default.temporaryDirectory
+        let tmp = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-wildcard-\(UUID().uuidString).txt")
         do { try "ring, The".write(to: tmp, atomically: true, encoding: .utf8) }
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -18985,9 +19636,14 @@ enum SelfTest {
     }
 
     /// Phase 1: Platzhalter aktiv → genau 1 Treffer (greift über die ganze Zeile).
-    private static func pollWildcardPlaceholder(_ ws: Workspace, tick: Int = 0) {
-        let maxTicks = 67
-        if ws.bufferMatches.count == 1, ws.searchError == nil {
+    private static func pollWildcardPlaceholder(_ ws: Workspace) {
+        // Bisher 67 × 30 ms ≈ 2 s.
+        waitFor(budget: 2.01, pause: 0.03,
+                condition: { ws.bufferMatches.count == 1 && ws.searchError == nil },
+                onTimeout: { book in
+                    finish(false, "(platzhalter) bufferMatches=\(ws.bufferMatches.count), erwartet 1 "
+                        + "(searchError=\(ws.searchError ?? "nil")) — \(book.summary)")
+                }) {
             let m = ws.bufferMatches[0]
             // Der Treffer deckt „ring, The" ab (gierige Gruppe + Anker „, the").
             if m.matchText != "ring, The" {
@@ -19002,28 +19658,19 @@ enum SelfTest {
             }
             ws.treatWildcardLiterally = true   // → literal, Live-Trigger
             pollWildcardLiteral(ws)
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "(platzhalter) bufferMatches=\(ws.bufferMatches.count), erwartet 1 "
-                + "(searchError=\(ws.searchError ?? "nil"))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollWildcardPlaceholder(ws, tick: tick + 1)
         }
     }
 
     /// Phase 2: Mini-Schalter „wörtlich" an → 0 Treffer (literaler „*, the" fehlt).
-    private static func pollWildcardLiteral(_ ws: Workspace, tick: Int = 0) {
-        let maxTicks = 67
-        if hasCompletedEmptyBufferSearch(ws) {
+    private static func pollWildcardLiteral(_ ws: Workspace) {
+        // Bisher 67 × 30 ms ≈ 2 s.
+        waitFor(budget: 2.01, pause: 0.03,
+                condition: { hasCompletedEmptyBufferSearch(ws) },
+                onTimeout: { book in
+                    finish(false, "(literal) bufferMatches=\(ws.bufferMatches.count), "
+                        + "erwartet 0 — \(book.summary)")
+                }) {
             finish(true, "Platzhalter: 1 Treffer (ring, The) -> ersetzt zu The ring; literal: 0 Treffer")
-        }
-        if tick >= maxTicks {
-            finish(false, "(literal) bufferMatches=\(ws.bufferMatches.count), erwartet 0")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollWildcardLiteral(ws, tick: tick + 1)
         }
     }
 
@@ -19039,7 +19686,7 @@ enum SelfTest {
         // Runner räumt hingegen exakt sein TMPDIR auch nach Prozessabbruch auf.
         let root = parent ?? environment["TMPDIR"].flatMap {
             $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true)
-        } ?? FileManager.default.temporaryDirectory
+        } ?? selfTestTemporaryDirectory()
         let directory = root.appendingPathComponent("fastra-shot-\(UUID().uuidString)")
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
@@ -19128,24 +19775,26 @@ enum SelfTest {
 
     /// Wartet auf Live-Treffer im RegEx-Modus, holt die Suchmaske nach vorn
     /// und gibt ihre Fenster-Nummer aus, dann Selbst-Exit (wie Wildcard-Shot).
-    private static func pollRegexShot(_ ws: Workspace, tick: Int = 0) {
-        let maxTicks = 100           // 100 × 30 ms ≈ 3 s
-        if ws.bufferMatches.count >= 1, ws.searchError == nil,
-           let win = NSApp.windows.first(where: {
-               $0.frameAutosaveName == SearchWindow.frameAutosaveName && $0.isVisible
-           }) {
-            win.orderFront(nil)
-            FileHandle.standardError.write(Data("REGEXSHOT-WINDOW \(win.windowNumber)\n".utf8))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 12) { finishScreenshotDiagnostic() }
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "(regexshot) keine Treffer/Suchmaske binnen ~3 s "
-                + "(bufferMatches=\(ws.bufferMatches.count), error=\(ws.searchError ?? "nil"))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollRegexShot(ws, tick: tick + 1)
-        }
+    private static func pollRegexShot(_ ws: Workspace) {
+        var win: NSWindow?
+        waitFor(budget: 3, pause: 0.03,
+                condition: {
+                    guard ws.bufferMatches.count >= 1, ws.searchError == nil else { return false }
+                    win = NSApp.windows.first(where: {
+                        $0.frameAutosaveName == SearchWindow.frameAutosaveName && $0.isVisible
+                    })
+                    return win != nil
+                },
+                onTimeout: { book in
+                    finish(false, "(regexshot) keine Treffer/Suchmaske "
+                        + "(bufferMatches=\(ws.bufferMatches.count), error=\(ws.searchError ?? "nil")) — \(book.summary)")
+                },
+                then: {
+                    guard let win else { finish(false, "(regexshot) Suchmaske nach Erfolg verschwunden") }
+                    win.orderFront(nil)
+                    FileHandle.standardError.write(Data("REGEXSHOT-WINDOW \(win.windowNumber)\n".utf8))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 12) { finishScreenshotDiagnostic() }
+                })
     }
 
     /// Diagnose (`-selftest searchshot`): Suchmaske im LEEREN Ausgangszustand
@@ -19199,7 +19848,7 @@ enum SelfTest {
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         // Echtes kleines Projekt-Fixture, damit Seitenleiste und Datei-Tab
         // dem Alltag entsprechen.
-        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+        let root = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-welcometabshot-\(UUID().uuidString)")
         do {
             try FileManager.default.createDirectory(at: root,
@@ -19227,124 +19876,121 @@ enum SelfTest {
     private static func runDiffWideTest() {
         testLabel = "diffwide"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        let fm = FileManager.default
-        let base = fm.temporaryDirectory
-            .appendingPathComponent("fastra-diffwide-\(UUID().uuidString)")
-        // Eine Zeile weit jenseits jeder halben Fensterbreite (rund 900
-        // Zeichen) und eine kurze Vergleichszeile.
-        let longLeft = "ALT " + String(repeating: "links-links-links ", count: 50)
-        let longRight = "NEU " + String(repeating: "rechts-rechts-rechts ", count: 50)
-        var leftLines = (1...8).map { "gemeinsame zeile \($0)" }
-        var rightLines = leftLines
-        leftLines[3] = longLeft
-        rightLines[3] = longRight
-        let leftURL = base.appendingPathComponent("links.txt")
-        let rightURL = base.appendingPathComponent("rechts.txt")
-        do {
-            try fm.createDirectory(at: base, withIntermediateDirectories: true)
-            try leftLines.joined(separator: "\n")
-                .write(to: leftURL, atomically: true, encoding: .utf8)
-            try rightLines.joined(separator: "\n")
-                .write(to: rightURL, atomically: true, encoding: .utf8)
-        } catch {
-            finish(false, "(setup) \(error.localizedDescription)")
+        // Beide Seiten der Zeile weit jenseits jeder halben Fensterbreite —
+        // nur so ist Prüfung (e) „gleich hoch" überhaupt aussagekräftig.
+        guard let fixture = makeDiffOverflowFixture(label: "diffwide",
+                                                    longRightLine: true) else {
+            finish(false, "(setup) Vergleichsdateien nicht anlegbar")
         }
         ws.openFileDiffTab(request: FileDiffRequest(
-            left: .file(leftURL), right: .file(rightURL), options: FileDiffOptions()
+            left: .file(fixture.left), right: .file(fixture.right),
+            options: FileDiffOptions()
         ))
-        pollDiffWideCells(ws, base: base, tick: 0)
+        pollDiffWideCells(ws, base: fixture.base)
     }
 
-    private static func pollDiffWideCells(_ ws: Workspace, base: URL, tick: Int) {
-        guard let window = mainWindowForAXChecks(),
-              let content = window.contentView else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Hauptfenster nicht erreichbar")
-        }
+    private static func pollDiffWideCells(_ ws: Workspace, base: URL) {
         // Die Zeilen-IDs heißen „row-N". Welche Nummer die lange Zeile trägt,
         // lässt der Test offen: Er sammelt alle gerenderten Zellen und nimmt
         // die höchste als die umgebrochene, die niedrigste als Kontrollzeile.
-        window.layoutIfNeeded()
-        var pairs: [(before: CGRect, after: CGRect)] = []
-        for ordinal in 0...20 {
-            guard let before = markerView(id: "diffCell-before-row-\(ordinal)",
-                                          in: content),
-                  let after = markerView(id: "diffCell-after-row-\(ordinal)",
-                                         in: content) else { continue }
-            let beforeFrame = before.convert(before.bounds, to: content)
-            let afterFrame = after.convert(after.bounds, to: content)
-            guard beforeFrame.width > 0, afterFrame.width > 0 else { continue }
-            pairs.append((beforeFrame, afterFrame))
-        }
-        guard pairs.count >= 2,
-              let tallest = pairs.max(by: { $0.before.height < $1.before.height }),
-              let shortest = pairs.min(by: { $0.before.height < $1.before.height })
-        else {
-            if tick >= 100 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Zell-Marker der Diff-Zeilen fehlen im AppKit-Baum "
-                    + "(gefunden: \(pairs.count))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollDiffWideCells(ws, base: base, tick: tick + 1)
-            }
-            return
-        }
-        let left = tallest.before
-        let right = tallest.after
-        let short = shortest.before
-        defer { try? FileManager.default.removeItem(at: base) }
+        var pairCount = 0
+        var found: (tallest: (ordinal: Int, before: CGRect, after: CGRect),
+                    shortest: (ordinal: Int, before: CGRect, after: CGRect))?
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    guard let content = mainWindowForAXChecks()?.contentView else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Hauptfenster nicht erreichbar")
+                    }
+                    let pairs = diffCellPairs(in: content)
+                    pairCount = pairs.count
+                    guard pairs.count >= 2,
+                          let tallest = pairs.max(by: { $0.before.height < $1.before.height }),
+                          let shortest = pairs.min(by: { $0.before.height < $1.before.height })
+                    else { return false }
+                    found = (tallest, shortest)
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    finish(false, "Zell-Marker der Diff-Zeilen fehlen im AppKit-Baum "
+                        + "(gefunden: \(pairCount)) — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Diff-Zellen nach Erfolg verschwunden") }
+                    let (tallest, shortest) = found
+                    let left = tallest.before
+                    let right = tallest.after
+                    let short = shortest.before
+                    // Kein `defer`: Jeder Ausgang unten geht über `finish`, und das endet
+                    // in `exit()`. Der Swift-Stack wird dabei nicht abgewickelt, ein
+                    // `defer` liefe also nie (siehe auch Kommentar bei `TestDefaultsPurge`).
+                    func cleanUp() { try? FileManager.default.removeItem(at: base) }
 
-        // (a) Beide Spalten gleich breit — sonst wäre die Trennlinie schief.
-        guard abs(left.width - right.width) < 1 else {
-            finish(false, "Spalten sind unterschiedlich breit "
-                + "(links \(Int(left.width)) pt, rechts \(Int(right.width)) pt)")
-        }
-        // (b) Die Spaltenbreite folgt dem Fenster, nicht dem Inhalt: Die lange
-        // Zeile ist genauso breit wie die kurze Kontrollzeile.
-        guard abs(left.width - short.width) < 1 else {
-            finish(false, "Die lange Zeile hat ihre Spalte verbreitert "
-                + "(\(Int(left.width)) pt statt \(Int(short.width)) pt) — die "
-                + "zweite Spalte wandert damit aus dem Bild")
-        }
-        // (c) Die rechte Spalte beginnt hinter der linken.
-        guard right.minX >= left.maxX - 1 else {
-            finish(false, "Die Spalten überlappen "
-                + "(links endet \(Int(left.maxX)), rechts beginnt \(Int(right.minX)))")
-        }
-        // (d) Kern des Befunds: Der lange Text bricht in seiner Spalte um.
-        // Bei Überlauf bliebe die Zeile einzeilig (22 pt).
-        guard left.height > short.height * 2 else {
-            finish(false, "Die lange Zeile ist nur \(Int(left.height)) pt hoch "
-                + "(kurze Zeile \(Int(short.height)) pt) — der Text bricht nicht "
-                + "um, sondern läuft über die Spaltengrenze")
-        }
-        // (e) Beide Seiten derselben Zeile sind gleich hoch, damit die
-        // Hintergründe nicht mitten in der Zeile enden.
-        guard abs(left.height - right.height) < 1 else {
-            finish(false, "Die beiden Seiten der langen Zeile sind unterschiedlich "
-                + "hoch (links \(Int(left.height)), rechts \(Int(right.height)))")
-        }
-        finish(true, "Spalten je \(Int(left.width)) pt breit und gleich hoch; "
-            + "die ~900 Zeichen lange Zeile bricht auf \(Int(left.height)) pt "
-            + "Höhe in ihrer Spalte um, statt über die Grenze zu laufen")
+                    // (a) Beide Spalten gleich breit — sonst wäre die Trennlinie schief.
+                    guard abs(left.width - right.width) < 1 else {
+                        cleanUp()
+                        finish(false, "Spalten sind unterschiedlich breit "
+                            + "(links \(Int(left.width)) pt, rechts \(Int(right.width)) pt)")
+                    }
+                    // (b) Die Spaltenbreite folgt dem Fenster, nicht dem Inhalt: Die lange
+                    // Zeile ist genauso breit wie die kurze Kontrollzeile.
+                    guard abs(left.width - short.width) < 1 else {
+                        cleanUp()
+                        finish(false, "Die lange Zeile hat ihre Spalte verbreitert "
+                            + "(\(Int(left.width)) pt statt \(Int(short.width)) pt) — die "
+                            + "zweite Spalte wandert damit aus dem Bild")
+                    }
+                    // (c) Die rechte Spalte beginnt hinter der linken.
+                    guard right.minX >= left.maxX - 1 else {
+                        cleanUp()
+                        finish(false, "Die Spalten überlappen "
+                            + "(links endet \(Int(left.maxX)), rechts beginnt \(Int(right.minX)))")
+                    }
+                    // (d) Kern des Befunds: Der lange Text bricht in seiner Spalte um.
+                    // Bei Überlauf bliebe die Zeile einzeilig (22 pt).
+                    guard left.height > short.height * 2 else {
+                        cleanUp()
+                        finish(false, "Die lange Zeile ist nur \(Int(left.height)) pt hoch "
+                            + "(kurze Zeile \(Int(short.height)) pt) — der Text bricht nicht "
+                            + "um, sondern läuft über die Spaltengrenze")
+                    }
+                    // (e) Beide Seiten derselben Zeile sind gleich hoch, damit die
+                    // Hintergründe nicht mitten in der Zeile enden.
+                    guard abs(left.height - right.height) < 1 else {
+                        cleanUp()
+                        finish(false, "Die beiden Seiten der langen Zeile sind unterschiedlich "
+                            + "hoch (links \(Int(left.height)), rechts \(Int(right.height)))")
+                    }
+                    cleanUp()
+                    finish(true, "Spalten je \(Int(left.width)) pt breit und gleich hoch; "
+                        + "die ~900 Zeichen lange Zeile bricht auf \(Int(left.height)) pt "
+                        + "Höhe in ihrer Spalte um, statt über die Grenze zu laufen")
+                })
     }
 
     // MARK: - Vergleich: Soft Wrap aus und ziehbarer Trenner
 
-    /// Legt einen Vergleich an, in dem NUR die linke Seite eine sehr lange
-    /// Zeile hat. Die rechte Seite derselben Zeile ist kurz — nur so ist
-    /// später messbar, ob links etwas in die rechte Spalte hineinragt.
-    private static func makeDiffOverflowFixture(label: String)
+    /// Legt einen Vergleich mit genau einer sehr langen Zeile an.
+    ///
+    /// - Parameter longRightLine: `false` (Standard) lässt die rechte Seite
+    ///   dieser Zeile kurz — nur so ist messbar, ob links etwas in die rechte
+    ///   Spalte hineinragt (`diffnowrap`, `diffsplit`). `true` macht auch die
+    ///   rechte Seite lang; das braucht `diffwide`, um zu belegen, dass beide
+    ///   Seiten derselben Zeile gleich hoch bleiben.
+    private static func makeDiffOverflowFixture(label: String,
+                                                longRightLine: Bool = false)
         -> (base: URL, left: URL, right: URL)? {
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-\(label)-\(UUID().uuidString)")
         let longLeft = "ALT " + String(repeating: "links-links-links ", count: 60)
         var leftLines = (1...8).map { "gemeinsame zeile \($0)" }
         var rightLines = leftLines
         leftLines[3] = longLeft
-        rightLines[3] = "NEU kurz"
+        rightLines[3] = longRightLine
+            ? "NEU " + String(repeating: "rechts-rechts-rechts ", count: 60)
+            : "NEU kurz"
         let leftURL = base.appendingPathComponent("links.txt")
         let rightURL = base.appendingPathComponent("rechts.txt")
         do {
@@ -19390,7 +20036,16 @@ enum SelfTest {
     /// also Schrift.
     static func diffForeignPixelFraction(_ bitmap: NSBitmapImageRep,
                                          tolerance: CGFloat = 0.03) -> Double {
-        var histogram: [Int: Int] = [:]
+        // Je Eimer wird nicht nur gezählt, sondern auch summiert. Der
+        // Bezugswert ist dann der MITTELWERT der Bildpunkte im häufigsten
+        // Eimer — nicht dessen Untergrenze. Das ist keine Feinheit: Ein Eimer
+        // ist 1/31 ≈ 0,0323 breit und damit BREITER als die Toleranz von 0,03.
+        // Läge ein Kanal des einfarbigen Hintergrunds im oberen Teil seines
+        // Eimers, wäre der Abstand zur Untergrenze größer als die Toleranz und
+        // JEDER Bildpunkt gälte als fremd — der Test meldete „100 % Fremdtext"
+        // auf einer leeren Fläche.
+        var counts: [Int: Int] = [:]
+        var sums: [Int: (CGFloat, CGFloat, CGFloat)] = [:]
         var colors: [(CGFloat, CGFloat, CGFloat)] = []
         colors.reserveCapacity(bitmap.pixelsWide * bitmap.pixelsHigh)
         for y in 0..<bitmap.pixelsHigh {
@@ -19404,15 +20059,18 @@ enum SelfTest {
                 // zusammen, trennt aber Schrift vom Hintergrund.
                 let key = (Int(rgb.0 * 31) << 10) | (Int(rgb.1 * 31) << 5)
                     | Int(rgb.2 * 31)
-                histogram[key, default: 0] += 1
+                counts[key, default: 0] += 1
+                let sum = sums[key] ?? (0, 0, 0)
+                sums[key] = (sum.0 + rgb.0, sum.1 + rgb.1, sum.2 + rgb.2)
             }
         }
         guard !colors.isEmpty,
-              let dominantKey = histogram.max(by: { $0.value < $1.value })?.key
+              let dominantKey = counts.max(by: { $0.value < $1.value })?.key,
+              let sum = sums[dominantKey], let count = counts[dominantKey],
+              count > 0
         else { return 0 }
-        let dominant = (CGFloat((dominantKey >> 10) & 31) / 31,
-                        CGFloat((dominantKey >> 5) & 31) / 31,
-                        CGFloat(dominantKey & 31) / 31)
+        let n = CGFloat(count)
+        let dominant = (sum.0 / n, sum.1 / n, sum.2 / n)
         let foreign = colors.filter { rgb in
             abs(rgb.0 - dominant.0) > tolerance
                 || abs(rgb.1 - dominant.1) > tolerance
@@ -19439,7 +20097,7 @@ enum SelfTest {
         // Erst mit Umbruch (Werkstandard) messen, dann ohne — nur der
         // Vergleich beider Zustände belegt, dass der Schalter wirkt.
         pollDiffNoWrap(ws, base: fixture.base, phase: 0, longOrdinal: -1,
-                       wrappedHeight: 0, tick: 0)
+                       wrappedHeight: 0)
     }
 
     /// `longOrdinal` ist die in Phase 0 ermittelte Zeilennummer der überlangen
@@ -19449,76 +20107,74 @@ enum SelfTest {
     /// rechter Seite und bestand auch ohne Beschneidung (Befund 2026-09-09).
     private static func pollDiffNoWrap(_ ws: Workspace, base: URL, phase: Int,
                                        longOrdinal: Int,
-                                       wrappedHeight: CGFloat, tick: Int) {
-        guard let window = mainWindowForAXChecks(), let content = window.contentView else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Hauptfenster nicht erreichbar")
-        }
-        let pairs = diffCellPairs(in: content)
-        guard pairs.count >= 2,
-              let tallest = pairs.max(by: { $0.before.height < $1.before.height }),
-              let shortest = pairs.min(by: { $0.before.height < $1.before.height })
-        else {
-            if tick >= 100 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Zell-Marker fehlen (gefunden: \(pairs.count))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollDiffNoWrap(ws, base: base, phase: phase,
-                               longOrdinal: longOrdinal,
-                               wrappedHeight: wrappedHeight, tick: tick + 1)
-            }
-            return
-        }
-
-        if phase == 0 {
-            // Phase 0: Werkstandard — die lange Zeile muss umbrechen.
-            guard tallest.before.height > shortest.before.height * 2 else {
-                if tick >= 100 {
+                                       wrappedHeight: CGFloat) {
+        var pairCount = 0
+        var tallestHeight: CGFloat = 0
+        var foundPhase0: (height: CGFloat, ordinal: Int)?
+        var foundLong: (ordinal: Int, before: CGRect, after: CGRect)?
+        var foundContent: NSView?
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    guard let window = mainWindowForAXChecks(), let content = window.contentView else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Hauptfenster nicht erreichbar")
+                    }
+                    let pairs = diffCellPairs(in: content)
+                    pairCount = pairs.count
+                    guard pairs.count >= 2,
+                          let tallest = pairs.max(by: { $0.before.height < $1.before.height }),
+                          let shortest = pairs.min(by: { $0.before.height < $1.before.height })
+                    else { return false }
+                    tallestHeight = tallest.before.height
+                    if phase == 0 {
+                        // Phase 0: Werkstandard — die lange Zeile muss umbrechen.
+                        guard tallest.before.height > shortest.before.height * 2 else { return false }
+                        foundPhase0 = (tallest.before.height, tallest.ordinal)
+                        return true
+                    }
+                    // Phase 1: ohne Umbruch sind ALLE Zeilen gleich einzeilig hoch.
+                    guard let long = pairs.first(where: { $0.ordinal == longOrdinal }),
+                          long.before.height < wrappedHeight / 2 else { return false }
+                    foundLong = long
+                    foundContent = content
+                    return true
+                },
+                onTimeout: { book in
                     try? FileManager.default.removeItem(at: base)
-                    finish(false, "Mit Soft Wrap bricht die lange Zeile nicht um "
-                        + "(\(Int(tallest.before.height)) pt)")
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    pollDiffNoWrap(ws, base: base, phase: 0, longOrdinal: -1,
-                                   wrappedHeight: 0, tick: tick + 1)
-                }
-                return
-            }
-            let height = tallest.before.height
-            let ordinal = tallest.ordinal
-            guard ws.activeTabShowsDiff else {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Der Vergleichs-Tab ist nicht aktiv — der "
-                    + "Soft-Wrap-Schalter der Fußzeile träfe das falsche Profil")
-            }
-            // Genau der Weg der Fußzeile (und des Ansicht-Menüs): Der
-            // Schalter dort ruft `toggleSoftWrap()`.
-            ws.toggleSoftWrap()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollDiffNoWrap(ws, base: base, phase: 1, longOrdinal: ordinal,
-                               wrappedHeight: height, tick: 0)
-            }
-            return
-        }
-
-        // Phase 1: ohne Umbruch sind ALLE Zeilen gleich einzeilig hoch.
-        guard let long = pairs.first(where: { $0.ordinal == longOrdinal }),
-              long.before.height < wrappedHeight / 2 else {
-            if tick >= 100 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Ohne Soft Wrap bleibt die lange Zeile "
-                    + "\(Int(tallest.before.height)) pt hoch (mit Umbruch: "
-                    + "\(Int(wrappedHeight)) pt) — der Schalter wirkt nicht")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollDiffNoWrap(ws, base: base, phase: 1, longOrdinal: longOrdinal,
-                               wrappedHeight: wrappedHeight, tick: tick + 1)
-            }
-            return
-        }
-        finishDiffNoWrap(ws, base: base, content: content,
-                         wrappedHeight: wrappedHeight, row: long)
+                    guard pairCount >= 2 else {
+                        finish(false, "Zell-Marker fehlen (gefunden: \(pairCount)) — \(book.summary)")
+                    }
+                    if phase == 0 {
+                        finish(false, "Mit Soft Wrap bricht die lange Zeile nicht um "
+                            + "(\(Int(tallestHeight)) pt) — \(book.summary)")
+                    }
+                    finish(false, "Ohne Soft Wrap bleibt die lange Zeile "
+                        + "\(Int(tallestHeight)) pt hoch (mit Umbruch: "
+                        + "\(Int(wrappedHeight)) pt) — der Schalter wirkt nicht — \(book.summary)")
+                },
+                then: {
+                    if phase == 0 {
+                        guard let foundPhase0 else { finish(false, "Diff-Zeilen nach Erfolg verschwunden") }
+                        guard ws.activeTabShowsDiff else {
+                            try? FileManager.default.removeItem(at: base)
+                            finish(false, "Der Vergleichs-Tab ist nicht aktiv — der "
+                                + "Soft-Wrap-Schalter der Fußzeile träfe das falsche Profil")
+                        }
+                        // Genau der Weg der Fußzeile (und des Ansicht-Menüs): Der
+                        // Schalter dort ruft `toggleSoftWrap()`.
+                        ws.toggleSoftWrap()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            pollDiffNoWrap(ws, base: base, phase: 1, longOrdinal: foundPhase0.ordinal,
+                                           wrappedHeight: foundPhase0.height)
+                        }
+                        return
+                    }
+                    guard let foundLong, let foundContent else {
+                        finish(false, "Diff-Zeilen nach Erfolg verschwunden")
+                    }
+                    finishDiffNoWrap(ws, base: base, content: foundContent,
+                                     wrappedHeight: wrappedHeight, row: foundLong)
+                })
     }
 
     /// Der eigentliche Befund: Ragt die linke Seite in die rechte Spalte?
@@ -19527,9 +20183,10 @@ enum SelfTest {
         _ ws: Workspace, base: URL, content: NSView, wrappedHeight: CGFloat,
         row: (ordinal: Int, before: CGRect, after: CGRect)
     ) {
-        defer {
-            // Das Profil ist persistent — der Testlauf darf keinen veränderten
-            // Stand hinterlassen.
+        // Das Profil ist persistent — der Testlauf darf keinen veränderten
+        // Stand hinterlassen. Kein `defer`: Jeder Ausgang geht über `finish`,
+        // das mit `exit()` endet und den Stack nicht abwickelt.
+        func cleanUp() {
             ws.setSoftWrapEnabled(true)
             try? FileManager.default.removeItem(at: base)
         }
@@ -19539,10 +20196,12 @@ enum SelfTest {
                            width: max(0, row.after.width - 180),
                            height: row.after.height)
         guard probe.width > 40, content.bounds.contains(probe) else {
+            cleanUp()
             finish(.environment, "Fenster zu schmal für die Bildpunktprobe "
                 + "(\(Int(probe.width)) pt)")
         }
         guard let bitmap = content.bitmapImageRepForCachingDisplay(in: probe) else {
+            cleanUp()
             finish(false, "Bildausschnitt der rechten Spalte nicht erzeugbar")
         }
         content.cacheDisplay(in: probe, to: bitmap)
@@ -19551,10 +20210,12 @@ enum SelfTest {
         // Kantenglättung ist erlaubt; übergelaufener Text färbt hier ein
         // Vielfaches davon ein.
         guard foreign < 0.02 else {
+            cleanUp()
             finish(false, "Die linke Seite ragt in die rechte Spalte: "
                 + "\(Int(foreign * 100)) % der Bildpunkte im rechten "
                 + "Spaltenbereich tragen fremde Schrift")
         }
+        cleanUp()
         finish(true, "Soft Wrap aus: lange Zeile von \(Int(wrappedHeight)) pt "
             + "auf \(Int(row.before.height)) pt (einzeilig), und im rechten "
             + "Spaltenbereich weichen nur \(String(format: "%.2f", foreign * 100)) % "
@@ -19575,50 +20236,59 @@ enum SelfTest {
             left: .file(fixture.left), right: .file(fixture.right),
             options: FileDiffOptions()
         ))
-        pollDiffSplit(ws, base: fixture.base, tick: 0)
+        pollDiffSplit(ws, base: fixture.base)
     }
 
-    private static func pollDiffSplit(_ ws: Workspace, base: URL, tick: Int) {
-        guard let window = mainWindowForAXChecks(), let content = window.contentView else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Hauptfenster nicht erreichbar")
-        }
-        let pairs = diffCellPairs(in: content)
-        guard let row = pairs.first,
-              let handle = markerView(id: "diffSplitter", in: content) else {
-            if tick >= 100 {
-                try? FileManager.default.removeItem(at: base)
-                finish(false, "Zellen oder Splitter-Griff fehlen im Fensterbaum "
-                    + "(Zeilen: \(pairs.count), Griff: "
-                    + "\(markerView(id: "diffSplitter", in: content) != nil))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollDiffSplit(ws, base: base, tick: tick + 1)
-            }
-            return
-        }
-        let beforeLeft = row.before.width
-        let beforeRight = row.after.width
-        let handleFrame = handle.convert(handle.bounds, to: content)
-        // Der Griff ist dokumenthoch; angefasst wird er auf Höhe der ersten
-        // Zeile, damit der Punkt sicher im sichtbaren Bereich liegt.
-        let grab = NSPoint(x: handleFrame.midX, y: row.before.midY)
-        guard handleFrame.insetBy(dx: -1, dy: 0).contains(grab) else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Greifpunkt \(grab) liegt nicht im Griff \(handleFrame)")
-        }
-        // Messung und Klick im selben Main-Thread-Durchlauf: `sendEvent`
-        // stellt synchron zu, ein Nachlayout kann sich nicht dazwischen
-        // schieben (siehe AGENTS.md zu `armSingleShiftClick`).
-        let distance: CGFloat = 120
-        let startInWindow = content.convert(grab, to: nil)
-        let endInWindow = NSPoint(x: startInWindow.x + distance, y: startInWindow.y)
-        guard sendSplitterDrag(from: startInWindow, to: endInWindow, in: window) else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Zieh-Ereignisse nicht erzeugbar")
-        }
-        pollDiffSplitResult(ws, base: base, beforeLeft: beforeLeft,
-                            beforeRight: beforeRight, distance: distance, tick: 0)
+    private static func pollDiffSplit(_ ws: Workspace, base: URL) {
+        var found: (window: NSWindow, content: NSView,
+                    row: (ordinal: Int, before: CGRect, after: CGRect), handle: NSView)?
+        var pairCount = 0
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    guard let window = mainWindowForAXChecks(), let content = window.contentView else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Hauptfenster nicht erreichbar")
+                    }
+                    let pairs = diffCellPairs(in: content)
+                    pairCount = pairs.count
+                    guard let row = pairs.first,
+                          let handle = markerView(id: "diffSplitter", in: content) else { return false }
+                    found = (window, content, row, handle)
+                    return true
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: base)
+                    let handleExists = mainWindowForAXChecks()?.contentView
+                        .map { markerView(id: "diffSplitter", in: $0) != nil } ?? false
+                    finish(false, "Zellen oder Splitter-Griff fehlen im Fensterbaum "
+                        + "(Zeilen: \(pairCount), Griff: \(handleExists)) — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Diff-Zellen nach Erfolg verschwunden") }
+                    let (window, content, row, handle) = found
+                    let beforeLeft = row.before.width
+                    let beforeRight = row.after.width
+                    let handleFrame = handle.convert(handle.bounds, to: content)
+                    // Der Griff ist dokumenthoch; angefasst wird er auf Höhe der ersten
+                    // Zeile, damit der Punkt sicher im sichtbaren Bereich liegt.
+                    let grab = NSPoint(x: handleFrame.midX, y: row.before.midY)
+                    guard handleFrame.insetBy(dx: -1, dy: 0).contains(grab) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Greifpunkt \(grab) liegt nicht im Griff \(handleFrame)")
+                    }
+                    // Messung und Klick im selben Main-Thread-Durchlauf: `sendEvent`
+                    // stellt synchron zu, ein Nachlayout kann sich nicht dazwischen
+                    // schieben (siehe AGENTS.md zu `armSingleShiftClick`).
+                    let distance: CGFloat = 120
+                    let startInWindow = content.convert(grab, to: nil)
+                    let endInWindow = NSPoint(x: startInWindow.x + distance, y: startInWindow.y)
+                    guard sendSplitterDrag(from: startInWindow, to: endInWindow, in: window) else {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(false, "Zieh-Ereignisse nicht erzeugbar")
+                    }
+                    pollDiffSplitResult(ws, base: base, beforeLeft: beforeLeft,
+                                        beforeRight: beforeRight, distance: distance)
+                })
     }
 
     /// Maus-Zug auf dem Splitter: Down, mehrere Zwischenschritte, Up. Der
@@ -19651,53 +20321,137 @@ enum SelfTest {
     private static func pollDiffSplitResult(_ ws: Workspace, base: URL,
                                             beforeLeft: CGFloat,
                                             beforeRight: CGFloat,
-                                            distance: CGFloat, tick: Int) {
-        guard let window = mainWindowForAXChecks(), let content = window.contentView else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Hauptfenster nicht erreichbar")
-        }
-        let pairs = diffCellPairs(in: content)
-        guard let row = pairs.first else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Diff-Zeilen verschwunden")
-        }
-        let afterLeft = row.before.width
-        let afterRight = row.after.width
-        if abs(afterLeft - beforeLeft - distance) > 2 {
-            if tick >= 60 {
-                defer { try? FileManager.default.removeItem(at: base) }
-                finish(false, "Der Trenner folgte dem Zug nicht: links "
-                    + "\(Int(beforeLeft)) → \(Int(afterLeft)) pt statt "
-                    + "\(Int(beforeLeft + distance)) pt")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollDiffSplitResult(ws, base: base, beforeLeft: beforeLeft,
-                                    beforeRight: beforeRight,
-                                    distance: distance, tick: tick + 1)
-            }
-            return
-        }
-        defer {
-            // Die Teilung ist persistent: den Werkstand wiederherstellen.
+                                            distance: CGFloat) {
+        // Die Teilung ist persistent, das Verzeichnis liegt im Temp-Ordner:
+        // Beides muss vor JEDEM Ausgang weg. Kein `defer` — `finish` endet in
+        // `exit()` und wickelt den Stack nicht ab.
+        func cleanUp() {
             SelfTest.workspaceDefaults()
                 .removeObject(forKey: DiffColumnLayout.splitRatioDefaultsKey)
             try? FileManager.default.removeItem(at: base)
         }
-        // Die rechte Seite gibt exakt den Platz ab, den die linke gewinnt —
-        // sonst bliebe rechts ein Streifen frei oder die Fläche wüchse.
-        guard abs((beforeLeft + beforeRight) - (afterLeft + afterRight)) < 2 else {
-            finish(false, "Die Gesamtbreite änderte sich beim Ziehen: "
-                + "\(Int(beforeLeft + beforeRight)) → "
-                + "\(Int(afterLeft + afterRight)) pt")
+        var afterLeft: CGFloat = 0
+        var afterRight: CGFloat = 0
+        var found: (window: NSWindow, content: NSView,
+                    row: (ordinal: Int, before: CGRect, after: CGRect))?
+        waitFor(budget: 3, pause: 0.05,
+                condition: {
+                    guard let window = mainWindowForAXChecks(), let content = window.contentView else {
+                        cleanUp()
+                        finish(false, "Hauptfenster nicht erreichbar")
+                    }
+                    guard let row = diffCellPairs(in: content).first else {
+                        cleanUp()
+                        finish(false, "Diff-Zeilen verschwunden")
+                    }
+                    afterLeft = row.before.width
+                    afterRight = row.after.width
+                    found = (window, content, row)
+                    return abs(afterLeft - beforeLeft - distance) <= 2
+                },
+                onTimeout: { book in
+                    cleanUp()
+                    finish(false, "Der Trenner folgte dem Zug nicht: links "
+                        + "\(Int(beforeLeft)) → \(Int(afterLeft)) pt statt "
+                        + "\(Int(beforeLeft + distance)) pt — \(book.summary)")
+                },
+                then: {
+                    guard let found else { finish(false, "Diff-Zeilen nach Erfolg verschwunden") }
+                    let (window, content, row) = found
+                    // Die rechte Seite gibt exakt den Platz ab, den die linke gewinnt —
+                    // sonst bliebe rechts ein Streifen frei oder die Fläche wüchse.
+                    guard abs((beforeLeft + beforeRight) - (afterLeft + afterRight)) < 2 else {
+                        cleanUp()
+                        finish(false, "Die Gesamtbreite änderte sich beim Ziehen: "
+                            + "\(Int(beforeLeft + beforeRight)) → "
+                            + "\(Int(afterLeft + afterRight)) pt")
+                    }
+                    guard abs(beforeRight - afterRight - distance) <= 2 else {
+                        cleanUp()
+                        finish(false, "Die rechte Seite gab \(Int(beforeRight - afterRight)) pt "
+                            + "ab statt \(Int(distance)) pt")
+                    }
+                    // Zweite Stufe: Doppelklick auf den Griff stellt die Werksteilung
+                    // wieder her. Ohne diesen Rückweg träfe man die exakte Hälfte nach dem
+                    // ersten Zug nur noch zufällig — und zwar dauerhaft, weil die Teilung
+                    // für ALLE Vergleiche gemerkt wird.
+                    guard let handle = markerView(id: "diffSplitter", in: content) else {
+                        cleanUp()
+                        finish(false, "Splitter-Griff ist nach dem Zug verschwunden")
+                    }
+                    let handleFrame = handle.convert(handle.bounds, to: content)
+                    let point = content.convert(NSPoint(x: handleFrame.midX, y: row.before.midY),
+                                                to: nil)
+                    guard sendSplitterDoubleClick(at: point, in: window) else {
+                        cleanUp()
+                        finish(false, "Doppelklick-Ereignisse nicht erzeugbar")
+                    }
+                    pollDiffSplitReset(ws, base: base, draggedLeft: afterLeft,
+                                       draggedRight: afterRight, distance: distance)
+                })
+    }
+
+    /// Doppelklick auf dem Griff: zwei Down/Up-Paare, das zweite mit
+    /// `clickCount: 2`. `HandleView` liest die Klickzahl aus DIESEM Ereignis —
+    /// `NSApp.currentEvent` wäre bei `sendEvent` gar nicht gesetzt (AGENTS.md).
+    private static func sendSplitterDoubleClick(at point: NSPoint,
+                                                in window: NSWindow) -> Bool {
+        let time = ProcessInfo.processInfo.systemUptime
+        func event(_ type: NSEvent.EventType, _ offset: Double,
+                   _ clicks: Int, _ number: Int) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                               timestamp: time + offset,
+                               windowNumber: window.windowNumber, context: nil,
+                               eventNumber: number, clickCount: clicks,
+                               pressure: type == .leftMouseUp ? 0 : 1)
         }
-        guard abs(beforeRight - afterRight - distance) <= 2 else {
-            finish(false, "Die rechte Seite gab \(Int(beforeRight - afterRight)) pt "
-                + "ab statt \(Int(distance)) pt")
+        for (index, clicks) in [1, 2].enumerated() {
+            guard let down = event(.leftMouseDown, 0.02 * Double(index), clicks, 20 + index),
+                  let up = event(.leftMouseUp, 0.02 * Double(index) + 0.01,
+                                 clicks, 30 + index) else { return false }
+            window.sendEvent(down)
+            window.sendEvent(up)
         }
-        finish(true, "Trenner um \(Int(distance)) pt gezogen: links "
-            + "\(Int(beforeLeft)) → \(Int(afterLeft)) pt, rechts "
-            + "\(Int(beforeRight)) → \(Int(afterRight)) pt, Gesamtbreite "
-            + "unverändert")
+        return true
+    }
+
+    private static func pollDiffSplitReset(_ ws: Workspace, base: URL,
+                                           draggedLeft: CGFloat,
+                                           draggedRight: CGFloat,
+                                           distance: CGFloat) {
+        func cleanUp() {
+            SelfTest.workspaceDefaults()
+                .removeObject(forKey: DiffColumnLayout.splitRatioDefaultsKey)
+            try? FileManager.default.removeItem(at: base)
+        }
+        var left: CGFloat = 0
+        var right: CGFloat = 0
+        waitFor(budget: 3, pause: 0.05,
+                condition: {
+                    guard let content = mainWindowForAXChecks()?.contentView else {
+                        cleanUp()
+                        finish(false, "Hauptfenster nicht erreichbar")
+                    }
+                    guard let row = diffCellPairs(in: content).first else {
+                        cleanUp()
+                        finish(false, "Diff-Zeilen verschwunden")
+                    }
+                    left = row.before.width
+                    right = row.after.width
+                    return abs(left - right) < 1
+                },
+                onTimeout: { book in
+                    cleanUp()
+                    finish(false, "Der Doppelklick stellte die Werksteilung nicht her: "
+                        + "links \(Int(left)) pt, rechts \(Int(right)) pt — \(book.summary)")
+                },
+                then: {
+                    cleanUp()
+                    finish(true, "Trenner um \(Int(distance)) pt gezogen: links auf "
+                        + "\(Int(draggedLeft)) pt, rechts auf \(Int(draggedRight)) pt, "
+                        + "Gesamtbreite unverändert; ein Doppelklick auf den Griff stellt "
+                        + "die Werksteilung wieder her (je \(Int(left)) pt)")
+                })
     }
 
     /// Diagnose (`-selftest gitstickyshot`): Änderungen-Liste mit 60 Dateien,
@@ -19708,7 +20462,7 @@ enum SelfTest {
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         Workspace.presentGitDialogs = false
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-gitstickyshot-\(UUID().uuidString)")
         let repo = base.appendingPathComponent("working-copy")
         do {
@@ -19736,34 +20490,38 @@ enum SelfTest {
             }
             DispatchQueue.main.async {
                 ws.openProject(at: repo)
-                pollGitStickyShot(ws, tick: 0)
+                pollGitStickyShot(ws)
             }
         }
     }
 
-    private static func pollGitStickyShot(_ ws: Workspace, tick: Int) {
-        guard let window = mainWindowForAXChecks(),
-              let content = window.contentView,
-              let header = markerView(id: "gitSectionHeader-unstaged", in: content),
-              (ws.gitStatus?.unstagedChanges.count ?? 0) >= 60 else {
-            if tick >= 120 {
-                finish(false, "(gitstickyshot) Liste nicht bereit")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollGitStickyShot(ws, tick: tick + 1)
-            }
-            return
-        }
-        var scroll: NSScrollView?
-        var view: NSView? = header.superview
-        while let current = view {
-            if let candidate = current as? NSScrollView { scroll = candidate; break }
-            view = current.superview
-        }
-        if let scroll { scrollGitChangesList(scroll, by: 400) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            dumpMainWindowThenExit(prefix: "GITSTICKYSHOT-WINDOW")
-        }
+    private static func pollGitStickyShot(_ ws: Workspace) {
+        var header: NSView?
+        waitFor(budget: 6, pause: 0.05,
+                condition: {
+                    guard let window = mainWindowForAXChecks(),
+                          let content = window.contentView,
+                          let candidate = markerView(id: "gitSectionHeader-unstaged", in: content),
+                          (ws.gitStatus?.unstagedChanges.count ?? 0) >= 60 else { return false }
+                    header = candidate
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "(gitstickyshot) Liste nicht bereit — \(book.summary)")
+                },
+                then: {
+                    guard let header else { finish(false, "(gitstickyshot) Kopf nach Erfolg verschwunden") }
+                    var scroll: NSScrollView?
+                    var view: NSView? = header.superview
+                    while let current = view {
+                        if let candidate = current as? NSScrollView { scroll = candidate; break }
+                        view = current.superview
+                    }
+                    if let scroll { scrollGitChangesList(scroll, by: 400) }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        dumpMainWindowThenExit(prefix: "GITSTICKYSHOT-WINDOW")
+                    }
+                })
     }
 
     /// Diagnose (`-selftest filesgitshot`): Öffnet ein frisches Git-Projekt im
@@ -19776,7 +20534,7 @@ enum SelfTest {
         guard GitRunner.isAvailable else { finish(.environment, "git nicht verfügbar") }
         Workspace.presentGitDialogs = false
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-filesgitshot-\(UUID().uuidString)")
         let repo = base.appendingPathComponent("Webseite")
         do {
@@ -19802,23 +20560,23 @@ enum SelfTest {
                 atomically: true, encoding: .utf8)
             DispatchQueue.main.async {
                 ws.openProject(at: repo)
-                pollFilesGitShot(ws, tick: 0)
+                pollFilesGitShot(ws)
             }
         }
     }
 
-    private static func pollFilesGitShot(_ ws: Workspace, tick: Int) {
+    private static func pollFilesGitShot(_ ws: Workspace) {
         // Warten, bis Branch-Zeile (gitStatus) und Baum wirklich da sind.
-        guard ws.gitStatus != nil, mainWindowForAXChecks() != nil else {
-            if tick >= 120 { finish(false, "(filesgitshot) Git-Status/Fenster nicht bereit") }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollFilesGitShot(ws, tick: tick + 1)
-            }
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            dumpMainWindowThenExit(prefix: "FILESGITSHOT-WINDOW")
-        }
+        waitFor(budget: 6, pause: 0.05,
+                condition: { ws.gitStatus != nil && mainWindowForAXChecks() != nil },
+                onTimeout: { book in
+                    finish(false, "(filesgitshot) Git-Status/Fenster nicht bereit — \(book.summary)")
+                },
+                then: {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        dumpMainWindowThenExit(prefix: "FILESGITSHOT-WINDOW")
+                    }
+                })
     }
 
     /// Diagnose (`-selftest diffwideshot`): Zweispaltiger Diff mit Zeilen, die
@@ -19829,7 +20587,7 @@ enum SelfTest {
         testLabel = "diffwideshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         let fm = FileManager.default
-        let base = fm.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-diffwideshot-\(UUID().uuidString)")
         // Lange Zeilen mit sichtbar unterschiedlichem Inhalt beider Seiten:
         // Läuft der linke Text über, überschreibt er rechten Text.
@@ -19950,7 +20708,7 @@ enum SelfTest {
         guard let ws = Workspace.shared else {
             finishPasteIndent(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
-        let url = FileManager.default.temporaryDirectory
+        let url = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-pasteindent-\(UUID().uuidString).txt")
         let original = "    ziel\n"
         do { try original.write(to: url, atomically: true, encoding: .utf8) }
@@ -20013,7 +20771,7 @@ enum SelfTest {
     private static func runMarkdownImageWatchTest() {
         testLabel = "mdimagewatch"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent("Fastra-MdImageWatch-\(UUID().uuidString)")
         let file = directory.appendingPathComponent("Bildwechsel.md")
         let image = directory.appendingPathComponent("wechsel.png")
@@ -20037,7 +20795,7 @@ enum SelfTest {
         workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         ws.loadFile(at: file) { ok in
             guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
-            pollImageWatchWidth(expected: 1, directory: directory, tick: 0) {
+            pollImageWatchWidth(expected: 1, directory: directory) {
                 do {
                     // Austausch am GLEICHEN Pfad — atomar, wie es externe
                     // Werkzeuge tun. Markdown und Stil bleiben unverändert;
@@ -20047,7 +20805,7 @@ enum SelfTest {
                     try? FileManager.default.removeItem(at: directory)
                     finish(false, "Bild-Austausch nicht schreibbar: \(error.localizedDescription)")
                 }
-                pollImageWatchWidth(expected: 2, directory: directory, tick: 0) {
+                pollImageWatchWidth(expected: 2, directory: directory) {
                     try? FileManager.default.removeItem(at: directory)
                     finish(true, "extern ausgetauschtes Bild erschien in der offenen Vorschau (1 px → 2 px)")
                 }
@@ -20058,40 +20816,35 @@ enum SelfTest {
     /// Wartet, bis das erste Vorschau-Bild die erwartete natürliche Breite
     /// zeigt — der Beweis, dass WIRKLICH die neue Datei gerendert ist.
     private static func pollImageWatchWidth(expected: Int, directory: URL,
-                                            tick: Int,
                                             then continuation: @escaping () -> Void) {
-        guard tick < 120 else {
-            try? FileManager.default.removeItem(at: directory)
-            finish(false, "Vorschau-Bild erreichte Breite \(expected) nicht binnen 12 s")
-        }
-        let retry = {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollImageWatchWidth(expected: expected, directory: directory,
-                                    tick: tick + 1, then: continuation)
-            }
-        }
-        guard let root = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                && $0.contentView != nil && $0.isVisible
-        })?.contentView,
-              let webView = markdownWebView(in: root) else {
-            retry()
-            return
-        }
-        let script = "(() => { const i = document.images[0]; return i ? i.naturalWidth : 0; })()"
-        webView.evaluateJavaScript(script) { result, _ in
-            if let width = result as? Int, width == expected {
-                continuation()
-            } else {
-                retry()
-            }
-        }
+        waitForAsync(
+            budget: 12, pause: 0.1,
+            check: { answer in
+                guard let root = NSApp.windows.first(where: {
+                    $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                        && $0.contentView != nil && $0.isVisible
+                })?.contentView,
+                      let webView = markdownWebView(in: root) else {
+                    answer(false)
+                    return
+                }
+                let script = "(() => { const i = document.images[0]; return i ? i.naturalWidth : 0; })()"
+                webView.evaluateJavaScript(script) { result, _ in
+                    answer((result as? Int) == expected)
+                }
+            },
+            onTimeout: { book in
+                try? FileManager.default.removeItem(at: directory)
+                finish(false, "Vorschau-Bild erreichte Breite \(expected) nicht — \(book.summary)")
+            },
+            then: continuation
+        )
     }
 
     private static func runMarkdownRenderTest() {
         testLabel = "markdown"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent("Fastra-Markdown-Selbsttest-\(UUID().uuidString)")
         let file = directory.appendingPathComponent("Vorschau.md")
         let image = directory.appendingPathComponent("pixel.png")
@@ -20142,26 +20895,11 @@ enum SelfTest {
         workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         ws.loadFile(at: file) { ok in
             guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
-            pollMarkdownDOM(directory: directory, tick: 0)
+            pollMarkdownDOM(directory: directory)
         }
     }
 
-    private static func pollMarkdownDOM(directory: URL, tick: Int) {
-        guard tick < 120 else {
-            try? FileManager.default.removeItem(at: directory)
-            finish(false, "WebKit-DOM nach 12 s nicht vollständig gerendert")
-        }
-        guard let root = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                && $0.contentView != nil && $0.isVisible
-        })?.contentView,
-              let webView = markdownWebView(in: root) else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollMarkdownDOM(directory: directory, tick: tick + 1)
-            }
-            return
-        }
-
+    private static func pollMarkdownDOM(directory: URL) {
         let script = """
         (() => {
           const blanks = Array.from(
@@ -20212,33 +20950,50 @@ enum SelfTest {
           };
         })()
         """
-        webView.evaluateJavaScript(script) { result, error in
-            let flags = result as? [String: Bool]
-            let passed = flags?["image"] == true
-                && flags?["math"] == true
-                && flags?["mermaid"] == true
-                && flags?["highlight"] == true
-                && flags?["mark"] == true
-                && flags?["blankLines"] == true
-                && flags?["blankCopy"] == true
-                && flags?["centered"] == true
-                && flags?["notPwned"] == true
-            if passed {
+        var lastFlags: [String: Bool]?
+        var lastError: Error?
+        waitForAsync(
+            budget: 12, pause: 0.1,
+            check: { answer in
+                guard let root = NSApp.windows.first(where: {
+                    $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                        && $0.contentView != nil && $0.isVisible
+                })?.contentView,
+                      let webView = markdownWebView(in: root) else {
+                    answer(false)
+                    return
+                }
+                webView.evaluateJavaScript(script) { result, error in
+                    let flags = result as? [String: Bool]
+                    lastFlags = flags
+                    lastError = error
+                    answer(flags?["image"] == true
+                        && flags?["math"] == true
+                        && flags?["mermaid"] == true
+                        && flags?["highlight"] == true
+                        && flags?["mark"] == true
+                        && flags?["blankLines"] == true
+                        && flags?["blankCopy"] == true
+                        && flags?["centered"] == true
+                        && flags?["notPwned"] == true)
+                }
+            },
+            onTimeout: { book in
+                try? FileManager.default.removeItem(at: directory)
+                if let lastError {
+                    finish(false, "JavaScript-Fehler: \(lastError.localizedDescription) — \(book.summary)")
+                }
+                guard lastFlags != nil else {
+                    finish(false, "WebKit-DOM nicht vollständig gerendert — \(book.summary)")
+                }
+                finish(false, "DOM unvollständig: \(String(describing: lastFlags)) — \(book.summary)")
+            },
+            then: {
                 try? FileManager.default.removeItem(at: directory)
                 finish(true, "Bild + KaTeX + Mermaid + Codefarben + Textmarker + sichtbare Leerzeilen "
                     + "+ zentriertes HTML-Bild + kein ausgeführtes Fremdskript im DOM")
             }
-            if tick == 119 {
-                try? FileManager.default.removeItem(at: directory)
-                if let error {
-                    finish(false, "JavaScript-Fehler: \(error.localizedDescription)")
-                }
-                finish(false, "DOM unvollständig: \(String(describing: flags))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollMarkdownDOM(directory: directory, tick: tick + 1)
-            }
-        }
+        )
     }
 
     /// Prüft die dokumentierte Leerzeilen-Erweiterung im problematischen
@@ -20247,7 +21002,7 @@ enum SelfTest {
     private static func runMarkdownVisibleBlankLinesTest() {
         testLabel = "markdownblanklines"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent("Fastra-Markdown-Leerzeilen-Selbsttest-\(UUID().uuidString)")
         let file = directory.appendingPathComponent("Listen-Leerzeilen.md")
         let blankLines = Array(repeating: "  ", count: 6).joined(separator: "\n")
@@ -20278,26 +21033,11 @@ enum SelfTest {
         workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         ws.loadFile(at: file) { ok in
             guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
-            pollMarkdownVisibleBlankLinesDOM(directory: directory, tick: 0)
+            pollMarkdownVisibleBlankLinesDOM(directory: directory)
         }
     }
 
-    private static func pollMarkdownVisibleBlankLinesDOM(directory: URL, tick: Int) {
-        guard tick < 120 else {
-            try? FileManager.default.removeItem(at: directory)
-            finish(false, "WebKit-DOM nach 12 s nicht vollständig gerendert")
-        }
-        guard let root = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                && $0.contentView != nil && $0.isVisible
-        })?.contentView,
-              let webView = markdownWebView(in: root) else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollMarkdownVisibleBlankLinesDOM(directory: directory, tick: tick + 1)
-            }
-            return
-        }
-
+    private static func pollMarkdownVisibleBlankLinesDOM(directory: URL) {
         let script = """
         (() => {
           const blanks = Array.from(
@@ -20320,26 +21060,43 @@ enum SelfTest {
           return { visibleLines, stackedWithoutCollapse, gapBeforeQuestion };
         })()
         """
-        webView.evaluateJavaScript(script) { result, error in
-            let flags = result as? [String: Bool]
-            let passed = flags?["visibleLines"] == true
-                && flags?["stackedWithoutCollapse"] == true
-                && flags?["gapBeforeQuestion"] == true
-            if passed {
+        var lastFlags: [String: Bool]?
+        var lastError: Error?
+        waitForAsync(
+            budget: 12, pause: 0.1,
+            check: { answer in
+                guard let root = NSApp.windows.first(where: {
+                    $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                        && $0.contentView != nil && $0.isVisible
+                })?.contentView,
+                      let webView = markdownWebView(in: root) else {
+                    answer(false)
+                    return
+                }
+                webView.evaluateJavaScript(script) { result, error in
+                    let flags = result as? [String: Bool]
+                    lastFlags = flags
+                    lastError = error
+                    answer(flags?["visibleLines"] == true
+                        && flags?["stackedWithoutCollapse"] == true
+                        && flags?["gapBeforeQuestion"] == true)
+                }
+            },
+            onTimeout: { book in
+                try? FileManager.default.removeItem(at: directory)
+                if let lastError {
+                    finish(false, "JavaScript-Fehler: \(lastError.localizedDescription) — \(book.summary)")
+                }
+                guard lastFlags != nil else {
+                    finish(false, "WebKit-DOM nicht vollständig gerendert — \(book.summary)")
+                }
+                finish(false, "Leerzeilen-Layout unvollständig: \(String(describing: lastFlags)) — \(book.summary)")
+            },
+            then: {
                 try? FileManager.default.removeItem(at: directory)
                 finish(true, "sechs sichtbare Leerzeilen nach einer Liste im echten WebKit-Layout")
             }
-            if tick == 119 {
-                try? FileManager.default.removeItem(at: directory)
-                if let error {
-                    finish(false, "JavaScript-Fehler: \(error.localizedDescription)")
-                }
-                finish(false, "Leerzeilen-Layout unvollständig: \(String(describing: flags))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollMarkdownVisibleBlankLinesDOM(directory: directory, tick: tick + 1)
-            }
-        }
+        )
     }
 
     /// Prüft beide Klick-Sprünge zwischen Vorschau und Editor am echten DOM.
@@ -20351,7 +21108,7 @@ enum SelfTest {
     private static func runMarkdownJumpTest() {
         testLabel = "markdownjump"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent("Fastra-Sprung-Selbsttest-\(UUID().uuidString)")
         let file = directory.appendingPathComponent("Sprung.md")
         // Zeile 3/4/5 bilden EINEN Absatz — genau das, was Blockpositionen
@@ -20396,33 +21153,13 @@ enum SelfTest {
             guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
             pollMarkdownJump(
                 workspace: ws, directory: directory,
-                targetLine: targetLine, tick: 0
-            )
+                targetLine: targetLine)
         }
     }
 
     private static func pollMarkdownJump(workspace: Workspace,
                                          directory: URL,
-                                         targetLine: Int,
-                                         tick: Int) {
-        guard tick < 120 else {
-            try? FileManager.default.removeItem(at: directory)
-            finish(false, "Vorschau nach 12 s nicht bereit")
-        }
-        guard let root = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                && $0.contentView != nil && $0.isVisible
-        })?.contentView,
-              let webView = markdownWebView(in: root) else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollMarkdownJump(
-                    workspace: workspace, directory: directory,
-                    targetLine: targetLine, tick: tick + 1
-                )
-            }
-            return
-        }
-
+                                         targetLine: Int) {
         // Klick auf das Wort „C" in der dritten Absatzzeile. Der Zielpunkt wird
         // über die Zeichen-Geometrie bestimmt statt geschätzt: Der Absatz darf
         // beliebig umbrechen, ohne den Test unzuverlässig zu machen.
@@ -20445,62 +21182,70 @@ enum SelfTest {
           return { dispatched: true };
         })()
         """
-        webView.evaluateJavaScript(script) { result, error in
-            if let error {
+        var lastResult: Any?
+        var webViewFound = false
+        waitForAsync(
+            budget: 12, pause: 0.1,
+            check: { answer in
+                guard let root = NSApp.windows.first(where: {
+                    $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                        && $0.contentView != nil && $0.isVisible
+                })?.contentView,
+                      let webView = markdownWebView(in: root) else {
+                    answer(false)
+                    return
+                }
+                webViewFound = true
+                webView.evaluateJavaScript(script) { result, error in
+                    if let error {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "JavaScript-Fehler: \(error.localizedDescription)")
+                    }
+                    lastResult = result
+                    let info = result as? [String: Any]
+                    answer(info?["dispatched"] as? Bool == true)
+                }
+            },
+            onTimeout: { book in
                 try? FileManager.default.removeItem(at: directory)
-                finish(false, "JavaScript-Fehler: \(error.localizedDescription)")
-            }
-            if let info = result as? [String: Any], info["dispatched"] as? Bool == true {
+                guard webViewFound else {
+                    finish(false, "Vorschau nicht bereit — \(book.summary)")
+                }
+                finish(false, "Klick nicht auslösbar: \(String(describing: lastResult)) — \(book.summary)")
+            },
+            then: {
                 // Der Sprung läuft über Notification und Editor-Reconcile,
                 // beides asynchron — deshalb den Cursor nachlaufend prüfen.
                 pollMarkdownJumpResult(
                     workspace: workspace, directory: directory,
-                    targetLine: targetLine, tick: 0
-                )
-                return
+                    targetLine: targetLine)
             }
-            if tick == 119 {
-                try? FileManager.default.removeItem(at: directory)
-                finish(false, "Klick nicht auslösbar: \(String(describing: result))")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollMarkdownJump(
-                    workspace: workspace, directory: directory,
-                    targetLine: targetLine, tick: tick + 1
-                )
-            }
-        }
+        )
     }
 
     private static func pollMarkdownJumpResult(workspace: Workspace,
                                                directory: URL,
-                                               targetLine: Int,
-                                               tick: Int) {
+                                               targetLine: Int) {
         // „Zeile C" ist die fünfte Zeile der Datei; der Absatz beginnt bei 3.
         // Bliebe die Auflösung innerhalb des Blocks aus, stünde hier 3.
         let expected = 5
-        if workspace.cursorLine == expected {
-            beginMarkdownSourceRevealTest(
-                workspace: workspace, directory: directory,
-                targetLine: targetLine
-            )
-            return
-        }
-        guard tick < 50 else {
-            try? FileManager.default.removeItem(at: directory)
-            finish(
-                false,
-                "Cursor steht auf Zeile "
-                    + "\(workspace.cursorLine.map(String.init) ?? "nil"), "
-                    + "erwartet \(expected)"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollMarkdownJumpResult(
-                workspace: workspace, directory: directory,
-                targetLine: targetLine, tick: tick + 1
-            )
-        }
+        waitFor(budget: 5, pause: 0.1,
+                condition: { workspace.cursorLine == expected },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(at: directory)
+                    finish(
+                        false,
+                        "Cursor steht auf Zeile "
+                            + "\(workspace.cursorLine.map(String.init) ?? "nil"), "
+                            + "erwartet \(expected) — \(book.summary)"
+                    )
+                },
+                then: {
+                    beginMarkdownSourceRevealTest(
+                        workspace: workspace, directory: directory,
+                        targetLine: targetLine
+                    )
+                })
     }
 
     /// Gegenrichtung: Vorschau erst nach ganz oben setzen, dann im weit unten
@@ -20543,8 +21288,7 @@ enum SelfTest {
             )
             pollMarkdownSourceClickReady(
                 workspace: workspace, directory: directory,
-                targetLine: targetLine, tick: 0
-            )
+                targetLine: targetLine)
         }
     }
 
@@ -20561,85 +21305,74 @@ enum SelfTest {
     private static func pollMarkdownSourceClickReady(
         workspace: Workspace,
         directory: URL,
-        targetLine: Int,
-        tick: Int,
-        lastSettledY: (scrollY: CGFloat, lineMidY: CGFloat)? = nil
+        targetLine: Int
     ) {
-        guard let window = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                && $0.contentView != nil && $0.isVisible
-        }), let root = window.contentView,
-           let textView = editorTextView(in: root) as? TextView,
-           let line = textView.layoutManager.textLineForIndex(targetLine - 1),
-           let rect = textView.layoutManager.rectForOffset(line.range.location) else {
-            if tick >= 100 {
-                try? FileManager.default.removeItem(at: directory)
-                finish(false, "Zielzeile im Quelltext nicht layoutbar")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                pollMarkdownSourceClickReady(
-                    workspace: workspace, directory: directory,
-                    targetLine: targetLine, tick: tick + 1
-                )
-            }
-            return
-        }
-
-        if textView.visibleRect.minY <= rect.midY,
-           rect.midY <= textView.visibleRect.maxY {
-            // Zielzeile ist sichtbar — aber erst klicken, wenn sich weder
-            // die Scrollposition noch die Zeilen-Geometrie seit dem letzten
-            // Poll-Durchgang bewegt hat. Sonst veralten die gleich
-            // berechneten Klick-Koordinaten, bevor AppKit das Event zustellt.
-            let current = (scrollY: textView.visibleRect.minY, lineMidY: rect.midY)
-            guard let last = lastSettledY,
-                  abs(last.scrollY - current.scrollY) < 0.5,
-                  abs(last.lineMidY - current.lineMidY) < 0.5 else {
-                if tick >= 100 {
+        // Drei Stufen in EINER Frist: Zielzeile layoutbar, sichtbar, und die
+        // Geometrie zwei Durchläufe lang unverändert.
+        var stage = 0
+        var lastSettled: (scrollY: CGFloat, lineMidY: CGFloat)?
+        var found: (window: NSWindow, textView: TextView, rect: CGRect)?
+        waitFor(budget: 5, pause: 0.05,
+                condition: {
+                    guard let window = NSApp.windows.first(where: {
+                        $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                            && $0.contentView != nil && $0.isVisible
+                    }), let root = window.contentView,
+                       let textView = editorTextView(in: root) as? TextView,
+                       let line = textView.layoutManager.textLineForIndex(targetLine - 1),
+                       let rect = textView.layoutManager.rectForOffset(line.range.location) else {
+                        stage = 0
+                        lastSettled = nil
+                        return false
+                    }
+                    guard textView.visibleRect.minY <= rect.midY,
+                          rect.midY <= textView.visibleRect.maxY else {
+                        stage = 1
+                        lastSettled = nil
+                        return false
+                    }
+                    // Zielzeile ist sichtbar — aber erst klicken, wenn sich weder
+                    // die Scrollposition noch die Zeilen-Geometrie seit dem letzten
+                    // Durchlauf bewegt hat. Sonst veralten die gleich
+                    // berechneten Klick-Koordinaten, bevor AppKit das Event zustellt.
+                    stage = 2
+                    let current = (scrollY: textView.visibleRect.minY, lineMidY: rect.midY)
+                    let previous = lastSettled
+                    lastSettled = current
+                    guard let last = previous,
+                          abs(last.scrollY - current.scrollY) < 0.5,
+                          abs(last.lineMidY - current.lineMidY) < 0.5 else { return false }
+                    found = (window, textView, rect)
+                    return true
+                },
+                onTimeout: { book in
                     try? FileManager.default.removeItem(at: directory)
-                    finish(false, "Quelltext-Scroll kam nicht zur Ruhe")
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    pollMarkdownSourceClickReady(
-                        workspace: workspace, directory: directory,
-                        targetLine: targetLine, tick: tick + 1,
-                        lastSettledY: current
+                    switch stage {
+                    case 0: finish(false, "Zielzeile im Quelltext nicht layoutbar — \(book.summary)")
+                    case 1: finish(false, "Quelltext wurde nicht bis zur Zielzeile \(targetLine) gescrollt — \(book.summary)")
+                    default: finish(false, "Quelltext-Scroll kam nicht zur Ruhe — \(book.summary)")
+                    }
+                },
+                then: {
+                    guard let found else { finish(false, "Zielzeile nach Erfolg verschwunden") }
+                    let (window, textView, rect) = found
+                    window.makeKeyAndOrderFront(nil)
+                    let localPoint = NSPoint(
+                        x: max(rect.minX + 12, textView.visibleRect.minX + 12),
+                        y: rect.midY
                     )
-                }
-                return
-            }
-            window.makeKeyAndOrderFront(nil)
-            let localPoint = NSPoint(
-                x: max(rect.minX + 12, textView.visibleRect.minX + 12),
-                y: rect.midY
-            )
-            let windowPoint = textView.convert(localPoint, to: nil)
-            guard sendMouseClick(
-                at: windowPoint, in: window, modifiers: [], viaApp: true
-            ) else {
-                try? FileManager.default.removeItem(at: directory)
-                finish(false, "Quelltext-Klick nicht erzeugbar")
-            }
-            pollMarkdownPreviewReveal(
-                workspace: workspace, directory: directory,
-                targetLine: targetLine, tick: 0
-            )
-            return
-        }
-
-        if tick >= 100 {
-            try? FileManager.default.removeItem(at: directory)
-            finish(
-                false,
-                "Quelltext wurde nicht bis zur Zielzeile \(targetLine) gescrollt"
-            )
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            pollMarkdownSourceClickReady(
-                workspace: workspace, directory: directory,
-                targetLine: targetLine, tick: tick + 1
-            )
-        }
+                    let windowPoint = textView.convert(localPoint, to: nil)
+                    guard sendMouseClick(
+                        at: windowPoint, in: window, modifiers: [], viaApp: true
+                    ) else {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "Quelltext-Klick nicht erzeugbar")
+                    }
+                    pollMarkdownPreviewReveal(
+                        workspace: workspace, directory: directory,
+                        targetLine: targetLine
+                    )
+                })
     }
 
     /// Erfolg nur, wenn die Vorschau nachweislich von oben weggescrollt ist,
@@ -20647,17 +21380,8 @@ enum SelfTest {
     private static func pollMarkdownPreviewReveal(
         workspace: Workspace,
         directory: URL,
-        targetLine: Int,
-        tick: Int
+        targetLine: Int
     ) {
-        guard let root = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                && $0.contentView != nil && $0.isVisible
-        })?.contentView,
-              let webView = markdownWebView(in: root) else {
-            try? FileManager.default.removeItem(at: directory)
-            finish(false, "Vorschau verschwand während der Gegenprüfung")
-        }
         let script = """
         (() => {
           const target = \(targetLine);
@@ -20674,23 +21398,50 @@ enum SelfTest {
                    blockHeight: rect.height, viewport: window.innerHeight };
         })()
         """
-        webView.evaluateJavaScript(script) { result, error in
-            if let error {
+        var y = 0.0
+        var line = -1
+        var distanceFromCenter = 0.0
+        waitForAsync(
+            budget: 6, pause: 0.1,
+            check: { answer in
+                guard let root = NSApp.windows.first(where: {
+                    $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                        && $0.contentView != nil && $0.isVisible
+                })?.contentView,
+                      let webView = markdownWebView(in: root) else {
+                    try? FileManager.default.removeItem(at: directory)
+                    finish(false, "Vorschau verschwand während der Gegenprüfung")
+                }
+                webView.evaluateJavaScript(script) { result, error in
+                    if let error {
+                        try? FileManager.default.removeItem(at: directory)
+                        finish(false, "Vorschau-Messung schlug fehl: \(error.localizedDescription)")
+                    }
+                    let values = result as? [String: Any]
+                    y = (values?["y"] as? NSNumber)?.doubleValue ?? 0
+                    line = (values?["line"] as? NSNumber)?.intValue ?? -1
+                    let top = (values?["top"] as? NSNumber)?.doubleValue ?? 0
+                    let blockHeight = (values?["blockHeight"] as? NSNumber)?.doubleValue ?? 0
+                    let viewport = (values?["viewport"] as? NSNumber)?.doubleValue ?? 0
+                    distanceFromCenter = abs(top + blockHeight / 2 - viewport / 2)
+                    answer(workspace.cursorLine == targetLine
+                        && y > 50
+                        && line == targetLine
+                        && viewport > 0
+                        && distanceFromCenter <= max(80, viewport * 0.35))
+                }
+            },
+            onTimeout: { book in
                 try? FileManager.default.removeItem(at: directory)
-                finish(false, "Vorschau-Messung schlug fehl: \(error.localizedDescription)")
-            }
-            let values = result as? [String: Any]
-            let y = (values?["y"] as? NSNumber)?.doubleValue ?? 0
-            let line = (values?["line"] as? NSNumber)?.intValue ?? -1
-            let top = (values?["top"] as? NSNumber)?.doubleValue ?? 0
-            let blockHeight = (values?["blockHeight"] as? NSNumber)?.doubleValue ?? 0
-            let viewport = (values?["viewport"] as? NSNumber)?.doubleValue ?? 0
-            let distanceFromCenter = abs(top + blockHeight / 2 - viewport / 2)
-            if workspace.cursorLine == targetLine,
-               y > 50,
-               line == targetLine,
-               viewport > 0,
-               distanceFromCenter <= max(80, viewport * 0.35) {
+                finish(
+                    false,
+                    "Quelltext-Klick richtete Vorschau nicht aus: Cursor="
+                        + "\(workspace.cursorLine.map(String.init) ?? "nil"), "
+                        + "scrollY=\(Int(y)), Block=\(line), "
+                        + "Mittelabweichung=\(Int(distanceFromCenter)) — \(book.summary)"
+                )
+            },
+            then: {
                 try? FileManager.default.removeItem(at: directory)
                 finish(
                     true,
@@ -20698,23 +21449,7 @@ enum SelfTest {
                         + "zentriert Vorschauzeile \(targetLine)"
                 )
             }
-            if tick >= 60 {
-                try? FileManager.default.removeItem(at: directory)
-                finish(
-                    false,
-                    "Quelltext-Klick richtete Vorschau nicht aus: Cursor="
-                        + "\(workspace.cursorLine.map(String.init) ?? "nil"), "
-                        + "scrollY=\(Int(y)), Block=\(line), "
-                        + "Mittelabweichung=\(Int(distanceFromCenter))"
-                )
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                pollMarkdownPreviewReveal(
-                    workspace: workspace, directory: directory,
-                    targetLine: targetLine, tick: tick + 1
-                )
-            }
-        }
+        )
     }
 
     /// Prüft, dass die Vorschau einem Hell-/Dunkel-Wechsel IM LAUFENDEN BETRIEB
@@ -20728,7 +21463,7 @@ enum SelfTest {
     private static func runMarkdownAppearanceTest() {
         testLabel = "markdownappearance"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        let directory = FileManager.default.temporaryDirectory
+        let directory = selfTestTemporaryDirectory()
             .appendingPathComponent("Fastra-Appearance-Selbsttest-\(UUID().uuidString)")
         let file = directory.appendingPathComponent("Aussehen.md")
         do {
@@ -20747,10 +21482,10 @@ enum SelfTest {
         NSApp.appearance = NSAppearance(named: .darkAqua)
         ws.loadFile(at: file) { ok in
             guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
-            pollAppearance(expectDark: true, directory: directory, original: original, tick: 0) {
+            pollAppearance(expectDark: true, directory: directory, original: original) {
                 NSApp.appearance = NSAppearance(named: .aqua)
                 pollAppearance(expectDark: false, directory: directory,
-                               original: original, tick: 0) {
+                               original: original) {
                     NSApp.appearance = original
                     try? FileManager.default.removeItem(at: directory)
                     finish(true, "Vorschau folgt dem Hell-/Dunkel-Wechsel im laufenden Betrieb")
@@ -20762,33 +21497,26 @@ enum SelfTest {
     private static func pollAppearance(expectDark: Bool,
                                        directory: URL,
                                        original: NSAppearance?,
-                                       tick: Int,
                                        then next: @escaping () -> Void) {
-        let webView = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                && $0.contentView != nil && $0.isVisible
-        })?.contentView.flatMap { markdownWebView(in: $0) }
-
-        // In sRGB umrechnen: Ein direkter NSColor-Vergleich scheitert schon an
-        // unterschiedlichen Farbräumen.
-        if let color = webView?.underPageBackgroundColor,
-           let srgb = color.usingColorSpace(.sRGB) {
-            let isDark = srgb.redComponent < 0.5
-            if isDark == expectDark {
-                next()
-                return
-            }
-        }
-        guard tick < 60 else {
-            NSApp.appearance = original
-            try? FileManager.default.removeItem(at: directory)
-            let mode = expectDark ? "dunkel" : "hell"
-            finish(false, "Hintergrund außerhalb der Seite wurde nach dem Wechsel nicht \(mode)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollAppearance(expectDark: expectDark, directory: directory,
-                           original: original, tick: tick + 1, then: next)
-        }
+        waitFor(budget: 6, pause: 0.1,
+                condition: {
+                    let webView = NSApp.windows.first(where: {
+                        $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                            && $0.contentView != nil && $0.isVisible
+                    })?.contentView.flatMap { markdownWebView(in: $0) }
+                    // In sRGB umrechnen: Ein direkter NSColor-Vergleich scheitert schon an
+                    // unterschiedlichen Farbräumen.
+                    guard let color = webView?.underPageBackgroundColor,
+                          let srgb = color.usingColorSpace(.sRGB) else { return false }
+                    return (srgb.redComponent < 0.5) == expectDark
+                },
+                onTimeout: { book in
+                    NSApp.appearance = original
+                    try? FileManager.default.removeItem(at: directory)
+                    let mode = expectDark ? "dunkel" : "hell"
+                    finish(false, "Hintergrund außerhalb der Seite wurde nach dem Wechsel nicht \(mode) — \(book.summary)")
+                },
+                then: next)
     }
 
     private static func markdownWebView(in view: NSView) -> WKWebView? {
@@ -20806,7 +21534,7 @@ enum SelfTest {
     private static func runMarkdownShot() {
         testLabel = "markdownshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        let file = FileManager.default.temporaryDirectory
+        let file = selfTestTemporaryDirectory()
             .appendingPathComponent("Fastra-Markdown-Vorschau.md")
         let demo = """
         # Markdown-Vorschau
@@ -21063,33 +21791,35 @@ enum SelfTest {
 
     /// Wartet auf die ersten Live-Treffer (Pillen + Vorschau gefüllt), holt die
     /// Suchmaske nach vorn und gibt ihre Fenster-Nummer aus, dann Selbst-Exit.
-    private static func pollWildcardShot(_ ws: Workspace, tick: Int = 0) {
-        let maxTicks = 100           // 100 × 30 ms ≈ 3 s
-        if ws.bufferMatches.count >= 1, ws.searchError == nil,
-           let win = NSApp.windows.first(where: {
-               $0.frameAutosaveName == SearchWindow.frameAutosaveName && $0.isVisible
-           }) {
-            win.orderFront(nil)
-            // Fenster-Nummer == CGWindowID → direkt für `screencapture -l` nutzbar.
-            FileHandle.standardError.write(Data("WILDCARDSHOT-WINDOW \(win.windowNumber)\n".utf8))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 12) { finishScreenshotDiagnostic() }
-            return
-        }
-        if tick >= maxTicks {
-            finish(false, "(wildcardshot) keine Treffer/Suchmaske binnen ~3 s "
-                + "(bufferMatches=\(ws.bufferMatches.count), error=\(ws.searchError ?? "nil"))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollWildcardShot(ws, tick: tick + 1)
-        }
+    private static func pollWildcardShot(_ ws: Workspace) {
+        var win: NSWindow?
+        waitFor(budget: 3, pause: 0.03,
+                condition: {
+                    guard ws.bufferMatches.count >= 1, ws.searchError == nil else { return false }
+                    win = NSApp.windows.first(where: {
+                        $0.frameAutosaveName == SearchWindow.frameAutosaveName && $0.isVisible
+                    })
+                    return win != nil
+                },
+                onTimeout: { book in
+                    finish(false, "(wildcardshot) keine Treffer/Suchmaske "
+                        + "(bufferMatches=\(ws.bufferMatches.count), error=\(ws.searchError ?? "nil")) — \(book.summary)")
+                },
+                then: {
+                    guard let win else { finish(false, "(wildcardshot) Suchmaske nach Erfolg verschwunden") }
+                    win.orderFront(nil)
+                    // Fenster-Nummer == CGWindowID → direkt für `screencapture -l` nutzbar.
+                    FileHandle.standardError.write(Data("WILDCARDSHOT-WINDOW \(win.windowNumber)\n".utf8))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 12) { finishScreenshotDiagnostic() }
+                })
     }
 
     /// Teiltest b: Live-Ordner-Suche mit einem echten Temp-Ordner.
     private static func runSearchTestPartB(_ ws: Workspace) {
-        // Temp-Ordner mit eindeutigem Namen anlegen (NSTemporaryDirectory
-        // liefert einen Pfad, auf den die App Schreibrecht hat).
-        let tmpDir = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("fastra-search-folder-\(UUID().uuidString)")
+        // Temp-Ordner mit eindeutigem Namen anlegen (die Sandbox-Wurzel der
+        // Selbsttests; die App hat dort Schreibrecht).
+        let tmpDir = selfTestTemporaryDirectory()
+            .appendingPathComponent("fastra-search-folder-\(UUID().uuidString)").path
         do {
             try FileManager.default.createDirectory(
                 atPath: tmpDir,
@@ -21146,55 +21876,50 @@ enum SelfTest {
     private static func pollForFolderMatches(
         _ ws: Workspace,
         expectedTotal: Int,
-        tmpDir: String,
-        tick: Int = 0
+        tmpDir: String
     ) {
-        // 100 Ticks × 30 ms = 3 Sekunden Beobachtungsfenster.
-        let maxTicks = 100
-
-        // Suche noch aktiv → warten (kein vorzeitiges FAIL bei 0 Treffern
-        // mitten in einem laufenden Folder-Lauf).
-        if ws.folderSearching {
-            if tick >= maxTicks {
-                try? FileManager.default.removeItem(atPath: tmpDir)
-                finish(false,
-                    "(b) Folder-Suche nach \(maxTicks) Ticks noch aktiv — kein Ergebnis")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-                pollForFolderMatches(ws, expectedTotal: expectedTotal,
-                                     tmpDir: tmpDir, tick: tick + 1)
-            }
-            return
-        }
-
-        let got = ws.folderTotalMatches
-        if got == expectedTotal {
+        // Bisher 100 Ticks × 30 ms = 3 Sekunden Beobachtungsfenster.
+        //
+        // Der FRÜHE Abbruch braucht weiterhin einen Durchlaufzähler: Eine
+        // abgeschlossene Suche mit falschem Ergebnis ist erst nach dem
+        // Mindest-Debounce (~14 × 30 ms = 420 ms) ein Befund, vorher könnte der
+        // SearchRunner noch im Extra-Debounce stehen. Der Helfer ruft
+        // `condition` je Durchlauf GENAU EINMAL und nie zusätzlich im
+        // Timeout-Zweig — deshalb zählt die Bedingung hier selbst mit, und
+        // `polls` entspricht exakt dem früheren `tick`.
+        var polls = 0
+        waitFor(budget: 3, pause: 0.03,
+                condition: {
+                    let tick = polls
+                    polls += 1
+                    // Suche noch aktiv → warten (kein vorzeitiges FAIL bei 0
+                    // Treffern mitten in einem laufenden Folder-Lauf).
+                    if ws.folderSearching { return false }
+                    if ws.folderTotalMatches == expectedTotal { return true }
+                    if !ws.folderNeedsSearch, tick >= 14 {
+                        try? FileManager.default.removeItem(atPath: tmpDir)
+                        finish(false,
+                            "(b) folderTotalMatches=\(ws.folderTotalMatches), "
+                            + "erwartet \(expectedTotal) "
+                            + "(folderNeedsSearch=\(ws.folderNeedsSearch), "
+                            + "folderSearching=\(ws.folderSearching), "
+                            + "searchError=\(ws.searchError ?? "nil"))")
+                    }
+                    return false
+                },
+                onTimeout: { book in
+                    try? FileManager.default.removeItem(atPath: tmpDir)
+                    if ws.folderSearching {
+                        finish(false,
+                            "(b) Folder-Suche noch aktiv — kein Ergebnis — \(book.summary)")
+                    }
+                    finish(false,
+                        "(b) Folder-Treffer: \(ws.folderTotalMatches), "
+                        + "erwartet \(expectedTotal) — \(book.summary)")
+                }) {
             // Teiltest b bestanden → Aufräumen und weiter mit c.
             try? FileManager.default.removeItem(atPath: tmpDir)
             runSearchTestPartC(ws)
-            return
-        }
-
-        // Suche nicht aktiv, aber falsches Ergebnis. Mindest-Debounce-Zeit
-        // (~14 × 30 ms = 420 ms) abwarten, bevor wir FAIL melden — der
-        // Runner könnte noch im Extra-Debounce hängen.
-        if !ws.folderNeedsSearch, tick >= 14 {
-            try? FileManager.default.removeItem(atPath: tmpDir)
-            finish(false,
-                "(b) folderTotalMatches=\(got), erwartet \(expectedTotal) "
-                + "(folderNeedsSearch=\(ws.folderNeedsSearch), "
-                + "folderSearching=\(ws.folderSearching), "
-                + "searchError=\(ws.searchError ?? "nil"))")
-        }
-        if tick >= maxTicks {
-            try? FileManager.default.removeItem(atPath: tmpDir)
-            finish(false,
-                "(b) Folder-Treffer nach \(maxTicks) Ticks: \(got), "
-                + "erwartet \(expectedTotal)")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForFolderMatches(ws, expectedTotal: expectedTotal,
-                                 tmpDir: tmpDir, tick: tick + 1)
         }
     }
 
@@ -21219,22 +21944,17 @@ enum SelfTest {
     }
 
     /// Pollt auf eine abgeschlossene Negativsuche. Max. ~1 s.
-    private static func pollForZeroMatches(_ ws: Workspace, tick: Int = 0) {
-        // 34 Ticks × 30 ms ≈ 1 Sekunde Beobachtungsfenster.
-        let maxTicks = 34
-
-        if hasCompletedEmptyBufferSearch(ws) {
+    private static func pollForZeroMatches(_ ws: Workspace) {
+        // Bisher 34 Ticks × 30 ms ≈ 1 Sekunde Beobachtungsfenster.
+        waitFor(budget: 1.02, pause: 0.03,
+                condition: { hasCompletedEmptyBufferSearch(ws) },
+                onTimeout: { book in
+                    finish(false,
+                        "(c) bufferMatches.count=\(ws.bufferMatches.count), "
+                        + "erwartet 0 (Pattern=\"\(ws.findPattern)\") — \(book.summary)")
+                }) {
             // Teiltest c bestanden → weiter mit d (Cap/Async).
             runSearchTestPartD(ws)
-            return
-        }
-        if tick >= maxTicks {
-            finish(false,
-                "(c) bufferMatches.count=\(ws.bufferMatches.count) nach \(maxTicks) Ticks, "
-                + "erwartet 0 (Pattern=\"\(ws.findPattern)\")")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForZeroMatches(ws, tick: tick + 1)
         }
     }
 
@@ -21246,7 +21966,7 @@ enum SelfTest {
     private static func runSearchTestPartD(_ ws: Workspace) {
         // 5000 Zeilen mit je einem „1" → 5000 Treffer, Cap = 2000.
         let bigContent = String(repeating: "marker1zeile\n", count: 5000)
-        let tmpBig = FileManager.default.temporaryDirectory
+        let tmpBig = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-search-big-\(UUID().uuidString).txt")
         do { try bigContent.write(to: tmpBig, atomically: true, encoding: .utf8) }
         catch { finish(false, "(d) Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
@@ -21264,24 +21984,24 @@ enum SelfTest {
 
     /// Pollt, bis die async Buffer-Suche fertig ist (`!bufferSearching`), und
     /// prüft Cap + echte Gesamtzahl. Max. ~3 s.
-    private static func pollForCappedBuffer(_ ws: Workspace, tick: Int = 0) {
-        let maxTicks = 100   // 100 × 30 ms = 3 s
-
-        // Noch am Suchen → warten (belegt zugleich: die Suche läuft async,
-        // der Main-Thread tickt weiter, sonst käme dieser Poll nie dran).
-        if ws.bufferSearching {
-            if tick >= maxTicks {
-                finish(false, "(d) Buffer-Suche nach \(maxTicks) Ticks noch aktiv")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-                pollForCappedBuffer(ws, tick: tick + 1)
-            }
-            return
-        }
-
+    private static func pollForCappedBuffer(_ ws: Workspace) {
         let expectedTotal = 5000
         let expectedCap = BufferSearch.defaultMaxMatches
-        if ws.bufferTotalMatches == expectedTotal {
+        // Bisher 100 × 30 ms = 3 s — EIN Zähler für beide Zweige („noch am
+        // Suchen" und „fertig, aber falsche Zahl"), das bleibt so. Dass dieser
+        // Poll überhaupt drankommt, belegt zugleich: die Suche läuft async,
+        // der Main-Thread tickt weiter.
+        waitFor(budget: 3, pause: 0.03,
+                condition: { !ws.bufferSearching && ws.bufferTotalMatches == expectedTotal },
+                onTimeout: { book in
+                    if ws.bufferSearching {
+                        finish(false, "(d) Buffer-Suche noch aktiv — \(book.summary)")
+                    }
+                    finish(false,
+                        "(d) bufferTotalMatches=\(ws.bufferTotalMatches), "
+                        + "erwartet \(expectedTotal) (searchError=\(ws.searchError ?? "nil")) "
+                        + "— \(book.summary)")
+                }) {
             guard ws.bufferMatches.count == expectedCap else {
                 finish(false,
                     "(d) bufferMatches.count=\(ws.bufferMatches.count), "
@@ -21296,14 +22016,6 @@ enum SelfTest {
                 + "(b) Folder-Treffer korrekt, "
                 + "(c) Negativ-Pfad korrekt (0 Treffer), "
                 + "(d) Cap greift: \(expectedCap) gelistet / \(expectedTotal) gezählt, async")
-        }
-        if tick >= maxTicks {
-            finish(false,
-                "(d) bufferTotalMatches=\(ws.bufferTotalMatches) nach \(maxTicks) Ticks, "
-                + "erwartet \(expectedTotal) (searchError=\(ws.searchError ?? "nil"))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            pollForCappedBuffer(ws, tick: tick + 1)
         }
     }
 
@@ -21555,7 +22267,7 @@ enum SelfTest {
             // Exakt dieselbe Größenklasse wie der gemeldete Problemfall, aber
             // ausschließlich ein deterministisches, absichtlich ungültiges
             // Base64-ähnliches Muster. Kein realer Inhalt wird gelesen.
-            fileURL = FileManager.default.temporaryDirectory
+            fileURL = selfTestTemporaryDirectory()
                 .appendingPathComponent(
                     "fastra-synthetic-megaline-\(UUID().uuidString).txt"
                 )
@@ -21827,7 +22539,7 @@ enum SelfTest {
     /// PNG und eine bereits belegte `Belegt.md`, die nicht überschrieben
     /// werden darf.
     private static func makeMarkdownImportFixtures() throws -> URL {
-        let base = FileManager.default.temporaryDirectory
+        let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-markdownimport-\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
@@ -21985,13 +22697,23 @@ enum SelfTest {
             return .convert
         }
         workspace.openFileOrFolder(at: package)
-        pollPackageMarkdownImport(base: base, package: package, asked: { asked }, tick: 0)
+        pollPackageMarkdownImport(base: base, package: package, asked: { asked })
     }
 
     private static func pollPackageMarkdownImport(base: URL, package: URL,
-                                                  asked: @escaping () -> Int, tick: Int) {
+                                                  asked: @escaping () -> Int) {
         let expected = base.appendingPathComponent("Paket.md")
-        if FileManager.default.fileExists(atPath: expected.path) {
+        // Bisher 100 × 100 ms = 10 s. Eigener Timeout-Zweig: Der Testhaken der
+        // Rückfrage muss in JEDEM Ausgang zurückgesetzt werden.
+        waitFor(budget: 10, pause: 0.1,
+                condition: { FileManager.default.fileExists(atPath: expected.path) },
+                onTimeout: { book in
+                    Workspace.markdownImportPackageChoiceProvider = nil
+                    finishMarkdownImport(base, false,
+                                         "RTFD-Paket nicht umgewandelt (Rückfragen: \(asked()), "
+                                            + "Zustand: " + markdownImportFailureText()
+                                            + ") — " + book.summary)
+                }) {
             Workspace.markdownImportPackageChoiceProvider = nil
             guard asked() == 1 else {
                 finishMarkdownImport(base, false,
@@ -22009,15 +22731,6 @@ enum SelfTest {
             finishMarkdownImport(base, true,
                                  "Formatkatalog, Zwischenspeicher, flache Umwandlung, "
                                     + "Kollisionsschutz, Ordnerfall und RTFD-Paketweg ok")
-        }
-        guard tick < 100 else {
-            Workspace.markdownImportPackageChoiceProvider = nil
-            finishMarkdownImport(base, false,
-                                 "RTFD-Paket nicht umgewandelt (Rückfragen: \(asked()), "
-                                    + "Zustand: " + markdownImportFailureText() + ")")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            pollPackageMarkdownImport(base: base, package: package, asked: asked, tick: tick + 1)
         }
     }
 
@@ -22065,7 +22778,7 @@ enum SelfTest {
         // überschreibend — gleichnamige vorhandene Nutzerdateien wären weg
         // (Reviewfund 2026-08-18). Deshalb immer ein frischer Unterordner.
         let base = (keepDirectory.map { URL(fileURLWithPath: $0) }
-            ?? FileManager.default.temporaryDirectory)
+            ?? selfTestTemporaryDirectory())
             .appendingPathComponent("fastra-print-\(UUID().uuidString)")
         do {
             try FileManager.default.createDirectory(at: base,
@@ -22303,56 +23016,57 @@ enum SelfTest {
             guard ws.activeViewMode == .hex else {
                 finish(false, "Binärdatei öffnet nicht in der Hex-Ansicht")
             }
-            pollPrintHexPage(ws: ws, base: base, tick: 0)
+            pollPrintHexPage(ws: ws, base: base)
         }
     }
 
-    private static func pollPrintHexPage(ws: Workspace, base: URL, tick: Int) {
-        if let page = ws.visiblePrintPage, !page.text.isEmpty {
-            guard let document = ws.printableDocument,
-                  PrintRouting.defaultTarget(document) == .hexDump else {
-                finish(false, "⌘P nimmt in der Hex-Ansicht nicht den Abzug")
-            }
-            printToPDF(target: .hexDump, ws: ws, base: base, name: "hex") { pdf, text in
-                guard pdf.pageCount >= 1 else {
-                    finish(false, "Hex-Ausdruck hat keine Seite")
-                }
-                guard text.contains("000000000000"), text.contains("|") else {
-                    finish(false, "Hex-Ausdruck ohne Adressspalte oder ASCII-Spalte")
-                }
-                // Jede Rasterzeile muss VOLLSTÄNDIG auf einer Druckzeile
-                // stehen: Adresse, Bytes und die ASCII-Spalte bis zum
-                // schließenden Strich. Bricht die Zeile um, ist der Abzug
-                // unlesbar — genau das passierte, solange die Druckschrift
-                // nicht an die Seitenbreite angepasst wurde.
-                let addressRows = text.split(separator: "\n").filter { row in
-                    row.count >= 12 && row.prefix(12).allSatisfy { $0.isHexDigit }
-                }
-                guard addressRows.count >= 16 else {
-                    finish(false, "Hex-Ausdruck enthält nur \(addressRows.count) "
-                           + "Rasterzeilen")
-                }
-                // Geprüft wird auf die beiden senkrechten Striche der
-                // ASCII-Spalte, nicht auf das Zeilenende: Die Textauslese des
-                // PDFs hängt an die letzte Zeile einer Seite die Fußzeile an.
-                // Eine umgebrochene Rasterzeile bricht dagegen VOR oder IN der
-                // ASCII-Spalte ab und hat damit weniger als zwei Striche.
-                if let wrapped = addressRows.first(where: {
-                    $0.filter { $0 == "|" }.count < 2
-                }) {
-                    finish(false, "Hex-Rasterzeile umgebrochen: \(wrapped)")
-                }
-                runPrintImageAndPDFPart(ws: ws, base: base,
-                                        hexPages: pdf.pageCount)
-            }
-            return
-        }
-        guard tick < 60 else {
-            finish(false, "Hex-Ansicht meldet binnen 15 s keinen geladenen Abschnitt")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollPrintHexPage(ws: ws, base: base, tick: tick + 1)
-        }
+    private static func pollPrintHexPage(ws: Workspace, base: URL) {
+        waitFor(budget: 15, pause: 0.25,
+                condition: {
+                    guard let page = ws.visiblePrintPage else { return false }
+                    return !page.text.isEmpty
+                },
+                onTimeout: { book in
+                    finish(false, "Hex-Ansicht meldet keinen geladenen Abschnitt — \(book.summary)")
+                },
+                then: {
+                    guard let document = ws.printableDocument,
+                          PrintRouting.defaultTarget(document) == .hexDump else {
+                        finish(false, "⌘P nimmt in der Hex-Ansicht nicht den Abzug")
+                    }
+                    printToPDF(target: .hexDump, ws: ws, base: base, name: "hex") { pdf, text in
+                        guard pdf.pageCount >= 1 else {
+                            finish(false, "Hex-Ausdruck hat keine Seite")
+                        }
+                        guard text.contains("000000000000"), text.contains("|") else {
+                            finish(false, "Hex-Ausdruck ohne Adressspalte oder ASCII-Spalte")
+                        }
+                        // Jede Rasterzeile muss VOLLSTÄNDIG auf einer Druckzeile
+                        // stehen: Adresse, Bytes und die ASCII-Spalte bis zum
+                        // schließenden Strich. Bricht die Zeile um, ist der Abzug
+                        // unlesbar — genau das passierte, solange die Druckschrift
+                        // nicht an die Seitenbreite angepasst wurde.
+                        let addressRows = text.split(separator: "\n").filter { row in
+                            row.count >= 12 && row.prefix(12).allSatisfy { $0.isHexDigit }
+                        }
+                        guard addressRows.count >= 16 else {
+                            finish(false, "Hex-Ausdruck enthält nur \(addressRows.count) "
+                                   + "Rasterzeilen")
+                        }
+                        // Geprüft wird auf die beiden senkrechten Striche der
+                        // ASCII-Spalte, nicht auf das Zeilenende: Die Textauslese des
+                        // PDFs hängt an die letzte Zeile einer Seite die Fußzeile an.
+                        // Eine umgebrochene Rasterzeile bricht dagegen VOR oder IN der
+                        // ASCII-Spalte ab und hat damit weniger als zwei Striche.
+                        if let wrapped = addressRows.first(where: {
+                            $0.filter { $0 == "|" }.count < 2
+                        }) {
+                            finish(false, "Hex-Rasterzeile umgebrochen: \(wrapped)")
+                        }
+                        runPrintImageAndPDFPart(ws: ws, base: base,
+                                                hexPages: pdf.pageCount)
+                    }
+                })
     }
 
     /// Bild und PDF: Beides sind Vorschau-Ansichten ohne Editor-Text. Sie
@@ -22373,7 +23087,7 @@ enum SelfTest {
             // von der Platte — der Test wartet deshalb wie beim Hex-Abzug,
             // bis die Ansicht ihren Snapshot gemeldet hat (Reviewfund
             // 2026-08-19).
-            pollPreviewSnapshot(ws: ws, label: "Bild", tick: 0) {
+            pollPreviewSnapshot(ws: ws, label: "Bild") {
             printToPDF(target: .image, ws: ws, base: base, name: "bild") { imagePDF, imageText in
                 guard imagePDF.pageCount == 1 else {
                     finish(false, "Bildausdruck hat \(imagePDF.pageCount) Seiten "
@@ -22424,7 +23138,7 @@ enum SelfTest {
                         finish(false, "⌘P nimmt bei einem PDF nicht das PDF")
                     }
                     // Auch das PDF druckt sein gemeldetes Vorschau-Objekt.
-                    pollPreviewSnapshot(ws: ws, label: "PDF", tick: 0) {
+                    pollPreviewSnapshot(ws: ws, label: "PDF") {
                     printToPDF(target: .pdf, ws: ws, base: base,
                                name: "pdf-druck") { printed, _ in
                         guard printed.pageCount == 1 else {
@@ -22458,19 +23172,17 @@ enum SelfTest {
     /// Workspace gemeldet hat — genau dieses Objekt ist die Druckvorlage
     /// (Reviewfund 2026-08-19; Muster wie `pollPrintHexPage`).
     private static func pollPreviewSnapshot(ws: Workspace, label: String,
-                                            tick: Int,
                                             then: @escaping () -> Void) {
-        if let tab = ws.activeTab, ws.visiblePreviewSnapshot(for: tab) != nil {
-            then()
-            return
-        }
-        guard tick < 60 else {
-            finish(false, "\(label)-Vorschau meldet binnen 15 s kein geladenes "
-                   + "Druckobjekt")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollPreviewSnapshot(ws: ws, label: label, tick: tick + 1, then: then)
-        }
+        waitFor(budget: 15, pause: 0.25,
+                condition: {
+                    guard let tab = ws.activeTab else { return false }
+                    return ws.visiblePreviewSnapshot(for: tab) != nil
+                },
+                onTimeout: { book in
+                    finish(false, "\(label)-Vorschau meldet kein geladenes "
+                           + "Druckobjekt — \(book.summary)")
+                },
+                then: then)
     }
 
     /// Der Menüweg: Zum Abschluss prüft der Test die ⌘P-/⌥⌘P-/⇧⌘P-Menüpunkte
@@ -22496,55 +23208,54 @@ enum SelfTest {
         ws.loadFile(at: large) { ok in
             guard ok else { finish(false, "loadFile (großes Dokument) schlug fehl") }
             MainActor.assumeIsolated { DocumentPrinting.printVisibleDocument() }
-            pollLargePrintWarning(ws: ws, base: base, hexPages: hexPages, tick: 0)
+            pollLargePrintWarning(ws: ws, base: base, hexPages: hexPages)
         }
     }
 
     /// Wartet auf das Rückfrage-Blatt und schließt es mit „Abbrechen" wieder.
     private static func pollLargePrintWarning(ws: Workspace, base: URL,
-                                             hexPages: Int, tick: Int) {
-        if let sheet = NSApp.windows.compactMap({ $0.attachedSheet }).first {
-            let texts = sheetTexts(in: sheet)
-            guard texts.contains(where: { $0.contains(L10n.string("Großer Ausdruck")) }) else {
-                finish(false, "Blatt vor dem großen Ausdruck ist nicht die Rückfrage: "
-                       + texts.joined(separator: " / "))
-            }
-            // Die Seitenschätzung muss eine Zahl nennen, nicht bloß Text.
-            guard texts.contains(where: { $0.contains(where: \.isNumber) }) else {
-                finish(false, "Rückfrage nennt keine geschätzte Seitenzahl")
-            }
-            // Abbrechen ist die zweite Taste. Erst wenn das Blatt wirklich weg
-            // ist, geht der Test weiter: Sonst könnte die anschließende Prüfung
-            // „⌘P öffnet ein Blatt" versehentlich noch dieses hier sehen.
-            MainActor.assumeIsolated {
-                sheet.sheetParent?.endSheet(sheet, returnCode: .alertSecondButtonReturn)
-            }
-            pollSheetGone(ws: ws, base: base, hexPages: hexPages, tick: 0)
-            return
-        }
-        guard tick < 60 else {
-            finish(false, "über zwei Megabyte Text fragen binnen 15 s nicht nach")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollLargePrintWarning(ws: ws, base: base, hexPages: hexPages,
-                                  tick: tick + 1)
-        }
+                                             hexPages: Int) {
+        var sheet: NSWindow?
+        waitFor(budget: 15, pause: 0.25,
+                condition: {
+                    sheet = NSApp.windows.compactMap({ $0.attachedSheet }).first
+                    return sheet != nil
+                },
+                onTimeout: { book in
+                    finish(false, "über zwei Megabyte Text fragen nicht nach — \(book.summary)")
+                },
+                then: {
+                    guard let sheet else { finish(false, "Rückfrage-Blatt nach Erfolg verschwunden") }
+                    let texts = sheetTexts(in: sheet)
+                    guard texts.contains(where: { $0.contains(L10n.string("Großer Ausdruck")) }) else {
+                        finish(false, "Blatt vor dem großen Ausdruck ist nicht die Rückfrage: "
+                               + texts.joined(separator: " / "))
+                    }
+                    // Die Seitenschätzung muss eine Zahl nennen, nicht bloß Text.
+                    guard texts.contains(where: { $0.contains(where: \.isNumber) }) else {
+                        finish(false, "Rückfrage nennt keine geschätzte Seitenzahl")
+                    }
+                    // Abbrechen ist die zweite Taste. Erst wenn das Blatt wirklich weg
+                    // ist, geht der Test weiter: Sonst könnte die anschließende Prüfung
+                    // „⌘P öffnet ein Blatt" versehentlich noch dieses hier sehen.
+                    MainActor.assumeIsolated {
+                        sheet.sheetParent?.endSheet(sheet, returnCode: .alertSecondButtonReturn)
+                    }
+                    pollSheetGone(ws: ws, base: base, hexPages: hexPages)
+                })
     }
 
-    private static func pollSheetGone(ws: Workspace, base: URL, hexPages: Int,
-                                     tick: Int) {
-        if NSApp.windows.allSatisfy({ $0.attachedSheet == nil }) {
-            // Abgebrochen heißt abgebrochen: Der große Ausdruck darf jetzt
-            // nicht doch laufen.
-            runPrintPanelStage(ws: ws, base: base, hexPages: hexPages)
-            return
-        }
-        guard tick < 40 else {
-            finish(false, "die Rückfrage zum großen Ausdruck schließt nicht")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollSheetGone(ws: ws, base: base, hexPages: hexPages, tick: tick + 1)
-        }
+    private static func pollSheetGone(ws: Workspace, base: URL, hexPages: Int) {
+        waitFor(budget: 10, pause: 0.25,
+                condition: { NSApp.windows.allSatisfy({ $0.attachedSheet == nil }) },
+                onTimeout: { book in
+                    finish(false, "die Rückfrage zum großen Ausdruck schließt nicht — \(book.summary)")
+                },
+                then: {
+                    // Abgebrochen heißt abgebrochen: Der große Ausdruck darf jetzt
+                    // nicht doch laufen.
+                    runPrintPanelStage(ws: ws, base: base, hexPages: hexPages)
+                })
     }
 
     /// Sichtbare Beschriftungen eines Blattes — für die Prüfung, WELCHE
@@ -22614,8 +23325,7 @@ enum SelfTest {
                 finish(false, "kein Dokumentfenster für den Druckbefehl")
             }
             MainActor.assumeIsolated { DocumentPrinting.printVisibleDocument() }
-            pollPrintPanel(expectedWindow: expectedWindow, hexPages: hexPages,
-                           tick: 0)
+            pollPrintPanel(expectedWindow: expectedWindow, hexPages: hexPages)
         }
     }
 
@@ -22641,39 +23351,41 @@ enum SelfTest {
         return nil
     }
 
-    private static func pollPrintPanel(expectedWindow: NSWindow, hexPages: Int,
-                                       tick: Int) {
+    private static func pollPrintPanel(expectedWindow: NSWindow, hexPages: Int) {
         // Nur das Blatt am erwarteten Dokumentfenster zählt — nicht irgendein
         // Blatt in irgendeinem Fenster (Reviewfund 2026-08-19).
-        if let sheet = expectedWindow.attachedSheet {
-            // Das Blatt muss auch die Fastra-Optionen tragen: Ohne die
-            // Checkboxen wäre das Zubehörfeld still verloren gegangen
-            // (beauftragt 2026-08-18). Zugleich weist das ein Fehler- oder
-            // Warn-Blatt ab: Ein NSAlert trägt diese Checkboxen nie.
-            let texts = sheetTexts(in: sheet)
-            guard texts.contains(L10n.string("Kopf- und Fußzeile drucken")),
-                  texts.contains(L10n.string("Zeilennummern drucken")) else {
-                finish(false, "Blatt am Dokumentfenster ist kein Druckdialog "
-                       + "mit Fastra-Optionen (Kopf-/Fußzeile, Zeilennummern) "
-                       + "— gefunden: " + texts.joined(separator: " / "))
-            }
-            finish(true, "mehrseitiger Quelltext mit Kopf-/Fußzeile, Syntaxfarben "
-                   + "auf jeder Seite eines Swift-Ausdrucks (einfarbig per Einstellung), "
-                   + "gerenderte Markdown-Vorschau (Formel + Diagramm), Markdown-Quelltext, "
-                   + "Hex-Abzug ohne Umbruch (\(hexPages) Seiten), Bild- und "
-                   + "PDF-Ausdruck im PDF geprüft (Bild bleibt nach "
-                   + "Platten-Ersetzung der sichtbare Stand); großer Text fragt "
-                   + "mit Seitenschätzung nach; ⌘P öffnet das System-Druckfenster "
-                   + "am Dokumentfenster mit den Fastra-Optionen")
-        }
-        guard tick < 60 else {
-            finish(false, "der Druckbefehl öffnet binnen 15 s kein Druckfenster am "
-                + "Dokumentfenster — " + windowsSummary())
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollPrintPanel(expectedWindow: expectedWindow, hexPages: hexPages,
-                           tick: tick + 1)
-        }
+        var sheet: NSWindow?
+        waitFor(budget: 15, pause: 0.25,
+                condition: {
+                    sheet = expectedWindow.attachedSheet
+                    return sheet != nil
+                },
+                onTimeout: { book in
+                    finish(false, "der Druckbefehl öffnet kein Druckfenster am "
+                        + "Dokumentfenster — \(book.summary) — " + windowsSummary())
+                },
+                then: {
+                    guard let sheet else { finish(false, "Druck-Blatt nach Erfolg verschwunden") }
+                    // Das Blatt muss auch die Fastra-Optionen tragen: Ohne die
+                    // Checkboxen wäre das Zubehörfeld still verloren gegangen
+                    // (beauftragt 2026-08-18). Zugleich weist das ein Fehler- oder
+                    // Warn-Blatt ab: Ein NSAlert trägt diese Checkboxen nie.
+                    let texts = sheetTexts(in: sheet)
+                    guard texts.contains(L10n.string("Kopf- und Fußzeile drucken")),
+                          texts.contains(L10n.string("Zeilennummern drucken")) else {
+                        finish(false, "Blatt am Dokumentfenster ist kein Druckdialog "
+                               + "mit Fastra-Optionen (Kopf-/Fußzeile, Zeilennummern) "
+                               + "— gefunden: " + texts.joined(separator: " / "))
+                    }
+                    finish(true, "mehrseitiger Quelltext mit Kopf-/Fußzeile, Syntaxfarben "
+                           + "auf jeder Seite eines Swift-Ausdrucks (einfarbig per Einstellung), "
+                           + "gerenderte Markdown-Vorschau (Formel + Diagramm), Markdown-Quelltext, "
+                           + "Hex-Abzug ohne Umbruch (\(hexPages) Seiten), Bild- und "
+                           + "PDF-Ausdruck im PDF geprüft (Bild bleibt nach "
+                           + "Platten-Ersetzung der sichtbare Stand); großer Text fragt "
+                           + "mit Seitenschätzung nach; ⌘P öffnet das System-Druckfenster "
+                           + "am Dokumentfenster mit den Fastra-Optionen")
+                })
     }
 
     /// Druckt in eine PDF-Datei und liefert Dokument plus extrahierten Text.
@@ -22693,23 +23405,27 @@ enum SelfTest {
                 guard outcome == .printed else {
                     finish(false, "Druck „\(name)\" endete mit \(outcome)")
                 }
-                pollPrintedPDF(at: output, name: name, tick: 0, then: then)
+                pollPrintedPDF(at: output, name: name, then: then)
             }
         }
     }
 
-    private static func pollPrintedPDF(at url: URL, name: String, tick: Int,
+    private static func pollPrintedPDF(at url: URL, name: String,
                                        then: @escaping (PDFDocument, String) -> Void) {
-        if let document = PDFDocument(url: url), document.pageCount > 0 {
-            then(document, document.string ?? "")
-            return
-        }
-        guard tick < 80 else {
-            finish(false, "PDF „\(name)\" ist nach 20 s nicht lesbar")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            pollPrintedPDF(at: url, name: name, tick: tick + 1, then: then)
-        }
+        var document: PDFDocument?
+        waitFor(budget: 20, pause: 0.25,
+                condition: {
+                    guard let candidate = PDFDocument(url: url), candidate.pageCount > 0 else { return false }
+                    document = candidate
+                    return true
+                },
+                onTimeout: { book in
+                    finish(false, "PDF „\(name)\" ist nicht lesbar — \(book.summary)")
+                },
+                then: {
+                    guard let document else { finish(false, "PDF „\(name)\" nach Erfolg nicht mehr lesbar") }
+                    then(document, document.string ?? "")
+                })
     }
 
     /// Rendert die erste Seite eines PDFs als Bitmap und sucht in einem

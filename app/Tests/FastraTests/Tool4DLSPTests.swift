@@ -54,7 +54,7 @@ func tool4dLSP_canonicalizesTemporaryDirectoryAlias() throws {
 
 @Test("Beenden erzwingt nach der Gnadenfrist das Reapen eines hängenden Prozesses")
 func tool4dNativeProcess_forceStopsHungChild() async throws {
-    let script = FileManager.default.temporaryDirectory
+    let script = testTemporaryDirectory()
         .appendingPathComponent("fastra-tool4d-stop-\(UUID().uuidString).sh")
     defer { try? FileManager.default.removeItem(at: script) }
     // Der reale Kindprozess sperrt TERM und stoppt sich erst danach selbst.
@@ -236,7 +236,7 @@ func tool4dLSP_reportsProcessAbort() async {
 
 @Test("4D-Projektdatei wird nur im unmittelbaren Projektordner gesucht")
 func tool4dProjectLocator_findsExportedProject() throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = testTemporaryDirectory()
         .appendingPathComponent("fastra-tool4d-project-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: root) }
     let project = root.appendingPathComponent("Project")

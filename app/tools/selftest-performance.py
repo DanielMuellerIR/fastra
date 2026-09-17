@@ -253,7 +253,34 @@ def parse_samples(path: Path) -> dict[str, dict]:
     return tests
 
 
-def regression_warnings(previous: list[dict], current: dict) -> None:
+def belongs_to_history(repository: str, head: str) -> bool:
+    """Gehoert dieser Lauf zur Historie des aktuellen HEAD?
+
+    Die Messdatei liegt pro MASCHINE, nicht pro Repository: Zwei Worktrees
+    desselben Repos oder ein Branchwechsel teilen sie sich, und der
+    Konfigurationsschluessel (`debug-mixed-macos15`) traegt weder Branch noch
+    Worktree. Ohne diese Pruefung stammte der Median der "letzten fuenf
+    vergleichbaren Laeufe" moeglicherweise aus einem ganz anderen Codestand.
+
+    Bewusst konservativ: Nur ein BEWIESENES Nein verwirft den Lauf. Laesst sich
+    die Frage nicht beantworten (kein git, unbekannter Commit, leeres Feld),
+    bleibt er drin — sonst verstummten die Regressionswarnungen still, sobald
+    die Abstammung einmal nicht ermittelbar ist. `report_long_status` prueft
+    den Langlauf seit jeher genauso.
+    """
+    if not head:
+        return True
+    result = git_result(repository, ["merge-base", "--is-ancestor", head, "HEAD"])
+    if result is None or result.returncode not in (0, 1):
+        return True
+    return result.returncode == 0
+
+
+def regression_warnings(previous: list[dict], current: dict,
+                        repository: str | None = None) -> None:
+    if repository is not None:
+        previous = [run for run in previous
+                    if belongs_to_history(repository, str(run.get("head", "")))]
     for name, sample in current["tests"].items():
         historical = [
             run["tests"][name]["launch_ms"]
@@ -292,7 +319,7 @@ def record_standard(args: argparse.Namespace) -> int:
             "tests": tests,
         }
         if args.qualified:
-            regression_warnings(runs, current)
+            regression_warnings(runs, current, repository=args.repository)
             runs.append(current)
             del runs[:-MAX_RUNS]
             save_data(path, data)

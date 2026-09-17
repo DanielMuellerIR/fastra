@@ -14,10 +14,45 @@ final class PatternLibrary: ObservableObject {
 
     @Published private(set) var templates: [PatternTemplate]
     private let defaults: UserDefaults
+    private var defaultsObserver: NSObjectProtocol?
+    /// Zuletzt gesehene Rohbytes des Bibliotheksschlüssels. Die Defaults-
+    /// Benachrichtigung trägt keinen Schlüssel und feuert bei JEDER Änderung
+    /// der Suite, etwa pro Frame beim Ziehen des Seitenleisten-Splitters.
+    /// Ohne diesen Vergleich dekodierte jedes Suchfenster dabei die ganze
+    /// Bibliothek und kompilierte jede Vorlage neu (Review-Fund 2026-09-17).
+    private var lastSeenData: Data?
+    /// Zahl der Nachlade-Dekodierungen; nur Tests beobachten sie.
+    private(set) var reloadDecodeCount = 0
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        lastSeenData = defaults.data(forKey: Self.defaultsKey)
         templates = Self.load(from: defaults)
+        // Jedes Suchfenster hält eine eigene Instanz über denselben Defaults.
+        // Speichert ein anderes Fenster (oder ein Selbsttest) eine Vorlage,
+        // erschien sie hier bisher erst nach der nächsten eigenen Änderung.
+        // Deshalb bei jeder Defaults-Änderung neu laden — veröffentlicht
+        // wird nur ein tatsächlich anderer Stand.
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: defaults, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadIfChanged() }
+        }
+    }
+
+    deinit {
+        if let defaultsObserver {
+            NotificationCenter.default.removeObserver(defaultsObserver)
+        }
+    }
+
+    func reloadIfChanged() {
+        let raw = defaults.data(forKey: Self.defaultsKey)
+        guard raw != lastSeenData else { return }
+        lastSeenData = raw
+        reloadDecodeCount += 1
+        let current = Self.load(from: defaults)
+        if current != templates { templates = current }
     }
 
     func save(_ template: PatternTemplate) throws {
@@ -72,6 +107,9 @@ final class PatternLibrary: ObservableObject {
 
     private func persist() {
         guard let data = try? JSONEncoder().encode(templates) else { return }
+        // Vor dem Schreiben merken: `set` benachrichtigt synchron, und der
+        // eigene Stand muss dann nicht noch einmal dekodiert werden.
+        lastSeenData = data
         defaults.set(data, forKey: Self.defaultsKey)
     }
 

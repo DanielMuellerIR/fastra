@@ -17,7 +17,7 @@ private final class UnitTestRunnerFixture {
     private let counter: URL
 
     init() throws {
-        root = FileManager.default.temporaryDirectory
+        root = testTemporaryDirectory()
             .appendingPathComponent("fastra-unit-runner-phases-\(UUID().uuidString)")
         sandboxParent = root.appendingPathComponent("sandboxes")
         binaryDirectory = root.appendingPathComponent("bin")

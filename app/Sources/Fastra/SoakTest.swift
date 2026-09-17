@@ -89,6 +89,7 @@ enum SoakTest {
     static func record(_ invariant: String, _ detail: String) {
         findings.append(Finding(phase: currentPhase, action: lastAction,
                                 invariant: invariant, detail: detail))
+        try? flushNewEntries()
     }
 
     /// Fokusverlust ist Umgebung; fehlender Editoraufbau bleibt ein Fehler.
@@ -97,6 +98,7 @@ enum SoakTest {
         if case .focusUnavailable = issue {
             environmentIssues.append(Finding(phase: currentPhase, action: lastAction,
                 invariant: issue.invariant, detail: issue.detail))
+            try? flushNewEntries()
         } else {
             record(issue.invariant, issue.detail)
         }
@@ -1077,23 +1079,89 @@ enum SoakTest {
 
     /// Maschinenlesbarer Abschluss für das Orchestrierungs-Skript.
     /// Eine Zeile je Befund, danach die Zusammenfassung.
+    // MARK: - Befunde sofort auf Platte
+
+    /// Protokolldatei dieser Phase. Ist sie gesetzt, wandert JEDER Befund
+    /// sofort dorthin.
+    ///
+    /// Vorher sammelten sich die Befunde bis zum Phasenende ausschließlich im
+    /// Arbeitsspeicher, und `appendReport` lief nur im Abschlusszweig. Wurde
+    /// die Phase vorher abgeschossen — etwa von der Frist des Runners —, waren
+    /// SÄMTLICHE Befunde dieser Phase weg; im Protokoll stand nur die
+    /// Ersatzzeile „Zeitüberschreitung". Bei 200 Runden gingen so bis zu 199
+    /// Runden Beobachtung verloren. Genau das ist beim Dauertest der teuerste
+    /// mögliche Verlust: Er läuft eine halbe Stunde, um seltene Zustände zu
+    /// finden.
+    private(set) static var reportLogURL: URL?
+    private static var writtenFindings = 0
+    private static var writtenEnvironmentIssues = 0
+
+    /// Meldet die Protokolldatei an. Ab hier ist jeder Befund sofort dauerhaft.
+    static func beginReport(at url: URL) {
+        reportLogURL = url
+        writtenFindings = 0
+        writtenEnvironmentIssues = 0
+    }
+
+    /// Schreibt die seit dem letzten Aufruf hinzugekommenen Zeilen.
+    private static func flushNewEntries() throws {
+        guard let url = reportLogURL else { return }
+        var lines: [String] = []
+        let nextFindingCount = findings.count
+        let nextEnvironmentCount = environmentIssues.count
+        if findings.count > writtenFindings {
+            lines += findings[writtenFindings...].map { line(prefix: "SOAK-BEFUND", $0) }
+        }
+        if environmentIssues.count > writtenEnvironmentIssues {
+            lines += environmentIssues[writtenEnvironmentIssues...]
+                .map { line(prefix: "SOAK-UMGEBUNG", $0) }
+        }
+        guard !lines.isEmpty else { return }
+        try append(lines.joined(separator: "\n") + "\n", to: url)
+        // Erst ein vollständig erfolgreicher Schreibvorgang bestätigt die
+        // Zeilen. Bei einem vorübergehenden Fehler versucht `appendReport`
+        // denselben Rest am Phasenende erneut.
+        writtenFindings = nextFindingCount
+        writtenEnvironmentIssues = nextEnvironmentCount
+    }
+
+    private static func line(prefix: String, _ finding: Finding) -> String {
+        "\(prefix) phase=\(finding.phase) aktion=\(finding.action) "
+            + "invariante=\(finding.invariant) detail=\(finding.detail)"
+    }
+
+    private static func append(_ text: String, to url: URL) throws {
+        if FileManager.default.fileExists(atPath: url.path) {
+            let handle = try FileHandle(forWritingTo: url)
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(text.utf8))
+        } else {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
     static func report() -> String {
         var lines: [String] = []
         for (prefix, entries) in [("SOAK-BEFUND", findings), ("SOAK-UMGEBUNG", environmentIssues)] {
-            for finding in entries {
-                lines.append("\(prefix) phase=\(finding.phase) "
-                    + "aktion=\(finding.action) invariante=\(finding.invariant) "
-                    + "detail=\(finding.detail)")
-            }
+            lines += entries.map { line(prefix: prefix, $0) }
         }
-        lines.append("SOAK-ZUSAMMENFASSUNG aktionen=\(actionsRun) "
-            + "befunde=\(findings.count) runden=\(completedRounds) umgebung=\(environmentIssues.count)")
+        lines.append(summaryLine())
         return lines.joined(separator: "\n")
+    }
+
+    static func summaryLine() -> String {
+        "SOAK-ZUSAMMENFASSUNG aktionen=\(actionsRun) "
+            + "befunde=\(findings.count) runden=\(completedRounds) "
+            + "umgebung=\(environmentIssues.count)"
     }
 
     static func reset() {
         findings = []
         environmentIssues = []
+        reportLogURL = nil
+        writtenFindings = 0
+        writtenEnvironmentIssues = 0
         actionsRun = 0
         completedRounds = 0
         lastAction = "—"
@@ -1107,14 +1175,22 @@ enum SoakTest {
     //
     // Der Test läuft in mehreren App-Starts, weil zwei der gemeldeten Fehler
     // genau am Neustart hingen (Sitzungswiederherstellung, Rückfrage beim
-    // Beenden). Befunde sammeln sich deshalb in einer Datei statt im
-    // Arbeitsspeicher; `soak-test.sh` startet die Phasen nacheinander.
+    // Beenden). `soak-test.sh` startet die Phasen deshalb nacheinander, und
+    // die Befunde sammeln sich in einer gemeinsamen Datei statt im
+    // Arbeitsspeicher — seit 2026-09-10 nicht nur ZWISCHEN den Phasen, sondern
+    // auch innerhalb einer: Jeder Befund wird sofort geschrieben (siehe
+    // `beginReport`). Vorher galt die Aussage nur für den Phasenwechsel, und
+    // ein abgeschossener Lauf verlor alles, was er bis dahin gesehen hatte.
 
     /// Hängt die Befunde dieses Starts an das gemeinsame Protokoll an.
     /// Schreibfehler müssen die Phase scheitern lassen: Ein Bericht früherer
     /// Phasen allein darf keinen scheinbar vollständigen Lauf belegen.
     static func appendReport(to logURL: URL) throws {
-        let text = report() + "\n"
+        // Was `flushNewEntries` schon geschrieben hat, darf nicht ein zweites
+        // Mal ins Protokoll. Übrig bleibt der noch nicht geschriebene Rest
+        // plus die Zusammenfassung.
+        try flushNewEntries()
+        let text = summaryLine() + "\n"
         if FileManager.default.fileExists(atPath: logURL.path) {
             let handle = try FileHandle(forWritingTo: logURL)
             defer { try? handle.close() }

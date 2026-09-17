@@ -31,7 +31,7 @@ private struct LanguageChoiceFixture {
 /// Der Schlüssel des Speichers ist der kanonische Pfad, und den gibt es nur
 /// für vorhandene Dateien.
 private func makeTemporaryDirectory() throws -> URL {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("fastra-languagechoice-\(UUID().uuidString)",
                                 isDirectory: true)
     try FileManager.default.createDirectory(at: directory,

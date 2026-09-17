@@ -39,7 +39,7 @@ func lineEnding_noBreakUnchanged() {
 
 @Test("FileLoader forcedEncoding: Latin-1-Datei wird korrekt dekodiert")
 func fileLoader_forcedLatin1() throws {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-enc-\(UUID().uuidString).txt")
     defer { try? FileManager.default.removeItem(at: url) }
     // „café" in Latin-1: é = 0xE9 (Einzelbyte).
@@ -53,7 +53,7 @@ func fileLoader_forcedLatin1() throws {
 
 @Test("FileLoader forcedEncoding: falsches Encoding wirft unreadable (kein Lossy)")
 func fileLoader_forcedWrongEncodingThrows() throws {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-enc-\(UUID().uuidString).txt")
     defer { try? FileManager.default.removeItem(at: url) }
     // Latin-1-Bytes (0xE9 allein) sind KEIN gültiges UTF-8.
@@ -118,7 +118,7 @@ func setActiveLineEnding_readOnlySnapshotStaysCleanAndClosable() {
 @MainActor
 func save_writesChosenLineEndings() throws {
     let ws = makeWS(content: "a\nb\nc")
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-save-\(UUID().uuidString).txt")
     defer { try? FileManager.default.removeItem(at: url) }
     ws.tabs[0].url = url

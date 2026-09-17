@@ -243,7 +243,7 @@ struct MarkdownRichTextTests {
     // nie dieselbe Adresse bekommen.
     @Test("Ausgetauschtes Bild bekommt eine andere Vorschau-Adresse")
     func replacedImageGetsFreshPreviewURL() throws {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("FastraImageToken-\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(at: directory,
@@ -272,7 +272,7 @@ struct MarkdownRichTextTests {
 
     @Test("Gleicher Dateiname mit neuem Inhalt gilt als anderes Bild")
     func rewrittenImageFileGetsFreshPreviewURL() throws {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("FastraImageToken-\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(at: directory,
@@ -290,7 +290,7 @@ struct MarkdownRichTextTests {
 
     @Test("Gleiche Größe und zurückgestelltes Änderungsdatum gelten trotzdem als neues Bild")
     func replacedImageWithPreservedTimestampGetsFreshPreviewURL() throws {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("FastraImageToken-\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(at: directory,
@@ -327,7 +327,7 @@ struct MarkdownRichTextTests {
 
     @Test("Unverändertes Bild behält seine Adresse (kein Neuladen beim Tippen)")
     func unchangedImageKeepsPreviewURL() throws {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("FastraImageToken-\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(at: directory,
@@ -432,7 +432,7 @@ struct MarkdownRichTextTests {
 
     @Test("Vorschaubild-Prüfung folgt einem Symlink bis zur regulären Datei")
     func previewImageValidation_followsSymlink() throws {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("fastra-preview-image-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory,
                                                 withIntermediateDirectories: true)
@@ -533,7 +533,7 @@ struct MarkdownRichTextTests {
     @Test("MarkdownImageWatcher meldet Änderungen in beobachteten Bildordnern")
     @MainActor
     func imageWatcherFiresOnDirectoryChange() async throws {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = testTemporaryDirectory()
             .appendingPathComponent("fastra-imagewatch-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory,
                                                 withIntermediateDirectories: true)

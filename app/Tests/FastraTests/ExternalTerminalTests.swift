@@ -20,7 +20,7 @@ func terminalResolverUsesActiveFile() {
 
 @Test("Native Terminalöffnung übergibt die Ordner-URL unverändert ohne Shell")
 func terminalLauncherUsesNativeURLs() async throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = testTemporaryDirectory()
         .appendingPathComponent("Fastra Terminal ! Grüße [x] \(UUID().uuidString)",
                                 isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -61,7 +61,7 @@ func terminalLauncherErrors() async {
     }
     #expect(missingError == .directoryUnavailable(missing.path))
 
-    let existing = FileManager.default.temporaryDirectory
+    let existing = testTemporaryDirectory()
     let noTerminal = ExternalTerminalLauncher(applicationLocator: { nil })
     let terminalResult = await withCheckedContinuation { continuation in
         noTerminal.open(directory: existing) { continuation.resume(returning: $0) }
@@ -104,7 +104,7 @@ func terminalLauncherUsesExpectedThreads() async {
 
 @Test("Normale Datei und nativer Open-Fehler werden sichtbar abgelehnt")
 func terminalLauncherRejectsFileAndOpenFailure() async throws {
-    let file = FileManager.default.temporaryDirectory
+    let file = testTemporaryDirectory()
         .appendingPathComponent("fastra-terminal-file-\(UUID().uuidString)")
     try Data("x".utf8).write(to: file)
     defer { try? FileManager.default.removeItem(at: file) }
@@ -126,7 +126,7 @@ func terminalLauncherRejectsFileAndOpenFailure() async throws {
                 completion(NSError(domain: "FastraTests", code: 7,
                                    userInfo: [NSLocalizedDescriptionKey: expected]))
             }
-        ).open(directory: FileManager.default.temporaryDirectory) {
+        ).open(directory: testTemporaryDirectory()) {
             continuation.resume(returning: $0)
         }
     }

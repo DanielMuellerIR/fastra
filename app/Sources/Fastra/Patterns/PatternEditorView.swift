@@ -30,37 +30,61 @@ struct PatternEditorView: View {
             .onChange(of: selectedID) { _, id in load(id: id) }
 
             Divider()
-            Form {
-                TextField("Name", text: $name)
-                Picker("Kategorie", selection: $category) {
-                    ForEach(PatternCategory.allCases, id: \.self) { category in
-                        Text(category.rawValue).tag(category)
+            // Die Knopfzeile steht UNTER dem Form, nicht darin: Im Form
+            // bekommt sie nur die Wertespalte, und SwiftUI kürzte alle sechs
+            // Knöpfe auf „…" (Sichtprüfung dialoglayout, 2026-09-15).
+            VStack(spacing: 12) {
+                Form {
+                    TextField("Name", text: $name)
+                    Picker("Kategorie", selection: $category) {
+                        ForEach(PatternCategory.allCases, id: \.self) { category in
+                            Text(category.rawValue).tag(category)
+                        }
                     }
+                    TextField("RegEx", text: $regex, axis: .vertical)
+                        .font(.system(.body, design: .monospaced))
+                    TextField("Ersetzen (optional)", text: $replacement, axis: .vertical)
+                        .font(.system(.body, design: .monospaced))
+                    if let message { Text(message).foregroundStyle(Theme.diffRemovedFG) }
                 }
-                TextField("RegEx", text: $regex, axis: .vertical)
-                    .font(.system(.body, design: .monospaced))
-                TextField("Ersetzen (optional)", text: $replacement, axis: .vertical)
-                    .font(.system(.body, design: .monospaced))
-                if let message { Text(message).foregroundStyle(Theme.diffRemovedFG) }
-                HStack {
-                    Button("Neu") { clear() }
-                    Button("Löschen", role: .destructive) {
-                        if let selectedID { library.delete(id: selectedID) }
-                        clear()
+                // Sechs Knöpfe sind breiter als die rechte Spalte; bei
+                // Platzmangel zwei Zeilen: links Neu/Löschen, rechts der Rest.
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        editButtons
+                        Spacer()
+                        fileButtons
                     }
-                    .disabled(selectedID == nil)
-                    Spacer()
-                    Button("Importieren…") { importTemplates() }
-                    Button("Exportieren…") { exportTemplates() }
-                    Button("Anwenden") { applyCurrent() }
-                    Button("Speichern") { save() }
-                        .keyboardShortcut(.defaultAction)
+                    VStack(spacing: 8) {
+                        HStack { editButtons; Spacer() }
+                        HStack { Spacer(); fileButtons }
+                    }
                 }
             }
+            .frame(maxWidth: .infinity)
             .padding()
             .frame(minWidth: 430)
         }
         .frame(width: 720, height: 430)
+    }
+
+    @ViewBuilder
+    private var editButtons: some View {
+        Button("Neu") { clear() }
+        Button("Löschen", role: .destructive) {
+            if let selectedID { library.delete(id: selectedID) }
+            clear()
+        }
+        .disabled(selectedID == nil)
+    }
+
+    @ViewBuilder
+    private var fileButtons: some View {
+        Button("Importieren…") { importTemplates() }
+        Button("Exportieren…") { exportTemplates() }
+        Button("Anwenden") { applyCurrent() }
+        Button("Speichern") { save() }
+            .keyboardShortcut(.defaultAction)
     }
 
     private func load(id: String?) {

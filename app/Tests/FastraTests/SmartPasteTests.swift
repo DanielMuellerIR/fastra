@@ -26,7 +26,7 @@ import Foundation
 /// Legt eine temporäre Datei im /tmp an und gibt ihre URL zurück.
 /// `withXBit` steuert, ob sie ausführbar ist.
 private func makeTempFile(name: String, withXBit: Bool) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("smartpaste-test-\(UUID().uuidString)-\(name)")
     // Leere Datei anlegen — der Inhalt ist für den Test irrelevant.
     try Data().write(to: url)
@@ -50,7 +50,7 @@ private func makeTempFile(name: String, withXBit: Bool) throws -> URL {
 /// md-clip-Ersatz. Damit testen wir den echten `Process`-/Pipe-Lebenszyklus,
 /// ohne eine md-clip-Installation oder das Clipboard vorauszusetzen.
 private func makeMdClipStub(name: String, body: String) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = testTemporaryDirectory()
         .appendingPathComponent("smartpaste-stub-\(UUID().uuidString)-\(name)")
     try "#!/bin/sh\n\(body)\n".write(to: url, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes(

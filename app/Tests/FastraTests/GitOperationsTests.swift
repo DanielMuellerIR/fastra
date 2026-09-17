@@ -77,7 +77,7 @@ private func success(_ stdout: Data = Data()) -> GitExecutionOutcome {
 }
 
 private func repository(_ name: String = UUID().uuidString) -> URL {
-    FileManager.default.temporaryDirectory
+    testTemporaryDirectory()
         .appendingPathComponent("Fastra-GitOperations-\(name)")
 }
 
@@ -266,7 +266,7 @@ struct GitRepositoryStoreTests {
                               oid: String) {
         executor.complete(offset, with: success(porcelainSnapshot(oid: oid)))
         executor.complete(offset + 1, with: success(Data()))
-        executor.complete(offset + 2, with: success(Data("main\t*\n".utf8)))
+        executor.complete(offset + 2, with: success(Data("main\t*\0\n".utf8)))
         executor.complete(offset + 3, with: success(graphSnapshot(hash: oid)))
         executor.complete(offset + 4, with: success(Data()))
     }
@@ -375,7 +375,7 @@ struct GitRepositoryStoreTests {
         #expect(executor.count == 5)
         executor.complete(0, with: success(porcelainSnapshot(oid: "shared")))
         executor.complete(1, with: success(Data(operationPaths.utf8)))
-        executor.complete(2, with: success(Data("main\t*\n".utf8)))
+        executor.complete(2, with: success(Data("main\t*\0\n".utf8)))
         executor.complete(3, with: success(graphSnapshot(hash: "shared")))
         executor.complete(4, with: success(Data()))
         await waitForOperationState(.merge, first, second)
@@ -418,7 +418,7 @@ struct GitRepositoryStoreTests {
 
         executor.complete(0, with: success(porcelainSnapshot(oid: "new")))
         executor.complete(1, with: success(Data()))
-        executor.complete(2, with: success(Data("main\t*\n".utf8)))
+        executor.complete(2, with: success(Data("main\t*\0\n".utf8)))
         executor.complete(3, with: success(graphSnapshot(hash: "old")))
         executor.complete(4, with: success(Data()))
         while executor.count < 10 { await Task.yield() }
@@ -426,7 +426,7 @@ struct GitRepositoryStoreTests {
 
         executor.complete(5, with: success(porcelainSnapshot(oid: "newer")))
         executor.complete(6, with: success(Data()))
-        executor.complete(7, with: success(Data("main\t*\n".utf8)))
+        executor.complete(7, with: success(Data("main\t*\0\n".utf8)))
         executor.complete(8, with: success(graphSnapshot(hash: "new")))
         executor.complete(9, with: success(Data()))
         while executor.count < 15 { await Task.yield() }
@@ -449,7 +449,7 @@ struct GitRepositoryStoreTests {
             let offset = attempt * 5
             executor.complete(offset, with: success(porcelainSnapshot(oid: "status-\(attempt)")))
             executor.complete(offset + 1, with: success(Data()))
-            executor.complete(offset + 2, with: success(Data("main\t*\n".utf8)))
+            executor.complete(offset + 2, with: success(Data("main\t*\0\n".utf8)))
             executor.complete(offset + 3, with: success(graphSnapshot(hash: "graph-\(attempt)")))
             executor.complete(offset + 4, with: success(Data()))
             if attempt < 2 {
@@ -485,7 +485,7 @@ struct GitRepositoryStoreTests {
         store.refresh(repository: repo, scope: .full)
         executor.complete(0, with: success(porcelainSnapshot(oid: oid)))
         executor.complete(1, with: success(Data()))
-        executor.complete(2, with: success(Data("main\t*\n".utf8)))
+        executor.complete(2, with: success(Data("main\t*\0\n".utf8)))
         executor.complete(3, with: success(graphSnapshot(hash: oid)))
         executor.complete(4, with: success(Data((oid + "\n").utf8)))
         let truncated = GitResult(
@@ -512,7 +512,7 @@ struct GitRepositoryStoreTests {
         store.refresh(repository: repo, scope: .full)
         executor.complete(0, with: success(porcelainSnapshot(oid: firstOID)))
         executor.complete(1, with: success(Data()))
-        executor.complete(2, with: success(Data("main\t*\n".utf8)))
+        executor.complete(2, with: success(Data("main\t*\0\n".utf8)))
         executor.complete(3, with: success(graphSnapshot(hash: firstOID)))
         executor.complete(4, with: success(Data((firstOID + "\n").utf8)))
         executor.complete(5, with: success(Data(
@@ -523,7 +523,7 @@ struct GitRepositoryStoreTests {
         store.refresh(repository: repo, scope: .full)
         executor.complete(6, with: success(porcelainSnapshot(oid: secondOID)))
         executor.complete(7, with: success(Data()))
-        executor.complete(8, with: success(Data("main\t*\n".utf8)))
+        executor.complete(8, with: success(Data("main\t*\0\n".utf8)))
         executor.complete(9, with: success(graphSnapshot(hash: secondOID)))
         executor.complete(10, with: .timedOut)
 
@@ -556,7 +556,7 @@ struct GitRepositoryStoreTests {
 
     @Test("Externer Checkout plus Commit eskaliert Status zu konsistentem Full-Snapshot")
     func gitIntegration_realExternalCheckoutAndCommit() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-store-real-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -653,7 +653,7 @@ struct GitActionContextTests {
     private func completeInitialRefresh(_ executor: ControlledGitExecutor) {
         executor.complete(0, with: success(porcelainSnapshot(oid: "initial")))
         executor.complete(1, with: success())
-        executor.complete(2, with: success(Data("main\t*\n".utf8)))
+        executor.complete(2, with: success(Data("main\t*\0\n".utf8)))
         executor.complete(3, with: success(graphSnapshot(hash: "initial")))
         executor.complete(4, with: success())
     }

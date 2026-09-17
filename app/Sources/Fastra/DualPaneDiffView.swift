@@ -105,12 +105,6 @@ struct DualPaneDiffView<Leading: View>: View {
                 store: SelfTest.workspaceDefaults())
     private var splitRatio: Double = Double(DiffColumnLayout.defaultRatio)
 
-    /// Verhältnis beim Anfassen des Splitters. Der Zug rechnet gegen DIESEN
-    /// Wert statt gegen den laufend veränderten — sonst summierte sich die
-    /// Verschiebung mit jedem Ereignis auf.
-    @State private var dragStartRatio: Double? = nil
-    @State private var splitterHovered = false
-
     /// Nach einer bewussten Auswahl (Klick/Taste) darf die Scroll-Verfolgung
     /// sie nicht sofort wieder überschreiben: Das Zentrieren des Ziels lässt
     /// den VORIGEN Eintrag „oben passieren", was die Verfolgung sonst als
@@ -157,8 +151,7 @@ struct DualPaneDiffView<Leading: View>: View {
                             // ein Griff am Sichtfenster stünde dann nicht mehr
                             // auf der Spaltengrenze.
                             .overlay(alignment: .topLeading) {
-                                splitter(contentWidth: content,
-                                         leadingWidth: leadingColumn)
+                                splitter(contentWidth: content)
                             }
                         }
                         .coordinateSpace(name: "dualPaneDiffScroll")
@@ -455,8 +448,7 @@ struct DualPaneDiffView<Leading: View>: View {
     /// Zieherkennung und reagiert im Fenster-Selbsttest nicht verlässlich
     /// auf zugestellte Maus-Ereignisse (gleiche Lehre wie bei den
     /// Änderungen-Zeilen, die deshalb Buttons sind).
-    private func splitter(contentWidth: CGFloat,
-                          leadingWidth: CGFloat) -> some View {
+    private func splitter(contentWidth: CGFloat) -> some View {
         DiffSplitterHandle(contentWidth: contentWidth,
                            ratio: splitRatio) { newRatio in
             splitRatio = newRatio
@@ -466,17 +458,31 @@ struct DualPaneDiffView<Leading: View>: View {
         .offset(x: DiffColumnLayout.splitterCenterX(contentWidth: contentWidth,
                                                     ratio: CGFloat(splitRatio))
                     - DiffColumnLayout.splitterHitWidth / 2)
-        .help("Trenner ziehen: verteilt die Breite zwischen linker und rechter Seite.")
+        .help("Trenner ziehen: verteilt die Breite zwischen linker und rechter Seite. Doppelklick stellt die Werksteilung wieder her.")
         .accessibilityLabel("Breite der Vergleichsspalten")
-        .accessibilityValue(L10n.format("Linke Seite %ld Prozent",
-                                        Int((splitRatio * 100).rounded())))
+        // Vorgelesen wird die SICHTBARE Teilung, nicht der gespeicherte
+        // Rohwert: Ein Zug bis an den Anschlag merkt sich 0 beziehungsweise 1,
+        // stehen bleiben aber 96 pt. „Linke Seite 0 Prozent" wäre schlicht
+        // falsch, und die 5-%-Schritte unten wirkten im geklemmten Bereich
+        // scheinbar gar nicht.
+        .accessibilityValue(L10n.format(
+            "Linke Seite %ld Prozent",
+            DiffColumnLayout.visibleLeadingPercent(contentWidth: contentWidth,
+                                                   ratio: CGFloat(splitRatio))))
         .accessibilityAdjustableAction { direction in
             // VoiceOver-Bedienung: Der Trenner ist sonst nur mit der Maus
-            // erreichbar.
-            let step = 0.05
+            // erreichbar. Der Schritt geht vom SICHTBAREN Stand aus — vom
+            // gespeicherten Rohwert aus verpufften die ersten Betätigungen im
+            // geklemmten Bereich.
+            let step: CGFloat = 0.05
+            func adjusted(_ delta: CGFloat) -> Double {
+                Double(DiffColumnLayout.adjustedRatio(contentWidth: contentWidth,
+                                                      ratio: CGFloat(splitRatio),
+                                                      by: delta))
+            }
             switch direction {
-            case .increment: splitRatio = min(1, splitRatio + step)
-            case .decrement: splitRatio = max(0, splitRatio - step)
+            case .increment: splitRatio = adjusted(step)
+            case .decrement: splitRatio = adjusted(-step)
             @unknown default: break
             }
         }
@@ -598,9 +604,6 @@ struct DualPaneDiffView<Leading: View>: View {
         // Zeile, deren andere Seite über mehrere Zeilen umbricht.
         .frame(minWidth: width, maxWidth: width, minHeight: 22,
                maxHeight: .infinity, alignment: .topLeading)
-        // Schneidet ab, was ohne Soft Wrap über die Spalte hinausragt. Mit
-        // Soft Wrap gibt es nichts abzuschneiden; der Schnitt bleibt trotzdem
-        // stehen, weil er dann nur die Zellgrenze nachzieht.
         // Schneidet ab, was ohne Soft Wrap über die Spalte hinausragt. Mit
         // Soft Wrap gibt es nichts abzuschneiden; der Schnitt bleibt trotzdem
         // stehen, weil er dann nur die Zellgrenze nachzieht.
@@ -731,6 +734,13 @@ private struct DiffSplitterHandle: NSViewRepresentable {
             self.onRatioChange = onRatioChange
         }
 
+        /// Dokumentfenster setzen `isMovableByWindowBackground`. Ohne diese
+        /// Zusage deutete AppKit einen Klick auf den Trenner als Griff an den
+        /// Fensterhintergrund und verschöbe das ganze Fenster, statt die
+        /// Spalten zu verteilen — dieselbe Begründung wie bei
+        /// `SplitterDragView` in `ResizableDivider.swift`.
+        override var mouseDownCanMoveWindow: Bool { false }
+
         override func resetCursorRects() {
             addCursorRect(bounds, cursor: .resizeLeftRight)
         }
@@ -766,17 +776,29 @@ private struct DiffSplitterHandle: NSViewRepresentable {
         }
 
         override func mouseDown(with event: NSEvent) {
+            // Doppelklick stellt die Werksteilung wieder her. Ohne diesen
+            // Rückweg träfe man die exakte Hälfte nach dem ersten Zug nur noch
+            // zufällig — und zwar dauerhaft, weil die Teilung für alle
+            // Vergleiche gemerkt wird. `clickCount` ist hier gültig: Das ist
+            // ein echtes Maus-Ereignis, nicht `NSApp.currentEvent`.
+            if event.clickCount >= 2 {
+                dragStartRatio = nil
+                needsDisplay = true
+                onRatioChange(Double(DiffColumnLayout.defaultRatio))
+                return
+            }
             dragStartRatio = ratio
-            dragStartX = event.locationInWindow.x
+            dragStartX = screenX(for: event)
             dragStartContentWidth = contentWidth
             needsDisplay = true
         }
 
         override func mouseDragged(with event: NSEvent) {
             guard let dragStartRatio else { return }
-            // Fensterkoordinaten: unabhängig davon, wie weit die Fläche
-            // inzwischen gescrollt ist oder wie die View verschoben wurde.
-            let delta = event.locationInWindow.x - dragStartX
+            // Bildschirmkoordinaten, nicht Fensterkoordinaten: Zöge AppKit das
+            // Fenster mit, bliebe die fensterrelative Position konstant und der
+            // Unterschied wäre immer 0 (erprobt in `SplitterDragView`).
+            let delta = screenX(for: event) - dragStartX
             let startWidth = DiffColumnLayout.leadingWidth(
                 contentWidth: dragStartContentWidth,
                 ratio: CGFloat(dragStartRatio)
@@ -791,6 +813,13 @@ private struct DiffSplitterHandle: NSViewRepresentable {
         override func mouseUp(with event: NSEvent) {
             dragStartRatio = nil
             needsDisplay = true
+        }
+
+        /// Fällt auf Fensterkoordinaten zurück, solange die View noch in
+        /// keinem Fenster hängt — dann gibt es nichts zu verschieben.
+        private func screenX(for event: NSEvent) -> CGFloat {
+            window?.convertPoint(toScreen: event.locationInWindow).x
+                ?? event.locationInWindow.x
         }
 
         override func draw(_ dirtyRect: NSRect) {
