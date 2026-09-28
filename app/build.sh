@@ -320,6 +320,48 @@ PYEOF
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4c-3. Der Vergleich aus 4c-2 braucht dieselbe Range wie setCursorPositions.
+# Upstream addierte die 1-basierte Spalte ohne -1 und benutzte das absolute
+# Zeilenende als Auswahl-LÄNGE. Späte Treffer wurden dadurch unauflösbar;
+# compactMap verglich dann [] mit [] und übersprang den Suchsprung ganz.
+CESE_CURSOR="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Controller/TextViewController+Cursor.swift"
+chmod u+w "$CESE_CURSOR"
+/usr/bin/python3 - "$CESE_CURSOR" <<'PYEOF'
+import pathlib, sys
+
+path = pathlib.Path(sys.argv[1])
+source = path.read_text()
+old = '''            if position.end != nil {
+                range = NSRange(
+                    location: linePosition.range.location + position.start.column,
+                    length: linePosition.range.max
+                )
+            } else {
+                range = NSRange(location: linePosition.range.location + position.start.column, length: 0)
+            }'''
+new = '''            // Fastra-Patch: Zeile/Spalte als exakte UTF-16-Auswahl aufloesen.
+            let startOffset = linePosition.range.location + position.start.column - 1
+            var endOffset = startOffset
+            if let end = position.end {
+                guard end.line > 0, end.column > 0,
+                      let endLine = textView.layoutManager.textLineForIndex(end.line - 1) else {
+                    return nil
+                }
+                endOffset = endLine.range.location + end.column - 1
+            }
+            guard startOffset >= 0, endOffset >= startOffset,
+                  endOffset <= textView.textStorage.length else { return nil }
+            range = NSRange(location: startOffset, length: endOffset - startOffset)'''
+if old in source:
+    source = source.replace(old, new, 1)
+    path.write_text(source)
+if source.count(new) != 1 or old in source:
+    raise SystemExit(f"{path}: Patch 4c-3 hat nicht gegriffen — Cursor-Aufloesung pruefen")
+PYEOF
+rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+      .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+
 # 4c1. Patch CodeEditSourceEditor — verworfene Auto-Vervollständigung sauber
 #       zurücksetzen.
 #
@@ -6295,6 +6337,16 @@ if [ "$CURSOR_DELTA_PATCH_CHANGED" -eq 1 ] || [ "$RECTSFOR_CLAMP_PATCH_CHANGED" 
   rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
+
+# Hinweis zu den `rm .build/*/{debug,release}/<Modul>.build`-Zeilen oben:
+# Sie gelten nur für das alte Build-System `native`, das Änderungen in
+# .build/checkouts nicht neu übersetzt. Ab Swift 6.4 baut `swift build`
+# standardmäßig mit `swiftbuild` (Zwischenstände unter
+# .build/out/Intermediates.noindex/); dort laufen die Zeilen ins Leere.
+# Das ist Absicht: swiftbuild erkennt geänderte Checkout-Dateien selbst und
+# übersetzt sie neu. Beleg vom 2026-09-19: Marker-String in einer gepatchten
+# CodeEditTextView-Datei geändert, `swift build` ohne Invalidierung → neuer
+# Marker im Fastra-Binary. Siehe LESSONS-LEARNED.md, A.6.
 
 # 5. Build-Cache invalidieren, sonst greift SPM auf das alte Plugin-Manifest zu
 rm -f .build/build.db .build/plugin-tools.yaml .build/release.yaml

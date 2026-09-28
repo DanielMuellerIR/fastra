@@ -180,6 +180,30 @@ func serialRunnerIntegration_resolvedPathMatchesPureResolution() {
     #expect(GitRunner.resolvedPath == expected)
 }
 
+@Test("Prozesslauncher: altes SwiftPM-Layout sucht neben dem Ressourcenbundle")
+func launcherCandidatesNativeLayout() {
+    let bundle = URL(fileURLWithPath: "/p/.build/arm64-apple-macosx/debug/Fastra_Fastra.bundle")
+    #expect(GitRunner.launcherCandidates(resourceBundleURL: bundle).map(\.path)
+            == ["/p/.build/arm64-apple-macosx/debug/Fastra"])
+}
+
+@Test("Prozesslauncher: swiftbuild-Layout sucht zusätzlich neben dem .xctest-Bundle")
+func launcherCandidatesSwiftBuildLayout() {
+    // Swift 6.4 kopiert das Ressourcenbundle in das Testbundle; das
+    // Fastra-Produkt liegt aber im Produktordner daneben (2026-09-19).
+    let bundle = URL(fileURLWithPath:
+        "/p/.build/out/Products/Debug/FastraTests.xctest/Contents/Resources/Fastra_Fastra.bundle")
+    #expect(GitRunner.launcherCandidates(resourceBundleURL: bundle).map(\.path) == [
+        "/p/.build/out/Products/Debug/FastraTests.xctest/Contents/Resources/Fastra",
+        "/p/.build/out/Products/Debug/Fastra",
+    ])
+}
+
+@Test("Prozesslauncher wird unter swift test gefunden")
+func launcherIsFoundUnderSwiftTest() {
+    #expect(GitRunner.processGroupLauncherURL != nil)
+}
+
 private func temporaryExecutable(_ body: String) throws -> URL {
     let directory = testTemporaryDirectory()
         .appendingPathComponent("Fastra-GitRunner-\(UUID().uuidString)")

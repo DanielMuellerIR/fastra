@@ -1004,7 +1004,8 @@ becomes active; several freshly created empty tabs can thus be closed
 again with repeated ⌘W in reverse order, without an older document
 getting hit. ⌘J jumps to a line number.
 
-Switching tabs keeps each tab's insertion point **and** its visible section:
+Switching tabs keeps each tab's insertion point or selection **and** its visible section,
+including selected search hits after repeated switches:
 switching back shows the text exactly where you left it. A deliberate jump — a
 search hit or ⌘J — takes precedence and scrolls to the target as usual.
 

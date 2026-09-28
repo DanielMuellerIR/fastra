@@ -921,11 +921,38 @@ enum GitRunner {
     static var processGroupLauncherURL: URL? {
         if let main = Bundle.main.executableURL,
            main.lastPathComponent == "Fastra" { return main }
-        // `swift test` legt das Fastra-Produkt neben das Ressourcenbundle.
-        let adjacent = Bundle.module.bundleURL.deletingLastPathComponent()
-            .appendingPathComponent("Fastra")
-        return FileManager.default.isExecutableFile(atPath: adjacent.path)
-            ? adjacent : nil
+        // `AppResources.bundle`, nicht `Bundle.module`: Der direkte Zugriff
+        // faellt in der gepackten App auf den absoluten `.build`-Pfad des
+        // Build-Macs zurueck und trappt dort (AGENTS.md, „Architektur und
+        // Abhaengigkeiten"). AppResources nimmt in der App das Bundle aus
+        // `Contents/Resources` und nur im Entwicklungs-Build `Bundle.module`.
+        return launcherCandidates(resourceBundleURL: AppResources.bundle.bundleURL)
+            .first { FileManager.default.isExecutableFile(atPath: $0.path) }
+    }
+
+    /// Mögliche Orte des Fastra-Produkts unter `swift test`, abhängig vom
+    /// SwiftPM-Build-System. Reine Pfadlogik, damit Tests beide Layouts ohne
+    /// echten Build prüfen können.
+    /// - Altes Build-System (`native`): Das Ressourcenbundle liegt direkt im
+    ///   Produktordner, das Fastra-Binary daneben.
+    /// - Neues Build-System (`swiftbuild`, Default ab Swift 6.4): Das
+    ///   Ressourcenbundle wird zusätzlich nach
+    ///   `FastraTests.xctest/Contents/Resources/` kopiert. Das Fastra-Binary
+    ///   liegt dann neben dem `.xctest`-Bundle, nicht neben dem Ressourcenbundle.
+    static func launcherCandidates(resourceBundleURL: URL) -> [URL] {
+        var candidates = [
+            resourceBundleURL.deletingLastPathComponent().appendingPathComponent("Fastra")
+        ]
+        var ancestor = resourceBundleURL.deletingLastPathComponent()
+        while ancestor.pathComponents.count > 1 {
+            if ancestor.pathExtension == "xctest" {
+                candidates.append(ancestor.deletingLastPathComponent()
+                    .appendingPathComponent("Fastra"))
+                break
+            }
+            ancestor = ancestor.deletingLastPathComponent()
+        }
+        return candidates
     }
 
     /// Der aktive Xcode-Developer-Ordner (Fallback-Quelle für git). `xcode-select`

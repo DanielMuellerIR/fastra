@@ -7,6 +7,23 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.126.7] — 2026-09-28
+
+### Behoben
+
+- Wiederholte Tabwechsel erhalten auch nach Suchsprüngen die vollständige
+  Auswahl und den sichtbaren Dokumentausschnitt. Bisher ging beim Merken einer
+  nur durch Zeile und Spalte beschriebenen Suchauswahl deren Position verloren;
+  beim Rückwechsel konnte der Cursor dadurch an den Dateianfang springen.
+  Die Ausschnitt-Wiederherstellung wartet außerdem nachlaufende Layouts ab,
+  die eine bereits gesetzte Scrollposition wieder zurücksetzen konnten.
+- Die Positionsumrechnung des Editors bestimmt Anfang und Ende einer
+  Suchauswahl korrekt. Treffer weit unten im Dokument konnten zuvor ohne
+  Auswahl bleiben; erneute Oberflächenaktualisierungen konnten außerdem
+  unnötig zum Treffer zurückscrollen.
+
+---
+
 ## [v1.126.6] — 2026-09-17
 
 ### Behoben

@@ -14,22 +14,26 @@ import UniformTypeIdentifiers
 /// stabilen `EditorView` und überlebt den per `.id` neu erzeugten eigentlichen
 /// Editor. Ohne diese Trennung wurde deshalb die Auswahl aus Datei A
 /// unverändert auf Datei B angewandt.
+///
+/// Suchsprünge können nur Zeile/Spalte tragen; ihre Range bleibt im Binding
+/// NSNotFound, obwohl die TextView bereits korrekt selektiert. Beim Merken
+/// deshalb die vollständige Position erhalten, nicht nur ihre Range.
 struct EditorCursorMemory {
-    private var rangesByTab: [UUID: [NSRange]] = [:]
+    private var positionsByTab: [UUID: [CursorPosition]] = [:]
 
-    mutating func remember(_ ranges: [NSRange], for tabID: UUID?) {
+    mutating func remember(_ positions: [CursorPosition], for tabID: UUID?) {
         guard let tabID else { return }
-        rangesByTab[tabID] = ranges
+        positionsByTab[tabID] = positions
     }
 
     mutating func switchTab(
         from previousTabID: UUID?,
-        currentRanges: [NSRange],
+        currentPositions: [CursorPosition],
         to nextTabID: UUID?
-    ) -> [NSRange] {
-        remember(currentRanges, for: previousTabID)
+    ) -> [CursorPosition] {
+        remember(currentPositions, for: previousTabID)
         guard let nextTabID else { return [] }
-        return rangesByTab[nextTabID] ?? []
+        return positionsByTab[nextTabID] ?? []
     }
 }
 
@@ -262,10 +266,9 @@ struct EditorView: View {
             workspace.activeGitConflictFileDidChange()
         }
         .onChange(of: workspace.activeDocumentID) { _, newTabID in
-            let currentRanges = (editorState.cursorPositions ?? []).map(\.range)
-            let restoredRanges = cursorMemory.switchTab(
+            let restoredPositions = cursorMemory.switchTab(
                 from: cursorMemoryTabID,
-                currentRanges: currentRanges,
+                currentPositions: editorState.cursorPositions ?? [],
                 to: newTabID
             )
             // Ausschnitt des verlassenen Tabs sichern und den des neuen
@@ -285,9 +288,7 @@ struct EditorView: View {
                 + "restore=\(pendingScrollRestore.map { Int($0.y) }.map(String.init) ?? "nil")")
             cursorMemoryTabID = newTabID
             selectionAnchor = nil
-            editorState.cursorPositions = restoredRanges.map {
-                CursorPosition(range: $0)
-            }
+            editorState.cursorPositions = restoredPositions
             // Der State-Wechsel wird normalerweise über den Beobachter am
             // Editor gespiegelt. Diese direkte Aktualisierung schließt auch
             // den kurzen Remount-Moment ohne montierten SourceEditor ab.
@@ -919,7 +920,7 @@ struct EditorView: View {
         // damit der Footer (StatusBarView) Zeile/Spalte zeigen kann.
         .onChange(of: editorState.cursorPositions) { _, positions in
             let list = positions ?? []
-            cursorMemory.remember(list.map(\.range),
+            cursorMemory.remember(list,
                                   for: cursorMemoryTabID ?? workspace.activeDocumentID)
             updateFooterCursor(from: list)
             scheduleStats(for: list)
@@ -1169,6 +1170,7 @@ struct EditorView: View {
     static func restoreScrollOffset(_ offset: CGPoint, in workspace: Workspace,
                                     documentID: UUID?,
                                     attempt: Int = 0,
+                                    stablePasses: Int = 0,
                                     completion: @escaping () -> Void) {
         let generation = workspace.scrollRestoreGeneration
         // Auch ein Ziel am Dateianfang wird gesetzt: Stand der Tab oben, der
@@ -1193,6 +1195,7 @@ struct EditorView: View {
                 return
             }
             // Auslegen anstoßen, damit die Dokumenthöhe zum Ziel aufwächst.
+            scrollView.layoutSubtreeIfNeeded()
             textView.layoutManager.layoutLines()
             // NSClipView begrenzt ein programmatisches Scrollziel NICHT selbst:
             // Ein Ziel jenseits der (direkt nach dem Mount noch zu kleinen)
@@ -1208,6 +1211,14 @@ struct EditorView: View {
             let documentHeight = scrollView.documentView?.frame.height
                 ?? textView.frame.height
             let reachableMax = max(0, documentHeight - clipHeight)
+            // Unabhängig vom folgenden Schreibzugriff prüfen: Ein direktes
+            // Zurücklesen nach scroll(to:) belegt noch keinen stabilen Zustand.
+            // AppKits nachlaufendes Layout kann den Ausschnitt wieder auf 0
+            // setzen. Erst zwei spätere Durchläufe am Ziel schließen ab.
+            let retained = attempt > 0 && offset.y <= reachableMax + 1
+                && abs(scrollView.contentView.bounds.origin.y - offset.y) < 1
+                && abs(scrollView.contentView.bounds.origin.x - offset.x) < 1
+            let confirmedPasses = retained ? stablePasses + 1 : 0
             scrollView.contentView.scroll(
                 to: CGPoint(x: offset.x, y: min(offset.y, reachableMax))
             )
@@ -1220,21 +1231,27 @@ struct EditorView: View {
             // Begrenzte Nachzieh-Versuche: erreicht, oder das Dokument ist
             // schlicht kürzer als der gemerkte Ausschnitt (Datei extern
             // gekürzt) — dann bleibt es beim erreichbaren Maximum.
-            if reached || attempt >= 9 {
+            if (reached && confirmedPasses >= 2) || attempt >= 9 {
                 textView.needsDisplay = true
                 completion()
                 return
             }
             restoreScrollOffset(offset, in: workspace, documentID: documentID,
-                                attempt: attempt + 1, completion: completion)
+                                attempt: attempt + 1, stablePasses: confirmedPasses,
+                                completion: completion)
         }
     }
 
+    // Der Fenstertest sammelt die Reihenfolge ohne laufende I/O und gibt sie
+    // nur bei einem Fehler aus. Im normalen Betrieb bleibt der Empfänger nil.
+    static var scrollRestoreObserver: ((String) -> Void)?
+
     /// Diagnose für die Ausschnitt-Wiederherstellung (Untersuchung des
     /// tabscroll-Flakys). Nur mit gesetzter Umgebungsvariable
-    /// `FASTRA_SCROLLRESTORE_DEBUG=1` aktiv, sonst stumm; die `@autoclosure`
-    /// sorgt dafür, dass der Meldungstext im Normalbetrieb nie gebaut wird.
+    /// `FASTRA_SCROLLRESTORE_DEBUG=1` oder einem Test-Empfänger aktiv; die
+    /// `@autoclosure` vermeidet Meldungstexte im Normalbetrieb.
     static func scrollRestoreDebug(_ message: @autoclosure () -> String) {
+        if let observer = scrollRestoreObserver { observer(message()) }
         guard ProcessInfo.processInfo.environment["FASTRA_SCROLLRESTORE_DEBUG"] == "1"
         else { return }
         FileHandle.standardError.write(Data("SCROLLRESTORE \(message())\n".utf8))

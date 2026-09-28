@@ -839,3 +839,40 @@ blendet die Test-App sich vor dem Fensterwechsel aus. Erst wenn AppKit den
 verlorenen Fokus bestätigt, läuft der unveränderte Fenster-Timeout. Eine
 fehlgeschlagene Vorbereitung der Probe bleibt `FAIL`. Ohne die Variable
 bleibt der normale bgscroll-Test unverändert.
+
+### Zustandsfolgen zwischen Tabs prüfen
+
+`./selftest.sh tabsearchmemory` öffnet zwei XML-Dokumente mit je 1200 Zeilen,
+findet denselben Suchtext an unterschiedlichen Positionen und springt über den
+normalen Trefferpfad dorthin. Danach wechselt der Test 48-mal per Maus zwischen
+den vorhandenen Tabs, zunächst mit längerer, dann mit kürzerer Pause. Nach jedem
+Wechsel prüft er die tatsächliche TextView-Auswahl und den sichtbaren Ausschnitt;
+er setzt beides während der Wechsel nicht erneut. Der Test läuft ohne globale
+App-Aktivierung und gehört zur regulären Selbsttestsuite.
+
+Bei Fehlern in gemerktem UI-Zustand muss die Regression die auslösende Folge
+zusammensetzen: Zustand durch den betroffenen Bedienpfad herstellen, verlassen,
+wiederkehren und wiederholen. Unterschiedliche gültige Darstellungen desselben
+Zustands mitprüfen — hier absolute Zeichenbereiche gegenüber Zeile/Spalte eines
+Suchsprungs. Die Gegenprobe muss am alten Produktcode fehlschlagen.
+
+Die früheren Tests `tabswitch` (neuer Tab) und `tabscroll` (ein Rückwechsel mit
+absolut gesetztem Cursor) deckten diese Kombination nicht ab. Auch der Dauertest
+prüft unveränderte Auswahl und Ausschnitt anderer Fenster, aber keine vollständige
+Historie der Auswahl jedes zuvor verlassenen Tabs. Mehr Laufzeit allein ersetzt
+diese fehlende Erwartung nicht.
+
+Patch 4c-3 korrigiert zusätzlich `resolveCursorPosition` der Editor-Bibliothek:
+1-basierte Spalten werden in UTF-16-Offsets umgerechnet, die Länge ergibt sich
+aus Ende minus Anfang. Der bestehende Reconcile-Vergleich aus Patch 4c-2 darf
+weder eine andere Range als die tatsächlich gesetzte Auswahl noch `nil` für
+einen gültigen späten Treffer liefern. `cursorResolutionMatchesAppliedSelection`
+prüft frühe, späte, mehrzeilige und leere Auswahlen am echten Controller gegen
+unabhängig berechnete Textpositionen. Der Build prüft den Patch unmittelbar.
+
+Die Ausschnitt-Wiederherstellung darf ihren eigenen Scroll-Aufruf nicht sofort
+als Erfolg werten: Ein späterer Layoutdurchlauf kann ihn zurücksetzen. Der
+Fenstertest wartet deshalb auf den Zielzustand und beobachtet ihn zusätzlich
+über weitere Durchläufe, ohne die Ansicht selbst zu korrigieren. Bei einem
+Fehler gibt er die letzten Wiederherstellungsschritte aus einem begrenzten
+Speicherpuffer aus; laufende Terminalausgabe würde das Timing beeinflussen.

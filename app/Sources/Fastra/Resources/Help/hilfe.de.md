@@ -1066,8 +1066,9 @@ sich so mit mehrmaligem ⌘W in umgekehrter Reihenfolge wieder schließen,
 ohne dass es ein älteres Dokument trifft. ⌘J springt zu einer
 Zeilennummer.
 
-Beim Wechsel zwischen Tabs behält jeder Tab seine Einfügemarke **und** seinen
-sichtbaren Ausschnitt: Beim Zurückwechseln steht der Text wieder genau so da
+Beim Wechsel zwischen Tabs behält jeder Tab seine Einfügemarke oder Auswahl
+**und** seinen sichtbaren Ausschnitt — auch markierte Suchtreffer nach mehreren
+Wechseln: Beim Zurückwechseln steht der Text wieder genau so da
 wie beim Verlassen. Ein gezielter Sprung — Suchtreffer oder ⌘J — hat dabei
 Vorrang und scrollt wie gewohnt zum Ziel.
 

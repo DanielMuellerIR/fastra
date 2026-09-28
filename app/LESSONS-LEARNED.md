@@ -72,6 +72,39 @@ kann. `build.sh` und `install.sh` rufen dieses Gate automatisch auf. Codesign,
 Notarisierung, Stapler und Gatekeeper prüfen Integrität und Vertrauen, aber
 nicht, ob die App ihre Laufzeitressourcen findet.
 
+### A.6 Swift 6.4 baut mit `swiftbuild` und verschiebt das Test-Layout (2026-09-19)
+
+**Beobachtung:** Ab Swift 6.4 (Xcode-Update) ist `--build-system swiftbuild`
+der Default. `.build/debug` zeigt dann auf `.build/out/Products/Debug`, und
+`swift test` kopiert `Fastra_Fastra.bundle` zusätzlich nach
+`FastraTests.xctest/Contents/Resources/`. `Bundle.module` zeigt im Test auf
+diese Kopie. Der Prozesslauncher (`GitRunner.processGroupLauncherURL`) suchte
+das Fastra-Binary nur neben dem Ressourcenbundle und fand es nicht mehr. Folge:
+Jeder Git-, ripgrep- und Runner-Test scheiterte mit „The secure Git process
+launcher is missing." bzw. `unavailable` — auf unverändertem Code.
+
+**Lösung:** `GitRunner.launcherCandidates` prüft beide Layouts: neben dem
+Ressourcenbundle (altes Build-System `native`) und neben dem `.xctest`-Bundle
+(`swiftbuild`). Die App selbst ist nicht betroffen; dort ist der Launcher
+`Bundle.main.executableURL`. Weitere Pfadannahmen der Form
+`.build/<arch>/debug/...` (etwa in `build.sh`) gelten unter `swiftbuild` nicht
+mehr automatisch und brauchen eine eigene Prüfung.
+
+**Geprüft 2026-09-19 — Checkout-Invalidierung in `build.sh`:** Die Zeilen
+`rm -rf .build/*/debug/<Modul>.build` finden unter `swiftbuild` nichts, weil die
+Zwischenstände jetzt unter `.build/out/Intermediates.noindex/<Modul>.build`
+liegen. Sie werden dort aber auch nicht gebraucht: `swiftbuild` erkennt
+geänderte Dateien in `.build/checkouts/` und übersetzt sie neu. Probe: In
+`TextLayoutManager+Public.swift` (CodeEditTextView-Checkout) eine öffentliche
+Funktion mit Marker-String ergänzt und den Marker dreimal geändert; nach jedem
+`swift build` ohne Invalidierung stand der neue Marker im Fastra-Binary, das
+`-v`-Log zeigte `Compiling TextLayoutManager+Public.swift`. Messfalle: Eine
+angehängte `#warning`-Zeile erzeugt keinen Code; das Objekt bleibt
+inhaltsgleich und behält seinen Zeitstempel, und SwiftPM unterdrückt Warnungen
+aus Abhängigkeiten. Eine solche Probe sieht wie „nicht neu übersetzt" aus.
+Die `rm`-Zeilen bleiben für Toolchains vor 6.4 und `--build-system native`
+stehen.
+
 ## F · CodeEdit-Build-Realität und Checkout-Patches
 
 Mehrere voneinander unabhängige Probleme der gepinnten Abhängigkeiten treffen
@@ -197,7 +230,7 @@ case (commandKey, "f"):
 auf `return event` umbiegen (CMD+F durchreichen statt Panel zeigen). Damit fängt CMD+F ausschließlich unser App-Monitor ab — deterministisch, unabhängig von der Monitor-Reihenfolge.
 
 **Zwei Stolpersteine:**
-1. SPM trackt Quell-Änderungen **innerhalb** von `.build/checkouts/` NICHT (Dependencies gelten als immutable). Der Patch landet sonst nicht im Binary. → build.sh verwirft nach dem Patchen die CESE-Build-Artefakte (`.build/*/{debug,release}/CodeEditSourceEditor.build` + `.swiftmodule`), damit SPM neu übersetzt.
+1. SPM trackt Quell-Änderungen **innerhalb** von `.build/checkouts/` NICHT (Dependencies gelten als immutable). Der Patch landet sonst nicht im Binary. → build.sh verwirft nach dem Patchen die CESE-Build-Artefakte (`.build/*/{debug,release}/CodeEditSourceEditor.build` + `.swiftmodule`), damit SPM neu übersetzt. Gilt für das Build-System `native`; `swiftbuild` (Default ab Swift 6.4) erkennt die Änderung selbst, siehe A.6.
 2. Der Patch **verifiziert sich selbst** (`grep` nach `showFindPanel()` muss danach leer sein, sonst `exit 1`) — nach einem Versions-Bump mit geänderter Quelle kehrt der Zombie sonst lautlos zurück.
 
 Verifikation: `./selftest.sh findbar` pollt auf transientes Aufblitzen. Volle
@@ -779,3 +812,42 @@ Undo-Manager zu reichen; beide Auswahl-Setter weisen negative Längen ab.
 **Regression:** `StaleSelectionPivotTests` spielt das Nutzer-Szenario
 Shift-Auswahl → Backspace → Shift+→ → Tippen über die öffentlichen APIs
 durch; gegen den unkorrigierten Stand starb der Testprozess mit Signal 5.
+
+### F.31 Suchauswahl beim Tabwechsel vollständig erhalten (2026-09-28)
+
+Eine `CursorPosition` kann ausschließlich Zeile und Spalte enthalten; ihre
+`range` ist dann `NSNotFound`. Der SourceEditor verwirft beim Anwenden eines
+externen Sprungs seine eigene Rückmeldung während `isUpdatingFromRepresentable`.
+Deshalb wird das Binding nicht zwingend nachträglich um die aufgelöste Range
+ergänzt. Die Tab-Merkfunktion darf nicht nur `.range` speichern und daraus eine
+neue Position bauen: Dabei gehen die gültigen Zeilen-/Spaltenwerte verloren.
+`EditorCursorMemory` bewahrt jetzt die vollständigen Positionen.
+
+Zusätzlich war der für Patch 4c-2 verwendete Upstream-Resolver fehlerhaft:
+Er addierte die 1-basierte Spalte ohne Abzug von 1 und behandelte das absolute
+Zeilenende als Auswahl-Länge. Bei späten Treffern reichte diese Range über das
+Dokument hinaus. `compactMap` entfernte die unauflösbare Position; verglichen
+mit einem Editor ohne Auswahl ergab sich `[] == []`, und der Sprung unterblieb.
+Bei auflösbaren, aber falschen Ranges feuerte der Vergleich dagegen erneut und
+konnte die Ansicht nach einer zunächst erfolgreichen Wiederherstellung wegziehen.
+Patch 4c-3 löst beide Endpunkte auf und bildet die Länge aus ihrer Differenz.
+
+Beide Fehler sind getrennt negativ belegt: Der neue Fensterlauf
+`tabsearchmemory` verlor ohne den Merk-Fix beim ersten Rückwechsel die Auswahl;
+`cursorResolutionMatchesAppliedSelection` meldete am ungepatchten Resolver
+falsche Ranges und einen unauflösbaren späten Treffer. Die bisherigen Tests
+setzten absolute Ranges oder wechselten nur einmal in einen neuen Tab. Die
+fehlende Folge „suchen, springen, mehrfach per Maus wechseln“ ist jetzt Teil
+der Standardsuite; die echte Auswahl und Scrollposition werden nach jedem
+Wechsel gemessen, ohne sie dabei selbst wiederherzustellen.
+
+Die wiederholte Mausfolge deckte außerdem einen unabhängigen Scrollfehler auf:
+`restoreScrollOffset` las direkt nach `scroll(to:)` das eigene Ziel zurück und
+beendete sich. Das Protokoll zeigte y=14027 bei ausreichender Dokumenthöhe,
+anschließend stand die Ansicht dauerhaft bei 0, während die Auswahl korrekt
+blieb. Zwei Gegenproben verloren den Ausschnitt nach 38 bzw. 44 Wechseln.
+Die Wiederherstellung prüft jetzt vor einem erneuten Schreibzugriff, ob das Ziel
+zwei spätere Durchläufe überstanden hat. Sie bleibt zeitlich begrenzt; ein neuer
+Suchsprung oder ein anderes Dokument bricht sie weiterhin ab. Der Fensterlauf
+prüft 48 Wechsel und einen Nachlauf pro Wechsel. Eine Erfolgsmessung unmittelbar
+nach der eigenen Korrektur hätte auch diesen Fehler verdeckt.

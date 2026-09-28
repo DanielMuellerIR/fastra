@@ -581,6 +581,7 @@ enum SelfTest {
         case "emojipaste": waitForMainWindow { runEmojiPasteTest() }
         case "emojipreview": waitForMainWindow { runEmojiPreviewTest() }
         case "tabscroll": waitForMainWindow { runTabScrollTest() }
+        case "tabsearchmemory": waitForMainWindow { runTabSearchMemoryTest() }
         case "typescroll": waitForMainWindow { runTypeScrollTest() }
         case "emojishot": waitForMainWindow { runEmojiShot() }
         case "comment4d": waitForMainWindow { runFourDCommentEditTest() }
@@ -793,7 +794,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -889,7 +890,6 @@ enum SelfTest {
     /// feste Pause zu raten. Screenshot- und Willkommen-Tests verwenden ihn
     /// nicht.
     private static func waitForEditor(
-        workspace: Workspace,
         window: NSWindow,
         then body: @escaping (NSView, TextView) -> Void
     ) {
@@ -926,7 +926,6 @@ enum SelfTest {
     /// nicht abschießen, wenn er nur zu früh hinsieht — also warten statt
     /// raten und im Zweifel ehrlich scheitern.
     private static func waitForEditorShowing(
-        workspace: Workspace,
         window: NSWindow,
         text needle: String,
         onTimeout: @escaping () -> Void,
@@ -938,7 +937,7 @@ enum SelfTest {
         waitForAsync(
             budget: 5, pause: 0.05,
             check: { answer in
-                waitForEditor(workspace: workspace, window: window) { root, textView in
+                waitForEditor(window: window) { root, textView in
                     let found = (textView.string as NSString).range(of: needle)
                     if found.location != NSNotFound {
                         shown = (root, textView, found)
@@ -2051,7 +2050,7 @@ enum SelfTest {
             finish(false, "kein zweites Dokumentfenster mit Workspace-Zuordnung")
         }
 
-        waitForEditor(workspace: firstWorkspace, window: firstWindow) { _, _ in
+        waitForEditor(window: firstWindow) { _, _ in
             prepareMultiWindowSearchJumpTest(
                 firstWorkspace: firstWorkspace,
                 firstWindow: firstWindow,
@@ -2608,12 +2607,45 @@ enum SelfTest {
         finish(ok ? .pass : .fail, msg)
     }
 
+    /// Alle temporären Fixture-Ordner eines Selbsttestlaufs an EINER Stelle
+    /// abräumen. Vorher stand jeder Ordner in einem eigenen `if let`-Block und
+    /// ein neu hinzugekommener wurde leicht vergessen — genau so blieb
+    /// `sidebarToggleFixtureDirectory` ganz ohne Aufräumung (Review-Fund
+    /// 2026-09-20). Wer eine neue Fixture anlegt, trägt sie hier ein.
+    ///
+    /// Aufräumen hier ist sicher: Jeder Testprozess legt sein eigenes
+    /// UUID-Verzeichnis an, und kein Test liest es über einen Neustart hinweg —
+    /// ein zweiter Start (etwa `externaldiffcold` je Helfer) legt wieder ein
+    /// eigenes an. Die Testrümpfe räumen nur auf ihren regulären Wegen ab;
+    /// endete ein Lauf vorher (etwa Frist in `waitForMainWindow`), blieb der
+    /// Ordner sonst liegen (Review-Fund 2026-09-18).
+    private static func cleanupFixtureDirectories() {
+        let directories = [shortSearchFixtureDirectory,
+                           windowRoutingFixtureDirectory,
+                           backgroundScrollFixtureDirectory,
+                           printFixtureDirectory,
+                           tabFloodFixtureDirectory,
+                           sidebarToggleFixtureDirectory,
+                           sessionRestoreFixtureDirectory,
+                           coldOpenFixtureDirectory,
+                           selectionScrollFixtureDirectory]
+        for directory in directories.compactMap({ $0 }) {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        shortSearchFixtureDirectory = nil
+        windowRoutingFixtureDirectory = nil
+        backgroundScrollFixtureDirectory = nil
+        printFixtureDirectory = nil
+        tabFloodFixtureDirectory = nil
+        sidebarToggleFixtureDirectory = nil
+        sessionRestoreFixtureDirectory = nil
+        coldOpenFixtureDirectory = nil
+        selectionScrollFixtureDirectory = nil
+    }
+
     private static func finish(_ outcome: SelfTestOutcome, _ msg: String) -> Never {
         cleanupScreenshotFixtures()
-        if let shortSearchFixtureDirectory {
-            try? FileManager.default.removeItem(at: shortSearchFixtureDirectory)
-            self.shortSearchFixtureDirectory = nil
-        }
+        cleanupFixtureDirectories()
         var finalOutcome = outcome
         var finalMessage = msg
         switch finishSelfTestPasteboardMutation() {
@@ -2626,22 +2658,6 @@ enum SelfTest {
         case .failed(let error):
             finalOutcome = max(finalOutcome, .fail)
             finalMessage += " — Zwischenablage nicht zurückgegeben (\(error))"
-        }
-        if let windowRoutingFixtureDirectory {
-            try? FileManager.default.removeItem(at: windowRoutingFixtureDirectory)
-            self.windowRoutingFixtureDirectory = nil
-        }
-        if let backgroundScrollFixtureDirectory {
-            try? FileManager.default.removeItem(at: backgroundScrollFixtureDirectory)
-            self.backgroundScrollFixtureDirectory = nil
-        }
-        if let printFixtureDirectory {
-            try? FileManager.default.removeItem(at: printFixtureDirectory)
-            self.printFixtureDirectory = nil
-        }
-        if let tabFloodFixtureDirectory {
-            try? FileManager.default.removeItem(at: tabFloodFixtureDirectory)
-            self.tabFloodFixtureDirectory = nil
         }
         let elapsed = DispatchTime.now().uptimeNanoseconds - testStartedNanoseconds
         let appMilliseconds = elapsed / 1_000_000
@@ -2914,7 +2930,7 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        waitForEditor(workspace: workspace, window: mainWindow) { root, textView in
+        waitForEditor(window: mainWindow) { root, textView in
             prepareFindBarTest(workspace: workspace, mainWindow: mainWindow,
                                root: root, textView: textView)
         }
@@ -3966,9 +3982,6 @@ enum SelfTest {
         }
     }
 
-    /// Taktbasiert (20 Durchläufe à 0,1 s) wie `pollSearchHidden`: Nur
-    /// tatsächlich ausgeführte Prüfläufe zählen, Fremdlast auf dem
-    /// Main-Thread verbraucht die Frist nicht (Review-Fund 2026-09-16).
     /// Zählt nur bediente Durchläufe (20 à 0,1 s) wie `pollSearchHidden`:
     /// Fremdlast auf dem Main-Thread verbraucht die Frist nicht
     /// (Review-Fund 2026-09-16).
@@ -4022,7 +4035,7 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        waitForEditor(workspace: ws, window: mainWindow) { root, tv1 in
+        waitForEditor(window: mainWindow) { root, tv1 in
             prepareTabSwitchTest(ws: ws, root: root, tv1: tv1)
         }
     }
@@ -4733,7 +4746,7 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        waitForEditor(workspace: ws, window: mainWindow) { root, _ in
+        waitForEditor(window: mainWindow) { root, _ in
             let base = selfTestTemporaryDirectory()
                 .appendingPathComponent("fastra-softwrap-\(UUID().uuidString)")
             let textURL = base.appendingPathComponent("notizen.txt")
@@ -4994,7 +5007,7 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        waitForEditor(workspace: ws, window: mainWindow) { root, _ in
+        waitForEditor(window: mainWindow) { root, _ in
             let tmp = selfTestTemporaryDirectory()
                 .appendingPathComponent(
                     "fastra-softwrapmodes-\(UUID().uuidString).md"
@@ -9938,7 +9951,7 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: directory)
             guard ok else { finish(false, "Fixture lädt nicht") }
             waitForEditorShowing(
-                workspace: ws, window: window, text: "Zeile 400 ",
+                window: window, text: "Zeile 400 ",
                 onTimeout: { finish(false, "Editor zeigt den Inhalt nicht binnen 5 s") }
             ) { root, textView, _ in
                 guard let scrollView = textView.enclosingScrollView else {
@@ -11308,7 +11321,6 @@ enum SelfTest {
             guard ok else { finish(false, "Fixture lädt nicht") }
             if !ws.softWrapEnabled { ws.toggleSoftWrap() }
             waitForEditorShowing(
-                workspace: ws,
                 window: window,
                 text: "Dritte Zeile",
                 onTimeout: {
@@ -11713,7 +11725,7 @@ enum SelfTest {
             // Cursor in die Mitte des Dokuments und dorthin scrollen — erst,
             // wenn der Editor den Inhalt der langen Datei wirklich zeigt.
             waitForEditorShowing(
-                workspace: ws, window: window, text: "Zeile 300 ",
+                window: window, text: "Zeile 300 ",
                 onTimeout: {
                     try? FileManager.default.removeItem(at: directory)
                     finish(false, "Editor zeigt den Inhalt der langen Datei "
@@ -11761,6 +11773,146 @@ enum SelfTest {
                 }
             }
         }
+    }
+
+    /// Wiederholte Mauswechsel dürfen weder Treffer-Auswahl noch Ausschnitt
+    /// verändern. Beide Dokumente bleiben während der ganzen Folge geöffnet.
+    private static func runTabSearchMemoryTest() {
+        testLabel = "tabsearchmemory"
+        guard let ws = Workspace.shared,
+              let window = mainWindowForAXChecks(), let root = window.contentView else {
+            finish(false, "Workspace oder Hauptfenster fehlt")
+        }
+        window.setContentSize(NSSize(width: 1100, height: 650))
+        let directory = selfTestTemporaryDirectory()
+            .appendingPathComponent("fastra-tabsearch-\(UUID().uuidString)")
+        let needle = "Beispielkontakt"
+        let contents = [360, 780].map { line in
+            (1...1200).map { index in
+                "<contact id=\"\(index)\"><name>\(index == line ? needle : "Kontakt \(index)")</name></contact>"
+            }.joined(separator: "\n")
+        }
+        var ids: [UUID] = []
+        var selections: [NSRange] = []
+        var offsets: [CGFloat] = []
+        var restoreTrace: [String] = []
+        EditorView.scrollRestoreObserver = { message in
+            restoreTrace.append(message)
+            if restoreTrace.count > 200 { restoreTrace.removeFirst() }
+        }
+        func done(_ ok: Bool, _ message: String) -> Never {
+            EditorView.scrollRestoreObserver = nil
+            if !ok {
+                FileHandle.standardError.write(Data((restoreTrace.joined(separator: "\n") + "\n").utf8))
+            }
+            try? FileManager.default.removeItem(at: directory)
+            finish(ok, message)
+        }
+        func cycle(_ step: Int) {
+            guard step < 48 else {
+                done(true, "48 Mauswechsel erhalten beide Suchauswahlen und Ausschnitte")
+            }
+            let index = step % 2
+            scrollTabIntoView(id: ids[index], in: root)
+            guard let marker = markerView(id: "documentTab-idle-\(ids[index].uuidString)", in: root),
+                  let strip = marker.enclosingScrollView else {
+                done(false, "Tab-Marker fehlt bei Wechsel \(step)")
+            }
+            let point = marker.convert(NSPoint.zero, to: nil)
+            guard strip.contentView.convert(strip.contentView.bounds, to: nil).contains(point),
+                  sendMouseClick(at: point, in: window, modifiers: []) else {
+                done(false, "Tab-Klick nicht ausführbar")
+            }
+            // Der Neuaufbau und die begrenzte Scroll-Wiederherstellung sind
+            // asynchron. Erst ihren Endzustand beobachten, dann zusätzlich
+            // prüfen, dass spätere Rückmeldungen ihn nicht wieder verlieren.
+            var observed = "Editor nicht bereit"
+            waitFor(budget: 3, pause: 0.05, condition: {
+                guard ws.activeTabID == ids[index],
+                      let tv = editorTextView(in: root) as? TextView,
+                      tv.string == contents[index],
+                      let clip = tv.enclosingScrollView?.contentView else { return false }
+                let selected = tv.selectionManager.textSelections.map(\.range)
+                let y = clip.bounds.origin.y
+                observed = "Auswahl \(selected) statt \(selections[index]); y=\(Int(y)) statt \(Int(offsets[index]))"
+                return selected == [selections[index]] && abs(y - offsets[index]) <= 4
+            }, onTimeout: { book in
+                done(false, "Wechsel \(step + 1), Tab \(index): \(observed) — \(book.summary)")
+            }, then: {
+                let observeUntil = ProcessInfo.processInfo.systemUptime + (step < 12 ? 0.5 : 0.15)
+                waitFor(budget: 2, pause: 0.05, condition: {
+                    guard let tv = editorTextView(in: root) as? TextView,
+                          ws.activeTabID == ids[index], tv.string == contents[index],
+                          let clip = tv.enclosingScrollView?.contentView else {
+                        done(false, "Dokument nach Wechsel \(step + 1) verloren")
+                    }
+                    let selected = tv.selectionManager.textSelections.map(\.range)
+                    let y = clip.bounds.origin.y
+                    guard selected == [selections[index]], abs(y - offsets[index]) <= 4 else {
+                        done(false, "Nachlauf von Wechsel \(step + 1), Tab \(index): Auswahl \(selected); y=\(Int(y)) statt \(Int(offsets[index]))")
+                    }
+                    return ProcessInfo.processInfo.systemUptime >= observeUntil
+                }, onTimeout: { book in
+                    done(false, "Nachbeobachtung nicht abgeschlossen — \(book.summary)")
+                }, then: { cycle(step + 1) })
+            })
+        }
+        func prepare(_ index: Int) {
+            guard index < 2 else { cycle(0); return }
+            let file = directory.appendingPathComponent("Kontakte \(index).vcf.xml")
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try contents[index].write(to: file, atomically: true, encoding: .utf8)
+            } catch { done(false, "Fixture nicht schreibbar") }
+            ws.loadFile(at: file) { ok in
+                guard ok, let id = ws.activeTabID else { done(false, "Fixture lädt nicht") }
+                ids.append(id)
+                pollForJumpEditor(root: root, expectedContent: contents[index], label: "Tab \(index)") { tv in
+                    _ = window.makeFirstResponder(tv)
+                    let result = BufferSearch.find(in: contents[index], options: SearchOptions(
+                        find: needle, replace: "", isRegex: false, caseSensitive: true))
+                    guard let match = result.matches.first else { done(false, "Suchtreffer fehlt") }
+                    // Wie nach einem Klick in die frisch geöffnete Datei:
+                    // Der Fokus-Helfer muss den initialen Cursor gesetzt haben.
+                    waitFor(budget: 2, pause: 0.05, condition: {
+                        guard let current = editorTextView(in: root) as? TextView,
+                              current.string == contents[index] else { return false }
+                        return !current.selectionManager.textSelections.isEmpty
+                    }, onTimeout: { book in
+                        done(false, "Editor ohne initialen Cursor — \(book.summary)")
+                    }, then: {
+                        NotificationCenter.default.postMatchJump(match, for: ws)
+                        let expected = (contents[index] as NSString).range(of: needle)
+                        var lastY: CGFloat?
+                        var stableTicks = 0
+                        var observed = "Editor fehlt"
+                        waitFor(budget: 5, pause: 0.1, condition: {
+                            guard let current = editorTextView(in: root) as? TextView,
+                                  current.string == contents[index],
+                                  let clip = current.enclosingScrollView?.contentView else {
+                                return false
+                            }
+                            let ranges = current.selectionManager.textSelections.map(\.range)
+                            let y = clip.bounds.origin.y
+                            observed = "Tab \(index): Auswahl \(ranges), y=\(Int(y))"
+                            let ready = ranges == [expected] && y > 100
+                            stableTicks = ready && lastY.map { abs($0 - y) < 1 } == true
+                                ? stableTicks + 1 : 0
+                            lastY = y
+                            return stableTicks >= 3
+                        }, onTimeout: { book in
+                            done(false, "Suchsprung nicht bereit: \(observed) — \(book.summary)")
+                        }, then: {
+                            guard let y = lastY else { done(false, "Ausschnitt fehlt") }
+                            selections.append(expected)
+                            offsets.append(y)
+                            prepare(index + 1)
+                        })
+                    })
+                }
+            }
+        }
+        prepare(0)
     }
 
     // MARK: - -selftest emojishot
@@ -13746,7 +13898,7 @@ enum SelfTest {
 
     private static func runGutterDimmingTest() {
         testLabel = "gutterdim"
-        guard let workspace = Workspace.shared,
+        guard Workspace.shared != nil,
               let mainWindow = NSApp.windows.first(where: {
             $0.frameAutosaveName != SearchWindow.frameAutosaveName
                 && $0.contentView != nil && $0.isVisible
@@ -13754,7 +13906,7 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        waitForEditor(workspace: workspace, window: mainWindow) { root, _ in
+        waitForEditor(window: mainWindow) { root, _ in
             checkGutterDimming(in: root)
         }
     }
@@ -16114,7 +16266,7 @@ enum SelfTest {
         completion: @escaping () -> Void
     ) {
         waitForEditorShowing(
-            workspace: clicked.workspace, window: clicked.window, text: needle,
+            window: clicked.window, text: needle,
             onTimeout: {
                 try? FileManager.default.removeItem(at: base)
                 finish(false, "(\(label)) Editor zeigt „\(needle)“ nicht binnen 5 s")
