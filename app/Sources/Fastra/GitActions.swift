@@ -260,9 +260,9 @@ extension Workspace {
                      label: "Aus Bereitstellung nehmen")
     }
 
-    /// Alle bereitgestellten Änderungen aus dem Index nehmen (`git reset -q HEAD`).
+    /// `--` legt HEAD auch vor dem ersten Commit eindeutig als Revision fest.
     func gitUnstageAll() {
-        runGitAction(["reset", "-q", "HEAD"], label: "Bereitstellung aufheben")
+        runGitAction(["reset", "-q", "HEAD", "--"], label: "Bereitstellung aufheben")
     }
 
     /// Ungespeicherte Änderungen an einer Datei VERWERFEN (destruktiv!). Erst
@@ -1521,7 +1521,7 @@ extension Workspace {
         policy.configuration = configuration
         let request = GitOperationRequest(repository: context.root, kind: kind,
                                           arguments: args, policy: policy)
-        let lease = gitOperationsCoordinator.perform(request) { [weak self] outcome in
+        let completion: (GitExecutionOutcome) -> Void = { [weak self] outcome in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.gitRepositoryStore.publishOperations(for: context.root)
@@ -1551,6 +1551,21 @@ extension Workspace {
                     self.refreshOpenGitViews()
                 }
             }
+        }
+        let lease: GitOperationLease
+        if args.first == "commit" {
+            // Die Identitäts-Vorprüfung reicht nicht: Ein anderes Fenster kann
+            // danach das globale Name/E-Mail-Paar in zwei Schritten ändern.
+            lease = gitOperationsCoordinator.performIdentityBarrierExclusive(
+                repository: context.root, kind: kind,
+                identity: args.joined(separator: "\u{0}"),
+                starter: { [executor = gitOperationsCoordinator.commandExecutor] finish in
+                    executor.execute(arguments: args, in: context.root,
+                                     outputLimit: request.outputLimit,
+                                     policy: policy, completion: finish)
+                }, completion: completion)
+        } else {
+            lease = gitOperationsCoordinator.perform(request, completion: completion)
         }
         gitRepositoryStore.publishOperations(for: context.root)
         return lease

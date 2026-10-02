@@ -61,6 +61,14 @@ App-Start noch nicht ausgeführt werden.
 installierten App. Signatur-, Stapler- und Gatekeeper-Prüfungen ersetzen
 diesen echten Zielstart nicht.
 
+Im Installationslauf setzt `install.sh` für den Build
+`FASTRA_DEFER_PORTABILITY_CHECK=1`: Die App startet dort erstmals nach der
+Developer-ID-Signierung und im notarisierten Lauf nach Ticket- und
+Gatekeeper-Prüfung. Die aufgeschobene Portabilitätsprüfung läuft vor der
+Installation am fertigen Bundle und danach erneut am installierten Ziel.
+Ein direkter `build.sh`-Lauf behält seine unmittelbare Prüfung bei; wer die
+Variable selbst setzt, muss die noch ausstehende Prüfung ausdrücklich nachholen.
+
 **Agent-bindend (2026-07-21):** `/Applications` ist ausschließlich
 notarisierten Bundles vorbehalten. `build.sh` legt Debug- und Release-Builds als
 `Fastra.app` im Projekt-Root ab. Auch `install.sh --no-notarize` bleibt dort;
@@ -177,6 +185,30 @@ realen Dokument mit 2.400 langen Zeilen die unabhängig beobachtete oberste
 Zeile beim Aus- und Einschalten. Der Test tastet den sichtbaren Zustand alle
 20 ms ab und akzeptiert keine abweichende Zwischenposition. `ghosttext`,
 `hscroll`, `colsel` und `gutterdim` bleiben ergänzende Regressionen.
+
+Patch 4z18 (Folgefragmentkern): Der gemeinsame Ursprung und reduzierte
+Umbruchraum liegen in `app/Patches/CodeEditTextView/`. Der Patch läuft nach
+allen älteren Typesetter-Patches und prüft sämtliche Ersetzungen hart.
+`SoftWrapIndentationTests` deckt beide Umbruchstrategien, Tabs, Emoji,
+Attachments, schmale Breiten, Profilmigration und die tatsächlich gezeichnete
+Drag-Vorschau ab. Der Fenster-Selbsttest
+`softwrapindentcore` prüft den Kern direkt; mit
+`FASTRA_SOFTWRAPINDENT_DIR=<ordner>` entstehen sechs Aufnahmen für drei Modi
+bei 300 und 700 pt über die vorhandene fensterbezogene Systemaufnahme.
+Patch 4z19 verbindet das Formatprofil mit dem Controller und der Minimap;
+siehe [Fragmentgeometrie](soft-wrap-fragment-geometry.md).
+`SoftWrapIndentationIntegrationTests` prüfen Reconcile, Attachmentgrenzen,
+Cache-Erhaltung, verborgene Minimap und die vertikale Hin-/Rückabbildung.
+`softwrapindent` prüft den normalen Editor mit drei Modi, drei Wrap-Zielen,
+760/1100 pt und zwei Zoomstufen, einschließlich Unicode, Kandidatenanker,
+Rechteck-Paste, Undo/Redo und Drag/Auto-Scroll. Eine reale Eingabemethode
+bleibt zusätzlich manuell abzunehmen. Mit `FASTRA_SOFTWRAPINDENT_DIR` werden
+sechs Fensteraufnahmen angefordert; fehlende Aufnahmeberechtigung ist ENV.
+`FASTRA_SOFTWRAPINDENT_REVIEW_DIR=<ordner>` hält danach die isolierte
+Testinstanz höchstens 120 s für eine manuelle Menü-/IME-Prüfung offen. Der
+Marker `ready` zeigt die Bereitschaft; `continue` gibt den Abschluss frei.
+Testeingaben müssen zuvor zurückgenommen sein. Die optionale Variable
+`FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH` wählt die Fensterbreite (Standard 760 pt).
 
 Patch 4o (Rechteckauswahl, 2026-07-19): Upstream baut die Spaltenauswahl aus
 jedem sichtbaren `lineFragment` und macht umbrochene Fortsetzungen dadurch zu

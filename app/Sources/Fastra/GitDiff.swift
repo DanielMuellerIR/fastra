@@ -14,9 +14,11 @@ struct GitDiffRequest: Hashable, Identifiable {
 
     let repositoryPath: String
     let source: Source
+    var originalPath: String? = nil
 
     var id: String {
         repositoryPath + "\u{0}" + source.stableIdentity
+            + (originalPath.map { "\u{0}original\u{0}" + $0 } ?? "")
     }
 
     /// Ein Commit-Diff benennt den Vergleichspartner ausdrücklich. Bei Merges
@@ -43,6 +45,10 @@ struct GitDiffRequest: Hashable, Identifiable {
     /// Änderungen navigierbar und liefern zugleich genug unveränderten Inhalt
     /// zum Auf-/Einklappen; die Prozess-Ausgabe bleibt separat hart begrenzt.
     var arguments: [String] {
+        func paths(_ path: String) -> [String] {
+            guard let originalPath, originalPath != path else { return [path] }
+            return [originalPath, path]
+        }
         let stable = [
             "--no-color", "--no-ext-diff", "--no-textconv", "--find-renames",
             "--unified=24", "--src-prefix=a/", "--dst-prefix=b/",
@@ -50,11 +56,11 @@ struct GitDiffRequest: Hashable, Identifiable {
         switch source {
         case .workingTree(let path):
             return ["-c", "core.quotePath=false", "--literal-pathspecs", "diff"] + stable + ["HEAD", "--"]
-                + (path.map { [$0] } ?? [])
+                + (path.map(paths) ?? [])
         case .staged(let path):
-            return ["-c", "core.quotePath=false", "--literal-pathspecs", "diff"] + stable + ["--cached", "--", path]
+            return ["-c", "core.quotePath=false", "--literal-pathspecs", "diff"] + stable + ["--cached", "--"] + paths(path)
         case .unstaged(let path):
-            return ["-c", "core.quotePath=false", "--literal-pathspecs", "diff"] + stable + ["--", path]
+            return ["-c", "core.quotePath=false", "--literal-pathspecs", "diff"] + stable + ["--"] + paths(path)
         case .untracked(let path):
             return ["-c", "core.quotePath=false", "--literal-pathspecs", "diff"] + stable
                 + ["--no-index", "--", "/dev/null", path]
@@ -62,10 +68,10 @@ struct GitDiffRequest: Hashable, Identifiable {
             switch parent {
             case .emptyTree:
                 return ["-c", "core.quotePath=false", "--literal-pathspecs", "diff-tree"] + stable
-                    + ["--root", "--no-commit-id", "-p", hash, "--", path]
+                    + ["--root", "--no-commit-id", "-p", hash, "--"] + paths(path)
             case .commit(let parentHash, _, _):
                 return ["-c", "core.quotePath=false", "--literal-pathspecs", "diff"] + stable
-                    + [parentHash, hash, "--", path]
+                    + [parentHash, hash, "--"] + paths(path)
             }
         }
     }
@@ -376,7 +382,8 @@ enum GitDiffParser {
     }
 
     private static func displayPath(_ raw: String) -> String? {
-        let path = strippingTerminalTimestamp(from: raw)
+        // Git hängt bei unzitierten Pfaden mit Leerzeichen einen leeren TAB-Trenner an.
+        let path = strippingTerminalTimestamp(from: raw.hasSuffix("\t") ? String(raw.dropLast()) : raw)
         if path == "/dev/null" { return nil }
         if path.hasPrefix("a/") || path.hasPrefix("b/") { return String(path.dropFirst(2)) }
         return path
@@ -716,9 +723,11 @@ enum GitDiff {
         GitDiffRequest(repositoryPath: "", source: .untracked(path: path)).arguments
     }
 
-    static func showFileArguments(hash: String, path: String) -> [String] {
+    static func showFileArguments(hash: String, path: String,
+                                  originalPath: String? = nil) -> [String] {
         ["-c", "core.quotePath=false", "--literal-pathspecs", "show", "--no-color",
-         "--no-ext-diff", "--no-textconv", "--format=", hash, "--", path]
+         "--no-ext-diff", "--no-textconv", "--find-renames", "--format=", hash, "--"]
+            + (originalPath.map { [$0] } ?? []) + [path]
     }
 
     static func classify(_ line: String) -> GitDiffLineKind {

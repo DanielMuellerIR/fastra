@@ -64,6 +64,8 @@ enum LineOperations {
                    ns.character(at: expanded.location + expanded.length - 1) == 0x0D {
                     expanded.length -= 1
                 }
+            } else if lastChar == 0x0D {
+                expanded.length -= 1
             }
         }
         return expanded
@@ -229,22 +231,20 @@ enum LineOperations {
     // MARK: - Helfer
 
     /// Zerlegt einen Block in Zeilen-INHALTE (ohne Trenner). Versteht
-    /// LF und CRLF gemischt — der Editor normalisiert zwar auf LF, aber
-    /// die Logik soll auch mit roh geladenem CRLF-Inhalt nicht brechen.
+    /// LF, CRLF und CR, auch gemischt. Geladene Dokumente behalten ihre
+    /// ursprünglichen Zeilenenden im Editorinhalt.
     /// `internal`, damit `TextOperations` exakt dieselbe Zerlegung nutzt
     /// (eine Wahrheit für „was ist eine Zeile").
     static func splitLines(_ block: String) -> [String] {
-        // components(separatedBy: "\n") + \r-Trim deckt LF und CRLF ab.
-        block.components(separatedBy: "\n").map { line in
-            line.hasSuffix("\r") ? String(line.dropLast()) : line
-        }
+        block.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
     }
 
-    /// Zeilentrenner des Textes: CRLF, wenn der Text CRLF verwendet,
-    /// sonst LF. (Die Tab-Inhalte sind in Fastra LF-normalisiert; die
-    /// Erkennung macht die Funktionen trotzdem robust.)
+    /// Bewahrt CRLF beziehungsweise CR; Texte ohne Umbruch verwenden LF.
     /// `internal` — von `TextOperations` mitgenutzt (siehe `splitLines`).
     static func separator(of text: String) -> String {
-        text.contains("\r\n") ? "\r\n" : "\n"
+        if text.contains("\r\n") { return "\r\n" }
+        return text.contains("\r") ? "\r" : "\n"
     }
 }

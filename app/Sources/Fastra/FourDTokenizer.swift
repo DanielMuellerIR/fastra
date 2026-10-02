@@ -361,14 +361,28 @@ enum FourDTokenizer {
             boundaries.append(phraseEnd)
         }
 
+        let firstWordEnd = boundaries.first ?? phraseEnd
+        var lookahead = firstWordEnd
+        while lookahead < scalars.count,
+              let c = Unicode.Scalar(scalars[lookahead]).map(Character.init),
+              c == " " { lookahead += 1 }
+        let followedByParen = lookahead < scalars.count
+            && Unicode.Scalar(scalars[lookahead]).map(Character.init) == "("
+        // Objektmember bleiben Member, auch wenn ihr Name im Befehls- oder
+        // Konstantenkatalog vorkommt. Sonst ergänzt der Export falsche Tokens.
+        if afterDot {
+            guard followedByParen else { return nil }
+            return Token(range: NSRange(location: start,
+                                        length: firstWordEnd - start),
+                         kind: .methodCall)
+        }
+
         // `name:C123` → Befehl, `name:K12:34` → Konstante (nur EIN Wortende
         // vor dem Doppelpunkt prüfen — Suffix klebt direkt am Namen).
         if let suffixed = suffixToken(scalars: scalars, start: start,
                                       boundaries: boundaries) {
             return suffixed
         }
-
-        let firstWordEnd = boundaries.first ?? phraseEnd
 
         // Hinter einer Tabelle gehört der erste Name immer zum Feld, selbst
         // wenn er zufällig genauso heißt wie ein 4D-Befehl oder eine Methode.
@@ -415,22 +429,6 @@ enum FourDTokenizer {
             }
             return Token(range: NSRange(location: start, length: end - start),
                          kind: .number)
-        }
-
-        // Member-Zugriff `.name` → plain (nil); `.name(` bleibt ein normaler
-        // Aufruf. Nur ein Name aus dem Projektindex darf den eigenen
-        // Methoden-Slot erhalten.
-        var lookahead = firstWordEnd
-        while lookahead < scalars.count,
-              let c = Unicode.Scalar(scalars[lookahead]).map(Character.init),
-              c == " " { lookahead += 1 }
-        let followedByParen = lookahead < scalars.count
-            && Unicode.Scalar(scalars[lookahead]).map(Character.init) == "("
-        if afterDot {
-            guard followedByParen else { return nil }
-            return Token(range: NSRange(location: start,
-                                        length: firstWordEnd - start),
-                         kind: .methodCall)
         }
 
         // Projektmethoden kommen aus den beiden bekannten Methodenordnern.

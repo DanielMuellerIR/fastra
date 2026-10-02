@@ -12,7 +12,8 @@ import Testing
 @Test("Werkstandard der Einrückung: Leerzeichen, Breite 4, Tabbreite 4")
 func indentationFactoryDefaults() {
     let store = SoftWrapProfileStore(
-        defaults: testSuiteDefaults(named: "fastra-softwrap-\(UUID().uuidString)"))
+        defaults: testSuiteDefaults(named: "fastra-softwrap-\(UUID().uuidString)"),
+        notificationCenter: NotificationCenter())
     let profile = store.indentationProfile(for: .plainText)
     #expect(profile == .factory)
     #expect(!profile.usesTabs)
@@ -24,7 +25,8 @@ func indentationFactoryDefaults() {
 func indentationProfilePersistsPerFormat() {
     let suite = "fastra-softwrap-\(UUID().uuidString)"
     let defaults = testSuiteDefaults(named: suite)
-    let store = SoftWrapProfileStore(defaults: defaults)
+    let center = NotificationCenter()
+    let store = SoftWrapProfileStore(defaults: defaults, notificationCenter: center)
 
     store.setIndentUsesTabs(true, for: .grammar(.markdown))
     store.setTabWidth(8, for: .grammar(.markdown))
@@ -36,7 +38,7 @@ func indentationProfilePersistsPerFormat() {
     #expect(store.indentationProfile(for: .plainText).indentWidth == 2)
 
     // Neu geladener Store (gleiche Defaults) sieht dieselben Werte.
-    let reloaded = SoftWrapProfileStore(defaults: defaults)
+    let reloaded = SoftWrapProfileStore(defaults: defaults, notificationCenter: center)
     #expect(reloaded.indentationProfile(for: .grammar(.markdown)).usesTabs)
     #expect(reloaded.indentationProfile(for: .grammar(.markdown)).tabWidth == 8)
 

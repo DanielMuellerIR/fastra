@@ -19,7 +19,7 @@ func gitDiff_fileArguments() {
     #expect(GitDiff.showFileArguments(hash: "abc123", path: "Sources/-test.swift")
             == ["-c", "core.quotePath=false", "--literal-pathspecs", "show",
                 "--no-color", "--no-ext-diff", "--no-textconv",
-                "--format=", "abc123", "--", "Sources/-test.swift"])
+                "--find-renames", "--format=", "abc123", "--", "Sources/-test.swift"])
 }
 
 @Test("Datei-Diffs trennen Index, Working-Tree und unversionierte Dateien")

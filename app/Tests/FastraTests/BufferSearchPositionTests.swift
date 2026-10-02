@@ -2,6 +2,18 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Trefferende nach einem Umbruch liegt am Anfang der Folgezeile",
+      arguments: ["\n", "\r", "\r\n", "\u{0085}", "\u{2028}", "\u{2029}"])
+func searchEndIncludesTrailingLineBreak(_ separator: String) {
+    for match in [separator, "😀" + separator] {
+        let end = BufferSearch.endLineColumn(startLine: 3, startColumn: 7, matchText: match)
+        #expect(end.line == 4 && end.column == 1)
+    }
+    let end = BufferSearch.endLineColumn(startLine: 3, startColumn: 7,
+                                         matchText: "a" + separator + "b" + separator)
+    #expect(end.line == 5 && end.column == 1)
+}
+
 @Test("Fortlaufende Trefferpositionen entsprechen dem vollständigen Zeilenindex",
       arguments: ["\n", "\r", "\r\n", "\u{0085}", "\u{2028}", "\u{2029}"])
 func incrementalSearchPositions(separator: String) {

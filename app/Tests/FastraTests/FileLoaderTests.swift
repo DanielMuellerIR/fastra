@@ -11,6 +11,37 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Speichern erhält ein führendes U+FEFF als Inhalt zusätzlich zur Datei-BOM")
+func fileLoader_preservesLeadingContentBOMCharacter() throws {
+    let content = "\u{FEFF}Text\n"
+    let encodings: [(String.Encoding, Data)] = [
+        (.utf8, Data([0xEF, 0xBB, 0xBF])),
+        (.utf16LittleEndian, Data([0xFF, 0xFE])),
+        (.utf16BigEndian, Data([0xFE, 0xFF])),
+        (.utf32LittleEndian, Data([0xFF, 0xFE, 0, 0])),
+        (.utf32BigEndian, Data([0, 0, 0xFE, 0xFF])),
+    ]
+    for (encoding, marker) in encodings {
+        let body = try #require(content.data(using: encoding))
+        for bom in [Data(), marker] {
+            #expect(FileLoader.encodedData(content: content, encoding: encoding,
+                                           bom: bom, lineEnding: .lf) == bom + body)
+        }
+    }
+    #expect(FileLoader.encodedData(content: content, encoding: .utf16,
+                                   bom: Data(), lineEnding: .lf)
+            == content.data(using: .utf16LittleEndian))
+    #expect(FileLoader.encodedData(content: content, encoding: .utf32,
+                                   bom: Data(), lineEnding: .lf)
+            == content.data(using: .utf32LittleEndian))
+    for (text, encoding) in [("ÿþabc", String.Encoding.isoLatin1),
+                              ("ï»¿abc", String.Encoding.windowsCP1252)] {
+        #expect(FileLoader.encodedData(content: text, encoding: encoding,
+                                       bom: Data(), lineEnding: .lf)
+                == text.data(using: encoding))
+    }
+}
+
 // MARK: - Hilfs-Funktionen
 
 /// Schreibt `bytes` in eine temporäre Datei und gibt deren URL zurück.

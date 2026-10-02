@@ -8,6 +8,13 @@ import Testing
 import Foundation
 @testable import Fastra
 
+@Test("Markdown: leere Linkziele lösen keinen Dateisprung aus",
+      arguments: ["[link]( )", "[link](\t)", "[link]( \"title\")"])
+func markdownEmptyLinkDestination(_ text: String) {
+    #expect(MarkdownGoToTarget.resolve(GoToTargetContext(
+        text: text, location: 2, documentURL: nil, projectURL: nil)) == nil)
+}
+
 // MARK: - Phrase unter dem Cursor
 
 @Test("Phrase: Wort, mehrwortiger Name, Klick mitten im Wort")

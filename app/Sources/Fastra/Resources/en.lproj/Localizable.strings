@@ -1,5 +1,7 @@
 /* Fastra — English user interface */
 
+"Die Ersetzung würde „%@“ über die sichere Größe von 256 MiB vergrößern. Es wurde nichts verändert." = "The replacement would enlarge “%@” beyond the safe size of 256 MiB. Nothing was changed.";
+
 "(kein Verlauf)" = "(no history)";
 "(keine)" = "(none)";
 "(keine Tabs)" = "(no tabs)";
@@ -1578,3 +1580,8 @@
 "Trenner ziehen: verteilt die Breite zwischen linker und rechter Seite. Doppelklick stellt die Werksteilung wieder her." = "Drag the divider to share the width between the left and right side. Double-click restores the default split.";
 "Ordner oder Muster, die die Projektsuche überspringt. DerivedData wird bei Projektsuchen immer ausgeschlossen." = "Folders or patterns the project search skips. DerivedData is always excluded from project searches.";
 "Datei-Set „%@“ — Pfade: %@" = "File set “%@” — paths: %@";
+
+"Folgezeilen einrücken" = "Indent wrapped lines";
+"Bündig links" = "Flush left";
+"Wie erste Zeile" = "Match first line";
+"Eine Stufe tiefer" = "One level deeper";

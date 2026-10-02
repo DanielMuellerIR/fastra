@@ -638,6 +638,51 @@ private func drainMainQueue() async {
 @MainActor
 @Suite("Projektgebundene Git-Aktionsketten", .serialized)
 struct GitActionContextTests {
+    @Test("Commit hält die Identitätssperre und erhält gestagte Dateitypänderungen")
+    func normalCommitHonorsIdentityBarrierAndStagedTypeChange() async throws {
+        let (executor, workspace, defaults, suite) = makeWorkspace()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        workspace.openProject(at: repository("type-change-commit"))
+        completeInitialRefresh(executor)
+        await drainMainQueue()
+        workspace.gitStatus = GitStatusParser.parse(Data(
+            "1 T. N... 100644 120000 120000 aaaaaaa bbbbbbb link\0? leave.txt\0".utf8))
+        workspace.gitCommit(message: "Typänderung")
+        executor.complete(5, with: success(Data("Test User\n".utf8)))
+        executor.complete(6, with: success(Data("test@example.test\n".utf8)))
+        executor.complete(7, with: success(Data("Global User\n".utf8)))
+        executor.complete(8, with: success(Data("global@example.test\n".utf8)))
+
+        var releaseWriter: ((GitExecutionOutcome) -> Void)?
+        let coordinator = workspace.gitOperationsCoordinator
+        let writer = coordinator.performExclusive(
+            repository: GitIdentityLock.globalRepositoryKey, kind: .workingTreeMutation,
+            identity: UUID().uuidString, starter: { finish in
+                releaseWriter = finish
+                return ControlledGitExecutor.Cancellation()
+            }, completion: { _ in })
+        #expect(releaseWriter != nil)
+        await drainMainQueue()
+        #expect(!executor.startedArguments.contains { $0.first == "commit" })
+        releaseWriter?(success())
+        #expect(await waitUntil { executor.count >= 10 })
+        #expect(executor.startedArguments[9] == ["commit", "-m", "Typänderung"])
+        #expect(!executor.startedArguments.contains { $0.first == "add" })
+
+        var nextWriterStarted = false
+        let nextWriter = coordinator.performExclusive(
+            repository: GitIdentityLock.globalRepositoryKey, kind: .workingTreeMutation,
+            identity: UUID().uuidString, starter: { finish in
+                nextWriterStarted = true
+                finish(success())
+                return ControlledGitExecutor.Cancellation()
+            }, completion: { _ in })
+        #expect(!nextWriterStarted)
+        executor.complete(9, with: success())
+        #expect(await waitUntil { nextWriterStarted })
+        withExtendedLifetime((writer, nextWriter)) { }
+    }
+
     private func makeWorkspace() -> (ControlledGitExecutor, Workspace, UserDefaults, String) {
         let executor = ControlledGitExecutor()
         let coordinator = GitOperationsCoordinator(executor: executor)

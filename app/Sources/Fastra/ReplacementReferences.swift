@@ -127,7 +127,7 @@ enum ReplacementReferences {
     /// als Literal lesen. Folgt direkt eine Ziffer, wird bis zum vollen
     /// Budget mit Nullen aufgefüllt: `$1` + „2" wird bei zehn Gruppen zu
     /// `$012`, sonst läse Foundation daraus Gruppe 12.
-    private static func spelling(of number: Int,
+    static func spelling(of number: Int,
                                  digits: Int,
                                  groupCount: Int,
                                  nextIsDigit: Bool) -> String {

@@ -383,19 +383,25 @@ enum BufferSearch {
     static func endLineColumn(startLine: Int, startColumn: Int,
                               matchText: String) -> (line: Int, column: Int) {
         let ns = matchText as NSString
-        // Zeilen-Starts INNERHALB des Treffer-Texts — gleiche NSString-
-        // Semantik (CR/LF/CRLF/Unicode) wie collectLineStarts.
-        let lineStarts = collectLineStarts(in: ns)
-        if lineStarts.count <= 1 {
-            // Einzeilig: Endspalte = Startspalte + UTF-16-Länge des Treffers.
-            return (startLine, startColumn + ns.length)
+        var cursor = 0
+        var breaks = 0
+        var lastStart = 0
+        while cursor < ns.length {
+            var end = 0
+            var contentsEnd = 0
+            ns.getLineStart(nil, end: &end, contentsEnd: &contentsEnd,
+                            for: NSRange(location: cursor, length: 0))
+            // Anders als der Dokumentindex zählt das exklusive Trefferende
+            // auch einen Umbruch am Ende: „a\n“ endet auf Zeile 2, Spalte 1.
+            if end > contentsEnd {
+                breaks += 1
+                lastStart = end
+            }
+            cursor = end
         }
-        // Mehrzeilig: Endzeile = Start + Anzahl Zeilenumbrüche; Endspalte =
-        // Anzahl Zeichen nach dem letzten Zeilenumbruch + 1.
-        let breaks = lineStarts.count - 1
-        let lastStart = lineStarts[lineStarts.count - 1]
-        let afterLast = ns.length - lastStart
-        return (startLine + breaks, afterLast + 1)
+        return breaks == 0
+            ? (startLine, startColumn + ns.length)
+            : (startLine + breaks, ns.length - lastStart + 1)
     }
 }
 

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CodeEditTextView
 
 extension Notification.Name {
     /// Store-Instanzen verschiedener Dokumentfenster laden nach einer
@@ -31,24 +32,29 @@ final class SoftWrapProfileStore: ObservableObject {
         var indentUsesTabs: Bool?
         var indentWidth: Int?
         var tabWidth: Int?
+        // Rohwert hält auch unbekannte zukünftige Modi vom restlichen Profil fern.
+        var softWrapIndentation: String?
 
         init(softWrapEnabled: Bool? = nil,
              target: SoftWrapTarget? = nil,
              fixedColumn: Int? = nil,
              indentUsesTabs: Bool? = nil,
              indentWidth: Int? = nil,
-             tabWidth: Int? = nil) {
+             tabWidth: Int? = nil,
+             softWrapIndentation: String? = nil) {
             self.softWrapEnabled = softWrapEnabled
             self.target = target
             self.fixedColumn = fixedColumn
             self.indentUsesTabs = indentUsesTabs
             self.indentWidth = indentWidth
             self.tabWidth = tabWidth
+            self.softWrapIndentation = softWrapIndentation
         }
 
         var isEmpty: Bool {
             softWrapEnabled == nil && target == nil && fixedColumn == nil
                 && indentUsesTabs == nil && indentWidth == nil && tabWidth == nil
+                && softWrapIndentation == nil
         }
     }
 
@@ -152,6 +158,19 @@ final class SoftWrapProfileStore: ObservableObject {
             tabWidth: Self.validatedIndent(stored?.tabWidth,
                                            factory: Self.factoryTabWidth)
         )
+    }
+
+    /// Fehlende/alte Werte verwenden den beschlossenen Werkstandard.
+    func softWrapIndentation(for formatID: DocumentFormatID) -> SoftWrapIndentation {
+        payload.formats[formatID.rawValue]?.softWrapIndentation
+            .flatMap(SoftWrapIndentation.init(rawValue:)) ?? .firstLine
+    }
+
+    func setSoftWrapIndentation(_ mode: SoftWrapIndentation, for formatID: DocumentFormatID) {
+        updateProfile(for: formatID) {
+            $0.softWrapIndentation = mode == .firstLine ? nil : mode.rawValue
+        }
+        persistAndNotify()
     }
 
     func setIndentUsesTabs(_ usesTabs: Bool, for formatID: DocumentFormatID) {
@@ -323,6 +342,10 @@ final class SoftWrapProfileStore: ObservableObject {
                 let validated = validatedIndent(width, factory: factoryTabWidth)
                 profile.tabWidth =
                     validated == factoryTabWidth ? nil : validated
+            }
+            if let raw = profile.softWrapIndentation,
+               SoftWrapIndentation(rawValue: raw) == nil || raw == SoftWrapIndentation.firstLine.rawValue {
+                profile.softWrapIndentation = nil
             }
             return profile.isEmpty ? nil : profile
         }

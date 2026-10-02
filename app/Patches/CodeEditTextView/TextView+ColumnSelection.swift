@@ -467,7 +467,7 @@ private extension TextView {
             1
         )
         let localColumn = max(
-            Int(floor((point.x - layoutManager.edgeInsets.left) / width)),
+            Int(floor((point.x - layoutManager.fragmentOriginX(for: fragment.data)) / width)),
             0
         )
         return (position.index, fragmentColumn + localColumn)

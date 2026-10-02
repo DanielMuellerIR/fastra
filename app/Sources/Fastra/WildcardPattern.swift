@@ -198,8 +198,6 @@ enum WildcardPattern {
 
             if character == wildcard {
                 flushLiteral()
-                template += "$\(positionalCapture)"
-                positionalCapture += 1
                 index = replace.index(after: index)
                 // Lauf-Regel (Semantik #6): direkt folgende Sterne gehören
                 // zum selben Verweis — `**` ist EIN `$N`, symmetrisch zur
@@ -207,6 +205,16 @@ enum WildcardPattern {
                 while index < replace.endIndex, replace[index] == wildcard {
                     index = replace.index(after: index)
                 }
+                // Foundation darf eine folgende wörtliche Ziffer nicht zur
+                // Gruppennummer ziehen, auch nicht mit kombinierendem Akzent.
+                let next = replace[index...].unicodeScalars.first
+                let nextIsDigit = next.map { $0 >= "0" && $0 <= "9" } ?? false
+                template += captureCount.map {
+                    ReplacementReferences.spelling(of: positionalCapture,
+                        digits: String(positionalCapture).count,
+                        groupCount: $0, nextIsDigit: nextIsDigit)
+                } ?? "$\(positionalCapture)"
+                positionalCapture += 1
                 continue
             }
 

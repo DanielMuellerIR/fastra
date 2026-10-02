@@ -252,7 +252,7 @@ enum GitStatusParser {
     /// Leerzeichen = nichts an dieser Stelle.
     private static func sideState(_ c: Character) -> GitFileState? {
         switch c {
-        case "M":       return .modified
+        case "M", "T":  return .modified  // Dateitypwechsel zählt auch im Index.
         case "A":       return .added
         case "D":       return .deleted
         case "R":       return .renamed

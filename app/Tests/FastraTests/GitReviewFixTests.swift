@@ -16,6 +16,28 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@MainActor
+@Test("Alle Dateien vor dem ersten Commit aus Bereitstellung nehmen")
+func gitIntegration_unstageAllBeforeFirstCommit() async throws {
+    let root = try reviewFixTempDirectory("unborn-unstage")
+    defer { try? FileManager.default.removeItem(at: root) }
+    #expect((await reviewFixGit(["init", "-q", "-b", "main"], in: root)).ok)
+    for name in ["a.txt", "b.txt"] {
+        try Data(name.utf8).write(to: root.appendingPathComponent(name))
+    }
+    #expect((await reviewFixGit(["add", "--", "a.txt", "b.txt"], in: root)).ok)
+    let defaults = testSuiteDefaults(named: "Fastra-Unborn-\(UUID())")
+    let workspace = Workspace(defaults: defaults)
+    workspace.projectURL = root
+    workspace.gitUnstageAll()
+    #expect(await waitUntil { !workspace.gitOperationsCoordinator.state(for: root).isBusy })
+    let tracked = await reviewFixGit(["ls-files", "-z"], in: root)
+    #expect(tracked.ok && tracked.stdoutData.isEmpty)
+    for name in ["a.txt", "b.txt"] {
+        #expect(try Data(contentsOf: root.appendingPathComponent(name)) == Data(name.utf8))
+    }
+}
+
 // MARK: - Gemeinsame Helfer
 
 private func reviewFixTempDirectory(_ suffix: String) throws -> URL {

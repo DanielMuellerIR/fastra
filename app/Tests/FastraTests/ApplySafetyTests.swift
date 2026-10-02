@@ -15,6 +15,45 @@ import Testing
 import Foundation
 @testable import Fastra
 
+@Test("Apply lehnt nach der Vorschau veränderte temporäre Ausgaben ab")
+func transactionRejectsAlteredStagingBytes() throws {
+    let backups = try makeBackupRoot()
+    defer { try? FileManager.default.removeItem(at: backups) }
+    let target = backups.appendingPathComponent("target.txt")
+    try Data("foo".utf8).write(to: target)
+    let transaction = try makeTransaction(files: [target])
+    #expect(throws: (any Error).self) {
+        try transaction.execute(backupRoot: backups, cleanupOlderThan: nil,
+            beforePreflight: {
+                let session = try #require(FileManager.default.contentsOfDirectory(
+                    at: backups, includingPropertiesForKeys: nil)
+                    .first { $0.lastPathComponent.hasPrefix("session-") })
+                // Gleiche Länge wie „bar“: allein die Größenprüfung reicht nicht.
+                try Data("BAD".utf8).write(
+                    to: session.appendingPathComponent("staged/0.bin"))
+            })
+    }
+    #expect(try Data(contentsOf: target) == Data("foo".utf8))
+}
+
+@Test("Apply lehnt Ausgaben über der Undo-Grenze vor jedem Dateischreiben ab")
+func transactionRejectsOutputBeyondUndoLimit() throws {
+    let backups = try makeBackupRoot()
+    defer { try? FileManager.default.removeItem(at: backups) }
+    let target = backups.appendingPathComponent("target.txt")
+    try Data("foo".utf8).write(to: target)
+    let options = SearchOptions(find: "foo",
+        replace: String(repeating: "b", count: Int(FileSnapshot.maximumReadBytes) + 1),
+        isRegex: false)
+    let transaction = try makeTransaction(files: [target], options: options)
+    do {
+        _ = try transaction.execute(backupRoot: backups, cleanupOlderThan: nil)
+        Issue.record("Die zu große Ersetzung wurde ausgeführt")
+    } catch ApplyError.planNotApplyable { }
+    let current = try FileSnapshot.read(from: target, byteLimit: 16)
+    #expect(current.data == Data("foo".utf8))
+}
+
 // MARK: - Test-Korpus-Integrität
 
 @Test("Korpus erzeugt Text- und Binärdateien")

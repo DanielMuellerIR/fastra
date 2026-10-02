@@ -469,8 +469,9 @@ enum FolderSearch {
         }
         let data = read.data
         let (bom, bomEncoding) = ApplyEngine.detectBOM(in: data)
-        // BOM-freie Datei mit Null-Byte → binär, übersprungen.
-        if bom.isEmpty && FileScanner.isBinary(data) {
+        // Dieselben vollständig gelesenen Bytes müssen auch im Editor als
+        // Text öffnen. Eine UTF-8-BOM erklärt keine Nullbytes im Inhalt.
+        if !FileLoader.bomEncodingAllowsNUL(bomEncoding) && data.contains(0) {
             return PerFileResult(url: url, matches: [], totalMatches: 0,
                                  skipped: .binary, snapshot: read.snapshot,
                                  searchOptions: options)

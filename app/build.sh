@@ -325,8 +325,9 @@ fi
 # Zeilenende als Auswahl-LÄNGE. Späte Treffer wurden dadurch unauflösbar;
 # compactMap verglich dann [] mit [] und übersprang den Suchsprung ganz.
 CESE_CURSOR="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/Controller/TextViewController+Cursor.swift"
-chmod u+w "$CESE_CURSOR"
-/usr/bin/python3 - "$CESE_CURSOR" <<'PYEOF'
+if ! grep -qF 'Zeile/Spalte als exakte UTF-16-Auswahl aufloesen' "$CESE_CURSOR" 2>/dev/null; then
+  chmod u+w "$CESE_CURSOR"
+  /usr/bin/python3 - "$CESE_CURSOR" <<'PYEOF'
 import pathlib, sys
 
 path = pathlib.Path(sys.argv[1])
@@ -358,9 +359,14 @@ if old in source:
 if source.count(new) != 1 or old in source:
     raise SystemExit(f"{path}: Patch 4c-3 hat nicht gegriffen — Cursor-Aufloesung pruefen")
 PYEOF
-rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
-rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
-      .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+if ! grep -qF 'Zeile/Spalte als exakte UTF-16-Auswahl aufloesen' "$CESE_CURSOR" 2>/dev/null; then
+  echo "✗ FEHLER: 4c-3-Patch fehlt in TextViewController+Cursor.swift. Build abgebrochen." >&2
+  exit 1
+fi
 
 # 4c1. Patch CodeEditSourceEditor — verworfene Auto-Vervollständigung sauber
 #       zurücksetzen.
@@ -373,7 +379,7 @@ rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
 # auf, damit das zweite Zeichen einen neuen, sichtbaren Vorschlagsversuch
 # startet. Der In-App-Test `completion4d` reproduziert genau diese Reihenfolge.
 CESE_SUGGESTIONS="$CHECKOUTS/CodeEditSourceEditor/Sources/CodeEditSourceEditor/CodeSuggestion/Model/SuggestionViewModel.swift"
-if grep -q 'guard let completionItems = await delegate.completionSuggestionsRequested' "$CESE_SUGGESTIONS" 2>/dev/null; then
+if ! grep -qF 'Fastra-Patch: abgebrochene Ein-Zeichen-Anfrage' "$CESE_SUGGESTIONS" 2>/dev/null; then
   echo "→ Patche CodeEditSourceEditor (verworfenes Auto-Completion zurücksetzen)"
   /usr/bin/perl -i -0pe 's|guard let completionItems = await delegate\.completionSuggestionsRequested\(\s*textView: textView,\s*cursorPosition: cursorPosition\s*\) else \{\s*return\s*\}|guard let completionItems = await delegate.completionSuggestionsRequested(\n                    textView: textView,\n                    cursorPosition: cursorPosition\n                ) else {\n                    self.willClose()  // Fastra-Patch: abgebrochene Ein-Zeichen-Anfrage darf den zweiten Buchstaben nicht unsichtbar aktualisieren\n                    return\n                }|g' "$CESE_SUGGESTIONS"
   # Der Kommentar ist zugleich der stabile Anker: Ändert Upstream den
@@ -6338,6 +6344,26 @@ if [ "$CURSOR_DELTA_PATCH_CHANGED" -eq 1 ] || [ "$RECTSFOR_CLAMP_PATCH_CHANGED" 
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4z18. Folgefragment-Ursprung und Umbruchraum gemeinsam berechnen.
+# Nach allen älteren Typesetter-Patches; der Helfer prüft jede Integrationsstelle.
+SOFT_WRAP_INDENT_PATCH=$(/usr/bin/python3 Patches/CodeEditTextView/soft-wrap-indentation.py "$CHECKOUTS/CodeEditTextView")
+if [ "$SOFT_WRAP_INDENT_PATCH" = "changed" ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule \
+        .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z19. Profil-Reconcile und eigene Minimap-Geometrie.
+SOFT_WRAP_UI_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/soft-wrap-indentation.py "$CHECKOUTS/CodeEditSourceEditor")
+if [ "$SOFT_WRAP_UI_PATCH" = "changed" ]; then
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule \
+        .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # Hinweis zu den `rm .build/*/{debug,release}/<Modul>.build`-Zeilen oben:
 # Sie gelten nur für das alte Build-System `native`, das Änderungen in
 # .build/checkouts nicht neu übersetzt. Ab Swift 6.4 baut `swift build`
@@ -6470,9 +6496,15 @@ fi
 
 # Pflicht-Gate für verteilbare Bundles: Blendet die absoluten SwiftPM-
 # Build-Fallbacks kurz aus und startet den fensterlosen Lokalisierungstest.
-# So wird ein auf diesem Mac funktionierender, fremd-Mac-toter Build bereits
-# hier abgewiesen und erreicht weder Notarisierung noch Installation.
-./verify-portable-app.sh "$APP" ".build/$CONFIG"
+# Direkte Builds prüfen hier; der Installer prüft das signierte fertige Bundle
+# vor der Installation. Ein fehlender Ressourcenpfad darf das Ziel nie erreichen.
+if [ "${FASTRA_DEFER_PORTABILITY_CHECK:-0}" = "1" ]; then
+  # Der Installer holt den echten App-Start nach Signierung und Notarisierung
+  # nach. So startet sein Build noch kein Bundle mit wechselnder Ad-hoc-Identität.
+  echo "→ Portabilitätsprüfung ausstehend; wird vom Installer nachgeholt."
+else
+  ./verify-portable-app.sh "$APP" ".build/$CONFIG"
+fi
 
 # Fertiges Bundle zusätzlich ins Projekt-Hauptverzeichnis kopieren —
 # dort ist es sichtbar und bequem doppelklickbar, statt im versteckten

@@ -12,8 +12,8 @@
 //
 // * **BOM vor Binär-Heuristik.** UTF-16/UTF-32-Text enthält Null-Bytes und
 //   würde von `FileScanner.isBinary` fälschlich als binär gemeldet.
-//   Deshalb wird ZUERST nach einer BOM gesucht; nur ohne BOM fällt die
-//   Datei in die Null-Byte-Heuristik.
+//   Deshalb wird ZUERST nach einer BOM gesucht; nur UTF-16-/UTF-32-BOMs
+//   erlauben Nullbytes. Die Klassifikation entspricht dem Datei-Editor.
 // * **Encoding bleibt erhalten.** Wir dekodieren die Datei in einen Swift-
 //   String, ersetzen darauf, und kodieren das Ergebnis mit dem gleichen
 //   Encoding + ggf. ursprünglicher BOM zurück. Bytes außerhalb der
@@ -107,7 +107,7 @@ struct SearchPlan: @unchecked Sendable {
 /// stilles Überspringen wäre eine Sicherheitslücke (Nutzer denkt, alles
 /// ist erfasst, in Wahrheit liegt eine Binärdatei mit Treffer unverändert).
 enum SkipReason: Equatable {
-    /// Null-Byte in den ersten 8 KB ohne BOM → Binärdatei.
+    /// Nullbyte in vollständig gelesenen Daten ohne UTF-16-/UTF-32-BOM.
     case binary
     /// Datei nicht lesbar (Rechte, kaputter Symlink etc.).
     case unreadable
@@ -326,8 +326,8 @@ enum ApplyEngine {
         let (bom, bomEncoding) = detectBOM(in: data)
         let payload = data.dropFirst(bom.count)
 
-        // 2. Nur ohne BOM die Null-Byte-Heuristik anwenden.
-        if bom.isEmpty && FileScanner.isBinary(data) {
+        // 2. Bereits vollständig gelesene Daten wie der Editor klassifizieren.
+        if !FileLoader.bomEncodingAllowsNUL(bomEncoding) && data.contains(0) {
             return PlannedFileChange(url: url, originalSnapshot: originalSnapshot,
                                      encoding: nil, bom: Data(),
                                      originalBytes: data, newBytes: data,
@@ -778,6 +778,7 @@ extension ApplyEngine {
             let backupRelativePath: String
             let stagedNewURL: URL
             let originalSHA256: String
+            let expectedNewContent: FileSnapshot
             let encodingRawValue: UInt?
             let bom: Data
         }
@@ -822,6 +823,13 @@ extension ApplyEngine {
                 throw ApplyError.conflict(L10n.string(
                     "Die berechnete Änderung stimmt nicht mehr mit der sichtbaren Vorschau überein. Starte die Suche erneut; es wurde nichts verändert."))
             }
+            // Nachher-Prüfung und Undo lesen über dieselbe feste Grenze.
+            // Eine größere Ausgabe muss vor dem ersten Ziel-Write scheitern.
+            guard UInt64(file.newBytes.count) <= FileSnapshot.maximumReadBytes else {
+                throw ApplyError.planNotApplyable(L10n.format(
+                    "Die Ersetzung würde „%@“ über die sichere Größe von 256 MiB vergrößern. Es wurde nichts verändert.",
+                    input.url.lastPathComponent))
+            }
             expectedOnDisk.append((url: input.url, snapshot: current.snapshot))
             progress(ApplyTransaction.Progress(
                 phase: .planned, completedFiles: index + 1,
@@ -851,6 +859,7 @@ extension ApplyEngine {
                 backupRelativePath: backupRelativePath,
                 stagedNewURL: stagedNewURL,
                 originalSHA256: current.snapshot.sha256,
+                expectedNewContent: FileSnapshot(data: file.newBytes, identity: nil),
                 encodingRawValue: file.encoding?.rawValue, bom: file.bom))
             progress(ApplyTransaction.Progress(
                 phase: .backedUp, completedFiles: index + 1,
@@ -892,8 +901,13 @@ extension ApplyEngine {
         for (index, item) in staged.enumerated() {
             let newBytes: Data
             do {
-                newBytes = try Data(contentsOf: item.stagedNewURL,
-                                    options: [.mappedIfSafe])
+                let prepared = try FileSnapshot.read(
+                    from: item.stagedNewURL,
+                    byteLimit: UInt64(item.expectedNewContent.byteCount))
+                guard prepared.snapshot.hasSameContent(as: item.expectedNewContent) else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                newBytes = prepared.data
             } catch {
                 keepSession = !session.entries.isEmpty
                 if keepSession {
@@ -906,7 +920,7 @@ extension ApplyEngine {
                     "Temporäre Datei lesen (%@): %@", item.url.lastPathComponent,
                     error.localizedDescription))
             }
-            let expectedApplied = FileSnapshot(data: newBytes, identity: nil)
+            let expectedApplied = item.expectedNewContent
             let pending = UndoEntry(
                 originalPath: item.url.path,
                 backupRelativePath: item.backupRelativePath,

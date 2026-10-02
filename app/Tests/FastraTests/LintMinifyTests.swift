@@ -145,6 +145,17 @@ func tool4DLintLeaseRejectsStaleDocumentState() throws {
 
 // MARK: - Minify
 
+@Test("XML-Minify erhält geschützten Whitespace und DTD-Entity-Inhalte")
+func minify_xmlPreservesProtectedWhitespace() throws {
+    for source in [
+        "<p xml:space=\"preserve\"><b>one</b>\n<i>two</i></p>",
+        "<p xml:space='preserve'><section><b>one</b>\n<i>two</i></section></p>",
+        "<!DOCTYPE r [<!ENTITY e \"<b>one</b>\n<i>two</i>\">]><r>&e;</r>",
+    ] {
+        #expect(try DocumentFormatter.minify(source, fileExtension: "xml") == source)
+    }
+}
+
 @Test("JSON-Minify: kompakt, Schlüssel sortiert (konsistent zum Formatieren)")
 func minify_json() throws {
     let source = """

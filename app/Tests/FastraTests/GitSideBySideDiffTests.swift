@@ -2,6 +2,46 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Reale Umbenennung behält im Index- und Commit-Diff die Vorher-Seite")
+func gitIntegration_renamedFileKeepsBeforeSide() async throws {
+    let root = testTemporaryDirectory().appendingPathComponent("fastra-rename-\(UUID())")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    _ = try await completedGit(["init", "-q"], in: root)
+    _ = try await completedGit(["config", "user.name", "Fastra Test"], in: root)
+    _ = try await completedGit(["config", "user.email", "test@example.invalid"], in: root)
+    let original = "alt.txt"
+    let renamed = ":(glob) neu.txt"
+    let before = "eins\nzwei\ndrei\nvier\nfünf\n"
+    try Data(before.utf8).write(to: root.appendingPathComponent(original))
+    _ = try await completedGit(["add", "--", original], in: root)
+    _ = try await completedGit(["commit", "-qm", "base"], in: root)
+    let parent = try await completedGit(["rev-parse", "HEAD"], in: root).stdout
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    try FileManager.default.moveItem(at: root.appendingPathComponent(original),
+                                     to: root.appendingPathComponent(renamed))
+    try Data(before.replacingOccurrences(of: "drei", with: "DREI").utf8)
+        .write(to: root.appendingPathComponent(renamed))
+    _ = try await completedGit(["add", "-A"], in: root)
+    let staged = GitDiffRequest(repositoryPath: root.path, source: .staged(path: renamed),
+                                originalPath: original)
+    let stagedResult = try await completedGit(staged.arguments, in: root)
+    _ = try await completedGit(["commit", "-qm", "rename"], in: root)
+    let commit = GitDiffRequest(repositoryPath: root.path,
+        source: .commit(hash: "HEAD", parent: .commit(hash: parent, number: 1, total: 1),
+                        path: renamed), originalPath: original)
+    let commitResult = try await completedGit(commit.arguments, in: root)
+    for result in [stagedResult, commitResult] {
+        let document = GitDiffParser.parse(result.stdoutData)
+        #expect(document.files.count == 1)
+        #expect(document.files.first?.oldPath == original)
+        #expect(document.files.first?.newPath == renamed)
+        #expect(document.hunks.flatMap(\.rows).contains {
+            $0.kind == .changed && $0.before == "drei" && $0.after == "DREI"
+        })
+    }
+}
+
 private let normalPatch = """
 diff --git a/Sources/App.swift b/Sources/App.swift
 index 1111111..2222222 100644

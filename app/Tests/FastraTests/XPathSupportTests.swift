@@ -9,6 +9,16 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("XPath wendet Attribut- und Positionsprädikate in Eingabereihenfolge an")
+func xpath_predicateOrder() throws {
+    let xml = "<r><a id='A'/><a id='B'/></r>"
+    #expect(try evaluate("/r/a[1][@id='B']", xml: xml).isEmpty)
+    #expect(try evaluate("/r/a[@id='B'][1]", xml: xml) == ["a"])
+    #expect(try evaluate("/r/a[2][@id='B']", xml: xml) == ["a"])
+    #expect(try evaluate("/r/a[@id='B'][2]", xml: xml).isEmpty)
+    #expect(try evaluate("/r/a[2][@id]", xml: xml) == ["a"])
+}
+
 /// Beispiel-XML mit Multibyte-Inhalten VOR den relevanten Fundstellen —
 /// genau die Offset-Falle, die byteorientierte Parser reißen.
 private let sampleXML = """

@@ -7,6 +7,16 @@
 
 import Foundation
 
+private final class XMLMinifyWhitespacePolicy: NSObject, XMLParserDelegate {
+    private(set) var preservesWhitespace = false
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String,
+                namespaceURI: String?, qualifiedName qName: String?,
+                attributes attributeDict: [String: String]) {
+        if attributeDict["xml:space"] == "preserve" { preservesWhitespace = true }
+    }
+}
+
 enum DocumentFormatterError: LocalizedError, Equatable {
     case unsupportedFormat
     case invalidJSON
@@ -177,12 +187,16 @@ enum DocumentFormatter {
     /// Whitespace-Läufe MIT Zeilenumbruch zwischen zwei Tags (typische
     /// Einrückung). Einzelne Leerzeichen zwischen Inline-Elementen bleiben
     /// stehen (können bedeutungstragend sein), ebenso alles innerhalb von
-    /// CDATA und Kommentaren. Ungültiges XML wird nicht angefasst.
+    /// CDATA und Kommentaren. Dokumente mit geschütztem Whitespace oder DTD
+    /// bleiben unverändert; ungültiges XML wird nicht angefasst.
     private static func minifyXML(_ text: String) throws -> String {
         // Erst validieren — Minify darf nie ein kaputtes Dokument „reparieren".
         let parser = XMLParser(data: Data(text.utf8))
+        let whitespacePolicy = XMLMinifyWhitespacePolicy()
+        parser.delegate = whitespacePolicy
         parser.externalEntityResolvingPolicy = .never
         guard parser.parse() else { throw DocumentFormatterError.invalidXML }
+        guard !whitespacePolicy.preservesWhitespace else { return text }
 
         var result = String()
         result.reserveCapacity(text.count)
@@ -209,6 +223,9 @@ enum DocumentFormatter {
                     pendingHasNewline = false
                 }
                 let rest = text[index...]
+                // Ein DTD-Entitywert kann selbst Markup enthalten. Ohne dessen
+                // Semantik zu kennen, darf Minify darin keinen Text entfernen.
+                if rest.hasPrefix("<!DOCTYPE") { return text }
                 for (opener, closer) in [("<![CDATA[", "]]>"), ("<!--", "-->")] {
                     if rest.hasPrefix(opener) {
                         flushPending()

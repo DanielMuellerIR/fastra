@@ -1,3 +1,4 @@
+import CodeEditTextView
 import SwiftUI
 
 /// Footer / Status Bar (BBEdit-Style). Phase 2: Encoding, Line-Ending und File-Type
@@ -334,6 +335,14 @@ struct StatusBarView: View {
         .accessibilityIdentifier("softWrapControl")
     }
 
+    private func softWrapIndentationTitle(_ mode: SoftWrapIndentation) -> String {
+        switch mode {
+        case .flushLeft: L10n.string("Bündig links")
+        case .firstLine: L10n.string("Wie erste Zeile")
+        case .reverse: L10n.string("Eine Stufe tiefer")
+        }
+    }
+
     private var softWrapStatusText: String {
         return L10n.format("Soft Wrap: %@",
                            workspace.softWrapEnabled
@@ -429,6 +438,20 @@ struct StatusBarView: View {
                 )
             } else {
                 Text("Feste Breite")
+            }
+        }
+        Divider()
+        Menu("Folgezeilen einrücken") {
+            ForEach(SoftWrapIndentation.allCases, id: \.rawValue) { mode in
+                Button {
+                    workspace.setSoftWrapIndentation(mode)
+                } label: {
+                    if workspace.softWrapIndentation == mode {
+                        Label(softWrapIndentationTitle(mode), systemImage: "checkmark")
+                    } else {
+                        Text(verbatim: softWrapIndentationTitle(mode))
+                    }
+                }
             }
         }
         Divider()

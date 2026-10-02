@@ -249,7 +249,9 @@ enum MarkdownGoToTarget: GoToTargetProvider {
         }
         // Relativer (oder absoluter) Dateipfad; ein #anker-Teil hinter dem
         // Pfad wird fürs Öffnen ignoriert.
-        let pathPart = target.split(separator: "#", maxSplits: 1)[0]
+        guard let pathPart = target.split(separator: "#", maxSplits: 1).first else {
+            return nil
+        }
         let decoded = String(pathPart)
             .removingPercentEncoding ?? String(pathPart)
         guard !decoded.isEmpty else { return nil }

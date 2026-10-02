@@ -300,11 +300,10 @@ enum FileLoader {
         let normalized = lineEnding.converting(content)
         let bodyEncoding = explicitBodyEncoding(encoding,
                                                 bomEncoding: ApplyEngine.detectBOM(in: bom).1)
-        guard var body = normalized.data(using: bodyEncoding,
+        guard let body = normalized.data(using: bodyEncoding,
                                          allowLossyConversion: false) else { return nil }
-        // Generische Foundation-Encodings dürfen keine zweite BOM einschleusen.
-        let (generatedBOM, _) = ApplyEngine.detectBOM(in: body)
-        if !generatedBOM.isEmpty { body.removeFirst(generatedBOM.count) }
+        // Die expliziten Encodings erzeugen keine BOM. Ein gleich aussehender
+        // Präfix gehört zum Inhalt (etwa U+FEFF oder „ÿþ“ in Latin-1).
         var result = Data()
         result.append(bom)
         result.append(body)
@@ -325,7 +324,7 @@ enum FileLoader {
 
     /// Nur automatisch erkannte UTF-16-/UTF-32-BOMs erklären Nullbytes im Text.
     /// Eine UTF-8-BOM ist dagegen kein Freibrief für spätere Nullbytes.
-    private static func bomEncodingAllowsNUL(_ encoding: String.Encoding?) -> Bool {
+    static func bomEncodingAllowsNUL(_ encoding: String.Encoding?) -> Bool {
         encoding == .utf16LittleEndian || encoding == .utf16BigEndian
             || encoding == .utf32LittleEndian || encoding == .utf32BigEndian
     }

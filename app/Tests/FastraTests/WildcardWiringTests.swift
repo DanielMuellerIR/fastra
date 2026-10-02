@@ -9,6 +9,20 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Wildcard-Ersetzung erhält Ziffern hinter Sternen bei vielen Gruppen",
+      arguments: [9, 10, 12, 100])
+func wildcardReplacementPreservesFollowingDigits(_ count: Int) {
+    let find = Array(repeating: "*", count: count).joined(separator: "\n")
+    let text = (1...count).map { "g\($0)" }.joined(separator: "\n")
+    for replacement in ["*2", "**2", "*2\u{301}", "*٢"] {
+        let suffix = replacement.drop(while: { $0 == "*" })
+        #expect(BufferSearch.replaceAll(in: text, options: wc(find, replacement))
+                == "g1" + suffix)
+    }
+    #expect(BufferSearch.replaceAll(in: text, options: wc(find, "$\(count)"))
+            == "g\(count)")
+}
+
 /// Plain-Modus-Optionen mit `*` (Platzhalter, sofern nicht literal).
 private func wc(_ find: String, _ replace: String, literal: Bool = false) -> SearchOptions {
     SearchOptions(find: find, replace: replace, isRegex: false, treatWildcardLiterally: literal)

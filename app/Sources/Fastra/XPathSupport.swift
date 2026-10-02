@@ -600,10 +600,23 @@ enum XPathEvaluator {
                 } else {
                     candidates = children(of: node, in: index)
                 }
-                var matched = candidates.filter { matches(index.elements[$0], step: step) }
+                var matched = candidates.filter {
+                    step.name == nil || index.elements[$0].name == step.name
+                }
                 for predicate in step.predicates {
-                    if case .position(let position) = predicate {
+                    switch predicate {
+                    case .position(let position):
                         matched = position <= matched.count ? [matched[position - 1]] : []
+                    case .hasAttribute(let name):
+                        matched = matched.filter { node in
+                            index.elements[node].attributes.contains { $0.name == name }
+                        }
+                    case .attributeEquals(let name, let value):
+                        matched = matched.filter { node in
+                            index.elements[node].attributes.contains {
+                                $0.name == name && $0.value == value
+                            }
+                        }
                     }
                 }
                 next.append(contentsOf: matched)
@@ -648,26 +661,6 @@ enum XPathEvaluator {
         }
     }
 
-    private static func matches(_ element: XPathIndex.Element,
-                                step: XPathQuery.Step) -> Bool {
-        if let name = step.name, element.name != name { return false }
-        for predicate in step.predicates {
-            switch predicate {
-            case .position:
-                continue   // separat je Kontext angewendet
-            case .hasAttribute(let attr):
-                if !element.attributes.contains(where: { $0.name == attr }) {
-                    return false
-                }
-            case .attributeEquals(let attr, let value):
-                if !element.attributes.contains(where: { $0.name == attr
-                    && $0.value == value }) {
-                    return false
-                }
-            }
-        }
-        return true
-    }
 }
 
 // MARK: - Autovervollständigung

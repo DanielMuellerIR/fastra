@@ -133,6 +133,10 @@ are limited to 1 MB; invalid entries are skipped.
 
 **Replacing:**
 
+For replacements across files, each output file may be at most 256 MiB so
+that the change can be verified and undone. If an output exceeds this limit,
+none of the files in the operation are written.
+
 - “Replace” replaces only the active match and moves on.
 - “Replace All · N” (⌘Return) replaces every match in the scope.
 - If the match count exceeds the visible limit, “Replace All” stays disabled.
@@ -257,7 +261,9 @@ only while the document and selection remain unchanged. **Validate Document**
 also follows the effective format: **JSON** enables validation in a `.txt`
 file, while **Plain Text** disables it even in a `.json` file. XML detected
 in a document without an extension and SVG are checked as XML. Read-only
-special views do not offer validation.
+special views do not offer validation. XML containing `xml:space="preserve"`
+or a DTD remains unchanged when minified, preserving significant whitespace
+and entity content.
 
 With **JSON** as the effective format, a `.4dform` file retains its additional
 form-schema validation, including after manually selecting JSON. A different
@@ -579,6 +585,14 @@ portion. There is no automatic suspension or lockout. With Soft Wrap off, long
 lines remain reachable through the horizontal scroll bar.
 Toggling it changes neither text nor selection, undo history, or the saved
 file. The topmost displayed text line remains steadily anchored in place.
+
+**Indent wrapped lines** aligns continuation lines **Flush left**,
+**Match first line** (factory default), or **One level deeper**. The additional
+level uses the tab width for a tab profile or the number of spaces defined in
+the indentation profile. The choice is stored per format and does not enable Soft Wrap. It
+changes neither the text nor saved line breaks. The minimap shows the same
+wrapped fragments. Comparisons retain their own simple wrapping; these options
+do not apply there.
 
 ## Indentation
 

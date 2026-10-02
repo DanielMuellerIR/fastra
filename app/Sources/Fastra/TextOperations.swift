@@ -1167,11 +1167,16 @@ enum TextOperations {
         guard ns.length > 0 else { return nil }
         let range = LineOperations.expandToFullLines(in: text, selection: selection)
         let block = ns.substring(with: range)
-        let lines = LineOperations.splitLines(block)
+        var lines = LineOperations.splitLines(block)
+        // Ein abschließender Zeilentrenner erzeugt keinen weiteren Zeileninhalt.
+        let hasFinalSeparator = lines.count > 1 && lines.last == ""
+        if hasFinalSeparator { lines.removeLast() }
         guard lines.count >= minLines else { return nil }
 
         let newLines = transform(lines)
-        let newBlock = newLines.joined(separator: LineOperations.separator(of: text))
+        let separator = LineOperations.separator(of: text)
+        let newBlock = newLines.joined(separator: separator)
+            + (hasFinalSeparator && !newLines.isEmpty ? separator : "")
         if requireChange && newBlock == block { return nil }
         let newText = ns.replacingCharacters(in: range, with: newBlock)
         return LineOperations.Result(newText: newText, affectedRange: range, lineCount: newLines.count)

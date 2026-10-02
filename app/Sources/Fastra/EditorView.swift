@@ -1208,19 +1208,24 @@ struct EditorView: View {
             // begrenzen und Erfolg nur melden, wenn das Ziel wirklich im
             // schon ausgelegten Dokument liegt.
             let clipHeight = scrollView.contentView.bounds.height
+            let clipWidth = scrollView.contentView.bounds.width
             let documentHeight = scrollView.documentView?.frame.height
                 ?? textView.frame.height
+            let documentWidth = scrollView.documentView?.frame.width
+                ?? textView.frame.width
             let reachableMax = max(0, documentHeight - clipHeight)
+            let reachableMaxX = max(0, documentWidth - clipWidth)
+            let targetX = min(max(0, offset.x), reachableMaxX)
             // Unabhängig vom folgenden Schreibzugriff prüfen: Ein direktes
             // Zurücklesen nach scroll(to:) belegt noch keinen stabilen Zustand.
             // AppKits nachlaufendes Layout kann den Ausschnitt wieder auf 0
             // setzen. Erst zwei spätere Durchläufe am Ziel schließen ab.
             let retained = attempt > 0 && offset.y <= reachableMax + 1
                 && abs(scrollView.contentView.bounds.origin.y - offset.y) < 1
-                && abs(scrollView.contentView.bounds.origin.x - offset.x) < 1
+                && abs(scrollView.contentView.bounds.origin.x - targetX) < 1
             let confirmedPasses = retained ? stablePasses + 1 : 0
             scrollView.contentView.scroll(
-                to: CGPoint(x: offset.x, y: min(offset.y, reachableMax))
+                to: CGPoint(x: targetX, y: min(offset.y, reachableMax))
             )
             scrollView.reflectScrolledClipView(scrollView.contentView)
             let reached = offset.y <= reachableMax + 1
@@ -1776,7 +1781,9 @@ struct EditorView: View {
                     ? .tab
                     : .spaces(count: workspace.activeIndentationProfile.indentWidth),
                 reformatAtColumn: workspace.pageGuideColumn,
-                wrapAtColumn: workspace.effectiveSoftWrapColumn
+                wrapAtColumn: workspace.effectiveSoftWrapColumn,
+                softWrapIndentation: workspace.softWrapIndentation,
+                softWrapIndentationColumns: workspace.effectiveSoftWrapIndentationColumns
             ),
             layout: .init(contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)),
             // Rechter Vorschau-Streifen (Minimap) reaktiv aus `showMinimap`.

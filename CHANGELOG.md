@@ -7,6 +7,95 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.127.2] — 2026-10-02
+
+### Behoben
+
+- Mehrdatei-Ersetzungen prüfen temporäre Ausgaben gegen die Vorschau und
+  lehnen Ergebnisse über 256 MiB vor dem Schreiben ab.
+- Speichern erhält führende Zeichen, die einer Byte-Order-Mark ähneln;
+  Ordnersuche und Ersetzung erkennen Binärdateien auch bei späteren NUL-Bytes.
+- Wildcard-Ersetzungen behandeln direkt folgende Ziffern korrekt. XPath
+  wertet Prädikate in ihrer Reihenfolge aus; Trefferenden nach Zeilenumbrüchen
+  und Zeilenwerkzeuge mit CR-Zeilenenden werden richtig berechnet.
+- Präfixe und andere Zeilenwerkzeuge bearbeiten keine zusätzliche Phantomzeile
+  nach dem letzten Zeilentrenner.
+- Leere Markdown-Linkziele und abgebrochene Bildanfragen bleiben absturzfrei.
+- XML-Minifizierung erhält Dokumente mit `xml:space="preserve"` oder DTD
+  unverändert. 4D-Objektmember werden nicht als globale Befehle tokenisiert.
+- Git berücksichtigt bereitgestellte Dateitypänderungen und schützt normale
+  Commits während einer Identitätsänderung. Die gesamte Bereitstellung lässt
+  sich auch vor dem ersten Commit aufheben.
+- Git-Diffs zeigen bei Umbenennungen beide Dateiseiten und entfernen den
+  zusätzlichen Pfadtrenner hinter Dateinamen mit Leerzeichen.
+
+---
+
+## [v1.127.1] — 2026-10-01
+
+### Behoben
+
+- Die Minimap skaliert Laufbreiten am Fragmentende nur einmal und ordnet
+  unterschiedlich hohe Umbruchfragmente beim Scrollen einzeln zu.
+
+---
+
+## [v1.127.0] — 2026-09-30
+
+### Ergänzt
+
+- Folgezeilen lassen sich pro Format bündig links, wie die erste Zeile
+  oder eine Einrückungsstufe tiefer darstellen. Die Option im Soft-Wrap-Menü
+  verändert den Text nicht und aktiviert den Umbruch nicht selbst.
+- Die Minimap verwendet dieselben Umbruchgrenzen, gemessene Zeichenpositionen
+  und Profilwerte. Ihre sichtbare Fläche wird über logische Zeilen abgebildet.
+
+---
+
+## [v1.126.9] — 2026-09-30
+
+### Behoben
+
+- Bereichsrechtecke und die Maskierung der Drag-Vorschau verwenden in
+  umgebrochenen Zeilen die tatsächlichen Positionen innerhalb des Fragments.
+- Zeichenweiser Umbruch bleibt auch bei extrem schmalem Platz absturzfrei.
+
+### Vorbereitet
+
+- Gemeinsamer Layoutkern für bündige, an der ersten Zeile ausgerichtete und
+  umgekehrte Soft-Wrap-Folgezeilen. Ursprung und verbleibende Umbruchbreite
+  werden gemeinsam berechnet; bestehende Formatprofile bleiben lesbar.
+  Die Aktivierung und Bedienung im normalen Editor folgen separat. Dieser
+  Stand ist noch kein fertig bedienbares Folgezeilen-Einrückungsfeature.
+
+### Prüfung
+
+- 2.521 Unit- und Integrationstests sowie 20 App-Selbsttests bestanden.
+  Sechs echte Fensteraufnahmen prüfen alle drei Kernmodi bei schmaler und
+  breiter Darstellung; Signatur, Notarisierung und Portabilität sind geprüft.
+
+---
+
+## [v1.126.8] — 2026-09-29
+
+### Behoben
+
+- Nach einem Wechsel von horizontal scrollbaren zu umgebrochenen Zeilen hält
+  die Tab-Wiederherstellung keine unerreichbare horizontale Position mehr fest.
+- Abgebrochene Tab-Selbsttests räumen ihre temporären Dateien zuverlässig auf.
+- Wiederholte Builds übersetzen den unveränderten CodeEdit-Editor nicht erneut.
+
+### Prüfung (2026-09-30)
+
+- `sidebartoggle` ist nach dem Fixture-Aufräumumbau am signierten,
+  notarisierten Bundle bestanden: 300 Umschaltzyklen ohne Neuaufbau,
+  durchschnittlich 37,2 ms und kein Speicherwachstum nach der Aufwärmphase.
+  Die Test-Fixture wurde während des Laufs beobachtet und war bereits vor
+  dem Aufräumen der äußeren Runner-Sandbox entfernt; auch die Sandbox blieb
+  nach dem Lauf nicht zurück.
+
+---
+
 ## [v1.126.7] — 2026-09-28
 
 ### Behoben

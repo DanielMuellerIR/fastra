@@ -548,6 +548,8 @@ enum SelfTest {
         case "tabvisibility": waitForMainWindow { runTabVisibilityTest() }
         case "tabcompare": waitForMainWindow { runTabComparisonTest() }
         case "softwrapprofiles": waitForMainWindow { runSoftWrapProfilesTest() }
+        case "softwrapindent": waitForMainWindow { runSoftWrapIndentTest() }
+        case "softwrapindentcore": waitForMainWindow { runSoftWrapIndentCoreTest() }
         case "softwrapmodes": waitForMainWindow { runSoftWrapModesTest() }
         case "softwrapanchor": waitForMainWindow { runSoftWrapAnchorTest() }
         case "selectionscroll": waitForMainWindow { runSelectionScrollTest() }
@@ -794,7 +796,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -2600,6 +2602,7 @@ enum SelfTest {
 
 
     private static var shortSearchFixtureDirectory: URL?
+    private static var tabSearchFixtureDirectory: URL?
     private static var testLabel = "findbar"
     private static var testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
 
@@ -2621,6 +2624,7 @@ enum SelfTest {
     /// Ordner sonst liegen (Review-Fund 2026-09-18).
     private static func cleanupFixtureDirectories() {
         let directories = [shortSearchFixtureDirectory,
+                           tabSearchFixtureDirectory,
                            windowRoutingFixtureDirectory,
                            backgroundScrollFixtureDirectory,
                            printFixtureDirectory,
@@ -2633,6 +2637,7 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: directory)
         }
         shortSearchFixtureDirectory = nil
+        tabSearchFixtureDirectory = nil
         windowRoutingFixtureDirectory = nil
         backgroundScrollFixtureDirectory = nil
         printFixtureDirectory = nil
@@ -4986,6 +4991,495 @@ enum SelfTest {
             }
         }
         return nil
+    }
+
+    // MARK: - -selftest softwrapindent
+
+    /// Treibt das gespeicherte Formatprofil durch den normalen SwiftUI-Editor.
+    /// Kernabfragen werden gegen sichtbare Fragment-Views und echte Klicks geprüft.
+    private static func runSoftWrapIndentTest() {
+        testLabel = "softwrapindent"
+        guard let ws = Workspace.shared,
+              let window = NSApp.orderedWindows.first(where: {
+                  $0.isVisible && $0.frameAutosaveName != SearchWindow.frameAutosaveName
+              }), let root = window.contentView else {
+            finish(false, "Dokumentfenster fehlt")
+        }
+        let row = "    " + String(repeating: "Wort 👨‍👩‍👧‍👦 e\u{301} ", count: 25)
+        let content = row + "\n \t  " + String(repeating: "Text 🇩🇪 ", count: 12)
+            + "\n    " + String(repeating: "weiter ", count: 1500)
+        let fixture = selfTestTemporaryDirectory().appendingPathComponent("fastra-softwrapindent-\(UUID().uuidString).txt")
+        do { try content.write(to: fixture, atomically: true, encoding: .utf8) }
+        catch { finish(false, "Fixture nicht schreibbar") }
+        workspaceDefaults().set(true, forKey: "editor.showMinimap")
+        ws.loadFile(at: fixture) { ok in
+            try? FileManager.default.removeItem(at: fixture)
+            guard ok else { finish(false, "Fixture nicht ladbar") }
+            pollForStableSoftWrapEditor(ws: ws, root: root) { initial, _ in
+                let identity = ObjectIdentifier(initial)
+                ws.setIndentWidth(2)
+                ws.setEditorTabWidth(8)
+                ws.setSoftWrapEnabled(false)
+                ws.setSoftWrapIndentation(.reverse)
+                waitFor(budget: 5, pause: 0.05, condition: {
+                    guard let tv = editorTextView(in: root) as? TextView else { return false }
+                    return tv.layoutManager.softWrapIndentation == .reverse && !tv.wrapLines
+                }, onTimeout: { _ in finish(false, "Profilwechsel aktiviert Wrap oder erreicht den Controller nicht") }, then: {
+                    let combinations = [CGFloat(760), 1100].flatMap { width in
+                        [0, 3].flatMap { zoom in
+                            SoftWrapTarget.allCases.flatMap { target in
+                                SoftWrapIndentation.allCases.map { (width, zoom, target, $0) }
+                            }
+                        }
+                    }
+                    var index = 0
+                    func findMinimap(_ view: NSView) -> MinimapView? {
+                        if let mini = view as? MinimapView { return mini }
+                        return view.subviews.compactMap { findMinimap($0) }.first
+                    }
+                    func step() {
+                        guard index < combinations.count else {
+                            runSoftWrapIndentDragChecks(ws: ws, window: window, root: root, modeIndex: 0) {
+                                func done() {
+                                    window.orderOut(nil)
+                                    finish(true, "36 Profilkombinationen: 3 Modi × 3 Ziele × 2 Breiten × 2 Zoomstufen; sichtbare Fragmente, Klick/Caret, Auswahl, NSTextInput-Komposition, Rechteck-Paste/Undo/Redo, Minimap sowie echter Drag/Auto-Scroll in allen Modi; reale IME separat abnehmen")
+                                }
+                                guard let directory = ProcessInfo.processInfo.environment["FASTRA_SOFTWRAPINDENT_REVIEW_DIR"] else {
+                                    done(); return
+                                }
+                                // Optionales Abnahmefenster innerhalb derselben isolierten
+                                // Testinstanz; kein Zugriff auf den normalen Arbeitsbereich.
+                                let base = URL(fileURLWithPath: directory)
+                                window.setContentSize(NSSize(width: CGFloat(Int(ProcessInfo.processInfo.environment["FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH"] ?? "760") ?? 760), height: 800))
+                                ws.setSoftWrapIndentation(.firstLine)
+                                var prepared = false
+                                waitFor(budget: 5, pause: 0.05, condition: {
+                                    guard let tv = editorTextView(in: root) as? TextView,
+                                          tv.layoutManager.softWrapIndentation == .firstLine else { return false }
+                                    root.layoutSubtreeIfNeeded()
+                                    tv.selectionManager.setSelectedRange(NSRange(location: 4, length: 0))
+                                    if let scroll = tv.enclosingScrollView {
+                                        scroll.contentView.scroll(to: .zero)
+                                        scroll.reflectScrolledClipView(scroll.contentView)
+                                    }
+                                    let wasPrepared = prepared
+                                    prepared = true
+                                    return wasPrepared
+                                }, onTimeout: { _ in finish(false, "Abnahme-Profil nicht bereit") }, then: {
+                                    do {
+                                        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                                        try Data("ready\n".utf8).write(to: base.appendingPathComponent("ready"))
+                                    } catch { finish(.environment, "Abnahme-Marker nicht schreibbar") }
+                                })
+                                waitFor(budget: 120, pause: 0.1, condition: {
+                                    if let tv = editorTextView(in: root) as? TextView {
+                                        let manager = tv.layoutManager!
+                                        var geometry = "mode=\(manager.softWrapIndentation.rawValue) columns=\(manager.softWrapIndentationColumns)\n"
+                                        for index in 0...2 {
+                                            guard let line = manager.textLineForIndex(index) else { continue }
+                                            let fragments = line.data.lineFragments.prefix(2).map { fragment in
+                                                let view = tv.subviews.compactMap { $0 as? LineFragmentView }
+                                                    .first(where: { $0.lineFragment === fragment.data })
+                                                return "\(fragment.index):offset=\(fragment.data.xOffset),view=\(view?.frame.minX ?? -1)"
+                                            }.joined(separator: ";")
+                                            geometry += "line=\(index) firstText=\(manager.rectForOffset(line.range.location + 4)?.minX ?? -1) \(fragments)\n"
+                                        }
+                                        try? Data(geometry.utf8).write(to: base.appendingPathComponent("geometry.txt"))
+                                    }
+                                    return FileManager.default.fileExists(atPath: base.appendingPathComponent("continue").path)
+                                }, onTimeout: { _ in finish(.environment, "Manuelle Abnahme nicht freigegeben") }, then: {
+                                    guard (editorTextView(in: root) as? TextView)?.string == content else {
+                                        finish(false, "Abnahmefenster enthält nicht zurückgenommene Testeingabe")
+                                    }
+                                    done()
+                                })
+                            }
+                            return
+                        }
+                        let (width, zoom, target, mode) = combinations[index]
+                        window.setContentSize(NSSize(width: width, height: 800))
+                        workspaceDefaults().set(zoom, forKey: DocumentZoom.defaultsKey)
+                        ws.setPageGuideColumn(36)
+                        ws.setSoftWrapFixedColumn(32)
+                        ws.selectSoftWrapTarget(target)
+                        ws.setSoftWrapIndentation(mode)
+                        let label = "\(mode.rawValue)/\(target.rawValue)/\(Int(width))/zoom\(zoom)"
+                        var sawReady = false
+                        waitFor(budget: 8, pause: 0.05, condition: {
+                            guard let tv = editorTextView(in: root) as? TextView,
+                                  let mini = findMinimap(root), !mini.isHidden,
+                                  ObjectIdentifier(tv) == identity,
+                                  tv.string == content, ws.activeTab?.content == content,
+                                  tv.layoutManager.softWrapIndentation == mode,
+                                  tv.layoutManager.softWrapIndentationColumns == 2,
+                                  abs(tv.font.pointSize - 13 * DocumentZoom.scale(for: zoom)) < 0.1 else { return false }
+                            root.layoutSubtreeIfNeeded()
+                            mini.contentView.layoutSubtreeIfNeeded()
+                            guard tv.wrapLines && tv.layoutManager.lineStorage.first?.data.lineFragments.count ?? 0 > 1 else { return false }
+                            // Das Reconcile setzt den Manager vor dem nächsten
+                            // SwiftUI-Layout; auch die weiteren Zeilen müssen folgen.
+                            let wasReady = sawReady
+                            sawReady = true
+                            return wasReady
+                        }, onTimeout: { _ in
+                            let tv = editorTextView(in: root) as? TextView
+                            finish(false, "\(label): Reconcile/Minimap nicht bereit; Editoridentität=\(tv.map { ObjectIdentifier($0) == identity } ?? false), Text=\(tv?.string == content), Modell=\(ws.activeTab?.content == content)")
+                        }, then: {
+                            guard let tv = editorTextView(in: root) as? TextView,
+                                  ObjectIdentifier(tv) == identity, tv.string == content,
+                                  let mini = findMinimap(root) else { finish(false, "\(label): Editor/Inhalt ersetzt") }
+                            window.makeFirstResponder(tv)
+                            let manager = tv.layoutManager!
+                            if let scroll = tv.enclosingScrollView {
+                                scroll.contentView.scroll(to: .zero)
+                                scroll.reflectScrolledClipView(scroll.contentView)
+                            }
+                            if let tabLine = manager.textLineForIndex(1),
+                               let tabFragment = tabLine.data.lineFragments.first(where: { $0.index == 1 }) {
+                                let firstText = manager.rectForOffset(tabLine.range.location + 4)!.minX
+                                let cell = (" " as NSString).size(withAttributes: [.font: tv.font, .kern: tv.kern]).width
+                                let expected = mode == .flushLeft ? manager.edgeInsets.left
+                                    : firstText + (mode == .reverse ? 2 * cell : 0)
+                                guard abs(manager.fragmentOriginX(for: tabFragment.data) - expected) < 0.6,
+                                      let view = tv.subviews.compactMap({ $0 as? LineFragmentView }).first(where: {
+                                          $0.lineFragment === tabFragment.data
+                                      }), abs(view.frame.minX - expected) < 0.6 else {
+                                    finish(false, "\(label): sichtbarer Tab-Einzug passt nicht zur ersten Zeile/Stufe")
+                                }
+                            }
+                            guard let line = manager.lineStorage.first,
+                                  let fragment = line.data.lineFragments.first(where: { $0.index == 1 }) else {
+                                finish(false, "\(label): Folgefragment fehlt")
+                            }
+                            let cell = (" " as NSString).size(withAttributes: [.font: tv.font, .kern: tv.kern]).width
+                            let expected = CGFloat(mode == .flushLeft ? 0 : mode == .firstLine ? 4 : 6) * cell
+                            let offset = line.range.location + fragment.range.location
+                            guard abs(fragment.data.xOffset - expected) < 0.6,
+                                  let visible = tv.subviews.compactMap({ $0 as? LineFragmentView }).first(where: {
+                                      $0.lineFragment === fragment.data
+                                  }), abs(visible.frame.minX - manager.edgeInsets.left - expected) < 0.6 else {
+                                finish(false, "\(label): sichtbarer Ursprung falsch")
+                            }
+                            let clickLocal = NSPoint(x: visible.frame.minX + 0.1, y: visible.frame.midY)
+                            guard sendMouseClick(at: tv.convert(clickLocal, to: nil), in: window, modifiers: []),
+                                  tv.selectedRange() == NSRange(location: offset, length: 0),
+                                  let caret = manager.rectForOffset(offset), abs(caret.minX - visible.frame.minX) < 0.6 else {
+                                finish(false, "\(label): Klick/Caret neben sichtbarem Text; offset=\(offset), selection=\(tv.selectedRange()), frame=\(visible.frame), rect=\(String(describing: manager.rectForOffset(offset))), click=\(clickLocal), viewport=\(tv.visibleRect), hit=\(String(describing: window.contentView?.hitTest(tv.convert(clickLocal, to: window.contentView))))")
+                            }
+                            // NSTextInputClient wird von echter IME und Kandidatenfenster benutzt.
+                            let screenRect = tv.firstRect(forCharacterRange: NSRange(location: offset, length: 0), actualRange: nil)
+                            let observedScreen = window.convertToScreen(tv.convert(visible.frame, to: nil))
+                            guard abs(screenRect.minX - observedScreen.minX) < 0.6,
+                                  tv.characterIndex(for: NSPoint(x: screenRect.minX + 0.1, y: screenRect.midY)) == offset else {
+                                finish(false, "\(label): IME-Position/Hit-Test falsch")
+                            }
+                            tv.setMarkedText("かな" as NSString, selectedRange: NSRange(location: 2, length: 0),
+                                replacementRange: NSRange(location: NSNotFound, length: 0))
+                            manager.layoutLines()
+                            guard tv.hasMarkedText(), tv.markedRange().location == offset else {
+                                finish(false, "\(label): Komposition nicht am geklickten Fragment")
+                            }
+                            let markedRect = tv.firstRect(forCharacterRange: tv.markedRange(), actualRange: nil)
+                            guard abs(markedRect.minX - screenRect.minX) < 0.6 else {
+                                finish(false, "\(label): Kandidatenanker bei Komposition verschoben")
+                            }
+                            tv.unmarkText()
+                            guard tv.string == content else { finish(false, "\(label): Abbruch der Komposition verändert den Text") }
+                            manager.layoutLines()
+                            let selected = (content as NSString).rangeOfComposedCharacterSequence(at: offset)
+                            tv.selectionManager.setSelectedRange(selected)
+                            guard let fill = manager.rectsFor(range: selected).first,
+                                  abs(fill.minX - manager.edgeInsets.left - expected) < 0.6 else {
+                                finish(false, "\(label): Auswahl neben Text")
+                            }
+                            mini.synchronizeFastraFragmentGeometry()
+                            mini.contentView.layoutSubtreeIfNeeded()
+                            let miniature = mini.contentView.subviews.compactMap { $0 as? LineFragmentView }
+                            guard miniature.contains(where: { $0.lineFragment?.documentRange.location == offset }) else {
+                                finish(false, "\(label): Minimap nutzt andere Fragmentgrenzen")
+                            }
+                            // Logische Rechteckzeilen bleiben trotz vieler Folgefragmente zwei.
+                            tv.selectionManager.setSelectedRange(NSRange(location: 4, length: 4))
+                            guard tv.fastraSelectColumn(upwards: false),
+                                  let column = tv.fastraColumnSelectionSnapshot,
+                                  column.lineIndices == [0, 1] else {
+                                finish(false, "\(label): Rechteck zählt Folgefragmente als Zeilen")
+                            }
+                            let beforeUndo = tv._undoManager?.undoCount ?? 0
+                            writeSelfTestPasteboardString("A\nB")
+                            tv.paste(tv)
+                            guard tv.string != content, tv._undoManager?.undoCount == beforeUndo + 1 else {
+                                finish(false, "\(label): Rechteck-Paste/Undo-Gruppe falsch")
+                            }
+                            let pasted = tv.string
+                            tv._undoManager?.undo()
+                            guard tv.string == content else { finish(false, "\(label): Undo falsch") }
+                            tv._undoManager?.redo()
+                            guard tv.string == pasted else { finish(false, "\(label): Redo falsch") }
+                            tv._undoManager?.undo()
+                            tv._undoManager?.clearStack()
+                            tv.selectionManager.setSelectedRange(selected)
+                            manager.layoutLines()
+                            if let scroll = tv.enclosingScrollView {
+                                scroll.contentView.scroll(to: .zero)
+                                scroll.reflectScrolledClipView(scroll.contentView)
+                            }
+                            func next() {
+                                index += 1
+                                DispatchQueue.main.async(execute: step)
+                            }
+                            if zoom == 0, target == .window,
+                               let directory = ProcessInfo.processInfo.environment["FASTRA_SOFTWRAPINDENT_DIR"] {
+                                window.contentView?.displayIfNeeded()
+                                let url = URL(fileURLWithPath: directory).appendingPathComponent("editor-\(mode.rawValue)-\(Int(width)).png")
+                                typeScrollSystemCapture(windowNumber: window.windowNumber) { data in
+                                    guard let data else { finish(.environment, "Fensteraufnahme fehlt") }
+                                    do {
+                                        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                                        try data.write(to: url)
+                                    } catch { finish(.environment, "Aufnahme nicht speicherbar") }
+                                    next()
+                                }
+                            } else { next() }
+                        })
+                    }
+                    step()
+                })
+            }
+        }
+    }
+
+    private static func runSoftWrapIndentDragChecks(
+        ws: Workspace, window: NSWindow, root: NSView, modeIndex: Int,
+        completion: @escaping () -> Void
+    ) {
+        guard modeIndex < SoftWrapIndentation.allCases.count else { completion(); return }
+        let mode = SoftWrapIndentation.allCases[modeIndex]
+        ws.selectSoftWrapTarget(.window)
+        ws.setSoftWrapIndentation(mode)
+        workspaceDefaults().set(0, forKey: DocumentZoom.defaultsKey)
+        waitFor(budget: 5, pause: 0.05, condition: {
+            guard let tv = editorTextView(in: root) as? TextView else { return false }
+            return tv.layoutManager.softWrapIndentation == mode && abs(tv.font.pointSize - 13) < 0.1
+        }, onTimeout: { _ in finish(false, "Drag-Profil nicht reconciled") }, then: {
+            guard let tv = editorTextView(in: root) as? TextView,
+                  let scroll = tv.enclosingScrollView else { finish(false, "Drag-Editor fehlt") }
+            guard NSApp.isActive, window.isKeyWindow, window.makeFirstResponder(tv) else {
+                finish(.environment, "Drag-Test benötigt tatsächlichen Fensterfokus")
+            }
+            scroll.contentView.scroll(to: .zero)
+            scroll.reflectScrolledClipView(scroll.contentView)
+            tv.layoutManager.layoutLines()
+            guard tv.frame.height > scroll.documentVisibleRect.height else {
+                finish(false, "Drag-Fixture nicht scrollbar: Text=\(tv.frame.height), sichtbar=\(scroll.documentVisibleRect.height)")
+            }
+            guard let first = tv.layoutManager.lineStorage.first,
+                  let fragment = first.data.lineFragments.first(where: { $0.index == 1 }),
+                  let view = tv.subviews.compactMap({ $0 as? LineFragmentView }).first(where: {
+                      $0.lineFragment === fragment.data
+                  }) else { finish(false, "Drag-Folgefragment fehlt") }
+            let anchor = first.range.location + fragment.range.location
+            tv.selectionManager.setSelectedRange(NSRange(location: anchor, length: 0))
+            let point = tv.convert(NSPoint(x: view.frame.minX + 0.1, y: view.frame.midY), to: nil)
+            let target = NSPoint(x: point.x, y: -40)
+            let before = scroll.documentVisibleRect.minY
+            func event(_ type: NSEvent.EventType, _ at: NSPoint) -> NSEvent {
+                let time = ProcessInfo.processInfo.systemUptime
+                guard let result = NSEvent.mouseEvent(with: type, location: at, modifierFlags: [],
+                    timestamp: time, windowNumber: window.windowNumber, context: nil,
+                    eventNumber: Int(time * 1000), clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) else {
+                    finish(false, "Drag-Ereignis fehlt")
+                }
+                return result
+            }
+            tv.mouseDown(with: event(.leftMouseDown, point))
+            var tick = 0
+            waitFor(budget: 2, pause: 0.03, condition: {
+                NSApp.postEvent(event(.leftMouseDragged, target), atStart: false)
+                tick += 1
+                return tick >= 25
+            }, onTimeout: { _ in finish(false, "Drag-Ereignisfolge nicht abgeschlossen") }, then: {
+                // Vor dem nächsten Modus muss Mouse-up wirklich zugestellt sein;
+                // sonst löscht es den bereits neu gesetzten Drag-Anker.
+                var mouseUpDelivered = false
+                let monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
+                    if event.windowNumber == window.windowNumber { mouseUpDelivered = true }
+                    return event
+                }
+                NSApp.postEvent(event(.leftMouseUp, target), atStart: false)
+                waitFor(budget: 2, pause: 0.05, condition: {
+                    mouseUpDelivered && tv.selectedRange().location == anchor && tv.selectedRange().length > 0
+                        && scroll.documentVisibleRect.minY > before + 1
+                }, onTimeout: { _ in
+                    if let monitor { NSEvent.removeMonitor(monitor) }
+                    finish(false, "\(mode.rawValue): Drag-Anker/Auto-Scroll falsch: Auswahl=\(tv.selectedRange()), Anker=\(anchor), vorher=\(before), nachher=\(scroll.documentVisibleRect.minY)")
+                }, then: {
+                    if let monitor { NSEvent.removeMonitor(monitor) }
+                    runSoftWrapIndentDragChecks(ws: ws, window: window, root: root,
+                        modeIndex: modeIndex + 1, completion: completion)
+                })
+            })
+        })
+    }
+
+    // MARK: - -selftest softwrapindentcore
+
+    /// Paket 02 prüft den Layoutkern direkt. Profilaktivierung und Menü folgen separat.
+    private static func runSoftWrapIndentCoreTest() {
+        testLabel = "softwrapindentcore"
+        let content = "    " + String(repeating: "Wort 👨‍👩‍👧‍👦 e\u{301} ", count: 8)
+            + "\n \t  " + String(repeating: "Langtoken", count: 50)
+        let controller = TextViewController(string: content, language: .default,
+            configuration: .init(appearance: .init(theme: EditorView.fastraTheme,
+                font: .monospacedSystemFont(ofSize: 15, weight: .regular),
+                wrapLines: true, tabWidth: 4),
+                layout: .init(contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0),
+                    additionalTextInsets: NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)),
+                peripherals: .init(showMinimap: false)),
+            cursorPositions: [])
+        controller.loadView()
+        controller.view.wantsLayer = true
+        let window = NSWindow(contentRect: NSRect(x: 150, y: 150, width: 700, height: 500),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .aqua)
+        window.title = "Soft Wrap – Layoutkern"
+        window.contentViewController = controller
+        activateApplication(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(controller.textView)
+        let textView = controller.textView!
+        let manager = textView.layoutManager!
+        let undoBefore = textView.undoManager?.canUndo
+        let snapshotDir = ProcessInfo.processInfo.environment["FASTRA_SOFTWRAPINDENT_DIR"]
+        let combinations = [CGFloat(300), CGFloat(700)].flatMap { width in
+            SoftWrapIndentation.allCases.map { (width, $0) }
+        }
+        var index = 0
+        func step() {
+            guard index < combinations.count else {
+                guard textView.string == content, textView.undoManager?.canUndo == undoBefore else {
+                    finish(false, "Layout hat Text oder Undo verändert")
+                }
+                window.orderOut(nil)
+                window.close()
+                finish(true, "3 Modi × 2 Breiten: Fragment-Views, reduzierter Umbruchraum, echte Klicks und Screenshots; reine Kernabnahme")
+            }
+            let (width, mode) = combinations[index]
+            window.setContentSize(NSSize(width: width, height: 500))
+            manager.softWrapIndentation = mode
+            manager.softWrapIndentationColumns = 4
+            var previousFrames: [NSRect]?
+            waitFor(budget: 5, pause: 0.05, condition: {
+                guard window.isKeyWindow, textView.window === window,
+                      abs(controller.view.bounds.width - width) < 1 else { return false }
+                controller.view.layoutSubtreeIfNeeded()
+                manager.layoutLines()
+                let frames = [textView.frame, controller.view.bounds,
+                    textView.enclosingScrollView?.contentView.bounds ?? .zero]
+                let stable = previousFrames == frames
+                previousFrames = frames
+                return stable
+            }, onTimeout: { _ in
+                finish(.environment, "Kernfenster nicht bereit: key=\(window.isKeyWindow), montiert=\(textView.window === window), Breite=\(controller.view.bounds.width), erwartet=\(width)")
+            }, then: {
+                controller.view.layoutSubtreeIfNeeded()
+                manager.layoutLines()
+                let cell = (" " as NSString).size(withAttributes: [.font: textView.font, .kern: textView.kern]).width
+                let expected = mode == .flushLeft ? 0 : (mode == .firstLine ? 4 : 8) * cell
+                guard let line = manager.lineStorage.first,
+                      let continuation = line.data.lineFragments.first(where: { $0.index == 1 }) else {
+                    finish(false, "Folgefragment fehlt")
+                }
+                let offset = line.range.location + continuation.range.location
+                guard abs(continuation.data.xOffset - expected) < 0.6,
+                      let rect = manager.rectForOffset(offset),
+                      abs(rect.minX - manager.edgeInsets.left - expected) < 0.6 else {
+                    finish(false, "\(mode.rawValue)/\(width): Ursprung inkonsistent")
+                }
+                // Sichtbarer NSView-Ursprung wird unabhängig von rectForOffset beobachtet.
+                guard textView.subviews.contains(where: { view in
+                    String(describing: type(of: view)).contains("LineFragmentView")
+                        && abs(view.frame.minY - rect.minY) < 0.6
+                        && abs(view.frame.minX - manager.edgeInsets.left - expected) < 0.6
+                }) else { finish(false, "Fragment-View zeichnet am falschen Ursprung") }
+                for fragment in line.data.lineFragments {
+                    let available = manager.maxLineLayoutWidth - fragment.data.xOffset
+                    if fragment.data.width > available + 0.6 {
+                        let ns = content as NSString
+                        let cluster = ns.rangeOfComposedCharacterSequence(at: fragment.range.location)
+                        guard fragment.range.length == cluster.length else {
+                            finish(false, "Folgefragment überschreitet reduzierten Umbruchraum")
+                        }
+                    }
+                }
+                let range = NSRange(location: offset, length: 4)
+                guard let selected = manager.rectsFor(range: range).first,
+                      abs(selected.minX - rect.minX) < 1 else {
+                    finish(false, "Auswahlrechteck liegt neben dem Text")
+                }
+                textView.selectionManager.setSelectedRange(range)
+                func finishStep() {
+                    // Die asynchrone Aufnahme kann weitere AppKit-Layouts zulassen.
+                    // Messung und synchrone Klickzustellung bleiben im selben Durchlauf.
+                    manager.layoutLines()
+                    guard let currentLine = manager.lineStorage.first,
+                          let currentFragment = currentLine.data.lineFragments.first(where: { $0.index == 1 }) else {
+                        finish(false, "Folgefragment vor Klick verschwunden")
+                    }
+                    let currentOffset = currentLine.range.location + currentFragment.range.location
+                    guard let currentRect = manager.rectForOffset(currentOffset),
+                          abs(currentRect.minX - manager.edgeInsets.left - expected) < 0.6 else {
+                        finish(false, "Fragmentursprung vor Klick inkonsistent")
+                    }
+                    let click = textView.convert(NSPoint(x: currentRect.minX + 0.1, y: currentRect.midY), to: nil)
+                    guard sendMouseClick(at: click, in: window, modifiers: []) else {
+                        finish(false, "Klick konnte nicht zugestellt werden")
+                    }
+                    guard textView.selectedRange() == NSRange(location: currentOffset, length: 0) else {
+                        finish(false, "Klick auf Folgefragment landet auf \(textView.selectedRange()), erwartet \(currentOffset)")
+                    }
+                    index += 1
+                    DispatchQueue.main.async(execute: step)
+                }
+                if let snapshotDir {
+                    // Die Testauswahl darf die erste Zeile im Vergleichsbild nicht wegscrollen.
+                    manager.layoutLines()
+                    if let scrollView = textView.enclosingScrollView {
+                        let clip = scrollView.contentView
+                        clip.scroll(to: textView.convert(.zero, to: clip))
+                        scrollView.reflectScrolledClipView(scrollView.contentView)
+                    }
+                    manager.layoutLines()
+                    guard let firstView = textView.subviews.first(where: { view in
+                              String(describing: type(of: view)).contains("LineFragmentView")
+                                  && abs(view.frame.minY - line.yPos) < 0.6
+                                  && abs(view.frame.minX - manager.edgeInsets.left) < 0.6
+                          }),
+                          firstView.bounds.height > 1,
+                          abs(firstView.visibleRect.minY - firstView.bounds.minY) < 0.6,
+                          firstView.visibleRect.maxY >= firstView.bounds.maxY - 0.6 else {
+                        finish(false, "Erstes Fragment im Vergleichsbild abgeschnitten")
+                    }
+                    window.contentView?.displayIfNeeded()
+                    let url = URL(fileURLWithPath: snapshotDir, isDirectory: true)
+                        .appendingPathComponent("core-\(mode.rawValue)-\(Int(width)).png")
+                    // Der vorhandene System-Aufnahmeweg erfasst das echte Fenster,
+                    // ohne Cache-/Layer-Koordinaten beim Rasterisieren umzudeuten.
+                    typeScrollSystemCapture(windowNumber: window.windowNumber) { data in
+                        guard let data else { finish(.environment, "Fensteraufnahme nicht verfügbar") }
+                        do {
+                            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                            try data.write(to: url)
+                        } catch { finish(.environment, "Snapshot nicht speicherbar") }
+                        finishStep()
+                    }
+                } else {
+                    finishStep()
+                }
+            })
+        }
+        DispatchQueue.main.async(execute: step)
     }
 
     // MARK: - -selftest softwrapmodes
@@ -11786,6 +12280,7 @@ enum SelfTest {
         window.setContentSize(NSSize(width: 1100, height: 650))
         let directory = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-tabsearch-\(UUID().uuidString)")
+        tabSearchFixtureDirectory = directory
         let needle = "Beispielkontakt"
         let contents = [360, 780].map { line in
             (1...1200).map { index in
@@ -11806,6 +12301,7 @@ enum SelfTest {
                 FileHandle.standardError.write(Data((restoreTrace.joined(separator: "\n") + "\n").utf8))
             }
             try? FileManager.default.removeItem(at: directory)
+            tabSearchFixtureDirectory = nil
             finish(ok, message)
         }
         func cycle(_ step: Int) {

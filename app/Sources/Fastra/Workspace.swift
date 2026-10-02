@@ -1,3 +1,4 @@
+import CodeEditTextView
 import SwiftUI
 import AppKit
 import Combine
@@ -1732,6 +1733,19 @@ final class Workspace: ObservableObject {
     // Sprache.
     var softWrapTarget: SoftWrapTarget {
         softWrapProfiles.target(for: activeDocumentFormat.id)
+    }
+
+    var softWrapIndentation: SoftWrapIndentation {
+        softWrapProfiles.softWrapIndentation(for: activeDocumentFormat.id)
+    }
+
+    var effectiveSoftWrapIndentationColumns: Int {
+        activeIndentationProfile.usesTabs
+            ? activeIndentationProfile.tabWidth : activeIndentationProfile.indentWidth
+    }
+
+    func setSoftWrapIndentation(_ mode: SoftWrapIndentation) {
+        softWrapProfiles.setSoftWrapIndentation(mode, for: activeDocumentFormat.id)
     }
 
     var softWrapFixedColumn: Int {
@@ -5325,7 +5339,9 @@ final class Workspace: ObservableObject {
         guard let context = currentGitActionContext else { return }
         let request = GitDiffRequest(
             repositoryPath: GitOperationRequest.canonicalRepositoryPath(context.root),
-            source: source
+            source: source,
+            originalPath: state == .renamed
+                ? change.rawOriginalPath.flatMap { String(data: $0, encoding: .utf8) } : nil
         )
         loadGitDiffTab(request: request, title: L10n.format("Git-Diff: %@", change.path),
                        emptyText: L10n.string("Kein Inhalt."), preview: preview)
@@ -5533,7 +5549,10 @@ final class Workspace: ObservableObject {
             // Unified-`git show`-Fallback ist dann ehrlicher als ein erfundener
             // Root-Vergleich.
             loadGitTab(kind: .commit, title: title,
-                       args: GitDiff.showFileArguments(hash: hash, path: path),
+                       args: GitDiff.showFileArguments(hash: hash, path: path,
+                           originalPath: file.rawOriginalPath.flatMap {
+                               String(data: $0, encoding: .utf8)
+                           }),
                        emptyText: L10n.string("Kein Inhalt."))
             return
         }
@@ -5543,7 +5562,8 @@ final class Workspace: ObservableObject {
         } ?? .emptyTree
         let request = GitDiffRequest(
             repositoryPath: GitOperationRequest.canonicalRepositoryPath(context.root),
-            source: .commit(hash: hash, parent: parent, path: path)
+            source: .commit(hash: hash, parent: parent, path: path),
+            originalPath: file.rawOriginalPath.flatMap { String(data: $0, encoding: .utf8) }
         )
         loadGitDiffTab(request: request, title: title,
                        emptyText: L10n.string("Kein Inhalt."))

@@ -7,6 +7,17 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Dateitypänderungen bleiben im Index und Working-Tree sichtbar")
+func gitChanges_typeChangesRemainActionable() {
+    let summary = GitStatusParser.parse(changesPorcelain(
+        tracked("T.", "index-link"), tracked(".T", "working-link"),
+        tracked("TT", "both-link")))
+    #expect(Set(summary.stagedChanges.map(\.path)) == ["index-link", "both-link"])
+    #expect(Set(summary.unstagedChanges.map(\.path)) == ["working-link", "both-link"])
+    #expect(summary.stagedChanges.allSatisfy { $0.staged == .modified })
+    #expect(summary.unstagedChanges.allSatisfy { $0.unstaged == .modified })
+}
+
 private func changesPorcelain(_ records: String...) -> Data {
     var result = Data()
     for record in records {

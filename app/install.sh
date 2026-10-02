@@ -65,7 +65,7 @@ echo "→ Developer-ID-Signatur verfügbar"
 # ─────────────────────────────────────────────────────────────────
 # 1. Release-Build (baut + strippt; signiert zunächst nur ad-hoc)
 # ─────────────────────────────────────────────────────────────────
-./build.sh release
+FASTRA_DEFER_PORTABILITY_CHECK=1 ./build.sh release
 APP=".build/release/Fastra.app"
 [ -d "$APP" ] || { echo "✗ Build-Ergebnis fehlt: $APP" >&2; exit 1; }
 
@@ -92,6 +92,8 @@ if [ "$NOTARIZE" -eq 1 ]; then
   echo "→ Staple das Notarisierungs-Ticket ans Bundle…"
   xcrun stapler staple "$APP"
   xcrun stapler validate "$APP"
+  spctl --assess --type execute --verbose=2 "$APP"
+  codesign --verify --deep --strict --verbose=2 "$APP"
 else
   echo "⚠ --no-notarize: nur Developer-ID-signiert (kein Notary-Ticket)."
 fi

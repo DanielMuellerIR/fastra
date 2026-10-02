@@ -223,6 +223,7 @@ enum SelfTestPolling {
     static func runnerTimeoutSeconds(for test: String) -> TimeInterval {
         switch test {
         case "print": return 240
+        case "softwrapindent": return 180
         case "cmdw", "leakscenario": return 120
         default: return 60
         }

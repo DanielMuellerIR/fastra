@@ -8,6 +8,23 @@ import Testing
 import Foundation
 @testable import Fastra
 
+@Test("Ordnersuche und Apply überspringen dieselben Nullbyte-Dateien wie der Editor")
+func folderSearchAndApplyRejectBinaryContent() throws {
+    let corpus = try FolderCorpus()
+    for (index, bytes) in [
+        Data("foo".utf8) + Data(repeating: 65, count: 8192) + Data([0]),
+        Data([0xEF, 0xBB, 0xBF]) + Data("foo".utf8) + Data([0]),
+    ].enumerated() {
+        let url = try corpus.writeRaw("binary-\(index).txt", bytes)
+        let options = SearchOptions(find: "foo", replace: "bar", isRegex: false)
+        let result = FolderSearch.searchOneFile(at: url, options: options)
+        #expect(result.skipped == .binary)
+        #expect(result.matches.isEmpty)
+        #expect(try FileLoader.load(url: url).displayMode == .hex)
+        #expect(ApplyEngine.plan(files: [url], options: options).files.first?.skipped == .binary)
+    }
+}
+
 // MARK: - Mini-Korpus für Folder-Tests
 
 private final class FolderCorpus {

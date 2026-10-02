@@ -2,6 +2,26 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Präfixe verändern keinen abschließenden Zeilentrenner", arguments: ["\n", "\r\n", "\r"])
+func prefixPreservesFinalLineSeparator(_ separator: String) {
+    let text = "a" + separator + "b" + separator
+    #expect(TextOperations.prefixLines(in: text, selection: NSRange(location: 0, length: 0),
+                                      with: "X")?.newText == "Xa" + separator + "Xb" + separator)
+}
+
+@Test("Zeilenwerkzeuge bewahren reine CR-Zeilenenden", arguments: ["", "\r"])
+func lineOperationsPreserveCR(_ final: String) {
+    let selection = NSRange(location: 0, length: 0)
+    #expect(LineOperations.sortLines(in: "b\ra" + final, selection: selection,
+                                    direction: .ascending)?.newText == "a\rb" + final)
+    #expect(LineOperations.removeDuplicateLines(in: "a\ra\rb" + final,
+                                                selection: selection)?.newText == "a\rb" + final)
+    #expect(TextOperations.prefixLines(in: "a\rb" + final, selection: selection,
+                                      with: "X")?.newText == "Xa\rXb" + final)
+    #expect(LineOperations.expandToFullLines(in: "a\rb\rc",
+                selection: NSRange(location: 2, length: 1)) == NSRange(location: 2, length: 1))
+}
+
 // Tests für LineOperations — „Zeilen sortieren" und „Duplikate entfernen"
 // aus dem Editor-Kontextmenü (v0.8).
 

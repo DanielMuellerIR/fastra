@@ -138,6 +138,10 @@ Importdateien sind auf 1 MB begrenzt; ungültige Einträge werden übersprungen.
 
 **Ersetzen:**
 
+Bei Ersetzungen über Dateien darf eine Ausgabedatei höchstens 256 MiB groß
+werden, damit die Änderung überprüfbar und rückgängig zu machen bleibt.
+Überschreitet sie diese Grenze, wird keine Datei des Auftrags geschrieben.
+
 - „Ersetzen“ ersetzt nur den aktiven Treffer und springt weiter.
 - „Alle ersetzen · N“ (⌘Return) ersetzt alle Treffer des Suchbereichs.
 - Überschreitet die Trefferzahl die sichtbare Obergrenze, bleibt „Alle
@@ -273,7 +277,9 @@ Formatierungen und Minifizierungen laufen im Hintergrund und werden nur
 prüfen** folgt der effektiven Formatwahl: **JSON** aktiviert die Prüfung in
 einer `.txt`-Datei, **Reiner Text** deaktiviert sie auch in einer `.json`-Datei.
 Endungslos erkanntes XML und SVG werden als XML geprüft. Schreibgeschützte
-Sonderansichten bieten die Prüfung nicht an.
+Sonderansichten bieten die Prüfung nicht an. XML mit `xml:space="preserve"`
+oder einer DTD bleibt beim Minifizieren unverändert, damit bedeutender
+Leerraum und Entitätsinhalt erhalten bleiben.
 
 Bei effektivem **JSON** behält eine `.4dform`-Datei zusätzlich ihre
 Formular-Schema-Prüfung, auch nach manueller Wahl von JSON. Ein anderes
@@ -608,6 +614,14 @@ Abschaltung oder Sperre. Ohne Soft Wrap bleiben lange Zeilen über den
 horizontalen Scrollbalken erreichbar. Das Umschalten ändert weder Text noch
 Auswahl, Rückgängig-Verlauf oder gespeicherte Datei. Die oberste angezeigte
 Textzeile bleibt dabei ruhig an derselben Stelle.
+
+Die Option **Folgezeilen einrücken** richtet umgebrochene Fortsetzungen
+**Bündig links**, **Wie erste Zeile** (Werkstandard) oder **Eine Stufe tiefer**
+aus. Die zusätzliche Stufe verwendet die Tabbreite des Tabprofils oder die
+Leerzeichenbreite des Einrückungsprofils. Die Wahl wird pro Format gespeichert
+und schaltet Soft Wrap nicht ein. Sie verändert weder Text noch gespeicherte
+Zeilenumbrüche. Die Minimap zeigt dieselben Umbruchfragmente. Der Vergleich
+behält seinen eigenen einfachen Umbruch; diese Optionen gelten dort nicht.
 
 ## Einrückung
 

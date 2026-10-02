@@ -104,6 +104,14 @@ final class MarkdownPreviewSchemeHandler: NSObject, WKURLSchemeHandler {
     private let lock = NSLock()
     private var imageURLs: [String: URL] = [:]
     private var cancelledTasks: Set<ObjectIdentifier> = []
+    private let deliver: (@escaping () -> Void) -> Void
+
+    init(deliver: @escaping (@escaping () -> Void) -> Void = {
+        DispatchQueue.main.async(execute: $0)
+    }) {
+        self.deliver = deliver
+        super.init()
+    }
 
     func setImageURLs(_ urls: [String: URL]) {
         lock.lock()
@@ -145,7 +153,7 @@ final class MarkdownPreviewSchemeHandler: NSObject, WKURLSchemeHandler {
         lock.unlock()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            do {
+            let result = Result {
                 // Bilder kommen aus dem Dateisystem des Nutzers und werden
                 // deshalb über den geprüften Deskriptor-Pfad gelesen. Die
                 // gebündelten Bibliotheken liegen im App-Bundle und dürfen
@@ -156,27 +164,27 @@ final class MarkdownPreviewSchemeHandler: NSObject, WKURLSchemeHandler {
                 } else {
                     data = try Data(contentsOf: source.url, options: [.mappedIfSafe])
                 }
-                guard !self.isCancelled(taskID) else {
-                    self.forget(taskID)
-                    return
+                return data
+            }
+            // WebKit stellt stop auf Main zu. Prüfung und komplette Antwort
+            // müssen dort unteilbar laufen: Jeder Callback nach stop wirft
+            // eine Objective-C-Exception, die Swift catch nicht abfangen kann.
+            self.deliver { [weak self] in
+                guard let self else { return }
+                defer { self.forget(taskID) }
+                guard !self.isCancelled(taskID) else { return }
+                switch result {
+                case .success(let data):
+                    let response = URLResponse(
+                        url: requestURL, mimeType: source.mimeType,
+                        expectedContentLength: data.count,
+                        textEncodingName: source.mimeType.hasPrefix("text/") ? "utf-8" : nil)
+                    urlSchemeTask.didReceive(response)
+                    urlSchemeTask.didReceive(data)
+                    urlSchemeTask.didFinish()
+                case .failure(let error):
+                    urlSchemeTask.didFailWithError(error)
                 }
-                let response = URLResponse(
-                    url: requestURL,
-                    mimeType: source.mimeType,
-                    expectedContentLength: data.count,
-                    textEncodingName: source.mimeType.hasPrefix("text/") ? "utf-8" : nil
-                )
-                urlSchemeTask.didReceive(response)
-                urlSchemeTask.didReceive(data)
-                urlSchemeTask.didFinish()
-                self.forget(taskID)
-            } catch {
-                guard !self.isCancelled(taskID) else {
-                    self.forget(taskID)
-                    return
-                }
-                urlSchemeTask.didFailWithError(error)
-                self.forget(taskID)
             }
         }
     }

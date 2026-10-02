@@ -17,8 +17,10 @@ Erledigte Arbeit und historische Entscheidungen stehen in
     `app/soak-test.local`) — die Erhebung kann bei Bedarf starten.
   - **GitHub-Abhängigkeiten:** `Project/Sources/dependencies.json` kann
     Komponenten benennen, die nicht unter `<Projekt>/Components/` liegen
-    (z. B. von 4D verwaltete Downloads). Bewusst offen, bis der reale
-    Ablageort an einem echten Projekt erhoben ist.
+    (z. B. von 4D verwaltete Downloads). Die Makro-Discovery liest bereits
+    explizite `path`-Einträge; die Komponenten-Signaturhilfe durchsucht bislang
+    nur `Components`/`components`. Der reale Ablageort verwalteter Downloads
+    und dessen Einbindung in die Signaturhilfe bleiben offen.
   - **Benannte klassische Parameter:** 4D-Methodendoku kompilierter
     Komponenten deklariert Parameter teils als benannte Variablen
     (`C_LONGINT($pid_i)`) — der Parser zählt ehrlich nur `$N`/`#DECLARE`;
@@ -37,8 +39,11 @@ Erledigte Arbeit und historische Entscheidungen stehen in
     und 262): „Flush Left" = Folgefragmente bündig am Fensterrand,
     „First Line" = auf der Einrückung der ersten Zeile, „Reverse" = genau
     EINE Einrückungsstufe tiefer als die erste Zeile. Werkstandard soll
-    „First Line" sein; der Wert gehört ins Formatprofil (Feld ist im Store
-    vorbereitet, aber bewusst noch nicht angelegt — kein totes Setting).
+    „First Line" sein. Der gemeinsame Layoutkern und das rückwärtskompatible
+    Profilfeld sind vorbereitet (siehe `docs/soft-wrap-fragment-geometry.md`);
+    Menü, Controller-Reconcile und Minimap sind in v1.127.0 verbunden.
+    Die vollständige Bedienabnahme einschließlich realer Eingabemethode
+    bleibt bis zu ihrem belegten Abschluss offen.
   - Der Kern ist Geometrie im CodeEditTextView-Layout: Folgefragmente
     brauchen einen eigenen x-Ursprung UND eine entsprechend verkleinerte
     Umbruchbreite (mindestens ein Graphem pro Fragment). Denselben Ursprung
@@ -101,6 +106,9 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   Makro eine code-übergebende Variante wie beim Komplettieren. Ebenfalls
   offen: ein warmer tool4d-Prozess, falls die Kaltstartzeit (real ~3 s) im
   Alltag stört. Herkunft: Idee #28 in `theplan/ideen.md`.
+  Native Auswahlplatzhalter in Text-Makros funktionieren bereits; die Grenze
+  betrifft Makros, deren Ausführung den echten 4D-Editor oder das Host-Projekt
+  benötigt.
   - **Abbruchsignal durch die Diff-Pipeline** (Review 2026-08-29): mit
     v1.120.0 umgesetzt. Das Signal reicht durch Laden, Zeilenaufbereitung,
     eigenen abbrechbaren Myers-Kern (`MyersDiff.swift`, Port der
@@ -112,14 +120,6 @@ Erledigte Arbeit und historische Entscheidungen stehen in
     mit Vergleich von Blockqualität und Laufzeit gegen den heutigen Kern.
 
 ## Kleine offene Ideen
-
-- **Druck-Ausbau (beauftragt 2026-08-18, aus der manuellen Druckabnahme):**
-  Der Schalter-Teil ist mit v1.102.0 erledigt (Kopf-/Fußzeile und
-  Zeilennummern direkt im Systemdruckdialog). Die Syntaxfarben im
-  Quelltext-Ausdruck sind mit v1.121.0 umgesetzt (`PrintSyntaxHighlighting`:
-  Editor-Analyse auf einer unsichtbaren Textquelle, heller Farbsatz,
-  Schalter in Einstellungen und Druckdialog). Damit ist der Druck-Ausbau
-  abgeschlossen.
 
 - **Drucken: weiterhin bewusst gezogene Grenzen** (v1.100.0):
   - Die **gerenderte Markdown-Vorschau hat keine Kopf- und Fußzeile**. Diese
@@ -135,19 +135,21 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   `poormans-text --formats`):
   - Der Formatkatalog wird beim Start vorgewärmt und fünf Minuten
     zwischengespeichert. Wird `poormans-text` in dieser Zeit aktualisiert,
-    braucht es einen Fastra-Neustart. Bewusst so — eine Invalidierung über
-    einen Dateiwächter wäre für den Nutzen zu viel Maschinerie.
+    werden neue Formate nach Ablauf des Caches erneut abgefragt; ein
+    Fastra-Neustart macht sie sofort verfügbar. Bewusst so — eine
+    Invalidierung über einen Dateiwächter wäre für den Nutzen zu viel
+    Maschinerie.
   - Es läuft immer nur EINE Umwandlung gleichzeitig; der Befehl ist währenddessen
     gesperrt. Eine Warteschlange lohnt erst, wenn Stapelumwandlung gewünscht ist.
-  - Kein Fortschritt und kein Abbruch während einer Umwandlung. Dafür wäre die
-    direkte Library-Anbindung statt des CLI-Aufrufs nötig (siehe
-    `poormans_text/ROADMAP.md`).
+  - Kein Fortschritt und kein Abbruch während einer Umwandlung. Vor einem
+    Ausbau die aktuelle CLI auf Fortschrittsmeldungen und Abbruch prüfen;
+    ob eine direkte Library-Anbindung nötig ist, ist noch nicht erhoben.
   - Der Katalog fragt nur, OB ein Werkzeug installiert ist, nicht welche
     Eingabeformate dessen Version beherrscht. Ein sehr altes Pandoc könnte
     deshalb erst beim Umwandeln scheitern — dann mit echter Fehlermeldung.
 
 - **Hilfe später hübscher:** Die mitgelieferte Hilfe (Etappe 4 Wunschpaket
-  2026-07b) ist bewusst reiner Text ohne Bilder. Screenshots/Illustrationen
+  2026-07b) verwendet Markdown, enthält aber keine Ablaufbilder. Screenshots/Illustrationen
   der zentralen Abläufe (Suchmaske, Vorschau→Apply, Git-Seitenleiste) wären
   ein sinnvoller späterer Ausbau.
 
@@ -188,7 +190,11 @@ und sie sind noch offen.
   bleibt bis zur Bestätigung im Arbeitsbetrieb notiert; bei erneutem
   Auftreten Repro-Schritte und geöffnete Dokumente festhalten.
 - **Das Fenstermenü listete nur eine von zwei offenen Dateien.** In kurzer
-  Nachstellung korrekt — also zustandsabhängig.
+  Nachstellung korrekt — also zustandsabhängig. Seit v1.116.0 gibt es
+  Tab-Untermenüs; v1.117.1 korrigiert deren Aufbau beim Start und nach
+  Fensterwiederherstellung. Diese konkreten Korrekturen sind geprüft, die
+  damalige sporadische Beobachtung bleibt ohne Bestätigung im Arbeitsbetrieb
+  offen.
 - **`folderSearch_deduplicatesOverlappingRoots` einmal rot** (2026-07-28,
   nicht reproduziert). Der Test meldete 0 statt 1 Treffer in einem
   vollständigen `swift test`; isoliert dreimal und in zwei weiteren

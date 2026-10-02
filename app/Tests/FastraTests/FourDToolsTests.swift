@@ -9,6 +9,17 @@ import Testing
 import Foundation
 @testable import Fastra
 
+@Test("4D-Objektmember erhalten keine Befehls- oder gelernten Token-Suffixe")
+func tokenTransformsPreserveObjectMembers() {
+    let source = "$o.Date:=\"x\"\n$o.Time()\n$o.ALERT()\n$o.FutureCommand()"
+    #expect(FourDTokenTransform.tokenizeCommands(source) == source)
+    #expect(FourDTokenTransform.retokenize(source, learned: [
+        "date": ":C102", "time": ":C178", "alert": ":C41", "futurecommand": ":C9999",
+    ]) == source)
+    #expect(FourDTokenTransform.tokenizeCommands("Date(\"2026-10-02\")")
+            == "Date:C102(\"2026-10-02\")")
+}
+
 // MARK: - Vervollständigung: Präfix-Erkennung
 
 private func prefix(_ text: String, cursorAt: Int? = nil) -> String? {
