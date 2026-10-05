@@ -5059,7 +5059,8 @@ enum SelfTest {
                     guard let tv = editorTextView(in: root) as? TextView else { return false }
                     return tv.layoutManager.softWrapIndentation == .reverse && !tv.wrapLines
                 }, onTimeout: { _ in finish(false, "Profilwechsel aktiviert Wrap oder erreicht den Controller nicht") }, then: {
-                    let combinations = [CGFloat(760), 1100].flatMap { width in
+                    let widths: [CGFloat] = [760, 1100]
+                    let combinations = widths.flatMap { width in
                         [0, 3].flatMap { zoom in
                             SoftWrapTarget.allCases.flatMap { target in
                                 SoftWrapIndentation.allCases.map { (width, zoom, target, $0) }
