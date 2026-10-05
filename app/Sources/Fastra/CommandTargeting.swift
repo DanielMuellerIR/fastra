@@ -97,7 +97,8 @@ enum CommandTargeting {
                                       isKey: $0.isKeyWindow,
                                       allowsDocumentFallback: SearchWindow.isSearchWindow($0),
                                       blocksInactiveDocumentFallback:
-                                        ExternalDiffWindow.isExternalDiffWindow($0))
+                                        ExternalDiffWindow.isExternalDiffWindow($0)
+                                        || ControlSnapshotWindow.isSnapshotWindow($0))
         }
         guard let index = WindowTargeting.targetIndex(in: candidates) else { return nil }
         return windows[index]

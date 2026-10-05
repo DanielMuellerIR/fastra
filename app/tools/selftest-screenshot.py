@@ -16,6 +16,7 @@ SHOTS = {
     "wildcardshot": ("WILDCARDSHOT-WINDOW", "search-wildcards"),
     "regexshot": ("REGEXSHOT-WINDOW", "search-regex"),
     "gitshot": ("GITSHOT-WINDOW", "git-changes"),
+    "filesgitshot": ("FILESGITSHOT-WINDOW", "git-files"),
     "graphshot": ("GRAPHSHOT-WINDOW", "git-graph"),
     "historyshot": ("HISTORYSHOT-WINDOW", "git-history"),
 }

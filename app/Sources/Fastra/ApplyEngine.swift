@@ -539,6 +539,12 @@ enum ApplyEngine {
         default: width = 1
         }
         guard payload.count.isMultiple(of: width) else { return nil }
+        // Die Datei-BOM ist bereits entfernt. Ein weiteres U+FEFF gehört zum
+        // Inhalt; Foundations UTF-8-Initialisierer würde es erneut abtrennen.
+        if encoding == .utf8 {
+            guard String(data: payload, encoding: .utf8) != nil else { return nil }
+            return String(decoding: payload, as: UTF8.self)
+        }
         return String(data: payload, encoding: encoding)
     }
 
@@ -551,7 +557,7 @@ enum ApplyEngine {
             guard let s = decode(payload: payload, encoding: enc) else { return nil }
             return (s, enc)
         }
-        if let utf8 = String(data: payload, encoding: .utf8) {
+        if let utf8 = decode(payload: payload, encoding: .utf8) {
             return (utf8, .utf8)
         }
         // ISO-8859-1 dekodiert jede Bytefolge und machte den bisherigen

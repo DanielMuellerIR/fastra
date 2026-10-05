@@ -1,9 +1,6 @@
 // SidebarProjectHeader.swift
 //
-// Gemeinsamer Kopf der Projekt-Seitenleiste (Etappe 1 Wunschpaket 2026-07b).
-// Vorher existierte der Kopf (Ordnername + Schließen-X) nur im Dateien-Tab;
-// jetzt zeigen ihn alle drei Tabs (Dateien/Änderungen/Graph) über diese eine
-// Komponente. Neu für alle Tabs:
+// Projektname und Pfad neben der Marke, für alle Seitenleisten-Tabs gemeinsam.
 // - Tooltip mit dem vollen Pfad auf dem Namen.
 // - Rechtsklickmenü mit „Im Finder zeigen…“ und „Projektansicht schließen“
 //   (der Dateien-Tab hängt sein bestehendes Vollmenü zusätzlich an).
@@ -195,39 +192,32 @@ struct SidebarProjectHeader<ExtraMenu: View, Accessory: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Text(rootURL.lastPathComponent.uppercased())
-                .fastraFont(size: 10, weight: .semibold)
-                .tracking(0.6)
+        HStack(spacing: 5) {
+            Image(systemName: workspace.gitStatus == nil ? "folder" : "arrow.triangle.branch")
+                .fastraFont(size: 12)
                 .foregroundColor(Theme.textSecondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                // Der Name behält Vorrang vor dem Zubehör: Mit niedriger
-                // Priorität fraß das gierige Filterfeld die ganze Zeile und
-                // der Projektname verschwand vollständig (Sichtprüfung
-                // 2026-09-01). Erst wenn das Zubehör auf seiner Mindestbreite
-                // ist, wird der Name gekürzt.
-                .layoutPriority(1)
-                // Voller Pfad als Tooltip — der Name allein ist oft mehrdeutig.
-                .help(Text(verbatim: rootURL.path))
-                .accessibilityLabel(L10n.format("Projektordner %@", rootURL.lastPathComponent))
-                .accessibilityHint("⌘-Klick zeigt die Nachbarordner zum Projektwechsel.")
-                .contentShape(Rectangle())
-                // Cmd-Klick → Geschwisterordner-Menü. Ein normaler Klick
-                // bleibt wirkungslos (kein verstecktes Verhalten).
-                .gesture(
-                    TapGesture().modifiers(.command).onEnded {
-                        SiblingFolderMenuPresenter.shared.present(
-                            for: rootURL, workspace: workspace
-                        )
-                    }
-                )
-            Spacer(minLength: 8)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: rootURL.lastPathComponent)
+                    .fastraFont(size: 15, weight: .bold)
+                    .foregroundColor(Theme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(verbatim: (rootURL.path as NSString).abbreviatingWithTildeInPath)
+                    .fastraFont(size: 10)
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             accessory()
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 14)
-        .padding(.bottom, 6)
+        .help(Text(verbatim: rootURL.path))
+        .accessibilityLabel(L10n.format("Projektordner %@", rootURL.lastPathComponent))
+        .accessibilityHint("⌘-Klick zeigt die Nachbarordner zum Projektwechsel.")
+        .contentShape(Rectangle())
+        .gesture(TapGesture().modifiers(.command).onEnded {
+            SiblingFolderMenuPresenter.shared.present(for: rootURL, workspace: workspace)
+        })
         // Für den Fenster-Selbsttest `sidebarheader`: nur wenn der Kopf
         // wirklich layoutet wird, existiert diese Marker-NSView im Fenster.
         .background(SelfTestMarker(id: "sidebarProjectHeader").frame(width: 0, height: 0))

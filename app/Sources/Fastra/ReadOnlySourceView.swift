@@ -15,39 +15,8 @@ struct ReadOnlySourceView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = true
-        scrollView.backgroundColor = .textBackgroundColor
-
-        let textView = ReadOnlySnapshotTextView()
-        textView.reason = reason
-        textView.string = content
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.allowsUndo = false
-        textView.isRichText = false
-        textView.importsGraphics = false
-        textView.usesFindBar = true
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
-        textView.textColor = .textColor
-        textView.backgroundColor = .textBackgroundColor
-        textView.textContainerInset = NSSize(width: 12, height: 10)
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(
-            width: scrollView.contentSize.width,
-            height: .greatestFiniteMagnitude
-        )
-        textView.setAccessibilityIdentifier("gitDeletedReadOnlyEditor")
-        scrollView.documentView = textView
+        let scrollView = ReadOnlySnapshotTextView.makeScrollView(content: content, reason: reason)
+        let textView = scrollView.documentView as! ReadOnlySnapshotTextView
         context.coordinator.attach(textView)
         return scrollView
     }
@@ -97,11 +66,73 @@ struct ReadOnlySourceView: NSViewRepresentable {
 /// fehlende direkte Erklärung und lässt Navigation, Auswahl, Suche und Kopieren
 /// unverändert durch.
 final class ReadOnlySnapshotTextView: NSTextView {
+    var onUserNavigation: (() -> Void)?
+    var onAppearanceChange: (() -> Void)?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
+    }
+
+    func setSoftWrap(_ enabled: Bool) {
+        guard let scroll = enclosingScrollView, let container = textContainer else { return }
+        let selection = selectedRange()
+        scroll.hasHorizontalScroller = !enabled
+        isHorizontallyResizable = !enabled
+        autoresizingMask = enabled ? [.width] : []
+        container.widthTracksTextView = enabled
+        container.containerSize = NSSize(width: enabled ? scroll.contentSize.width : .greatestFiniteMagnitude,
+                                        height: .greatestFiniteMagnitude)
+        if enabled { setFrameSize(NSSize(width: scroll.contentSize.width, height: frame.height)) }
+        maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
+                         height: CGFloat.greatestFiniteMagnitude)
+        layoutManager?.ensureLayout(for: container)
+        scrollRangeToVisible(selection)
+    }
+    /// Auch externe Snapshots nutzen dieselbe strikt schreibgeschützte Ansicht.
+    static func makeScrollView(content: String, reason: String) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = .textBackgroundColor
+
+        let textView = ReadOnlySnapshotTextView()
+        textView.reason = reason
+        textView.string = content
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.allowsUndo = false
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.usesFindBar = true
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        textView.textColor = .textColor
+        textView.backgroundColor = .textBackgroundColor
+        textView.textContainerInset = NSSize(width: 12, height: 10)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: scrollView.contentSize.width,
+            height: .greatestFiniteMagnitude
+        )
+        textView.setAccessibilityIdentifier("gitDeletedReadOnlyEditor")
+        scrollView.documentView = textView
+        return scrollView
+    }
+
     var reason = ""
     private var noticePopover: NSPopover?
     private var closeNoticeWork: DispatchWorkItem?
 
     override func keyDown(with event: NSEvent) {
+        onUserNavigation?()
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if modifiers.contains(.command) || modifiers.contains(.control)
             || Self.navigationKeyCodes.contains(event.keyCode) {
@@ -109,6 +140,11 @@ final class ReadOnlySnapshotTextView: NSTextView {
             return
         }
         showReadOnlyNotice()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onUserNavigation?()
+        super.mouseDown(with: event)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -146,6 +182,7 @@ final class ReadOnlySnapshotTextView: NSTextView {
     }
 
     private func showReadOnlyNotice() {
+        guard window != nil else { return }
         closeNoticeWork?.cancel()
         noticePopover?.close()
 

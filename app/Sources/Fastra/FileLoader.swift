@@ -143,6 +143,25 @@ enum FileLoader {
         // die gar nicht gelesen wird, und die 32-MiB-Grenze für editierbare
         // Dateien wäre umgangen (Review 2026-08-10).
         defer { close(opened.descriptor) }
+        return try load(descriptor: opened.descriptor, forcedEncoding: forcedEncoding,
+                        largeFileThreshold: largeFileThreshold, isCancelled: isCancelled,
+                        probeReader: probeReader)
+    }
+
+    /// Paketquellen wurden bereits komponentenweise mit openat/O_NOFOLLOW
+    /// geöffnet. Am selben Deskriptor bleibt die vorhandene Ladeprüfung wirksam.
+    /// Der Aufrufer besitzt und schließt den Deskriptor.
+    static func load(descriptor: Int32, forcedEncoding: String.Encoding? = nil,
+                     largeFileThreshold: UInt64 = largeFileThreshold,
+                     isCancelled: () -> Bool = { false },
+                     probeReader: (FileHandle, Int) throws -> Data = { handle, count in
+                         try handle.read(upToCount: count) ?? Data()
+                     }) throws -> LoadedFile {
+        guard !isCancelled() else { throw LoadError.cancelled }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0 else { throw LoadError.unreadable }
+        guard info.st_mode & S_IFMT == S_IFREG else { throw LoadError.notRegularFile }
+        let opened = (descriptor: descriptor, stat: info)
         let fileSize = UInt64(max(0, opened.stat.st_size))
         let openedObservation = ExternalFileObservation(fileStat: opened.stat)
         let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)

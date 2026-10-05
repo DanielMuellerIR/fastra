@@ -41,6 +41,13 @@ if [[ ! -x "$APP/Contents/Helpers/fastra-diff" ]] \
     exit 1
 fi
 
+if [[ ! -x "$APP/Contents/Helpers/fastra-control" ]] \
+   || ! "$APP/Contents/Helpers/fastra-control" --capabilities --json > /dev/null \
+   || [[ ! -f "$APP/Contents/Resources/Fastra.sdef" ]]; then
+    echo "Portabilitätsprüfung: lokale Steuerung oder Scripting-Dictionary fehlt." >&2
+    exit 1
+fi
+
 HIDDEN_DIR=""
 ERR_FILE=""
 MOVED_BUNDLES=()

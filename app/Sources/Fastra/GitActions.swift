@@ -1194,18 +1194,40 @@ extension Workspace {
     /// Entfernten Stand mit einer explizit gewählten Strategie einbinden.
     /// Fastra stash-t, pusht oder synchronisiert dabei niemals automatisch.
     func gitPull() {
-        startSafePull(strategyOverride: nil)
+        chooseGitRemoteForPull(strategyOverride: nil)
     }
 
     /// Fast-Forward-only Pull (`git pull --ff-only`) — die pfiffige Variante:
     /// übernimmt entfernte Commits NUR, wenn nichts kollidiert, nie ein
     /// Merge-Commit. Hält die Historie linear.
     func gitPullFastForward() {
-        startSafePull(strategyOverride: .ffOnly)
+        chooseGitRemoteForPull(strategyOverride: .ffOnly)
     }
 
     /// Entfernten Stand holen, ohne lokal etwas zu ändern (`git fetch`).
     func gitFetch() {
+        guard !gitOperationsAreBusy, gitFetchRemoteInspectionRequestID == nil,
+              let context = currentGitActionContext else { return }
+        resolveGitActionRemotes { [weak self] remotes in
+            guard let self else { return }
+            let choice = Self.presentGitDialogs
+                ? GitRemoteActionDialog.choose(remotes: remotes, status: self.gitStatus, isPull: false)
+                : nil
+            guard context.isCurrent(in: self) else { return }
+            if !Self.presentGitDialogs {
+                self.fetchGitRemotes(remotes, selection: .configured)
+            } else if let choice {
+                let selection: GitFetchSelection
+                switch choice {
+                case .all: selection = .all
+                case .remote(let remote, _): selection = .remote(remote)
+                }
+                self.fetchGitRemotes(remotes, selection: selection)
+            }
+        }
+    }
+
+    private func resolveGitActionRemotes(_ completion: @escaping ([String]) -> Void) {
         guard let context = currentGitActionContext else { return }
         gitFetchRemoteInspection?.cancel()
         let requestID = UUID()
@@ -1230,16 +1252,76 @@ extension Workspace {
                     }
                     return
                 }
-                self.gitRepositoryStore.fetch(
-                    repository: context.root,
-                    preferences: self.gitPreferencesStore.load(),
-                    remotes: remotes
-                )
+                guard !remotes.isEmpty else {
+                    Self.presentGitErrorText(label: "Remote", text: L10n.string("Kein Remote konfiguriert."))
+                    return
+                }
+                completion(remotes)
             }
         }
     }
 
-    private func startSafePull(strategyOverride: GitPullStrategy?) {
+    private func fetchGitRemotes(_ remotes: [String], selection: GitFetchSelection,
+                                 completion: ((Bool) -> Void)? = nil) {
+        guard let context = currentGitActionContext else { completion?(false); return }
+        let preferences = gitPreferencesStore.load()
+        let targets = GitFetchPlan.requestedRemotes(
+            preferences: preferences, upstream: gitStatus?.upstream,
+            remotes: remotes, selection: selection
+        )
+        let lease = gitRepositoryStore.fetch(repository: context.root, preferences: preferences,
+                                             remotes: remotes, selection: selection) { [weak self] outcome in
+            DispatchQueue.main.async {
+                guard let self, context.isCurrent(in: self) else { completion?(false); return }
+                if case .completed(let result) = outcome, result.ok {
+                    self.recordGitSuccess(L10n.format("Abgerufen: %@", targets.joined(separator: ", ")))
+                    completion?(true)
+                } else {
+                    if case .completed(let result) = outcome {
+                        Self.presentGitError(label: "Fetch", result: result)
+                    } else {
+                        Self.presentGitExecutionFailure(label: "Fetch", outcome: outcome)
+                    }
+                    completion?(false)
+                }
+            }
+        }
+        if lease == nil { completion?(false) }
+    }
+
+    private func chooseGitRemoteForPull(strategyOverride: GitPullStrategy?) {
+        guard !gitOperationsAreBusy, gitFetchRemoteInspectionRequestID == nil else { return }
+        guard let context = currentGitActionContext, let status = gitStatus else { return }
+        guard !status.isDetached else { Self.presentPullBlock(.detached); return }
+        if !Self.presentGitDialogs {
+            startSafePull(strategyOverride: strategyOverride)
+            return
+        }
+        resolveGitActionRemotes { [weak self] remotes in
+            guard let self else { return }
+            func chooseSource(allowAll: Bool) {
+                guard context.isCurrent(in: self) else { return }
+                guard let choice = GitRemoteActionDialog.choose(
+                    remotes: remotes, status: status, isPull: true, allowAll: allowAll
+                ) else { return }
+                guard context.isCurrent(in: self) else { return }
+                switch choice {
+                case .all:
+                    self.fetchGitRemotes(remotes, selection: .all) { succeeded in
+                        if succeeded { chooseSource(allowAll: false) }
+                    }
+                case .remote(let remote, let branch):
+                    guard let localBranch = status.branch else { return }
+                    self.startSafePull(strategyOverride: strategyOverride,
+                                       source: GitPullSource(remote: remote, branch: branch,
+                                                             localBranch: localBranch))
+                }
+            }
+            chooseSource(allowAll: true)
+        }
+    }
+
+    private func startSafePull(strategyOverride: GitPullStrategy?, source: GitPullSource? = nil) {
         guard let context = currentGitActionContext, gitStatus != nil else { return }
         guard !gitOperationsCoordinator.state(for: context.root).contains(.pull) else {
             recordGitSuccess(L10n.string("Pull läuft bereits"))
@@ -1258,7 +1340,7 @@ extension Workspace {
             strategy = preferences.pullStrategy
         }
         let lease = GitSafePullRunner.run(
-            repository: context.root, strategy: strategy,
+            repository: context.root, strategy: strategy, source: source,
             coordinator: gitOperationsCoordinator
         ) { [weak self] preflight, proceed in
             guard let self, context.isCurrent(in: self) else { proceed(false); return }
@@ -1274,7 +1356,12 @@ extension Workspace {
                 guard context.isCurrent(in: self) else { return }
                 switch outcome {
                 case .pulled(.completed(let result)) where result.ok:
-                    self.recordGitSuccess(L10n.string("Pull erfolgreich"))
+                    if let source {
+                        self.gitRepositoryStore.recordSuccessfulFetch(repository: context.root,
+                                                                       remote: source.remote)
+                    }
+                    self.recordGitSuccess(source.map { L10n.format("Pull von %@/%@ erfolgreich", $0.remote, $0.branch) }
+                        ?? L10n.string("Pull erfolgreich"))
                     self.refreshGitRepositoryFully()
                     self.refreshOpenGitViews()
                 case .pulled(let failure), .inspectionFailed(let failure):
@@ -1289,7 +1376,7 @@ extension Workspace {
                 case .blocked(let reason):
                     if reason == .missingIdentity {
                         self.ensureGitIdentity(context: context) { [weak self] _ in
-                            self?.startSafePull(strategyOverride: strategy)
+                            self?.startSafePull(strategyOverride: strategy, source: source)
                         }
                         return
                     }
@@ -1311,6 +1398,11 @@ extension Workspace {
 
     private static func presentPullBlock(_ preflight: GitPullPreflightResult) {
         switch preflight {
+        case .detached:
+            presentGitErrorText(
+                label: "Pull",
+                text: L10n.string("Der aktuelle Stand ist keinem lokalen Branch zugeordnet. Wechsle vor Pull zu einem lokalen Branch.")
+            )
         case .noUpstream:
             presentGitErrorText(
                 label: "Pull",

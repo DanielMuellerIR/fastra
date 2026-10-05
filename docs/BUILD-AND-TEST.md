@@ -4,6 +4,37 @@ Diese Datei beschreibt den reproduzierbaren Build-, Paketierungs- und Testweg.
 Projektfakten, Produktinvarianten und Konventionen stehen in
 [AGENTS.md](../AGENTS.md).
 
+## Syntax-Folding prüfen
+
+Patch 4z20 (`app/Patches/CodeEditSourceEditor/code-folding.py`) verbindet den
+Snapshot-Provider mit `SourceEditor`, ersetzt den Fold-Cache und schützt jedes
+Analyseergebnis mit einer Textrevision. Der Einrückungsfallback liest höchstens
+50 Zeilen pro Main-Actor-Durchlauf und prüft vor dem nächsten Zugriff erneut.
+Die Quelle bleibt vollständig im TextStorage; Platzhalter sind reine Layoutobjekte.
+
+Der Patch prüft seine Integrationsanker vor dem Schreiben und danach jede
+erzeugte Quelle. Attachment-Edits erhalten den alten ersetzten Bereich, entfernen
+überlappende Platzhalter und invalidieren alle überlebenden verdeckten Zeilen.
+Nach der Analyse werden erhaltene Platzhalter gegen die aktuellen vollständigen
+Ranges abgeglichen. Verschachtelte Layoutbereiche verwenden das größte Ende,
+statt vom letzten Start auf das Ende des Elternbereichs zu schließen.
+Neue Platzhalter invalidieren auch die bereits gesetzten Fragmente der Kopfzeile,
+damit sie sofort gezeichnet und angeklickt werden können.
+
+Gezielte Prüfungen nach `./build.sh`:
+
+```bash
+cd app
+./test.sh --fast-only --filter 'CodeFolding|SnapshotPresentation|CodeExplanation'
+FASTRA_FOLDING_SCREENSHOT_DIR=/pfad/zur/aufnahme ./selftest.sh codefolding
+```
+
+Der Fenster-Selbsttest prüft echte Gutterklicks, Option-Klick, den Kindzustand nach
+Öffnen des Elternbereichs, den Platzhalter-Doppelklick mit erhaltener Bereichsauswahl,
+Klicks nach Scrollen sowie Copy des vollständigen
+Quelltexts. Dazu kommen Editor-Tests für alte Analyseergebnisse, Kopf-/Tiefenänderungen
+und überlappende Löschungen einschließlich der verbleibenden Zeilenhöhen.
+
 ## Build-Anleitung
 
 ```bash
@@ -205,10 +236,31 @@ Rechteck-Paste, Undo/Redo und Drag/Auto-Scroll. Eine reale Eingabemethode
 bleibt zusätzlich manuell abzunehmen. Mit `FASTRA_SOFTWRAPINDENT_DIR` werden
 sechs Fensteraufnahmen angefordert; fehlende Aufnahmeberechtigung ist ENV.
 `FASTRA_SOFTWRAPINDENT_REVIEW_DIR=<ordner>` hält danach die isolierte
-Testinstanz höchstens 120 s für eine manuelle Menü-/IME-Prüfung offen. Der
+Testinstanz höchstens 300 s für eine manuelle Menü-/IME-Prüfung offen; Runner
+und In-App-Deckel erlauben dafür insgesamt 420 s. Normale Läufe behalten
+ihre 180-s-Frist. Der
 Marker `ready` zeigt die Bereitschaft; `continue` gibt den Abschluss frei.
 Testeingaben müssen zuvor zurückgenommen sein. Die optionale Variable
 `FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH` wählt die Fensterbreite (Standard 760 pt).
+
+`diffselection` prüft native Mauszüge vorwärts und rückwärts über mehrere
+Zeilen einschließlich des Copy-Responderpfads. Datei-Diff, zweispaltiger
+Git-Diff und einfacher Git-Diff werden bei zwei Breiten geprüft; die
+zweispaltigen Ansichten zusätzlich mit und ohne Soft Wrap. Die Prüfung
+benötigt exklusiven Vordergrundfokus und verändert die Test-Zwischenablage.
+Mit `FASTRA_DIFFSELECTION_DIR=<ordner>` speichert sie zehn Fensteraufnahmen
+mit der Auswahl und langen Zeilen für die visuelle Umbruchprüfung.
+`diffselectionbackground` verwendet dieselben gerenderten Ansichten und native
+Fensterereignisse für Drag und Shift-Klick in einem Fenster, das keinen Fokus
+annehmen kann. Copy läuft über dessen eigenen First Responder; dieser Lauf
+prüft die Diff-Bedienung neben einer aktiven Benutzeroberfläche, nicht den
+globalen Menü-Responderpfad. Zusätzlich muss ein einfacher Git-Diff mit
+20.000 kurzen Zusatzzeilen weniger als 200 Textansichten montieren.
+`FASTRA_GITHISTORY_REVIEW_DIR=<ordner>` hält die eigene Git-History-Fixture
+nach den normalen Prüfungen bis zu 300 s für eine Menüabnahme offen
+(Runner-Frist 420 s). `ready` meldet die Bereitschaft. Vor `continue` muss
+„Datei öffnen“ aus dem Verlauf die aktuelle `alpha.txt` im normalen Editor
+geöffnet haben; deren Inhalt wird beim Abschluss zusätzlich geprüft.
 
 Patch 4o (Rechteckauswahl, 2026-07-19): Upstream baut die Spaltenauswahl aus
 jedem sichtbaren `lineFragment` und macht umbrochene Fortsetzungen dadurch zu
@@ -855,6 +907,103 @@ Integrationstests stehen in [EXTERNAL-DIFF.md](EXTERNAL-DIFF.md).
 `./external-diff-test.sh` prüft echte LaunchServices-Kaltstarts mit isolierten
 Bundle-Kopien unter `.build` und öffnet dafür kurz eigene Testfenster.
 
+## Lokale Snapshot-Steuerung
+
+Der Build liefert `Contents/Helpers/fastra-control` und
+`Contents/Resources/Fastra.sdef`. Der Helfer wird vor dem äußeren Bundle
+signiert. Die Portabilitätsprüfung verlangt beide Bestandteile und ausführbare
+Offline-Capabilities. Der Vertrag steht in [LOCAL-CONTROL.md](LOCAL-CONTROL.md).
+
+```bash
+./build.sh
+./test.sh --filter LocalControl
+FASTRA_CONTROL_HEARTBEAT=1 ./test.sh --filter LocalControlResponsivenessTests
+./local-control-test.sh
+```
+
+Der letzte Aufruf erzeugt eine eigene Bundle-ID, Sandbox und zwei reale
+Arbeitsfenster mit ungespeicherten Inhalten. Der CLI-Helfer und externes
+`osascript` müssen denselben Controller, Hash, IDs und Job erreichen.
+Die AppleScript-Fassung kompiliert Begriffe aus dem tatsächlich gebündelten
+Dictionary. Native Objektbezüge und schreibgeschützte Properties werden
+ebenfalls extern geprüft. Direkt aufgerufene Handler zählen nicht als Abnahme.
+Ohne Automation-Freigabe ist der AppleEvent-Test offen; ein Timeout ist kein PASS.
+`FASTRA_CONTROL_CLI_ONLY=1` erlaubt einen ausdrücklich getrennten CLI-Teillauf.
+
+Für passive Aufnahmen aus dem laufenden Testfenster dienen
+`FASTRA_CONTROL_TEST_LANGUAGE=de` beziehungsweise `en` und
+`FASTRA_CONTROL_SCREENSHOTS=<Belegverzeichnis außerhalb des Repos>`.
+Der Host nimmt den nativen Fensterrahmen bei 400 und 900 pt auf, einschließlich
+Titel, Auswahl und einer Hash-Fehlerlage. Beide Sprachfassungen selbst ansehen.
+Transparente View-Caches werden mit der tatsächlichen Fensterfarbe unterlegt;
+eine schwarze oder fehlende Caption ist kein gültiger Sichtbeleg.
+
+Die Heartbeat-Probe läuft separat ohne konkurrierende MainActor-Tests.
+Sie misst bei 10 ms Solltakt die größte Tick-Lücke vom Laden bis `ready`,
+jeweils nahe 256 KiB mit vielen kurzen Zeilen und einer langen umgebrochenen
+Zeile, beide mit EOF-Ziel. Das Abnahmekriterium der Fixture ist unter 250 ms;
+der konkrete Messwert und die Datenform gehören zum Ergebnisbericht.
+
+### Prüfung der installierten App
+
+Zuerst vollständig notarisiert über `./install.sh` installieren. Die normale
+App darf beim Start der Prüfung nicht laufen. Ein unverändert installiertes
+Bundle direkt mit improvisierten Preferences zu starten schützt den
+Produktzustand nicht ausreichend; stattdessen besitzt `selftest.sh` den Host
+und seine bestehende Preferences-/Saved-State-/Clipboard-Sicherung.
+
+1. Eigenes Verzeichnis mit `mktemp -d "$PWD/.build/control-installed.XXXXXX"`
+   anlegen. `FASTRA_CONTROL_HOST_DIR` auf dieses Verzeichnis setzen.
+2. `FASTRA_SELFTEST_APP_BIN=/Applications/Fastra.app/Contents/MacOS/Fastra`
+   und `FASTRA_SELFTEST_APP_BUNDLE=/Applications/Fastra.app` setzen und
+   `./selftest.sh controlhost` im Hintergrund starten; die Runner-PID speichern.
+   Begrenzt auf neue `host-ready`- und `host-binding`-Dateien warten.
+3. Mit `FASTRA_CONTROL_TEST_APP=/Applications/Fastra.app` und
+   `FASTRA_CONTROL_TEST_HOST_DIR=<Hostverzeichnis>` direkt
+   `python3 tools/local-control-test.py` ausführen. Den äußeren
+   `local-control-test.sh` hier nicht benutzen: Der Selftest-Runner hält
+   bereits dieselbe maschinenweite GUI-Sperre.
+4. Der Treiber schreibt nach seinen Senderaufrufen auch bei Fehler
+   `host-finish`. Im äußeren Aufräumpfad denselben Marker zusätzlich schreiben,
+   falls der Treiber vorzeitig abgebrochen wurde, und den Runner abwarten. Externen und Runner-Exit getrennt sichern.
+   Nur beide erfolgreichen Ergebnisse sind eine vollständige Abnahme.
+
+Der installierte Treiber startet keine App: CLI benutzt `--no-launch` plus
+die gebundene `runtimeID`, AppleEvents benutzen JXA `Application(PID)` aus
+der Hostbindung. Das verhindert einen normalen Neustart bei verlorenem Host.
+JXA prüft den nativen Dictionary-/AppleEvent-Weg. Mit
+`FASTRA_CONTROL_APPLESCRIPT=1` führt der installierte Treiber dieselben Proben
+als echtes AppleScript aus. Er prüft vorher die gebundene Host-PID und eine
+bereits laufende App; Capabilities und Inventar bestätigen die erwartete Runtime.
+AppleScript adressiert die Bundle-ID, JXA die PID. Ein readonly-Setter liefert
+bei AppleScript -10006, bei JXA -10003; beide Property-Inhalte müssen unverändert
+bleiben. Der Host prüft reale
+Inhalte, Dirty-Flags, Auswahl, Projekt, Fensterrahmen und Einstellungen seiner
+beiden normalen Fenster. Ohne geprüften PASS beendet `host-finish` ihn als FAIL.
+Der Host hat 120 s, der Runner 130 s als äußere Frist. Bei TCC-Timeout keine
+identischen Wiederholungen; Host beenden und Produktzustand restaurieren lassen.
+
+Bei einem installierten AppleEvent-Aufruf, der nach 1,5 s noch aussteht,
+sichert der Treiber einmal gleichzeitig Sender- und Empfänger-Stack sowie
+eine unabhängige readonly CLI-Capability-Abfrage. Die Belege liegen unter
+`ae-diagnostic-<UUID>` im eigenen Hostverzeichnis. Dabei bleibt genau derselbe
+Sender am Leben; es gibt keinen erneuten AppleEvent. AppleScript behält seine
+native Frist von 3 s, der äußere Senderpfad ist einschließlich Diagnose auf
+höchstens 6 s begrenzt. Sample-Fehler werden getrennt protokolliert und sind
+kein Ursachenbeweis. Ein erfolgreiches CLI-Ergebnis bei gleichzeitig hängendem
+AppleEvent grenzt den Engpass ein, bestätigt allein aber keine TCC-Ursache.
+Auch ein später doch erfolgreicher Sender hinterlässt seinen Diagnosebeleg.
+
+Dieser Diagnosepfad wurde mit sofortigem, verzögertem und dauerhaft wartendem
+isoliertem Sender geprüft: keine Wiederholung und kein zurückbleibender Prozess.
+Der anschließende echte AppleScript-/CLI-Lauf gegen den geschützten installierten
+Host bestand mit zwei unveränderten dirty Fenstern. Ein neuer realer
+AppleEvent-Hänger wurde damit nicht reproduziert.
+
+Neue Aufnahmen sind kleine Ergebnisbelege; entbehrliche Testkopien werden vom
+Treiber entfernt. Aufbewahrung und spätere Bereinigung der Belege folgen der
+Testdatenregel, ohne ungefragte Bereinigung fremder Bestände.
+
 ### Gezielte Negativproben für Fokus-Timeouts
 
 Diese Aufrufe prüfen die Einstufung realer AppKit-Zustände und erwarten
@@ -908,3 +1057,50 @@ Fenstertest wartet deshalb auf den Zielzustand und beobachtet ihn zusätzlich
 über weitere Durchläufe, ohne die Ansicht selbst zu korrigieren. Bei einem
 Fehler gibt er die letzten Wiederherstellungsschritte aus einem begrenzten
 Speicherpuffer aus; laufende Terminalausgabe würde das Timing beeinflussen.
+
+### Gespeicherter Codefrage-Player
+
+Gezielte Paket-/Controller-/FileLoader-Prüfung nach `build.sh`:
+
+```sh
+./test.sh --filter 'CodeExplanation|LocalControl|FileLoader'
+```
+
+Für die installierte Integration den geschützten `controlhost` wie oben starten.
+Zusätzlich beim externen Treiber `FASTRA_CONTROL_EXPLANATION_TEST=1` setzen.
+`FASTRA_CONTROL_EXPLANATION_PACKAGE` bezeichnet ein eigenes Fixture-Verzeichnis
+außerhalb versionierter Dateien. Zwei nacheinander beendete Hostprozesse mit
+identischem Paket belegen Wiederöffnung nach einem echten App-Neustart und
+ungültige alte Laufzeit-Jobs. Die ersten Paketdateien werden nur angelegt, wenn
+das Manifest fehlt; vorhandene Quellen werden nicht zur Wiederöffnung verändert.
+
+Der Host betätigt reale native Player-Knöpfe in seiner eigenen Sitzung und
+beobachtet Auswahl, Dokument-ID, Schriftgrößen, readonly-Zustand und Playerstatus.
+Die separate Markerdatei ist ausschließlich eine Testhost-Funktion, keine neue
+Wire-Operation. Die vorhandene Prüfung der beiden dirty Arbeitsfenster und
+Test-Preferences läuft anschließend unverändert. Außerdem unbekanntes Schema,
+Pause während Navigation, bewusstes Zurückkehren und Beenden prüfen. Capture
+`explanation-ready`, `explanation-paused` und `explanation-error` erzeugt native
+Aufnahmen bei 400/900 pt; jede Sprachfassung selbst ansehen. Ein Testknopfaufruf
+belegt dessen Aktion, keine vollständige reale Maus-/Tastaturabnahme.
+
+### Screenshot-Bestätigung des Erklärungsplayers
+
+`python3 app/tools/test-code-explanation-capture.py` prüft die Capture-Grenze
+ohne Appstart: alte FAIL-Marker und eine fehlende zweite Fensterbreite dürfen
+keinen Erfolg liefern. Installierte Playerläufe verbinden Auftrag, PASS-Marker
+und beide PNG-Dateinamen über ein einmaliges Token. Bereit-, Pause- und
+Fehlerzustände verwenden dieselbe Bestätigung.
+
+### Remote-Auswahl für Fetch und Pull
+
+`GitIntegrationRemoteActionTests` verwendet zwei temporäre lokale Remotes und
+prüft expliziten Pull bei anderem/fehlendem Upstream, ungültige Ref-Spezifikationen
+sowie vollständigen Fetch trotz `skipFetchAll`, gleichnamiger Remote-Gruppen
+und ausgefallener Einzelquellen. Ein Abbruch startet keine weitere Quelle. `./selftest.sh gitremotedialogs`
+prüft native Auswahl-/Branchzustände und betätigt den tatsächlichen
+Bestätigungsknopf über AppKits `NSButton.performClick`. Der Dialogtest startet
+wie andere Fokusprüfungen über LaunchServices; sein Timer wird auch in der
+modalen RunLoop-Schleife bedient. Mit
+`FASTRA_REMOTE_DIALOG_DIR` werden fünf Dialogzustände als PNG gesichert; beide
+UI-Sprachen visuell prüfen.

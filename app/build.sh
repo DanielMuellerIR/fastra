@@ -6364,6 +6364,15 @@ if [ "$SOFT_WRAP_UI_PATCH" = "changed" ]; then
         .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4z20. Syntax-Folding: Revisionen, verschachtelte Platzhalter und Edit-Ranges.
+FOLDING_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/code-folding.py "$CHECKOUTS/CodeEditSourceEditor" "$CHECKOUTS/CodeEditTextView")
+if [ "$FOLDING_PATCH" = "changed" ]; then
+  rm -rf .build/*/debug/CodeEditTextView.build .build/*/release/CodeEditTextView.build
+  rm -rf .build/*/debug/CodeEditSourceEditor.build .build/*/release/CodeEditSourceEditor.build
+  rm -f .build/*/debug/Modules/CodeEditTextView.swiftmodule .build/*/release/Modules/CodeEditTextView.swiftmodule
+  rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # Hinweis zu den `rm .build/*/{debug,release}/<Modul>.build`-Zeilen oben:
 # Sie gelten nur für das alte Build-System `native`, das Änderungen in
 # .build/checkouts nicht neu übersetzt. Ab Swift 6.4 baut `swift build`
@@ -6403,9 +6412,12 @@ mkdir -p "$APP/Contents/Resources"
 mkdir -p "$APP/Contents/Frameworks"
 cp ".build/$CONFIG/Fastra" "$APP/Contents/MacOS/Fastra"
 cp Info.plist "$APP/Contents/Info.plist"
+cp Fastra.sdef "$APP/Contents/Resources/Fastra.sdef"
 mkdir -p "$APP/Contents/Helpers"
 cp ".build/$CONFIG/fastra-diff" "$APP/Contents/Helpers/fastra-diff"
 chmod 755 "$APP/Contents/Helpers/fastra-diff"
+cp ".build/$CONFIG/fastra-control" "$APP/Contents/Helpers/fastra-control"
+chmod 755 "$APP/Contents/Helpers/fastra-control"
 
 # App-Icon auf Bundle-Ebene. Info.plist verweist via CFBundleIconFile
 # auf "AppIcon" → Contents/Resources/AppIcon.icns. Ohne diese Datei

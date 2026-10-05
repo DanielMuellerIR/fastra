@@ -30,6 +30,21 @@ enum GitFileHistoryState: Equatable {
 }
 
 enum GitFileHistory {
+    /// Historische Pfade dürfen fehlen oder inzwischen Verzeichnisse sein.
+    /// Nur eine noch vorhandene Datei erhält Aktionen auf den aktuellen Stand.
+    static func currentFileURL(for file: GitCommitFile, in root: URL) -> URL? {
+        guard let path = file.actionPath, !path.isEmpty,
+              !path.hasPrefix("/"), !path.contains("\0"),
+              !path.split(separator: "/").contains("..") else { return nil }
+        let url = root.appendingPathComponent(path).standardizedFileURL
+        guard relativePath(of: url, in: root) == path,
+              (try? url.resolvingSymlinksInPath()
+                .resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+            return nil
+        }
+        return url
+    }
+
     /// Obergrenze der geladenen Commits. Eine Dateihistorie ist fast immer
     /// kurz; die Grenze schützt nur vor Ausreißern wie einer über Jahre
     /// gepflegten Sammeldatei.

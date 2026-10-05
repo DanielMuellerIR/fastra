@@ -35,6 +35,23 @@ struct GitGraphView: View {
             if let historyFile {
                 historyHeader(historyFile)
                 Divider().opacity(0.3)
+            } else {
+                HStack(spacing: 8) {
+                    Text("Alle Branches")
+                    Spacer(minLength: 4)
+                    if let count = workspace.gitRepositorySnapshot?.totalCommitCount {
+                        Text(L10n.format("%ld Commits", count))
+                            .monospacedDigit()
+                    } else {
+                        Text("Anzahl nicht verfügbar")
+                    }
+                }
+                .fastraFont(size: 10)
+                .foregroundColor(Theme.textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .help("Alle über Git-Refs erreichbaren Commits; der Graph zeigt höchstens 2.000.")
+                .background(SelfTestMarker(id: "gitGraphTotal-\(workspace.gitRepositorySnapshot?.totalCommitCount ?? -1)"))
             }
             content
         }
@@ -474,7 +491,9 @@ private struct GraphRowView: View {
                 )
                 .lineLimit(1)
             if let tracking = presentation.tracking {
-                Text(tracking.compactCounts)
+                Text(GitRemoteTrackingPresentation.compactCounts(
+                    tracking, fetch: workspace.gitRepositorySnapshot?.fetch
+                ))
                     .fastraFont(size: 8, weight: .semibold, design: .monospaced)
             }
         }
@@ -496,10 +515,8 @@ private struct GraphRowView: View {
         ))
         .fixedSize()
         .help(presentation.tracking.map {
-            L10n.format(
-                "%@: lokal %@",
-                $0.shortName,
-                $0.compactCounts
+            FileTreeSidebar.remoteComparisonDescription(
+                [$0], fetch: workspace.gitRepositorySnapshot?.fetch, now: Date()
             )
         } ?? "")
     }
@@ -609,6 +626,22 @@ private struct GraphCommitFileRow: View {
             }
         }
         .disabled(!file.isPathActionable)
+        .contextMenu {
+            if let context = workspace.currentGitActionContext,
+               let url = GitFileHistory.currentFileURL(for: file, in: context.root) {
+                Button("Datei öffnen") {
+                    // Zwischen Menüaufbau und Klick kann ein Checkout wechseln
+                    // oder die Datei verschwinden. Den aktuellen Stand erneut prüfen.
+                    guard context.isCurrent(in: workspace),
+                          let current = GitFileHistory.currentFileURL(for: file, in: context.root) else { return }
+                    workspace.loadFile(at: current, expectedGitContext: context)
+                }
+                Divider()
+                FileTreeContextMenu(directory: url.deletingLastPathComponent(),
+                                    node: FileTreeNode(url: url, isDirectory: false),
+                                    onMutation: { workspace.refreshGitStatus() })
+            }
+        }
         .help(file.isPathActionable
               ? L10n.format("Klick: Diff für %@ öffnen", file.path)
               : GitGraphAccessibility.fileHint(actionable: false))

@@ -9,6 +9,42 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Nur die ausdrücklich angeforderte manuelle IME-Abnahme erhält die längere Runner-Frist")
+func manualIMEReviewRunnerTimeout() throws {
+    let source = try String(contentsOf: appDirectory.appendingPathComponent("selftest.sh"), encoding: .utf8)
+    let lines = source.components(separatedBy: .newlines)
+    let start = try #require(lines.firstIndex { $0.hasPrefix("timeout_for_test()") })
+    let end = try #require(lines[start...].firstIndex { $0 == "}" })
+    let function = lines[start...end].joined(separator: "\n")
+    let defaultTimeout = try #require(lines.first { $0.hasPrefix("TIMEOUT_SECS=") })
+    for (name, directory, expected) in [("softwrapindent", "", 180),
+                                       ("softwrapindent", "/tmp/review", 420),
+                                       ("githistory", "", 60),
+                                       ("githistory", "/tmp/review", 420),
+                                       ("cmdw", "/tmp/review", 120)] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = ["-s"]
+        var environment = ProcessInfo.processInfo.environment
+        environment["FASTRA_SOFTWRAPINDENT_REVIEW_DIR"] = directory
+        environment["FASTRA_GITHISTORY_REVIEW_DIR"] = directory
+        process.environment = environment
+        let input = Pipe(), output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = Pipe()
+        try process.run()
+        input.fileHandleForWriting.write(Data((defaultTimeout + "\n" + function + "\ntimeout_for_test " + name + "\n").utf8))
+        try input.fileHandleForWriting.close()
+        process.waitUntilExit()
+        let actual = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        #expect(process.terminationStatus == 0)
+        #expect(Int(actual.trimmingCharacters(in: .whitespacesAndNewlines)) == expected)
+        let review = SelfTestPolling.manualReviewTimeout(for: name, reviewDirectory: directory)
+        #expect((review ?? SelfTestPolling.runnerTimeoutSeconds(for: name)) == Double(expected))
+    }
+}
+
 /// Quelldateien, robust aus der Testdatei-Position abgeleitet
 /// (app/Tests/FastraTests/… → app/…).
 private let appDirectory = URL(fileURLWithPath: #filePath)

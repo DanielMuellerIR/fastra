@@ -7,6 +7,114 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.131.0] — 2026-10-05
+
+### Ergänzt
+
+- Fetch mit Auswahl eines Remotes oder aller konfigurierten Remotes. Pull zeigt
+  Remote und Branch ausdrücklich; „Alle“ aktualisiert zuerst alle Remotes und
+  lässt danach eine Pull-Quelle wählen. Der konfigurierte Upstream bleibt erhalten.
+- Remote-Vergleiche zeigen „?“ statt Gleichstand, solange in der Sitzung kein
+  erfolgreicher Fetch dieses Remotes belegt ist. Die Rückmeldung nennt die
+  tatsächlich abgerufenen Quellen.
+
+## [v1.130.0] — 2026-10-05
+
+### Ergänzt
+
+- Syntaxbasierte Faltbereiche mit Dreiecken und Platzhaltern, auch für
+  unindentierte 4D-Methoden, Kontrollblöcke und Zweige. Option-Klick schaltet
+  untergeordnete Bereiche gemeinsam; Suchsprünge öffnen versteckte Ziele.
+- Der Projektkopf zeigt Name, Pfad und Git-/Ordnersymbol neben der Marke.
+  Seitenleisten-Tabs behalten ihre Icons und ergänzen bei Platz den Text.
+- Der Graph nennt die Gesamtzahl aller über Git-Refs erreichbaren Commits,
+  unabhängig von der Begrenzung der sichtbaren Historie.
+
+### Verbessert
+
+- Erklärungssnapshots verwenden die Syntaxfarben des Editors, zeigen den
+  Dateinamen links und den Schreibschutz rechts. Ein Splitter und ein mit dem
+  Fenster wachsender Erklärbereich geben längeren Texten mehr Raum.
+- Zwei kompakte Bedienzeilen mit Soft-Wrap-Schalter, getrennten Schriftgrößen
+  und einem auch für zweistellige Schrittzahlen ausreichend breiten Zähler.
+
+## [v1.129.1] — 2026-10-05
+
+### Behoben
+
+- Quellenwechsel entwerten auch externe Navigationsaufträge, bevor ein neuer
+  Text erscheint. Bestätigungen prüfen Dokument-ID und Inhaltsbindung erneut.
+- Erklärungspakete weisen fremde BOMs und Nullbytes auch bei gültigem Hash ab.
+- Abbruch und Beenden bleiben bei voller Auftragsliste verfügbar; ⌘W und
+  Datei → Schließen schließen ausschließlich das vordere Snapshot-Fenster.
+- Sichtprüfungen bestätigen frische, zusammengehörige Aufnahmen bei beiden
+  Fensterbreiten und melden fehlgeschlagene Aufnahmen ausdrücklich.
+
+## [v1.129.0] — 2026-10-04
+
+### Ergänzt
+
+- Gespeicherte Codefragen als kleine lokale Erklärungspakete: eigener
+  Erklärbereich im schreibgeschützten Snapshot-Fenster, zwei bis fünf Schritte
+  mit Zurück, Weiter, Pause, Beenden und bewusster Rückkehr zur erklärten Stelle.
+- Quellen sind begrenzte UTF-8-Dateien mit SHA-256-Bindung. Paketpfade,
+  Dateitypen, Größen und Zeichenbereiche werden vor dem Anzeigen geprüft.
+  Wiederöffnung braucht weder KI noch Checkout; Schriftgrößen gelten getrennt
+  und nur innerhalb der Erklärung.
+- CLI, native AppleEvents und Player benutzen denselben Steuerungscontroller.
+  Eigenes Erkunden entwertet ausstehende Navigation. Arbeitsfenster bleiben
+  erhalten. Commit-Reviews mit Parent→Commit sind eine spätere eigene Etappe.
+
+## [v1.128.0] — 2026-10-04
+
+### Ergänzt
+
+- Lokale, schreibgeschützte Snapshot-Steuerung über den gebündelten Helfer
+  `fastra-control`: Capabilities, Laufzeit-IDs, begrenzte Dateiquellen und
+  abfragbare Jobs mit bestätigtem Inhalt und tatsächlicher Auswahl.
+- Eigene Snapshot-Fenster erhalten normale Arbeitsfenster und ungespeicherte
+  Inhalte. Neue Navigation, eigenes Erkunden, Abbruch und Fensterende
+  entwerten ausstehende Antworten; die Textgrenze beträgt 256 KiB.
+
+### Skriptanbindung
+
+- Gebündeltes Scripting-Dictionary mit Befehlen und lesbaren Objektbezügen
+  über denselben Controller. Externes AppleScript und JXA sind gegen die
+  notarisiert installierte App funktional geprüft; die unvollständige Diagnose
+  eines früheren Timeouts hält Etappe 0 weiterhin offen.
+
+Der Vertrag und die Abnahmegrenzen stehen in [LOCAL-CONTROL.md](docs/LOCAL-CONTROL.md).
+
+---
+
+## [v1.127.4] — 2026-10-03
+
+### Behoben
+
+- Ein führendes Inhaltszeichen U+FEFF bleibt beim UTF-8-Laden, Speichern und
+  Ordner-Ersetzen nach der Datei-BOM erhalten.
+- Zeilenoperationen bearbeiten auch die letzte ausgewählte echte Leerzeile;
+  Zeilennummern lassen abschließende echte Leerzeilen nicht mehr aus.
+- XPath zählt Positionsprädikate bei `//` je Elternknoten und behält die
+  Reihenfolge kombinierter Attribut- und Positionsprädikate bei.
+- Shift-Klick erweitert in Datei- und Git-Diffs auch eine leere Cursor-Auswahl.
+- Die 4D-Rücktokenisierung schützt Objektmember auch bei Blockkommentaren
+  zwischen Punkt und Membername.
+- Große einfache Git-Diffs erzeugen nur benötigte Textansichten und verwenden
+  einen Zeilenindex für Auswahlbereiche. Reine Git-Logtabs bereiten keine
+  ungenutzten Diff-Auswahlspalten mehr auf.
+
+## [v1.127.3] — 2026-10-02
+
+### Behoben
+
+- Text lässt sich in Datei- und Git-Diffs über mehrere Zeilen hinweg markieren
+  und ohne Zeilennummern kopieren. Die Auswahl bleibt in ihrer Ausgangsspalte.
+- Dateizeilen im Git-Verlauf bieten ein Rechtsklickmenü mit dem Öffnen des
+  aktuellen Dateistands und den Dateibaum-Aktionen, solange die Datei existiert.
+
+---
+
 ## [v1.127.2] — 2026-10-02
 
 ### Behoben

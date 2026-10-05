@@ -612,22 +612,11 @@ enum TextOperations {
     /// — sonst hinge eine Nummer hinter dem letzten Zeilenumbruch.
     static func addLineNumbers(in text: String, selection: NSRange) -> LineOperations.Result? {
         transformLines(in: text, selection: selection) { lines in
-            // Eine leere Schluss-Zeile stammt vom Datei-End-Newline und ist
-            // kein echter Inhalt — sie wird nicht mitnummeriert.
-            let hasTrailingEmpty = lines.count >= 2 && lines.last == ""
-            let realCount = hasTrailingEmpty ? lines.count - 1 : lines.count
-            guard realCount >= 1 else { return lines }
-            // Breite = Stellenzahl der größten Nummer (= Anzahl echter Zeilen).
-            let width = String(realCount).count
-
+            // transformLines liefert nur echte Zeileninhalte, auch Leerzeilen.
+            let width = String(lines.count).count
             var out: [String] = []
             out.reserveCapacity(lines.count)
             for (index, line) in lines.enumerated() {
-                // Die Phantom-Leerzeile am Ende unverändert durchreichen.
-                if hasTrailingEmpty && index == lines.count - 1 {
-                    out.append(line)
-                    continue
-                }
                 let number = String(index + 1)                       // Start 1, Schritt 1
                 let pad = String(repeating: " ", count: width - number.count)
                 out.append(pad + number + " " + line)                // rechtsbündig + ein Trenner
@@ -1168,8 +1157,9 @@ enum TextOperations {
         let range = LineOperations.expandToFullLines(in: text, selection: selection)
         let block = ns.substring(with: range)
         var lines = LineOperations.splitLines(block)
-        // Ein abschließender Zeilentrenner erzeugt keinen weiteren Zeileninhalt.
-        let hasFinalSeparator = lines.count > 1 && lines.last == ""
+        // Nur der Ganzdokument-Vertrag behält den letzten Trenner im Bereich.
+        // Bei einer Auswahl ist ein leeres Schluss-Element echter Zeileninhalt.
+        let hasFinalSeparator = selection.length == 0 && lines.count > 1 && lines.last == ""
         if hasFinalSeparator { lines.removeLast() }
         guard lines.count >= minLines else { return nil }
 

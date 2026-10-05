@@ -2899,6 +2899,12 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         printf '%s\n' '{"protocol":1}'
         """.write(to: fakeHelper, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeHelper.path)
+        let fakeControl = fakeApp.appendingPathComponent("Contents/Helpers/fastra-control")
+        try FileManager.default.copyItem(at: fakeHelper, to: fakeControl)
+        let fakeDictionary = fakeApp.appendingPathComponent("Contents/Resources/Fastra.sdef")
+        try FileManager.default.createDirectory(at: fakeDictionary.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try "<dictionary/>".write(to: fakeDictionary, atomically: true, encoding: .utf8)
         let infoData = try PropertyListSerialization.data(
             fromPropertyList: ["CFBundleIdentifier": "de.dm0.fastra"],
             format: .xml,

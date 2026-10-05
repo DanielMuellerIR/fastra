@@ -207,6 +207,11 @@ der aktive Tab ist links vorbelegt.
   dorthin; ⌥↑/⌥↓ wandern zum vorigen/nächsten Unterschied.
 - **Lange gleiche Abschnitte** sind eingeklappt und lassen sich pro
   Abschnitt einblenden.
+- **Text kopieren:** Mit der Maus lässt sich Text innerhalb einer Spalte
+  über mehrere Zeilen markieren und mit ⌘C kopieren. Zeilennummern und die
+  andere Spalte werden nicht mitkopiert. Ein Klick setzt den Cursor; Shift-Klick
+  erweitert die Auswahl von dort aus. Eingeklappte Abschnitte zuerst
+  einblenden, wenn ihr Text in die Auswahl gehören soll.
 - **Spaltenbreite:** Der Trenner zwischen beiden Seiten lässt sich ziehen —
   der Mauszeiger wird dort zum Verschiebe-Pfeil. Die linke Seite bekommt so
   mehr Platz, ohne dass das Fenster breiter werden muss; die rechte gibt
@@ -934,6 +939,16 @@ sichtbar, während der Dateien- oder Graph-Tab offen ist. Im Einzelnen:
   sagt Fastra das ebenfalls und nennt den Weg nach vorn: den verwaisten
   Eintrag mit `git worktree prune` abmelden, danach ist der Branch wieder
   frei.
+- **Fetch und Pull:** Die Knöpfe öffnen eine Remote-Auswahl. Fetch holt einen
+  gewählten Remote oder alle konfigurierten Remotes. Pull zeigt zusätzlich den
+  Remote-Branch, der in den aktuellen lokalen Branch eingebunden wird; die
+  Upstream-Konfiguration bleibt erhalten. „Alle abrufen, dann Pull-Quelle wählen“
+  aktualisiert zunächst alle Remotes, danach wählst du genau eine Quelle.
+  Die Pull-Strategie (Rebase, Merge, nur Fast-Forward) gilt weiterhin aus den
+  Einstellungen. „?“ am Remote-Vergleich bedeutet: in dieser Sitzung noch nicht
+  erfolgreich abgerufen; „!“ kennzeichnet einen fehlgeschlagenen Abruf. Pfeile
+  zeigen dann weiterhin den letzten lokal bekannten Stand. Der Tooltip nennt
+  das Alter des letzten Erfolgs; die Fetch-Rückmeldung nennt die geholten Remotes.
 - **Änderungen:** Dateien bereitstellen/entnehmen, verwerfen und direkt
   committen. Nach einem lokalen Commit wird der Commit-Knopf zum Push-Knopf:
   Jeder lokal konfigurierte Remote erhält eine eigene vollständig klickbare
@@ -1003,6 +1018,11 @@ sichtbar, während der Dateien- oder Graph-Tab offen ist. Im Einzelnen:
   Doppelklick auf eine Commit-Zeile verhalten sich wie im ganzen Graphen.
 - Verlauf (`git log`) und Diffs öffnen als schreibgeschützte Tabs; ein
   Klick auf einen Commit-Hash zeigt dessen Details.
+- **Aktuelle Datei aus dem Verlauf öffnen:** Rechtsklick auf eine Dateizeile
+  unter einem aufgeklappten Commit → „Datei öffnen“. Das öffnet den heutigen
+  Stand im normalen Editor. Das Menü bietet auch die Aktionen des Dateibaums;
+  es erscheint nur für noch vorhandene Dateien. Ein normaler Klick öffnet
+  weiterhin den historischen Diff.
 - Git-Diffs nutzen dieselbe zweispaltige Ansicht wie **Dateien
   vergleichen** — inklusive Differenzen-Liste unten und
   ⌥↑/⌥↓-Navigation (⌥⌘[/⌥⌘] funktionieren weiterhin). Beide Spalten sind
@@ -1171,3 +1191,76 @@ Nach spätestens zehn Sekunden endet die Übergabe mit Erfolg oder Fehler.
 `--capabilities --json` liefert die unterstützten Fähigkeiten ohne App-Start.
 Der vollständige Aufruf- und Fehlervertrag steht im Repository unter
 `docs/EXTERNAL-DIFF.md`.
+
+## Begrenzte Text-Snapshots lokal steuern
+
+Ab Version 1.128.0 enthält Fastra zusätzlich
+`/Applications/Fastra.app/Contents/Helpers/fastra-control`.
+`--capabilities --json` nennt Fähigkeiten und Grenzen ohne App-Start.
+`--request /pfad/auftrag.json` oder `--request -` nimmt einen JSON-Auftrag
+für eine eigene schreibgeschützte Sitzung an. `--no-launch` vor diesen Optionen
+beschränkt die Übergabe auf eine bereits laufende Instanz.
+
+Textdateien bis 256 KiB werden mit erwartetem SHA-256 eingefroren. Nachträgliche
+Dateiänderungen verändern den sichtbaren Snapshot nicht. Navigation und
+Markierung verwenden seine Sitzungs- und Dokument-ID sowie denselben Hash;
+Positionen zählen UTF-16-Einheiten ab null und liegen auf vollständigen Zeichen.
+Normale Arbeitsfenster und ungespeicherte Inhalte bleiben erhalten. Snapshots
+lassen sich auswählen, kopieren und durchsuchen, aber nicht bearbeiten oder
+speichern; sie werden beim nächsten Start nicht wiederhergestellt.
+
+Ein erfolgreicher Aufruf bestätigt zunächst die Annahme eines Jobs.
+Erst dessen Status `ready` bestätigt Inhalt, angewendete Auswahl und sichtbare
+Zielstelle. Eigenes Erkunden, Abbruch oder Schließen verhindert späte Sprünge.
+Der vollständige Vertrag mit Beispielen steht unter `docs/LOCAL-CONTROL.md`.
+AppleScript verwendet denselben Vertrag: `control capabilities` nennt die
+Fähigkeiten, `control inventory` das Inventar und `control request` nimmt den
+JSON-Auftrag entgegen. Fenster, Dokumente, Sitzungen und Jobs besitzen lesbare
+`id`- und `details`-Eigenschaften. Normale Arbeitsfenster lassen sich darüber
+nicht verändern. Die externen Funktionsproben bestehen; die Diagnose eines
+früheren Zustellungs-Timeouts bleibt in `docs/LOCAL-CONTROL.md` dokumentiert.
+
+## Gespeicherte Code-Erklärungen
+
+Mit **Datei → Code-Erklärung öffnen…** ein lokal gespeichertes JSON-Manifest
+öffnen. Fastra prüft die mitgelieferten UTF-8-Quellen und ihre SHA-256-Hashes
+und zeigt sie schreibgeschützt mit einem eigenen Erklärbereich. Zurück und
+Weiter wählen einen Schritt; Pause hält die Führung an. Eigene Auswahl oder
+Scrollen pausiert ebenfalls. **Zur Stelle** springt bewusst
+zur aktuellen Stelle. Beenden schließt ausschließlich diese Sitzung. Auch **Datei → Schließen**
+oder **⌘W** schließt das vordere Snapshot-Fenster; Arbeitsfenster bleiben erhalten.
+Abbruch und Beenden funktionieren auch bei voller Auftragsliste.
+
+Code- und Erklärungsschrift lassen sich getrennt anpassen; globale
+Einstellungen bleiben erhalten. Das Paket lässt sich nach einem Neustart
+wieder öffnen, ohne KI, Checkout oder Änderung der Arbeitsdateien. Fehlende
+oder veränderte Quellen ergeben einen Fehler. Das Paketformat und der Start
+über `fastra-control` stehen in der Projektdokumentation.
+
+Die Quellen verwenden dieselben Syntaxfarben wie der Editor. Oben steht links
+der Dateiname und rechts der Schreibschutz-Hinweis. Die Trennlinie zwischen
+Code und Erklärung lässt sich ziehen; zusätzliche Fensterhöhe kommt dem
+Erklärtext zugute. **Soft Wrap** schaltet den visuellen Zeilenumbruch der
+Quelle, ohne ihren Inhalt zu ändern. Bei schmalen Fenstern stehen die
+Schriftgrößen im Menü **Schrift** statt als einzelne Knöpfe.
+
+## Codebereiche einklappen
+
+Dreiecke neben den Zeilennummern klappen erkannte Bereiche ein und aus.
+Der Platzhalter verdeckt Text nur auf dem Bildschirm; Kopieren, Speichern
+und Suchen arbeiten weiter mit dem vollständigen Inhalt. Verschachtelte
+Bereiche behalten ihren eigenen Zustand, wenn ihr Elternbereich wieder
+geöffnet wird. **Option-Klick** auf ein Dreieck schaltet auch alle Kinder.
+Ein Doppelklick auf den Platzhalter öffnet den Bereich und lässt ihn ausgewählt.
+Ein Suchsprung öffnet die Bereiche, die das Ziel verdecken.
+
+**Darstellung → Bereich ein-/ausklappen** schaltet den Bereich an der
+Einfügemarke. Daneben stehen **Alle Bereiche einklappen** und
+**Alle Bereiche ausklappen**. Die Erkennung verwendet die Sprachgrammatik;
+4D-Methoden besitzen eine eigene Erkennung für Methoden, Kontrollblöcke und
+If/Else-, Case- und Try/Catch-Zweige. Einrückung ist dafür nicht erforderlich.
+Unvollständige Blöcke ohne passenden Abschluss werden nicht gefaltet.
+
+Der gemeinsame Projektkopf neben der Marke zeigt Name und Pfad. Das Symbol
+unterscheidet Git-Repositories und normale Ordner. Der Graph nennt die Zahl
+aller über Git-Refs erreichbaren Commits; seine Liste bleibt auf 2.000 begrenzt.

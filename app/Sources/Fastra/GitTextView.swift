@@ -8,12 +8,24 @@ import SwiftUI
 struct GitTextView: View {
     let kind: GitTabKind
     let content: String
+    @StateObject private var textSelection = DiffTextSelection()
 
     /// Zeilen als indizierte Paare — der Index ist die stabile `ForEach`-ID.
     private var lines: [(offset: Int, line: String)] {
         content.split(separator: "\n", omittingEmptySubsequences: false)
             .enumerated()
             .map { ($0.offset, String($0.element)) }
+    }
+
+    private var selectionItems: [DiffDisplayItem] {
+        lines.map { item in
+            .row(DiffDisplayRow(id: "git-text-\(item.offset)", ordinal: item.offset,
+                                kind: .unchanged, beforeNumber: nil, afterNumber: nil,
+                                before: item.line, after: nil,
+                                beforeHighlight: nil, afterHighlight: nil,
+                                beforeMissingFinalNewline: false, afterMissingFinalNewline: false,
+                                intralineWasLimited: false))
+        }
     }
 
     var body: some View {
@@ -24,9 +36,9 @@ struct GitTextView: View {
         // bei langen Zeilen nach rechts (dann horizontaler Scroll).
         GeometryReader { geo in
             ScrollView([.vertical, .horizontal]) {
-                VStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(lines, id: \.offset) { item in
-                        row(for: item.line)
+                        row(for: item.line, index: item.offset)
                     }
                 }
                 .padding(.horizontal, 14)
@@ -39,15 +51,23 @@ struct GitTextView: View {
             }
         }
         .background(Theme.surfaceRaised)
+        .onAppear { updateSelection() }
+        .onChange(of: content) { updateSelection() }
+        .onChange(of: kind) { updateSelection() }
+    }
+
+    private func updateSelection() {
+        guard kind != .log else { return }
+        textSelection.update(items: selectionItems)
     }
 
     @ViewBuilder
-    private func row(for line: String) -> some View {
+    private func row(for line: String, index: Int) -> some View {
         switch kind {
         case .log:
             GitLogRow(line: line, hash: GitLog.commitHash(inLine: line))
         case .diff, .commit:
-            GitDiffRow(line: line)
+            GitDiffRow(line: line, rowID: "git-text-\(index)", selection: textSelection)
         }
     }
 }
@@ -79,6 +99,8 @@ private struct GitLogRow: View {
 /// einen zarten Hintergrund (wie die Such-Diff-Vorschau).
 private struct GitDiffRow: View {
     let line: String
+    let rowID: String
+    let selection: DiffTextSelection
 
     private var kind: GitDiffLineKind { GitDiff.classify(line) }
 
@@ -102,13 +124,12 @@ private struct GitDiffRow: View {
     }
 
     var body: some View {
-        Text(line.isEmpty ? " " : line)
-            .fastraFont(.monoSmall)
-            .foregroundColor(foreground)
-            .fixedSize(horizontal: true, vertical: false)
+        DiffSelectableText(text: line, highlight: nil, color: foreground,
+                           highlightColor: foreground, before: true, rowID: rowID,
+                           wraps: false, selection: selection)
+            .fixedSize(horizontal: true, vertical: true)
             .padding(.vertical, 0.5)
             .padding(.horizontal, 4)
             .background(background)
-            .textSelection(.enabled)
     }
 }

@@ -60,6 +60,13 @@ Capture Groups.
 
 ## Funktionen
 
+- **Lokale Snapshot-Steuerung**: Der gebündelte
+  [Helfer `fastra-control`](docs/LOCAL-CONTROL.md) zeigt begrenzten Text in einer
+  eigenen schreibgeschützten Sitzung und bestätigt Inhalt und Auswahl über Jobs.
+  AppleScript verwendet denselben Controller.
+- **Gespeicherte Code-Erklärungen**: Vorbereitete Erklärungen neben syntaxgefärbten
+  Quellsnapshots wiedergeben, mit Splitter, Schrittnavigation und Soft Wrap.
+- **Code-Faltung**: Methoden und Kontrollblöcke einklappen, auch in 4D-`.4dm`-Dateien.
 - **Vorschau vor Apply**: Vorher/Nachher side-by-side für jede Operation;
   geschrieben wird erst nach Bestätigung.
 - **`*`-Platzhalter-Suche** mit Capture-Semantik, ganz ohne RegEx-Kenntnisse.
@@ -133,7 +140,11 @@ vollwertigen Git-Client.
 - In der Projekt-Seitenleiste und im Graph stehen Ahead/Behind-Zähler für jeden
   Remote. Lokale und entfernte Branches sind unterscheidbar, mehrere Remotes
   behalten ihre eigene Farbe. Fetch kann manuell oder bei aktiver App
-  zeitgesteuert laufen; Alter und Fehler bleiben sichtbar. Pull verwendet immer eine gewählte Strategie
+  zeitgesteuert laufen; Alter und Fehler bleiben sichtbar. Manueller Fetch wählt
+  einen Remote oder alle; Pull wählt Remote und Branch ausdrücklich, ohne den
+  Upstream zu ändern. „Alle“ holt zuerst alle Remotes und fragt danach nach einer
+  Pull-Quelle. „?“ kennzeichnet einen in der Sitzung noch nicht geholten Remote,
+  „!“ einen fehlgeschlagenen Fetch. Pull verwendet eine gewählte Strategie
   (Rebase, Merge oder nur Fast-Forward), prüft das Repository unmittelbar vor
   dem Start erneut und versteckt weder automatischen Stash noch Push.
 - Vor einem Push holt Fastra den Ziel-Remote und zeigt eine gebundene Vorschau

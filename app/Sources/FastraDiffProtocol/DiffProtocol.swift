@@ -171,12 +171,18 @@ public enum DiffMessageClient {
     }
 
     public static func send(_ data: Data, to name: String, timeout: TimeInterval) -> DiffWireReply? {
+        guard let response = sendData(data, to: name, timeout: timeout) else { return nil }
+        return try? JSONDecoder().decode(DiffWireReply.self, from: response)
+    }
+
+    /// Gemeinsamer lokaler Transport; die beiden semantischen Verträge bleiben getrennt.
+    public static func sendData(_ data: Data, to name: String, timeout: TimeInterval) -> Data? {
         guard timeout > 0, data.count <= DiffProtocol.maximumMessageSize,
               let port = CFMessagePortCreateRemote(nil, name as CFString) else { return nil }
         var response: Unmanaged<CFData>?
         let status = CFMessagePortSendRequest(port, 1, data as CFData, min(timeout / 2, 0.25),
                                              min(timeout / 2, 0.25), CFRunLoopMode.defaultMode.rawValue, &response)
         guard status == kCFMessagePortSuccess, let response else { return nil }
-        return try? JSONDecoder().decode(DiffWireReply.self, from: response.takeRetainedValue() as Data)
+        return response.takeRetainedValue() as Data
     }
 }

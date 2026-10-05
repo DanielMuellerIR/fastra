@@ -592,14 +592,15 @@ enum XPathEvaluator {
 
         for step in query.steps {
             var next: [Int] = []
-            // Positions-Prädikate zählen je KONTEXT-Knoten (XPath-Semantik).
-            for node in context {
-                var candidates: [Int] = []
-                if step.descendant {
-                    collectDescendants(of: node, in: index, into: &candidates)
-                } else {
-                    candidates = children(of: node, in: index)
-                }
+            // `//a` ist descendant-or-self::node()/child::a. Positions-
+            // Prädikate zählen deshalb für jeden Elternkontext getrennt.
+            var parents = context
+            if step.descendant {
+                for node in context { collectDescendants(of: node, in: index, into: &parents) }
+            }
+            var visitedParents = Set<Int>()
+            for node in parents where visitedParents.insert(node).inserted {
+                let candidates = children(of: node, in: index)
                 var matched = candidates.filter {
                     step.name == nil || index.elements[$0].name == step.name
                 }

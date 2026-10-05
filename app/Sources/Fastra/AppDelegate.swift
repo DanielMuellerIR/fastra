@@ -457,6 +457,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Erst nach dem Restore bereit melden: Dessen abschließendes Aktivieren
     /// des Hauptfensters darf einem bereits angenommenen Diff nicht den Fokus nehmen.
     private static func startExternalDiffService() {
+        if !SelfTest.isSelfTestRun || SelfTest.requestedTest == "controlhost" {
+            LocalControlService.shared.start()
+        }
         if !SelfTest.isSelfTestRun || SelfTest.requestedTest?.hasPrefix("externaldiff") == true {
             externalDiffServiceRequested = true
             ExternalDiffService.shared.start()

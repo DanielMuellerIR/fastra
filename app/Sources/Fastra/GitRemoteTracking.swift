@@ -187,6 +187,16 @@ enum GitRemoteTrackingList {
 }
 
 enum GitRemoteTrackingPresentation {
+    static func compactCounts(_ state: GitRemoteTrackingState,
+                              fetch: GitFetchSnapshot?) -> String {
+        let marker = fetch?.errorsByRemote[state.remote] != nil ? "!"
+            : (fetch?.lastSuccessByRemote[state.remote] == nil ? "?" : nil)
+        guard let marker else { return state.compactCounts }
+        return state.localAhead == 0 && state.localBehind == 0
+            ? marker : state.compactCounts + " " + marker
+    }
+
+
     /// Pro Remote erscheint in der kompakten Branch-Zeile höchstens ein
     /// Vergleich: bevorzugt derselbe Branchname, danach der echte Upstream.
     /// Andere Remote-Branches bleiben im Graph sichtbar, überfrachten aber

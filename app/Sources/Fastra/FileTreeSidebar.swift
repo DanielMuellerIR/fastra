@@ -46,22 +46,9 @@ struct FileTreeSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            // Kopfzeile: gemeinsame Komponente (alle Seitenleisten-Tabs);
-            // der Dateien-Tab hängt sein Vollmenü unter die Standardpunkte.
-            // „Im Finder zeigen“ liefert schon der gemeinsame Kopf — deshalb
-            // blendet das Vollmenü seinen eigenen Finder-Punkt hier aus.
-            SidebarProjectHeader(rootURL: rootURL) {
-                Divider()
-                FileTreeContextMenu(directory: rootURL, node: nil,
-                                    includeFinderReveal: false,
-                                    onMutation: handleTreeMutation)
-                    .environmentObject(workspace)
-            } accessory: {
-                // Kompaktes Filterfeld am rechten Rand der Kopfzeile
-                // (Daniel 2026-09-01) — es ersetzt dort das frühere
-                // Schließen-X und wächst mit einer breiteren Seitenleiste.
-                filterFieldCompact
-            }
+            filterFieldCompact
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
 
             // Branch-Bereich (Etappe 2): nur sichtbar, wenn das Projekt ein
             // Git-Repo ist und git verfügbar (sonst still weg). Seit
@@ -130,7 +117,7 @@ struct FileTreeSidebar: View {
                                     ForEach(Self.visibleRemoteComparisons(
                                         relevantRemoteTrackingStates
                                     )) { state in
-                                        Text("\(state.remote) \(state.compactCounts)")
+                                        Text(Self.remoteBadgeText(state, fetch: workspace.gitRepositorySnapshot?.fetch))
                                             .fastraFont(size: 9, design: .monospaced)
                                             .foregroundColor(Self.remoteColor(state.remote))
                                             .lineLimit(1)
@@ -234,7 +221,7 @@ struct FileTreeSidebar: View {
                         .fastraHelp(L10n.format("Entfernte Commits mit %@ einbinden",
                                                 workspace.gitPullStrategyName))
                         .accessibilityLabel("Pull")
-                        .accessibilityHint("Prüft Upstream, lokale Änderungen und laufende Git-Vorgänge vor dem Pull.")
+                        .accessibilityHint("Wählt Remote und Branch; prüft lokale Änderungen und laufende Git-Vorgänge vor dem Pull.")
 
                         Button {
                             workspace.refreshGitStatus()
@@ -337,6 +324,9 @@ struct FileTreeSidebar: View {
                                    debounced: false)
             }
         }
+        .onChange(of: workspace.fileMutationRevision) { _, _ in
+            watcher.refresh()
+        }
         .onAppear {
             // Rückkehr aus einem anderen Seitenleisten-Tab: Der Suchtext steht
             // noch, ein passendes Ergebnis fehlt aber, wenn der Scan beim
@@ -385,10 +375,7 @@ struct FileTreeSidebar: View {
         return result
     }
 
-    /// Kompaktes Filterfeld am rechten Rand der Kopfzeile (Daniel 2026-09-01).
-    /// Bewusst schmal gehalten; eine breiter gezogene Seitenleiste gibt ihm
-    /// bis zur Obergrenze mehr Platz, den Rest der Zeile behält der
-    /// Projektname.
+    /// Der Dateifilter nutzt seine eigene Zeile unter der Tabwahl.
     private var filterFieldCompact: some View {
         HStack(spacing: 5) {
             Image(systemName: "magnifyingglass")
@@ -530,6 +517,11 @@ struct FileTreeSidebar: View {
         )
     }
 
+    static func remoteBadgeText(_ state: GitRemoteTrackingState,
+                                fetch: GitFetchSnapshot?) -> String {
+        "\(state.remote) \(GitRemoteTrackingPresentation.compactCounts(state, fetch: fetch))"
+    }
+
     static func remoteComparisonText(
         _ states: [GitRemoteTrackingState]
     ) -> String {
@@ -571,7 +563,10 @@ struct FileTreeSidebar: View {
             } else {
                 freshness = L10n.string("für diesen Remote noch nicht abgerufen")
             }
-            return "\(state.shortName): \(state.compactCounts) · \(freshness)"
+            let problem = fetch?.errorsByRemote[state.remote].map {
+                " · " + L10n.format("Letzter Fetch fehlgeschlagen: %@", $0)
+            } ?? ""
+            return "\(state.shortName): \(state.compactCounts) · \(freshness)\(problem)"
         }.joined(separator: L10n.string(", "))
         let error = fetch?.error.map {
             " " + L10n.format("Letzter Fetch fehlgeschlagen: %@", $0)
@@ -607,7 +602,7 @@ struct FileTreeSidebar: View {
             .accessibilityValue(Self.fetchDescription(
                 workspace.gitRepositorySnapshot?.fetch, now: now
             ))
-            .accessibilityHint("Führt git fetch aus und ändert keine lokalen Dateien.")
+            .accessibilityHint("Wählt einen Remote oder alle Remotes zum Abrufen. Arbeitsdateien bleiben erhalten.")
         }
     }
 

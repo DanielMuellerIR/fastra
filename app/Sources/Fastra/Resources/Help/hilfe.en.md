@@ -195,6 +195,10 @@ pre-fills the left side.
   (“Lines 12–14 changed”, “Line 30 only on the left”). Clicking jumps
   there; ⌥↑/⌥↓ move to the previous/next difference.
 - **Long identical sections** are folded and can be expanded per section.
+- **Copy text:** Drag within either column to select text across multiple
+  lines, then press ⌘C. Line numbers and the other column are excluded.
+  Click to place the cursor, then Shift-click to extend the selection from it.
+  Expand folded sections first if their text should be included.
 - **Column width:** the divider between the two sides can be dragged—the
   pointer turns into a resize arrow there. The left side gains room without
   widening the window, and the right side gives up exactly that room. The
@@ -882,6 +886,15 @@ open. In detail:
   meantime and Git does not know yet, Fastra says so as well and names the way
   forward: deregister the stale entry with `git worktree prune`, and the branch
   is free again.
+- **Fetch and pull:** The buttons open a remote chooser. Fetch retrieves one
+  selected remote or every configured remote. Pull also shows the remote branch
+  to integrate into the current local branch; upstream configuration stays
+  unchanged. “Fetch all, then choose a pull source” first refreshes every remote,
+  then lets you select one source. The pull strategy (rebase, merge,
+  fast-forward-only) still follows the settings. “?” in a remote comparison means
+  it has not been fetched successfully in this session; “!” marks a failed fetch.
+  Arrows then still show the last locally known state. The tooltip gives the age
+  of the last success, and fetch feedback names the retrieved remotes.
 - **Changes:** stage/unstage files, discard, and commit right from the
   sidebar. After a local commit, the Commit button becomes a Push button:
   every locally configured remote gets its own fully clickable surface with
@@ -946,6 +959,10 @@ open. In detail:
   commit row behave as in the full graph.
 - History (`git log`) and diffs open as read-only tabs; clicking a
   commit hash shows its details.
+- **Open the current file from history:** right-click a file row under an
+  expanded commit → “Open File”. This opens today's file in the normal editor.
+  The menu also provides the file tree actions and appears only for files
+  that still exist. A normal click continues to open the historical diff.
 - Git diffs use the same two-column view as **Compare Files** —
   including the differences list at the bottom and ⌥↑/⌥↓ navigation
   (⌥⌘[/⌥⌘] still work). Both columns always have the same width; lines
@@ -1102,3 +1119,72 @@ The handoff ends with success or an error within ten seconds.
 `--capabilities --json` reports supported capabilities without starting the app.
 The full invocation and error contract is documented in the repository at
 `docs/EXTERNAL-DIFF.md`.
+
+## Control bounded text snapshots locally
+
+Since version 1.128.0, Fastra also includes
+`/Applications/Fastra.app/Contents/Helpers/fastra-control`.
+`--capabilities --json` reports capabilities and limits without launching the app.
+`--request /path/request.json` or `--request -` accepts a JSON request for a
+separate read-only session. Place `--no-launch` before these options to restrict
+handoff to an already running instance.
+
+Text files up to 256 KiB are frozen against an expected SHA-256. Subsequent
+file changes do not alter the displayed snapshot. Navigation and selection use
+its session and document IDs and the same hash; positions count UTF-16 units
+from zero and must fall on complete character boundaries. Normal work windows
+and unsaved contents remain intact. Snapshots support selection, copying and
+search, but cannot be edited or saved; they are not restored on the next launch.
+
+A successful invocation initially confirms job acceptance. Only its `ready`
+status confirms content, the applied selection and a visible target location.
+Exploring, cancellation or closing the window prevents late jumps.
+The complete contract and examples are in `docs/LOCAL-CONTROL.md`.
+AppleScript uses the same contract: `control capabilities` reports
+capabilities, `control inventory` the inventory, and `control request` accepts
+the JSON request. Windows, documents, sessions and jobs expose read-only
+`id` and `details` properties. These commands cannot modify normal work
+windows. External functional probes pass; the incomplete diagnosis of an
+earlier delivery timeout is documented in `docs/LOCAL-CONTROL.md`.
+
+## Saved code explanations
+
+Use **File → Open code explanation…** to open a locally saved JSON manifest.
+Fastra verifies the included UTF-8 sources and their SHA-256 hashes, then shows
+them read-only with a separate explanation area. Back and Next select a step;
+Pause stops the guidance. Selecting or scrolling through the code also pauses
+it. **Return** deliberately returns to the current
+step. End closes only this session. **File → Close** or **⌘W** also closes
+the front snapshot window while preserving working windows. Cancel and End
+remain available when the job list is full.
+
+Code and explanation font sizes can be changed independently; global settings
+remain unchanged. Reopen the package after restarting without AI, a checkout,
+or changes to working files. Missing or modified sources produce an error.
+The project documentation describes the package format and `fastra-control`
+launch command.
+
+Sources use the same syntax colors as the editor. The header shows the filename
+on the left and the read-only notice on the right. Drag the divider between
+code and explanation; extra window height grows the explanation area.
+**Soft Wrap** toggles visual line wrapping without changing the source.
+Narrow windows offer font sizes in the **Font** menu instead of individual buttons.
+
+## Fold code regions
+
+Triangles beside line numbers collapse and expand recognized regions.
+Placeholders only hide text on screen; copying, saving and searching still
+use the complete content. Nested regions retain their own state when their
+parent is expanded. **Option-click** a triangle to toggle its children too.
+Double-click a placeholder to expand its region and keep the region selected.
+Search navigation expands regions that hide the target.
+
+**View → Collapse/expand region** toggles the region at the caret. The adjacent
+commands **Collapse all regions** and **Expand all regions** affect the whole
+document. Detection uses the language grammar; 4D methods have their own
+recognizer for methods, control blocks and If/Else, Case and Try/Catch branches.
+Indentation is not required. Incomplete blocks without matching ends are not folded.
+
+The shared project header beside the brand shows the name and path. Its icon
+distinguishes Git repositories from ordinary folders. The graph reports all
+commits reachable through Git refs; the displayed list remains limited to 2,000.

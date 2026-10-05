@@ -8,6 +8,30 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Historisches Dateimenü bietet nur noch vorhandene aktuelle Dateien an")
+func fileHistory_currentFileURL() throws {
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let path = "aktuell 🇩🇪.txt"
+    let current = root.appendingPathComponent(path)
+    try "heute".write(to: current, atomically: true, encoding: .utf8)
+    func file(_ path: String, _ status: String = "M") -> GitCommitFile {
+        GitCommitFile(path: path, status: status, additions: 1, deletions: 1)
+    }
+    #expect(GitFileHistory.currentFileURL(for: file(path), in: root) == current.standardizedFileURL)
+    // Auch ein alter Lösch-Commit darf die später neu angelegte Datei öffnen.
+    #expect(GitFileHistory.currentFileURL(for: file(path, "D"), in: root) != nil)
+    #expect(GitFileHistory.currentFileURL(for: file("gelöscht.txt", "D"), in: root) == nil)
+    #expect(GitFileHistory.currentFileURL(for: file("../außerhalb.txt"), in: root) == nil)
+    #expect(GitFileHistory.currentFileURL(for: file(current.path), in: root) == nil)
+    #expect(GitFileHistory.currentFileURL(for: file("."), in: root) == nil)
+    let renamed = GitCommitFile(path: path, originalPath: "früher.txt", status: "R",
+                                additions: 0, deletions: 0)
+    #expect(GitFileHistory.currentFileURL(for: renamed, in: root) == current.standardizedFileURL)
+    try FileManager.default.removeItem(at: current)
+    #expect(GitFileHistory.currentFileURL(for: file(path), in: root) == nil)
+}
+
 // Kurzschreibweise wie in GitGraphTests: baut die rohe git-log-Ausgabe nach.
 private func rawLog(_ commits: [(h: String, p: String, s: String)]) -> Data {
     var data = Data()

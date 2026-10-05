@@ -52,6 +52,13 @@ enum FourDTokenizer {
     struct Token: Equatable {
         let range: NSRange   // UTF-16, passend zu NSAttributedString/CESE
         let kind: Kind
+        let isObjectMember: Bool
+
+        init(range: NSRange, kind: Kind, isObjectMember: Bool = false) {
+            self.range = range
+            self.kind = kind
+            self.isObjectMember = isObjectMember
+        }
     }
 
     /// 4D-Kontrollflusswörter (öffentliches Sprachwissen, handgepflegt —
@@ -374,7 +381,7 @@ enum FourDTokenizer {
             guard followedByParen else { return nil }
             return Token(range: NSRange(location: start,
                                         length: firstWordEnd - start),
-                         kind: .methodCall)
+                         kind: .methodCall, isObjectMember: true)
         }
 
         // `name:C123` → Befehl, `name:K12:34` → Konstante (nur EIN Wortende

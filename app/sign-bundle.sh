@@ -79,5 +79,7 @@ done
 
 [ -x "$APP/Contents/Helpers/fastra-diff" ] || { echo "fastra-diff fehlt oder ist nicht ausführbar." >&2; exit 1; }
 codesign "${SIGN_ARGS[@]}" "$APP/Contents/Helpers/fastra-diff"
+[ -x "$APP/Contents/Helpers/fastra-control" ] || { echo "fastra-control fehlt oder ist nicht ausführbar." >&2; exit 1; }
+codesign "${SIGN_ARGS[@]}" "$APP/Contents/Helpers/fastra-control"
 codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"

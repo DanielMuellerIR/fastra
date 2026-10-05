@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="Fastra Local Control">
+  <suite name="Local Control" code="FaCo" description="Read-only local snapshot presentation and runtime jobs. JSON protocol 1.">
+    <class name="application" code="capp" description="Fastra.">
+      <cocoa class="NSApplication"/>
+      <element type="control window" access="r"><cocoa key="controlWindows"/></element>
+      <element type="control document" access="r"><cocoa key="controlDocuments"/></element>
+      <element type="control session" access="r"><cocoa key="controlSessions"/></element>
+      <element type="control job" access="r"><cocoa key="controlJobs"/></element>
+    </class>
+    <class name="control window" plural="control windows" code="CWnD" description="Read-only runtime window. IDs expire after app restart.">
+      <cocoa class="FastraControlScriptWindow"/>
+      <property name="id" code="ID  " type="text" access="r"><cocoa key="controlID"/></property>
+      <property name="details" code="CDet" type="text" access="r"><cocoa key="details"/></property>
+    </class>
+    <class name="control document" plural="control documents" code="CDoc" description="Read-only runtime document. IDs expire after app restart.">
+      <cocoa class="FastraControlScriptDocument"/>
+      <property name="id" code="ID  " type="text" access="r"><cocoa key="controlID"/></property>
+      <property name="details" code="CDet" type="text" access="r"><cocoa key="details"/></property>
+    </class>
+    <class name="control session" plural="control sessions" code="CSes" description="Read-only runtime session. IDs expire after app restart.">
+      <cocoa class="FastraControlScriptSession"/>
+      <property name="id" code="ID  " type="text" access="r"><cocoa key="controlID"/></property>
+      <property name="details" code="CDet" type="text" access="r"><cocoa key="details"/></property>
+    </class>
+    <class name="control job" plural="control jobs" code="CJob" description="Read-only runtime job. IDs expire after app restart.">
+      <cocoa class="FastraControlScriptJob"/>
+      <property name="id" code="ID  " type="text" access="r"><cocoa key="controlID"/></property>
+      <property name="details" code="CDet" type="text" access="r"><cocoa key="details"/></property>
+    </class>
+    <command name="control capabilities" code="FaCoCaps" description="Return the running controller capabilities as JSON text.">
+      <cocoa class="FastraControlScriptCommand"/>
+      <result type="text"/>
+    </command>
+    <command name="control inventory" code="FaCoWins" description="Return runtime windows and documents as JSON text.">
+      <cocoa class="FastraControlScriptCommand"/>
+      <result type="text"/>
+    </command>
+    <command name="control request" code="FaCoRqst" description="Execute a bounded protocol 1 JSON request through the shared controller. Long operations return an accepted job; query its status for readiness.">
+      <cocoa class="FastraControlScriptCommand"/>
+      <direct-parameter type="text" description="Protocol 1 JSON request."/>
+      <result type="text"/>
+    </command>
+  </suite>
+</dictionary>

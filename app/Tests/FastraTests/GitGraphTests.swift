@@ -21,6 +21,14 @@ private func rawLog(_ commits: [(h: String, p: String, an: String, d: String, ts
 
 // MARK: - Parser
 
+@Test("Gesamtzähler erfasst alle Refs ohne Graph-Limit und weist ungültige Ausgaben ab")
+func graphTotalCount() {
+    #expect(GitGraph.countArguments == ["rev-list", "--all", "--count"])
+    #expect(GitGraph.parseCount("23001\n") == 23001)
+    #expect(GitGraph.parseCount("0\n") == 0)
+    for invalid in ["", "-1", "2000\nwarning", "many"] { #expect(GitGraph.parseCount(invalid) == nil) }
+}
+
 @Test("Log-Argumente liefern auch für Merge-Commits Dateidetails")
 func arguments_includeMergeDetails() {
     #expect(GitGraph.arguments.contains("--raw"))
@@ -358,6 +366,10 @@ func gitIntegration_graphRealRepositorySpecialRenameAndCommitDiff() async throws
     _ = try await graphGit(["commit", "-q", "-m", "rename"], in: root)
 
     let result = try await graphGit(GitGraph.arguments, in: root)
+    let count = try await graphGit(GitGraph.countArguments, in: root)
+    let limited = try await graphGit(GitGraph.arguments.map { $0 == "-2000" ? "-1" : $0 }, in: root)
+    #expect(GitGraph.parseCount(count.stdout) == 2)
+    #expect(GitGraph.parse(limited.stdoutData).count == 1)
     let commits = GitGraph.parse(result.stdoutData)
     guard let head = commits.first, let file = head.files.first(where: { $0.status == "R" }) else {
         Issue.record("Realer Rename fehlt im Graph")

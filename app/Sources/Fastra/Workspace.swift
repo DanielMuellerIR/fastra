@@ -5011,6 +5011,11 @@ final class Workspace: ObservableObject {
         }
     }
 
+    func refreshAfterProjectFileMutation() {
+        noteFileMutationChange(in: fileTreeMutationWorkspaces())
+        refreshGitStatus()
+    }
+
     /// Offene Inhalte bleiben nach dem Verschieben in den Papierkorb als
     /// unbenannte, geänderte Tabs erhalten. Das schützt auch noch nicht
     /// gespeicherte Änderungen und verhindert ein Wiederanlegen am alten Pfad.

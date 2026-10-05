@@ -16,6 +16,7 @@
 // gepostet, nicht über die Systemsteuerung simuliert.
 
 import AppKit
+import SwiftUI
 import FastraDiffProtocol
 import CoreGraphics
 import Darwin
@@ -30,6 +31,12 @@ import CodeEditTextView
 // (erkannte Sprache, tree-sitter-Grammatik, Query-Pfad).
 import CodeEditLanguages
 import Sparkle
+
+/// Die Diff-Prüfung bedient ein gerendertes Fenster ohne globalen Fokuswechsel.
+private final class BackgroundDiffSelectionWindow: NSWindow {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
 
 /// Hält die TCC-Entscheidung getrennt vom Prozessstart. Die Systemaufnahme-
 /// Closure wird ohne bestehende Freigabe überhaupt nicht ausgewertet.
@@ -601,6 +608,22 @@ enum SelfTest {
         case "colselwrap": waitForMainWindow { runWrappedColumnSelectionTest() }
         case "colpaste":  waitForMainWindow { runColumnPasteTest() }
         case "gutterdim": waitForMainWindow { runGutterDimmingTest() }
+        case "codefolding": waitForMainWindow {
+            Task { @MainActor in
+                testLabel = "codefolding"
+                let outcome = await CodeFoldingGUIProbe.run { textView, expected in
+                    guard let original = try? capturePasteboardItems() else { return false }
+                    textView.selectionManager.setSelectedRanges([textView.documentRange])
+                    textView.copy(NSObject())
+                    let owned = NSPasteboard.general.changeCount
+                    let copied = NSPasteboard.general.string(forType: .string)
+                    if pasteboardIsStillOwned(since: owned) { try? writePasteboardItems(original) }
+                    return copied == expected
+                }
+                finish(outcome.0, outcome.1)
+            }
+        }
+        case "gitremotedialogs": waitForMainWindow { runGitRemoteDialogsTest() }
         case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
         case "footerfit": waitForMainWindow { runFooterFitTest() }
         case "windowheight": waitForMainWindow { runWindowHeightTest() }
@@ -613,6 +636,15 @@ enum SelfTest {
         case "filediff": waitForMainWindow { runFileDiffTest() }
         case "externaldiff": waitForMainWindow { MainActor.assumeIsolated { runExternalDiffTest() } }
         case "externaldiffcold": waitForMainWindow { MainActor.assumeIsolated { pollExternalDiffCold() } }
+        case "controlhost":
+            // Externe CLI-/AppleEvent-Prüfung bedient diese isolierte Instanz;
+            // kein direkt aufgerufener Handler ersetzt dabei einen AppleEvent.
+            let controlDeadline = ProcessInfo.processInfo.systemUptime + 120
+            waitForMainWindow {
+                MainActor.assumeIsolated {
+                    ControlTestHost.start(deadline: controlDeadline) { ok in finish(ok, "externer Steuerungstest: normale Fenster und Einstellungen geschützt") }
+                }
+            }
         case "macro4d": waitForMainWindow { runFourDMacroSelfTest() }
         case "macro4dengine": DispatchQueue.main.async { runFourDMacroEngineTest() }
         case "tool4dhint": waitForMainWindow { runTool4DHintTest() }
@@ -749,6 +781,8 @@ enum SelfTest {
             // Spaltenrand abgeschnitten werden statt in die andere Seite zu
             // ragen.
             waitForMainWindow { runDiffNoWrapTest() }
+        case "diffselection": waitForMainWindow { MainActor.assumeIsolated { runDiffSelectionTest() } }
+        case "diffselectionbackground": waitForMainWindow { MainActor.assumeIsolated { runDiffSelectionTest(background: true) } }
         case "diffsplit":
             // Ziehbarer Trenner zwischen den beiden Vergleichsspalten.
             waitForMainWindow { runDiffSplitTest() }
@@ -796,7 +830,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -5071,7 +5105,7 @@ enum SelfTest {
                                         try Data("ready\n".utf8).write(to: base.appendingPathComponent("ready"))
                                     } catch { finish(.environment, "Abnahme-Marker nicht schreibbar") }
                                 })
-                                waitFor(budget: 120, pause: 0.1, condition: {
+                                waitFor(budget: 300, pause: 0.1, condition: {
                                     if let tv = editorTextView(in: root) as? TextView {
                                         let manager = tv.layoutManager!
                                         var geometry = "mode=\(manager.softWrapIndentation.rawValue) columns=\(manager.softWrapIndentationColumns)\n"
@@ -15293,6 +15327,85 @@ enum SelfTest {
         return nil
     }
 
+    private static func runGitRemoteDialogsTest() {
+        testLabel = "gitremotedialogs"
+        var status = GitStatusSummary.empty
+        status.branch = "main"
+        status.upstream = "mirror/development"
+        let remotes = ["mirror", "source", "team/fork"]
+        let variants: [(String, Bool, Bool, String?)] = [
+            ("fetch-all", false, true, nil),
+            ("pull-upstream", true, true, "mirror"),
+            ("pull-source", true, true, "source"),
+            ("pull-all", true, true, nil),
+            ("pull-after-all", true, false, "source")
+        ]
+        let directory = ProcessInfo.processInfo.environment["FASTRA_REMOTE_DIALOG_DIR"]
+        func show(_ index: Int) {
+            guard index < variants.count else {
+                finish(true, "Fetch/Pull-Dialoge: Remote-/Alle-Auswahl, Branchwechsel, Geometrie und native Bestätigung geprüft")
+            }
+            let (name, isPull, allowAll, remote) = variants[index]
+            let alert = GitRemoteActionDialog.makeAlert(remotes: remotes, status: status,
+                                                        isPull: isPull, allowAll: allowAll)
+            guard let accessory = alert.accessoryView as? GitRemoteActionAccessory else {
+                finish(false, "Remote-Auswahl fehlt")
+            }
+            if let remote { accessory.popup.selectItem(withTitle: remote) }
+            else { accessory.popup.selectItem(at: 0) }
+            accessory.popup.sendAction(accessory.popup.action, to: accessory.popup.target)
+            let expectedBranch = remote == "mirror" ? "development" : "main"
+            if isPull, remote != nil, accessory.branchField.stringValue != expectedBranch {
+                finish(false, "Branch-Vorschlag passt nicht zur gewählten Quelle")
+            }
+            if isPull, remote == nil, accessory.branchField.isEnabled {
+                finish(false, "Alle-Auswahl aktiviert fälschlich den Branch")
+            }
+            // runModal läuft innerhalb eines Main-Queue-Callbacks. Ein weiterer
+            // Dispatch-Callback wird dort nicht bedient; ein RunLoop-Timer schon.
+            let deadline = ProcessInfo.processInfo.systemUptime + 5
+            let driver = Timer(timeInterval: 0.1, repeats: true) { timer in
+                guard alert.window.isVisible, alert.window.isKeyWindow, NSApp.isActive else {
+                    if ProcessInfo.processInfo.systemUptime >= deadline {
+                        timer.invalidate()
+                        finish(.environment, "Remote-Dialog wird nicht sichtbar")
+                    }
+                    return
+                }
+                timer.invalidate()
+                guard let content = alert.window.contentView else { finish(false, "Dialog hat keine Ansicht") }
+                content.layoutSubtreeIfNeeded()
+                let popupRect = accessory.popup.convert(accessory.popup.bounds, to: content)
+                guard content.bounds.contains(popupRect), popupRect.width >= 340 else {
+                    finish(false, "Remote-Auswahl liegt außerhalb des Dialogs")
+                }
+                if let directory,
+                   let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
+                    content.cacheDisplay(in: content.bounds, to: bitmap)
+                    if let data = bitmap.representation(using: .png, properties: [:]) {
+                        let folder = URL(fileURLWithPath: directory)
+                        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                        try? data.write(to: folder.appendingPathComponent(name + ".png"))
+                    }
+                }
+                let button = alert.buttons[0]
+                button.performClick(nil)
+            }
+            RunLoop.main.add(driver, forMode: .common)
+            RunLoop.main.add(driver, forMode: RunLoop.Mode(rawValue: "NSModalPanelRunLoopMode"))
+            activateApplication(ignoringOtherApps: true)
+            defer { driver.invalidate() }
+            guard alert.runModal() == .alertFirstButtonReturn else { finish(false, "Dialog-Bestätigung kam nicht an") }
+            if let remote {
+                guard accessory.choice == .remote(remote, branch: isPull ? expectedBranch : "") else {
+                    finish(false, "Bestätigte Quelle stimmt nicht mit der Auswahl überein")
+                }
+            } else if accessory.choice != .all { finish(false, "Alle-Auswahl nicht übernommen") }
+            DispatchQueue.main.async { show(index + 1) }
+        }
+        show(0)
+    }
+
     // MARK: - Selbsttest sidebarheader (Etappe 1 Wunschpaket 2026-07b)
 
     /// Sucht eine `SelfTestMarker`-NSView (per Accessibility-Identifier) im
@@ -18257,9 +18370,37 @@ enum SelfTest {
                         + "— \(book.summary)")
                 },
                 then: {
-                    try? FileManager.default.removeItem(at: base)
-                    finish(true, "Dateiverlauf zeigt 3 von 4 Commits, überlebt den Tab-Wechsel, "
-                        + "und „Ganze Historie“ stellt alle 4 wieder her")
+                    func done() {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(true, "Dateiverlauf zeigt 3 von 4 Commits, überlebt den Tab-Wechsel, "
+                            + "und „Ganze Historie“ stellt alle 4 wieder her")
+                    }
+                    guard let directory = ProcessInfo.processInfo.environment["FASTRA_GITHISTORY_REVIEW_DIR"] else {
+                        done(); return
+                    }
+                    let review = URL(fileURLWithPath: directory)
+                    let repo = base.appendingPathComponent("working-copy")
+                    ws.loadFile(at: repo.appendingPathComponent("beta.txt")) { loaded in
+                        guard loaded, let window = mainWindowForAXChecks() else { finish(false, "History-Fixture nicht bereit") }
+                        window.title = "fastra-githistory-\(UUID().uuidString)"
+                        do {
+                            try FileManager.default.createDirectory(at: review, withIntermediateDirectories: true)
+                            try Data(repo.path.utf8).write(to: review.appendingPathComponent("fixture-repo"))
+                            try Data("ready\n".utf8).write(to: review.appendingPathComponent("ready"))
+                        } catch { finish(.environment, "History-Abnahmemarker nicht schreibbar") }
+                        waitFor(budget: 300, pause: 0.1, condition: {
+                            FileManager.default.fileExists(atPath: review.appendingPathComponent("continue").path)
+                        }, onTimeout: { _ in
+                            try? FileManager.default.removeItem(at: base)
+                            finish(.environment, "Manuelle History-Abnahme nicht freigegeben")
+                        }, then: {
+                            guard ws.activeTab?.url?.lastPathComponent == "alpha.txt",
+                                  ws.activeTab?.content == "alpha 3\n" else {
+                                finish(false, "History-Menü öffnete nicht die aktuelle normale Datei")
+                            }
+                            done()
+                        })
+                    }
                 })
     }
 
@@ -20521,6 +20662,199 @@ enum SelfTest {
     /// beide Spalten gleich breit, rechte Spalte hinter der linken, und die
     /// lange Zeile ist MEHRZEILIG hoch — nur dann bricht der Text in seiner
     /// Spalte um, statt darüber hinaus gezeichnet zu werden.
+    @MainActor
+    private static func runDiffSelectionTest(background: Bool = false) {
+        testLabel = background ? "diffselectionbackground" : "diffselection"
+        guard let ws = Workspace.shared else { finish(false, "Workspace fehlt") }
+        let tail = String(repeating: "lange Vergleichszeile ", count: 12)
+        let left = "alt α\né 🇩🇪\nEnde alt " + tail + "\n"
+        let right = "neu β\n日本\nEnde neu " + tail + "\n"
+        let request = FileDiffRequest(left: .text(left, name: "before.txt"),
+                                      right: .text(right, name: "after.txt"),
+                                      options: FileDiffOptions())
+        let document = Workspace.computeFileDiffDocument(request: request)
+        let patch = "diff --git a/test.txt b/test.txt\n--- a/test.txt\n+++ b/test.txt\n@@ -1,3 +1,3 @@\n"
+            + left.split(separator: "\n").map { "-" + $0 }.joined(separator: "\n") + "\n"
+            + right.split(separator: "\n").map { "+" + $0 }.joined(separator: "\n") + "\n"
+        let gitDocument = GitDiffParser.parse(Data(patch.utf8))
+        let gitRequest = GitDiffRequest(repositoryPath: selfTestTemporaryDirectory().path,
+                                       source: .workingTree(path: "test.txt"))
+        let windowType: NSWindow.Type = background ? BackgroundDiffSelectionWindow.self : NSWindow.self
+        let window = windowType.init(contentRect: NSRect(x: 150, y: 150, width: 760, height: 700),
+                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.title = "fastra-diffselection-\(UUID().uuidString)"
+        let title = window.title
+        var phase = 0
+        var largeDiffViewCount = 0
+        func views(in root: NSView) -> [DiffSelectionTextView] {
+            (root as? DiffSelectionTextView).map { [$0] } ?? root.subviews.flatMap { views(in: $0) }
+        }
+        func selectionEndX(in view: DiffSelectionTextView) -> CGFloat {
+            guard let manager = view.layoutManager, let container = view.textContainer else { return 1 }
+            manager.ensureLayout(for: container)
+            // Im schmalen Fenster liegt die rechte Spaltenkante außerhalb
+            // des Ausschnitts. Der kurze Fixture-Text endet dagegen sichtbar.
+            return min(view.bounds.width - 1, manager.usedRect(for: container).maxX + 1)
+        }
+        func startPoint(of view: DiffSelectionTextView, atEnd: Bool) -> NSPoint {
+            view.convert(NSPoint(x: atEnd ? selectionEndX(in: view) : 1,
+                                 y: min(5, view.bounds.height / 2)), to: nil)
+        }
+        func step() {
+            guard phase < (background ? 11 : 10) else {
+                window.orderOut(nil)
+                window.close()
+                let scaleReport = background ? "; 20.000-Zeilen-Diff: \(largeDiffViewCount) montierte Textansichten" : ""
+                finish(true, "Datei-, strukturierter Git- und einfacher Git-Diff: native Mausauswahl vorwärts/rückwärts, beide Spalten, zwei Breiten und Soft Wrap; Copy mit Unicode ohne Zeilennummern\(scaleReport)")
+            }
+            let raw = phase >= 8
+            let wrapped = phase % 2 == 0
+            let narrow = raw ? phase == 8 : phase % 4 < 2
+            window.setContentSize(NSSize(width: narrow ? 760 : 1100, height: 700))
+            let root: AnyView
+            if raw {
+                let content = phase == 10 ? patch + String(repeating: "+short line\n", count: 20_000) : patch
+                root = AnyView(GitTextView(kind: .diff, content: content).environmentObject(ws))
+            } else if phase < 4 {
+                root = AnyView(FileDiffView(request: request, document: document,
+                                           softWrapEnabled: wrapped).environmentObject(ws))
+            } else {
+                root = AnyView(GitDualPaneDiffView(request: gitRequest, document: gitDocument,
+                                                  fallbackText: "", softWrapEnabled: wrapped).environmentObject(ws))
+            }
+            window.contentView = NSHostingView(rootView: root)
+            if background { window.orderBack(nil) } else { window.makeKeyAndOrderFront(nil) }
+            let expectedFirst = raw ? "-alt α" : "alt α"
+            let expectedLast = raw ? "-é 🇩🇪" : "é 🇩🇪"
+            var pair: (DiffSelectionTextView, DiffSelectionTextView)?
+            var hitReport = ""
+            waitFor(budget: 4, pause: 0.05, condition: {
+                guard let content = window.contentView else { return false }
+                content.layoutSubtreeIfNeeded()
+                let rendered = views(in: content)
+                guard let first = rendered.first(where: { $0.before && $0.string == expectedFirst }),
+                      let last = rendered.first(where: { $0.before && $0.string == expectedLast }),
+                      first.bounds.width > 10, last.bounds.width > 10,
+                      first.selection?.contains(first) == true,
+                      last.selection?.contains(last) == true else { return false }
+                // SwiftUI kann die Textansichten schon einhängen, während
+                // Scrollposition und Clipping noch auf das vorige Layout zeigen.
+                // Erst reale Trefferpunkte freigeben, dann im selben Tick ziehen.
+                for before in raw ? [true] : [true, false] {
+                    guard let startView = before ? first : rendered.first(where: { !$0.before && $0.string == "neu β" }),
+                          let endView = before ? last : rendered.first(where: { !$0.before && $0.string == "日本" }) else { return false }
+                    // AppKits hitTest erwartet Koordinaten der übergeordneten
+                    // Ansicht. Der Hosting-Inhalt und der Fensterrahmen können
+                    // unterschiedliche y-Richtungen haben.
+                    let start = startView.convert(NSPoint(x: 1, y: min(5, startView.bounds.height / 2)), to: content.superview)
+                    let end = endView.convert(NSPoint(x: selectionEndX(in: endView), y: min(5, endView.bounds.height / 2)), to: content.superview)
+                    let startHit = content.hitTest(start), endHit = content.hitTest(end)
+                    hitReport = "Seite \(before), Start \(start), Ende \(end), Treffer \(String(describing: startHit)) / \(String(describing: endHit))"
+                    guard startHit === startView, endHit === endView else { return false }
+                }
+                pair = (first, last)
+                return true
+            }, onTimeout: { _ in
+                func failed() {
+                    window.orderOut(nil)
+                    finish(false, "Diff-Textansichten oder Mauspunkte fehlen, Phase \(phase): \(hitReport)")
+                }
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_DIFFSELECTION_DIR"],
+                      !directory.isEmpty else { failed(); return }
+                typeScrollCapture(window: window) { snapshot in
+                    if let snapshot {
+                        let base = URL(fileURLWithPath: directory)
+                        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                        try? snapshot.data.write(to: base.appendingPathComponent("diffselection-failed-\(phase).png"))
+                    }
+                    failed()
+                }
+            }, then: {
+                guard window.title == title,
+                      background ? !NSApp.isActive : (window.isKeyWindow && NSApp.isActive),
+                      let content = window.contentView, let pair else {
+                    window.orderOut(nil)
+                    finish(.environment, "Diff-Fixture hat den Fokus verloren")
+                }
+                let rendered = views(in: content)
+                if phase == 10 {
+                    largeDiffViewCount = rendered.count
+                    guard largeDiffViewCount < 200 else {
+                        window.orderOut(nil); finish(false, "Großer Git-Diff montiert \(largeDiffViewCount) Textansichten statt sichtbarer Zeilen")
+                    }
+                }
+                let sides = raw ? [true] : [true, false]
+                for before in sides {
+                    let firstText = before ? expectedFirst : "neu β"
+                    let lastText = before ? expectedLast : "日本"
+                    guard let first = before ? pair.0 : rendered.first(where: { !$0.before && $0.string == firstText }),
+                          let last = before ? pair.1 : rendered.first(where: { !$0.before && $0.string == lastText }) else {
+                        window.orderOut(nil); finish(false, "Gegenseite fehlt")
+                    }
+                    let start = first.convert(NSPoint(x: 1, y: min(5, first.bounds.height / 2)), to: nil)
+                    let end = last.convert(NSPoint(x: selectionEndX(in: last), y: min(5, last.bounds.height / 2)), to: nil)
+                    guard let parent = content.superview,
+                          content.hitTest(parent.convert(start, from: nil)) === first,
+                          content.hitTest(parent.convert(end, from: nil)) === last else {
+                        window.orderOut(nil); finish(false, "Mauspunkte treffen nicht den gerenderten Diff-Text")
+                    }
+                    for reversed in [false, true] {
+                        guard window.title == title,
+                              sendSplitterDrag(from: reversed ? end : start, to: reversed ? start : end, in: window),
+                              first.selectedRange().length == firstText.utf16.count,
+                              last.selectedRange().length == lastText.utf16.count else {
+                            window.orderOut(nil); finish(false, "Zeilenübergreifender Drag unvollständig, Phase \(phase), Seite \(before), rückwärts \(reversed)")
+                        }
+                        let expected = firstText + "\n" + lastText
+                        prepareSelfTestPasteboardMutationOrFinish()
+                        let copied = background
+                            ? window.firstResponder?.tryToPerform(#selector(NSTextView.copy(_:)), with: nil) == true
+                            : NSApp.sendAction(#selector(NSTextView.copy(_:)), to: nil, from: nil)
+                        guard copied else {
+                            window.orderOut(nil); finish(false, "Copy nicht im Responderpfad erreichbar")
+                        }
+                        guard let items = try? plainTextPasteboardItems(expected) else { finish(false, "Copy-Erwartung fehlt") }
+                        noteSelfTestPasteboardMutationOrFinish(expectedItems: items)
+                        guard NSPasteboard.general.string(forType: .string) == expected else {
+                            window.orderOut(nil); finish(false, "Copy enthält falschen Text, Zeilennummern oder Gegenseite")
+                        }
+                    }
+                }
+                guard sendMouseClick(at: startPoint(of: pair.0, atEnd: true), in: window, modifiers: []),
+                      pair.0.selection?.range.length == 0,
+                      sendMouseClick(at: startPoint(of: pair.1, atEnd: true), in: window, modifiers: .shift),
+                      pair.0.selection?.range.length == expectedLast.utf16.count + 1,
+                      !background || !NSApp.isActive else {
+                    window.orderOut(nil); finish(false, "Shift-Klick erweitert den Cursor nicht über die Folgezeile, Phase \(phase)")
+                }
+                let longRows = rendered.filter { $0.string.contains("lange Vergleichszeile") }
+                if !raw {
+                    guard longRows.count == 2, longRows.allSatisfy({ view in
+                        guard let manager = view.layoutManager else { return false }
+                        let height = manager.defaultLineHeight(for: view.font!)
+                        return wrapped ? view.bounds.height > height * 2 : view.bounds.height < height * 2
+                    }) else {
+                        window.orderOut(nil); finish(false, "Lange Diff-Zeilen haben falsche Umbruchhöhe, Phase \(phase)")
+                    }
+                }
+                @MainActor func next() { phase += 1; step() }
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_DIFFSELECTION_DIR"],
+                      !directory.isEmpty else { MainActor.assumeIsolated { next() }; return }
+                typeScrollCapture(window: window) { snapshot in
+                    guard let snapshot else { finish(.environment, "Diff-Auswahlaufnahme fehlt") }
+                    do {
+                        let destination = URL(fileURLWithPath: directory)
+                        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+                        try snapshot.data.write(to: destination.appendingPathComponent("diffselection-\(phase).png"))
+                    } catch { finish(.environment, "Diff-Auswahlaufnahme nicht schreibbar") }
+                    MainActor.assumeIsolated { next() }
+                }
+            })
+        }
+        step()
+    }
+
     private static func runDiffWideTest() {
         testLabel = "diffwide"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
@@ -20956,7 +21290,8 @@ enum SelfTest {
         window.sendEvent(down)
         for step in 1...4 {
             let fraction = CGFloat(step) / 4
-            let point = NSPoint(x: start.x + (end.x - start.x) * fraction, y: start.y)
+            let point = NSPoint(x: start.x + (end.x - start.x) * fraction,
+                                y: start.y + (end.y - start.y) * fraction)
             guard let drag = event(.leftMouseDragged, point,
                                    0.01 * Double(step), step) else { return false }
             window.sendEvent(drag)
@@ -21207,8 +21542,33 @@ enum SelfTest {
                 to: repo.appendingPathComponent("index.html"),
                 atomically: true, encoding: .utf8)
             DispatchQueue.main.async {
-                ws.openProject(at: repo)
-                pollFilesGitShot(ws)
+                prepareRemoteBadgeShot(repository: repo, workspace: ws) {
+                    ws.openProject(at: repo)
+                    pollFilesGitShot(ws)
+                }
+            }
+        }
+    }
+
+    /// Optionaler echter Remote-Zustand für die schmale/breite Sichtprüfung.
+    private static func prepareRemoteBadgeShot(repository: URL, workspace: Workspace,
+                                               completion: @escaping () -> Void) {
+        guard ProcessInfo.processInfo.environment["FASTRA_REMOTE_BADGE_SCREENSHOT"] == "1" else {
+            completion(); return
+        }
+        let remotes = ["cached", "failed", "source"]
+        let commands = remotes.flatMap { remote in
+            [["remote", "add", remote, repository.path], ["fetch", "--", remote]]
+        } + [["remote", "set-url", "failed", repository.appendingPathComponent("missing.git").path]]
+        runGitSequence(commands, in: repository) { ok, error in
+            guard ok else { finish(false, "Remote-Screenshot-Fixture: \(error)") }
+            workspace.gitRepositoryStore.recordSuccessfulFetch(repository: repository, remote: "source")
+            _ = workspace.gitRepositoryStore.fetch(repository: repository,
+                preferences: GitPreferences(), remotes: remotes, selection: .remote("failed")) { outcome in
+                guard case .completed(let result) = outcome, !result.ok else {
+                    finish(false, "Remote-Screenshot-Fixture erzeugte keinen Fehler")
+                }
+                DispatchQueue.main.async { completion() }
             }
         }
     }
@@ -22373,10 +22733,12 @@ enum SelfTest {
         step(["checkout", "-b", "hotfix", "HEAD~1"]) {
         write("h.txt", "hot\n"); step(["add", "."]) { step(["commit", "-m", "Hotfix offen"]) {
         step(["checkout", "main"]) {
-            ws.openProject(at: repo)
-            // Nach dem Öffnen ist der Graph über FASTRA_SIDEBAR=graph aktiv.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                dumpMainWindowThenExit(prefix: "GRAPHSHOT-WINDOW")
+            prepareRemoteBadgeShot(repository: repo, workspace: ws) {
+                ws.openProject(at: repo)
+                // Nach dem Öffnen ist der Graph über FASTRA_SIDEBAR=graph aktiv.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    dumpMainWindowThenExit(prefix: "GRAPHSHOT-WINDOW")
+                }
             }
         } } } } } } } } } } } } } } } }
     }
@@ -22428,6 +22790,16 @@ enum SelfTest {
     }
 
     private static func dumpMainWindowThenExit(prefix: String) {
+        if let value = ProcessInfo.processInfo.environment["FASTRA_SIDEBAR_SCREENSHOT_WIDTH"],
+           let width = Double(value), (SidebarLayout.minimumSidebarWidth...500).contains(width),
+           let workspace = Workspace.shared, workspace.sidebarWidth != width {
+            workspace.sidebarWidth = width
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                dumpMainWindowThenExit(prefix: prefix)
+            }
+            return
+        }
         let main = NSApp.windows
             .filter { $0.isVisible }
             .max(by: { ($0.frame.width * $0.frame.height) < ($1.frame.width * $1.frame.height) })

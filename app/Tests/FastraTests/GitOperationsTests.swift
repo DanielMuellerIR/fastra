@@ -36,6 +36,12 @@ private final class ControlledGitExecutor: GitCommandExecuting {
                  completion: @escaping (GitExecutionOutcome) -> Void)
         -> GitCancelling {
         let cancellation = Cancellation()
+        // Der neue Gesamtzähler hat einen eigenen, sofort beantworteten Read.
+        // Die kontrollierten Indizes bleiben den fünf Zustandsabfragen vorbehalten.
+        if arguments == GitGraph.countArguments {
+            completion(success(Data("23001\n".utf8)))
+            return cancellation
+        }
         lock.lock()
         calls.append(Call(arguments: arguments, directory: directory,
                           policy: policy, cancellation: cancellation,
@@ -283,6 +289,7 @@ struct GitRepositoryStoreTests {
         }
         _ = observation
         #expect(snapshot.headOID == "abc123")
+        #expect(snapshot.totalCommitCount == 23001)
         #expect(snapshot.upstream == "origin/main")
         #expect(snapshot.status?.ahead == 1)
         #expect(snapshot.status?.behind == 2)

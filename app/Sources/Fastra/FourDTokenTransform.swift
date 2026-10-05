@@ -158,15 +158,7 @@ enum FourDTokenTransform {
         for token in tokens where retokenizableKinds.contains(token.kind) {
             guard !isCancelled() else { return nil }
             guard token.range.location >= claimedUntil else { continue }
-            // Gelernte globale Namen dürfen keinen gleichnamigen Member-Aufruf
-            // verändern; der Tokenizer führt diese bewusst als methodCall.
-            var preceding = token.range.location
-            while preceding > 0,
-                  let scalar = Unicode.Scalar(original.character(at: preceding - 1)),
-                  CharacterSet.whitespacesAndNewlines.contains(scalar) {
-                preceding -= 1
-            }
-            if preceding > 0, original.character(at: preceding - 1) == 0x2E { continue }
+            guard !token.isObjectMember else { continue }
             let value = original.substring(with: token.range)
             guard !value.contains(":") else { continue }   // schon tokenisiert
             // Ein aus einem Befehlsvorkommen gelerntes Suffix darf denselben

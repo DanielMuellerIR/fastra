@@ -221,12 +221,24 @@ enum SelfTestPolling {
     /// Wächtertest hält beide Tabellen gleich; ohne ihn entstünde hier ein
     /// zweiter Wahrheitsort zur Runner-Frist.
     static func runnerTimeoutSeconds(for test: String) -> TimeInterval {
+        let reviewKey = test == "githistory" ? "FASTRA_GITHISTORY_REVIEW_DIR" : "FASTRA_SOFTWRAPINDENT_REVIEW_DIR"
+        if let timeout = manualReviewTimeout(for: test, reviewDirectory:
+            ProcessInfo.processInfo.environment[reviewKey]) {
+            return timeout
+        }
         switch test {
         case "print": return 240
         case "softwrapindent": return 180
+        case "controlhost": return 130
         case "cmdw", "leakscenario": return 120
         default: return 60
         }
+    }
+
+    static func manualReviewTimeout(for test: String, reviewDirectory: String?) -> TimeInterval? {
+        guard ["softwrapindent", "githistory"].contains(test),
+              let reviewDirectory, !reviewDirectory.isEmpty else { return nil }
+        return 420
     }
 
     /// Wanduhr-Deckel: Frist plus 20 s Zugabe wie in `waitUntil`, aber nie über

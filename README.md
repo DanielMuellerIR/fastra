@@ -58,6 +58,12 @@ token highlighting, curated patterns, and guided capture groups.
 
 ## Features
 
+- **Local snapshot control**: The bundled [`fastra-control` helper](docs/LOCAL-CONTROL.md)
+  opens bounded read-only text in a separate session and reports confirmed
+  content and selection through jobs. AppleScript uses the same controller.
+- **Saved code explanations**: Replay prepared explanations alongside syntax-coloured
+  source snapshots, with resizable panes, step navigation and soft wrap.
+- **Code folding**: Collapse methods and control blocks, including 4D `.4dm` files.
 - **Preview before apply**: Side-by-side before/after for every operation;
   nothing is written until you confirm.
 - **`*` wildcard search** with capture semantics, no regex knowledge needed.
@@ -122,7 +128,10 @@ a text editor first, not a replacement for a full Git client.
 - The project sidebar and graph show ahead/behind counts for every remote.
   Local and remote branches remain distinct, and each remote keeps its own
   colour. Fetch can be manual or scheduled while Fastra is active; its age and
-  errors stay visible. Pull always uses a selected strategy
+  errors stay visible. Manual fetch chooses one remote or all; pull chooses an
+  explicit remote and branch without changing the configured upstream. “All”
+  fetches every remote first, then asks for one pull source. “?” marks a remote
+  not yet fetched in the session, and “!” a failed fetch. Pull uses a selected strategy
   (rebase, merge or fast-forward-only), checks the repository again immediately
   before running, and never hides an automatic stash or push.
 - Before pushing, Fastra fetches the target remote and shows a bound preview

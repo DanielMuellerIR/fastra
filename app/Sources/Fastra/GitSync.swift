@@ -106,26 +106,66 @@ final class GitRepositoryIdentityResolver: GitRepositoryIdentityResolving {
 
 // MARK: - Fetch-Plan und Erstentscheidung
 
+enum GitFetchSelection: Equatable {
+    case configured
+    case all
+    case remote(String)
+}
+
+struct GitPullSource: Equatable {
+    let remote: String
+    let branch: String
+    let localBranch: String
+
+    static func defaultBranch(remote: String, remotes: [String],
+                              status: GitStatusSummary) -> String {
+        // Der längste Remote-Präfix trennt auch Namen mit Schrägstrich korrekt.
+        if let upstream = status.upstream,
+           let owner = remotes.sorted(by: { $0.count > $1.count }).first(where: {
+               upstream.hasPrefix($0 + "/")
+           }), owner == remote {
+            return String(upstream.dropFirst(owner.count + 1))
+        }
+        return status.branch ?? ""
+    }
+}
+
 enum GitFetchPlan {
-    static func arguments(preferences: GitPreferences, upstream: String?,
-                          remotes: [String]) -> [String] {
+    static func commands(preferences: GitPreferences, upstream: String?,
+                         remotes: [String], selection: GitFetchSelection = .configured) -> [[String]] {
         var arguments = ["fetch"]
         if preferences.prune { arguments.append("--prune") }
-        switch preferences.remoteScope {
-        case .all:
-            arguments.append("--all")
-        case .relevant:
-            if let remote = relevantRemote(upstream: upstream, remotes: remotes) {
-                arguments.append(remote)
-            }
+        let targets = requestedRemotes(preferences: preferences, upstream: upstream,
+                                       remotes: remotes, selection: selection)
+        guard !targets.isEmpty else { return [arguments] }
+        // --multiple deutet Namen als Remote-Gruppen um. Einzelaufrufe binden
+        // wirklich jeden gewählten Remote und berücksichtigen skipFetchAll.
+        return targets.map { remote in
+            let configuredSingle = selection == .configured && preferences.remoteScope == .relevant
+            return arguments + (configuredSingle && !remote.hasPrefix("-")
+                ? [remote] : ["--", remote])
         }
-        return arguments
+    }
+
+    static func requestedRemotes(preferences: GitPreferences, upstream: String?,
+                                 remotes: [String], selection: GitFetchSelection) -> [String] {
+        switch selection {
+        case .all: return remotes
+        case .remote(let remote): return [remote]
+        case .configured:
+            if preferences.remoteScope == .all { return remotes }
+            return relevantRemote(upstream: upstream, remotes: remotes).map { [$0] } ?? []
+        }
     }
 
     static func relevantRemote(upstream: String?, remotes: [String]) -> String? {
-        if let upstream, let slash = upstream.firstIndex(of: "/") {
-            let candidate = String(upstream[..<slash])
-            if remotes.isEmpty || remotes.contains(candidate) { return candidate }
+        if let upstream {
+            if let remote = remotes.sorted(by: { $0.count > $1.count }).first(where: {
+                upstream.hasPrefix($0 + "/")
+            }) { return remote }
+            if remotes.isEmpty, let slash = upstream.firstIndex(of: "/") {
+                return String(upstream[..<slash])
+            }
         }
         if remotes.contains("origin") { return "origin" }
         return remotes.sorted().first
@@ -206,6 +246,7 @@ enum GitOperationStateDetector {
 enum GitPullPreflightResult: Equatable {
     case ready(hasLocalChanges: Bool)
     case noUpstream
+    case detached
     case unmerged
     case operationInProgress(GitOperationState)
     case missingIdentity
@@ -213,22 +254,28 @@ enum GitPullPreflightResult: Equatable {
 
 enum GitPullPreflight {
     static func evaluate(status: GitStatusSummary,
-                         operation: GitOperationState?) -> GitPullPreflightResult {
+                         operation: GitOperationState?,
+                         hasExplicitSource: Bool = false) -> GitPullPreflightResult {
         if let operation { return .operationInProgress(operation) }
+        if status.isDetached { return .detached }
         if status.changes.contains(where: {
             $0.staged == .conflicted || $0.unstaged == .conflicted
         }) { return .unmerged }
-        guard status.upstream != nil else { return .noUpstream }
+        guard hasExplicitSource || status.upstream != nil else { return .noUpstream }
         return .ready(hasLocalChanges: !status.changes.isEmpty)
     }
 
-    static func arguments(strategy: GitPullStrategy) -> [String]? {
+    static func arguments(strategy: GitPullStrategy,
+                          source: GitPullSource? = nil) -> [String]? {
+        let arguments: [String]
         switch strategy {
         case .unselected: return nil
-        case .rebase: return ["pull", "--rebase", "--no-autostash"]
-        case .merge: return ["pull", "--no-rebase", "--no-autostash", "--ff"]
-        case .ffOnly: return ["pull", "--ff-only", "--no-autostash"]
+        case .rebase: arguments = ["pull", "--rebase", "--no-autostash"]
+        case .merge: arguments = ["pull", "--no-rebase", "--no-autostash", "--ff"]
+        case .ffOnly: arguments = ["pull", "--ff-only", "--no-autostash"]
         }
+        guard let source else { return arguments }
+        return arguments + ["--", source.remote, "refs/heads/" + source.branch]
     }
 }
 
@@ -247,7 +294,7 @@ private final class GitSafePullOutcomeBox {
     func get() -> GitSafePullOutcome? { lock.lock(); defer { lock.unlock() }; return value }
 }
 
-private final class GitSerialCancellation: GitCancelling {
+final class GitSerialCancellation: GitCancelling {
     private let lock = NSLock()
     private var tokens: [GitCancelling] = []
     private var cancelled = false
@@ -256,6 +303,8 @@ private final class GitSerialCancellation: GitCancelling {
         if cancelled { lock.unlock(); token.cancel(); return }
         tokens.append(token); lock.unlock()
     }
+    var isCancelled: Bool { lock.withLock { cancelled } }
+
     func cancel() {
         lock.lock()
         guard !cancelled else { lock.unlock(); return }
@@ -272,12 +321,13 @@ private final class GitSerialCancellation: GitCancelling {
 enum GitSafePullRunner {
     @discardableResult
     static func run(repository: URL, strategy: GitPullStrategy,
+                    source: GitPullSource? = nil,
                     coordinator: GitOperationsCoordinator,
                     decision: @escaping (GitPullPreflightResult,
                                          @escaping (Bool) -> Void) -> Void,
                     completion: @escaping (GitSafePullOutcome) -> Void)
         -> GitOperationLease? {
-        guard let pullArguments = GitPullPreflight.arguments(strategy: strategy) else {
+        guard let pullArguments = GitPullPreflight.arguments(strategy: strategy, source: source) else {
             completion(.cancelled); return nil
         }
         let box = GitSafePullOutcomeBox()
@@ -285,76 +335,95 @@ enum GitSafePullRunner {
         let identity = pullArguments.joined(separator: "\u{0}")
         let starter: GitOperationsCoordinator.Starter = { finish in
             let cancellation = GitSerialCancellation()
-            inspect(repository: repository, executor: executor,
-                    cancellation: cancellation) { first in
-                switch first {
-                case .failure(let outcome):
-                    box.set(.inspectionFailed(outcome)); finish(outcome)
-                case .success(let inspection):
-                    let preflight = GitPullPreflight.evaluate(
-                        status: inspection.status, operation: inspection.operation
-                    )
-                    guard case .ready = preflight else {
-                        box.set(.blocked(preflight)); finish(emptyGitSuccess); return
-                    }
-                    DispatchQueue.main.async {
-                        decision(preflight) { proceed in
-                            guard proceed else {
-                                box.set(.cancelled); finish(.cancelled); return
-                            }
-                            inspect(repository: repository, executor: executor,
-                                    cancellation: cancellation) { second in
-                                switch second {
-                                case .failure(let outcome):
-                                    box.set(.inspectionFailed(outcome)); finish(outcome)
-                                case .success(let validated):
-                                    let validatedPreflight = GitPullPreflight.evaluate(
-                                        status: validated.status,
-                                        operation: validated.operation
-                                    )
-                                    guard case .ready = validatedPreflight else {
-                                        box.set(.blocked(validatedPreflight))
-                                        finish(emptyGitSuccess); return
-                                    }
-                                    guard validated.status == inspection.status else {
-                                        box.set(.repositoryChanged)
-                                        finish(emptyGitSuccess); return
-                                    }
-                                    func executePull() {
-                                        cancellation.add(executor.execute(
-                                            arguments: pullArguments, in: repository,
-                                            outputLimit: .default, policy: .default
-                                        ) { outcome in
-                                            box.set(.pulled(outcome)); finish(outcome)
+            func inspectAndPull() {
+                inspect(repository: repository, executor: executor, source: source,
+                        cancellation: cancellation) { first in
+                    switch first {
+                    case .failure(let outcome):
+                        box.set(.inspectionFailed(outcome)); finish(outcome)
+                    case .success(let inspection):
+                        let preflight = GitPullPreflight.evaluate(
+                            status: inspection.status, operation: inspection.operation,
+                            hasExplicitSource: source != nil
+                        )
+                        guard case .ready = preflight else {
+                            box.set(.blocked(preflight)); finish(emptyGitSuccess); return
+                        }
+                        if let source, inspection.status.branch != source.localBranch {
+                            box.set(.repositoryChanged); finish(emptyGitSuccess); return
+                        }
+                        DispatchQueue.main.async {
+                            decision(preflight) { proceed in
+                                guard proceed else {
+                                    box.set(.cancelled); finish(.cancelled); return
+                                }
+                                inspect(repository: repository, executor: executor, source: source,
+                                        cancellation: cancellation) { second in
+                                    switch second {
+                                    case .failure(let outcome):
+                                        box.set(.inspectionFailed(outcome)); finish(outcome)
+                                    case .success(let validated):
+                                        let validatedPreflight = GitPullPreflight.evaluate(
+                                            status: validated.status,
+                                            operation: validated.operation,
+                                            hasExplicitSource: source != nil
+                                        )
+                                        guard case .ready = validatedPreflight else {
+                                            box.set(.blocked(validatedPreflight))
+                                            finish(emptyGitSuccess); return
+                                        }
+                                        guard validated.status == inspection.status,
+                                              validated.remoteConfiguration == inspection.remoteConfiguration else {
+                                            box.set(.repositoryChanged)
+                                            finish(emptyGitSuccess); return
+                                        }
+                                        func executePull() {
+                                            cancellation.add(executor.execute(
+                                                arguments: pullArguments, in: repository,
+                                                outputLimit: .default, policy: .default
+                                            ) { outcome in
+                                                box.set(.pulled(outcome)); finish(outcome)
+                                            })
+                                        }
+                                        guard strategy != .ffOnly else {
+                                            executePull(); return
+                                        }
+                                        // Merge und Rebase können einen Commit
+                                        // erzeugen. Nur bewusst konfigurierte
+                                        // lokale/globale Werte zählen; Git darf
+                                        // nicht still Nutzer+Host ableiten.
+                                        cancellation.add(GitConfiguredIdentityReader.read(
+                                            repository: repository, executor: executor
+                                        ) { identityResult in
+                                            switch identityResult {
+                                            case .value(nil):
+                                                box.set(.blocked(.missingIdentity))
+                                                finish(emptyGitSuccess)
+                                            case .value:
+                                                executePull()
+                                            case .failure(let failure):
+                                                box.set(.inspectionFailed(failure))
+                                                finish(failure)
+                                            }
                                         })
                                     }
-                                    guard strategy != .ffOnly else {
-                                        executePull(); return
-                                    }
-                                    // Merge und Rebase können einen Commit
-                                    // erzeugen. Nur bewusst konfigurierte
-                                    // lokale/globale Werte zählen; Git darf
-                                    // nicht still Nutzer+Host ableiten.
-                                    cancellation.add(GitConfiguredIdentityReader.read(
-                                        repository: repository, executor: executor
-                                    ) { identityResult in
-                                        switch identityResult {
-                                        case .value(nil):
-                                            box.set(.blocked(.missingIdentity))
-                                            finish(emptyGitSuccess)
-                                        case .value:
-                                            executePull()
-                                        case .failure(let failure):
-                                            box.set(.inspectionFailed(failure))
-                                            finish(failure)
-                                        }
-                                    })
                                 }
                             }
                         }
                     }
                 }
             }
+            if let source {
+                cancellation.add(executor.execute(
+                    arguments: ["check-ref-format", "refs/heads/" + source.branch],
+                    in: repository, outputLimit: .default, policy: .default
+                ) { validation in
+                    guard case .completed(let result) = validation, result.ok else {
+                        box.set(.inspectionFailed(validation)); finish(validation); return
+                    }
+                    inspectAndPull()
+                })
+            } else { inspectAndPull() }
             return cancellation
         }
         let coordinatedCompletion: (GitExecutionOutcome) -> Void = { coordinatorOutcome in
@@ -377,6 +446,7 @@ enum GitSafePullRunner {
     private struct Inspection {
         let status: GitStatusSummary
         let operation: GitOperationState?
+        let remoteConfiguration: Data?
     }
 
     private enum InspectionResult {
@@ -385,7 +455,7 @@ enum GitSafePullRunner {
     }
 
     private static func inspect(repository: URL, executor: GitCommandExecuting,
-                                cancellation: GitSerialCancellation,
+                                source: GitPullSource?, cancellation: GitSerialCancellation,
                                 completion: @escaping (InspectionResult) -> Void) {
         cancellation.add(executor.execute(arguments: GitStatusParser.arguments,
                                           in: repository, outputLimit: .default,
@@ -403,12 +473,27 @@ enum GitSafePullRunner {
                       markerResult.ok, !markerResult.stdoutWasTruncated else {
                     completion(.failure(markerOutcome)); return
                 }
-                completion(.success(Inspection(
-                    status: status,
-                    operation: GitOperationStateDetector.detect(
-                        stdout: markerResult.stdout, repository: repository
-                    )
-                )))
+                func finishInspection(remoteConfiguration: Data?) {
+                    completion(.success(Inspection(
+                        status: status,
+                        operation: GitOperationStateDetector.detect(
+                            stdout: markerResult.stdout, repository: repository
+                        ), remoteConfiguration: remoteConfiguration
+                    )))
+                }
+                if let source {
+                    cancellation.add(executor.execute(
+                        arguments: ["remote", "get-url", "--all", "--", source.remote],
+                        in: repository, outputLimit: .default, policy: .default
+                    ) { configOutcome in
+                        guard case .completed(let configResult) = configOutcome,
+                              configResult.ok, !configResult.stdoutWasTruncated,
+                              !configResult.stdoutData.isEmpty else {
+                            completion(.failure(configOutcome)); return
+                        }
+                        finishInspection(remoteConfiguration: configResult.stdoutData)
+                    })
+                } else { finishInspection(remoteConfiguration: nil) }
             })
         })
     }

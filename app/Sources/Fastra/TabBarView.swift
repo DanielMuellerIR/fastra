@@ -145,39 +145,46 @@ struct TabBarView: View {
 /// Markenblock am Kopf der sichtbaren Seitenleiste. Liegt absichtlich in
 /// `EditorView`, damit rechts daneben kein leerer zweiter Header entsteht.
 struct SidebarBrandView: View {
+    @EnvironmentObject var workspace: Workspace
+
     var body: some View {
-        HStack(alignment: .center, spacing: 7) {
+        GeometryReader { geometry in
+            HStack(alignment: .center, spacing: 9) {
+                brand(compact: workspace.projectURL != nil && geometry.size.width < 300)
+                if let root = workspace.projectURL {
+                    Rectangle()
+                        .fill(Theme.textSecondary.opacity(0.25))
+                        .frame(width: 0.5, height: 28)
+                    SidebarProjectHeader(rootURL: root) {
+                        Divider()
+                        FileTreeContextMenu(directory: root, node: nil,
+                                            includeFinderReveal: false, onMutation: {
+                            workspace.refreshAfterProjectFileMutation()
+                        })
+                            .environmentObject(workspace)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(Theme.surfaceBase)
+        }
+    }
+
+    private func brand(compact: Bool) -> some View {
+        let layout = compact ? AnyLayout(VStackLayout(alignment: .leading, spacing: 1))
+                             : AnyLayout(HStackLayout(spacing: 9))
+        return layout {
             BrandWordmark(size: 19)
                 .foregroundColor(Theme.textPrimary)
-                .lineLimit(1)
-                // Der Markenname ist die unveränderliche Identität und darf
-                // deshalb niemals zugunsten der Metadaten gekürzt werden.
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(2)
-
-            ViewThatFits(in: .horizontal) {
-                // Das Datum erscheint nur, wenn es vollständig hineinpasst.
-                // `fixedSize` macht diese Variante unteilbar; bei Platzmangel
-                // wählt ViewThatFits automatisch die reine Versionszeile.
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(verbatim: "v\(AppInfo.version)")
-                    Text(verbatim: AppInfo.versionDate)
-                }
-                .fixedSize(horizontal: true, vertical: false)
-
-                Text(verbatim: "v\(AppInfo.version)")
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .fastraFont(size: 9.5, weight: .medium)
-            .foregroundColor(Theme.textSecondary)
-            .layoutPriority(1)
-
-            Spacer(minLength: 0)
+            Text(verbatim: "v\(AppInfo.version)")
+                .fastraFont(size: 9.5, weight: .medium)
+                .foregroundColor(Theme.textSecondary)
         }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(Theme.surfaceBase)
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 

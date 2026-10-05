@@ -111,6 +111,7 @@ struct DualPaneDiffView<Leading: View>: View {
     /// neuen aktuellen Eintrag deutete. Kurzes Zeitfenster statt Dauer-Flag —
     /// echtes Weiterscrollen von Hand übernimmt danach wieder.
     @State private var suppressFollowUntil: Date? = nil
+    @StateObject private var textSelection = DiffTextSelection()
 
     /// Schnelle Zuordnung „Zeilen-ID → Eintrag-Index" für Scroll-Verfolgung.
     private var entryIndexByTargetID: [String: Int] {
@@ -179,6 +180,7 @@ struct DualPaneDiffView<Leading: View>: View {
             }
         }
         .onChange(of: items) {
+            textSelection.update(items: items)
             // Nach einem Reload (Git-Refresh) darf die Auswahl nicht auf
             // einen nicht mehr existierenden Eintrag zeigen.
             if let current = currentEntry, current >= entries.count {
@@ -186,6 +188,7 @@ struct DualPaneDiffView<Leading: View>: View {
             }
         }
         .onAppear {
+            textSelection.update(items: items)
             // Start beim ersten Unterschied — wie der frühere Git-Renderer
             // („Änderung 1 von N"); die Verfolgung übernimmt beim Scrollen.
             if currentEntry == nil, !entries.isEmpty { currentEntry = 0 }
@@ -571,24 +574,13 @@ struct DualPaneDiffView<Leading: View>: View {
                     .foregroundColor(Theme.textSecondary)
                     .frame(width: DiffColumnLayout.numberWidth, alignment: .trailing)
                     .accessibilityHidden(true)
-                highlightedText(text ?? " ", range: highlight,
-                                color: before ? Theme.diffRemovedFG : Theme.diffAddedFG)
-                    .fastraFont(.monoSmall)
-                    .foregroundColor(textColor(before: before, kind: kind,
-                                               sideEmpty: text == nil))
-                    // Mit Soft Wrap bricht zu langer Text in seiner Spalte um,
-                    // statt über die Spaltengrenze hinaus gezeichnet zu werden
-                    // (vorher `fixedSize(horizontal: true)`) — Umbruch statt
-                    // Kürzung, weil ein Diff das Zeilenende nicht verschweigen
-                    // darf. Ohne Soft Wrap steht die ECHTE Zeile da: eine
-                    // Textzeile in voller Idealbreite, die über die Spalte
-                    // hinausragt und dort vom `clipped()` der Zelle
-                    // abgeschnitten wird. Ohne diesen Schnitt zeichnete die
-                    // linke Seite wieder in die rechte hinein.
-                    .lineLimit(softWrapEnabled ? nil : 1)
-                    .fixedSize(horizontal: !softWrapEnabled, vertical: true)
-                    .multilineTextAlignment(.leading)
-                    .textSelection(.enabled)
+                DiffSelectableText(text: text ?? "", highlight: highlight,
+                                   color: textColor(before: before, kind: kind,
+                                                    sideEmpty: text == nil),
+                                   highlightColor: before ? Theme.diffRemovedFG : Theme.diffAddedFG,
+                                   before: before, rowID: rowID, wraps: softWrapEnabled,
+                                   selection: textSelection)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer(minLength: DiffColumnLayout.trailingGap)
             }
             if missingFinalNewline {
@@ -618,16 +610,6 @@ struct DualPaneDiffView<Leading: View>: View {
         .accessibilityLabel(L10n.format("%@ Zeile %@: %@",
                                        before ? L10n.string("Vorher") : L10n.string("Nachher"),
                                        number.map(String.init) ?? L10n.string("leer"), text ?? ""))
-    }
-
-    private func highlightedText(_ value: String, range: Range<Int>?, color: Color) -> Text {
-        guard let range else { return Text(value) }
-        let chars = Array(value)
-        let lower = min(max(0, range.lowerBound), chars.count)
-        let upper = min(max(lower, range.upperBound), chars.count)
-        return Text(String(chars[..<lower]))
-            + Text(String(chars[lower..<upper])).foregroundColor(color).bold()
-            + Text(String(chars[upper...]))
     }
 
     private func textColor(before: Bool, kind: FileDiff.RowKind,

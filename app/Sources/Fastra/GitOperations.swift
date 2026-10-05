@@ -611,6 +611,7 @@ struct GitFetchSnapshot: Equatable {
     var lastAttempt: Date?
     var lastSuccess: Date?
     var lastSuccessByRemote: [String: Date]
+    var errorsByRemote: [String: String] = [:]
     var error: String?
     var isBusy: Bool
 
@@ -626,6 +627,7 @@ struct GitRepositorySnapshot: Equatable {
     let headOID: String?
     let branches: [GitBranch]
     let graph: [GitCommit]
+    var totalCommitCount: Int? = nil
     let remoteTracking: [GitRemoteTrackingState]
     let operation: GitOperationState?
     let fetch: GitFetchSnapshot
@@ -678,6 +680,7 @@ final class GitRepositoryStore {
         var operation: GitExecutionOutcome?
         var branches: GitExecutionOutcome?
         var graph: GitExecutionOutcome?
+        var totalCommitCount: GitExecutionOutcome?
         var remoteTracking: GitExecutionOutcome?
         init(remaining: Int) { self.remaining = remaining }
     }
@@ -754,6 +757,7 @@ final class GitRepositoryStore {
             repositoryPath: path, status: previous.status,
             upstream: previous.upstream, headOID: previous.headOID,
             branches: previous.branches, graph: previous.graph,
+            totalCommitCount: previous.totalCommitCount,
             remoteTracking: previous.remoteTracking,
             operation: previous.operation,
             fetch: previous.fetch, operations: operations,
@@ -770,6 +774,7 @@ final class GitRepositoryStore {
     /// Status, Branches und Graph für alle Fenster konsistent neu ein.
     @discardableResult
     func fetch(repository: URL, preferences: GitPreferences, remotes: [String],
+               selection: GitFetchSelection = .configured,
                attemptDate: Date = Date(),
                completion: ((GitExecutionOutcome) -> Void)? = nil)
         -> GitOperationLease? {
@@ -786,6 +791,7 @@ final class GitRepositoryStore {
             repositoryPath: path, status: previous?.status,
             upstream: previous?.upstream, headOID: previous?.headOID,
             branches: previous?.branches ?? [], graph: previous?.graph ?? [],
+            totalCommitCount: previous?.totalCommitCount,
             remoteTracking: previous?.remoteTracking ?? [],
             operation: previous?.operation,
             fetch: reservedFetch, operations: coordinator.state(for: repository),
@@ -796,50 +802,80 @@ final class GitRepositoryStore {
         lock.unlock()
         DispatchQueue.main.async { reserveCallbacks.forEach { $0(reserved) } }
 
-        let arguments = GitFetchPlan.arguments(preferences: preferences,
-                                               upstream: upstream,
-                                               remotes: remotes)
-        let requestedRemotes: [String]
-        switch preferences.remoteScope {
-        case .all:
-            requestedRemotes = remotes
-        case .relevant:
-            requestedRemotes = GitFetchPlan.relevantRemote(
-                upstream: upstream, remotes: remotes
-            ).map { [$0] } ?? []
-        }
-        let request = GitOperationRequest(repository: repository, kind: .fetch,
-                                          arguments: arguments)
-        return coordinator.perform(request) { [weak self] outcome in
-            guard let self else { return }
-            let error: String?
-            let succeeded: Bool
-            switch outcome {
-            case .completed(let result):
-                succeeded = result.ok
-                error = result.ok ? nil : [result.stderrForDisplay, result.stdoutForDisplay]
-                    .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
-                    ?? L10n.format("git fetch schlug ohne Meldung fehl (Exit-Code %ld).",
-                                   Int(result.exitCode))
-            default:
-                succeeded = false
-                error = Workspace.gitExecutionFailureText(outcome)
+        let commands = GitFetchPlan.commands(preferences: preferences,
+                                            upstream: upstream, remotes: remotes,
+                                            selection: selection)
+        let requestedRemotes = GitFetchPlan.requestedRemotes(
+            preferences: preferences, upstream: upstream, remotes: remotes, selection: selection
+        )
+        let identity = commands.map { $0.joined(separator: "\u{0}") }.joined(separator: "\u{1e}")
+        let starter: GitOperationsCoordinator.Starter = { [weak self] finish in
+            guard let self else { finish(.cancelled); return GitOperationLease {} }
+            let cancellation = GitSerialCancellation()
+            var firstFailure: GitExecutionOutcome?
+            func run(_ index: Int) {
+                guard !cancellation.isCancelled else { finish(.cancelled); return }
+                guard index < commands.count else {
+                    finish(firstFailure ?? .completed(GitResult(exitCode: 0, stdout: "", stderr: "")))
+                    return
+                }
+                cancellation.add(self.executor.execute(
+                    arguments: commands[index], in: repository,
+                    outputLimit: .default, policy: .default
+                ) { outcome in
+                    let error = Self.fetchError(outcome)
+                    let succeeded: Bool
+                    if case .completed(let result) = outcome { succeeded = result.ok }
+                    else { succeeded = false }
+                    if !succeeded, firstFailure == nil { firstFailure = outcome }
+                    if index < requestedRemotes.count {
+                        let remote = requestedRemotes[index]
+                        self.updateFetch(repository: repository) {
+                            if succeeded {
+                                let date = Date()
+                                $0.lastSuccess = date
+                                $0.lastSuccessByRemote[remote] = date
+                                $0.errorsByRemote.removeValue(forKey: remote)
+                            } else if let error { $0.errorsByRemote[remote] = error }
+                        }
+                    }
+                    if outcome == .cancelled { finish(.cancelled) }
+                    else { run(index + 1) }
+                })
             }
+            run(0)
+            return cancellation
+        }
+        return coordinator.performExclusive(repository: repository, kind: .fetch,
+                                             identity: identity, starter: starter) { [weak self] outcome in
+            guard let self else { return }
             self.updateFetch(repository: repository) {
                 $0.isBusy = false
-                $0.error = error
-                if succeeded {
-                    let successDate = Date()
-                    $0.lastSuccess = successDate
-                    for remote in requestedRemotes {
-                        $0.lastSuccessByRemote[remote] = successDate
-                    }
-                }
+                $0.error = Self.fetchError(outcome)
             }
-            if outcome != .cancelled {
-                self.refresh(repository: repository, scope: .full)
-            }
+            if outcome != .cancelled { self.refresh(repository: repository, scope: .full) }
             completion?(outcome)
+        }
+    }
+
+    private static func fetchError(_ outcome: GitExecutionOutcome) -> String? {
+        if case .completed(let result) = outcome {
+            guard !result.ok else { return nil }
+            return [result.stderrForDisplay, result.stdoutForDisplay]
+                .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+                ?? L10n.format("git fetch schlug ohne Meldung fehl (Exit-Code %ld).", Int(result.exitCode))
+        }
+        return Workspace.gitExecutionFailureText(outcome)
+    }
+
+    /// Auch ein erfolgreicher expliziter Pull hat seinen Remote abgerufen.
+    func recordSuccessfulFetch(repository: URL, remote: String, date: Date = Date()) {
+        updateFetch(repository: repository) {
+            $0.lastAttempt = date
+            $0.lastSuccess = date
+            $0.error = nil
+            $0.lastSuccessByRemote[remote] = date
+            $0.errorsByRemote.removeValue(forKey: remote)
         }
     }
 
@@ -858,6 +894,7 @@ final class GitRepositoryStore {
             headOID: previous?.headOID,
             branches: previous?.branches ?? [],
             graph: previous?.graph ?? [],
+            totalCommitCount: previous?.totalCommitCount,
             remoteTracking: previous?.remoteTracking ?? [],
             operation: previous?.operation,
             fetch: fetch,
@@ -872,7 +909,7 @@ final class GitRepositoryStore {
 
     private func startBatch(repository: URL, path: String, scope: GitRefreshScope,
                             attempt: Int) {
-        let aggregate = Aggregate(remaining: scope == .status ? 2 : 5)
+        let aggregate = Aggregate(remaining: scope == .status ? 2 : 6)
         let lease = coordinator.performBatch(repository: repository,
                                               identity: "repository-store-\(path)-\(scope.rawValue)-\(attempt)") {
             [executor] finish in
@@ -901,6 +938,9 @@ final class GitRepositoryStore {
                 composite.add(executor.execute(arguments: GitGraph.arguments,
                                                in: repository, outputLimit: .default,
                                                policy: .default) { record(\.graph, $0) })
+                composite.add(executor.execute(arguments: GitGraph.countArguments,
+                                               in: repository, outputLimit: .default,
+                                               policy: .default) { record(\.totalCommitCount, $0) })
                 self.loadRemoteTracking(
                     repository: repository,
                     executor: executor,
@@ -1084,6 +1124,9 @@ final class GitRepositoryStore {
             headOID: status?.headOID,
             branches: branches,
             graph: graph,
+            totalCommitCount: scope == .full
+                ? aggregate.totalCommitCount?.usableResult.flatMap { GitGraph.parseCount($0.stdout) }
+                : previous?.totalCommitCount,
             remoteTracking: remoteTracking,
             operation: operation,
             fetch: previous?.fetch ?? .none,

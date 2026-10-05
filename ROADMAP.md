@@ -4,6 +4,14 @@ Hier stehen nur offene Produktarbeit und bewusst zurückgestellte Grenzen.
 Erledigte Arbeit und historische Entscheidungen stehen in
 [CHANGELOG.md](CHANGELOG.md).
 
+## Code-Erklärungen und lokale Steuerung
+
+Gespeicherte Codefragen mit lokalen UTF-8-Snapshots und AppleScript-/CLI-Steuerung
+sind verfügbar. Der Schnittstellenvertrag steht in [LOCAL-CONTROL.md](docs/LOCAL-CONTROL.md).
+Offen bleiben feste Git-Quellen, Parent→Commit-Reviews, weitere Fensteranordnungen
+und optionale Audio-Wiedergabe. Schreibende Automatisierung benötigt eine eigene
+Produktentscheidung und die bestehenden Vorschau- und Apply-Prüfungen.
+
 ## Jetzt
 
 - **4D-Parameterhilfe/Typeahead: verbliebene Komponenten-/Plugin-Grenzen**

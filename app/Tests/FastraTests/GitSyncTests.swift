@@ -31,6 +31,10 @@ private final class SyncTestExecutor: GitCommandExecuting {
                  outputLimit: GitOutputLimit, policy: GitExecutionPolicy,
                  completion: @escaping (GitExecutionOutcome) -> Void) -> GitCancelling {
         let token = Token()
+        if arguments == GitGraph.countArguments {
+            completion(syncSuccess("1\n"))
+            return token
+        }
         lock.withLock {
             calls.append(Call(arguments: arguments, directory: directory,
                               completion: completion, token: token))
@@ -79,10 +83,10 @@ struct GitSyncPlanningTests {
     func relevantFetchArguments() {
         var preferences = GitPreferences()
         preferences.prune = true
-        #expect(GitFetchPlan.arguments(preferences: preferences,
+        #expect(GitFetchPlan.commands(preferences: preferences,
                                        upstream: "company/topic",
                                        remotes: ["origin", "company"])
-                == ["fetch", "--prune", "company"])
+                == [["fetch", "--prune", "company"]])
         #expect(GitFetchPlan.relevantRemote(upstream: nil,
                                             remotes: ["zeta", "origin"])
                 == "origin")
@@ -91,13 +95,13 @@ struct GitSyncPlanningTests {
                 == "alpha")
     }
 
-    @Test("Alle Remotes erzeugt explizites --all ohne erfundenen Remote")
+    @Test("Alle Remotes nennt jeden konfigurierten Remote explizit")
     func allFetchArguments() {
         var preferences = GitPreferences()
         preferences.remoteScope = .all
-        #expect(GitFetchPlan.arguments(preferences: preferences,
+        #expect(GitFetchPlan.commands(preferences: preferences,
                                        upstream: "origin/main", remotes: ["origin"])
-                == ["fetch", "--all"])
+                == [["fetch", "--", "origin"]])
     }
 
     @Test("Später unterdrückt die Frage bis zur nächsten sinnvollen Gelegenheit")
@@ -529,6 +533,22 @@ struct GitFetchStoreTests {
         #expect(store.snapshot(for: root)?.fetch.error?.contains("23") == true)
     }
 
+    @Test("Abbruch eines Mehr-Remote-Fetch startet keine weitere Quelle")
+    func cancelMultiRemoteFetch() {
+        let executor = SyncTestExecutor()
+        let coordinator = GitOperationsCoordinator(executor: executor)
+        let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
+        let root = syncRepository("fetch-cancel-sequence")
+        let lease = store.fetch(repository: root, preferences: GitPreferences(),
+                                remotes: ["first", "second"], selection: .all)
+        #expect(executor.count == 1)
+        lease?.cancel()
+        executor.complete(0, .cancelled)
+        #expect(executor.count == 1)
+        #expect(store.snapshot(for: root)?.fetch.isBusy == false)
+        #expect(store.snapshot(for: root)?.fetch.lastSuccessByRemote.isEmpty == true)
+    }
+
     @Test("Gleichzeitige Fetch-Anfragen reservieren atomar genau einen Start")
     func fetchReservationIsAtomic() {
         let executor = SyncTestExecutor()
@@ -924,7 +944,7 @@ struct GitWorkspacePullTests {
         workspace.gitPull()
         workspace.gitPull()
         #expect(executor.count == 1)
-        #expect(executor.arguments[0] == GitStatusParser.arguments)
+        #expect(executor.arguments[0] == GitRemoteConfiguration.orderedRemoteArguments)
     }
 }
 

@@ -183,6 +183,15 @@ enum GitGraph {
     private static let recordSep: UInt8 = 0x1e
     private static let unitSep: UInt8 = 0x1f
 
+    /// Dieselbe Ref-Menge wie im Graph, unabhängig von dessen Anzeigegrenze.
+    static let countArguments = ["rev-list", "--all", "--count"]
+
+    static func parseCount(_ output: String) -> Int? {
+        guard let count = Int(output.trimmingCharacters(in: .whitespacesAndNewlines)),
+              count >= 0 else { return nil }
+        return count
+    }
+
     /// Argumente für `git log`. `--all` zeigt alle Branches (echter Graph),
     /// `--topo-order` hält Verzweigungen zusammenhängend (kein Datums-Zickzack),
     /// die Obergrenze deckelt sehr große Historien.

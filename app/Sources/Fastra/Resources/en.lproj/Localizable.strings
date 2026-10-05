@@ -1585,3 +1585,83 @@
 "Bündig links" = "Flush left";
 "Wie erste Zeile" = "Match first line";
 "Eine Stufe tiefer" = "One level deeper";
+
+"Schreibgeschützter Snapshot" = "Read-only snapshot";
+"Snapshot: %@" = "Snapshot: %@";
+"Snapshot wird geladen…" = "Loading snapshot…";
+"Snapshot-Datei ist nicht verfügbar oder überschreitet die Textgrenze." = "Snapshot file is unavailable or exceeds the text limit.";
+"Snapshot-Inhalt stimmt nicht mit dem erwarteten SHA-256 überein." = "Snapshot content does not match the expected SHA-256.";
+"Die Auswahl liegt außerhalb vollständiger Zeichen des Snapshots." = "The selection falls outside complete characters in the snapshot.";
+"Snapshot-Auftrag hat seine Zeitgrenze überschritten." = "Snapshot job exceeded its time limit.";
+"Snapshot-Navigation wurde abgebrochen." = "Snapshot navigation was cancelled.";
+
+"Code-Erklärung: %@" = "Code explanation: %@";
+
+"Das Erklärungspaket hat ein ungültiges Format." = "The explanation package has an invalid format.";
+
+"Gespeicherte Erklärung" = "Saved explanation";
+
+"Zur erklärten Stelle zurück" = "Return to the explained location";
+
+"Code: %d pt" = "Code: %d pt";
+
+"Erklärung: %d pt" = "Explanation: %d pt";
+
+"Schritt wird geladen…" = "Loading step…";
+
+"Pausiert – selbst erkunden oder bewusst zurückkehren." = "Paused – explore or deliberately return.";
+
+"Schritt konnte nicht angezeigt werden." = "The step could not be displayed.";
+
+"Letzter Schritt erreicht." = "Last step reached.";
+
+"Schritt bereit." = "Step ready.";
+
+"Schritt %d/%d: %@" = "Step %d/%d: %@";
+
+"Code-Erklärung öffnen…" = "Open code explanation…";
+
+"Code-Erklärung konnte nicht geöffnet werden." = "The code explanation could not be opened.";
+
+"Beenden" = "End";
+
+"Pause" = "Pause";
+
+"Weiter" = "Next";
+
+"Zurück" = "Back";
+
+"Zu viele Steuerungsaufträge oder Quellen. Bitte später erneut versuchen." = "Too many control jobs or sources. Please try again later.";
+
+"Alle Branches" = "All branches";
+"Anzahl nicht verfügbar" = "Count unavailable";
+"Alle über Git-Refs erreichbaren Commits; der Graph zeigt höchstens 2.000." = "All commits reachable through Git refs; the graph displays at most 2,000.";
+"Zur Stelle" = "Return";
+"Schrift" = "Font";
+"Codeschrift verkleinern" = "Decrease code font";
+"Codeschrift vergrößern" = "Increase code font";
+"Erklärschrift verkleinern" = "Decrease explanation font";
+"Erklärschrift vergrößern" = "Increase explanation font";
+"Pausiert" = "Paused";
+"Bereich ein-/ausklappen" = "Collapse/expand region";
+"Alle Bereiche einklappen" = "Collapse all regions";
+"Alle Bereiche ausklappen" = "Expand all regions";
+
+/* Remote-Auswahl */
+"Abgerufen: %@" = "Fetched: %@";
+"Branch" = "Branch";
+"Kein Remote konfiguriert." = "No remote configured.";
+"Pull von %@/%@ erfolgreich" = "Pull from %@/%@ succeeded";
+"Wählt Remote und Branch; prüft lokale Änderungen und laufende Git-Vorgänge vor dem Pull." = "Chooses a remote and branch; checks local changes and active Git operations before pulling.";
+"Wählt einen Remote oder alle Remotes zum Abrufen. Arbeitsdateien bleiben erhalten." = "Chooses one remote or all remotes to fetch. Working files are preserved.";
+"Alle abrufen, dann Pull-Quelle wählen" = "Fetch all, then choose a pull source";
+"Fetch-Quelle wählen" = "Choose fetch source";
+"Pull bindet den gewählten Remote-Branch in den aktuellen lokalen Branch ein. Der konfigurierte Upstream bleibt erhalten. Bei „Alle“ werden zuerst alle Remotes abgerufen; danach wählst du eine Quelle." = "Pull integrates the selected remote branch into the current local branch. The configured upstream is preserved. “All” fetches every remote first; you then choose one source.";
+"Fetch aktualisiert Remote-Tracking-Refs und ändert keine Arbeitsdateien. Wähle einen Remote oder rufe alle ab." = "Fetch updates remote-tracking refs and leaves working files unchanged. Choose one remote or fetch all.";
+"Abrufen" = "Fetch";
+
+"Der aktuelle Stand ist keinem lokalen Branch zugeordnet. Wechsle vor Pull zu einem lokalen Branch." = "The current commit is not attached to a local branch. Switch to a local branch before pulling.";
+
+"Pull in lokalen Branch „%@“" = "Pull into local branch “%@”";
+
+"Remote" = "Remote";

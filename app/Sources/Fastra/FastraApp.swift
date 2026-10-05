@@ -217,6 +217,13 @@ struct FastraApp: App {
                 // Rechter Vorschau-Streifen (Minimap). Default AUS — verdeckte
                 // rechts Text und stand im Freeze-Verdacht (Daniel 2026-07-12).
                 Toggle("Minimap anzeigen", isOn: $showMinimap)
+                Divider()
+                Button("Bereich ein-/ausklappen") { CodeFoldingCommands.toggleCurrent() }
+                    .disabled(activeDocumentContext.workspace?.activeTab == nil)
+                Button("Alle Bereiche einklappen") { CodeFoldingCommands.collapseAll() }
+                    .disabled(activeDocumentContext.workspace?.activeTab == nil)
+                Button("Alle Bereiche ausklappen") { CodeFoldingCommands.expandAll() }
+                    .disabled(activeDocumentContext.workspace?.activeTab == nil)
                 Toggle("Seitenleiste anzeigen", isOn: $showSidebar)
                     .disabled(activeDocumentContext.workspace == nil)
                 Toggle("Markdown-Vorschau rechts anzeigen", isOn: $showMarkdownPreview)
@@ -257,6 +264,7 @@ struct FastraApp: App {
                     DocumentWindowController.workspaceForOpening().openFile()
                 }
                     .keyboardShortcut("o", modifiers: .command)
+                Button("Code-Erklärung öffnen…") { CodeExplanationPlayer.openPackage() }
                 // Ordner als Projekt öffnen (Projekt- & Git-Ausbau, Etappe 1):
                 // lädt den Dateibaum in die Seitenleiste und merkt den Ordner
                 // in „Zuletzt benutzte Projekte" (Willkommensbildschirm).
@@ -294,6 +302,8 @@ struct FastraApp: App {
                     if HelpWindow.isHelpWindow(NSApp.keyWindow) {
                         HelpWindow.close()
                     } else if ExternalDiffWindow.isExternalDiffWindow(NSApp.keyWindow) {
+                        NSApp.keyWindow?.performClose(nil)
+                    } else if ControlSnapshotWindow.isSnapshotWindow(NSApp.keyWindow) {
                         NSApp.keyWindow?.performClose(nil)
                     } else if AboutWindow.isAboutWindow(NSApp.keyWindow) {
                         NSApp.keyWindow?.performClose(nil)

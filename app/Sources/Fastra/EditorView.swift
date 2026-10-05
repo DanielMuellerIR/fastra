@@ -120,6 +120,7 @@ struct EditorView: View {
     /// 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c). Stark gehalten —
     /// der `completionDelegate` des Editors ist nur eine weak-Referenz.
     @StateObject private var fourDCompletion = FourDCompletionDelegate()
+    @StateObject private var foldProviders = CodeFoldProviders()
     /// Parameterhilfe für 4D-Aufrufe (Panel unter der Aufrufzeile). Lebt wie
     /// der Completion-Delegate pro Editor-Ansicht und wirkt nur bei aktiver
     /// 4D-Sprache.
@@ -830,6 +831,8 @@ struct EditorView: View {
                         ? Set(workspace.fourDMethodIndexSnapshot.componentMethods.keys) : []
                 )]
             },
+            foldProvider: foldProviders.provider(language: detectedLanguage,
+                isFourD: activeCustomLanguage?.id == CustomLanguageRegistry.fourD.id),
             coordinators: [minimapLayoutCoordinator],
             // 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c) — NUR
             // bei aktiver 4D-Sprache; sonst bleibt das Vorschlagsfenster
@@ -1879,17 +1882,8 @@ struct EditorView: View {
             case .files:
                 filesSidebar
             case .changes:
-                // Gemeinsamer Projekt-Kopf auch auf den Git-Tabs (Etappe 1
-                // Wunschpaket 2026-07b) — vorher wusste man dort nicht,
-                // welches Projekt gerade offen ist.
-                if let projectURL = workspace.projectURL {
-                    SidebarProjectHeader(rootURL: projectURL)
-                }
                 GitChangesView()
             case .graph:
-                if let projectURL = workspace.projectURL {
-                    SidebarProjectHeader(rootURL: projectURL)
-                }
                 GitGraphView()
             }
         }
@@ -1969,9 +1963,20 @@ private struct SidebarModePicker: View {
                         // `.plain` wäre sonst lediglich der gezeichnete Teil
                         // des SF Symbols als Klickziel zuverlässig aktiv.
                         Color.clear
-                        Image(systemName: mode.systemImage)
-                            .fastraFont(size: 12, weight: .medium)
-                            .foregroundColor(selection == mode ? Theme.textPrimary : Theme.textSecondary)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 5) {
+                                Image(systemName: mode.systemImage)
+                                Text(L10n.string(mode.rawValue))
+                            }
+                            .fixedSize(horizontal: true, vertical: false)
+                            Image(systemName: mode.systemImage)
+                        }
+                        .fastraFont(size: 12, weight: .medium)
+                        .foregroundColor(selection == mode ? Theme.textPrimary : Theme.textSecondary)
+                        .padding(.horizontal, 5)
+                        // Das Badge besitzt seine eigene Fläche rechts oben.
+                        .padding(.trailing, mode == .changes && changeCount > 0 ? 14 : 0)
+
                     }
                         .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
                         .contentShape(Rectangle())
