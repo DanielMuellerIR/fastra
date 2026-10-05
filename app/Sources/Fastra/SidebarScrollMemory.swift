@@ -117,6 +117,7 @@ final class SidebarScrollProbeView: NSView {
     func configure(key: String, memory: SidebarScrollMemory) {
         self.key = key
         self.memory = memory
+        setAccessibilityIdentifier("sidebarScroll-\(key)")
     }
 
     override func viewDidMoveToWindow() {

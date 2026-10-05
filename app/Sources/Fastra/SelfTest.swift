@@ -16690,24 +16690,53 @@ enum SelfTest {
                                         needle: String, expectedFile: String,
                                         completion: @escaping () -> Void) {
         var found: (window: NSWindow, textView: TextView, rect: CGRect)?
+        let sourceTabID = ws.activeTabID
+        var previousGeometry: (view: TextView, point: NSPoint, visible: NSRect)?
+        var readiness = "noch keine Geometrie"
         waitFor(budget: 10, pause: 0.25,
                 condition: {
-                    guard let window = mainWindowForAXChecks(),
+                    guard ws.activeTabID == sourceTabID,
+                          let window = mainWindowForAXChecks(),
                           let content = window.contentView,
                           let textView = editorTextView(in: content) as? TextView,
                           textView.string.contains(needle) else { return false }
+                    window.layoutIfNeeded()
                     let range = (textView.string as NSString).range(of: needle)
                     // Der TextStorage ist nach einem Dateiwechsel früher sichtbar als
                     // das asynchron erzeugte Zeilenlayout. Unter Last darf diese
                     // normale Zwischenlage nicht als kaputter Zielsprung gelten.
                     guard let rect = textView.layoutManager.rectsFor(range:
                         NSRange(location: range.location, length: 1)).first else { return false }
+                    let textPoint = NSPoint(x: rect.midX, y: rect.midY)
+                    let point = textView.convert(textPoint, to: nil)
+                    let hit = content.hitTest(content.convert(point, from: nil))
+                    var ancestor = hit
+                    while let candidate = ancestor, !(candidate is TextView) {
+                        ancestor = candidate.superview
+                    }
+                    let offset = textView.layoutManager.textOffsetAtPoint(textPoint)
+                    readiness = "Hit=\(hit.map { String(describing: type(of: $0)) } ?? "nil"), "
+                        + "Offset=\(offset.map(String.init) ?? "nil"), Punkt=\(point)"
+                    guard ancestor === textView, textView.visibleRect.contains(textPoint),
+                          let offset, NSLocationInRange(offset, range) else {
+                        previousGeometry = nil
+                        return false
+                    }
+                    // Die Queue stellt erst später zu. Beim Markdown-Wechsel
+                    // müssen Toolbar und Vorschau ihre Fenstergeometrie behalten.
+                    let stable = previousGeometry.map {
+                        $0.view === textView && $0.visible == textView.visibleRect
+                            && abs($0.point.x - point.x) < 0.5
+                            && abs($0.point.y - point.y) < 0.5
+                    } ?? false
+                    previousGeometry = (textView, point, textView.visibleRect)
+                    guard stable else { return false }
                     found = (window, textView, rect)
                     return true
                 },
                 onTimeout: { book in
                     try? FileManager.default.removeItem(at: base)
-                    finish(false, "Editor mit „\(needle)“ erscheint nicht — \(book.summary)")
+                    finish(false, "Editor mit „\(needle)“ nicht anklickbar: \(readiness) — \(book.summary)")
                 },
                 then: {
                     guard let found else { finish(false, "Editor nach Erfolg verschwunden") }
@@ -18419,6 +18448,13 @@ enum SelfTest {
             finish(.skip, "git nicht verfügbar — der Tab-Umschalter erscheint erwartungsgemäß nicht")
         }
         Workspace.presentGitDialogs = false
+        // Ein flaches Fenster virtualisiert die erste Dateizeile nach dem
+        // Scrollen. Die spätere Messung muss auch ohne deren Marker gelingen.
+        if let window = mainWindowForAXChecks() {
+            var frame = window.frame
+            frame.size.height = 420
+            window.setFrame(frame, display: true)
+        }
 
         let fm = FileManager.default
         let base = selfTestTemporaryDirectory()
@@ -18534,31 +18570,33 @@ enum SelfTest {
     private static func pollSidebarStateRestored(_ ws: Workspace, base: URL,
                                                  expected: CGFloat) {
         var counter = false
-        var restored: CGFloat = 0
+        var restored: CGFloat?
         waitFor(budget: 5, pause: 0.05,
                 condition: {
                     let content = mainWindowForAXChecks()?.contentView
                     counter = content.map {
                         markerViewExists(id: "sidebarFilterState-n80-m80", in: $0)
                     } ?? false
-                    let row = content.flatMap {
-                        markerView(id: "fileTreeRow-datei-01.txt-gefiltert", in: $0)
-                            ?? markerView(id: "fileTreeRow-datei-01.txt-voll", in: $0)
+                    // LazyVStack entfernt unsichtbare Zeilen. Der dauerhafte
+                    // Stack-Merker bleibt als Messquelle auch nach Scrollen erhalten.
+                    let probe = content.flatMap {
+                        markerView(id: "sidebarScroll-fileTree", in: $0)
                     }
-                    restored = row.flatMap { enclosingScrollView(of: $0) }?
-                        .contentView.bounds.origin.y ?? 0
+                    restored = probe.flatMap { enclosingScrollView(of: $0) }?
+                        .contentView.bounds.origin.y
+                    guard let restored else { return false }
                     return counter && abs(restored - expected) < 8
                 },
                 onTimeout: { book in
                     try? FileManager.default.removeItem(at: base)
                     finish(false, "Nach dem Tab-Wechsel: Zähler 80/80=\(counter), "
-                        + "Scrollposition ist=\(Int(restored)) pt, erwartet=\(Int(expected)) pt "
+                        + "Scrollposition ist=\(restored.map { String(Int($0)) + " pt" } ?? "ScrollView nicht gefunden"), erwartet=\(Int(expected)) pt "
                         + "— \(book.summary)")
                 },
                 then: {
                     try? FileManager.default.removeItem(at: base)
                     finish(true, "Nach dem Tab-Wechsel stehen Filter (80/80) und Scrollposition "
-                        + "(\(Int(restored)) pt) wieder wie zuvor")
+                        + "(\(restored.map { String(Int($0)) + " pt" } ?? "ScrollView nicht gefunden")) wieder wie zuvor")
                 })
     }
 
