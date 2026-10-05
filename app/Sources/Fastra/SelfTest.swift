@@ -15395,8 +15395,9 @@ enum SelfTest {
             RunLoop.main.add(driver, forMode: .common)
             RunLoop.main.add(driver, forMode: RunLoop.Mode(rawValue: "NSModalPanelRunLoopMode"))
             activateApplication(ignoringOtherApps: true)
-            defer { driver.invalidate() }
-            guard alert.runModal() == .alertFirstButtonReturn else { finish(false, "Dialog-Bestätigung kam nicht an") }
+            let response = alert.runModal()
+            driver.invalidate()
+            guard response == .alertFirstButtonReturn else { finish(false, "Dialog-Bestätigung kam nicht an") }
             if let remote {
                 guard accessory.choice == .remote(remote, branch: isPull ? expectedBranch : "") else {
                     finish(false, "Bestätigte Quelle stimmt nicht mit der Auswahl überein")
