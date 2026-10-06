@@ -44,7 +44,8 @@ struct FileDiffView: View {
                     entries: listEntries,
                     expandedFolds: $expandedFolds,
                     currentEntry: $currentBlock,
-                    softWrapEnabled: softWrapEnabled
+                    softWrapEnabled: softWrapEnabled,
+                    exportSnapshot: result.map { .file(request, $0) }
                 ) {
                     toolbarLeading
                 }
@@ -194,6 +195,11 @@ struct FileDiffView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
+        .overlay(alignment: .topTrailing) {
+            DiffExportButton(snapshot: .file(request, result))
+                .frame(width: 26, height: 26)
+                .padding(8)
+        }
     }
 
     /// Zusammenfassung der aktiven Optionen („Leerzeilen, Groß-/Klein-

@@ -359,3 +359,77 @@ Testrechner vor und nach der Installation mit Ticket, Gatekeeper und
 vollständiger Signatur geprüft. Gleiche Release-Konfiguration vor
 Developer-ID-Signierung: Bundle 77.248.125 Bytes, App-Binary 62.754.352 Bytes,
 Helfer 390.848 Bytes; gegenüber 1.129.0 wächst das Bundle um 16.920 Bytes.
+
+## Herkunftsgebundene Übergabe
+
+Ab 1.137.0 ergänzt `sourceSnapshot` den bestehenden `snapshot`-Auftrag.
+Clients prüfen `sourceSnapshotSchemaVersion: 1` in den Fähigkeiten. Die
+Transportversion bleibt 1. Bestehende Aufträge ändern sich nicht.
+
+Zusätzlich zu `path`, `sha256`, `location` und `length` ist `provenance`
+erforderlich. `path` bezeichnet die zu übernehmende Original- oder
+materialisierte Blattdatei. Der Hash bindet deren exakte Bytes einschließlich
+BOM; die Blattgrenze bleibt 262144 Bytes. Alle folgenden Objekte lehnen
+unbekannte Felder und `null` ab:
+
+| Feld in `provenance` | Vertrag |
+| --- | --- |
+| `schemaVersion` | Ganzzahl 1 |
+| `runID` | UUID des Suchlaufs |
+| `kind` | `original` oder `archiveMaterialization` |
+| `hitIdentity` | `filesystemPath`, `archiveMembers`, `archiveMemberBytes` |
+| `sourceGeneration` | `device`, `inode`, `size`, `modificationSeconds`, `modificationNanoseconds`, `changeSeconds`, `changeNanoseconds` |
+| `archiveBinding` | Original: `notApplicable`; Archiv: `sha256` oder ausdrücklich `generation` |
+| `outerSHA256` | Nur bei Archivbindung `sha256`: 64 kleine Hexzeichen |
+| `positionBinding` | `exactUTF16` oder `unboundHit` |
+| `searchEvidence` | Optionaler Suchbeleg des Senders, höchstens 4096 UTF-8-Bytes |
+
+`filesystemPath` ist der absolute Pfad der Originaldatei beziehungsweise des
+äußeren Archivs. Originaldateien verlangen denselben standardisierten Pfad
+wie `path` und zwei leere Mitgliedslisten. Bei Archiven sind beide Listen
+nicht leer und gleich lang: höchstens 32 Stufen, je Name beziehungsweise
+Byteidentität höchstens 4096 Bytes. `archiveMemberBytes` enthält kanonisches
+Base64 der verlustfreien Namenbytes. Gültige UTF-8-Namen müssen mit dem
+Anzeigenamen übereinstimmen; bei ungültigen Bytes bleibt die Byteidentität
+maßgeblich. `!/` ist keine Trennregel. Die Mitgliedskette wird als einzelne
+Elemente übertragen, nicht aus einem Anzeigepfad rekonstruiert.
+
+Die Generation beschreibt das äußere Dateiobjekt. `device`, `inode` und
+`size` sind nichtnegative Ganzzahlen; Zeiten bestehen aus Unix-Sekunden und
+Nanosekunden von 0 bis 999999999. Python-Sender können `st_mtime_ns` und
+`st_ctime_ns` mit `divmod(value, 1000000000)` zerlegen. Zahlen müssen beim
+JSON-Transport verlustfrei erhalten bleiben. Fastra prüft die Generation vor
+und nach der Blattübernahme am geöffneten regulären Dateiobjekt und am erneut
+aufgelösten Quellpfad. Ein Quellentausch liefert `stale`.
+
+Bei `sha256` prüft Fastra zusätzlich den äußeren Archivhash vor und nach der
+Übernahme. `maximumOuterArchiveBytes` beträgt 67108864 Bytes. Die Prüfung
+liest in begrenzten Blöcken und ist abbrechbar; größere, verschwundene oder
+unzugängliche starke Quellen liefern `sourceUnavailable`. Fastra wechselt
+niemals still zu `generation`. Ein Sender darf für ein erreichbares größeres
+Archiv ausdrücklich `generation` wählen; die Ansicht nennt dann die schwächere
+Bindung. Generation allein beweist keine historische Byteidentität.
+
+Auch ein geprüfter äußerer Hash beweist nicht, dass die Blattdatei aus dem
+angegebenen Mitglied extrahiert wurde. Die Mitgliedszuordnung und Cachefrische
+bleiben Verantwortung des Senders; Fastra entpackt das Archiv nicht erneut.
+Der eigene Blattinhalt wird immer bytegenau gehasht. Suchzeilennummern eines
+anderen Decoders sind keine UTF-16-Koordinaten: `exactUTF16` erfordert eine vom
+Sender am identisch dekodierten Blatt bestätigte Position. Fastra prüft den
+Bereich und vollständige Swift-Characters. Ohne diese Positionsbindung muss
+`unboundHit` mit `location: 0, length: 0` verwendet werden. Die Ansicht erklärt,
+dass sie am Anfang beginnt; ein Suchbeleg löst keinen geratenen Sprung aus.
+
+Fastra kopiert die Rohbytes asynchron in ein eigenes privates, markiertes
+Sitzungsverzeichnis, lädt und prüft diese Kopie und beobachtet anschließend
+die echte Textansicht. Erst `state: ready` **und** `adopted: true` bestätigen
+die unabhängige Übernahme. Danach darf der Sender seine Zwischendatei entfernen.
+Jobstatus und Sitzungs-/Dokumentinventar liefern `provenance`; der sichtbare
+Herkunftsbereich zeigt Schreibschutz, vollständige Mitgliedskette und Bindung.
+
+Fehler und Abbruch entfernen unbestätigte Kopien; Sitzungsende und App-Ende
+entfernen bestätigte Kopien. Verwaiste Wurzeln werden nach einem Prozessabbruch
+nur anhand des eigenen Namensschemas, Markers und eines beendeten Besitzer-PIDs
+bereinigt. Symlink-Wurzeln, unmarkierte Verzeichnisse und lebende Instanzen
+bleiben erhalten. Übernommene Sitzungen werden nicht restauriert. Dauerhafte
+Erklärungsartefakte müssen ihre benötigten Quellen ausdrücklich selbst speichern.

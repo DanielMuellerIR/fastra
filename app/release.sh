@@ -7,11 +7,11 @@
 #      install.sh automatisch aus dem Schlüsselbund gelesen wird
 #      (FASTRA_SIGN_IDENTITY überschreibt); ohne Zertifikat mit
 #      Ad-hoc-Signierung (-s -) für lokale Tests ohne Apple-Konto.
-#   3. DMG bauen via hdiutil — App + Alias auf /Applications, Volume-Name "Fastra",
+#   3. App notarisieren und stapeln, dann DMG bauen via hdiutil — App + Alias auf /Applications, Volume-Name "Fastra",
 #      mit Hintergrundbild (src/DmgBackground.png) und Finder-Icon-Layout,
 #      Ausgabe in dist/Fastra-<version>.dmg.
-#   4. Signatur des DMG-Inhalts verifizieren.
-#   5. Notarisierung — läuft automatisch, WENN echt signiert wurde und das
+#   4. Signatur und App-Ticket im DMG-Inhalt verifizieren.
+#   5. DMG signieren, notarisieren und stapeln — läuft automatisch, WENN echt signiert wurde und das
 #      Keychain-Profil vorhanden ist; bei Ad-hoc-Signierung wird der Schritt
 #      sauber übersprungen.
 #
@@ -184,19 +184,13 @@ echo "→ Schritt 3/5: DMG bauen"
 DIST_DIR="dist"
 mkdir -p "$DIST_DIR"
 
-# Endpfad des fertigen DMG — Dateiname enthält die Version für klare Benennung
-DMG_PATH="$DIST_DIR/Fastra-${VERSION}.dmg"
-
-# Bereits vorhandenes DMG entfernen (hdiutil will keine bestehende Datei
-# überschreiben — ohne dieses rm schlägt der Build bei zweitem Durchlauf fehl)
-if [ -f "$DMG_PATH" ]; then
-  echo "   Vorhandenes DMG entfernen: $DMG_PATH"
-  rm -f "$DMG_PATH"
-fi
+# Ein bereits geprüfter Stand bleibt erhalten, bis der neue vollständig fertig ist.
+FINAL_DMG_PATH="$DIST_DIR/Fastra-${VERSION}.dmg"
 
 # Temporäres Arbeitsverzeichnis für alle Zwischenprodukte
 # (RW-DMG, skalierte Hintergrundbilder, kombiniertes TIFF)
-DMG_STAGING=$(mktemp -d)
+DMG_STAGING=$(mktemp -d ".build/fastra-release.XXXXXX")
+DMG_PATH="$DMG_STAGING/Fastra-${VERSION}.dmg"
 RW_DMG="$DMG_STAGING/fastra_rw.dmg"
 VOL_NAME="Fastra"
 MOUNT_DIR="$DMG_STAGING/mount"
@@ -319,6 +313,19 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 echo "   Arbeitsverzeichnis: $DMG_STAGING"
+
+if [ "$SIGN_IDENTITY" != "-" ]; then
+  # Das App-Ticket muss vor dem Kopieren ins Image am Bundle hängen: Ein
+  # ausschließlich gestapeltes DMG gibt sein Ticket beim Herausziehen nicht mit.
+  echo "   App vor dem DMG-Bau notarisieren und Ticket anheften"
+  ditto -c -k --keepParent "$APP" "$DMG_STAGING/Fastra.zip"
+  xcrun notarytool submit "$DMG_STAGING/Fastra.zip" \
+    --keychain-profile "$NOTARY_PROFILE" --wait
+  xcrun stapler staple "$APP"
+  xcrun stapler validate "$APP"
+  codesign --verify --deep --strict "$APP"
+  spctl --assess --type execute "$APP"
+fi
 
 # a) Hintergrundbild aufbereiten: Der Finder zeigt auf Retina-Displays nur
 #    dann ein scharfes Bild, wenn das TIFF BEIDE Auflösungen enthält
@@ -511,6 +518,10 @@ hdiutil attach "$DMG_PATH" -mountpoint "$VERIFY_MOUNT" -quiet -nobrowse
 codesign --verify --deep --strict "$VERIFY_MOUNT/Fastra.app" \
   && echo "   ✔ Signatur im DMG gültig" \
   || { echo "✗ FEHLER: Signaturprüfung gescheitert — DMG nicht verwenden." >&2; exit 1; }
+if [ "$SIGN_IDENTITY" != "-" ]; then
+  xcrun stapler validate "$VERIFY_MOUNT/Fastra.app"
+  spctl --assess --type execute "$VERIFY_MOUNT/Fastra.app"
+fi
 
 hdiutil detach "$VERIFY_MOUNT" -quiet
 
@@ -520,7 +531,7 @@ echo
 # Schritt 5: Notarization — automatisch, wenn echt signiert wurde
 # ─────────────────────────────────────────────────────────────────
 # Läuft NUR, wenn in Schritt 2 mit einer echten Developer-ID signiert wurde
-# (FASTRA_SIGN_IDENTITY gesetzt). Ad-hoc-Bundles können nicht notarisiert
+# (Developer-ID-Identität gefunden). Ad-hoc-Bundles können nicht notarisiert
 # werden — dann wird dieser Schritt übersprungen.
 #
 # Das notarytool-Keychain-Profil ist PRO MAC eingerichtet (Schlüsselbund wird
@@ -546,7 +557,7 @@ else
   # Hochladen + auf Apples Prüfung warten (--wait, typ. 1-10 Min). notarytool
   # notarisiert den DMG-Inhalt rekursiv mit. Profil liefert die Credentials —
   # KEIN Passwort als Argument (Sicherheitsregel "Secrets im Terminal").
-  echo "   notarytool submit (Profil: $NOTARY_PROFILE) — wartet auf Apple…"
+  echo "   notarytool submit mit lokalem Keychain-Profil — wartet auf Apple…"
   xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
 
   # Staple-Ticket ins DMG heften → läuft danach auch offline ohne Gatekeeper-
@@ -554,9 +565,14 @@ else
   echo "   Staple-Ticket einbetten + prüfen"
   xcrun stapler staple "$DMG_PATH"
   xcrun stapler validate "$DMG_PATH"
+  codesign --verify --strict "$DMG_PATH"
+  spctl --assess --type open --context context:primary-signature "$DMG_PATH"
   echo "   ✔ DMG notarisiert + gestapelt"
 fi
 echo
+
+mv -f "$DMG_PATH" "$FINAL_DMG_PATH"
+DMG_PATH="$FINAL_DMG_PATH"
 
 # ─────────────────────────────────────────────────────────────────
 # Abschluss — maschinenlesbare Ausgabe für KI-Agenten und CI

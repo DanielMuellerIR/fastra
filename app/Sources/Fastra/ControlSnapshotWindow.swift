@@ -12,6 +12,7 @@ final class ControlSnapshotWindow: NSObject, NSWindowDelegate, NSSplitViewDelega
     let textView: ReadOnlySnapshotTextView
     private let statusLabel = NSTextField(wrappingLabelWithString: L10n.string("Snapshot wird geladen…"))
     var loaded: FileLoader.LoadedFile?
+    var sourceSnapshot: ControlSourceSnapshot?
     var generation = 0
     var onClose: (() -> Void)?
     var onUserSelection: (() -> Void)?
@@ -104,6 +105,57 @@ final class ControlSnapshotWindow: NSObject, NSWindowDelegate, NSSplitViewDelega
     }
 
     func show() { window.orderFront(nil) }
+
+    static func provenanceDescription(_ source: ControlSourceProvenance) -> String {
+        var lines = [source.kind == "original"
+                     ? L10n.string("Originaldatei als schreibgeschützter Sitzungssnapshot")
+                     : L10n.string("Materialisiertes Archivmitglied — schreibgeschützte Sitzungskopie")]
+        if source.kind == "archiveMaterialization" {
+            lines.append(source.archiveBinding == "sha256"
+                         ? L10n.string("Äußerer Archivinhalt und Generation geprüft; Mitgliedszuordnung vom Sender angegeben.")
+                         : L10n.string("Schwächere Herkunftsbindung: Nur die Archivgeneration ist geprüft, nicht der äußere Inhaltsstand."))
+        }
+        if source.positionBinding == "unboundHit" {
+            lines.append(L10n.string("Keine bestätigte Trefferposition. Der eingefrorene Inhalt ist geprüft; die Ansicht beginnt am Dateianfang."))
+        }
+        lines.append(L10n.format("Quelle: %@", String(reflecting: source.hitIdentity.filesystemPath)))
+        for (index, member) in source.hitIdentity.archiveMembers.enumerated() {
+            lines.append(L10n.format("Archivmitglied %ld: %@", index + 1, String(reflecting: member)))
+            lines.append(L10n.format("Byte-Identität: %@", source.hitIdentity.archiveMemberBytes[index]))
+        }
+        lines.append(L10n.format("Suchlauf: %@", source.runID.uuidString))
+        if let evidence = source.searchEvidence, !evidence.isEmpty {
+            lines.append(L10n.format("Suchbeleg des Senders: %@", String(reflecting: evidence)))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    func showProvenance(_ source: ControlSourceProvenance) {
+        guard let root = window.contentView, let editor = textView.enclosingScrollView else { return }
+        let origin = ReadOnlySnapshotTextView.makeScrollView(content: Self.provenanceDescription(source),
+                                                             reason: L10n.string("Schreibgeschützte Herkunft"))
+        origin.hasVerticalScroller = true
+        origin.autohidesScrollers = false
+        origin.scrollerStyle = .legacy
+        origin.setAccessibilityIdentifier("controlSnapshotProvenance")
+        if let text = origin.documentView as? NSTextView {
+            text.font = .systemFont(ofSize: 11)
+            text.setAccessibilityIdentifier("controlSnapshotProvenanceText")
+        }
+        origin.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(origin)
+        editorTop.isActive = false
+        NSLayoutConstraint.activate([
+            origin.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 8),
+            origin.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
+            origin.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
+            origin.heightAnchor.constraint(equalToConstant: 140),
+        ])
+        editorTop = editor.topAnchor.constraint(equalTo: origin.bottomAnchor, constant: 8)
+        editorTop.isActive = true
+        window.contentMinSize = NSSize(width: 400, height: 420)
+        root.layoutSubtreeIfNeeded()
+    }
 
     func install(_ loaded: FileLoader.LoadedFile, documentID: UUID? = nil, sourceName: String? = nil) {
         // Name und Inhalt wechseln gemeinsam; erst danach die Syntax analysieren.
@@ -223,7 +275,7 @@ final class ControlSnapshotWindow: NSObject, NSWindowDelegate, NSSplitViewDelega
     func showFailure(_ failure: ControlFailure? = nil) {
         statusLabel.stringValue = switch failure?.code {
         case "sourceUnavailable": L10n.string("Snapshot-Datei ist nicht verfügbar oder überschreitet die Textgrenze.")
-        case "stale": L10n.string("Snapshot-Inhalt stimmt nicht mit dem erwarteten SHA-256 überein.")
+        case "stale": L10n.string("Die Snapshot-Quelle wurde verändert oder ihr Inhalt stimmt nicht mit dem erwarteten SHA-256 überein.")
         case "invalidRange": L10n.string("Die Auswahl liegt außerhalb vollständiger Zeichen des Snapshots.")
         case "expired": L10n.string("Snapshot-Auftrag hat seine Zeitgrenze überschritten.")
         case "invalidRequest": L10n.string("Das Erklärungspaket hat ein ungültiges Format.")

@@ -95,6 +95,7 @@ struct DualPaneDiffView<Leading: View>: View {
     /// Einstellung der Fußzeile. Aus heißt: echte Zeilen, am Spaltenrand
     /// abgeschnitten — die linke Seite darf nie in die rechte ragen.
     var softWrapEnabled: Bool = true
+    var exportSnapshot: DiffExportSnapshot? = nil
     /// Kopfzeilen-Inhalt links (Dateinamen bzw. Commit-Beschreibung).
     @ViewBuilder let leading: () -> Leading
 
@@ -201,6 +202,10 @@ struct DualPaneDiffView<Leading: View>: View {
         HStack(spacing: 8) {
             leading()
             Spacer()
+            if let exportSnapshot {
+                DiffExportButton(snapshot: exportSnapshot)
+                    .frame(width: 26, height: 26)
+            }
             Text(L10n.format("Unterschied %ld von %ld",
                              (currentEntry ?? 0) + 1, entries.count))
                 .fastraFont(size: 10)

@@ -7,7 +7,8 @@
 // hinein, ausgerichtete Zeilenpaare (unchanged/changed/removed/added) mit
 // Intraline-Bereichen plus eine Differenzen-Liste (Blöcke) heraus.
 // Funktioniert komplett OHNE Git — Basis ist der eigene, abbrechbare
-// Myers-Diff in `MyersDiff.swift` (derselbe Algorithmus wie Foundations
+// Myers-Diff in `MyersDiff.swift`, bei großen Eingaben mit Zeilenankern
+// aus `PatienceDiff.swift` (derselbe Algorithmus wie Foundations
 // `CollectionDifference`, das die Ersetzungs-Vorschau weiter nutzt).
 //
 // Ehrliche Grenzen statt stiller Kappung: zu große oder zu unterschiedliche
@@ -136,9 +137,8 @@ enum FileDiffLimitation: Hashable, Error {
     case tooLarge(side: FileDiffSideRole)
     /// Mehr Zeilen als der Vergleich verarbeitet.
     case tooManyLines(side: FileDiffSideRole, limit: Int)
-    /// Nach Abzug gemeinsamer Anfangs-/Endzeilen bleibt mehr Unterschieds-
-    /// Bereich als das Rechenbudget erlaubt (Myers-Diff ist im schlechtesten
-    /// Fall quadratisch — wir lehnen ehrlich ab, statt minutenlang zu rechnen).
+    /// Auch mit gemeinsamen Zeilenankern überschreiten die verbleibenden
+    /// Unterschiedsbereiche das sichere Rechenbudget.
     case tooDifferent(limit: Int)
     /// Die Berechnung ist mit einem unerwarteten Fehler abgebrochen. Der
     /// Text ist die Systembeschreibung des Fehlers — besser als ein Tab, der
@@ -221,10 +221,9 @@ enum FileDiff {
     /// Maximale Zeilenzahl je Seite. Schützt Speicher und Laufzeit; mehr
     /// Zeilen lehnt der Vergleich mit sichtbarer Erklärung ab.
     static let maximumLineCount = 200_000
-    /// Budget für den eigentlichen Myers-Diff NACH Abzug gemeinsamer
-    /// Anfangs- und Endzeilen (Summe beider Seiten). Der schlechteste Fall
-    /// des Diffs wächst quadratisch — dieses Budget hält ihn im Sekunden-
-    /// bereich. Typische Vergleiche (ähnliche Dateien) bleiben weit darunter.
+    /// Budget je Myers-Bereich nach Abzug gemeinsamer Randzeilen. Große
+    /// Vergleiche werden an eindeutigen gemeinsamen Zeilen aufgeteilt;
+    /// auch ihre gesamte quadratische Arbeitsgrenze bleibt begrenzt.
     static let maximumDiffInputLines = 30_000
 
     // MARK: - Vergleich
@@ -328,17 +327,14 @@ enum FileDiff {
         }
         let leftMid = leftAliases[prefix..<(leftAliases.count - suffix)]
         let rightMid = rightAliases[prefix..<(rightAliases.count - suffix)]
-        guard leftMid.count + rightMid.count <= maximumDiffInputLines else {
+        // Kleine Mittelteile behalten exakt den bisherigen Myers-Diff.
+        // Große nutzen geordnete eindeutige Zeilen als Anker. Offsets bleiben
+        // relativ zum Mittelteil; die Indizes führen zurück zu Originalzeilen.
+        guard let changes = try PatienceDiff.changes(
+            from: Array(leftMid), to: Array(rightMid),
+            maximumInputLines: maximumDiffInputLines, isCancelled: isCancelled
+        ) else {
             return .limitation(.tooDifferent(limit: maximumDiffInputLines))
-        }
-
-        // Myers-Diff über den Mittelteil (eigener, abbrechbarer Kern mit
-        // demselben Algorithmus wie Foundation). Offsets sind relativ zum
-        // Mittelteil → plus `prefix` ergibt den Index in der Diff-Teilnehmer-
-        // Folge, `leftIndex`/`rightIndex` mappen zurück auf Original-Zeilen.
-        guard let changes = MyersDiff.changes(from: Array(leftMid), to: Array(rightMid),
-                                              isCancelled: isCancelled) else {
-            throw CancellationError()
         }
         var removedLeft = Set<Int>()    // Original-Zeilenindizes links
         var insertedRight = Set<Int>()  // Original-Zeilenindizes rechts

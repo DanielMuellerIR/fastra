@@ -4,13 +4,35 @@ Hier stehen nur offene Produktarbeit und bewusst zurückgestellte Grenzen.
 Erledigte Arbeit und historische Entscheidungen stehen in
 [CHANGELOG.md](CHANGELOG.md).
 
-## Code-Erklärungen und lokale Steuerung
+## Code-Erklärungen und Skriptbarkeit: weitere Etappen
 
-Gespeicherte Codefragen mit lokalen UTF-8-Snapshots und AppleScript-/CLI-Steuerung
-sind verfügbar. Der Schnittstellenvertrag steht in [LOCAL-CONTROL.md](docs/LOCAL-CONTROL.md).
-Offen bleiben feste Git-Quellen, Parent→Commit-Reviews, weitere Fensteranordnungen
-und optionale Audio-Wiedergabe. Schreibende Automatisierung benötigt eine eigene
-Produktentscheidung und die bestehenden Vorschau- und Apply-Prüfungen.
+- Kurze, vorbereitete Code-Erklärungen und Commit-Reviews direkt in der
+  gewohnten Editorumgebung ermöglichen. Erklärbereich im selben Fenster;
+  ein separates Erklärfenster bleibt eine weitere Anordnung. Freie
+  Desktop-Texteinblendungen sind vorerst ausgeklammert.
+- Die [lokale Snapshot-Steuerung](docs/LOCAL-CONTROL.md) extern über AppleEvents
+  um feste Git-Quellen, Commit-Reviews
+  und benötigte Fensteranordnung erweitern; gespeicherte Abläufe nutzen
+  denselben semantischen Controller.
+- Quellen an konkrete Commits beziehungsweise überprüfbare Inhaltsstände
+  binden. Abläufe ohne LLM wiedergeben; eigenes Erkunden pausiert die Führung.
+- Kleine App-Größe erhalten: native vorhandene Komponenten nutzen, keine
+  KI-Runtime oder Medienpakete bündeln; Größenänderungen je Etappe messen.
+- Zuerst denselben kleinen Durchstich mit einer Codefrage und einem
+  Commit-Review erproben. Weitere Skriptbefehle nach tatsächlichem Nutzen
+  ergänzen; schreibende Automatisierung bleibt eine gesonderte Etappe mit
+  vollständiger Vorschau und den bestehenden Apply-Prüfungen.
+
+Der aktuelle Schnittstellenvertrag steht in
+[Lokale Snapshot-Steuerung](docs/LOCAL-CONTROL.md).
+Der gespeicherte Codefrage-Player mit lokalen UTF-8-Snapshots ist ab 1.129.0
+vorhanden. Ab 1.129.1 bestehen die installierte deutsche AppleScript- und
+englische JXA-/CLI-Abnahme, echte Prozessneustarts und die Sichtprüfung bei
+400/900 pt. Auch die tatsächliche Maus-/Umschalt-Pfeil-, Menü- und
+⌘W-Abnahme besteht in beiden Sprachen; zwei dirty Arbeitsfenster und ihre
+Einstellungen bleiben dabei unverändert.
+Parent→Commit-Reviews und weitere Quellen bleiben offen; die historische
+Timeout-Ursache wird getrennt weiter diagnostiziert.
 
 ## Jetzt
 
@@ -34,33 +56,11 @@ Produktentscheidung und die bestehenden Vorschau- und Apply-Prüfungen.
     (`C_LONGINT($pid_i)`) — der Parser zählt ehrlich nur `$N`/`#DECLARE`;
     das Panel zeigt dann `(…)`. Eine Zuordnung benannter Deklarationen zu
     Parameterpositionen wäre Raterei und bleibt bewusst außen vor.
-- **Soft Wrap, Rechteckauswahl und Einrückung** (beschlossen 2026-07-19):
-  Umsetzung in vier getrennten Etappen mit eigener Verifikation und Version.
-  **Umgesetzt: Etappe 1 (Formatprofile und Fußzeilen-Bedienung, v1.40.0),
-  Etappe 2 (Umbruchziele und Seitenlinie, v1.41.0), Etappe 3
-  (Rechteckauswahl unter Soft Wrap, v1.42.0) sowie aus Etappe 4 die
-  Einrückungsprofile pro Format und „Einfügen und Einrückung angleichen"
-  (v1.68.0).** Offen bleibt aus Etappe 4 die rein visuelle Einrückung von
-  Soft-Wrap-Folgezeilen (Spezifikation:
-  theplan `tasks/fastra-soft-wrap-2026-07/goal-4-einrueckung.md`, Punkt 3):
-  - Die BBEdit-Semantik der drei Modi ist erhoben (Handbuch 16.0.2, S. 125
-    und 262): „Flush Left" = Folgefragmente bündig am Fensterrand,
-    „First Line" = auf der Einrückung der ersten Zeile, „Reverse" = genau
-    EINE Einrückungsstufe tiefer als die erste Zeile. Werkstandard soll
-    „First Line" sein. Der gemeinsame Layoutkern und das rückwärtskompatible
-    Profilfeld sind vorbereitet (siehe `docs/soft-wrap-fragment-geometry.md`);
-    Menü, Controller-Reconcile und Minimap sind in v1.127.0 verbunden.
-    Die vollständige Bedienabnahme einschließlich realer Eingabemethode
-    bleibt bis zu ihrem belegten Abschluss offen.
-  - Der Kern ist Geometrie im CodeEditTextView-Layout: Folgefragmente
-    brauchen einen eigenen x-Ursprung UND eine entsprechend verkleinerte
-    Umbruchbreite (mindestens ein Graphem pro Fragment). Denselben Ursprung
-    müssen teilen: Zeichnen, Caret, `rectForOffset`, `textOffsetAtPoint`,
-    Auswahlflächen, IME, Drag-and-drop, Auto-Scroll und Rechteckauswahl —
-    ein nur optisch eingerückter Text mit falschem Klickziel gilt als nicht
-    fertig. Wegen dieser Streuung über viele Layout-Stellen ist der Punkt
-    eine eigene, konzentrierte Etappe mit Fenster-Selbsttest
-    `softwrapindent` und darf nicht nebenbei entstehen.
+- **Soft-Wrap-Abnahme mit realer Eingabemethode:** Die visuelle Einrückung
+  verwendet den gemeinsamen Fragmentkern für Zeichnen, Caret, Klickziele,
+  Auswahl, Drag und Minimap. Offen bleiben reale japanische Kandidateneingabe
+  und der noch nicht bestätigte IME-Klickfall. Erst einen reproduzierten
+  Befund korrigieren; die physische Bedienabnahme bleibt ein eigener Schritt.
 - **Wunschpaket 3** (beschlossen 2026-07-18):
   **Alle acht Etappen umgesetzt:** Etappe 1 (Diff-Kern & Datei-Diff
   dual-pane, v1.32.0), Etappe 2 (Git-Diff auf gemeinsamem Renderer,
@@ -72,21 +72,20 @@ Produktentscheidung und die bestehenden Vorschau- und Apply-Prüfungen.
   (4D-Syntaxdiagnosen via tool4d-LSP, v1.39.0).**
   - **Bewusst NICHT in Etappe 1** (Kandidaten für eigene Aufträge):
     Ordner-Vergleich, „Apply to Left/Right“-Übernahme einzelner
-    Unterschiede ins Dokument, Export der Differenzen-Liste.
-  - **Bekannte Grenze des Datei-Diffs:** Nach Abzug gemeinsamer
-    Anfangs-/Endzeilen verarbeitet der Vergleich bis zu 30.000 Zeilen
-    Unterschiedsbereich (Myers-Diff ist im schlechtesten Fall
-    quadratisch). Sehr große Dateien mit über die GANZE Länge
-    verstreuten Änderungen lehnt er deshalb ehrlich ab; ein
-    Anker-basierter Diff (Patience-Stil) für solche Fälle wäre ein
-    möglicher späterer Ausbau.
+    Unterschiede ins Dokument.
+  - **Bewusste Grenze des Datei-Diffs:** Eindeutige gemeinsame Zeilen
+    teilen große Vergleiche ab v1.133.0 in geordnete Teilbereiche auf.
+    Ohne ausreichend passende Anker bleibt das Rechenbudget begrenzt:
+    höchstens 30.000 Zeilen je verbleibendem Myers-Bereich und eine
+    gemeinsame Arbeitsgrenze für alle Bereiche. Sehr unterschiedliche
+    oder stark wiederholte Eingaben können weiterhin ehrlich abgelehnt
+    werden; bis zu 200.000 Zeilen je Seite bleiben die Speichergrenze.
 - **Wunschpaket 2** (beschlossen 2026-07-18): Alle fünf Etappen sind mit
   v1.27.0–v1.31.0 umgesetzt (Navigation & Chrome, Suchdialog, Sprachmenü
   mit wählbarem 4D, Hilfe samt `help-audit`-Mechanik, assistiertes
   Markdown-Schreiben mit Bild-Paste/-Drop). Das hier ursprünglich
-  ausgeklammerte echte WYSIWYG („Schreibmodus“) ist inzwischen ausdrücklich
-  beauftragt — Stand und Auftrag stehen nur noch unter „Aus Daniels
-  Ideenliste übernommen (2026-08-18)“ weiter unten.
+  ausgeklammerte echte WYSIWYG („Schreibmodus“) ist mit v1.132.0 umgesetzt;
+  die Darstellungswechsel sind mit v1.132.1 korrigiert und geprüft.
 - **Wunschpaket Juli 2026** (beschlossen 2026-07-17): Die sechs Etappen sind
   mit v1.20.0–v1.25.0 umgesetzt. Bewusst offen geblieben:
   - **4D-Farbdetails:** Underline (Konstanten) kennt das CESE-Attributmodell
@@ -94,17 +93,7 @@ Produktentscheidung und die bestehenden Vorschau- und Apply-Prüfungen.
     mangels Analyse bzw. Unterscheidbarkeit (siehe Slot-Mapping in
     `EditorView.swift`).
 
-## Aus Daniels Ideenliste übernommen (2026-08-18)
-
-- **Markdown-WYSIWYG-Modus („Schreibmodus")** — Daniel hat den bisher
-  ausgeklammerten Punkt aus Wunschpaket 2 am 2026-08-18 ausdrücklich beauftragt.
-  Damit ist die dort formulierte Bedingung („Daniel entscheidet nach gelebter
-  Erfahrung mit Etappe 5 separat und nur auf ausdrücklichen Auftrag") erfüllt;
-  der Punkt gilt nicht mehr als zurückgestellt, sondern als offene Produktarbeit.
-  Der bereits gebaute Einmalimport von RTF/RTFD nach Markdown
-  (`MarkdownImport.swift`) bleibt davon unberührt — gewünscht ist das Bearbeiten
-  im WYSIWYG-Modus, nicht ein weiterer Importweg.
-  Herkunft: Idee #18 in `theplan/ideen.md`.
+## Weitere 4D-Makrogrenzen
 
 - **4D-Makros: verbliebene Grenzen** — Der Kern ist seit v1.105.0 gebaut
   (Discovery, Menü, native Text-Makros, Komplettieren über die tool4d-Engine
@@ -113,19 +102,10 @@ Produktentscheidung und die bestehenden Vorschau- und Apply-Prüfungen.
   Methoden" …) laufen nur im echten 4D-Methodeneditor — headless bräuchte je
   Makro eine code-übergebende Variante wie beim Komplettieren. Ebenfalls
   offen: ein warmer tool4d-Prozess, falls die Kaltstartzeit (real ~3 s) im
-  Alltag stört. Herkunft: Idee #28 in `theplan/ideen.md`.
+  Alltag stört.
   Native Auswahlplatzhalter in Text-Makros funktionieren bereits; die Grenze
   betrifft Makros, deren Ausführung den echten 4D-Editor oder das Host-Projekt
   benötigt.
-  - **Abbruchsignal durch die Diff-Pipeline** (Review 2026-08-29): mit
-    v1.120.0 umgesetzt. Das Signal reicht durch Laden, Zeilenaufbereitung,
-    eigenen abbrechbaren Myers-Kern (`MyersDiff.swift`, Port der
-    Linear-Space-Fassung der Standardbibliothek) und Ergebnisaufbau;
-    Workspace (`FileDiffComputations`), Makro-Assistent und externes
-    Vergleichsfenster halten je Vergleich einen verwalteten Task. Offen
-    bleibt der zweite Teil des Folgeauftrags: eindeutige gemeinsame Zeilen
-    als Anker (Patience-Stil) für Vergleiche über dem 30.000-Zeilen-Budget,
-    mit Vergleich von Blockqualität und Laufzeit gegen den heutigen Kern.
 
 ## Kleine offene Ideen
 
@@ -149,9 +129,6 @@ Produktentscheidung und die bestehenden Vorschau- und Apply-Prüfungen.
     Maschinerie.
   - Es läuft immer nur EINE Umwandlung gleichzeitig; der Befehl ist währenddessen
     gesperrt. Eine Warteschlange lohnt erst, wenn Stapelumwandlung gewünscht ist.
-  - Kein Fortschritt und kein Abbruch während einer Umwandlung. Vor einem
-    Ausbau die aktuelle CLI auf Fortschrittsmeldungen und Abbruch prüfen;
-    ob eine direkte Library-Anbindung nötig ist, ist noch nicht erhoben.
   - Der Katalog fragt nur, OB ein Werkzeug installiert ist, nicht welche
     Eingabeformate dessen Version beherrscht. Ein sehr altes Pandoc könnte
     deshalb erst beim Umwandeln scheitern — dann mit echter Fehlermeldung.
@@ -160,10 +137,6 @@ Produktentscheidung und die bestehenden Vorschau- und Apply-Prüfungen.
   2026-07b) verwendet Markdown, enthält aber keine Ablaufbilder. Screenshots/Illustrationen
   der zentralen Abläufe (Suchmaske, Vorschau→Apply, Git-Seitenleiste) wären
   ein sinnvoller späterer Ausbau.
-
-- **Datei-Drag vom Dokument-Tab:** Mit dem titellosen Fensterchrome entfiel
-  das Ziehen der Datei aus der Titelzeile (Proxy-Icon) ersatzlos. Möglicher
-  Ersatz wäre ein `.onDrag` der Datei-URL direkt am Tab — nur bei echtem Bedarf.
 
 - **Datenschutz-Erklärung der Markdown-Vorschau: Produktvergleiche bleiben
   bewusst draußen** (Rest der Idee 2026-07-28; der erklärende Abschnitt
@@ -233,7 +206,7 @@ und sie sind noch offen.
 
 ## Offene Beobachtungen (nicht reproduziert)
 
-- **⌘⇧+Pfeiltasten ohne Wirkung auf einem anderen Mac** (Daniel-Meldung
+- **⌘⇧+Pfeiltasten ohne Wirkung auf einem anderen Mac** (Betriebsmeldung
   2026-07-29; auf dem Entwicklungs-Mac funktioniert es). Befund: Fastras eigenes
   Key-Routing (`KeyRouting.route`) fasst ⌘- und ⌘⇧-Pfeilkombinationen nicht
   an — sie gehen unverändert an den Editor durch; es gibt also keinen
@@ -245,7 +218,7 @@ und sie sind noch offen.
   funktioniert (falls nein, ist es kein Fastra-Thema).
 
 - **Fenster ganz ohne Tabs mit tippbarer Editorfläche nach App-Start**
-  (Daniel-Meldung 2026-07-29, einmalig, kein Repro). Analyse: `tabs` kann
+  (Betriebsmeldung 2026-07-29, einmalig, kein Repro). Analyse: `tabs` kann
   nur über den Fensterschließen-Pfad (`prepareToCloseWindow`) dauerhaft leer
   werden; SwiftUI hält Szene samt Workspace am Leben und kann das Fenster
   später wieder anzeigen (Dock-Klick wirkt wie App-Start) — dann stand ein
@@ -259,7 +232,7 @@ und sie sind noch offen.
 ## Ältere offene Beobachtungen (2026-07-24/25, nicht reproduziert)
 
 - **Editor-Befunde 2026-07-24/25:** Der Return-/Tipp-Scroll-Befund ist mit
-  v1.50.1 GELÖST (State-Reconcile-Race, F.23; Daniel-verifiziert am
+  v1.50.1 GELÖST (State-Reconcile-Race, F.23; im Arbeitsbetrieb verifiziert am
   Live-Repro), ebenso der dabei entdeckte ⌘V+⌘Z-Crash (F.24). Offen
   bleiben zwei Beobachtungen aus der Sitzung VOR dem cfprefsd-Neustart
   vom 2026-07-24, seither nicht wieder aufgetreten: Palette-Emoji erschien
@@ -270,13 +243,13 @@ und sie sind noch offen.
   behebt, und `FASTRA_TYPESCROLL_FIXTURE=<Dateikopie> ./selftest.sh
   typescroll` auf dem betroffenen Stand fahren.
 
-- **Emoji „in zwei Zeichen zerplatzt“** (Daniel-Meldung, wahrscheinlich noch
+- **Emoji „in zwei Zeichen zerplatzt“** (Betriebsmeldung, wahrscheinlich noch
   v1.46.8): Mit v1.48.0 nicht reproduzierbar — Dateibytes intakt,
   Attributläufe/Fragmente/Glyphen über 121 Umbruchbreiten sauber, Fenster-
   Screenshot einwandfrei. Wächter `emojisplit` läuft im Standardlauf.
-  Daniel prüft mit v1.49.0 gegen; bei erneutem Auftreten Fensterbreite oder
+  Gegenprüfung mit v1.49.0 vorgesehen; bei erneutem Auftreten Fensterbreite oder
   Screenshot zur Meldung geben.
-- **„Tab-Wechsel repariert die Emoji-Darstellung“** (Daniel-Meldung
+- **„Tab-Wechsel repariert die Emoji-Darstellung“** (Betriebsmeldung
   2026-07-27). Die beiden greifbaren Teile des Befunds sind geklärt und in
   v1.52.1/v1.52.2 abgearbeitet: Der Editor legte attributierten Text (RTF)
   aufs Clipboard, dessen RTF-nach-HTML-Weg U+FE0F verlor, und in der
@@ -290,7 +263,7 @@ und sie sind noch offen.
   notieren: Editor-Text oder Vorschau, Fensterbreite, ob ein App-Neustart
   genügt, und welche Codepoints die Datei an der Stelle wirklich enthält.
 
-  **Zwischenstand 2026-07-28:** Daniel hat die notarisierte v1.53.1 im echten
+  **Zwischenstand 2026-07-28:** Die notarisierte v1.53.1 wurde im echten
   Einsatz benutzt und meldet die Emoji-Darstellung auf beiden Seiten — Editor
   und Vorschau — als korrekt. Das ist der erste positive Gegenbefund seit der
   Meldung; die Beobachtung bleibt aber notiert, weil ein einzelner guter Lauf

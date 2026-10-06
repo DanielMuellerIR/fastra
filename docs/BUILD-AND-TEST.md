@@ -72,6 +72,11 @@ Notary-Keychain-Profilname steht bewusst NICHT im Skript; er wird per
 `./install.sh --no-notarize` signiert nur und legt das Test-Bundle im
 Projekt-Root ab; es installiert ausdrücklich nichts nach `/Applications`.
 
+**Release-Workflow (`./release.sh`):** notarisiert und stapelt zuerst die App,
+danach das DMG. Der Mount-Test prüft auch das eigene Ticket der enthaltenen
+App. Ein vorhandenes DMG unter `app/dist/` wird erst nach erfolgreicher
+Signatur-, Ticket- und Gatekeeper-Prüfung atomar durch das neue ersetzt.
+
 Der Root-Wrapper `./install.sh` reicht Optionen und Umgebungsvariablen
 unverändert an `app/install.sh` weiter; dadurch funktioniert der komplette Lauf
 auch ohne vorheriges `cd app`.
@@ -730,6 +735,17 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    dorthin bringt ein eigener Worktree; `.build/artifacts` vorher aus einem gebauten Checkout
    klonen (`cp -Rc`), sonst scheitert SwiftPM am gesperrten Login-Keychain.
 
+Der gezielte Selbsttest `markdownimportui` nutzt eine kontrollierte CLI mit
+angehaltener Ausgabe. Er prüft echte Fortschrittsmeldungen vor Prozessende,
+den sichtbaren Abbruchknopf, unveränderte Quellen und aufgeräumte Arbeitsordner
+sowie Erfolg mit vollständigen Verlustwarnungen und einen Fehler. Mit
+`FASTRA_MARKDOWN_IMPORT_UI_DIR` entstehen Aufnahmen der vier Zustände bei
+650 und 1100 pt; die deutsche und englische Fassung getrennt starten und
+alle Aufnahmen ansehen. `markdownimport` bleibt daneben der echte Importpfad
+mit dem installierten Poor Man's Text. Die Unit-Prüfung
+`MarkdownImportProgressTests` belegt zusätzlich den Gruppenabbruch samt
+Kindprozess und die Kompatibilität älterer CLI-Stände ohne `--progress`.
+
 ### Lokale Laufzeit-Baselines je Mac
 
 Gezielte Engine- und Ordnersuchmessungen einschließlich des optionalen Modus
@@ -1126,3 +1142,63 @@ npm-Paket `https://registry.npmjs.org/turndown/-/turndown-7.2.0.tgz`.
 Fastras Dialekt- und Erhaltungsregeln stehen separat in `visual-editor.js`.
 Beide Skripte werden aus `AppResources.bundle` in die lokale WebKit-Seite geladen;
 es gibt keinen Download zur Laufzeit.
+
+## Große Dateivergleiche mit Zeilenankern
+
+Nach `./build.sh` prüft `./test.sh --fast-only --filter 'FileDiff|Myers'`
+die bisherigen Zuordnungen und den Ankerpfad. `FileDiffPatienceTests` enthält
+100.000 Zeilen je Seite mit verteilten Änderungen, kreuzende und wiederholte
+Zeilen, normalisierte Anker mit ignorierten Leerzeilen, reine Einfügungen und
+Löschungen sowie Abbrüche an jedem tatsächlich erreichten Prüfpunkt. Beide
+Eingaben müssen aus den Ergebniszeilen vollständig rekonstruierbar bleiben.
+
+Unterhalb des 30.000-Zeilen-Budgets bleibt die bisherige Myers-Zuordnung
+unverändert. Größere Eingaben nutzen die längste geordnete Folge von Zeilen,
+die auf beiden Seiten eindeutig sind. Jeder verbleibende Myers-Bereich und
+die Summe ihrer quadratischen Arbeitsgrenzen werden vor der ersten
+Teilberechnung geprüft. Eine fehlende oder unzureichende Ankerfolge liefert
+die vorhandene erklärte Grenze. Die Tests protokollieren außerdem die
+Laufzeiten beider Kerne auf derselben deterministischen Eingabe; die Messung
+ersetzt keine Zuordnungsprüfung.
+
+### Datei vom Dokument-Tab ziehen
+
+Der gezielte Fenster-Selbsttest `tabfiledrag` erwartet `FASTRA_TABDRAG_DIR`.
+Er erzeugt eine isolierte Datei mit Leerzeichen, Raute und Emoji im Namen und
+eine abweichende ungespeicherte Editorfassung. `ready.json` enthält PID sowie
+Quell-/Zielkoordinaten in globalen Bildschirmkoordinaten für einen externen
+Maus-Treiber. Ein echtes AppKit-Drop-Ziel liest den Datei-Pasteboard und kopiert
+die gespeicherte Fassung. Der Test endet nach erfolgreichem Drop oder 30 Sekunden.
+Er gehört zum gezielten Abnahmelauf; der Standardlauf benötigt keinen Maus-Treiber.
+Klick-/Schließen-/Shift-Auswahl prüfen zusätzlich `tabswitch`, `tabclosehit`
+und `tabcompare`. Der Aufnahmestand `tab.png` zeigt den unveränderten dirty Tab.
+
+### Diff-Bericht und Herkunftsübernahme
+
+`diffexport` bedient den sichtbaren Exportknopf und die echten Speichern-/Abbruch-
+Sheets in einem eigenen Datei- und Git-Vergleichsfenster. Der UTF-8-Bericht wird
+gegen die fertige Vergleichsbasis geprüft; Originaldateien bleiben unverändert.
+`FASTRA_DIFFEXPORT_DIR` nimmt die Ansichten bei 760/1100 pt und die Dialoge auf.
+Der Testpfad wird vor dem Öffnen am Panel konfiguriert; nachträgliche Setter
+ändern den macOS-Open/Save-Service nicht zuverlässig. Ein externer Tastentreiber
+liest `FASTRA_DIFFEXPORT_INPUT_DIR/key-0.json` bis `key-3.json` (PID, keyCode 53
+für Abbruch beziehungsweise 36 für Speichern) und sendet echte Tasten nur bei
+bestätigtem Fokus der Test-App. Ohne Treiber gehört der Test nicht zum Standardlauf.
+
+`sourceprovenance` übernimmt ein Mitglied eines geschachtelten ZIP als eigene
+schreibgeschützte Sitzungskopie. Der Senderpfad wird nach `ready` entfernt,
+der sichtbare Inhalt und die eigene Bytekopie werden erneut geprüft; Schließen
+muss die Sitzungskopie entfernen. Starker Archivhash und ausdrücklich schwächere
+Generation-Bindung werden bei 400/760/1100 pt aufgenommen; Zielverzeichnis:
+`FASTRA_SOURCEPROVENANCE_DIR`. Bei 400 pt wird die Herkunft zusätzlich bis
+zum Ende gescrollt. Ein TAR-Fixture enthält gleiche Anzeigenamen mit verschiedenen
+ungültigen UTF-8-Namenbytes: Beide Sitzungen müssen unterscheidbar bleiben.
+Falscher Blatthash und ausgetauschte Archivgeneration dürfen keine Übernahme
+bestätigen; ihre wirklichen Fehleransichten werden ebenfalls aufgenommen.
+Beide Tests gehören zum gezielten Abnahmelauf.
+
+Der Soak wartet nach einem Tabwechsel bis zu zwei Sekunden auf übereinstimmende
+Editor-/Modellbytes, bevor die bleibenden Invarianten geprüft werden. Ein
+beobachteter Aufbauunterschied wird mit seiner Auflösungszeit protokolliert;
+eine nicht aufgelöste Abweichung bleibt ein Fehler. Dieser Testaufbau ist kein
+Beleg für die Ursache früherer sporadischer Editorbefunde.

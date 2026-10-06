@@ -1424,6 +1424,7 @@ enum GitRunner {
                                       group.wait(timeout: deadline)
                                   },
                               completionQueue: DispatchQueue = .main,
+                              stderrChunkHandler: ((Data) -> Void)? = nil,
                               completion: @escaping (GitExecutionOutcome) -> Void)
         -> GitCancellationToken {
         let token = GitCancellationToken(
@@ -1513,7 +1514,8 @@ enum GitRunner {
             readers.enter()
             DispatchQueue.global(qos: .userInitiated).async {
                 stderrCapture.store(drain(stderrPipe.fileHandleForReading,
-                                          retainingAtMost: outputLimit.stderrBytes))
+                                          retainingAtMost: outputLimit.stderrBytes,
+                                          onChunk: stderrChunkHandler))
                 readers.leave()
             }
             process.waitUntilExit()
@@ -1607,7 +1609,8 @@ enum GitRunner {
     /// Liest kleine Chunks und behält nur den erlaubten Präfix im Speicher.
     /// Das darüber hinausgehende Material wird weiter aus der Pipe entfernt,
     /// aber bewusst nicht gesammelt.
-    private static func drain(_ handle: FileHandle, retainingAtMost limit: Int)
+    private static func drain(_ handle: FileHandle, retainingAtMost limit: Int,
+                              onChunk: ((Data) -> Void)? = nil)
         -> CapturedPipe {
         let safeLimit = max(0, limit)
         var retained = Data()
@@ -1615,14 +1618,35 @@ enum GitRunner {
         while true {
             let chunk: Data
             do {
-                chunk = try handle.read(upToCount: 64 * 1024) ?? Data()
+                if onChunk != nil {
+                    // Foundation füllt read(upToCount:) bis zur gewünschten
+                    // Länge oder EOF. Fortschritt braucht den ersten verfügbaren
+                    // Pipe-Inhalt, deshalb hier genau einen POSIX-read verwenden.
+                    var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+                    var count: Int
+                    repeat {
+                        count = buffer.withUnsafeMutableBytes {
+                            Darwin.read(handle.fileDescriptor, $0.baseAddress, $0.count)
+                        }
+                    } while count < 0 && errno == EINTR
+                    if count < 0 { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                    chunk = Data(buffer.prefix(count))
+                } else {
+                    chunk = try handle.read(upToCount: 64 * 1024) ?? Data()
+                }
             } catch {
                 return CapturedPipe(data: retained, truncated: truncated,
                                     error: error.localizedDescription)
             }
             if chunk.isEmpty { break }
             let remaining = max(0, safeLimit - retained.count)
-            if remaining > 0 { retained.append(chunk.prefix(remaining)) }
+            if remaining > 0 {
+                let accepted = Data(chunk.prefix(remaining))
+                retained.append(accepted)
+                // Der Beobachter läuft auf der Lesequeue und erhält nur den
+                // begrenzten Präfix; die vollständige Fehlerausgabe bleibt erhalten.
+                onChunk?(accepted)
+            }
             if chunk.count > remaining { truncated = true }
         }
         return CapturedPipe(data: retained, truncated: truncated, error: nil)

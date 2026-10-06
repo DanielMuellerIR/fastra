@@ -25,13 +25,17 @@ struct StatusBarView: View {
                 Text(workspace.activeMarkdownIsVisual ? L10n.string("WYSIWYG") : cursorPosition)
                     .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
+                    .lineLimit(1)
+                    .help(Text(verbatim: workspace.activeMarkdownIsVisual ? "WYSIWYG" : cursorPosition))
                 lineEndingMenu
                 Text(workspace.documentStatsText)
                     .fastraFont(size: 11, design: .monospaced)
                     .foregroundColor(Theme.textSecondary)
-                    .help(workspace.statsIsSelection
-                          ? "Zeichen / Wörter / Zeilen (Selektion)"
-                          : "Zeichen / Wörter / Zeilen (ganze Datei)")
+                    .lineLimit(1)
+                    .help(Text(verbatim: workspace.documentStatsText + "\n"
+                               + (workspace.statsIsSelection
+                                  ? L10n.string("Zeichen / Wörter / Zeilen (Selektion)")
+                                  : L10n.string("Zeichen / Wörter / Zeilen (ganze Datei)"))))
                 if workspace.statsIsSelection {
                     Text("Sel")
                         .fastraFont(size: 9, weight: .semibold)

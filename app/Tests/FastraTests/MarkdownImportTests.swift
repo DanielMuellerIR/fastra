@@ -475,11 +475,12 @@ struct MarkdownImportServiceGuardTests {
     ) -> MarkdownImportService {
         let service = MarkdownImportService()
         service.locateTool = { URL(fileURLWithPath: "/bin/echo") }
-        service.runProcess = { _, arguments, _, completion in
+        service.runProcess = { _, arguments, _, _, completion in
             // Fastra übergibt den Ausgabeordner als `--output <pfad>`.
             let outputPath = arguments.firstIndex(of: "--output")
                 .map { arguments[$0 + 1] } ?? ""
             completion(answer(URL(fileURLWithPath: outputPath)))
+            return nil
         }
         return service
     }
@@ -581,7 +582,7 @@ struct MarkdownImportServiceGuardTests {
 struct MarkdownImportOwnershipTests {
     @Test("Geschlossenes Besitzerfenster macht einen Lauf nicht global")
     @MainActor
-    func ownerIdentitySurvivesWorkspaceDeallocation() throws {
+    func ownerIdentitySurvivesWorkspaceDeallocation() async throws {
         let folder = testTemporaryDirectory()
             .appendingPathComponent("fastra-mdowner-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder,
@@ -601,6 +602,7 @@ struct MarkdownImportOwnershipTests {
         // sporadisch vom Optimierer statt vom Produktverhalten abhängig.
         let other = Workspace()
         ActiveDocumentContext.shared.activate(other)
+        await waitUntil { service.owner == nil }
         #expect(service.owner == nil)
         #expect(service.ownerID == ownerID)
 
@@ -612,7 +614,7 @@ struct MarkdownImportOwnershipTests {
     private func makeRunningService(source: URL) -> (MarkdownImportService, UUID) {
         let service = MarkdownImportService()
         service.locateTool = { URL(fileURLWithPath: "/bin/echo") }
-        service.runProcess = { _, _, _, _ in /* absichtlich noch laufend */ }
+        service.runProcess = { _, _, _, _, _ in nil /* absichtlich noch laufend */ }
         let owner = Workspace()
         let ownerID = owner.instanceID
         service.convert(source, owner: owner)

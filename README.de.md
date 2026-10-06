@@ -63,7 +63,11 @@ Capture Groups.
 - **Lokale Snapshot-Steuerung**: Der gebündelte
   [Helfer `fastra-control`](docs/LOCAL-CONTROL.md) zeigt begrenzten Text in einer
   eigenen schreibgeschützten Sitzung und bestätigt Inhalt und Auswahl über Jobs.
-  AppleScript verwendet denselben Controller.
+  AppleScript verwendet denselben Controller. Herkunftsgebundene Übergaben übernehmen
+  eine eigene Sitzungskopie und zeigen Archivkette und Bindungsgrenzen.
+- **Diff-Bericht**: Fertige Datei- und Git-Vergleiche als UTF-8-Differenzen-Liste exportieren.
+- **Dateien vom Tab ziehen**: Gespeicherte Dokumente als Datei weitergeben; ungespeicherte
+  Editoränderungen bleiben im Editor.
 - **Gespeicherte Code-Erklärungen**: Vorbereitete Erklärungen neben syntaxgefärbten
   Quellsnapshots wiedergeben, mit Splitter, Schrittnavigation und Soft Wrap.
 - **Code-Faltung**: Methoden und Kontrollblöcke einklappen, auch in 4D-`.4dm`-Dateien.

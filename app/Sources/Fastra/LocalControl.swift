@@ -61,7 +61,7 @@ final class LocalControlController {
     func execute(_ request: ControlRequest) throws -> ControlReply {
         prune()
         if let expected = request.runtimeID, expected != runtimeID { throw ControlFailure.invalidID }
-        let mutates = ["snapshot", "explanation", "navigate", "close", "cancel"].contains(request.operation)
+        let mutates = ["snapshot", "sourceSnapshot", "explanation", "navigate", "close", "cancel"].contains(request.operation)
         let cleansUp = ["close", "cancel"].contains(request.operation)
         if mutates, let old = accepted[request.id] ?? cleanupAccepted[request.id] {
             guard old.request == request else { throw ControlFailure.invalidRequest }
@@ -78,6 +78,7 @@ final class LocalControlController {
         case "objects":
             reply = ControlReply(runtimeID: runtimeID, objects: objects(), jobs: jobValues)
         case "snapshot": reply = try snapshot(request)
+        case "sourceSnapshot": reply = try sourceSnapshot(request)
         case "explanation": reply = try explanation(request)
         case "navigate": reply = try navigate(request)
         case "status":
@@ -139,9 +140,10 @@ final class LocalControlController {
                               documentID: session.documentID, sessionID: session.sessionID),
                 ControlObject(id: session.documentID, kind: "document", name: session.window.title,
                               windowID: session.windowID, sessionID: session.sessionID,
-                              sha256: hash, selection: selection),
+                              sha256: hash, selection: selection, provenance: session.sourceSnapshot?.provenance),
                 ControlObject(id: session.sessionID, kind: "session", name: session.window.title,
-                              windowID: session.windowID, documentID: session.documentID, sha256: hash),
+                              windowID: session.windowID, documentID: session.documentID, sha256: hash,
+                              provenance: session.sourceSnapshot?.provenance),
             ]
         }
         return (ordinary + snapshots).sorted { $0.id.uuidString < $1.id.uuidString }
@@ -183,6 +185,42 @@ final class LocalControlController {
                 entry.value.encoding = loaded.encoding.rawValue
                 entry.value.bomBytes = loaded.bom.count
                 await self.present(entry, session: session, generation: generation, request: request)
+            } catch {
+                guard self.isCurrent(entry, session: session, generation: generation) else { return }
+                self.fail(entry, error as? ControlFailure ?? (Task.isCancelled ? .interrupted : .source))
+            }
+        }
+        return ControlReply(runtimeID: runtimeID, job: entry.value)
+    }
+
+    private func sourceSnapshot(_ request: ControlRequest) throws -> ControlReply {
+        let provenance = request.provenance!
+        let name = provenance.hitIdentity.archiveMembers.last
+            ?? URL(fileURLWithPath: provenance.hitIdentity.filesystemPath).lastPathComponent
+        let session = try newSession(name: name)
+        let entry = createJob(request, session: session)
+        entry.value.provenance = provenance
+        entry.value.adopted = false
+        let generation = session.generation
+        entry.task = Task { [weak self, weak session, weak entry] in
+            guard let self, let session, let entry,
+                  self.isCurrent(entry, session: session, generation: generation) else { return }
+            entry.value.state = "loading"
+            do {
+                let task = Task.detached(priority: .userInitiated) { try ControlSourceSnapshot.adopt(request) }
+                let snapshot = try await withTaskCancellationHandler(operation: { try await task.value },
+                                                                     onCancel: { task.cancel() })
+                guard self.isCurrent(entry, session: session, generation: generation) else { return }
+                session.sourceSnapshot = snapshot
+                session.install(snapshot.loaded, sourceName: name)
+                session.showProvenance(provenance)
+                entry.value.sha256 = snapshot.loaded.diskSnapshot?.sha256
+                entry.value.textSHA256 = FileSnapshot.sha256Hex(Data(snapshot.loaded.content.utf8))
+                entry.value.byteCount = snapshot.loaded.diskSnapshot?.byteCount
+                entry.value.encoding = snapshot.loaded.encoding.rawValue
+                entry.value.bomBytes = snapshot.loaded.bom.count
+                await self.present(entry, session: session, generation: generation, request: request)
+                if entry.value.state == "ready" { entry.value.adopted = true }
             } catch {
                 guard self.isCurrent(entry, session: session, generation: generation) else { return }
                 self.fail(entry, error as? ControlFailure ?? (Task.isCancelled ? .interrupted : .source))
@@ -300,6 +338,7 @@ final class LocalControlController {
     private func fail(_ entry: JobEntry, _ failure: ControlFailure) {
         entry.value.state = "failed"; entry.value.error = failure
         entry.task?.cancel(); entry.task = nil
+        discardUnconfirmedSource(entry)
         sessions[entry.value.sessionID]?.showFailure(failure)
     }
 
@@ -307,6 +346,7 @@ final class LocalControlController {
         guard !entry.value.isTerminal else { return }
         entry.value.state = "cancelled"
         entry.task?.cancel(); entry.task = nil
+        discardUnconfirmedSource(entry)
         if let session = sessions[entry.value.sessionID] { session.generation += 1 }
         sessions[entry.value.sessionID]?.showFailure()
     }
@@ -321,6 +361,8 @@ final class LocalControlController {
     private func remove(_ sessionID: UUID) {
         guard let session = sessions.removeValue(forKey: sessionID) else { return }
         session.explanationPlayer?.closed()
+        session.sourceSnapshot?.remove()
+        session.sourceSnapshot = nil
         interruptPending(in: session)
         session.onClose = nil; session.onUserSelection = nil
     }
@@ -334,6 +376,17 @@ final class LocalControlController {
         jobs = jobs.filter { now.timeIntervalSince($0.value.created) < ControlProtocol.retentionSeconds }
         accepted = accepted.filter { $0.value.expires > now }
         cleanupAccepted = cleanupAccepted.filter { $0.value.expires > now }
+    }
+
+    private func discardUnconfirmedSource(_ entry: JobEntry) {
+        guard entry.value.provenance != nil, entry.value.adopted != true,
+              let session = sessions[entry.value.sessionID] else { return }
+        session.sourceSnapshot?.remove()
+        session.sourceSnapshot = nil
+    }
+
+    func closeAllSessions() {
+        for session in Array(sessions.values) { session.window.close(); remove(session.sessionID) }
     }
 
     func handle(_ data: Data) -> Data {
@@ -351,6 +404,7 @@ final class LocalControlService {
     private var server: DiffMessageServer?
     func start() {
         guard server == nil, let identifier = Bundle.main.bundleIdentifier else { return }
+        DispatchQueue.global(qos: .utility).async { ControlSourceSnapshot.pruneAbandoned() }
         let candidate = DiffMessageServer(name: ControlProtocol.endpoint(bundleIdentifier: identifier)) { data in
             DispatchQueue.main.sync { MainActor.assumeIsolated { LocalControlController.shared.handle(data) } }
         }

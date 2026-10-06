@@ -37,6 +37,11 @@ final class MarkdownImportService: ObservableObject {
     @Published private(set) var catalog: MarkdownImportCatalog?
     /// Sichtbarer Zustand der laufenden/letzten Umwandlung — treibt die Leiste.
     @Published var state: MarkdownImportState = .idle
+    @Published private(set) var progress: MarkdownImportProgress?
+    @Published private(set) var isCancelling = false
+    private var conversionToken: GitCancellationToken?
+    private var conversionID: UUID?
+    private var supportsProgress = false
     /// Schwache Referenz nur für Diagnose/Kompatibilität. Für die eigentliche
     /// Besitzentscheidung zählt `ownerID`: Schließt das auslösende Fenster,
     /// darf sein laufender Zustand dadurch nicht plötzlich global werden.
@@ -57,8 +62,9 @@ final class MarkdownImportService: ObservableObject {
     private var pendingCatalogRequests: [(MarkdownImportCatalog?) -> Void] = []
 
     /// Testhaken: ersetzt den echten Prozessaufruf. `nil` = echter Aufruf.
-    var runProcess: ((URL, [String], TimeInterval,
-                      @escaping (MarkdownImportProcessOutcome) -> Void) -> Void)?
+    var runProcess: ((URL, [String], TimeInterval, @escaping (Data) -> Void,
+                      @escaping (MarkdownImportProcessOutcome) -> Void)
+                    -> GitCancellationToken?)?
     /// Testhaken daneben: wo das Werkzeug liegt. `nil` heißt „nicht
     /// installiert". Ohne diesen Haken hinge jeder Test daran, ob auf dem
     /// Rechner gerade `poormans-text` installiert ist.
@@ -102,8 +108,23 @@ final class MarkdownImportService: ObservableObject {
             // Eine unvollständige Ausgabe wird gar nicht erst gelesen — ein
             // abgeschnittener Katalog sähe aus wie ein kleinerer Katalog.
             let usable = outcome.exitCode == 0 && outcome.outputIsComplete
-            self.finishProbe(with: usable
-                             ? MarkdownImportCatalog.decode(outcome.stdout) : nil)
+            guard usable, let catalog = MarkdownImportCatalog.decode(outcome.stdout) else {
+                self.supportsProgress = false
+                self.finishProbe(with: nil)
+                return
+            }
+            // Alte installierte Werkzeuge bleiben nutzbar. Die Hilfe belegt die
+            // Option, ohne eine Versionsnummer als Fähigkeitsliste zu deuten.
+            self.run(executable: executable, arguments: ["--help"],
+                     timeout: Self.catalogTimeout) { [weak self] help in
+                guard let self else { return }
+                self.supportsProgress = help.exitCode == 0 && help.outputIsComplete
+                    && String(decoding: help.stdout, as: UTF8.self)
+                        .split(separator: "\n").contains {
+                            $0.trimmingCharacters(in: .whitespaces).hasPrefix("--progress ")
+                        }
+                self.finishProbe(with: catalog)
+            }
         }
     }
 
@@ -137,6 +158,8 @@ final class MarkdownImportService: ObservableObject {
         }
         self.owner = owner
         ownerID = owner?.instanceID
+        progress = nil
+        isCancelling = false
         beginConversion(sourceURL, completion: completion)
     }
 
@@ -170,11 +193,33 @@ final class MarkdownImportService: ObservableObject {
         }
 
         state = .running(sourceURL)
-        run(executable: executable,
-            arguments: ["--json", "--output", output.path, "--", sourceURL.path],
-            timeout: Self.conversionTimeout) { [weak self] outcome in
-            guard let self else { return }
+        let id = UUID()
+        conversionID = id
+        var parser = MarkdownImportProgressParser(sourceName: sourceURL.lastPathComponent)
+        let arguments = (supportsProgress ? ["--progress"] : [])
+            + ["--json", "--output", output.path, "--", sourceURL.path]
+        let token = run(executable: executable, arguments: arguments,
+            timeout: Self.conversionTimeout, onStderr: { [weak self] data in
+                guard let progress = parser.consume(data) else { return }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.conversionID == id, !self.isCancelling,
+                          self.isRunning else { return }
+                    self.progress = progress
+                }
+            }) { [weak self] outcome in
             defer { try? FileManager.default.removeItem(at: staging) }
+            guard let self, self.conversionID == id else { return }
+            self.conversionToken = nil
+            self.conversionID = nil
+            // Ein Klick kann nach Prozessende, aber vor dessen Main-Queue-
+            // Completion kommen. Auch dann darf ein fertiges JSON nichts veröffentlichen.
+            if self.isCancelling || outcome.exitCode == 130 {
+                try? FileManager.default.removeItem(at: staging)
+                self.isCancelling = false
+                self.state = .cancelled
+                completion?(nil)
+                return
+            }
 
             // Bekanntermaßen unvollständige Ausgabe wird NICHT gelesen. Ein
             // abgeschnittenes, aber zufällig noch lesbares JSON mit `ok: true`
@@ -200,6 +245,8 @@ final class MarkdownImportService: ObservableObject {
             self.publish(produced, output: output, staging: staging,
                          sourceURL: sourceURL, completion: completion)
         }
+        // Injizierte Testprozesse können synchron fertig werden.
+        if conversionID == id { conversionToken = token }
     }
 
     /// Verschiebt das fertige Ergebnis unter seinen endgültigen Namen.
@@ -251,9 +298,17 @@ final class MarkdownImportService: ObservableObject {
     }
 
     func clearState() {
+        guard !isRunning else { return }
         state = .idle
+        progress = nil
         owner = nil
         ownerID = nil
+    }
+
+    func cancelConversion() {
+        guard isRunning, !isCancelling else { return }
+        isCancelling = true
+        conversionToken?.cancel()
     }
 
     // MARK: - Prozessaufruf
@@ -261,17 +316,20 @@ final class MarkdownImportService: ObservableObject {
     /// Startet das Werkzeug. Wiederverwendet bewusst den bereits gehärteten
     /// Runner aus `GitRunner`: eigene Prozessgruppe, Frist, Ausgabegrenze und
     /// bereinigte Umgebung sind dort schon gelöst und gelten hier genauso.
+    @discardableResult
     private func run(executable: URL, arguments: [String], timeout: TimeInterval,
-                     completion: @escaping (MarkdownImportProcessOutcome) -> Void) {
+                     onStderr: @escaping (Data) -> Void = { _ in },
+                     completion: @escaping (MarkdownImportProcessOutcome) -> Void)
+        -> GitCancellationToken? {
         if let runProcess {
-            runProcess(executable, arguments, timeout, completion)
-            return
+            return runProcess(executable, arguments, timeout, onStderr, completion)
         }
-        GitRunner.runExecutable(
+        return GitRunner.runExecutable(
             executable,
             arguments: arguments,
             in: FileManager.default.temporaryDirectory,
-            policy: GitExecutionPolicy(timeout: timeout, terminationGracePeriod: 0.5)
+            policy: GitExecutionPolicy(timeout: timeout, terminationGracePeriod: 0.5),
+            stderrChunkHandler: onStderr
         ) { outcome in
             completion(MarkdownImportProcessOutcome(outcome))
         }
@@ -321,10 +379,21 @@ extension MarkdownImportProcessOutcome {
                       stderr: failure.partialResult.stderrData,
                       outputIsComplete: failure.stdoutError == nil
                           && !failure.partialResult.stdoutWasTruncated)
-        case .startFailed, .cancelled, .timedOut:
+        case .cancelled:
+            self.init(exitCode: 130, stdout: Data(), stderr: Data(), outputIsComplete: true)
+        case .timedOut:
+            self.init(exitCode: 124, stdout: Data(),
+                      stderr: Data(L10n.string("Die Umwandlung hat ihr Zeitlimit erreicht. Es wurde nichts übernommen.").utf8),
+                      outputIsComplete: true)
+        case .startFailed(let error):
             // Hier gibt es gar keine Ausgabe — nichts ist abgeschnitten, der
             // Aufruf ist schlicht fehlgeschlagen.
-            self.init(exitCode: -1, stdout: Data(), stderr: Data(),
+            let message: String
+            switch error {
+            case .launchFailed(let reason): message = reason
+            case .gitUnavailable: message = L10n.string("Die Umwandlung ist fehlgeschlagen.")
+            }
+            self.init(exitCode: -1, stdout: Data(), stderr: Data(message.utf8),
                       outputIsComplete: true)
         }
     }
@@ -334,6 +403,7 @@ extension MarkdownImportProcessOutcome {
 enum MarkdownImportState: Equatable {
     case idle
     case running(URL)
+    case cancelled
     case finished(markdownFile: URL, warnings: [String])
     case failed(String)
 }

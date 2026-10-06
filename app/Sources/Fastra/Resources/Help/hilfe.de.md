@@ -18,6 +18,11 @@ beziehungsweise `.md`. Das Format-Menü bietet alle mitgelieferten
 Syntaxsprachen sowie CSV und XML und setzt beim Wechsel die passende Endung.
 Eine beliebige eigene Endung kannst du weiterhin direkt im Namensfeld eingeben.
 
+Gespeicherte Dokumente kannst du direkt vom Tab in den Finder oder eine andere
+App ziehen. Bei ungespeicherten Änderungen wird die **gespeicherte Fassung**
+weitergegeben; der Tooltip erklärt das. Der Editor wird dabei nicht gespeichert.
+Neue Notizen und Vergleichs-Tabs lassen sich nicht als Datei ziehen.
+
 ## Drucken
 
 ⌘P druckt, **was du gerade siehst**. Welche Fassung das ist, hängt an der
@@ -232,6 +237,19 @@ der aktive Tab ist links vorbelegt.
 - Identische Dateien meldet Fastra ausdrücklich; binäre, fehlende oder
   extrem große Dateien erklären sich mit einer verständlichen Meldung
   statt eines irreführenden Diffs.
+
+Große Dateivergleiche können eindeutige gemeinsame Zeilen als Anker nutzen,
+um auch verstreute Änderungen über die ganze Datei zuzuordnen. Fastra
+verarbeitet bis zu 200.000 Zeilen je Seite. Die verbleibenden Teilbereiche
+und deren gesamte Rechenarbeit bleiben begrenzt; ohne genügend passende
+Anker kann der Vergleich weiterhin mit einer erklärten Grenze enden.
+
+Über **„Diff-Liste exportieren…“** (Exportknopf in der Kopfzeile) speicherst du
+einen UTF-8-Textbericht mit Quellen, Optionen, Zeilenbereichen und den originalen
+geänderten Zeilen. Er enthält alle Unterschiede, auch bei eingeklappten
+Bereichen. Die beim Öffnen des Speicherdialogs fertige Vergleichsbasis bleibt
+maßgeblich. Bei Git stehen Einschränkungen ausdrücklich im Bericht. Wähle eine
+eigene Berichtsdatei; Vergleichsquellen dürfen nicht überschrieben werden.
 
 Der Vergleich zeigt nur an — er ändert nie Dateien. Schließt du den
 Vergleichs-Tab oder das Fenster, während er noch rechnet, endet die
@@ -555,6 +573,13 @@ die Zustimmung.
 Es läuft appweit höchstens eine Umwandlung. In einem zweiten Fenster bleibt das
 eigene Angebot sichtbar, erklärt aber den laufenden Vorgang und ist bis zu
 dessen Abschluss nicht anklickbar.
+
+Während der Umwandlung zeigt die Leiste die aktuelle Phase und, soweit das
+Werkzeug sie kennt, Seiten-, Tabellen- oder andere Zähler. **Abbrechen** beendet
+den laufenden Vorgang. Fastra wartet auf das Ende des Werkzeugs, räumt den
+Arbeitsordner auf und übernimmt keine Ausgabe. Die Quelle bleibt unverändert.
+Ältere Werkzeugstände ohne Fortschrittsmeldungen zeigen weiter den laufenden
+Vorgang und bleiben ebenfalls abbrechbar.
 
 Ein `.rtfd`-Dokument ist im Finder ein Ordner. Fastra fragt deshalb nach, ob
 es umgewandelt oder als Ordner geöffnet werden soll — sowohl beim Öffnen als
@@ -1054,6 +1079,10 @@ destruktive Operationen verlangen eine sichtbare Bestätigung.
 
 ## Encoding und Zeilenenden
 
+Cursorposition und Statistik bleiben einzeilig. Bei wenig Platz zeigt der
+Tooltip die vollständigen Werte. Die Statistik zählt Zeichen, Wörter und
+Zeilen; bei einer Auswahl bezieht sie sich auf den markierten Bereich.
+
 Die Fußzeile zeigt Encoding und Zeilenende des aktiven Tabs:
 
 - **Encoding-Chip:** „Neu öffnen mit Encoding“ lädt die Datei mit einem
@@ -1237,6 +1266,16 @@ JSON-Auftrag entgegen. Fenster, Dokumente, Sitzungen und Jobs besitzen lesbare
 `id`- und `details`-Eigenschaften. Normale Arbeitsfenster lassen sich darüber
 nicht verändern. Die externen Funktionsproben bestehen; die Diagnose eines
 früheren Zustellungs-Timeouts bleibt in `docs/LOCAL-CONTROL.md` dokumentiert.
+
+Bei Übergaben mit Herkunft übernimmt Fastra eine eigene Sitzungskopie. Der
+Sender darf seine Zwischendatei erst nach `ready` und `adopted: true` entfernen.
+Bei Archivmitgliedern zeigt ein eigener Herkunftsbereich das äußere Archiv,
+alle Mitgliedsstufen und ihre Byte-Identität. Diese Kopie ist schreibgeschützt;
+sie wird nicht ins Archiv zurückgeschrieben. Der Bereich erklärt ausdrücklich,
+wenn nur die Quellengeneration statt des äußeren Inhaltsstands geprüft wurde.
+Eine unbestätigte Trefferposition wird nicht als genauer Sprung ausgegeben.
+Schließen und App-Ende entfernen die eigene Kopie; abgebrochene und
+fehlgeschlagene Übergaben bestätigen keine Übernahme.
 
 ## Gespeicherte Code-Erklärungen
 

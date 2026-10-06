@@ -230,6 +230,8 @@ enum SelfTestPolling {
         case "print": return 240
         case "softwrapindent": return 180
         case "controlhost": return 130
+        case "tabfiledrag": return 60
+        case "diffexport": return 120
         case "cmdw", "leakscenario": return 120
         default: return 60
         }

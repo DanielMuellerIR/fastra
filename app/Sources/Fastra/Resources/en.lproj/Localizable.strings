@@ -1705,3 +1705,77 @@
 "Bitte schließe die aktuelle Zeicheneingabe ab und führe den Befehl danach erneut aus." = "Please finish the current character input, then try the command again.";
 
 "Die Einfügestelle konnte nicht festgehalten werden. Bitte versuche es erneut." = "The insertion point could not be captured. Please try again.";
+
+/* Fortschritt und Abbruch der Dokumentumwandlung */
+"Dateien: %lld von %lld" = "Files: %lld of %lld";
+"Seiten: %lld von %lld" = "Pages: %lld of %lld";
+"Tabellenblätter: %lld von %lld" = "Sheets: %lld of %lld";
+"Bilder: %lld von %lld" = "Images: %lld of %lld";
+"Folien: %lld von %lld" = "Slides: %lld of %lld";
+"Zellen: %lld von %lld" = "Cells: %lld of %lld";
+"Dokument wird erkannt …" = "Detecting document …";
+"Ausgabe wird vorbereitet …" = "Preparing output …";
+"Dokument wird umgewandelt …" = "Converting document …";
+"Ergebnis wird übernommen …" = "Importing result …";
+"Umwandlung wird abgebrochen …" = "Cancelling conversion …";
+"Umwandlung abgebrochen. Es wurde nichts übernommen." = "Conversion cancelled. Nothing was imported.";
+"Die Umwandlung hat ihr Zeitlimit erreicht. Es wurde nichts übernommen." = "The conversion reached its time limit. Nothing was imported.";
+
+"Datei ziehen — verwendet die gespeicherte Fassung ohne die ungespeicherten Änderungen." = "Drag file — uses the saved version without the unsaved changes.";
+"Datei vom Tab in den Finder oder eine andere App ziehen." = "Drag the file from its tab into Finder or another app.";
+
+"Fastra — Differenzen-Liste" = "Fastra — Differences List";
+
+"Bericht aus der fertigen Vergleichsbasis; gefaltete Zeilen ändern die Liste nicht." = "Report from the finished comparison; folded lines do not change the list.";
+
+"  Linke Zeile ohne abschließenden Zeilenumbruch." = "  Left line has no final newline.";
+
+"  Rechte Zeile ohne abschließenden Zeilenumbruch." = "  Right line has no final newline.";
+
+"Links: %@" = "Left: %@";
+
+"Rechts: %@" = "Right: %@";
+
+"Keine Unterschiede ignoriert." = "No differences ignored.";
+
+"Vergleichsoptionen: %@" = "Comparison options: %@";
+
+"Unterschiede: %ld" = "Differences: %ld";
+
+"Repository: %@" = "Repository: %@";
+
+"Git-Vergleich: Export der angezeigten Änderungen und Grenzen; unveränderte Bereiche können fehlen." = "Git comparison: export of the displayed changes and limitations; unchanged sections may be omitted.";
+
+"- bezeichnet die linke/vorherige Zeile; + die rechte/neue Zeile. Zeilennummern beginnen bei 1." = "- marks the left/previous line; + the right/new line. Line numbers start at 1.";
+
+"Der Bericht darf keine Vergleichsquelle überschreiben. Wähle eine andere Datei." = "The report cannot overwrite a comparison source. Choose another file.";
+
+"Diff-Liste exportieren…" = "Export Differences List…";
+
+"Diff-Liste konnte nicht exportiert werden" = "Could Not Export Differences List";
+
+"Editorinhalt" = "Editor Content";
+
+"Originaldatei als schreibgeschützter Sitzungssnapshot" = "Original file as a read-only session snapshot";
+
+"Materialisiertes Archivmitglied — schreibgeschützte Sitzungskopie" = "Materialized archive member — read-only session copy";
+
+"Äußerer Archivinhalt und Generation geprüft; Mitgliedszuordnung vom Sender angegeben." = "Outer archive contents and generation verified; member provenance supplied by the sender.";
+
+"Schwächere Herkunftsbindung: Nur die Archivgeneration ist geprüft, nicht der äußere Inhaltsstand." = "Weaker provenance binding: Only the archive generation is verified, not its outer content identity.";
+
+"Quelle: %@" = "Source: %@";
+
+"Archivmitglied %ld: %@" = "Archive member %ld: %@";
+
+"Byte-Identität: %@" = "Byte identity: %@";
+
+"Suchlauf: %@" = "Search run: %@";
+
+"Keine bestätigte Trefferposition. Der eingefrorene Inhalt ist geprüft; die Ansicht beginnt am Dateianfang." = "No confirmed hit position. The frozen contents are verified; the view starts at the beginning of the file.";
+
+"Suchbeleg des Senders: %@" = "Search evidence supplied by the sender: %@";
+
+"Schreibgeschützte Herkunft" = "Read-only provenance";
+
+"Die Snapshot-Quelle wurde verändert oder ihr Inhalt stimmt nicht mit dem erwarteten SHA-256 überein." = "The snapshot source has changed or its contents do not match the expected SHA-256.";

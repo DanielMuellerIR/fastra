@@ -44,12 +44,9 @@ func miscReviewFix_loadFileReportsAfterWorkspaceDisappears() async throws {
     // Task liest die Datei aber noch.
     workspace = nil
 
-    // Auf die Rückmeldung warten (max. 5 s). `Task.yield` gibt den Main-Actor
-    // frei, damit der Abschlussblock des Ladevorgangs überhaupt laufen kann.
-    let deadline = Date().addingTimeInterval(5)
-    while reportCount == 0, Date() < deadline {
-        await Task.yield()
-    }
+    // Der gemeinsame Helfer zählt nur bediente Wartezeit; schwere parallele
+    // Editor-Tests können den Main-Actor länger als fünf Sekunden belegen.
+    await waitUntil { reportCount > 0 }
 
     #expect(reportCount == 1,
             "Completion muss genau einmal kommen, kam \(reportCount)-mal")
@@ -79,10 +76,7 @@ func miscReviewFix_loadFileStillReportsSuccessOnce() async throws {
     var reports: [Bool] = []
     workspace.loadFile(at: url.canonicalFileURL) { reports.append($0) }
 
-    let deadline = Date().addingTimeInterval(5)
-    while reports.isEmpty, Date() < deadline {
-        await Task.yield()
-    }
+    await waitUntil { !reports.isEmpty }
     // Kurz nachlaufen lassen: Eine doppelte Meldung käme im selben Tick.
     await Task.yield()
     #expect(reports == [true], "Erwartet genau eine Erfolgsmeldung, war \(reports)")

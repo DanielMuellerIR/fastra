@@ -89,7 +89,7 @@ case "${FASTRA_SELFTEST_LANGUAGE:-}" in
     *) echo "Selbsttest-Sprache muss de oder en sein." >&2; exit 2 ;;
 esac
 
-ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions searchlayout searchfocus dialoglayout projectinput tabswitch tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapindent softwrapindentcore softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll tabsearchmemory typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdvisual mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim codefolding gitremotedialogs sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit diffselection markdownimport filemodes selsearch wildcard openscope loadperf contrast cmdw)
+ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions searchlayout searchfocus dialoglayout projectinput tabswitch tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapindent softwrapindentcore softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll tabsearchmemory typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdvisual mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim codefolding gitremotedialogs sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit diffselection markdownimport markdownimportui filemodes selsearch wildcard openscope loadperf contrast cmdw)
 # `windows` bleibt als gezielter Diagnosemodus verfügbar, prüft aber keine
 # Produktfunktion und startet deshalb nicht mehr in jedem Standardlauf.
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
@@ -165,6 +165,8 @@ timeout_for_test() {
         # Die Diagnose hält nach dem Aufbau 60 s für den externen leaks-Aufruf offen.
         leakscenario) echo 120 ;;
         controlhost) echo 130 ;;
+        tabfiledrag) echo 60 ;;
+        diffexport) echo 120 ;;
         *)     echo "$TIMEOUT_SECS" ;;
     esac
 }
@@ -1554,6 +1556,9 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_SELFTEST_ALLOW_ACTIVATION=1" \
             --env "FASTRA_DIFFSELECTION_DIR=${FASTRA_DIFFSELECTION_DIR:-}" \
             --env "FASTRA_REMOTE_DIALOG_DIR=${FASTRA_REMOTE_DIALOG_DIR:-}" \
+            --env "FASTRA_SOFTWRAPINDENT_DIR=${FASTRA_SOFTWRAPINDENT_DIR:-}" \
+            --env "FASTRA_SOFTWRAPINDENT_REVIEW_DIR=${FASTRA_SOFTWRAPINDENT_REVIEW_DIR:-}" \
+            --env "FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH=${FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH:-}" \
             --args -selftest "$t" -ApplePersistenceIgnoreState YES ${SELFTEST_LANGUAGE_ARGS[@]+"${SELFTEST_LANGUAGE_ARGS[@]}"}; then
             emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: Umgebungsproblem — LaunchServices-Start fehlgeschlagen"

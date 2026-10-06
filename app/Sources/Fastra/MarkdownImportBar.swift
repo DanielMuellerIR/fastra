@@ -53,10 +53,34 @@ struct MarkdownImportBar: View {
         case .running(let url):
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text(verbatim: L10n.format("„%@“ wird umgewandelt …", url.lastPathComponent))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: L10n.format("„%@“ wird umgewandelt …", url.lastPathComponent))
+                        .lineLimit(2)
+                    if service.isCancelling {
+                        Text("Umwandlung wird abgebrochen …")
+                    } else if let progress = service.progress {
+                        Text(verbatim: progress.description)
+                            .background(SelfTestMarker(id: "markdownImportProgress").frame(width: 0, height: 0))
+                    }
+                }
+                .fastraFont(.small)
+                .foregroundColor(Theme.textSecondary)
+                Spacer(minLength: 0)
+                Button("Abbrechen") { service.cancelConversion() }
+                    .buttonStyle(.plain)
+                    .fastraFont(size: 11, weight: .semibold)
+                    .foregroundColor(Theme.accentReadable)
+                    .padding(4)
+                    .disabled(service.isCancelling)
+                    .background(SelfTestMarker(id: "markdownImportCancelButton").frame(width: 0, height: 0))
+            }
+        case .cancelled:
+            HStack(spacing: 8) {
+                Text("Umwandlung abgebrochen. Es wurde nichts übernommen.")
                     .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
                 Spacer(minLength: 0)
+                closeButton { service.clearState() }
             }
         case .finished(let markdownFile, let warnings):
             finishedBar(markdownFile: markdownFile, warnings: warnings)
@@ -162,11 +186,10 @@ struct MarkdownImportBar: View {
                     .foregroundColor(Theme.textSecondary)
                 // Formatverluste stehen sichtbar hier, nicht in einem Dialog,
                 // den man wegklickt, ohne ihn zu lesen.
-                ForEach(warnings, id: \.self) { warning in
+                ForEach(Array(warnings.enumerated()), id: \.offset) { _, warning in
                     Text(verbatim: warning)
                         .fastraFont(size: 10)
                         .foregroundColor(Theme.textSecondary)
-                        .lineLimit(3)
                         .textSelection(.enabled)
                 }
             }

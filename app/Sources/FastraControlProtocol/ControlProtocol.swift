@@ -11,7 +11,8 @@ public enum ControlProtocol {
     public static let retentionSeconds: TimeInterval = 300
     public static let maximumJobs = 128
     public static let maximumSessions = 16
-    public static let operations = ["capabilities", "objects", "snapshot", "explanation", "status", "cancel", "navigate", "close"]
+    public static let maximumOuterArchiveBytes = 67_108_864
+    public static let operations = ["capabilities", "objects", "snapshot", "sourceSnapshot", "explanation", "status", "cancel", "navigate", "close"]
     public static func endpoint(bundleIdentifier: String) -> String {
         "\(bundleIdentifier).control.v1.\(getuid())"
     }
@@ -21,7 +22,9 @@ public enum ControlProtocol {
 public struct ControlCapabilities: Codable, Equatable {
     public var protocolVersion = ControlProtocol.version
     public var operations = ControlProtocol.operations
-    public var sourceKinds = ["fileSnapshot"]
+    public var sourceKinds = ["fileSnapshot", "archiveMaterialization"]
+    public var sourceSnapshotSchemaVersion: Int? = 1
+    public var maximumOuterArchiveBytes: Int? = ControlProtocol.maximumOuterArchiveBytes
     public var coordinates = "zero-based UTF-16; start inclusive, end exclusive; grapheme boundaries required"
     public var readOnly = true
     public var maximumSnapshotBytes = ControlProtocol.maximumSnapshotBytes
@@ -72,27 +75,31 @@ public struct ControlRequest: Codable, Equatable {
     public var sessionID: UUID?
     public var documentID: UUID?
     public var jobID: UUID?
+    public var provenance: ControlSourceProvenance?
 
     public init(operation: String, id: UUID = UUID(), now: Date = Date(),
                 path: String? = nil, sha256: String? = nil,
                 location: Int? = nil, length: Int? = nil,
-                sessionID: UUID? = nil, documentID: UUID? = nil, jobID: UUID? = nil, runtimeID: UUID? = nil) {
+                sessionID: UUID? = nil, documentID: UUID? = nil, jobID: UUID? = nil, runtimeID: UUID? = nil,
+                provenance: ControlSourceProvenance? = nil) {
         version = ControlProtocol.version; self.id = id
         deadline = now.timeIntervalSince1970 + ControlProtocol.requestTimeout
         self.operation = operation; self.path = path; self.sha256 = sha256
         self.runtimeID = runtimeID
         self.location = location; self.length = length
         self.sessionID = sessionID; self.documentID = documentID; self.jobID = jobID
+        self.provenance = provenance
     }
 
     public static func decode(_ data: Data) throws -> Self {
         guard data.count <= ControlProtocol.maximumMessageBytes,
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               !object.values.contains(where: { $0 is NSNull }),
-              Set(object.keys).isSubset(of: ["version", "id", "deadline", "operation", "runtimeID", "path", "sha256", "location", "length", "sessionID", "documentID", "jobID"]),
+              Set(object.keys).isSubset(of: ["version", "id", "deadline", "operation", "runtimeID", "path", "sha256", "location", "length", "sessionID", "documentID", "jobID", "provenance"]),
               let request = try? JSONDecoder().decode(Self.self, from: data) else {
             throw ControlFailure.invalidRequest
         }
+        if let provenance = object["provenance"] { try ControlSourceProvenance.validateJSON(provenance) }
         return request
     }
 
@@ -113,9 +120,11 @@ public struct ControlRequest: Codable, Equatable {
         if sessionID != nil { present.insert("sessionID") }
         if documentID != nil { present.insert("documentID") }
         if jobID != nil { present.insert("jobID") }
+        if provenance != nil { present.insert("provenance") }
         let expected: Set<String>
         switch operation {
         case "snapshot": expected = ["path", "sha256", "location", "length"]
+        case "sourceSnapshot": expected = ["path", "sha256", "location", "length", "provenance"]
         case "explanation": expected = ["path"]
         case "navigate": expected = ["sessionID", "documentID", "sha256", "location", "length"]
         case "status", "cancel": expected = ["jobID"]
@@ -136,6 +145,7 @@ public struct ControlRequest: Codable, Equatable {
                 throw ControlFailure.invalidRange
             }
         }
+        if let provenance { try provenance.validate(path: path!, location: location!, length: length!) }
     }
 }
 
@@ -176,12 +186,14 @@ public struct ControlObject: Codable, Equatable {
     public var sessionID: UUID?
     public var sha256: String?
     public var selection: ControlSelection?
+    public var provenance: ControlSourceProvenance?
     public init(id: UUID, kind: String, name: String, windowID: UUID? = nil,
                 documentID: UUID? = nil, sessionID: UUID? = nil, sha256: String? = nil,
-                selection: ControlSelection? = nil) {
+                selection: ControlSelection? = nil, provenance: ControlSourceProvenance? = nil) {
         self.id = id; self.kind = kind; self.name = name; self.windowID = windowID
         self.documentID = documentID; self.sessionID = sessionID; self.sha256 = sha256
         self.selection = selection
+        self.provenance = provenance
     }
 }
 
@@ -199,6 +211,8 @@ public struct ControlJob: Codable, Equatable {
     public var bomBytes: Int?
     public var selection: ControlSelection?
     public var error: ControlFailure?
+    public var provenance: ControlSourceProvenance?
+    public var adopted: Bool?
     public init(id: UUID, requestID: UUID, sessionID: UUID, windowID: UUID, documentID: UUID) {
         self.id = id; self.requestID = requestID; self.sessionID = sessionID
         self.windowID = windowID; self.documentID = documentID; state = "accepted"

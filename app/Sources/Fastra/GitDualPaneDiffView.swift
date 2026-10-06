@@ -203,13 +203,21 @@ struct GitDualPaneDiffView: View {
                     entries: GitDiffDisplay.entries(document: document),
                     expandedFolds: $expandedFolds,
                     currentEntry: $currentEntry,
-                    softWrapEnabled: softWrapEnabled
+                    softWrapEnabled: softWrapEnabled,
+                    exportSnapshot: .git(request, document)
                 ) {
                     toolbarLeading
                 }
             }
         }
         .background(Theme.surfaceRaised)
+        .overlay(alignment: .topTrailing) {
+            if let document, document.limitation != nil || document.isEmpty {
+                DiffExportButton(snapshot: .git(request, document))
+                    .frame(width: 26, height: 26)
+                    .padding(8)
+            }
+        }
         .onChange(of: request.id) {
             expandedFolds.removeAll()
             currentEntry = nil

@@ -7,6 +7,35 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.137.1] — 2026-10-06
+
+### Behoben
+
+- Cursorposition und Dokument-/Auswahlstatistik bleiben auch bei schmalem Fenster einzeilig. Falls Werte gekürzt werden, zeigt ihr Tooltip die vollständigen Zahlen und die Bedeutung der Statistik.
+
+## [v1.137.0] — 2026-10-06
+
+### Neu
+
+- Lokale Sender können Originaldateien und materialisierte Archivmitglieder mit Suchlauf, bytegenauer Herkunft und geprüfter Quellengeneration übergeben. Fastra übernimmt eine eigene schreibgeschützte Sitzungskopie; vollständige Herkunft und ausdrücklich schwächere Archivbindungen bleiben sichtbar. Bestehende Snapshot-Aufträge bleiben kompatibel.
+- Datei- und Git-Vergleiche können ihre Differenzen-Liste als UTF-8-Bericht exportieren. Der Bericht verwendet die fertige Vergleichsbasis mit Originalzeilen, Zeilenbereichen und aktiven Optionen; Git-Grenzen bleiben sichtbar. Vergleichsquellen sind als Exportziel geschützt.
+- Gespeicherte Dokumentdateien lassen sich direkt vom Tab in den Finder oder eine andere App ziehen. Bei ungespeicherten Änderungen erklärt der Tooltip, dass die gespeicherte Fassung weitergegeben wird. Neue Notizen, Lade- und Vergleichs-Tabs bleiben ausgenommen.
+
+## [v1.134.0] — 2026-10-06
+
+### Verbessert
+
+- Dokumentumwandlungen zeigen die vom Werkzeug gemeldeten Phasen und bekannten Seiten-, Tabellen- oder Folienzähler. Ältere Werkzeuge bleiben ohne Fortschrittsmeldungen nutzbar.
+- Die laufende Umwandlung lässt sich direkt über dem Editor abbrechen. Fastra wartet auf das Ende des Werkzeugs, räumt den Arbeitsordner auf und übernimmt nach einem Abbruch keine Ausgabe.
+- Verlustwarnungen bleiben vollständig lesbar; Zeitüberschreitungen erhalten eine verständliche Erklärung.
+
+## [v1.133.0] — 2026-10-06
+
+### Verbessert
+
+- Große Dateivergleiche mit über die Datei verteilten Änderungen nutzen eindeutige gemeinsame Zeilen als Anker. Zwischen den Ankern rechnet derselbe abbrechbare Myers-Kern; kleine Vergleiche behalten ihre bisherige Zuordnung.
+- Das Rechenbudget gilt sowohl für jeden verbleibenden Teilbereich als auch für deren gesamte Arbeit. Eingaben ohne ausreichend passende Anker erklären weiterhin ihre Grenze, statt ein Teilergebnis anzuzeigen.
+
 ## [v1.132.1] — 2026-10-06
 
 ### Behoben

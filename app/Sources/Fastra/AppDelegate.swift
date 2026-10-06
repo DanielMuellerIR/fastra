@@ -884,6 +884,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defaults: SelfTest.workspaceDefaults(),
             windows: orderedWindows
         )
+        LocalControlController.shared.closeAllSessions()
         return .terminateNow
     }
 

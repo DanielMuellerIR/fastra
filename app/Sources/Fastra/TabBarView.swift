@@ -381,7 +381,8 @@ private struct TabPill: View {
                             : isActive || isComparisonSelected
                                 ? Theme.textPrimary : Theme.textSecondary
                         )
-                        .help(displayTitle)
+                        .help(TabFileDrag.fileURL(for: tab) == nil
+                              ? displayTitle : displayTitle + "\n" + TabFileDrag.hint(for: tab))
 
                     if !tab.isLoading, tab.hits > 0 {
                         Text("\(tab.hits)")
@@ -412,6 +413,15 @@ private struct TabPill: View {
                 )
             }
             .buttonStyle(.plain)
+            .modifier(TabFileDragModifier(
+                url: TabFileDrag.fileURL(for: tab), closeAreaWidth: closeHitSide + 7,
+                help: displayTitle + "\n" + TabFileDrag.hint(for: tab),
+                onSelect: onSelect, onExtendSelection: onExtendSelection,
+                onPathMenu: {
+                    if let url = tab.url { TabPathMenuPresenter.shared.present(for: url) }
+                }
+            ))
+            .accessibilityHint(TabFileDrag.hint(for: tab))
             .accessibilityIdentifier(
                 "documentTab-\(selectionMarker)-\(tab.id.uuidString)"
             )

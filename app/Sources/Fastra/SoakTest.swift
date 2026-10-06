@@ -311,6 +311,24 @@ enum SoakTest {
         return bytes
     }
 
+    /// Ein Tabwechsel tauscht den SwiftUI-Editor erst in einer folgenden
+    /// Transaktion aus. Der Treiber wartet begrenzt auf diese Bindung; bleibt
+    /// sie aus, meldet die unveränderte Invariantenprüfung den Fehler.
+    static func unsettledEditorBindings() -> [String] {
+        documentWindows().compactMap { window in
+            guard let workspace = WorkspaceWindowRegistry.workspace(for: window),
+                  let tab = workspace.activeTab, !tab.isLoading,
+                  tab.gitKind == nil, tab.fileDiffRequest == nil,
+                  tab.displayMode == .text else { return nil }
+            guard let root = window.contentView,
+                  let editor = descendantTextView(in: root) else {
+                return "\(window.title): Editor fehlt"
+            }
+            guard !editor.string.utf8.elementsEqual(tab.content.utf8) else { return nil }
+            return "\(window.title): Editor \(editor.string.utf8.count), Modell \(tab.content.utf8.count) UTF-8-Bytes"
+        }
+    }
+
     /// (5) Der Änderungspunkt im Tab sagt die Wahrheit: Er steht genau dann,
     /// wenn der Text im Fenster wirklich von der Datei auf Platte abweicht.
     ///

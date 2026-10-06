@@ -18,6 +18,7 @@
 import AppKit
 import SwiftUI
 import FastraDiffProtocol
+import FastraControlProtocol
 import CoreGraphics
 import Darwin
 import PDFKit
@@ -145,6 +146,13 @@ enum SelfTestFixtureOutcome {
 }
 
 enum SelfTest {
+    @MainActor private static var diffExportTestDestination: URL?
+
+    @MainActor static func configureDiffExportPanel(_ panel: NSSavePanel) {
+        guard requestedTest == "diffexport", let destination = diffExportTestDestination else { return }
+        panel.directoryURL = destination.deletingLastPathComponent()
+        panel.nameFieldStringValue = destination.lastPathComponent
+    }
     /// Pro Selbsttest-Prozess genau eine isolierte Defaults-Suite. Mehrere
     /// Dokumentfenster müssen dieselbe Suite teilen; würde jeder Aufruf sie
     /// erneut leeren, hielte sich auch das zweite Fenster fälschlich für den
@@ -552,6 +560,9 @@ enum SelfTest {
         case "projectinput": waitForMainWindow { openSearchThen { runProjectInputTest() } }
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "tabclosehit": waitForMainWindow { runTabCloseHitTest() }
+        case "tabfiledrag": waitForMainWindow { runTabFileDragTest() }
+        case "diffexport": waitForMainWindow { runDiffExportTest() }
+        case "sourceprovenance": waitForMainWindow { runSourceProvenanceTest() }
         case "tabvisibility": waitForMainWindow { runTabVisibilityTest() }
         case "tabcompare": waitForMainWindow { runTabComparisonTest() }
         case "softwrapprofiles": waitForMainWindow { runSoftWrapProfilesTest() }
@@ -696,6 +707,8 @@ enum SelfTest {
             // und Kollisionsschutz an echten Dateien. Der Katalogabruf wartet
             // selbst auf den schon gestarteten Hintergrundprozess.
             DispatchQueue.main.async { runMarkdownImportTest() }
+        case "markdownimportui":
+            waitForMainWindow { runMarkdownImportUITest() }
         case "localization":
             // Fensterlos — prüft zusätzlich zum Unit-Test das fertig gepackte
             // Haupt-App-Bundle. Genau dort sucht SwiftUI statische Schlüssel.
@@ -831,7 +844,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -4154,6 +4167,415 @@ enum SelfTest {
 
     // MARK: - -selftest tabclosehit / tabcompare
 
+    /// Ein externer Maus-Treiber liest nur die Koordinaten des isolierten
+    /// Testfensters. Das native Drop-Ziel erhält den echten Datei-Pasteboard,
+    /// kein MockDraggingInfo und keinen direkt aufgerufenen Provider.
+    private static func runTabFileDragTest() {
+        testLabel = "tabfiledrag"
+        Task { @MainActor in
+            guard let ws = Workspace.shared,
+                  let window = CommandTargeting.registeredWindow(for: ws),
+                  let outputPath = ProcessInfo.processInfo.environment["FASTRA_TABDRAG_DIR"] else {
+                finish(.environment, "Tab-Drag benötigt FASTRA_TABDRAG_DIR und den externen Maus-Treiber")
+            }
+            let output = URL(fileURLWithPath: outputPath)
+            let base = selfTestTemporaryDirectory().appendingPathComponent("tab-drag-\(UUID().uuidString)")
+            let source = base.appendingPathComponent("Bericht #1 🇩🇪.txt")
+            let probe = FileDragProbeView(frame: NSRect(x: 0, y: 0, width: 460, height: 160))
+            let destination = NSWindow(contentRect: probe.frame, styleMask: [.titled, .closable],
+                                       backing: .buffered, defer: false)
+            destination.isReleasedWhenClosed = false
+            // Der Quellklick holt das große Editorfenster nach vorn. Das
+            // eigene Testziel muss trotzdem sichtbar und treffbar bleiben.
+            destination.level = .floating
+            destination.title = "Datei-Drop-Testziel"
+            destination.contentView = probe
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+                try "Gespeichert\n".write(to: source, atomically: true, encoding: .utf8)
+                var loaded = false
+                ws.loadFile(at: source) { loaded = $0 }
+                for _ in 0..<200 where !loaded { try await Task.sleep(nanoseconds: 50_000_000) }
+                guard loaded, let index = ws.tabs.firstIndex(where: {
+                    $0.url?.resolvingSymlinksInPath() == source.resolvingSymlinksInPath()
+                }) else {
+                    throw NSError(domain: "TabFileDrag", code: 1)
+                }
+                window.setContentSize(NSSize(width: 1100, height: 700))
+                window.makeKeyAndOrderFront(nil)
+                activateApplication(ignoringOtherApps: true)
+                try await Task.sleep(nanoseconds: 500_000_000)
+                guard let editor = CommandTargeting.editorTextView(for: ws) else {
+                    throw NSError(domain: "TabFileDrag", code: 5)
+                }
+                editor.insertText("Ungespeicherte Editorfassung\n",
+                                  replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
+                for _ in 0..<100 where ws.tabs[index].content != "Ungespeicherte Editorfassung\n" {
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+                guard let root = window.contentView,
+                      let marker = markerView(id: "documentTabFrame-\(ws.tabs[index].id.uuidString)", in: root) else {
+                    throw NSError(domain: "TabFileDrag", code: 2)
+                }
+                let local = marker.convert(NSPoint(x: marker.bounds.minX + 28, y: marker.bounds.midY), to: nil)
+                let start = window.convertPoint(toScreen: local)
+                destination.setFrameOrigin(NSPoint(x: window.frame.minX + 180, y: window.frame.minY + 150))
+                destination.orderFront(nil)
+                let end = destination.convertPoint(toScreen: NSPoint(x: 230, y: 80))
+                let screenTop = NSScreen.screens.first?.frame.maxY ?? 0
+                var hit = root.hitTest(root.convert(local, from: nil))
+                var hitChain: [String] = []
+                while let view = hit { hitChain.append(String(describing: type(of: view))); hit = view.superview }
+                func dragFrames(_ view: NSView) -> [String] {
+                    let own = String(describing: type(of: view)).contains("TabFileDragView")
+                        ? [NSStringFromRect(view.convert(view.bounds, to: nil)) + " hidden=\(view.isHidden)"] : []
+                    return own + view.subviews.flatMap(dragFrames)
+                }
+                let ready: [String: Any] = ["pid": ProcessInfo.processInfo.processIdentifier,
+                    "hit": hitChain, "window": NSStringFromRect(window.frame),
+                    "dragViews": dragFrames(root),
+                    "source": [start.x, screenTop - start.y], "target": [end.x, screenTop - end.y]]
+                let sourceFrame = window.frame
+                try JSONSerialization.data(withJSONObject: ready).write(to: output.appendingPathComponent("ready.json"), options: .atomic)
+                for _ in 0..<600 where probe.received == nil { try await Task.sleep(nanoseconds: 50_000_000) }
+                guard let received = probe.received,
+                      received.resolvingSymlinksInPath() == source.resolvingSymlinksInPath(),
+                      window.frame == sourceFrame else {
+                    throw NSError(domain: "TabFileDrag", code: 3, userInfo: [NSLocalizedDescriptionKey: "Echter Drag: URL \(probe.received?.path ?? "fehlt"), Fenster unverändert=\(window.frame == sourceFrame), Hit=\(hitChain.joined(separator: " → "))"])
+                }
+                let copy = base.appendingPathComponent("Kopie.txt")
+                try FileManager.default.copyItem(at: received, to: copy)
+                guard try String(contentsOf: copy, encoding: .utf8) == "Gespeichert\n",
+                      ws.tabs[index].content == "Ungespeicherte Editorfassung\n",
+                      ws.tabs[index].hasUnsavedChanges else {
+                    throw NSError(domain: "TabFileDrag", code: 4)
+                }
+                let data = await withCheckedContinuation { continuation in
+                    typeScrollCapture(window: window) { continuation.resume(returning: $0?.data) }
+                }
+                if let data { try data.write(to: output.appendingPathComponent("tab.png")) }
+                destination.close()
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "Echter Tab-Drag übergibt Datei-URL mit Leerzeichen, Raute und Emoji; Drop-Ziel kopiert gespeicherte Fassung, Editoränderung bleibt ungespeichert")
+            } catch {
+                destination.close()
+                try? FileManager.default.removeItem(at: base)
+                finish(false, error.localizedDescription)
+            }
+        }
+    }
+
+    /// Bedient den sichtbaren Exportknopf und den echten Speicherdialog in
+    /// einem eigenen Vergleichsfenster. Das Hauptfenster darf kein Sheet erhalten.
+    private static func runDiffExportTest() {
+        testLabel = "diffexport"
+        Task { @MainActor in
+            let base = selfTestTemporaryDirectory().appendingPathComponent("diff-export-\(UUID().uuidString)")
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 620),
+                                  styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.title = L10n.string("Diff-Liste exportieren…")
+            let mainWindow = Workspace.shared.flatMap { CommandTargeting.registeredWindow(for: $0) }
+            func require(_ value: Bool, _ message: String) throws {
+                if !value { throw NSError(domain: "DiffExportSelfTest", code: 1,
+                                           userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            func wait(_ condition: () -> Bool) async throws {
+                for _ in 0..<160 {
+                    if condition() { return }
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+                throw NSError(domain: "DiffExportSelfTest", code: 2,
+                              userInfo: [NSLocalizedDescriptionKey: "Exportzustand wurde nicht bereit"])
+            }
+            func findButton(_ view: NSView) -> NSButton? {
+                if let button = view as? NSButton, button.identifier?.rawValue == "diffExport" { return button }
+                return view.subviews.lazy.compactMap(findButton).first
+            }
+            @MainActor func openPanel(to destination: URL) async throws -> NSSavePanel {
+                diffExportTestDestination = destination
+                guard let root = window.contentView, let button = findButton(root) else {
+                    throw NSError(domain: "DiffExportSelfTest", code: 3)
+                }
+                try require(button.isEnabled && button.visibleRect.width >= 20 && button.visibleRect.height >= 20,
+                            "Exportknopf fehlt oder hat keine treffbare Fläche")
+                window.makeKeyAndOrderFront(nil)
+                try require(sendMouseClick(at: button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil),
+                                           in: window, modifiers: [], viaApp: true), "Exportknopf konnte nicht geklickt werden")
+                try await wait { window.attachedSheet is NSSavePanel }
+                try require(mainWindow?.attachedSheet == nil, "Export öffnete einen Dialog am Hauptfenster")
+                return window.attachedSheet as! NSSavePanel
+            }
+            func capture(_ name: String, from target: NSWindow) async throws {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_DIFFEXPORT_DIR"], !directory.isEmpty else { return }
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                let data = await withCheckedContinuation { continuation in
+                    typeScrollCapture(window: target) { continuation.resume(returning: $0?.data) }
+                }
+                guard let data else { throw NSError(domain: "DiffExportSelfTest", code: 4) }
+                try data.write(to: url)
+            }
+            var inputStep = 0
+            @MainActor func panelKey(_ code: UInt16, panel: NSSavePanel) async throws {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_DIFFEXPORT_INPUT_DIR"], !directory.isEmpty else {
+                    throw NSError(domain: "DiffExportSelfTest", code: 7,
+                                  userInfo: [NSLocalizedDescriptionKey: "Speicherdialog benötigt den externen Tasten-Treiber"])
+                }
+                panel.makeKeyAndOrderFront(nil)
+                let root = URL(fileURLWithPath: directory)
+                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+                let command: [String: Any] = ["pid": ProcessInfo.processInfo.processIdentifier, "keyCode": code]
+                // Das macOS-Sheet enthält einen fremden Open/Save-Panel-Service.
+                // NSApp.postEvent erreicht dessen Eingabefelder nicht verlässlich.
+                try JSONSerialization.data(withJSONObject: command).write(to: root.appendingPathComponent("key-\(inputStep).json"), options: .atomic)
+                inputStep += 1
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                let leftURL = base.appendingPathComponent("Links #1 🇩🇪.txt")
+                let rightURL = base.appendingPathComponent("Rechts é.txt")
+                let left = "GLEICH  \nalt 🇩🇪\nmitte\nende\n"
+                let right = "gleich\nneu é\nzusatz\nmitte\nschluss\n"
+                try left.write(to: leftURL, atomically: true, encoding: .utf8)
+                try right.write(to: rightURL, atomically: true, encoding: .utf8)
+                let options = FileDiffOptions(ignoreTrailingWhitespace: true, ignoreCase: true)
+                guard case .result(let result) = FileDiff.compare(left: left, right: right, options: options) else {
+                    throw NSError(domain: "DiffExportSelfTest", code: 5)
+                }
+                let fileRequest = FileDiffRequest(left: .file(leftURL), right: .file(rightURL), options: options)
+                let gitRequest = GitDiffRequest(repositoryPath: base.path, source: .workingTree(path: nil))
+                let patch = "diff --git a/eins.txt b/eins.txt\n--- a/eins.txt\n+++ b/eins.txt\n@@ -1,3 +1,3 @@\n-alt\n+neu\n mitte\n-ende\n+schluss\n\\ No newline at end of file\ndiff --git a/zwei.bin b/zwei.bin\nBinary files a/zwei.bin and b/zwei.bin differ\n"
+                let gitDocument = GitDiffParser.parse(Data(patch.utf8))
+                guard case .result(let identical) = FileDiff.compare(left: left, right: left, options: options) else {
+                    throw NSError(domain: "DiffExportSelfTest", code: 6)
+                }
+                let identicalRequest = FileDiffRequest(left: .file(leftURL), right: .file(leftURL), options: options)
+                let variants: [(String, AnyView, DiffExportSnapshot)] = [
+                    ("file", AnyView(FileDiffView(request: fileRequest, document: .success(result))), .file(fileRequest, result)),
+                    ("git", AnyView(GitDualPaneDiffView(request: gitRequest, document: gitDocument, fallbackText: "")), .git(gitRequest, gitDocument)),
+                    ("identical", AnyView(FileDiffView(request: identicalRequest, document: .success(identical))), .file(identicalRequest, identical))
+                ]
+                activateApplication(ignoringOtherApps: true)
+                for (name, view, snapshot) in variants {
+                    window.contentView = NSHostingView(rootView: view)
+                    for width: CGFloat in [760, 1100] {
+                        window.setContentSize(NSSize(width: width, height: 620))
+                        window.makeKeyAndOrderFront(nil)
+                        try await Task.sleep(nanoseconds: 350_000_000)
+                        try require(window.contentView.flatMap(findButton) != nil, "Export fehlt bei \(name), \(width) pt")
+                        try await capture("\(name)-\(Int(width))", from: window)
+                    }
+                    if name == "identical" { continue }
+                    let target = base.appendingPathComponent("\(name)-Bericht.txt")
+                    let cancelled = try await openPanel(to: target)
+                    try await Task.sleep(nanoseconds: 350_000_000)
+                    try await capture("\(name)-save-panel", from: cancelled)
+                    try await panelKey(53, panel: cancelled)
+                    try await wait { window.attachedSheet == nil }
+                    try require(!FileManager.default.fileExists(atPath: target.path), "Abbruch schrieb einen Bericht")
+                    let panel = try await openPanel(to: target)
+                    try await Task.sleep(nanoseconds: 500_000_000)
+                    try await panelKey(36, panel: panel)
+                    try await wait { window.attachedSheet == nil && FileManager.default.fileExists(atPath: target.path) }
+                    try require(try String(contentsOf: target, encoding: .utf8) == snapshot.report(), "Gespeicherter Bericht weicht von der fertigen Vergleichsbasis ab")
+                    try require(try String(contentsOf: leftURL, encoding: .utf8) == left
+                                && String(contentsOf: rightURL, encoding: .utf8) == right, "Export änderte eine Vergleichsquelle")
+                }
+                window.close()
+                diffExportTestDestination = nil
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "Datei- und Git-Diff: echter Exportknopf, Fensterbezug, Abbruch und UTF-8-Speicherung; Quellen bleiben unverändert; Ansichten bei 760/1100 pt")
+            } catch {
+                if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .cancel) }
+                window.close()
+                diffExportTestDestination = nil
+                try? FileManager.default.removeItem(at: base)
+                finish(false, error.localizedDescription)
+            }
+        }
+    }
+
+    private static func runSourceProvenanceTest() {
+        testLabel = "sourceprovenance"
+        Task { @MainActor in
+            let base = selfTestTemporaryDirectory().appendingPathComponent("source-provenance-\(UUID().uuidString)")
+            let controller = LocalControlController()
+            func require(_ value: Bool, _ message: String) throws {
+                if !value { throw NSError(domain: "SourceProvenanceSelfTest", code: 1,
+                                           userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            @MainActor func terminal(_ request: ControlRequest) async throws -> ControlJob {
+                let accepted = try controller.execute(request).job!
+                for _ in 0..<200 {
+                    let job = try controller.execute(ControlRequest(operation: "status", jobID: accepted.id)).job!
+                    if job.isTerminal {
+                        return job
+                    }
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+                throw ControlFailure.expired
+            }
+            @MainActor func ready(_ request: ControlRequest) async throws -> ControlJob {
+                let job = try await terminal(request)
+                guard job.state == "ready", job.adopted == true else { throw job.error ?? ControlFailure.source }
+                return job
+            }
+            @MainActor func capture(_ name: String, session: ControlSnapshotWindow) async throws {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_SOURCEPROVENANCE_DIR"], !directory.isEmpty else { return }
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                let data = await withCheckedContinuation { continuation in
+                    typeScrollCapture(window: session.window) { continuation.resume(returning: $0?.data) }
+                }
+                guard let data else { throw ControlFailure.source }
+                try data.write(to: url)
+            }
+            func originScroll(_ view: NSView) -> NSScrollView? {
+                if let scroll = view as? NSScrollView, scroll.accessibilityIdentifier() == "controlSnapshotProvenance" { return scroll }
+                return view.subviews.lazy.compactMap(originScroll).first
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                let outer = base.appendingPathComponent("Archiv #1 🇩🇪.zip")
+                let sender = base.appendingPathComponent("materialisiert.txt")
+                let zip = "UEsDBBQAAAAIAMWaRl36ggNyWAAAAIwAAAAJAAAASW5uZW4uemlwC/BmZhFhYGDgYDg6yy1Wvj1WAMQTBmJuIM7LL8msSs3TK6ko8T57RvvZL4P9taoC64NWaPmffcLEEODNyCTCjFs7DDQwMqAaFuDNygYSYgRCSyBtC1YGAFBLAQIUAxQAAAAIAMWaRl36ggNyWAAAAIwAAAAJAAAAAAAAAAAAAACAAQAAAABJbm5lbi56aXBQSwUGAAAAAAEAAQA3AAAAfwAAAAAA"
+                let archive = Data(base64Encoded: zip)!
+                try archive.write(to: outer)
+                let bytes = Data("eins\n🇩🇪 zwei\n".utf8)
+                let generation = try ControlSourceSnapshot.generation(at: outer)
+                activateApplication(ignoringOtherApps: true)
+                var ownFiles: [URL] = []
+                for binding in ["sha256", "generation"] {
+                    try bytes.write(to: sender, options: .atomic)
+                    let source = ControlSourceProvenance(runID: UUID(), kind: "archiveMaterialization",
+                        hitIdentity: ControlHitIdentity(filesystemPath: outer.path, archiveMembers: ["Innen.zip", "notizen.txt"],
+                            archiveMemberBytes: ["Innen.zip", "notizen.txt"].map { Data($0.utf8).base64EncodedString() }),
+                        sourceGeneration: generation, archiveBinding: binding,
+                        outerSHA256: binding == "sha256" ? FileSnapshot.sha256Hex(archive) : nil,
+                        positionBinding: binding == "sha256" ? "exactUTF16" : "unboundHit", searchEvidence: "🇩🇪")
+                    let request = ControlRequest(operation: "sourceSnapshot", path: sender.path,
+                        sha256: FileSnapshot.sha256Hex(bytes), location: binding == "sha256" ? 5 : 0,
+                        length: binding == "sha256" ? 4 : 0, provenance: source)
+                    let job = try await ready(request)
+                    guard let session = controller.snapshotWindowsForTesting.first(where: { $0.sessionID == job.sessionID }),
+                          let snapshot = session.sourceSnapshot else { throw ControlFailure.invalidID }
+                    ownFiles.append(snapshot.fileURL)
+                    try FileManager.default.removeItem(at: sender)
+                    try require(session.textView.string == "eins\n🇩🇪 zwei\n" && !session.textView.isEditable,
+                                "Entfernte Senderdatei beeinträchtigt den schreibgeschützten Snapshot")
+                    try require(try FileSnapshot.read(from: snapshot.fileURL).snapshot.sha256 == request.sha256,
+                                "Eigene Sitzungskopie weicht vom übernommenen Inhalt ab")
+                    try require(controller.objects().contains { $0.sessionID == job.sessionID && $0.provenance == source },
+                                "Inventar verlor die Herkunft")
+                    for width: CGFloat in [400, 760, 1100] {
+                        session.window.setContentSize(NSSize(width: width, height: 650))
+                        session.window.makeKeyAndOrderFront(nil)
+                        try await Task.sleep(nanoseconds: 250_000_000)
+                        try require(session.confirms(ControlSelection(location: request.location!, length: request.length!)),
+                                    "Auswahl ging nach Fensteränderung verloren")
+                        try await capture("\(binding)-\(Int(width))", session: session)
+                        if width == 400 {
+                            guard let origin = session.window.contentView.flatMap(originScroll),
+                                  let text = origin.documentView as? NSTextView else { throw ControlFailure.source }
+                            try require(text.string == ControlSnapshotWindow.provenanceDescription(source), "Herkunftsbereich verlor Mitgliedsidentität")
+                            let before = origin.contentView.bounds.origin.y
+                            text.scrollRangeToVisible(NSRange(location: max(0, text.string.utf16.count - 1), length: 1))
+                            try await Task.sleep(nanoseconds: 150_000_000)
+                            try require(origin.contentView.bounds.origin.y > before, "Lange Herkunft lässt sich nicht bis zum Ende scrollen")
+                            try await capture("\(binding)-400-bottom", session: session)
+                            origin.contentView.scroll(to: .zero)
+                            origin.reflectScrolledClipView(origin.contentView)
+                        }
+                    }
+                    _ = try controller.execute(ControlRequest(operation: "close", sessionID: job.sessionID))
+                    try require(!FileManager.default.fileExists(atPath: snapshot.fileURL.path), "Schließen ließ eine Sitzungskopie zurück")
+                }
+                let collisionOuter = base.appendingPathComponent("gleiche-Namen.tar.gz")
+                let collisionArchive = Data(base64Encoded: "H4sIAAAAAAAC/+3TMQrCQBAF0K1zipxAVo3JeSxSpLEwK4oX8BjWejpPoC5pBBsrQyDvwfCHaab6r0U6pfBfMaurasjsO2NcrT/7cG+WmyaUMYzg0KftPr8M89R2u754XC+3PPfyfGy7IjAfz6n2v9Z//QcAAAAAAAAA4Jc3FLafhgAoAAA=")!
+                try collisionArchive.write(to: collisionOuter)
+                let collisionGeneration = try ControlSourceSnapshot.generation(at: collisionOuter)
+                var collisionDocuments: [UUID] = []
+                var collisionOrigins: [String] = []
+                for byte: UInt8 in [0xff, 0xfe] {
+                    try bytes.write(to: sender, options: .atomic)
+                    let source = ControlSourceProvenance(runID: UUID(), kind: "archiveMaterialization",
+                        hitIdentity: ControlHitIdentity(filesystemPath: collisionOuter.path, archiveMembers: ["�.txt"],
+                            archiveMemberBytes: [Data([byte] + Array(".txt".utf8)).base64EncodedString()]),
+                        sourceGeneration: collisionGeneration, archiveBinding: "sha256",
+                        outerSHA256: FileSnapshot.sha256Hex(collisionArchive), positionBinding: "unboundHit")
+                    let request = ControlRequest(operation: "sourceSnapshot", path: sender.path,
+                        sha256: FileSnapshot.sha256Hex(bytes), location: 0, length: 0, provenance: source)
+                    let job = try await ready(request)
+                    let session = controller.snapshotWindowsForTesting.first { $0.sessionID == job.sessionID }!
+                    collisionDocuments.append(job.documentID)
+                    collisionOrigins.append(ControlSnapshotWindow.provenanceDescription(source))
+                    ownFiles.append(session.sourceSnapshot!.fileURL)
+                    try FileManager.default.removeItem(at: sender)
+                    session.window.makeKeyAndOrderFront(nil)
+                    try await capture("same-name-\(byte)", session: session)
+                }
+                try require(Set(collisionDocuments).count == 2 && Set(collisionOrigins).count == 2,
+                            "Gleiche Anzeigenamen vermischen Dokument- oder Herkunftsidentität")
+                controller.closeAllSessions()
+                try bytes.write(to: sender, options: .atomic)
+                let checkedSource = ControlSourceProvenance(runID: UUID(), kind: "archiveMaterialization",
+                    hitIdentity: ControlHitIdentity(filesystemPath: outer.path, archiveMembers: ["Innen.zip", "notizen.txt"],
+                        archiveMemberBytes: ["Innen.zip", "notizen.txt"].map { Data($0.utf8).base64EncodedString() }),
+                    sourceGeneration: generation, archiveBinding: "sha256", outerSHA256: FileSnapshot.sha256Hex(archive), positionBinding: "exactUTF16")
+                var wrongHash = ControlRequest(operation: "sourceSnapshot", path: sender.path,
+                    sha256: String(repeating: "0", count: 64), location: 5, length: 4, provenance: checkedSource)
+                for failure in ["wrong-hash", "source-swap"] {
+                    if failure == "source-swap" {
+                        var changed = archive; changed[0] ^= 1
+                        try changed.write(to: outer, options: .atomic)
+                        wrongHash.id = UUID(); wrongHash.deadline = Date().timeIntervalSince1970 + 10
+                        wrongHash.sha256 = FileSnapshot.sha256Hex(bytes)
+                    }
+                    let job = try await terminal(wrongHash)
+                    let session = controller.snapshotWindowsForTesting.first { $0.sessionID == job.sessionID }!
+                    try require(job.state == "failed" && job.error == .stale && job.adopted == false
+                                && session.sourceSnapshot == nil, "Fehlerhafte Übergabe bestätigte eine Übernahme")
+                    session.window.makeKeyAndOrderFront(nil)
+                    try await capture(failure, session: session)
+                    _ = try controller.execute(ControlRequest(operation: "close", sessionID: job.sessionID))
+                }
+                controller.closeAllSessions()
+                try require(ownFiles.allSatisfy { !FileManager.default.fileExists(atPath: $0.path) }, "Sitzungsspeicher blieb erhalten")
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "ZIP/TAR: starke und ausdrücklich schwächere Herkunft, identische Anzeigenamen mit verschiedenen Bytes, falscher Hash, Quellentausch, UTF-16-Auswahl, Senderdatei-Entfernung und Cleanup; 400/760/1100 pt einschließlich Herkunftsscroll")
+            } catch {
+                controller.closeAllSessions()
+                try? FileManager.default.removeItem(at: base)
+                finish(false, error.localizedDescription)
+            }
+        }
+    }
+
+    private final class FileDragProbeView: NSView {
+        var received: URL?
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            registerForDraggedTypes([.fileURL])
+            let label = NSTextField(labelWithString: "Datei hier ablegen")
+            label.frame = NSRect(x: 30, y: 60, width: 380, height: 24)
+            addSubview(label)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+            FileHandle.standardError.write(Data("TABDRAG target entered: \(sender.draggingPasteboard.types ?? [])\n".utf8))
+            return .copy
+        }
+        override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+            let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+                options: [.urlReadingFileURLsOnly: true]) as? [URL]
+            guard let urls, urls.count == 1 else { return false }
+            received = urls[0]
+            return true
+        }
+    }
+
     /// Prüft die echte Klickfläche des kleinen Tab-X. Der Ziel-Tab ist
     /// absichtlich inaktiv: Trifft der synthetische Randklick fälschlich den
     /// Tab statt des Schließen-Buttons, wird er nur ausgewählt und der Test
@@ -5097,7 +5519,8 @@ enum SelfTest {
                                     window.orderOut(nil)
                                     finish(true, "36 Profilkombinationen: 3 Modi × 3 Ziele × 2 Breiten × 2 Zoomstufen; sichtbare Fragmente, Klick/Caret, Auswahl, NSTextInput-Komposition, Rechteck-Paste/Undo/Redo, Minimap sowie echter Drag/Auto-Scroll in allen Modi; reale IME separat abnehmen")
                                 }
-                                guard let directory = ProcessInfo.processInfo.environment["FASTRA_SOFTWRAPINDENT_REVIEW_DIR"] else {
+                                guard let directory = ProcessInfo.processInfo.environment["FASTRA_SOFTWRAPINDENT_REVIEW_DIR"],
+                                      !directory.isEmpty else {
                                     done(); return
                                 }
                                 // Optionales Abnahmefenster innerhalb derselben isolierten
@@ -10425,7 +10848,12 @@ enum SelfTest {
         logURL: URL,
         tick: Int = 0
     ) {
-        if SoakTest.hasPreviewOnNonMarkdownTab(), tick < 40 {
+        let bindings = SoakTest.unsettledEditorBindings()
+        if (SoakTest.hasPreviewOnNonMarkdownTab() || !bindings.isEmpty), tick < 40 {
+            if tick == 0, !bindings.isEmpty {
+                SoakTest.note("Editoraufbau nach \(pending?.label ?? "Aktion") noch ausstehend: "
+                              + bindings.joined(separator: "; "))
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 MainActor.assumeIsolated {
                     finishSoakRoundWhenViewsSettled(
@@ -10434,6 +10862,9 @@ enum SelfTest {
                 }
             }
             return
+        }
+        if tick > 0, bindings.isEmpty {
+            SoakTest.note("Ansichten nach \(pending?.label ?? "Aktion") nach weiteren \(tick * 50) ms bereit")
         }
         if let pending { SoakTest.finishRound(pending) }
         // Nur eine nachweislich erfolgreiche ⌘C-Aktion darf Besitz
@@ -23988,6 +24419,143 @@ enum SelfTest {
     ) -> Never {
         try? FileManager.default.removeItem(at: base)
         finish(outcome, message)
+    }
+
+    /// Ein kontrolliertes CLI hält den Lauf an der Ausgabegrenze fest. So
+    /// werden echte Prozesse und der sichtbare Abbruchknopf geprüft, ohne die
+    /// Testdauer von einem zufällig langsamen Dokument abhängig zu machen.
+    private static func runMarkdownImportUITest() {
+        testLabel = "markdownimportui"
+        Task { @MainActor in
+            guard let ws = Workspace.shared,
+                  let window = CommandTargeting.registeredWindow(for: ws) else {
+                finish(false, "Workspace oder Fenster fehlt")
+            }
+            let service = MarkdownImportService.shared
+            let oldLocate = service.locateTool
+            let base = selfTestTemporaryDirectory().appendingPathComponent("markdown-ui-\(UUID().uuidString)")
+            let tool = base.appendingPathComponent("converter")
+            let gate = base.appendingPathComponent("release")
+            let warnings = [
+                "Schriftarten, Farben und genaue Seitenumbrüche werden in Markdown nicht erhalten. Tabellen mit verbundenen Zellen können vereinfacht werden. Bitte das Ergebnis mit dem Original vergleichen, bevor es weitergegeben wird.",
+                "Doppelte Warnung bleibt sichtbar.", "Doppelte Warnung bleibt sichtbar.",
+            ]
+            @MainActor func require(_ value: Bool, _ message: String) throws {
+                if !value { throw NSError(domain: "MarkdownImportUI", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            @MainActor func wait(_ condition: () -> Bool) async throws {
+                for _ in 0..<300 {
+                    if condition() { return }
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+                try require(condition(), "Umwandlungszustand wurde nicht bereit")
+            }
+            @MainActor func capture(_ state: String) async throws {
+                for width: CGFloat in [650, 1100] {
+                    window.setContentSize(NSSize(width: width, height: 680))
+                    try await Task.sleep(nanoseconds: 250_000_000)
+                    guard let root = window.contentView,
+                          let bar = markerView(id: "markdownImportBar", in: root) else {
+                        throw NSError(domain: "MarkdownImportUI", code: 2)
+                    }
+                    try require(!bar.isHidden, "Umwandlungsleiste fehlt")
+                    if let directory = ProcessInfo.processInfo.environment["FASTRA_MARKDOWN_IMPORT_UI_DIR"] {
+                        let destination = URL(fileURLWithPath: directory).appendingPathComponent("\(state)-\(Int(width)).png")
+                        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        let saved = await withCheckedContinuation { continuation in
+                            typeScrollCapture(window: window) { snapshot in
+                                let ok = snapshot.map { (try? $0.data.write(to: destination)) != nil } ?? false
+                                continuation.resume(returning: ok)
+                            }
+                        }
+                        try require(saved, "Fensteraufnahme fehlt")
+                    }
+                }
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                let script = """
+                #!/bin/sh
+                output=''
+                while [ "$#" -gt 0 ]; do
+                  case "$1" in
+                    --output) output="$2"; shift 2 ;;
+                    --) source="$2"; break ;;
+                    *) shift ;;
+                  esac
+                done
+                name="$(basename "$source")"
+                printf 'Progress: %s: converting page 2/8\\n' "$name" >&2
+                while [ ! -f '\(gate.path)' ]; do sleep 0.1; done
+                case "$name" in
+                  Fehler.rtf) cat '\(base.path)/error.json'; exit 65 ;;
+                esac
+                mkdir "$output"
+                printf '# Ergebnis\\n' > "$output/converted.md"
+                sed "s|OUTPUT|$output|g" '\(base.path)/success.json'
+                """
+                try script.write(to: tool, atomically: true, encoding: .utf8)
+                try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: tool.path)
+                try JSONSerialization.data(withJSONObject: ["ok": true, "markdownFile": "OUTPUT/converted.md", "assets": [], "warnings": warnings])
+                    .write(to: base.appendingPathComponent("success.json"))
+                try JSONSerialization.data(withJSONObject: ["ok": false, "error": "Das Dokument ist beschädigt. Die Quelle bleibt unverändert."])
+                    .write(to: base.appendingPathComponent("error.json"))
+                service.locateTool = { tool }
+                workspaceDefaults().set(false, forKey: MarkdownEditingMode.defaultsKey)
+                workspaceDefaults().set(true, forKey: MarkdownAssist.firstUseDefaultsKey)
+                for mode in ["Erfolg", "Abbruch", "Fehler"] {
+                    let source = base.appendingPathComponent(mode + ".rtf")
+                    try "Original".write(to: source, atomically: true, encoding: .utf8)
+                    var loaded = false
+                    ws.loadFile(at: source) { loaded = $0 }
+                    try await wait { loaded }
+                    service.clearState()
+                    ws.convertToMarkdown(source)
+                    try await wait { service.progress?.completed == 2 && service.isRunning }
+                    if mode == "Erfolg" { try await capture("running") }
+                    if mode == "Abbruch" {
+                        guard let root = window.contentView,
+                              let button = markerView(id: "markdownImportCancelButton", in: root) else {
+                            throw NSError(domain: "MarkdownImportUI", code: 3)
+                        }
+                        try require(sendMouseClick(at: button.convert(CGPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil),
+                                                   in: window, modifiers: [], viaApp: true), "Abbruchknopf nicht bedienbar")
+                    } else {
+                        try Data().write(to: gate)
+                    }
+                    try await wait { !service.isRunning }
+                    try require(try String(contentsOf: source, encoding: .utf8) == "Original", "Quelle verändert")
+                    if mode == "Erfolg" {
+                        guard case .finished(let file, let actual) = service.state else {
+                            throw NSError(domain: "MarkdownImportUI", code: 4)
+                        }
+                        try require(actual == warnings && FileManager.default.fileExists(atPath: file.path), "Warnungen oder Ausgabe fehlen")
+                        try await wait { ws.activeTab?.url?.resolvingSymlinksInPath() == file.resolvingSymlinksInPath() }
+                        try await capture("finished")
+                    } else if mode == "Abbruch" {
+                        try require(service.state == .cancelled, "Klick hat nicht abgebrochen")
+                        try require(!FileManager.default.fileExists(atPath: base.appendingPathComponent("Abbruch.md").path), "Abbruch veröffentlichte Ausgabe")
+                        try await capture("cancelled")
+                    } else {
+                        guard case .failed = service.state else { throw NSError(domain: "MarkdownImportUI", code: 5) }
+                        try await capture("failed")
+                    }
+                    try? FileManager.default.removeItem(at: gate)
+                    let leftovers = try FileManager.default.contentsOfDirectory(atPath: base.path)
+                        .filter { $0.hasPrefix(".fastra-markdown-") }
+                    try require(leftovers.isEmpty, "Arbeitsordner blieb liegen")
+                }
+                service.locateTool = oldLocate
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "Laufende Seitenzählung, echter Abbruchknopf, Erfolg mit vollständigen/duplizierten Verlustwarnungen und Fehler; schmal/breit")
+            } catch {
+                service.cancelConversion()
+                try? await wait { !service.isRunning }
+                service.locateTool = oldLocate
+                try? FileManager.default.removeItem(at: base)
+                finish(false, error.localizedDescription)
+            }
+        }
     }
 
     // MARK: - Drucken

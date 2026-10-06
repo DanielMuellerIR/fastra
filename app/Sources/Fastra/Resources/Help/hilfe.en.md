@@ -18,6 +18,11 @@ menu offers every bundled syntax language plus CSV and XML and changes the
 extension when you choose one. You can still type any custom extension directly
 in the name field.
 
+Drag a saved document from its tab into Finder or another app. If it has
+unsaved changes, the drag passes on the **saved version**, as explained by the
+tooltip. The editor is not saved by dragging. New notes and comparison tabs
+cannot be dragged as files.
+
 ## Printing
 
 ⌘P prints **what you currently see**. Which version that is depends on the
@@ -217,6 +222,19 @@ pre-fills the left side.
 - Identical files are reported explicitly; binary, missing, or extremely
   large files explain themselves with a clear message instead of a
   misleading diff.
+
+Large file comparisons can use unique shared lines as anchors to align
+changes scattered throughout the files. Fastra processes up to 200,000
+lines per side. The remaining sections and their total computation stay
+bounded; without enough suitable anchors, the comparison may still stop
+with an explained limit.
+
+Use **“Export Differences List…”** (the export button in the header) to save
+a UTF-8 report with sources, options, line ranges and the original changed
+lines. It includes all differences, even when sections are folded. The finished
+comparison captured when the save dialog opens remains the report’s basis.
+Git limitations are stated explicitly. Choose a separate report file; comparison
+sources cannot be overwritten.
 
 The comparison only displays — it never changes files. Closing the
 comparison tab or the window while it is still computing stops the
@@ -532,6 +550,12 @@ converts on its own: choosing the command is your consent.
 Only one conversion runs across the app at a time. A second window keeps its
 own offer visible, explains that another conversion is active, and disables
 the action until that conversion finishes.
+
+During conversion, the bar shows the current phase and, when the tool knows
+them, page, sheet or other counts. **Cancel** stops the current conversion.
+Fastra waits for the tool to exit, removes its working folder and imports no
+output. The source remains unchanged. Older tool versions without progress
+reports still show the ongoing conversion and can also be cancelled.
 
 An `.rtfd` document is a folder in Finder. Fastra therefore asks whether to
 convert it or open it as a folder — both when opening it and when clicking it
@@ -994,6 +1018,10 @@ operations require a visible confirmation.
 
 ## Encoding and Line Endings
 
+Cursor position and statistics stay on one line. When space is limited,
+the tooltip shows the complete values. Statistics count characters, words
+and lines; with a selection they refer to the selected text.
+
 The footer shows the encoding and line ending of the active tab:
 
 - **Encoding chip:** “Reopen with encoding” reloads the file from disk
@@ -1166,6 +1194,15 @@ the JSON request. Windows, documents, sessions and jobs expose read-only
 `id` and `details` properties. These commands cannot modify normal work
 windows. External functional probes pass; the incomplete diagnosis of an
 earlier delivery timeout is documented in `docs/LOCAL-CONTROL.md`.
+
+For handoffs with provenance, Fastra adopts its own session copy. The sender
+may remove its temporary file only after `ready` and `adopted: true`. For archive
+members, a provenance area shows the outer archive, every member level and its
+byte identity. The copy is read-only and is never written back into the archive.
+The area explicitly explains when only the source generation has been checked,
+rather than the outer content identity. An unconfirmed hit position is not shown
+as an exact jump. Closing the session and quitting the app remove the owned copy;
+cancelled and failed handoffs do not confirm adoption.
 
 ## Saved code explanations
 

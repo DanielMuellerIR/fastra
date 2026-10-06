@@ -10,12 +10,13 @@ struct LocalControlContractTests {
     func olderCapabilities() throws {
         let data = try JSONEncoder().encode(ControlProtocol.capabilities)
         var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        for key in ["explanationSchemaVersion", "maximumExplanationSteps", "maximumExplanationTotalSourceBytes", "explanationEncodings"] {
+        for key in ["explanationSchemaVersion", "maximumExplanationSteps", "maximumExplanationTotalSourceBytes", "explanationEncodings", "sourceSnapshotSchemaVersion", "maximumOuterArchiveBytes"] {
             object.removeValue(forKey: key)
         }
         object["operations"] = ["capabilities", "objects", "snapshot", "status", "cancel", "navigate", "close"]
         let older = try JSONDecoder().decode(ControlCapabilities.self, from: JSONSerialization.data(withJSONObject: object))
-        #expect(older.explanationSchemaVersion == nil && !older.operations.contains("explanation"))
+        #expect(older.explanationSchemaVersion == nil && older.sourceSnapshotSchemaVersion == nil
+                && older.maximumOuterArchiveBytes == nil && !older.operations.contains("explanation"))
     }
     @Test("Unbekannte Felder und Operationen werden abgewiesen")
     func strictRequests() throws {

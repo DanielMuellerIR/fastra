@@ -60,7 +60,10 @@ token highlighting, curated patterns, and guided capture groups.
 
 - **Local snapshot control**: The bundled [`fastra-control` helper](docs/LOCAL-CONTROL.md)
   opens bounded read-only text in a separate session and reports confirmed
-  content and selection through jobs. AppleScript uses the same controller.
+  content and selection through jobs. AppleScript uses the same controller. Handoffs with
+  provenance adopt an owned session copy and show the archive chain and binding limits.
+- **Diff report**: Export finished file and Git comparisons as a UTF-8 differences list.
+- **Drag files from tabs**: Share saved document files; unsaved editor changes stay in the editor.
 - **Saved code explanations**: Replay prepared explanations alongside syntax-coloured
   source snapshots, with resizable panes, step navigation and soft wrap.
 - **Code folding**: Collapse methods and control blocks, including 4D `.4dm` files.
