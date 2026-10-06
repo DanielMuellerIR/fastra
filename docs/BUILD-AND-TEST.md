@@ -502,7 +502,14 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   private IP-Bereiche, absolute Home-Pfade, E-Mail-Adressen und ssh-Remotes in
   Commit-Nachrichten, dazu die eigenen Rechner-/Hostnamen aus der
   gitignorierten `app/public-history-patterns.local` (auch gegen hinzugefügte
-  Zeilen). Im Release-Lauf ist ein Fund ein harter Fehler. Ohne die lokale
+  Zeilen). Im Release-Lauf bleibt jeder ungeprüfte Fund ein harter Fehler.
+  Semantisch bestätigte historische Fehlalarme können in
+  `app/public-history-reviewed.sha256` exakt dokumentiert werden: Eine Zeile
+  enthält nur den vom Audit als `sha256=…` ausgegebenen Hash. Dieser bindet
+  Fundart, volle Commit-ID und vollständige Fundzeile; derselbe Text in einem
+  neuen Commit oder mit anderem Inhalt bleibt gesperrt. Neue Einträge erfordern
+  eine bewusste Prüfung, keine automatische Übernahme der Audit-Ausgabe.
+  Ungültige IDs und Scannerfehler brechen weiterhin hart ab. Ohne die lokale
   Musterdatei greifen nur die eingebauten Muster; das Skript weist darauf hin.
   Exit 2 bedeutet nur „kein öffentliches Remote bekannt" — dann erst
   `git fetch <remote>`.

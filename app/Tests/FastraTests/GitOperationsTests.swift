@@ -38,6 +38,10 @@ private final class ControlledGitExecutor: GitCommandExecuting {
         let cancellation = Cancellation()
         // Der neue Gesamtzähler hat einen eigenen, sofort beantworteten Read.
         // Die kontrollierten Indizes bleiben den fünf Zustandsabfragen vorbehalten.
+        if arguments == ["remote", "-v"] {
+            completion(success(Data()))
+            return cancellation
+        }
         if arguments == GitGraph.countArguments {
             completion(success(Data("23001\n".utf8)))
             return cancellation

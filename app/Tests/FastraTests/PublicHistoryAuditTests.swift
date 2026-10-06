@@ -169,3 +169,42 @@ func gitIntegration_publicHistoryBrokenPatternIsHardError() throws {
     #expect(result.output.contains("FEHLER"))
     #expect(!result.output.contains("PASS"))
 }
+
+@Test("Exakte Fundfreigabe gilt nur für den geprüften Commit und schaltet neue Treffer nicht frei")
+func gitIntegration_publicHistoryExactReview() throws {
+    let root = try makeHistoryFixtureRepo()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try fixtureGit(["commit", "--allow-empty", "-m", "GEHEIMHOST Referenz"], in: root)
+    let blocked = try runHistoryAudit(root: root, patterns: "GEHEIMHOST\n", release: true)
+    #expect(blocked.exitCode == 1)
+    let digest = try #require(blocked.output.components(separatedBy: "[sha256=").dropFirst().first?.prefix(64))
+    let approvals = root.appendingPathComponent("app/public-history-reviewed.sha256")
+    try (String(digest) + "\n").write(to: approvals, atomically: true, encoding: .utf8)
+    #expect(try runHistoryAudit(root: root, patterns: "GEHEIMHOST\n", release: true).exitCode == 0)
+    try fixtureGit(["commit", "--allow-empty", "-m", "harmlose Änderung"], in: root)
+    #expect(try runHistoryAudit(root: root, patterns: "GEHEIMHOST\n", release: true).exitCode == 0)
+    try fixtureGit(["commit", "--allow-empty", "-m", "GEHEIMHOST Referenz"], in: root)
+    #expect(try runHistoryAudit(root: root, patterns: "GEHEIMHOST\n", release: true).exitCode == 1)
+    try "*\n".write(to: approvals, atomically: true, encoding: .utf8)
+    let invalid = try runHistoryAudit(root: root, patterns: "GEHEIMHOST\n", release: true)
+    #expect(invalid.exitCode == 1 && invalid.output.contains("FEHLER"))
+}
+
+@Test("Freigegebene Datei-Fundzeile bleibt an Inhalt und Commit gebunden")
+func gitIntegration_publicHistoryReviewedAddedLine() throws {
+    let root = try makeHistoryFixtureRepo()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("datei.txt")
+    try "GEHEIMHOST Beispiel\n".write(to: file, atomically: true, encoding: .utf8)
+    try fixtureGit(["add", "datei.txt"], in: root)
+    try fixtureGit(["commit", "-m", "Beispiel"], in: root)
+    let blocked = try runHistoryAudit(root: root, patterns: "GEHEIMHOST\n", release: true)
+    let digest = try #require(blocked.output.components(separatedBy: "[sha256=").dropFirst().first?.prefix(64))
+    try (String(digest) + "\n").write(to: root.appendingPathComponent("app/public-history-reviewed.sha256"), atomically: true, encoding: .utf8)
+    #expect(try runHistoryAudit(root: root, patterns: "GEHEIMHOST\n", release: true).exitCode == 0)
+    #expect(try runHistoryAudit(root: root, patterns: "GEHEIM[HOST\n", release: true).exitCode == 1)
+    try "GEHEIMHOST anderes Beispiel\n".write(to: file, atomically: true, encoding: .utf8)
+    try fixtureGit(["add", "datei.txt"], in: root)
+    try fixtureGit(["commit", "-m", "Beispiel ändern"], in: root)
+    #expect(try runHistoryAudit(root: root, patterns: "GEHEIMHOST\n", release: true).exitCode == 1)
+}

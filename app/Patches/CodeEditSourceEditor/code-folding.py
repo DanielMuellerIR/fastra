@@ -139,6 +139,25 @@ if new not in source:
 else:
     pending[ribbon] = source
 
+# Der native Faltungsweg verwendet keine Attachment-Suche mehr.
+obsolete = """    private func findAttachmentFor(fold: FoldRange, firstLineRange: NSRange) -> AnyTextAttachment? {
+        model?.controller?.textView?.layoutManager.attachments
+            .getAttachmentsStartingIn(NSRange(fold.range))
+            .filter({
+                $0.attachment is LineFoldPlaceholder && firstLineRange.contains($0.range.location)
+            }).first
+    }
+
+"""
+source = read(ribbon)
+if 'findAttachmentFor' in source:
+    if source.count(obsolete) != 1:
+        raise SystemExit('LineFoldRibbonView: Anker der veralteten Attachment-Suche fehlt')
+    source = source.replace(obsolete, '')
+if 'findAttachmentFor' in source or source.count(new) != 1:
+    raise SystemExit('LineFoldRibbonView: Faltungsweg unvollständig bereinigt')
+pending[ribbon] = source
+
 manager = text_root / 'TextLayoutManager/TextAttachments/TextAttachmentManager.swift'
 replace(manager, '''        layoutManager?.setNeedsLayout()
 

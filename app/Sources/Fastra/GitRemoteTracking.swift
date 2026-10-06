@@ -31,6 +31,17 @@ struct GitRemoteTrackingSnapshot: Equatable {
     static let empty = GitRemoteTrackingSnapshot(headOID: nil, states: [])
 }
 
+enum GitRemoteTrackingRefOwner {
+    static func remote(for shortName: String, remotes: [String]) -> String? {
+        // Remote-Namen dürfen selbst Schrägstriche enthalten. Der längste
+        // konfigurierte Präfix trennt sie eindeutig vom Branchnamen.
+        if !remotes.isEmpty {
+            return remotes.sorted { $0.count > $1.count }.first { shortName.hasPrefix($0 + "/") }
+        }
+        return shortName.firstIndex(of: "/").map { String(shortName[..<$0]) }
+    }
+}
+
 /// Kompatible Ref-Liste für Git-Versionen vor 2.41. Erst ab 2.41 kann
 /// `for-each-ref` Ahead/Behind selbst ausgeben; ältere System-Gits bekommen
 /// dieselben Zähler über je ein `rev-list` auf den eingefrorenen OIDs.
@@ -62,7 +73,7 @@ enum GitRemoteTrackingRefList {
         return value
     }
 
-    static func parse(_ output: String) -> Listing {
+    static func parse(_ output: String, remotes: [String] = []) -> Listing {
         var headOID: String?
         var refs: [Ref] = []
         for line in output.split(whereSeparator: \Character.isNewline) {
@@ -80,9 +91,8 @@ enum GitRemoteTrackingRefList {
                 continue
             }
             let short = String(fields[0].dropFirst("refs/remotes/".count))
-            guard let slash = short.firstIndex(of: "/") else { continue }
-            let remote = String(short[..<slash])
-            let branch = String(short[short.index(after: slash)...])
+            guard let remote = GitRemoteTrackingRefOwner.remote(for: short, remotes: remotes) else { continue }
+            let branch = String(short.dropFirst(remote.count + 1))
             guard !remote.isEmpty, !branch.isEmpty else { continue }
             refs.append(Ref(refName: fields[0], remote: remote,
                             branch: branch, oid: fields[1]))
@@ -138,7 +148,7 @@ enum GitRemoteTrackingList {
                          stderr: "")
     }
 
-    static func parse(_ output: String) -> GitRemoteTrackingSnapshot {
+    static func parse(_ output: String, remotes: [String] = []) -> GitRemoteTrackingSnapshot {
         var headOID: String?
         var states: [GitRemoteTrackingState] = []
 
@@ -162,9 +172,8 @@ enum GitRemoteTrackingList {
                 continue
             }
             let short = String(refName.dropFirst("refs/remotes/".count))
-            guard let slash = short.firstIndex(of: "/") else { continue }
-            let remote = String(short[..<slash])
-            let branch = String(short[short.index(after: slash)...])
+            guard let remote = GitRemoteTrackingRefOwner.remote(for: short, remotes: remotes) else { continue }
+            let branch = String(short.dropFirst(remote.count + 1))
             let counts = fields[4].split(whereSeparator: \Character.isWhitespace)
             guard !remote.isEmpty, !branch.isEmpty, counts.count == 2,
                   let commitsOnlyInRemote = Int(counts[0]),

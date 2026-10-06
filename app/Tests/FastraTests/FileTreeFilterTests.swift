@@ -181,3 +181,26 @@ func nodeVisibility() throws {
     #expect(FileTreeFilter.isVisible(node: match, result: result))
     #expect(!FileTreeFilter.isVisible(node: miss, result: result))
 }
+
+@Test("Eigene Dateiänderung entwertet einen Filter auch bei inaktivem Dateien-Tab")
+@MainActor
+func filterInvalidatedOutsideFileTab() throws {
+    let root = try makeFixtureTree()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let name = "fastra-filter-revision-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: name)
+    defer { defaults.removePersistentDomain(forName: name) }
+    let workspace = Workspace(defaults: defaults)
+    workspace.fileTreeMutationWorkspaceProvider = { [] }
+    workspace.fileTreeFilterQuery = "neu"
+    workspace.fileTreeFilterResult = FileTreeFilter.scan(rootURL: root, query: "neu")
+    #expect(workspace.fileTreeFilterResult?.matchCount == 0)
+    workspace.sidebarMode = .graph
+    let previousRevision = workspace.fileMutationRevision
+    try "new".write(to: root.appendingPathComponent("neu.txt"), atomically: true, encoding: .utf8)
+    workspace.refreshAfterProjectFileMutation()
+    #expect(workspace.fileTreeFilterResult == nil)
+    #expect(workspace.fileMutationRevision != previousRevision)
+    workspace.sidebarMode = .files
+    #expect(FileTreeFilter.scan(rootURL: root, query: workspace.fileTreeFilterQuery)?.matchCount == 1)
+}

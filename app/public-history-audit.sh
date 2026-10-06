@@ -67,10 +67,32 @@ builtin_patterns=(
     '\b[a-z][a-z0-9._-]*@[a-z0-9.-]+:[a-z0-9]'
 )
 
+# Nur exakt geprüfte Fundzeilen dürfen als Fehlalarm gelten. Die Hashes
+# enthalten die volle Commit-ID: derselbe Text in neuer History bleibt offen.
+reviewed_file="app/public-history-reviewed.sha256"
+reviewed_hashes=()
+if [[ -f "$reviewed_file" ]]; then
+    while IFS= read -r entry || [[ -n "$entry" ]]; do
+        [[ -z "$entry" || "$entry" == \#* ]] && continue
+        if [[ ! "$entry" =~ '^[0-9a-f]{64}$' ]]; then
+            echo "PUBLIC HISTORY AUDIT: FEHLER — ungültige geprüfte Fund-ID." >&2
+            exit 1
+        fi
+        reviewed_hashes+=("$entry")
+    done < "$reviewed_file"
+fi
 findings=0
+reviewed=0
 report() {
+    local candidate="$1" digest
+    digest="$(printf '%s' "$candidate" | shasum -a 256)" || exit 1
+    digest="${digest%% *}"
+    if (( ${reviewed_hashes[(Ie)$digest]} )); then
+        reviewed=$((reviewed + 1))
+        return
+    fi
     findings=$((findings + 1))
-    printf '  %s\n' "$1"
+    printf '  %s [sha256=%s]\n' "$candidate" "$digest"
 }
 
 # Treffer des letzten `scan`-Laufs, eine Zeile je Fund.
@@ -111,12 +133,21 @@ filter() {
     [[ $rc -eq 0 ]] || grep_output=""
 }
 
-messages="$(git log --format='%h %s%n%b' "$range")"
+# Die Liste einmal vollständig lesen; ein gescheiterter Git-Aufruf darf
+# keine leere, scheinbar saubere Kandidatenliste ergeben.
+outgoing_commits="$(git rev-list --reverse "$range")" || exit 1
+messages=""
+while IFS= read -r sha; do
+    commit_message="$(git show -s --format='%s%n%b' "$sha")" || exit 1
+    while IFS= read -r message_line; do
+        messages+="$sha $message_line"$'\n'
+    done <<< "$commit_message"
+done <<< "$outgoing_commits"
 
 for pattern in "${builtin_patterns[@]}"; do
     scan "$pattern" <<< "$messages"
     while IFS= read -r line; do
-        [[ -n "$line" ]] && report "Commit-Nachricht: $line"
+        [[ -n "$line" ]] && report "Commit-Nachricht: ${line#*:}"
     done <<< "$scan_output"
 done
 
@@ -149,18 +180,18 @@ if [[ -f "$patterns_file" ]]; then
         filter -vE '^\+\+\+' <<< "$grep_output"
         commit_added="$grep_output"
         [[ -z "$commit_added" ]] && continue
-        added_lines+="$(printf '%s\n' "$commit_added" | sed "s|^|${sha:0:9} |")"$'\n'
-    done < <(git rev-list --reverse "$range")
+        added_lines+="$(printf '%s\n' "$commit_added" | sed "s|^|${sha} |")"$'\n'
+    done <<< "$outgoing_commits"
 
     while IFS= read -r pattern; do
         [[ -z "$pattern" || "$pattern" == \#* ]] && continue
         scan "$pattern" <<< "$messages"
         while IFS= read -r line; do
-            [[ -n "$line" ]] && report "Commit-Nachricht: $line"
+            [[ -n "$line" ]] && report "Commit-Nachricht: ${line#*:}"
         done <<< "$scan_output"
         scan "$pattern" <<< "$added_lines"
         while IFS= read -r line; do
-            [[ -n "$line" ]] && report "Neue Zeile: $line"
+            [[ -n "$line" ]] && report "Neue Zeile: ${line#*:}"
         done <<< "$scan_output"
     done < "$patterns_file"
 else
@@ -172,14 +203,14 @@ fi
 
 count="$(git log --oneline "$range" | wc -l | tr -d ' ')"
 if [[ $findings -eq 0 ]]; then
-    echo "PUBLIC HISTORY AUDIT: PASS — $count ausgehende(r) Commit(s), keine internen Angaben gefunden."
+    echo "PUBLIC HISTORY AUDIT: PASS — $count ausgehende(r) Commit(s), keine offenen internen Angaben ($reviewed exakt geprüfte Treffer)."
     exit 0
 fi
 
 echo "PUBLIC HISTORY AUDIT: $findings Fund(e) in $count ausgehenden Commits:" >&2
 if [[ $release -eq 1 ]]; then
     echo "PUBLIC HISTORY AUDIT: FAIL (Release-Modus)." >&2
-    echo "  Dateiinhalte lassen sich vor dem Push noch generalisieren." >&2
+    echo "  Echte private Angaben vor dem Push bereinigen; semantische Fehlalarme exakt dokumentieren." >&2
     echo "  Bei Commit-NACHRICHTEN hilft nur Amend/Squash VOR dem ersten Push —" >&2
     echo "  danach bleibt der Text über seine SHA dauerhaft erreichbar." >&2
     exit 1

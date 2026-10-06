@@ -104,6 +104,10 @@ private final class ReviewFixExecutor: GitCommandExecuting {
     func execute(arguments: [String], in directory: URL,
                  outputLimit: GitOutputLimit, policy: GitExecutionPolicy,
                  completion: @escaping (GitExecutionOutcome) -> Void) -> GitCancelling {
+        if arguments == ["remote", "-v"] {
+            completion(reviewFixSuccess())
+            return Token()
+        }
         if arguments == GitGraph.countArguments {
             completion(reviewFixSuccess("1\n"))
             return Token()

@@ -5008,6 +5008,8 @@ final class Workspace: ObservableObject {
     private func noteFileMutationChange(in workspaces: [Workspace]) {
         for workspace in workspaces {
             workspace.fileMutationRevision &+= 1
+            // Der Dateien-Tab kann gerade abgebaut sein und sieht dann kein Ereignis.
+            workspace.fileTreeFilterResult = nil
         }
     }
 

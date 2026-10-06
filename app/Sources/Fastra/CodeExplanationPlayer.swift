@@ -174,7 +174,8 @@ final class CodeExplanationPlayer: NSObject {
         do {
             if displayedSource != step.sourceID {
                 let id = documents[step.sourceID] ?? UUID()
-                try controller.installExplanationSource(loaded, documentID: id, in: session)
+                let source = package.manifest.sources.first { $0.id == step.sourceID }!
+                try controller.installExplanationSource(loaded, documentID: id, in: session, sourceName: source.path)
                 documents[step.sourceID] = id; displayedSource = step.sourceID
                 applyFonts()
             }
@@ -238,7 +239,6 @@ final class CodeExplanationPlayer: NSObject {
         pauseButton.toolTip = caption
         pauseButton.state = state == "paused" ? .on : .off
         pauseButton.title = L10n.string(state == "paused" ? "Pausiert" : "Pause")
-        session?.setSourceName(source.path)
         previous.isEnabled = index > 0 && state != "loadingStep"
         stepList.selectItem(at: index); stepList.isEnabled = state != "loadingStep"
         next.isEnabled = index + 1 < package.manifest.steps.count && state != "loadingStep"

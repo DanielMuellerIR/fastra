@@ -203,8 +203,11 @@ final class LocalControlController {
                 let package = try await self.loadExplanation(request.path!)
                 guard self.isCurrent(entry, session: session, generation: generation) else { return }
                 let first = package.manifest.steps[0]
-                guard let loaded = package.loadedSources[first.sourceID] else { throw ControlFailure.source }
-                session.install(loaded)
+                guard let loaded = package.loadedSources[first.sourceID],
+                      let source = package.manifest.sources.first(where: { $0.id == first.sourceID }) else {
+                    throw ControlFailure.source
+                }
+                session.install(loaded, sourceName: source.path)
                 let player = CodeExplanationPlayer(package: package, session: session, controller: self)
                 session.attach(player)
                 player.watch(entry.value.id, index: 0)
@@ -246,12 +249,12 @@ final class LocalControlController {
     }
 
     func installExplanationSource(_ loaded: FileLoader.LoadedFile, documentID: UUID,
-                                  in session: ControlSnapshotWindow) throws {
+                                  in session: ControlSnapshotWindow, sourceName: String? = nil) throws {
         guard sessions[session.sessionID] === session else { throw ControlFailure.invalidID }
         // Auch fremde Navigation entwerten, bevor die sichtbare Quelle wechselt.
         // Das gilt unabhängig davon, ob der nächste Auftrag noch Kapazität hat.
         interruptPending(in: session)
-        session.install(loaded, documentID: documentID)
+        session.install(loaded, documentID: documentID, sourceName: sourceName)
     }
 
     private func createJob(_ request: ControlRequest, session: ControlSnapshotWindow) -> JobEntry {

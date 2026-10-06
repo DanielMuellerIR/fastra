@@ -19,6 +19,16 @@ struct CodeFoldingTests {
         #expect(!source.substring(with: folds[0].range).contains("Function other"))
     }
 
+    @Test("CR-Zeilenkommentare verdecken weder Kontrollblöcke noch folgende Methoden")
+    func carriageReturnComments() throws {
+        let control = "If (True)\r// Kommentar\rALERT(\"😀\")\rEnd if\r"
+        #expect(FourDFolding.regions(in: control).count == 1)
+        let methods = "Function one\r// Kommentar\rALERT(\"one\")\rFunction two\rALERT(\"two\")\r"
+        let folds = FourDFolding.regions(in: methods)
+        try #require(folds.count == 2)
+        #expect(!(methods as NSString).substring(with: folds[0].range).contains("Function two"))
+    }
+
     @Test("4D ignoriert Kommentare, Strings und SQL-Inhalt; Fehler schließen keine falschen Blöcke")
     func lexicalBoundaries() throws {
         let text = "/*\nIf (True)\nEnd if\n*/\n\"If\"\nBegin SQL\nIf x then\nEnd if\nEnd SQL\nIf (True)\nFor ($i;1;2)\nEnd if\n"

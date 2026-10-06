@@ -166,8 +166,15 @@ struct CodeExplanationPlayerTests {
         #expect(player.state == "ready")
         #expect(window.textView.selectedRange() == NSRange(location: 5, length: 2))
         try capture(window, stage: "ready")
+        func sourceLabel(in view: NSView) -> NSTextField? {
+            if view.accessibilityIdentifier() == "controlSnapshotFilename" { return view as? NSTextField }
+            return view.subviews.lazy.compactMap { sourceLabel(in: $0) }.first
+        }
+        let label = try #require(window.window.contentView.flatMap { sourceLabel(in: $0) })
+        #expect(label.stringValue == "source0.txt")
         let firstID = window.documentID
         player.next.performClick(nil); try await wait(player)
+        #expect(label.stringValue == "source1.txt")
         #expect(player.state == "completed" && player.index == 1)
         #expect(window.documentID != firstID && window.textView.string == "other\nlast\n")
         player.previous.performClick(nil); try await wait(player)

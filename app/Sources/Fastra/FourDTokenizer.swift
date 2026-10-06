@@ -183,7 +183,7 @@ enum FourDTokenizer {
             if char == "/", let next = utf16Char(index + 1) {
                 if next == "/" {
                     let start = index
-                    while index < count, utf16Char(index) != "\n" {
+                    while index < count, utf16Char(index) != "\n", utf16Char(index) != "\r" {
                         if index & 0xFFF == 0, isCancelled() { return nil }
                         index += 1
                     }

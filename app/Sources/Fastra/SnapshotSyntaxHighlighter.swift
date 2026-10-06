@@ -8,10 +8,20 @@ final class SnapshotSyntaxHighlighter {
     private weak var textView: ReadOnlySnapshotTextView?
     private var format = DocumentFormatResolver.resolve(filename: "")
     private var ranges: [HighlightRange] = []
+    // Die Schrift des ersten Tokens kann fett oder kursiv sein; sie ist keine Grundschrift.
+    private var baseFont: NSFont
     private var revision = 0
     private var task: Task<Void, Never>?
 
-    init(textView: ReadOnlySnapshotTextView) { self.textView = textView }
+    init(textView: ReadOnlySnapshotTextView) {
+        self.textView = textView
+        self.baseFont = textView.font ?? .monospacedSystemFont(ofSize: 13, weight: .regular)
+    }
+
+    func setBaseFont(_ font: NSFont) {
+        baseFont = font
+        applyColors()
+    }
 
     func analyze(filename: String) {
         guard let textView else { return }
@@ -56,7 +66,7 @@ final class SnapshotSyntaxHighlighter {
         let dark = textView.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let theme = format.customLanguage.map { dark ? $0.darkTheme : $0.lightTheme }
             ?? (dark ? EditorView.fastraThemeDark : EditorView.fastraTheme)
-        let font = textView.font ?? .monospacedSystemFont(ofSize: 13, weight: .regular)
+        let font = baseFont
         let full = NSRange(location: 0, length: storage.length)
         storage.beginEditing()
         storage.setAttributes([.foregroundColor: theme.text.color, .font: font], range: full)

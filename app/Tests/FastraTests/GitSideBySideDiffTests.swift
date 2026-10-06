@@ -541,6 +541,10 @@ private final class ControlledDiffExecutor: GitCommandExecuting {
                  policy: GitExecutionPolicy,
                  completion: @escaping (GitExecutionOutcome) -> Void) -> GitCancelling {
         let cancellation = Cancellation()
+        if arguments == ["remote", "-v"] {
+            completion(.completed(GitResult(exitCode: 0, stdout: "", stderr: "")))
+            return cancellation
+        }
         if arguments == GitGraph.countArguments {
             completion(.completed(GitResult(exitCode: 0, stdout: "1\n", stderr: "")))
             return cancellation

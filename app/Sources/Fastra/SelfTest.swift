@@ -15836,8 +15836,17 @@ enum SelfTest {
         } catch {
             finish(.environment, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error.localizedDescription)")
         }
-        ws.openProject(at: project)
-        pollSidebarFilterBaseline(ws, base: base)
+        // Die Regression wechselt auf Graph; dafür muss die Fixture ein
+        // echtes Repository sein, sonst zeigt die App absichtlich Dateien.
+        GitRunner.runDetailed(["init", "-b", "main"], in: project) { outcome in
+            DispatchQueue.main.async {
+                guard case .completed(let result) = outcome, result.ok else {
+                    finish(.environment, "Testrepository nicht initialisierbar")
+                }
+                ws.openProject(at: project)
+                pollSidebarFilterBaseline(ws, base: base)
+            }
+        }
     }
 
     private static func pollSidebarFilterBaseline(_ ws: Workspace, base: URL) {
@@ -15854,7 +15863,7 @@ enum SelfTest {
                     nestedHidden = content.map {
                         !markerViewExists(id: "fileTreeRow-drei-treffer.txt-voll", in: $0)
                     } ?? false
-                    return topLevelVisible && nestedHidden
+                    return topLevelVisible && nestedHidden && ws.gitStatus != nil
                 },
                 onTimeout: { book in
                     try? FileManager.default.removeItem(at: base)
@@ -15920,10 +15929,58 @@ enum SelfTest {
                         + "zwei.md wieder da=\(topLevelBack) — \(book.summary)")
                 },
                 then: {
-                    try? FileManager.default.removeItem(at: base)
-                    finish(true, "Filter blendet real gerenderte Zeilen ein/aus (case-insensitiv), "
-                        + "Zähler 1 von 3 gerendert, Aufklappzustand nach Leeren wiederhergestellt")
+                    guard let ws = Workspace.shared else { finish(false, "Workspace fehlt") }
+                    pollSidebarFilterInactiveMutation(ws, base: base)
                 })
+    }
+
+    private static func pollSidebarFilterInactiveMutation(_ ws: Workspace, base: URL) {
+        ws.fileTreeFilterQuery = "neu"
+        waitFor(budget: 5, pause: 0.25,
+            condition: { ws.fileTreeFilterResult?.matchCount == 0 && ws.fileTreeFilterResult?.query == "neu" },
+            onTimeout: { book in finish(false, "Nulltreffer-Ausgangslage fehlt — \(book.summary)") },
+            then: {
+                ws.sidebarMode = .graph
+                // Der Dateien-Tab muss vor der Änderung abgebaut sein.
+                let removedAfter = Date().addingTimeInterval(0.5)
+                waitFor(budget: 3, pause: 0.1, condition: {
+                    guard Date() >= removedAfter,
+                          let content = mainWindowForAXChecks()?.contentView else { return false }
+                    return !markerViewExists(id: "sidebarFilterState-n0-m3", in: content)
+                },
+                    onTimeout: { book in finish(false, "Tababbau verzögert — \(book.summary)") },
+                    then: {
+                        do {
+                            try "neu".write(to: base.appendingPathComponent("projekt/neu.txt"),
+                                atomically: true, encoding: .utf8)
+                        } catch { finish(false, "Fixture nicht schreibbar: \(error)") }
+                        ws.refreshAfterProjectFileMutation()
+                        // Der neue SinceNow-Wächter darf das frühere Ereignis
+                        // beim Rückwechsel nicht als zufällige Hilfe bekommen.
+                        let eventsAfter = Date().addingTimeInterval(0.5)
+                        waitFor(budget: 3, pause: 0.1, condition: { Date() >= eventsAfter },
+                            onTimeout: { book in finish(false, "Dateiereignisse verzögert — \(book.summary)") },
+                            then: { pollSidebarFilterMutationRestored(ws, base: base) })
+                    })
+            })
+    }
+
+    private static func pollSidebarFilterMutationRestored(_ ws: Workspace, base: URL) {
+        ws.sidebarMode = .files
+        waitFor(budget: 10, pause: 0.25,
+            condition: {
+                guard let content = mainWindowForAXChecks()?.contentView else { return false }
+                return markerViewExists(id: "fileTreeRow-neu.txt-gefiltert", in: content)
+                    && markerViewExists(id: "sidebarFilterState-n1-m4", in: content)
+            },
+            onTimeout: { book in
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Neue Datei nach Graph-Rückkehr verborgen — \(book.summary)")
+            },
+            then: {
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "Filterzeilen, Zähler und Aufklappzustand korrekt; eigene Änderung im Graph-Tab nach Rückkehr sichtbar")
+            })
     }
 
     // MARK: - Selbsttest tabflood (Layout-Invariante, 2026-09-01)

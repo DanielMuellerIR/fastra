@@ -105,12 +105,14 @@ final class ControlSnapshotWindow: NSObject, NSWindowDelegate, NSSplitViewDelega
 
     func show() { window.orderFront(nil) }
 
-    func install(_ loaded: FileLoader.LoadedFile, documentID: UUID? = nil) {
+    func install(_ loaded: FileLoader.LoadedFile, documentID: UUID? = nil, sourceName: String? = nil) {
+        // Name und Inhalt wechseln gemeinsam; erst danach die Syntax analysieren.
+        if let sourceName { setSourceName(sourceName) }
         self.loaded = loaded
         if let documentID { self.documentID = documentID }
         applyingSelection = true
         textView.string = loaded.content
-        highlighter.analyze(filename: sourceName)
+        highlighter.analyze(filename: self.sourceName)
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         window.contentView?.layoutSubtreeIfNeeded()
         applyingSelection = false
@@ -160,17 +162,15 @@ final class ControlSnapshotWindow: NSObject, NSWindowDelegate, NSSplitViewDelega
         split.setPosition(max(120, split.bounds.height * 0.44), ofDividerAt: 0)
     }
 
-    func setSourceName(_ name: String) {
+    private func setSourceName(_ name: String) {
         filenameLabel.stringValue = (name as NSString).lastPathComponent
         filenameLabel.toolTip = name
         guard sourceName != name else { return }
         sourceName = name
-        highlighter.analyze(filename: name)
     }
 
     func setCodeFontSize(_ size: CGFloat) {
-        textView.font = .monospacedSystemFont(ofSize: size, weight: .regular)
-        highlighter?.applyColors()
+        highlighter?.setBaseFont(.monospacedSystemFont(ofSize: size, weight: .regular))
     }
 
     func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat,

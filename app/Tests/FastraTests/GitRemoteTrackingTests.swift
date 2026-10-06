@@ -4,6 +4,17 @@ import Testing
 
 @Suite("Git-Remote-Vergleiche")
 struct GitRemoteTrackingTests {
+    @Test("Beide Parser verwenden den längsten konfigurierten Remote-Namen")
+    func slashRemote() throws {
+        let ref = "refs/remotes/team/fork/main"
+        let modern = GitRemoteTrackingList.parse("\(ref)\toid\t\t \t0 0", remotes: ["team", "team/fork"])
+        let state = try #require(modern.states.first)
+        #expect(state.remote == "team/fork" && state.branch == "main")
+        let legacy = GitRemoteTrackingRefList.parse("\(ref)\toid\t\t ", remotes: ["team", "team/fork"])
+        #expect(legacy.refs.first?.remote == state.remote)
+        #expect(legacy.refs.first?.branch == state.branch)
+    }
+
     @Test("Parser ordnet Ahead und Behind aus Sicht des lokalen HEAD zu")
     func parsesPerRemoteCountsAndSkipsSymbolicHeads() {
         let output = """

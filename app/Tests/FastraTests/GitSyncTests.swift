@@ -31,6 +31,10 @@ private final class SyncTestExecutor: GitCommandExecuting {
                  outputLimit: GitOutputLimit, policy: GitExecutionPolicy,
                  completion: @escaping (GitExecutionOutcome) -> Void) -> GitCancelling {
         let token = Token()
+        if arguments == ["remote", "-v"] {
+            completion(syncSuccess())
+            return token
+        }
         if arguments == GitGraph.countArguments {
             completion(syncSuccess("1\n"))
             return token

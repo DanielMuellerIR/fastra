@@ -45,6 +45,37 @@ struct GitIntegrationRemoteActionTests {
         return (base, local, peer)
     }
 
+    @Test("Fetch eines Remotes mit Schrägstrich erreicht Vergleich und Erfolgs-/Fehlermarker")
+    func slashRemoteFetchPresentation() async throws {
+        let f = try await fixture()
+        defer { try? FileManager.default.removeItem(at: f.base) }
+        #expect((await remoteActionGit(["remote", "rename", "source", "team/fork"], in: f.local)).ok)
+        let executor = GitRunnerExecutor()
+        let coordinator = GitOperationsCoordinator(executor: executor)
+        let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
+        var outcome: GitExecutionOutcome?
+        _ = store.fetch(repository: f.local, preferences: GitPreferences(),
+                        remotes: ["team/fork"], selection: .remote("team/fork")) { value in
+            Task { @MainActor in outcome = value }
+        }
+        try await waitUntil { outcome != nil }
+        store.refresh(repository: f.local, scope: .full)
+        try await waitUntil { store.snapshot(for: f.local)?.remoteTracking.contains { $0.remote == "team/fork" } == true }
+        let snapshot = try #require(store.snapshot(for: f.local))
+        let state = try #require(snapshot.remoteTracking.first { $0.remote == "team/fork" })
+        #expect(state.branch == "main" && state.localBehind == 1)
+        #expect(GitRemoteTrackingPresentation.compactCounts(state, fetch: snapshot.fetch) == "↓1")
+        #expect(GitRemoteTrackingPresentation.relevantStates(snapshot.remoteTracking, branch: "main", upstream: nil).contains(state))
+        #expect((await remoteActionGit(["remote", "set-url", "team/fork", f.base.appendingPathComponent("missing.git").path], in: f.local)).ok)
+        outcome = nil
+        _ = store.fetch(repository: f.local, preferences: GitPreferences(),
+                        remotes: ["team/fork"], selection: .remote("team/fork")) { value in
+            Task { @MainActor in outcome = value }
+        }
+        try await waitUntil { outcome != nil }
+        #expect(GitRemoteTrackingPresentation.compactCounts(state, fetch: store.snapshot(for: f.local)?.fetch) == "↓1 !")
+    }
+
     @Test("Pull von anderer Quelle übernimmt deren Commit und behält den Upstream")
     func explicitPullRetainsUpstream() async throws {
         let f = try await fixture()

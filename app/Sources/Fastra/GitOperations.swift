@@ -682,6 +682,7 @@ final class GitRepositoryStore {
         var graph: GitExecutionOutcome?
         var totalCommitCount: GitExecutionOutcome?
         var remoteTracking: GitExecutionOutcome?
+        var remoteNames: GitExecutionOutcome?
         init(remaining: Int) { self.remaining = remaining }
     }
 
@@ -909,7 +910,7 @@ final class GitRepositoryStore {
 
     private func startBatch(repository: URL, path: String, scope: GitRefreshScope,
                             attempt: Int) {
-        let aggregate = Aggregate(remaining: scope == .status ? 2 : 6)
+        let aggregate = Aggregate(remaining: scope == .status ? 2 : 7)
         let lease = coordinator.performBatch(repository: repository,
                                               identity: "repository-store-\(path)-\(scope.rawValue)-\(attempt)") {
             [executor] finish in
@@ -941,11 +942,19 @@ final class GitRepositoryStore {
                 composite.add(executor.execute(arguments: GitGraph.countArguments,
                                                in: repository, outputLimit: .default,
                                                policy: .default) { record(\.totalCommitCount, $0) })
-                self.loadRemoteTracking(
-                    repository: repository,
-                    executor: executor,
-                    composite: composite
-                ) { record(\.remoteTracking, $0) }
+                composite.add(executor.execute(arguments: ["remote", "-v"],
+                    in: repository, outputLimit: .default, policy: .default) { remoteOutcome in
+                    record(\.remoteNames, remoteOutcome)
+                    guard let result = remoteOutcome.usableResult else {
+                        record(\.remoteTracking, remoteOutcome)
+                        return
+                    }
+                    let remotes = result.stdout.split(whereSeparator: \.isNewline).compactMap {
+                        $0.split(whereSeparator: \.isWhitespace).first.map(String.init)
+                    }
+                    self.loadRemoteTracking(repository: repository, executor: executor,
+                        composite: composite, remotes: remotes) { record(\.remoteTracking, $0) }
+                })
             }
             return composite
         } completion: { [weak self] outcome in
@@ -971,6 +980,7 @@ final class GitRepositoryStore {
         repository: URL,
         executor: GitCommandExecuting,
         composite: GitCompositeCancellation,
+        remotes: [String],
         completion: @escaping (GitExecutionOutcome) -> Void
     ) {
         let headToken = executor.execute(
@@ -995,7 +1005,7 @@ final class GitRepositoryStore {
                     return
                 }
                 if modernResult.ok, !modernResult.stdoutWasTruncated {
-                    let parsed = GitRemoteTrackingList.parse(modernResult.stdout)
+                    let parsed = GitRemoteTrackingList.parse(modernResult.stdout, remotes: remotes)
                     completion(.completed(GitRemoteTrackingList.renderedResult(
                         headOID: headOID, states: parsed.states
                     )))
@@ -1011,7 +1021,7 @@ final class GitRepositoryStore {
                         completion(listOutcome)
                         return
                     }
-                    let parsed = GitRemoteTrackingRefList.parse(listResult.stdout)
+                    let parsed = GitRemoteTrackingRefList.parse(listResult.stdout, remotes: remotes)
                     let listing = GitRemoteTrackingRefList.Listing(
                         headOID: headOID, refs: parsed.refs
                     )
@@ -1073,7 +1083,10 @@ final class GitRepositoryStore {
                     ? [] : previous?.graph ?? [])
             : previous?.graph ?? []
         let remoteTrackingSnapshot = scope == .full
-            ? remoteTrackingResult.map { GitRemoteTrackingList.parse($0.stdout) }
+            ? remoteTrackingResult.map { GitRemoteTrackingList.parse($0.stdout, remotes:
+                aggregate.remoteNames?.usableResult?.stdout.split(whereSeparator: \.isNewline).compactMap {
+                    $0.split(whereSeparator: \.isWhitespace).first.map(String.init)
+                } ?? []) }
             : nil
         // Ein technisch gescheiterter Tracking-Read darf den alten Stand nur
         // behalten, wenn er nachweislich zum weiterhin ausgecheckten Commit

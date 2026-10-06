@@ -25,12 +25,34 @@ struct SnapshotPresentationTests {
         }
         #expect(await waitUntil { colors().count >= 3 })
         #expect(view.string == content && view.selectedRange() == selected)
-        view.font = .monospacedSystemFont(ofSize: 18, weight: .regular)
-        highlighter.applyColors()
+        highlighter.setBaseFont(.monospacedSystemFont(ofSize: 18, weight: .regular))
         #expect(colors().count >= 3)
         #expect(view.string == content && !view.isEditable)
         view.insertText("changed", replacementRange: selected)
         #expect(view.string == content)
+    }
+
+    @Test("Wiederholtes Färben und Appearance-Wechsel übernehmen keine Token-Schrift")
+    func repeatedColorsKeepBaseFont() async throws {
+        _ = NSApplication.shared
+        let content = "If (True)\nplain"
+        let scroll = ReadOnlySnapshotTextView.makeScrollView(content: content, reason: "Snapshot")
+        let view = try #require(scroll.documentView as? ReadOnlySnapshotTextView)
+        let highlighter = SnapshotSyntaxHighlighter(textView: view)
+        highlighter.analyze(filename: "Methode.4dm")
+        func font(at offset: Int) -> NSFont? {
+            view.textStorage?.attribute(.font, at: offset, effectiveRange: nil) as? NSFont
+        }
+        #expect(await waitUntil { font(at: 0).map { NSFontManager.shared.traits(of: $0).contains(.boldFontMask) } == true })
+        for appearance in [NSAppearance.Name.darkAqua, .aqua, .darkAqua] {
+            view.appearance = NSAppearance(named: appearance)
+            highlighter.applyColors()
+            let plain = try #require(font(at: (content as NSString).range(of: "plain").location))
+            #expect(!NSFontManager.shared.traits(of: plain).contains(.boldFontMask))
+            #expect(!NSFontManager.shared.traits(of: plain).contains(.italicFontMask))
+        }
+        highlighter.setBaseFont(.monospacedSystemFont(ofSize: 18, weight: .regular))
+        #expect(font(at: (content as NSString).range(of: "plain").location)?.pointSize == 18)
     }
 
     @Test("Soft Wrap wechselt in beide Richtungen ohne Text-/Auswahldrift")

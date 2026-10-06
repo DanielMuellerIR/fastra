@@ -7,6 +7,21 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.131.1] — 2026-10-06
+
+### Behoben
+
+- 4D-Faltung erkennt Zeilenkommentare auch bei CR-Zeilenenden korrekt.
+- Remote-Vergleiche ordnen Remote-Namen mit Schrägstrichen richtig zu.
+- Snapshot-Syntaxfarben behalten beim Darstellungswechsel die Grundschrift.
+- Der Dateifilter berücksichtigt eigene Änderungen auch nach einem Seitenleistenwechsel.
+
+### Verbessert
+
+- Quellenwechsel im Erklärungsplayer starten nur eine Syntaxanalyse.
+- Nicht mehr verwendete Attachment-Suche aus dem Faltungs-Patch entfernt.
+- Release-Prüfung erkennt exakt geprüfte historische Fehlalarme; neue Treffer bleiben gesperrt.
+
 ## [v1.131.0] — 2026-10-05
 
 ### Ergänzt
