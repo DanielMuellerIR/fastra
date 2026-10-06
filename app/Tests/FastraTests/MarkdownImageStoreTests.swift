@@ -30,15 +30,11 @@ private func tinyPNG() -> Data {
 
 // MARK: - Namensvergabe
 
-@Test("Paste-Name: dokumentname-JJJJ-MM-TT-hhmmss")
+@Test("Bildnamen bleiben kurz und erweitern sich kollisionsfrei")
 func pastedName_format() {
-    var components = DateComponents()
-    components.year = 2026; components.month = 7; components.day = 18
-    components.hour = 14; components.minute = 3; components.second = 9
-    let date = Calendar.current.date(from: components)!
-    let name = MarkdownImageStore.pastedImageBaseName(documentName: "Notizen.md",
-                                                      date: date)
-    #expect(name == "Notizen-2026-07-18-140309")
+    #expect(MarkdownImageStore.shortImageName(counter: 1, fileExtension: "PNG") == "1.png")
+    #expect(MarkdownImageStore.shortImageName(counter: 35, fileExtension: "png") == "z.png")
+    #expect(MarkdownImageStore.shortImageName(counter: 36, fileExtension: "jpg") == "10.jpg")
 }
 
 // MARK: - Relativpfade
@@ -114,7 +110,7 @@ func store_pastedData() throws {
         #expect(FileManager.default.fileExists(atPath: stored.fileURL.path))
         #expect(stored.fileURL.deletingLastPathComponent().path
                 == dir.appendingPathComponent("images").path)
-        #expect(stored.link.hasPrefix("![Notizen-"))
+        #expect(stored.link.hasPrefix("![1]"))
         #expect(stored.link.contains("](images/"))
         #expect(stored.link.hasSuffix(".png)"))
         #expect(stored.createdByInsertion)
@@ -151,10 +147,7 @@ func store_parallelPastedDataUsesSuffix() async throws {
         return collected
     }
 
-    let base = MarkdownImageStore.pastedImageBaseName(
-        documentName: doc.lastPathComponent, date: now
-    )
-    #expect(Set(names) == ["\(base).png", "\(base)-2.png"])
+    #expect(Set(names) == ["1.png", "2.png"])
 }
 
 @Test("Paste veröffentlicht nie über eine gleichzeitig entstandene Datei")
@@ -173,12 +166,9 @@ func store_pastedDataUsesExclusivePublish() throws {
                 try? Data("fremd".utf8).write(to: target, options: .withoutOverwriting)
             }))
 
-        let base = MarkdownImageStore.pastedImageBaseName(
-            documentName: doc.lastPathComponent,
-            date: Date(timeIntervalSince1970: 1_800_000_000))
-        #expect(try Data(contentsOf: dir.appendingPathComponent("images/\(base).png"))
+        #expect(try Data(contentsOf: dir.appendingPathComponent("images/1.png"))
                 == Data("fremd".utf8))
-        #expect(stored.fileURL.lastPathComponent == "\(base)-2.png")
+        #expect(stored.fileURL.lastPathComponent == "2.png")
         #expect(try Data(contentsOf: stored.fileURL) == Data("Fastra".utf8))
     }
 }
@@ -223,9 +213,9 @@ func store_fileCollisionAndDedup() throws {
 
         // 1. Kopie: Originalname.
         let first = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
-        #expect(first.fileURL.lastPathComponent == "foto.png")
+        #expect(first.fileURL.lastPathComponent == "1.png")
         #expect(first.fileURL.deletingLastPathComponent().lastPathComponent == "images")
-        #expect(first.link == "![foto](images/foto.png)")
+        #expect(first.link == "![1](images/1.png)")
         #expect(first.createdByInsertion)
 
         // 2. identische Quelle erneut → KEIN Doppel, vorhandene verlinken.
@@ -236,7 +226,7 @@ func store_fileCollisionAndDedup() throws {
             atPath: dir.appendingPathComponent("images").path
         )
             .filter { $0.hasSuffix(".png") }
-        #expect(files == ["foto.png"])
+        #expect(files == ["1.png"])
 
         // 3. ANDERE Datei mit gleichem Namen → Suffix-Kopie.
         let source2 = outside.appendingPathComponent("v2/foto.png")
@@ -246,7 +236,7 @@ func store_fileCollisionAndDedup() throws {
         other.append(Data([0x00]))   // andere Bytes
         try other.write(to: source2)
         let suffixed = try MarkdownImageStore.storeImageFile(source2, documentURL: doc)
-        #expect(suffixed.fileURL.lastPathComponent == "foto-2.png")
+        #expect(suffixed.fileURL.lastPathComponent == "2.png")
     }
 }
 
@@ -291,7 +281,7 @@ func store_parallelFileCollisionUsesSuffix() async throws {
         return collected
     }
 
-    #expect(Set(names) == ["foto.png", "foto-2.png"])
+    #expect(Set(names) == ["1.png", "2.png"])
 }
 
 @Test("Bildkopie veröffentlicht bei externer Namenskollision mit Suffix")
@@ -311,9 +301,9 @@ func store_fileUsesExclusivePublish() throws {
                 insertedCollision = true
                 try? Data("fremd".utf8).write(to: target, options: .withoutOverwriting)
             }))
-        #expect(try Data(contentsOf: dir.appendingPathComponent("images/foto.png"))
+        #expect(try Data(contentsOf: dir.appendingPathComponent("images/1.png"))
                 == Data("fremd".utf8))
-        #expect(stored.fileURL.lastPathComponent == "foto-2.png")
+        #expect(stored.fileURL.lastPathComponent == "2.png")
     }
 }
 
@@ -344,7 +334,7 @@ func store_imagesDirectoryMustNotBeSymlink() throws {
         try FileManager.default.removeItem(at: images)
         try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
         let stored = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
-        #expect(stored.fileURL == images.appendingPathComponent("foto.png"))
+        #expect(stored.fileURL == images.appendingPathComponent("1.png"))
     }
 }
 
@@ -418,7 +408,7 @@ func store_partialCopyIsNeverVisible() throws {
     }
 }
 
-@Test("storeImageFile: Datei bereits im images-Ordner → nur verlinken, nicht kopieren")
+@Test("storeImageFile: Lange Namen auch innerhalb von images kürzen; Quelle erhalten")
 func store_fileInsideImagesLinksOnly() throws {
     try withTempDir { dir in
         let doc = dir.appendingPathComponent("Seite.md")
@@ -429,9 +419,10 @@ func store_fileInsideImagesLinksOnly() throws {
         try tinyPNG().write(to: existing)
 
         let stored = try MarkdownImageStore.storeImageFile(existing, documentURL: doc)
-        #expect(stored.fileURL == existing)
-        #expect(stored.link == "![logo](images/logo.png)")
-        #expect(!stored.createdByInsertion)
+        #expect(stored.fileURL == sub.appendingPathComponent("1.png"))
+        #expect(stored.link == "![1](images/1.png)")
+        #expect(stored.createdByInsertion)
+        #expect(FileManager.default.fileExists(atPath: existing.path))
         let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         #expect(!files.contains("logo.png"), "es darf keine Kopie neben dem Dokument entstehen")
     }
@@ -451,9 +442,9 @@ func store_fileElsewhereInDocumentTreeCopiesIntoImages() throws {
         let stored = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
 
         #expect(stored.fileURL.path == dir.appendingPathComponent(
-            "images/Original Name.png"
+            "images/1.png"
         ).path)
-        #expect(stored.link == "![Original Name](images/Original%20Name.png)")
+        #expect(stored.link == "![1](images/1.png)")
         #expect(FileManager.default.fileExists(atPath: source.path))
     }
 }
@@ -513,10 +504,10 @@ func storeImageFiles_collectsLinksAndFailures() throws {
         // eingeschlossen.
         let outcome = MarkdownAssist.storeImageFiles([missing, good], documentURL: doc)
 
-        #expect(outcome.links == ["![foto](images/foto.png)"])
+        #expect(outcome.links == ["![1](images/1.png)"])
         #expect(outcome.failures.count == 1)
         #expect(FileManager.default.fileExists(
-            atPath: dir.appendingPathComponent("images/foto.png").path))
+            atPath: dir.appendingPathComponent("images/1.png").path))
     }
 }
 
@@ -532,7 +523,7 @@ func storeImageData_returnsLinkWithoutUI() throws {
 
         #expect(outcome.failures.isEmpty)
         #expect(outcome.links.count == 1)
-        #expect(outcome.links[0].hasPrefix("![Seite-"))
+        #expect(outcome.links[0].hasPrefix("![1]"))
         #expect(outcome.links[0].contains("](images/"))
         #expect(outcome.storedImages[0].createdByInsertion)
         #expect(outcome.storedImages[0].fileURL.deletingLastPathComponent()

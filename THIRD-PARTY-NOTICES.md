@@ -29,6 +29,7 @@ Stand: 2026-07-17.
 | tree-sitter-regex | Regex-Grammatik (gelinkt) | MIT |
 | ripgrep 14.1.1 | Ordnersuche (Binary gebündelt) | MIT / Unlicense |
 | PCRE2 (libpcre2-8) | Regex-Engine für ripgrep (dylib gebündelt) | BSD-3-Clause WITH PCRE2-exception |
+| Turndown 7.2.0 | DOM-Rückkonvertierung beim visuellen Markdown-Bearbeiten (JS gebündelt) | MIT |
 | KaTeX | Formel-Rendering in Markdown-Vorschau (JS gebündelt) | MIT |
 | Mermaid | Diagramme in Markdown-Vorschau (JS gebündelt) | MIT |
 | highlight.js | Syntax-Highlighting in Vorschau (JS/CSS gebündelt) | BSD-3-Clause |
@@ -1209,3 +1210,33 @@ der Lizenz Creative Commons Attribution 4.0 International (CC BY 4.0,
 <https://creativecommons.org/licenses/by/4.0/>); © 4D SAS. Änderungen:
 Extraktion und Umformatierung der genannten Fakten durch das
 Generator-Skript `app/tools/generate-4d-symbols.py`.
+
+## Turndown 7.2.0
+
+- **Quelle:** https://github.com/mixmark-io/turndown
+- **Paket:** https://registry.npmjs.org/turndown/-/turndown-7.2.0.tgz
+- **Lizenz:** MIT
+
+```text
+MIT License
+
+Copyright (c) 2017 Dom Christie
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

@@ -158,6 +158,8 @@ struct EditorTab: Identifiable, Hashable {
     /// (CESE-Falle: Inhalt kommt erst nach erfolgreicher Completion
     /// ins Tab → .id-Neuerzeugung läuft mit fertigem Inhalt).
     var isLoading: Bool
+    /// Übersteuerung gilt nur für die Lebensdauer dieses Dokuments.
+    var markdownVisualOverride: Bool? = nil
     /// Ein Vorschau-Tab stammt aus einem einfachen Klick in der
     /// Änderungen-Liste. Der nächste einfache Klick darf genau diesen
     /// ungesicherten Tab wiederverwenden; Doppelklick oder die erste Eingabe
@@ -1686,6 +1688,57 @@ final class Workspace: ObservableObject {
     /// Zeigt der aktive Tab ein Markdown-Dokument? Gemeinsame Antwort für
     /// Vorschau, Toolbar, Bild-Drop, Tab-Leiste und Markdown-Menü — alle
     /// folgen damit derselben Formatwahl wie der Sprach-Chip in der Fußzeile.
+    weak var visualMarkdownEditor: MarkdownVisualCoordinator?
+
+    var activeMarkdownIsVisual: Bool {
+        activeTabIsMarkdown && activeViewMode == .text
+            && activeTab.map { textEditingIsAllowed(for: $0) } == true
+            && (activeTab?.markdownVisualOverride
+                ?? SelfTest.workspaceDefaults().bool(forKey: MarkdownEditingMode.defaultsKey))
+    }
+
+    private var performingVisualAction = false
+
+    @discardableResult
+    func synchronizeVisualMarkdownBefore(_ action: @escaping () -> Void, onFailure: (() -> Void)? = nil) -> Bool {
+        guard !performingVisualAction, let editor = visualMarkdownEditor, editor.ready else { return false }
+        editor.synchronize { [weak self] succeeded in
+            guard succeeded, let self else { onFailure?(); return }
+            self.performingVisualAction = true
+            action()
+            self.performingVisualAction = false
+        }
+        return true
+    }
+
+    func performWithSynchronizedVisualMarkdown<T>(_ action: () -> T) -> T {
+        let previous = performingVisualAction
+        performingVisualAction = true
+        defer { performingVisualAction = previous }
+        return action()
+    }
+
+    func acceptVisualMarkdown(_ value: String, previous: String, tabID: UUID) -> Bool {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].content == previous, textEditingIsAllowed(for: tabs[index]) else { return false }
+        if activeTabID == tabID {
+            activeTabContent.wrappedValue = value
+        } else {
+            tabs[index].isPreview = false
+            tabs[index].content = value
+            tabs[index].isDirty = !tabs[index].matchesSavedContentBaseline
+            cancelFourDMacroPostprocessing(ifTab: tabID)
+        }
+        return true
+    }
+
+    func toggleMarkdownEditingMode() {
+        if synchronizeVisualMarkdownBefore({ self.toggleMarkdownEditingMode() }) { return }
+        guard activeTabIsMarkdown, let index = activeTabIndex else { return }
+        tabs[index].markdownVisualOverride = !activeMarkdownIsVisual
+        setViewMode(.text)
+    }
+
     var activeTabIsMarkdown: Bool {
         // Git-Verlauf und Dateivergleiche sind read-only Sonderansichten und
         // bekommen keine Markdown-Werkzeuge, auch wenn ihr Inhalt Markdown ist.
@@ -1982,6 +2035,7 @@ final class Workspace: ObservableObject {
     /// ohne den aktuellen Editor umzuschalten; erneuter Shift-Klick auf einen
     /// der beiden Tabs hebt nur die Paarwahl auf.
     func selectTab(id: UUID, extendingComparison: Bool = false) {
+        if !extendingComparison, synchronizeVisualMarkdownBefore({ self.selectTab(id: id) }) { return }
         guard let candidate = tabs.first(where: { $0.id == id }) else { return }
 
         if extendingComparison,
@@ -2033,6 +2087,7 @@ final class Workspace: ObservableObject {
     }
 
     func openNewTab() {
+        if synchronizeVisualMarkdownBefore({ self.openNewTab() }) { return }
         // Der neue Tab verliert absichtlich die Datei-URL, aber nicht den
         // räumlichen Kontext: Sein erster Save-Dialog beginnt im Ordner des
         // Dokuments, das unmittelbar vor ⌘T aktiv war. Bei einer Kette neuer
@@ -2210,6 +2265,7 @@ final class Workspace: ObservableObject {
     /// BBEdit-Rückfrage (`mayCloseTab`). Zentrale Schließen-Logik für ⌘W, das
     /// Tab-X und „Andere Tabs schließen". „Abbrechen" lässt alles unverändert.
     func closeTab(id: UUID) {
+        if synchronizeVisualMarkdownBefore({ self.closeTab(id: id) }) { return }
         // Der letzte Tab repräsentiert das Dokumentfenster selbst. Nach der
         // üblichen Sicherungsentscheidung nicht einen leeren Fensterrahmen
         // zurücklassen, sondern das Fenster schließen. Der gemeinsame Pfad
@@ -2293,6 +2349,7 @@ final class Workspace: ObservableObject {
     /// offen ist. Wird auch vom roten Schließen-Knopf zusätzlicher Fenster
     /// verwendet. `false` bedeutet: Nutzer hat abgebrochen, Fenster bleibt.
     func prepareToCloseWindow() -> Bool {
+        if synchronizeVisualMarkdownBefore({ if self.prepareToCloseWindow() { self.closeWindowHandler?() } }) { return false }
         guard !folderApplying else { return false }
         let previousActive = activeTabID
         for id in tabs.map(\.id) {
@@ -2333,6 +2390,7 @@ final class Workspace: ObservableObject {
     /// wird pro Tab mit ungespeicherten Änderungen gefragt; „Abbrechen" bricht die
     /// GESAMTE Aktion ab (es wird dann kein Tab geschlossen).
     func closeOtherTabs(keeping id: UUID) {
+        if synchronizeVisualMarkdownBefore({ self.closeOtherTabs(keeping: id) }) { return }
         guard tabs.contains(where: { $0.id == id }) else { return }
         let previousActive = activeTabID
         for otherID in tabs.map(\.id) where otherID != id {
@@ -2410,6 +2468,7 @@ final class Workspace: ObservableObject {
     /// beim abgebrochenen App-Beenden gespeichert.
     @discardableResult
     func returnToWelcome() -> Bool {
+        if synchronizeVisualMarkdownBefore({ _ = self.returnToWelcome() }) { return false }
         guard !folderApplying else { return false }
         if projectURL == nil, tabs.count == 1, tabs[0].isPristineScratch {
             return true
@@ -3237,6 +3296,11 @@ final class Workspace: ObservableObject {
                   acceptance: FileLoadAcceptance? = nil,
                   folderMatchReadToken: UUID? = nil,
                   outcome: ((FileLoadOutcome) -> Void)? = nil) {
+        if synchronizeVisualMarkdownBefore({
+            self.loadFile(atCanonicalURL: url, preview: preview, expectedGitContext: expectedGitContext,
+                          expectedDiskSnapshot: expectedDiskSnapshot, acceptance: acceptance,
+                          folderMatchReadToken: folderMatchReadToken, outcome: outcome)
+        }) { return }
         // Ein Restore-Ladevorgang kann bereits entwertet sein, bevor er hier
         // startet. Dann weder einen vorhandenen Tab aktivieren noch einen
         // Platzhalter veröffentlichen.
@@ -3671,6 +3735,7 @@ final class Workspace: ObservableObject {
     /// auch ein Hintergrunddokument sichern, ohne dafür still den sichtbaren
     /// Editor umzuschalten.
     func saveTab(id: UUID) {
+        if synchronizeVisualMarkdownBefore({ self.saveTab(id: id) }) { return }
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
         // Git-Text-Tabs (Verlauf/Diff) und Datei-Vergleichs-Tabs sind
         // read-only — ⌘S tut nichts.
@@ -3702,6 +3767,7 @@ final class Workspace: ObservableObject {
     }
 
     private func saveTabAs(id tabID: UUID) {
+        if synchronizeVisualMarkdownBefore({ self.saveTabAs(id: tabID) }) { return }
         guard let idx = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         // Read-only Git- und Vergleichs-Tabs lassen sich nicht „speichern unter".
         if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil
@@ -3759,12 +3825,67 @@ final class Workspace: ObservableObject {
         let response = withExtendedLifetime(formatAccessory) { panel.runModal() }
         guard response == .OK, let url = panel.url else { return }
         guard let expectedState = stateCapture.expectedState,
-              let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
-              write(tab: tabs[currentIndex], to: url,
-                    expectedTargetState: expectedState),
-              let savedIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
-        adoptSavedTarget(url, forTabAt: savedIndex)
-        synchronizeProjectWithActiveTabIfNeeded()
+              let currentIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        saveTabAs(id: tabID, to: url, expectedTargetState: expectedState,
+                  isMarkdown: MarkdownFormat.isMarkdown(format: DocumentFormatResolver.resolve(tab: tabs[currentIndex])))
+    }
+
+    /// Nach dem Panel bleiben Bildkopien im Hintergrund. Tab und Ziel werden
+    /// vor dem Commit erneut geprüft; bei Abbruch verschwinden nur eigene Kopien.
+    func saveTabAs(id tabID: UUID, to url: URL, expectedTargetState: ExpectedFileState,
+                   isMarkdown: Bool, completion: ((Bool) -> Void)? = nil) {
+        if synchronizeVisualMarkdownBefore({
+            self.saveTabAs(id: tabID, to: url, expectedTargetState: expectedTargetState,
+                           isMarkdown: isMarkdown, completion: completion)
+        }, onFailure: { completion?(false) }) { return }
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { completion?(false); return }
+        func finish(_ prepared: MarkdownSaveAs.Prepared) {
+            if synchronizeVisualMarkdownBefore({ finish(prepared) }, onFailure: {
+                DispatchQueue.global(qos: .utility).async { prepared.rollback() }
+                completion?(false)
+            }) { return }
+            var committed = false
+            guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+                  tabs[index].contentRevision == tab.contentRevision,
+                  tabs[index].url == tab.url else {
+                DispatchQueue.global(qos: .utility).async { prepared.rollback() }
+                saveSafetyWarningHandler(L10n.string("Speichern abgebrochen"),
+                    L10n.string("Der Editorinhalt hat sich während der Rückfrage geändert. Die neueren Änderungen bleiben ungespeichert erhalten."))
+                completion?(false)
+                return
+            }
+            guard write(tab: tabs[index], to: url, expectedTargetState: expectedTargetState,
+                        relocatedMarkdown: prepared.content, onCommit: { committed = true; prepared.commit() }),
+                  let savedIndex = tabs.firstIndex(where: { $0.id == tabID }) else {
+                if !committed { DispatchQueue.global(qos: .utility).async { prepared.rollback() } }
+                completion?(false)
+                return
+            }
+            adoptSavedTarget(url, forTabAt: savedIndex)
+            synchronizeProjectWithActiveTabIfNeeded()
+            completion?(true)
+        }
+        guard isMarkdown, let sourceURL = tab.url else {
+            finish(MarkdownSaveAs.Prepared(content: tab.content, createdImages: []))
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result { try MarkdownSaveAs.prepare(content: tab.content, sourceURL: sourceURL, targetURL: url) }
+            DispatchQueue.main.async {
+                guard let self else {
+                    if case .success(let prepared) = result { prepared.rollback() }
+                    completion?(false)
+                    return
+                }
+                switch result {
+                case .success(let prepared): finish(prepared)
+                case .failure(let error):
+                    self.saveSafetyWarningHandler(L10n.string("Speichern unter abgebrochen"),
+                        L10n.format("Die zugehörigen Bilder konnten nicht kopiert werden: %@", error.localizedDescription))
+                    completion?(false)
+                }
+            }
+        }
     }
 
     /// Übernimmt das Ziel eines erfolgreichen „Speichern unter" in den Tab.
@@ -3772,6 +3893,9 @@ final class Workspace: ObservableObject {
     /// Bewusst eine eigene Methode: Der Zustandswechsel nach dem Schreiben
     /// ist damit ohne den modalen Speichern-Dialog prüfbar.
     func adoptSavedTarget(_ url: URL, forTabAt idx: Int) {
+        if tabs[idx].url != url, visualMarkdownEditor?.tabID == tabs[idx].id {
+            visualMarkdownEditor?.invalidateForSourceReplacement()
+        }
         tabs[idx].url = url
         tabs[idx].title = url.lastPathComponent
         tabs[idx].path = url.deletingLastPathComponent().path
@@ -3821,7 +3945,8 @@ final class Workspace: ObservableObject {
 
     @discardableResult
     func write(tab: EditorTab, to url: URL,
-               expectedTargetState: ExpectedFileState?) -> Bool {
+               expectedTargetState: ExpectedFileState?,
+               relocatedMarkdown: String? = nil, onCommit: (() -> Void)? = nil) -> Bool {
         guard tabs.contains(where: { $0.id == tab.id }) else { return false }
         guard !fileMutationIsInFlight(for: tab.url),
               !fileMutationIsInFlight(for: url) else { return false }
@@ -3846,7 +3971,7 @@ final class Workspace: ObservableObject {
             // hält intern u.U. andere Umbrüche; maßgeblich ist die im Footer
             // gewählte `lineEnding`. converting() normalisiert auch gemischte.
             guard let out = FileLoader.encodedData(
-                content: tab.content, encoding: tab.encoding,
+                content: relocatedMarkdown ?? tab.content, encoding: tab.encoding,
                 bom: tab.bom, lineEnding: tab.lineEnding
             ) else { throw CocoaError(.fileWriteInapplicableStringEncoding) }
             let fm = FileManager.default
@@ -3942,6 +4067,7 @@ final class Workspace: ObservableObject {
             if let coordinationError { throw coordinationError }
             if let writeError { throw writeError }
             guard let writtenSnapshot else { throw CoordinatedSaveError.targetChanged }
+            onCommit?()
             guard tabStillMatches() else {
                 // Der gespeicherte Snapshot ist real, aber neuere In-Memory-
                 // Änderungen bleiben ausdrücklich dirty und erhalten.
@@ -3957,6 +4083,12 @@ final class Workspace: ObservableObject {
             }
             guard let finalIndex = tabs.firstIndex(where: { $0.id == tab.id }) else {
                 throw CoordinatedSaveError.tabChangedAfterWrite
+            }
+            if let relocatedMarkdown, tabs[finalIndex].content != relocatedMarkdown {
+                if visualMarkdownEditor?.tabID == tab.id {
+                    visualMarkdownEditor?.invalidateForSourceReplacement()
+                }
+                tabs[finalIndex].content = relocatedMarkdown
             }
             tabs[finalIndex].isDirty = false
             tabs[finalIndex].hexEditSession.invalidateHistory()
@@ -4349,6 +4481,7 @@ final class Workspace: ObservableObject {
     /// Setzt die Ansicht des aktiven Tabs — nur wenn sie für die Datei
     /// verfügbar ist (Menüpunkte können auf nicht passende Tabs treffen).
     func setViewMode(_ mode: EditorViewMode) {
+        if synchronizeVisualMarkdownBefore({ self.setViewMode(mode) }) { return }
         guard let idx = activeTabIndex, availableViewModes.contains(mode) else {
             NSSound.beep()
             return

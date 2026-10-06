@@ -184,6 +184,8 @@ failing silently.
 
 ## Markdown that stays local
 
+Markdown can also be edited in a WYSIWYG view with no visible source. Choose your default on first opening; change it in Settings or switch the current document with the button beside Text/Hex (⌃⇧⌘M). Save As copies only referenced local images; newly added images receive short filenames.
+
 Markdown files can show an optional live preview on the right, separated from
 the editor by a persistent splitter. The renderer supports GitHub-flavoured
 Markdown including tables, task lists, strikethrough, syntax-highlighted code
@@ -194,8 +196,8 @@ app supports it.
 
 A source-formatting toolbar plus menu and context-menu commands cover emphasis,
 headings, lists, quotes, links and tables as normal undoable Markdown edits.
-Pasting an image saves it beside the document. Dropping an existing image file
-keeps its original filename and copies it into `images/`. Fastra inserts a
+Pasting an image saves it beside the document. Dropped image files receive
+short filenames and are copied into `images/`. Fastra inserts a
 relative link in both cases, so text and images remain portable together.
 
 Fastra's preview adds one deliberately narrow extension to GFM for visible

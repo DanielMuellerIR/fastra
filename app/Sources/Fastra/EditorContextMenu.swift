@@ -1077,6 +1077,11 @@ final class EditorContextMenu: NSObject {
             // der Editor aus einer eigenen Suche: Zeigte `shared` auf ein
             // anderes Fenster, blieb ⌘B wirkungslos (nur ein Beep) — oder es
             // wirkte im falschen Dokument (Fehlerbericht 2026-08-07).
+            if let workspace = CommandTargeting.targetWorkspace(),
+               workspace.activeMarkdownIsVisual {
+                workspace.visualMarkdownEditor?.format(command)
+                return
+            }
             guard let target = CommandTargeting.target(),
                   MarkdownAssist.isMarkdownTabActive(in: target.workspace)
             else { NSSound.beep(); return }

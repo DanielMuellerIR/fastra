@@ -143,7 +143,7 @@ enum MarkdownAssist {
     }
 
     /// Kleiner Dialog für „Tabelle einfügen…“: Spaltenzahl + Kopfzeile.
-    private static func promptForTable() -> (columns: Int, header: Bool)? {
+    static func promptForTable() -> (columns: Int, header: Bool)? {
         let alert = NSAlert()
         alert.messageText = L10n.string("Tabelle einfügen")
         alert.informativeText = L10n.string("Anzahl der Spalten:")
@@ -181,6 +181,10 @@ enum MarkdownAssist {
     /// normales Einfügen (Event läuft weiter; ⌘⇧V bleibt die explizite
     /// Rich-Text-Konvertierung via SmartPaste).
     static func handlePasteCommand() -> Bool {
+        if let workspace = MainActor.assumeIsolated({ CommandTargeting.targetWorkspace() }),
+           workspace.activeMarkdownIsVisual {
+            return workspace.visualMarkdownEditor?.pasteImages() ?? false
+        }
         // Editor UND Workspace aus DEMSELBEN Fenster. Vorher kam der Editor
         // aus dem Tastatur-Fenster, der Workspace aber aus `Workspace.shared`:
         // Zeigten die auf verschiedene Fenster, landete die Bilddatei neben
@@ -211,7 +215,7 @@ enum MarkdownAssist {
     }
 
     /// Bilddaten vom Pasteboard, bevorzugt verlustfreie/deklarierte Typen.
-    private static func readImageData(from pasteboard: NSPasteboard) -> (Data, String)? {
+    static func readImageData(from pasteboard: NSPasteboard) -> (Data, String)? {
         let candidates: [NSPasteboard.PasteboardType] = [
             NSPasteboard.PasteboardType(UTType.png.identifier),
             NSPasteboard.PasteboardType(UTType.jpeg.identifier),

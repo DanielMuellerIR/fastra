@@ -136,6 +136,10 @@ struct EditorView: View {
     @AppStorage(DocumentZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var documentZoomLevel = 0
     @AppStorage(EditorFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var editorFontName = EditorFonts.systemMonospacedName
     @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showMarkdownPreview = true
+    @AppStorage(MarkdownEditingMode.defaultsKey, store: SelfTest.workspaceDefaults())
+    private var markdownVisualDefault = false
+    @State private var asksMarkdownEditingMode = false
+
     /// Direkter Seitenleisten-Schalter im Fenster-Chrome, wie in Codex.
     /// AppStorage hält alle Dokumentfenster und den Menüpunkt synchron.
     @AppStorage("editor.sidebarVisible", store: SelfTest.workspaceDefaults()) private var showSidebar = true
@@ -308,7 +312,38 @@ struct EditorView: View {
         // Erstes Öffnen einer 4D-Datei → tool4d-Erst-Kontakt-Hinweis
         // (Etappe 4 Wunschpaket 2026-07c).
         .onChange(of: workspace.activeTabID) { checkTool4DFirstContact() }
-        .onAppear { checkTool4DFirstContact() }
+        .onAppear { checkTool4DFirstContact(); checkMarkdownEditingMode() }
+        .onChange(of: workspace.activeTabIsMarkdown) { checkMarkdownEditingMode() }
+        .onChange(of: workspace.activeTab?.isLoading) { checkMarkdownEditingMode() }
+        .onChange(of: markdownVisualDefault) {
+            if SelfTest.workspaceDefaults().object(forKey: MarkdownEditingMode.defaultsKey) != nil { asksMarkdownEditingMode = false }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+            if SelfTest.workspaceDefaults().object(forKey: MarkdownEditingMode.defaultsKey) != nil { asksMarkdownEditingMode = false }
+        }
+        .onDisappear {
+            if MarkdownEditingMode.choiceOwner == ObjectIdentifier(workspace) { MarkdownEditingMode.choiceOwner = nil }
+        }
+        .sheet(isPresented: $asksMarkdownEditingMode) {
+            MarkdownEditingModeChoice { visual in
+                SelfTest.workspaceDefaults().set(visual, forKey: MarkdownEditingMode.defaultsKey)
+                markdownVisualDefault = visual
+                MarkdownEditingMode.choiceOwner = nil
+                asksMarkdownEditingMode = false
+            }
+        }
+    }
+
+    private func checkMarkdownEditingMode() {
+        let owner = ObjectIdentifier(workspace)
+        let eligible = workspace.activeTabIsMarkdown
+            && workspace.activeTab?.isLoading == false
+            && (SelfTest.requestedTest == nil || SelfTest.requestedTest == "mdvisual")
+            && SelfTest.workspaceDefaults().object(forKey: MarkdownEditingMode.defaultsKey) == nil
+        if eligible, MarkdownEditingMode.choiceOwner == nil || MarkdownEditingMode.choiceOwner == owner {
+            MarkdownEditingMode.choiceOwner = owner
+            asksMarkdownEditingMode = true
+        } else { asksMarkdownEditingMode = false }
     }
 
     /// Zeigt den tool4d-Hinweis, sobald der aktive Tab eine `.4dm`- oder
@@ -426,6 +461,7 @@ struct EditorView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .background(SelfTestMarker(id: "markdownCommand-\(command.rawValue)").frame(width: 0, height: 0))
                     .help(Text(verbatim: command.helpText))
                     .accessibilityLabel(Text(verbatim: command.menuTitle))
                     if command == .hardBreak || command == .plainParagraph || command == .quote {
@@ -551,7 +587,7 @@ struct EditorView: View {
     }
 
     private var showsIntegratedMarkdownPreview: Bool {
-        showMarkdownPreview && workspace.activeTabIsMarkdown
+        showMarkdownPreview && workspace.activeTabIsMarkdown && !workspace.activeMarkdownIsVisual
     }
 
     private var markdownSplitter: some View {
@@ -782,7 +818,10 @@ struct EditorView: View {
                             actualEditor
                         }
                     case .text:
-                        if let tab = workspace.activeTab,
+                        if workspace.activeMarkdownIsVisual, let tab = workspace.activeTab {
+                            MarkdownVisualEditorView(workspace: workspace, tab: tab)
+                                .id(tab.documentID)
+                        } else if let tab = workspace.activeTab,
                            tab.displayMode == .chunkedText, let url = tab.url {
                             ChunkedTextFileView(
                                 url: url, fileSize: tab.fileSize,

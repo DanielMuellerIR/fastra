@@ -60,6 +60,7 @@ enum DocumentPrinting {
             NSSound.beep()
             return
         }
+        if context.workspace.synchronizeVisualMarkdownBefore({ printVisibleDocument(as: target) }) { return }
         run(target: target, workspace: context.workspace, window: context.window)
     }
 
@@ -73,6 +74,7 @@ enum DocumentPrinting {
             NSSound.beep()
             return
         }
+        if context.workspace.synchronizeVisualMarkdownBefore({ printVisibleDocument(as: target) }) { return }
         run(target: target, workspace: context.workspace, window: context.window)
     }
 
@@ -1352,7 +1354,7 @@ extension Workspace {
             hasEditorText: !tab.content.isEmpty,
             viewMode: activeViewMode,
             showsPagedText: tab.displayMode == .chunkedText,
-            integratedPreviewVisible: activeTabIsMarkdown && previewVisible,
+            integratedPreviewVisible: activeTabIsMarkdown && (previewVisible || activeMarkdownIsVisual),
             isStructuredDiff: tab.gitDiffRequest != nil || tab.fileDiffRequest != nil
         )
     }

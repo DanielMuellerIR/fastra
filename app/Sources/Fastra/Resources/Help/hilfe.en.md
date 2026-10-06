@@ -441,19 +441,41 @@ connections.
 
 ## Writing Markdown
 
+**WYSIWYG:** On first opening a Markdown document, Fastra asks whether you want
+to edit directly in the formatted view or use source text with a preview.
+WYSIWYG hides Markdown syntax. The format toolbar works in both modes.
+Typing, formatting and Undo happen directly in the document.
+
+The button to the right of the **Text/Hex switch** (⌃⇧⌘M) changes the view only
+for the current document. Under **Settings → Markdown**,
+“Edit Markdown in WYSIWYG mode” changes the default for further documents.
+
+Unchanged blocks retain their original source. Edited paragraphs are converted
+back to valid Markdown, with literal special characters escaped. Formulas,
+diagrams and HTML blocks remain protected elements: you can copy them or remove
+them as a whole, while their internal structure is not visually editable.
+Incomplete Markdown can also be opened and edited.
+
+**Save As:** When moving to a different folder, Fastra copies only local images
+actually used by this document into the destination's `images` folder. Other
+images, unused reference definitions and code examples are left out. A missing
+required image cancels the save with an explanation. Existing destination images
+are never overwritten.
+
+
 For Markdown tabs, a **format toolbar** appears above the editor; the
 same commands live in the “Markdown” menu and the right-click menu. They
 act as normal, ⌘Z-undoable text edits on the selection or the cursor
 line: bold (⌘B), italic (⌘I), highlight (⇧⌘H), code (⇧⌘K), heading 1–3
 (⌘⌥1–3), back to
 plain text (⌘⌥0), bulleted list (⇧⌘8), numbered list (⇧⌘7), quote
-(⇧⌘9), link (⌘K), and “Insert table…” (a small dialog: columns, header
+(⇧⌘9), link (⌘K), and “Insert table…” (⌥⇧⌘T; a small dialog: columns, header
 yes/no).
 
-The toolbar's **Hard Line Break** command inserts two ordinary spaces at the
+The toolbar's **Hard Line Break** (⌥⌘↩) command inserts two ordinary spaces at the
 end of the selection followed by an ordinary line break. If the cursor is
 already directly before a line break, it only adds or normalizes the two
-spaces. The underlying Markdown stays visible and the edit remains undoable
+spaces. In source mode, the underlying Markdown stays visible and the edit remains undoable
 with ⌘Z.
 
 **Paste Formatted as Markdown** (⇧⌘V) converts HTML or RTF content from
@@ -462,20 +484,18 @@ Fastra binds the window, tab, editor and selection when conversion starts. If
 you switch targets or edit the content while it runs, Fastra stops safely and
 does not insert into another document.
 
-**Inserting images:** Pasting an image from the clipboard (⌘V) stores it
-as a file in the `images` subfolder
-(`documentname-YYYY-MM-DD-hhmmss.png`; PNG/JPEG/GIF keep their format,
-everything else becomes PNG) and links it relatively at the cursor position.
-**Dragging an image file** keeps its original filename and copies it unchanged
-into the same subfolder (name collision → suffix; a byte-identical file is not
-duplicated) and links it relatively as well — other files open in a tab as
-usual. While dragging, the editor shows the actual text insertion point and
-keeps scrolling at the top or bottom edge. After inserting, the preview scrolls
-to the insertion point. Unsaved documents have no folder yet — save first (⌘S).
+**Inserting images:** Pasting an image (⌘V) or dragging an image file stores
+it in the `images` subfolder and links it in the document. Copies receive short
+names (`1.png` through `9.png`, then `a.png`, and so on). Original files remain
+unchanged; their names are not retained for new copies. Clipboard PNG/JPEG/GIF
+retain their format; other formats become PNG. Files are copied unchanged;
+existing byte-identical copies may be reused. Save new documents before
+inserting images (⌘S).
 
-For such a paste or drop, ⌘Z removes both the link and the new image file that
-Fastra created; Redo restores both. An existing file or one placed in the file
-system and linked manually is never removed.
+In source mode, ⌘Z removes the link and the newly created image file; Redo restores
+both. In WYSIWYG mode, ⌘Z undoes the visible insertion while retaining the image
+file. Save As copies only images still used. Existing or manually linked files
+are never removed.
 
 Fastra publishes an image file only after the copy is complete and never
 overwrites a file created concurrently. If the real `images` folder is

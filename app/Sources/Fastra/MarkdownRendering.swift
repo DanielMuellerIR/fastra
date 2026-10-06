@@ -268,6 +268,16 @@ enum MarkdownMath {
         pattern: #"(?<![\\$])\$(?![\s$])([^$\n]+?)(?<![\s$])\$(?!\$)"#
     )
 
+    /// Quellbereiche, die der Renderer als Formel behandelt. Andere Parser
+    /// dürfen darin keine vermeintlichen Bildlinks oder Formatierungen übernehmen.
+    static func formulaRanges(in markdown: String) -> [NSRange] {
+        let full = NSRange(location: 0, length: markdown.utf16.count)
+        let code = [fencedCode, inlineCode].flatMap { $0.matches(in: markdown, range: full).map(\.range) }
+        return [blockMath, inlineDoubleMath, inlineMath].flatMap {
+            $0.matches(in: markdown, range: full).map(\.range)
+        }.filter { candidate in !code.contains { NSIntersectionRange($0, candidate).length > 0 } }
+    }
+
     static func extract(from markdown: String) -> Extraction {
         var protected: [(token: String, source: String)] = []
         var working = stashMatches(
@@ -427,7 +437,8 @@ enum MarkdownImages {
         pattern: #"(?i)\bsrc\s*=\s*([\"'])([^\"']*)\1"#
     )
 
-    static func resolve(in html: String, relativeTo documentURL: URL?) -> MarkdownRenderedFragment {
+    static func resolve(in html: String, relativeTo documentURL: URL?,
+                        preservingSource: Bool = false) -> MarkdownRenderedFragment {
         let mutable = NSMutableString(string: html)
         let matches = sourceAttribute.matches(
             in: html,
@@ -447,7 +458,10 @@ enum MarkdownImages {
             } else {
                 replacement = ""
             }
-            mutable.replaceCharacters(in: sourceRange, with: replacement)
+            let value = preservingSource
+                ? replacement + "\" data-md-src=\"" + rawSource
+                : replacement
+            mutable.replaceCharacters(in: sourceRange, with: value)
         }
         return MarkdownRenderedFragment(html: mutable as String, imageURLs: images)
     }

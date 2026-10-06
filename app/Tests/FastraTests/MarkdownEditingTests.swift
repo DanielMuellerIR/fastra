@@ -297,7 +297,7 @@ func shortcut_tableMatchesMenu() {
         .heading1: "⌥⌘1", .heading2: "⌥⌘2", .heading3: "⌥⌘3",
         .plainParagraph: "⌥⌘0",
         .bulletList: "⇧⌘8", .orderedList: "⇧⌘7", .quote: "⇧⌘9",
-        .link: "⌘K",
+        .link: "⌘K", .insertTable: "⌥⇧⌘T", .hardBreak: "⌥⌘↩",
     ]
     for command in MarkdownFormatCommand.allCases {
         #expect(command.shortcut?.display == expected[command],
@@ -309,7 +309,6 @@ func shortcut_tableMatchesMenu() {
 func shortcut_appearsInHelpText() {
     #expect(MarkdownFormatCommand.bold.helpText.hasSuffix("(⌘B)"))
     #expect(MarkdownFormatCommand.quote.helpText.hasSuffix("(⇧⌘9)"))
-    // Befehle ohne Kürzel behalten ihren bisherigen Tooltip ohne Klammerzusatz.
-    #expect(!MarkdownFormatCommand.insertTable.helpText.contains("("))
-    #expect(!MarkdownFormatCommand.hardBreak.helpText.contains("(⌘"))
+    #expect(MarkdownFormatCommand.insertTable.helpText.hasSuffix("(⌥⇧⌘T)"))
+    #expect(MarkdownFormatCommand.hardBreak.helpText.hasSuffix("(⌥⌘↩)"))
 }

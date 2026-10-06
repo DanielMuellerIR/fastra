@@ -571,6 +571,7 @@ enum SelfTest {
         case "markdownblanklines": waitForMainWindow { runMarkdownVisibleBlankLinesTest() }
         case "markdownjump": waitForMainWindow { runMarkdownJumpTest() }
         case "markdownappearance": waitForMainWindow { runMarkdownAppearanceTest() }
+        case "mdvisual": waitForMainWindow { runMarkdownVisualTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
         case "ghosttext": waitForMainWindow { runGhostTextTest() }
         case "wordclick": waitForMainWindow { runWordDoubleClickTest() }
@@ -830,7 +831,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -14769,8 +14770,8 @@ enum SelfTest {
             check: { answer in
                 let files = (try? FileManager.default.contentsOfDirectory(
                     atPath: imagesDirectory.path)) ?? []
-                imageFile = files.first { $0.hasPrefix("Notizen-") && $0.hasSuffix(".png") }
-                linkInEditor = tv.string.contains("![Notizen-")
+                imageFile = files.first { $0 == "1.png" }
+                linkInEditor = tv.string.contains("![1](images/1.png)")
                 guard imageFile != nil, linkInEditor else {
                     answer(false)
                     return
@@ -14822,7 +14823,7 @@ enum SelfTest {
         let file = base.appendingPathComponent("images/\(storedImage)")
         waitFor(budget: 4, pause: 0.1,
                 condition: {
-                    !tv.string.contains("![Notizen-")
+                    !tv.string.contains("![1](images/1.png)")
                         && !FileManager.default.fileExists(atPath: file.path)
                 },
                 onTimeout: { book in
@@ -14841,7 +14842,7 @@ enum SelfTest {
         let file = base.appendingPathComponent("images/\(storedImage)")
         waitFor(budget: 4, pause: 0.1,
                 condition: {
-                    tv.string.contains("![Notizen-")
+                    tv.string.contains("![1](images/1.png)")
                         && FileManager.default.fileExists(atPath: file.path)
                 },
                 onTimeout: { book in
@@ -14857,6 +14858,7 @@ enum SelfTest {
     private static func runMarkdownDropPhase(_ ws: Workspace, tv: TextView,
                                              base: URL, outside: URL) {
         let tabsBefore = ws.tabs.count
+        let linksBefore = tv.string.components(separatedBy: "![1](images/1.png)").count - 1
         _ = MainActor.assumeIsolated {
             MarkdownAssist.handleDroppedFileURLs([
                 outside.appendingPathComponent("quelle.png"),
@@ -14864,11 +14866,11 @@ enum SelfTest {
             ], workspace: ws)
         }
         pollMarkdownDrop(ws, tv: tv, base: base, outside: outside,
-                         tabsBefore: tabsBefore)
+                         tabsBefore: tabsBefore, linksBefore: linksBefore)
     }
 
     private static func pollMarkdownDrop(_ ws: Workspace, tv: TextView, base: URL,
-                                         outside: URL, tabsBefore: Int) {
+                                         outside: URL, tabsBefore: Int, linksBefore: Int) {
         var copied = false
         var linked = false
         var opened = false
@@ -14879,8 +14881,8 @@ enum SelfTest {
         waitFor(budget: 10, pause: 0.25,
                 condition: {
                     copied = FileManager.default.fileExists(
-                        atPath: base.appendingPathComponent("images/quelle.png").path)
-                    linked = tv.string.contains("![quelle](images/quelle.png)")
+                        atPath: base.appendingPathComponent("images/1.png").path)
+                    linked = tv.string.components(separatedBy: "![1](images/1.png)").count - 1 == linksBefore + 1
                     opened = ws.tabs.contains { $0.title == "begleit.txt" }
                     let exactlyOneTabAdded = ws.tabs.count == tabsBefore + 1
                     return copied && linked && opened && exactlyOneTabAdded
@@ -17603,7 +17605,7 @@ enum SelfTest {
         guard L10n.string("Abbrechen", language: "en") == "Cancel" else {
             finish(false, "SwiftPM-Modulbundle löst Englisch nicht auf")
         }
-        let markdownResources = ["katex.js", "highlight.js", "highlight.css", "mermaid.js"]
+        let markdownResources = ["katex.js", "highlight.js", "highlight.css", "mermaid.js", "turndown-7.2.0.js", "visual-editor.js"]
         guard markdownResources.allSatisfy({ MarkdownPreviewAssets.resource(named: $0) != nil }) else {
             finish(false, "lokale Markdown-Renderbibliotheken fehlen im gepackten Ressourcenbundle")
         }
@@ -22565,6 +22567,109 @@ enum SelfTest {
     /// beim Erzeugen der WebView gesetzt, blieb nach einem Wechsel ein dunkler
     /// Balken am rechten Rand stehen, obwohl das Dokument bereits hell war.
     /// Ein reiner Start im Zielmodus hätte den Fehler nie gezeigt.
+    private static func runMarkdownVisualTest() {
+        testLabel = "mdvisual"
+        Task { @MainActor in
+            let originalAppearance = NSApp.appearance
+            NSApp.appearance = NSAppearance(named: .aqua)
+            guard let ws = Workspace.shared,
+                  let window = CommandTargeting.registeredWindow(for: ws) else {
+                finish(false, "Dokumentfenster fehlt")
+            }
+            let base = selfTestTemporaryDirectory().appendingPathComponent("Fastra-Visual-\(UUID().uuidString)")
+            let file = base.appendingPathComponent("Protokoll.md")
+            let target = base.appendingPathComponent("copy/Protokoll.md")
+            let source = "# Testprotokoll\n\nErgebnis: bestanden 😀\n\n- Erster Schritt\n- Zweiter Schritt\n\n| Prüfung | Ergebnis |\n| :--- | ---: |\n| Bild und Text | bestanden |\n\n![Prüfbild](images/original.png)\n"
+            func require(_ condition: Bool, _ message: String) throws {
+                if !condition { throw NSError(domain: "MarkdownVisualSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            func wait(_ condition: () -> Bool) async throws {
+                var attempts = 0
+                while !condition() && attempts < 300 { try await Task.sleep(nanoseconds: 50_000_000); attempts += 1 }
+                try require(condition(), "Ansicht oder Zustand wurde nicht bereit")
+            }
+            func capture(_ name: String) async {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_MD_VISUAL_DIR"], !directory.isEmpty else { return }
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
+                try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    typeScrollCapture(window: window) { snapshot in
+                        try? snapshot?.data.write(to: url)
+                        continuation.resume()
+                    }
+                }
+            }
+            do {
+                try FileManager.default.createDirectory(at: base.appendingPathComponent("images"), withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try source.write(to: file, atomically: true, encoding: .utf8)
+                try writeSolidPNG(to: base.appendingPathComponent("images/original.png"), width: 140, height: 75)
+                try writeSolidPNG(to: base.appendingPathComponent("images/unused.png"), width: 10, height: 10)
+                workspaceDefaults().removeObject(forKey: MarkdownEditingMode.defaultsKey)
+                workspaceDefaults().set(true, forKey: MarkdownAssist.firstUseDefaultsKey)
+                window.setContentSize(NSSize(width: 900, height: 650))
+                var loaded = false
+                ws.loadFile(at: file) { loaded = $0 }
+                try await wait { loaded }
+                try await wait { window.sheets.contains { $0.contentView.map { markerViewExists(id: "markdownChooseVisual", in: $0) } == true } }
+                await capture("first-choice")
+                guard let sheet = window.sheets.first, let root = sheet.contentView,
+                      let button = markerView(id: "markdownChooseVisual", in: root) else { throw NSError(domain: "fixture", code: 1) }
+                try require(sendMouseClick(at: button.convert(CGPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil),
+                                           in: sheet, modifiers: [], viaApp: true), "Modusdialog konnte nicht bedient werden")
+                try await wait { ws.visualMarkdownEditor?.ready == true }
+                try require(workspaceDefaults().bool(forKey: MarkdownEditingMode.defaultsKey), "Standardwahl fehlt")
+                guard let editor = ws.visualMarkdownEditor, let web = editor.web else { throw NSError(domain: "fixture", code: 2) }
+                try require(window.contentView.flatMap { editorTextView(in: $0) } == nil, "Quelltext ist im WYSIWYG-Modus sichtbar")
+                for width: CGFloat in [650, 1100] {
+                    window.setContentSize(NSSize(width: width, height: 680))
+                    try await Task.sleep(nanoseconds: 300_000_000)
+                    await capture("visual-\(Int(width))")
+                }
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+                try await wait { (web.underPageBackgroundColor?.usingColorSpace(.sRGB)?.redComponent ?? 1) < 0.5 }
+                try await Task.sleep(nanoseconds: 300_000_000)
+                await capture("visual-dark")
+                NSApp.appearance = NSAppearance(named: .aqua)
+                try await wait { (web.underPageBackgroundColor?.usingColorSpace(.sRGB)?.redComponent ?? 0) > 0.5 }
+                _ = try await web.evaluateJavaScript("""
+                    const p=document.querySelector('#fastra-visual p'),r=document.createRange();r.selectNodeContents(p);
+                    getSelection().removeAllRanges();getSelection().addRange(r);
+                    """)
+                guard let root = window.contentView, let bold = markerView(id: "markdownCommand-0", in: root) else {
+                    throw NSError(domain: "fixture", code: 3)
+                }
+                try require(sendMouseClick(at: bold.convert(CGPoint(x: bold.bounds.midX, y: bold.bounds.midY), to: nil),
+                                           in: window, modifiers: [], viaApp: true), "Fett-Button konnte nicht bedient werden")
+                try await wait { ws.activeTab?.content.contains("**Ergebnis: bestanden 😀**") == true }
+                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                try await wait { ws.activeTab?.content == source }
+                _ = try await web.evaluateJavaScript("document.querySelector('#fastra-visual p').textContent='Letzte Eingabe';")
+                ws.saveActiveTab()
+                try await wait { (try? String(contentsOf: file, encoding: .utf8))?.contains("Letzte Eingabe") == true }
+                var saved: Bool?
+                ws.saveTabAs(id: ws.activeTabID!, to: target, expectedTargetState: .absent, isMarkdown: true) { saved = $0 }
+                try await wait { saved != nil }
+                try require(saved == true, "Speichern unter scheiterte")
+                let names = try FileManager.default.contentsOfDirectory(atPath: target.deletingLastPathComponent().appendingPathComponent("images").path)
+                try require(names == ["1.png"], "Speichern unter kopiert falsche Bilder: \(names)")
+                ws.toggleMarkdownEditingMode()
+                try await wait { !ws.activeMarkdownIsVisual && window.contentView.flatMap { editorTextView(in: $0) } != nil }
+                await capture("source-after-switch")
+                try require(workspaceDefaults().bool(forKey: MarkdownEditingMode.defaultsKey), "Dokumentwechsel verändert den Standard")
+                try? FileManager.default.removeItem(at: base)
+                window.orderOut(nil)
+                NSApp.appearance = originalAppearance
+                finish(true, "Modusdialog, Toolbar, Undo, letzte Eingabe, Speichern und gezielte Bildkopie geprüft")
+            } catch {
+                try? FileManager.default.removeItem(at: base)
+                window.orderOut(nil)
+                NSApp.appearance = originalAppearance
+                finish(false, error.localizedDescription)
+            }
+        }
+    }
+
     private static func runMarkdownAppearanceTest() {
         testLabel = "markdownappearance"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }

@@ -222,7 +222,8 @@ func imageStore_serializesDirectoryCreationAndCopy() async throws {
             _ = try MarkdownImageStore.storeImageFile(first, documentURL: document,
                 hooks: .init(afterOpeningImagesDirectory: {
                     reachedCopy.signal()
-                    _ = mayFinishCopy.wait(timeout: .now() + 10)
+                    // Die parallele Suite kann den steuernden Main-Actor länger halten.
+                    _ = mayFinishCopy.wait(timeout: .now() + 60)
                 }))
             outcomes.finish("erster", error: nil)
         } catch {
@@ -269,9 +270,9 @@ func imageStore_serializesDirectoryCreationAndCopy() async throws {
 
     let images = root.appendingPathComponent("images")
     #expect(FileManager.default.fileExists(
-        atPath: images.appendingPathComponent("eins.png").path))
+        atPath: images.appendingPathComponent("1.png").path))
     #expect(FileManager.default.fileExists(
-        atPath: images.appendingPathComponent("zwei.png").path))
+        atPath: images.appendingPathComponent("2.png").path))
 }
 
 @Test("Gescheiterte Ablage nimmt nur den selbst angelegten leeren Ordner zurück")

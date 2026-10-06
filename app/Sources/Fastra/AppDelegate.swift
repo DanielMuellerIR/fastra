@@ -826,6 +826,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// getippte Inhalte stillschweigend verloren (Daniel-Befund 2026-06-25). Die
     /// eigentliche Rückfrage-Logik liegt im Workspace (geteilt mit dem Tab-Schließen).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let editors = DocumentWindowController.restorableDocumentWindows().compactMap {
+            WorkspaceWindowRegistry.workspace(for: $0)?.visualMarkdownEditor
+        }.filter { $0.ready }
+        if !editors.isEmpty {
+            let group = DispatchGroup()
+            var successful = true
+            for editor in editors {
+                group.enter()
+                editor.synchronize(holdingInput: true) { succeeded in successful = successful && succeeded; group.leave() }
+            }
+            group.notify(queue: .main) {
+                let terminate = successful && self.finishTerminationChecks() == .terminateNow
+                for editor in editors { editor.completeAction() }
+                sender.reply(toApplicationShouldTerminate: terminate)
+            }
+            return .terminateLater
+        }
+        return finishTerminationChecks()
+    }
+
+    @MainActor
+    private func finishTerminationChecks() -> NSApplication.TerminateReply {
         // Jedes Dokumentfenster besitzt einen eigenen Workspace. Erst beenden,
         // wenn alle ungesicherten Tabs geklärt sind; „Abbrechen" in einem
         // beliebigen Fenster stoppt ⌘Q für die ganze App.
@@ -856,7 +878,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if workspace.hasTabsRequiringSaveBeforeClosing {
                 window.makeKeyAndOrderFront(nil)
             }
-            guard workspace.confirmCloseAllDirtyForQuit() else { return .terminateCancel }
+            guard workspace.performWithSynchronizedVisualMarkdown({ workspace.confirmCloseAllDirtyForQuit() }) else { return .terminateCancel }
         }
         SessionRestorationCoordinator.captureCurrentSession(
             defaults: SelfTest.workspaceDefaults(),

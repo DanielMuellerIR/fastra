@@ -7,6 +7,20 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.132.0] — 2026-10-06
+
+### Neu
+
+- Markdown direkt in einer formatierten WYSIWYG-Ansicht bearbeiten, mit denselben Formatierungswerkzeugen und ohne sichtbaren Quelltext.
+- Beim ersten Markdown-Dokument den Standard wählen; die Einstellungen und ein dokumentbezogener Umschalter rechts von Text/Hex erlauben spätere Wechsel.
+- Erklärende Tooltips mit Tastenkürzeln für sämtliche Markdown-Formatierungsbuttons.
+
+### Verbessert
+
+- „Speichern unter“ kopiert nur die vom aktuellen Markdown-Dokument verwendeten lokalen Bilder und passt seine Bildverweise an.
+- Neue Bildkopien erhalten kurze Namen wie `1.png` oder `a.jpg`; bestehende Dateien werden geschützt.
+- Unveränderte Markdown-Blöcke behalten ihren Originaltext. Formeln, Diagramme und HTML bleiben beim Bearbeiten benachbarter Inhalte erhalten.
+
 ## [v1.131.1] — 2026-10-06
 
 ### Behoben

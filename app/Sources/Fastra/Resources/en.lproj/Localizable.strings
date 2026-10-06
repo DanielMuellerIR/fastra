@@ -1665,3 +1665,43 @@
 "Pull in lokalen Branch „%@“" = "Pull into local branch “%@”";
 
 "Remote" = "Remote";
+
+/* Visuelle Markdown-Bearbeitung. */
+"Ausgewählten Text als wörtlichen Code formatieren." = "Format selected text as literal code.";
+"Ausgewählten Text fett formatieren oder Fettung entfernen." = "Make selected text bold or remove bold formatting.";
+"Ausgewählten Text kursiv formatieren oder Kursivschrift entfernen." = "Italicize selected text or remove italics.";
+"Ausgewählten Text mit einem Textmarker hervorheben oder die Markierung entfernen." = "Highlight selected text or remove its highlight.";
+"Bild einfügen" = "Insert Image";
+"Das Dokument wurde gleichzeitig geändert. Bitte sichere deine sichtbare Eingabe, bevor du die Ansicht schließt." = "The document changed at the same time. Please preserve your visible input before closing this view.";
+"Das Dokument wurde während des Einfügens bearbeitet. Die vorhandene Eingabe blieb erhalten; bitte füge erneut ein." = "The document was edited during insertion. Your existing input was preserved; please insert again.";
+"Den Absatz als große Überschrift formatieren." = "Format the paragraph as a large heading.";
+"Den Absatz als Überschrift der dritten Ebene formatieren." = "Format the paragraph as a third-level heading.";
+"Den Absatz als Überschrift der zweiten Ebene formatieren." = "Format the paragraph as a second-level heading.";
+"Der Dokumentinhalt blieb erhalten. Bitte öffne das Dokument erneut oder wechsle mit dem Umschalter zur Quelltext-Ansicht." = "Your document was preserved. Please reopen it or use the toggle to switch to source view.";
+"Die ausgewählten Absätze als Aufzählung formatieren." = "Format selected paragraphs as a bulleted list.";
+"Die ausgewählten Absätze als Zitat formatieren." = "Format selected paragraphs as a quotation.";
+"Die ausgewählten Absätze als nummerierte Liste formatieren." = "Format selected paragraphs as a numbered list.";
+"Die zugehörigen Bilder konnten nicht kopiert werden: %@" = "The referenced images could not be copied: %@";
+"Direkt in der formatierten Markdown-Ansicht schreiben (↩)." = "Write directly in the formatted Markdown view (↩).";
+"Eine Tabelle mit wählbarer Spaltenzahl einfügen." = "Insert a table with a chosen number of columns.";
+"Eine neue Zeile innerhalb desselben Absatzes beginnen." = "Start a new line within the same paragraph.";
+"Einen Link für den ausgewählten Text einfügen." = "Insert a link for selected text.";
+"Einfügen abgebrochen" = "Insertion Cancelled";
+"Im WYSIWYG-Modus arbeitest du direkt in der formatierten Ansicht, ohne Markdown-Kürzel zu sehen. Im Quelltext-Modus stehen Text und Vorschau nebeneinander." = "In WYSIWYG mode you work directly in the formatted view without seeing Markdown syntax. In source mode, text and preview appear side by side.";
+"Link einfügen" = "Insert Link";
+"Markdown im WYSIWYG-Modus bearbeiten" = "Edit Markdown in WYSIWYG mode";
+"Markdown-Ansicht konnte nicht gestartet werden" = "Markdown View Could Not Start";
+"Markdown-Eingabe noch nicht übernommen" = "Markdown Input Not Yet Accepted";
+"Markdown-Quelltext mit separater Vorschau als Standard verwenden (⌥↩)." = "Use Markdown source with a separate preview by default (⌥↩).";
+"Mit dem Button rechts vom Text/Hex-Umschalter wechselst du den Modus für das aktuelle Dokument (⌃⇧⌘M). Den Standard änderst du jederzeit in den Einstellungen." = "Use the button to the right of the Text/Hex switch to change mode for the current document (⌃⇧⌘M). You can change the default in Settings at any time.";
+"Neue Markdown-Dokumente direkt wie in der Vorschau bearbeiten. Der Umschalter im Dokument gilt nur für dieses Dokument." = "Edit new Markdown documents directly in the preview-like view. The document toggle applies only to that document.";
+"Quelltext und Vorschau" = "Source and Preview";
+"Speichern unter abgebrochen" = "Save As Cancelled";
+"WYSIWYG" = "WYSIWYG";
+"WYSIWYG verwenden" = "Use WYSIWYG";
+"Wie möchtest du Markdown bearbeiten?" = "How would you like to edit Markdown?";
+"Überschrift und Formatierungen entfernen; normalen Text schreiben." = "Remove heading and formatting; write plain text.";
+"Texteingabe noch nicht abgeschlossen" = "Text Input Not Yet Complete";
+"Bitte schließe die aktuelle Zeicheneingabe ab und führe den Befehl danach erneut aus." = "Please finish the current character input, then try the command again.";
+
+"Die Einfügestelle konnte nicht festgehalten werden. Bitte versuche es erneut." = "The insertion point could not be captured. Please try again.";

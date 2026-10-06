@@ -517,7 +517,7 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   SwiftUI-Schlüssel mit der englischen Tabelle und prüft Format-Platzhalter.
   `./selftest.sh localization` prüft danach die Tabellen im fertig gepackten
   Haupt-App- und SwiftPM-Ressourcenbundle sowie die lokalen KaTeX-, Mermaid-
-  und highlight.js-Dateien.
+  highlight.js- und Turndown-/WYSIWYG-Dateien.
   Das Skript braucht `rg`; fehlt ripgrep im PATH (nicht jeder Mac hat es
   installiert), nimmt es das im Repo mitgelieferte Binary unter
   `app/Sources/Fastra/Resources/ripgrep` (seit 2026-09-02).
@@ -1111,3 +1111,18 @@ wie andere Fokusprüfungen über LaunchServices; sein Timer wird auch in der
 modalen RunLoop-Schleife bedient. Mit
 `FASTRA_REMOTE_DIALOG_DIR` werden fünf Dialogzustände als PNG gesichert; beide
 UI-Sprachen visuell prüfen.
+
+### Visuelle Markdown-Bearbeitung
+
+`mdvisual` bedient den echten Erstwahl-Dialog und die Format-Toolbar, prüft Undo,
+letzte Eingaben vor dem Speichern, den Moduswechsel sowie die Bildkopien von
+„Speichern unter“. `FASTRA_MD_VISUAL_DIR` speichert den Erstwahl-Dialog, Ansichten
+bei 650 und 1100 pt, den Dunkelmodus und den Quelltext nach dem Zurückwechseln;
+jeweils Deutsch und Englisch ansehen.
+
+Turndown 7.2.0 liegt unverändert als `dist/turndown.js` im lokalen Ressourcenordner
+`MarkdownVendor/turndown-7.2.0.js`, zusammen mit seiner MIT-Lizenz. Quelle ist das
+npm-Paket `https://registry.npmjs.org/turndown/-/turndown-7.2.0.tgz`.
+Fastras Dialekt- und Erhaltungsregeln stehen separat in `visual-editor.js`.
+Beide Skripte werden aus `AppResources.bundle` in die lokale WebKit-Seite geladen;
+es gibt keinen Download zur Laufzeit.

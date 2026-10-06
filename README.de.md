@@ -200,6 +200,8 @@ dem Namen, statt still nichts zu tun.
 
 ## Markdown bleibt lokal
 
+Markdown lässt sich auch im WYSIWYG-Modus ohne sichtbaren Quelltext bearbeiten. Beim ersten Öffnen wählst du den Standard; später änderst du ihn in den Einstellungen oder wechselst das aktuelle Dokument mit dem Button neben Text/Hex (⌃⇧⌘M). Speichern unter kopiert nur verwendete lokale Bilder; neue Bilder erhalten kurze Dateinamen.
+
 Für Markdown-Dateien lässt sich rechts neben dem Editor eine optionale,
 live aktualisierte Vorschau mit dauerhaftem Splitter einblenden. Der lokale
 Renderer beherrscht GitHub-Flavoured Markdown, darunter Tabellen, Aufgabenlisten,
@@ -211,7 +213,7 @@ oder Rich Text kopieren, sofern das Zielprogramm es unterstützt.
 Eine Formatierungs-Toolbar sowie Befehle in Menü und Rechtsklickmenü decken
 Hervorhebungen, Überschriften, Listen, Zitate, Links und Tabellen als normale,
 widerrufbare Markdown-Edits ab. Ein eingefügtes Bild speichert Fastra neben dem
-Dokument. Eine hineingezogene Bilddatei behält ihren ursprünglichen Dateinamen
+Dokument. Eine hineingezogene Bilddatei erhält einen kurzen Dateinamen
 und wird nach `images/` kopiert. In beiden Fällen setzt Fastra einen relativen
 Link, damit Text und Bilder gemeinsam portabel bleiben.
 

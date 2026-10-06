@@ -21,8 +21,8 @@ struct StatusBarView: View {
                 encodingMenu
                 languageMenu
                 formatDocumentButton
-                softWrapControl
-                Text(cursorPosition)
+                if !workspace.activeMarkdownIsVisual { softWrapControl }
+                Text(workspace.activeMarkdownIsVisual ? L10n.string("WYSIWYG") : cursorPosition)
                     .fastraFont(.small)
                     .foregroundColor(Theme.textSecondary)
                 lineEndingMenu
@@ -51,6 +51,21 @@ struct StatusBarView: View {
                 // eine Ansicht bietet; Menüpunkte und Shortcuts unverändert.
                 if workspace.availableViewModes.count > 1 {
                     viewModePicker
+                }
+                if workspace.activeTabIsMarkdown {
+                    Button {
+                        workspace.toggleMarkdownEditingMode()
+                    } label: {
+                        Image(systemName: workspace.activeMarkdownIsVisual ? "chevron.left.forwardslash.chevron.right" : "pencil.and.outline")
+                    }
+                    .buttonStyle(.plain)
+                    .help(workspace.activeMarkdownIsVisual
+                          ? "Markdown-Quelltext bearbeiten (⌃⇧⌘M)"
+                          : "Markdown im WYSIWYG-Modus bearbeiten (⌃⇧⌘M)")
+                    .keyboardShortcut("m", modifiers: [.command, .shift, .control])
+                    .disabled(workspace.activeTab.map { !workspace.textEditingIsAllowed(for: $0) } ?? true)
+                    .accessibilityIdentifier("markdownEditingModeButton")
+                    .background(SelfTestMarker(id: "markdownEditingModeButton").frame(width: 0, height: 0))
                 }
                 if FooterLogic.shouldShowSearchSummary(isWelcomeScreen: workspace.isWelcomeScreen,
                                                        findPattern: workspace.findPattern) {

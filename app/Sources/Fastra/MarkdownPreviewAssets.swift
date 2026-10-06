@@ -13,7 +13,9 @@ enum MarkdownPreviewAssets {
         "katex.js": ("katex-0.17.0.min.js", "text/javascript"),
         "highlight.js": ("highlight-11.11.1.min.js", "text/javascript"),
         "highlight.css": ("highlight-11.11.1.min.css", "text/css"),
-        "mermaid.js": ("mermaid-11.16.0.min.js", "text/javascript")
+        "mermaid.js": ("mermaid-11.16.0.min.js", "text/javascript"),
+        "turndown-7.2.0.js": ("turndown-7.2.0.js", "text/javascript"),
+        "visual-editor.js": ("visual-editor.js", "text/javascript")
     ]
 
     static func resource(named name: String) -> (url: URL, mimeType: String)? {
@@ -111,6 +113,12 @@ final class MarkdownPreviewSchemeHandler: NSObject, WKURLSchemeHandler {
     }) {
         self.deliver = deliver
         super.init()
+    }
+
+    func addImageURLs(_ urls: [String: URL]) {
+        lock.lock()
+        imageURLs.merge(urls) { _, new in new }
+        lock.unlock()
     }
 
     func setImageURLs(_ urls: [String: URL]) {

@@ -53,20 +53,27 @@ extension MarkdownFormatCommand {
         }
     }
 
-    /// Beschriftung in Menüleiste, Rechtsklickmenü und Toolbar-Tooltips.
+    /// Beschriftung in Menüleiste und Rechtsklickmenü.
     var menuTitle: String { L10n.string(menuTitleKey) }
 
-    /// Ausführlicher Tooltip für Befehle, deren Wirkung am Symbol allein
-    /// nicht erkennbar ist. Die übrigen verwenden ihren Menü-Titel. Hat der
-    /// Befehl ein Tastenkürzel, steht es dahinter — z. B. „Fett (⌘B)"
-    /// (Daniel-Wunsch 2026-07-29).
+    /// Jeder Tooltip erklärt die Wirkung und nennt das zugehörige Tastenkürzel.
     var helpText: String {
         let base: String
         switch self {
-        case .hardBreak:
-            base = L10n.string("Fügt zwei Leerzeichen und einen normalen Zeilenumbruch ein.")
-        default:
-            base = menuTitle
+        case .bold: base = L10n.string("Ausgewählten Text fett formatieren oder Fettung entfernen.")
+        case .italic: base = L10n.string("Ausgewählten Text kursiv formatieren oder Kursivschrift entfernen.")
+        case .highlight: base = L10n.string("Ausgewählten Text mit einem Textmarker hervorheben oder die Markierung entfernen.")
+        case .code: base = L10n.string("Ausgewählten Text als wörtlichen Code formatieren.")
+        case .heading1: base = L10n.string("Den Absatz als große Überschrift formatieren.")
+        case .heading2: base = L10n.string("Den Absatz als Überschrift der zweiten Ebene formatieren.")
+        case .heading3: base = L10n.string("Den Absatz als Überschrift der dritten Ebene formatieren.")
+        case .plainParagraph: base = L10n.string("Überschrift und Formatierungen entfernen; normalen Text schreiben.")
+        case .bulletList: base = L10n.string("Die ausgewählten Absätze als Aufzählung formatieren.")
+        case .orderedList: base = L10n.string("Die ausgewählten Absätze als nummerierte Liste formatieren.")
+        case .quote: base = L10n.string("Die ausgewählten Absätze als Zitat formatieren.")
+        case .link: base = L10n.string("Einen Link für den ausgewählten Text einfügen.")
+        case .insertTable: base = L10n.string("Eine Tabelle mit wählbarer Spaltenzahl einfügen.")
+        case .hardBreak: base = L10n.string("Eine neue Zeile innerhalb desselben Absatzes beginnen.")
         }
         guard let shortcut else { return base }
         return "\(base) (\(shortcut.display))"
@@ -82,7 +89,7 @@ extension MarkdownFormatCommand {
         case .italic:         MarkdownFormatShortcut(key: "i")
         case .highlight:      MarkdownFormatShortcut(key: "h", shift: true)
         case .code:           MarkdownFormatShortcut(key: "k", shift: true)
-        case .hardBreak:      nil
+        case .hardBreak:      MarkdownFormatShortcut(key: "\r", option: true)
         case .heading1:       MarkdownFormatShortcut(key: "1", option: true)
         case .heading2:       MarkdownFormatShortcut(key: "2", option: true)
         case .heading3:       MarkdownFormatShortcut(key: "3", option: true)
@@ -91,7 +98,7 @@ extension MarkdownFormatCommand {
         case .orderedList:    MarkdownFormatShortcut(key: "7", shift: true)
         case .quote:          MarkdownFormatShortcut(key: "9", shift: true)
         case .link:           MarkdownFormatShortcut(key: "k")
-        case .insertTable:    nil
+        case .insertTable:    MarkdownFormatShortcut(key: "t", shift: true, option: true)
         }
     }
 
@@ -131,7 +138,7 @@ struct MarkdownFormatShortcut: Equatable {
         if option { text += "⌥" }
         if shift { text += "⇧" }
         text += "⌘"
-        text += key.uppercased()
+        text += key == "\r" ? "↩" : key.uppercased()
         return text
     }
 }

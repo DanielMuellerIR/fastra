@@ -22,6 +22,7 @@ struct SettingsView: View {
     @AppStorage(EditorFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var editorFontName = EditorFonts.systemMonospacedName
     @AppStorage(SessionRestorationPreferences.enabledKey, store: SelfTest.workspaceDefaults())
     private var restoreLastSession = true
+    @AppStorage(MarkdownEditingMode.defaultsKey, store: SelfTest.workspaceDefaults()) private var markdownVisualDefault = false
     @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showMarkdownPreview = true
     @AppStorage(PreviewFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var previewFontName = PreviewFonts.systemName
     // Druckeinstellungen. Die Voreinstellungen hier müssen mit
@@ -172,7 +173,9 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Section("Markdown-Vorschau") {
+            Section("Markdown") {
+                Toggle("Markdown im WYSIWYG-Modus bearbeiten", isOn: Binding(get: { markdownVisualDefault }, set: { MarkdownEditingMode.setDefault($0) }))
+                    .help("Neue Markdown-Dokumente direkt wie in der Vorschau bearbeiten. Der Umschalter im Dokument gilt nur für dieses Dokument.")
                 Toggle("Bei Markdown rechts anzeigen", isOn: $showMarkdownPreview)
                 Picker("Vorschau-Schrift", selection: $previewFontName) {
                     ForEach(PreviewFonts.readingNames(current: previewFontName), id: \.self) { name in

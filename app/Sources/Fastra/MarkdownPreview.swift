@@ -316,6 +316,8 @@ enum MarkdownRichText {
           }
         }
 
+        window.fastraEnhanceMarkdown = enhanceMarkdown;
+
         document.addEventListener('copy', function(event) {
           const selection = window.getSelection();
           if (!selection || selection.rangeCount === 0) return;
@@ -437,9 +439,8 @@ enum MarkdownRichText {
     /// globale Registrierung — zwei parallele Läufe wären ein Wettlauf.
     /// Auch die synchronen Einstiege (Tests, `htmlFragment`) laufen deshalb
     /// über diese Queue.
-    /// `fileprivate`, weil `MarkdownRenderCoalescer` (weiter unten in dieser
-    /// Datei) seine verdichteten Läufe auf genau dieser Queue ausführt.
-    fileprivate static let renderQueue = DispatchQueue(
+    /// Auch die visuelle Bearbeitung und Bildübernahme benutzen diese Queue.
+    static let renderQueue = DispatchQueue(
         label: "de.dm0.fastra.markdown-render", qos: .userInitiated)
 
     /// Synchron — blockiert den Aufrufer, bis die Render-Queue frei ist.
@@ -453,7 +454,7 @@ enum MarkdownRichText {
     }
 
     /// Der eigentliche Renderlauf. NUR von `renderQueue` aus aufrufen.
-    fileprivate static func renderFragmentOnQueue(markdown: String,
+    static func renderFragmentOnQueue(markdown: String,
                                                   documentURL: URL?) -> MarkdownRenderedFragment {
         let math = MarkdownMath.extract(from: markdown)
         // cmark rendert Erweiterungen nur, wenn dieselbe Extension-Liste auch

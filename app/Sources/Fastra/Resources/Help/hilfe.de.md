@@ -462,6 +462,28 @@ Verbindungen beobachten.
 
 ## Markdown schreiben
 
+**WYSIWYG:** Beim ersten Öffnen eines Markdown-Dokuments fragt Fastra, ob du direkt
+in der formatierten Ansicht oder mit Quelltext und Vorschau arbeiten möchtest.
+Im WYSIWYG-Modus bleiben Markdown-Kürzel verborgen. Die Format-Toolbar funktioniert
+in beiden Modi. Tippen, Formatieren und Rückgängig erfolgen direkt im Dokument.
+
+Der Button rechts vom **Text/Hex-Umschalter** (⌃⇧⌘M) wechselt die Ansicht nur für
+das aktuelle Dokument. Unter **Einstellungen → Markdown** ändert
+„Markdown im WYSIWYG-Modus bearbeiten“ den Standard für weitere Dokumente.
+
+Unveränderte Blöcke behalten ihre Originalschreibweise. Bearbeitete Absätze werden
+in gültiges Markdown zurückübersetzt; wörtliche Sonderzeichen werden geschützt.
+Formeln, Diagramme und HTML-Blöcke bleiben geschützte Elemente. Sie lassen sich
+mitkopieren oder als Ganzes entfernen; ihre innere Struktur wird nicht visuell
+bearbeitet. Auch unvollständiges Markdown lässt sich öffnen und weiterbearbeiten.
+
+**Speichern unter:** Beim Wechsel in einen anderen Ordner kopiert Fastra nur die
+lokalen Bilder, die dieses Dokument tatsächlich verwendet, in dessen `images`-
+Ordner. Andere Bilder, unbenutzte Referenzdefinitionen und Codebeispiele werden
+nicht mitgenommen. Fehlende benötigte Bilder brechen die Speicherung mit einer
+Meldung ab. Vorhandene Zieldateien werden nicht überschrieben.
+
+
 Bei Markdown-Tabs erscheint über dem Editor eine **Format-Toolbar**; die
 gleichen Befehle liegen im Menü „Markdown“ und im Rechtsklickmenü. Sie
 wirken als normale, mit ⌘Z widerrufbare Textänderungen auf die Auswahl
@@ -469,13 +491,13 @@ bzw. die Cursor-Zeile: Fett (⌘B), Kursiv (⌘I), Hervorheben (⇧⌘H),
 Code (⇧⌘K),
 Überschrift 1–3 (⌘⌥1–3), zurück zu normalem Text (⌘⌥0), Aufzählung
 (⇧⌘8), nummerierte Liste (⇧⌘7), Zitat (⇧⌘9), Link (⌘K) und
-„Tabelle einfügen…“ (kleiner Dialog: Spalten, Kopfzeile ja/nein).
+„Tabelle einfügen…“ (⌥⇧⌘T; kleiner Dialog: Spalten, Kopfzeile ja/nein).
 
-Der Toolbar-Befehl **Harter Zeilenumbruch** fügt am Ende der Auswahl zwei
+Der Toolbar-Befehl **Harter Zeilenumbruch** (⌥⌘↩) fügt am Ende der Auswahl zwei
 normale Leerzeichen und anschließend einen normalen Zeilenumbruch ein. Steht
 der Cursor bereits direkt vor einem Zeilenumbruch, ergänzt bzw. vereinheitlicht
 er nur die zwei Leerzeichen. So bleibt die zugrunde liegende Markdown-
-Schreibweise sichtbar und mit ⌘Z widerrufbar.
+Schreibweise im Quelltextmodus sichtbar und mit ⌘Z widerrufbar.
 
 **Formatiert als Markdown einfügen** (⇧⌘V) wandelt HTML- oder RTF-Inhalt aus
 Browsern und Office-Programmen mit dem separat installierten Werkzeug
@@ -483,23 +505,19 @@ Browsern und Office-Programmen mit dem separat installierten Werkzeug
 Umwandlung. Wechselst du währenddessen das Ziel oder bearbeitest den Inhalt,
 wird kontrolliert abgebrochen und nichts in ein anderes Dokument eingefügt.
 
-**Bilder einfügen:** Ein Bild aus der Zwischenablage (⌘V) legt Fastra
-als Datei im Unterordner `images` ab
-(`dokumentname-JJJJ-MM-TT-hhmmss.png`; PNG/JPEG/GIF behalten ihr Format,
-alles andere wird PNG) und verlinkt es relativ an der Cursorposition. Eine
-**Bilddatei per Drag-and-drop** wird unter ihrem ursprünglichen Dateinamen
-unverändert in denselben Unterordner kopiert
-(Namenskollision → Suffix; byte-identische Datei wird nicht doppelt
-abgelegt) und ebenfalls relativ verlinkt — andere Dateien öffnen wie gewohnt
-in einem Tab. Beim Ziehen zeigt der Editor die Einfügemarke an der wirklichen
-Textposition; am oberen und unteren Rand scrollt das Dokument weiter. Nach dem
-Einfügen scrollt die Vorschau zur Einfügestelle. Ungespeicherte Dokumente
-haben noch keinen Ordner — deshalb zuerst speichern (⌘S).
+**Bilder einfügen:** Ein Bild aus der Zwischenablage (⌘V) oder eine gezogene
+Bilddatei wird im Unterordner `images` gespeichert und im Dokument verlinkt.
+Die Kopien erhalten möglichst kurze Namen (`1.png` bis `9.png`, dann `a.png`
+usw.). Originaldateien bleiben erhalten; ihre Namen werden für neue Kopien
+nicht übernommen. PNG/JPEG/GIF behalten beim Einfügen aus der Zwischenablage
+ihr Format, andere Formate werden PNG. Dateien werden unverändert kopiert;
+byte-identische vorhandene Kopien können wiederverwendet werden. Speichere
+neue Dokumente vor dem Einfügen von Bildern (⌘S).
 
-⌘Z entfernt bei einem solchen Paste oder Drop sowohl den Link als auch die
-dabei neu von Fastra erzeugte Bilddatei; Wiederholen stellt beides wieder her.
-Eine bereits vorhandene oder selbst im Dateisystem abgelegte und manuell
-verlinkte Datei wird nie entfernt.
+Im Quelltextmodus entfernt ⌘Z den Link und die neu erzeugte Bilddatei; Redo stellt
+beides wieder her. Im WYSIWYG-Modus nimmt ⌘Z den sichtbaren Einfügeschritt zurück;
+die Bilddatei bleibt erhalten. „Speichern unter“ nimmt nur noch verwendete Bilder
+mit. Bereits vorhandene oder manuell verlinkte Dateien werden niemals entfernt.
 
 Fastra veröffentlicht eine Bilddatei erst nach der vollständigen Kopie und
 überschreibt keine gleichzeitig entstandene Datei. Wird der echte

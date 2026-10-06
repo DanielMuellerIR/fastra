@@ -62,6 +62,26 @@ enum MarkdownImageStore {
     }
 
     private static let directoryLocks = DirectoryLockRegistry()
+    private static let reservationLock = NSLock()
+    private static var reservedPaths: Set<String> = []
+
+    private static func isReserved(_ url: URL) -> Bool {
+        reservationLock.lock()
+        defer { reservationLock.unlock() }
+        return reservedPaths.contains(url.standardizedFileURL.path)
+    }
+
+    static func releaseReservations(_ images: [StoredImage]) {
+        reservationLock.lock()
+        defer { reservationLock.unlock() }
+        for image in images { reservedPaths.remove(image.fileURL.standardizedFileURL.path) }
+    }
+
+    private static func reserve(_ image: StoredImage) {
+        reservationLock.lock()
+        defer { reservationLock.unlock() }
+        reservedPaths.insert(image.fileURL.standardizedFileURL.path)
+    }
 
     /// Dateiendungen, die als Bild-DATEI eingefügt (statt geöffnet) werden.
     /// Deckt sich mit den Vorschau-Formaten der WKWebView-Bildauflösung.
@@ -71,14 +91,10 @@ enum MarkdownImageStore {
 
     // MARK: - Pure Namenslogik
 
-    /// Zeitstempel-Name für ROHE Bilddaten: `<dokumentname>-JJJJ-MM-TT-hhmmss`.
-    static func pastedImageBaseName(documentName: String, date: Date) -> String {
-        let base = (documentName as NSString).deletingPathExtension
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
-        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
-        return "\(base)-\(formatter.string(from: date))"
+    /// Kurze Namen in Basis 36: 1…9, a…z, 10… . Der exklusive
+    /// Dateiaustausch im Ablagepfad entscheidet über jede Kollision.
+    static func shortImageName(counter: Int, fileExtension: String) -> String {
+        "\(String(counter, radix: 36)).\(fileExtension.lowercased())"
     }
 
     /// Relativer Markdown-Pfad vom Dokument zur Bilddatei. Liegt das Bild
@@ -194,6 +210,7 @@ enum MarkdownImageStore {
     /// Legt ROHE Bilddaten als neue Datei im `images`-Unterordner ab.
     static func storePastedData(_ prepared: PreparedImageData,
                                 documentURL: URL,
+                                reserveForTransaction: Bool = false,
                                 now: Date = Date(),
                                 hooks: StoreHooks = StoreHooks())
     throws -> StoredImage {
@@ -201,8 +218,6 @@ enum MarkdownImageStore {
             .resolvingSymlinksInPath().standardizedFileURL
         let linkDocumentURL = documentDirectory.appendingPathComponent(
             documentURL.lastPathComponent)
-        let base = pastedImageBaseName(documentName: documentURL.lastPathComponent,
-                                       date: now)
         let directory = documentDirectory.appendingPathComponent("images", isDirectory: true)
         return try directoryLocks.withLock(for: directory) {
             let opened = try openImagesDirectory(beside: documentDirectory)
@@ -226,9 +241,7 @@ enum MarkdownImageStore {
             try writeAll(prepared.data, to: temporaryFD)
             guard fsync(temporaryFD) == 0 else { throw currentPOSIXError() }
             for counter in 1..<10_000 {
-                let name = counter == 1
-                    ? "\(base).\(prepared.fileExtension)"
-                    : "\(base)-\(counter).\(prepared.fileExtension)"
+                let name = shortImageName(counter: counter, fileExtension: prepared.fileExtension)
                 let target = directory.appendingPathComponent(name)
                 hooks.beforePublishing?(target)
                 if renameatx_np(opened.fd, temporaryName, opened.fd, name,
@@ -251,14 +264,16 @@ enum MarkdownImageStore {
                         _ = unlinkat(opened.fd, name, 0)
                         throw error
                     }
-                    stored = true
-                    return StoredImage(
+                    let result = StoredImage(
                         link: markdownImageLink(fileName: name, relativePath: relative),
                         fileURL: target,
                         createdByInsertion: true,
                         imagesDirectoryCreated: opened.created,
                         identity: identity
                     )
+                    if reserveForTransaction { reserve(result) }
+                    stored = true
+                    return result
                 }
                 guard errno == EEXIST else { throw currentPOSIXError() }
             }
@@ -267,10 +282,11 @@ enum MarkdownImageStore {
     }
 
     /// Kopiert eine Bild-DATEI unverändert in den `images`-Unterordner:
-    /// - liegt sie bereits im images-Unterordner → nur verlinken;
-    /// - Namenskollision → Suffix, byte-identische Datei → nicht doppeln.
+    /// Kurze Namen vermeiden lange Quelltextreferenzen. Eine byte-identische
+    /// Datei unter einem bereits kurzen Namen wird wiederverwendet.
     static func storeImageFile(_ sourceURL: URL,
                                documentURL: URL,
+                               reserveForTransaction: Bool = false,
                                hooks: StoreHooks = StoreHooks())
     throws -> StoredImage {
         // Die Quelle wird genau einmal geöffnet. Ein Austausch des Pfads nach
@@ -311,21 +327,6 @@ enum MarkdownImageStore {
             }
             hooks.afterOpeningImagesDirectory?()
 
-            // Bereits im geöffneten echten images-Ordner: nur verlinken.
-            if source.deletingLastPathComponent() == directory,
-               directoryStillMatches(opened),
-               let relative = relativeLinkPath(from: linkDocumentURL, to: source) {
-                stored = true
-                return StoredImage(
-                    link: markdownImageLink(fileName: source.lastPathComponent,
-                                            relativePath: relative),
-                    fileURL: source,
-                    createdByInsertion: false,
-                    imagesDirectoryCreated: false,
-                    identity: storedFileIdentity(from: sourceBefore)
-                )
-            }
-
             let temporaryName = ".fastra-copy-\(UUID().uuidString).tmp"
             let temporaryFD = try createFile(named: temporaryName, in: opened.fd)
             var temporaryExists = true
@@ -342,21 +343,15 @@ enum MarkdownImageStore {
                 throw StoreError.unreadableImage
             }
 
-            let sourceName = sourceURL.lastPathComponent
-            let base = (sourceName as NSString).deletingPathExtension
-            let fileExtension = (sourceName as NSString).pathExtension
+            let fileExtension = sourceURL.pathExtension
             for counter in 1..<10_000 {
-                let candidateName = counter == 1
-                    ? sourceName
-                    : fileExtension.isEmpty
-                        ? "\(base)-\(counter)"
-                        : "\(base)-\(counter).\(fileExtension)"
+                let candidateName = shortImageName(counter: counter, fileExtension: fileExtension)
                 let candidate = directory.appendingPathComponent(candidateName)
                 let existingFD = openat(opened.fd, candidateName,
                                         O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
                 if existingFD >= 0 {
                     defer { Darwin.close(existingFD) }
-                    if contentsEqual(sourceFD, existingFD),
+                    if !isReserved(candidate), contentsEqual(sourceFD, existingFD),
                        directoryStillMatches(opened),
                        let relative = relativeLinkPath(from: linkDocumentURL,
                                                        to: candidate) {
@@ -401,6 +396,7 @@ enum MarkdownImageStore {
                         imagesDirectoryCreated: opened.created,
                         identity: copiedIdentity
                     )
+                    if reserveForTransaction { reserve(result) }
                     stored = true
                     return result
                 }
