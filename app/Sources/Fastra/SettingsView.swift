@@ -176,6 +176,7 @@ struct SettingsView: View {
             Section("Markdown") {
                 Toggle("Markdown im WYSIWYG-Modus bearbeiten", isOn: Binding(get: { markdownVisualDefault }, set: { MarkdownEditingMode.setDefault($0) }))
                     .help("Neue Markdown-Dokumente direkt wie in der Vorschau bearbeiten. Der Umschalter im Dokument gilt nur für dieses Dokument.")
+                    .background(SelfTestMarker(id: "markdownVisualDefault").frame(width: 0, height: 0))
                 Toggle("Bei Markdown rechts anzeigen", isOn: $showMarkdownPreview)
                 Picker("Vorschau-Schrift", selection: $previewFontName) {
                     ForEach(PreviewFonts.readingNames(current: previewFontName), id: \.self) { name in

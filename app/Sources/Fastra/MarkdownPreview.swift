@@ -257,16 +257,38 @@ enum MarkdownRichText {
         <script src="fastra-preview://resource/mermaid.js"></script>
         <script nonce="\(nonce)">
         const mermaidError = "\(javascriptEscaped(L10n.string("Diagramm konnte nicht gerendert werden.")))";
-        if (window.mermaid) {
+        let markdownDark = \(darkMode ? "true" : "false");
+        const diagramSources = new Map();
+        let diagramID = 0;
+        let themeRevision = 0, themeRenderID = 0;
+        function configureMermaid() {
+          if (!window.mermaid) return;
           mermaid.initialize({
             startOnLoad: false,
             securityLevel: 'strict',
             htmlLabels: false,
             maxTextSize: 100000,
             maxEdges: 500,
-            theme: '\(darkMode ? "dark" : "default")'
+            theme: markdownDark ? 'dark' : 'default'
           });
         }
+
+        configureMermaid();
+        window.fastraUpdateMarkdownTheme = async function(root, dark) {
+          markdownDark = dark;
+          const revision = ++themeRevision;
+          configureMermaid();
+          for (const diagram of root.querySelectorAll('.mermaid-render')) {
+            const source = diagramSources.get(diagram.dataset.mdDiagram);
+            if (!source) continue;
+            try {
+              const rendered = await mermaid.render('fastraTheme' + (++themeRenderID), source);
+              if (revision !== themeRevision) return;
+              const live = Array.from(root.querySelectorAll('.mermaid-render')).find(node => node.dataset.mdDiagram === diagram.dataset.mdDiagram);
+              if (live) live.innerHTML = rendered.svg;
+            } catch (_) {}
+          }
+        };
 
         async function enhanceMarkdown(root) {
           if (window.katex) {
@@ -302,6 +324,8 @@ enum MarkdownRichText {
               const diagram = document.createElement('div');
               diagram.className = 'mermaid mermaid-render';
               diagram.textContent = code.textContent;
+              diagram.dataset.mdDiagram = String(++diagramID);
+              diagramSources.set(diagram.dataset.mdDiagram, code.textContent);
               pre.before(diagram);
               try {
                 await mermaid.run({ nodes: [diagram], suppressErrors: true });

@@ -165,7 +165,7 @@ struct MarkdownVisualTests {
     @Test("Zoom und Erscheinungsbild erhalten Undo; Marker entfernen ist rückgängig machbar")
     @MainActor
     func styleAndRemoveUndo() async throws {
-        let source = "==Markierung==\n"
+        let source = "# Überschrift\n\n> Zitat\n\n==Markierung==\n"
         let (workspace, coordinator, web, window) = try await editor(source)
         defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
         _ = try await web.evaluateJavaScript("""
@@ -174,9 +174,43 @@ struct MarkdownVisualTests {
             """)
         try #require(await waitUntil { workspace.activeTab?.content.contains("==") == false })
         coordinator.updateStyle(fontName: PreviewFonts.systemName, fontSize: 22, darkMode: true, style: "changed")
+        let darkColors = try await web.evaluateJavaScript("[getComputedStyle(document.querySelector('h1')).color,getComputedStyle(document.querySelector('blockquote')).color]") as? [String]
+        #expect(darkColors == ["rgb(242, 242, 242)", "rgb(168, 168, 168)"])
+        coordinator.updateStyle(fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "restored")
+        let lightColors = try await web.evaluateJavaScript("[getComputedStyle(document.querySelector('h1')).color,getComputedStyle(document.querySelector('blockquote')).color]") as? [String]
+        #expect(lightColors == ["rgb(54, 54, 54)", "rgb(115, 115, 115)"])
         _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         #expect(!workspace.activeTab!.isDirty)
+    }
+
+    @Test("Diagramme wechseln das Farbschema ohne Quelltextänderung oder Undo-Verlust")
+    @MainActor
+    func diagramTheme() async throws {
+        let source = "> ==Absatz==\n>\n> ```mermaid\n> graph TD; A-->B\n> ```\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let light = try await web.evaluateJavaScript("getComputedStyle(document.querySelector('.mermaid-render .node rect')).fill") as? String
+        let darkValue: Any = try await withCheckedThrowingContinuation { continuation in
+            web.callAsyncJavaScript("""
+                const p=document.querySelector('mark'),r=document.createRange();r.selectNodeContents(p);
+                getSelection().removeAllRanges();getSelection().addRange(r);
+                const update=fastraVisual.updateStyle('System',14,true);
+                fastraVisual.command('highlight');
+                await update;
+                return getComputedStyle(document.querySelector('.mermaid-render .node rect')).fill;
+                """, arguments: [:], in: nil, in: .page) {
+                continuation.resume(with: $0)
+            }
+        }
+        let dark = darkValue as? String
+        let after = try await web.evaluateJavaScript("JSON.stringify({markdown:fastraVisual.markdown(),html:document.querySelector('#fastra-visual').innerHTML})") as? String
+        try #require(await waitUntil { workspace.activeTab?.content.contains("==") == false }, Comment(rawValue: after ?? "DOM fehlt"))
+        #expect(light != nil && dark != nil && light != dark)
+        #expect(workspace.activeTab?.content.contains("graph TD; A-->B") == true)
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        withExtendedLifetime(coordinator) {}
     }
 
     @Test("Ein bearbeiteter Tabellenblock bewahrt Spaltenausrichtung")

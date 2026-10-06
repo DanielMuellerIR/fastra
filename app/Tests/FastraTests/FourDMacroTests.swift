@@ -1635,7 +1635,7 @@ func openReplaceAllCancelsMacroPostprocessing() throws {
 
 @Test("Workspace-Abbau lässt keinen Makro-Task weiterrechnen")
 @MainActor
-func macroPostprocessingStopsOnWorkspaceDeinit() {
+func macroPostprocessingStopsOnWorkspaceDeinit() async {
     let suite = "fastra-test-macro-deinit-\(UUID().uuidString)"
     let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -1649,7 +1649,9 @@ func macroPostprocessingStopsOnWorkspaceDeinit() {
     let otherWorkspace = Workspace(defaults: defaults)
     ActiveDocumentContext.shared.activate(otherWorkspace)
 
-    #expect(reference.workspace == nil)
+    // Parallele Tests können über allLive kurzzeitig starke Referenzen halten.
+    // Die begrenzte Freigabeprüfung unterscheidet diese von dauerhaftem Besitz.
+    #expect(await waitUntil { reference.workspace == nil })
     #expect(probe.cancelled.wait(timeout: .now() + 10) == .success)
 }
 

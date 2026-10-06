@@ -7,6 +7,14 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.132.1] — 2026-10-06
+
+### Behoben
+
+- Überschriften, Zitate und Diagramme im WYSIWYG-Modus übernehmen beim Wechsel zwischen heller und dunkler Darstellung die passenden Textfarben.
+
+- Formatänderungen in Blöcken mit geschützten Formeln oder Diagrammen ersetzen den Inhalt vollständig, ohne ihn zu duplizieren.
+
 ## [v1.132.0] — 2026-10-06
 
 ### Neu

@@ -3312,6 +3312,23 @@ enum SelfTest {
                                    options: .atomic)
                     }
                 }
+                if current.name == "settings" {
+                    guard let marker = markerView(id: "markdownVisualDefault", in: root),
+                          let scroll = marker.enclosingScrollView, let document = scroll.documentView else {
+                        findings.append("settings: Markdown-Einstellung fehlt")
+                        current.close(); step(); return
+                    }
+                    let frame = marker.convert(marker.bounds, to: document)
+                    let clip = scroll.contentView
+                    clip.scroll(to: NSPoint(x: clip.bounds.minX, y: max(0, frame.minY - 60)))
+                    scroll.reflectScrolledClipView(clip)
+                    root.layoutSubtreeIfNeeded()
+                    if let pngDirectory, let bitmap = root.bitmapImageRepForCachingDisplay(in: root.bounds) {
+                        root.cacheDisplay(in: root.bounds, to: bitmap)
+                        try? bitmap.representation(using: .png, properties: [:])?
+                            .write(to: pngDirectory.appendingPathComponent("dialog-settings-markdown.png"), options: .atomic)
+                    }
+                }
                 current.close()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { step() }
             }
@@ -15049,13 +15066,13 @@ enum SelfTest {
 
     private static func pollMarkdownDropPosition(textView: TextView, base: URL,
                                                  dropOffset: Int, scrolled: CGFloat) {
-        let link = "![Quelle](images/Quelle.png)"
+        let link = "![Quelle](images/1.png)"
         var range = NSRange(location: NSNotFound, length: 0)
         waitFor(budget: 8, pause: 0.1,
                 condition: {
                     range = (textView.string as NSString).range(of: link)
                     let copied = FileManager.default.fileExists(
-                        atPath: base.appendingPathComponent("images/Quelle.png").path
+                        atPath: base.appendingPathComponent("images/1.png").path
                     )
                     return copied && range.location != NSNotFound
                 },
@@ -22654,7 +22671,8 @@ enum SelfTest {
                 let names = try FileManager.default.contentsOfDirectory(atPath: target.deletingLastPathComponent().appendingPathComponent("images").path)
                 try require(names == ["1.png"], "Speichern unter kopiert falsche Bilder: \(names)")
                 ws.toggleMarkdownEditingMode()
-                try await wait { !ws.activeMarkdownIsVisual && window.contentView.flatMap { editorTextView(in: $0) } != nil }
+                try await wait { !ws.activeMarkdownIsVisual && window.contentView.flatMap { editorTextView(in: $0) as? TextView }?.string == ws.activeTab?.content }
+                try await Task.sleep(nanoseconds: 500_000_000)
                 await capture("source-after-switch")
                 try require(workspaceDefaults().bool(forKey: MarkdownEditingMode.defaultsKey), "Dokumentwechsel verändert den Standard")
                 try? FileManager.default.removeItem(at: base)

@@ -42,6 +42,7 @@
   let root, originals=new Map(), blocks=[], selection=null, base='', session='', composing=false, revision=0, fenced=false, bookmarkID=0, bookmarks=new Map();
   function normalized(node) {
     const clone=node.cloneNode(true);
+    clone.querySelectorAll('[data-md-opaque]').forEach(n=>n.textContent='');
     clone.querySelectorAll('[data-tex]').forEach(n=>{n.textContent='';n.removeAttribute('data-rendered');});
     clone.querySelectorAll('pre code').forEach(n=>{n.textContent=n.textContent;n.removeAttribute('data-highlighted');n.classList.remove('hljs');});
     return clone.innerHTML;
@@ -94,7 +95,15 @@
     base=markdown;
   }
   function exec(name,value=null) {
-    restoreSelection();document.execCommand(name,false,value);
+    // WebKit ersetzt eine Auswahl über geschützte Atome sonst nur teilweise
+    // und dupliziert den Block. Nur während des atomaren HTML-Ersatzes freigeben.
+    const protectedNodes=name==='insertHTML'?Array.from(root.querySelectorAll('[contenteditable=false]')):[];
+    protectedNodes.forEach(n=>n.removeAttribute('contenteditable'));
+    try { restoreSelection();document.execCommand(name,false,value); }
+    finally {
+      protectedNodes.forEach(n=>{if(n.isConnected)n.contentEditable='false';});
+      root.querySelectorAll('[data-tex],[data-md-opaque],.mermaid-render').forEach(n=>n.contentEditable='false');
+    }
     const live=getSelection();if(live.rangeCount)selection=live.getRangeAt(0).cloneRange();
     changed();
   }
@@ -231,10 +240,11 @@
     caret(x,y){const r=document.caretRangeFromPoint?.(x,y);if(r && root.contains(r.commonAncestorContainer)){selection=r;getSelection().removeAllRanges();getSelection().addRange(r);}},
     bookmark(){restoreSelection();const key=String(++bookmarkID);bookmarks.set(key,{range:selection.cloneRange(),base:serialize()});return key;},
     insertBookmarked(key,html,atoms){if(fenced)return false;const saved=bookmarks.get(key);bookmarks.delete(key);if(!saved || saved.base!==serialize() || !root.contains(saved.range.commonAncestorContainer))return false;Object.assign(opaqueSources,atoms || {});const template=document.createElement('template');template.innerHTML=html;template.content.querySelectorAll('[data-tex]').forEach(n=>n.textContent=n.dataset.tex);html=template.innerHTML;selection=saved.range;getSelection().removeAllRanges();getSelection().addRange(selection);exec('insertHTML',html);window.fastraEnhanceMarkdown?.(root).then(()=>{root.querySelectorAll('[data-tex],.mermaid-render').forEach(n=>n.contentEditable='false');});return true;},
-    updateStyle(font,size,dark){
+    async updateStyle(font,size,dark){
       let sheet=document.getElementById('fastra-visual-style');if(!sheet){sheet=document.createElement('style');sheet.id='fastra-visual-style';document.head.append(sheet);}
       const family=font==='System'?'-apple-system, BlinkMacSystemFont, sans-serif':JSON.stringify(font)+', -apple-system, sans-serif';
-      sheet.textContent=`body{font-family:${family};font-size:${size}px;color:${dark?'#F2F2F2':'#363636'};background:${dark?'#171717':'#FFFFFF'}}a{color:${dark?'#8BB7F2':'#3F69A8'}}code,pre,blockquote,th{background:${dark?'#333333':'#ECECEC'}}td,th,blockquote,hr{border-color:${dark?'#484848':'#D7D7D7'}}mark{background:${dark?'#665200':'#FFEE9A'};color:inherit}`;
+      sheet.textContent=`body{font-family:${family};font-size:${size}px;color:${dark?'#F2F2F2':'#363636'};background:${dark?'#171717':'#FFFFFF'}}h1,h2,h3,h4,h5,h6{color:inherit}blockquote,pre.mermaid-error::before{color:${dark?'#A8A8A8':'#737373'}}a{color:${dark?'#8BB7F2':'#3F69A8'}}code,pre,blockquote,th{background:${dark?'#333333':'#ECECEC'}}td,th,blockquote,hr{border-color:${dark?'#484848':'#D7D7D7'}}mark{background:${dark?'#665200':'#FFEE9A'};color:inherit}`;
+      await window.fastraUpdateMarkdownTheme?.(root,dark);
     },
     prepareAction(){if(composing)return {composing:true};fenced=true;root.contentEditable='false';changed();return {markdown:serialize(),revision};},
     completeAction(expectedSession){if(expectedSession!==session)return;fenced=false;root.contentEditable='true';},
