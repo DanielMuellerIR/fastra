@@ -15066,7 +15066,7 @@ enum SelfTest {
 
     private static func pollMarkdownDropPosition(textView: TextView, base: URL,
                                                  dropOffset: Int, scrolled: CGFloat) {
-        let link = "![Quelle](images/1.png)"
+        let link = "![1](images/1.png)"
         var range = NSRange(location: NSNotFound, length: 0)
         waitFor(budget: 8, pause: 0.1,
                 condition: {
