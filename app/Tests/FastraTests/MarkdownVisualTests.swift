@@ -549,13 +549,16 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { workspace.activeTab?.isDirty == true })
         let nested = workspace.activeTab!.content
         _ = try await web.evaluateJavaScript("""
-            {const p=document.querySelector('p'),r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('taskList');}
-            document.querySelector('input[type=checkbox]').click();
+            {const p=document.querySelector('p'),r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);}
             """)
+        coordinator.format(.taskList)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("[ ]") == true })
+        _ = try await web.evaluateJavaScript("document.querySelector('input[type=checkbox]').click();")
         try #require(await waitUntil { workspace.activeTab?.content.contains("[x]") == true })
         var steps = [String]()
         for _ in 0..<3 {
             steps.append(try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();fastraVisual.markdown();") as? String ?? "nil")
+            if steps.last == nested { break }
         }
         #expect(steps.last == nested, Comment(rawValue: steps.enumerated().map { "\($0.offset): \($0.element)" }.joined(separator: "\n")))
         _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")

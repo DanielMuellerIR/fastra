@@ -23029,6 +23029,7 @@ enum SelfTest {
             let target = base.appendingPathComponent("copy/Protokoll.md")
             let source = "# Testprotokoll\n\nErgebnis: bestanden 😀\n\n- Erster Schritt\n- Zweiter Schritt\n\n| Prüfung | Ergebnis |\n| :--- | ---: |\n| Bild und Text | bestanden |\n\n![Prüfbild](images/original.png)\n"
             var stage = "Start"
+            var diagnostic = ""
             func require(_ condition: Bool, _ message: String) throws {
                 if !condition { throw NSError(domain: "MarkdownVisualSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
             }
@@ -23115,14 +23116,16 @@ enum SelfTest {
                 _ = try await web.evaluateJavaScript("document.querySelector('#fastra-visual input[type=checkbox]').click();")
                 try await wait { ws.activeTab?.content.contains("[x]") == true }
                 await capture("visual-lists")
-                stage = "Undo Häkchen"
-                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
-                try await wait { ws.activeTab?.content.contains("[x]") == false }
-                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
                 stage = "Undo Aufgabenliste"
-                // Eine neue Liste besteht aus dem nativen Listenbefehl und dem
-                // Einfügen der Kästchen; beide Schritte müssen zurückgehen.
-                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                diagnostic = "\nErwartet: " + nested.debugDescription
+                // WebKit kann Checkbox und Listenbefehle über native bzw.
+                // skriptgesteuerte Ereignisse unterschiedlich gruppieren.
+                // Nach jedem Schritt prüfen, damit die Einrückung erhalten bleibt.
+                for step in 1...3 {
+                    let undone = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();fastraVisual.markdown();") as? String
+                    diagnostic += "\nUndo \(step): " + (undone ?? "nil").debugDescription
+                    if undone == nested { break }
+                }
                 try await wait { ws.activeTab?.content == nested }
                 stage = "Undo Einrückung"
                 _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
@@ -23151,7 +23154,7 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: base)
                 window.orderOut(nil)
                 NSApp.appearance = originalAppearance
-                finish(false, stage + ": " + error.localizedDescription + "\nMarkdown: " + (ws.activeTab?.content ?? "nil"))
+                finish(false, stage + ": " + error.localizedDescription + diagnostic + "\nMarkdown: " + (ws.activeTab?.content ?? "nil"))
             }
         }
     }
