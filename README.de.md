@@ -206,6 +206,8 @@ dem Namen, statt still nichts zu tun.
 
 Markdown lässt sich auch im WYSIWYG-Modus ohne sichtbaren Quelltext bearbeiten. Beim ersten Öffnen wählst du den Standard; später änderst du ihn in den Einstellungen oder wechselst das aktuelle Dokument mit dem Button neben Text/Hex (⌃⇧⌘M). Speichern unter kopiert nur verwendete lokale Bilder; neue Bilder erhalten kurze Dateinamen.
 
+Tab und Umschalt-Tab rücken Listenpunkte ein und aus. Aufgabenlisten haben anklickbare Kästchen; leere Listenpunkte bleiben beim Kopieren als Platzhalter erhalten. Außerhalb von Listen fügt Tab vier geschützte Leerzeichen ein.
+
 Für Markdown-Dateien lässt sich rechts neben dem Editor eine optionale,
 live aktualisierte Vorschau mit dauerhaftem Splitter einblenden. Der lokale
 Renderer beherrscht GitHub-Flavoured Markdown, darunter Tabellen, Aufgabenlisten,

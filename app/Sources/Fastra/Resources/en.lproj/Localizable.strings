@@ -1779,3 +1779,5 @@
 "Schreibgeschützte Herkunft" = "Read-only provenance";
 
 "Die Snapshot-Quelle wurde verändert oder ihr Inhalt stimmt nicht mit dem erwarteten SHA-256 überein." = "The snapshot source has changed or its contents do not match the expected SHA-256.";
+"Aufgabenliste" = "Task list";
+"Die ausgewählten Absätze als Aufgabenliste mit ankreuzbaren Kästchen formatieren." = "Format the selected paragraphs as a task list with checkboxes.";

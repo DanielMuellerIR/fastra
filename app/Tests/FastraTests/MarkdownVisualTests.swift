@@ -22,7 +22,7 @@ struct MarkdownVisualTests {
     }
 
     @MainActor
-    private func editor(_ source: String, documentURL: URL? = nil) async throws -> (Workspace, MarkdownVisualCoordinator, WKWebView, NSWindow) {
+    private func editor(_ source: String, documentURL: URL? = nil) async throws -> (Workspace, MarkdownVisualCoordinator, MarkdownVisualWKWebView, NSWindow) {
         let workspace = Workspace()
         var tab = EditorTab(title: "fixture.md", path: "", content: source)
         tab.url = documentURL
@@ -373,6 +373,283 @@ struct MarkdownVisualTests {
         #expect(!html.contains("<strong>"))
         #expect(!html.contains("<h2"))
         #expect(html.contains("Formatiert"))
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Abgebrochenes Schließen erhält Eingaben; Verwerfen und Abbau erzeugen keine Konfliktwarnung")
+    @MainActor
+    func discardAndDismantle() async throws {
+        let (workspace, coordinator, web, window) = try await editor("Original\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        var warnings: [String] = []
+        workspace.saveSafetyWarningHandler = { title, _ in warnings.append(title) }
+        let id = workspace.activeTabID!
+        workspace.confirmCloseHandler = { _ in .cancel }
+        _ = try await web.evaluateJavaScript("document.querySelector('p').textContent='Nicht gespeichert';")
+        workspace.closeTab(id: id)
+        try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+        try #require(await waitUntil { workspace.activeTab?.id == id })
+        _ = try await web.evaluateJavaScript("document.querySelector('p').textContent+=' weiter';fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("weiter") == true })
+        workspace.confirmCloseHandler = { _ in .dontSave }
+        workspace.closeTab(id: id)
+        try #require(await waitUntil { !workspace.tabs.contains { $0.id == id } })
+        MarkdownVisualWebView.dismantleNSView(web, coordinator: coordinator)
+        // Eine folgende JS-Antwort gibt auch dem alten Abbau-Callback Zeit.
+        _ = try await web.evaluateJavaScript("document.querySelector('p')?.textContent")
+        #expect(warnings.isEmpty)
+        #expect(!coordinator.ready)
+        #expect(workspace.visualMarkdownEditor == nil)
+    }
+
+    @Test("Echte gleichzeitige Dokumentänderung bleibt vor dem Schließen geschützt")
+    @MainActor
+    func sourceConflictStillWarns() async throws {
+        let (workspace, coordinator, web, window) = try await editor("Original\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        var warnings = 0
+        workspace.saveSafetyWarningHandler = { _, _ in warnings += 1 }
+        _ = try await web.evaluateJavaScript("document.querySelector('p').textContent='Sichtbare Eingabe';")
+        workspace.tabs[0].content = "Andere Änderung\n"
+        var result: Bool?
+        coordinator.synchronize { result = $0 }
+        try #require(await waitUntil { result != nil })
+        #expect(result == false)
+        #expect(warnings == 1)
+        #expect(workspace.tabs[0].content == "Andere Änderung\n")
+    }
+
+    @Test("Tab fügt sichtbare Einrückung ein und überlebt Undo, Speichern und erneutes Öffnen", arguments: ["Text\n", ""])
+    @MainActor
+    func tabInParagraph(_ original: String) async throws {
+        let (workspace, coordinator, web, window) = try await editor(original)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            const p=document.querySelector('p'),r=document.createRange();r.selectNodeContents(p);r.collapse(true);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            p.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));
+            """)
+        try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+        let source = try #require(workspace.activeTab?.content)
+        let expected = "\u{00a0}\u{00a0}\u{00a0}\u{00a0}" + original.trimmingCharacters(in: .newlines)
+        #expect(MarkdownRichText.htmlFragment(markdown: source).contains(expected))
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == original })
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        coordinator.load(source, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
+        try #require(await waitUntil { coordinator.ready })
+        #expect(try await web.evaluateJavaScript("document.querySelector('p').textContent") as? String == expected)
+    }
+
+    @Test("Tab und Umschalt-Tab verschachteln echte Listen mit rückgängig machbaren Schritten", arguments: ["- Eins\n- Zwei\n- Drei\n", "1. Eins\n2. Zwei\n3. Drei\n", "- [ ] Eins\n- [x] Zwei\n- [ ] Drei\n"])
+    @MainActor
+    func nestedLists(_ source: String) async throws {
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            const item=document.querySelectorAll('li')[1],r=document.createRange();r.selectNodeContents(item);r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            item.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));
+            """)
+        try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+        let nested = try #require(workspace.activeTab?.content)
+        let html = MarkdownRichText.htmlFragment(markdown: nested)
+        #expect(html.components(separatedBy: "<ul").count + html.components(separatedBy: "<ol").count == 4, Comment(rawValue: nested + html))
+        #expect(html.components(separatedBy: "<li").count == 4)
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        let undone = await waitUntil { workspace.activeTab?.content == source }
+        if !undone {
+            let dom = try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML")
+            Issue.record(Comment(rawValue: "Undo: " + workspace.activeTab!.content + String(describing: dom)))
+        }
+        try #require(undone)
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == nested })
+        _ = try await web.evaluateJavaScript("""
+            {const item=Array.from(document.querySelectorAll('li')).find(n=>n.textContent.trim()==='Zwei'),r=document.createRange();r.selectNodeContents(item);r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);}
+            document.getElementById('fastra-visual').dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content != nested })
+        let flat = MarkdownRichText.htmlFragment(markdown: workspace.activeTab!.content)
+        #expect(flat.components(separatedBy: "<ul").count + flat.components(separatedBy: "<ol").count == 3)
+        if source.contains("[x]") { #expect(workspace.activeTab?.content.contains("[x]") == true) }
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Leere Listenpunkte bleiben beim Kopieren und Einfügen im selben Dokument erhalten")
+    @MainActor
+    func copyEmptyLists() async throws {
+        let source = "# A\n\n- \n\n# B\n\n1. \n\n# C\n\n- [ ] \n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            const root=document.getElementById('fastra-visual'),r=document.createRange();r.selectNodeContents(root);
+            getSelection().removeAllRanges();getSelection().addRange(r);root.dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));
+            """)
+        try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        let data = try #require(coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType))
+        let package = try #require(try JSONSerialization.jsonObject(with: data) as? [String: String])
+        let copied = try #require(package["markdown"])
+        #expect(MarkdownRichText.htmlFragment(markdown: copied).components(separatedBy: "<li").count == 4, Comment(rawValue: copied))
+        _ = try await web.evaluateJavaScript("{const r=document.createRange();r.selectNodeContents(document.getElementById('fastra-visual'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);}")
+        #expect(coordinator.pasteImages())
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        #expect(MarkdownRichText.htmlFragment(markdown: workspace.activeTab!.content).components(separatedBy: "<li").count == 7)
+    }
+
+    @Test("Aufgabenliste lässt sich erstellen, ankreuzen und mit Undo wiederherstellen")
+    @MainActor
+    func taskLists() async throws {
+        let source = "Erster Schritt\n\nZweiter Schritt\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            const root=document.getElementById('fastra-visual'),r=document.createRange();r.selectNodeContents(root);
+            getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('taskList');
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("[ ]") == true })
+        let unchecked = workspace.activeTab!.content
+        #expect(unchecked.components(separatedBy: "[ ]").count == 3)
+        _ = try await web.evaluateJavaScript("document.querySelector('input[type=checkbox]').click();")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("[x]") == true })
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == unchecked })
+        _ = try await web.evaluateJavaScript("document.querySelector('input[type=checkbox]').click();")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("[x]") == true })
+        let beforeReturn = workspace.activeTab!.content
+        _ = try await web.evaluateJavaScript("""
+            {const item=document.querySelectorAll('li')[1],r=document.createRange();r.selectNodeContents(item);r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('insertParagraph');fastraVisual.flush();}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content.components(separatedBy: "[ ]").count == 3 })
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('li').length") as? Int == 3)
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('input[type=checkbox]').length") as? Int == 3)
+        let undone = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();fastraVisual.markdown();") as? String
+        // Return und Kästchen sind native Bearbeitungsschritte wie beim
+        // Erstellen einer neuen Aufgabenliste; beide müssen zurückgehen.
+        if undone != beforeReturn {
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        }
+        try #require(await waitUntil { workspace.activeTab?.content == beforeReturn })
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Aufgabenformatierung neben einer eingerückten Liste erhält die gesamte Undo-Folge")
+    @MainActor
+    func taskListUndoSequence() async throws {
+        let source = "# Testprotokoll\n\nErgebnis: bestanden 😀\n\n- Erster Schritt\n- Zweiter Schritt\n\n| Prüfung | Ergebnis |\n| :--- | ---: |\n| Bild und Text | bestanden |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            {const item=document.querySelectorAll('li')[1],r=document.createRange();r.selectNodeContents(item);r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);item.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+        let nested = workspace.activeTab!.content
+        _ = try await web.evaluateJavaScript("""
+            {const p=document.querySelector('p'),r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('taskList');}
+            document.querySelector('input[type=checkbox]').click();
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("[x]") == true })
+        var steps = [String]()
+        for _ in 0..<3 {
+            steps.append(try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();fastraVisual.markdown();") as? String ?? "nil")
+        }
+        #expect(steps.last == nested, Comment(rawValue: steps.enumerated().map { "\($0.offset): \($0.element)" }.joined(separator: "\n")))
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Aufgabenformatierung erhält Zwischenabsätze und verändert nur ausgewählte Kindpunkte")
+    @MainActor
+    func taskSelectionBoundaries() async throws {
+        let source = "- A\n\nZwischenabsatz\n\n- B\n    - Kind\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            {const root=document.getElementById('fastra-visual'),r=document.createRange();r.selectNodeContents(root);
+            getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('taskList');}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+        #expect(workspace.activeTab?.content.contains("Zwischenabsatz") == true)
+        #expect(workspace.activeTab?.content.components(separatedBy: "[ ]").count == 4)
+        #expect(try await web.evaluateJavaScript("document.querySelector('#fastra-visual > div > p').textContent") as? String == "Zwischenabsatz")
+        let allTasks = workspace.activeTab!.content
+        for cycle in 0..<3 {
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            let undone = await waitUntil { workspace.activeTab?.content == source }
+            if !undone {
+                let dom = try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML")
+                Issue.record(Comment(rawValue: "Undo \(cycle): " + workspace.activeTab!.content + String(describing: dom)))
+            }
+            try #require(undone)
+            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            let redone = await waitUntil { workspace.activeTab?.content == allTasks }
+            if !redone {
+                let dom = try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML")
+                Issue.record(Comment(rawValue: "Redo \(cycle): expected=" + allTasks + " actual=" + workspace.activeTab!.content + String(describing: dom)))
+            }
+            try #require(redone)
+        }
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        _ = try await web.evaluateJavaScript("""
+            {const child=document.querySelector('li li'),r=document.createRange();r.selectNodeContents(child);
+            getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('taskList');}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+        #expect(workspace.activeTab?.content.components(separatedBy: "[ ]").count == 2)
+        #expect(workspace.activeTab?.content.contains("Zwischenabsatz") == true)
+        _ = try await web.evaluateJavaScript("{const root=document.getElementById('fastra-visual'),r=document.createRange();r.selectNodeContents(root);getSelection().removeAllRanges();getSelection().addRange(r);root.dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));}")
+        try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        let copied = try #require(coordinator.pasteboard.string(forType: .html))
+        #expect(!copied.contains("md-edit-boundary") && !copied.contains("\u{200b}"))
+        let dom = try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML")
+        #expect(MarkdownRichText.htmlFragment(markdown: workspace.activeTab!.content).components(separatedBy: "<li").count == 4, Comment(rawValue: workspace.activeTab!.content + String(describing: dom)))
+        withExtendedLifetime(coordinator) {}
+    }
+
+
+    @Test("Mehrfaches Tab erhält mehrere Ebenen, Unterpunkte und mehrstellige Nummern")
+    @MainActor
+    func multipleListLevels() async throws {
+        let source = "9. A\n10. B\n    - Kind B\n11. C\n12. D\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            {const item=Array.from(document.querySelectorAll('li')).find(n=>n.textContent.trim()==='C'),r=document.createRange();r.selectNodeContents(item);r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);item.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+        let first = workspace.activeTab!.content
+        let firstHTML = MarkdownRichText.htmlFragment(markdown: first)
+        #expect(firstHTML.components(separatedBy: "<li").count == 6)
+        #expect(firstHTML.contains("start=\"9\""))
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('li li').length") as? Int == 2)
+        _ = try await web.evaluateJavaScript("document.getElementById('fastra-visual').dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));")
+        // C ist der erste Punkt seiner neuen geordneten Unterliste und hat
+        // dort keinen Vorgänger: ein weiterer Tab darf nichts beschädigen.
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == first)
+        _ = try await web.evaluateJavaScript("document.getElementById('fastra-visual').dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));")
+        try #require(await waitUntil { workspace.activeTab?.content != first })
+        #expect(MarkdownRichText.htmlFragment(markdown: workspace.activeTab!.content).components(separatedBy: "<li").count == 6)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Tab im Codeblock bleibt ein wörtlicher Tabulator")
+    @MainActor
+    func tabInCode() async throws {
+        let (workspace, coordinator, web, window) = try await editor("```text\nCode\n```\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            {const code=document.querySelector('pre code'),r=document.createRange();r.selectNodeContents(code);r.collapse(true);
+            getSelection().removeAllRanges();getSelection().addRange(r);code.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+        #expect(workspace.activeTab?.content.contains("\tCode") == true)
         withExtendedLifetime(coordinator) {}
     }
 

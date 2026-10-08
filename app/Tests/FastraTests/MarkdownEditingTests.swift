@@ -7,6 +7,16 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Aufgabenliste erhält Einrückung und vorhandene Häkchen in gemischten Listen")
+func taskList_preservesNestedMarkers() {
+    let source = "- Eltern\n    - [x] Kind\n    1. Weiter\n"
+    let edit = MarkdownFormat.toggleTaskList(source, selection: NSRange(location: 0, length: source.utf16.count))
+    #expect(edit.replacement == "- [ ] Eltern\n    - [x] Kind\n    - [ ] Weiter")
+    let allTasks = "- [ ] Eltern\n    - [x] Kind\n"
+    let removed = MarkdownFormat.toggleTaskList(allTasks, selection: NSRange(location: 0, length: allTasks.utf16.count))
+    #expect(removed.replacement == "Eltern\n    Kind")
+}
+
 /// Hält das synchron zugestellte Benachrichtigungsobjekt threadsicher fest.
 /// `NotificationCenter` verlangt eine sendbare Closure, obwohl `post` hier
 /// vollständig auf dem Main-Thread läuft.

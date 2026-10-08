@@ -7,6 +7,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.138.0] — 2026-10-08
+
+### Neu
+
+- Im WYSIWYG-Modus rücken Tab und Umschalt-Tab Listenpunkte ein und aus, auch in nummerierten Listen und Aufgabenlisten. Außerhalb von Listen fügt Tab vier geschützte Leerzeichen ein, in Codeblöcken ein Tabulatorzeichen.
+- Aufgabenlisten lassen sich über die Markdown-Werkzeuge erstellen. Kästchen sind anklickbar; ihre Änderungen können rückgängig gemacht werden.
+
+### Behoben
+
+- Das Schließen eines Markdown-Dokuments nach dem bewussten Verwerfen seiner Änderungen löst keine nachträgliche Synchronisierung mit dem entfernten Tab mehr aus. Abgebrochenes Schließen erhält die Eingabe, echte Dokumentkonflikte bleiben geschützt.
+- Kopieren und Einfügen im WYSIWYG-Modus erhält absichtlich leere Listenpunkte und Aufgaben-Platzhalter.
+
 ## [v1.137.1] — 2026-10-06
 
 ### Behoben

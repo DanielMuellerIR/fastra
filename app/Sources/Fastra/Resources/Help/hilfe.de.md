@@ -485,6 +485,15 @@ in der formatierten Ansicht oder mit Quelltext und Vorschau arbeiten möchtest.
 Im WYSIWYG-Modus bleiben Markdown-Kürzel verborgen. Die Format-Toolbar funktioniert
 in beiden Modi. Tippen, Formatieren und Rückgängig erfolgen direkt im Dokument.
 
+Im WYSIWYG-Modus rückt **Tab** einen Listenpunkt um eine Ebene ein;
+**⇧Tab** rückt ihn wieder aus. Das funktioniert auch mit nummerierten Listen
+und Aufgabenlisten. Außerhalb einer Liste fügt Tab vier geschützte Leerzeichen
+ein, die ihre sichtbare Breite auch nach dem Speichern behalten; in Codeblöcken
+fügt Tab ein Tabulatorzeichen ein. **Markdown → Aufgabenliste** oder der
+Kästchen-Button in der Format-Toolbar erstellt ankreuzbare Aufgaben. Ein Klick
+auf ein Kästchen ändert seinen Zustand; ⌘Z macht das rückgängig.
+Absichtlich leere Listenpunkte bleiben beim Kopieren und Einfügen erhalten.
+
 Der Button rechts vom **Text/Hex-Umschalter** (⌃⇧⌘M) wechselt die Ansicht nur für
 das aktuelle Dokument. Unter **Einstellungen → Markdown** ändert
 „Markdown im WYSIWYG-Modus bearbeiten“ den Standard für weitere Dokumente.

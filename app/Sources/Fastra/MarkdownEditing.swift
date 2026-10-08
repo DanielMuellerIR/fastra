@@ -21,6 +21,7 @@ enum MarkdownFormatCommand: Int, CaseIterable {
     // Befehle stehen deshalb hinten; `displayOrder` bestimmt separat die UI.
     case highlight
     case hardBreak
+    case taskList
 }
 
 extension MarkdownFormatCommand {
@@ -29,7 +30,7 @@ extension MarkdownFormatCommand {
     static let displayOrder: [MarkdownFormatCommand] = [
         .bold, .italic, .highlight, .code, .hardBreak,
         .heading1, .heading2, .heading3, .plainParagraph,
-        .bulletList, .orderedList, .quote,
+        .bulletList, .orderedList, .taskList, .quote,
         .link, .insertTable,
     ]
 
@@ -45,6 +46,7 @@ extension MarkdownFormatCommand {
         case .plainParagraph: "Normaler Text"
         case .bulletList:     "Aufzählung"
         case .orderedList:    "Nummerierte Liste"
+        case .taskList:       "Aufgabenliste"
         case .quote:          "Zitat"
         case .link:           "Link"
         case .insertTable:    "Tabelle einfügen…"
@@ -70,6 +72,7 @@ extension MarkdownFormatCommand {
         case .plainParagraph: base = L10n.string("Überschrift und Formatierungen entfernen; normalen Text schreiben.")
         case .bulletList: base = L10n.string("Die ausgewählten Absätze als Aufzählung formatieren.")
         case .orderedList: base = L10n.string("Die ausgewählten Absätze als nummerierte Liste formatieren.")
+        case .taskList: base = L10n.string("Die ausgewählten Absätze als Aufgabenliste mit ankreuzbaren Kästchen formatieren.")
         case .quote: base = L10n.string("Die ausgewählten Absätze als Zitat formatieren.")
         case .link: base = L10n.string("Einen Link für den ausgewählten Text einfügen.")
         case .insertTable: base = L10n.string("Eine Tabelle mit wählbarer Spaltenzahl einfügen.")
@@ -96,6 +99,7 @@ extension MarkdownFormatCommand {
         case .plainParagraph: MarkdownFormatShortcut(key: "0", option: true)
         case .bulletList:     MarkdownFormatShortcut(key: "8", shift: true)
         case .orderedList:    MarkdownFormatShortcut(key: "7", shift: true)
+        case .taskList:       nil
         case .quote:          MarkdownFormatShortcut(key: "9", shift: true)
         case .link:           MarkdownFormatShortcut(key: "k")
         case .insertTable:    MarkdownFormatShortcut(key: "t", shift: true, option: true)
@@ -114,6 +118,7 @@ extension MarkdownFormatCommand {
         case .plainParagraph: return "paragraphsign"
         case .bulletList:     return "list.bullet"
         case .orderedList:    return "list.number"
+        case .taskList:       return "checklist"
         case .quote:          return "text.quote"
         case .link:           return "link"
         case .insertTable:    return "tablecells"
@@ -324,6 +329,24 @@ enum MarkdownFormat {
         toggleLinePrefix(text, selection: selection, regex: orderedPrefix) { "\($0). " }
     }
 
+    static func toggleTaskList(_ text: String, selection: NSRange) -> Edit {
+        let taskPrefix = try! NSRegularExpression(pattern: "^[-*+]\\s+\\[[ xX]\\]\\s*")
+        func parts(_ line: String) -> (String, String) {
+            let indentation = String(line.prefix { $0 == " " || $0 == "\t" })
+            return (indentation, String(line.dropFirst(indentation.count)))
+        }
+        let range = lineRange(of: text, selection: selection)
+        let lines = (text as NSString).substring(with: range).components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let remove = !lines.isEmpty && lines.allSatisfy { matches(taskPrefix, parts($0).1) }
+        return mapLines(text, selection: selection) { line, _ in
+            let (indentation, content) = parts(line)
+            if matches(taskPrefix, content) { return remove ? indentation + stripping(taskPrefix, from: content) : line }
+            let plain = stripping(orderedPrefix, from: stripping(bulletPrefix, from: content))
+            return indentation + "- [ ] " + plain
+        }
+    }
+
     /// Zitat umschalten („> “).
     static func toggleQuote(_ text: String, selection: NSRange) -> Edit {
         toggleLinePrefix(text, selection: selection, regex: quotePrefix) { _ in "> " }
@@ -418,6 +441,7 @@ enum MarkdownFormat {
         case .plainParagraph: return setHeading(text, selection: selection, level: 0)
         case .bulletList:     return toggleBulletList(text, selection: selection)
         case .orderedList:    return toggleOrderedList(text, selection: selection)
+        case .taskList:       return toggleTaskList(text, selection: selection)
         case .quote:          return toggleQuote(text, selection: selection)
         case .link:           return makeLink(text, selection: selection)
         case .insertTable:    return nil

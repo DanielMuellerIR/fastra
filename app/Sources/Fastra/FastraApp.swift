@@ -575,6 +575,7 @@ struct FastraApp: App {
                     Divider()
                     markdownFormatButton(.bulletList)
                     markdownFormatButton(.orderedList)
+                    markdownFormatButton(.taskList)
                     markdownFormatButton(.quote)
                     Divider()
                     markdownFormatButton(.link)

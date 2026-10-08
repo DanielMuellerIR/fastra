@@ -189,6 +189,8 @@ failing silently.
 
 Markdown can also be edited in a WYSIWYG view with no visible source. Choose your default on first opening; change it in Settings or switch the current document with the button beside Text/Hex (⌃⇧⌘M). Save As copies only referenced local images; newly added images receive short filenames.
 
+Tab and Shift-Tab nest and unnest list items. Task lists have clickable checkboxes, and copying preserves empty list items used as placeholders. Outside lists, Tab inserts four nonbreaking spaces.
+
 Markdown files can show an optional live preview on the right, separated from
 the editor by a persistent splitter. The renderer supports GitHub-flavoured
 Markdown including tables, task lists, strikethrough, syntax-highlighted code

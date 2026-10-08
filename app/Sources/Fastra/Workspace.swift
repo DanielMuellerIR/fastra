@@ -1702,7 +1702,8 @@ final class Workspace: ObservableObject {
     @discardableResult
     func synchronizeVisualMarkdownBefore(_ action: @escaping () -> Void, onFailure: (() -> Void)? = nil) -> Bool {
         guard !performingVisualAction, let editor = visualMarkdownEditor, editor.ready else { return false }
-        editor.synchronize { [weak self] succeeded in
+        editor.synchronize(holdingInput: true) { [weak self] succeeded in
+            defer { editor.completeAction() }
             guard succeeded, let self else { onFailure?(); return }
             self.performingVisualAction = true
             action()

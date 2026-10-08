@@ -3,7 +3,39 @@
 (() => {
   'use strict';
   const td = new TurndownService({headingStyle:'atx', bulletListMarker:'-',
-    codeBlockStyle:'fenced', emDelimiter:'*', strongDelimiter:'**', preformattedCode:true});
+    codeBlockStyle:'fenced', emDelimiter:'*', strongDelimiter:'**', preformattedCode:true,
+    blankReplacement:(content,node)=>node.nodeName==='LI'?listItem(content,node):
+      content.trim() ? (node.isBlock?'\n\n'+content+'\n\n':content) : (node.isBlock?'\n\n':'')});
+  // Turndowns Blank-Regel läuft vor benutzerdefinierten Regeln. Auch ein
+  // vollständig leerer Listenpunkt ist hier absichtlicher Dokumentinhalt.
+  function listItem(content,node) {
+    const parent=node.parentNode;
+    const index=Array.from(parent.children).indexOf(node);
+    const prefix=parent.nodeName==='OL' ? (Number(parent.getAttribute('start') || 1)+index)+'. ' : '- ';
+    const indent=' '.repeat(Math.max(4,prefix.length));
+    content=content.replace(/^\n+/,'').replace(/\n+$/,'').replace(/\n/g,'\n'+indent);
+    return prefix+content+'\n';
+  }
+  td.addRule('listItem',{filter:'li',replacement:listItem});
+  td.addRule('spaces',{filter:n=>n.hasAttribute('data-md-spaces'),replacement:(_,n)=>'&nbsp;'.repeat(Number(n.dataset.mdSpaces))});
+  function toMarkdown(html) {
+    const holder=document.createElement('div');holder.innerHTML=html;
+    holder.querySelectorAll('[data-md-edit-boundary]').forEach(n=>n.remove());
+    // Geschützte Leerzeichen bleiben nach Speichern und erneutem Öffnen
+    // sichtbar. Turndown würde gewöhnliche Leerzeichen zusammenziehen.
+    const walker=document.createTreeWalker(holder,NodeFilter.SHOW_TEXT), texts=[];
+    while(walker.nextNode())texts.push(walker.currentNode);
+    for(const text of texts) {
+      if(text.parentElement.closest('pre,code,[data-md-opaque],[data-tex]') || !text.data.includes('\u00a0'))continue;
+      const fragment=document.createDocumentFragment();
+      for(const part of text.data.split(/(\u00a0+)/)) {
+        if(part.startsWith('\u00a0')){const span=document.createElement('span');span.dataset.mdSpaces=String(part.length);span.textContent='\u2060';fragment.append(span);}
+        else fragment.append(document.createTextNode(part));
+      }
+      text.replaceWith(fragment);
+    }
+    return td.turndown(holder.innerHTML);
+  }
   const commonEscape=td.escape.bind(td);
   td.escape=text=>commonEscape(text).replace(/[$~=]/g,'\\$&');
   let opaqueSources={};
@@ -29,7 +61,7 @@
     const rows=Array.from(n.rows), width=Math.max(1,...rows.map(r=>r.cells.length));
     const lines=rows.map(r=>'| '+Array.from({length:width},(_,i)=>{
       const cell=r.cells[i];
-      return cell ? td.turndown(cell.innerHTML).replace(/\n+/g,'<br>').replace(/\|/g,'\\|') : '';
+      return cell ? toMarkdown(cell.innerHTML).replace(/\n+/g,'<br>').replace(/\|/g,'\\|') : '';
     }).join(' | ')+' |');
     if(!lines.length) return '';
     if(!Array.from(rows[0].cells).some(c=>c.tagName==='TH')) lines.unshift('| '+Array(width).fill(' ').join(' | ')+' |');
@@ -39,9 +71,10 @@
     }).join(' | ')+' |');
     return '\n\n'+lines.join('\n')+'\n\n';
   }});
-  let root, originals=new Map(), blocks=[], selection=null, base='', session='', composing=false, revision=0, fenced=false, bookmarkID=0, bookmarks=new Map();
+  let root, originals=new Map(), blocks=[], selection=null, base='', session='', composing=false, revision=0, fenced=false, bookmarkID=0, bookmarks=new Map(), editingCommand=false;
   function normalized(node) {
     const clone=node.cloneNode(true);
+    clone.querySelectorAll('input[type=checkbox]').forEach(n=>n.removeAttribute('contenteditable'));
     clone.querySelectorAll('[data-md-opaque]').forEach(n=>n.textContent='');
     clone.querySelectorAll('[data-tex]').forEach(n=>{n.textContent='';n.removeAttribute('data-rendered');});
     clone.querySelectorAll('pre code').forEach(n=>{n.textContent=n.textContent;n.removeAttribute('data-highlighted');n.classList.remove('hljs');});
@@ -68,17 +101,18 @@
       for(const b of preceding){output+=b.source;hidden.delete(b.id);used.add('hidden:'+b.id);}
     }
     for(const node of root.childNodes) {
+      if(node.nodeType===Node.ELEMENT_NODE && node.hasAttribute('data-md-edit-boundary'))continue;
       if(node.nodeType===Node.TEXT_NODE && !node.textContent.trim())continue;
       const id=node.nodeType===Node.ELEMENT_NODE ? node.getAttribute('data-md-block') : null;
       const original=id===null ? null : originals.get(id);
       if(original && !used.has(id)) {
         hiddenBefore(id);used.add(id);
-        output+=normalized(node)===original.snapshot ? original.source : td.turndown(node.innerHTML)+'\n\n';
-      } else if(node.nodeType===Node.ELEMENT_NODE && node.hasAttribute('data-md-empty') && !node.textContent.trim() && !node.querySelector('img')) {
+        output+=normalized(node)===original.snapshot ? original.source : toMarkdown(node.innerHTML)+'\n\n';
+      } else if(node.nodeType===Node.ELEMENT_NODE && node.hasAttribute('data-md-empty') && !node.textContent.length && !node.querySelector('img')) {
         continue;
       } else {
         const holder=document.createElement('div');holder.append(node.cloneNode(true));
-        const value=td.turndown(holder.innerHTML);
+        const value=toMarkdown(holder.innerHTML);
         output+=value ? value+'\n\n' : '\n';
       }
     }
@@ -87,23 +121,38 @@
     for(const b of blocks)if(b.hidden && !used.has('hidden:'+b.id))output+=b.source;
     return output;
   }
-  function changed() {
-    if(composing)return;
+  function changed(event) {
+    if(composing || editingCommand)return;
+    if(event?.inputType==='insertParagraph'){
+      const node=getSelection().anchorNode,element=node?.nodeType===1?node:node?.parentElement,item=element?.closest('li');
+      if(item && !taskCheckbox(item) && item.previousElementSibling?.tagName==='LI' && taskCheckbox(item.previousElementSibling)){
+        // Den nativen Return-Schritt zuerst abschließen; verschachtelte
+        // execCommand-Aufrufe innerhalb seines Input-Events sind unzuverlässig.
+        queueMicrotask(()=>{if(item.isConnected && !fenced && !taskCheckbox(item))replaceListBlocks([item],addTaskCheckbox);});
+      }
+    }
+    restoreMarkers();
+    root.querySelectorAll('[data-md-edit-boundary]').forEach(n=>n.style.display='none');
+    root.querySelectorAll('input[type=checkbox]').forEach(n=>{n.removeAttribute('disabled');n.contentEditable='false';});
     const markdown=serialize();
     if(markdown===base)return;
     window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'change',session,base,markdown,revision:++revision});
     base=markdown;
   }
-  function exec(name,value=null) {
+  function exec(name,value=null,after=null) {
+    if(fenced)return;
     // WebKit ersetzt eine Auswahl über geschützte Atome sonst nur teilweise
     // und dupliziert den Block. Nur während des atomaren HTML-Ersatzes freigeben.
     const protectedNodes=name==='insertHTML'?Array.from(root.querySelectorAll('[contenteditable=false]')):[];
     protectedNodes.forEach(n=>n.removeAttribute('contenteditable'));
-    try { restoreSelection();document.execCommand(name,false,value); }
+    try { restoreSelection();editingCommand=true;document.execCommand(name,false,value); }
     finally {
+      editingCommand=false;
       protectedNodes.forEach(n=>{if(n.isConnected)n.contentEditable='false';});
       root.querySelectorAll('[data-tex],[data-md-opaque],.mermaid-render').forEach(n=>n.contentEditable='false');
+      root.querySelectorAll('input[type=checkbox]').forEach(n=>{n.removeAttribute('disabled');n.contentEditable='false';});
     }
+    after?.();
     const live=getSelection();if(live.rangeCount)selection=live.getRangeAt(0).cloneRange();
     changed();
   }
@@ -127,6 +176,110 @@
     const outer=document.createRange();outer.setStartBefore(selected[0]);outer.setEndAfter(selected[selected.length-1]);
     getSelection().removeAllRanges();getSelection().addRange(outer);selection=outer;exec('insertHTML',html);
   }
+  function selectedItems() {
+    restoreSelection();const range=getSelection().getRangeAt(0);
+    const element=range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement;
+    if(range.collapsed){const item=element.closest('li');return item && root.contains(item)?[item]:[];}
+    return Array.from(root.querySelectorAll('li')).filter(n=>range.intersectsNode(n) &&
+      (!n.childNodes.length || Array.from(n.childNodes).some(child=>
+        !(child.nodeType===1 && child.matches('ul,ol')) && range.intersectsNode(child))));
+  }
+  function editListBlocks(items,transform) {
+    const children=Array.from(root.children), affected=children.filter(n=>items.some(item=>n.contains(item)));
+    if(!affected.length)return;
+    // Der Ersatz umfasst auch Absätze zwischen zwei ausgewählten Listen.
+    const interval=children.slice(children.indexOf(affected[0]),children.indexOf(affected.at(-1))+1);
+    const holder=document.createElement('div'), originals=interval.flatMap(n=>Array.from(n.querySelectorAll('li')));
+    interval.forEach(n=>holder.append(n.cloneNode(true)));
+    const clones=Array.from(holder.querySelectorAll('li')), selected=items.map(n=>clones[originals.indexOf(n)]);
+    const live=getSelection().rangeCount?getSelection().getRangeAt(0):null;
+    function point(item,clone,node,offset,end) {
+      if(!node || !item.contains(node))return [clone,end?clone.childNodes.length:0];
+      const path=[];while(node!==item){path.unshift(Array.from(node.parentNode.childNodes).indexOf(node));node=node.parentNode;}
+      for(const index of path)clone=clone.childNodes[index];return [clone,offset];
+    }
+    const first=selected[0],last=selected.at(-1), collapsed=live?.collapsed ?? true;
+    const start=point(items[0],first,live?.startContainer,live?.startOffset,false);
+    const end=point(items.at(-1),last,live?.endContainer,live?.endOffset,true);
+    function marker(position,name) {
+      const span=document.createElement('span');span.setAttribute(name,'');span.textContent='\u200b';
+      const r=document.createRange();r.setStart(...position);r.collapse(true);r.insertNode(span);
+    }
+    if(!collapsed)marker(end,'data-md-selection-end');
+    marker(start,'data-md-selection-start');
+    if(transform(selected)===false)return;
+    // WebKit behält beim Ersetzen einer Liste sonst leere Unterlisten zurück
+    // oder zieht benachbarte Absätze hinein. Neutrale Grenzen verhindern dies.
+    // Auch vor dem Ersatz markieren: Undo stellt so die ursprüngliche Auswahl her.
+    if(live){
+      if(!collapsed)marker(point(items.at(-1),items.at(-1),live.endContainer,live.endOffset,true),'data-md-selection-end');
+      marker(point(items[0],items[0],live.startContainer,live.startOffset,false),'data-md-selection-start');
+    }
+    function boundary(neighbor){
+      const node=neighbor?.hasAttribute('data-md-edit-boundary')?neighbor:document.createElement('p');
+      node.dataset.mdEditBoundary='';if(!node.firstChild)node.append(document.createTextNode('\u200b'));node.style.display='';return node;
+    }
+    const before=boundary(affected[0].previousElementSibling),after=boundary(affected.at(-1).nextElementSibling);
+    affected[0].before(before);affected.at(-1).after(after);
+    const range=document.createRange();range.setStart(before.firstChild,0);range.setEnd(after.firstChild,1);
+    selection=range;getSelection().removeAllRanges();getSelection().addRange(range);
+    // Die Grenzen gehören zu beiden Undo-Zuständen. Ihre Knoten bleiben
+    // erhalten, weil WebKits Redo sie als Einfügeanker verwendet.
+    exec('insertHTML',before.outerHTML+holder.innerHTML+after.outerHTML,restoreMarkers);
+  }
+  function restoreMarkers() {
+    if(!root)return;
+    const start=root.querySelector('span[data-md-selection-start]'),end=root.querySelector('span[data-md-selection-end]');
+    if(!start)return;
+    const range=document.createRange();range.setStartBefore(start);
+    if(end)range.setEndBefore(end);else range.collapse(true);
+    start.remove();end?.remove();getSelection().removeAllRanges();getSelection().addRange(range);selection=range.cloneRange();
+  }
+  function replaceListBlocks(items,transform) {
+    editListBlocks(items,selected=>selected.forEach(transform));
+  }
+  function nestItems(items,outdent) {
+    editListBlocks(items,selected=>{
+      const top=selected.filter(n=>!selected.some(parent=>parent!==n && parent.contains(n)));
+      const groups=[];
+      for(const item of top){const group=groups.at(-1);if(group && group.at(-1).nextElementSibling===item)group.push(item);else groups.push([item]);}
+      let changed=false;
+      for(const group of groups){
+        const first=group[0],last=group.at(-1),list=first.parentElement;
+        if(outdent){
+          const owner=list.parentElement;if(owner.tagName!=='LI')continue;
+          // Nachfolgende Geschwister bleiben unter dem ausgerückten Punkt.
+          const following=[];let next=last.nextElementSibling;while(next){following.push(next);next=next.nextElementSibling;}
+          if(following.length){const tail=document.createElement(list.tagName);tail.append(...following);last.append(tail);}
+          let previous=owner;for(const item of group){previous.after(item);previous=item;}
+          if(!list.children.length)list.remove();
+        }else{
+          const previous=first.previousElementSibling;if(!previous || previous.tagName!=='LI')continue;
+          let nested=previous.lastElementChild;
+          if(nested?.tagName!==list.tagName){nested=document.createElement(list.tagName);previous.append(nested);}
+          nested.append(...group);
+        }
+        changed=true;
+      }
+      return changed;
+    });
+  }
+  function taskCheckbox(item) {
+    return Array.from(item.querySelectorAll('input[type=checkbox]')).find(n=>n.closest('li')===item);
+  }
+  function addTaskCheckbox(item) {
+    const input=document.createElement('input');input.type='checkbox';input.contentEditable='false';item.prepend(input,document.createTextNode(' '));
+  }
+  function taskList() {
+    let items=selectedItems();
+    if(!items.length){exec('insertUnorderedList');items=selectedItems();}
+    const remove=items.length>0 && items.every(taskCheckbox);
+    replaceListBlocks(items,item=>{
+      const existing=taskCheckbox(item);
+      if(remove){existing?.remove();return;}
+      if(!existing)addTaskCheckbox(item);
+    });
+  }
   function sanitizePaste(html) {
     const template=document.createElement('template');template.innerHTML=html;
     template.content.querySelectorAll('script,style,iframe,object,embed,svg,math,link,meta').forEach(n=>n.remove());
@@ -143,6 +296,7 @@
       while(!document.documentElement.hasAttribute('data-fastra-enhanced') && Date.now()<until)await new Promise(r=>setTimeout(r,10));
       root=document.getElementById('fastra-visual');blocks=configuration.blocks;base=configuration.markdown;session=configuration.session;opaqueSources=configuration.opaqueSources || {};
       root.contentEditable='true';root.setAttribute('role','textbox');root.setAttribute('aria-multiline','true');
+      root.querySelectorAll('input[type=checkbox]').forEach(n=>{n.removeAttribute('disabled');n.contentEditable='false';});
       root.querySelectorAll('[data-tex],.mermaid-render').forEach(n=>n.contentEditable='false');
       for(const b of blocks)if(!b.hidden){const n=root.querySelector('[data-md-block="'+b.id+'"]');if(n)originals.set(String(b.id),{source:b.source,snapshot:normalized(n)});}
       if(!root.children.length)root.innerHTML='<p data-md-empty="true"><br></p>';
@@ -156,8 +310,9 @@
       root.addEventListener('copy',e=>{
         const s=getSelection();if(!s.rangeCount || s.isCollapsed)return;
         const rich=document.createElement('div');rich.append(s.getRangeAt(0).cloneContents());
-        const markdown=td.turndown(rich.innerHTML);
+        const markdown=toMarkdown(rich.innerHTML);
         const html=rich.cloneNode(true);
+        html.querySelectorAll('[data-md-edit-boundary]').forEach(n=>n.remove());
         html.querySelectorAll('*').forEach(n=>{for(const a of Array.from(n.attributes))if(a.name.startsWith('data-md-') || a.name==='contenteditable')n.removeAttribute(a.name);});
         e.preventDefault();e.stopPropagation();
         window.webkit.messageHandlers.markdownCopy.postMessage({plain:s.toString(),html:html.innerHTML,markdown,session});
@@ -176,7 +331,30 @@
         window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'drop',session,paths:Array.from(e.dataTransfer.files,f=>f.name)});
       });
       root.addEventListener('dragover',e=>e.preventDefault());
-      root.addEventListener('click',e=>{if(e.target.closest('a'))e.preventDefault();});
+      root.addEventListener('keydown',e=>{
+        if(e.key!=='Tab' || e.altKey || e.ctrlKey || e.metaKey || e.isComposing || composing || fenced)return;
+        e.preventDefault();
+        const items=selectedItems();
+        if(items.length)nestItems(items,e.shiftKey);
+        else if(!e.shiftKey){
+          const node=getSelection().anchorNode, element=node?.nodeType===1?node:node?.parentElement;
+          if(element?.closest('pre'))exec('insertText','\t');
+          else exec('insertHTML','<span style="white-space:pre">&nbsp;&nbsp;&nbsp;&nbsp;</span>');
+        }
+      });
+      root.addEventListener('click',e=>{
+        if(fenced){e.preventDefault();return;}
+        if(e.target.closest('a'))e.preventDefault();
+        if(e.target.matches('input[type=checkbox]') && !fenced){
+          e.preventDefault();const input=e.target, item=input.closest('li');
+          if(item)replaceListBlocks([item],clone=>{
+            const checkbox=taskCheckbox(clone);
+            // Beim click ist WebKits checked-Property bereits umgeschaltet;
+            // das Attribut enthält noch den Zustand vor diesem Undo-Schritt.
+            checkbox.toggleAttribute('checked',!input.hasAttribute('checked'));
+          });
+        }
+      });
       root.focus();
       return serialize()===base;
     },
@@ -191,6 +369,7 @@
         case 'plainParagraph':plainParagraph();break;
         case 'bulletList':exec('insertUnorderedList');break;
         case 'orderedList':exec('insertOrderedList');break;
+        case 'taskList':taskList();break;
         case 'quote':exec('formatBlock','blockquote');break;
         case 'hardBreak':exec('insertLineBreak');break;
         case 'link':exec('createLink',value);break;

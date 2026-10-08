@@ -112,11 +112,11 @@ struct MarkdownVisualWebView: NSViewRepresentable {
                          fontName: fontName, fontSize: fontSize, darkMode: darkMode, style: style)
     }
     static func dismantleNSView(_ web: MarkdownVisualWKWebView, coordinator: MarkdownVisualCoordinator) {
-        coordinator.synchronize { _ in
-            coordinator.generation &+= 1
-            web.configuration.userContentController.removeAllScriptMessageHandlers()
-            web.navigationDelegate = nil
-        }
+        // Schließen und Ansichtswechsel synchronisieren VOR der Entscheidung.
+        // Danach darf ein abgebauter Editor verworfene Eingaben nicht nachtragen.
+        coordinator.invalidateForSourceReplacement()
+        web.configuration.userContentController.removeAllScriptMessageHandlers()
+        web.navigationDelegate = nil
         if coordinator.workspace?.visualMarkdownEditor === coordinator {
             coordinator.workspace?.visualMarkdownEditor = nil
         }
@@ -243,6 +243,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         let requestSession = session
         web.callAsyncJavaScript("return window.fastraVisual.prepareAction();",
                                 arguments: [:], in: nil, in: .page) { [self] result in
+            guard generation == request else { completion(false); return }
             if case .success(let value) = result, let snapshot = value as? [String: Any], snapshot["composing"] as? Bool == true {
                 workspace?.saveSafetyWarningHandler(L10n.string("Texteingabe noch nicht abgeschlossen"),
                     L10n.string("Bitte schließe die aktuelle Zeicheneingabe ab und führe den Befehl danach erneut aus."))
@@ -269,6 +270,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     }
 
     func completeAction(session expectedSession: String? = nil) {
+        guard ready else { return }
         web?.callAsyncJavaScript("window.fastraVisual.completeAction(session);",
             arguments: ["session": expectedSession ?? session], in: nil, in: .page) { _ in }
     }
@@ -294,7 +296,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         guard ready, let workspace, workspace.activeTabID == tabID else { return }
         let names = ["bold", "italic", "code", "heading1", "heading2", "heading3",
                      "plainParagraph", "bulletList", "orderedList", "quote", "link",
-                     "insertTable", "highlight", "hardBreak"]
+                     "insertTable", "highlight", "hardBreak", "taskList"]
         var value = ""
         if command == .link {
             let alert = NSAlert()
@@ -384,7 +386,15 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         }
         let url = workspace.activeTab?.url
         let capturedSession = session
+        let request = generation
+        func isCurrent() -> Bool {
+            self.ready && self.generation == request && self.session == capturedSession
+                && workspace.visualMarkdownEditor === self
+                && workspace.activeTabID == self.tabID && workspace.activeTab?.url == url
+                && workspace.activeMarkdownIsVisual
+        }
         web.callAsyncJavaScript("return window.fastraVisual.bookmark();", arguments: [:], in: nil, in: .page) { [weak self] bookmarkResult in
+            guard self != nil, isCurrent() else { return }
             guard case .success(let bookmark) = bookmarkResult, let bookmark = bookmark as? String else {
                 workspace.saveSafetyWarningHandler(L10n.string("Einfügen abgebrochen"),
                     L10n.string("Die Einfügestelle konnte nicht festgehalten werden. Bitte versuche es erneut."))
@@ -396,9 +406,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                     return (prepared, MarkdownVisualDocument.render(prepared.content, documentURL: url))
                 }
                 DispatchQueue.main.async {
-                    guard let self, self.session == capturedSession,
-                          workspace.activeTabID == self.tabID, workspace.activeTab?.url == url,
-                          workspace.activeMarkdownIsVisual else {
+                    guard let self, isCurrent() else {
                         if case .success(let (prepared, _)) = result { DispatchQueue.global(qos: .utility).async { prepared.rollback() } }
                         return
                     }
@@ -413,6 +421,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                                 if case .success(let inserted) = result, inserted as? Bool == true { prepared.commit() }
                                 else {
                                     DispatchQueue.global(qos: .utility).async { prepared.rollback() }
+                                    guard isCurrent() else { return }
                                     workspace.saveSafetyWarningHandler(L10n.string("Einfügen abgebrochen"),
                                         L10n.string("Das Dokument wurde während des Einfügens bearbeitet. Die vorhandene Eingabe blieb erhalten; bitte füge erneut ein."))
                                 }

@@ -464,6 +464,14 @@ to edit directly in the formatted view or use source text with a preview.
 WYSIWYG hides Markdown syntax. The format toolbar works in both modes.
 Typing, formatting and Undo happen directly in the document.
 
+In WYSIWYG mode, **Tab** nests a list item one level deeper; **⇧Tab** moves it
+back out. This also works with numbered lists and task lists. Outside lists,
+Tab inserts four nonbreaking spaces that retain their visible width after
+saving; in code blocks, it inserts a tab character. **Markdown → Task list**
+or the checkbox button in the format toolbar creates tasks with checkboxes.
+Click a checkbox to change its state; ⌘Z undoes the change. Intentionally empty
+list items survive copying and pasting.
+
 The button to the right of the **Text/Hex switch** (⌃⇧⌘M) changes the view only
 for the current document. Under **Settings → Markdown**,
 “Edit Markdown in WYSIWYG mode” changes the default for further documents.

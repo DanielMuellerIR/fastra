@@ -1131,9 +1131,10 @@ UI-Sprachen visuell prüfen.
 ### Visuelle Markdown-Bearbeitung
 
 `mdvisual` bedient den echten Erstwahl-Dialog und die Format-Toolbar, prüft Undo,
+Listenverschachtelung mit der echten Tab-Taste, Aufgabenlisten und Häkchen,
 letzte Eingaben vor dem Speichern, den Moduswechsel sowie die Bildkopien von
 „Speichern unter“. `FASTRA_MD_VISUAL_DIR` speichert den Erstwahl-Dialog, Ansichten
-bei 650 und 1100 pt, den Dunkelmodus und den Quelltext nach dem Zurückwechseln;
+bei 650 und 1100 pt, den Dunkelmodus, bearbeitete Listen und den Quelltext nach dem Zurückwechseln;
 jeweils Deutsch und Englisch ansehen.
 
 Turndown 7.2.0 liegt unverändert als `dist/turndown.js` im lokalen Ressourcenordner

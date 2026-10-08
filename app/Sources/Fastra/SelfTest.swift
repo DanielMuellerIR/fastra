@@ -23028,6 +23028,7 @@ enum SelfTest {
             let file = base.appendingPathComponent("Protokoll.md")
             let target = base.appendingPathComponent("copy/Protokoll.md")
             let source = "# Testprotokoll\n\nErgebnis: bestanden 😀\n\n- Erster Schritt\n- Zweiter Schritt\n\n| Prüfung | Ergebnis |\n| :--- | ---: |\n| Bild und Text | bestanden |\n\n![Prüfbild](images/original.png)\n"
+            var stage = "Start"
             func require(_ condition: Bool, _ message: String) throws {
                 if !condition { throw NSError(domain: "MarkdownVisualSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
             }
@@ -23092,7 +23093,42 @@ enum SelfTest {
                 try await wait { ws.activeTab?.content.contains("**Ergebnis: bestanden 😀**") == true }
                 _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
                 try await wait { ws.activeTab?.content == source }
-                _ = try await web.evaluateJavaScript("document.querySelector('#fastra-visual p').textContent='Letzte Eingabe';")
+                _ = try await web.evaluateJavaScript("""
+                    {const item=document.querySelectorAll('#fastra-visual li')[1],r=document.createRange();r.selectNodeContents(item);r.collapse(false);
+                    document.getElementById('fastra-visual').focus();getSelection().removeAllRanges();getSelection().addRange(r);}
+                    """)
+                postKey("\t", keyCode: 48, windowNumber: window.windowNumber)
+                try await wait { ws.activeTab?.content != source }
+                let nestedCount = try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual li li').length") as? Int
+                try require(nestedCount == 1, "Echte Tab-Taste erzeugt keine verschachtelte Liste")
+                let nested = ws.activeTab!.content
+                _ = try await web.evaluateJavaScript("""
+                    {const p=document.querySelector('#fastra-visual p'),r=document.createRange();r.selectNodeContents(p);
+                    getSelection().removeAllRanges();getSelection().addRange(r);}
+                    """)
+                guard let taskButton = markerView(id: "markdownCommand-\(MarkdownFormatCommand.taskList.rawValue)", in: root) else {
+                    throw NSError(domain: "fixture", code: 4)
+                }
+                try require(sendMouseClick(at: taskButton.convert(CGPoint(x: taskButton.bounds.midX, y: taskButton.bounds.midY), to: nil),
+                                           in: window, modifiers: [], viaApp: true), "Aufgabenlisten-Button konnte nicht bedient werden")
+                try await wait { ws.activeTab?.content.contains("[ ]") == true }
+                _ = try await web.evaluateJavaScript("document.querySelector('#fastra-visual input[type=checkbox]').click();")
+                try await wait { ws.activeTab?.content.contains("[x]") == true }
+                await capture("visual-lists")
+                stage = "Undo Häkchen"
+                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                try await wait { ws.activeTab?.content.contains("[x]") == false }
+                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                stage = "Undo Aufgabenliste"
+                // Eine neue Liste besteht aus dem nativen Listenbefehl und dem
+                // Einfügen der Kästchen; beide Schritte müssen zurückgehen.
+                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                try await wait { ws.activeTab?.content == nested }
+                stage = "Undo Einrückung"
+                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                try await wait { ws.activeTab?.content == source }
+                stage = "Letzte Eingabe speichern"
+                _ = try await web.evaluateJavaScript("document.querySelector('#fastra-visual p:not([data-md-edit-boundary])').textContent='Letzte Eingabe';")
                 ws.saveActiveTab()
                 try await wait { (try? String(contentsOf: file, encoding: .utf8))?.contains("Letzte Eingabe") == true }
                 var saved: Bool?
@@ -23101,6 +23137,7 @@ enum SelfTest {
                 try require(saved == true, "Speichern unter scheiterte")
                 let names = try FileManager.default.contentsOfDirectory(atPath: target.deletingLastPathComponent().appendingPathComponent("images").path)
                 try require(names == ["1.png"], "Speichern unter kopiert falsche Bilder: \(names)")
+                stage = "Zurück zum Quelltext"
                 ws.toggleMarkdownEditingMode()
                 try await wait { !ws.activeMarkdownIsVisual && window.contentView.flatMap { editorTextView(in: $0) as? TextView }?.string == ws.activeTab?.content }
                 try await Task.sleep(nanoseconds: 500_000_000)
@@ -23114,7 +23151,7 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: base)
                 window.orderOut(nil)
                 NSApp.appearance = originalAppearance
-                finish(false, error.localizedDescription)
+                finish(false, stage + ": " + error.localizedDescription + "\nMarkdown: " + (ws.activeTab?.content ?? "nil"))
             }
         }
     }
