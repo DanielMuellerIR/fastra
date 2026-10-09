@@ -155,7 +155,19 @@ enum MarkdownHTMLWhitelist {
                 return nil
             }
 
-            guard let close = fragment[index...].firstIndex(of: ">") else { return nil }
+            var closing = fragment.index(after: index)
+            var quote: Character?
+            while closing < end {
+                let character = fragment[closing]
+                if let active = quote {
+                    if character == active { quote = nil }
+                } else if character == "\"" || character == "'" {
+                    quote = character
+                } else if character == ">" { break }
+                closing = fragment.index(after: closing)
+            }
+            guard closing < end, quote == nil else { return nil }
+            let close = closing
             let raw = String(fragment[fragment.index(after: index)..<close])
             index = fragment.index(after: close)
             guard !raw.contains("<") else { return nil }
@@ -222,7 +234,7 @@ enum MarkdownHTMLWhitelist {
             guard let quote = scanner.first, quote == "\"" || quote == "'" else { return nil }
             scanner = scanner.dropFirst()
             guard let valueEnd = scanner.firstIndex(of: quote) else { return nil }
-            let value = String(scanner[scanner.startIndex..<valueEnd])
+            let value = MarkdownHTMLEntities.decode(String(scanner[scanner.startIndex..<valueEnd]))
             scanner = scanner[scanner.index(after: valueEnd)...]
             guard isValid(value: value, for: attributeName, on: name),
                   let escaped = escapedAttributeValue(value) else { return nil }

@@ -115,6 +115,12 @@ final class MarkdownPreviewSchemeHandler: NSObject, WKURLSchemeHandler {
         super.init()
     }
 
+    func imageURLSnapshot() -> [String: URL] {
+        lock.lock()
+        defer { lock.unlock() }
+        return imageURLs
+    }
+
     func addImageURLs(_ urls: [String: URL]) {
         lock.lock()
         imageURLs.merge(urls) { _, new in new }

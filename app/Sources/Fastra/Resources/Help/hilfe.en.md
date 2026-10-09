@@ -479,6 +479,10 @@ saving; in code blocks, it inserts a tab character. **Markdown → Task list**
 or the checkbox button in the format toolbar creates tasks with checkboxes.
 Click a checkbox to change its state; ⌘Z undoes the change. Intentionally empty
 list items survive copying and pasting.
+Cut (⌘X) also carries the sources of protected formulas and diagrams;
+⌘Z restores the cut selection. In source mode, list commands preserve the
+existing indentation and document line endings. Converting task lists to
+bulleted or numbered lists removes the checkboxes.
 
 The button to the right of the **Text/Hex switch** (⌃⇧⌘M) changes the view only
 for the current document. Under **Settings → Markdown**,
@@ -521,6 +525,13 @@ browsers and office apps through the separately installed `md-clip` tool.
 Fastra binds the window, tab, editor and selection when conversion starts. If
 you switch targets or edit the content while it runs, Fastra stops safely and
 does not insert into another document.
+
+**Copy images:** Copying from the preview or WYSIWYG supplies local images
+to other apps as embedded HTML data and RTFD image attachments. Image data
+is added in the background, with limits of 32 MiB per image and 64 MiB for
+the entire copy. Unreadable or oversized images retain their alt text.
+A clipboard change prevents the delayed export from overwriting new content.
+Within Fastra, the Markdown copy with its image references remains available.
 
 **Inserting images:** Pasting an image (⌘V) or dragging an image file stores
 it in the `images` subfolder and links it in the document. Copies receive short

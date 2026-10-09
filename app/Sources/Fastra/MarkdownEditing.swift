@@ -219,16 +219,15 @@ enum MarkdownFormat {
     }
 
     /// Fügt den dokumentierten CommonMark-Hartumbruch als zwei Leerzeichen
-    /// plus normales Newline ein. Eine Auswahl bleibt bewusst erhalten: Der
+    /// plus dokumenteigenes Newline ein. Eine Auswahl bleibt bewusst erhalten: Der
     /// Umbruch landet dahinter, statt versehentlich markierten Text zu löschen.
     static func insertHardBreak(in text: String, after selection: NSRange) -> Edit? {
         let ns = text as NSString
         let target = min(NSMaxRange(selection), ns.length)
-        let beforeTarget = NSRange(location: 0, length: target)
-        let previousNewline = ns.range(of: "\n", options: .backwards, range: beforeTarget)
-        let lineStart = previousNewline.location == NSNotFound
-            ? 0
-            : NSMaxRange(previousNewline)
+        var lineStart = target
+        while lineStart > 0, ![0x0A, 0x0D].contains(ns.character(at: lineStart - 1)) {
+            lineStart -= 1
+        }
         let linePrefix = ns.substring(with: NSRange(location: lineStart,
                                                     length: target - lineStart))
         guard !linePrefix.trimmingCharacters(in: .whitespaces).isEmpty else {
@@ -243,8 +242,8 @@ enum MarkdownFormat {
               ns.character(at: target - existingSpaces - 1) == 0x20 {
             existingSpaces += 1
         }
-        let alreadyBeforeNewline = target < ns.length && ns.character(at: target) == 0x0A
-        let replacement = "  " + (alreadyBeforeNewline ? "" : "\n")
+        let alreadyBeforeNewline = target < ns.length && [0x0A, 0x0D].contains(ns.character(at: target))
+        let replacement = "  " + (alreadyBeforeNewline ? "" : LineEnding.detect(in: text).characters)
         if existingSpaces == 2 && alreadyBeforeNewline { return nil }
 
         let range = NSRange(location: target - existingSpaces, length: existingSpaces)
@@ -277,14 +276,16 @@ enum MarkdownFormat {
                                  transform: (String, Int) -> String) -> Edit {
         let range = lineRange(of: text, selection: selection)
         let block = (text as NSString).substring(with: range)
-        let lines = block.components(separatedBy: "\n")
+        let lines = MarkdownVisualDocument.sourceLines(block)
         var visibleIndex = 0
         let mapped = lines.map { line -> String in
-            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return line }
+            let ending = line.hasSuffix("\r\n") ? "\r\n" : line.hasSuffix("\r") ? "\r" : line.hasSuffix("\n") ? "\n" : ""
+            let content = String(line.dropLast(ending.count))
+            guard !content.trimmingCharacters(in: .whitespaces).isEmpty else { return line }
             visibleIndex += 1
-            return transform(line, visibleIndex)
+            return transform(content, visibleIndex) + ending
         }
-        let replacement = mapped.joined(separator: "\n")
+        let replacement = mapped.joined()
         return Edit(range: range, replacement: replacement,
                     selection: NSRange(location: range.location,
                                        length: (replacement as NSString).length))
@@ -292,8 +293,14 @@ enum MarkdownFormat {
 
     private static let headingPrefix = try! NSRegularExpression(pattern: "^#{1,6}\\s+")
     private static let bulletPrefix = try! NSRegularExpression(pattern: "^[-*+]\\s+")
-    private static let orderedPrefix = try! NSRegularExpression(pattern: "^\\d+\\.\\s+")
+    private static let orderedPrefix = try! NSRegularExpression(pattern: "^\\d+[.)]\\s+")
     private static let quotePrefix = try! NSRegularExpression(pattern: "^>\\s?")
+    private static let taskPrefix = try! NSRegularExpression(pattern: "^(?:[-*+]|\\d+[.)])\\s+\\[[ xX]\\]\\s*")
+
+    private static func indentedParts(_ line: String) -> (indentation: String, content: String) {
+        let indentation = String(IndentationMatchingPaste.leadingWhitespace(of: line))
+        return (indentation, String(line.dropFirst(indentation.count)))
+    }
 
     private static func stripping(_ regex: NSRegularExpression, from line: String) -> String {
         let ns = line as NSString
@@ -330,17 +337,12 @@ enum MarkdownFormat {
     }
 
     static func toggleTaskList(_ text: String, selection: NSRange) -> Edit {
-        let taskPrefix = try! NSRegularExpression(pattern: "^[-*+]\\s+\\[[ xX]\\]\\s*")
-        func parts(_ line: String) -> (String, String) {
-            let indentation = String(line.prefix { $0 == " " || $0 == "\t" })
-            return (indentation, String(line.dropFirst(indentation.count)))
-        }
         let range = lineRange(of: text, selection: selection)
-        let lines = (text as NSString).substring(with: range).components(separatedBy: "\n")
+        let lines = LineOperations.splitLines((text as NSString).substring(with: range))
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        let remove = !lines.isEmpty && lines.allSatisfy { matches(taskPrefix, parts($0).1) }
+        let remove = !lines.isEmpty && lines.allSatisfy { matches(taskPrefix, indentedParts($0).content) }
         return mapLines(text, selection: selection) { line, _ in
-            let (indentation, content) = parts(line)
+            let (indentation, content) = indentedParts(line)
             if matches(taskPrefix, content) { return remove ? indentation + stripping(taskPrefix, from: content) : line }
             let plain = stripping(orderedPrefix, from: stripping(bulletPrefix, from: content))
             return indentation + "- [ ] " + plain
@@ -357,16 +359,21 @@ enum MarkdownFormat {
                                          prefix: (Int) -> String) -> Edit {
         let range = lineRange(of: text, selection: selection)
         let block = (text as NSString).substring(with: range)
-        let visible = block.components(separatedBy: "\n")
+        let visible = LineOperations.splitLines(block)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        let allPrefixed = !visible.isEmpty && visible.allSatisfy { matches(regex, $0) }
+        let allPrefixed = !visible.isEmpty && visible.allSatisfy {
+            let content = indentedParts($0).content
+            return matches(regex, content) && !matches(taskPrefix, content)
+        }
         return mapLines(text, selection: selection) { line, index in
             // Andersartige Listen-/Zitat-Präfixe zuerst räumen, damit die
             // Befehle sich gegenseitig ERSETZEN statt zu stapeln.
-            var plain = stripping(bulletPrefix, from: line)
+            let (indentation, content) = indentedParts(line)
+            var plain = stripping(taskPrefix, from: content)
+            plain = stripping(bulletPrefix, from: plain)
             plain = stripping(orderedPrefix, from: plain)
             plain = stripping(quotePrefix, from: plain)
-            return allPrefixed ? plain : prefix(index) + plain
+            return indentation + (allPrefixed ? plain : prefix(index) + plain)
         }
     }
 

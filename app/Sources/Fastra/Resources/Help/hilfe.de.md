@@ -501,6 +501,11 @@ fügt Tab ein Tabulatorzeichen ein. **Markdown → Aufgabenliste** oder der
 Kästchen-Button in der Format-Toolbar erstellt ankreuzbare Aufgaben. Ein Klick
 auf ein Kästchen ändert seinen Zustand; ⌘Z macht das rückgängig.
 Absichtlich leere Listenpunkte bleiben beim Kopieren und Einfügen erhalten.
+Ausschneiden (⌘X) nimmt auch die Quellen geschützter Formeln und Diagramme mit;
+⌘Z stellt die ausgeschnittene Auswahl wieder her. Im Quelltext erhalten
+Listenbefehle die vorhandene Einrückung und die Zeilenenden des Dokuments.
+Beim Wechsel von Aufgabenlisten zu Aufzählungen oder nummerierten Listen
+werden die Kästchen entfernt.
 
 Der Button rechts vom **Text/Hex-Umschalter** (⌃⇧⌘M) wechselt die Ansicht nur für
 das aktuelle Dokument. Unter **Einstellungen → Markdown** ändert
@@ -543,6 +548,14 @@ Browsern und Office-Programmen mit dem separat installierten Werkzeug
 `md-clip` um. Fastra bindet Fenster, Tab, Editor und Auswahl beim Start der
 Umwandlung. Wechselst du währenddessen das Ziel oder bearbeitest den Inhalt,
 wird kontrolliert abgebrochen und nichts in ein anderes Dokument eingefügt.
+
+**Bilder kopieren:** Kopieren aus Vorschau oder WYSIWYG liefert lokale Bilder
+als eingebettete HTML-Daten und als RTFD-Bildattachments an andere Apps.
+Die Bilddaten werden im Hintergrund ergänzt. Es gelten 32 MiB pro Bild und
+64 MiB für die gesamte Kopie; nicht lesbare oder zu große Bilder bleiben als
+Alt-Text erhalten. Ändert sich die Zwischenablage währenddessen, wird sie
+nicht nachträglich überschrieben. Innerhalb Fastras bleibt die Markdown-Kopie
+mit ihren Bildverweisen verfügbar.
 
 **Bilder einfügen:** Ein Bild aus der Zwischenablage (⌘V) oder eine gezogene
 Bilddatei wird im Unterordner `images` gespeichert und im Dokument verlinkt.

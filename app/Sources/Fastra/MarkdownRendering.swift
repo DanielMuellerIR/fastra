@@ -391,7 +391,7 @@ enum MarkdownMath {
             range: NSRange(source.startIndex..., in: source)
         )
         for match in matches.reversed() {
-            let token = "\(prefix)\(storage.count)TOKEN"
+            let token = "\(prefix)\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))TOKEN"
             let original = (source as NSString).substring(with: match.range)
             storage.append((token, original))
             mutable.replaceCharacters(in: match.range, with: token)
@@ -415,7 +415,7 @@ enum MarkdownMath {
             let tex = (source as NSString).substring(with: match.range(at: 1))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !tex.isEmpty else { continue }
-            let token = "FASTRAMATH\(storage.count)TOKEN"
+            let token = "FASTRAMATH\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))TOKEN"
             let kind = block ? "div" : "span"
             let cssClass = block ? "math-block" : "math-inline"
             let html = "<\(kind) class=\"\(cssClass)\" data-tex=\"\(htmlAttributeEscaped(tex))\"></\(kind)>"

@@ -91,7 +91,7 @@ enum MarkdownSaveAs {
         guard let iterator = cmark_iter_new(document) else { return [] }
         defer { cmark_iter_free(iterator) }
         var references: [Reference] = []
-        let srcPattern = try! NSRegularExpression(pattern: #"(?i)<img\b[^>]*?\bsrc\s*=\s*(["'])([^"']*)\1[^>]*>"#)
+        let tagPattern = try! NSRegularExpression(pattern: #"(?i)<img\b(?:[^"'<>]|"[^"]*"|'[^']*')*>"#)
         while cmark_iter_next(iterator) != CMARK_EVENT_DONE {
             guard cmark_iter_get_event_type(iterator) == CMARK_EVENT_ENTER,
                   let node = cmark_iter_get_node(iterator), let span = range(node) else { continue }
@@ -131,18 +131,18 @@ enum MarkdownSaveAs {
                 let sanitized = sanitizer.sanitize(raw)
                 let commentPattern = try! NSRegularExpression(pattern: #"(?s)<!--.*?(?:-->|$)"#)
                 let comments = commentPattern.matches(in: raw, range: NSRange(location: 0, length: raw.utf16.count)).map(\.range)
-                for match in srcPattern.matches(in: raw, range: NSRange(location: 0, length: raw.utf16.count)) {
-                    let imageRange = NSRange(location: span.location + match.range.location, length: match.range.length)
-                    let value = (raw as NSString).substring(with: match.range(at: 2))
-                        .replacingOccurrences(of: "&amp;", with: "&")
-                        .replacingOccurrences(of: "&quot;", with: "\"")
-                        .replacingOccurrences(of: "&#39;", with: "'")
-                    guard !comments.contains(where: { NSIntersectionRange($0, match.range).length > 0 }),
+                for tag in tagPattern.matches(in: raw, range: NSRange(location: 0, length: raw.utf16.count)) {
+                    let imageRange = NSRange(location: span.location + tag.range.location, length: tag.range.length)
+                    guard !comments.contains(where: { NSIntersectionRange($0, tag.range).length > 0 }),
                           !formulas.contains(where: { NSIntersectionRange($0, imageRange).length > 0 }),
-                          sanitized.contains("src="), let url = local(value),
-                          match.range(at: 2).upperBound <= span.length else { continue }
-                    references.append(Reference(range: NSRange(location: span.location + match.range(at: 2).location,
-                                                               length: match.range(at: 2).length), url: url, replacement: { $0 }))
+                          sanitized.contains("src=") else { continue }
+                    // Ganze Attributwerte überspringen, auch wenn Alt-Text selbst src= enthält.
+                    for attribute in MarkdownHTMLAttributes.parse(raw, range: tag.range) where attribute.name == "src" {
+                        let valueRange = attribute.valueRange
+                        guard let url = local(attribute.value) else { continue }
+                        references.append(Reference(range: NSRange(location: span.location + valueRange.location,
+                                                                   length: valueRange.length), url: url, replacement: { $0 }))
+                    }
                 }
             }
         }

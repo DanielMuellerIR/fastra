@@ -45,6 +45,36 @@ private func range(_ location: Int, _ length: Int) -> NSRange {
     NSRange(location: location, length: length)
 }
 
+@Test("Zeilenbefehle erhalten CR, CRLF und gemischte Zeilenenden", arguments: ["\r", "\r\n", "\n", "\r\n\r\n"])
+func markdownReview_lineEndings(_ eol: String) {
+    let text = "eins\(eol)zwei"
+    let selection = range(0, text.utf16.count)
+    #expect(applied(MarkdownFormat.toggleBulletList(text, selection: selection), to: text) == "- eins\(eol)- zwei")
+    #expect(applied(MarkdownFormat.toggleQuote(text, selection: selection), to: text) == "> eins\(eol)> zwei")
+    let mixed = "eins\r\nzwei\rdrei\nvier"
+    #expect(applied(MarkdownFormat.toggleOrderedList(mixed, selection: range(0, mixed.utf16.count)), to: mixed) == "1. eins\r\n2. zwei\r3. drei\n4. vier")
+}
+
+@Test("Listenwechsel erhalten Einrückung und entfernen vollständige Aufgabenmarker")
+func markdownReview_nestedListConversion() {
+    let text = "- Eltern\n    - [x] Kind\n\t- [ ] Weiter"
+    let selection = range(0, text.utf16.count)
+    #expect(applied(MarkdownFormat.toggleBulletList(text, selection: selection), to: text) == "- Eltern\n    - Kind\n\t- Weiter")
+    #expect(applied(MarkdownFormat.toggleOrderedList(text, selection: selection), to: text) == "1. Eltern\n    2. Kind\n\t3. Weiter")
+    let quoted = "    > Kind\n\t> Weiter"
+    #expect(applied(MarkdownFormat.toggleQuote(quoted, selection: range(0, quoted.utf16.count)), to: quoted) == "    Kind\n\tWeiter")
+}
+
+@Test("Harte Umbrüche erhalten vorhandene Dokument-Zeilenenden", arguments: ["\r", "\r\n", "\n"])
+func markdownReview_hardBreakLineEndings(_ eol: String) throws {
+    let text = "Zeile\(eol)Weiter"
+    let before = try #require(MarkdownFormat.insertHardBreak(in: text, after: range(5, 0)))
+    #expect(applied(before, to: text) == "Zeile  \(eol)Weiter")
+    let split = try #require(MarkdownFormat.insertHardBreak(in: text, after: range(2, 0)))
+    #expect(applied(split, to: text) == "Ze  \(eol)ile\(eol)Weiter")
+    #expect(MarkdownFormat.insertHardBreak(in: "Vorher\(eol)\(eol)Nachher", after: range(6 + eol.utf16.count, 0)) == nil)
+}
+
 @Test("Markdown-Erstnutzung adressiert nur den auslösenden Workspace")
 @MainActor
 func markdownFirstUse_targetsTriggeringWorkspace() throws {

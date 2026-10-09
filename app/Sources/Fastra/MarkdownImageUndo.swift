@@ -53,7 +53,20 @@ enum MarkdownImageUndo {
         let sideEffect = MarkdownImageUndoSideEffect(images: created)
         _ = undoManager.fastraRegisterSideEffectForLatestUndo(
             undo: { _ = sideEffect.undo() },
-            redo: { _ = sideEffect.redo() },
+            redo: {},
+            prepareRedo: { [weak textView] in
+                guard sideEffect.redo() else {
+                    if let window = textView?.window, window.attachedSheet == nil {
+                        let alert = NSAlert()
+                        alert.messageText = L10n.string("Bild konnte nicht wiederhergestellt werden")
+                        alert.informativeText = L10n.string("Der Bildpfad ist inzwischen belegt oder nicht beschreibbar. Der Text blieb unverändert. Gib den ursprünglichen Bildpfad frei und versuche Wiederholen erneut.")
+                        alert.beginSheetModal(for: window)
+                    }
+                    return false
+                }
+                return true
+            },
+            cancelPreparedRedo: { _ = sideEffect.undo() },
             discard: { sideEffect.discard() }
         )
     }

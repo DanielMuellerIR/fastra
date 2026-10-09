@@ -309,6 +309,9 @@ struct MarkdownVisualTests {
             getSelection().removeAllRanges();getSelection().addRange(r);root.dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));
             """)
         try #require(await waitUntil { first.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        try #require(await waitUntil { first.pasteboard.data(forType: .rtfd) != nil })
+        #expect(first.pasteboard.string(forType: .html)?.contains("data:image/png;base64,") == true)
+        #expect(first.pasteboard.string(forType: .html)?.contains("fastra-preview:") == false)
         let (secondWorkspace, second, secondWeb, secondWindow) = try await editor("Ziel\n", documentURL: secondURL)
         defer { secondWeb.configuration.userContentController.removeAllScriptMessageHandlers(); secondWindow.close() }
         second.pasteboard = first.pasteboard
@@ -1043,6 +1046,72 @@ struct MarkdownVisualTests {
         _ = try await secondWeb.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
         try #require(await waitUntil { secondWorkspace.activeTab?.content == "Ziel\n" })
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("images/2.png").path))
+    }
+
+    @Test("Bearbeiteter Text erhält wörtliche Entities und HTML", arguments: ["Wörtlich &amp;copy; und &lt;b&gt;Text&lt;/b&gt;\n", "1\\) Text\n"])
+    @MainActor
+    func literalTextAfterEdit(_ source: String) async throws {
+        let (_, coordinator, web, window) = try await editor(source)
+        defer { web.stopLoading(); web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let original = try await web.evaluateJavaScript("document.querySelector('#fastra-visual').textContent") as? String
+        _ = try await web.evaluateJavaScript("{const p=document.querySelector('#fastra-visual p'),r=document.createRange();r.selectNodeContents(p);r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('insertText',false,'!');fastraVisual.flush();}")
+        let markdown = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
+        let html = MarkdownRichText.htmlFragment(markdown: markdown)
+        #expect(!html.contains("<b>") && !html.contains("<ol"))
+        #expect(html.contains(source.hasPrefix("1") ? "1) Text!" : "&amp;copy; und &lt;b&gt;Text&lt;/b&gt;!"), Comment(rawValue: markdown + html))
+        #expect(original != nil)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Ausschneiden transportiert Formeln und Undo stellt Original wieder her")
+    @MainActor
+    func cutFormula() async throws {
+        let source = "Text $x+1$ danach\n\n```mermaid\ngraph TD; A-->B\n```\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.stopLoading(); web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("{const root=document.getElementById('fastra-visual'),r=document.createRange();r.selectNodeContents(root);getSelection().removeAllRanges();getSelection().addRange(r);root.dispatchEvent(new Event('cut',{bubbles:true,cancelable:true}));fastraVisual.flush();}")
+        try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        let payload = try #require(coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType))
+        let object = try #require(try JSONSerialization.jsonObject(with: payload) as? [String: String])
+        #expect(object["markdown"]?.contains("$x+1$") == true)
+        #expect(object["markdown"]?.contains("graph TD; A-->B") == true)
+        #expect(await waitUntil { workspace.activeTab?.content.contains("x+1") == false })
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        let restored = await waitUntil { workspace.activeTab?.content == source }
+        if !restored {
+            let dom = try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML")
+            Issue.record(Comment(rawValue: "Cut Undo: " + (workspace.activeTab?.content ?? "nil") + " DOM=" + String(describing: dom)))
+        }
+        #expect(restored)
+    }
+
+    @Test("Verbundene Tabellenzellen behalten Zeilen- und Spaltenzuordnung")
+    @MainActor
+    func spanningTable() async throws {
+        let (_, coordinator, web, window) = try await editor("Start\n")
+        defer { web.stopLoading(); web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("{const p=document.querySelector('#fastra-visual p'),r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);const e=new Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(e,'clipboardData',{value:{files:[],getData:t=>t==='text/html'?'<table><tr><td rowspan=\"2\">A</td><td>B</td></tr><tr><td>C</td></tr></table>':''}});p.dispatchEvent(e);fastraVisual.flush();}")
+        let markdown = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
+        #expect(markdown.contains("rowspan=\"2\""), Comment(rawValue: markdown))
+        #expect(MarkdownRichText.htmlFragment(markdown: markdown).contains("rowspan=\"2\""))
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Spanntabelle erhält beim Kopieren Inline-Kommentar und Formelquelle")
+    @MainActor
+    func spanningTableAtoms() async throws {
+        let source = "Vorher <table><tr><td colspan=\"2\">A <!-- merken --> $x<y$ B</td></tr></table>\n"
+        let (_, coordinator, web, window) = try await editor(source)
+        defer { web.stopLoading(); web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("{const root=document.getElementById('fastra-visual'),r=document.createRange();r.selectNodeContents(root);getSelection().removeAllRanges();getSelection().addRange(r);root.dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));}")
+        try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        let data = try #require(coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: String])
+        let copied = try #require(object["markdown"])
+        #expect(copied.contains("<!-- merken -->"), Comment(rawValue: copied))
+        #expect(copied.contains("$x<y$"), Comment(rawValue: copied))
+        #expect(copied.contains("colspan=\"2\""))
+        #expect(!copied.contains("⋯"))
     }
 
 }

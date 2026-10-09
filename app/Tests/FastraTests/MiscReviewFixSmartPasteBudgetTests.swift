@@ -63,7 +63,7 @@ func miscReviewFix_outputBudgetKeepsSmallOutput() throws {
         Issue.record("Kleiner Output schlug fehl: \(result)")
         return
     }
-    #expect(markdown == "# Titel\nAbsatz")
+    #expect(markdown == "# Titel\nAbsatz\n")
 }
 
 @Test("markdownFromClipboard: auch endlose stderr-Ausgabe zählt aufs Budget")

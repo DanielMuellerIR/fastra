@@ -268,7 +268,31 @@ func finishConversionUsesCapturedTarget() {
     #expect(reported == nil)
 }
 
+@Test("Smart-Paste verwirft Ergebnisse nach einem Wechsel des Zwischenablageinhalts")
+func markdownReview_changedClipboard() {
+    let lease = SmartPasteLeaseStub(isValid: true)
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    pasteboard.setString("ursprünglicher Inhalt", forType: .string)
+    let expectedChangeCount = pasteboard.changeCount
+    pasteboard.clearContents()
+    pasteboard.setString("fremder Inhalt", forType: .string)
+    var reported: SmartPasteError?
+    SmartPaste.finishConversion(.success("fremder Inhalt"), lease: lease,
+                               expectedClipboardChangeCount: expectedChangeCount,
+                               pasteboard: pasteboard) { reported = $0 }
+    #expect(lease.inserted.isEmpty)
+    #expect(reported == .clipboardChanged)
+}
+
 // MARK: - markdownFromClipboard Prozess-Lebenszyklus
+
+@Test("Markdown-Konvertierung erhält semantische Einrückung und abschließenden Leerraum")
+func markdownReview_smartPasteWhitespace() throws {
+    let stub = try makeMdClipStub(name: "markdown-whitespace", body: "printf '    code\\n    more\\n\\nEnde  \\n'")
+    defer { try? FileManager.default.removeItem(at: stub) }
+    #expect(SmartPaste.markdownFromClipboard(mdClipURL: stub) == .success("    code\n    more\n\nEnde  \n"))
+}
 
 @Test("markdownFromClipboard: großer stdout-Output blockiert die Pipe nicht")
 func markdownFromClipboard_largeOutputDoesNotBlock() throws {

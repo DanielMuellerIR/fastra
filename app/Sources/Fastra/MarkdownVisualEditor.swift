@@ -263,12 +263,14 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
               let body = message.body as? [String: Any] else { return }
         if message.name == "markdownCopy", let plain = body["plain"] as? String,
            let html = body["html"] as? String {
-            MarkdownPasteboard.write(plain: plain, htmlFragment: html, to: pasteboard)
-            if body["session"] as? String == session, let copied = body["markdown"] as? String,
+            guard body["session"] as? String == session else { return }
+            var additionalData: [NSPasteboard.PasteboardType: Data] = [:]
+            if let copied = body["markdown"] as? String,
                let data = try? JSONSerialization.data(withJSONObject: ["markdown": copied, "url": documentURL?.absoluteString ?? ""]) {
-                pasteboard.addTypes([Self.clipboardType], owner: nil)
-                pasteboard.setData(data, forType: Self.clipboardType)
+                additionalData[Self.clipboardType] = data
             }
+            MarkdownPasteboard.write(plain: plain, htmlFragment: html, to: pasteboard,
+                                     imageURLs: assets.imageURLSnapshot(), additionalData: additionalData)
             return
         }
         guard body["session"] as? String == session,

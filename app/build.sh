@@ -6373,6 +6373,20 @@ if [ "$FOLDING_PATCH" = "changed" ]; then
   rm -f .build/*/debug/Modules/CodeEditSourceEditor.swiftmodule .build/*/release/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4z21. Tatsächliche Einrückungsbreite und dokumenteigene Zeilenenden.
+MARKDOWN_EDIT_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/markdown-editing.py "$CHECKOUTS/CodeEditSourceEditor" "$CHECKOUTS/TextFormation")
+if [ "$MARKDOWN_EDIT_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/{CodeEditSourceEditor,TextFormation}.build
+  rm -f .build/*/{debug,release}/Modules/{CodeEditSourceEditor,TextFormation}.swiftmodule
+fi
+
+# 4z22. Redo darf bei fehlgeschlagener Bildwiederherstellung keinen Link einsetzen.
+REDO_PREFLIGHT_PATCH=$(/usr/bin/python3 Patches/CodeEditTextView/redo-preflight.py "$CHECKOUTS/CodeEditTextView")
+if [ "$REDO_PREFLIGHT_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditTextView.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditTextView.swiftmodule
+fi
+
 # Hinweis zu den `rm .build/*/{debug,release}/<Modul>.build`-Zeilen oben:
 # Sie gelten nur für das alte Build-System `native`, das Änderungen in
 # .build/checkouts nicht neu übersetzt. Ab Swift 6.4 baut `swift build`

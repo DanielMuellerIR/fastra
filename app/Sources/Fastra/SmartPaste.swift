@@ -196,6 +196,7 @@ enum SmartPasteError: Error, Equatable {
     /// Fenster, Tab, Editor, Inhalt oder Auswahl haben sich während der
     /// Konvertierung geändert. In diesem Fall wird bewusst nichts eingefügt.
     case targetChanged
+    case clipboardChanged
     /// md-clip hat innerhalb des Timeouts (10 s) keine Antwort geliefert.
     case timeout
 
@@ -216,6 +217,8 @@ enum SmartPasteError: Error, Equatable {
             return L10n.format("Die Markdown-Konvertierung ist fehlgeschlagen.\n\nDetails: %@", detail)
         case .targetChanged:
             return L10n.string("Das ursprüngliche Einfügeziel hat sich während der Konvertierung geändert. Es wurde nichts eingefügt.")
+        case .clipboardChanged:
+            return L10n.string("Die Zwischenablage hat sich während der Konvertierung geändert. Es wurde nichts eingefügt. Bitte kopiere den gewünschten Inhalt erneut.")
         case .timeout:
             return L10n.string("Die Konvertierung hat zu lange gedauert (Zeitlimit: 10 Sekunden). Bitte versuche es erneut oder verwende kleinere Inhalte.")
         }
@@ -551,10 +554,9 @@ enum SmartPaste {
         }
 
         // stdout lesen und als Markdown zurückgeben.
-        let markdown = String(data: outputData, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let markdown = String(data: outputData, encoding: .utf8) ?? ""
 
-        if markdown.isEmpty {
+        if markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .failure(.conversionFailed("md-clip lieferte leeren Output (Exit 0)."))
         }
 
@@ -600,6 +602,7 @@ enum SmartPaste {
         }
 
         // Schritt 1: formatierten Inhalt prüfen.
+        let clipboardChangeCount = NSPasteboard.general.changeCount
         guard clipboardHasFormattedContent() else {
             // Kein HTML/RTF: normaler Plain-Text-Fallback.
             // `NSPasteboard.general.string(forType: .string)` gibt nil
@@ -625,6 +628,7 @@ enum SmartPaste {
             let result = markdownFromClipboard(mdClipURL: mdClipURL)
             DispatchQueue.main.async {
                 finishConversion(result, lease: lease,
+                                 expectedClipboardChangeCount: clipboardChangeCount,
                                  errorHandler: showErrorAlert)
             }
         }
@@ -635,8 +639,14 @@ enum SmartPaste {
     static func finishConversion(
         _ result: Result<String, SmartPasteError>,
         lease: SmartPasteInsertionLease,
+        expectedClipboardChangeCount: Int? = nil,
+        pasteboard: NSPasteboard = .general,
         errorHandler: (SmartPasteError) -> Void
     ) {
+        guard expectedClipboardChangeCount == nil || pasteboard.changeCount == expectedClipboardChangeCount else {
+            errorHandler(.clipboardChanged)
+            return
+        }
         switch result {
         case .success(let markdown):
             if !lease.insertIfUnchanged(markdown) {

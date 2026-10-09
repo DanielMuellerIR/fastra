@@ -1341,6 +1341,7 @@
 "Apply abbrechen" = "Cancel Apply";
 "Bricht Planung und Preflight ab. Eine bereits begonnene atomare Schreibphase wird sicher abgeschlossen." = "Cancels planning and preflight. An atomic write phase that has already started will finish safely.";
 "Das ursprüngliche Einfügeziel hat sich während der Konvertierung geändert. Es wurde nichts eingefügt." = "The original insertion target changed during conversion. Nothing was inserted.";
+"Die Zwischenablage hat sich während der Konvertierung geändert. Es wurde nichts eingefügt. Bitte kopiere den gewünschten Inhalt erneut." = "The clipboard changed during conversion. Nothing was inserted. Please copy the intended content again.";
 
 /* Markdown-Umwandlung über „Poor Man's Text" */
 "%@ erkannt — Fastra kann das Dokument in Markdown umwandeln." = "%@ detected — Fastra can convert this document to Markdown.";
@@ -1783,3 +1784,6 @@
 "Die ausgewählten Absätze als Aufgabenliste mit ankreuzbaren Kästchen formatieren." = "Format the selected paragraphs as a task list with checkboxes.";
 
 "Die Bilddatei wurde außerhalb des Editors geändert. Der Bearbeitungsschritt wurde zurückgenommen, damit kein falsches Bild verknüpft wird." = "The image file was changed outside the editor. The editing step was reversed to avoid linking the wrong image.";
+
+"Bild konnte nicht wiederhergestellt werden" = "Image could not be restored";
+"Der Bildpfad ist inzwischen belegt oder nicht beschreibbar. Der Text blieb unverändert. Gib den ursprünglichen Bildpfad frei und versuche Wiederholen erneut." = "The image path is now occupied or not writable. The text is unchanged. Free the original image path and try Redo again.";

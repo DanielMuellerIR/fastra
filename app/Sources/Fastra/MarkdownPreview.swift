@@ -665,37 +665,48 @@ final class MarkdownRenderCoalescer: @unchecked Sendable {
 /// Schreibt eine Markdown-Auswahl in allen für native Mac-Programme relevanten
 /// Darstellungen. Pages bevorzugt RTF, Browser und Web-Editoren können HTML
 /// verwenden, reine Textziele fallen weiterhin sauber auf Klartext zurück.
+@MainActor
 enum MarkdownPasteboard {
     @discardableResult
-    static func write(plain: String,
-                      htmlFragment: String,
-                      to pasteboard: NSPasteboard = .general) -> Bool {
-        let html = """
-        <!doctype html><html><head><meta charset="utf-8"></head>
-        <body>\(htmlFragment)</body></html>
-        """
-        guard let htmlData = html.data(using: .utf8) else { return false }
+    static func write(plain: String, htmlFragment: String,
+                      to pasteboard: NSPasteboard = .general,
+                      imageURLs: [String: URL] = [:],
+                      additionalData: [NSPasteboard.PasteboardType: Data] = [:]) -> Bool {
+        let originalChangeCount = pasteboard.changeCount
+        let initial = MarkdownClipboardImages.prepare(htmlFragment, imageURLs: [:], loadImages: false)
+        guard publish(plain: plain, transport: initial, to: pasteboard, additionalData: additionalData, expectedChangeCount: originalChangeCount) else { return false }
+        guard !imageURLs.isEmpty else { return true }
+        let changeCount = pasteboard.changeCount
+        DispatchQueue.global(qos: .userInitiated).async {
+            let transport = MarkdownClipboardImages.prepare(htmlFragment, imageURLs: imageURLs, loadImages: true)
+            DispatchQueue.main.async {
+                guard pasteboard.changeCount == changeCount else { return }
+                _ = publish(plain: plain, transport: transport, to: pasteboard, additionalData: additionalData, expectedChangeCount: changeCount)
+            }
+        }
+        return true
+    }
 
-        let attributed = try? NSAttributedString(
-            data: htmlData,
-            options: [
-                .documentType: NSAttributedString.DocumentType.html,
-                .characterEncoding: String.Encoding.utf8.rawValue
-            ],
-            documentAttributes: nil
-        )
-        let rtf = attributed?.rtf(
-            from: NSRange(location: 0, length: attributed?.length ?? 0),
-            documentAttributes: [:]
-        )
-
+    private static func publish(plain: String, transport: MarkdownClipboardImages.Transport,
+                                to pasteboard: NSPasteboard,
+                                additionalData: [NSPasteboard.PasteboardType: Data], expectedChangeCount: Int) -> Bool {
+        let html = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>\(transport.html)</body></html>"
+        let attributed = MarkdownClipboardImages.attributed(transport)
+        let range = NSRange(location: 0, length: attributed?.length ?? 0)
+        let rtf = attributed?.rtf(from: range, documentAttributes: [:])
+        let rtfd = transport.attachments.isEmpty ? nil : attributed?.rtfd(from: range, documentAttributes: [:])
+        guard pasteboard.changeCount == expectedChangeCount else { return false }
         pasteboard.clearContents()
         var types: [NSPasteboard.PasteboardType] = [.html, .string]
         if rtf != nil { types.insert(.rtf, at: 0) }
+        if rtfd != nil { types.insert(.rtfd, at: 0) }
+        types.append(contentsOf: additionalData.keys)
         pasteboard.declareTypes(types, owner: nil)
         if let rtf { pasteboard.setData(rtf, forType: .rtf) }
+        if let rtfd { pasteboard.setData(rtfd, forType: .rtfd) }
         pasteboard.setString(html, forType: .html)
         pasteboard.setString(plain, forType: .string)
+        for (type, data) in additionalData { pasteboard.setData(data, forType: type) }
         return true
     }
 }
@@ -996,12 +1007,12 @@ private struct MarkdownRichTextView: NSViewRepresentable {
 
         func userContentController(_ userContentController: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
-            guard let payload = message.body as? [String: Any] else { return }
+            guard message.frameInfo.isMainFrame, let payload = message.body as? [String: Any] else { return }
             switch message.name {
             case "markdownCopy":
                 guard let plain = payload["plain"] as? String,
                       let html = payload["html"] as? String else { return }
-                MarkdownPasteboard.write(plain: plain, htmlFragment: html)
+                MarkdownPasteboard.write(plain: plain, htmlFragment: html, imageURLs: assetHandler.imageURLSnapshot())
             case "markdownJump":
                 guard let line = payload["line"] as? Int else { return }
                 jump(toLine: line, column: payload["column"] as? Int ?? 1)

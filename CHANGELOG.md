@@ -7,6 +7,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.138.6] — 2026-10-09
+
+### Behoben
+
+- Markdown-Formatbefehle erhalten Einrückungen und gemischte LF-/CRLF-/CR-Zeilenenden. Aufgabenlisten lassen sich ohne stehengebliebene Kästchen in andere Listenformen umwandeln.
+- Ausrücken berücksichtigt die tatsächlich entfernten Leerzeichen. Mehrere Cursor auf derselben Zeile rücken sie nur einmal ein; Rückgängig stellt die ursprünglichen Auswahlen wieder her. Return übernimmt Einrückungen auch bei CR und CRLF.
+- Formatiertes Einfügen erhält führende Einrückungen und nachlaufende Leerzeichen. Eine während der Umwandlung geänderte Zwischenablage verhindert ein verspätetes Einfügen.
+- WYSIWYG-Bearbeitung erhält wörtliche HTML-Zeichen, Entities und Text wie `1) Ergebnis`. Ausschneiden transportiert auch Formeln und Diagrammquellen; Rückgängig erhält den ursprünglichen Quelltext.
+- Kopierte Vorschaubilder besitzen in HTML eigene Bilddaten und in RTFD echte Bildattachments. Ein verzögerter Bildexport überschreibt keine neue Zwischenablage.
+- HTML-Attribute werden genau einmal decodiert und vor der Ausgabe geprüft. „Speichern unter“ unterscheidet echte Bildquellen von `src=` im Alt-Text. Verbundene Tabellenzellen behalten ihre Zuordnung.
+- Bild-Wiederholen setzt bei einem inzwischen belegten Bildpfad keinen falschen Link ein; nach Beheben des Konflikts lässt es sich erneut versuchen. Wörtliche interne Formel- und Codeplatzhalter werden nicht mehr als Inhalt ersetzt.
+
 ## [v1.138.5] — 2026-10-09
 
 ### Behoben

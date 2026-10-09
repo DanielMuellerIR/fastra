@@ -731,3 +731,46 @@ func imageUndoReservesOwnershipAndStashedName() throws {
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).allSatisfy { !$0.hasPrefix(".fastra-image-undo-") })
     }
 }
+
+@Test("Bild-Redo bewahrt Text und fremde Datei bei Kollision und bleibt wiederholbar")
+@MainActor
+func imageRedoCollisionKeepsTextAndRetry() throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Seite.md")
+        let stored = try MarkdownImageStore.storePastedData(
+            .init(data: tinyPNG(), fileExtension: "png"), documentURL: doc)
+        let textView = TextView(string: "")
+        textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: stored.link)
+        MarkdownImageUndo.register(textView: textView, insertion: stored.link, storedImages: [stored])
+        textView.undoManager?.undo()
+        try FileManager.default.createDirectory(at: stored.fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("foreign".utf8).write(to: stored.fileURL)
+        textView.undoManager?.redo()
+        #expect(textView.string.isEmpty)
+        #expect(textView.undoManager?.canRedo == true)
+        #expect(try Data(contentsOf: stored.fileURL) == Data("foreign".utf8))
+        try FileManager.default.removeItem(at: stored.fileURL)
+        textView.undoManager?.redo()
+        #expect(textView.string == stored.link)
+        #expect(try Data(contentsOf: stored.fileURL) == tinyPNG())
+    }
+}
+
+@Test("Abgewiesener Redo rollt nur vorbereitete Nebenwirkungen zurück")
+@MainActor
+func redoPreflightRollsBackOnlyPreparations() {
+    let textView = TextView(string: "")
+    textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "Link")
+    let manager = textView.undoManager as! CEUndoManager
+    var genericUndo = 0, prepared = false, permitted = false
+    manager.fastraRegisterSideEffectForLatestUndo(undo: { genericUndo += 1 }, redo: {}, discard: {})
+    manager.fastraRegisterSideEffectForLatestUndo(undo: {}, redo: {}, prepareRedo: { prepared = true; return true }, cancelPreparedRedo: { prepared = false }, discard: {})
+    manager.fastraRegisterSideEffectForLatestUndo(undo: {}, redo: {}, prepareRedo: { permitted }, discard: {})
+    manager.undo()
+    manager.redo()
+    #expect(textView.string.isEmpty && manager.canRedo)
+    #expect(genericUndo == 1 && !prepared)
+    permitted = true
+    manager.redo()
+    #expect(textView.string == "Link" && prepared)
+}

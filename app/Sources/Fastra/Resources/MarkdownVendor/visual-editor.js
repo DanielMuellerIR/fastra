@@ -18,6 +18,7 @@
   }
   td.addRule('listItem',{filter:'li',replacement:listItem});
   td.addRule('spaces',{filter:n=>n.hasAttribute('data-md-spaces'),replacement:(_,n)=>'&nbsp;'.repeat(Number(n.dataset.mdSpaces))});
+  function randomToken(prefix) { return prefix+Array.from(crypto.getRandomValues(new Uint32Array(4)),n=>n.toString(16)).join('')+'END'; }
   function toMarkdown(html) {
     const holder=document.createElement('div');holder.innerHTML=html;
     holder.querySelectorAll('[data-md-edit-boundary]').forEach(n=>n.remove());
@@ -45,7 +46,7 @@
       // Eigene Absätze lassen Turndown für jede Zeile auch Zitat- und
       // Listenpräfixe ergänzen; nachträgliche Umbrüche verlören diesen Kontext.
       for(let i=0;i<count;i++) {
-        const token='FASTRAEMPTY'+Array.from(crypto.getRandomValues(new Uint32Array(4)),n=>n.toString(16)).join('')+'END';
+        const token=randomToken('FASTRAEMPTY');
         blanks.push(token);const line=n.cloneNode(false);line.textContent=token;lines.append(line);
       }
       n.replaceWith(lines);
@@ -57,7 +58,7 @@
   const commonEscape=td.escape.bind(td);
   // Einzelne = sind gewöhnlicher Text. Nur benachbarte = können Fastras
   // Textmarker auslösen; Turndown schützt bereits = am Textanfang.
-  td.escape=text=>commonEscape(text).replace(/[$~]|(?<!\\)=(?==)|(?<==)=/g,'\\$&');
+  td.escape=text=>commonEscape(text.replace(/&/g,'&amp;').replace(/</g,'&lt;')).replace(/^(\d+)\) /,'$1\\) ').replace(/[$~]|(?<!\\)=(?==)|(?<==)=/g,'\\$&');
   let opaqueSources={};
   td.addRule('opaque',{filter:n=>n.hasAttribute('data-md-opaque'),replacement:(_,n)=>opaqueSources[n.dataset.mdOpaque] || ''});
   td.addRule('highlight', {filter:'mark', replacement:(c,n)=>n.parentElement?.closest('mark')?c:(c.trim()?'=='+c.trim()+'==':'')});
@@ -78,6 +79,23 @@
     return '\n\n'+fence+language+'\n'+text+'\n'+fence+'\n\n';
   }});
   td.addRule('table', {filter:'table', replacement:(_,n) => {
+    // Markdown-Tabellen haben keine verbundenen Zellen. Sicheres HTML bewahrt deren Position.
+    if(n.querySelector('[colspan],[rowspan]')) {
+      const clone=n.cloneNode(true), atoms=[];
+      clone.querySelectorAll('img[data-md-src]').forEach(image=>image.setAttribute('src',image.dataset.mdSrc));
+      clone.querySelectorAll('[data-md-opaque]').forEach(atom=>{
+        const token=randomToken('FASTRATABLEATOM');
+        atoms.push([token,opaqueSources[atom.dataset.mdOpaque] || '']);atom.replaceWith(document.createTextNode(token));
+      });
+      clone.querySelectorAll('[data-tex]').forEach(math=>{
+        const token=randomToken('FASTRATABLEMATH');
+        const source=math.classList.contains('math-block')?'\n$$\n'+math.dataset.tex+'\n$$\n':'$'+math.dataset.tex+'$';
+        atoms.push([token,source]);math.replaceWith(document.createTextNode(token));
+      });
+      let html=sanitizePaste(clone.outerHTML);
+      for(const [token,source] of atoms)html=html.replace(token,source);
+      return '\n\n'+html+'\n\n';
+    }
     const rows=Array.from(n.rows), width=Math.max(1,...rows.map(r=>r.cells.length));
     const lines=rows.map(r=>'| '+Array.from({length:width},(_,i)=>{
       const cell=r.cells[i];
@@ -94,7 +112,7 @@
   let root, originals=new Map(), blocks=[], selection=null, base='', session='', composing=false, revision=0, fenced=false, bookmarkID=0, bookmarks=new Map(), editingCommand=false, lastInputType='';
   function normalized(node) {
     const clone=node.cloneNode(true);
-    clone.querySelectorAll('input[type=checkbox]').forEach(n=>n.removeAttribute('contenteditable'));
+    clone.querySelectorAll('[contenteditable]').forEach(n=>n.removeAttribute('contenteditable'));
     clone.querySelectorAll('[data-md-opaque]').forEach(n=>n.textContent='');
     clone.querySelectorAll('[data-tex]').forEach(n=>{n.textContent='';n.removeAttribute('data-rendered');});
     clone.querySelectorAll('pre code').forEach(n=>{n.textContent=n.textContent;n.removeAttribute('data-highlighted');n.classList.remove('hljs');});
@@ -154,6 +172,7 @@
       }
     }
     restoreMarkers();
+    root.querySelectorAll('[data-tex],[data-md-opaque],.mermaid-render').forEach(n=>n.contentEditable='false');
     root.querySelectorAll('[data-md-edit-boundary]').forEach(n=>n.style.display='none');
     root.querySelectorAll('input[type=checkbox]').forEach(n=>{n.removeAttribute('disabled');n.contentEditable='false';});
     const markdown=serialize();
@@ -329,7 +348,7 @@
       document.addEventListener('selectionchange',()=>{
         const s=getSelection();if(s.rangeCount && root.contains(s.getRangeAt(0).commonAncestorContainer))selection=s.getRangeAt(0).cloneRange();
       });
-      root.addEventListener('copy',e=>{
+      const copySelection=e=>{
         const s=getSelection();if(!s.rangeCount || s.isCollapsed)return;
         const rich=document.createElement('div');rich.append(s.getRangeAt(0).cloneContents());
         const markdown=toMarkdown(rich.innerHTML);
@@ -338,7 +357,10 @@
         html.querySelectorAll('*').forEach(n=>{for(const a of Array.from(n.attributes))if(a.name.startsWith('data-md-') || a.name==='contenteditable')n.removeAttribute(a.name);});
         e.preventDefault();e.stopPropagation();
         window.webkit.messageHandlers.markdownCopy.postMessage({plain:s.toString(),html:html.innerHTML,markdown,session});
-      });
+        if(e.type==='cut')exec('insertHTML','');
+      };
+      root.addEventListener('copy',copySelection);
+      root.addEventListener('cut',copySelection);
       root.addEventListener('paste',e=>{
         e.preventDefault();
         if(e.clipboardData.getData('application/x-fastra-markdown')){window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'pasteMarkdown',session,bookmark:window.fastraVisual.bookmark()});return;}
