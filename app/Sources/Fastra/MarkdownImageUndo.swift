@@ -8,28 +8,37 @@ import Darwin
 final class MarkdownImageUndoSideEffect {
     private enum FileState { case onDisk, stashed, finished }
 
+    private let images: [MarkdownImageStore.StoredImage]
     private let mover: MarkdownImageUndoFileMover
     private var fileState: FileState = .onDisk
     init(images: [MarkdownImageStore.StoredImage]) {
+        self.images = images
+        MarkdownImageStore.reserveForUndo(images)
         mover = MarkdownImageUndoFileMover(images: images)
     }
 
-    func undo() {
-        guard fileState == .onDisk else { return }
-        if mover.stashCreatedFiles() { fileState = .stashed }
+    deinit { discard() }
+
+    @discardableResult
+    func undo() -> Bool {
+        guard fileState == .onDisk else { return fileState == .stashed }
+        guard mover.stashCreatedFiles() else { return false }
+        fileState = .stashed
+        return true
     }
 
-    func redo() {
-        guard fileState == .stashed else { return }
-        if mover.restoreStashedFiles() { fileState = .onDisk }
+    @discardableResult
+    func redo() -> Bool {
+        guard fileState == .stashed else { return fileState == .onDisk }
+        guard mover.restoreStashedFiles() else { return false }
+        fileState = .onDisk
+        return true
     }
 
     func discard() {
-        guard fileState == .stashed else {
-            fileState = .finished
-            return
-        }
-        mover.discardStash()
+        guard fileState != .finished else { return }
+        if fileState == .stashed { mover.discardStash() }
+        MarkdownImageStore.releaseReservations(images)
         fileState = .finished
     }
 }
@@ -43,8 +52,8 @@ enum MarkdownImageUndo {
               let undoManager = textView.undoManager as? CEUndoManager else { return }
         let sideEffect = MarkdownImageUndoSideEffect(images: created)
         _ = undoManager.fastraRegisterSideEffectForLatestUndo(
-            undo: { sideEffect.undo() },
-            redo: { sideEffect.redo() },
+            undo: { _ = sideEffect.undo() },
+            redo: { _ = sideEffect.redo() },
             discard: { sideEffect.discard() }
         )
     }

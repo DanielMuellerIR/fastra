@@ -73,6 +73,29 @@ func searchInputsAreScopeSpecific() {
     #expect(!SearchRunner.inputAffectsSearch(.projectSources, in: .folder))
 }
 
+@Test("Ansichtswechsel erhält Suchsprünge, Inhaltsänderung entwertet sie")
+@MainActor
+func tabPresentationChangesPreserveSearchNavigation() async throws {
+    let suiteName = "fastra-runner-presentation-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let workspace = Workspace(defaults: defaults)
+    workspace.activeTabContent.wrappedValue = "needle"
+    workspace.scope = .file
+    workspace.findPattern = "needle"
+    workspace.showSearchDialog = true
+    try #require(await waitUntil { workspace.navMatches.count == 1 && !workspace.bufferSearching })
+    let index = try #require(workspace.tabs.firstIndex { $0.id == workspace.activeTabID })
+    let generation = workspace.beginMatchJump()
+    workspace.tabs[index].markdownVisualOverride = false
+    workspace.tabs[index].isDirty = true
+    #expect(workspace.isCurrentMatchJump(generation))
+    #expect(workspace.navMatches.count == 1)
+    workspace.tabs[index].content += " needle"
+    #expect(!workspace.isCurrentMatchJump(generation))
+    try #require(await waitUntil { workspace.navMatches.count == 2 && !workspace.bufferSearching })
+}
+
 @Test("Projektfilter-Wechsel invalidiert Treffer, Navigation und Apply sofort")
 @MainActor
 func projectFilterChangeInvalidatesVisiblePreviewImmediately() async throws {

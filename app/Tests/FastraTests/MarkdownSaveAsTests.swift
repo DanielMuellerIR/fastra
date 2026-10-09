@@ -100,6 +100,55 @@ struct MarkdownSaveAsTests {
         #expect(try Data(contentsOf: file) == Data("one".utf8))
     }
 
+    @Test("Unicode-Zeilentrenner verschieben keine Bildreferenz", arguments: ["\n", "\r\n", "\r"])
+    func unicodeSeparators(_ eol: String) throws {
+        let (root, source, target) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("one".utf8).write(to: source.deletingLastPathComponent().appendingPathComponent("images/a.png"))
+        let content = "prefix\u{2028}😀\u{2029}\u{0085}![A](images/a.png) suffix\(eol)\(eol)Ende\(eol)"
+        let prepared = try MarkdownSaveAs.prepare(content: content, sourceURL: source, targetURL: target)
+        defer { prepared.rollback() }
+        #expect(prepared.content == content.replacingOccurrences(of: "images/a.png", with: "images/1.png"))
+        #expect(prepared.createdImages.count == 1)
+    }
+
+    @Test("HTML-Bilder in Formeln bleiben unverändert", arguments: [false, true])
+    func formulaImages(_ exists: Bool) throws {
+        let (root, source, target) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        if exists {
+            try Data("formula".utf8).write(to: source.deletingLastPathComponent().appendingPathComponent("images/formula.png"))
+        }
+        try Data("real".utf8).write(to: source.deletingLastPathComponent().appendingPathComponent("images/real.png"))
+        for content in [
+            "$x + <img src=\"images/formula.png\">$",
+            "$$\nx + <img src=\"images/formula.png\">\n$$",
+            "<div>\n$x + <img src=\"images/formula.png\">$\n<img src=\"images/real.png\">\n</div>\n",
+            "<div>\n$$\nx + <img src=\"images/formula.png\">\n$$\n<img src=\"images/real.png\">\n</div>\n"
+        ] {
+            let prepared = try MarkdownSaveAs.prepare(content: content, sourceURL: source, targetURL: target)
+            #expect(prepared.content == content.replacingOccurrences(of: "images/real.png", with: "images/1.png"))
+            #expect(prepared.createdImages.count == (content.contains("images/real.png") ? 1 : 0))
+            prepared.rollback()
+        }
+    }
+
+    @Test("Bildtitel und Alt-Text dürfen dem internen Platzhalter gleichen", arguments: [
+        "FASTRA_IMAGE_DESTINATION_TOKEN", "&#70;ASTRA_IMAGE_DESTINATION_TOKEN",
+        "FASTRA_IMAGE_DESTINATION_TOKEN_"
+    ])
+    func destinationTokenInTitle(_ title: String) throws {
+        let (root, source, target) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("one".utf8).write(to: source.deletingLastPathComponent().appendingPathComponent("images/a.png"))
+        let content = "![FASTRA_IMAGE_DESTINATION_TOKEN](images/a.png \"\(title)\")"
+        let prepared = try MarkdownSaveAs.prepare(content: content, sourceURL: source, targetURL: target)
+        defer { prepared.rollback() }
+        let expectedTitle = title.replacingOccurrences(of: "&#70;", with: "F")
+        #expect(prepared.content.contains("(images/1.png \"\(expectedTitle)\")"))
+        #expect(MarkdownRichText.htmlFragment(markdown: prepared.content).contains("alt=\"FASTRA_IMAGE_DESTINATION_TOKEN\""))
+    }
+
     @Test("Nach einem echten Dateicommit bleiben Bilder trotz neuer Tabänderung erhalten")
     @MainActor
     func changedAfterCommit() async throws {

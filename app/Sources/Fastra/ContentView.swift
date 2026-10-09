@@ -304,25 +304,18 @@ struct ContentView: View {
             workspace.activeMatchIndex = index
         }
         if let tabID = target.tabID {
-            // Geöffnet-Scope: Ziel ist ein offener Tab (auch ungespeichert).
-            // Tab aktivieren, Sprung einen Runloop-Tick später posten — der
-            // Tab-Wechsel erzeugt den Editor neu (.id-Kopplung), der Sprung
-            // braucht den fertigen Editor (gleiches Muster wie loadFile-
-            // Completion im Ordner-Pfad).
+            // Geöffnet-Scope: Erst nach bestätigter WebKit-Übernahme wechseln
+            // und springen; ein einzelner Main-Queue-Tick genügt dafür nicht.
             guard let documentID = workspace.tabs.first(where: { $0.id == tabID })?.documentID
             else { return }
-            if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
             workspace.noteMatchNavigationTarget(index: nextIndex,
                                                 generation: jumpGeneration)
-            DispatchQueue.main.async {
+            workspace.navigateToMatch(target.match, tabID: tabID,
+                                      requiring: .document(documentID),
+                                      generation: jumpGeneration) { posted in
                 defer {
                     workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
                 }
-                let posted = NotificationCenter.default.postMatchJump(
-                    target.match, for: workspace,
-                    requiring: .document(documentID),
-                    generation: jumpGeneration
-                )
                 commitIndexIfPosted(posted)
             }
         } else if let url = target.url,
@@ -345,23 +338,22 @@ struct ContentView: View {
                     return
                 }
                 DispatchQueue.main.async {
-                    defer {
-                        workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
-                    }
-                    let posted = NotificationCenter.default.postMatchJump(
-                        target.match, for: workspace,
-                        requiring: .file(url: url, snapshot: snapshot),
-                        generation: jumpGeneration
-                    )
-                    commitIndexIfPosted(posted)
-                    if !posted, workspace.isCurrentMatchJump(jumpGeneration) {
-                        workspace.folderMatchNavigationBecameStale()
+                    workspace.navigateToMatch(target.match,
+                                              requiring: .file(url: url, snapshot: snapshot),
+                                              generation: jumpGeneration) { posted in
+                        defer {
+                            workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
+                        }
+                        commitIndexIfPosted(posted)
+                        if !posted, workspace.isCurrentMatchJump(jumpGeneration) {
+                            workspace.folderMatchNavigationBecameStale()
+                        }
                     }
                 }
             }
         } else {
-            // Datei ist schon offen — Sprung und Index deshalb synchron
-            // fortschreiben. Eine zusätzliche Main-Queue-Runde verliert
+            // Ein bereits sichtbarer Quelltexteditor übernimmt Sprung und
+            // Index synchron. Eine zusätzliche Main-Queue-Runde verliert
             // schnelle Folgeeingaben: Mehrere ⌘G-/Pfeil-Befehle sähen alle
             // denselben alten Index und bewegten die Auswahl nur einmal.
             // Der Dokument-ID-Guard bindet den Sprung trotzdem an den jetzt
@@ -375,14 +367,15 @@ struct ContentView: View {
                     MatchJumpTarget.document($0)
                 }
             }
-            let posted = NotificationCenter.default.postMatchJump(
-                target.match, for: workspace,
-                requiring: requiredTarget,
-                generation: jumpGeneration)
-            commitIndexIfPosted(posted)
-            if !posted, target.url != nil,
-               workspace.isCurrentMatchJump(jumpGeneration) {
-                workspace.folderMatchNavigationBecameStale()
+            workspace.noteMatchNavigationTarget(index: nextIndex, generation: jumpGeneration)
+            workspace.navigateToMatch(target.match, requiring: requiredTarget,
+                                      generation: jumpGeneration) { posted in
+                workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
+                commitIndexIfPosted(posted)
+                if !posted, target.url != nil,
+                   workspace.isCurrentMatchJump(jumpGeneration) {
+                    workspace.folderMatchNavigationBecameStale()
+                }
             }
         }
     }

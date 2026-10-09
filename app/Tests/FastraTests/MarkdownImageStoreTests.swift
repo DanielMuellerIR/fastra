@@ -128,14 +128,13 @@ func store_parallelPastedDataUsesSuffix() async throws {
     try "x".write(to: doc, atomically: true, encoding: .utf8)
     let prepared = MarkdownImageStore.PreparedImageData(data: tinyPNG(),
                                                         fileExtension: "png")
-    let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     let names = await withTaskGroup(of: String.self, returning: [String].self) { group in
         for _ in 0..<2 {
             group.addTask {
                 do {
                     return try MarkdownImageStore.storePastedData(
-                        prepared, documentURL: doc, now: now
+                        prepared, documentURL: doc
                     ).fileURL.lastPathComponent
                 } catch {
                     return "FEHLER: \(error.localizedDescription)"
@@ -159,7 +158,7 @@ func store_pastedDataUsesExclusivePublish() throws {
             data: Data("Fastra".utf8), fileExtension: "png")
         var insertedCollision = false
         let stored = try MarkdownImageStore.storePastedData(
-            prepared, documentURL: doc, now: Date(timeIntervalSince1970: 1_800_000_000),
+            prepared, documentURL: doc,
             hooks: .init(beforePublishing: { target in
                 guard !insertedCollision else { return }
                 insertedCollision = true
@@ -187,8 +186,7 @@ func store_documentDirectorySymlinkKeepsRelativeLink() throws {
         let prepared = MarkdownImageStore.PreparedImageData(
             data: Data("Bild".utf8), fileExtension: "png")
         let stored = try MarkdownImageStore.storePastedData(
-            prepared, documentURL: document,
-            now: Date(timeIntervalSince1970: 1_800_000_000))
+            prepared, documentURL: document)
 
         #expect(stored.link == MarkdownImageStore.markdownImageLink(
             fileName: stored.fileURL.lastPathComponent,
@@ -198,8 +196,8 @@ func store_documentDirectorySymlinkKeepsRelativeLink() throws {
     }
 }
 
-@Test("storeImageFile: Kollision → Suffix, byte-identisch → dedup (kein Doppel)")
-func store_fileCollisionAndDedup() throws {
+@Test("storeImageFile: Jede Einfügung erhält auch bei gleichen Bytes eine eigene Nummer")
+func store_fileCollisionAndIndependentCopies() throws {
     try withTempDir { dir in
         let doc = dir.appendingPathComponent("Seite.md")
         try "x".write(to: doc, atomically: true, encoding: .utf8)
@@ -211,24 +209,24 @@ func store_fileCollisionAndDedup() throws {
         let source = outside.appendingPathComponent("foto.png")
         try tinyPNG().write(to: source)
 
-        // 1. Kopie: Originalname.
+        // 1. Kopie: erste freie Nummer.
         let first = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
         #expect(first.fileURL.lastPathComponent == "1.png")
         #expect(first.fileURL.deletingLastPathComponent().lastPathComponent == "images")
         #expect(first.link == "![1](images/1.png)")
         #expect(first.createdByInsertion)
 
-        // 2. identische Quelle erneut → KEIN Doppel, vorhandene verlinken.
+        // 2. Dieselben Bytes gehören zu einer neuen Einfügung.
         let again = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
-        #expect(again.fileURL == first.fileURL)
-        #expect(!again.createdByInsertion)
+        #expect(again.fileURL.lastPathComponent == "2.png")
+        #expect(again.createdByInsertion)
         let files = try FileManager.default.contentsOfDirectory(
             atPath: dir.appendingPathComponent("images").path
         )
             .filter { $0.hasSuffix(".png") }
-        #expect(files == ["1.png"])
+        #expect(Set(files) == ["1.png", "2.png"])
 
-        // 3. ANDERE Datei mit gleichem Namen → Suffix-Kopie.
+        // 3. Andere Bytes erhalten ebenfalls die nächste freie Nummer.
         let source2 = outside.appendingPathComponent("v2/foto.png")
         try FileManager.default.createDirectory(at: outside.appendingPathComponent("v2"),
                                                 withIntermediateDirectories: true)
@@ -236,7 +234,7 @@ func store_fileCollisionAndDedup() throws {
         other.append(Data([0x00]))   // andere Bytes
         try other.write(to: source2)
         let suffixed = try MarkdownImageStore.storeImageFile(source2, documentURL: doc)
-        #expect(suffixed.fileURL.lastPathComponent == "2.png")
+        #expect(suffixed.fileURL.lastPathComponent == "3.png")
     }
 }
 
@@ -704,4 +702,32 @@ func imageInsertionRange_usesRevisionBoundSelection() {
     #expect(MarkdownAssist.imageInsertionRange(
         initial: initial, current: movedBack
     ) == NSRange(location: 3, length: 0))
+}
+
+
+@Test("Aktive Bild-Undo-Schritte schützen die eigene Datei und freie Redo-Namen")
+func imageUndoReservesOwnershipAndStashedName() throws {
+    try withTempDir { directory in
+        let source = directory.appendingPathComponent("source.png")
+        let bytes = tinyPNG()
+        try bytes.write(to: source)
+        let first = try MarkdownImageStore.storeImageFile(source, documentURL: directory.appendingPathComponent("a.md"))
+        let effect = MarkdownImageUndoSideEffect(images: [first])
+        defer { effect.discard() }
+        let second = try MarkdownImageStore.storeImageFile(source, documentURL: directory.appendingPathComponent("b.md"))
+        #expect(second.createdByInsertion)
+        #expect(second.fileURL != first.fileURL)
+        #expect(effect.undo())
+        #expect(!FileManager.default.fileExists(atPath: first.fileURL.path))
+        #expect(try Data(contentsOf: second.fileURL) == bytes)
+        let third = try MarkdownImageStore.storePastedData(.init(data: bytes, fileExtension: "png"), documentURL: directory.appendingPathComponent("b.md"))
+        #expect(third.fileURL != first.fileURL)
+        #expect(effect.redo())
+        #expect(try Data(contentsOf: first.fileURL) == bytes)
+        #expect(effect.undo())
+        effect.discard()
+        let fourth = try MarkdownImageStore.storePastedData(.init(data: bytes, fileExtension: "png"), documentURL: directory.appendingPathComponent("b.md"))
+        #expect(fourth.fileURL == first.fileURL)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).allSatisfy { !$0.hasPrefix(".fastra-image-undo-") })
+    }
 }

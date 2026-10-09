@@ -498,6 +498,10 @@ Der Button rechts vom **Text/Hex-Umschalter** (⌃⇧⌘M) wechselt die Ansicht 
 das aktuelle Dokument. Unter **Einstellungen → Markdown** ändert
 „Markdown im WYSIWYG-Modus bearbeiten“ den Standard für weitere Dokumente.
 
+Ein Sprung zu einem Suchtreffer übernimmt zuerst deine letzten Eingaben und
+wechselt für dieses Dokument zum Quelltext-Modus. Dort wird auch ein Treffer in
+Markdown-Kürzeln exakt ausgewählt. Der Standard für andere Dokumente bleibt erhalten.
+
 Unveränderte Blöcke behalten ihre Originalschreibweise. Bearbeitete Absätze werden
 in gültiges Markdown zurückübersetzt; wörtliche Sonderzeichen werden geschützt.
 Formeln, Diagramme und HTML-Blöcke bleiben geschützte Elemente. Sie lassen sich
@@ -537,13 +541,14 @@ Bilddatei wird im Unterordner `images` gespeichert und im Dokument verlinkt.
 Die Kopien erhalten möglichst kurze Namen (`1.png` bis `9.png`, dann `a.png`
 usw.). Originaldateien bleiben erhalten; ihre Namen werden für neue Kopien
 nicht übernommen. PNG/JPEG/GIF behalten beim Einfügen aus der Zwischenablage
-ihr Format, andere Formate werden PNG. Dateien werden unverändert kopiert;
-byte-identische vorhandene Kopien können wiederverwendet werden. Speichere
+ihr Format, andere Formate werden PNG. Dateien werden unverändert kopiert.
+Jede Einfügung erzeugt eine eigene Kopie mit freier Nummer, auch bei gleichen
+Bilddaten. Speichere
 neue Dokumente vor dem Einfügen von Bildern (⌘S).
 
-Im Quelltextmodus entfernt ⌘Z den Link und die neu erzeugte Bilddatei; Redo stellt
-beides wieder her. Im WYSIWYG-Modus nimmt ⌘Z den sichtbaren Einfügeschritt zurück;
-die Bilddatei bleibt erhalten. „Speichern unter“ nimmt nur noch verwendete Bilder
+⌘Z entfernt den Link und die neu erzeugte Bilddatei in beiden Bearbeitungsmodi;
+Redo stellt beides wieder her. Die Nummer bleibt bis zum Verwerfen des
+Undo-Schritts reserviert. „Speichern unter“ nimmt nur noch verwendete Bilder
 mit. Bereits vorhandene oder manuell verlinkte Dateien werden niemals entfernt.
 
 Fastra veröffentlicht eine Bilddatei erst nach der vollständigen Kopie und

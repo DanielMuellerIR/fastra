@@ -561,6 +561,7 @@ enum SelfTest {
         case "tabswitch": waitForMainWindow { runTabSwitchTest() }
         case "tabclosehit": waitForMainWindow { runTabCloseHitTest() }
         case "tabfiledrag": waitForMainWindow { runTabFileDragTest() }
+        case "tabcommitfocus": waitForMainWindow { runTabCommitFocusTest() }
         case "diffexport": waitForMainWindow { runDiffExportTest() }
         case "sourceprovenance": waitForMainWindow { runSourceProvenanceTest() }
         case "tabvisibility": waitForMainWindow { runTabVisibilityTest() }
@@ -583,6 +584,7 @@ enum SelfTest {
         case "markdownjump": waitForMainWindow { runMarkdownJumpTest() }
         case "markdownappearance": waitForMainWindow { runMarkdownAppearanceTest() }
         case "mdvisual": waitForMainWindow { runMarkdownVisualTest() }
+        case "mdsearchnavigation": waitForMainWindow { runMarkdownSearchNavigationTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
         case "ghosttext": waitForMainWindow { runGhostTextTest() }
         case "wordclick": waitForMainWindow { runWordDoubleClickTest() }
@@ -844,7 +846,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -4166,6 +4168,110 @@ enum SelfTest {
     }
 
     // MARK: - -selftest tabclosehit / tabcompare
+
+    private static func runTabCommitFocusTest() {
+        testLabel = "tabcommitfocus"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else {
+                finish(false, "Dokumentfenster fehlt")
+            }
+            let original = window.contentView
+            let backgroundWorkspace = Workspace()
+            let backgroundWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
+                styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            backgroundWindow.isReleasedWhenClosed = false
+            let base = selfTestTemporaryDirectory().appendingPathComponent("tab-commit-focus-\(UUID().uuidString)")
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                ws.tabs = ["first.txt", "second.txt"].map { name in
+                    EditorTab(title: name, path: base.appendingPathComponent(name).path,
+                              url: base.appendingPathComponent(name), content: name)
+                }
+                for tab in ws.tabs { try tab.content.write(to: tab.url!, atomically: true, encoding: .utf8) }
+                var markdownTab = EditorTab(title: "background.md", path: base.appendingPathComponent("background.md").path,
+                                            url: base.appendingPathComponent("background.md"), content: "# Hintergrund\n\n- Eintrag\n")
+                markdownTab.markdownVisualOverride = true
+                backgroundWorkspace.tabs = [markdownTab]
+                backgroundWorkspace.activeTabID = markdownTab.id
+                backgroundWindow.contentView = NSHostingView(rootView: VStack(spacing: 0) {
+                    TabBarView()
+                    MarkdownVisualEditorView(workspace: backgroundWorkspace, tab: markdownTab)
+                }.environmentObject(backgroundWorkspace))
+                backgroundWindow.orderBack(nil)
+                ws.activeTabID = ws.tabs[0].id
+                ws.commitMessage = ""
+                let host = NSHostingView(rootView: VStack {
+                    TabBarView()
+                    TextField("Nachricht (⌘Enter committet)", text: Binding(get: { ws.commitMessage }, set: { ws.commitMessage = $0 }), axis: .vertical)
+                        .textFieldStyle(.plain).padding(8)
+                        .background(SelfTestMarker(id: "commitFocusField"))
+                    Spacer()
+                }.environmentObject(ws))
+                window.contentView = host
+                window.setContentSize(NSSize(width: 900, height: 500))
+                var stage = "Leiste aufbauen"
+                func wait(_ condition: () -> Bool) async throws {
+                    for _ in 0..<100 {
+                        if condition() { return }
+                        try await Task.sleep(nanoseconds: 30_000_000)
+                    }
+                    throw NSError(domain: "TabCommitFocus", code: 1, userInfo: [NSLocalizedDescriptionKey: "Zielzustand fehlt (\(stage)); responder=\(String(describing: window.firstResponder))"])
+                }
+                func click(_ id: String) throws {
+                    host.layoutSubtreeIfNeeded()
+                    guard let marker = markerView(id: id, in: host), !marker.visibleRect.isEmpty else {
+                        throw NSError(domain: "TabCommitFocus", code: 2, userInfo: [NSLocalizedDescriptionKey: "Klickziel fehlt: " + id])
+                    }
+                    let point = marker.convert(NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil)
+                    guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
+                        throw NSError(domain: "TabCommitFocus", code: 3)
+                    }
+                }
+                try await wait { markerView(id: "documentTabFrame-\(ws.tabs[1].id.uuidString)", in: host) != nil }
+                try await wait { backgroundWorkspace.visualMarkdownEditor?.ready == true }
+                host.layoutSubtreeIfNeeded()
+                try await Task.sleep(nanoseconds: 250_000_000)
+                stage = "Kontrollklick ohne Feldfokus"
+                try click("documentTabFrame-\(ws.tabs[1].id.uuidString)")
+                try await wait { ws.activeTabID == ws.tabs[1].id }
+                func textInputs(_ view: NSView) -> [NSView] {
+                    var result: [NSView] = []
+                    if let text = view as? NSTextView, text.isEditable { result.append(text) }
+                    else if let field = view as? NSTextField, field.isEditable { result.append(field) }
+                    for child in view.subviews { result += textInputs(child) }
+                    return result
+                }
+                for cycle in 0..<12 {
+                    stage = "Feld eingeben \(cycle)"
+                    guard let field = textInputs(host).first, window.makeFirstResponder(field) else {
+                        throw NSError(domain: "TabCommitFocus", code: 4, userInfo: [NSLocalizedDescriptionKey: "Commit-Feld nicht fokussierbar"])
+                    }
+                    if let field = field as? NSTextField { field.currentEditor()?.insertText("L") }
+                    else if let text = field as? NSTextView { text.insertText("L", replacementRange: NSRange(location: NSNotFound, length: 0)) }
+                    try await wait { ws.commitMessage.hasSuffix("L") }
+                    let target = ws.tabs.first { $0.id != ws.activeTabID }!.id
+                    stage = "Tabklick nach Feldfokus \(cycle)"
+                    try click("documentTabFrame-\(target.uuidString)")
+                    try await wait { ws.activeTabID == target }
+                    ws.commitMessage = ""
+                }
+                guard backgroundWorkspace.activeTab?.content == markdownTab.content else {
+                    throw NSError(domain: "TabCommitFocus", code: 5, userInfo: [NSLocalizedDescriptionKey: "Hintergrunddokument verändert"])
+                }
+                backgroundWindow.contentView = nil
+                backgroundWindow.close()
+                window.contentView = original
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "12 reale Tabklicks nach Commit-Eingaben mit zweitem WYSIWYG-Fenster")
+            } catch {
+                backgroundWindow.contentView = nil
+                backgroundWindow.close()
+                window.contentView = original
+                try? FileManager.default.removeItem(at: base)
+                finish(false, error.localizedDescription)
+            }
+        }
+    }
 
     /// Ein externer Maus-Treiber liest nur die Koordinaten des isolierten
     /// Testfensters. Das native Drop-Ziel erhält den echten Datei-Pasteboard,
@@ -23007,14 +23113,144 @@ enum SelfTest {
         )
     }
 
-    /// Prüft, dass die Vorschau einem Hell-/Dunkel-Wechsel IM LAUFENDEN BETRIEB
-    /// vollständig folgt.
-    ///
-    /// Hintergrund: `underPageBackgroundColor` färbt den Bereich außerhalb der
-    /// Seite — Overscroll und den Streifen unter der Scrollleiste. Wurde sie nur
-    /// beim Erzeugen der WebView gesetzt, blieb nach einem Wechsel ein dunkler
-    /// Balken am rechten Rand stehen, obwohl das Dokument bereits hell war.
-    /// Ein reiner Start im Zielmodus hätte den Fehler nie gezeigt.
+    /// Die echte Suchmaske muss auf WebKit warten und danach den Treffer im
+    /// sichtbaren Quelltext auswählen; eine Notification allein belegt das nicht.
+    private static func runMarkdownSearchNavigationTest() {
+        testLabel = "mdsearchnavigation"
+        Task { @MainActor in
+            guard let ws = Workspace.shared,
+                  let window = CommandTargeting.registeredWindow(for: ws) else {
+                finish(false, "Dokumentfenster fehlt")
+            }
+            let base = selfTestTemporaryDirectory().appendingPathComponent("Markdown-Navigation-\(UUID().uuidString)")
+            let file = base.appendingPathComponent("Search.md")
+            let source = "# Suche\n\n" + (1...240).map { "Absatz \($0) ohne Suchwort." }.joined(separator: "\n\n") + "\n\nNEEDLE\n"
+            var stage = "Vorbereitung"
+            func require(_ condition: Bool, _ message: String) throws {
+                if !condition { throw NSError(domain: "MarkdownSearchSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            @MainActor func wait(_ condition: @MainActor () -> Bool) async throws {
+                for _ in 0..<300 {
+                    if condition() { return }
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+                try require(condition(), "Zustand wurde nicht bereit")
+            }
+            @MainActor func selected(_ match: BufferSearch.Match) -> Bool {
+                guard let root = window.contentView, let tv = editorTextView(in: root) as? TextView,
+                      tv.fastraSafeSelectedRange == match.range else { return false }
+                return (tv.string as NSString).substring(with: tv.fastraSafeSelectedRange) == "NEEDLE"
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                try source.write(to: file, atomically: true, encoding: .utf8)
+                workspaceDefaults().set(true, forKey: MarkdownEditingMode.defaultsKey)
+                workspaceDefaults().set(true, forKey: MarkdownAssist.firstUseDefaultsKey)
+                window.setContentSize(NSSize(width: 900, height: 650))
+                var loaded = false
+                ws.loadFile(at: file) { loaded = $0 }
+                try await wait { loaded && ws.visualMarkdownEditor?.ready == true }
+                let markdownID = ws.activeTabID!
+                NotificationCenter.default.post(name: .fastraShowSearchFile, object: ws)
+                ws.useRegex = false
+                ws.findPattern = "NEEDLE"
+                try await wait { ws.navMatches.count == 1 && !ws.bufferSearching }
+                let first = ws.navMatches[0].match
+                stage = "Datei-Treffer aus WYSIWYG"
+                NotificationCenter.default.post(name: .fastraGotoFirstMatch, object: ws)
+                try await wait { !ws.activeMarkdownIsVisual }
+                stage = "Datei-Treffer: Auswahl im Quelltext"
+                try await wait { selected(first) }
+                stage = "Datei-Treffer: sichtbarer Ausschnitt"
+                try await wait {
+                    let scroll = window.contentView.flatMap { editorTextView(in: $0) }?.enclosingScrollView
+                    return (scroll?.contentView.bounds.minY ?? 0) > 0
+                }
+                let scroll = window.contentView.flatMap { editorTextView(in: $0) }?.enclosingScrollView
+                try require((scroll?.contentView.bounds.minY ?? 0) > 0, "Der späte Treffer wurde nicht sichtbar gescrollt")
+
+                let other = EditorTab(title: "Other.txt", path: "", content: "Vorher\nNEEDLE\nNachher\n")
+                ws.tabs.append(other)
+                for route in ["Tastatur", "Trefferklick"] {
+                    stage = "Geöffnet-Suche: " + route
+                    ws.selectTab(id: markdownID)
+                    try await wait { ws.activeTabID == markdownID }
+                    if !ws.activeMarkdownIsVisual { ws.toggleMarkdownEditingMode() }
+                    try await wait { ws.visualMarkdownEditor?.ready == true && ws.activeMarkdownIsVisual }
+                    ws.scope = .open
+                    try await wait { ws.navMatches.count == 2 && !ws.bufferSearching }
+                    ws.activeMatchIndex = 0
+                    let target = ws.navMatches[1]
+                    guard let web = ws.visualMarkdownEditor?.web else { throw NSError(domain: "fixture", code: 1) }
+                    _ = try await web.evaluateJavaScript("""
+                        const prepare=fastraVisual.prepareAction;
+                        fastraVisual.prepareAction=()=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare());});
+                        void 0;
+                        """)
+                    if route == "Tastatur" {
+                        NotificationCenter.default.post(name: .fastraGotoNextMatch, object: ws)
+                    } else {
+                        try await wait {
+                            NSApp.windows.first(where: { $0.frameAutosaveName == SearchWindow.frameAutosaveName })?
+                                .contentView.map { markerViewExists(id: "searchHit-\(target.id.uuidString)", in: $0) } == true
+                        }
+                        guard let search = NSApp.windows.first(where: { $0.frameAutosaveName == SearchWindow.frameAutosaveName }),
+                              let root = search.contentView else {
+                            throw NSError(domain: "fixture", code: 2, userInfo: [NSLocalizedDescriptionKey: "Trefferzeile fehlt"])
+                        }
+                        activateApplication(ignoringOtherApps: true)
+                        search.makeKeyAndOrderFront(nil)
+                        let markerID = "searchHit-\(target.id.uuidString)"
+                        markerView(id: markerID, in: root)?.scrollToVisible(
+                            markerView(id: markerID, in: root)?.bounds ?? .zero)
+                        var previousFrame: NSRect?
+                        var stableFrames = 0
+                        try await wait {
+                            guard NSApp.isActive, search.isKeyWindow,
+                                  let marker = markerView(id: markerID, in: root),
+                                  marker.visibleRect.width > 20, marker.visibleRect.height > 10 else { return false }
+                            let frame = marker.convert(marker.bounds, to: nil)
+                            stableFrames = previousFrame == frame ? stableFrames + 1 : 0
+                            previousFrame = frame
+                            return stableFrames >= 3
+                        }
+                        guard let marker = markerView(id: markerID, in: root) else {
+                            throw NSError(domain: "fixture", code: 3)
+                        }
+                        let point = marker.convert(NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil)
+                        try require(sendMouseClick(at: point, in: search,
+                                                   modifiers: [], viaApp: true), "Trefferklick nicht zustellbar")
+                    }
+                    var waiting = false
+                    for _ in 0..<100 {
+                        waiting = try await web.evaluateJavaScript("typeof window.releasePrepare") as? String == "function"
+                        if waiting { break }
+                        try await Task.sleep(nanoseconds: 20_000_000)
+                    }
+                    try require(waiting, "Navigation wartet nicht auf WebKit")
+                    try require(ws.activeTabID == markdownID && ws.activeMatchIndex == 0, "Ziel wurde vor WebKit bestätigt")
+                    _ = try await web.evaluateJavaScript("window.releasePrepare();")
+                    try await wait { ws.activeTabID == other.id && ws.activeMatchIndex == 1 && selected(target.match) }
+                }
+                ws.showSearchDialog = false
+                window.orderOut(nil)
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "Später Datei-Treffer, Geöffnet-Navigation und echter Trefferklick nach verzögerter WebKit-Übernahme geprüft")
+            } catch {
+                let tv = window.contentView.flatMap { editorTextView(in: $0) as? TextView }
+                let diagnostic = "\nvisual=\(ws.activeMarkdownIsVisual), index=\(ws.activeMatchIndex), "
+                    + "pending=\(String(describing: ws.pendingEditorJump)), "
+                    + "selection=\(String(describing: tv?.fastraSafeSelectedRange)), "
+                    + "expected=\(String(describing: ws.navMatches.first?.match.range)), "
+                    + "scroll=\(String(describing: tv?.enclosingScrollView?.contentView.bounds))"
+                ws.showSearchDialog = false
+                window.orderOut(nil)
+                try? FileManager.default.removeItem(at: base)
+                finish(false, stage + ": " + error.localizedDescription + diagnostic)
+            }
+        }
+    }
+
     private static func runMarkdownVisualTest() {
         testLabel = "mdvisual"
         Task { @MainActor in

@@ -63,24 +63,32 @@ enum MarkdownImageStore {
 
     private static let directoryLocks = DirectoryLockRegistry()
     private static let reservationLock = NSLock()
-    private static var reservedPaths: Set<String> = []
+    private static var reservedPaths: [String: Int] = [:]
 
     private static func isReserved(_ url: URL) -> Bool {
         reservationLock.lock()
         defer { reservationLock.unlock() }
-        return reservedPaths.contains(url.standardizedFileURL.path)
+        return reservedPaths[url.standardizedFileURL.path, default: 0] > 0
     }
 
     static func releaseReservations(_ images: [StoredImage]) {
         reservationLock.lock()
         defer { reservationLock.unlock() }
-        for image in images { reservedPaths.remove(image.fileURL.standardizedFileURL.path) }
+        for image in images {
+            let key = image.fileURL.standardizedFileURL.path
+            let remaining = reservedPaths[key, default: 0] - 1
+            reservedPaths[key] = remaining > 0 ? remaining : nil
+        }
+    }
+
+    static func reserveForUndo(_ images: [StoredImage]) {
+        for image in images { reserve(image) }
     }
 
     private static func reserve(_ image: StoredImage) {
         reservationLock.lock()
         defer { reservationLock.unlock() }
-        reservedPaths.insert(image.fileURL.standardizedFileURL.path)
+        reservedPaths[image.fileURL.standardizedFileURL.path, default: 0] += 1
     }
 
     /// Dateiendungen, die als Bild-DATEI eingefügt (statt geöffnet) werden.
@@ -211,7 +219,6 @@ enum MarkdownImageStore {
     static func storePastedData(_ prepared: PreparedImageData,
                                 documentURL: URL,
                                 reserveForTransaction: Bool = false,
-                                now: Date = Date(),
                                 hooks: StoreHooks = StoreHooks())
     throws -> StoredImage {
         let documentDirectory = documentURL.deletingLastPathComponent()
@@ -243,6 +250,7 @@ enum MarkdownImageStore {
             for counter in 1..<10_000 {
                 let name = shortImageName(counter: counter, fileExtension: prepared.fileExtension)
                 let target = directory.appendingPathComponent(name)
+                if isReserved(target) { continue }
                 hooks.beforePublishing?(target)
                 if renameatx_np(opened.fd, temporaryName, opened.fd, name,
                                 UInt32(RENAME_EXCL)) == 0 {
@@ -282,8 +290,8 @@ enum MarkdownImageStore {
     }
 
     /// Kopiert eine Bild-DATEI unverändert in den `images`-Unterordner:
-    /// Kurze Namen vermeiden lange Quelltextreferenzen. Eine byte-identische
-    /// Datei unter einem bereits kurzen Namen wird wiederverwendet.
+    /// Jede Einfügung erhält eine eigene freie Nummer. So besitzt ihr
+    /// Undo-Schritt die neue Datei auch bei bytegleichen Quellen eindeutig.
     static func storeImageFile(_ sourceURL: URL,
                                documentURL: URL,
                                reserveForTransaction: Bool = false,
@@ -347,30 +355,7 @@ enum MarkdownImageStore {
             for counter in 1..<10_000 {
                 let candidateName = shortImageName(counter: counter, fileExtension: fileExtension)
                 let candidate = directory.appendingPathComponent(candidateName)
-                let existingFD = openat(opened.fd, candidateName,
-                                        O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
-                if existingFD >= 0 {
-                    defer { Darwin.close(existingFD) }
-                    if !isReserved(candidate), contentsEqual(sourceFD, existingFD),
-                       directoryStillMatches(opened),
-                       let relative = relativeLinkPath(from: linkDocumentURL,
-                                                       to: candidate) {
-                        stored = true
-                        return StoredImage(
-                            link: markdownImageLink(fileName: candidateName,
-                                                    relativePath: relative),
-                            fileURL: candidate,
-                            createdByInsertion: false,
-                            imagesDirectoryCreated: false,
-                            identity: try storedFileIdentity(named: candidateName,
-                                                             in: opened.fd)
-                        )
-                    }
-                    continue
-                }
-                if errno != ENOENT && errno != ELOOP { throw currentPOSIXError() }
-                if errno == ELOOP { continue }
-
+                if isReserved(candidate) { continue }
                 hooks.beforePublishing?(candidate)
                 if renameatx_np(opened.fd, temporaryName, opened.fd,
                                 candidateName, UInt32(RENAME_EXCL)) == 0 {
@@ -506,46 +491,11 @@ enum MarkdownImageStore {
         }
     }
 
-    private static func contentsEqual(_ firstFD: Int32, _ secondFD: Int32) -> Bool {
-        var firstInfo = stat()
-        var secondInfo = stat()
-        guard fstat(firstFD, &firstInfo) == 0,
-              fstat(secondFD, &secondInfo) == 0,
-              firstInfo.st_mode & S_IFMT == S_IFREG,
-              secondInfo.st_mode & S_IFMT == S_IFREG,
-              firstInfo.st_size == secondInfo.st_size else { return false }
-        var first = [UInt8](repeating: 0, count: 64 * 1024)
-        var second = first
-        var offset: off_t = 0
-        while offset < firstInfo.st_size {
-            let requested = min(first.count, Int(firstInfo.st_size - offset))
-            let a = pread(firstFD, &first, requested, offset)
-            let b = pread(secondFD, &second, requested, offset)
-            guard a == requested, b == requested,
-                  first.prefix(requested).elementsEqual(second.prefix(requested))
-            else { return false }
-            offset += off_t(requested)
-        }
-        return true
-    }
-
     private static func sameSnapshot(_ a: stat, _ b: stat) -> Bool {
         a.st_dev == b.st_dev && a.st_ino == b.st_ino
             && a.st_size == b.st_size
             && a.st_mtimespec.tv_sec == b.st_mtimespec.tv_sec
             && a.st_mtimespec.tv_nsec == b.st_mtimespec.tv_nsec
-    }
-
-    private static func storedFileIdentity(named name: String, in directoryFD: Int32) throws
-        -> StoredFileIdentity {
-        let fd = openat(directoryFD, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
-        guard fd >= 0 else { throw currentPOSIXError() }
-        defer { Darwin.close(fd) }
-        var info = stat()
-        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
-            throw StoreError.unreadableImage
-        }
-        return storedFileIdentity(from: info)
     }
 
     private static func storedFileIdentity(fromFD fd: Int32) throws

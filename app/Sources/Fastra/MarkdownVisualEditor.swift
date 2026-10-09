@@ -133,8 +133,12 @@ final class MarkdownVisualWKWebView: WKWebView {
         guard !images.isEmpty else { return super.performDragOperation(sender) }
         let point = convert(sender.draggingLocation, from: nil)
         let y = isFlipped ? point.y : bounds.height - point.y
-        callAsyncJavaScript("window.fastraVisual.caret(x, y);", arguments: ["x": point.x, "y": y],
-                            in: nil, in: .page) { [weak self] _ in self?.visualCoordinator?.insertImages(images) }
+        callAsyncJavaScript("return window.fastraVisual.caret(x, y);", arguments: ["x": point.x, "y": y],
+                            in: nil, in: .page) { [weak self] result in
+            if case .success(let value) = result, let bookmark = value as? String {
+                self?.visualCoordinator?.insertImages(images, bookmark: bookmark)
+            }
+        }
         return true
     }
 }
@@ -158,9 +162,55 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     private var currentNavigation: WKNavigation?
     private(set) var ready = false
     private var acceptedInputRevision = 0
+    private struct ImageTransaction {
+        let effect: MarkdownImageUndoSideEffect
+        var visible = true
+        var insertionUndone = false
+    }
+    private var imageTransactions: [String: ImageTransaction] = [:]
+
+    private func discardImageUndo() {
+        for transaction in imageTransactions.values { transaction.effect.discard() }
+        imageTransactions.removeAll()
+    }
+
+    deinit { discardImageUndo() }
+
+    /// WebKits Undo stellt die konkreten Bildknoten samt Transaktions-ID wieder
+    /// her. Gleichlautende Links oder Bilder anderer Fenster sind kein Signal.
+    private func reconcileImageUndo(_ visibleIDs: [String], previous: String, inputType: String, newEdit: Bool) -> Bool {
+        let visible = Set(visibleIDs)
+        let discardedRedo = newEdit && inputType != "historyUndo" && inputType != "historyRedo"
+            ? imageTransactions.filter { !$0.value.visible && $0.value.insertionUndone }.map(\.key) : []
+        var applied: [(String, ImageTransaction)] = []
+        for (id, transaction) in imageTransactions where transaction.visible != visible.contains(id) {
+            let show = visible.contains(id)
+            let succeeded = show ? transaction.effect.redo() : transaction.effect.undo()
+            guard succeeded else {
+                for (key, previousState) in applied.reversed() {
+                    if previousState.visible { imageTransactions[key]?.effect.redo() }
+                    else { imageTransactions[key]?.effect.undo() }
+                    imageTransactions[key] = previousState
+                }
+                web?.callAsyncJavaScript("window.fastraVisual.rollbackImageChange(inputType, previous);",
+                    arguments: ["inputType": inputType, "previous": previous], in: nil, in: .page) { _ in }
+                workspace?.saveSafetyWarningHandler(L10n.string("Bild einfügen"),
+                    L10n.string("Die Bilddatei wurde außerhalb des Editors geändert. Der Bearbeitungsschritt wurde zurückgenommen, damit kein falsches Bild verknüpft wird."))
+                return false
+            }
+            applied.append((id, transaction))
+            imageTransactions[id]?.visible = show
+            imageTransactions[id]?.insertionUndone = !show && inputType == "historyUndo"
+        }
+        for id in discardedRedo where !visible.contains(id) {
+            imageTransactions.removeValue(forKey: id)?.effect.discard()
+        }
+        return true
+    }
 
     func load(_ source: String, documentURL: URL?, fontName: String,
               fontSize: CGFloat, darkMode: Bool, style: String) {
+        discardImageUndo()
         markdown = source
         self.documentURL = documentURL
         self.style = style
@@ -227,10 +277,13 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         case "change":
             guard let base = body["base"] as? String,
                   let value = body["markdown"] as? String,
+                  workspace.tabs.contains(where: { $0.id == tabID && $0.content == base }),
+                  reconcileImageUndo(body["imageTransactions"] as? [String] ?? [], previous: base,
+                                     inputType: body["inputType"] as? String ?? "", newEdit: true),
                   workspace.acceptVisualMarkdown(value, previous: base, tabID: tabID) else { return }
             markdown = value
             acceptedInputRevision = body["revision"] as? Int ?? acceptedInputRevision
-        case "pasteImage", "pasteMarkdown": _ = pasteImages()
+        case "pasteImage", "pasteMarkdown": _ = pasteImages(bookmark: body["bookmark"] as? String)
         default: break
         }
     }
@@ -258,7 +311,10 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 completion(false)
                 return
             }
-            let accepted = workspace.acceptVisualMarkdown(content, previous: markdown, tabID: tabID)
+            let accepted = workspace.tabs.contains(where: { $0.id == tabID && $0.content == markdown })
+                && reconcileImageUndo(snapshot["imageTransactions"] as? [String] ?? [], previous: markdown,
+                                      inputType: snapshot["inputType"] as? String ?? "", newEdit: revision > acceptedInputRevision)
+                && workspace.acceptVisualMarkdown(content, previous: markdown, tabID: tabID)
             if accepted { markdown = content; acceptedInputRevision = revision }
             else {
                 workspace.saveSafetyWarningHandler(L10n.string("Markdown-Eingabe noch nicht übernommen"),
@@ -278,6 +334,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     /// Nach einem neuen Speicherziel darf der alte DOM nicht wieder Eingaben
     /// annehmen, während seine Bildpfade und Dokumentbasis ersetzt werden.
     func invalidateForSourceReplacement() {
+        discardImageUndo()
         ready = false
         generation &+= 1
         pending = nil
@@ -326,25 +383,25 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     }
 
     @discardableResult
-    func pasteImages() -> Bool {
+    func pasteImages(bookmark: String? = nil) -> Bool {
         if let data = pasteboard.data(forType: Self.clipboardType),
            let package = try? JSONSerialization.jsonObject(with: data) as? [String: String],
            let source = package["markdown"] {
-            insertMarkdown(source, from: package["url"].flatMap(URL.init(string:)))
+            insertMarkdown(source, from: package["url"].flatMap(URL.init(string:)), bookmark: bookmark)
             return true
         }
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] {
             let images = MarkdownImageStore.partitionDroppedURLs(urls).insert
-            if !images.isEmpty { insertImages(images); return true }
+            if !images.isEmpty { insertImages(images, bookmark: bookmark); return true }
         }
         guard let (data, type) = MarkdownAssist.readImageData(from: pasteboard),
               let prepared = MarkdownImageStore.prepare(imageData: data, typeIdentifier: type) else { return false }
-        storeImages { url in [try MarkdownImageStore.storePastedData(prepared, documentURL: url, reserveForTransaction: true)] }
+        storeImages(bookmark: bookmark) { url in [try MarkdownImageStore.storePastedData(prepared, documentURL: url, reserveForTransaction: true)] }
         return true
     }
 
-    func insertImages(_ urls: [URL]) {
-        storeImages { documentURL in
+    func insertImages(_ urls: [URL], bookmark: String? = nil) {
+        storeImages(bookmark: bookmark) { documentURL in
             var images: [MarkdownImageStore.StoredImage] = []
             do {
                 for url in urls { images.append(try MarkdownImageStore.storeImageFile(url, documentURL: documentURL, reserveForTransaction: true)) }
@@ -356,8 +413,8 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         }
     }
 
-    private func storeImages(_ operation: @escaping (URL) throws -> [MarkdownImageStore.StoredImage]) {
-        insertPrepared { url in
+    private func storeImages(bookmark: String?, _ operation: @escaping (URL) throws -> [MarkdownImageStore.StoredImage]) {
+        insertPrepared(bookmark: bookmark) { url in
             guard let url else { throw MarkdownImageStore.StoreError.documentNotSaved }
             let images = try operation(url)
             return MarkdownSaveAs.Prepared(content: images.map(\.link).joined(separator: "\n\n"),
@@ -365,20 +422,20 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         }
     }
 
-    private func insertMarkdown(_ source: String, from sourceURL: URL?) {
-        insertPrepared { target in
+    private func insertMarkdown(_ source: String, from sourceURL: URL?, bookmark: String?) {
+        insertPrepared(bookmark: bookmark) { target in
             guard let target else {
                 if !MarkdownVisualDocument.render(source, documentURL: sourceURL).fragment.imageURLs.isEmpty {
                     throw MarkdownImageStore.StoreError.documentNotSaved
                 }
                 return MarkdownSaveAs.Prepared(content: source, createdImages: [])
             }
-            if let sourceURL { return try MarkdownSaveAs.prepare(content: source, sourceURL: sourceURL, targetURL: target) }
+            if let sourceURL { return try MarkdownSaveAs.prepare(content: source, sourceURL: sourceURL, targetURL: target, copyImagesInSameDirectory: true) }
             return MarkdownSaveAs.Prepared(content: source, createdImages: [])
         }
     }
 
-    private func insertPrepared(_ operation: @escaping (URL?) throws -> MarkdownSaveAs.Prepared) {
+    private func insertPrepared(bookmark: String?, _ operation: @escaping (URL?) throws -> MarkdownSaveAs.Prepared) {
         guard ready, let workspace, workspace.activeTabID == tabID,
               let web else {
             self.workspace?.saveSafetyWarningHandler(L10n.string("Bild einfügen"), MarkdownImageStore.StoreError.documentNotSaved.localizedDescription)
@@ -393,7 +450,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 && workspace.activeTabID == self.tabID && workspace.activeTab?.url == url
                 && workspace.activeMarkdownIsVisual
         }
-        web.callAsyncJavaScript("return window.fastraVisual.bookmark();", arguments: [:], in: nil, in: .page) { [weak self] bookmarkResult in
+        web.callAsyncJavaScript("return window.fastraVisual.bookmark(bookmark);", arguments: ["bookmark": bookmark ?? ""], in: nil, in: .page) { [weak self] bookmarkResult in
             guard self != nil, isCurrent() else { return }
             guard case .success(let bookmark) = bookmarkResult, let bookmark = bookmark as? String else {
                 workspace.saveSafetyWarningHandler(L10n.string("Einfügen abgebrochen"),
@@ -416,10 +473,19 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                         // Neue IDs sind von den Originalblöcken unabhängig.
                         // Der Einfügeschritt selbst bleibt ein WebKit-Undo-Schritt.
                         let html = visual.blocks.map(\.html).joined()
-                        web.callAsyncJavaScript("return window.fastraVisual.insertBookmarked(bookmark, html, atoms);",
-                            arguments: ["bookmark": bookmark, "html": html, "atoms": visual.opaqueSources], in: nil, in: .page) { result in
+                        let transactionID = UUID().uuidString
+                        let created = prepared.createdImages
+                        if !created.isEmpty {
+                            self.imageTransactions[transactionID] = ImageTransaction(effect: MarkdownImageUndoSideEffect(images: created))
+                        }
+                        let createdURLs = Set(created.map(\.fileURL))
+                        let imageSources = visual.fragment.imageURLs.filter { createdURLs.contains($0.value) }
+                            .map { "fastra-preview://image/" + $0.key }
+                        web.callAsyncJavaScript("return window.fastraVisual.insertBookmarked(bookmark, html, atoms, transaction, imageSources);",
+                            arguments: ["bookmark": bookmark, "html": html, "atoms": visual.opaqueSources, "transaction": transactionID, "imageSources": imageSources], in: nil, in: .page) { result in
                                 if case .success(let inserted) = result, inserted as? Bool == true { prepared.commit() }
                                 else {
+                                    self.imageTransactions.removeValue(forKey: transactionID)?.effect.discard()
                                     DispatchQueue.global(qos: .utility).async { prepared.rollback() }
                                     guard isCurrent() else { return }
                                     workspace.saveSafetyWarningHandler(L10n.string("Einfügen abgebrochen"),

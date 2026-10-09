@@ -71,6 +71,17 @@ struct MarkdownVisualDocument {
         guard MarkdownHTMLSanitizing.apply(to: document) else {
             return fallback(markdown, documentURL: documentURL)
         }
+        // Zwischenräume außerhalb der Blöcke übernimmt appendGap. Innerhalb
+        // einer Liste muss derselbe AST-Pfad wie in der Vorschau arbeiten.
+        var originalNodes: [UnsafeMutablePointer<cmark_node>] = []
+        var originalNode = cmark_node_first_child(document)
+        while let current = originalNode {
+            originalNodes.append(current)
+            originalNode = cmark_node_next(current)
+        }
+        let ranges = originalNodes.map { Int(cmark_node_get_start_line($0))...Int(cmark_node_get_end_line($0)) }
+        MarkdownVisibleBlankLines.insert(into: document, markdown: math.markdown, extraction: math,
+                                        includingLine: { line in ranges.contains { $0.contains(line) } })
         let lines = sourceLines(markdown)
         var blocks: [Block] = []
         var images: [String: URL] = [:]
@@ -93,21 +104,29 @@ struct MarkdownVisualDocument {
                 append(line, html: visible ? "<div class=\"\(MarkdownVisibleBlankLines.cssClass)\"><br></div>" : "", hidden: !visible)
             }
         }
-        var node = cmark_node_first_child(document)
-        while let current = node {
-            node = cmark_node_next(current)
+        for current in originalNodes {
             let start = max(cursor, min(lines.count, math.originalLine(for: Int(cmark_node_get_start_line(current))) - 1))
             let after = math.originalLine(for: Int(cmark_node_get_end_line(current)) + 1) - 1
             let end = max(start, min(lines.count, after))
             if cursor < start { appendGap(source(cursor, start)) }
             guard start < end else { continue }
-            let html: String
+            var html: String
             if let rendered = cmark_render_html(current, CMARK_OPT_UNSAFE,
                                                 cmark_parser_get_syntax_extensions(parser)) {
                 html = math.insertingHTML(into: String(cString: rendered))
                 free(rendered)
             } else {
                 html = "<p>" + escaped(source(start, end)) + "</p>"
+            }
+            // cmark ordnet nachlaufende Leerzeilen noch dem letzten
+            // Listeneintrag zu; die sichtbaren Knoten stehen hinter der Liste.
+            var trailing = cmark_node_next(current)
+            while let blank = trailing, cmark_node_get_type(blank) == CMARK_NODE_CUSTOM_BLOCK {
+                if let rendered = cmark_render_html(blank, CMARK_OPT_UNSAFE, cmark_parser_get_syntax_extensions(parser)) {
+                    html += String(cString: rendered)
+                    free(rendered)
+                }
+                trailing = cmark_node_next(blank)
             }
             var enhancedHTML = html
             let diagrams = try! NSRegularExpression(pattern: #"(?s)<pre><code class="language-mermaid">(.*?)</code></pre>"#)
@@ -142,17 +161,21 @@ struct MarkdownVisualDocument {
     }
 
     static func sourceLines(_ source: String) -> [String] {
-        let text = source as NSString
+        // cmark zählt ausschließlich CR, LF und CRLF als Zeilenende.
+        // NSString würde auch Unicode-Zeilentrenner als neue Quellzeile zählen.
+        let bytes = Array(source.utf8)
         var result: [String] = []
+        var start = 0
         var offset = 0
-        while offset < text.length {
-            var start = 0, end = 0, contentsEnd = 0
-            text.getLineStart(&start, end: &end, contentsEnd: &contentsEnd,
-                              for: NSRange(location: offset, length: 0))
-            result.append(text.substring(with: NSRange(location: start, length: end - start)))
-            offset = end
+        while offset < bytes.count {
+            let byte = bytes[offset]
+            offset += 1
+            guard byte == 13 || byte == 10 else { continue }
+            if byte == 13, offset < bytes.count, bytes[offset] == 10 { offset += 1 }
+            result.append(String(decoding: bytes[start..<offset], as: UTF8.self))
+            start = offset
         }
-        if source.isEmpty || source.hasSuffix("\n") || source.hasSuffix("\r") { result.append("") }
+        result.append(String(decoding: bytes[start...], as: UTF8.self))
         return result
     }
 

@@ -247,7 +247,7 @@ enum MarkdownRichText {
         .mermaid-render svg { max-width: 100%; height: auto; }
         /* Fastras dokumentierte Markdown-Erweiterung: Jede dieser Zeilen ist
            exakt eine normale, aber vollständig leere Textzeile. */
-        .\(MarkdownVisibleBlankLines.cssClass) { height: 1.55em; margin: 0; padding: 0; }
+        .\(MarkdownVisibleBlankLines.cssClass) { min-height: 1.55em; margin: 0; padding: 0; }
         pre.mermaid-error::before { content: attr(data-error); display: block;
                                     color: \(secondary); margin-bottom: 0.55em; }
         hr { border: 0; border-top: 1px solid \(border); }

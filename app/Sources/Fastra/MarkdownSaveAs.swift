@@ -23,8 +23,9 @@ enum MarkdownSaveAs {
         let replacement: (String) -> String
     }
 
-    static func prepare(content: String, sourceURL: URL, targetURL: URL) throws -> Prepared {
-        guard sourceURL.deletingLastPathComponent().canonicalFileURL
+    static func prepare(content: String, sourceURL: URL, targetURL: URL,
+                        copyImagesInSameDirectory: Bool = false) throws -> Prepared {
+        guard copyImagesInSameDirectory || sourceURL.deletingLastPathComponent().canonicalFileURL
                 != targetURL.deletingLastPathComponent().canonicalFileURL else {
             return Prepared(content: content, createdImages: [])
         }
@@ -106,12 +107,21 @@ enum MarkdownSaveAs {
                let url = local(String(cString: destination)) {
                 // CommonMark rendert einen einzelnen Bildknoten samt Alt-Text
                 // und Titel. Nur dessen tatsächlich benutzte Referenz wird ersetzt.
-                references.append(Reference(range: span, url: url, replacement: { path in
-                    path.withCString { _ = cmark_node_set_url(node, $0) }
-                    guard let rendered = cmark_render_commonmark(node, CMARK_OPT_DEFAULT, 0) else { return "" }
-                    defer { free(rendered) }
-                    return String(cString: rendered).trimmingCharacters(in: .newlines)
-                }))
+                guard let original = cmark_render_commonmark(node, CMARK_OPT_DEFAULT, 0) else { continue }
+                let originalMarkdown = String(cString: original)
+                free(original)
+                var token = "FASTRA_IMAGE_DESTINATION_TOKEN"
+                while originalMarkdown.contains(token) { token += "_" }
+                token.withCString { _ = cmark_node_set_url(node, $0) }
+                guard let rendered = cmark_render_commonmark(node, CMARK_OPT_DEFAULT, 0) else { continue }
+                let template = String(cString: rendered).trimmingCharacters(in: .newlines)
+                free(rendered)
+                guard let destinationRange = template.range(of: token) else { continue }
+                // Nur die Zielposition ersetzen. Titel und Alt-Text dürfen
+                // selbst wie ein Platzhalter heißen; den Parserbaum nicht behalten.
+                let prefix = String(template[..<destinationRange.lowerBound])
+                let suffix = String(template[destinationRange.upperBound...])
+                references.append(Reference(range: span, url: url, replacement: { prefix + $0 + suffix }))
             } else if [CMARK_NODE_HTML_BLOCK, CMARK_NODE_HTML_INLINE].contains(cmark_node_get_type(node)),
                       cmark_node_get_literal(node) != nil {
                 // Die Literalspalten gehören zum Original, einschließlich
@@ -122,11 +132,13 @@ enum MarkdownSaveAs {
                 let commentPattern = try! NSRegularExpression(pattern: #"(?s)<!--.*?(?:-->|$)"#)
                 let comments = commentPattern.matches(in: raw, range: NSRange(location: 0, length: raw.utf16.count)).map(\.range)
                 for match in srcPattern.matches(in: raw, range: NSRange(location: 0, length: raw.utf16.count)) {
+                    let imageRange = NSRange(location: span.location + match.range.location, length: match.range.length)
                     let value = (raw as NSString).substring(with: match.range(at: 2))
                         .replacingOccurrences(of: "&amp;", with: "&")
                         .replacingOccurrences(of: "&quot;", with: "\"")
                         .replacingOccurrences(of: "&#39;", with: "'")
                     guard !comments.contains(where: { NSIntersectionRange($0, match.range).length > 0 }),
+                          !formulas.contains(where: { NSIntersectionRange($0, imageRange).length > 0 }),
                           sanitized.contains("src="), let url = local(value),
                           match.range(at: 2).upperBound <= span.length else { continue }
                     references.append(Reference(range: NSRange(location: span.location + match.range(at: 2).location,
@@ -134,11 +146,6 @@ enum MarkdownSaveAs {
                 }
             }
         }
-        // Die Closures dürfen den freigegebenen Parserbaum nicht behalten.
-        return references.map { reference in
-            let template = reference.replacement("FASTRA_IMAGE_DESTINATION_TOKEN")
-            return Reference(range: reference.range, url: reference.url,
-                             replacement: { template.replacingOccurrences(of: "FASTRA_IMAGE_DESTINATION_TOKEN", with: $0) })
-        }
+        return references
     }
 }

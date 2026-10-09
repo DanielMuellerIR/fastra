@@ -22,12 +22,13 @@ enum MarkdownVisibleBlankLines {
 
     static func insert(into document: UnsafeMutablePointer<cmark_node>,
                        markdown: String,
-                       extraction: MarkdownMath.Extraction) {
+                       extraction: MarkdownMath.Extraction,
+                       includingLine: (Int) -> Bool = { _ in true }) {
         let normalized = markdown
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
         for (offset, line) in normalized.components(separatedBy: "\n").enumerated()
-            where isVisibleBlankLine(line) {
+            where isVisibleBlankLine(line) && includingLine(offset + 1) {
             let preparedLine = offset + 1
             let originalLine = extraction.originalLine(for: preparedLine)
             _ = insert(line: preparedLine, originalLine: originalLine, into: document)

@@ -1130,12 +1130,28 @@ UI-Sprachen visuell prüfen.
 
 ### Visuelle Markdown-Bearbeitung
 
+`mdsearchnavigation` prüft einen weit unten liegenden Suchtreffer aus dem
+WYSIWYG-Modus sowie Geöffnet-Navigation und echte Trefferklicks. Eine bewusst
+offengehaltene WebKit-Promise belegt, dass Tabwechsel und Trefferindex erst nach
+der Synchronisierung bestätigt werden. Der Test liest die echte TextView-Auswahl
+und prüft beim späten Treffer zusätzlich, dass der Editor gescrollt hat.
+`MarkdownVisualTests` prüft außerdem abgewiesene Dateiöffnungen mit erneutem
+Versuch und den verzögerten Nachrück-Sprung nach Einzel-Ersetzen.
+
 `mdvisual` bedient den echten Erstwahl-Dialog und die Format-Toolbar, prüft Undo,
 Listenverschachtelung mit der echten Tab-Taste, Aufgabenlisten und Häkchen,
 letzte Eingaben vor dem Speichern, den Moduswechsel sowie die Bildkopien von
 „Speichern unter“. `FASTRA_MD_VISUAL_DIR` speichert den Erstwahl-Dialog, Ansichten
 bei 650 und 1100 pt, den Dunkelmodus, bearbeitete Listen und den Quelltext nach dem Zurückwechseln;
 jeweils Deutsch und Englisch ansehen.
+
+`MarkdownVisualTests` prüft Einfügen am Listenanfang mit sofortigem Cursorwechsel,
+sichtbare Leerzeilen nach erneutem Rendern und die tatsächlichen WebKit-Rechtecke
+nach dem Einfügen verschachtelter Listen. Die Bildtests prüfen auch Dateiinhalte
+nach Undo/Redo, weitere Eingaben nach dem Löschen und unabhängige Bildkopien
+zwischen zwei Dokumenten im selben Ordner. `tabcommitfocus` wechselt zwölfmal
+per echtem Mausklick die Dateitabs nach einer Eingabe im Commit-Feld; währenddessen
+bleibt ein zweites Fenster mit einem visuellen Markdown-Dokument geöffnet.
 
 Turndown 7.2.0 liegt unverändert als `dist/turndown.js` im lokalen Ressourcenordner
 `MarkdownVendor/turndown-7.2.0.js`, zusammen mit seiner MIT-Lizenz. Quelle ist das

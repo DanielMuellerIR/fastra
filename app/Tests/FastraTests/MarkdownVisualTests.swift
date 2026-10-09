@@ -12,13 +12,24 @@ struct MarkdownVisualTests {
         "```swift\nlet code = \"```\"\n```\n\n$$\nx + y\n$$\n\nText $a$ danach\n",
         "<details><summary>Mehr</summary>Inhalt</details>\n\n![Fehlt](images/missing.png)\n",
         "**offen\n\n#\n\n[defekt](\n\n  \nEnde",
-        "# CR\r\rAbsatz\r", "# CRLF\r\n\r\nText 😀\r\n"
+        "# CR\r\rAbsatz\r", "# CRLF\r\n\r\nText 😀\r\n",
+        "Anfang\u{2028}weiter\u{2029}😀\u{0085}Ende\n\n# Nächster Block\n"
     ]
 
     @Test("Blockzerlegung bewahrt jeden Originalbuchstaben", arguments: samples)
     func blocksPreserveSource(_ source: String) {
         let document = MarkdownVisualDocument.render(source, documentURL: nil)
         #expect(document.blocks.map(\.source).joined() == source)
+    }
+
+    @Test("cmark-Zeilenzuordnung zählt Unicode-Trenner als Inhalt", arguments: ["\n", "\r\n", "\r"])
+    func unicodeSourceLines(_ eol: String) {
+        let first = "Anfang\u{2028}weiter\u{2029}😀\u{0085}Ende\(eol)"
+        #expect(MarkdownVisualDocument.sourceLines(first + eol + "# Titel" + eol) == [first, eol, "# Titel" + eol, ""])
+        let document = MarkdownVisualDocument.render(first + eol + "# Titel" + eol, documentURL: nil)
+        let visible = document.blocks.filter { !$0.hidden }
+        #expect(visible.map(\.source) == [first, "# Titel" + eol])
+        #expect(visible.last?.html.contains("<h1>Titel</h1>") == true)
     }
 
     @MainActor
@@ -311,6 +322,155 @@ struct MarkdownVisualTests {
         #expect(secondWorkspace.activeTab?.content.contains("$x$") == true)
         #expect(secondWorkspace.activeTab?.content.contains("<!-- erhalten -->") == true)
         #expect(try Data(contentsOf: secondURL.deletingLastPathComponent().appendingPathComponent("images/1.png")) == Data(contentsOf: image))
+    }
+
+    @Test("Suchsprünge warten auf WebKit und zeigen den exakten Quellbereich", arguments: [false, true])
+    @MainActor
+    func delayedMatchNavigation(_ anotherTab: Bool) async throws {
+        let source = "Original\n\nneedle\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let originalID = workspace.activeTabID
+        if anotherTab { workspace.tabs.append(EditorTab(title: "other.txt", path: "", content: source)) }
+        workspace.scope = anotherTab ? .open : .file
+        workspace.findPattern = "needle"
+        workspace.showSearchDialog = true
+        try #require(await waitUntil {
+            workspace.navMatches.count == (anotherTab ? 2 : 1) && !workspace.bufferSearching
+        })
+        let target = workspace.tabs.last!
+        let match = BufferSearch.find(in: source, options: SearchOptions(find: "needle", replace: "", isRegex: false)).matches[0]
+        #expect(!NotificationCenter.default.postMatchJump(match, for: workspace))
+        _ = try await web.evaluateJavaScript("""
+            const prepare=fastraVisual.prepareAction;
+            fastraVisual.prepareAction=()=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare());});
+            void 0;
+            """)
+        var posted: Bool?
+        workspace.navigateToMatch(match, tabID: target.id, requiring: .document(target.documentID),
+                                  generation: workspace.beginMatchJump()) { posted = $0 }
+        // Die Promise bleibt über beliebig viele Main-Queue-Ticks offen.
+        #expect(try await web.evaluateJavaScript("typeof window.releasePrepare") as? String == "function")
+        #expect(posted == nil)
+        #expect(workspace.pendingEditorJump == nil)
+        #expect(workspace.activeTabID == originalID)
+        _ = try await web.evaluateJavaScript("window.releasePrepare();")
+        try #require(await waitUntil { posted != nil })
+        #expect(posted == true)
+        #expect(workspace.activeTabID == target.id)
+        #expect(!workspace.activeMarkdownIsVisual)
+        #expect(workspace.pendingEditorJump?.range == match.range)
+        #expect(workspace.pendingEditorJump?.documentID == target.documentID)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Ein veralteter WebKit-Suchsprung aktiviert keinen anderen Tab")
+    @MainActor
+    func staleDelayedMatchNavigation() async throws {
+        let (workspace, coordinator, web, window) = try await editor("Original\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let originalID = workspace.activeTabID
+        let target = EditorTab(title: "other.txt", path: "", content: "needle")
+        workspace.tabs.append(target)
+        let match = BufferSearch.find(in: target.content, options: SearchOptions(find: "needle", replace: "", isRegex: false)).matches[0]
+        _ = try await web.evaluateJavaScript("""
+            const prepare=fastraVisual.prepareAction;
+            fastraVisual.prepareAction=()=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare());});
+            void 0;
+            """)
+        var posted: Bool?
+        workspace.navigateToMatch(match, tabID: target.id, requiring: .document(target.documentID),
+                                  generation: workspace.beginMatchJump()) { posted = $0 }
+        #expect(try await web.evaluateJavaScript("typeof window.releasePrepare") as? String == "function")
+        _ = workspace.beginMatchJump()
+        _ = try await web.evaluateJavaScript("window.releasePrepare();")
+        try #require(await waitUntil { posted != nil })
+        #expect(posted == false)
+        #expect(workspace.activeTabID == originalID)
+        #expect(workspace.activeMarkdownIsVisual)
+        #expect(workspace.pendingEditorJump == nil)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Abgewiesene Synchronisierung beendet Datei-Aufträge und erlaubt denselben Treffer erneut", arguments: [false, true])
+    @MainActor
+    func cancelledFileLoadCanRetry(_ folderMatch: Bool) async throws {
+        let root = testTemporaryDirectory().appendingPathComponent("visual-load-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("target.txt").canonicalFileURL
+        try "needle".write(to: file, atomically: true, encoding: .utf8)
+        let snapshot = try FileSnapshot.read(from: file).snapshot
+        let (workspace, coordinator, web, window) = try await editor("Original\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("document.getElementById('fastra-visual').dispatchEvent(new Event('compositionstart'));")
+        var outcomes: [FileLoadOutcome] = []
+        func load() {
+            if folderMatch {
+                workspace.loadFolderMatchFile(atCanonicalURL: file, expectedDiskSnapshot: snapshot,
+                                              jumpGeneration: workspace.beginMatchJump()) { outcomes.append($0) }
+            } else {
+                workspace.loadFile(atCanonicalURL: file) { outcomes.append($0) }
+            }
+        }
+        load()
+        try #require(await waitUntil { !outcomes.isEmpty })
+        #expect(outcomes == [.cancelled])
+        #expect(workspace.activeTab?.url == nil)
+        _ = try await web.evaluateJavaScript("document.getElementById('fastra-visual').dispatchEvent(new Event('compositionend'));")
+        load()
+        try #require(await waitUntil { outcomes.count == 2 })
+        #expect(outcomes.last?.isOpened == true)
+        #expect(workspace.activeTab?.url == file)
+        #expect(workspace.activeTab?.content == "needle")
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Weitersuchen nach Ersetzen wartet auf den verzögerten visuellen Tab")
+    @MainActor
+    func delayedReplaceNavigation() async throws {
+        let (workspace, coordinator, web, window) = try await editor("Kein Suchwort\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let originalID = workspace.activeTabID!
+        let first = EditorTab(title: "first.txt", path: "", content: "needle first")
+        let second = EditorTab(title: "second.txt", path: "", content: "needle second")
+        workspace.tabs.append(contentsOf: [first, second])
+        workspace.scope = .open
+        workspace.useRegex = false
+        workspace.findPattern = "needle"
+        workspace.replacePattern = "replaced"
+        func refreshResults() {
+            let result = OpenTabsSearch.find(tabs: workspace.tabs.map {
+                OpenTabsSearch.TabInput(id: $0.id, title: $0.title, content: $0.content)
+            }, options: workspace.currentSearchOptions)
+            workspace.openResults = result.perTab
+            workspace.openTotalMatches = result.totalMatches
+            workspace.visibleBufferResultsOptions = workspace.currentSearchOptions
+        }
+        refreshResults()
+        workspace.activeMatchIndex = 0
+        try #require(workspace.canReplaceActiveSearchMatch)
+        workspace.performWithSynchronizedVisualMarkdown {
+            workspace.replaceActiveMatch()
+            workspace.selectTab(id: originalID)
+        }
+        #expect(workspace.tabs[1].content == "replaced first")
+        refreshResults()
+        _ = try await web.evaluateJavaScript("""
+            const prepare=fastraVisual.prepareAction;
+            fastraVisual.prepareAction=()=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare());});
+            void 0;
+            """)
+        workspace.finishPendingOpenReplaceNavigation(for: workspace.currentSearchOptions)
+        #expect(try await web.evaluateJavaScript("typeof window.releasePrepare") as? String == "function")
+        #expect(workspace.activeTabID == originalID)
+        #expect(workspace.pendingEditorJump == nil)
+        _ = try await web.evaluateJavaScript("window.releasePrepare();")
+        try #require(await waitUntil { workspace.activeTabID == second.id && workspace.pendingEditorJump != nil })
+        #expect(workspace.pendingEditorJump?.documentID == second.documentID)
+        #expect(workspace.pendingEditorJump?.range == NSRange(location: 0, length: 6))
+        #expect(workspace.activeMatchIndex == 0)
+        withExtendedLifetime(coordinator) {}
     }
 
     @Test("Formatieren über mehrere Absätze speichert gültige einzelne Markierungen")
@@ -654,6 +814,160 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { workspace.activeTab?.isDirty == true })
         #expect(workspace.activeTab?.content.contains("\tCode") == true)
         withExtendedLifetime(coordinator) {}
+    }
+
+
+    @Test("Bild am Anfang eines Listenpunkts bleibt vor dessen Text", arguments: ["li", "ul", "[data-md-block]", "pasteEvent"])
+    @MainActor
+    func regressionImageAtListStart(_ selector: String) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-image-start-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let image = directory.appendingPathComponent("source.png")
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 160, pixelsHigh: 80,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        try bitmap.representation(using: .png, properties: [:])!.write(to: image)
+        let source = "- Erster Punkt\n- Zweiter Punkt\n"
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: directory.appendingPathComponent("test.md"))
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let domSelector = selector == "pasteEvent" ? "li" : selector
+        _ = try await web.evaluateJavaScript("""
+            const item=document.querySelector('#fastra-visual \(domSelector)'),r=document.createRange();
+            r.selectNodeContents(item);r.collapse(true);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            """)
+        if selector == "pasteEvent" {
+            coordinator.pasteboard.setData(try Data(contentsOf: image), forType: .png)
+            _ = try await web.evaluateJavaScript("""
+                const event=new Event('paste',{bubbles:true,cancelable:true});
+                Object.defineProperty(event,'clipboardData',{value:{files:[{}],getData:()=>''}});
+                document.getElementById('fastra-visual').dispatchEvent(event);
+                const end=document.createRange();end.selectNodeContents(document.querySelector('li'));end.collapse(false);
+                getSelection().removeAllRanges();getSelection().addRange(end);
+                """)
+        } else { coordinator.insertImages([image]) }
+        try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+        let result = try await web.evaluateJavaScript("""
+            const root=document.getElementById('fastra-visual'),img=root.querySelector('img');
+            const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let text;
+            while(walker.nextNode())if(walker.currentNode.textContent.includes('Erster Punkt')){text=walker.currentNode;break;}
+            JSON.stringify({before:!!(img.compareDocumentPosition(text)&Node.DOCUMENT_POSITION_FOLLOWING),html:root.innerHTML});
+            """) as? String
+        let data = try #require(result?.data(using: .utf8))
+        let state = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(state["before"] as? Bool == true, Comment(rawValue: result ?? "DOM fehlt"))
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("images/1.png").path))
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+        #expect(try Data(contentsOf: directory.appendingPathComponent("images/1.png")) == Data(contentsOf: image))
+    }
+
+    @Test("Clipboard-Liste in sichtbarer Leerzeile überlappt den Folgeabsatz nicht")
+    @MainActor
+    func regressionPasteIntoBlankLine() async throws {
+        let (workspace, coordinator, web, window) = try await editor("# Kopf\n\n  \n\nNachher\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let state = try await web.evaluateJavaScript("""
+            const blank=document.querySelector('.fastra-visible-blank-line'),r=document.createRange();
+            r.selectNodeContents(blank);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);
+            const event=new Event('paste',{bubbles:true,cancelable:true});
+            Object.defineProperty(event,'clipboardData',{value:{files:[],getData:type=>type==='text/html'?'<ul><li>Neu A<ul><li>Neu B</li><li>Neu C</li></ul></li><li>Neu D</li></ul>':''}});
+            document.getElementById('fastra-visual').dispatchEvent(event);
+            const root=document.getElementById('fastra-visual'),nodes=Array.from(root.querySelectorAll('li'));
+            const next=Array.from(root.querySelectorAll('p')).find(p=>p.textContent==='Nachher');
+            JSON.stringify({clear:next.getBoundingClientRect().top>=Math.max(...nodes.map(n=>n.getBoundingClientRect().bottom)),html:root.innerHTML});
+            """) as? String
+        let data = try #require(state?.data(using: .utf8))
+        let result = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(result["clear"] as? Bool == true, Comment(rawValue: state ?? "DOM fehlt"))
+        try #require(await waitUntil { workspace.activeTab?.content.contains("Neu D") == true })
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Neue leere Absätze bleiben nach Speichern und Neuaufbau sichtbar")
+    @MainActor
+    func regressionNewBlankParagraph() async throws {
+        let (workspace, coordinator, web, window) = try await editor("# Kopf\n\n- Punkt\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            const h=document.querySelector('#fastra-visual h1'),r=document.createRange();r.selectNodeContents(h);r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            document.execCommand('insertParagraph');document.execCommand('insertParagraph');fastraVisual.flush();
+            """)
+        try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+        let saved = try #require(workspace.activeTab?.content)
+        #expect(saved.contains("  \n"), Comment(rawValue: saved))
+        coordinator.load(saved, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
+        try #require(await waitUntil { coordinator.ready })
+        #expect((try await web.evaluateJavaScript("document.querySelectorAll('.fastra-visible-blank-line').length") as? Int ?? 0) >= 1)
+    }
+
+    @Test("Visuelle Listen bewahren sichtbare Leerzeilen innerhalb des cmark-Blocks")
+    func regressionVisibleListGaps() {
+        let document = MarkdownVisualDocument.render("- A\n  \n- B\n", documentURL: nil)
+        #expect(document.fragment.html.contains("fastra-visible-blank-line"))
+    }
+
+    @Test("Bild löschen, weiterarbeiten und Undo stellt die Bilddatei wieder her")
+    @MainActor
+    func deletedImageSurvivesFurtherEdits() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-image-delete-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+        let image = directory.appendingPathComponent("source.png")
+        try bytes.write(to: image)
+        let (workspace, coordinator, web, window) = try await editor("Text\n", documentURL: directory.appendingPathComponent("test.md"))
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+        coordinator.insertImages([image])
+        try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+        _ = try await web.evaluateJavaScript("{const r=document.createRange();r.selectNode(document.querySelector('img'));getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('delete');fastraVisual.flush();}")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == false })
+        _ = try await web.evaluateJavaScript("document.execCommand('insertText',false,'weiter');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("weiter") == true })
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("weiter") == false })
+        // WebKit darf Delete und anschließendes Tippen zu einem Undo bündeln.
+        if workspace.activeTab?.content.contains("images/1.png") == false {
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        }
+        try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+        #expect(try Data(contentsOf: directory.appendingPathComponent("images/1.png")) == bytes)
+    }
+
+    @Test("Zwei Dokumente im selben Ordner besitzen unabhängige Bildkopien und Undo-Schritte")
+    @MainActor
+    func copyBetweenDocumentsOwnsFile() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-shared-images-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+        let image = directory.appendingPathComponent("source.png")
+        try bytes.write(to: image)
+        let (firstWorkspace, first, firstWeb, firstWindow) = try await editor("Quelle\n", documentURL: directory.appendingPathComponent("first.md"))
+        defer { firstWeb.configuration.userContentController.removeAllScriptMessageHandlers(); firstWindow.close() }
+        _ = try await firstWeb.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+        first.insertImages([image])
+        try #require(await waitUntil { firstWorkspace.activeTab?.content.contains("images/1.png") == true })
+        _ = try await firstWeb.evaluateJavaScript("{const root=document.getElementById('fastra-visual'),r=document.createRange();r.selectNodeContents(root);getSelection().removeAllRanges();getSelection().addRange(r);root.dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));}")
+        try #require(await waitUntil { first.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        let (secondWorkspace, second, secondWeb, secondWindow) = try await editor("Ziel\n", documentURL: directory.appendingPathComponent("second.md"))
+        defer { secondWeb.configuration.userContentController.removeAllScriptMessageHandlers(); secondWindow.close() }
+        second.pasteboard = first.pasteboard
+        _ = try await secondWeb.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+        #expect(second.pasteImages())
+        try #require(await waitUntil { secondWorkspace.activeTab?.content.contains("images/2.png") == true })
+        _ = try await firstWeb.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { firstWorkspace.activeTab?.content == "Quelle\n" })
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("images/1.png").path))
+        #expect(try Data(contentsOf: directory.appendingPathComponent("images/2.png")) == bytes)
+        _ = try await secondWeb.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { secondWorkspace.activeTab?.content == "Ziel\n" })
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("images/2.png").path))
     }
 
 }

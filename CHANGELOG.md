@@ -7,6 +7,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.138.3] — 2026-10-09
+
+### Behoben
+
+- Dateitabs besitzen getrennte Klick- und Ziehflächen. Die Eingabe einer Commit-Nachricht blockiert dadurch den Dokumentwechsel nicht mehr.
+- Bild-Paste hält die Einfügestelle unmittelbar beim Einfügebefehl fest, auch am Listenanfang und bei anschließend bewegtem Cursor.
+- Sichtbare Leerzeilen bleiben bei der Bearbeitung von Überschriften und Listen erhalten. Eingefügte Listen wachsen im Textfluss und überdecken nachfolgende Inhalte nicht mehr.
+- Rückgängig und Wiederholen einer Bildeinfügung verwalten auch im WYSIWYG-Modus die zugehörige Bilddatei. Jede Einfügung erhält eine eigene freie Nummer; diese bleibt für Wiederholen reserviert.
+
+## [v1.138.2] — 2026-10-09
+
+### Behoben
+
+- Der Wechsel vom visuellen Markdown-Editor zum Quelltext erhält die Suchtreffer und den laufenden Treffersprung. Reine Änderungen des Tab-Anzeigezustands lösen keine neue Suche mehr aus; Inhaltsänderungen entwerten veraltete Treffer weiterhin sofort.
+
+## [v1.138.1] — 2026-10-09
+
+### Behoben
+
+- Suchsprünge aus dem WYSIWYG-Modus übernehmen letzte Eingaben und wechseln zum Quelltext, um den Treffer exakt auszuwählen. Treffer in anderen offenen Tabs und das Weitersuchen nach einer Ersetzung warten auf die abgeschlossene Synchronisierung.
+- Nach einer noch laufenden Zeicheneingabe lassen sich abgewiesene Dateiöffnungen und Ordner-Treffer erneut aufrufen.
+- Markdown-„Speichern unter“ erhält Bildpositionen nach Unicode-Zeilentrennern, lässt HTML-Bildschreibweisen in Formeln unangetastet und bewahrt Bildtitel, die dem internen Platzhalter gleichen.
+
 ## [v1.138.0] — 2026-10-08
 
 ### Neu

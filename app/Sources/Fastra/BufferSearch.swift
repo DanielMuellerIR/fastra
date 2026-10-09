@@ -469,6 +469,43 @@ enum MatchJumpCommit {
     }
 }
 
+extension Workspace {
+    /// Suchtreffer beziehen sich auf Quelltextbereiche. Vor dem Sprung letzte
+    /// WebKit-Eingaben übernehmen und gegebenenfalls den Quelltext anzeigen.
+    /// Auch ein Tabwechsel muss auf diese Übernahme warten.
+    func navigateToMatch(_ match: BufferSearch.Match, tabID: UUID? = nil,
+                         requiring target: MatchJumpTarget? = nil,
+                         generation: Int,
+                         completion: @escaping (Bool) -> Void = { _ in }) {
+        guard isCurrentMatchJump(generation) else { completion(false); return }
+        if activeMarkdownIsVisual, synchronizeVisualMarkdownBefore({
+            self.navigateToMatch(match, tabID: tabID, requiring: target,
+                                 generation: generation, completion: completion)
+        }, onFailure: { completion(false) }) { return }
+
+        if let tabID {
+            guard tabs.contains(where: { $0.id == tabID }) else { completion(false); return }
+            if activeTabID != tabID {
+                performWithSynchronizedVisualMarkdown { selectTab(id: tabID) }
+            }
+        }
+        guard target?.isActive(in: self) ?? true else { completion(false); return }
+        var changedEditor = tabID != nil
+        if activeMarkdownIsVisual, let index = tabs.firstIndex(where: { $0.id == activeTabID }) {
+            tabs[index].markdownVisualOverride = false
+            changedEditor = true
+        }
+        let post = {
+            completion(NotificationCenter.default.postMatchJump(
+                match, for: self, requiring: target, generation: generation))
+        }
+        // Der neue Editor übernimmt nötigenfalls pendingEditorJump in onAppear.
+        // Unveränderte Quelltexteditoren bleiben für schnelle Folgeeingaben synchron.
+        if changedEditor { DispatchQueue.main.async(execute: post) }
+        else { post() }
+    }
+}
+
 extension NotificationCenter {
     /// Postet einen Editor-Sprung zu einem Treffer über Zeile/Spalte
     /// (Start UND Ende) statt nur der absoluten NSRange.
@@ -499,6 +536,7 @@ extension NotificationCenter {
                        generation: Int? = nil) -> Bool {
         if let generation, !workspace.isCurrentMatchJump(generation) { return false }
         guard target?.isActive(in: workspace) ?? true else { return false }
+        guard !workspace.activeMarkdownIsVisual else { return false }
         let end = BufferSearch.endLineColumn(startLine: match.line,
                                              startColumn: match.column,
                                              matchText: match.matchText)

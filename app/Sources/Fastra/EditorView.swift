@@ -1088,7 +1088,8 @@ struct EditorView: View {
         // nächste Tastendruck darf das Dokument niemals verändern.
         EditorView.scrollEditorForVisibleJump(in: workspace,
                                               targetLine: jumpLine,
-                                              fallbackRange: jump.range)
+                                              fallbackRange: jump.range,
+                                              cursorPositions: editorState.cursorPositions ?? [])
     }
 
     /// Stabile, hashbare Editor-Identität aus Tab-ID + Reload-Nonce. Ändert
@@ -1315,13 +1316,18 @@ struct EditorView: View {
     /// Dokument. Leicht verzögert (`async`), damit CESE die neue Cursor-
     /// Position schon übernommen hat, bevor wir scrollen.
     static func scrollEditorForVisibleJump(in workspace: Workspace,
-                                           targetLine: Int?, fallbackRange: NSRange?) {
+                                           targetLine: Int?, fallbackRange: NSRange?,
+                                           cursorPositions: [CursorPosition]? = nil) {
         // Ein gezielter Sprung schlägt die noch laufende Ausschnitt-
         // Wiederherstellung DIESES Fensters (Treffer in einer anderen Datei
         // wechselt den Tab).
         cancelScrollRestore(in: workspace)
+        let documentID = workspace.activeDocumentID
+        let jumpGeneration = workspace.matchJumpGeneration
         DispatchQueue.main.async {
-            guard let mainWindow = CommandTargeting.documentWindow(for: workspace),
+            guard workspace.activeDocumentID == documentID,
+                  workspace.isCurrentMatchJump(jumpGeneration),
+                  let mainWindow = CommandTargeting.documentWindow(for: workspace),
                   let root = mainWindow.contentView,
                   let tv = firstEditorTextView(in: root) else { return }
             guard let textView = tv as? CodeEditTextView.TextView else { return }
@@ -1350,6 +1356,19 @@ struct EditorView: View {
                 target = fallbackRange
             } else {
                 return
+            }
+            // Beim Neuaufbau kann CodeEdits anfängliche Cursor-Rückmeldung
+            // den SwiftUI-Sprungzustand überschreiben. Erst am montierten
+            // Controller setzen; dessen Rückmeldung hält beide Seiten gleich.
+            if let cursorPositions {
+                var responder: NSResponder? = textView
+                while let current = responder {
+                    if let controller = current as? TextViewController {
+                        controller.setCursorPositions(cursorPositions, scrollToVisible: false)
+                        break
+                    }
+                    responder = current.nextResponder
+                }
             }
             // Konvergierend scrollen statt one-shot (Daniel-Befund 2026-06-23):
             // bei Umbruch wrappen lange Zeilen mehrzeilig → variable Höhen. Die

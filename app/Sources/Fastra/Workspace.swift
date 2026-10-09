@@ -3301,7 +3301,7 @@ final class Workspace: ObservableObject {
             self.loadFile(atCanonicalURL: url, preview: preview, expectedGitContext: expectedGitContext,
                           expectedDiskSnapshot: expectedDiskSnapshot, acceptance: acceptance,
                           folderMatchReadToken: folderMatchReadToken, outcome: outcome)
-        }) { return }
+        }, onFailure: { outcome?(.cancelled) }) { return }
         // Ein Restore-Ladevorgang kann bereits entwertet sein, bevor er hier
         // startet. Dann weder einen vorhandenen Tab aktivieren noch einen
         // Platzhalter veröffentlichen.
@@ -7176,8 +7176,8 @@ final class Workspace: ObservableObject {
         // springen — analog zu navigateMatch in ContentView.
         guard activeMatchIndex < bufferMatches.count else { return }
         let target = bufferMatches[activeMatchIndex]
-        NotificationCenter.default.postMatchJump(
-            target, for: self, generation: beginMatchJump())
+        navigateToMatch(target, requiring: activeDocumentID.map(MatchJumpTarget.document),
+                        generation: beginMatchJump())
     }
 
     /// Geöffnet-Scope-Gegenstück zum Datei-Pfad oben. Der sichtbare Treffer
@@ -7251,9 +7251,6 @@ final class Workspace: ObservableObject {
         let previousIndex = activeMatchIndex
         let nextIndex = min(pending.index, matches.count - 1)
         let target = matches[nextIndex]
-        if let tabID = target.tabID, activeTabID != tabID {
-            selectTab(id: tabID)
-        }
         guard let tabID = target.tabID,
               let documentID = tabs.first(where: { $0.id == tabID })?.documentID
         else { return }
@@ -7262,12 +7259,9 @@ final class Workspace: ObservableObject {
         // währenddessen einen anderen Treffer an, darf diese Completion den
         // neueren Sprung nicht mehr überschreiben.
         let jumpGeneration = beginMatchJump()
-        DispatchQueue.main.async { [weak self] in
+        navigateToMatch(target.match, tabID: tabID, requiring: expected,
+                        generation: jumpGeneration) { [weak self] posted in
             guard let self, self.scope == .open else { return }
-            let posted = NotificationCenter.default.postMatchJump(
-                target.match, for: self, requiring: expected,
-                generation: jumpGeneration
-            )
             guard let index = MatchJumpCommit.index(
                 previous: previousIndex, current: self.activeMatchIndex,
                 next: nextIndex, posted: posted

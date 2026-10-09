@@ -476,6 +476,10 @@ The button to the right of the **Text/Hex switch** (⌃⇧⌘M) changes the view
 for the current document. Under **Settings → Markdown**,
 “Edit Markdown in WYSIWYG mode” changes the default for further documents.
 
+Jumping to a search match first commits your latest input and switches that
+document to source mode. This selects the exact match, including Markdown syntax.
+The default for other documents stays the same.
+
 Unchanged blocks retain their original source. Edited paragraphs are converted
 back to valid Markdown, with literal special characters escaped. Formulas,
 diagrams and HTML blocks remain protected elements: you can copy them or remove
@@ -514,13 +518,13 @@ does not insert into another document.
 it in the `images` subfolder and links it in the document. Copies receive short
 names (`1.png` through `9.png`, then `a.png`, and so on). Original files remain
 unchanged; their names are not retained for new copies. Clipboard PNG/JPEG/GIF
-retain their format; other formats become PNG. Files are copied unchanged;
-existing byte-identical copies may be reused. Save new documents before
+retain their format; other formats become PNG. Files are copied unchanged.
+Every insertion creates its own copy with a free number, even for identical
+image data. Save new documents before
 inserting images (⌘S).
 
-In source mode, ⌘Z removes the link and the newly created image file; Redo restores
-both. In WYSIWYG mode, ⌘Z undoes the visible insertion while retaining the image
-file. Save As copies only images still used. Existing or manually linked files
+⌘Z removes the link and the newly created image file in both editing modes;
+Redo restores both. The number stays reserved until the undo step is discarded. Save As copies only images still used. Existing or manually linked files
 are never removed.
 
 Fastra publishes an image file only after the copy is complete and never

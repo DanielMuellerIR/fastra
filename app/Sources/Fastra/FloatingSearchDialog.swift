@@ -1516,25 +1516,20 @@ struct FloatingSearchDialog: View {
         }
 
         if let tabID = target.tabID {
-            // Geöffnet-Scope: Ziel-Tab aktivieren und den Sprung einen Tick
-            // später posten, nachdem SwiftUI den Editor neu erzeugt hat.
+            // Ziel-Tab und Sprung warten gemeinsam auf letzte WebKit-Eingaben.
             guard let documentID = workspace.tabs.first(where: { $0.id == tabID })?.documentID
             else { return }
-            if workspace.activeTabID != tabID { workspace.selectTab(id: tabID) }
             // Ziel synchron vormerken: Ein direkt folgendes ⌘G rechnet vom
             // geklickten Treffer weiter, nicht vom noch nicht bestätigten
             // alten Index (Review 2026-08-31, wie navigateMatch).
             workspace.noteMatchNavigationTarget(index: nextIndex,
                                                 generation: jumpGeneration)
-            DispatchQueue.main.async {
+            workspace.navigateToMatch(target.match, tabID: tabID,
+                                      requiring: .document(documentID),
+                                      generation: jumpGeneration) { posted in
                 defer {
                     workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
                 }
-                let posted = NotificationCenter.default.postMatchJump(
-                    target.match, for: workspace,
-                    requiring: .document(documentID),
-                    generation: jumpGeneration
-                )
                 commitIndexIfPosted(posted)
             }
             return
@@ -1560,26 +1555,28 @@ struct FloatingSearchDialog: View {
                     return
                 }
                 DispatchQueue.main.async {
-                    defer {
-                        workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
-                    }
-                    let posted = NotificationCenter.default.postMatchJump(
-                        target.match, for: workspace,
-                        requiring: .file(url: url, snapshot: snapshot),
-                        generation: jumpGeneration
-                    )
-                    commitIndexIfPosted(posted)
-                    if !posted, workspace.isCurrentMatchJump(jumpGeneration) {
-                        workspace.folderMatchNavigationBecameStale()
+                    workspace.navigateToMatch(target.match,
+                                              requiring: .file(url: url, snapshot: snapshot),
+                                              generation: jumpGeneration) { posted in
+                        defer {
+                            workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
+                        }
+                        commitIndexIfPosted(posted)
+                        if !posted, workspace.isCurrentMatchJump(jumpGeneration) {
+                            workspace.folderMatchNavigationBecameStale()
+                        }
                     }
                 }
             }
             return
         }
-        commitIndexIfPosted(
-            NotificationCenter.default.postMatchJump(
-                target.match, for: workspace, generation: jumpGeneration)
-        )
+        workspace.noteMatchNavigationTarget(index: nextIndex, generation: jumpGeneration)
+        workspace.navigateToMatch(target.match,
+                                  requiring: workspace.activeDocumentID.map(MatchJumpTarget.document),
+                                  generation: jumpGeneration) { posted in
+            workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
+            commitIndexIfPosted(posted)
+        }
     }
 
     /// Zentriert die Trefferliste auf den aktiven Treffer — einen Tick
@@ -2100,6 +2097,7 @@ private struct HitRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .background(SelfTestMarker(id: "searchHit-\(match.id.uuidString)").allowsHitTesting(false))
     }
 }
 

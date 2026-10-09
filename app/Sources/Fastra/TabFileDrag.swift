@@ -161,7 +161,10 @@ private final class TabFileDragRouting {
         case .leftMouseDown:
             pressed = surfaces.allObjects.first { view in
                 guard view.window === event.window, !view.isHiddenOrHasHiddenAncestor else { return false }
-                return view.visibleRect.contains(view.convert(event.locationInWindow, from: nil))
+                let point = view.convert(event.locationInWindow, from: nil)
+                // Seit macOS 14 kann visibleRect über die eigenen bounds
+                // reichen. Sonst fängt ein Tab auch Klicks auf andere Tabs ab.
+                return view.bounds.contains(point) && view.visibleRect.contains(point)
             }
             guard let view = pressed else { return event }
             event.window?.makeKeyAndOrderFront(nil)

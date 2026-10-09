@@ -94,6 +94,14 @@ final class SearchRunner {
         }
     }
 
+    private static func sameSearchDocuments(_ previous: [EditorTab], _ current: [EditorTab]) -> Bool {
+        previous.count == current.count && zip(previous, current).allSatisfy { old, new in
+            old.id == new.id && old.documentID == new.documentID
+                && old.title == new.title && old.content == new.content
+                && old.isLoading == new.isLoading
+        }
+    }
+
     init(workspace: Workspace) {
         self.workspace = workspace
 
@@ -114,7 +122,10 @@ final class SearchRunner {
             // lassen (anderer Such-Bereich).
             workspace.$searchInSelectionOnly.dropFirst().map { _ in SearchInput.activeDocument }.eraseToAnyPublisher(),
             workspace.$activeTabID.dropFirst().map { _ in SearchInput.activeTab }.eraseToAnyPublisher(),
-            workspace.$tabs.dropFirst().map { _ in SearchInput.activeDocument }.eraseToAnyPublisher(),
+            // Ein Ansichtswechsel verändert keine Trefferbasis. Insbesondere
+            // darf der Wechsel aus WYSIWYG den auslösenden Sprung nicht entwerten.
+            workspace.$tabs.removeDuplicates(by: Self.sameSearchDocuments)
+                .dropFirst().map { _ in SearchInput.activeDocument }.eraseToAnyPublisher(),
             workspace.$scope.dropFirst().map { _ in SearchInput.scope }.eraseToAnyPublisher(),
             workspace.$recentSearchFolders.dropFirst().map { _ in SearchInput.folderSources }.eraseToAnyPublisher(),
             workspace.$fileTypeFilter.dropFirst().map { _ in SearchInput.folderSources }.eraseToAnyPublisher(),
