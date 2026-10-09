@@ -38,8 +38,17 @@
     // sie vor Turndowns Leerraum-Kürzung, auch am Dokumentanfang und -ende.
     const blanks=[];
     holder.querySelectorAll('p,div').forEach(n=>{
+      if(n.closest('pre,code,[data-md-opaque],[data-tex]'))return;
       if(n.textContent.length || Array.from(n.children).some(c=>c.tagName!=='BR'))return;
-      const token='FASTRAEMPTY'+Array.from(crypto.getRandomValues(new Uint32Array(4)),n=>n.toString(16)).join('')+'END';blanks.push(token);n.textContent=token;
+      const count=Math.max(1,n.children.length);
+      const lines=document.createDocumentFragment();
+      // Eigene Absätze lassen Turndown für jede Zeile auch Zitat- und
+      // Listenpräfixe ergänzen; nachträgliche Umbrüche verlören diesen Kontext.
+      for(let i=0;i<count;i++) {
+        const token='FASTRAEMPTY'+Array.from(crypto.getRandomValues(new Uint32Array(4)),n=>n.toString(16)).join('')+'END';
+        blanks.push(token);const line=n.cloneNode(false);line.textContent=token;lines.append(line);
+      }
+      n.replaceWith(lines);
     });
     let markdown=td.turndown(holder.innerHTML);
     for(const token of blanks)markdown=markdown.replace(token,'  ');

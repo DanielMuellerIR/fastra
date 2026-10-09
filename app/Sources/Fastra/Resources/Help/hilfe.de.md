@@ -423,6 +423,10 @@ normale harte Umbrüche. In eingerückten oder mit Backticks/Tilden begrenzten
 Codeblöcken gilt die Erweiterung nicht. Beim Kopieren wird die sichtbare
 Leerzeile als normaler Zeilenumbruch übernommen.
 
+In Zitaten stehen die Leerzeichen hinter dem Zitatmarker (`>   `). Mehrere
+harte Umbrüche in einem leeren WYSIWYG-Absatz bleiben auch nach dem Speichern
+und erneuten Öffnen als mehrere sichtbare Leerzeilen erhalten.
+
 **Textmarker:** Text zwischen zwei Gleichheitszeichen-Paaren wird mit einem
 festen, zum hellen oder dunklen Erscheinungsbild passenden Hintergrund
 hervorgehoben, zum Beispiel `==wichtig==`. Andere Markdown-Auszeichnungen

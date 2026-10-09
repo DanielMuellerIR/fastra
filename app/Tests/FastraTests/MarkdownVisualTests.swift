@@ -905,6 +905,39 @@ struct MarkdownVisualTests {
         #expect((try await web.evaluateJavaScript("document.querySelectorAll('.fastra-visible-blank-line').length") as? Int ?? 0) >= 1)
     }
 
+    @Test("Mehrere harte Umbrüche im leeren Absatz behalten Höhe und Blockstruktur", arguments: [false, true], ["plain", "quote", "list"])
+    @MainActor
+    func emptyParagraphBreaks(_ paste: Bool, _ context: String) async throws {
+        let middle = context == "quote" ? "> A\n>   \n> B" : context == "list" ? "- A\n  \n- B" : "  "
+        let (workspace, coordinator, web, window) = try await editor("# Kopf\n\n\(middle)\n\nDanach\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let before = try await web.evaluateJavaScript("""
+            const blank=document.querySelector('.fastra-visible-blank-line'),r=document.createRange();
+            r.selectNodeContents(blank);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);
+            if(\(paste ? "true" : "false")){
+              const event=new Event('paste',{bubbles:true,cancelable:true});
+              Object.defineProperty(event,'clipboardData',{value:{files:[],getData:type=>type==='text/html'?'<p><br><br><br></p>':''}});
+              document.getElementById('fastra-visual').dispatchEvent(event);
+            }else{fastraVisual.command('hardBreak');fastraVisual.command('hardBreak');}
+            const next=Array.from(document.querySelectorAll('p')).find(p=>p.textContent==='Danach');
+            JSON.stringify({gap:next.getBoundingClientRect().top-document.querySelector('h1').getBoundingClientRect().bottom,markdown:fastraVisual.markdown(),html:document.getElementById('fastra-visual').innerHTML});
+            """) as? String
+        let data = try #require(before?.data(using: .utf8))
+        let state = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let source = try #require(state["markdown"] as? String)
+        let height = try #require(state["gap"] as? Double)
+        coordinator.load(source, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
+        try #require(await waitUntil { coordinator.ready })
+        let after = try await web.evaluateJavaScript("Array.from(document.querySelectorAll('p')).find(p=>p.textContent==='Danach').getBoundingClientRect().top-document.querySelector('h1').getBoundingClientRect().bottom") as? Double
+        #expect((after ?? 0) >= height - 0.5, Comment(rawValue: String(describing: state)))
+        if context == "quote" {
+            #expect(try await web.evaluateJavaScript("document.querySelectorAll('blockquote').length") as? Int == 1)
+        } else if context == "list" {
+            #expect(try await web.evaluateJavaScript("document.querySelectorAll('li').length") as? Int == 2)
+        }
+        withExtendedLifetime(workspace) {}
+    }
+
     @Test("Visuelle Listen bewahren sichtbare Leerzeilen innerhalb des cmark-Blocks")
     func regressionVisibleListGaps() {
         let document = MarkdownVisualDocument.render("- A\n  \n- B\n", documentURL: nil)

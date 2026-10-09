@@ -7,6 +7,12 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.138.4] — 2026-10-09
+
+### Behoben
+
+- Mehrere harte Zeilenumbrüche in einem leeren visuellen Absatz behalten beim Speichern und erneuten Öffnen ihre sichtbare Höhe.
+
 ## [v1.138.3] — 2026-10-09
 
 ### Behoben

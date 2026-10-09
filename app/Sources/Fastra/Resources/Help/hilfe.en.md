@@ -404,6 +404,10 @@ breaks. The extension does not apply inside indented code blocks or code
 fences made from backticks or tildes. Copying carries the visible blank line
 over as a normal newline.
 
+In blockquotes, the spaces follow the quote marker (`>   `). Multiple hard
+breaks in an empty WYSIWYG paragraph remain multiple visible blank lines
+after saving and reopening the document.
+
 **Text marker:** Text between pairs of two equals signs is highlighted with a
 fixed background that adapts to the light or dark appearance, for example
 `==important==`. Other Markdown formatting may be nested inside it; the equals

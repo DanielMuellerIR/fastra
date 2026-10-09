@@ -36,7 +36,14 @@ enum MarkdownVisibleBlankLines {
     }
 
     private static func isVisibleBlankLine(_ line: String) -> Bool {
-        line.count >= 2 && line.utf8.allSatisfy { $0 == 0x20 }
+        var content = line[...]
+        // Zitatmarker gehören zur Blockstruktur, nicht zur sichtbaren Zeile.
+        // Codeblöcke werden beim Einsetzen weiterhin ausdrücklich übersprungen.
+        while let marker = content.firstIndex(where: { $0 != " " }), content[marker] == ">" {
+            content = content[content.index(after: marker)...]
+            if content.first == " " { content = content.dropFirst() }
+        }
+        return content.count >= 2 && content.utf8.allSatisfy { $0 == 0x20 }
     }
 
     /// Sucht im vorhandenen Baum den Quellabstand, zu dem die Leerzeile
