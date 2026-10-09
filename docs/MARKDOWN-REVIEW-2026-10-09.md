@@ -54,9 +54,25 @@ Regressionstests.
 
 ## Verifikation
 
-Die vollständige Testsuite, Lokalisierungsprüfung, Bundle-Portabilität und
-Fenster-Selbsttests werden für den Release-Stand ausgewertet. Die endgültigen
-Ergebnisse stehen in diesem Abschnitt nach Abschluss der Release-Abnahme.
+- Vollständige Testsuite: 2.570 Tests in 127 Suiten und 153 Tests in
+  18 weiteren Suiten bestanden, insgesamt **2.723 Tests**.
+- In-App-Suite gegen die notarisiert installierte App: **113 Prüfungen
+  bestanden**. Der erste Gesamtlauf bestand 111 Prüfungen; zwei
+  Soft-Wrap-Prüfungen benötigten einen separaten Vordergrundlauf und einen
+  beschreibbaren Aufnahmeordner. Der abschließende Nachlauf bestand beide
+  ohne Funktions- oder Umgebungsfehler.
+- WYSIWYG zusätzlich mit englischer Oberfläche geprüft. Alle zwölf Aufnahmen
+  in Deutsch und Englisch wurden angesehen: Modusdialog, Quelltext/Vorschau,
+  schmale und breite WYSIWYG-Ansicht, Listen und Dunkelmodus.
+- Dauertest mit einer Protokollvorlage, verschachtelten Aufgabenlisten,
+  Gleichheitszeichen, Formel, Tabelle und Bild: **128 Aktionen über drei
+  App-Starts**, keine Invarianten-Verstöße oder Umgebungsfehler.
+- Lokalisierungs-Audit und Portabilitätsprüfungen bestanden. Die
+  Checkout-Patches wurden erneut angewendet und blieben unverändert.
+- App und DMG sind signiert und notarisiert. Version 1.138.6 / Build 306,
+  Gatekeeper, Tickets und Signaturen sind geprüft. Der Programmcode ohne
+  Signatur und 116 Ressourcendateien im DMG stimmen mit der getesteten
+  Installation überein.
 
 Ein Code-Review und Regressionstests decken die geprüften Fälle ab; sie sind
 kein Beweis für die Fehlerfreiheit beliebiger Dokumente. Insbesondere werden
