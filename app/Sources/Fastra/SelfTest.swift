@@ -15412,7 +15412,7 @@ enum SelfTest {
     private static func runMarkdownDropPhase(_ ws: Workspace, tv: TextView,
                                              base: URL, outside: URL) {
         let tabsBefore = ws.tabs.count
-        let linksBefore = tv.string.components(separatedBy: "![1](images/1.png)").count - 1
+        let linksBefore = tv.string.components(separatedBy: "![2](images/2.png)").count - 1
         _ = MainActor.assumeIsolated {
             MarkdownAssist.handleDroppedFileURLs([
                 outside.appendingPathComponent("quelle.png"),
@@ -15435,15 +15435,15 @@ enum SelfTest {
         waitFor(budget: 10, pause: 0.25,
                 condition: {
                     copied = FileManager.default.fileExists(
-                        atPath: base.appendingPathComponent("images/1.png").path)
-                    linked = tv.string.components(separatedBy: "![1](images/1.png)").count - 1 == linksBefore + 1
+                        atPath: base.appendingPathComponent("images/2.png").path)
+                    linked = tv.string.components(separatedBy: "![2](images/2.png)").count - 1 == linksBefore + 1
                     opened = ws.tabs.contains { $0.title == "begleit.txt" }
                     let exactlyOneTabAdded = ws.tabs.count == tabsBefore + 1
                     return copied && linked && opened && exactlyOneTabAdded
                 },
                 onTimeout: { book in
                     cleanup()
-                    finish(false, "(c) kopiert=\(copied), verlinkt=\(linked), "
+                    finish(false, "(d) kopiert=\(copied), verlinkt=\(linked), "
                         + "geöffnet=\(opened), Tabs=\(ws.tabs.count) statt \(tabsBefore + 1) — \(book.summary)")
                 },
                 then: {
