@@ -81,3 +81,21 @@ func editorCopyKeepsClipboardWithoutSelection() {
         #expect(pasteboard.string(forType: .string) == "vorher")
     }
 }
+
+@Test("Quelltext-Copy und Paste erhalten Protokolllisten mit Gleichheitszeichen bytegenau")
+@MainActor
+func editorCopyPastePreservesProtocolEquals() {
+    let source = "- Weitere Funktionen =\n    - Kopierte Feldinhalte = OK\n    - Export als CSV =\n"
+    let textView = CodeEditTextView.TextView(string: source)
+    textView.frame = NSRect(x: 0, y: 0, width: 700, height: 400)
+    textView.layoutManager.layoutLines()
+    textView.selectionManager.setSelectedRange(NSRange(location: 0, length: (source as NSString).length))
+
+    copyingToPasteboard { pasteboard in
+        textView.copy(textView)
+        #expect(pasteboard.string(forType: .string) == source)
+        textView.selectionManager.setSelectedRange(NSRange(location: (source as NSString).length, length: 0))
+        textView.paste(textView)
+        #expect(textView.string == source + source)
+    }
+}

@@ -434,6 +434,10 @@ können darin verschachtelt werden; in Inline-Code und Codeblöcken bleiben die
 Gleichheitszeichen wörtlich. Diese Schreibweise ist eine Fastra-Erweiterung und
 gehört nicht zum GFM-Standard.
 
+Ein einzelnes Gleichheitszeichen im Text braucht keinen Backslash, zum Beispiel
+`Export als CSV = OK`. Auch beim Kopieren und Bearbeiten im WYSIWYG-Modus bleibt
+dieses Zeichen unverändert.
+
 **Formeln (KaTeX):** Formeln stehen inline zwischen einzelnen Dollarzeichen,
 zum Beispiel `$E = mc^2$`. Ein eigener Formelblock beginnt und endet mit je
 zwei Dollarzeichen:

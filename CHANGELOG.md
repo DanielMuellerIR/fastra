@@ -7,6 +7,12 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.138.5] — 2026-10-09
+
+### Behoben
+
+- Einzelne Gleichheitszeichen in Protokolllisten und gewöhnlichem Text erhalten beim Kopieren und Bearbeiten im WYSIWYG-Modus keine unnötigen Backslashes mehr. Der Schutz wörtlicher Textmarker-Kürzel bleibt erhalten.
+
 ## [v1.138.4] — 2026-10-09
 
 ### Behoben

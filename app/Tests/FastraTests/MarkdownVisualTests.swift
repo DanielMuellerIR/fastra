@@ -638,6 +638,48 @@ struct MarkdownVisualTests {
         withExtendedLifetime(coordinator) {}
     }
 
+    @Test("Protokolllisten behalten einzelne Gleichheitszeichen beim Kopieren und Bearbeiten")
+    @MainActor
+    func protocolEqualsStayLiteral() async throws {
+        let source = "- Weitere Funktionen =\n    - Kopierte Feldinhalte = OK\n    - Export als CSV =\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.stopLoading(); web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            {const root=document.getElementById('fastra-visual'),r=document.createRange();r.selectNodeContents(root);
+            getSelection().removeAllRanges();getSelection().addRange(r);root.dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));}
+            """)
+        try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        let data = try #require(coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType))
+        let package = try #require(try JSONSerialization.jsonObject(with: data) as? [String: String])
+        let copied = try #require(package["markdown"])
+        #expect(!copied.contains(#"\="#), Comment(rawValue: copied))
+        #expect(copied.contains("Funktionen ="))
+        #expect(copied.contains("Feldinhalte = OK"))
+        _ = try await web.evaluateJavaScript("""
+            {const item=document.querySelectorAll('li')[2],r=document.createRange();r.selectNodeContents(item);r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('insertText',false,' OK');fastraVisual.flush();}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("CSV = OK") == true })
+        #expect(workspace.activeTab?.content.contains(#"\="#) == false)
+        #expect(MarkdownRichText.htmlFragment(markdown: workspace.activeTab!.content).components(separatedBy: "<li").count == 4)
+    }
+
+    @Test("Wörtliche Textmarker-Kürzel bleiben beim Bearbeiten geschützt", arguments: ["==wörtlich==", "===wörtlich==="])
+    @MainActor
+    func literalHighlightDelimitersStayProtected(_ text: String) async throws {
+        let (workspace, coordinator, web, window) = try await editor("Anfang\n")
+        defer { web.stopLoading(); web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.callAsyncJavaScript("""
+            const p=document.querySelector('#fastra-visual p'),r=document.createRange();r.selectNodeContents(p);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            document.execCommand('insertText',false,text);fastraVisual.flush();
+            """, arguments: ["text": text], in: nil, contentWorld: .page)
+        try #require(await waitUntil { workspace.activeTab?.content != "Anfang\n" })
+        let rendered = MarkdownRichText.htmlFragment(markdown: workspace.activeTab!.content)
+        #expect(rendered.contains(text), Comment(rawValue: rendered))
+        #expect(!rendered.contains("<mark>"))
+    }
+
     @Test("Leere Listenpunkte bleiben beim Kopieren und Einfügen im selben Dokument erhalten")
     @MainActor
     func copyEmptyLists() async throws {

@@ -414,6 +414,10 @@ fixed background that adapts to the light or dark appearance, for example
 signs remain literal in inline code and code blocks. This syntax is a Fastra
 extension and is not part of standard GFM.
 
+A single equals sign in ordinary text needs no backslash, for example
+`Export as CSV = OK`. Copying and editing in WYSIWYG mode also keeps this
+character unchanged.
+
 **Formulas (KaTeX):** Put an inline formula between single dollar signs, for
 example `$E = mc^2$`. A formula block starts and ends with two dollar signs:
 

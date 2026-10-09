@@ -55,7 +55,9 @@
     return markdown;
   }
   const commonEscape=td.escape.bind(td);
-  td.escape=text=>commonEscape(text).replace(/[$~=]/g,'\\$&');
+  // Einzelne = sind gewöhnlicher Text. Nur benachbarte = können Fastras
+  // Textmarker auslösen; Turndown schützt bereits = am Textanfang.
+  td.escape=text=>commonEscape(text).replace(/[$~]|(?<!\\)=(?==)|(?<==)=/g,'\\$&');
   let opaqueSources={};
   td.addRule('opaque',{filter:n=>n.hasAttribute('data-md-opaque'),replacement:(_,n)=>opaqueSources[n.dataset.mdOpaque] || ''});
   td.addRule('highlight', {filter:'mark', replacement:(c,n)=>n.parentElement?.closest('mark')?c:(c.trim()?'=='+c.trim()+'==':'')});
