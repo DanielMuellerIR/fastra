@@ -214,6 +214,11 @@ struct FastraApp: App {
                     get: { commandWorkspace?.showPageGuide ?? false },
                     set: { commandWorkspace?.setShowPageGuide($0) }
                 ))
+                Toggle("Unsichtbare Zeichen anzeigen", isOn: Binding(
+                    get: { commandWorkspace?.editorDisplayOptions.showInvisibles ?? false },
+                    set: { commandWorkspace?.setEditorDisplayOption(\.showInvisibles, $0) }
+                ))
+                .disabled(commandWorkspace?.canConfigureTextDisplay != true)
                 // Rechter Vorschau-Streifen (Minimap). Default AUS — verdeckte
                 // rechts Text und stand im Freeze-Verdacht (Daniel 2026-07-12).
                 Toggle("Minimap anzeigen", isOn: $showMinimap)

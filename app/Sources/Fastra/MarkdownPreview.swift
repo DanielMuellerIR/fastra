@@ -222,6 +222,18 @@ enum MarkdownRichText {
         h1, h2, h3, h4, h5, h6 { color: \(bodyColor); margin: 1.1em 0 0.45em; }
         h1 { font-size: 2em; } h2 { font-size: 1.55em; } h3 { font-size: 1.25em; }
         p, ul, ol, pre, blockquote, table { margin: 0.65em 0; }
+        /* Listen bleiben kompakt, auch wenn CommonMark die Einträge wegen
+           Quell-Leerzeilen als Absätze rendert. Mehrere Absätze innerhalb
+           desselben Eintrags behalten einen kleinen sichtbaren Abstand. */
+        ul, ol { line-height: 1.2; }
+        li > p { margin: 0; }
+        li > p + p { margin-top: 0.35em; }
+        li > ul, li > ol { margin-top: 0; margin-bottom: 0; }
+        /* cmark setzt das Kästchen loser Aufgabenlisten vor den Absatz.
+           Ohne eigene Position belegt es eine ganze zusätzliche Zeile. */
+        li:has(> input[type="checkbox"]) { list-style: none; position: relative; }
+        li > input[type="checkbox"] { position: absolute; left: -1.5em;
+                                         top: 0.15em; margin: 0; }
         /* Der obere Abstand trennt zwei Blöcke — vor dem ersten gibt es nichts
            zu trennen. Ohne diese Regel begänne die Vorschau sichtbar tiefer als
            die erste Editorzeile daneben, besonders bei einer H1 (1.1em einer

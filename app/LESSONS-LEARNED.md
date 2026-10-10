@@ -851,3 +851,17 @@ zwei spätere Durchläufe überstanden hat. Sie bleibt zeitlich begrenzt; ein ne
 Suchsprung oder ein anderes Dokument bricht sie weiterhin ab. Der Fensterlauf
 prüft 48 Wechsel und einen Nachlauf pro Wechsel. Eine Erfolgsmessung unmittelbar
 nach der eigenen Korrektur hätte auch diesen Fehler verdeckt.
+
+### F.32 Zeichenmarkierungen brauchen laufende Konfigurationspflege (2026-10-10)
+
+CodeEditSourceEditor aktualisierte den `InvisibleCharactersCoordinator` nur
+mit den drei Zeichenschaltern. Thema, Schrift und Einrückungsbreite blieben auf
+dem Anfangsstand. Beim Wechsel von hell nach dunkel wurden schwarze Markierungen
+auf dunklem Grund nahezu unsichtbar; Schriftzoom konnte Text und Markierungen
+auseinanderlaufen lassen. Ein Optionswechsel forderte außerdem kein Neuzeichnen
+bereits vorhandener Fragment-Views an.
+
+Patch 4z23 synchronisiert diese Werte zentral nach dem Konfigurationsabgleich,
+leert den Stilcache und invalidiert die Fragment-Views. Die Prüfung misst die
+wirklichen Ersatzfarben und Schriftgrößen sowie die Betonung nach einer geänderten
+Einrückungsbreite. Fensteraufnahmen prüfen zusätzlich den Themenwechsel.

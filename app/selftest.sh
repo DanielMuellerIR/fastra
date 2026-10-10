@@ -89,7 +89,7 @@ case "${FASTRA_SELFTEST_LANGUAGE:-}" in
     *) echo "Selbsttest-Sprache muss de oder en sein." >&2; exit 2 ;;
 esac
 
-ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions searchlayout searchfocus dialoglayout projectinput tabswitch tabcommitfocus tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapindent softwrapindentcore softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll tabsearchmemory typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdvisual mdsearchnavigation mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim codefolding gitremotedialogs sidebarheader footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit diffselection markdownimport markdownimportui filemodes selsearch wildcard openscope loadperf contrast cmdw)
+ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions searchlayout searchfocus dialoglayout projectinput tabswitch tabcommitfocus tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapindent softwrapindentcore softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge dirtyundo emojisplit emojipaste emojipreview tabscroll tabsearchmemory typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdvisual mdsearchnavigation mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim codefolding gitremotedialogs sidebarheader editoroptions footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit diffselection markdownimport markdownimportui filemodes selsearch wildcard openscope loadperf contrast cmdw)
 # `windows` bleibt als gezielter Diagnosemodus verfügbar, prüft aber keine
 # Produktfunktion und startet deshalb nicht mehr in jedem Standardlauf.
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
@@ -97,7 +97,7 @@ WINDOWLESS_TESTS=(search searchperf project projectperf localization markdownimp
 # Nur diese Tests brauchen echten Vordergrundfokus. `newwindow`,
 # `projectinput` und `help` bedienen ihre Fenster dagegen direkt im
 # Testprozess und laufen wie `welcomenew` im Hintergrund.
-FOCUS_REQUIRED_TESTS=(cmdw completion4d softwrapindent diffselection gitremotedialogs)
+FOCUS_REQUIRED_TESTS=(editoroptions cmdw completion4d softwrapindent diffselection gitremotedialogs)
 # Diese Fensterläufe sind so gebaut, dass sie ihre AppKit-Objekte direkt
 # bedienen. Der Runner sperrt für sie auch produktive Aktivierungshelfer,
 # damit sie die gerade benutzte App nicht verdrängen.
@@ -1556,6 +1556,7 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_SELFTEST_ALLOW_ACTIVATION=1" \
             --env "FASTRA_DIFFSELECTION_DIR=${FASTRA_DIFFSELECTION_DIR:-}" \
             --env "FASTRA_REMOTE_DIALOG_DIR=${FASTRA_REMOTE_DIALOG_DIR:-}" \
+            --env "FASTRA_EDITOR_OPTIONS_DIR=${FASTRA_EDITOR_OPTIONS_DIR:-}" \
             --env "FASTRA_SOFTWRAPINDENT_DIR=${FASTRA_SOFTWRAPINDENT_DIR:-}" \
             --env "FASTRA_SOFTWRAPINDENT_REVIEW_DIR=${FASTRA_SOFTWRAPINDENT_REVIEW_DIR:-}" \
             --env "FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH=${FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH:-}" \

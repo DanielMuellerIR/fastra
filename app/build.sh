@@ -6387,6 +6387,13 @@ if [ "$REDO_PREFLIGHT_PATCH" = "changed" ]; then
   rm -f .build/*/{debug,release}/Modules/CodeEditTextView.swiftmodule
 fi
 
+# 4z23. Zeichenmarkierungen folgen Farben, Schrift und Darstellungsschaltern.
+INVISIBLES_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/invisible-characters.py "$CHECKOUTS/CodeEditSourceEditor")
+if [ "$INVISIBLES_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditSourceEditor.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # Hinweis zu den `rm .build/*/{debug,release}/<Modul>.build`-Zeilen oben:
 # Sie gelten nur für das alte Build-System `native`, das Änderungen in
 # .build/checkouts nicht neu übersetzt. Ab Swift 6.4 baut `swift build`

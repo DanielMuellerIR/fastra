@@ -160,6 +160,7 @@ struct EditorTab: Identifiable, Hashable {
     var isLoading: Bool
     /// Übersteuerung gilt nur für die Lebensdauer dieses Dokuments.
     var markdownVisualOverride: Bool? = nil
+    var editorDisplayOptions = EditorDisplayOptions()
     /// Ein Vorschau-Tab stammt aus einem einfachen Klick in der
     /// Änderungen-Liste. Der nächste einfache Klick darf genau diesen
     /// ungesicherten Tab wiederverwenden; Doppelklick oder die erste Eingabe

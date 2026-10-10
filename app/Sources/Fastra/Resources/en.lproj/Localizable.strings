@@ -1787,3 +1787,31 @@
 
 "Bild konnte nicht wiederhergestellt werden" = "Image could not be restored";
 "Der Bildpfad ist inzwischen belegt oder nicht beschreibbar. Der Text blieb unverändert. Gib den ursprünglichen Bildpfad frei und versuche Wiederholen erneut." = "The image path is now occupied or not writable. The text is unchanged. Free the original image path and try Redo again.";
+
+"Editoroptionen" = "Editor Options";
+
+"Umbruch und Einrückung" = "Wrapping and Indentation";
+
+"Gilt für: %@" = "Applies to: %@";
+
+"Umbruchziel" = "Wrap at";
+
+"Tabulator zum Einrücken" = "Indent using tabs";
+
+"Einrückungsbreite: %ld" = "Indent width: %ld";
+
+"Tabbreite: %ld" = "Tab width: %ld";
+
+"Darstellung dieses Dokuments" = "Display for This Document";
+
+"Zeilennummern und Rand anzeigen" = "Show line numbers and gutter";
+
+"Unsichtbare Zeichen anzeigen" = "Show invisibles";
+
+"Leerzeichen" = "Spaces";
+
+"Zeilenenden" = "Line endings";
+
+"Darstellung in allen Fenstern" = "Display in All Windows";
+
+"Diese Optionen gelten im Texteditor. Für Markdown zuerst zum Quelltext wechseln." = "These options apply in the text editor. For Markdown, switch to source mode first.";

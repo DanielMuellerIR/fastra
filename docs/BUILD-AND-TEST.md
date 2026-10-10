@@ -35,6 +35,29 @@ Klicks nach Scrollen sowie Copy des vollständigen
 Quelltexts. Dazu kommen Editor-Tests für alte Analyseergebnisse, Kopf-/Tiefenänderungen
 und überlappende Löschungen einschließlich der verbleibenden Zeilenhöhen.
 
+## Editoroptionen und Markdown-Listen
+
+Nach `./build.sh` prüft `./test.sh --fast-only --filter
+'EditorDisplayOptionsTests|MarkdownVisualTests|SoftWrap|Indentation'` die
+Dokumentisolation, echten Zeichen-Bitmaps, Auswahl- und Texttreue sowie die
+Listen-Geometrie in Vorschau und WYSIWYG. WebKit rundet die tatsächlichen
+Zeilenpositionen auf ganze CSS-Pixel; die Prüfung berücksichtigt das.
+
+Patch 4z23 (`Patches/CodeEditSourceEditor/invisible-characters.py`) hält den
+Zeichen-Coordinator bei Themen-, Schrift- und Einrückungswechseln aktuell und
+zeichnet bestehende Fragmente bei Optionswechseln neu. Der Patch prüft seinen
+Anker und das vollständige Ergebnis bei jedem Build. Der Renderer-Test
+`liveAppearanceChanges` prüft die tatsächlichen Ersatzfarben, Schriftgrößen
+und Einrückungsbetonungen; die Fensteraufnahmen ergänzen Hell-/Dunkel-Wechsel
+und die Titelleiste bei minimaler Seitenleistenbreite.
+
+`FASTRA_EDITOR_OPTIONS_DIR=/pfad/zur/aufnahme ./selftest.sh editoroptions`
+bedient das Zahnrad, den Popover-Schalter und den echten Darstellungsmenüpfad.
+Die Aufnahmen zeigen den Popover, Zeichenanzeige sowie lose Markdown-Listen und
+Aufgabenlisten in beiden Ansichten bei 760 und 1100 pt. Für die Sichtprüfung
+den Lauf mit `FASTRA_SELFTEST_LANGUAGE=de` und `en` wiederholen; zusätzlich
+`softwrapmodes`, `softwrapindentcore`, `footerfit` und `sidebarheader` prüfen.
+
 ## Build-Anleitung
 
 ```bash

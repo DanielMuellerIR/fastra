@@ -630,6 +630,22 @@ The choice also drives the Markdown features: set a file to **Markdown** and
 the preview opens along with the format toolbar; switch to another format and
 the preview closes again.
 
+## Editor options and invisible characters
+
+The **gear at the top left** opens the editor options, bringing together Soft
+Wrap, wrapping target, indentation, tab width, line numbers, minimap and page
+guide. Labels identify the scope: wrapping and indentation still apply per
+format; minimap and page guide apply across all windows.
+
+**Show invisibles** is also available in **View**. Spaces appear as dots, tabs
+as arrows, and line endings as break symbols. Each category can be selected
+independently in the popover. Switching the main toggle off and on preserves
+that selection. Invisibles and line numbers apply to the current open document;
+they change neither its content nor its modified state. For Markdown, these
+options are available in source mode rather than the formatted view.
+Markdown lists use compact line spacing in preview and WYSIWYG; ordinary
+paragraphs and deliberately visible blank lines remain separated.
+
 ## Soft Wrap
 
 The compact **Soft Wrap control** sits in the footer next to the language

@@ -75,14 +75,15 @@ struct TabBarView: View {
         .background(Theme.surfaceRaised)
     }
 
-    /// Links bleiben die ersten rund 120 Punkte für die echten Ampelknöpfe
-    /// frei. Home und Seitenschalter sitzen rechts in diesem Bereich wie in
-    /// Codex.
+    /// Links bleiben mindestens 88 Punkte für die echten Ampelknöpfe frei.
+    /// Der flexible Vorlauf passt auch in die schmalste Seitenleiste.
+    /// Editoroptionen, Home und Seitenschalter sitzen rechts daneben.
     /// Ohne Seitenleiste bleibt ein kompakter Vorlauf, damit Tabs nie unter
     /// den Ampeln liegen und der Einblende-Schalter weiterhin erreichbar ist.
     private var titlebarLeadingControls: some View {
         HStack(spacing: 0) {
-            Spacer(minLength: 120)
+            Spacer(minLength: 88)
+            EditorOptionsButton()
             Button { workspace.returnToWelcome() } label: {
                 titlebarIcon("house", active: workspace.isWelcomeScreen)
             }
@@ -102,7 +103,7 @@ struct TabBarView: View {
                 Spacer(minLength: 8)
             }
         }
-        .frame(width: sidebarVisible ? effectiveSidebarWidth : 180)
+        .frame(width: sidebarVisible ? effectiveSidebarWidth : 208)
         .frame(maxHeight: .infinity)
         .background(sidebarVisible ? Theme.surfaceBase : Theme.surfaceRaised)
     }

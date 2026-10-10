@@ -639,6 +639,7 @@ enum SelfTest {
         }
         case "gitremotedialogs": waitForMainWindow { runGitRemoteDialogsTest() }
         case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
+        case "editoroptions": waitForMainWindow { runEditorOptionsTest() }
         case "footerfit": waitForMainWindow { runFooterFitTest() }
         case "windowheight": waitForMainWindow { runWindowHeightTest() }
         case "mdformat": waitForMainWindow { runMarkdownFormatSwitchTest() }
@@ -846,7 +847,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -16119,6 +16120,199 @@ enum SelfTest {
                     finish(true, "Kopf + Fußzeilen-Umschalter real im Fenster layoutet; "
                         + "Umschalter verschwindet für ungespeicherte Tabs")
                 })
+    }
+
+    private static func runEditorOptionsTest() {
+        testLabel = "editoroptions"
+        Task { @MainActor in
+            guard let ws = Workspace.shared,
+                  let window = CommandTargeting.registeredWindow(for: ws),
+                  let root = window.contentView else { finish(false, "Dokumentfenster fehlt") }
+            func require(_ value: Bool, _ message: String) throws {
+                if !value { throw NSError(domain: "EditorOptionsTest", code: 1,
+                                           userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            func wait(_ stage: String, _ condition: () -> Bool) async throws {
+                for _ in 0..<150 {
+                    if condition() { return }
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+                try require(condition(), "Ansicht wurde nicht bereit: \(stage)")
+            }
+            func capture(_ name: String, _ target: NSWindow) async {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_EDITOR_OPTIONS_DIR"],
+                      !directory.isEmpty else { return }
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
+                try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    typeScrollCapture(window: target) { snapshot in
+                        try? snapshot?.data.write(to: url)
+                        continuation.resume()
+                    }
+                }
+            }
+            do {
+                let source = "Leerzeichen  zwischen Wörtern\n\tTabulator\nEnde 😀\n"
+                // Eigenes Dokument statt des möglicherweise asynchronen
+                // Neu-Tab-Befehls einer wiederhergestellten WYSIWYG-Sitzung.
+                let textTab = EditorTab(title: "Zeichen.txt", path: "", content: source)
+                ws.projectURL = nil
+                ws.showSearchDialog = false
+                ws.tabs = [textTab]
+                ws.activeTabID = textTab.id
+                window.setContentSize(NSSize(width: 900, height: 650))
+                try await wait("Textdokument") { (editorTextView(in: root) as? TextView)?.string == source }
+                guard let textView = editorTextView(in: root) as? TextView else { finish(false, "Texteditor fehlt") }
+                let dirty = ws.activeTab?.isDirty
+                textView.selectionManager.setSelectedRange(NSRange(location: 4, length: 5))
+                guard let gear = markerView(id: "editorOptionsButton", in: root) else {
+                    finish(false, "Zahnrad fehlt")
+                }
+                try require(sendMouseClick(at: gear.convert(NSPoint(x: gear.bounds.midX, y: gear.bounds.midY), to: nil),
+                                           in: window, modifiers: [], viaApp: true), "Zahnrad nicht klickbar")
+                var panel: NSWindow?
+                try await wait("Options-Popover") {
+                    panel = NSApp.windows.first { candidate in
+                        candidate.contentView.map { markerViewExists(id: "editorOptionsPopover", in: $0) } == true
+                    }
+                    return panel != nil
+                }
+                guard let panel, let panelRoot = panel.contentView,
+                      let toggle = markerView(id: "showInvisiblesToggle", in: panelRoot) else {
+                    finish(false, "Popover oder Zeichenschalter fehlt")
+                }
+                // Die Markierung existiert schon während der Öffnungsanimation.
+                // Ein synthetischer Klick braucht die endgültige Bildschirmposition,
+                // auch wenn keine optionale Aufnahme den Ablauf verzögert.
+                var previousToggleFrame: NSRect?
+                var stableToggleTicks = 0
+                try await wait("Popover-Geometrie") {
+                    let frame = panel.convertToScreen(toggle.convert(toggle.bounds, to: nil))
+                    if panel.isVisible && panel.alphaValue >= 0.99 && frame == previousToggleFrame {
+                        stableToggleTicks += 1
+                    } else { stableToggleTicks = 0 }
+                    previousToggleFrame = frame
+                    return stableToggleTicks >= 3
+                }
+                await capture("options", panel)
+                try require(sendMouseClick(at: toggle.convert(NSPoint(x: toggle.bounds.midX, y: toggle.bounds.midY), to: nil),
+                                           in: panel, modifiers: [], viaApp: true), "Zeichenschalter nicht klickbar")
+                try await wait("Hauptschalter ein") { ws.editorDisplayOptions.showInvisibles }
+                try await wait("Zeichen-Renderer ein") {
+                    textView.layoutManager.invisibleCharacterDelegate?.triggerCharacters.contains(32) == true
+                }
+                let delegate = textView.layoutManager.invisibleCharacterDelegate
+                for character: UInt16 in [32, 9, 10] {
+                    try require(delegate?.invisibleStyle(for: character, at: NSRange(location: 1, length: 1),
+                                                       lineRange: NSRange(location: 0, length: source.utf16.count)) != nil,
+                                "Zeichen \(character) besitzt keinen sichtbaren Ersatz")
+                }
+                // Über das echte Darstellungsmenü ausschalten: prüft Routing
+                // und Bindung unabhängig vom Popover.
+                panel.close()
+                window.makeKeyAndOrderFront(nil)
+                // SwiftUI baut Menüeinträge erst beim echten Öffnen auf.
+                // Der Timer muss auch während AppKits Menü-Tracking laufen.
+                let menuWorked: Bool = await withCheckedContinuation { continuation in
+                    guard let mainMenu = NSApp.mainMenu,
+                          let menuRoot = mainMenu.items.first(where: {
+                              $0.title == "Darstellung" || $0.title == "View"
+                          }), let viewMenu = menuRoot.submenu else {
+                        continuation.resume(returning: false)
+                        return
+                    }
+                    var timer: Timer?
+                    var ticks = 0
+                    var pressed = false
+                    func conclude(_ result: Bool) {
+                        timer?.invalidate()
+                        timer = nil
+                        viewMenu.cancelTracking()
+                        mainMenu.cancelTracking()
+                        continuation.resume(returning: result)
+                    }
+                    timer = Timer(timeInterval: 0.1, repeats: true) { _ in
+                        ticks += 1
+                        if ticks > 50 { conclude(false); return }
+                        if !pressed {
+                            pressed = true
+                            _ = menuRoot.accessibilityPerformPress()
+                        } else if let item = viewMenu.items.first(where: {
+                            $0.title == L10n.string("Unsichtbare Zeichen anzeigen")
+                        }), item.isEnabled {
+                            _ = item.accessibilityPerformPress()
+                            conclude(true)
+                        }
+                    }
+                    if let timer {
+                        RunLoop.main.add(timer, forMode: .common)
+                        RunLoop.main.add(timer, forMode: .eventTracking)
+                    }
+                }
+                try require(menuWorked, "Menüeintrag fehlt oder ist nicht bedienbar")
+                try await wait("Menü schaltet aus") { !ws.editorDisplayOptions.showInvisibles }
+                ws.setEditorDisplayOption(\.showSpaces, false)
+                ws.setEditorDisplayOption(\.showInvisibles, true)
+                try await wait("Unterauswahl") {
+                    let triggers = textView.layoutManager.invisibleCharacterDelegate?.triggerCharacters
+                    return triggers?.contains(32) == false && triggers?.contains(9) == true
+                }
+                try require(textView.string == source && ws.activeTab?.content == source
+                            && ws.activeTab?.isDirty == dirty,
+                            "Darstellungswechsel verändert Dokument oder Änderungsstatus")
+                try require(textView.selectedRange() == NSRange(location: 4, length: 5), "Auswahl ging verloren")
+                ws.setEditorDisplayOption(\.showGutter, false)
+                try await Task.sleep(nanoseconds: 250_000_000)
+                await capture("invisibles", window)
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+                try await Task.sleep(nanoseconds: 300_000_000)
+                await capture("invisibles-dark", window)
+                NSApp.appearance = NSAppearance(named: .aqua)
+                let project = selfTestTemporaryDirectory().appendingPathComponent("editor-options-project")
+                try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+                ws.projectURL = project
+                ws.sidebarWidth = SidebarLayout.minimumSidebarWidth
+                workspaceDefaults().set(true, forKey: "editor.sidebarVisible")
+                window.setContentSize(NSSize(width: 760, height: 680))
+                try await Task.sleep(nanoseconds: 300_000_000)
+                guard let narrowGear = markerView(id: "editorOptionsButton", in: root),
+                      let close = window.standardWindowButton(.closeButton) else {
+                    finish(false, "Schmale Titelleiste unvollständig")
+                }
+                let gearPoint = narrowGear.convert(NSPoint.zero, to: root)
+                let closeFrame = close.convert(close.bounds, to: root)
+                try require(gearPoint.x > closeFrame.maxX + 40
+                            && gearPoint.x + 14 < CGFloat(SidebarLayout.minimumSidebarWidth),
+                            "Zahnrad überlagert Ampelknöpfe oder Tabs bei schmaler Seitenleiste")
+                await capture("sidebar-narrow", window)
+                ws.projectURL = nil
+                try FileManager.default.removeItem(at: project)
+                workspaceDefaults().set(false, forKey: MarkdownEditingMode.defaultsKey)
+                workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
+                let markdown = "# Listenabstände\n\n" + ["Suchfeld", "Art", "Firma", "Vorname", "Nachname", "Straße", "PLZ", "Ort"]
+                    .map { "- \($0) = OK" }.joined(separator: "\n\n")
+                    + "\n\n- [x] Prüfung bestanden\n\n- [ ] Nächster Schritt\n\nAbsatz nach der Liste.\n"
+                let tab = EditorTab(title: "Listen.md", path: "", content: markdown)
+                ws.tabs = [tab]
+                ws.activeTabID = tab.id
+                try await wait("Markdown-Vorschau") { markdownWebView(in: root) != nil }
+                for visual in [false, true] {
+                    if visual {
+                        ws.tabs[0].markdownVisualOverride = true
+                        try await wait("WYSIWYG") { ws.visualMarkdownEditor?.ready == true }
+                    }
+                    for width: CGFloat in [760, 1100] {
+                        window.setContentSize(NSSize(width: width, height: 680))
+                        try await Task.sleep(nanoseconds: 300_000_000)
+                        await capture("lists-\(visual ? "wysiwyg" : "preview")-\(Int(width))", window)
+                    }
+                }
+                try require(ws.activeTab?.content == markdown, "Ansichtswechsel änderte Markdown")
+                finish(true, "Zahnrad, Popover, echter Menüpfad, drei Zeichenarten, Unteroptionen, unveränderter Text/Auswahl/Änderungsstatus und beide Markdown-Ansichten bei 760/1100 pt geprüft")
+            } catch {
+                finish(false, error.localizedDescription)
+            }
+        }
     }
 
     // MARK: - Selbsttest footerfit (Daniel-Befund 2026-08-06)

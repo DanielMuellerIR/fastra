@@ -88,6 +88,49 @@ struct MarkdownVisualTests {
         return (workspace, coordinator, web, window)
     }
 
+    @Test("Listen sind in Vorschau und WYSIWYG kompakt und quelltexttreu", arguments: [
+        "- Suchfeld = OK\n- Art = OK\n- Firma = OK\n",
+        "- Suchfeld = OK\n\n- Art = OK\n\n- Firma = OK\n",
+        "1. Suchfeld = OK\n\n2. Art = OK\n\n3. Firma = OK\n",
+        "- [x] Suchfeld = OK\n\n- [ ] Art = OK\n\n- [ ] Firma = OK\n",
+        "- Suchfeld = OK\n  - Unterpunkt\n- Art = OK\n- Firma = OK\n"
+    ])
+    @MainActor
+    func compactLists(_ source: String) async throws {
+        let (_, coordinator, visual, window) = try await editor(source)
+        defer { visual.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        config.setURLSchemeHandler(MarkdownPreviewSchemeHandler(), forURLScheme: MarkdownPreviewAssets.scheme)
+        let preview = WKWebView(frame: NSRect(x: 0, y: 0, width: 700, height: 500), configuration: config)
+        preview.loadHTMLString(MarkdownRichText.htmlDocument(markdown: source, fontName: PreviewFonts.systemName,
+                                                           fontSize: 14, darkMode: false), baseURL: nil)
+        var loaded = false
+        for _ in 0..<120 {
+            if (try? await preview.evaluateJavaScript("document.querySelectorAll('li').length")) as? Int ?? 0 >= 3 {
+                loaded = true; break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        try #require(loaded)
+        for web in [preview, visual] {
+            let values = try await web.evaluateJavaScript("""
+                (() => { const items = [...document.querySelectorAll('ul,ol')].find(x => x.children.length === 3).children;
+                  const first = items[0].querySelector('p') || items[0];
+                  const second = items[1].querySelector('p') || items[1];
+                  const last = items[2].querySelector('p') || items[2];
+                  const font = parseFloat(getComputedStyle(first).fontSize);
+                  return [(last.getBoundingClientRect().top-second.getBoundingClientRect().top)/font,
+                    parseFloat(getComputedStyle(first).lineHeight)/font]; })()
+                """) as? [Double]
+            let metrics = try #require(values)
+            #expect(metrics[0] >= 1.1 && metrics[0] <= 1.25, "Listeneinträge müssen annähernd eine Textzeile auseinanderliegen: \(metrics)")
+            #expect(metrics[1] >= 1.15 && metrics[1] <= 1.25)
+        }
+        #expect(try await visual.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        withExtendedLifetime(coordinator) {}
+    }
+
     @Test("Echter WebKit-Roundtrip verändert auch schwieriges Markdown nicht", arguments: samples)
     @MainActor
     func roundTrip(_ source: String) async throws {

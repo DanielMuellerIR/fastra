@@ -661,6 +661,23 @@ Die Wahl steuert auch die Markdown-Funktionen: Stellst du eine Datei auf
 **Markdown**, öffnet sich die Vorschau und die Format-Toolbar erscheint;
 wechselst du auf ein anderes Format, schließt sich die Vorschau wieder.
 
+## Editoroptionen und unsichtbare Zeichen
+
+Das **Zahnrad oben links** öffnet die Editoroptionen. Es fasst Soft Wrap,
+Umbruchziel, Einrückung, Tabbreite, Zeilennummern, Minimap und Seitenlinie zusammen.
+Die Beschriftungen zeigen den Geltungsbereich: Umbruch und Einrückung gelten
+weiterhin pro Format, Minimap und Seitenlinie in allen Fenstern.
+
+**Unsichtbare Zeichen anzeigen** ist außerdem unter **Darstellung** verfügbar.
+Leerzeichen erscheinen als Punkte, Tabulatoren als Pfeile und Zeilenenden als
+Umbruchzeichen. Im Popover lassen sich diese drei Gruppen einzeln wählen.
+Der Hauptschalter erhält diese Auswahl beim Aus- und Einschalten. Die Anzeige
+und die Zeilennummern gelten für das jeweilige geöffnete Dokument; sie verändern
+weder seinen Inhalt noch seinen Änderungsstatus. Für Markdown stehen diese
+Optionen im Quelltextmodus zur Verfügung, nicht in der formatierten Ansicht.
+Markdown-Listen erscheinen in Vorschau und WYSIWYG mit kompakten Zeilenabständen;
+gewöhnliche Absätze und bewusst sichtbare Leerzeilen bleiben getrennt.
+
 ## Soft Wrap
 
 Der kompakte **Soft-Wrap-Schalter** steht in der Fußzeile direkt neben

@@ -7,6 +7,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.139.0] — 2026-10-10
+
+### Hinzugefügt
+
+- Zahnrad oben links mit gemeinsamen Editoroptionen für Soft Wrap, Einrückung, Tabbreite, Zeilennummern, Minimap und Seitenlinie.
+- Unsichtbare Zeichen im Texteditor anzeigen, auch über das Darstellungsmenü. Leerzeichen, Tabulatoren und Zeilenenden lassen sich pro geöffnetem Dokument einzeln einblenden; der Dokumentinhalt bleibt unverändert.
+
+### Verbessert
+
+- Kompakte Aufzählungs-, Nummerierungs- und Aufgabenlisten in Markdown-Vorschau und WYSIWYG, auch bei Leerzeilen zwischen den Einträgen. Absätze außerhalb der Listen behalten ihre Abstände.
+
 ## [v1.138.7] — 2026-10-10
 
 ### Behoben

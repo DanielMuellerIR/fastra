@@ -1852,8 +1852,10 @@ struct EditorView: View {
             // reconciled `minimapView.isHidden` + Text-Insets live (gleicher
             // Mechanismus wie beim Soft-Wrap-Profil).
             peripherals: .init(
+                showGutter: workspace.editorDisplayOptions.showGutter,
                 showMinimap: showMinimap,
-                showReformattingGuide: workspace.showPageGuide
+                showReformattingGuide: workspace.showPageGuide,
+                invisibleCharactersConfiguration: workspace.editorDisplayOptions.invisibleCharacters
             )
         )
     }
@@ -2121,7 +2123,7 @@ extension EditorView {
     static let fastraTheme: EditorTheme = EditorTheme(
         text:           .init(color: rgb(0x36, 0x36, 0x36)),
         insertionPoint: rgb(0x36, 0x36, 0x36),
-        invisibles:     .init(color: rgb(0x36, 0x36, 0x36, 0.18)),
+        invisibles:     .init(color: rgb(0x36, 0x36, 0x36, 0.45)),
         background:     rgb(0xFF, 0xFF, 0xFF),
         lineHighlight:  rgb(0xAA, 0xC7, 0xE2, 0.98),
         // Im hellen Theme liegt die Auswahl bewusst HELLER auf dem blauen
@@ -2157,7 +2159,7 @@ extension EditorView {
     static let fastraThemeDark: EditorTheme = EditorTheme(
         text:           .init(color: rgb(0xF2, 0xF2, 0xF2)),
         insertionPoint: rgb(0xF2, 0xF2, 0xF2),
-        invisibles:     .init(color: rgb(0xF2, 0xF2, 0xF2, 0.22)),
+        invisibles:     .init(color: rgb(0xF2, 0xF2, 0xF2, 0.50)),
         background:     rgb(0x17, 0x17, 0x17),
         lineHighlight:  rgb(0x2B, 0x3D, 0x50, 0.98),
         selection:      rgb(0x5E, 0x8E, 0xCC, 0.48),
@@ -2201,7 +2203,7 @@ extension EditorView {
     static let fourDTheme: EditorTheme = EditorTheme(
         text:           .init(color: rgb(0x00, 0x00, 0x00)),
         insertionPoint: rgb(0x00, 0x00, 0x00),
-        invisibles:     .init(color: rgb(0x00, 0x00, 0x00, 0.18)),
+        invisibles:     .init(color: rgb(0x00, 0x00, 0x00, 0.45)),
         background:     rgb(0xFF, 0xFF, 0xFF),
         lineHighlight:  rgb(0xAA, 0xC7, 0xE2, 0.98),
         selection:      rgb(0xD4, 0xE8, 0xF8, 0.96),
@@ -2222,7 +2224,7 @@ extension EditorView {
     static let fourDThemeDark: EditorTheme = EditorTheme(
         text:           .init(color: rgb(0xAE, 0xAE, 0xAE)),
         insertionPoint: rgb(0xAE, 0xAE, 0xAE),
-        invisibles:     .init(color: rgb(0xAE, 0xAE, 0xAE, 0.22)),
+        invisibles:     .init(color: rgb(0xAE, 0xAE, 0xAE, 0.50)),
         background:     rgb(0x17, 0x17, 0x17),
         lineHighlight:  rgb(0x2B, 0x3D, 0x50, 0.98),
         selection:      rgb(0x5E, 0x8E, 0xCC, 0.48),
