@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Zeichenmarkierungen bei Themen-, Schrift- und Optionswechseln aktualisieren."""
 import pathlib
+import stat
 import sys
 
 path = pathlib.Path(sys.argv[1]) / "Sources/CodeEditSourceEditor/SourceEditorConfiguration/SourceEditorConfiguration.swift"
@@ -46,6 +47,8 @@ else:
 if updated.count(replacement) != 1:
     raise SystemExit("SourceEditorConfiguration: Zeichen-Patch unvollständig")
 if updated != source:
+    # SwiftPM legt frische Checkout-Dateien schreibgeschützt an.
+    path.chmod(path.stat().st_mode | stat.S_IWUSR)
     path.write_text(updated)
     if path.read_text().count(replacement) != 1:
         raise SystemExit("SourceEditorConfiguration: Zeichen-Patch wurde nicht gespeichert")

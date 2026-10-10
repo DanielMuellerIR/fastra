@@ -7,6 +7,12 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.139.1] — 2026-10-10
+
+### Behoben
+
+- Der Build kann den Editor-Patch für unsichtbare Zeichen auch in einem frischen, schreibgeschützten SwiftPM-Checkout anwenden.
+
 ## [v1.139.0] — 2026-10-10
 
 ### Hinzugefügt
