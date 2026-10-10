@@ -24806,7 +24806,7 @@ enum SelfTest {
         do {
             try FileManager.default.createDirectory(at: package,
                                                     withIntermediateDirectories: true)
-            try Data(#"{\rtf1\ansi Inhalt eines RTFD-Pakets.}"#.utf8)
+            try Data(#"{\rtf1\ansi\ansicpg1252 Inhalt eines RTFD-Pakets.\par \'95 Suchfeld = OK\par \'95 Art = OK\par Schluss eins\par Schluss zwei\par}"#.utf8)
                 .write(to: package.appendingPathComponent("TXT.rtf"), options: .atomic)
         } catch {
             finishMarkdownImport(base, .environment, "RTFD-Fixture nicht erzeugbar")
@@ -24866,12 +24866,22 @@ enum SelfTest {
             ) else {
                 finishMarkdownImport(base, false, "das RTFD-Paket wurde verändert")
             }
+            let markdown = (try? String(contentsOf: expected, encoding: .utf8)) ?? ""
+            let lines = markdown.components(separatedBy: "\n")
+            guard let field = lines.firstIndex(where: { $0.hasPrefix("- ") && $0.contains("Suchfeld = OK") }),
+                  field + 1 < lines.count,
+                  lines[field + 1].hasPrefix("- "), lines[field + 1].contains("Art = OK"),
+                  !markdown.contains("•"),
+                  markdown.contains("Schluss eins\n\nSchluss zwei") else {
+                finishMarkdownImport(base, false,
+                                     "RTFD-Aufzählung oder Absatzgrenzen falsch: \(markdown)")
+            }
             guard Workspace.shared?.projectURL != package.canonicalFileURL else {
                 finishMarkdownImport(base, false, "das Paket wurde als Projekt geöffnet")
             }
             finishMarkdownImport(base, true,
                                  "Formatkatalog, Zwischenspeicher, flache Umwandlung, "
-                                    + "Kollisionsschutz, Ordnerfall und RTFD-Paketweg ok")
+                                    + "Kollisionsschutz, Ordnerfall, RTFD-Listen und Absatzgrenzen ok")
         }
     }
 

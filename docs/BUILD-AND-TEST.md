@@ -582,7 +582,9 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
 - **Markdown-Umwandlung:** `./selftest.sh markdownimport` läuft fensterlos gegen
   das echte `poormans-text`: Formatkatalog (RTF als Datei, RTFD als Paket),
   Zwischenspeicher, eine Umwandlung ohne Bilder, eine mit eingebettetem PNG und
-  der Kollisionsschutz — jeweils an echten temporären Dateien. Fehlt das
+  der Kollisionsschutz — jeweils an echten temporären Dateien. Der RTFD-Paketweg
+  prüft außerdem zusammenhängende Aufzählungen mit wörtlichem „• “ und erhält
+  gewöhnliche Absatzgrenzen. Fehlt das
   Werkzeug oder kennt es `--formats` noch nicht, meldet der Test ein
   Umgebungsproblem (Exit 2) statt eines Funktionsfehlers. Gegen einen frisch
   gebauten, noch nicht installierten Stand testen:
