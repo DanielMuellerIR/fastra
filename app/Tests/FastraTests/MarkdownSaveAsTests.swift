@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Testing
 @testable import Fastra
 
@@ -47,6 +48,48 @@ struct MarkdownSaveAsTests {
         prepared.rollback()
         #expect(!FileManager.default.fileExists(atPath: target.deletingLastPathComponent().appendingPathComponent("images/2.png").path))
         #expect(FileManager.default.fileExists(atPath: existing.path))
+    }
+
+    @Test("Formelgrenzen erhalten sichtbare Bilder bei allen Zeilenenden", arguments: ["\n", "\r\n", "\r"])
+    func formulaLineEndings(_ eol: String) throws {
+        let (root, source, target) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let bytes = Data("image".utf8)
+        try bytes.write(to: source.deletingLastPathComponent().appendingPathComponent("images/1.png"))
+        let content = "one $a\(eol)![A](images/1.png)\(eol)b$ end"
+        #expect(MarkdownVisualDocument.render(content, documentURL: source).fragment.imageURLs.count == 1)
+        let prepared = try MarkdownSaveAs.prepare(content: content, sourceURL: source, targetURL: target)
+        defer { prepared.rollback() }
+        #expect(prepared.createdImages.count == 1)
+        #expect(prepared.content == content)
+        #expect(try Data(contentsOf: target.deletingLastPathComponent().appendingPathComponent("images/1.png")) == bytes)
+        let images = try MarkdownSaveAs.clipboardImages(content: content, sourceURL: source)
+        try FileManager.default.removeItem(at: source.deletingLastPathComponent().appendingPathComponent("images/1.png"))
+        let pasted = try MarkdownSaveAs.prepare(content: content, sourceURL: source, targetURL: target, copyImagesInSameDirectory: true, imageData: images)
+        defer { pasted.rollback() }
+        #expect(pasted.createdImages.count == 1)
+        #expect(pasted.content == content.replacingOccurrences(of: "images/1.png", with: "images/2.png"))
+    }
+
+    @Test("Formelbereiche bilden CRLF und Unicode auf Originalpositionen ab", arguments: ["\n", "\r\n", "\r"])
+    func formulaOriginalOffsets(_ eol: String) {
+        let formula = "$$\(eol)x\(eol)$$"
+        let content = "😀\(eol)\(eol)" + formula + "\(eol)\(eol)Ende"
+        let ranges = MarkdownMath.formulaRanges(in: content)
+        #expect(ranges.count == 1)
+        #expect(ranges.map { (content as NSString).substring(with: $0).trimmingCharacters(in: .whitespacesAndNewlines) } == [formula])
+        #expect(MarkdownMath.formulaRanges(in: "```\(eol)" + formula + "\(eol)```").isEmpty)
+    }
+
+    @Test("Eine benannte Pipe wird ohne Schreiber unmittelbar abgelehnt")
+    func namedPipeImage() throws {
+        let (root, source, target) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pipe = source.deletingLastPathComponent().appendingPathComponent("images/fifo.png")
+        try #require(mkfifo(pipe.path, 0o600) == 0)
+        #expect(throws: MarkdownImageStore.StoreError.unreadableImage) {
+            try MarkdownSaveAs.prepare(content: "![A](images/fifo.png)", sourceURL: source, targetURL: target)
+        }
     }
 
     @Test("Fehlendes benötigtes Bild bricht ohne liegengebliebene Kopien ab")

@@ -199,15 +199,17 @@ enum MarkdownMath {
         /// werden am Ende von `extract` aber wieder eingesetzt und sind für
         /// die Zeilenzählung deshalb unauffällig.
         let sourceLines: [Int]
+        private let originalEndLine: Int?
 
         private let replacements: [(token: String, html: String, block: Bool)]
 
         init(markdown: String,
              replacements: [(token: String, html: String, block: Bool)],
-             sourceLines: [Int] = []) {
+             sourceLines: [Int] = [], originalEndLine: Int? = nil) {
             self.markdown = markdown
             self.replacements = replacements
             self.sourceLines = sourceLines
+            self.originalEndLine = originalEndLine
         }
 
         /// Rechnet eine 1-basierte Zeile aus dem vorverarbeiteten Text auf die
@@ -215,7 +217,7 @@ enum MarkdownMath {
         func originalLine(for line: Int) -> Int {
             guard line >= 1 else { return 1 }
             guard !sourceLines.isEmpty else { return line }
-            guard line <= sourceLines.count else { return sourceLines.last ?? line }
+            guard line <= sourceLines.count else { return originalEndLine ?? line }
             return sourceLines[line - 1]
         }
 
@@ -279,11 +281,25 @@ enum MarkdownMath {
     /// Quellbereiche, die der Renderer als Formel behandelt. Andere Parser
     /// dürfen darin keine vermeintlichen Bildlinks oder Formatierungen übernehmen.
     static func formulaRanges(in markdown: String) -> [NSRange] {
-        let full = NSRange(location: 0, length: markdown.utf16.count)
-        let code = [fencedCode, inlineCode].flatMap { $0.matches(in: markdown, range: full).map(\.range) }
+        // CRLF schrumpft nur im Analyse-Text; die Grenzpositionen bleiben
+        // auf UTF-16-Indizes der unveränderten Quelle abgebildet.
+        let units = Array(markdown.utf16)
+        var normalized: [UInt16] = [], positions = [0]
+        var offset = 0
+        while offset < units.count {
+            let unit = units[offset]
+            offset += 1
+            if unit == 13, offset < units.count, units[offset] == 10 { offset += 1 }
+            normalized.append(unit == 13 ? 10 : unit)
+            positions.append(offset)
+        }
+        let source = String(decoding: normalized, as: UTF16.self)
+        let full = NSRange(location: 0, length: normalized.count)
+        let code = [fencedCode, inlineCode].flatMap { $0.matches(in: source, range: full).map(\.range) }
         return [blockMath, inlineDoubleMath, inlineMath].flatMap {
-            $0.matches(in: markdown, range: full).map(\.range)
+            $0.matches(in: source, range: full).map(\.range)
         }.filter { candidate in !code.contains { NSIntersectionRange($0, candidate).length > 0 } }
+            .map { NSRange(location: positions[$0.location], length: positions[$0.upperBound] - positions[$0.location]) }
     }
 
     static func extract(from markdown: String) -> Extraction {
@@ -335,7 +351,8 @@ enum MarkdownMath {
             replacements: replacements,
             sourceLines: sourceLineMap(for: working,
                                        consumed: consumed,
-                                       protected: protected)
+                                       protected: protected),
+            originalEndLine: markdown.components(separatedBy: "\n").count + 1
         )
     }
 
@@ -441,35 +458,35 @@ enum MarkdownMath {
 /// relative URLs und beliebige Schemes werden geleert, bevor WebKit das HTML
 /// sieht; dadurch kann das Öffnen einer Datei keinen Netzabruf auslösen.
 enum MarkdownImages {
-    private static let sourceAttribute = try! NSRegularExpression(
-        pattern: #"(?i)\bsrc\s*=\s*([\"'])([^\"']*)\1"#
+    private static let imageTags = try! NSRegularExpression(
+        pattern: #"(?i)<img\b(?:[^"'<>]|"[^"]*"|'[^']*')*>"#
     )
 
     static func resolve(in html: String, relativeTo documentURL: URL?,
                         preservingSource: Bool = false) -> MarkdownRenderedFragment {
         let mutable = NSMutableString(string: html)
-        let matches = sourceAttribute.matches(
-            in: html,
-            range: NSRange(html.startIndex..., in: html)
-        )
+        let ns = html as NSString
         var images: [String: URL] = [:]
-
-        for match in matches.reversed() where match.numberOfRanges > 2 {
-            let sourceRange = match.range(at: 2)
-            let rawSource = (html as NSString).substring(with: sourceRange)
+        for tag in imageTags.matches(in: html, range: NSRange(location: 0, length: ns.length)).reversed() {
+            let rawTag = ns.substring(with: tag.range)
+            guard let attribute = MarkdownHTMLAttributes.parse(rawTag).first(where: { $0.name == "src" }) else { continue }
             let replacement: String
-            if let imageURL = localImageURL(from: rawSource, documentURL: documentURL),
+            if let imageURL = localImageURL(from: attribute.value, documentURL: documentURL),
                MarkdownPreviewAssets.imageMIMEType(for: imageURL) != nil {
                 let token = imageToken(for: imageURL)
                 images[token] = imageURL
                 replacement = "\(MarkdownPreviewAssets.scheme)://image/\(token)"
-            } else {
-                replacement = ""
+            } else { replacement = "" }
+            let output = NSMutableString(string: rawTag)
+            // Ein eigenes Attribut vermeidet Abhängigkeiten vom Quote-Zeichen des src.
+            output.replaceCharacters(in: attribute.valueRange, with: replacement)
+            if preservingSource {
+                let escaped = attribute.value.replacingOccurrences(of: "&", with: "&amp;")
+                    .replacingOccurrences(of: "\"", with: "&quot;")
+                    .replacingOccurrences(of: "<", with: "&lt;")
+                output.insert(" data-md-src=\"\(escaped)\"", at: 4)
             }
-            let value = preservingSource
-                ? replacement + "\" data-md-src=\"" + rawSource
-                : replacement
-            mutable.replaceCharacters(in: sourceRange, with: value)
+            mutable.replaceCharacters(in: tag.range, with: output as String)
         }
         return MarkdownRenderedFragment(html: mutable as String, imageURLs: images)
     }
@@ -536,7 +553,7 @@ enum MarkdownImages {
 
     private static func localImageURL(from rawSource: String,
                                       documentURL: URL?) -> URL? {
-        let unescaped = htmlUnescaped(rawSource)
+        let unescaped = rawSource
         // Ein echtes `#` trennt das URL-Fragment ab. `%23` ist dagegen ein
         // zulässiges Rautezeichen IM Dateinamen und darf erst danach decodiert
         // werden. Die frühere Reihenfolge kürzte solche Pfade auf den Teil vor
@@ -559,11 +576,4 @@ enum MarkdownImages {
             .standardizedFileURL
     }
 
-    private static func htmlUnescaped(_ value: String) -> String {
-        value.replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-    }
 }

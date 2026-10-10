@@ -671,11 +671,12 @@ enum MarkdownPasteboard {
     static func write(plain: String, htmlFragment: String,
                       to pasteboard: NSPasteboard = .general,
                       imageURLs: [String: URL] = [:],
-                      additionalData: [NSPasteboard.PasteboardType: Data] = [:]) -> Bool {
+                      additionalData: [NSPasteboard.PasteboardType: Data] = [:],
+                      imageTransport: MarkdownClipboardImages.Transport? = nil) -> Bool {
         let originalChangeCount = pasteboard.changeCount
-        let initial = MarkdownClipboardImages.prepare(htmlFragment, imageURLs: [:], loadImages: false)
+        let initial = imageTransport ?? MarkdownClipboardImages.prepare(htmlFragment, imageURLs: [:], loadImages: false)
         guard publish(plain: plain, transport: initial, to: pasteboard, additionalData: additionalData, expectedChangeCount: originalChangeCount) else { return false }
-        guard !imageURLs.isEmpty else { return true }
+        guard imageTransport == nil, !imageURLs.isEmpty else { return true }
         let changeCount = pasteboard.changeCount
         DispatchQueue.global(qos: .userInitiated).async {
             let transport = MarkdownClipboardImages.prepare(htmlFragment, imageURLs: imageURLs, loadImages: true)

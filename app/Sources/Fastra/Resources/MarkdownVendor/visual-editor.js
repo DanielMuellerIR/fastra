@@ -349,15 +349,17 @@
         const s=getSelection();if(s.rangeCount && root.contains(s.getRangeAt(0).commonAncestorContainer))selection=s.getRangeAt(0).cloneRange();
       });
       const copySelection=e=>{
-        const s=getSelection();if(!s.rangeCount || s.isCollapsed)return;
+        const s=getSelection();if(fenced || !s.rangeCount || s.isCollapsed)return;
         const rich=document.createElement('div');rich.append(s.getRangeAt(0).cloneContents());
         const markdown=toMarkdown(rich.innerHTML);
         const html=rich.cloneNode(true);
         html.querySelectorAll('[data-md-edit-boundary]').forEach(n=>n.remove());
         html.querySelectorAll('*').forEach(n=>{for(const a of Array.from(n.attributes))if(a.name.startsWith('data-md-') || a.name==='contenteditable')n.removeAttribute(a.name);});
         e.preventDefault();e.stopPropagation();
-        window.webkit.messageHandlers.markdownCopy.postMessage({plain:s.toString(),html:html.innerHTML,markdown,session});
-        if(e.type==='cut')exec('insertHTML','');
+        const bookmark=window.fastraVisual.bookmark();
+        // Bildbytes müssen gesichert sein, bevor Ausschneiden die Undo-Datei verschiebt.
+        fenced=true;root.contentEditable='false';
+        window.webkit.messageHandlers.markdownCopy.postMessage({plain:s.toString(),html:html.innerHTML,markdown,session,bookmark,cut:e.type==='cut'});
       };
       root.addEventListener('copy',copySelection);
       root.addEventListener('cut',copySelection);
@@ -463,6 +465,13 @@
     caret(x,y){const r=document.caretRangeFromPoint?.(x,y);if(!r || !root.contains(r.commonAncestorContainer))return null;selection=r;getSelection().removeAllRanges();getSelection().addRange(r);return window.fastraVisual.bookmark();},
     bookmark(existing){if(existing)return bookmarks.has(existing)?existing:null;restoreSelection();const key=String(++bookmarkID);bookmarks.set(key,{range:selection.cloneRange(),base:serialize()});return key;},
     insertBookmarked(key,html,atoms,transaction,imageSources){if(fenced)return false;const saved=bookmarks.get(key);bookmarks.delete(key);if(!saved || saved.base!==serialize() || !root.contains(saved.range.commonAncestorContainer))return false;Object.assign(opaqueSources,atoms || {});const template=document.createElement('template');template.innerHTML=html;if(transaction)template.content.querySelectorAll('img').forEach(n=>{if(imageSources.includes(n.getAttribute('src')))n.dataset.mdImageTransaction=transaction;});template.content.querySelectorAll('[data-tex]').forEach(n=>n.textContent=n.dataset.tex);html=template.innerHTML;selection=saved.range;getSelection().removeAllRanges();getSelection().addRange(selection);exec('insertHTML',html);window.fastraEnhanceMarkdown?.(root).then(()=>{root.querySelectorAll('[data-tex],.mermaid-render').forEach(n=>n.contentEditable='false');});return true;},
+    completeClipboard(key,cut,succeeded){
+      const saved=bookmarks.get(key);bookmarks.delete(key);
+      const unchanged=saved && saved.base===serialize() && root.contains(saved.range.commonAncestorContainer);
+      fenced=false;root.contentEditable='true';
+      if(cut && succeeded && unchanged){selection=saved.range;getSelection().removeAllRanges();getSelection().addRange(selection);exec('insertHTML','');}
+      return !!unchanged;
+    },
     async updateStyle(font,size,dark){
       let sheet=document.getElementById('fastra-visual-style');if(!sheet){sheet=document.createElement('style');sheet.id='fastra-visual-style';document.head.append(sheet);}
       const family=font==='System'?'-apple-system, BlinkMacSystemFont, sans-serif':JSON.stringify(font)+', -apple-system, sans-serif';

@@ -24,7 +24,8 @@ enum MarkdownSaveAs {
     }
 
     static func prepare(content: String, sourceURL: URL, targetURL: URL,
-                        copyImagesInSameDirectory: Bool = false) throws -> Prepared {
+                        copyImagesInSameDirectory: Bool = false,
+                        imageData: [String: Data] = [:]) throws -> Prepared {
         guard copyImagesInSameDirectory || sourceURL.deletingLastPathComponent().canonicalFileURL
                 != targetURL.deletingLastPathComponent().canonicalFileURL else {
             return Prepared(content: content, createdImages: [])
@@ -36,7 +37,15 @@ enum MarkdownSaveAs {
         var created: [MarkdownImageStore.StoredImage] = []
         do {
             for reference in references where copies[reference.url] == nil {
-                let stored = try MarkdownImageStore.storeImageFile(reference.url, documentURL: targetURL, reserveForTransaction: true)
+                let stored: MarkdownImageStore.StoredImage
+                if let data = imageData[reference.url.absoluteString] {
+                    let type = reference.url.pathExtension.lowercased()
+                    stored = try MarkdownImageStore.storePastedData(
+                        MarkdownImageStore.PreparedImageData(data: data, fileExtension: type),
+                        documentURL: targetURL, reserveForTransaction: true)
+                } else {
+                    stored = try MarkdownImageStore.storeImageFile(reference.url, documentURL: targetURL, reserveForTransaction: true)
+                }
                 copies[reference.url] = stored
                 if stored.createdByInsertion { created.append(stored) }
             }
@@ -51,6 +60,19 @@ enum MarkdownSaveAs {
             Prepared(content: content, createdImages: created).rollback()
             throw error
         }
+    }
+
+    static func clipboardImages(content: String, sourceURL: URL) throws -> [String: Data] {
+        let references = MarkdownRichText.renderQueue.sync { imageReferences(content, sourceURL: sourceURL) }
+        var images: [String: Data] = [:]
+        var total = 0
+        for reference in references where images[reference.url.absoluteString] == nil {
+            let data = try MarkdownPreviewAssets.readImageData(reference.url)
+            guard data.count <= MarkdownClipboardImages.maximumTotalBytes - total else { throw CocoaError(.fileReadTooLarge) }
+            total += data.count
+            images[reference.url.absoluteString] = data
+        }
+        return images
     }
 
     private static func imageReferences(_ source: String, sourceURL: URL) -> [Reference] {

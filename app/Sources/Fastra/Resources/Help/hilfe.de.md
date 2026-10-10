@@ -502,7 +502,9 @@ Kästchen-Button in der Format-Toolbar erstellt ankreuzbare Aufgaben. Ein Klick
 auf ein Kästchen ändert seinen Zustand; ⌘Z macht das rückgängig.
 Absichtlich leere Listenpunkte bleiben beim Kopieren und Einfügen erhalten.
 Ausschneiden (⌘X) nimmt auch die Quellen geschützter Formeln und Diagramme mit;
-⌘Z stellt die ausgeschnittene Auswahl wieder her. Im Quelltext erhalten
+⌘Z stellt die ausgeschnittene Auswahl wieder her. Kopierte und ausgeschnittene
+Bilder besitzen eigene Bilddaten und lassen sich auch nach dem Schließen der
+Quelle einfügen. Im Quelltext erhalten
 Listenbefehle die vorhandene Einrückung und die Zeilenenden des Dokuments.
 Beim Wechsel von Aufgabenlisten zu Aufzählungen oder nummerierten Listen
 werden die Kästchen entfernt.

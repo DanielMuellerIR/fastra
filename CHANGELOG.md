@@ -7,6 +7,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.138.7] — 2026-10-10
+
+### Behoben
+
+- Ausgeschnittene WYSIWYG-Bilder lassen sich auch nach dem Schließen der Quelle wieder einfügen. Die Zwischenablage besitzt eigene Bilddaten; jede Einfügung erhält eine eigene Zieldatei.
+- Bild-Alt-Texte und Titel mit wörtlichem `src=` bleiben in Vorschau und WYSIWYG unverändert.
+- Mehrzeilige Formeln am Dokumentende bleiben ohne abschließenden Zeilenumbruch sichtbar; ihre Quelltexte und vorangehenden Leerzeilen bleiben erhalten.
+- „Speichern unter“ und internes Einfügen übernehmen sichtbare Bilder bei LF, CRLF und CR gleich. Benannte Pipes als Bildquelle werden ohne Warten abgelehnt.
+
 ## [v1.138.6] — 2026-10-09
 
 ### Behoben

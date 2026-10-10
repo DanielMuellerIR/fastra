@@ -6,7 +6,8 @@ import Testing
 @Suite("Markdown-WYSIWYG", .serialized)
 struct MarkdownVisualTests {
     static let samples = [
-        "", "Text 😀", "# Titel\n\n**Fett** und *kursiv* mit ==Marker==.\n",
+        "", "Text 😀", "$$\nx\n$$", "Before\n\n$$\nx\n$$", "$$\nx\n$$\n", "Before\n\n$$\nx\n$$\n",
+        "![src='missing.png'](images/1.png \"src='other.png'\")", "# Titel\n\n**Fett** und *kursiv* mit ==Marker==.\n",
         "[Link][ziel]\n\n[ziel]: https://example.com \"Titel\"\n\n<!-- Kommentar -->\n",
         "| A | B |\n| - | - |\n| 😀 | **ja** |\n\n- [x] Fertig\n- [ ] Offen\n",
         "```swift\nlet code = \"```\"\n```\n\n$$\nx + y\n$$\n\nText $a$ danach\n",
@@ -30,6 +31,30 @@ struct MarkdownVisualTests {
         let visible = document.blocks.filter { !$0.hidden }
         #expect(visible.map(\.source) == [first, "# Titel" + eol])
         #expect(visible.last?.html.contains("<h1>Titel</h1>") == true)
+    }
+
+    @Test("EOF-Formeln bleiben sichtbar, ihre Quelle vollständig", arguments: ["$$\nx\n$$", "Before\n\n$$\nx\n$$", "$$\nx\n$$\n", "Before\n\n$$\nx\n$$\n"])
+    func eofFormula(_ source: String) {
+        let document = MarkdownVisualDocument.render(source, documentURL: nil)
+        #expect(document.blocks.map(\.source).joined() == source)
+        #expect(document.fragment.html.contains("math-block"))
+        #expect(document.fragment.html.contains("data-tex=\"x\""))
+    }
+
+    @Test("Alt und Titel mit src erzeugen genau eine Bildfreigabe")
+    @MainActor
+    func sourceAttributeInAlt() async throws {
+        let source = "![src='missing.png'](images/1.png \"src='title.png'\")"
+        let url = testTemporaryDirectory().appendingPathComponent("test.md")
+        let rendered = MarkdownVisualDocument.render(source, documentURL: url)
+        #expect(rendered.fragment.imageURLs.count == 1)
+        #expect(rendered.fragment.html.components(separatedBy: "data-md-src=").count == 2)
+        let (_, coordinator, web, window) = try await editor(source, documentURL: url)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        #expect(try await web.evaluateJavaScript("document.querySelector('img').alt") as? String == "src='missing.png'")
+        #expect(try await web.evaluateJavaScript("document.querySelector('img').title") as? String == "src='title.png'")
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        withExtendedLifetime(coordinator) {}
     }
 
     @MainActor
@@ -1046,6 +1071,40 @@ struct MarkdownVisualTests {
         _ = try await secondWeb.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
         try #require(await waitUntil { secondWorkspace.activeTab?.content == "Ziel\n" })
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("images/2.png").path))
+    }
+
+    @Test("Ausschneiden sichert Bildbytes vor Undo und über das Schließen der Quelle hinaus", arguments: [false, true])
+    @MainActor
+    func cutImageOwnsBytes(_ closeSource: Bool) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-cut-images-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+        let image = directory.appendingPathComponent("source.png")
+        try bytes.write(to: image)
+        let (firstWorkspace, first, firstWeb, firstWindow) = try await editor("Quelle\n", documentURL: directory.appendingPathComponent("first.md"))
+        defer { firstWeb.configuration.userContentController.removeAllScriptMessageHandlers(); firstWindow.close() }
+        _ = try await firstWeb.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+        first.insertImages([image])
+        try #require(await waitUntil { firstWorkspace.activeTab?.content.contains("images/1.png") == true })
+        _ = try await firstWeb.evaluateJavaScript("{const r=document.createRange();r.selectNode(document.querySelector('img'));getSelection().removeAllRanges();getSelection().addRange(r);document.getElementById('fastra-visual').dispatchEvent(new Event('cut',{bubbles:true,cancelable:true}));}")
+        try #require(await waitUntil { firstWorkspace.activeTab?.content.contains("images/1.png") == false })
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("images/1.png").path))
+        if closeSource {
+            // Ein Neuladen verwirft dieselben Undo-Dateien wie das Schließen.
+            first.load("", documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "closed")
+            firstWeb.stopLoading(); firstWindow.close()
+            let (workspace, coordinator, web, window) = try await editor("Ziel\n", documentURL: directory.appendingPathComponent("second.md"))
+            defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+            coordinator.pasteboard = first.pasteboard
+            #expect(coordinator.pasteImages())
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+            #expect(try Data(contentsOf: directory.appendingPathComponent("images/1.png")) == bytes)
+        } else {
+            #expect(first.pasteImages())
+            try #require(await waitUntil { firstWorkspace.activeTab?.content.contains("images/2.png") == true })
+            #expect(try Data(contentsOf: directory.appendingPathComponent("images/2.png")) == bytes)
+        }
     }
 
     @Test("Bearbeiteter Text erhält wörtliche Entities und HTML", arguments: ["Wörtlich &amp;copy; und &lt;b&gt;Text&lt;/b&gt;\n", "1\\) Text\n"])

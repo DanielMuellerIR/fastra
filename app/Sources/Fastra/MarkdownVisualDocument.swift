@@ -108,7 +108,7 @@ struct MarkdownVisualDocument {
             let start = max(cursor, min(lines.count, math.originalLine(for: Int(cmark_node_get_start_line(current))) - 1))
             let after = math.originalLine(for: Int(cmark_node_get_end_line(current)) + 1) - 1
             let end = max(start, min(lines.count, after))
-            if cursor < start { appendGap(source(cursor, start)) }
+            if cursor < start { appendGap(source(cursor, start)); cursor = start }
             guard start < end else { continue }
             var html: String
             if let rendered = cmark_render_html(current, CMARK_OPT_UNSAFE,

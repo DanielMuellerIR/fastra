@@ -480,7 +480,8 @@ or the checkbox button in the format toolbar creates tasks with checkboxes.
 Click a checkbox to change its state; ⌘Z undoes the change. Intentionally empty
 list items survive copying and pasting.
 Cut (⌘X) also carries the sources of protected formulas and diagrams;
-⌘Z restores the cut selection. In source mode, list commands preserve the
+⌘Z restores the cut selection. Copied and cut images carry their own image
+data and can be pasted after closing the source. In source mode, list commands preserve the
 existing indentation and document line endings. Converting task lists to
 bulleted or numbered lists removes the checkboxes.
 

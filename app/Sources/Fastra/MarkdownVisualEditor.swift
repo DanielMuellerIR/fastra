@@ -264,13 +264,37 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         if message.name == "markdownCopy", let plain = body["plain"] as? String,
            let html = body["html"] as? String {
             guard body["session"] as? String == session else { return }
-            var additionalData: [NSPasteboard.PasteboardType: Data] = [:]
-            if let copied = body["markdown"] as? String,
-               let data = try? JSONSerialization.data(withJSONObject: ["markdown": copied, "url": documentURL?.absoluteString ?? ""]) {
-                additionalData[Self.clipboardType] = data
+            guard let copied = body["markdown"] as? String else { return }
+            let sourceURL = documentURL, request = generation, capturedSession = session
+            let imageURLs = assets.imageURLSnapshot()
+            let changeCount = pasteboard.changeCount
+            let bookmark = body["bookmark"] as? String ?? ""
+            let cut = body["cut"] as? Bool == true
+            DispatchQueue.global(qos: .userInitiated).async { [self] in
+                let result = Result { () -> (Data, MarkdownClipboardImages.Transport) in
+                    let images = try sourceURL.map { try MarkdownSaveAs.clipboardImages(content: copied, sourceURL: $0) } ?? [:]
+                    // String-Werte erhalten das bisherige private Paketformat.
+                    let encodedImages = try JSONEncoder().encode(images).base64EncodedString()
+                    let data = try JSONSerialization.data(withJSONObject: ["markdown": copied, "url": sourceURL?.absoluteString ?? "", "images": encodedImages])
+                    let transport = MarkdownClipboardImages.prepare(html, imageURLs: imageURLs, loadImages: true)
+                    return (data, transport)
+                }
+                DispatchQueue.main.async { [self] in
+                    guard generation == request, session == capturedSession else { return }
+                    var published = false
+                    switch result {
+                    case .success(let (data, transport)):
+                        if pasteboard.changeCount == changeCount {
+                            published = MarkdownPasteboard.write(plain: plain, htmlFragment: html, to: pasteboard,
+                                additionalData: [Self.clipboardType: data], imageTransport: transport)
+                        }
+                    case .failure(let error):
+                        workspace?.saveSafetyWarningHandler(L10n.string("Bild einfügen"), error.localizedDescription)
+                    }
+                    web?.callAsyncJavaScript("return window.fastraVisual.completeClipboard(bookmark, cut, succeeded);",
+                        arguments: ["bookmark": bookmark, "cut": cut, "succeeded": published], in: nil, in: .page) { _ in }
+                }
             }
-            MarkdownPasteboard.write(plain: plain, htmlFragment: html, to: pasteboard,
-                                     imageURLs: assets.imageURLSnapshot(), additionalData: additionalData)
             return
         }
         guard body["session"] as? String == session,
@@ -389,7 +413,9 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         if let data = pasteboard.data(forType: Self.clipboardType),
            let package = try? JSONSerialization.jsonObject(with: data) as? [String: String],
            let source = package["markdown"] {
-            insertMarkdown(source, from: package["url"].flatMap(URL.init(string:)), bookmark: bookmark)
+            let images = package["images"].flatMap { Data(base64Encoded: $0) }
+                .flatMap { try? JSONDecoder().decode([String: Data].self, from: $0) } ?? [:]
+            insertMarkdown(source, from: package["url"].flatMap(URL.init(string:)), bookmark: bookmark, imageData: images)
             return true
         }
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] {
@@ -424,7 +450,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         }
     }
 
-    private func insertMarkdown(_ source: String, from sourceURL: URL?, bookmark: String?) {
+    private func insertMarkdown(_ source: String, from sourceURL: URL?, bookmark: String?, imageData: [String: Data] = [:]) {
         insertPrepared(bookmark: bookmark) { target in
             guard let target else {
                 if !MarkdownVisualDocument.render(source, documentURL: sourceURL).fragment.imageURLs.isEmpty {
@@ -432,7 +458,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 }
                 return MarkdownSaveAs.Prepared(content: source, createdImages: [])
             }
-            if let sourceURL { return try MarkdownSaveAs.prepare(content: source, sourceURL: sourceURL, targetURL: target, copyImagesInSameDirectory: true) }
+            if let sourceURL { return try MarkdownSaveAs.prepare(content: source, sourceURL: sourceURL, targetURL: target, copyImagesInSameDirectory: true, imageData: imageData) }
             return MarkdownSaveAs.Prepared(content: source, createdImages: [])
         }
     }
