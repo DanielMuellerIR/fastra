@@ -15,10 +15,17 @@ enum MarkdownClipboardImages {
     private static let tags = try! NSRegularExpression(pattern: #"(?i)<img\b(?:[^"'<>]|"[^"]*"|'[^']*')*>"#)
     static let maximumTotalBytes = 64 * 1024 * 1024
 
-    static func prepare(_ html: String, imageURLs: [String: URL], loadImages: Bool) -> Transport {
+    static func prepare(_ html: String, imageURLs: [String: URL], loadImages: Bool,
+                        imageData: [String: Data]? = nil) -> Transport {
         let output = NSMutableString(string: html), attributed = NSMutableString(string: html)
         let ns = html as NSString
         var attachments: [String: Image] = [:], loaded: [String: Image] = [:], attempted = Set<String>(), total = 0
+        func bytes(for file: URL) -> Data? {
+            // Ein übergebener Snapshot ist vollständig: Fehlende Bilder dürfen
+            // nicht aus einem inzwischen geänderten Dateistand ergänzt werden.
+            if let imageData { return imageData[file.absoluteString] }
+            return try? MarkdownPreviewAssets.readImageData(file)
+        }
         for tag in tags.matches(in: html, range: NSRange(location: 0, length: ns.length)).reversed() {
             let raw = ns.substring(with: tag.range)
             let attributes = MarkdownHTMLAttributes.parse(raw)
@@ -30,7 +37,8 @@ enum MarkdownClipboardImages {
             var image = token.flatMap { loaded[$0] }
             if image == nil, loadImages, let token, attempted.insert(token).inserted, let file = imageURLs[token],
                MarkdownPreviewAssets.imageMIMEType(for: file) != nil,
-               let data = try? MarkdownPreviewAssets.readImageData(file), data.count <= maximumTotalBytes - total {
+               let data = bytes(for: file),
+               data.count <= maximumTotalBytes - total {
                 image = Image(data: data, fileName: "image.\(file.pathExtension.lowercased())")
                 loaded[token] = image
             }

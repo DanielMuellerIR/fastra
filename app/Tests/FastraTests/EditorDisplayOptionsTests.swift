@@ -7,6 +7,21 @@ import Testing
 
 @Suite("Editor-Darstellungsoptionen")
 struct EditorDisplayOptionsTests {
+    @Test("Git-Verlauf und schreibgeschützte Vorversion bieten keine wirkungslosen Optionen")
+    @MainActor
+    func readOnlyViews() {
+        let workspace = Workspace()
+        let history = EditorTab(title: "Verlauf", path: "Git", content: "A", gitKind: .log)
+        let previous = EditorTab(title: "Vorversion", path: "", content: "B", readOnlyReason: "Vorversion")
+        workspace.tabs = [history, previous]
+        for tab in workspace.tabs {
+            workspace.activeTabID = tab.id
+            #expect(!workspace.canConfigureTextDisplay)
+            workspace.setEditorDisplayOption(\.showInvisibles, true)
+            workspace.setEditorDisplayOption(\.showGutter, false)
+            #expect(workspace.editorDisplayOptions == .init())
+        }
+    }
     @Test("Anzeige bleibt je Dokument erhalten und ändert keine Inhalte")
     @MainActor
     func documentIsolation() {

@@ -73,4 +73,44 @@ struct MarkdownClipboardImageReviewTests {
         let huge = MarkdownClipboardImages.prepare(html, imageURLs: ["test": file], loadImages: true)
         #expect(huge.attachments.isEmpty && !huge.html.contains("data:"))
     }
+
+    @Test("Alle Bildformate verwenden denselben Snapshot trotz Dateiaustausch")
+    func sharedImageSnapshot() throws {
+        let (file, bytes, html) = try fixture()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let source = file.deletingLastPathComponent().appendingPathComponent("source.md")
+        let images = try MarkdownSaveAs.clipboardImages(content: "![Bild](image.png)", sourceURL: source)
+        try Data("ersetzt".utf8).write(to: file)
+        let transport = MarkdownClipboardImages.prepare(html, imageURLs: ["test": file], loadImages: true, imageData: images)
+        #expect(images[file.absoluteString] == bytes)
+        #expect(transport.attachments.values.map(\.data) == [bytes])
+        #expect(transport.html.contains(bytes.base64EncodedString()))
+        let missing = MarkdownClipboardImages.prepare(html, imageURLs: ["test": file], loadImages: true, imageData: [:])
+        #expect(missing.attachments.isEmpty)
+        #expect(!missing.html.contains("data:"))
+    }
+
+    @Test("Verzögerte Kopien überleben die Quelle und achten neue Zwischenablageinhalte", arguments: [false, true])
+    @MainActor
+    func delayedCopyAfterInvalidation(_ replaceClipboard: Bool) async throws {
+        let pb = NSPasteboard.withUniqueName()
+        defer { pb.releaseGlobally() }
+        let queue = DispatchQueue(label: "clipboard-regression")
+        queue.suspend()
+        var coordinator: MarkdownVisualCoordinator? = MarkdownVisualCoordinator()
+        coordinator!.pasteboard = pb
+        coordinator!.clipboardQueue = queue
+        coordinator!.copySelection(plain: "Kopie", html: "<p>Kopie</p>", copied: "Kopie", bookmark: "1", cut: true)
+        coordinator!.invalidateForSourceReplacement()
+        weak var retained = coordinator
+        coordinator = nil
+        if replaceClipboard { pb.clearContents(); pb.setString("Neu", forType: .string) }
+        queue.resume()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async { DispatchQueue.main.async { continuation.resume() } }
+        }
+        #expect(pb.string(forType: .string) == (replaceClipboard ? "Neu" : "Kopie"))
+        #expect((pb.data(forType: MarkdownVisualCoordinator.clipboardType) != nil) == !replaceClipboard)
+        #expect(retained == nil)
+    }
 }

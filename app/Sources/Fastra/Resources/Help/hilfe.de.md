@@ -504,7 +504,10 @@ Absichtlich leere Listenpunkte bleiben beim Kopieren und Einfügen erhalten.
 Ausschneiden (⌘X) nimmt auch die Quellen geschützter Formeln und Diagramme mit;
 ⌘Z stellt die ausgeschnittene Auswahl wieder her. Kopierte und ausgeschnittene
 Bilder besitzen eigene Bilddaten und lassen sich auch nach dem Schließen der
-Quelle einfügen. Im Quelltext erhalten
+Quelle einfügen. Auch ein noch laufender Kopierexport bleibt nach einem Tabwechsel
+oder dem Schließen der Quelle verfügbar. Beginnt während des Exports eine
+Dokumentaktion wie Speichern oder Schließen, wird ein ausstehendes Ausschneiden
+als Kopie abgeschlossen; die Auswahl bleibt im Dokument erhalten. Im Quelltext erhalten
 Listenbefehle die vorhandene Einrückung und die Zeilenenden des Dokuments.
 Beim Wechsel von Aufgabenlisten zu Aufzählungen oder nummerierten Listen
 werden die Kästchen entfernt.
@@ -675,6 +678,7 @@ Der Hauptschalter erhält diese Auswahl beim Aus- und Einschalten. Die Anzeige
 und die Zeilennummern gelten für das jeweilige geöffnete Dokument; sie verändern
 weder seinen Inhalt noch seinen Änderungsstatus. Für Markdown stehen diese
 Optionen im Quelltextmodus zur Verfügung, nicht in der formatierten Ansicht.
+In Git-Ansichten und schreibgeschützten Vorversionen sind die Editoroptionen deaktiviert.
 Markdown-Listen erscheinen in Vorschau und WYSIWYG mit kompakten Zeilenabständen;
 gewöhnliche Absätze und bewusst sichtbare Leerzeilen bleiben getrennt.
 

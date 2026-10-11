@@ -481,7 +481,10 @@ Click a checkbox to change its state; ⌘Z undoes the change. Intentionally empt
 list items survive copying and pasting.
 Cut (⌘X) also carries the sources of protected formulas and diagrams;
 ⌘Z restores the cut selection. Copied and cut images carry their own image
-data and can be pasted after closing the source. In source mode, list commands preserve the
+data and can be pasted after closing the source. A pending copy export also
+remains available after switching tabs or closing the source. If a document
+action such as Save or Close starts during the export, a pending Cut completes
+as Copy; the selection remains in the document. In source mode, list commands preserve the
 existing indentation and document line endings. Converting task lists to
 bulleted or numbered lists removes the checkboxes.
 
@@ -643,6 +646,7 @@ independently in the popover. Switching the main toggle off and on preserves
 that selection. Invisibles and line numbers apply to the current open document;
 they change neither its content nor its modified state. For Markdown, these
 options are available in source mode rather than the formatted view.
+Editor options are disabled in Git views and read-only previous versions.
 Markdown lists use compact line spacing in preview and WYSIWYG; ordinary
 paragraphs and deliberately visible blank lines remain separated.
 

@@ -110,6 +110,8 @@
     return '\n\n'+lines.join('\n')+'\n\n';
   }});
   let root, originals=new Map(), blocks=[], selection=null, base='', session='', composing=false, revision=0, fenced=false, bookmarkID=0, bookmarks=new Map(), editingCommand=false, lastInputType='';
+  let actionFenced=false, clipboardBookmark=null;
+  function updateFence(){fenced=actionFenced || clipboardBookmark!==null;root.contentEditable=fenced?'false':'true';}
   function normalized(node) {
     const clone=node.cloneNode(true);
     clone.querySelectorAll('[contenteditable]').forEach(n=>n.removeAttribute('contenteditable'));
@@ -358,7 +360,7 @@
         e.preventDefault();e.stopPropagation();
         const bookmark=window.fastraVisual.bookmark();
         // Bildbytes müssen gesichert sein, bevor Ausschneiden die Undo-Datei verschiebt.
-        fenced=true;root.contentEditable='false';
+        clipboardBookmark=bookmark;updateFence();
         window.webkit.messageHandlers.markdownCopy.postMessage({plain:s.toString(),html:html.innerHTML,markdown,session,bookmark,cut:e.type==='cut'});
       };
       root.addEventListener('copy',copySelection);
@@ -466,9 +468,10 @@
     bookmark(existing){if(existing)return bookmarks.has(existing)?existing:null;restoreSelection();const key=String(++bookmarkID);bookmarks.set(key,{range:selection.cloneRange(),base:serialize()});return key;},
     insertBookmarked(key,html,atoms,transaction,imageSources){if(fenced)return false;const saved=bookmarks.get(key);bookmarks.delete(key);if(!saved || saved.base!==serialize() || !root.contains(saved.range.commonAncestorContainer))return false;Object.assign(opaqueSources,atoms || {});const template=document.createElement('template');template.innerHTML=html;if(transaction)template.content.querySelectorAll('img').forEach(n=>{if(imageSources.includes(n.getAttribute('src')))n.dataset.mdImageTransaction=transaction;});template.content.querySelectorAll('[data-tex]').forEach(n=>n.textContent=n.dataset.tex);html=template.innerHTML;selection=saved.range;getSelection().removeAllRanges();getSelection().addRange(selection);exec('insertHTML',html);window.fastraEnhanceMarkdown?.(root).then(()=>{root.querySelectorAll('[data-tex],.mermaid-render').forEach(n=>n.contentEditable='false');});return true;},
     completeClipboard(key,cut,succeeded){
+      if(key!==clipboardBookmark)return false;
       const saved=bookmarks.get(key);bookmarks.delete(key);
       const unchanged=saved && saved.base===serialize() && root.contains(saved.range.commonAncestorContainer);
-      fenced=false;root.contentEditable='true';
+      clipboardBookmark=null;updateFence();
       if(cut && succeeded && unchanged){selection=saved.range;getSelection().removeAllRanges();getSelection().addRange(selection);exec('insertHTML','');}
       return !!unchanged;
     },
@@ -478,8 +481,15 @@
       sheet.textContent=`body{font-family:${family};font-size:${size}px;color:${dark?'#F2F2F2':'#363636'};background:${dark?'#171717':'#FFFFFF'}}h1,h2,h3,h4,h5,h6{color:inherit}blockquote,pre.mermaid-error::before{color:${dark?'#A8A8A8':'#737373'}}a{color:${dark?'#8BB7F2':'#3F69A8'}}code,pre,blockquote,th{background:${dark?'#333333':'#ECECEC'}}td,th,blockquote,hr{border-color:${dark?'#484848':'#D7D7D7'}}mark{background:${dark?'#665200':'#FFEE9A'};color:inherit}`;
       await window.fastraUpdateMarkdownTheme?.(root,dark);
     },
-    prepareAction(){if(composing)return {composing:true};fenced=true;root.contentEditable='false';changed();return {markdown:serialize(),revision,imageTransactions:imageTransactions(),inputType:lastInputType};},
-    completeAction(expectedSession){if(expectedSession!==session)return;fenced=false;root.contentEditable='true';},
+    prepareAction(){
+      if(composing)return {composing:true};
+      actionFenced=true;
+      // Eine Dokumentaktion übernimmt den aktuellen Stand. Ein noch nicht
+      // bestätigter Cut darf ihn danach nicht mehr verändern; die Kopie bleibt.
+      if(clipboardBookmark!==null){bookmarks.delete(clipboardBookmark);clipboardBookmark=null;}
+      updateFence();changed();return {markdown:serialize(),revision,imageTransactions:imageTransactions(),inputType:lastInputType};
+    },
+    completeAction(expectedSession){if(expectedSession!==session)return;actionFenced=false;updateFence();},
     rollbackImageChange(inputType,previous){
       editingCommand=true;
       try{document.execCommand(inputType==='historyUndo'?'redo':'undo');}finally{editingCommand=false;}

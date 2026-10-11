@@ -16213,42 +16213,45 @@ enum SelfTest {
                 window.makeKeyAndOrderFront(nil)
                 // SwiftUI baut Menüeinträge erst beim echten Öffnen auf.
                 // Der Timer muss auch während AppKits Menü-Tracking laufen.
-                let menuWorked: Bool = await withCheckedContinuation { continuation in
-                    guard let mainMenu = NSApp.mainMenu,
-                          let menuRoot = mainMenu.items.first(where: {
-                              $0.title == "Darstellung" || $0.title == "View"
-                          }), let viewMenu = menuRoot.submenu else {
-                        continuation.resume(returning: false)
-                        return
-                    }
-                    var timer: Timer?
-                    var ticks = 0
-                    var pressed = false
-                    func conclude(_ result: Bool) {
-                        timer?.invalidate()
-                        timer = nil
-                        viewMenu.cancelTracking()
-                        mainMenu.cancelTracking()
-                        continuation.resume(returning: result)
-                    }
-                    timer = Timer(timeInterval: 0.1, repeats: true) { _ in
-                        ticks += 1
-                        if ticks > 50 { conclude(false); return }
-                        if !pressed {
-                            pressed = true
-                            _ = menuRoot.accessibilityPerformPress()
-                        } else if let item = viewMenu.items.first(where: {
-                            $0.title == L10n.string("Unsichtbare Zeichen anzeigen")
-                        }), item.isEnabled {
-                            _ = item.accessibilityPerformPress()
-                            conclude(true)
+                func checkInvisiblesMenu(enabled: Bool, press: Bool) async -> Bool {
+                    await withCheckedContinuation { continuation in
+                        guard let mainMenu = NSApp.mainMenu,
+                              let menuRoot = mainMenu.items.first(where: {
+                                  $0.title == "Darstellung" || $0.title == "View"
+                              }), let viewMenu = menuRoot.submenu else {
+                            continuation.resume(returning: false)
+                            return
+                        }
+                        var timer: Timer?
+                        var ticks = 0
+                        var pressed = false
+                        func conclude(_ result: Bool) {
+                            timer?.invalidate()
+                            timer = nil
+                            viewMenu.cancelTracking()
+                            mainMenu.cancelTracking()
+                            continuation.resume(returning: result)
+                        }
+                        timer = Timer(timeInterval: 0.1, repeats: true) { _ in
+                            ticks += 1
+                            if ticks > 50 { conclude(false); return }
+                            if !pressed {
+                                pressed = true
+                                _ = menuRoot.accessibilityPerformPress()
+                            } else if let item = viewMenu.items.first(where: {
+                                $0.title == L10n.string("Unsichtbare Zeichen anzeigen")
+                            }) {
+                                if press && item.isEnabled { _ = item.accessibilityPerformPress() }
+                                conclude(item.isEnabled == enabled)
+                            }
+                        }
+                        if let timer {
+                            RunLoop.main.add(timer, forMode: .common)
+                            RunLoop.main.add(timer, forMode: .eventTracking)
                         }
                     }
-                    if let timer {
-                        RunLoop.main.add(timer, forMode: .common)
-                        RunLoop.main.add(timer, forMode: .eventTracking)
-                    }
                 }
+                let menuWorked = await checkInvisiblesMenu(enabled: true, press: true)
                 try require(menuWorked, "Menüeintrag fehlt oder ist nicht bedienbar")
                 try await wait("Menü schaltet aus") { !ws.editorDisplayOptions.showInvisibles }
                 ws.setEditorDisplayOption(\.showSpaces, false)
@@ -16287,6 +16290,16 @@ enum SelfTest {
                 await capture("sidebar-narrow", window)
                 ws.projectURL = nil
                 try FileManager.default.removeItem(at: project)
+                for tab in [EditorTab(title: "Verlauf", path: "Git", content: "Historie", gitKind: .log),
+                            EditorTab(title: "Vorversion", path: "", content: "Vorher", readOnlyReason: "Vorversion")] {
+                    ws.tabs = [tab]
+                    ws.activeTabID = tab.id
+                    try await Task.sleep(nanoseconds: 300_000_000)
+                    try require(await checkInvisiblesMenu(enabled: false, press: false),
+                                "Zeichen-Menü muss in \(tab.title) deaktiviert sein")
+                    await capture(tab.gitKind == nil ? "readonly-options" : "history-options", window)
+                }
+
                 workspaceDefaults().set(false, forKey: MarkdownEditingMode.defaultsKey)
                 workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
                 let markdown = "# Listenabstände\n\n" + ["Suchfeld", "Art", "Firma", "Vorname", "Nachname", "Straße", "PLZ", "Ort"]

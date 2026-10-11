@@ -5,6 +5,33 @@ import Testing
 
 @Suite("Markdown-WYSIWYG", .serialized)
 struct MarkdownVisualTests {
+    @Test("Clipboard-Abschluss gibt keine fremde Dokumentaktionssperre frei", arguments: [false, true])
+    @MainActor
+    func clipboardDuringDocumentAction(_ actionFinishesFirst: Bool) async throws {
+        let source = "Unverändert\n"
+        let (_, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("""
+            window.webkit.messageHandlers.markdownCopy.postMessage=payload=>{window.clipboardRequest=payload;};
+            const root=document.getElementById('fastra-visual'),r=document.createRange();r.selectNodeContents(root);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            root.dispatchEvent(new Event('cut',{bubbles:true,cancelable:true}));
+            window.snapshot=fastraVisual.prepareAction();
+            """)
+        #expect(try await web.evaluateJavaScript("window.snapshot.markdown") as? String == source)
+        if actionFinishesFirst {
+            _ = try await web.evaluateJavaScript("fastraVisual.completeAction(window.clipboardRequest.session)")
+        }
+        _ = try await web.evaluateJavaScript("fastraVisual.completeClipboard(window.clipboardRequest.bookmark,true,true)")
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').contentEditable") as? String == (actionFinishesFirst ? "true" : "false"))
+        if !actionFinishesFirst {
+            _ = try await web.evaluateJavaScript("fastraVisual.command('bold');fastraVisual.completeAction(window.clipboardRequest.session)")
+            #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+            #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').contentEditable") as? String == "true")
+        }
+    }
+
     static let samples = [
         "", "Text 😀", "$$\nx\n$$", "Before\n\n$$\nx\n$$", "$$\nx\n$$\n", "Before\n\n$$\nx\n$$\n",
         "![src='missing.png'](images/1.png \"src='other.png'\")", "# Titel\n\n**Fett** und *kursiv* mit ==Marker==.\n",

@@ -7,6 +7,15 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.139.2] — 2026-10-11
+
+### Behoben
+
+- Verzögertes Kopieren im Markdown-WYSIWYG-Editor bleibt nach Tabwechsel oder Schließen der Quelle verfügbar und überschreibt keine neuere Zwischenablage.
+- Speichern, Schließen und Ansichtswechsel behalten ihre Eingabesperre während eines Clipboard-Exports. Ein noch ausstehender Ausschneidevorgang wird dabei als Kopie abgeschlossen, ohne den übernommenen Dokumentstand nachträglich zu verändern.
+- Alle Zwischenablageformate verwenden dieselben einmal gesicherten Bilddaten, auch wenn eine Bilddatei während des Exports extern geändert wird.
+- Darstellungsoptionen sind in Git-Verlauf und schreibgeschützten Vorversionen deaktiviert, da diese Ansichten sie nicht unterstützen.
+
 ## [v1.139.1] — 2026-10-10
 
 ### Behoben

@@ -155,6 +155,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     var style = ""
     private(set) var documentURL: URL?
     var pasteboard: NSPasteboard = .general
+    var clipboardQueue = DispatchQueue.global(qos: .userInitiated)
     static let clipboardType = NSPasteboard.PasteboardType("application/x-fastra-markdown")
     var generation: UInt64 = 0
     private var session = UUID().uuidString
@@ -265,36 +266,8 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
            let html = body["html"] as? String {
             guard body["session"] as? String == session else { return }
             guard let copied = body["markdown"] as? String else { return }
-            let sourceURL = documentURL, request = generation, capturedSession = session
-            let imageURLs = assets.imageURLSnapshot()
-            let changeCount = pasteboard.changeCount
-            let bookmark = body["bookmark"] as? String ?? ""
-            let cut = body["cut"] as? Bool == true
-            DispatchQueue.global(qos: .userInitiated).async { [self] in
-                let result = Result { () -> (Data, MarkdownClipboardImages.Transport) in
-                    let images = try sourceURL.map { try MarkdownSaveAs.clipboardImages(content: copied, sourceURL: $0) } ?? [:]
-                    // String-Werte erhalten das bisherige private Paketformat.
-                    let encodedImages = try JSONEncoder().encode(images).base64EncodedString()
-                    let data = try JSONSerialization.data(withJSONObject: ["markdown": copied, "url": sourceURL?.absoluteString ?? "", "images": encodedImages])
-                    let transport = MarkdownClipboardImages.prepare(html, imageURLs: imageURLs, loadImages: true)
-                    return (data, transport)
-                }
-                DispatchQueue.main.async { [self] in
-                    guard generation == request, session == capturedSession else { return }
-                    var published = false
-                    switch result {
-                    case .success(let (data, transport)):
-                        if pasteboard.changeCount == changeCount {
-                            published = MarkdownPasteboard.write(plain: plain, htmlFragment: html, to: pasteboard,
-                                additionalData: [Self.clipboardType: data], imageTransport: transport)
-                        }
-                    case .failure(let error):
-                        workspace?.saveSafetyWarningHandler(L10n.string("Bild einfügen"), error.localizedDescription)
-                    }
-                    web?.callAsyncJavaScript("return window.fastraVisual.completeClipboard(bookmark, cut, succeeded);",
-                        arguments: ["bookmark": bookmark, "cut": cut, "succeeded": published], in: nil, in: .page) { _ in }
-                }
-            }
+            copySelection(plain: plain, html: html, copied: copied,
+                          bookmark: body["bookmark"] as? String ?? "", cut: body["cut"] as? Bool == true)
             return
         }
         guard body["session"] as? String == session,
@@ -311,6 +284,39 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             acceptedInputRevision = body["revision"] as? Int ?? acceptedInputRevision
         case "pasteImage", "pasteMarkdown": _ = pasteImages(bookmark: body["bookmark"] as? String)
         default: break
+        }
+    }
+
+    func copySelection(plain: String, html: String, copied: String, bookmark: String, cut: Bool) {
+        let sourceURL = documentURL, request = generation, capturedSession = session
+        let imageURLs = assets.imageURLSnapshot()
+        let changeCount = pasteboard.changeCount
+        clipboardQueue.async { [self] in
+            let result = Result { () -> (Data, MarkdownClipboardImages.Transport) in
+                let images = try sourceURL.map { try MarkdownSaveAs.clipboardImages(content: copied, sourceURL: $0) } ?? [:]
+                // String-Werte erhalten das bisherige private Paketformat.
+                let encodedImages = try JSONEncoder().encode(images).base64EncodedString()
+                let data = try JSONSerialization.data(withJSONObject: ["markdown": copied, "url": sourceURL?.absoluteString ?? "", "images": encodedImages])
+                let transport = MarkdownClipboardImages.prepare(html, imageURLs: imageURLs, loadImages: true, imageData: images)
+                return (data, transport)
+            }
+            DispatchQueue.main.async { [self] in
+                var published = false
+                switch result {
+                case .success(let (data, transport)):
+                    if pasteboard.changeCount == changeCount {
+                        published = MarkdownPasteboard.write(plain: plain, htmlFragment: html, to: pasteboard,
+                            additionalData: [Self.clipboardType: data], imageTransport: transport)
+                    }
+                case .failure(let error):
+                    workspace?.saveSafetyWarningHandler(L10n.string("Bild einfügen"), error.localizedDescription)
+                }
+                // Die Kopie gehört der Zwischenablage; nur das Ausschneiden
+                // bleibt an den noch gültigen Quell-DOM gebunden.
+                guard generation == request, session == capturedSession else { return }
+                web?.callAsyncJavaScript("return window.fastraVisual.completeClipboard(bookmark, cut, succeeded);",
+                    arguments: ["bookmark": bookmark, "cut": cut, "succeeded": published], in: nil, in: .page) { _ in }
+            }
         }
     }
 

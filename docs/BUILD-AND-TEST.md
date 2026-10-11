@@ -53,6 +53,8 @@ und die Titelleiste bei minimaler Seitenleistenbreite.
 
 `FASTRA_EDITOR_OPTIONS_DIR=/pfad/zur/aufnahme ./selftest.sh editoroptions`
 bedient das Zahnrad, den Popover-Schalter und den echten Darstellungsmenüpfad.
+Der Menüeintrag für unsichtbare Zeichen muss in Git-Verlauf und schreibgeschützter
+Vorversion tatsächlich deaktiviert sein; beide Ansichten werden im Fenster geprüft.
 Die Aufnahmen zeigen den Popover, Zeichenanzeige sowie lose Markdown-Listen und
 Aufgabenlisten in beiden Ansichten bei 760 und 1100 pt. Für die Sichtprüfung
 den Lauf mit `FASTRA_SELFTEST_LANGUAGE=de` und `en` wiederholen; zusätzlich
@@ -1169,6 +1171,14 @@ letzte Eingaben vor dem Speichern, den Moduswechsel sowie die Bildkopien von
 „Speichern unter“. `FASTRA_MD_VISUAL_DIR` speichert den Erstwahl-Dialog, Ansichten
 bei 650 und 1100 pt, den Dunkelmodus, bearbeitete Listen und den Quelltext nach dem Zurückwechseln;
 jeweils Deutsch und Englisch ansehen.
+
+`MarkdownClipboardImageReviewTests` hält den nativen Export gezielt auf und
+prüft die Veröffentlichung nach Invalidierung und Freigabe des Quell-Coordinators
+sowie den Schutz neuer Zwischenablageinhalte. Ein Dateiaustausch nach dem ersten
+Bildsnapshot darf HTML und Attachments nicht verändern; ein fehlender Snapshot
+darf keine neue Dateilesung auslösen. `MarkdownVisualTests` prüft im echten WebKit
+beide Abschlussreihenfolgen von Clipboard und Dokumentaktion: Die Aktionssperre
+bleibt erhalten, und ein abgebrochener Cut verändert den Snapshot nicht nachträglich.
 
 `MarkdownVisualTests` prüft Einfügen am Listenanfang mit sofortigem Cursorwechsel,
 sichtbare Leerzeilen nach erneutem Rendern und die tatsächlichen WebKit-Rechtecke

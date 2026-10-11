@@ -22,6 +22,7 @@ extension Workspace {
     var canConfigureTextDisplay: Bool {
         guard let tab = activeTab else { return false }
         return !isWelcomeScreen && !tab.isLoading && tab.displayMode == .text
+            && tab.gitKind == nil && tab.readOnlyReason == nil
             && activeViewMode == .text && !activeMarkdownIsVisual && !activeTabShowsDiff
     }
 
