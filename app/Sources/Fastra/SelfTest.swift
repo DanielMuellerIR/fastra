@@ -16213,7 +16213,7 @@ enum SelfTest {
                 window.makeKeyAndOrderFront(nil)
                 // SwiftUI baut Menüeinträge erst beim echten Öffnen auf.
                 // Der Timer muss auch während AppKits Menü-Tracking laufen.
-                func checkInvisiblesMenu(enabled: Bool, press: Bool) async -> Bool {
+                @MainActor func checkInvisiblesMenu(enabled: Bool, press: Bool) async -> Bool {
                     await withCheckedContinuation { continuation in
                         guard let mainMenu = NSApp.mainMenu,
                               let menuRoot = mainMenu.items.first(where: {
