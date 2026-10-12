@@ -865,3 +865,23 @@ Patch 4z23 synchronisiert diese Werte zentral nach dem Konfigurationsabgleich,
 leert den Stilcache und invalidiert die Fragment-Views. Die Prüfung misst die
 wirklichen Ersatzfarben und Schriftgrößen sowie die Betonung nach einer geänderten
 Einrückungsbreite. Fensteraufnahmen prüfen zusätzlich den Themenwechsel.
+
+### F.33 Editor-Neuaufbau darf den Undo-Verlauf nicht besitzen (2026-10-12)
+
+Suchen/Ersetzen aktualisierte das Modell und erzeugte den Editor über
+`editorReloadNonce` neu. Der neue CodeEdit-Editor hatte einen leeren Undo-Verlauf:
+Weder die Ersetzung noch frühere Eingaben waren zurücknehmbar. Tabwechsel hatten
+dieselbe Wirkung. Ein persistenter Manager allein genügt nicht:
+`SourceEditor.makeNSViewController` ruft nach dem Controller-Aufbau `setText` auf,
+und dieses leert den bereits angebundenen Manager erneut.
+
+Der Verlauf liegt deshalb am Dokument. Patch 4z24 bindet ihn erst nach `setText`
+an. Programmatische Ersetzungen registrieren einen eigenen inversen Schritt,
+auch bei unsichtbaren Tabs. Native Eingaben melden ihren Text getrennt zurück,
+damit beim nächsten Rendern kein zweiter Schritt entsteht. Dokumentidentität
+und Reload-Generation schützen vor Rückmeldungen eines abgebauten Editors.
+
+`SearchUndoTests` prüft Zwischenstände, Undo/Redo und wiederholte Neuaufbauten;
+ohne die Editor-Anbindung scheitern Einzel- und Alle-Ersetzen tatsächlich an
+`canUndo`. Der Fenster-Test `searchundo` ergänzt echte Command-Z-Tastendrücke
+und Wiederholen über die Responder-Kette.

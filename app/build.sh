@@ -6394,6 +6394,13 @@ if [ "$INVISIBLES_PATCH" = "changed" ]; then
   rm -f .build/*/{debug,release}/Modules/CodeEditSourceEditor.swiftmodule
 fi
 
+# 4z24. Dokumentgebundener Undo-Verlauf über Ersetzungen und Editor-Neuaufbau.
+DOCUMENT_UNDO_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/document-undo.py "$CHECKOUTS/CodeEditSourceEditor" "$CHECKOUTS/CodeEditTextView")
+if [ "$DOCUMENT_UNDO_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/{CodeEditSourceEditor,CodeEditTextView}.build
+  rm -f .build/*/{debug,release}/Modules/{CodeEditSourceEditor,CodeEditTextView}.swiftmodule
+fi
+
 # Hinweis zu den `rm .build/*/{debug,release}/<Modul>.build`-Zeilen oben:
 # Sie gelten nur für das alte Build-System `native`, das Änderungen in
 # .build/checkouts nicht neu übersetzt. Ab Swift 6.4 baut `swift build`

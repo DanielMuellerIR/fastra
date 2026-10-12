@@ -148,6 +148,7 @@ werden, damit die Änderung überprüfbar und rückgängig zu machen bleibt.
 Überschreitet sie diese Grenze, wird keine Datei des Auftrags geschrieben.
 
 - „Ersetzen“ ersetzt nur den aktiven Treffer und springt weiter.
+- Ersetzungen in „Datei“ und „Geöffnet“ lassen sich pro Dokument mit **⌘Z** zurücknehmen und mit **⇧⌘Z** wiederholen. Frühere Bearbeitungsschritte bleiben erhalten, auch nach einem Tabwechsel und in der geteilten Markdown-Ansicht.
 - „Alle ersetzen · N“ (⌘Return) ersetzt alle Treffer des Suchbereichs.
 - Überschreitet die Trefferzahl die sichtbare Obergrenze, bleibt „Alle
   ersetzen“ gesperrt. Verfeinere dann den Suchbegriff, bis die vollständige

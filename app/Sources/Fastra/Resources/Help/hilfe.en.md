@@ -143,6 +143,7 @@ that the change can be verified and undone. If an output exceeds this limit,
 none of the files in the operation are written.
 
 - “Replace” replaces only the active match and moves on.
+- Replacements in “File” and “Open” can be undone per document with **⌘Z** and redone with **⇧⌘Z**. Earlier edits remain available after switching tabs and in the split Markdown view.
 - “Replace All · N” (⌘Return) replaces every match in the scope.
 - If the match count exceeds the visible limit, “Replace All” stays disabled.
   Refine the search term until the complete match set is visible.

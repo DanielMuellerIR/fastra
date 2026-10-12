@@ -60,6 +60,22 @@ Aufgabenlisten in beiden Ansichten bei 760 und 1100 pt. Für die Sichtprüfung
 den Lauf mit `FASTRA_SELFTEST_LANGUAGE=de` und `en` wiederholen; zusätzlich
 `softwrapmodes`, `softwrapindentcore`, `footerfit` und `sidebarheader` prüfen.
 
+## Rückgängig nach Suchen/Ersetzen
+
+Patch 4z24 bindet einen dokumentgebundenen `CEUndoManager` erst nach der
+Textinitialisierung an. `setText` löscht sonst dessen Verlauf. Modell-Ersetzungen
+registrieren ihre Umkehrung auch für noch nicht montierte Tabs; ein neuer Editor
+übernimmt denselben Verlauf. Native Edits melden ihren Text separat zurück,
+damit sie nicht doppelt registriert werden.
+
+Nach `./build.sh` prüft `./test.sh --fast-only --filter SearchUndoTests` Einzel-
+und Alle-Ersetzen, frühere Eingaben, Undo/Redo, Tabwechsel, unsichtbare Dokumente
+und verspätete Editor-Bindings. `./selftest.sh searchundo` prüft im gepackten
+Bundle die Markdown-Splitansicht mit 700 Ersetzungen, 24 Tabwechseln und 48
+Undo-/Redo-Aktionen: 24 Command-Z-Tastendrücke durch AppKits Event-Queue
+und 24 Redo-Aktionen über die Responder-Kette. Dieser Test
+benötigt exklusiven Fensterfokus.
+
 ## Build-Anleitung
 
 ```bash

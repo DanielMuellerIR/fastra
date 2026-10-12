@@ -846,7 +846,7 @@ struct EditorView: View {
     /// Der eigentliche CodeEditSourceEditor — nur gezeigt, wenn isLoading = false.
     private var actualEditor: some View {
         SourceEditor(
-            workspace.activeTabContent,
+            workspace.sourceEditorContent,
             language: detectedLanguage,
             configuration: editorConfiguration,
             // Hinweis Scroll-Verhalten: CESEs State-Reconcile drehte mit der
@@ -872,6 +872,7 @@ struct EditorView: View {
             },
             foldProvider: foldProviders.provider(language: detectedLanguage,
                 isFourD: activeCustomLanguage?.id == CustomLanguageRegistry.fourD.id),
+            undoManager: workspace.activeTab.map { $0.undoHistory.manager(for: $0.content) },
             coordinators: [minimapLayoutCoordinator],
             // 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c) — NUR
             // bei aktiver 4D-Sprache; sonst bleibt das Vorschlagsfenster
@@ -1043,7 +1044,8 @@ struct EditorView: View {
         // `editorReloadNonce` hängt zusätzlich an der ID: ein PROGRAMMATISCHER
         // Buffer-Replace (Alle/Einzel-Ersetzen) zählt ihn hoch → der Editor wird
         // mit dem ersetzten Inhalt neu erzeugt und zeigt die Änderung sofort
-        // (sonst bliebe der alte Text stehen — „Ersetzen wirkt folgenlos").
+        // (sonst bliebe der alte Text stehen — „Ersetzen wirkt folgenlos“).
+        // Der dokumentgebundene Undo-Manager überlebt diesen Neuaufbau.
         .id(EditorView.editorIdentity(tabID: workspace.activeTab?.documentID,
                                       reloadNonce: workspace.editorReloadNonce))
         // Willkommens-Platzhalter (Umbau 2026-07-30, ersetzt den früheren

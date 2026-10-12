@@ -7,6 +7,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.139.3] — 2026-10-12
+
+### Behoben
+
+- Suchen/Ersetzen im Dokument und in geöffneten Tabs erhält den Rückgängig-Verlauf. Jede Ersetzung lässt sich separat zurücknehmen; frühere Eingaben und Zwischenstände bleiben erreichbar.
+- Tabwechsel und der Neuaufbau des Quelltexteditors bewahren Rückgängig und Wiederholen, auch in der geteilten Markdown-Ansicht. Verspätete Editor-Rückmeldungen können kein anderes Dokument überschreiben.
+
 ## [v1.139.2] — 2026-10-11
 
 ### Behoben

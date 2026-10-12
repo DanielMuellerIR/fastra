@@ -99,6 +99,7 @@ private final class HexEditSessionStorage: Equatable {
 }
 
 struct EditorTab: Identifiable, Hashable {
+    let undoHistory = DocumentUndoHistory()
     let id: UUID
     var title: String
     var path: String
@@ -1975,6 +1976,26 @@ final class Workspace: ObservableObject {
     private var activeTabIndex: Int? {
         guard let id = activeTabID else { return nil }
         return tabs.firstIndex(where: { $0.id == id })
+    }
+
+    /// Ein abgebauter Editor darf weder Inhalt noch Verlauf des neuen Tabs
+    /// überschreiben. Nur dieser Binding-Pfad meldet bereits registrierte Edits.
+    var sourceEditorContent: Binding<String> {
+        let documentID = activeDocumentID
+        let reloadNonce = editorReloadNonce
+        let history = activeTab?.undoHistory
+        let binding = activeTabContent
+        return Binding(
+            get: { [weak self] in
+                self?.tabs.first(where: { $0.documentID == documentID })?.content ?? ""
+            },
+            set: { [weak self] text in
+                guard let self, self.activeDocumentID == documentID,
+                      self.editorReloadNonce == reloadNonce,
+                      let tab = self.activeTab, self.textEditingIsAllowed(for: tab) else { return }
+                history?.didEditInSource(text)
+                binding.wrappedValue = text
+            })
     }
 
     /// Schreibender Zugriff auf den Content der aktiven Tab — direkt als Binding fürs Editor-Field.
@@ -7035,6 +7056,7 @@ final class Workspace: ObservableObject {
         guard let replaced = BufferSearch.replaceAll(in: text, options: currentSearchOptions,
                                                      searchRange: activeSearchRange),
               replaced != text else { return false }
+        activeTab?.undoHistory.replace(text, with: replaced)
         activeTabContent.wrappedValue = replaced
         // Editor zur Neuerzeugung zwingen, sonst zeigt CodeEditSourceEditor
         // weiter den Vor-Replace-Text (Binding-Änderungen fließen NICHT zurück
@@ -7086,6 +7108,7 @@ final class Workspace: ObservableObject {
             // Ersetzung nicht.
             let needsLanguageLengths = Self.isEligibleForContentDetection(tabs[idx])
             let oldLength = needsLanguageLengths ? tabs[idx].content.count : 0
+            tabs[idx].undoHistory.replace(tabs[idx].content, with: newContent)
             tabs[idx].content = newContent
             tabs[idx].isDirty = true
             // Direkte Modellmutation läuft am `activeTabContent`-Binding (und
@@ -7131,6 +7154,7 @@ final class Workspace: ObservableObject {
         // splicen — kein Sonderpfad nötig.
         let replaced = BufferSearch.applyReplacements(in: text, matches: [match])
         guard replaced != text else { return }
+        activeTab?.undoHistory.replace(text, with: replaced)
         activeTabContent.wrappedValue = replaced
         // Editor neu erzeugen (siehe `editorReloadNonce` / applyAllInActiveBuffer):
         // sonst bliebe der ersetzte Treffer im sichtbaren Text unverändert.
@@ -7204,6 +7228,7 @@ final class Workspace: ObservableObject {
         // für ungeeignete (z. B. gespeicherte große) Tabs reine Main-Thread-
         // Verschwendung (Review 2026-08-31, wie in applyAllInOpenTabs).
         let needsLanguageLengths = Self.isEligibleForContentDetection(tabs[tabIndex])
+        tabs[tabIndex].undoHistory.replace(text, with: replaced)
         tabs[tabIndex].content = replaced
         tabs[tabIndex].isDirty = true
         // Wie in `applyAllInOpenTabs`: Die direkte Modellmutation muss die
