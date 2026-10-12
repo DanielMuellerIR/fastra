@@ -578,7 +578,7 @@ no network traffic.
 
 When the separately installed **Poor Man's Text** tool is present, Fastra can
 convert whole documents to Markdown. Opening a recognized file — depending on
-the tool's version, for example `.rtf`, `.rtfd`, `.docx`, `.odt`, or `.doc` —
+the tool's version, for example `.docx`, `.odt`, or `.doc` —
 shows a **Convert to Markdown** hint above the editor. The same command is in
 the **File** menu and in the project sidebar's context menu. Fastra never
 converts on its own: choosing the command is your consent.
@@ -592,6 +592,10 @@ them, page, sheet or other counts. **Cancel** stops the current conversion.
 Fastra waits for the tool to exit, removes its working folder and imports no
 output. The source remains unchanged. Older tool versions without progress
 reports still show the ongoing conversion and can also be cancelled.
+
+When opening an `.rtf` file, including from the project sidebar, Fastra asks
+whether to convert it to Markdown or open its source text. **Cancel** opens
+and changes nothing.
 
 An `.rtfd` document is a folder in Finder. Fastra therefore asks whether to
 convert it or open it as a folder — both when opening it and when clicking it

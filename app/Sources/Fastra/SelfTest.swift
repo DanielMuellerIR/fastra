@@ -24769,6 +24769,59 @@ enum SelfTest {
             guard leftovers.isEmpty else {
                 finishMarkdownImport(base, false, "Zwischenverzeichnis blieb liegen: \(leftovers)")
             }
+            routeFileMarkdownImportFixture(in: base)
+        }
+    }
+
+    private static func routeFileMarkdownImportFixture(in base: URL) {
+        Task { @MainActor in
+            guard let workspace = Workspace.shared else {
+                finishMarkdownImport(base, false, "Workspace fehlt")
+            }
+            let source = base.appendingPathComponent("Direkt.RTF")
+            let expected = base.appendingPathComponent("Direkt.md")
+            let bytes = Data(#"{\rtf1\ansi Direkt geoeffnet.\par Zweiter Absatz.}"#.utf8)
+            do { try bytes.write(to: source) }
+            catch { finishMarkdownImport(base, .environment, "RTF-Fixture nicht erzeugbar") }
+            let before = workspace.tabs.map(\.id)
+            var asked = 0
+            Workspace.markdownImportFileChoiceProvider = { url, format in
+                asked += 1
+                guard url == source, format.identifier == "rtf" else {
+                    finishMarkdownImport(base, false, "RTF-Rückfrage betrifft falsche Quelle")
+                }
+                return .cancel
+            }
+            workspace.openFileOrFolder(at: source)
+            guard asked == 1, workspace.tabs.map(\.id) == before,
+                  !FileManager.default.fileExists(atPath: expected.path) else {
+                finishMarkdownImport(base, false, "RTF-Abbruch öffnet oder schreibt trotzdem")
+            }
+            Workspace.markdownImportFileChoiceProvider = { _, _ in asked += 1; return .convert }
+            workspace.openFileOrFolder(at: source)
+            for _ in 0..<200 {
+                if workspace.activeTab?.url == expected.canonicalFileURL,
+                   workspace.activeTab?.isLoading == false { break }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            guard asked == 2, workspace.activeTab?.url == expected.canonicalFileURL,
+                  workspace.activeTab?.content.contains("Direkt geoeffnet.") == true,
+                  !workspace.tabs.contains(where: { $0.url == source.canonicalFileURL }),
+                  (try? Data(contentsOf: source)) == bytes else {
+                finishMarkdownImport(base, false, "RTF-Öffnen liefert keinen Markdown-Tab oder verändert die Quelle")
+            }
+            Workspace.markdownImportFileChoiceProvider = { _, _ in asked += 1; return .openAsText }
+            workspace.openFileOrFolder(at: source)
+            for _ in 0..<200 {
+                if workspace.activeTab?.url == source.canonicalFileURL,
+                   workspace.activeTab?.isLoading == false { break }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            guard asked == 3, workspace.activeTab?.url == source.canonicalFileURL,
+                  workspace.activeTab?.content == String(decoding: bytes, as: UTF8.self) else {
+                finishMarkdownImport(base, false, "RTF lässt sich nicht ausdrücklich als Quelltext öffnen")
+            }
+            Workspace.markdownImportFileChoiceProvider = nil
             convertCollidingMarkdownImportFixture(in: base)
         }
     }
@@ -24904,7 +24957,7 @@ enum SelfTest {
             }
             finishMarkdownImport(base, true,
                                  "Formatkatalog, Zwischenspeicher, flache Umwandlung, "
-                                    + "Kollisionsschutz, Ordnerfall, RTFD-Listen und Absatzgrenzen ok")
+                                    + "RTF-Öffnen/Abbruch/Quelltext, Kollisionsschutz, Ordnerfall, RTFD-Listen und Absatzgrenzen ok")
         }
     }
 
@@ -24920,6 +24973,8 @@ enum SelfTest {
     private static func finishMarkdownImport(
         _ base: URL, _ outcome: SelfTestOutcome, _ message: String
     ) -> Never {
+        Workspace.markdownImportFileChoiceProvider = nil
+        Workspace.markdownImportPackageChoiceProvider = nil
         try? FileManager.default.removeItem(at: base)
         finish(outcome, message)
     }
@@ -24975,8 +25030,71 @@ enum SelfTest {
                     }
                 }
             }
+            @MainActor func checkOpeningDialogs() throws {
+                func buttons(in view: NSView) -> [NSButton] {
+                    (view as? NSButton).map { [$0] } ?? view.subviews.flatMap { buttons(in: $0) }
+                }
+                let source = base.appendingPathComponent("Beispiel.rtf")
+                for available in [true, false] {
+                    let format = MarkdownImportFormat(identifier: "rtf", fileExtensions: ["rtf"],
+                        isPackage: false, isAvailable: available,
+                        unavailableReason: available ? nil : "missing required tool: pandoc")
+                    let choices: [(String, Workspace.MarkdownImportFileChoice)] = available
+                        ? [("In Markdown umwandeln", .convert), ("Als Quelltext öffnen", .openAsText), ("Abbrechen", .cancel)]
+                        : [("Als Quelltext öffnen", .openAsText), ("Abbrechen", .cancel)]
+                    for (index, choice) in choices.enumerated() {
+                        var failure: String?
+                        var clicked = false
+                        let deadline = Date().addingTimeInterval(5)
+                        let timer = Timer(timeInterval: 0.1, repeats: true) { timer in
+                            MainActor.assumeIsolated {
+                                guard let dialog = NSApp.modalWindow, let content = dialog.contentView else {
+                                    if Date() > deadline {
+                                        failure = "RTF-Rückfrage erscheint nicht"
+                                        timer.invalidate()
+                                        NSApp.abortModal()
+                                    }
+                                    return
+                                }
+                                timer.invalidate()
+                                let controls = buttons(in: content).filter { !$0.title.isEmpty }
+                                guard choices.allSatisfy({ expected in
+                                    controls.contains { $0.title == L10n.string(expected.0) && $0.isEnabled }
+                                }), let button = controls.first(where: { $0.title == L10n.string(choice.0) }),
+                                      available || !controls.contains(where: { $0.title == L10n.string("In Markdown umwandeln") }) else {
+                                    failure = "RTF-Rückfrage bietet falsche oder deaktivierte Knöpfe"
+                                    NSApp.abortModal()
+                                    return
+                                }
+                                if index == 0,
+                                   let directory = ProcessInfo.processInfo.environment["FASTRA_MARKDOWN_IMPORT_UI_DIR"] {
+                                    let path = URL(fileURLWithPath: directory)
+                                        .appendingPathComponent(available ? "rtf-open.png" : "rtf-unavailable.png")
+                                    if let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
+                                        content.cacheDisplay(in: content.bounds, to: bitmap)
+                                        let data = bitmap.representation(using: .png, properties: [:])
+                                        do {
+                                            try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+                                            try data?.write(to: path)
+                                            if data == nil { failure = "RTF-Dialogaufnahme ist leer" }
+                                        } catch { failure = error.localizedDescription }
+                                    } else { failure = "RTF-Dialogaufnahme fehlt" }
+                                }
+                                clicked = true
+                                button.performClick(nil)
+                            }
+                        }
+                        RunLoop.main.add(timer, forMode: .modalPanel)
+                        let result = Workspace.askMarkdownImportFileChoice(for: source, format: format)
+                        timer.invalidate()
+                        try require(failure == nil && clicked && result == choice.1,
+                                    failure ?? "RTF-Dialog liefert die falsche Auswahl")
+                    }
+                }
+            }
             do {
                 try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                try checkOpeningDialogs()
                 let script = """
                 #!/bin/sh
                 output=''
@@ -25050,7 +25168,7 @@ enum SelfTest {
                 }
                 service.locateTool = oldLocate
                 try? FileManager.default.removeItem(at: base)
-                finish(true, "Laufende Seitenzählung, echter Abbruchknopf, Erfolg mit vollständigen/duplizierten Verlustwarnungen und Fehler; schmal/breit")
+                finish(true, "RTF-Rückfragen mit/ohne Pandoc, alle Dialogknöpfe, laufende Seitenzählung, echter Abbruchknopf, Verlustwarnungen und Fehler; schmal/breit")
             } catch {
                 service.cancelConversion()
                 try? await wait { !service.isRunning }

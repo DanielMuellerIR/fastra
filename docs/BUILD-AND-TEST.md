@@ -599,7 +599,8 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   erfolgreicher Aufnahme. Danach beide Sprachfassungen visuell prüfen.
 - **Markdown-Umwandlung:** `./selftest.sh markdownimport` läuft fensterlos gegen
   das echte `poormans-text`: Formatkatalog (RTF als Datei, RTFD als Paket),
-  Zwischenspeicher, eine Umwandlung ohne Bilder, eine mit eingebettetem PNG und
+  Zwischenspeicher, RTF-Öffnen mit Umwandeln/Quelltext/Abbrechen, eine Umwandlung
+  ohne Bilder, eine mit eingebettetem PNG und
   der Kollisionsschutz — jeweils an echten temporären Dateien. Der RTFD-Paketweg
   prüft außerdem zusammenhängende Aufzählungen mit wörtlichem „• “ und erhält
   gewöhnliche Absatzgrenzen. Fehlt das
@@ -778,7 +779,8 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    dorthin bringt ein eigener Worktree; `.build/artifacts` vorher aus einem gebauten Checkout
    klonen (`cp -Rc`), sonst scheitert SwiftPM am gesperrten Login-Keychain.
 
-Der gezielte Selbsttest `markdownimportui` nutzt eine kontrollierte CLI mit
+Der gezielte Selbsttest `markdownimportui` prüft die echten RTF-Rückfragen mit
+und ohne verfügbares Pandoc, einschließlich aller Dialogknöpfe. Er nutzt eine kontrollierte CLI mit
 angehaltener Ausgabe. Er prüft echte Fortschrittsmeldungen vor Prozessende,
 den sichtbaren Abbruchknopf, unveränderte Quellen und aufgeräumte Arbeitsordner
 sowie Erfolg mit vollständigen Verlustwarnungen und einen Fehler. Mit

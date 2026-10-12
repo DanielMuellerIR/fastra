@@ -5,10 +5,11 @@
 //
 // Zwei Eigenschaften bestimmen den Aufbau:
 //
-// 1. Das Öffnen einer Datei darf NIE auf diesen Dienst warten. Der Katalog wird
-//    beim App-Start vorgewärmt und danach höchstens alle fünf Minuten neu
-//    erfragt. Wer poormans-text aktualisiert und die neuen Formate sofort
-//    nutzen will, startet Fastra neu.
+// 1. Die Formatabfrage blockiert nie den UI-Thread. Der Katalog wird beim
+//    App-Start vorgewärmt und danach höchstens alle fünf Minuten neu erfragt.
+//    RTF und Dokumentpakete warten asynchron auf das Konvertierungsangebot;
+//    andere Dateien öffnen sofort. Neu installierte Formate sind spätestens
+//    nach dem nächsten App-Start bekannt.
 // 2. Die Quelle wird nie verändert. Das Werkzeug schreibt in ein verstecktes
 //    Zwischenverzeichnis; erst das fertige Ergebnis wandert unter seinen
 //    endgültigen Namen. Bricht etwas ab, bleibt neben der Quelle nichts liegen.

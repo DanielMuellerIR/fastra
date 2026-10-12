@@ -2925,8 +2925,8 @@ final class Workspace: ObservableObject {
     }
 
     /// Öffnet die gewählte URL passend: Ordner → als Projekt laden (Dateibaum +
-    /// Git wie über den Willkommensbildschirm), Datei → in einen Tab. Gemeinsamer
-    /// Einstieg für ⌘O.
+    /// Git wie über den Willkommensbildschirm), Datei → in einen Tab. RTF und
+    /// Dokumentpakete bieten vorher die Umwandlung an. Gemeinsamer Einstieg für ⌘O.
     func openFileOrFolder(at url: URL) {
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else {
@@ -2935,7 +2935,25 @@ final class Workspace: ObservableObject {
             return
         }
         guard isDir.boolValue else {
-            loadFile(at: url)
+            // RTF-Quelltext ist für gewöhnliches Lesen ungeeignet. Wie beim
+            // RTFD-Paket fällt die Entscheidung deshalb vor dem Laden.
+            guard url.pathExtension.lowercased() == "rtf" else {
+                loadFile(at: url)
+                return
+            }
+            MarkdownImportService.shared.withCatalog { [weak self] catalog in
+                guard let self else { return }
+                guard let format = catalog?.format(forExtension: url.pathExtension),
+                      !format.isPackage else {
+                    self.loadFile(at: url)
+                    return
+                }
+                switch Workspace.askMarkdownImportFileChoice(for: url, format: format) {
+                case .convert:    self.convertToMarkdown(url)
+                case .openAsText: self.loadFile(at: url)
+                case .cancel:     break
+                }
+            }
             return
         }
         // Ein Ordner OHNE Endung ist immer ein Projekt — der Normalfall bleibt
@@ -2962,6 +2980,52 @@ final class Workspace: ObservableObject {
             case .openAsFolder: self.openProject(at: url)
             case .cancel:       break
             }
+        }
+    }
+
+    enum MarkdownImportFileChoice {
+        case convert
+        case openAsText
+        case cancel
+    }
+
+    /// Testhaken für den fensterlosen Importtest; der UI-Test nutzt den echten Dialog.
+    static var markdownImportFileChoiceProvider:
+        ((URL, MarkdownImportFormat) -> MarkdownImportFileChoice)?
+
+    static func askMarkdownImportFileChoice(
+        for url: URL,
+        format: MarkdownImportFormat
+    ) -> MarkdownImportFileChoice {
+        if let provider = markdownImportFileChoiceProvider {
+            return provider(url, format)
+        }
+        let alert = NSAlert()
+        alert.messageText = L10n.format("„%@“ ist ein %@-Dokument.",
+                                        url.lastPathComponent, format.identifier.uppercased())
+        guard format.isAvailable else {
+            alert.informativeText = [
+                L10n.format(
+                    "Fastra könnte das %@-Dokument in Markdown umwandeln, doch dafür fehlt gerade etwas.",
+                    format.identifier.uppercased()
+                ),
+                markdownImportUnavailableExplanation(for: format),
+            ].compactMap { $0 }.joined(separator: "\n\n")
+            alert.addButton(withTitle: L10n.string("Als Quelltext öffnen"))
+            alert.addButton(withTitle: L10n.string("Abbrechen"))
+            return alert.runModal() == .alertFirstButtonReturn ? .openAsText : .cancel
+        }
+        alert.informativeText = L10n.format(
+            "Fastra kann das %@-Dokument in Markdown umwandeln und danach öffnen. Das Original bleibt unverändert.",
+            format.identifier.uppercased()
+        )
+        alert.addButton(withTitle: L10n.string("In Markdown umwandeln"))
+        alert.addButton(withTitle: L10n.string("Als Quelltext öffnen"))
+        alert.addButton(withTitle: L10n.string("Abbrechen"))
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .convert
+        case .alertSecondButtonReturn: return .openAsText
+        default: return .cancel
         }
     }
 

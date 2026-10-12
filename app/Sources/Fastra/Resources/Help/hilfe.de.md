@@ -605,7 +605,7 @@ einer Markdown-Datei erzeugt also weiterhin keinen Netzverkehr.
 
 Ist das separat installierte Werkzeug **Poor Man's Text** vorhanden, kann Fastra
 ganze Dokumente in Markdown umwandeln. Öffnest du eine erkannte Datei — je nach
-Stand des Werkzeugs etwa `.rtf`, `.rtfd`, `.docx`, `.odt` oder `.doc` —,
+Stand des Werkzeugs etwa `.docx`, `.odt` oder `.doc` —,
 erscheint über dem Editor der Hinweis **In Markdown umwandeln**. Denselben
 Befehl findest du im Menü **Ablage** und im Rechtsklickmenü der Projekt-
 Seitenleiste. Fastra wandelt nichts von selbst um: Der Klick auf den Befehl ist
@@ -621,6 +621,10 @@ den laufenden Vorgang. Fastra wartet auf das Ende des Werkzeugs, räumt den
 Arbeitsordner auf und übernimmt keine Ausgabe. Die Quelle bleibt unverändert.
 Ältere Werkzeugstände ohne Fortschrittsmeldungen zeigen weiter den laufenden
 Vorgang und bleiben ebenfalls abbrechbar.
+
+Bei `.rtf` fragt Fastra beim Öffnen und in der Projekt-Seitenleiste direkt nach,
+ob es das Dokument in Markdown umwandeln oder als Quelltext öffnen soll.
+**Abbrechen** öffnet und verändert nichts.
 
 Ein `.rtfd`-Dokument ist im Finder ein Ordner. Fastra fragt deshalb nach, ob
 es umgewandelt oder als Ordner geöffnet werden soll — sowohl beim Öffnen als

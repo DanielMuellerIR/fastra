@@ -7,6 +7,12 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.139.4] — 2026-10-12
+
+### Behoben
+
+- RTF-Dokumente bieten beim Öffnen und in der Projekt-Seitenleiste direkt die Umwandlung in Markdown an. Alternativ lassen sie sich ausdrücklich als Quelltext öffnen; Abbrechen verändert und öffnet nichts.
+
 ## [v1.139.3] — 2026-10-12
 
 ### Behoben

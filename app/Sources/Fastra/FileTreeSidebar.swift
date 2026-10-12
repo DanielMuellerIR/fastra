@@ -848,7 +848,7 @@ private struct FileTreeLevel: View {
                 } else {
                     // Datei-Klick hebt die Ordner-Markierung wieder auf.
                     workspace.selectedFileTreeFolder = nil
-                    workspace.loadFile(at: node.url)
+                    workspace.openFileOrFolder(at: node.url)
                 }
             }
             .onAppear {
