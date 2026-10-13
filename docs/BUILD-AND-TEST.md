@@ -519,7 +519,10 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Prozessnahe Runner-Regressionen tragen getrennt davon das Kennzeichen
   `serialRunnerIntegration`/`SerialRunnerIntegration`, weil sie selbst
   Prozessgruppen, Pipe-Grenzfälle oder Cleanup-Läufe starten und den parallelen
-  Kern sonst künstlich belasten.
+  Kern sonst künstlich belasten. Auch die asynchrone JSON-Responsivitätsmessung
+  trägt diesen Marker: Ihre Wanduhrgrenzen dürfen nicht die Arbeit fremder
+  MainActor-Tests während der Parser-Wartezeit mitmessen. `.serialized` an
+  ihrer Suite allein verhindert diese Überlagerung nicht.
   Die sichtbaren, lokalisierten Testtitel sind ausdrücklich kein Teil der
   Gruppierung. Für gezielte Runner-Diagnosen stehen `./test.sh --fast-only` und
   `./test.sh --serial-integration-only` bereit; ohne diese Optionen bleibt der
@@ -910,7 +913,11 @@ nur diese. Das ist ein fester Abschluss pro Suite, nicht pro Einzeltest.
 Die Runner verfolgen auch Kindprozesse und eigene Prozessgruppen. Bei Timeout
 oder Signal folgen auf `TERM` und `CONT` nach kurzer Frist ein begrenztes
 `KILL` und eine echte Ende-Prüfung; Git-, Import- oder Capture-Prozesse dürfen
-nicht im Hintergrund weiterlaufen. In-App-Tests mit Copy/Paste sichern die
+nicht im Hintergrund weiterlaufen. Ein zugestelltes `KILL` bestätigt dabei
+noch kein Prozessende. Bleibt ein Kind lebendig, kehrt der Cleanup begrenzt mit
+einem Fehler zurück und behält Prozessmarken sowie die private Sandbox für die
+Wiederherstellung. Er wartet dann weder synchron auf das Kind noch startet er
+weitere Hilfsprozesse. In-App-Tests mit Copy/Paste sichern die
 allgemeine Zwischenablage itemgetreu innerhalb der Sandbox. Der normale
 Abschluss gibt sie selbst zurück, nach Crash oder Timeout übernimmt ein
 frischer Hilfsprozess. Hat der Nutzer inzwischen kopiert, bleibt der neuere

@@ -90,6 +90,9 @@ os.execvp(sys.argv[5], sys.argv[5:])
             fastra_test_pid_matches_token "$FASTRA_TEST_STARTED_PID" "$token" \
                 && kill -KILL "$FASTRA_TEST_STARTED_PID" 2>/dev/null || true
         fi
+        # Ein noch lebendes Kind bleibt dem äußeren Cleanup zugeordnet.
+        # KILL allein erlaubt weder wait noch das Löschen seiner Buchhaltung.
+        fastra_test_pid_is_live "$FASTRA_TEST_STARTED_PID" && return 2
         wait "$FASTRA_TEST_STARTED_PID" 2>/dev/null || true
         rm -rf -- "$handshake"
         FASTRA_TEST_PENDING_PID=""
@@ -102,7 +105,8 @@ os.execvp(sys.argv[5], sys.argv[5:])
     FASTRA_TEST_STARTED_GROUPS+=("$group")
     FASTRA_TEST_STARTED_TOKENS+=("$token")
     if ! : > "$go"; then
-        kill -TERM -"$group" 2>/dev/null || true
+        terminate_fastra_test_process_trees "$FASTRA_TEST_STARTED_PID" \
+            >/dev/null 2>&1 || return 2
         wait "$FASTRA_TEST_STARTED_PID" 2>/dev/null || true
         rm -rf -- "$handshake"
         FASTRA_TEST_PENDING_PID=""
@@ -120,7 +124,7 @@ os.execvp(sys.argv[5], sys.argv[5:])
     done
     if [ ! -s "$released" ]; then
         terminate_fastra_test_process_trees "$FASTRA_TEST_STARTED_PID" \
-            >/dev/null 2>&1 || true
+            >/dev/null 2>&1 || return 2
         wait "$FASTRA_TEST_STARTED_PID" 2>/dev/null || true
         rm -rf -- "$handshake"
         FASTRA_TEST_PENDING_PID=""

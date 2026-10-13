@@ -733,12 +733,19 @@ terminate_activation_process() {
        && activation_process_is_owned "$pid" "$token"; then
         kill -KILL "$pid" 2>/dev/null || true
     fi
-    wait "$pid" 2>/dev/null || true
-    if fastra_test_pid_is_live "$pid" \
-       && activation_process_is_owned "$pid" "$token"; then
-        clear_activation_process
+    # KILL bestätigt nur die Signalannahme. Ein Kernel-Hänger darf weder
+    # das folgende wait blockieren noch seine Eigentumsmarke verlieren.
+    tick=0
+    while [ "$tick" -lt 20 ] \
+          && fastra_test_pid_is_live "$pid" \
+          && activation_process_is_owned "$pid" "$token"; do
+        sleep 0.05
+        tick=$((tick + 1))
+    done
+    if fastra_test_pid_is_live "$pid"; then
         return 1
     fi
+    wait "$pid" 2>/dev/null || true
     clear_activation_process
 }
 

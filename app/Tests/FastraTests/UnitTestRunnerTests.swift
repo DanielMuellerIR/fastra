@@ -149,6 +149,30 @@ private final class UnitTestRunnerFixture {
 
 @Suite("Unit-Test-Runner mit zwei Phasen", .serialized)
 struct SerialRunnerIntegrationTests {
+    @Test("EXIT-Pfad wartet nach fehlgeschlagener Terminierung nicht erneut")
+    func failedTerminationPreservesSandboxWithoutWaiting() throws {
+        let definition = try shellFunction(named: "cleanup", in: unitTestRunnerURL)
+        let script = #"""
+        set -u
+        FASTRA_TEST_STARTED_ROOTS=(4242)
+        TEST_PROCESS_PID=4242
+        requested_phases=1
+        run_phases=0
+        passed_phases=0
+        failed_phases=0
+        environment_errors=0
+        terminate_fastra_test_process_trees() { return 1; }
+        wait() { printf 'UNEXPECTED_WAIT\n'; }
+        purge_fastra_registered_test_defaults() { printf 'UNEXPECTED_PURGE\n'; }
+        release_fastra_test_sandbox() { printf 'UNEXPECTED_RELEASE\n'; }
+        """# + definition + "\ntrue\ncleanup\n"
+        let result = try runTestProcess("/bin/bash", arguments: ["-c", script], timeout: 5)
+        #expect(result.status == 2, "\(result.output)")
+        #expect(!result.output.contains("UNEXPECTED_"), "\(result.output)")
+        #expect(result.output.contains("Sandbox bleiben unangetastet"))
+        #expect(result.output.contains("environment_errors=1 exit=2"))
+    }
+
     @Test("Komplementärer Marker teilt den vollständigen Bestand ohne Lücke")
     func complementaryGroupingUsesOneSandbox() throws {
         let fixture = try UnitTestRunnerFixture()

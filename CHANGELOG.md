@@ -7,6 +7,78 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.139.16] — 2026-10-13
+
+### Behoben
+
+- XPath-Navigation verwirft alte Quellpositionen, wenn ein Tabplatz ein anderes Dokument enthält, auch bei gleicher Inhaltsrevision. Abfragen mit überlappenden Nachfahrenpfaden durchlaufen jeden Elternkontext nur noch einmal statt dieselben Teilbäume wiederholt zu sammeln.
+
+## [v1.139.15] — 2026-10-13
+
+### Behoben
+
+- Sortieren, Duplikataktionen und Zeilenverbinden berücksichtigen eine markierte letzte Leerzeile als Inhalt. Der bloße Abschlussumbruch des ganzen Dokuments bleibt von echten Leerzeilen unterschieden; das gilt für LF, CRLF und CR.
+
+## [v1.139.14] — 2026-10-13
+
+### Behoben
+
+- Drucken bleibt nach dem Abholen visueller Markdown-Eingaben an das ursprünglich gewählte Fenster und Dokument gebunden. Ein zwischenzeitlicher Fensterwechsel druckt kein anderes Dokument; ein ausgetauschter aktiver Tab bricht den vorbereiteten Auftrag ab.
+
+## [v1.139.13] — 2026-10-13
+
+### Behoben
+
+- Der Dateinamensfilter verwirft verspätete Ergebnisse nach einem Projektwechsel oder dem erneuten Öffnen desselben Projekts. Ein erneut eingegebener gleicher Suchtext kann dadurch keine Treffer des vorherigen Projektstands übernehmen.
+
+## [v1.139.12] — 2026-10-13
+
+### Behoben
+
+- Markdown-Vorschau und WYSIWYG-Ansicht übernehmen auch Änderungen der Unicode-Zusammensetzung. Veraltete WebKit-Eingaben und Synchronisierungen dürfen einen inzwischen byteverschiedenen Dokumentstand nicht zurückschreiben.
+
+## [v1.139.11] — 2026-10-13
+
+### Behoben
+
+- Ein laufender Speicherauftrag wird abgebrochen, wenn sein Tabplatz inzwischen ein anderes Dokument enthält. Gleiche Dateiadresse und Inhaltsrevision reichen nicht mehr aus, um den neuen Tab zu übernehmen oder das alte Speicherziel zu schreiben.
+
+## [v1.139.10] — 2026-10-13
+
+### Behoben
+
+- Einzel- und Gesamtersetzungen in „Datei“ und „Geöffnet“ übernehmen auch Änderungen der Unicode-Zusammensetzung. Der dokumentgebundene Undo-Verlauf stellt die ursprünglichen und ersetzten Bytes vollständig wieder her.
+
+## [v1.139.9] — 2026-10-13
+
+### Behoben
+
+- „Speichern unter“ aktualisiert bei umgeschriebenen Markdown-Bildpfaden auch den geöffneten Quelltexteditor. Weitere Eingaben bleiben mit dem dokumentgebundenen Rückgängig- und Wiederholen-Verlauf verbunden.
+
+## [v1.139.8] — 2026-10-13
+
+### Behoben
+
+- Bei überlappenden Markdown-Kopieraufträgen gewinnt der zuletzt gestartete Auftrag, auch nach einem Tabwechsel. Ältere Bildexporte überschreiben weder die neuere Auswahl noch zwischenzeitlich geänderte Zwischenablageinhalte.
+
+## [v1.139.7] — 2026-10-13
+
+### Behoben
+
+- Die Ersetzungsvorschau zählt auch Änderungen der Unicode-Normalisierung vollständig. Solche Zeilen werden bei begrenztem Platz vor unverändertem Kontext angezeigt; fehlen Änderungszeilen, bleibt „Alle ersetzen“ gesperrt.
+
+## [v1.139.6] — 2026-10-13
+
+### Behoben
+
+- Unicode-Normalisierungen im Quelltexteditor werden vollständig ins Dokument übernommen und als ungespeichert erkannt, auch bei unveränderter Bytelänge. Rückgängig und Wiederholen stellen jeweils den exakten Zeichenstand wieder her; veraltete Hex-Verläufe werden verworfen.
+
+## [v1.139.5] — 2026-10-13
+
+### Behoben
+
+- Suchen und Ersetzen verwirft veraltete Trefferpositionen auch dann sofort, wenn sich nur die Unicode-Zusammensetzung eines Dokuments ändert. Ersetzungen in „Datei“ und „Geöffnet“ warten auf die neu berechneten Treffer.
+
 ## [v1.139.4] — 2026-10-12
 
 ### Behoben

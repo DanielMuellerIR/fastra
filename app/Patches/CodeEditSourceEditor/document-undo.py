@@ -27,10 +27,10 @@ patch(editor, '        if !(state.cursorPositions?.isEmpty ?? true) {', '''     
         if !(state.cursorPositions?.isEmpty ?? true) {''')
 
 manager = Path(sys.argv[2]) / 'Sources/CodeEditTextView/Utils/CEUndoManager.swift'
-patch(manager, '    // MARK: - Grouping', '''    /// Modelländerung an einem eventuell nicht montierten Dokument. Die alte
+replacement = '''    /// Modelländerung an einem eventuell nicht montierten Dokument. Die alte
     /// Ansicht darf den neuen Verlauf bis zum erneuten Anbinden nicht ausführen.
     public func fastraRegisterDocumentReplacement(from before: String, to after: String) {
-        guard before != after else { return }
+        guard !before.utf8.elementsEqual(after.utf8) else { return }
         textView = nil
         endUndoGrouping()
         let oldLength = (before as NSString).length
@@ -47,5 +47,7 @@ patch(manager, '    // MARK: - Grouping', '''    /// Modelländerung an einem ev
         redoStack.removeAll()
     }
 
-    // MARK: - Grouping''')
+    // MARK: - Grouping'''
+legacy = replacement.replace('!before.utf8.elementsEqual(after.utf8)', 'before != after')
+patch(manager, legacy if legacy in manager.read_text() else '    // MARK: - Grouping', replacement)
 print('changed' if changed else 'unchanged')

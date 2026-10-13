@@ -112,7 +112,7 @@ struct EditorTab: Identifiable, Hashable {
     var content: String {
         didSet {
             contentRevision &+= 1
-            if content != oldValue {
+            if !content.utf8.elementsEqual(oldValue.utf8) {
                 hexEditSession.invalidateHistory()
             }
         }
@@ -337,8 +337,17 @@ struct EditorTab: Identifiable, Hashable {
     /// erfolgreichen Laden, Neuladen und Speichern aufrufen.
     mutating func recordSavedContentBaseline() {
         savedContentUTF8Length = content.utf8.count
-        savedContentHash = content.hashValue
+        savedContentHash = Self.exactContentHash(content)
         savedLineEnding = lineEnding
+    }
+
+    /// String.hashValue normalisiert Unicode: Auch gleich lange, anders
+    /// angeordnete kombinierende Zeichen wären damit fälschlich gespeichert.
+    private static func exactContentHash(_ content: String) -> Int {
+        var contiguous = content
+        var hasher = Hasher()
+        contiguous.withUTF8 { hasher.combine(bytes: UnsafeRawBufferPointer($0)) }
+        return hasher.finalize()
     }
 
     /// Verwirft die Basis ausdrücklich — z. B. wenn die Datei auf der Platte
@@ -386,7 +395,7 @@ struct EditorTab: Identifiable, Hashable {
               let savedLineEnding else { return false }
         return lineEnding == savedLineEnding
             && content.utf8.count == savedContentUTF8Length
-            && content.hashValue == savedContentHash
+            && Self.exactContentHash(content) == savedContentHash
     }
 
     /// Nur normale, vollständig geladene Textdokumente können als Paar für
@@ -1723,7 +1732,8 @@ final class Workspace: ObservableObject {
 
     func acceptVisualMarkdown(_ value: String, previous: String, tabID: UUID) -> Bool {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
-              tabs[index].content == previous, textEditingIsAllowed(for: tabs[index]) else { return false }
+              tabs[index].content.utf8.elementsEqual(previous.utf8),
+              textEditingIsAllowed(for: tabs[index]) else { return false }
         if activeTabID == tabID {
             activeTabContent.wrappedValue = value
         } else {
@@ -2005,7 +2015,7 @@ final class Workspace: ObservableObject {
             set: { newValue in
                 guard let idx = self.activeTabIndex else { return }
                 guard self.textEditingIsAllowed(for: self.tabs[idx]) else { return }
-                if self.tabs[idx].content != newValue {
+                if !self.tabs[idx].content.utf8.elementsEqual(newValue.utf8) {
                     let tabID = self.tabs[idx].id
                     let needsLanguageLengths = Self.isEligibleForContentDetection(
                         self.tabs[idx]
@@ -3933,6 +3943,7 @@ final class Workspace: ObservableObject {
             }) { return }
             var committed = false
             guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+                  tabs[index].documentID == tab.documentID,
                   tabs[index].contentRevision == tab.contentRevision,
                   tabs[index].url == tab.url else {
                 DispatchQueue.global(qos: .utility).async { prepared.rollback() }
@@ -4046,6 +4057,7 @@ final class Workspace: ObservableObject {
                 }
                 let current = tabs[currentIndex]
                 return !current.isLoading
+                    && current.documentID == tab.documentID
                     && current.contentRevision == capturedRevision
                     && current.content == tab.content
                     && current.encoding == tab.encoding
@@ -4171,11 +4183,16 @@ final class Workspace: ObservableObject {
             guard let finalIndex = tabs.firstIndex(where: { $0.id == tab.id }) else {
                 throw CoordinatedSaveError.tabChangedAfterWrite
             }
-            if let relocatedMarkdown, tabs[finalIndex].content != relocatedMarkdown {
+            if let relocatedMarkdown,
+               !tabs[finalIndex].content.utf8.elementsEqual(relocatedMarkdown.utf8) {
                 if visualMarkdownEditor?.tabID == tab.id {
                     visualMarkdownEditor?.invalidateForSourceReplacement()
                 }
+                // Neue Bildpfade sind eine Modelländerung: Verlauf und Editor
+                // müssen gemeinsam wechseln, sonst bleibt der Manager abgekoppelt.
+                tabs[finalIndex].undoHistory.replace(tabs[finalIndex].content, with: relocatedMarkdown)
                 tabs[finalIndex].content = relocatedMarkdown
+                if activeTabID == tab.id { editorReloadNonce += 1 }
             }
             tabs[finalIndex].isDirty = false
             tabs[finalIndex].hexEditSession.invalidateHistory()
@@ -7119,7 +7136,7 @@ final class Workspace: ObservableObject {
         // sichtbaren Vorschau und enthält keine Treffer jenseits des Caps.
         guard let replaced = BufferSearch.replaceAll(in: text, options: currentSearchOptions,
                                                      searchRange: activeSearchRange),
-              replaced != text else { return false }
+              !replaced.utf8.elementsEqual(text.utf8) else { return false }
         activeTab?.undoHistory.replace(text, with: replaced)
         activeTabContent.wrappedValue = replaced
         // Editor zur Neuerzeugung zwingen, sonst zeigt CodeEditSourceEditor
@@ -7217,7 +7234,7 @@ final class Workspace: ObservableObject {
         // applyReplacements ist pur und kann eine Ein-Treffer-Liste
         // splicen — kein Sonderpfad nötig.
         let replaced = BufferSearch.applyReplacements(in: text, matches: [match])
-        guard replaced != text else { return }
+        guard !replaced.utf8.elementsEqual(text.utf8) else { return }
         activeTab?.undoHistory.replace(text, with: replaced)
         activeTabContent.wrappedValue = replaced
         // Editor neu erzeugen (siehe `editorReloadNonce` / applyAllInActiveBuffer):
@@ -7283,7 +7300,7 @@ final class Workspace: ObservableObject {
 
         let text = tabs[tabIndex].content
         let replaced = BufferSearch.applyReplacements(in: text, matches: [target.match])
-        guard replaced != text else { return }
+        guard !replaced.utf8.elementsEqual(text.utf8) else { return }
 
         // Vor der @Published-Array-Mutation setzen: Sie stößt synchron die
         // Invalidierung und verzögert danach den asynchronen Neulauf an.

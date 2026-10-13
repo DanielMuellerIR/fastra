@@ -54,7 +54,13 @@ if ! git rev-parse --verify --quiet "refs/remotes/$remote/$branch" >/dev/null; t
 fi
 
 range="$remote/$branch..HEAD"
-if [[ -z "$(git log --oneline "$range")" ]]; then
+# Auch die Prüfung auf einen leeren Stand muss Git-Fehler erkennen. Ein
+# fehlgeschlagener Aufruf liefert sonst leeren Text und täuscht PASS vor.
+outgoing_commits="$(git rev-list --reverse "$range")" || {
+    echo "PUBLIC HISTORY AUDIT: FEHLER — ausgehende Commits konnten nicht gelesen werden." >&2
+    exit 1
+}
+if [[ -z "$outgoing_commits" ]]; then
     echo "PUBLIC HISTORY AUDIT: PASS — nichts Ausgehendes gegenüber $remote/$branch."
     exit 0
 fi
@@ -133,9 +139,7 @@ filter() {
     [[ $rc -eq 0 ]] || grep_output=""
 }
 
-# Die Liste einmal vollständig lesen; ein gescheiterter Git-Aufruf darf
-# keine leere, scheinbar saubere Kandidatenliste ergeben.
-outgoing_commits="$(git rev-list --reverse "$range")" || exit 1
+# Dieselbe erfolgreich gelesene Liste für Nachrichten und Dateizeilen nutzen.
 messages=""
 while IFS= read -r sha; do
     commit_message="$(git show -s --format='%s%n%b' "$sha")" || exit 1
@@ -159,7 +163,7 @@ if [[ -f "$patterns_file" ]]; then
     # hinzufügt und in einem späteren wieder entfernt, hat sie im Netto-Diff
     # nicht mehr — nach dem Push bleibt der Zwischen-Commit aber über seine
     # SHA dauerhaft erreichbar und damit auch die Angabe darin
-    # (Review 2026-08-02). Jede Zeile trägt vorn die Commit-Kurz-SHA, damit
+    # (Review 2026-08-02). Jede Zeile trägt vorn die volle Commit-ID, damit
     # der Fund benennbar ist.
     added_lines=""
     while IFS= read -r sha; do
@@ -201,7 +205,7 @@ else
     echo "  bewusst nicht ins öffentliche Repo."
 fi
 
-count="$(git log --oneline "$range" | wc -l | tr -d ' ')"
+count="$(printf '%s\n' "$outgoing_commits" | wc -l | tr -d ' ')"
 if [[ $findings -eq 0 ]]; then
     echo "PUBLIC HISTORY AUDIT: PASS — $count ausgehende(r) Commit(s), keine offenen internen Angaben ($reviewed exakt geprüfte Treffer)."
     exit 0

@@ -90,6 +90,8 @@ struct MarkdownPreviewView: View {
             // werden und ⌘C schreibt Klartext plus semantisches HTML.
             MarkdownRichTextView(
                 markdown: tab.content,
+                documentID: tab.documentID,
+                contentRevision: tab.contentRevision,
                 documentURL: tab.url,
                 fontName: previewFontName,
                 fontSize: previewFontSize,
@@ -679,22 +681,50 @@ final class MarkdownRenderCoalescer: @unchecked Sendable {
 /// verwenden, reine Textziele fallen weiterhin sauber auf Klartext zurück.
 @MainActor
 enum MarkdownPasteboard {
+    struct CopyRequest {
+        let id: UUID
+        let name: NSPasteboard.Name
+        let changeCount: Int
+    }
+
+    // Mehrere Ansichten teilen dieselbe Zwischenablage. Ihr changeCount ändert
+    // sich erst beim Veröffentlichen, nicht beim Start eines langsameren Exports.
+    private static var latestRequests: [NSPasteboard.Name: UUID] = [:]
+
+    static func beginCopy(to pasteboard: NSPasteboard) -> CopyRequest {
+        let request = CopyRequest(id: UUID(), name: pasteboard.name, changeCount: pasteboard.changeCount)
+        latestRequests[request.name] = request.id
+        return request
+    }
+
+    static func finishCopy(_ request: CopyRequest) {
+        if latestRequests[request.name] == request.id {
+            latestRequests.removeValue(forKey: request.name)
+        }
+    }
+
     @discardableResult
     static func write(plain: String, htmlFragment: String,
                       to pasteboard: NSPasteboard = .general,
                       imageURLs: [String: URL] = [:],
                       additionalData: [NSPasteboard.PasteboardType: Data] = [:],
-                      imageTransport: MarkdownClipboardImages.Transport? = nil) -> Bool {
-        let originalChangeCount = pasteboard.changeCount
+                      imageTransport: MarkdownClipboardImages.Transport? = nil,
+                      copyRequest: CopyRequest? = nil) -> Bool {
+        let request = copyRequest ?? beginCopy(to: pasteboard)
+        var enrichmentPending = false
+        defer { if !enrichmentPending { finishCopy(request) } }
         let initial = imageTransport ?? MarkdownClipboardImages.prepare(htmlFragment, imageURLs: [:], loadImages: false)
-        guard publish(plain: plain, transport: initial, to: pasteboard, additionalData: additionalData, expectedChangeCount: originalChangeCount) else { return false }
+        guard publish(plain: plain, transport: initial, to: pasteboard, additionalData: additionalData,
+                      request: request, expectedChangeCount: request.changeCount) else { return false }
         guard imageTransport == nil, !imageURLs.isEmpty else { return true }
         let changeCount = pasteboard.changeCount
+        enrichmentPending = true
         DispatchQueue.global(qos: .userInitiated).async {
             let transport = MarkdownClipboardImages.prepare(htmlFragment, imageURLs: imageURLs, loadImages: true)
             DispatchQueue.main.async {
-                guard pasteboard.changeCount == changeCount else { return }
-                _ = publish(plain: plain, transport: transport, to: pasteboard, additionalData: additionalData, expectedChangeCount: changeCount)
+                defer { finishCopy(request) }
+                _ = publish(plain: plain, transport: transport, to: pasteboard, additionalData: additionalData,
+                            request: request, expectedChangeCount: changeCount)
             }
         }
         return true
@@ -702,13 +732,15 @@ enum MarkdownPasteboard {
 
     private static func publish(plain: String, transport: MarkdownClipboardImages.Transport,
                                 to pasteboard: NSPasteboard,
-                                additionalData: [NSPasteboard.PasteboardType: Data], expectedChangeCount: Int) -> Bool {
+                                additionalData: [NSPasteboard.PasteboardType: Data],
+                                request: CopyRequest, expectedChangeCount: Int) -> Bool {
         let html = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>\(transport.html)</body></html>"
         let attributed = MarkdownClipboardImages.attributed(transport)
         let range = NSRange(location: 0, length: attributed?.length ?? 0)
         let rtf = attributed?.rtf(from: range, documentAttributes: [:])
         let rtfd = transport.attachments.isEmpty ? nil : attributed?.rtfd(from: range, documentAttributes: [:])
-        guard pasteboard.changeCount == expectedChangeCount else { return false }
+        guard pasteboard.name == request.name, latestRequests[request.name] == request.id,
+              pasteboard.changeCount == expectedChangeCount else { return false }
         pasteboard.clearContents()
         var types: [NSPasteboard.PasteboardType] = [.html, .string]
         if rtf != nil { types.insert(.rtf, at: 0) }
@@ -729,6 +761,10 @@ enum MarkdownPasteboard {
 /// Blöcke markieren und beim nativen ⌘C HTML plus Klartext bereitstellen.
 private struct MarkdownRichTextView: NSViewRepresentable {
     let markdown: String
+    // SwiftUI kann kanonisch gleiche Strings als unverändert behandeln und
+    // updateNSView auslassen. Dokument und Revision erzwingen den Byte-Abgleich.
+    let documentID: UUID
+    let contentRevision: UInt64
     let documentURL: URL?
     let fontName: String
     let fontSize: CGFloat
@@ -819,7 +855,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             return
         }
 
-        guard coordinator.markdown != markdown else { return }
+        guard !coordinator.markdown.utf8.elementsEqual(markdown.utf8) else { return }
         coordinator.markdown = markdown
         coordinator.renderGeneration &+= 1
         let generation = coordinator.renderGeneration

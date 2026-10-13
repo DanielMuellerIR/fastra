@@ -16,6 +16,40 @@ private func makeWorkspace() -> (Workspace, String) {
 }
 
 @MainActor
+@Test("Unicode-Eingaben werden bytegenau übernommen und bleiben bis zur Rücknahme dirty",
+      arguments: [("\u{00E9}", "e\u{0301}"), ("a\u{0301}\u{0323}", "a\u{0323}\u{0301}")])
+func dirtyTracksCanonicalUnicodeChanges(original: String, changed: String) {
+    let (ws, suite) = makeWorkspace()
+    defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let tab = EditorTab(title: "unicode.txt", path: "", content: original)
+    ws.tabs = [tab]
+    ws.activeTabID = tab.id
+    #expect(original == changed)
+    ws.activeTabContent.wrappedValue = changed
+    #expect(ws.tabs[0].content.utf8.elementsEqual(changed.utf8))
+    #expect(ws.tabs[0].isDirty)
+    #expect(!ws.tabs[0].matchesSavedContentBaseline)
+    ws.activeTabContent.wrappedValue = original
+    #expect(ws.tabs[0].content.utf8.elementsEqual(original.utf8))
+    #expect(!ws.tabs[0].isDirty)
+}
+
+@Test("Gleich lange kanonisch äquivalente Bytes sind kein gespeicherter Stand")
+func dirtyBaselineUsesExactBytes() {
+    let original = "a\u{0301}\u{0323}"
+    let changed = "a\u{0323}\u{0301}"
+    #expect(original == changed)
+    #expect(original.utf8.count == changed.utf8.count)
+    var tab = EditorTab(title: "unicode.txt", path: "", content: original)
+    tab.content = changed
+    #expect(!tab.matchesSavedContentBaseline)
+    tab.recordSavedContentBaseline()
+    #expect(tab.matchesSavedContentBaseline)
+    tab.content = original
+    #expect(!tab.matchesSavedContentBaseline)
+}
+
+@MainActor
 @Test("Tippen setzt den Punkt, exakte Rücknahme entfernt ihn wieder")
 func dirtyClearsWhenContentReturnsToBaseline() {
     let (ws, suite) = makeWorkspace()

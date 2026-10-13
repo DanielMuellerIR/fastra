@@ -72,6 +72,52 @@ func preview_empty() {
     #expect(r == .empty)
 }
 
+@Test("Unicode-Ersetzungen zählen in beiden Vorschauen als bytegenaue Änderung",
+      arguments: [("\u{00E9}", "e\u{0301}"), ("a\u{0301}\u{0323}", "a\u{0323}\u{0301}")])
+func preview_unicodeChangesCannotEscapeTruncation(original: String, replacement: String) throws {
+    #expect(original == replacement)
+    let text = Array(repeating: original, count: 3).joined(separator: "\n")
+    let found = matches(in: text, find: original, replace: replacement)
+    try #require(found.count == 3)
+    let compact = ReplacePreview.build(text: text, matches: found, maxRows: 2)
+    #expect(compact.totalChangedLines == 3)
+    #expect(compact.rows.count == 2)
+    #expect(compact.truncated)
+    guard let full = sideBySideResult(ReplacePreview.buildSideBySide(
+        text: text, matches: found, maxRows: 2
+    )) else { return }
+    #expect(full.changedRows == 3)
+    #expect(full.visibleChangedRows == 2)
+    #expect(!full.allChangedRowsVisible)
+    for row in compact.rows {
+        #expect(row.before.utf8.elementsEqual(original.utf8))
+        #expect(row.after.utf8.elementsEqual(replacement.utf8))
+    }
+    for row in full.rows {
+        #expect(row.kind == .changed)
+        #expect(row.before?.utf8.elementsEqual(original.utf8) == true)
+        #expect(row.after?.utf8.elementsEqual(replacement.utf8) == true)
+    }
+}
+
+@Test("Eine späte Unicode-Änderung wird vor unverändertem Kontext angezeigt")
+func preview_prioritizesLateUnicodeChange() throws {
+    let original = "\u{00E9}"
+    let replacement = "e\u{0301}"
+    let text = "eins\nzwei\ndrei\n" + original
+    let found = matches(in: text, find: original, replace: replacement)
+    guard let result = sideBySideResult(ReplacePreview.buildSideBySide(
+        text: text, matches: found, maxRows: 1
+    )) else { return }
+    #expect(result.changedRows == 1)
+    #expect(result.allChangedRowsVisible)
+    let row = try #require(result.rows.first)
+    #expect(row.beforeLine == 4)
+    #expect(row.afterLine == 4)
+    #expect(row.before?.utf8.elementsEqual(original.utf8) == true)
+    #expect(row.after?.utf8.elementsEqual(replacement.utf8) == true)
+}
+
 @Test("maxRows kappt die Anzeige, totalChangedLines bleibt die wahre Zahl")
 func preview_truncation() {
     // 5 Zeilen mit je einem Treffer.

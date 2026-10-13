@@ -13,6 +13,130 @@ struct SearchUndoTests {
         return view.subviews.lazy.compactMap { editor(in: $0) }.first
     }
 
+    @Test("Unicode-Ersetzungen bleiben in allen Dokumentpfaden bytegenau rückgängig", arguments: ["file-all", "file-one", "open-all", "open-one"])
+    func unicodeReplacementUndo(_ mode: String) async throws {
+        let workspace = Workspace()
+        let original = "vor é nach"
+        let replaced = "vor e\u{0301} nach"
+        let tab = EditorTab(title: "unicode.txt", path: "", content: original)
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        let host = NSHostingView(rootView: EditorView().environmentObject(workspace))
+        host.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        try #require(await waitUntil { self.editor(in: host)?.string == original })
+        workspace.scope = mode.hasPrefix("open") ? .open : .file
+        workspace.showSearchDialog = true
+        workspace.findPattern = "é"
+        workspace.replacePattern = "e\u{0301}"
+        workspace.useRegex = false
+        try #require(await waitUntil { workspace.canReplaceActiveSearchMatch })
+        if mode.hasSuffix("one") {
+            workspace.replaceActiveMatch()
+        } else if workspace.scope == .open {
+            #expect(workspace.applyAllInOpenTabs() == 1)
+        } else {
+            #expect(workspace.applyAllInActiveBuffer())
+        }
+        try #require(workspace.activeTab?.content.utf8.elementsEqual(replaced.utf8) == true)
+        try #require(await waitUntil { self.editor(in: host)?.string.utf8.elementsEqual(replaced.utf8) == true })
+        let current = try #require(editor(in: host))
+        try #require(current.undoManager?.canUndo == true)
+        current.undoManager?.undo()
+        #expect(current.string.utf8.elementsEqual(original.utf8))
+        #expect(workspace.activeTab?.content.utf8.elementsEqual(original.utf8) == true)
+        #expect(workspace.activeTab?.isDirty == false)
+        current.undoManager?.redo()
+        #expect(current.string.utf8.elementsEqual(replaced.utf8))
+        #expect(workspace.activeTab?.content.utf8.elementsEqual(replaced.utf8) == true)
+        #expect(workspace.activeTab?.isDirty == true)
+    }
+
+    @Test("Markdown-Speichern unter hält den montierten Editor und seinen Undo-Verlauf verbunden")
+    func saveAsRelocatesImagesWithMountedEditor() async throws {
+        let root = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("source/document.md")
+        let target = root.appendingPathComponent("target/copy.md")
+        for directory in [source.deletingLastPathComponent(), target.deletingLastPathComponent()] {
+            try FileManager.default.createDirectory(at: directory.appendingPathComponent("images"), withIntermediateDirectories: true)
+        }
+        try Data("image".utf8).write(to: source.deletingLastPathComponent().appendingPathComponent("images/a.png"))
+        let original = "# Titel\n\n![Bild](images/a.png)\n"
+        try Data(original.utf8).write(to: source)
+        let workspace = Workspace()
+        var tab = EditorTab(title: source.lastPathComponent, path: source.deletingLastPathComponent().path, content: original)
+        tab.url = source
+        tab.markdownVisualOverride = false
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        let host = NSHostingView(rootView: EditorView().environmentObject(workspace))
+        host.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        try #require(await waitUntil { self.editor(in: host)?.string == original })
+        let first = try #require(editor(in: host))
+        first.fastraApplyTextOperation(replacing: NSRange(location: 0, length: 0), with: "Vorher\n")
+        let beforeSave = "Vorher\n" + original
+        var saved: Bool?
+        workspace.saveTabAs(id: tab.id, to: target, expectedTargetState: .absent, isMarkdown: true) { saved = $0 }
+        try #require(await waitUntil { saved != nil })
+        try #require(saved == true)
+        let relocated = beforeSave.replacingOccurrences(of: "images/a.png", with: "images/1.png")
+        #expect(workspace.activeTab?.content == relocated)
+        #expect(try String(contentsOf: target, encoding: .utf8) == relocated)
+        try #require(await waitUntil { self.editor(in: host)?.string == relocated })
+        let current = try #require(editor(in: host))
+        #expect(current.undoManager === first.undoManager)
+        current.fastraApplyTextOperation(replacing: NSRange(location: 0, length: 0), with: "Nachher\n")
+        #expect(workspace.activeTab?.content == "Nachher\n" + relocated)
+        current.undoManager?.undo()
+        #expect(current.string == relocated)
+        #expect(workspace.activeTab?.content == relocated)
+        #expect(workspace.activeTab?.isDirty == false)
+        current.undoManager?.redo()
+        #expect(current.string == "Nachher\n" + relocated)
+        #expect(workspace.activeTab?.content == "Nachher\n" + relocated)
+        #expect(workspace.activeTab?.isDirty == true)
+    }
+
+    @Test("Unicode-Normalisierung im echten Editor bleibt im Modell und in Undo erhalten")
+    func unicodeSourceEdit() async throws {
+        let workspace = Workspace()
+        let original = "a\u{0301}\u{0323}"
+        let changed = "a\u{0323}\u{0301}"
+        let tab = EditorTab(title: "unicode.txt", path: "", content: original)
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        let host = NSHostingView(rootView: EditorView().environmentObject(workspace))
+        host.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        try #require(await waitUntil { self.editor(in: host)?.string == original })
+        let view = try #require(editor(in: host))
+        view.fastraApplyTextOperation(replacing: NSRange(location: 0, length: (original as NSString).length),
+                                      with: changed)
+        #expect(view.string.utf8.elementsEqual(changed.utf8))
+        #expect(workspace.activeTab?.content.utf8.elementsEqual(changed.utf8) == true)
+        #expect(workspace.activeTab?.isDirty == true)
+        try #require(view.undoManager?.canUndo == true)
+        view.undoManager?.undo()
+        #expect(view.string.utf8.elementsEqual(original.utf8))
+        #expect(workspace.activeTab?.content.utf8.elementsEqual(original.utf8) == true)
+        #expect(workspace.activeTab?.isDirty == false)
+        view.undoManager?.redo()
+        #expect(view.string.utf8.elementsEqual(changed.utf8))
+        #expect(workspace.activeTab?.content.utf8.elementsEqual(changed.utf8) == true)
+        #expect(workspace.activeTab?.isDirty == true)
+    }
+
     @Test("Geöffnet-Ersetzen sichert auch noch nie montierte Tabs", arguments: [false, true])
     func openTabs(single: Bool) async throws {
         let workspace = Workspace()

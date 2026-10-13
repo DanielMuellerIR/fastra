@@ -1,10 +1,104 @@
 import AppKit
+import SwiftUI
 import WebKit
+import PDFKit
 import Testing
 @testable import Fastra
 
 @Suite("Markdown-WYSIWYG", .serialized)
 struct MarkdownVisualTests {
+    @Test("Drucken bleibt nach visueller Synchronisierung am ursprünglichen Dokument",
+          arguments: [false, true])
+    @MainActor
+    func printingKeepsDocumentContext(replaceDocument: Bool) async throws {
+        let (workspace, coordinator, web, window) = try await editor("Alter Text\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let output = testTemporaryDirectory().appendingPathComponent("print-context-\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: output) }
+        _ = try await web.evaluateJavaScript("document.querySelector('p').textContent='Sichtbarer neuer Text';")
+        var outcome: PrintOutcome?
+        DocumentPrinting.prepareAndRun(target: .source, workspace: workspace,
+            window: window, savingTo: output) { outcome = $0 }
+        if replaceDocument {
+            let other = EditorTab(title: "other.md", path: "", content: "Fremdes Dokument\n")
+            workspace.tabs.append(other)
+            workspace.activeTabID = other.id
+        }
+        try #require(await waitUntil(timeout: 8) { outcome != nil })
+        if replaceDocument {
+            #expect(outcome == .cancelled)
+            #expect(!FileManager.default.fileExists(atPath: output.path))
+        } else {
+            #expect(outcome == .printed)
+            let text = try #require(PDFDocument(url: output)?.string)
+            #expect(text.contains("Sichtbarer neuer Text"))
+            #expect(!text.contains("Alter Text"))
+        }
+    }
+
+    @Test("Veralteter WebKit-Stand darf byteverschiedenes Unicode nicht zurückschreiben")
+    @MainActor
+    func staleUnicodeSnapshot() async throws {
+        let original = "é\n"
+        let current = "e\u{0301}\n"
+        let (workspace, coordinator, web, window) = try await editor(original)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        workspace.activeTabContent.wrappedValue = current
+        #expect(!workspace.acceptVisualMarkdown("Veraltet\n", previous: original, tabID: workspace.activeTabID!))
+        #expect(workspace.activeTab?.content.utf8.elementsEqual(current.utf8) == true)
+        workspace.activeTabContent.wrappedValue = current
+        var accepted: Bool?
+        coordinator.synchronize { accepted = $0 }
+        try #require(await waitUntil { accepted != nil })
+        #expect(accepted == false)
+        #expect(workspace.activeTab?.content.utf8.elementsEqual(current.utf8) == true)
+    }
+
+    @Test("Montierte Markdown-Ansichten aktualisieren Unicode-Bytes", arguments: [false, true])
+    @MainActor
+    func mountedUnicodeUpdate(_ visual: Bool) async throws {
+        let workspace = Workspace()
+        var tab = EditorTab(title: "unicode.md", path: "", content: "é\n")
+        tab.markdownVisualOverride = true
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        let root = visual ? AnyView(EditorView().environmentObject(workspace))
+                          : AnyView(MarkdownPreviewView(workspace: workspace))
+        let host = NSHostingView(rootView: root)
+        host.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        func findWeb(_ view: NSView) -> WKWebView? {
+            if let web = view as? WKWebView { return web }
+            return view.subviews.lazy.compactMap(findWeb).first
+        }
+        try #require(await waitUntil { findWeb(host) != nil })
+        let web = try #require(findWeb(host))
+        var observed: String?
+        func waitForText(_ expected: String) async -> Bool {
+            var reading = false
+            return await waitUntil {
+                if observed?.utf8.elementsEqual(expected.utf8) == true { return true }
+                if !reading {
+                    reading = true
+                    web.evaluateJavaScript("document.querySelector('p')?.textContent") { value, _ in
+                        observed = value as? String
+                        reading = false
+                    }
+                }
+                return false
+            }
+        }
+        try #require(await waitForText("é"))
+        workspace.activeTabContent.wrappedValue = "e\u{0301}\n"
+        #expect(await waitForText("e\u{0301}"))
+        if visual {
+            #expect(workspace.visualMarkdownEditor?.markdown.utf8.elementsEqual("e\u{0301}\n".utf8) == true)
+        }
+    }
+
     @Test("Clipboard-Abschluss gibt keine fremde Dokumentaktionssperre frei", arguments: [false, true])
     @MainActor
     func clipboardDuringDocumentAction(_ actionFinishesFirst: Bool) async throws {

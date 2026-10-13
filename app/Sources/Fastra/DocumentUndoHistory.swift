@@ -23,7 +23,8 @@ final class DocumentUndoHistory: Hashable {
     }
 
     private func synchronize(with text: String) {
-        if let content, content != text {
+        // Kanonische String-Gleichheit würde geänderte Unicode-Bytes verlieren.
+        if let content, !content.utf8.elementsEqual(text.utf8) {
             storage?.fastraRegisterDocumentReplacement(from: content, to: text)
         }
         content = text

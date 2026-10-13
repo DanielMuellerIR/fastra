@@ -87,9 +87,7 @@ enum LineOperations {
         let range = expandToFullLines(in: text, selection: selection)
         let ns = text as NSString
         let block = ns.substring(with: range)
-        let lines = splitLines(block)
-        let hasTrailingEmpty = lines.count >= 2 && lines.last == ""
-        let sortable = hasTrailingEmpty ? Array(lines.dropLast()) : lines
+        let (sortable, hasTrailingEmpty) = splitContentLines(block, selection: selection)
         guard sortable.count >= 2 else { return nil }
 
         let sorted = sortable.enumerated().sorted { lhs, rhs in
@@ -122,9 +120,7 @@ enum LineOperations {
         let range = expandToFullLines(in: text, selection: selection)
         let ns = text as NSString
         let block = ns.substring(with: range)
-        let lines = splitLines(block)
-        let hasTrailingEmpty = lines.count >= 2 && lines.last == ""
-        let real = hasTrailingEmpty ? Array(lines.dropLast()) : lines
+        let (real, hasTrailingEmpty) = splitContentLines(block, selection: selection)
         guard real.count >= 2 else { return nil }
 
         var seen = Set<String>()
@@ -149,22 +145,17 @@ enum LineOperations {
     /// vorkommen — je EINMAL, in Reihenfolge ihres ersten Auftretens. Nützlich, um Dubletten in
     /// Logs/Listen sichtbar zu machen.
     ///
-    /// Sorgfältiger als das ältere `removeDuplicateLines`: Eine leere Phantom-Schlusszeile
-    /// (sie entsteht im Ganz-Text-Fall durch das Datei-End-Newline, das `expandToFullLines`
-    /// behält) wird HIER bewusst NICHT als echte Zeile mitgezählt — sonst verfälschte sie die
-    /// Häufigkeit echter Leerzeilen. Sie wird vor der Analyse abgetrennt und danach wieder
-    /// angehängt, damit das Datei-End-Newline erhalten bleibt.
+    /// Eine leere Phantom-Schlusszeile (sie entsteht im Ganz-Text-Fall durch das
+    /// Datei-End-Newline) zählt nicht als Inhalt — sonst verfälschte sie die Häufigkeit
+    /// echter Leerzeilen. Der gemeinsame Helfer trennt sie vor der Analyse ab; danach
+    /// wird sie wieder angehängt, damit das Datei-End-Newline erhalten bleibt.
     /// `nil`, wenn weniger als 2 Zeilen betroffen sind, keine Dubletten existieren oder das
     /// Ergebnis leer wäre (ein Menü-Klick darf das Dokument nicht leerräumen — Produkt-DNA).
     static func keepDuplicateLines(in text: String, selection: NSRange) -> Result? {
         let range = expandToFullLines(in: text, selection: selection)
         let ns = text as NSString
         let block = ns.substring(with: range)
-        let lines = splitLines(block)
-
-        // Phantom-Schlusszeile (Datei-End-Newline) abtrennen — sie ist kein echter Inhalt.
-        let hasTrailingEmpty = lines.count >= 2 && lines.last == ""
-        let real = hasTrailingEmpty ? Array(lines.dropLast()) : lines
+        let (real, hasTrailingEmpty) = splitContentLines(block, selection: selection)
         guard real.count >= 2 else { return nil }
 
         // Häufigkeit jeder echten Zeile zählen.
@@ -203,11 +194,7 @@ enum LineOperations {
         let range = expandToFullLines(in: text, selection: selection)
         let ns = text as NSString
         let block = ns.substring(with: range)
-        let lines = splitLines(block)
-
-        // Phantom-Schlusszeile (Datei-End-Newline) abtrennen — sie ist kein echter Inhalt.
-        let hasTrailingEmpty = lines.count >= 2 && lines.last == ""
-        let real = hasTrailingEmpty ? Array(lines.dropLast()) : lines
+        let (real, hasTrailingEmpty) = splitContentLines(block, selection: selection)
         guard real.count >= 2 else { return nil }
 
         // Häufigkeit jeder echten Zeile zählen.
@@ -229,6 +216,17 @@ enum LineOperations {
     }
 
     // MARK: - Helfer
+
+    /// Für einen durch `expandToFullLines` bestimmten Block: Nur ohne Auswahl
+    /// ist der letzte Trenner noch Teil des ganzen Dokumentbereichs.
+    /// Sonst ist ein leeres Schluss-Element eine echte markierte Leerzeile.
+    static func splitContentLines(_ block: String, selection: NSRange)
+        -> (lines: [String], hasFinalSeparator: Bool) {
+        var lines = splitLines(block)
+        let hasFinalSeparator = selection.length == 0 && lines.count > 1 && lines.last == ""
+        if hasFinalSeparator { lines.removeLast() }
+        return (lines, hasFinalSeparator)
+    }
 
     /// Zerlegt einen Block in Zeilen-INHALTE (ohne Trenner). Versteht
     /// LF, CRLF und CR, auch gemischt. Geladene Dokumente behalten ihre

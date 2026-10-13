@@ -96,6 +96,42 @@ func tabPresentationChangesPreserveSearchNavigation() async throws {
     try #require(await waitUntil { workspace.navMatches.count == 2 && !workspace.bufferSearching })
 }
 
+@Test("Unicode-Normalisierung entwertet Trefferbereiche vor einer Ersetzung",
+      arguments: [Workspace.SearchScope.file, .open])
+@MainActor
+func unicodeNormalizationInvalidatesSearchRanges(scope: Workspace.SearchScope) async throws {
+    let suiteName = "fastra-runner-unicode-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let workspace = Workspace(defaults: defaults)
+    let tab = EditorTab(title: "unicode.txt", path: "", content: "\u{00E9} needle")
+    workspace.tabs = [tab]
+    workspace.activeTabID = tab.id
+    workspace.scope = scope
+    workspace.findPattern = "needle"
+    workspace.replacePattern = "X"
+    workspace.useRegex = false
+    workspace.showSearchDialog = true
+    try #require(await waitUntil { workspace.canReplaceActiveSearchMatch })
+    #expect(workspace.navMatches.first?.match.range.location == 2)
+    let generation = workspace.beginMatchJump()
+
+    // Swift-String-Gleichheit normalisiert diese Texte; die UTF-16-Ranges
+    // der Suche verschieben sich trotzdem, etwa nach einem Datei-Reload.
+    let updated = "e\u{0301} needle"
+    #expect(tab.content == updated)
+    workspace.tabs[0].content = updated
+    #expect(!workspace.isCurrentMatchJump(generation))
+    #expect(!workspace.canReplaceActiveSearchMatch)
+    workspace.replaceActiveMatch()
+    try #require(workspace.tabs[0].content.utf8.elementsEqual(updated.utf8))
+
+    try #require(await waitUntil { workspace.canReplaceActiveSearchMatch })
+    #expect(workspace.navMatches.first?.match.range.location == 3)
+    workspace.replaceActiveMatch()
+    #expect(workspace.tabs[0].content.utf8.elementsEqual("e\u{0301} X".utf8))
+}
+
 @Test("Projektfilter-Wechsel invalidiert Treffer, Navigation und Apply sofort")
 @MainActor
 func projectFilterChangeInvalidatesVisiblePreviewImmediately() async throws {

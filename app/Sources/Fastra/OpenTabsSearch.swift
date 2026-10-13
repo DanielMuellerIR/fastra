@@ -101,7 +101,7 @@ enum OpenTabsSearch {
         var changed: [UUID: String] = [:]
         for tab in tabs {
             guard let replaced = BufferSearch.replaceAll(in: tab.content, plan: plan),
-                  replaced != tab.content else { continue }
+                  !replaced.utf8.elementsEqual(tab.content.utf8) else { continue }
             changed[tab.id] = replaced
         }
         return changed

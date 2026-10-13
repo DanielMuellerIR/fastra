@@ -38,6 +38,7 @@ final class XPathBarModel: ObservableObject {
     private var matchCursor = 0
     private struct DocumentVersion: Equatable {
         let tabID: UUID
+        let documentID: UUID
         let contentRevision: UInt64
     }
     /// Version, für die `index` Quellbereiche enthält.
@@ -77,7 +78,8 @@ final class XPathBarModel: ObservableObject {
 
     private func currentDocumentVersion() -> DocumentVersion? {
         guard let tab = workspace?.activeTab else { return nil }
-        return DocumentVersion(tabID: tab.id, contentRevision: tab.contentRevision)
+        return DocumentVersion(tabID: tab.id, documentID: tab.documentID,
+                               contentRevision: tab.contentRevision)
     }
 
     private func rebuildIndexIfContentChanged() {
@@ -95,6 +97,7 @@ final class XPathBarModel: ObservableObject {
             guard let self, let workspace = self.workspace,
                   let tab = workspace.activeTab else { return }
             let document = DocumentVersion(tabID: tab.id,
+                                           documentID: tab.documentID,
                                            contentRevision: tab.contentRevision)
             let content = tab.content
             self.requestedDocument = document

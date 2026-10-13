@@ -6,6 +6,35 @@ import FastraControlProtocol
 
 @Suite("Lokale Steuerung: Vertrag und eingefrorene Quellen")
 struct LocalControlContractTests {
+    @Test("Steuerungsrunner gibt die Testsperre auch bei Signal während ihres Erwerbs frei",
+          arguments: ["TERM", "HUP"])
+    func serialRunnerIntegration_lockAcquisitionSignal(_ signal: String) throws {
+        let root = testTemporaryDirectory().appendingPathComponent("control-lock-\(UUID())")
+        let tools = root.appendingPathComponent("tools")
+        try FileManager.default.createDirectory(at: tools, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let runner = root.appendingPathComponent("local-control-test.sh")
+        try FileManager.default.copyItem(at: app.appendingPathComponent("local-control-test.sh"), to: runner)
+        let lock = root.appendingPathComponent("held.lock")
+        try """
+        acquire_fastra_gui_test_lock() {
+            mkdir "$FASTRA_TEST_LOCK_PROBE" || return 2
+            kill -"$FASTRA_TEST_LOCK_SIGNAL" "$$"
+        }
+        release_fastra_gui_test_lock() {
+            rmdir "$FASTRA_TEST_LOCK_PROBE"
+        }
+        """.write(to: tools.appendingPathComponent("gui-test-lock.sh"), atomically: true, encoding: .utf8)
+        let result = try runTestProcess("/bin/bash", arguments: [runner.path], environment: [
+            "FASTRA_TEST_LOCK_PROBE": lock.path, "FASTRA_TEST_LOCK_SIGNAL": signal,
+        ])
+        #expect(result.status != 0)
+        #expect(!FileManager.default.fileExists(atPath: lock.path),
+                "Signal hinterließ die erworbene Testsperre: \(result.output)")
+    }
+
     @Test("Capabilities vor dem Player bleiben lesbar")
     func olderCapabilities() throws {
         let data = try JSONEncoder().encode(ControlProtocol.capabilities)

@@ -594,12 +594,18 @@ enum XPathEvaluator {
             var next: [Int] = []
             // `//a` ist descendant-or-self::node()/child::a. Positions-
             // Prädikate zählen deshalb für jeden Elternkontext getrennt.
-            var parents = context
-            if step.descendant {
-                for node in context { collectDescendants(of: node, in: index, into: &parents) }
-            }
+            var parents: [Int] = []
             var visitedParents = Set<Int>()
-            for node in parents where visitedParents.insert(node).inserted {
+            var pending = context
+            // Überlappende Teilbäume nur einmal durchlaufen, nicht erst die
+            // fertig gesammelten Kontexte deduplizieren. Der explizite Stapel
+            // schützt zugleich den Callstack bei tief verschachteltem XML.
+            while let node = pending.popLast() {
+                guard visitedParents.insert(node).inserted else { continue }
+                parents.append(node)
+                if step.descendant { pending.append(contentsOf: children(of: node, in: index)) }
+            }
+            for node in parents {
                 let candidates = children(of: node, in: index)
                 var matched = candidates.filter {
                     step.name == nil || index.elements[$0].name == step.name
@@ -648,18 +654,6 @@ enum XPathEvaluator {
 
     private static func children(of node: Int, in index: XPathIndex) -> [Int] {
         node == -1 ? index.roots : index.elements[node].children
-    }
-
-    private static func collectDescendants(of node: Int, in index: XPathIndex,
-                                           into result: inout [Int]) {
-        // Fremdes XML darf beliebig tief verschachtelt sein. Ein expliziter
-        // Stapel bewahrt die Dokumentreihenfolge, ohne den Swift-Callstack zu
-        // verbrauchen und bei tiefen Dokumenten abzustürzen.
-        var pending = Array(children(of: node, in: index).reversed())
-        while let current = pending.popLast() {
-            result.append(current)
-            pending.append(contentsOf: index.elements[current].children.reversed())
-        }
     }
 
 }

@@ -27,7 +27,7 @@ import WebKit
 /// Ergebnis eines Druckauftrags — auch für Selbsttests auswertbar.
 enum PrintOutcome: Equatable {
     case printed
-    /// Der Nutzer hat den Systemdialog abgebrochen.
+    /// Abbruch im Systemdialog oder während der Dokumentvorbereitung.
     case cancelled
     case failed(String)
 }
@@ -60,8 +60,7 @@ enum DocumentPrinting {
             NSSound.beep()
             return
         }
-        if context.workspace.synchronizeVisualMarkdownBefore({ printVisibleDocument(as: target) }) { return }
-        run(target: target, workspace: context.workspace, window: context.window)
+        prepareAndRun(target: target, workspace: context.workspace, window: context.window)
     }
 
     /// Menüpunkt mit ausdrücklich gewählter Vorlage (Markdown: Vorschau oder
@@ -74,8 +73,7 @@ enum DocumentPrinting {
             NSSound.beep()
             return
         }
-        if context.workspace.synchronizeVisualMarkdownBefore({ printVisibleDocument(as: target) }) { return }
-        run(target: target, workspace: context.workspace, window: context.window)
+        prepareAndRun(target: target, workspace: context.workspace, window: context.window)
     }
 
     /// „Papierformat…" (⇧⌘P): Papiergröße und Ausrichtung für alle folgenden
@@ -91,6 +89,25 @@ enum DocumentPrinting {
     }
 
     // MARK: - Kern
+
+    static func prepareAndRun(target: PrintTarget, workspace: Workspace,
+                              window: NSWindow?, savingTo: URL? = nil,
+                              completion: @escaping (PrintOutcome) -> Void = { _ in }) {
+        let documentID = workspace.activeTab?.documentID
+        // WebKit antwortet später. Ein Fensterwechsel darf dann kein neues
+        // globales Druckziel wählen; ein anderer Tab beendet diesen Auftrag.
+        let start = {
+            guard let documentID, workspace.activeTab?.documentID == documentID else {
+                completion(.cancelled)
+                return
+            }
+            run(target: target, workspace: workspace, window: window,
+                savingTo: savingTo, completion: completion)
+        }
+        if !workspace.synchronizeVisualMarkdownBefore(start, onFailure: { completion(.cancelled) }) {
+            start()
+        }
+    }
 
     /// Führt einen Druckauftrag aus.
     ///

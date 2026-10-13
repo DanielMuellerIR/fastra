@@ -97,7 +97,10 @@ final class SearchRunner {
     private static func sameSearchDocuments(_ previous: [EditorTab], _ current: [EditorTab]) -> Bool {
         previous.count == current.count && zip(previous, current).allSatisfy { old, new in
             old.id == new.id && old.documentID == new.documentID
-                && old.title == new.title && old.content == new.content
+                && old.title == new.title
+                // String-Gleichheit ignoriert Unicode-Normalisierungsunterschiede,
+                // obwohl sie die UTF-16-Bereiche der Treffer verschieben können.
+                && old.content.utf8.elementsEqual(new.content.utf8)
                 && old.isLoading == new.isLoading
         }
     }

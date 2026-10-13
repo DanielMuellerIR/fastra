@@ -582,10 +582,7 @@ enum TextOperations {
         guard ns.length > 0 else { return nil }
         let range = LineOperations.expandToFullLines(in: text, selection: selection)
         let block = ns.substring(with: range)
-        var lines = LineOperations.splitLines(block)
-        // Ein einzelnes leeres Schluss-Element stammt vom Datei-End-Newline
-        // (expandToFullLines behält ihn im Ganz-Text-Fall) — kein Inhalt.
-        if lines.count >= 2, lines.last == "" { lines.removeLast() }
+        let (lines, _) = LineOperations.splitContentLines(block, selection: selection)
         guard lines.count >= 2 else { return nil }          // mind. 2 echte Zeilen
         let joined = lines.joined(separator: joiner)
         guard joined != block else { return nil }
@@ -1156,11 +1153,7 @@ enum TextOperations {
         guard ns.length > 0 else { return nil }
         let range = LineOperations.expandToFullLines(in: text, selection: selection)
         let block = ns.substring(with: range)
-        var lines = LineOperations.splitLines(block)
-        // Nur der Ganzdokument-Vertrag behält den letzten Trenner im Bereich.
-        // Bei einer Auswahl ist ein leeres Schluss-Element echter Zeileninhalt.
-        let hasFinalSeparator = selection.length == 0 && lines.count > 1 && lines.last == ""
-        if hasFinalSeparator { lines.removeLast() }
+        let (lines, hasFinalSeparator) = LineOperations.splitContentLines(block, selection: selection)
         guard lines.count >= minLines else { return nil }
 
         let newLines = transform(lines)

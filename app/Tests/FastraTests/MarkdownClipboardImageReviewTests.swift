@@ -113,4 +113,34 @@ struct MarkdownClipboardImageReviewTests {
         #expect((pb.data(forType: MarkdownVisualCoordinator.clipboardType) != nil) == !replaceClipboard)
         #expect(retained == nil)
     }
+
+    @Test("Der jüngste Kopierauftrag gewinnt auch zwischen zwei Markdown-Ansichten", arguments: [false, true])
+    @MainActor
+    func newestCopyWins(_ olderFinishesFirst: Bool) async {
+        let pb = NSPasteboard.withUniqueName()
+        defer { pb.releaseGlobally() }
+        let older = MarkdownVisualCoordinator()
+        let newer = MarkdownVisualCoordinator()
+        let olderQueue = DispatchQueue(label: "clipboard-older")
+        let newerQueue = DispatchQueue(label: "clipboard-newer")
+        olderQueue.suspend()
+        newerQueue.suspend()
+        older.pasteboard = pb
+        newer.pasteboard = pb
+        older.clipboardQueue = olderQueue
+        newer.clipboardQueue = newerQueue
+        older.copySelection(plain: "Alt", html: "<p>Alt</p>", copied: "Alt", bookmark: "1", cut: false)
+        older.invalidateForSourceReplacement()
+        newer.copySelection(plain: "Neu", html: "<p>Neu</p>", copied: "Neu", bookmark: "2", cut: true)
+        for queue in olderFinishesFirst ? [olderQueue, newerQueue] : [newerQueue, olderQueue] {
+            queue.resume()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                queue.async { DispatchQueue.main.async { continuation.resume() } }
+            }
+        }
+        #expect(pb.string(forType: .string) == "Neu")
+        let data = pb.data(forType: MarkdownVisualCoordinator.clipboardType)
+        let payload = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: String] }
+        #expect(payload?["markdown"] == "Neu")
+    }
 }

@@ -37,7 +37,8 @@ aktiven Ansicht:
   Sekunden, startet der Ausdruck ebenfalls einfarbig — in beiden Fällen
   fehlt die Farboption im Druckdialog. Zu lange Zeilen werden umgebrochen
   und die Fortsetzung rückt unter den Text ein; abgeschnitten wird nichts.
-- Steht die Markdown-Vorschau neben dem Editor, druckt ⌘P die **gerenderte**
+- Steht die Markdown-Vorschau neben dem Editor oder arbeitest du im visuellen
+  Markdown-Editor, druckt ⌘P die **gerenderte**
   Fassung mit Tabellen, Formeln und Diagrammen — inhaltlich genau das Bild
   der Vorschau; die Schriftgröße des Ausdrucks kommt aus
   **Einstellungen → Drucken**, nicht aus dem Fenster-Zoom.
@@ -1008,7 +1009,7 @@ Dateiaktionen; bei einem noch ungesicherten Tab sind unpassende Punkte
 deaktiviert. Die Seitenleiste lässt sich auf breiten Fenstern bis 760 Punkte
 aufziehen, damit lange Pfade lesbar bleiben.
 
-**Dateien filtern:** Das kompakte Filterfeld rechts neben dem Projektnamen
+**Dateien filtern:** Das kompakte Filterfeld in der Projekt-Seitenleiste
 filtert live nach Dateinamen (Teilstring, Groß-/Kleinschreibung egal —
 bewusst kein Fuzzy-Matching); eine breiter gezogene Seitenleiste gibt ihm
 mehr Platz. Treffer erscheinen mit aufgeklappten Elternordnern,

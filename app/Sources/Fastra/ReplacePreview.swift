@@ -114,7 +114,7 @@ enum ReplacePreview {
 
     /// Baut die Vorschau. `maxRows` begrenzt die ANGEZEIGTEN Zeilen (Schutz
     /// gegen riesige Vorschau-Listen); gezählt werden alle geänderten Zeilen.
-    /// Zeilen, bei denen Ersetzung == Original (z.B. Suchen == Ersetzen-Text),
+    /// Zeilen, bei denen Ersetzung und Original bytegleich sind,
     /// erscheinen NICHT — sie sind keine echte Änderung.
     static func build(text: String, matches: [BufferSearch.Match], maxRows: Int = 500) -> Result {
         guard !matches.isEmpty else { return .empty }
@@ -152,7 +152,7 @@ enum ReplacePreview {
             let content = trimmingTerminator(full, in: ns)
             let before = ns.substring(with: content)
             let after = stitchedAfterLine(ns: ns, content: content, matches: sorted)
-            guard before != after else { continue }  // keine sichtbare Änderung
+            guard !before.utf8.elementsEqual(after.utf8) else { continue }
             changed += 1
             if rows.count < maxRows {
                 rows.append(Row(line: line, before: before, after: after))
@@ -239,21 +239,23 @@ enum ReplacePreview {
         case .cancelled: return .cancelled
         }
 
-        // Gleiche Zeilen erhalten denselben kleinen Integer. Danach zieht der
+        // Bytegleiche Zeilen erhalten denselben kleinen Integer. String-Schlüssel
+        // würden Unicode-Normalisierungen als unverändert verbergen. Danach zieht der
         // Lauf den gemeinsamen Anfang und das gemeinsame Ende ab; der nicht
         // abbrechbare Myers-Schritt bleibt dadurch auf den wirklich
         // unterschiedlichen, hart begrenzten Mittelteil beschränkt.
-        var aliasByLine: [String: Int] = [:]
+        var aliasByLine: [Data: Int] = [:]
         func aliases(for lines: [String]) -> [Int]? {
             var aliases: [Int] = []
             aliases.reserveCapacity(lines.count)
             for (index, line) in lines.enumerated() {
                 if index.isMultiple(of: 256), shouldCancel() { return nil }
-                if let alias = aliasByLine[line] {
+                let bytes = Data(line.utf8)
+                if let alias = aliasByLine[bytes] {
                     aliases.append(alias)
                 } else {
                     let alias = aliasByLine.count
-                    aliasByLine[line] = alias
+                    aliasByLine[bytes] = alias
                     aliases.append(alias)
                 }
             }
@@ -320,7 +322,7 @@ enum ReplacePreview {
                                     after: afterLines[afterIndex], kind: .added)
                 afterIndex += 1; changedRows += 1
             } else if beforeIndex < beforeLines.count && afterIndex < afterLines.count {
-                let kind: SideKind = beforeLines[beforeIndex] == afterLines[afterIndex]
+                let kind: SideKind = beforeAliases[beforeIndex] == afterAliases[afterIndex]
                     ? .unchanged : .changed
                 row = SideBySideRow(id: all.count, beforeLine: beforeIndex + 1,
                                     afterLine: afterIndex + 1,

@@ -2,6 +2,28 @@ import Foundation
 import Testing
 @testable import Fastra
 
+@Test("Zeilenwerkzeuge berücksichtigen markierte letzte Leerzeilen als Inhalt",
+      arguments: ["\n", "\r\n", "\r"])
+func selectedTrailingEmptyLines(_ separator: String) {
+    let sortable = "b" + separator + separator
+    let sortRange = NSRange(location: 0, length: (sortable as NSString).length)
+    #expect(LineOperations.sortLines(in: sortable + "tail", selection: sortRange,
+        direction: .ascending)?.newText == separator + "b" + separator + "tail")
+
+    let repeated = "a" + separator + separator + separator
+    let duplicateRange = NSRange(location: 0, length: (repeated as NSString).length)
+    #expect(LineOperations.removeDuplicateLines(in: repeated + "tail", selection: duplicateRange)?
+        .newText == "a" + separator + separator + "tail")
+    #expect(LineOperations.keepDuplicateLines(in: repeated + "tail", selection: duplicateRange)?
+        .newText == separator + "tail")
+    #expect(LineOperations.removeAllDuplicatedLines(in: repeated + "tail", selection: duplicateRange)?
+        .newText == "a" + separator + "tail")
+    #expect(TextOperations.joinLines(in: sortable + "tail", selection: sortRange)?
+        .newText == "b " + separator + "tail")
+    #expect(TextOperations.joinLines(in: sortable + "tail", selection: sortRange, separator: "")?
+        .newText == "b" + separator + "tail")
+}
+
 @Test("Präfixe verändern keinen abschließenden Zeilentrenner", arguments: ["\n", "\r\n", "\r"])
 func prefixPreservesFinalLineSeparator(_ separator: String) {
     let text = "a" + separator + "b" + separator

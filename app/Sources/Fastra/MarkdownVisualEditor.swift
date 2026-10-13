@@ -103,8 +103,9 @@ struct MarkdownVisualWebView: NSViewRepresentable {
         coordinator.tabID = tab.id
         workspace.visualMarkdownEditor = coordinator
         let style = "\(fontName)|\(fontSize)|\(darkMode)|\(tab.url?.path ?? "")"
-        guard coordinator.markdown != tab.content || coordinator.style != style else { return }
-        if coordinator.ready, coordinator.markdown == tab.content, coordinator.documentURL == tab.url {
+        let sameContent = coordinator.markdown.utf8.elementsEqual(tab.content.utf8)
+        guard !sameContent || coordinator.style != style else { return }
+        if coordinator.ready, sameContent, coordinator.documentURL == tab.url {
             coordinator.updateStyle(fontName: fontName, fontSize: fontSize, darkMode: darkMode, style: style)
             return
         }
@@ -276,7 +277,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         case "change":
             guard let base = body["base"] as? String,
                   let value = body["markdown"] as? String,
-                  workspace.tabs.contains(where: { $0.id == tabID && $0.content == base }),
+                  workspace.tabs.contains(where: { $0.id == tabID && $0.content.utf8.elementsEqual(base.utf8) }),
                   reconcileImageUndo(body["imageTransactions"] as? [String] ?? [], previous: base,
                                      inputType: body["inputType"] as? String ?? "", newEdit: true),
                   workspace.acceptVisualMarkdown(value, previous: base, tabID: tabID) else { return }
@@ -290,7 +291,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     func copySelection(plain: String, html: String, copied: String, bookmark: String, cut: Bool) {
         let sourceURL = documentURL, request = generation, capturedSession = session
         let imageURLs = assets.imageURLSnapshot()
-        let changeCount = pasteboard.changeCount
+        let clipboardRequest = MarkdownPasteboard.beginCopy(to: pasteboard)
         clipboardQueue.async { [self] in
             let result = Result { () -> (Data, MarkdownClipboardImages.Transport) in
                 let images = try sourceURL.map { try MarkdownSaveAs.clipboardImages(content: copied, sourceURL: $0) } ?? [:]
@@ -304,11 +305,11 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 var published = false
                 switch result {
                 case .success(let (data, transport)):
-                    if pasteboard.changeCount == changeCount {
-                        published = MarkdownPasteboard.write(plain: plain, htmlFragment: html, to: pasteboard,
-                            additionalData: [Self.clipboardType: data], imageTransport: transport)
-                    }
+                    published = MarkdownPasteboard.write(plain: plain, htmlFragment: html, to: pasteboard,
+                        additionalData: [Self.clipboardType: data], imageTransport: transport,
+                        copyRequest: clipboardRequest)
                 case .failure(let error):
+                    MarkdownPasteboard.finishCopy(clipboardRequest)
                     workspace?.saveSafetyWarningHandler(L10n.string("Bild einfügen"), error.localizedDescription)
                 }
                 // Die Kopie gehört der Zwischenablage; nur das Ausschneiden
@@ -343,7 +344,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 completion(false)
                 return
             }
-            let accepted = workspace.tabs.contains(where: { $0.id == tabID && $0.content == markdown })
+            let accepted = workspace.tabs.contains(where: { $0.id == tabID && $0.content.utf8.elementsEqual(markdown.utf8) })
                 && reconcileImageUndo(snapshot["imageTransactions"] as? [String] ?? [], previous: markdown,
                                       inputType: snapshot["inputType"] as? String ?? "", newEdit: revision > acceptedInputRevision)
                 && workspace.acceptVisualMarkdown(content, previous: markdown, tabID: tabID)

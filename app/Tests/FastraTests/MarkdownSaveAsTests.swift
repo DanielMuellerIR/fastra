@@ -5,6 +5,38 @@ import Testing
 
 @Suite("Markdown-Speichern-unter")
 struct MarkdownSaveAsTests {
+    @Test("Eine vorbereitete Speicherung darf keinen wiederverwendeten Tabplatz übernehmen", arguments: [false, true])
+    @MainActor
+    func reusedTabDuringPreparation(_ duringCommit: Bool) async throws {
+        let (root, source, target) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("Alter Stand\n".utf8).write(to: source)
+        let workspace = Workspace()
+        workspace.saveSafetyWarningHandler = { _, _ in }
+        var original = EditorTab(title: "protocol.md", path: source.path, content: "Alter Stand\n")
+        original.url = source
+        workspace.tabs = [original]
+        workspace.activeTabID = original.id
+        var replacement = EditorTab(id: original.id, title: "protocol.md", path: source.path,
+                                    content: duringCommit ? original.content : "Neuer Stand\n")
+        replacement.url = source
+        #expect(replacement.documentID != original.documentID)
+        #expect(replacement.contentRevision == original.contentRevision)
+        if duringCommit {
+            workspace.saveBeforeCoordinateHandler = { _ in workspace.tabs = [replacement] }
+        }
+        var completed: Bool?
+        workspace.saveTabAs(id: original.id, to: target, expectedTargetState: .absent, isMarkdown: true) { completed = $0 }
+        // Die Main-Completion kann erst nach diesem Turn laufen. Ein neu
+        // geladenes Dokument darf dieselbe Tab-ID, URL und Revision besitzen.
+        if !duringCommit { workspace.tabs = [replacement] }
+        try #require(await waitUntil { completed != nil })
+        #expect(completed == false)
+        #expect(workspace.activeTab?.content == replacement.content)
+        #expect(workspace.activeTab?.url == source)
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+    }
+
     private func fixture() throws -> (URL, URL, URL) {
         let root = testTemporaryDirectory().appendingPathComponent("fastra-save-images-\(UUID().uuidString)")
         let source = root.appendingPathComponent("source/protocol.md")

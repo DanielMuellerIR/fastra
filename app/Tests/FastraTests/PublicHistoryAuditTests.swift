@@ -99,6 +99,29 @@ private func runHistoryAudit(root: URL, patterns: String?,
                                  cwd: root, environment: environment)
 }
 
+@Test("Fehlgeschlagene Git-Auflistung darf keinen sauberen Veröffentlichungsstand melden")
+func gitIntegration_publicHistoryListingFailure() throws {
+    let root = try makeHistoryFixtureRepo()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try fixtureGit(["commit", "--allow-empty", "-m", "weiterer Stand"], in: root)
+    let commands = root.appendingPathComponent("commands")
+    try FileManager.default.createDirectory(at: commands, withIntermediateDirectories: true)
+    let git = commands.appendingPathComponent("git")
+    try """
+    #!/bin/sh
+    case "$1" in
+      log|rev-list) echo 'Fixture: Commit-Auflistung fehlgeschlagen' >&2; exit 72 ;;
+    esac
+    exec /usr/bin/git "$@"
+    """.write(to: git, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: git.path)
+    let result = try runHistoryCommand("/bin/zsh",
+        [root.appendingPathComponent("app/public-history-audit.sh").path, "--release"],
+        cwd: root, environment: ["PATH": commands.path + ":/usr/bin:/bin:/usr/sbin:/sbin"])
+    #expect(result.exitCode != 0)
+    #expect(!result.output.contains("PASS"))
+}
+
 @Test("Sauberer ausgehender Stand → PASS, Exit 0")
 func gitIntegration_publicHistoryCleanOutgoingPasses() throws {
     let root = try makeHistoryFixtureRepo()

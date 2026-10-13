@@ -105,11 +105,12 @@ struct HexEditLifecycleTests {
         #expect(session.saveErrorMessage == nil)
     }
 
-    @Test("Textänderung verwirft veraltetes Hex-Undo und -Redo")
-    @MainActor func textMutationStartsANewHexHistoryBranch() {
+    @Test("Textänderung verwirft veraltetes Hex-Undo und -Redo",
+          arguments: [("alt", "neuer und längerer Text"), ("\u{00E9}", "e\u{0301}")])
+    @MainActor func textMutationStartsANewHexHistoryBranch(original: String, replacement: String) {
         let workspace = makeWorkspace()
         var tab = EditorTab(
-            title: "branch.txt", path: "/tmp", content: "alt",
+            title: "branch.txt", path: "/tmp", content: original,
             displayMode: .text, viewMode: .hex
         )
         tab.hexEditSession = editedSession()
@@ -119,7 +120,7 @@ struct HexEditLifecycleTests {
         workspace.tabs = [tab]
         workspace.activeTabID = tab.id
 
-        workspace.activeTabContent.wrappedValue = "neuer und längerer Text"
+        workspace.activeTabContent.wrappedValue = replacement
 
         #expect(workspace.tabs[0].isDirty)
         #expect(!workspace.tabs[0].hexEditSession.canUndo)

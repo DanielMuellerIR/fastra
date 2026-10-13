@@ -478,6 +478,7 @@ struct FileTreeSidebar: View {
         }
         let root = rootURL
         let revision = workspace.fileMutationRevision
+        let generation = workspace.projectGeneration
         filterScanTask = Task {
             if debounced {
                 try? await Task.sleep(nanoseconds: 150_000_000)
@@ -488,10 +489,8 @@ struct FileTreeSidebar: View {
             }
             guard let result, !Task.isCancelled else { return }
             await MainActor.run {
-                // Nur übernehmen, wenn der Nutzer nicht längst weitertippte.
-                guard workspace.fileTreeFilterQuery == query,
-                      workspace.fileMutationRevision == revision else { return }
-                workspace.fileTreeFilterResult = result
+                workspace.acceptFileTreeFilterResult(result,
+                    projectGeneration: generation, fileMutationRevision: revision)
             }
         }
     }

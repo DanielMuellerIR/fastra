@@ -37,7 +37,8 @@ active view:
   print job also starts monochrome — in both cases the color option is
   missing from the print dialog. Overlong lines wrap and the continuation is
   indented under the text; nothing is cut off.
-- If the Markdown preview sits next to the editor, ⌘P prints the **rendered**
+- If the Markdown preview sits next to the editor or you use the visual
+  Markdown editor, ⌘P prints the **rendered**
   version with tables, formulas and diagrams — in content exactly what the
   preview shows; the print font size comes from **Settings → Printing**, not
   from the window zoom.
@@ -953,8 +954,8 @@ tab's right-click menu contains the same file actions; options that need a file
 stay disabled on an unsaved tab. On wide windows, the sidebar can be expanded
 to 760 points so long paths remain readable.
 
-**Filtering files:** The compact filter field to the right of the project
-name filters live by file name (substring, case-insensitive — deliberately
+**Filtering files:** The compact filter field in the project sidebar
+filters live by file name (substring, case-insensitive — deliberately
 no fuzzy matching); a wider sidebar gives it more room. Matches appear
 with their parent folders expanded; everything else is hidden, and the
 counter above the tree shows “N of M files”. Escape or the X

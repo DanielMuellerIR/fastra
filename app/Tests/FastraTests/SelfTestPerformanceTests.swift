@@ -1233,6 +1233,33 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "Frühes Prozessende brauchte \(measuredMilliseconds) ms")
     }
 
+    @Test("Nicht beendbarer Aktivierungshelfer bleibt ohne blockierendes wait erfasst")
+    func activationTerminationFailureRemainsBounded() throws {
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("selftest.sh")
+        let definition = try shellFunction(named: "terminate_activation_process", in: runner)
+        let script = #"""
+        set -u
+        ACTIVATION_PID=4242
+        ACTIVATION_PID_TOKEN=owned
+        activation_process_is_owned() { return 0; }
+        fastra_test_pid_is_live() { return 0; }
+        # Simuliert einen Kernel-Hänger: Selbst KILL bestätigt kein Prozessende.
+        kill() { :; }
+        sleep() { :; }
+        wait() { printf 'UNEXPECTED_WAIT\n'; }
+        clear_activation_process() { ACTIVATION_PID=""; ACTIVATION_PID_TOKEN=""; }
+        """# + definition + #"""
+
+        terminate_activation_process
+        printf 'STATUS %s PID %s TOKEN %s\n' "$?" "$ACTIVATION_PID" "$ACTIVATION_PID_TOKEN"
+        """#
+        let result = try runTestProcess("/bin/bash", arguments: ["-c", script], timeout: 5)
+        #expect(result.status == 0, "\(result.output)")
+        #expect(!result.output.contains("UNEXPECTED_WAIT"), "\(result.output)")
+        #expect(result.output.contains("STATUS 1 PID 4242 TOKEN owned"), "\(result.output)")
+    }
+
     @Test("Signal beendet den noch wartenden System-Events-Helfer")
     func signalCleanupStopsActivationProcess() throws {
         let root = testTemporaryDirectory()
@@ -1982,6 +2009,8 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
           sleep .05
         done
         if [ "$child_ready" -ne 1 ]; then
+          printf 'LaunchServices-Fixture nicht bereit: PID %s, PGID %s, Befehl %s\\n' \
+            "$child_pid" "$child_group" "$child_command" >&2
           kill -KILL "$child_pid" 2>/dev/null || true
           wait "$child_pid" 2>/dev/null || true
           exit 74
@@ -2398,6 +2427,41 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(try FileManager.default.contentsOfDirectory(
             atPath: sandboxParent.path
         ).isEmpty)
+    }
+
+    @Test("Fehlgeschlagener Prozessstart behält ein nicht beendetes Kind erfasst")
+    func failedStartKeepsPendingProcessWithoutWaiting() throws {
+        let root = testTemporaryDirectory()
+            .appendingPathComponent("fastra-failed-start-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let helper = performanceToolsDirectory.appendingPathComponent("test-process-tree.sh")
+        let script = #"""
+        set -u
+        . "$1"
+        FASTRA_TEST_TMPDIR="$2"
+        # Fehlende Gruppenidentität erzwingt den Startabbruch. Die Signale
+        # bleiben absichtlich wirkungslos, wie bei einem Kind im Kernel-Warten.
+        ps() { printf '0\n'; }
+        fastra_test_pid_token() { printf 'fixture\n'; }
+        fastra_test_pid_matches_token() { return 0; }
+        fastra_test_pid_is_live() { return 0; }
+        kill() { :; }
+        wait() { printf 'UNEXPECTED_WAIT\n'; }
+        trap '[ -z "$FASTRA_TEST_PENDING_PID" ] || /bin/kill -KILL "$FASTRA_TEST_PENDING_PID" 2>/dev/null || true' EXIT
+        fastra_test_start_new_session /usr/bin/true
+        status=$?
+        printf 'STATUS %s\n' "$status"
+        [ -n "$FASTRA_TEST_PENDING_PID" ] && printf 'PENDING_OWNED\n'
+        [ -d "$FASTRA_TEST_PENDING_HANDSHAKE" ] && printf 'HANDSHAKE_KEPT\n'
+        """#
+        let result = try runTestProcess("/bin/bash", arguments: [
+            "-c", script, "failed-start", helper.path, root.path,
+        ], timeout: 10)
+        #expect(!result.output.contains("UNEXPECTED_WAIT"), "\(result.output)")
+        #expect(result.output.contains("STATUS 2"), "\(result.output)")
+        #expect(result.output.contains("PENDING_OWNED"), "\(result.output)")
+        #expect(result.output.contains("HANDSHAKE_KEPT"), "\(result.output)")
     }
 
     @Test("Signal nach Prozessfreigabe räumt auch vor der Übernahme auf")

@@ -99,10 +99,14 @@ cleanup() {
             cleanup_status=2
             process_cleanup_failed=1
         fi
-        for cleanup_pid in "${cleanup_targets[@]}"; do
-            wait "$cleanup_pid" 2>/dev/null || true
-        done
-        [ "$process_cleanup_failed" -ne 0 ] || TEST_PROCESS_PID=""
+        # Erst ein bestätigtes Prozessende erlaubt ein synchrones wait.
+        # Ein Kind im Kernel-Warten kann selbst nach KILL weiterleben.
+        if [ "$process_cleanup_failed" -eq 0 ]; then
+            for cleanup_pid in "${cleanup_targets[@]}"; do
+                wait "$cleanup_pid" 2>/dev/null || true
+            done
+            TEST_PROCESS_PID=""
+        fi
     fi
     if [ "$process_cleanup_failed" -eq 0 ]; then
         if ! purge_fastra_registered_test_defaults \

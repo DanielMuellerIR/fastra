@@ -321,11 +321,12 @@ struct DifficultDocumentCorpusTests {
 
     @Test("Editoraufbau und manueller JSON-Wechsel bleiben responsiv")
     @MainActor
-    func jsonLanguageSwitchStaysResponsive() async throws {
-        // Die serialisierte Suite zerstört unmittelbar zuvor einen anderen
-        // 4,36-MB-Editor. Dessen AppKit-Aufräumen gehört nicht zur Messung des
-        // folgenden Sprachwechsels. Ein Main-Queue-Turn schafft eine klare
-        // Messgrenze; ab dem Editoraufbau zählt wieder jede Verzögerung.
+    func serialRunnerIntegration_jsonLanguageSwitchStaysResponsive() async throws {
+        // .serialized schützt nur diese Suite. Fremde MainActor-Tests können
+        // während der Parser-Wartezeit große Editoren aufbauen und die gemessene
+        // Wanduhrzeit verfälschen. Der Namensmarker legt diese Messung deshalb
+        // in die vollständig serielle Runner-Phase; die Zeitgrenzen bleiben gleich.
+        // Vorangegangenes AppKit-Aufräumen gehört ebenfalls nicht zur Messung.
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async { continuation.resume() }
         }

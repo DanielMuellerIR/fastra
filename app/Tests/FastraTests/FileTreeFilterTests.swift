@@ -204,3 +204,39 @@ func filterInvalidatedOutsideFileTab() throws {
     workspace.sidebarMode = .files
     #expect(FileTreeFilter.scan(rootURL: root, query: workspace.fileTreeFilterQuery)?.matchCount == 1)
 }
+
+@Test("Verspätete Filterergebnisse gehören zur gestarteten Projektgeneration",
+      arguments: [false, true])
+@MainActor
+func filterRejectsPreviousProject(reopenSameProject: Bool) throws {
+    let firstRoot = try makeFixtureTree()
+    let secondRoot = try makeFixtureTree()
+    defer {
+        try? FileManager.default.removeItem(at: firstRoot)
+        try? FileManager.default.removeItem(at: secondRoot)
+    }
+    let name = "fastra-filter-project-\(UUID().uuidString)"
+    let defaults = testSuiteDefaults(named: name)
+    defer { defaults.removePersistentDomain(forName: name) }
+    let workspace = Workspace(defaults: defaults)
+    workspace.openProject(at: firstRoot)
+    defer { workspace.closeProject() }
+    workspace.fileTreeFilterQuery = "treffer"
+    let generation = workspace.projectGeneration
+    let revision = workspace.fileMutationRevision
+    let delayedResult = try #require(FileTreeFilter.scan(rootURL: firstRoot, query: "treffer"))
+
+    let nextRoot = reopenSameProject ? firstRoot : secondRoot
+    workspace.openProject(at: nextRoot)
+    workspace.fileTreeFilterQuery = "treffer"
+    // Der alte Scan wird erst nach Projektwechsel und erneutem Tippen zugestellt.
+    #expect(!workspace.acceptFileTreeFilterResult(delayedResult,
+        projectGeneration: generation, fileMutationRevision: revision))
+    #expect(workspace.fileTreeFilterResult == nil)
+
+    let currentResult = try #require(FileTreeFilter.scan(rootURL: nextRoot, query: "treffer"))
+    #expect(workspace.acceptFileTreeFilterResult(currentResult,
+        projectGeneration: workspace.projectGeneration,
+        fileMutationRevision: workspace.fileMutationRevision))
+    #expect(workspace.fileTreeFilterResult == currentResult)
+}

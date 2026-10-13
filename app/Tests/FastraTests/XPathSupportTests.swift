@@ -310,6 +310,55 @@ func xpath_deepDocument() throws {
     #expect(try evaluate("//ziel", xml: xml) == ["ziel"])
 }
 
+@Test("Überlappende Descendant-Kontexte liefern jedes Ziel genau einmal")
+func xpath_overlappingDescendants() throws {
+    let depth = 4_000
+    let xml = String(repeating: "<n>", count: depth)
+        + "<ziel/>" + String(repeating: "</n>", count: depth)
+    #expect(try evaluate("//n//ziel", xml: xml) == ["ziel"])
+}
+
+@Test("Descendant-Positionen zählen je Elternknoten und bleiben in Dokumentreihenfolge")
+func xpath_nestedParentPositions() throws {
+    let xml = "<r><g><a id='1'/><a id='2' kind='x'/><g><a id='3' kind='x'/><a id='4'/></g></g><g><a id='5' kind='x'/></g></r>"
+    let index = try buildIndex(xml)
+    for (expression, expected) in [
+        ("//g//a[1]", ["1", "3", "5"]),
+        ("//g//a[2]", ["2", "4"]),
+        ("//g//a[2][@kind='x']", ["2"]),
+        ("//g//a[@kind='x'][1]", ["2", "3", "5"])
+    ] {
+        let query = try XPathQuery.parse(expression).get()
+        let ids = XPathEvaluator.evaluate(query, in: index).compactMap { match in
+            index.elements.first { $0.nameRange == match.range }?
+                .attributes.first { $0.name == "id" }?.value
+        }
+        #expect(ids == expected, Comment(rawValue: expression))
+    }
+}
+
+@Test("Wiederverwendeter Tabplatz entwertet XPath-Bereiche auch bei gleicher Revision")
+@MainActor
+func xpath_reusedTabInvalidatesIndex() async throws {
+    let workspace = Workspace()
+    let original = EditorTab(title: "first.xml", path: "", content: "<r><a/></r>")
+    workspace.tabs = [original]
+    workspace.activeTabID = original.id
+    let model = XPathBarModel(workspace: workspace)
+    model.activate()
+    defer { model.deactivate() }
+    try #require(await waitUntil { model.index != nil })
+    model.query = "//a"
+    let replacement = EditorTab(id: original.id, title: "second.xml", path: "",
+                                content: "<r><b/><a/></r>")
+    #expect(original.documentID != replacement.documentID)
+    #expect(original.contentRevision == replacement.contentRevision)
+    workspace.tabs = [replacement]
+    model.step(1)
+    #expect(model.statusText.isEmpty)
+    try #require(await waitUntil { model.index?.elements.contains { $0.name == "b" } == true })
+}
+
 @Test("Modell springt nach Inhaltswechsel nicht mit veralteten Quellbereichen")
 @MainActor func xpath_modelRejectsStaleIndex() async throws {
     let suite = "fastra-xpath-model-\(UUID().uuidString)"

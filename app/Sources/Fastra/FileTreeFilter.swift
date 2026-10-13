@@ -11,6 +11,22 @@
 
 import Foundation
 
+extension Workspace {
+    // Gleicher Filtertext kann nach einem Projektwechsel erneut eingegeben
+    // werden. Auch das Wiederöffnen derselben Wurzel entwertet alte Scans.
+    @MainActor
+    @discardableResult
+    func acceptFileTreeFilterResult(_ result: FileTreeFilterResult,
+                                    projectGeneration expectedGeneration: UInt64,
+                                    fileMutationRevision expectedRevision: UInt64) -> Bool {
+        guard projectGeneration == expectedGeneration,
+              fileTreeFilterQuery == result.query,
+              fileMutationRevision == expectedRevision else { return false }
+        fileTreeFilterResult = result
+        return true
+    }
+}
+
 /// Ergebnis eines Filter-Scans. Der gespeicherte Aufklappzustand des Baums
 /// bleibt UNBERÜHRT — während des Filterns gelten `expandedDirectories`,
 /// danach zeigt der Baum wieder seinen alten Zustand.
