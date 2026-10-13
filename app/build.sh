@@ -6401,6 +6401,13 @@ if [ "$DOCUMENT_UNDO_PATCH" = "changed" ]; then
   rm -f .build/*/{debug,release}/Modules/{CodeEditSourceEditor,CodeEditTextView}.swiftmodule
 fi
 
+# 4z25. Bild-Undo im begrenzten RAM-Puffer, große Dateioperationen asynchron.
+IMAGE_UNDO_MEMORY_PATCH=$(/usr/bin/python3 Patches/CodeEditTextView/image-undo-memory.py "$CHECKOUTS/CodeEditTextView")
+if [ "$IMAGE_UNDO_MEMORY_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditTextView.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditTextView.swiftmodule
+fi
+
 # Hinweis zu den `rm .build/*/{debug,release}/<Modul>.build`-Zeilen oben:
 # Sie gelten nur für das alte Build-System `native`, das Änderungen in
 # .build/checkouts nicht neu übersetzt. Ab Swift 6.4 baut `swift build`

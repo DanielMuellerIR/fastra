@@ -681,6 +681,7 @@ enum SelfTest {
         case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
         case "help": waitForMainWindow { runHelpTest() }
         case "mdassist": waitForMainWindow { runMarkdownAssistTest() }
+        case "mdimagequit": waitForMainWindow { MainActor.assumeIsolated { runMarkdownImageQuitTest() } }
         case "mdindent": waitForMainWindow { runMarkdownIndentTest() }
         case "mddropcursor": waitForMainWindow { runMarkdownDropCursorTest() }
         case "mdimagewatch": waitForMainWindow { runMarkdownImageWatchTest() }
@@ -857,7 +858,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -1958,8 +1959,12 @@ enum SelfTest {
                 + "des Zweitfensters nicht Key-Window")
         }
 
-        exerciseMarkdownImageUndo(workspace: workspace, window: window)
+        exerciseMarkdownImageUndo(workspace: workspace, window: window) {
+            continuePrimaryWindowRecoveryAndClose(workspace: workspace, window: window)
+        }
+    }
 
+    private static func continuePrimaryWindowRecoveryAndClose(workspace: Workspace, window: NSWindow) {
         let recovery: (Bool, Int) = MainActor.assumeIsolated {
             WorkspaceWindowRegistry.unregister(window)
             WindowsMenuTabs.shared.synchronizeWithCurrentWindowsMenu()
@@ -2015,7 +2020,8 @@ enum SelfTest {
     /// müssen Fensterbindung und Schließen-Handler unverändert vorhanden sein.
     private static func exerciseMarkdownImageUndo(
         workspace: Workspace,
-        window: NSWindow
+        window: NSWindow,
+        completion: @escaping () -> Void
     ) {
         guard let root = window.contentView,
               let textView = editorTextView(in: root) as? TextView,
@@ -2050,25 +2056,32 @@ enum SelfTest {
                                        with: "\nText danach")
             textView.undoManager?.endUndoGrouping()
 
-            var undoCount = 0
-            while !textView.string.isEmpty,
-                  textView.undoManager?.canUndo == true,
-                  undoCount < 4 {
+            func undoStep(_ count: Int) {
+                guard count < 4, !textView.string.isEmpty, textView.undoManager?.canUndo == true else {
+                    guard textView.string.isEmpty,
+                          !FileManager.default.fileExists(atPath: stored.fileURL.path),
+                          WorkspaceWindowRegistry.workspace(for: window) === workspace,
+                          workspace.closeWindowHandler != nil else {
+                        try? FileManager.default.removeItem(at: fixture)
+                        finish(false, "Markdown-Bild-Undo beschädigte Text-, Datei- oder Fensterzustand")
+                    }
+                    try? FileManager.default.removeItem(at: fixture)
+                    completion()
+                    return
+                }
                 textView.undoManager?.undo()
-                undoCount += 1
+                waitFor(budget: 5, pause: 0.02,
+                    condition: { textView.undoManager?.isUndoing != true },
+                    onTimeout: { _ in
+                        try? FileManager.default.removeItem(at: fixture)
+                        finish(false, "Markdown-Bild-Undo schloss seine Dateiphase nicht ab")
+                    }, then: { undoStep(count + 1) })
             }
-            guard textView.string.isEmpty,
-                  !FileManager.default.fileExists(atPath: stored.fileURL.path),
-                  WorkspaceWindowRegistry.workspace(for: window) === workspace,
-                  workspace.closeWindowHandler != nil else {
-                try? FileManager.default.removeItem(at: fixture)
-                finish(false, "Markdown-Bild-Undo beschädigte Text-, Datei- oder Fensterzustand")
-            }
+            undoStep(0)
         } catch {
             try? FileManager.default.removeItem(at: fixture)
             finish(false, "Markdown-Bild-Undo-Fixture scheiterte: \(error.localizedDescription)")
         }
-        try? FileManager.default.removeItem(at: fixture)
     }
 
     private static func pollForPrimaryWindowClose(_ window: NSWindow) {
@@ -15215,10 +15228,102 @@ enum SelfTest {
         }
     }
 
-    /// Fensterlos — Projekt- & Git-Ausbau Etappe 1 end-to-end über den echten
-    /// Workspace: Willkommens-Bedingung, Projekt öffnen (Dateibaum-Wurzel,
-    /// Zuletzt-benutzt-Liste), Datei aus dem Baum laden, automatische
-    /// Repo-Erkennung ohne Duplikat und Projekt-Datei-Set samt Ausschluss.
+    /// Anders als finish() durchläuft diese Probe den echten Beenden-Hook.
+    /// Ein angehaltener Undo-Auftrag muss vor dem Verwerfen der übrigen Kopien enden.
+    @MainActor
+    private static func runMarkdownImageQuitTest() {
+        guard let workspace = Workspace.shared,
+              let window = CommandTargeting.registeredWindow(for: workspace),
+              let root = window.contentView else { finish(false, "kein Dokumentfenster für Bild-Undo beim Beenden") }
+        let base = selfTestTemporaryDirectory().canonicalFileURL.appendingPathComponent("fastra-mdimagequit-\(UUID().uuidString)")
+        let document = base.appendingPathComponent("Notizen.md")
+        let source = base.appendingPathComponent("quelle.png")
+        do {
+            try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+            try writeSolidPNG(to: source, width: 8, height: 8)
+            let bytes = try Data(contentsOf: source)
+            let saved = try MarkdownImageStore.storeImageFile(source, documentURL: document)
+            try (saved.link + "\n").write(to: document, atomically: true, encoding: .utf8)
+            workspace.loadFile(at: document) { loaded in
+                guard loaded, let index = workspace.tabs.firstIndex(where: { $0.url == document }) else {
+                    finish(false, "gespeichertes Markdown lädt vor Beenden nicht")
+                }
+                workspace.tabs[index].markdownVisualOverride = false
+                waitFor(budget: 8, pause: 0.03,
+                    condition: { (editorTextView(in: root) as? TextView)?.string == saved.link + "\n" },
+                    onTimeout: { _ in finish(false, "Quelltexteditor vor Beenden nicht bereit") }, then: {
+                        guard let editor = editorTextView(in: root) as? TextView else { finish(false, "Quelltexteditor fehlt") }
+                        do {
+                            let unused = try MarkdownImageStore.storeImageFile(source, documentURL: document)
+                            let undone = try MarkdownImageStore.storeImageFile(source, documentURL: document)
+                            for image in [unused, undone] {
+                                editor.replaceCharacters(in: NSRange(location: (editor.string as NSString).length, length: 0), with: image.link + "\n")
+                                MarkdownImageUndo.register(textView: editor, insertion: image.link,
+                                    storedImages: [image], documentURL: document, workspace: workspace)
+                                editor.undoManager?.endUndoGrouping()
+                            }
+                            workspace.confirmCloseHandler = { _ in .dontSave }
+                            let release = DispatchSemaphore(value: 0)
+                            MarkdownImageUndoSideEffect.ioQueue.async { release.wait() }
+                            editor.undoManager?.undo()
+                            guard editor.undoManager?.isUndoing == true else { finish(false, "Dateiphase des Undo wurde nicht angehalten") }
+                            let targetDirectory = base.appendingPathComponent("copy")
+                            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+                            let target = targetDirectory.appendingPathComponent("copy.md")
+                            let releaseSave = DispatchSemaphore(value: 0)
+                            let saveQueue = DispatchQueue(label: "Fastra.SelfTest.MarkdownSaveAs")
+                            saveQueue.async { releaseSave.wait() }
+                            workspace.markdownSaveAsQueue = saveQueue
+                            workspace.saveTabAs(id: workspace.activeTabID!, to: target, expectedTargetState: .absent, isMarkdown: true) { success in
+                                guard success else { finish(false, "Speichern unter vor Beenden scheiterte") }
+                            }
+                            workspace.activeTab!.undoHistory.whenIdle {
+                                DispatchQueue.main.async {
+                                    guard MarkdownImageUndoSideEffect.pendingIO.wait(timeout: .now()) == .timedOut else {
+                                        releaseSave.signal()
+                                        finish(false, "Speichern unter zählt seine angehaltene Bildkopie nicht als laufende Dateiphase")
+                                    }
+                                    releaseSave.signal()
+                                }
+                            }
+                            _ = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
+                                object: NSApp, queue: .main) { _ in
+                                    let files = try? FileManager.default.contentsOfDirectory(atPath: base.appendingPathComponent("images").path)
+                                    let copied = (try? String(contentsOf: target, encoding: .utf8)).map {
+                                        MarkdownImageCleanup.references($0, documentURL: target)
+                                    }
+                                    let ok = copied?.count == 2
+                                        && copied?.allSatisfy({ (try? Data(contentsOf: $0)) == bytes }) == true
+                                        && MarkdownImageUndoSideEffect.pendingIO.wait(timeout: .now()) == .success
+                                        && !FileManager.default.fileExists(atPath: unused.fileURL.path)
+                                        && !FileManager.default.fileExists(atPath: undone.fileURL.path)
+                                        && (try? Data(contentsOf: saved.fileURL)) == bytes
+                                        && files == [saved.fileURL.lastPathComponent]
+                                        && MarkdownImageUndoBuffer.shared.byteCount == 0
+                                    try? FileManager.default.removeItem(at: base)
+                                    finish(ok, "Beenden wartet auf Bild-Undo und Speichern unter, entfernt verworfene Kopien und erhält gespeicherte Bilder")
+                                }
+                            // AppKits Beenden-Schleife muss die Main-Queue bedienen können.
+                            // Deshalb aus dem echten Tastaturereignis starten, nicht aus diesem Callback.
+                            var quitMonitor: Any?
+                            quitMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                                if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "q" {
+                                    if let quitMonitor { NSEvent.removeMonitor(quitMonitor) }
+                                    DispatchQueue.main.async { release.signal() }
+                                }
+                                return event
+                            }
+                            guard quitMonitor != nil else { finish(false, "Command-Q-Beobachter fehlt") }
+                            window.makeKeyAndOrderFront(nil)
+                            postCmd("q", keyCode: 12, windowNumber: window.windowNumber)
+                            waitFor(budget: 10, pause: 0.03, condition: { false },
+                                onTimeout: { _ in finish(false, "Beenden erreichte den Abschluss nicht") }, then: {})
+                        } catch { finish(false, "Bildkopien vor Beenden: \(error.localizedDescription)") }
+                    })
+            }
+        } catch { finish(false, "Fixture für Bild-Undo beim Beenden: \(error.localizedDescription)") }
+    }
+
     // MARK: - Selbsttest mdassist (Etappe 5 Wunschpaket 2026-07b)
 
     /// End-to-End-Prüfung des assistierten Markdown-Schreibens:
@@ -15388,7 +15493,8 @@ enum SelfTest {
         let file = base.appendingPathComponent("images/\(storedImage)")
         waitFor(budget: 4, pause: 0.1,
                 condition: {
-                    !tv.string.contains("![1](images/1.png)")
+                    tv.undoManager?.isUndoing != true
+                        && !tv.string.contains("![1](images/1.png)")
                         && !FileManager.default.fileExists(atPath: file.path)
                 },
                 onTimeout: { book in
@@ -15407,7 +15513,8 @@ enum SelfTest {
         let file = base.appendingPathComponent("images/\(storedImage)")
         waitFor(budget: 4, pause: 0.1,
                 condition: {
-                    tv.string.contains("![1](images/1.png)")
+                    tv.undoManager?.isRedoing != true
+                        && tv.string.contains("![1](images/1.png)")
                         && FileManager.default.fileExists(atPath: file.path)
                 },
                 onTimeout: { book in

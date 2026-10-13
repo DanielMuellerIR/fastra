@@ -13,8 +13,7 @@ enum MarkdownSaveAs {
         func rollback() {
             defer { MarkdownImageStore.releaseReservations(createdImages) }
             guard !createdImages.isEmpty else { return }
-            let mover = MarkdownImageUndoFileMover(images: createdImages)
-            if mover.stashCreatedFiles() { mover.discardStash() }
+            _ = MarkdownImageUndoFiles(images: createdImages).removePermanently()
         }
     }
     private struct Reference {

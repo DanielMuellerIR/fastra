@@ -18,6 +18,19 @@ private func withTempDir(_ body: (URL) throws -> Void) throws {
     try body(dir)
 }
 
+@MainActor
+private func withImageUndoDirectory(_ body: (URL) async throws -> Void) async throws {
+    let directory = testTemporaryDirectory().appendingPathComponent("fastra-image-undo-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try await body(directory)
+}
+
+@MainActor
+private func awaitImageHistory(_ view: TextView) async throws {
+    try #require(await waitUntil { view.undoManager?.isUndoing != true && view.undoManager?.isRedoing != true })
+}
+
 /// Kleine echte PNG-Daten (1×1 Pixel) für Ablage-Tests.
 private func tinyPNG() -> Data {
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1, pixelsHigh: 1,
@@ -529,10 +542,10 @@ func storeImageData_returnsLinkWithoutUI() throws {
     }
 }
 
-@Test("Undo eines Fastra-Bildlinks entfernt nur die neu erzeugte Datei; Redo stellt sie wieder her")
+@Test("Bild-Undo hält entfernte Bytes im RAM; Redo stellt sie ohne Sicherungsordner wieder her")
 @MainActor
-func imageUndoMovesCreatedFileAndRestoresOnRedo() throws {
-    try withTempDir { dir in
+func imageUndoMovesCreatedFileAndRestoresOnRedo() async throws {
+    try await withImageUndoDirectory { dir in
         let doc = dir.appendingPathComponent("Seite.md")
         try "".write(to: doc, atomically: true, encoding: .utf8)
         let stored = try MarkdownImageStore.storePastedData(
@@ -544,10 +557,12 @@ func imageUndoMovesCreatedFileAndRestoresOnRedo() throws {
                                    storedImages: [stored])
 
         textView.undoManager?.undo()
+        try await awaitImageHistory(textView)
         #expect(textView.string.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: stored.fileURL.path))
 
         textView.undoManager?.redo()
+        try await awaitImageHistory(textView)
         #expect(textView.string == stored.link)
         #expect(FileManager.default.fileExists(atPath: stored.fileURL.path))
     }
@@ -555,8 +570,8 @@ func imageUndoMovesCreatedFileAndRestoresOnRedo() throws {
 
 @Test("Bild-Undo gehört zur konkreten Einfügung, auch wenn derselbe Link schon vorkommt")
 @MainActor
-func imageUndoWithDuplicateLinkStillMovesItsFile() throws {
-    try withTempDir { dir in
+func imageUndoWithDuplicateLinkKeepsReferencedFile() async throws {
+    try await withImageUndoDirectory { dir in
         let doc = dir.appendingPathComponent("Seite.md")
         try "".write(to: doc, atomically: true, encoding: .utf8)
         let stored = try MarkdownImageStore.storePastedData(
@@ -569,13 +584,14 @@ func imageUndoWithDuplicateLinkStillMovesItsFile() throws {
             with: "\n" + stored.link
         )
         MarkdownImageUndo.register(textView: textView, insertion: stored.link,
-                                   storedImages: [stored])
+                                   storedImages: [stored], documentURL: doc)
 
         textView.undoManager?.undo()
+        try await awaitImageHistory(textView)
         #expect(textView.string == stored.link)
-        #expect(!FileManager.default.fileExists(atPath: stored.fileURL.path))
+        #expect(FileManager.default.fileExists(atPath: stored.fileURL.path), "Ein weiterhin sichtbarer Link schützt seine Bilddatei")
 
-        // Ein neuer Edit verwirft Redo und damit die versteckte Bildsicherung.
+        // Ein neuer Edit verwirft Redo; der verbleibende Bildlink bleibt gültig.
         textView.replaceCharacters(
             in: NSRange(location: (textView.string as NSString).length, length: 0),
             with: "!"
@@ -620,8 +636,8 @@ func imageUndoSurvivesDocumentChanges(_ change: String) throws {
 
 @Test("Bild-Undo verschiebt keine in-place geänderte Datei mit zurückgesetztem mtime")
 @MainActor
-func imageUndoRejectsChangedFileWithRestoredModificationDate() throws {
-    try withTempDir { dir in
+func imageUndoRejectsChangedFileWithRestoredModificationDate() async throws {
+    try await withImageUndoDirectory { dir in
         let doc = dir.appendingPathComponent("Seite.md")
         try "".write(to: doc, atomically: true, encoding: .utf8)
         let stored = try MarkdownImageStore.storePastedData(
@@ -650,6 +666,7 @@ func imageUndoRejectsChangedFileWithRestoredModificationDate() throws {
         )
 
         textView.undoManager?.undo()
+        try await awaitImageHistory(textView)
 
         #expect(textView.string.isEmpty)
         #expect(FileManager.default.fileExists(atPath: stored.fileURL.path),
@@ -766,8 +783,8 @@ func imageUndoReservesOwnershipAndStashedName() throws {
 
 @Test("Bild-Redo bewahrt Text und fremde Datei bei Kollision und bleibt wiederholbar")
 @MainActor
-func imageRedoCollisionKeepsTextAndRetry() throws {
-    try withTempDir { dir in
+func imageRedoCollisionKeepsTextAndRetry() async throws {
+    try await withImageUndoDirectory { dir in
         let doc = dir.appendingPathComponent("Seite.md")
         let stored = try MarkdownImageStore.storePastedData(
             .init(data: tinyPNG(), fileExtension: "png"), documentURL: doc)
@@ -775,14 +792,17 @@ func imageRedoCollisionKeepsTextAndRetry() throws {
         textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: stored.link)
         MarkdownImageUndo.register(textView: textView, insertion: stored.link, storedImages: [stored])
         textView.undoManager?.undo()
+        try await awaitImageHistory(textView)
         try FileManager.default.createDirectory(at: stored.fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("foreign".utf8).write(to: stored.fileURL)
         textView.undoManager?.redo()
+        try await awaitImageHistory(textView)
         #expect(textView.string.isEmpty)
         #expect(textView.undoManager?.canRedo == true)
         #expect(try Data(contentsOf: stored.fileURL) == Data("foreign".utf8))
         try FileManager.default.removeItem(at: stored.fileURL)
         textView.undoManager?.redo()
+        try await awaitImageHistory(textView)
         #expect(textView.string == stored.link)
         #expect(try Data(contentsOf: stored.fileURL) == tinyPNG())
     }

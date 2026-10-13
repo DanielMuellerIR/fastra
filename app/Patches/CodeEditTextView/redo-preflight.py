@@ -5,6 +5,11 @@ import sys
 
 path = Path(sys.argv[1]) / 'Sources/CodeEditTextView/Utils/CEUndoManager.swift'
 s = path.read_text()
+if '// Fastra-Patch: asynchrone Bilddateiaktionen' in s:
+    if not all(anchor in s for anchor in ['func prepareRedo()', 'func cancelPreparedRedo()', 'guard effect.prepareRedo()']):
+        raise SystemExit('CEUndoManager: Redo-Patch unvollständig')
+    print('unchanged')
+    raise SystemExit(0)
 
 def replace(old, new):
     global s

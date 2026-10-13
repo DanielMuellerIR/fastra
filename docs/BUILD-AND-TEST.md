@@ -76,6 +76,34 @@ Undo-/Redo-Aktionen: 24 Command-Z-Tastendrücke durch AppKits Event-Queue
 und 24 Redo-Aktionen über die Responder-Kette. Dieser Test
 benötigt exklusiven Fensterfokus.
 
+## Markdown-Bilder und Undo
+
+Entfernte Undo-Bilder liegen im gemeinsamen `MarkdownImageUndoBuffer`, ausschließlich
+im RAM. Das Limit von 512 MiB zählt auch reservierte, noch nicht eingelesene Bytes.
+Bei Platzmangel verfällt der älteste betroffene Dokumentverlauf vollständig;
+eine einzelne zu große Aktion bekommt keinen Ersatz auf der Platte. Der Markdown-
+Quelltextverlauf beginnt beim Speichern unter in einen anderen Ordner neu, weil
+alte relative Bildpfade sonst das neue Dokument beschädigen könnten.
+Die gespeicherten Herkunftsreferenzen folgen dem gebundenen Verzeichnisdeskriptor,
+auch nach Finder-Umbenennungen.
+
+Patch 4z25 (`Patches/CodeEditTextView/image-undo-memory.py`) verbindet den nativen
+Undo-Verlauf mit asynchronen Bildaktionen. Der Editor bleibt während der Dateiaktion
+gesperrt; Speichern, Ansichtswechsel und Beenden warten auf ihren Abschluss.
+Dateiinhalte werden im Hintergrund geprüft. Unmittelbar vor dem Entfernen gleicht
+der Main-Thread alle offenen Dokumentreferenzen erneut ab und führt nur noch die
+kurze Metadatenoperation aus. Geänderte Referenzen lösen eine neue Prüfung aus.
+
+Nach `./build.sh` prüfen `./test.sh --fast-only --filter
+'MarkdownImageUndoBufferTests|MarkdownImageStoreTests|MarkdownVisualTests|SearchUndoTests|AtomicFileCommitTests'`
+das Speicherlimit, Verwerfen während einer laufenden Aktion, gespeicherte und
+geteilte Bildreferenzen, Dateikollisionen sowie echte WebKit-Undo-Vorgänge.
+Die Fenster-Selbsttests `mdassist`, `mdvisual`, `searchundo` und `cmdw` ergänzen
+native Eingaben, Ansichtswechsel und Schließen im gepackten Bundle. `mdimagequit`
+durchläuft den echten Beenden-Hook während einer angehaltenen Undo-Dateiphase
+und eines anschließenden Save-As-Bildkopierauftrags. Er prüft dessen gezielt
+blockierte Queue, die fertige neue Datei und die Bereinigung vor dem Prozessende.
+
 ## Build-Anleitung
 
 ```bash

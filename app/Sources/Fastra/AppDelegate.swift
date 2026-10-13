@@ -477,7 +477,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !SelfTest.isSelfTestRun else { return }
         DispatchQueue.global(qos: .utility).async {
             let store = AtomicCommitRecovery.Store.standard
-            guard let pending = try? store.inspectPending(includeActiveProcesses: false) else { return }
+            guard let pending = try? store.inspectPending(for: url, includeActiveProcesses: false) else { return }
             let relevant = pending.filter { $0.concernsOpenedDocument(url) }
             guard !relevant.isEmpty else { return }
             DispatchQueue.main.async {
@@ -800,25 +800,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// nachfragen (BBEdit-Stil: Sichern / Nicht sichern / Abbrechen) — sonst gingen
     /// getippte Inhalte stillschweigend verloren (Daniel-Befund 2026-06-25). Die
     /// eigentliche Rückfrage-Logik liegt im Workspace (geteilt mit dem Tab-Schließen).
+    private var terminationRequested = false
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let editors = DocumentWindowController.restorableDocumentWindows().compactMap {
-            WorkspaceWindowRegistry.workspace(for: $0)?.visualMarkdownEditor
-        }.filter { $0.ready }
-        if !editors.isEmpty {
-            let group = DispatchGroup()
-            var successful = true
-            for editor in editors {
-                group.enter()
-                editor.synchronize(holdingInput: true) { succeeded in successful = successful && succeeded; group.leave() }
+        guard !terminationRequested else { return .terminateLater }
+        terminationRequested = true
+        let histories = DispatchGroup()
+        for workspace in Workspace.allLive {
+            for tab in workspace.tabs where tab.undoHistory.isPerformingAction {
+                histories.enter()
+                tab.undoHistory.whenIdle { histories.leave() }
             }
-            group.notify(queue: .main) {
-                let terminate = successful && self.finishTerminationChecks() == .terminateNow
-                for editor in editors { editor.completeAction() }
-                sender.reply(toApplicationShouldTerminate: terminate)
-            }
-            return .terminateLater
         }
-        return finishTerminationChecks()
+        histories.notify(queue: .main) {
+            // Einfügen, Save-Cleanup und verworfene Redo-Zweige gehören ebenfalls
+            // zum Abschluss; sie besitzen nicht immer einen laufenden CE-Befehl.
+            MarkdownImageUndoSideEffect.pendingIO.notify(queue: .main) {
+                let editors = DocumentWindowController.restorableDocumentWindows().compactMap {
+                    WorkspaceWindowRegistry.workspace(for: $0)?.visualMarkdownEditor
+                }.filter { $0.ready }
+                let group = DispatchGroup()
+                var successful = true
+                for editor in editors {
+                    group.enter()
+                    editor.synchronize(holdingInput: true) { succeeded in successful = successful && succeeded; group.leave() }
+                }
+                group.notify(queue: .main) {
+                    let terminate = successful && self.finishTerminationChecks() == .terminateNow
+                    guard terminate else {
+                        for editor in editors { editor.completeAction() }
+                        self.terminationRequested = false
+                        sender.reply(toApplicationShouldTerminate: false)
+                        return
+                    }
+                    // Die Rückfragen sind abgeschlossen. Ungespeicherte Links
+                    // dürfen nun keine eigenen, sonst verwaisten Kopien schützen.
+                    MarkdownImageUndo.applicationIsClosing = true
+                    for workspace in Workspace.allLive {
+                        workspace.visualMarkdownEditor?.discardForTermination()
+                        for tab in workspace.tabs { tab.undoHistory.reset(to: tab.content) }
+                    }
+                    MarkdownImageUndoSideEffect.pendingIO.notify(queue: .main) {
+                        sender.reply(toApplicationShouldTerminate: true)
+                    }
+                }
+            }
+        }
+        return .terminateLater
     }
 
     @MainActor

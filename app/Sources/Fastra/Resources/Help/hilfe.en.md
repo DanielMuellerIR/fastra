@@ -555,14 +555,22 @@ inserting images (⌘S).
 Click an image in WYSIWYG mode to select it. Use the Delete key or
 **Right-click → Delete** to remove it; ⌘Z restores it. For previously saved
 images, the file is removed only on the next save so the saved document remains
-valid. Undo retains the image until its history is discarded. Images used by
-other Markdown files in the same folder or other open documents are preserved.
-Files outside the immediate `images` folder are not removed automatically.
+valid. Images used by other Markdown files in the same folder or other open
+documents are preserved. Files outside the immediate `images` folder are not
+removed automatically.
+
+Removed Undo images are held only in memory, without hidden backup folders.
+The shared limit is 512 MiB across all windows. When space runs out, the oldest
+affected document history is discarded completely. An image action larger than
+the limit loses its history immediately. Closing or quitting releases the
+retained Undo images.
 
 ⌘Z after an unsaved insertion also removes the newly created image file; Redo
-restores both. The original source file is no longer needed. The number stays
-reserved until the undo step is discarded. Save As copies only images still
-used. Markdown and `images` can be copied, renamed and moved together.
+restores both while the history is available. The original source file is no
+longer needed. The number stays reserved until the undo step is discarded. Save As copies only images still
+used. Save As to a different folder starts a new Markdown Undo history so old
+relative image paths cannot enter the new document. Markdown and `images` can be
+copied, renamed and moved together.
 
 **Markdown → Clean up images folder…** previews unused files in the immediate
 `images` folder before deleting them. Save the document first. Other Markdown
@@ -1129,8 +1137,9 @@ exchange.
 
 Before every such name exchange, Fastra also synchronizes a small recovery
 journal under `~/Library/Application Support/Fastra/atomic-commit-recovery/`.
-If the process or Mac stops between the exchange and final verification,
-Fastra checks the affected file's identity and content checksums when it is
+It contains only identification data and checksums, no document contents or Undo
+images. Opening a file checks only that file. If the process or Mac stops between
+the exchange and final verification, Fastra checks the affected file's identity and content checksums when it is
 opened. It shows the two paths only when both versions still belong to that
 interrupted operation. Copied, moved or replaced files do not inherit recovery
 warnings. Unclear old records and their files are preserved without blocking

@@ -227,7 +227,8 @@ enum AtomicCommitRecovery {
         /// Fehlt das Ziel oder liegt dort ein fremder Stand, bleibt das Journal
         /// als letzter Hinweis erhalten. Sobald zwei Fassungen existieren,
         /// nimmt Fastra keine inhaltliche Entscheidung für den Nutzer vor.
-        func inspectPending(includeActiveProcesses: Bool = true) throws -> [Inspection] {
+        func inspectPending(for targetURL: URL? = nil, includeActiveProcesses: Bool = true,
+                            beforeInspectTarget: ((URL) -> Void)? = nil) throws -> [Inspection] {
             var directoryInfo = stat()
             guard lstat(directoryURL.path, &directoryInfo) == 0 else {
                 if errno == ENOENT { return [] }
@@ -271,6 +272,10 @@ enum AtomicCommitRecovery {
                         journalURL: journalURL))
                     continue
                 }
+                // Beim Dokumentöffnen nur dessen Nutzdateien anfassen. Alte
+                // Journale anderer Dokumente dürfen keine erneuten Vollscans auslösen.
+                if let targetURL, paths.target != targetURL.standardizedFileURL { continue }
+                beforeInspectTarget?(paths.target)
                 if !includeActiveProcesses,
                    processStartToken(record.ownerProcessID)
                     == record.ownerProcessStartToken {

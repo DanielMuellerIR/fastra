@@ -885,3 +885,47 @@ und Reload-Generation schützen vor Rückmeldungen eines abgebauten Editors.
 ohne die Editor-Anbindung scheitern Einzel- und Alle-Ersetzen tatsächlich an
 `canUndo`. Der Fenster-Test `searchundo` ergänzt echte Command-Z-Tastendrücke
 und Wiederholen über die Responder-Kette.
+
+### F.34 Asynchrones Bild-Undo braucht eine getrennte Textphase (2026-10-13)
+
+`CodeEditTextView.replaceCharacters` ignoriert Änderungen, wenn `isEditable`
+falsch ist. Wird der Editor schon vor der Undo-Textänderung gesperrt, verschwinden
+zwar die Bilddateien, der Bildlink bleibt aber im Dokument. Undo ändert deshalb
+zuerst den Text und sperrt danach für die Dateiaktion. Redo stellt zunächst die
+Dateien wieder her und gibt den Editor vor seiner Textänderung frei.
+
+Ein laufender Undo-Auftrag hält seine Gruppe außerhalb des normalen Stacks.
+`clearStack` muss deshalb zusätzlich eine Generation erhöhen; die verspätete
+Completion darf die vorherige Gruppe sonst wieder als Redo einsetzen.
+
+WebKit benötigt ebenfalls kurz einen editierbaren Bereich, um eine fehlgeschlagene
+Bildaktion mit `execCommand` zurückzunehmen. Danach werden Rückgabewert und der
+vollständige serialisierte Text geprüft. Die erste Bildzustandsprüfung startet mit
+den tatsächlich geladenen Bild-IDs; ein leerer Anfangswert übersieht das sofortige
+Entfernen aller bereits vorhandenen Bilder. Die Regressionstests halten die
+Datei-Queue gezielt an und prüfen den echten Editor während dieser Zwischenzustände.
+
+### F.35 Bildverläufe bleiben an ihren Herkunftsordner gebunden (2026-10-14)
+
+Nach Einfügen, Speichern, Undo und „Speichern unter“ bleibt das ursprüngliche
+Markdown-Dokument auf der Platte bestehen. Seine Bildverweise müssen weiterhin
+zählen. Der Herkunftsordner folgt deshalb dem gebundenen Verzeichnisdeskriptor,
+nicht dem neuen Tabpfad; das übersteht auch Finder-Umbenennungen.
+
+Das Verwerfen alter Bildaktionen beginnt erst nach Übernahme der neuen Tab-URL.
+Vorher würde der offene Tab seine ungesicherte Herkunftskopie weiterhin als
+verwendet schützen, obwohl die neue Datei bereits ihre eigene Kopie besitzt.
+Bei einem anderen Zielordner beginnt der Markdown-Verlauf neu: Auch ein reiner
+Text-Undo könnte sonst einen inzwischen nicht mehr mitkopierten relativen
+Bildpfad in die neue Datei einfügen. Die Regressionen prüfen beide Editorarten,
+gespeicherte und ungespeicherte Einfügungen, einen verschobenen Herkunftsordner
+sowie das normale Speichern einer Linkentfernung im ursprünglichen Dokument.
+
+### F.36 Beenden-Proben brauchen den echten Ereignisweg (2026-10-14)
+
+Ein direktes `NSApp.terminate` in einem Main-Queue-Callback hält diesen Callback
+bis zum Ende von AppKits Beenden-Schleife offen. Die Main-Queue kann ihre eigenen
+asynchronen Datei-Completions dann nicht bedienen. Der Quit-Selbsttest sendet
+deshalb Command-Q durch die Ereigniswarteschlange. Ein lokaler Ereignisbeobachter
+gibt erst beim zugestellten Tastendruck den absichtlich angehaltenen Undo-Auftrag
+frei; der echte Beenden-Hook muss anschließend alle Dateiaktionen abschließen.

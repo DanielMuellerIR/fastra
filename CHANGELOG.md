@@ -7,6 +7,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.139.18] — 2026-10-14
+
+### Geändert
+
+- Bild-Undo hält entfernte Bilder ausschließlich im Arbeitsspeicher. Das gemeinsame Limit beträgt 512 MiB für alle Fenster. Bei Platzmangel entfällt der älteste betroffene Dokumentverlauf; es gibt keine versteckten Bild-Undo-Ordner mehr.
+- Lesen, Prüfen und Wiederherstellen der Undo-Bilder laufen im Hintergrund. Speichern, Ansichtswechsel und Beenden warten auf laufende Bildaktionen.
+
+### Behoben
+
+- Nach Einfügen, Speichern und Rückgängig bleiben Bilder erhalten, solange der gespeicherte Markdown-Stand oder ein anderes Dokument sie verwendet. „Speichern unter“ schützt auch die Ursprungsdatei nach einem Ordnerwechsel; der Markdown-Undo-Verlauf beginnt bei einem anderen Zielordner neu.
+- Das Recovery-Journal prüft beim Öffnen nur die betroffene Datei und liest keine Bild- oder Dokumentinhalte anderer alter Vorgänge mehr ein.
+
 ## [v1.139.17] — 2026-10-13
 
 ### Behoben

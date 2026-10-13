@@ -5,6 +5,32 @@ import Testing
 
 @Suite("Atomarer Datei-Commit")
 struct AtomicFileCommitTests {
+    @Test("Dokument-Recovery liest und bereinigt keine Nutzdateien anderer Journale")
+    func documentInspectionDoesNotTouchOtherTargets() throws {
+        let directory = try makeDirectory("target-filter")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = testRecoveryStore(in: directory)
+        var targets: [URL] = []
+        for index in 0..<2 {
+            let target = directory.appendingPathComponent("target-\(index).md")
+            let prepared = directory.appendingPathComponent("prepared-\(index).tmp")
+            try Data("alt".utf8).write(to: target)
+            try Data("neu".utf8).write(to: prepared)
+            try store.begin(targetURL: target, preparedURL: prepared,
+                targetStat: fileStat(target), preparedStat: fileStat(prepared),
+                expectedContent: FileSnapshot.readSnapshotOnly(from: target),
+                replacementContent: FileSnapshot.readSnapshotOnly(from: prepared))
+            targets.append(target)
+            if index == 1 { try FileManager.default.removeItem(at: prepared) }
+        }
+        var inspected: [URL] = []
+        let pending = try store.inspectPending(for: targets[0], beforeInspectTarget: { inspected.append($0) })
+        #expect(inspected == [targets[0]])
+        #expect(pending.map(\.targetURL) == [targets[0]])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: store.directoryURL.path).filter { $0.hasSuffix(".json") }.count == 2,
+                "Der erledigte fremde Eintrag wird erst bei dessen eigener Prüfung bereinigt")
+    }
+
     @Test("Der Nachprüfungszeitraum besitzt ein dauerhaftes Recovery-Journal")
     func postSwapWindowHasDurableRecoveryJournal() throws {
         let directory = try makeDirectory("journal-window")

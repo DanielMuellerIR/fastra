@@ -369,7 +369,9 @@ enum MarkdownAssist {
         // darf Workspace und Einfüge-Lease deshalb halten. Nur der abgetrennte
         // innere Task verlässt den Main-Thread — und der bekommt ausschließlich
         // Werte, die gefahrlos zwischen Threads wandern (Dateiadressen).
+        MarkdownImageUndoSideEffect.pendingIO.enter()
         Task {
+            defer { MarkdownImageUndoSideEffect.pendingIO.leave() }
             let outcome = await Task.detached(priority: .userInitiated) {
                 storeImageFiles(urls, documentURL: documentURL)
             }.value
@@ -404,8 +406,8 @@ enum MarkdownAssist {
     /// Zwischen Ablage und Einfügen kann der Nutzer Text, Auswahl oder Tab
     /// geändert oder das Fenster geschlossen haben. Der Lease prüft deshalb
     /// Dokument und Fenster und entscheidet zwischen ursprünglicher Auswahl
-    /// und aktueller reiner Einfügestelle. Abgelegte Bilddateien bleiben bei
-    /// einem nicht mehr vorhandenen Ziel erhalten.
+    /// und aktueller reiner Einfügestelle. Fehlt das Ziel inzwischen, werden
+    /// ausschließlich die noch unveränderten eigenen Bildkopien entfernt.
     private static func finishImageInsertion(
         _ outcome: ImageStoreOutcome,
         lease: ImageInsertionLease, workspace: Workspace
@@ -414,8 +416,12 @@ enum MarkdownAssist {
             NSAlert.runWarning(title: L10n.string("Bild konnte nicht übernommen werden"),
                                text: message)
         }
-        guard !outcome.storedImages.isEmpty,
-              let target = lease.target() else { return }
+        guard !outcome.storedImages.isEmpty else { return }
+        guard let target = lease.target() else {
+            let images = outcome.storedImages.filter(\.createdByInsertion)
+            MarkdownImageUndoSideEffect.perform({ MarkdownImageUndoFiles(images: images).removePermanently() }, completion: { _ in })
+            return
+        }
         insertLinks(outcome.storedImages, into: target.textView,
                     replacing: target.replacementRange, workspace: workspace)
     }
@@ -429,7 +435,9 @@ enum MarkdownAssist {
         // Auch TIFF/HEIC-Dekodierung und das atomare Schreiben können bei
         // großen Pasteboard-Bildern dauern. Der abgetrennte Task erhält nur
         // Bilddaten, Typkennung und Dokumentadresse, niemals UI-Objekte.
+        MarkdownImageUndoSideEffect.pendingIO.enter()
         Task {
+            defer { MarkdownImageUndoSideEffect.pendingIO.leave() }
             let outcome = await Task.detached(priority: .userInitiated) {
                 storeImageData(data, typeIdentifier: typeIdentifier,
                                documentURL: documentURL)
@@ -482,7 +490,7 @@ enum MarkdownAssist {
         let insertion = links.joined(separator: "\n")
         textView.replaceCharacters(in: selection, with: insertion)
         MarkdownImageUndo.register(textView: textView, insertion: insertion,
-                                   storedImages: storedImages)
+                                   storedImages: storedImages, documentURL: workspace.activeTab?.url, workspace: workspace)
         let caret = selection.location + (insertion as NSString).length
         textView.selectionManager.setSelectedRange(NSRange(location: caret, length: 0))
         revealInPreview(textView: textView, characterLocation: selection.location,

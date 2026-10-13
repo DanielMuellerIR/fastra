@@ -1,4 +1,5 @@
 import CodeEditTextView
+import Foundation
 
 /// Der Verlauf gehört zum Dokument, nicht zur kurzlebigen SwiftUI-Editoransicht.
 /// Tabkopien teilen ihn wie die Hex-Sitzung; neue Dokumente beginnen unabhängig.
@@ -10,6 +11,24 @@ final class DocumentUndoHistory: Hashable {
         if storage == nil { storage = CEUndoManager() }
         synchronize(with: text)
         return storage!
+    }
+
+    var isPerformingAction: Bool { storage?.isUndoing == true || storage?.isRedoing == true }
+
+    func whenIdle(_ action: @escaping () -> Void) {
+        if let storage { storage.fastraWhenIdle(action) }
+        else { action() }
+    }
+
+    func owns(_ manager: CEUndoManager) -> Bool { storage === manager }
+
+    func reset(to text: String) {
+        storage?.clearStack()
+        content = text
+    }
+
+    func documentSaved(_ text: String, at url: URL) {
+        storage?.fastraDocumentSaved(text, at: url)
     }
 
     /// Native Eingaben sind bereits im CodeEdit-Verlauf registriert.

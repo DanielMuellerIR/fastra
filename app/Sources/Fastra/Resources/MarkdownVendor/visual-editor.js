@@ -110,8 +110,8 @@
     return '\n\n'+lines.join('\n')+'\n\n';
   }});
   let root, originals=new Map(), blocks=[], selection=null, base='', session='', composing=false, revision=0, fenced=false, bookmarkID=0, bookmarks=new Map(), editingCommand=false, lastInputType='';
-  let actionFenced=false, clipboardBookmark=null;
-  function updateFence(){fenced=actionFenced || clipboardBookmark!==null;root.contentEditable=fenced?'false':'true';}
+  let actionFenced=false, clipboardBookmark=null, imageFenceRevision=null, lastImageTransactions="[]";
+  function updateFence(){fenced=actionFenced || clipboardBookmark!==null || imageFenceRevision!==null;root.contentEditable=fenced?'false':'true';}
   function normalized(node) {
     const clone=node.cloneNode(true);
     clone.querySelectorAll('[contenteditable]').forEach(n=>n.removeAttribute('contenteditable'));
@@ -194,7 +194,9 @@
     root.querySelectorAll('input[type=checkbox]').forEach(n=>{n.removeAttribute('disabled');n.contentEditable='false';});
     const markdown=serialize();
     if(markdown===base)return;
-    window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'change',session,base,markdown,revision:++revision,imageTransactions:imageTransactions(),inputType:lastInputType});
+    const imageIDs=imageTransactions(), imageState=JSON.stringify(imageIDs.slice().sort());
+    if(imageState!==lastImageTransactions){imageFenceRevision=revision+1;lastImageTransactions=imageState;updateFence();}
+    window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'change',session,base,markdown,revision:++revision,imageTransactions:imageIDs,inputType:lastInputType});
     base=markdown;
   }
   function selectImage(image) {
@@ -358,6 +360,7 @@
       while(!document.documentElement.hasAttribute('data-fastra-enhanced') && Date.now()<until)await new Promise(r=>setTimeout(r,10));
       root=document.getElementById('fastra-visual');blocks=configuration.blocks;base=configuration.markdown;session=configuration.session;opaqueSources=configuration.opaqueSources || {};
       root.querySelectorAll('img').forEach(image=>{const token=image.getAttribute('src')?.split('/').pop(),id=configuration.imageTransactions?.[token];if(id)image.dataset.mdImageTransaction=id;});
+      lastImageTransactions=JSON.stringify(imageTransactions().slice().sort());
       root.contentEditable='true';root.setAttribute('role','textbox');root.setAttribute('aria-multiline','true');
       root.querySelectorAll('input[type=checkbox]').forEach(n=>{n.removeAttribute('disabled');n.contentEditable='false';});
       root.querySelectorAll('[data-tex],.mermaid-render').forEach(n=>n.contentEditable='false');
@@ -537,10 +540,17 @@
       updateFence();changed();return {markdown:serialize(),revision,imageTransactions:imageTransactions(),inputType:lastInputType};
     },
     completeAction(expectedSession){if(expectedSession!==session)return;actionFenced=false;updateFence();},
+    completeImageAction(expectedSession,expectedRevision){
+      if(expectedSession!==session || expectedRevision!==imageFenceRevision)return;
+      imageFenceRevision=null;updateFence();
+    },
     rollbackImageChange(inputType,previous){
-      editingCommand=true;
-      try{document.execCommand(inputType==='historyUndo'?'redo':'undo');}finally{editingCommand=false;}
-      base=previous;
+      editingCommand=true;root.contentEditable='true';root.focus();
+      let reverted=false;
+      try{reverted=document.execCommand(inputType==='historyUndo'?'redo':'undo');}finally{editingCommand=false;updateFence();}
+      if(!reverted || serialize()!==previous)return false;
+      base=previous;lastImageTransactions=JSON.stringify(imageTransactions().slice().sort());
+      return true;
     },
     markdown:()=>serialize(),
     flush:()=>changed()

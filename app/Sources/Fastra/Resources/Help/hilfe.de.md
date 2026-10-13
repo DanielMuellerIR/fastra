@@ -581,16 +581,23 @@ neue Dokumente vor dem Einfügen von Bildern (⌘S).
 Ein Klick wählt ein Bild im WYSIWYG-Modus aus. Mit der Löschtaste oder
 **Rechtsklick → Löschen** entfernst du es; ⌘Z stellt es wieder her.
 Bei schon gespeicherten Bildern wird die Datei erst beim nächsten Speichern
-entfernt, damit der bisherige Plattenstand gültig bleibt. Undo hält die Bilddatei
-bis zum Verwerfen des Verlaufs bereit. Bilder anderer Markdown-Dateien im selben
-Ordner und anderer offener Dokumente bleiben erhalten. Dateien außerhalb des
-unmittelbaren `images`-Ordners werden nicht automatisch entfernt.
+entfernt, damit der bisherige Plattenstand gültig bleibt. Bilder anderer
+Markdown-Dateien im selben Ordner und anderer offener Dokumente bleiben erhalten.
+Dateien außerhalb des unmittelbaren `images`-Ordners werden nicht automatisch entfernt.
+
+Entfernte Undo-Bilder liegen ausschließlich im Arbeitsspeicher, ohne versteckte
+Sicherungsordner. Dafür stehen insgesamt 512 MiB für alle Fenster zur Verfügung.
+Bei Platzmangel entfällt der älteste betroffene Dokumentverlauf vollständig.
+Übersteigt schon eine einzelne Bildaktion das Limit, entfällt ihr Verlauf sofort.
+Schließen oder Beenden gibt die gespeicherten Undo-Bilder frei.
 
 ⌘Z nach einer noch ungespeicherten Einfügung entfernt auch die neu erzeugte
-Bilddatei; Redo stellt beides wieder her. Die ursprüngliche Quelldatei wird dafür
-nicht benötigt. Die Nummer bleibt bis zum Verwerfen des Undo-Schritts reserviert.
-„Speichern unter“ nimmt nur noch verwendete Bilder mit. Markdown und `images`
-können gemeinsam kopiert, umbenannt und verschoben werden.
+Bilddatei; Redo stellt beides wieder her, solange der Verlauf verfügbar ist.
+Die ursprüngliche Quelldatei wird dafür nicht benötigt. Die Nummer bleibt bis zum Verwerfen des Undo-Schritts reserviert.
+„Speichern unter“ nimmt nur noch verwendete Bilder mit. Beim Wechsel in einen
+anderen Ordner beginnt der Markdown-Undo-Verlauf neu, damit alte relative
+Bildpfade nicht in die neue Datei gelangen. Markdown und `images` können gemeinsam
+kopiert, umbenannt und verschoben werden.
 
 **Markdown → Images-Ordner aufräumen…** zeigt die unbenutzten Dateien im
 unmittelbaren `images`-Ordner vor dem Löschen an. Speichere das Dokument vorher.
@@ -1198,8 +1205,9 @@ macOS-Namenstausch nicht sperren.
 
 Vor jedem solchen Namenstausch synchronisiert Fastra außerdem ein kleines
 Recovery-Journal unter `~/Library/Application Support/Fastra/atomic-commit-recovery/`.
-Endet der Prozess oder der Mac zwischen Tausch und Abschlussprüfung, prüft
-Fastra beim Öffnen der betroffenen Datei ihre Identität und Inhaltsprüfsummen.
+Es enthält nur Zuordnungsdaten und Prüfsummen, keine Dokumentinhalte oder Undo-Bilder.
+Beim Öffnen wird ausschließlich die betroffene Datei geprüft. Endet der Prozess
+oder der Mac zwischen Tausch und Abschlussprüfung, prüft Fastra beim Öffnen der betroffenen Datei ihre Identität und Inhaltsprüfsummen.
 Nur wenn beide Fassungen noch eindeutig zu diesem unterbrochenen Vorgang
 gehören, nennt Fastra ihre Pfade. Kopierte, verschobene oder inzwischen anders
 belegte Dateien erben keine Recovery-Meldung. Unklare alte Einträge und die

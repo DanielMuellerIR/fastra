@@ -1712,6 +1712,12 @@ final class Workspace: ObservableObject {
 
     @discardableResult
     func synchronizeVisualMarkdownBefore(_ action: @escaping () -> Void, onFailure: (() -> Void)? = nil) -> Bool {
+        // Auch Quelltext-Bild-Undo besitzt eine kurze asynchrone Dateiphase.
+        // Speichern, Schließen und Ansichtswechsel warten auf deren Abschluss.
+        if let history = tabs.first(where: { $0.undoHistory.isPerformingAction })?.undoHistory {
+            history.whenIdle(action)
+            return true
+        }
         guard !performingVisualAction, let editor = visualMarkdownEditor, editor.ready else { return false }
         editor.synchronize(holdingInput: true) { [weak self] succeeded in
             defer { editor.completeAction() }
@@ -3937,43 +3943,53 @@ final class Workspace: ObservableObject {
                            isMarkdown: isMarkdown, completion: completion)
         }, onFailure: { completion?(false) }) { return }
         guard let tab = tabs.first(where: { $0.id == tabID }) else { completion?(false); return }
+        var pendingImages = false
+        var completed = false
+        func complete(_ success: Bool) {
+            guard !completed else { return }
+            completed = true
+            defer { if pendingImages { MarkdownImageUndoSideEffect.pendingIO.leave() } }
+            completion?(success)
+        }
+        func rollback(_ prepared: MarkdownSaveAs.Prepared) {
+            guard !prepared.createdImages.isEmpty else { complete(false); return }
+            MarkdownImageUndoSideEffect.perform({ prepared.rollback(); return true }) { _ in complete(false) }
+        }
         func finish(_ prepared: MarkdownSaveAs.Prepared) {
             if synchronizeVisualMarkdownBefore({ finish(prepared) }, onFailure: {
-                DispatchQueue.global(qos: .utility).async { prepared.rollback() }
-                completion?(false)
+                rollback(prepared)
             }) { return }
             var committed = false
             guard let index = tabs.firstIndex(where: { $0.id == tabID }),
                   tabs[index].documentID == tab.documentID,
                   tabs[index].contentRevision == tab.contentRevision,
                   tabs[index].url == tab.url else {
-                DispatchQueue.global(qos: .utility).async { prepared.rollback() }
                 saveSafetyWarningHandler(L10n.string("Speichern abgebrochen"),
                     L10n.string("Der Editorinhalt hat sich während der Rückfrage geändert. Die neueren Änderungen bleiben ungespeichert erhalten."))
-                completion?(false)
+                rollback(prepared)
                 return
             }
             guard write(tab: tabs[index], to: url, expectedTargetState: expectedTargetState,
                         relocatedMarkdown: prepared.content, onCommit: { committed = true; prepared.commit() }),
                   let savedIndex = tabs.firstIndex(where: { $0.id == tabID }) else {
-                if !committed { DispatchQueue.global(qos: .utility).async { prepared.rollback() } }
-                completion?(false)
+                if !committed { rollback(prepared) } else { complete(false) }
                 return
             }
             adoptSavedTarget(url, forTabAt: savedIndex)
             synchronizeProjectWithActiveTabIfNeeded()
-            completion?(true)
+            complete(true)
         }
         guard isMarkdown, let sourceURL = tab.url else {
             finish(MarkdownSaveAs.Prepared(content: tab.content, createdImages: []))
             return
         }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        pendingImages = true
+        MarkdownImageUndoSideEffect.pendingIO.enter()
+        markdownSaveAsQueue.async { [weak self] in
             let result = Result { try MarkdownSaveAs.prepare(content: tab.content, sourceURL: sourceURL, targetURL: url) }
             DispatchQueue.main.async {
                 guard let self else {
-                    if case .success(let prepared) = result { prepared.rollback() }
-                    completion?(false)
+                    if case .success(let prepared) = result { rollback(prepared) } else { complete(false) }
                     return
                 }
                 switch result {
@@ -3981,7 +3997,7 @@ final class Workspace: ObservableObject {
                 case .failure(let error):
                     self.saveSafetyWarningHandler(L10n.string("Speichern unter abgebrochen"),
                         L10n.format("Die zugehörigen Bilder konnten nicht kopiert werden: %@", error.localizedDescription))
-                    completion?(false)
+                    complete(false)
                 }
             }
         }
@@ -3992,12 +4008,24 @@ final class Workspace: ObservableObject {
     /// Bewusst eine eigene Methode: Der Zustandswechsel nach dem Schreiben
     /// ist damit ohne den modalen Speichern-Dialog prüfbar.
     func adoptSavedTarget(_ url: URL, forTabAt idx: Int) {
-        if tabs[idx].url != url, visualMarkdownEditor?.tabID == tabs[idx].id {
-            visualMarkdownEditor?.invalidateForSourceReplacement()
-        }
+        let previousURL = tabs[idx].url
+        let changesMarkdownDirectory = previousURL != nil
+            && previousURL?.deletingLastPathComponent().canonicalFileURL != url.deletingLastPathComponent().canonicalFileURL
+            && MarkdownFormat.isMarkdown(format: DocumentFormatResolver.resolve(tab: tabs[idx]))
         tabs[idx].url = url
         tabs[idx].title = url.lastPathComponent
         tabs[idx].path = url.deletingLastPathComponent().path
+        // Erst der neue Tabpfad macht seine offenen Bildverweise eindeutig.
+        // Vorher würde Discard die ungesicherte Herkunftskopie weiter schützen.
+        if changesMarkdownDirectory {
+            // Auch reine Textschritte können alte, nicht mitkopierte Bildpfade zurückbringen.
+            tabs[idx].undoHistory.reset(to: tabs[idx].content)
+        } else if previousURL?.canonicalFileURL != url.canonicalFileURL {
+            tabs[idx].undoHistory.documentSaved(tabs[idx].content, at: url)
+        }
+        if previousURL != url, visualMarkdownEditor?.tabID == tabs[idx].id {
+            visualMarkdownEditor?.invalidateForSourceReplacement()
+        }
         // Die manuelle Formatwahl gehört zur DATEI und muss deshalb am NEUEN
         // Pfad landen. Bei einem noch nie gespeicherten Tab war sie mangels
         // URL überhaupt nicht abgelegt (siehe `rememberLanguageChoice`), bei
@@ -4016,6 +4044,7 @@ final class Workspace: ObservableObject {
     var saveConflictConfirmHandler: (String) -> Bool = Workspace.defaultSaveConflictConfirmation
     /// Deterministischer Testpunkt nach Temp-Write, aber vor Koordination.
     var saveBeforeCoordinateHandler: ((URL) -> Void)? = nil
+    var markdownSaveAsQueue = DispatchQueue.global(qos: .userInitiated)
     /// Testpunkt nach der letzten Zielprüfung, unmittelbar vor dem Austausch.
     /// Der produktive Pfad setzt ihn nie; Regressionstests treffen damit die
     /// sonst nur wenige Instruktionen breite Fremdänderungs-Lücke.
@@ -4046,7 +4075,7 @@ final class Workspace: ObservableObject {
     func write(tab: EditorTab, to url: URL,
                expectedTargetState: ExpectedFileState?,
                relocatedMarkdown: String? = nil, onCommit: (() -> Void)? = nil) -> Bool {
-        guard tabs.contains(where: { $0.id == tab.id }) else { return false }
+        guard tabs.contains(where: { $0.id == tab.id }), !tab.undoHistory.isPerformingAction else { return false }
         guard !fileMutationIsInFlight(for: tab.url),
               !fileMutationIsInFlight(for: url) else { return false }
         do {
@@ -4186,7 +4215,7 @@ final class Workspace: ObservableObject {
             }
             if let relocatedMarkdown,
                !tabs[finalIndex].content.utf8.elementsEqual(relocatedMarkdown.utf8) {
-                if visualMarkdownEditor?.tabID == tab.id {
+                if sameDocument, visualMarkdownEditor?.tabID == tab.id {
                     visualMarkdownEditor?.invalidateForSourceReplacement()
                 }
                 // Neue Bildpfade sind eine Modelländerung: Verlauf und Editor
@@ -4209,7 +4238,10 @@ final class Workspace: ObservableObject {
             // Gespeicherter Stand = neue Basis: Rückgängig bis genau hierher
             // lässt den Punkt im Tab wieder verschwinden.
             tabs[finalIndex].recordSavedContentBaseline()
-            visualMarkdownEditor?.documentSaved(at: url)
+            if sameDocument {
+                tabs[finalIndex].undoHistory.documentSaved(tabs[finalIndex].content, at: url)
+                visualMarkdownEditor?.documentSaved(at: url)
+            }
             // Speichern kann den Git-Status geändert haben (Datei jetzt „M").
             refreshGitStatus()
             return true

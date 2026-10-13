@@ -63,16 +63,14 @@ enum MarkdownImageCleanup {
         return Plan(documentURL: documentURL, content: content, openDocuments: openDocuments, candidates: candidates)
     }
 
-    static func apply(_ preview: Plan) throws {
+    static func apply(_ preview: Plan, gate: (() -> Bool) -> Bool = { $0() }) throws {
         let current = try plan(documentURL: preview.documentURL, content: preview.content, openDocuments: preview.openDocuments)
         guard current.candidates.count == preview.candidates.count,
               zip(current.candidates, preview.candidates).allSatisfy({
                   $0.fileURL == $1.fileURL && $0.identity == $1.identity && $0.contentSHA256 == $1.contentSHA256
               }) else { throw CocoaError(.fileWriteUnknown) }
         guard !preview.candidates.isEmpty else { return }
-        let mover = MarkdownImageUndoFileMover(images: preview.candidates)
-        guard mover.stashCreatedFiles() else { throw CocoaError(.fileWriteUnknown) }
-        mover.discardStash()
+        guard MarkdownImageUndoFiles(images: preview.candidates).removePermanently(gate: gate) else { throw CocoaError(.fileWriteUnknown) }
     }
 }
 
@@ -148,9 +146,12 @@ extension MarkdownImageCleanup {
                               workspace.activeTab?.id == tab.id,
                               workspace.activeTab?.content == tab.content,
                               openDocumentContents() == opened else { completion(); return }
+                        let gate = MarkdownImageUndo.removalGate(for: opened)
+                        MarkdownImageUndoSideEffect.pendingIO.enter()
                         DispatchQueue.global(qos: .userInitiated).async {
-                            let result = Result { try apply(preview) }
+                            let result = Result { try apply(preview, gate: gate) }
                             DispatchQueue.main.async {
+                                defer { MarkdownImageUndoSideEffect.pendingIO.leave() }
                                 if case .failure(let error) = result {
                                     workspace.saveSafetyWarningHandler(L10n.string("Images-Ordner aufräumen"), error.localizedDescription)
                                 }

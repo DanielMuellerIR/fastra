@@ -7,6 +7,109 @@ import Testing
 
 @Suite("Markdown-WYSIWYG", .serialized)
 struct MarkdownVisualTests {
+    @Test("Die erste Entfernung geladener Bilder hält Eingabe und Speichern bis zum Dateiabschluss an")
+    @MainActor
+    func firstImageRemovalWaitsForFiles() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let doc = directory.appendingPathComponent("test.md")
+        let bytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+        _ = try MarkdownImageStore.storePastedData(.init(data: bytes, fileExtension: "png"), documentURL: doc)
+        let source = "![Bild](images/1.png)\n"
+        try Data(source.utf8).write(to: doc)
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: doc)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let queue = DispatchQueue(label: "test.markdown.image-removal")
+        queue.async { release.wait() }
+        coordinator.imageIOQueue = queue
+        _ = try await web.evaluateJavaScript("document.querySelector('img').click();fastraVisual.command('deleteImage');")
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        var synchronized: Bool?
+        coordinator.synchronize { synchronized = $0 }
+        #expect(synchronized == nil)
+        #expect(workspace.activeTab?.content == source)
+        release.signal()
+        try #require(await waitUntil { synchronized == true })
+        #expect(workspace.activeTab?.content.contains("images/1.png") == false)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+    }
+
+    @Test("Bild-Redo-Kollision nimmt den Browser-Link trotz Eingabesperre vollständig zurück")
+    @MainActor
+    func imageRedoCollisionRollsBackBrowser() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("source.png")
+        let bytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+        try bytes.write(to: source)
+        let (workspace, coordinator, web, window) = try await editor("Text\n", documentURL: directory.appendingPathComponent("test.md"))
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        var warnings: [String] = []
+        workspace.saveSafetyWarningHandler = { _, message in warnings.append(message) }
+        _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+        coordinator.insertImages([source])
+        try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == "Text\n" })
+        let image = directory.appendingPathComponent("images/1.png")
+        try FileManager.default.createDirectory(at: image.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let foreign = Data("fremd".utf8)
+        try foreign.write(to: image)
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { !warnings.isEmpty })
+        try #require(await waitUntil { coordinator.ready })
+        let links = try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual img').length") as? Int
+        #expect(links == 0)
+        #expect(workspace.activeTab?.content == "Text\n")
+        #expect(try Data(contentsOf: image) == foreign)
+    }
+
+    @Test("Visuelles Speichern unter entfernt nur ungesicherte Herkunftskopien", arguments: [false, true])
+    @MainActor
+    func saveAsProtectsImageOrigins(_ saveBeforeUndo: Bool) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let document = directory.appendingPathComponent("test.md")
+        let original = "Text\n"
+        try original.write(to: document, atomically: true, encoding: .utf8)
+        let source = directory.appendingPathComponent("source.png")
+        let bytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+        try bytes.write(to: source)
+        let (workspace, coordinator, web, window) = try await editor(original, documentURL: document)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: document)
+        _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+        coordinator.insertImages([source])
+        try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+        if saveBeforeUndo {
+            workspace.saveActiveTab()
+            try #require(await waitUntil { workspace.activeTab?.isDirty == false })
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.content == original })
+        }
+        let targetDirectory = directory.appendingPathComponent("copy")
+        try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+        let target = targetDirectory.appendingPathComponent("copy.md")
+        var saved: Bool?
+        workspace.saveTabAs(id: workspace.activeTabID!, to: target, expectedTargetState: .absent, isMarkdown: true) { saved = $0 }
+        try #require(await waitUntil { saved != nil })
+        try #require(saved == true)
+        await withCheckedContinuation { continuation in
+            MarkdownImageUndoSideEffect.pendingIO.notify(queue: .main) { continuation.resume() }
+        }
+        let oldImage = directory.appendingPathComponent("images/1.png")
+        #expect(FileManager.default.fileExists(atPath: oldImage.path) == saveBeforeUndo)
+        if saveBeforeUndo { #expect(try Data(contentsOf: oldImage) == bytes) }
+        let copied = MarkdownImageCleanup.references(try String(contentsOf: target, encoding: .utf8), documentURL: target)
+        #expect(copied.count == (saveBeforeUndo ? 0 : 1))
+        for image in copied { #expect(try Data(contentsOf: image) == bytes) }
+    }
+
     @Test("Getippter Minus-Anfang wird zur Liste und nicht zu escaped Text", arguments: ["", "Punkt"])
     @MainActor
     func typedMinusStartsList(_ text: String) async throws {

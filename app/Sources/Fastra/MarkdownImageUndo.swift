@@ -1,322 +1,231 @@
 import AppKit
 import CodeEditTextView
-import Darwin
+import Foundation
 
-/// Zustand der direkt an die konkrete CEUndoManager-Gruppe gebundenen
-/// Bilddatei-Nebenwirkung. Gleiche Linktexte in anderen Gruppen spielen keine
-/// Rolle mehr; es wird weder das Dokument gescannt noch global beobachtet.
-final class MarkdownImageUndoSideEffect {
-    private enum FileState { case onDisk, stashed, finished }
-
+/// Die Dateiseite einer konkreten Bildbearbeitung. Gespeicherte Verweise bleiben
+/// geschützt; entfernte Bilder werden nur bis zum Verwerfen ihres RAM-Tickets gehalten.
+final class MarkdownImageUndoSideEffect: @unchecked Sendable {
+    static let pendingIO = DispatchGroup()
+    static let ioQueue = DispatchQueue(label: "Fastra.MarkdownImageUndo", qos: .userInitiated)
+    private enum FileState { case onDisk, inMemory, finished }
     private let images: [MarkdownImageStore.StoredImage]
-    private let mover: MarkdownImageUndoFileMover
+    private let files: MarkdownImageUndoFiles
     private var fileState: FileState = .onDisk
     private var protectedBySavedDocument: Bool
     private var removalPending = false
-    init(images: [MarkdownImageStore.StoredImage], alreadySaved: Bool = false) {
-        protectedBySavedDocument = alreadySaved
+
+    init(images: [MarkdownImageStore.StoredImage], alreadySaved: Bool = false,
+         buffer: MarkdownImageUndoBuffer = .shared, historyLost: @escaping () -> Void = {}) {
         self.images = images
+        protectedBySavedDocument = alreadySaved
         MarkdownImageStore.reserveForUndo(images)
-        mover = MarkdownImageUndoFileMover(images: images)
+        files = MarkdownImageUndoFiles(images: images, buffer: buffer, invalidated: historyLost)
     }
 
     deinit { discard() }
+    var currentURLs: Set<URL> { files.currentURLs }
+
+    func referenceDocumentURL(_ original: URL?) -> URL? {
+        guard let original, let directory = files.documentDirectoryURL else { return nil }
+        return directory.appendingPathComponent(original.lastPathComponent)
+    }
+
+    /// Save As lässt das Ursprungsdokument bestehen. Sein Plattenstand und
+    /// Finder-Umbenennungen gehören deshalb zur Herkunft der Bilder, nicht zum neuen Tabpfad.
+    func savedReferences(documentURL: URL?, opened: [URL: [String]]) -> Set<URL>? {
+        guard let documentURL else { return [] }
+        guard let origin = referenceDocumentURL(documentURL) else { return nil }
+        return MarkdownImageUndo.savedReferences(documentURL: origin, opened: opened)
+    }
+
+    func protectSavedReferences(_ referenced: Set<URL>) {
+        if !files.currentURLs.isDisjoint(with: referenced) { protectedBySavedDocument = true }
+    }
 
     @discardableResult
-    func undo() -> Bool {
+    func undo(usedImages: Set<URL> = [], gate: (() -> Bool) -> Bool = { $0() }) -> Bool {
+        guard files.currentURLs.isDisjoint(with: usedImages) else { return true }
         if protectedBySavedDocument { removalPending = true; return true }
-        guard fileState == .onDisk else { return fileState == .stashed }
-        guard mover.stashCreatedFiles() else { return false }
-        fileState = .stashed
+        guard fileState == .onDisk else { return fileState == .inMemory }
+        guard files.removeForUndo(gate: gate) else { return false }
+        fileState = .inMemory
         return true
     }
 
     @discardableResult
     func redo() -> Bool {
         removalPending = false
-        guard fileState == .stashed else { return fileState == .onDisk }
-        guard mover.restoreStashedFiles() else { return false }
+        guard fileState == .inMemory else { return fileState == .onDisk }
+        guard files.restoreFromMemory() else { return false }
         fileState = .onDisk
         return true
     }
 
     @discardableResult
-    func documentSaved(visible: Bool) -> Bool {
-        if visible {
-            protectedBySavedDocument = true
-            removalPending = false
-            return true
-        }
+    func documentSaved(visible: Bool, gate: (() -> Bool) -> Bool = { $0() }) -> Bool {
+        if visible { protectedBySavedDocument = true; removalPending = false; return true }
         guard removalPending else { return true }
-        guard fileState == .onDisk, mover.stashCreatedFiles() else { return false }
-        fileState = .stashed
+        guard fileState == .onDisk, files.removeForUndo(gate: gate) else { return false }
+        fileState = .inMemory
         protectedBySavedDocument = false
         removalPending = false
         return true
     }
 
-    func discard() {
+    func discard(unusedBy references: Set<URL>? = nil, gate: (() -> Bool) -> Bool = { $0() }) {
         guard fileState != .finished else { return }
-        if fileState == .stashed { mover.discardStash() }
+        if fileState == .onDisk, let references, files.currentURLs.isDisjoint(with: references),
+           images.allSatisfy(\.createdByInsertion), !files.removePermanently(gate: gate) { return }
+        files.discardMemory()
         MarkdownImageStore.releaseReservations(images)
         fileState = .finished
     }
+
+    /// Der Abschluss gehört vor die Invalidierungen. Das RAM-Limit darf eine
+    /// gerade ausgeführte Textänderung nicht nachträglich verhindern.
+    static func perform(_ work: @escaping () -> Bool, buffer: MarkdownImageUndoBuffer = .shared,
+                        completion: @escaping (Bool) -> Void) {
+        pendingIO.enter()
+        ioQueue.async {
+            let result = work()
+            let invalidations = buffer.takeInvalidations()
+            DispatchQueue.main.async {
+                defer { pendingIO.leave() }
+                completion(result)
+                for invalidate in invalidations { invalidate() }
+            }
+        }
+    }
+}
+
+final class MarkdownImageRemovalCheck: @unchecked Sendable {
+    private let lock = NSLock()
+    private var changed = false
+    var isStale: Bool { lock.lock(); defer { lock.unlock() }; return changed }
+    func markStale() { lock.lock(); changed = true; lock.unlock() }
 }
 
 @MainActor
 enum MarkdownImageUndo {
+    static var applicationIsClosing = false
+
+    static func openDocumentContents(excluding manager: CEUndoManager? = nil, tabID: UUID? = nil, workspace owner: Workspace? = nil) -> [URL: [String]] {
+        guard !applicationIsClosing else { return [:] }
+        var documents: [URL: [String]] = [:]
+        for workspace in Workspace.allLive {
+            for tab in workspace.tabs {
+                if workspace === owner, tab.id == tabID { continue }
+                guard let url = tab.url, manager == nil || !tab.undoHistory.owns(manager!) else { continue }
+                documents[url, default: []].append(tab.content)
+            }
+        }
+        return documents
+    }
+
+    static func removalGate(for snapshot: [URL: [String]], excluding manager: CEUndoManager? = nil,
+                            tabID: UUID? = nil, workspace: Workspace? = nil,
+                            allow: @escaping () -> Bool = { true },
+                            onStale: @escaping () -> Void = {}) -> (() -> Bool) -> Bool {
+        return { commit in
+            withoutActuallyEscaping(commit) { commit in
+            let check = {
+                let current = openDocumentContents(excluding: manager, tabID: tabID, workspace: workspace)
+                guard allow(), current.count == snapshot.count, snapshot.allSatisfy({ url, versions in
+                    guard let now = current[url], now.count == versions.count else { return false }
+                    return zip(now, versions).allSatisfy { $0.utf8.elementsEqual($1.utf8) }
+                }) else { onStale(); return false }
+                return commit()
+            }
+            return Thread.isMainThread ? check() : DispatchQueue.main.sync(execute: check)
+            }
+        }
+    }
+
+    static func performWithReferences(excluding manager: CEUndoManager? = nil,
+        buffer: MarkdownImageUndoBuffer,
+        work: @escaping ([URL: [String]], (() -> Bool) -> Bool) -> Bool,
+        completion: @escaping (Bool) -> Void) {
+        let opened = openDocumentContents(excluding: manager)
+        let check = MarkdownImageRemovalCheck()
+        let gate = removalGate(for: opened, excluding: manager, onStale: { check.markStale() })
+        MarkdownImageUndoSideEffect.perform({ work(opened, gate) }, buffer: buffer) { success in
+            if check.isStale {
+                // Ein anderes Fenster hat während Lesen/Hashen weitergearbeitet.
+                // Mit seinen aktuellen Verweisen neu prüfen, statt Dateien liegenzulassen.
+                performWithReferences(excluding: manager, buffer: buffer, work: work, completion: completion)
+            } else { completion(success) }
+        }
+    }
+
+    nonisolated static func savedReferences(documentURL: URL?, opened: [URL: [String]]) -> Set<URL>? {
+        guard let documentURL else { return [] }
+        do {
+            var references = try MarkdownImageCleanup.sharedReferences(documentURL: documentURL, openDocuments: opened)
+            if FileManager.default.fileExists(atPath: documentURL.path) {
+                let size = try documentURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max
+                guard size <= 10 * 1024 * 1024 else { return nil }
+                references.formUnion(MarkdownImageCleanup.references(try String(contentsOf: documentURL), documentURL: documentURL))
+            }
+            return references
+        } catch { return nil }
+    }
+
     static func register(textView: TextView, insertion: String,
-                         storedImages: [MarkdownImageStore.StoredImage]) {
+                         storedImages: [MarkdownImageStore.StoredImage], documentURL: URL? = nil, workspace: Workspace? = nil,
+                         buffer: MarkdownImageUndoBuffer = .shared) {
         let created = storedImages.filter(\.createdByInsertion)
         guard !insertion.isEmpty, !created.isEmpty,
-              let undoManager = textView.undoManager as? CEUndoManager else { return }
-        let sideEffect = MarkdownImageUndoSideEffect(images: created)
-        _ = undoManager.fastraRegisterSideEffectForLatestUndo(
-            undo: { _ = sideEffect.undo() },
-            redo: {},
-            prepareRedo: { [weak textView] in
-                guard sideEffect.redo() else {
-                    if let window = textView?.window, window.attachedSheet == nil {
+              let manager = textView.undoManager as? CEUndoManager else { return }
+        let hasWorkspace = workspace != nil
+        let effect = MarkdownImageUndoSideEffect(images: created, buffer: buffer, historyLost: { [weak manager] in
+            manager?.clearStack()
+        })
+        _ = manager.fastraRegisterSideEffectForLatestUndo(
+            undo: {}, redo: {},
+            undoAsync: { [weak manager] content, completion in
+                performWithReferences(excluding: manager, buffer: buffer, work: { opened, gate in
+                    guard let saved = effect.savedReferences(documentURL: documentURL, opened: opened) else { return true }
+                    effect.protectSavedReferences(saved)
+                    let visible = effect.referenceDocumentURL(documentURL).map { MarkdownImageCleanup.references(content, documentURL: $0) } ?? []
+                    _ = effect.undo(usedImages: visible, gate: gate)
+                    return true
+                }, completion: { _ in completion() })
+            },
+            prepareRedoAsync: { [weak textView] completion in
+                MarkdownImageUndoSideEffect.perform({ effect.redo() }, buffer: buffer, completion: { success in
+                    if !success, let window = textView?.window, window.attachedSheet == nil {
                         let alert = NSAlert()
                         alert.messageText = L10n.string("Bild konnte nicht wiederhergestellt werden")
                         alert.informativeText = L10n.string("Der Bildpfad ist inzwischen belegt oder nicht beschreibbar. Der Text blieb unverändert. Gib den ursprünglichen Bildpfad frei und versuche Wiederholen erneut.")
                         alert.beginSheetModal(for: window)
                     }
-                    return false
-                }
-                return true
+                    completion(success)
+                })
             },
-            cancelPreparedRedo: { _ = sideEffect.undo() },
-            discard: { sideEffect.discard() }
-        )
-    }
-}
-
-/// Verschiebt Bilddateien für Redo in einen eigenen versteckten Ordner neben
-/// dem Dokument. Vor jedem Verschieben/Löschen wird die beim Erzeugen erfasste
-/// Dateiidentität geprüft. Ein später ausgetauschtes Nutzerobjekt bleibt damit
-/// unangetastet.
-final class MarkdownImageUndoFileMover: @unchecked Sendable {
-    private let images: [MarkdownImageStore.StoredImage]
-    private let documentFD: Int32
-    private let backupName: String
-    private var currentIdentities: [URL: MarkdownImageStore.StoredFileIdentity]
-
-    init(images: [MarkdownImageStore.StoredImage]) {
-        self.images = images
-        let documentDirectory = images[0].fileURL.deletingLastPathComponent()
-            .deletingLastPathComponent()
-        backupName = ".fastra-image-undo-\(UUID().uuidString)"
-        // Der Deskriptor folgt demselben Ordner auch nach Finder-Umbenennen.
-        documentFD = open(documentDirectory.path,
-                          O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
-        currentIdentities = Dictionary(uniqueKeysWithValues: images.map {
-            ($0.fileURL, $0.identity)
-        })
-    }
-
-    deinit {
-        if documentFD >= 0 { Darwin.close(documentFD) }
-    }
-
-    func stashCreatedFiles() -> Bool {
-        guard let handles = openDirectoriesForStash() else { return false }
-        defer { handles.close() }
-        var moved: [MarkdownImageStore.StoredImage] = []
-        for image in images {
-            guard move(image, from: handles.imagesFD, to: handles.backupFD,
-                       expected: currentIdentities[image.fileURL]) else {
-                rollback(moved.reversed(), from: handles.backupFD,
-                         to: handles.imagesFD)
-                _ = unlinkat(handles.documentFD, backupName, AT_REMOVEDIR)
-                return false
+            cancelRedoAsync: { completion in
+                performWithReferences(buffer: buffer, work: { opened, gate in
+                    let protected = effect.savedReferences(documentURL: documentURL, opened: opened) ?? effect.currentURLs
+                    return effect.undo(usedImages: protected, gate: gate)
+                }, completion: { _ in completion() })
+            },
+            documentSaved: { content, url in
+                performWithReferences(buffer: buffer, work: { opened, gate in
+                    guard let protected = effect.savedReferences(documentURL: documentURL ?? url, opened: opened) else { return true }
+                    var visible = MarkdownImageCleanup.references(content, documentURL: url)
+                    visible.formUnion(protected)
+                    _ = effect.documentSaved(visible: !effect.currentURLs.isDisjoint(with: visible), gate: gate)
+                    return true
+                }, completion: { _ in })
+            },
+            discard: { [weak textView] in
+                let standaloneText = !hasWorkspace ? textView?.string : nil
+                performWithReferences(buffer: buffer, work: { opened, gate in
+                    var opened = opened
+                    if let standaloneText, let documentURL { opened[documentURL, default: []].append(standaloneText) }
+                    effect.discard(unusedBy: effect.savedReferences(documentURL: documentURL, opened: opened), gate: gate)
+                    return true
+                }, completion: { _ in })
             }
-            moved.append(image)
-        }
-        if images.contains(where: \.imagesDirectoryCreated) {
-            // `rmdir` entfernt ausschließlich einen leeren echten Ordner;
-            // fremde Inhalte und Symlinks werden niemals rekursiv angerührt.
-            _ = unlinkat(handles.documentFD, "images", AT_REMOVEDIR)
-        }
-        return true
-    }
-
-    func restoreStashedFiles() -> Bool {
-        guard let handles = openDirectoriesForRestore() else { return false }
-        defer { handles.close() }
-        var restored: [MarkdownImageStore.StoredImage] = []
-        for image in images {
-            guard move(image, from: handles.backupFD, to: handles.imagesFD,
-                       expected: currentIdentities[image.fileURL]) else {
-                rollback(restored.reversed(), from: handles.imagesFD,
-                         to: handles.backupFD)
-                return false
-            }
-            restored.append(image)
-        }
-        _ = unlinkat(handles.documentFD, backupName, AT_REMOVEDIR)
-        return true
-    }
-
-    func discardStash() {
-        guard let documentFD = openDocumentDirectory() else { return }
-        defer { Darwin.close(documentFD) }
-        let backupFD = openat(documentFD, backupName,
-                              O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
-        guard backupFD >= 0 else { return }
-        defer { Darwin.close(backupFD) }
-        for image in images where identity(named: image.fileURL.lastPathComponent,
-                                            in: backupFD)
-            == currentIdentities[image.fileURL] {
-            _ = unlinkat(backupFD, image.fileURL.lastPathComponent, 0)
-        }
-        _ = unlinkat(documentFD, backupName, AT_REMOVEDIR)
-    }
-
-    private struct DirectoryHandles {
-        let documentFD: Int32
-        let imagesFD: Int32
-        let backupFD: Int32
-
-        func close() {
-            Darwin.close(backupFD)
-            Darwin.close(imagesFD)
-            Darwin.close(documentFD)
-        }
-    }
-
-    private func openDocumentDirectory() -> Int32? {
-        guard documentFD >= 0 else { return nil }
-        let fd = fcntl(documentFD, F_DUPFD_CLOEXEC, 0)
-        return fd >= 0 ? fd : nil
-    }
-
-    private func openDirectoriesForStash() -> DirectoryHandles? {
-        guard let documentFD = openDocumentDirectory() else { return nil }
-        guard mkdirat(documentFD, backupName, mode_t(0o700)) == 0 else {
-            Darwin.close(documentFD)
-            return nil
-        }
-        guard let handles = openChildDirectories(documentFD: documentFD) else {
-            _ = unlinkat(documentFD, backupName, AT_REMOVEDIR)
-            Darwin.close(documentFD)
-            return nil
-        }
-        return handles
-    }
-
-    private func openDirectoriesForRestore() -> DirectoryHandles? {
-        guard let documentFD = openDocumentDirectory() else { return nil }
-        let createdImagesDirectory = mkdirat(documentFD, "images", mode_t(0o755)) == 0
-        if !createdImagesDirectory, errno != EEXIST {
-            Darwin.close(documentFD)
-            return nil
-        }
-        guard let handles = openChildDirectories(documentFD: documentFD) else {
-            if createdImagesDirectory {
-                _ = unlinkat(documentFD, "images", AT_REMOVEDIR)
-            }
-            Darwin.close(documentFD)
-            return nil
-        }
-        return handles
-    }
-
-    private func openChildDirectories(documentFD: Int32) -> DirectoryHandles? {
-        let imagesFD = openat(documentFD, "images",
-                              O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
-        guard imagesFD >= 0 else { return nil }
-        let backupFD = openat(documentFD, backupName,
-                              O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
-        guard backupFD >= 0 else {
-            Darwin.close(imagesFD)
-            return nil
-        }
-        return DirectoryHandles(documentFD: documentFD, imagesFD: imagesFD,
-                                backupFD: backupFD)
-    }
-
-    private func move(_ image: MarkdownImageStore.StoredImage,
-                      from sourceFD: Int32,
-                      to targetFD: Int32,
-                      expected: MarkdownImageStore.StoredFileIdentity?) -> Bool {
-        let name = image.fileURL.lastPathComponent
-        guard let expected,
-              !name.isEmpty, name != ".", name != "..",
-              let observed = identity(named: name, in: sourceFD),
-              sameFileAcrossRename(expected, observed) else { return false }
-        // Finder-/Metadatenänderungen erhöhen ctime ohne neue Bildbytes.
-        // Ein Hash trennt diesen Fall von einem in-place veränderten Bild.
-        let verifyContent = observed != expected
-        if verifyContent && !contentMatches(image, named: name, in: sourceFD) { return false }
-        guard renameatx_np(sourceFD, name, targetFD, name,
-                           UInt32(RENAME_EXCL)) == 0 else { return false }
-        guard let movedIdentity = identity(named: name, in: targetFD),
-              sameFileAcrossRename(observed, movedIdentity),
-              !verifyContent || contentMatches(image, named: name, in: targetFD) else {
-            // Der Name kann zwischen Vorprüfung und `renameatx_np` ersetzt
-            // worden sein. Eine fremde Datei wird dann nicht zur neuen
-            // erwarteten Identität; wir legen sie bestmöglich zurück und
-            // brechen die ganze Undo-Nebenwirkung ab.
-            _ = renameatx_np(targetFD, name, sourceFD, name,
-                             UInt32(RENAME_EXCL))
-            return false
-        }
-        currentIdentities[image.fileURL] = movedIdentity
-        return true
-    }
-
-    private func contentMatches(_ image: MarkdownImageStore.StoredImage,
-                                named name: String, in directoryFD: Int32) -> Bool {
-        let fd = openat(directoryFD, name, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)
-        guard fd >= 0 else { return false }
-        defer { Darwin.close(fd) }
-        var info = stat()
-        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
-              info.st_size >= 0,
-              let snapshot = try? FileSnapshot.readSnapshotOnly(
-                descriptor: fd, fileStat: info, byteLimit: UInt64(image.identity.size)) else { return false }
-        return snapshot.sha256 == image.contentSHA256
-    }
-
-    private func sameFileAcrossRename(
-        _ before: MarkdownImageStore.StoredFileIdentity,
-        _ after: MarkdownImageStore.StoredFileIdentity
-    ) -> Bool {
-        // Ein Rename ändert ctime, alle übrigen Identitätsfelder müssen aber
-        // dieselbe, unveränderte reguläre Datei belegen.
-        before.device == after.device
-            && before.inode == after.inode
-            && before.size == after.size
-            && before.modificationSeconds == after.modificationSeconds
-            && before.modificationNanoseconds == after.modificationNanoseconds
-    }
-
-    private func rollback<S: Sequence>(_ moved: S, from sourceFD: Int32,
-                                       to targetFD: Int32)
-    where S.Element == MarkdownImageStore.StoredImage {
-        for image in moved {
-            _ = move(image, from: sourceFD, to: targetFD,
-                     expected: currentIdentities[image.fileURL])
-        }
-    }
-
-    private func identity(named name: String, in directoryFD: Int32)
-        -> MarkdownImageStore.StoredFileIdentity? {
-        let fd = openat(directoryFD, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
-        guard fd >= 0 else { return nil }
-        defer { Darwin.close(fd) }
-        var info = stat()
-        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
-            return nil
-        }
-        return MarkdownImageStore.StoredFileIdentity(
-            device: UInt64(info.st_dev), inode: UInt64(info.st_ino),
-            size: Int64(info.st_size),
-            modificationSeconds: Int64(info.st_mtimespec.tv_sec),
-            modificationNanoseconds: Int64(info.st_mtimespec.tv_nsec),
-            statusChangeSeconds: Int64(info.st_ctimespec.tv_sec),
-            statusChangeNanoseconds: Int64(info.st_ctimespec.tv_nsec)
         )
     }
 }

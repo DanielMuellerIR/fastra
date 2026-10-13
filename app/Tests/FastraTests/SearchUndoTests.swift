@@ -13,6 +13,100 @@ struct SearchUndoTests {
         return view.subviews.lazy.compactMap { editor(in: $0) }.first
     }
 
+    @Test("Quelltext-Bilder bleiben bei Verwerfen und Speichern unter korrekt zugeordnet",
+          arguments: ["discard", "save-copy", "save-copy-in-place", "rename-and-save-copy", "save-original", "unsaved-save-copy", "loaded-save-copy"])
+    func savedSourceImageSurvivesUndoAndDiscard(_ finish: String) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let doc = directory.appendingPathComponent("test.md")
+        try Data().write(to: doc)
+        let bytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+        let image = try MarkdownImageStore.storePastedData(.init(data: bytes, fileExtension: "png"), documentURL: doc)
+        let loadedImage = finish == "loaded-save-copy"
+        if loadedImage { try image.link.write(to: doc, atomically: true, encoding: .utf8) }
+        let workspace = Workspace()
+        var tab = EditorTab(title: "test.md", path: directory.path, content: loadedImage ? image.link : "")
+        tab.url = doc
+        tab.diskSnapshot = try FileSnapshot.readSnapshotOnly(from: doc)
+        tab.markdownVisualOverride = false
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        let host = NSHostingView(rootView: EditorView().environmentObject(workspace))
+        host.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        try #require(await waitUntil { self.editor(in: host) != nil })
+        let view = try #require(editor(in: host))
+        if loadedImage { view.replaceCharacters(in: NSRange(location: 0, length: (view.string as NSString).length), with: "") }
+        else {
+            view.replaceCharacters(in: NSRange(location: 0, length: 0), with: image.link)
+            MarkdownImageUndo.register(textView: view, insertion: image.link, storedImages: [image], documentURL: doc, workspace: workspace)
+        }
+        let savedBeforeUndo = finish != "unsaved-save-copy" && !loadedImage
+        if savedBeforeUndo {
+            try #require(workspace.write(tab: workspace.activeTab!, to: doc))
+            view.undoManager?.undo()
+            try #require(await waitUntil { view.undoManager?.isUndoing == false })
+            #expect(view.string.isEmpty)
+            #expect(try String(contentsOf: doc, encoding: .utf8) == image.link)
+        }
+        #expect(try Data(contentsOf: image.fileURL) == bytes)
+        var origin = directory
+        if finish == "rename-and-save-copy" {
+            origin = directory.appendingPathExtension("moved")
+            try FileManager.default.moveItem(at: directory, to: origin)
+        }
+        defer { if origin != directory { try? FileManager.default.removeItem(at: origin) } }
+        let originalImage = origin.appendingPathComponent("images/" + image.fileURL.lastPathComponent)
+        let keepOrigin = (savedBeforeUndo || loadedImage) && finish != "save-original"
+        let copyDirectory = directory.appendingPathExtension("copy")
+        defer { try? FileManager.default.removeItem(at: copyDirectory) }
+        var destination: URL?
+        if finish != "discard" {
+            let target: URL
+            switch finish {
+            case "save-original": target = doc
+            case "save-copy-in-place": target = directory.appendingPathComponent("copy.md")
+            default:
+                try FileManager.default.createDirectory(at: copyDirectory, withIntermediateDirectories: true)
+                target = copyDirectory.appendingPathComponent("copy.md")
+            }
+            destination = target
+            let expected: ExpectedFileState = finish == "save-original" ? .present(try FileSnapshot.readSnapshotOnly(from: doc)) : .absent
+            var saved: Bool?
+            workspace.saveTabAs(id: tab.id, to: target, expectedTargetState: expected, isMarkdown: true) { saved = $0 }
+            try #require(await waitUntil { saved != nil })
+            try #require(saved == true)
+            await withCheckedContinuation { continuation in
+                MarkdownImageUndoSideEffect.pendingIO.notify(queue: .main) { continuation.resume() }
+            }
+            #expect(FileManager.default.fileExists(atPath: originalImage.path) == keepOrigin)
+            if keepOrigin { #expect(try Data(contentsOf: originalImage) == bytes) }
+            if finish != "save-original" {
+                if loadedImage, view.undoManager?.canUndo == true { view.undoManager?.undo() }
+                else if view.undoManager?.canRedo == true { view.undoManager?.redo() }
+                try #require(await waitUntil { view.undoManager?.isRedoing != true && view.undoManager?.isUndoing != true })
+                let links = MarkdownImageCleanup.references(workspace.activeTab?.content ?? "", documentURL: target)
+                #expect(links.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+            }
+        }
+        workspace.tabs.removeAll()
+        (view.undoManager as? CEUndoManager)?.clearStack()
+        await withCheckedContinuation { continuation in
+            MarkdownImageUndoSideEffect.pendingIO.notify(queue: .main) { continuation.resume() }
+        }
+        #expect(FileManager.default.fileExists(atPath: originalImage.path) == keepOrigin)
+        if keepOrigin { #expect(try Data(contentsOf: originalImage) == bytes) }
+        if let destination {
+            let links = MarkdownImageCleanup.references(try String(contentsOf: destination, encoding: .utf8), documentURL: destination)
+            #expect(links.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: origin.path).allSatisfy { !$0.hasPrefix(".fastra-image-undo-") })
+    }
+
     @Test("Unicode-Ersetzungen bleiben in allen Dokumentpfaden bytegenau rückgängig", arguments: ["file-all", "file-one", "open-all", "open-one"])
     func unicodeReplacementUndo(_ mode: String) async throws {
         let workspace = Workspace()
