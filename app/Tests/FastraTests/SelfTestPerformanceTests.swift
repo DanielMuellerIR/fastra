@@ -2340,13 +2340,24 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
     func processTreeCleanupDoesNotHangOnKillResistantChild() throws {
         let helper = performanceToolsDirectory
             .appendingPathComponent("test-process-tree.sh")
+        let ready = testTemporaryDirectory().appendingPathComponent("kill-resistant-ready-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: ready) }
         let script = """
         set -u
         . "$1"
-        /usr/bin/python3 -c 'import signal, time
+        /usr/bin/python3 -c 'import signal, time, pathlib, sys
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
-        time.sleep(600)' &
+        pathlib.Path(sys.argv[1]).write_text("ready")
+        time.sleep(600)' "$2" &
         child_pid=$!
+        trap 'builtin kill -KILL "$child_pid" 2>/dev/null || true; wait "$child_pid" 2>/dev/null || true' EXIT
+        # Erst nach installiertem Handler darf der Helfer TERM senden.
+        tick=0
+        while [ ! -s "$2" ] && [ "$tick" -lt 200 ]; do
+          sleep 0.01
+          tick=$((tick + 1))
+        done
+        [ -s "$2" ] || exit 93
         # Jedes KILL verpufft; TERM und CONT laufen normal weiter.
         kill() {
           case "${1:-}" in -KILL) return 0 ;; esac
@@ -2358,12 +2369,13 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         elapsed=$(( $(date +%s) - started ))
         builtin kill -KILL "$child_pid" 2>/dev/null || true
         wait "$child_pid" 2>/dev/null || true
+        trap - EXIT
         printf 'STATUS %s ELAPSED %s\\n' "$status" "$elapsed"
         [ "$status" -ne 0 ] || exit 91
         [ "$elapsed" -lt 20 ] || exit 92
         """
         let result = try runTestProcess(
-            "/bin/bash", arguments: ["-c", script, "test", helper.path], timeout: 40
+            "/bin/bash", arguments: ["-c", script, "test", helper.path, ready.path], timeout: 40
         )
         #expect(result.status == 0, "Prozessbaum-Helfer: \(result.output)")
         #expect(result.output.contains("STATUS 1 "), "Rückgabe: \(result.output)")
