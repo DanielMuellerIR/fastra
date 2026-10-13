@@ -832,8 +832,9 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         ))
     }
 
-    @Test("Fertiger Fokustest wartet nicht mehr auf die Aktivierung")
-    func finishedForegroundSelftestSkipsActivationDelay() throws {
+    @Test("Fertiger Fokustest wartet nicht auf Aktivierung und übergibt nur gesetzte Aufnahmeziele",
+          arguments: ["", "/tmp/review with spaces"])
+    func finishedForegroundSelftestSkipsActivationDelay(reviewDirectory: String) throws {
         let root = testTemporaryDirectory()
             .appendingPathComponent("fastra-focus-result-\(UUID().uuidString)")
         let sandboxParent = root.appendingPathComponent("sandboxes")
@@ -844,6 +845,7 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         let fakeOpen = root.appendingPathComponent("open")
         let fakeLSRegister = root.appendingPathComponent("lsregister")
         let sleepProbe = root.appendingPathComponent("activation-sleep")
+        let environmentProbe = root.appendingPathComponent("optional-environment")
         let runner = performanceToolsDirectory.deletingLastPathComponent()
             .appendingPathComponent("selftest.sh")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -870,6 +872,10 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
             --stderr) errfile="$2"; shift 2 ;;
             --env)
               [ "$2" = 'FASTRA_SELFTEST_ALLOW_ACTIVATION=1' ] && activation_allowed=1
+              case "$2" in
+                FASTRA_DIFFSELECTION_DIR=*|FASTRA_REMOTE_DIALOG_DIR=*|FASTRA_EDITOR_OPTIONS_DIR=*|FASTRA_SOFTWRAPINDENT_*)
+                  printf '%s\\n' "$2" >> "$FASTRA_TEST_OPTIONAL_ENV_PROBE" ;;
+              esac
               shift 2
               ;;
             *) shift ;;
@@ -908,6 +914,13 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
                 "FASTRA_SELFTEST_APP_BUNDLE": fakeApp.path,
                 "FASTRA_SELFTEST_TEST_CONSOLE_UNLOCKED": "1",
                 "FASTRA_TEST_ACTIVATION_SLEEP_PROBE": sleepProbe.path,
+                "FASTRA_TEST_OPTIONAL_ENV_PROBE": environmentProbe.path,
+                "FASTRA_DIFFSELECTION_DIR": reviewDirectory,
+                "FASTRA_REMOTE_DIALOG_DIR": reviewDirectory,
+                "FASTRA_EDITOR_OPTIONS_DIR": reviewDirectory,
+                "FASTRA_SOFTWRAPINDENT_DIR": reviewDirectory,
+                "FASTRA_SOFTWRAPINDENT_REVIEW_DIR": reviewDirectory,
+                "FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH": reviewDirectory,
                 "FASTRA_TEST_LSREGISTER": fakeLSRegister.path,
                 "FASTRA_TEST_OPEN_COMMAND": fakeOpen.path,
                 "FASTRA_TEST_SANDBOX_PARENT": sandboxParent.path,
@@ -918,6 +931,13 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         )
         #expect(result.status == 0, "Frühes Ergebnis: \(result.output)")
         #expect(!FileManager.default.fileExists(atPath: sleepProbe.path))
+        let forwarded = (try? String(contentsOf: environmentProbe, encoding: .utf8))?
+            .split(separator: "\n").map(String.init) ?? []
+        let keys = ["FASTRA_DIFFSELECTION_DIR", "FASTRA_REMOTE_DIALOG_DIR",
+                    "FASTRA_EDITOR_OPTIONS_DIR", "FASTRA_SOFTWRAPINDENT_DIR",
+                    "FASTRA_SOFTWRAPINDENT_REVIEW_DIR", "FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH"]
+        #expect(forwarded == (reviewDirectory.isEmpty ? [] : keys.map { "\($0)=\(reviewDirectory)" }),
+                "Optionale Aufnahmeziele: \(forwarded)")
     }
 
     @Test(
@@ -2902,6 +2922,28 @@ struct SerialRunnerIntegrationSelfTestPerformanceTests {
         #expect(try FileManager.default.contentsOfDirectory(
             atPath: realPreferences.path
         ).isEmpty)
+    }
+
+    @Test("Portabilitäts-Cleanup wartet nicht auf ein nicht beendetes Kind")
+    func portableCleanupPreservesPendingProcessWithoutWaiting() throws {
+        let runner = performanceToolsDirectory.deletingLastPathComponent()
+            .appendingPathComponent("verify-portable-app.sh")
+        let definition = try shellFunction(named: "cleanup_on_exit", in: runner)
+        let script = #"""
+        set -u
+        APP_PID=4242
+        MOVED_BUNDLES=()
+        FASTRA_TEST_SANDBOX=fixture
+        terminate_fastra_test_process_trees() { return 1; }
+        wait() { printf 'UNEXPECTED_WAIT\n'; }
+        purge_fastra_registered_test_defaults() { printf 'UNEXPECTED_PURGE\n'; }
+        unregister_fastra_test_bundle_from_launch_services() { printf 'UNEXPECTED_UNREGISTER\n'; }
+        release_fastra_test_sandbox() { printf 'UNEXPECTED_RELEASE\n'; }
+        """# + definition + "\ntrue\ncleanup_on_exit\n"
+        let result = try runTestProcess("/bin/bash", arguments: ["-c", script], timeout: 5)
+        #expect(result.status == 2, "\(result.output)")
+        #expect(!result.output.contains("UNEXPECTED_"), "\(result.output)")
+        #expect(result.output.contains("Sandbox zur Diagnose behalten: fixture"))
     }
 
     @Test("Portabilitätsprüfung isoliert beide App-Starts und räumt verzögerte Plists")

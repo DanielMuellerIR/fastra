@@ -1552,6 +1552,17 @@ for t in "${TESTS[@]}"; do
         # gemeinsame Aufräumpfad `kill_leftovers` beendet die Test-App nach
         # Ergebnis UND Timeout sofort, damit kein Fenster sichtbar bleibt.
         # starten (LaunchServices) und von außen aktivieren.
+        # Ein leeres Aufnahmeziel muss fehlen: Die App interpretiert schon
+        # die Anwesenheit der Variable als Auftrag, PNGs dort zu speichern.
+        review_environment=()
+        for review_key in FASTRA_DIFFSELECTION_DIR FASTRA_REMOTE_DIALOG_DIR \
+            FASTRA_EDITOR_OPTIONS_DIR FASTRA_SOFTWRAPINDENT_DIR \
+            FASTRA_SOFTWRAPINDENT_REVIEW_DIR FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH; do
+            review_value="${!review_key:-}"
+            if [ -n "$review_value" ]; then
+                review_environment+=(--env "$review_key=$review_value")
+            fi
+        done
         if ! "$OPEN_COMMAND" -n "$APP_BUNDLE_FOR_OPEN" --stdout /dev/null --stderr "$errfile" \
             --env "TMPDIR=$FASTRA_TEST_TMPDIR/" \
             --env "CFFIXED_USER_HOME=$FASTRA_TEST_CF_HOME" \
@@ -1561,12 +1572,7 @@ for t in "${TESTS[@]}"; do
             --env "FASTRA_TEST_DEFAULTS_REGISTRY=$FASTRA_TEST_DEFAULTS_REGISTRY" \
             --env "FASTRA_SELFTEST_PASTEBOARD_DIR=$SELFTEST_PASTEBOARD_DIR" \
             --env "FASTRA_SELFTEST_ALLOW_ACTIVATION=1" \
-            --env "FASTRA_DIFFSELECTION_DIR=${FASTRA_DIFFSELECTION_DIR:-}" \
-            --env "FASTRA_REMOTE_DIALOG_DIR=${FASTRA_REMOTE_DIALOG_DIR:-}" \
-            --env "FASTRA_EDITOR_OPTIONS_DIR=${FASTRA_EDITOR_OPTIONS_DIR:-}" \
-            --env "FASTRA_SOFTWRAPINDENT_DIR=${FASTRA_SOFTWRAPINDENT_DIR:-}" \
-            --env "FASTRA_SOFTWRAPINDENT_REVIEW_DIR=${FASTRA_SOFTWRAPINDENT_REVIEW_DIR:-}" \
-            --env "FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH=${FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH:-}" \
+            ${review_environment[@]+"${review_environment[@]}"} \
             --args -selftest "$t" -ApplePersistenceIgnoreState YES ${SELFTEST_LANGUAGE_ARGS[@]+"${SELFTEST_LANGUAGE_ARGS[@]}"}; then
             emit_selftest_result "$t" "ENV"
             echo "SELFTEST $t: Umgebungsproblem — LaunchServices-Start fehlgeschlagen"

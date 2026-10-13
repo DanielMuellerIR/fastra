@@ -68,7 +68,9 @@ cleanup_on_exit() {
             process_cleanup_failed=1
             keep_sandbox=1
         fi
-        wait "$cleanup_target" 2>/dev/null || true
+        if [[ "$process_cleanup_failed" -eq 0 ]]; then
+            wait "$cleanup_target" 2>/dev/null || true
+        fi
     fi
     # macOS liefert noch Bash 3.2. Dort gilt selbst ein deklariertes leeres
     # Array unter `set -u` bei der Expansion als ungebunden. Frühfehler vor
