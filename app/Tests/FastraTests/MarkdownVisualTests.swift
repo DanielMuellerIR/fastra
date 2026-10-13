@@ -764,11 +764,16 @@ struct MarkdownVisualTests {
         #expect(!coordinator.ready)
         let editable = try await web.evaluateJavaScript("document.getElementById('fastra-visual').contentEditable")
         #expect(editable as? String == "false")
+        var reloadError: String?
+        workspace.saveSafetyWarningHandler = { title, text in reloadError = title + ": " + text }
         coordinator.load(workspace.activeTab!.content, documentURL: targetURL, fontName: PreviewFonts.systemName,
                          fontSize: 14, darkMode: false, style: "new")
         coordinator.load("Neuer Stand\n", documentURL: targetURL, fontName: PreviewFonts.systemName,
                          fontSize: 14, darkMode: false, style: "newest")
-        try #require(await waitUntil { coordinator.ready })
+        // Der zweite WebKit-Start braucht dieselbe Frist wie der erste.
+        let reloaded = await waitUntil(timeout: 12) { coordinator.ready || reloadError != nil }
+        try #require(reloaded && coordinator.ready,
+                     "WebKit-Neuladen: \(reloadError ?? "keine Fehlermeldung"), loading=\(web.isLoading)")
         #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Neuer Stand\n")
         #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').contentEditable") as? String == "true")
     }
