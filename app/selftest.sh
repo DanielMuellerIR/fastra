@@ -97,7 +97,7 @@ WINDOWLESS_TESTS=(search searchperf project projectperf localization markdownimp
 # Nur diese Tests brauchen echten Vordergrundfokus. `newwindow`,
 # `projectinput` und `help` bedienen ihre Fenster dagegen direkt im
 # Testprozess und laufen wie `welcomenew` im Hintergrund.
-FOCUS_REQUIRED_TESTS=(searchundo editoroptions cmdw completion4d softwrapindent diffselection gitremotedialogs)
+FOCUS_REQUIRED_TESTS=(mdvisual searchundo editoroptions cmdw completion4d softwrapindent diffselection gitremotedialogs)
 # Diese Fensterläufe sind so gebaut, dass sie ihre AppKit-Objekte direkt
 # bedienen. Der Runner sperrt für sie auch produktive Aktivierungshelfer,
 # damit sie die gerade benutzte App nicht verdrängen.
@@ -1555,7 +1555,7 @@ for t in "${TESTS[@]}"; do
         # Ein leeres Aufnahmeziel muss fehlen: Die App interpretiert schon
         # die Anwesenheit der Variable als Auftrag, PNGs dort zu speichern.
         review_environment=()
-        for review_key in FASTRA_DIFFSELECTION_DIR FASTRA_REMOTE_DIALOG_DIR \
+        for review_key in FASTRA_MD_VISUAL_DIR FASTRA_DIFFSELECTION_DIR FASTRA_REMOTE_DIALOG_DIR \
             FASTRA_EDITOR_OPTIONS_DIR FASTRA_SOFTWRAPINDENT_DIR \
             FASTRA_SOFTWRAPINDENT_REVIEW_DIR FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH; do
             review_value="${!review_key:-}"

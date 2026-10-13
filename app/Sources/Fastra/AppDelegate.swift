@@ -176,7 +176,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Zähler des Nutzers nicht).
         DonationPrompt.recordLaunch(defaults: SelfTest.workspaceDefaults())
         SelfTest.runIfRequested()
-        Self.scheduleAtomicCommitRecoveryInspection()
 
         // Sobald der Workspace bereit ist (Notification aus `Workspace.init`),
         // beim Kaltstart gepufferte Finder-/CLI-Open-URLs ausliefern (K1).
@@ -470,27 +469,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// auch ein Aktivieren den Port nicht öffnen (siehe oben).
     private static var externalDiffServiceRequested = false
 
-    /// Prüft das kleine Recovery-Verzeichnis außerhalb des Main-Threads.
-    /// Dateisystemzugriffe dürfen weder SwiftUIs ersten Fensteraufbau noch die
-    /// Sitzungswiederherstellung blockieren. Selbsttests rufen den Store mit
-    /// eigenem Verzeichnis direkt auf und bekommen keinen modalen Startdialog.
-    private static func scheduleAtomicCommitRecoveryInspection() {
+    private static var presentedRecoveryJournals: Set<URL> = []
+
+    /// Alte Journale gehören nicht zum App-Start oder zu einer beliebigen
+    /// Dokumentkopie. Nur ein belegter Tausch der geöffneten Datei wird gezeigt.
+    static func inspectRecovery(forOpenedDocument url: URL) {
         guard !SelfTest.isSelfTestRun else { return }
         DispatchQueue.global(qos: .utility).async {
             let store = AtomicCommitRecovery.Store.standard
-            do {
-                let pending = try store.inspectPending(includeActiveProcesses: false)
-                guard !pending.isEmpty else { return }
-                DispatchQueue.main.async {
-                    presentAtomicCommitRecovery(
-                        pending, journalDirectory: store.directoryURL)
-                }
-            } catch {
-                let detail = error.localizedDescription
-                DispatchQueue.main.async {
-                    presentAtomicCommitRecoveryFailure(
-                        detail: detail, journalDirectory: store.directoryURL)
-                }
+            guard let pending = try? store.inspectPending(includeActiveProcesses: false) else { return }
+            let relevant = pending.filter { $0.concernsOpenedDocument(url) }
+            guard !relevant.isEmpty else { return }
+            DispatchQueue.main.async {
+                let unseen = relevant.filter { presentedRecoveryJournals.insert($0.journalURL).inserted }
+                guard !unseen.isEmpty else { return }
+                presentAtomicCommitRecovery(unseen, journalDirectory: store.directoryURL)
             }
         }
     }
@@ -566,24 +559,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             NSWorkspace.shared.activateFileViewerSelecting(
                 reachableFiles.isEmpty ? [journalDirectory] : reachableFiles)
-        }
-    }
-
-    @MainActor
-    private static func presentAtomicCommitRecoveryFailure(
-        detail: String,
-        journalDirectory: URL
-    ) {
-        let alert = NSAlert()
-        alert.messageText = L10n.string("Recovery-Journal konnte nicht geprüft werden")
-        alert.informativeText = L10n.format(
-            "Fastra hat das Recovery-Verzeichnis nicht verändert. Prüfe %@.\n\n%@",
-            journalDirectory.path, detail)
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: L10n.string("OK"))
-        alert.addButton(withTitle: L10n.string("Im Finder zeigen"))
-        if alert.runModal() == .alertSecondButtonReturn {
-            NSWorkspace.shared.activateFileViewerSelecting([journalDirectory])
         }
     }
 

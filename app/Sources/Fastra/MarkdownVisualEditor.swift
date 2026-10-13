@@ -166,14 +166,17 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     private var acceptedInputRevision = 0
     private struct ImageTransaction {
         let effect: MarkdownImageUndoSideEffect
+        var fileURLs: Set<URL> = []
         var visible = true
         var insertionUndone = false
     }
     private var imageTransactions: [String: ImageTransaction] = [:]
+    private var initialImageTransactions: [String: String] = [:]
 
     private func discardImageUndo() {
         for transaction in imageTransactions.values { transaction.effect.discard() }
         imageTransactions.removeAll()
+        initialImageTransactions.removeAll()
     }
 
     deinit { discardImageUndo() }
@@ -196,7 +199,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 }
                 web?.callAsyncJavaScript("window.fastraVisual.rollbackImageChange(inputType, previous);",
                     arguments: ["inputType": inputType, "previous": previous], in: nil, in: .page) { _ in }
-                workspace?.saveSafetyWarningHandler(L10n.string("Bild einfügen"),
+                workspace?.saveSafetyWarningHandler(L10n.string("Bild bearbeiten"),
                     L10n.string("Die Bilddatei wurde außerhalb des Editors geändert. Der Bearbeitungsschritt wurde zurückgenommen, damit kein falsches Bild verknüpft wird."))
                 return false
             }
@@ -208,6 +211,31 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             imageTransactions.removeValue(forKey: id)?.effect.discard()
         }
         return true
+    }
+
+    func documentSaved(at url: URL) {
+        guard ready, documentURL == url else { return }
+        let request = generation
+        var opened: [URL: [String]] = [:]
+        for owner in Workspace.allLive {
+            for tab in owner.tabs where !(owner === workspace && tab.id == tabID) {
+                if let url = tab.url { opened[url, default: []].append(tab.content) }
+            }
+        }
+        let content = markdown
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let protected = try? MarkdownImageCleanup.sharedReferences(documentURL: url, openDocuments: opened)
+            DispatchQueue.main.async {
+                guard let self, self.generation == request, self.markdown == content, let protected else { return }
+                for transaction in self.imageTransactions.values {
+                    if transaction.visible || transaction.fileURLs.isDisjoint(with: protected) {
+                        // Ein blockierter Cleanup darf das Löschen im Text nicht
+                        // zurücknehmen. Die explizite Bereinigung kann ihn nachholen.
+                        _ = transaction.effect.documentSaved(visible: transaction.visible)
+                    }
+                }
+            }
+        }
     }
 
     func load(_ source: String, documentURL: URL?, fontName: String,
@@ -225,16 +253,31 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         acceptedInputRevision = 0
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let document = MarkdownVisualDocument.render(source, documentURL: documentURL)
+            var existing: [URL: MarkdownImageStore.StoredImage] = [:]
+            if let documentURL {
+                let directory = documentURL.deletingLastPathComponent().appendingPathComponent("images").standardizedFileURL
+                for url in Set(document.fragment.imageURLs.values) where url.deletingLastPathComponent() == directory {
+                    if let image = try? MarkdownImageStore.captureExisting(url) { existing[url] = image }
+                }
+            }
             DispatchQueue.main.async {
                 guard let self, self.generation == request, let web = self.web else { return }
                 self.pending = document
+                for (url, image) in existing {
+                    let id = UUID().uuidString
+                    self.imageTransactions[id] = ImageTransaction(
+                        effect: MarkdownImageUndoSideEffect(images: [image], alreadySaved: true), fileURLs: [url.canonicalFileURL])
+                    for (token, imageURL) in document.fragment.imageURLs where imageURL == url {
+                        self.initialImageTransactions[token] = id
+                    }
+                }
                 self.assets.setImageURLs(document.fragment.imageURLs)
                 let fragment = MarkdownRenderedFragment(
                     html: "<main id=\"fastra-visual\">\(document.fragment.html)</main>",
                     imageURLs: document.fragment.imageURLs)
                 let html = MarkdownRichText.htmlDocument(fragment: fragment, fontName: fontName,
                                                          fontSize: fontSize, darkMode: darkMode)
-                    .replacingOccurrences(of: "</style>", with: "#fastra-visual { outline: none; min-height: calc(100vh - 40px); } #fastra-visual > div:first-child > :first-child { margin-top: 0; } #fastra-visual [contenteditable=false] { user-select: all; }</style>")
+                    .replacingOccurrences(of: "</style>", with: "#fastra-visual { outline: none; min-height: calc(100vh - 40px); } #fastra-visual > div:first-child > :first-child { margin-top: 0; } #fastra-visual [contenteditable=false] { user-select: all; } #fastra-visual img[data-md-selected-image] { outline: 3px solid -apple-system-control-accent; outline-offset: 2px; }</style>")
                 web.underPageBackgroundColor = darkMode ? NSColor(srgbRed: 0.09, green: 0.09, blue: 0.09, alpha: 1) : .white
                 self.currentNavigation = web.loadHTMLString(html, baseURL: nil)
             }
@@ -248,7 +291,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         guard let data,
               let blocks = try? JSONSerialization.jsonObject(with: data) else { return }
         webView.callAsyncJavaScript("return await window.fastraVisual.start(configuration);",
-            arguments: ["configuration": ["blocks": blocks, "opaqueSources": pending.opaqueSources, "markdown": markdown, "session": session]],
+            arguments: ["configuration": ["blocks": blocks, "opaqueSources": pending.opaqueSources, "markdown": markdown, "session": session, "imageTransactions": initialImageTransactions]],
             in: nil, in: .page) { [weak self] result in
                 guard let self, self.generation == request else { return }
                 if case .success(let value) = result, value as? Bool == true {
@@ -283,9 +326,21 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                   workspace.acceptVisualMarkdown(value, previous: base, tabID: tabID) else { return }
             markdown = value
             acceptedInputRevision = body["revision"] as? Int ?? acceptedInputRevision
+        case "imageMenu":
+            guard let web, let x = body["x"] as? Double, let y = body["y"] as? Double else { return }
+            let menu = NSMenu()
+            let item = NSMenuItem(title: L10n.string("Löschen"), action: #selector(deleteSelectedImage), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+            menu.popUp(positioning: nil, at: NSPoint(x: x, y: web.isFlipped ? y : web.bounds.height - y), in: web)
         case "pasteImage", "pasteMarkdown": _ = pasteImages(bookmark: body["bookmark"] as? String)
         default: break
         }
+    }
+
+    @objc private func deleteSelectedImage() {
+        guard ready else { return }
+        web?.evaluateJavaScript("window.fastraVisual.command('deleteImage');", completionHandler: nil)
     }
 
     func copySelection(plain: String, html: String, copied: String, bookmark: String, cut: Bool) {
@@ -511,7 +566,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                         let transactionID = UUID().uuidString
                         let created = prepared.createdImages
                         if !created.isEmpty {
-                            self.imageTransactions[transactionID] = ImageTransaction(effect: MarkdownImageUndoSideEffect(images: created))
+                            self.imageTransactions[transactionID] = ImageTransaction(effect: MarkdownImageUndoSideEffect(images: created), fileURLs: Set(created.map { $0.fileURL.canonicalFileURL }))
                         }
                         let createdURLs = Set(created.map(\.fileURL))
                         let imageSources = visual.fragment.imageURLs.filter { createdURLs.contains($0.value) }

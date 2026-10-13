@@ -586,6 +586,38 @@ func imageUndoWithDuplicateLinkStillMovesItsFile() throws {
     }
 }
 
+@Test("Bild-Undo bleibt von Quelle, Ordnername und reinen Metadaten unabhängig",
+      arguments: ["source-removed", "folder-moved", "metadata"])
+func imageUndoSurvivesDocumentChanges(_ change: String) throws {
+    try withTempDir { root in
+        let directory = root.appendingPathComponent("document")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        let doc = directory.appendingPathComponent("test.md")
+        let source = root.appendingPathComponent("source.png")
+        let bytes = tinyPNG()
+        try bytes.write(to: source)
+        let stored = try MarkdownImageStore.storeImageFile(source, documentURL: doc)
+        let effect = MarkdownImageUndoSideEffect(images: [stored])
+        var currentDirectory = directory
+        switch change {
+        case "source-removed": try FileManager.default.removeItem(at: source)
+        case "folder-moved":
+            currentDirectory = root.appendingPathComponent("renamed")
+            try FileManager.default.moveItem(at: directory, to: currentDirectory)
+        default:
+            let data = Data("metadata".utf8)
+            try #require(data.withUnsafeBytes {
+                setxattr(stored.fileURL.path, "com.example.fastra.test", $0.baseAddress, $0.count, 0, 0)
+            } == 0)
+        }
+        #expect(effect.undo(), "Undo nach \(change)")
+        let copy = currentDirectory.appendingPathComponent("images/1.png")
+        #expect(!FileManager.default.fileExists(atPath: copy.path))
+        #expect(effect.redo(), "Redo nach \(change)")
+        #expect(try Data(contentsOf: copy) == bytes)
+    }
+}
+
 @Test("Bild-Undo verschiebt keine in-place geänderte Datei mit zurückgesetztem mtime")
 @MainActor
 func imageUndoRejectsChangedFileWithRestoredModificationDate() throws {
@@ -773,4 +805,45 @@ func redoPreflightRollsBackOnlyPreparations() {
     permitted = true
     manager.redo()
     #expect(textView.string == "Link" && prepared)
+}
+
+@Test("Gespeicherte Bilder bleiben bis zum Speichern erhalten und lassen sich danach zurückholen")
+func savedImageDeletionWaitsForSave() throws {
+    try withTempDir { directory in
+        let doc = directory.appendingPathComponent("test.md")
+        let stored = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"), documentURL: doc)
+        let effect = MarkdownImageUndoSideEffect(images: [stored], alreadySaved: true)
+        #expect(effect.undo())
+        #expect(FileManager.default.fileExists(atPath: stored.fileURL.path))
+        #expect(effect.documentSaved(visible: false))
+        #expect(!FileManager.default.fileExists(atPath: stored.fileURL.path))
+        #expect(effect.redo())
+        #expect(try Data(contentsOf: stored.fileURL) == tinyPNG())
+    }
+}
+
+@Test("Aufräumen schützt echte Bildreferenzen, andere Dokumente und veränderte Vorschauen")
+func cleanupProtectsSharedImagesAndPreview() throws {
+    try withTempDir { directory in
+        let doc = directory.appendingPathComponent("test.md")
+        let other = directory.appendingPathComponent("other.md")
+        try "".write(to: doc, atomically: true, encoding: .utf8)
+        let first = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"), documentURL: doc)
+        let second = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"), documentURL: doc)
+        try "![shared](images/1.png)".write(to: other, atomically: true, encoding: .utf8)
+        let preview = try MarkdownImageCleanup.plan(documentURL: doc, content: "", openDocuments: [:])
+        #expect(preview.candidates.map { $0.fileURL.canonicalFileURL } == [second.fileURL.canonicalFileURL])
+        let opened = try MarkdownImageCleanup.plan(documentURL: doc, content: "", openDocuments: [other: [
+            "![x][ref]\n\n[ref]: images/1.png", "![x][ref]\n\n[ref]: images/2.png"
+        ]])
+        #expect(opened.candidates.isEmpty)
+
+        try "![shared](images/1.png)\n![new](images/2.png)".write(to: other, atomically: true, encoding: .utf8)
+        #expect(throws: (any Error).self) { try MarkdownImageCleanup.apply(preview) }
+        #expect(FileManager.default.fileExists(atPath: second.fileURL.path))
+        try "![shared](images/1.png)".write(to: other, atomically: true, encoding: .utf8)
+        try MarkdownImageCleanup.apply(preview)
+        #expect(FileManager.default.fileExists(atPath: first.fileURL.path))
+        #expect(!FileManager.default.fileExists(atPath: second.fileURL.path))
+    }
 }

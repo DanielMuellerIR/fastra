@@ -156,12 +156,13 @@ struct SerialRunnerIntegrationTests {
         set -u
         FASTRA_TEST_STARTED_ROOTS=(4242)
         TEST_PROCESS_PID=4242
+        FASTRA_TEST_PENDING_PID=4343
         requested_phases=1
         run_phases=0
         passed_phases=0
         failed_phases=0
         environment_errors=0
-        terminate_fastra_test_process_trees() { return 1; }
+        terminate_fastra_test_process_trees() { printf 'OWNED_ROOTS %s\n' "$*"; return 1; }
         wait() { printf 'UNEXPECTED_WAIT\n'; }
         purge_fastra_registered_test_defaults() { printf 'UNEXPECTED_PURGE\n'; }
         release_fastra_test_sandbox() { printf 'UNEXPECTED_RELEASE\n'; }
@@ -171,6 +172,7 @@ struct SerialRunnerIntegrationTests {
         #expect(!result.output.contains("UNEXPECTED_"), "\(result.output)")
         #expect(result.output.contains("Sandbox bleiben unangetastet"))
         #expect(result.output.contains("environment_errors=1 exit=2"))
+        #expect(result.output.contains("OWNED_ROOTS 4242 4343"), "\(result.output)")
     }
 
     @Test("Komplementärer Marker teilt den vollständigen Bestand ohne Lücke")

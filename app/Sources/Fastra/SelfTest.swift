@@ -23535,6 +23535,80 @@ enum SelfTest {
                 await capture("visual-dark")
                 NSApp.appearance = NSAppearance(named: .aqua)
                 try await wait { (web.underPageBackgroundColor?.usingColorSpace(.sRGB)?.redComponent ?? 0) > 0.5 }
+                stage = "Bildauswahl und Kontextmenü"
+                let imagePoint = try await web.evaluateJavaScript("{const image=document.querySelector('#fastra-visual img');image.scrollIntoView({block:'center'});const r=image.getBoundingClientRect();({x:r.x+r.width/2,y:r.y+r.height/2});}") as? [String: Double]
+                guard let imagePoint, let x = imagePoint["x"], let y = imagePoint["y"] else { throw NSError(domain: "fixture", code: 5) }
+                let click = web.convert(NSPoint(x: x, y: web.isFlipped ? y : web.bounds.height - y), to: nil)
+                try require(sendMouseClick(at: click, in: window, modifiers: [], viaApp: true), "Bildklick fehlt")
+                try await Task.sleep(nanoseconds: 300_000_000)
+                try require(try await web.evaluateJavaScript("document.querySelectorAll('img[data-md-selected-image]').length") as? Int == 1, "Bild wird durch Klick nicht ausgewählt")
+                await capture("selected-image")
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    postKey("\u{F701}", keyCode: 125, windowNumber: window.windowNumber)
+                    postKey("\r", keyCode: 36, windowNumber: window.windowNumber)
+                }
+                for type in [NSEvent.EventType.rightMouseDown, .rightMouseUp] {
+                    if let event = NSEvent.mouseEvent(with: type, location: click, modifierFlags: [],
+                        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                        context: nil, eventNumber: 0, clickCount: 1, pressure: 1) { NSApp.postEvent(event, atStart: false) }
+                }
+                try await wait { ws.activeTab?.content.contains("images/original.png") == false }
+                try require(FileManager.default.fileExists(atPath: base.appendingPathComponent("images/original.png").path), "Ungesicherter Plattenstand verliert sein Bild")
+                ws.saveActiveTab()
+                try await wait { !FileManager.default.fileExists(atPath: base.appendingPathComponent("images/original.png").path) }
+                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                try await wait { ws.activeTab?.content == source }
+                try require(FileManager.default.fileExists(atPath: base.appendingPathComponent("images/original.png").path), "Undo stellt Bilddatei nicht wieder her")
+                ws.saveActiveTab()
+                try await wait { (try? String(contentsOf: file)) == source }
+                _ = try await web.evaluateJavaScript("document.querySelector('#fastra-visual').scrollIntoView({block:'start'});")
+                stage = "Images-Ordner aufräumen"
+                try await wait { ws.activeTab?.isDirty == false }
+                guard let mainMenu = NSApp.mainMenu,
+                      let menuRoot = mainMenu.items.first(where: { $0.title == L10n.string("Markdown") }),
+                      let menu = menuRoot.submenu else { throw NSError(domain: "fixture", code: 6) }
+                let menuResult: String? = await withCheckedContinuation { continuation in
+                    var timer: Timer?
+                    var ticks = 0
+                    var opened = false
+                    timer = Timer(timeInterval: 0.1, repeats: true) { _ in
+                        ticks += 1
+                        if !opened {
+                            opened = true
+                            _ = menuRoot.accessibilityPerformPress()
+                        } else if let item = menu.items.first(where: { $0.title == L10n.string("Images-Ordner aufräumen…") }), item.isEnabled {
+                            timer?.invalidate()
+                            timer = nil
+                            _ = item.accessibilityPerformPress()
+                            continuation.resume(returning: nil)
+                        } else if ticks >= 50 {
+                            timer?.invalidate()
+                            timer = nil
+                            menu.cancelTracking()
+                            mainMenu.cancelTracking()
+                            continuation.resume(returning: menu.items.map { "\($0.title):\($0.isEnabled)" }.joined(separator: ", "))
+                        }
+                    }
+                    if let timer {
+                        RunLoop.main.add(timer, forMode: .common)
+                        RunLoop.main.add(timer, forMode: .eventTracking)
+                    }
+                }
+                try require(menuResult == nil, "Aufräumen-Menü ist nicht bedienbar: " + (menuResult ?? ""))
+                try await wait { !window.sheets.isEmpty }
+                await capture("cleanup-preview")
+                func deleteButton(in view: NSView) -> NSButton? {
+                    if let button = view as? NSButton, button.title == L10n.string("Löschen") { return button }
+                    return view.subviews.lazy.compactMap { deleteButton(in: $0) }.first
+                }
+                guard let cleanupSheet = window.sheets.first, let content = cleanupSheet.contentView,
+                      let delete = deleteButton(in: content) else { throw NSError(domain: "fixture", code: 8) }
+                try require(sendMouseClick(at: delete.convert(NSPoint(x: delete.bounds.midX, y: delete.bounds.midY), to: nil),
+                    in: cleanupSheet, modifiers: [], viaApp: true), "Aufräumen-Bestätigung nicht bedienbar")
+                try await wait { window.sheets.isEmpty && !FileManager.default.fileExists(atPath: base.appendingPathComponent("images/unused.png").path) }
+                try require(FileManager.default.fileExists(atPath: base.appendingPathComponent("images/original.png").path), "Aufräumen entfernt verknüpftes Bild")
+                stage = "Toolbar"
                 _ = try await web.evaluateJavaScript("""
                     const p=document.querySelector('#fastra-visual p'),r=document.createRange();r.selectNodeContents(p);
                     getSelection().removeAllRanges();getSelection().addRange(r);
@@ -23602,7 +23676,7 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: base)
                 window.orderOut(nil)
                 NSApp.appearance = originalAppearance
-                finish(true, "Modusdialog, Toolbar, Undo, letzte Eingabe, Speichern und gezielte Bildkopie geprüft")
+                finish(true, "Modusdialog, Bildklick, Kontext-Löschen, Aufräumen, Toolbar, Undo, Speichern und gezielte Bildkopie geprüft")
             } catch {
                 try? FileManager.default.removeItem(at: base)
                 window.orderOut(nil)

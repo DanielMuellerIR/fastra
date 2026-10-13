@@ -32,6 +32,7 @@ struct AtomicFileCommitTests {
                 #expect(pending.count == 1)
                 let item = try #require(pending.first)
                 #expect(item.state == .afterExchange)
+
                 #expect(item.targetURL == installed)
                 #expect(item.preparedURL == displaced)
                 #expect(FileManager.default.fileExists(atPath: item.journalURL.path),
@@ -82,6 +83,15 @@ struct AtomicFileCommitTests {
         #expect(pending.count == 1)
         let item = try #require(pending.first)
         #expect(item.state == .afterExchange)
+        #expect(item.concernsOpenedDocument(target))
+        let copied = directory.appendingPathComponent("copy.md")
+        try FileManager.default.copyItem(at: target, to: copied)
+        #expect(!item.concernsOpenedDocument(copied))
+        try FileManager.default.moveItem(at: target, to: directory.appendingPathComponent("moved.md"))
+        try FileManager.default.copyItem(at: copied, to: target)
+        let copiedAtOldPath = try #require(restartedStore.inspectPending().first)
+        #expect(copiedAtOldPath.state == .changed)
+        #expect(!copiedAtOldPath.concernsOpenedDocument(target))
         #expect(item.targetURL == target)
         #expect(item.preparedURL == prepared)
         #expect(try Data(contentsOf: target) == replacement)

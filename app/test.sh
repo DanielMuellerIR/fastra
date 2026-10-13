@@ -94,6 +94,17 @@ cleanup() {
     elif [[ "${TEST_PROCESS_PID:-${FASTRA_TEST_PENDING_PID:-}}" =~ ^[0-9]+$ ]]; then
         cleanup_targets=("${TEST_PROCESS_PID:-${FASTRA_TEST_PENDING_PID:-}}")
     fi
+    # Ein früh fehlgeschlagener Folgestart steht noch nicht in STARTED_ROOTS.
+    # Der Pending-Handshake hält ihn auch nach früheren Phasen erfasst.
+    if [[ "${FASTRA_TEST_PENDING_PID:-}" =~ ^[0-9]+$ ]]; then
+        local pending_is_tracked=0
+        if [ "${#cleanup_targets[@]}" -gt 0 ]; then
+            for cleanup_pid in "${cleanup_targets[@]}"; do
+                [ "$cleanup_pid" != "$FASTRA_TEST_PENDING_PID" ] || pending_is_tracked=1
+            done
+        fi
+        [ "$pending_is_tracked" -eq 1 ] || cleanup_targets+=("$FASTRA_TEST_PENDING_PID")
+    fi
     if [ "${#cleanup_targets[@]}" -gt 0 ]; then
         if ! terminate_fastra_test_process_trees "${cleanup_targets[@]}"; then
             cleanup_status=2

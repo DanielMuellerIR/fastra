@@ -474,6 +474,10 @@ to edit directly in the formatted view or use source text with a preview.
 WYSIWYG hides Markdown syntax. The format toolbar works in both modes.
 Typing, formatting and Undo happen directly in the document.
 
+A minus followed by a space starts a bulleted list. Return continues the list;
+Return in an empty item ends it. Bold and italic inside headings are preserved
+as Markdown formatting.
+
 In WYSIWYG mode, **Tab** nests a list item one level deeper; **⇧Tab** moves it
 back out. This also works with numbered lists and task lists. Outside lists,
 Tab inserts four nonbreaking spaces that retain their visible width after
@@ -548,9 +552,23 @@ Every insertion creates its own copy with a free number, even for identical
 image data. Save new documents before
 inserting images (⌘S).
 
-⌘Z removes the link and the newly created image file in both editing modes;
-Redo restores both. The number stays reserved until the undo step is discarded. Save As copies only images still used. Existing or manually linked files
-are never removed.
+Click an image in WYSIWYG mode to select it. Use the Delete key or
+**Right-click → Delete** to remove it; ⌘Z restores it. For previously saved
+images, the file is removed only on the next save so the saved document remains
+valid. Undo retains the image until its history is discarded. Images used by
+other Markdown files in the same folder or other open documents are preserved.
+Files outside the immediate `images` folder are not removed automatically.
+
+⌘Z after an unsaved insertion also removes the newly created image file; Redo
+restores both. The original source file is no longer needed. The number stays
+reserved until the undo step is discarded. Save As copies only images still
+used. Markdown and `images` can be copied, renamed and moved together.
+
+**Markdown → Clean up images folder…** previews unused files in the immediate
+`images` folder before deleting them. Save the document first. Other Markdown
+files in the same folder, open documents and active image undo steps protect
+their files. Subfolders and symbolic links are left untouched. Fastra checks
+the preview again after confirmation.
 
 Fastra publishes an image file only after the copy is complete and never
 overwrites a file created concurrently. If the real `images` folder is
@@ -1111,16 +1129,13 @@ exchange.
 
 Before every such name exchange, Fastra also synchronizes a small recovery
 journal under `~/Library/Application Support/Fastra/atomic-commit-recovery/`.
-If the process or Mac stops between the exchange and final verification, the
-next app launch maps the target, prepared version, and any private cleanup path
-by their file identities and content checksums. Fastra names the paths that are
-actually reachable and does not delete either version while the state is
-unclear. This applies to
-normal saves, Hex saves, Folder Apply, and its Undo step. A journal with no
-second reachable version is removed at launch only when the target still
-contains one of the two file identities recorded in it. If the target is also
-missing or now contains a foreign file, the journal remains as a record of the
-interrupted operation.
+If the process or Mac stops between the exchange and final verification,
+Fastra checks the affected file's identity and content checksums when it is
+opened. It shows the two paths only when both versions still belong to that
+interrupted operation. Copied, moved or replaced files do not inherit recovery
+warnings. Unclear old records and their files are preserved without blocking
+other documents. A provably completed operation with no second version is
+removed from the journal.
 
 If a fully loaded text file disappears or becomes unreadable, Fastra
 marks the remaining tab copy as unsaved so it cannot be closed without

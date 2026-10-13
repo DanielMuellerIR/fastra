@@ -7,6 +7,19 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.139.17] — 2026-10-13
+
+### Behoben
+
+- Bild-Undo bleibt nach dem Umbenennen oder Verschieben des Dokumentordners verwendbar. Reine Metadatenänderungen werden anhand der unveränderten Bildbytes geprüft; fremde Dateiobjekte und veränderte Bildinhalte bleiben geschützt.
+- Getippte Aufzählungsanfänge werden im WYSIWYG-Editor zu echten Listen. Fettformatierung in Überschriften bleibt im Markdown erhalten.
+- Alte Recovery-Einträge blockieren keine kopierten oder verschobenen Dokumente mehr. Hinweise betreffen nur einen nachgewiesenen, unterbrochenen Speichervorgang der geöffneten Datei.
+- Geladene Bilder lassen sich per Klick auswählen und über das Kontextmenü löschen. Beim Speichern werden nicht mehr verwendete Bilddateien für Undo zurückgehalten; gemeinsam verwendete Bilder bleiben erhalten.
+
+### Hinzugefügt
+
+- „Images-Ordner aufräumen…“ im Markdown-Menü zeigt unbenutzte Dateien vor dem Löschen an und prüft gemeinsam verwendete Bilder sowie Änderungen seit der Vorschau.
+
 ## [v1.139.16] — 2026-10-13
 
 ### Behoben

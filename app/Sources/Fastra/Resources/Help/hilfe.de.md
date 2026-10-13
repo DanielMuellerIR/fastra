@@ -495,6 +495,10 @@ in der formatierten Ansicht oder mit Quelltext und Vorschau arbeiten möchtest.
 Im WYSIWYG-Modus bleiben Markdown-Kürzel verborgen. Die Format-Toolbar funktioniert
 in beiden Modi. Tippen, Formatieren und Rückgängig erfolgen direkt im Dokument.
 
+Ein Minus mit anschließendem Leerzeichen beginnt eine Aufzählung. Return setzt
+die Liste fort; Return in einem leeren Listenpunkt beendet sie. Fett und Kursiv
+sind auch innerhalb von Überschriften dauerhafte Textauszeichnungen.
+
 Im WYSIWYG-Modus rückt **Tab** einen Listenpunkt um eine Ebene ein;
 **⇧Tab** rückt ihn wieder aus. Das funktioniert auch mit nummerierten Listen
 und Aufgabenlisten. Außerhalb einer Liste fügt Tab vier geschützte Leerzeichen
@@ -574,10 +578,25 @@ Jede Einfügung erzeugt eine eigene Kopie mit freier Nummer, auch bei gleichen
 Bilddaten. Speichere
 neue Dokumente vor dem Einfügen von Bildern (⌘S).
 
-⌘Z entfernt den Link und die neu erzeugte Bilddatei in beiden Bearbeitungsmodi;
-Redo stellt beides wieder her. Die Nummer bleibt bis zum Verwerfen des
-Undo-Schritts reserviert. „Speichern unter“ nimmt nur noch verwendete Bilder
-mit. Bereits vorhandene oder manuell verlinkte Dateien werden niemals entfernt.
+Ein Klick wählt ein Bild im WYSIWYG-Modus aus. Mit der Löschtaste oder
+**Rechtsklick → Löschen** entfernst du es; ⌘Z stellt es wieder her.
+Bei schon gespeicherten Bildern wird die Datei erst beim nächsten Speichern
+entfernt, damit der bisherige Plattenstand gültig bleibt. Undo hält die Bilddatei
+bis zum Verwerfen des Verlaufs bereit. Bilder anderer Markdown-Dateien im selben
+Ordner und anderer offener Dokumente bleiben erhalten. Dateien außerhalb des
+unmittelbaren `images`-Ordners werden nicht automatisch entfernt.
+
+⌘Z nach einer noch ungespeicherten Einfügung entfernt auch die neu erzeugte
+Bilddatei; Redo stellt beides wieder her. Die ursprüngliche Quelldatei wird dafür
+nicht benötigt. Die Nummer bleibt bis zum Verwerfen des Undo-Schritts reserviert.
+„Speichern unter“ nimmt nur noch verwendete Bilder mit. Markdown und `images`
+können gemeinsam kopiert, umbenannt und verschoben werden.
+
+**Markdown → Images-Ordner aufräumen…** zeigt die unbenutzten Dateien im
+unmittelbaren `images`-Ordner vor dem Löschen an. Speichere das Dokument vorher.
+Andere Markdown-Dateien im selben Ordner, offene Dokumente und laufende
+Bild-Undo-Schritte schützen ihre Dateien. Unterordner und symbolische Links
+werden nicht entfernt. Nach Bestätigung prüft Fastra die Vorschau erneut.
 
 Fastra veröffentlicht eine Bilddatei erst nach der vollständigen Kopie und
 überschreibt keine gleichzeitig entstandene Datei. Wird der echte
@@ -1179,16 +1198,14 @@ macOS-Namenstausch nicht sperren.
 
 Vor jedem solchen Namenstausch synchronisiert Fastra außerdem ein kleines
 Recovery-Journal unter `~/Library/Application Support/Fastra/atomic-commit-recovery/`.
-Endet der Prozess oder der Mac zwischen Tausch und Abschlussprüfung, ordnet der
-nächste App-Start Ziel, vorbereitete Fassung und gegebenenfalls den privaten
-Cleanup-Pfad anhand ihrer Dateiidentitäten und Inhaltsprüfsummen zu. Fastra
-nennt die tatsächlich erreichbaren Pfade und löscht bei einem unklaren Stand
-keine Fassung. Das gilt
-gemeinsam für normales Speichern, Hex-Speichern, Ordner-Apply und dessen
-Rückgängig-Schritt. Ein Journal ohne zweite erreichbare Fassung wird beim Start
-nur entfernt, wenn am Ziel noch eine der beiden darin gebundenen
-Dateiidentitäten liegt. Fehlt auch das Ziel oder liegt dort inzwischen eine
-fremde Datei, bleibt das Journal als Hinweis erhalten.
+Endet der Prozess oder der Mac zwischen Tausch und Abschlussprüfung, prüft
+Fastra beim Öffnen der betroffenen Datei ihre Identität und Inhaltsprüfsummen.
+Nur wenn beide Fassungen noch eindeutig zu diesem unterbrochenen Vorgang
+gehören, nennt Fastra ihre Pfade. Kopierte, verschobene oder inzwischen anders
+belegte Dateien erben keine Recovery-Meldung. Unklare alte Einträge und die
+zugehörigen Dateien bleiben erhalten, ohne andere Dokumente zu blockieren.
+Ein nachweislich abgeschlossener Vorgang ohne zweite Fassung wird aus dem
+Journal entfernt.
 
 Verschwindet eine vollständig geladene Textdatei oder wird sie unlesbar,
 markiert Fastra die im Tab verbliebene Kopie als ungespeichert; sie lässt sich

@@ -69,6 +69,13 @@ enum AtomicCommitRecovery {
         /// Cleanup-Name zugleich existieren.
         let additionalURL: URL?
         let journalURL: URL
+
+        /// Nur ein noch nachweisbarer Tausch gehört zur geöffneten Datei.
+        /// Kopien und inzwischen anders belegte Pfade erben kein Journal.
+        func concernsOpenedDocument(_ url: URL) -> Bool {
+            guard state == .beforeExchange || state == .afterExchange else { return false }
+            return targetURL?.standardizedFileURL == url.standardizedFileURL
+        }
     }
 
     struct Store: Sendable {

@@ -25,14 +25,17 @@ enum MarkdownImageStore {
         let statusChangeNanoseconds: Int64
     }
 
-    /// Ergebnis einer Bildablage. Nur `createdByInsertion == true` darf beim
-    /// Rückgängig-Machen des zugehörigen Markdown-Links angefasst werden.
+    /// Ergebnis einer Bildablage oder einer geprüften vorhandenen Bilddatei.
+    /// Vorhandene Dateien dürfen erst nach gespeicherter Linkentfernung oder
+    /// nach bestätigter Aufräumvorschau aus dem Images-Ordner verschwinden.
     struct StoredImage: Sendable {
         let link: String
         let fileURL: URL
         let createdByInsertion: Bool
         let imagesDirectoryCreated: Bool
         let identity: StoredFileIdentity
+        let contentSHA256: String
+        let reservationKey: String
     }
 
     /// Serialisiert nur die kurze Namenswahl+Veröffentlichung je Zielordner.
@@ -65,17 +68,24 @@ enum MarkdownImageStore {
     private static let reservationLock = NSLock()
     private static var reservedPaths: [String: Int] = [:]
 
-    private static func isReserved(_ url: URL) -> Bool {
+    private static func reservationKey(for url: URL) -> String {
+        let directory = url.deletingLastPathComponent().deletingLastPathComponent()
+        var info = stat()
+        guard stat(directory.path, &info) == 0 else { return url.standardizedFileURL.path }
+        return "\(info.st_dev):\(info.st_ino):\(url.lastPathComponent)"
+    }
+
+    static func isReserved(_ url: URL) -> Bool {
         reservationLock.lock()
         defer { reservationLock.unlock() }
-        return reservedPaths[url.standardizedFileURL.path, default: 0] > 0
+        return reservedPaths[reservationKey(for: url), default: 0] > 0
     }
 
     static func releaseReservations(_ images: [StoredImage]) {
         reservationLock.lock()
         defer { reservationLock.unlock() }
         for image in images {
-            let key = image.fileURL.standardizedFileURL.path
+            let key = image.reservationKey
             let remaining = reservedPaths[key, default: 0] - 1
             reservedPaths[key] = remaining > 0 ? remaining : nil
         }
@@ -88,7 +98,7 @@ enum MarkdownImageStore {
     private static func reserve(_ image: StoredImage) {
         reservationLock.lock()
         defer { reservationLock.unlock() }
-        reservedPaths[image.fileURL.standardizedFileURL.path, default: 0] += 1
+        reservedPaths[image.reservationKey, default: 0] += 1
     }
 
     /// Dateiendungen, die als Bild-DATEI eingefügt (statt geöffnet) werden.
@@ -247,6 +257,7 @@ enum MarkdownImageStore {
             }
             try writeAll(prepared.data, to: temporaryFD)
             guard fsync(temporaryFD) == 0 else { throw currentPOSIXError() }
+            let contentSHA256 = try storedFileHash(fromFD: temporaryFD)
             for counter in 1..<10_000 {
                 let name = shortImageName(counter: counter, fileExtension: prepared.fileExtension)
                 let target = directory.appendingPathComponent(name)
@@ -277,7 +288,9 @@ enum MarkdownImageStore {
                         fileURL: target,
                         createdByInsertion: true,
                         imagesDirectoryCreated: opened.created,
-                        identity: identity
+                        identity: identity,
+                        contentSHA256: contentSHA256,
+                        reservationKey: reservationKey(for: target)
                     )
                     if reserveForTransaction { reserve(result) }
                     stored = true
@@ -353,6 +366,7 @@ enum MarkdownImageStore {
             }
 
             let fileExtension = sourceURL.pathExtension
+            let contentSHA256 = try storedFileHash(fromFD: temporaryFD)
             for counter in 1..<10_000 {
                 let candidateName = shortImageName(counter: counter, fileExtension: fileExtension)
                 let candidate = directory.appendingPathComponent(candidateName)
@@ -380,7 +394,9 @@ enum MarkdownImageStore {
                         fileURL: candidate,
                         createdByInsertion: true,
                         imagesDirectoryCreated: opened.created,
-                        identity: copiedIdentity
+                        identity: copiedIdentity,
+                        contentSHA256: contentSHA256,
+                        reservationKey: reservationKey(for: candidate)
                     )
                     if reserveForTransaction { reserve(result) }
                     stored = true
@@ -438,7 +454,7 @@ enum MarkdownImageStore {
     private static func createFile(named name: String, in directoryFD: Int32) throws
         -> Int32 {
         let fd = openat(directoryFD, name,
-                        O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+                        O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
                         mode_t(0o644))
         guard fd >= 0 else { throw currentPOSIXError() }
         return fd
@@ -497,6 +513,31 @@ enum MarkdownImageStore {
             && a.st_size == b.st_size
             && a.st_mtimespec.tv_sec == b.st_mtimespec.tv_sec
             && a.st_mtimespec.tv_nsec == b.st_mtimespec.tv_nsec
+    }
+
+    static func captureExisting(_ url: URL) throws -> StoredImage {
+        let directory = url.deletingLastPathComponent()
+        guard directory.lastPathComponent == "images" else { throw StoreError.invalidImagesDirectory }
+        let directoryFD = open(directory.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard directoryFD >= 0 else { throw StoreError.invalidImagesDirectory }
+        defer { Darwin.close(directoryFD) }
+        let fd = openat(directoryFD, url.lastPathComponent, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)
+        guard fd >= 0 else { throw StoreError.unreadableImage }
+        defer { Darwin.close(fd) }
+        let identity = try storedFileIdentity(fromFD: fd)
+        let hash = try storedFileHash(fromFD: fd)
+        guard identity == (try storedFileIdentity(fromFD: fd)) else { throw StoreError.unreadableImage }
+        return StoredImage(link: "", fileURL: url, createdByInsertion: false,
+                           imagesDirectoryCreated: false, identity: identity, contentSHA256: hash, reservationKey: reservationKey(for: url))
+    }
+
+    private static func storedFileHash(fromFD fd: Int32) throws -> String {
+        var info = stat()
+        guard fstat(fd, &info) == 0, info.st_size >= 0 else {
+            throw StoreError.unreadableImage
+        }
+        return try FileSnapshot.readSnapshotOnly(
+            descriptor: fd, fileStat: info, byteLimit: UInt64(info.st_size)).sha256
     }
 
     private static func storedFileIdentity(fromFD fd: Int32) throws

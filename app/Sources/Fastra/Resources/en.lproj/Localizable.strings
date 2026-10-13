@@ -1818,3 +1818,11 @@
 
 "„%@“ ist ein %@-Dokument." = "“%@” is an %@ document.";
 "Als Quelltext öffnen" = "Open as Source Text";
+
+"Bild bearbeiten" = "Edit image";
+
+"Images-Ordner aufräumen" = "Clean up images folder";
+"Images-Ordner aufräumen…" = "Clean up images folder…";
+"Speichere das Markdown-Dokument vor dem Aufräumen." = "Save the Markdown document before cleaning up.";
+"Keine unbenutzten Dateien im Images-Ordner gefunden." = "No unused files found in the images folder.";
+"Diese Dateien werden gelöscht. Bilder anderer Markdown-Dateien im selben Ordner und offener Dokumente bleiben erhalten. Unterordner werden nicht verändert." = "These files will be deleted. Images used by other Markdown files in the same folder or by open documents are preserved. Subfolders are left unchanged.";

@@ -585,6 +585,8 @@ struct FastraApp: App {
                     Divider()
                     markdownFormatButton(.link)
                     markdownFormatButton(.insertTable)
+                    Divider()
+                    Button("Images-Ordner aufräumen…") { MarkdownImageCleanup.present() }
                 }
                 .disabled(!activeTabIsMarkdown)
             }

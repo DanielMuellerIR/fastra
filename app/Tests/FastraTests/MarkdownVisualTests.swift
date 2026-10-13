@@ -7,6 +7,69 @@ import Testing
 
 @Suite("Markdown-WYSIWYG", .serialized)
 struct MarkdownVisualTests {
+    @Test("Getippter Minus-Anfang wird zur Liste und nicht zu escaped Text", arguments: ["", "Punkt"])
+    @MainActor
+    func typedMinusStartsList(_ text: String) async throws {
+        let (_, coordinator, web, window) = try await editor("")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("""
+            const p=document.querySelector('#fastra-visual p'),r=document.createRange();
+            r.selectNodeContents(p);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);
+            document.execCommand('insertText',false,'-');document.execCommand('insertText',false,' ');
+            """)
+        let result = try await web.evaluateJavaScript("""
+            const listAfterSpace=document.querySelectorAll('#fastra-visual li').length;
+            document.execCommand('insertText',false,'\(text)');document.execCommand('insertParagraph');fastraVisual.flush();
+            JSON.stringify({listAfterSpace,markdown:fastraVisual.markdown(),html:document.getElementById('fastra-visual').innerHTML});
+            """) as? String
+        let data = try #require(result?.data(using: .utf8))
+        let state = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(state["listAfterSpace"] as? Int == 1, Comment(rawValue: result ?? ""))
+        let markdown = try #require(state["markdown"] as? String)
+        #expect(!markdown.contains("\\-"), Comment(rawValue: result ?? ""))
+        if !text.isEmpty { #expect(markdown.contains("- Punkt"), Comment(rawValue: result ?? "")) }
+    }
+
+    @Test("Fett und Kursiv in Überschriften bleiben nach Neuaufbau erhalten",
+          arguments: [1, 2, 3], [MarkdownFormatCommand.bold, .italic])
+    @MainActor
+    func headingInlineFormatPersists(_ level: Int, _ command: MarkdownFormatCommand) async throws {
+        let source = String(repeating: "#", count: level) + " Titel\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime((workspace, coordinator)) {} }
+        _ = try await web.evaluateJavaScript("""
+            const h=document.querySelector('h\(level)'),r=document.createRange();r.selectNodeContents(h);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            """)
+        coordinator.format(command)
+        var saved: String?
+        try #require(await waitUntil {
+            if saved != nil { return true }
+            web.evaluateJavaScript("fastraVisual.markdown()") { value, _ in saved = value as? String }
+            return false
+        })
+        let markdown = try #require(saved)
+        let marker = command == .bold ? "**" : "*"
+        #expect(markdown.contains(marker + "Titel" + marker), Comment(rawValue: markdown))
+        coordinator.load(markdown, documentURL: nil, fontName: PreviewFonts.systemName,
+                         fontSize: 14, darkMode: false, style: "reload")
+        try #require(await waitUntil { coordinator.ready })
+        let selector = command == .bold ? "strong,b" : "em,i"
+        #expect(try await web.evaluateJavaScript("document.querySelector('h\(level)')?.querySelector('\(selector)')?.textContent") as? String == "Titel")
+    }
+
+    @Test("Fett und Kursiv lassen sich in Überschriften kombinieren und wieder ausschalten")
+    @MainActor
+    func headingFormatToggles() async throws {
+        let (workspace, coordinator, web, window) = try await editor("# Titel\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime((workspace, coordinator)) {} }
+        for command in ["bold", "italic", "italic", "bold"] {
+            _ = try await web.evaluateJavaScript("{const h=document.querySelector('h1'),r=document.createRange();r.selectNodeContents(h);getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('\(command)');}")
+        }
+        let markdown = try await web.evaluateJavaScript("fastraVisual.markdown()") as? String
+        #expect(markdown?.trimmingCharacters(in: .whitespacesAndNewlines) == "# Titel")
+    }
+
     @Test("Drucken bleibt nach visueller Synchronisierung am ursprünglichen Dokument",
           arguments: [false, true])
     @MainActor
@@ -1176,6 +1239,30 @@ struct MarkdownVisualTests {
     func regressionVisibleListGaps() {
         let document = MarkdownVisualDocument.render("- A\n  \n- B\n", documentURL: nil)
         #expect(document.fragment.html.contains("fastra-visible-blank-line"))
+    }
+
+    @Test("Geladenes Bild per Klick löschen, speichern und Undo stellt die Datei wieder her")
+    @MainActor
+    func loadedImageClickDeleteSaveUndo() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-loaded-image-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let doc = directory.appendingPathComponent("test.md")
+        let bytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+        let image = try MarkdownImageStore.storePastedData(.init(data: bytes, fileExtension: "png"), documentURL: doc)
+        let source = "![Bild](images/1.png)\n"
+        try source.write(to: doc, atomically: true, encoding: .utf8)
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: doc)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: doc)
+        _ = try await web.evaluateJavaScript("document.querySelector('img').click();fastraVisual.command('deleteImage');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == false })
+        #expect(FileManager.default.fileExists(atPath: image.fileURL.path))
+        workspace.saveActiveTab()
+        try #require(await waitUntil { !FileManager.default.fileExists(atPath: image.fileURL.path) })
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+        #expect(try Data(contentsOf: image.fileURL) == bytes)
     }
 
     @Test("Bild löschen, weiterarbeiten und Undo stellt die Bilddatei wieder her")

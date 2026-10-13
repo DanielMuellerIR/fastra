@@ -3801,6 +3801,7 @@ final class Workspace: ObservableObject {
                     }
                     self.noteRecentFile(url)
                     self.synchronizeProjectWithActiveTabIfNeeded()
+                    AppDelegate.inspectRecovery(forOpenedDocument: url)
                     report(.opened)
 
                 case .failure(let error):
@@ -4208,6 +4209,7 @@ final class Workspace: ObservableObject {
             // Gespeicherter Stand = neue Basis: Rückgängig bis genau hierher
             // lässt den Punkt im Tab wieder verschwinden.
             tabs[finalIndex].recordSavedContentBaseline()
+            visualMarkdownEditor?.documentSaved(at: url)
             // Speichern kann den Git-Status geändert haben (Datei jetzt „M").
             refreshGitStatus()
             return true

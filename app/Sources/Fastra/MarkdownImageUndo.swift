@@ -11,7 +11,10 @@ final class MarkdownImageUndoSideEffect {
     private let images: [MarkdownImageStore.StoredImage]
     private let mover: MarkdownImageUndoFileMover
     private var fileState: FileState = .onDisk
-    init(images: [MarkdownImageStore.StoredImage]) {
+    private var protectedBySavedDocument: Bool
+    private var removalPending = false
+    init(images: [MarkdownImageStore.StoredImage], alreadySaved: Bool = false) {
+        protectedBySavedDocument = alreadySaved
         self.images = images
         MarkdownImageStore.reserveForUndo(images)
         mover = MarkdownImageUndoFileMover(images: images)
@@ -21,6 +24,7 @@ final class MarkdownImageUndoSideEffect {
 
     @discardableResult
     func undo() -> Bool {
+        if protectedBySavedDocument { removalPending = true; return true }
         guard fileState == .onDisk else { return fileState == .stashed }
         guard mover.stashCreatedFiles() else { return false }
         fileState = .stashed
@@ -29,9 +33,25 @@ final class MarkdownImageUndoSideEffect {
 
     @discardableResult
     func redo() -> Bool {
+        removalPending = false
         guard fileState == .stashed else { return fileState == .onDisk }
         guard mover.restoreStashedFiles() else { return false }
         fileState = .onDisk
+        return true
+    }
+
+    @discardableResult
+    func documentSaved(visible: Bool) -> Bool {
+        if visible {
+            protectedBySavedDocument = true
+            removalPending = false
+            return true
+        }
+        guard removalPending else { return true }
+        guard fileState == .onDisk, mover.stashCreatedFiles() else { return false }
+        fileState = .stashed
+        protectedBySavedDocument = false
+        removalPending = false
         return true
     }
 
@@ -78,7 +98,7 @@ enum MarkdownImageUndo {
 /// unangetastet.
 final class MarkdownImageUndoFileMover: @unchecked Sendable {
     private let images: [MarkdownImageStore.StoredImage]
-    private let backupDirectory: URL
+    private let documentFD: Int32
     private let backupName: String
     private var currentIdentities: [URL: MarkdownImageStore.StoredFileIdentity]
 
@@ -87,11 +107,16 @@ final class MarkdownImageUndoFileMover: @unchecked Sendable {
         let documentDirectory = images[0].fileURL.deletingLastPathComponent()
             .deletingLastPathComponent()
         backupName = ".fastra-image-undo-\(UUID().uuidString)"
-        backupDirectory = documentDirectory.appendingPathComponent(
-            backupName, isDirectory: true)
+        // Der Deskriptor folgt demselben Ordner auch nach Finder-Umbenennen.
+        documentFD = open(documentDirectory.path,
+                          O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
         currentIdentities = Dictionary(uniqueKeysWithValues: images.map {
             ($0.fileURL, $0.identity)
         })
+    }
+
+    deinit {
+        if documentFD >= 0 { Darwin.close(documentFD) }
     }
 
     func stashCreatedFiles() -> Bool {
@@ -161,9 +186,8 @@ final class MarkdownImageUndoFileMover: @unchecked Sendable {
     }
 
     private func openDocumentDirectory() -> Int32? {
-        let directory = backupDirectory.deletingLastPathComponent()
-        let fd = open(directory.path,
-                      O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard documentFD >= 0 else { return nil }
+        let fd = fcntl(documentFD, F_DUPFD_CLOEXEC, 0)
         return fd >= 0 ? fd : nil
     }
 
@@ -219,13 +243,17 @@ final class MarkdownImageUndoFileMover: @unchecked Sendable {
         let name = image.fileURL.lastPathComponent
         guard let expected,
               !name.isEmpty, name != ".", name != "..",
-              identity(named: name, in: sourceFD) == expected else {
-            return false
-        }
+              let observed = identity(named: name, in: sourceFD),
+              sameFileAcrossRename(expected, observed) else { return false }
+        // Finder-/Metadatenänderungen erhöhen ctime ohne neue Bildbytes.
+        // Ein Hash trennt diesen Fall von einem in-place veränderten Bild.
+        let verifyContent = observed != expected
+        if verifyContent && !contentMatches(image, named: name, in: sourceFD) { return false }
         guard renameatx_np(sourceFD, name, targetFD, name,
                            UInt32(RENAME_EXCL)) == 0 else { return false }
         guard let movedIdentity = identity(named: name, in: targetFD),
-              sameFileAcrossRename(expected, movedIdentity) else {
+              sameFileAcrossRename(observed, movedIdentity),
+              !verifyContent || contentMatches(image, named: name, in: targetFD) else {
             // Der Name kann zwischen Vorprüfung und `renameatx_np` ersetzt
             // worden sein. Eine fremde Datei wird dann nicht zur neuen
             // erwarteten Identität; wir legen sie bestmöglich zurück und
@@ -236,6 +264,19 @@ final class MarkdownImageUndoFileMover: @unchecked Sendable {
         }
         currentIdentities[image.fileURL] = movedIdentity
         return true
+    }
+
+    private func contentMatches(_ image: MarkdownImageStore.StoredImage,
+                                named name: String, in directoryFD: Int32) -> Bool {
+        let fd = openat(directoryFD, name, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)
+        guard fd >= 0 else { return false }
+        defer { Darwin.close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+              info.st_size >= 0,
+              let snapshot = try? FileSnapshot.readSnapshotOnly(
+                descriptor: fd, fileStat: info, byteLimit: UInt64(image.identity.size)) else { return false }
+        return snapshot.sha256 == image.contentSHA256
     }
 
     private func sameFileAcrossRename(
