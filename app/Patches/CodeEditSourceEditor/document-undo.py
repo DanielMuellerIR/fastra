@@ -31,6 +31,7 @@ replacement = '''    /// Modelländerung an einem eventuell nicht montierten Dok
     /// Ansicht darf den neuen Verlauf bis zum erneuten Anbinden nicht ausführen.
     public func fastraRegisterDocumentReplacement(from before: String, to after: String) {
         guard !before.utf8.elementsEqual(after.utf8) else { return }
+        fastraHistoryEpoch &+= 1
         textView = nil
         endUndoGrouping()
         let oldLength = (before as NSString).length
@@ -48,6 +49,9 @@ replacement = '''    /// Modelländerung an einem eventuell nicht montierten Dok
     }
 
     // MARK: - Grouping'''
-legacy = replacement.replace('!before.utf8.elementsEqual(after.utf8)', 'before != after')
-patch(manager, legacy if legacy in manager.read_text() else '    // MARK: - Grouping', replacement)
+previous = replacement.replace('        fastraHistoryEpoch &+= 1\n', '')
+legacy = previous.replace('!before.utf8.elementsEqual(after.utf8)', 'before != after')
+source = manager.read_text()
+anchor = previous if previous in source else legacy if legacy in source else '    // MARK: - Grouping'
+patch(manager, anchor, replacement)
 print('changed' if changed else 'unchanged')

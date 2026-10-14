@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CodeEditTextView
 import Foundation
 import Testing
@@ -57,13 +58,14 @@ struct MarkdownImageUndoBufferTests {
         let root = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let buffer = MarkdownImageUndoBuffer(byteLimit: imageUndoPNG.count * 2)
+        let bytes = imageUndoPNG + Data(repeating: 0, count: 4096)
+        let buffer = MarkdownImageUndoBuffer(byteLimit: bytes.count * 2 + 1024)
         var lost: [Int] = []
         var effects: [MarkdownImageUndoSideEffect] = []
         for number in 0..<3 {
             let directory = root.appendingPathComponent(String(number))
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let image = try MarkdownImageStore.storePastedData(.init(data: imageUndoPNG, fileExtension: "png"),
+            let image = try MarkdownImageStore.storePastedData(.init(data: bytes, fileExtension: "png"),
                                                               documentURL: directory.appendingPathComponent("test.md"))
             let effect = MarkdownImageUndoSideEffect(images: [image], buffer: buffer, historyLost: { lost.append(number) })
             effects.append(effect)
@@ -139,6 +141,49 @@ struct MarkdownImageUndoBufferTests {
         #expect(!manager.isUndoing)
         #expect(!manager.canUndo && !manager.canRedo)
         #expect(view.isEditable)
+    }
+
+    @Test("Modell-Ersetzung während Bild-Undo verwirft dessen verspäteten Redo-Schritt")
+    @MainActor
+    func replacementDuringAsyncUndo() throws {
+        let tab = EditorTab(title: "test.md", path: "", content: "word")
+        let history = tab.undoHistory
+        let view = TextView(string: "word")
+        let manager = history.manager(for: "word")
+        view.setUndoManager(manager)
+        view.replaceCharacters(in: NSRange(location: 4, length: 0), with: "![x](images/1.png)")
+        history.didEditInSource(view.string)
+        var finish: (() -> Void)?
+        var discarded = false
+        manager.fastraRegisterSideEffectForLatestUndo(undo: {}, redo: {},
+            undoAsync: { _, completion in finish = completion }, discard: { discarded = true })
+        manager.undo()
+        #expect(view.string == "word" && manager.isUndoing)
+        let workspace = Workspace()
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        workspace.sourceEditorContent.wrappedValue = view.string
+        #expect(workspace.activeTab?.content == "word")
+        workspace.activeTabContent.wrappedValue = "blocked"
+        #expect(workspace.activeTab?.content == "word")
+        #expect(!workspace.textEditingIsAllowed(for: tab))
+        // Direkte Modellregistrierung bleibt zusätzlich gegen verspätete Completions gesichert.
+        history.replace("word", with: "newword")
+        var updates = 0
+        let observation = workspace.objectWillChange.sink { updates += 1 }
+        defer { observation.cancel() }
+        let complete = try #require(finish)
+        complete()
+        #expect(updates > 0)
+        #expect(!manager.canRedo)
+        #expect(discarded)
+        #expect(workspace.textEditingIsAllowed(for: tab))
+        let replacementView = TextView(string: "newword")
+        replacementView.setUndoManager(history.manager(for: "newword"))
+        manager.redo()
+        #expect(replacementView.string == "newword")
+        manager.undo()
+        #expect(replacementView.string == "word")
     }
 
     @Test("Abgebrochene Redo-Vorbereitung wird vor Freigabe des Editors zurückgenommen")

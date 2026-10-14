@@ -8,6 +8,7 @@ import Foundation
 import AppKit
 import Testing
 import CodeEditTextView
+import Darwin
 @testable import Fastra
 
 private func withTempDir(_ body: (URL) throws -> Void) throws {
@@ -865,5 +866,119 @@ func cleanupProtectsSharedImagesAndPreview() throws {
         try MarkdownImageCleanup.apply(preview)
         #expect(FileManager.default.fileExists(atPath: first.fileURL.path))
         #expect(!FileManager.default.fileExists(atPath: second.fileURL.path))
+    }
+}
+
+@Test("Aufräumen erhält Quellreferenzen trotz Vorschaufiltern", arguments: [
+    "![Logo](images/logo.svg)",
+    "<img src=\"images/logo.png\" style=\"width:100px\">",
+    "<img src=images/logo.png>",
+    "![Logo][ref]\n\n[ref]: images/logo.png",
+    "[Download](images/logo.png)",
+    "<picture><source srcset=\"images/logo.png 1x, images/other.png 2x\"></picture>"
+])
+func cleanupProtectsSourceReferences(_ source: String) throws {
+    try withTempDir { directory in
+        let doc = directory.appendingPathComponent("test.md")
+        let other = directory.appendingPathComponent("other.md")
+        let images = directory.appendingPathComponent("images")
+        try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+        let svg = images.appendingPathComponent("logo.svg")
+        let png = images.appendingPathComponent("logo.png")
+        let unused = images.appendingPathComponent("unused.png")
+        try Data("<svg/>".utf8).write(to: svg)
+        try tinyPNG().write(to: png)
+        try tinyPNG().write(to: unused)
+        try source.write(to: doc, atomically: true, encoding: .utf8)
+        let preview = try MarkdownImageCleanup.plan(documentURL: doc, content: source, openDocuments: [:])
+        #expect(!preview.candidates.contains { $0.fileURL == png && source.contains("logo.png") || $0.fileURL == svg })
+        try MarkdownImageCleanup.apply(preview)
+        #expect(FileManager.default.fileExists(atPath: svg.path))
+        if source.contains("logo.png") { #expect(FileManager.default.fileExists(atPath: png.path)) }
+        // Auch gespeicherte Nachbardokumente und ihre offenen Fassungen schützen Bilder.
+        try source.write(to: other, atomically: true, encoding: .utf8)
+        try "".write(to: doc, atomically: true, encoding: .utf8)
+        let shared = try MarkdownImageCleanup.plan(documentURL: doc, content: "", openDocuments: [other: [source]])
+        #expect(!shared.candidates.contains { $0.fileURL == png && source.contains("logo.png") || $0.fileURL == svg })
+    }
+}
+
+@Test("Bild-Undo erhält Finder-Tags, Rechte und Änderungsdatum unabhängig von der umask")
+func imageUndoPreservesMetadata() throws {
+    try withTempDir { directory in
+        let doc = directory.appendingPathComponent("test.md")
+        let stored = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"), documentURL: doc)
+        let tag = try PropertyListEncoder().encode(["Review\n6"])
+        let name = "com.apple.metadata:_kMDItemUserTags"
+        let assigned = tag.withUnsafeBytes { setxattr(stored.fileURL.path, name, $0.baseAddress, $0.count, 0, 0) }
+        try #require(assigned == 0)
+        try #require(chmod(stored.fileURL.path, 0o664) == 0)
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: stored.fileURL.path)
+        let image = try MarkdownImageStore.captureExisting(stored.fileURL)
+        let files = MarkdownImageUndoFiles(images: [image])
+        try #require(files.removeForUndo())
+        #expect(!FileManager.default.fileExists(atPath: image.fileURL.path))
+        // Der Runner setzt selbst umask 077; der Test verändert keinen prozessweiten Zustand.
+        try #require(files.restoreFromMemory())
+        let attributes = try FileManager.default.attributesOfItem(atPath: image.fileURL.path)
+        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o664)
+        #expect(attributes[.modificationDate] as? Date == date)
+        var restored = Data(count: tag.count)
+        let count = restored.withUnsafeMutableBytes { getxattr(image.fileURL.path, name, $0.baseAddress, $0.count, 0, 0) }
+        #expect(count == tag.count)
+        #expect(restored == tag)
+        #expect(try Data(contentsOf: image.fileURL) == tinyPNG())
+    }
+}
+
+@Test("Absolute Bildverweise und mehrdeutige Quellen fremder offener Dokumente schützen die Bereinigung")
+func cleanupProtectsAbsoluteAndOpaqueReferences() throws {
+    try withTempDir { directory in
+        let doc = directory.appendingPathComponent("test.md")
+        try "".write(to: doc, atomically: true, encoding: .utf8)
+        let image = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"), documentURL: doc)
+        for path in [image.fileURL.path, image.fileURL.absoluteString] {
+            let source = "![image](<\(path)>)"
+            let preview = try MarkdownImageCleanup.plan(documentURL: doc, content: source, openDocuments: [:])
+            #expect(preview.candidates.isEmpty)
+        }
+        let foreign = directory.appendingPathComponent("elsewhere/note.md")
+        let preview = try MarkdownImageCleanup.plan(documentURL: doc, content: "",
+            openDocuments: [foreign: ["<img srcset=\"../images/1.png 1x\">"]])
+        #expect(preview.candidates.isEmpty)
+    }
+}
+
+@Test("Erweiterte Attribute zählen zum gemeinsamen Bild-Undo-Budget")
+func imageMetadataCountsAgainstBudget() throws {
+    try withTempDir { directory in
+        let doc = directory.appendingPathComponent("test.md")
+        let image = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"), documentURL: doc)
+        let metadata = Data(repeating: 65, count: 2048)
+        try #require(metadata.withUnsafeBytes {
+            setxattr(image.fileURL.path, "com.example.fastra-test", $0.baseAddress, $0.count, 0, 0)
+        } == 0)
+        let buffer = MarkdownImageUndoBuffer(byteLimit: Int(image.identity.size) + 512)
+        var invalidated = false
+        let files = MarkdownImageUndoFiles(images: [image], buffer: buffer, invalidated: { invalidated = true })
+        try #require(files.removeForUndo())
+        #expect(buffer.byteCount == 0)
+        #expect(!files.restoreFromMemory())
+        buffer.takeInvalidations().forEach { $0() }
+        #expect(invalidated)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
+}
+
+@Test("Mehrdeutige HTML-Quellen schützen auch Bilder nach dem Referenzscan")
+func opaqueReferencesProtectFutureImages() throws {
+    try withTempDir { directory in
+        let doc = directory.appendingPathComponent("test.md")
+        let references = MarkdownImageCleanup.references("<img srcset=\"images/future.png 1x\">", documentURL: doc)
+        let image = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"), documentURL: doc)
+        let effect = MarkdownImageUndoSideEffect(images: [image])
+        #expect(effect.undo(usedImages: references))
+        #expect(FileManager.default.fileExists(atPath: image.fileURL.path))
     }
 }

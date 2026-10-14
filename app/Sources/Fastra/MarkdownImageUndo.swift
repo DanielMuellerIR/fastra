@@ -39,12 +39,12 @@ final class MarkdownImageUndoSideEffect: @unchecked Sendable {
     }
 
     func protectSavedReferences(_ referenced: Set<URL>) {
-        if !files.currentURLs.isDisjoint(with: referenced) { protectedBySavedDocument = true }
+        if MarkdownImageCleanup.protects(files.currentURLs, in: referenced) { protectedBySavedDocument = true }
     }
 
     @discardableResult
     func undo(usedImages: Set<URL> = [], gate: (() -> Bool) -> Bool = { $0() }) -> Bool {
-        guard files.currentURLs.isDisjoint(with: usedImages) else { return true }
+        guard !MarkdownImageCleanup.protects(files.currentURLs, in: usedImages) else { return true }
         if protectedBySavedDocument { removalPending = true; return true }
         guard fileState == .onDisk else { return fileState == .inMemory }
         guard files.removeForUndo(gate: gate) else { return false }
@@ -74,7 +74,7 @@ final class MarkdownImageUndoSideEffect: @unchecked Sendable {
 
     func discard(unusedBy references: Set<URL>? = nil, gate: (() -> Bool) -> Bool = { $0() }) {
         guard fileState != .finished else { return }
-        if fileState == .onDisk, let references, files.currentURLs.isDisjoint(with: references),
+        if fileState == .onDisk, let references, !MarkdownImageCleanup.protects(files.currentURLs, in: references),
            images.allSatisfy(\.createdByInsertion), !files.removePermanently(gate: gate) { return }
         files.discardMemory()
         MarkdownImageStore.releaseReservations(images)
@@ -213,7 +213,7 @@ enum MarkdownImageUndo {
                     guard let protected = effect.savedReferences(documentURL: documentURL ?? url, opened: opened) else { return true }
                     var visible = MarkdownImageCleanup.references(content, documentURL: url)
                     visible.formUnion(protected)
-                    _ = effect.documentSaved(visible: !effect.currentURLs.isDisjoint(with: visible), gate: gate)
+                    _ = effect.documentSaved(visible: MarkdownImageCleanup.protects(effect.currentURLs, in: visible), gate: gate)
                     return true
                 }, completion: { _ in })
             },

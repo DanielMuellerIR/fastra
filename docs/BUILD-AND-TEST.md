@@ -104,6 +104,11 @@ Nach `./build.sh` prüfen `./test.sh --fast-only --filter
 'MarkdownImageUndoBufferTests|MarkdownImageStoreTests|MarkdownVisualTests|SearchUndoTests|AtomicFileCommitTests'`
 das Speicherlimit, Verwerfen während einer laufenden Aktion, gespeicherte und
 geteilte Bildreferenzen, Dateikollisionen sowie echte WebKit-Undo-Vorgänge.
+Die verzögerte Undo-Completion wird auch mit einer zwischenzeitlichen Modell-
+Ersetzung geprüft: Danach darf kein alter Redo-Schritt wieder auftauchen.
+Dateitests erhalten Finder-Tags, Rechte und Änderungsdatum trotz restriktiver
+umask; diese Metadaten zählen zum RAM-Budget. Die Bereinigung wird gegen SVG,
+gefiltertes und ungequotetes HTML, Referenzbilder und Downloadlinks geprüft.
 Die Fenster-Selbsttests `mdassist`, `mdvisual`, `searchundo` und `cmdw` ergänzen
 native Eingaben, Ansichtswechsel und Schließen im gepackten Bundle. `mdimagequit`
 durchläuft den echten Beenden-Hook während einer angehaltenen Undo-Dateiphase

@@ -26,6 +26,7 @@ struct SearchUndoTests {
         let loadedImage = finish == "loaded-save-copy"
         if loadedImage { try image.link.write(to: doc, atomically: true, encoding: .utf8) }
         let workspace = Workspace()
+        workspace.saveSafetyWarningHandler = { title, message in Issue.record("\(title): \(message)") }
         var tab = EditorTab(title: "test.md", path: directory.path, content: loadedImage ? image.link : "")
         tab.url = doc
         tab.diskSnapshot = try FileSnapshot.readSnapshotOnly(from: doc)

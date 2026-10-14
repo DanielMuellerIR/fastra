@@ -591,7 +591,8 @@ Markdown-Dateien im selben Ordner und anderer offener Dokumente bleiben erhalten
 Dateien außerhalb des unmittelbaren `images`-Ordners werden nicht automatisch entfernt.
 
 Entfernte Undo-Bilder liegen ausschließlich im Arbeitsspeicher, ohne versteckte
-Sicherungsordner. Dafür stehen insgesamt 512 MiB für alle Fenster zur Verfügung.
+Sicherungsordner. Bildbytes und Metadaten wie Finder-Tags und Zugriffsrechte
+teilen sich insgesamt 512 MiB für alle Fenster.
 Bei Platzmangel entfällt der älteste betroffene Dokumentverlauf vollständig.
 Übersteigt schon eine einzelne Bildaktion das Limit, entfällt ihr Verlauf sofort.
 Schließen oder Beenden gibt die gespeicherten Undo-Bilder frei.
@@ -608,7 +609,10 @@ kopiert, umbenannt und verschoben werden.
 unmittelbaren `images`-Ordner vor dem Löschen an. Speichere das Dokument vorher.
 Andere Markdown-Dateien im selben Ordner, offene Dokumente und laufende
 Bild-Undo-Schritte schützen ihre Dateien. Unterordner und symbolische Links
-werden nicht entfernt. Nach Bestätigung prüft Fastra die Vorschau erneut.
+werden nicht entfernt. Auch Bild- und Downloadverweise zählen, die die Vorschau
+nicht darstellt. Nicht unterstützte Dateiformate bleiben erhalten. Bei CSS,
+alternativen HTML-Bildquellen oder Vorlagen bleiben vorsichtshalber alle Dateien
+im betroffenen Images-Ordner erhalten. Nach Bestätigung prüft Fastra die Vorschau erneut.
 
 Fastra veröffentlicht eine Bilddatei erst nach der vollständigen Kopie und
 überschreibt keine gleichzeitig entstandene Datei. Wird der echte

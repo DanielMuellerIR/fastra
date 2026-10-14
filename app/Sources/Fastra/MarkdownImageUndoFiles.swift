@@ -10,7 +10,6 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
     private let buffer: MarkdownImageUndoBuffer
     private let invalidated: () -> Void
     private var identities: [MarkdownImageStore.StoredFileIdentity]
-    private var modes: [mode_t]
     private var ticket: UUID?
 
     init(images: [MarkdownImageStore.StoredImage],
@@ -20,7 +19,6 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
         self.buffer = buffer
         self.invalidated = invalidated
         identities = images.map(\.identity)
-        modes = Array(repeating: mode_t(0o644), count: images.count)
         documentFD = images.first.map {
             open($0.fileURL.deletingLastPathComponent().deletingLastPathComponent().path,
                  O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
@@ -53,25 +51,34 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
             guard image.identity.size >= 0, image.identity.size <= Int64(Int.max - total) else { return false }
             total += Int(image.identity.size)
         }
+        var metadataBudget = 1024 * 1024
+        var metadata: [Data] = []
+        var snapshots: [MarkdownImageStore.StoredFileIdentity] = []
+        for (index, image) in images.enumerated() {
+            guard let captured = captureMetadata(image, expected: identities[index], in: fd, byteLimit: metadataBudget),
+                  captured.data.count <= metadataBudget, captured.data.count <= Int.max - total else { return false }
+            metadataBudget -= captured.data.count
+            metadata.append(captured.data)
+            snapshots.append(captured.identity)
+            total += captured.data.count
+        }
         let reservation = buffer.reserve(bytes: total, invalidated: invalidated)
         var data: [Data] = []
         for (index, image) in images.enumerated() {
-            guard let bytes = verifiedContent(image, expected: identities[index], in: fd,
+            guard identity(named: image.fileURL.lastPathComponent, in: fd) == snapshots[index],
+                  let bytes = verifiedContent(image, expected: snapshots[index], in: fd,
                                               collect: reservation != nil) else {
                 if let reservation { buffer.remove(reservation) }
                 return false
             }
-            if reservation != nil { data.append(bytes) }
-            var info = stat()
-            if fstatat(fd, image.fileURL.lastPathComponent, &info, AT_SYMLINK_NOFOLLOW) == 0 {
-                modes[index] = info.st_mode & mode_t(0o777)
-            }
+            // Jedes Bild belegt im gemeinsamen Budget ein Byte-/Metadatenpaar.
+            if reservation != nil { data.append(contentsOf: [bytes, metadata[index]]) }
         }
         if let reservation, !buffer.fill(reservation, with: data) {
             buffer.remove(reservation)
             return false
         }
-        guard removeVerifiedFiles(in: fd, requireComplete: false, gate: gate) else {
+        guard removeVerifiedFiles(in: fd, requireComplete: false, metadataSnapshots: snapshots, gate: gate) else {
             if let reservation { buffer.remove(reservation) }
             return false
         }
@@ -94,12 +101,17 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
                 let name = image.fileURL.lastPathComponent
                 if let existing = identity(named: name, in: fd), sameFile(identities[index], existing),
                    verifiedContent(image, expected: existing, in: fd, collect: false) != nil { continue }
+                guard let metadata = try? PropertyListDecoder().decode(Metadata.self, from: data[index * 2 + 1]) else {
+                    removePublished(published, in: fd)
+                    return false
+                }
                 let temporary = ".fastra-image-restore-\(UUID().uuidString).tmp"
-                let output = openat(fd, temporary, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, modes[index])
+                let output = openat(fd, temporary, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, mode_t(0o600))
                 guard output >= 0 else { removePublished(published, in: fd); return false }
                 let times = [timespec(tv_sec: 0, tv_nsec: Int(UTIME_OMIT)),
                              timespec(tv_sec: Int(identities[index].modificationSeconds), tv_nsec: Int(identities[index].modificationNanoseconds))]
-                let wrote = write(data[index], to: output)
+                let wrote = write(data[index * 2], to: output)
+                    && metadata.restore(to: output)
                     && times.withUnsafeBufferPointer { futimens(output, $0.baseAddress) == 0 }
                     && fsync(output) == 0
                 Darwin.close(output)
@@ -129,6 +141,55 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
         guard removeVerifiedFiles(in: fd, requireComplete: true, gate: gate) else { return false }
         if images.contains(where: \.imagesDirectoryCreated) { _ = unlinkat(documentFD, "images", AT_REMOVEDIR) }
         return true
+    }
+
+    private struct Metadata: Codable {
+        let mode: UInt16
+        let attributes: [String: Data]
+
+        func restore(to fd: Int32) -> Bool {
+            for (name, value) in attributes {
+                guard value.withUnsafeBytes({ fsetxattr(fd, name, $0.baseAddress, $0.count, 0, 0) }) == 0 else { return false }
+            }
+            // openat wendet die umask an; erst fchmod stellt die Originalrechte exakt her.
+            return fchmod(fd, mode_t(mode)) == 0
+        }
+    }
+
+    private func captureMetadata(_ image: MarkdownImageStore.StoredImage,
+                                 expected: MarkdownImageStore.StoredFileIdentity,
+                                 in directory: Int32, byteLimit: Int) -> (data: Data, identity: MarkdownImageStore.StoredFileIdentity)? {
+        let name = image.fileURL.lastPathComponent
+        let fd = openat(directory, name, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)
+        guard fd >= 0 else { return nil }
+        defer { Darwin.close(fd) }
+        var before = stat()
+        guard fstat(fd, &before) == 0, before.st_mode & S_IFMT == S_IFREG,
+              let snapshot = identity(named: name, in: directory), sameFile(expected, snapshot),
+              UInt64(before.st_dev) == snapshot.device, UInt64(before.st_ino) == snapshot.inode else { return nil }
+        // Metadaten bleiben ebenso begrenzt wie Bildbytes. Nicht sicher lesbare
+        // Attribute verhindern das Entfernen, statt ein unvollständiges Undo zu sichern.
+        let limit = byteLimit
+        let count = flistxattr(fd, nil, 0, 0)
+        guard count >= 0, count <= limit else { return nil }
+        var names = [CChar](repeating: 0, count: count)
+        guard names.withUnsafeMutableBufferPointer({ flistxattr(fd, $0.baseAddress, $0.count, 0) }) == count else { return nil }
+        var attributes: [String: Data] = [:]
+        var total = count
+        for bytes in names.split(separator: 0) {
+            let key = String(decoding: bytes.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            let size = fgetxattr(fd, key, nil, 0, 0, 0)
+            guard size >= 0, size <= limit - total else { return nil }
+            var value = Data(count: size)
+            guard value.withUnsafeMutableBytes({ fgetxattr(fd, key, $0.baseAddress, $0.count, 0, 0) }) == size else { return nil }
+            attributes[key] = value
+            total += size
+        }
+        var after = stat()
+        guard fstat(fd, &after) == 0, FileSnapshot.describesSameOpenedVersion(before, after),
+              identity(named: name, in: directory) == snapshot,
+              let data = try? PropertyListEncoder().encode(Metadata(mode: UInt16(before.st_mode & 0o7777), attributes: attributes)) else { return nil }
+        return (data, snapshot)
     }
 
     private func openImages() -> Int32? {
@@ -173,11 +234,13 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
         return Data()
     }
 
-    private func removeVerifiedFiles(in directory: Int32, requireComplete: Bool, gate: (() -> Bool) -> Bool) -> Bool {
+    private func removeVerifiedFiles(in directory: Int32, requireComplete: Bool,
+                                     metadataSnapshots: [MarkdownImageStore.StoredFileIdentity]? = nil, gate: (() -> Bool) -> Bool) -> Bool {
         var verified: [MarkdownImageStore.StoredFileIdentity] = []
         for (index, image) in images.enumerated() {
             let name = image.fileURL.lastPathComponent
             guard let observed = identity(named: name, in: directory), sameFile(identities[index], observed),
+                  metadataSnapshots.map({ $0[index] == observed }) ?? true,
                   verifiedContent(image, expected: observed, in: directory, collect: false) != nil,
                   identity(named: name, in: directory) == observed else { return false }
             verified.append(observed)

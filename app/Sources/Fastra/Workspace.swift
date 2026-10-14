@@ -2000,7 +2000,7 @@ final class Workspace: ObservableObject {
         let documentID = activeDocumentID
         let reloadNonce = editorReloadNonce
         let history = activeTab?.undoHistory
-        let binding = activeTabContent
+        let binding = activeTabContentBinding(acceptingUndoFrom: history)
         return Binding(
             get: { [weak self] in
                 self?.tabs.first(where: { $0.documentID == documentID })?.content ?? ""
@@ -2008,19 +2008,24 @@ final class Workspace: ObservableObject {
             set: { [weak self] text in
                 guard let self, self.activeDocumentID == documentID,
                       self.editorReloadNonce == reloadNonce,
-                      let tab = self.activeTab, self.textEditingIsAllowed(for: tab) else { return }
+                      let tab = self.activeTab, self.textEditingIsAllowed(for: tab, acceptingUndoFrom: history) else { return }
                 history?.didEditInSource(text)
                 binding.wrappedValue = text
+                if history?.isPerformingAction == true {
+                    history?.whenIdle { [weak self] in self?.objectWillChange.send() }
+                }
             })
     }
 
     /// Schreibender Zugriff auf den Content der aktiven Tab — direkt als Binding fürs Editor-Field.
-    var activeTabContent: Binding<String> {
+    var activeTabContent: Binding<String> { activeTabContentBinding() }
+
+    private func activeTabContentBinding(acceptingUndoFrom history: DocumentUndoHistory? = nil) -> Binding<String> {
         Binding(
             get: { self.activeTab?.content ?? "" },
             set: { newValue in
                 guard let idx = self.activeTabIndex else { return }
-                guard self.textEditingIsAllowed(for: self.tabs[idx]) else { return }
+                guard self.textEditingIsAllowed(for: self.tabs[idx], acceptingUndoFrom: history) else { return }
                 if !self.tabs[idx].content.utf8.elementsEqual(newValue.utf8) {
                     let tabID = self.tabs[idx].id
                     let needsLanguageLengths = Self.isEligibleForContentDetection(
@@ -2574,8 +2579,11 @@ final class Workspace: ObservableObject {
         return textEditingIsAllowed(for: tab)
     }
 
-    func textEditingIsAllowed(for tab: EditorTab) -> Bool {
-        tab.isEditableTextDocument && !fileMutationIsInFlight(for: tab.url)
+    func textEditingIsAllowed(for tab: EditorTab, acceptingUndoFrom history: DocumentUndoHistory? = nil) -> Bool {
+        // Nur das gebundene Quelltext-Binding darf die bereits ausgeführte
+        // Undo-Textphase melden. Neue Modell-Ersetzungen bleiben bis zu deren Abschluss gesperrt.
+        tab.isEditableTextDocument && (!tab.undoHistory.isPerformingAction || tab.undoHistory === history)
+            && !fileMutationIsInFlight(for: tab.url)
     }
 
     // MARK: - Neu öffnen mit Encoding (K6)

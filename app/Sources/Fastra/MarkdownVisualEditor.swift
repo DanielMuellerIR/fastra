@@ -167,7 +167,6 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     private var acceptedInputRevision = 0
     private struct ImageTransaction {
         let effect: MarkdownImageUndoSideEffect
-        var fileURLs: Set<URL> = []
         var visible = true
         var insertionUndone = false
     }
@@ -331,7 +330,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             guard let protected = transactions.first?.effect.savedReferences(documentURL: url, opened: opened) else { return true }
             let visible = MarkdownImageCleanup.references(content, documentURL: url)
             for transaction in transactions {
-                _ = transaction.effect.documentSaved(visible: !transaction.effect.currentURLs.isDisjoint(with: visible.union(protected)), gate: gate)
+                _ = transaction.effect.documentSaved(visible: MarkdownImageCleanup.protects(transaction.effect.currentURLs, in: visible.union(protected)), gate: gate)
             }
             return true
         }, completion: { _ in })
@@ -368,7 +367,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 for (url, image) in existing {
                     let id = UUID().uuidString
                     self.imageTransactions[id] = ImageTransaction(
-                        effect: MarkdownImageUndoSideEffect(images: [image], alreadySaved: true, historyLost: { [weak self] in self?.resetImageUndoHistory() }), fileURLs: [url.canonicalFileURL])
+                        effect: MarkdownImageUndoSideEffect(images: [image], alreadySaved: true, historyLost: { [weak self] in self?.resetImageUndoHistory() }))
                     for (token, imageURL) in document.fragment.imageURLs where imageURL == url {
                         self.initialImageTransactions[token] = id
                     }
@@ -695,7 +694,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                         let transactionID = UUID().uuidString
                         let created = prepared.createdImages
                         if !created.isEmpty {
-                            self.imageTransactions[transactionID] = ImageTransaction(effect: MarkdownImageUndoSideEffect(images: created, historyLost: { [weak self] in self?.resetImageUndoHistory() }), fileURLs: Set(created.map { $0.fileURL.canonicalFileURL }))
+                            self.imageTransactions[transactionID] = ImageTransaction(effect: MarkdownImageUndoSideEffect(images: created, historyLost: { [weak self] in self?.resetImageUndoHistory() }))
                         }
                         let createdURLs = Set(created.map(\.fileURL))
                         let imageSources = visual.fragment.imageURLs.filter { createdURLs.contains($0.value) }

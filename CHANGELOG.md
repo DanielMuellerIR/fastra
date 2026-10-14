@@ -7,6 +7,14 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.139.20] — 2026-10-14
+
+### Behoben
+
+- Eine Such-Ersetzung während einer laufenden Bild-Undo-Aktion kann keinen veralteten Redo-Schritt mit falschen Textpositionen mehr erzeugen.
+- „Images-Ordner aufräumen“ berücksichtigt Bild- und Downloadverweise unabhängig von den Sicherheitsfiltern der Vorschau. Nicht unterstützte Dateiformate und nicht sicher auflösbare HTML-Bildquellen bleiben erhalten.
+- Bild-Undo erhält Finder-Tags, erweiterte Attribute, Zugriffsrechte und das Änderungsdatum. Diese Metadaten liegen zusammen mit den Bildbytes ausschließlich im begrenzten RAM-Puffer.
+
 ## [v1.139.19] — 2026-10-14
 
 ### Behoben

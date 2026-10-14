@@ -564,7 +564,8 @@ documents are preserved. Files outside the immediate `images` folder are not
 removed automatically.
 
 Removed Undo images are held only in memory, without hidden backup folders.
-The shared limit is 512 MiB across all windows. When space runs out, the oldest
+Image bytes and metadata such as Finder tags and access permissions share
+a 512 MiB limit across all windows. When space runs out, the oldest
 affected document history is discarded completely. An image action larger than
 the limit loses its history immediately. Closing or quitting releases the
 retained Undo images.
@@ -580,7 +581,10 @@ copied, renamed and moved together.
 `images` folder before deleting them. Save the document first. Other Markdown
 files in the same folder, open documents and active image undo steps protect
 their files. Subfolders and symbolic links are left untouched. Fastra checks
-the preview again after confirmation.
+the preview again after confirmation. Image and download references count even
+when the preview does not display them. Unsupported file formats are preserved.
+CSS, alternative HTML image sources and templates conservatively protect all
+files in the affected images folder.
 
 Fastra publishes an image file only after the copy is complete and never
 overwrites a file created concurrently. If the real `images` folder is
