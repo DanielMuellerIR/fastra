@@ -536,6 +536,10 @@ Fastra binds the window, tab, editor and selection when conversion starts. If
 you switch targets or edit the content while it runs, Fastra stops safely and
 does not insert into another document.
 
+Raster images with a resolution above 72 dpi use their logical size in preview
+and WYSIWYG; a 144 dpi Retina image appears at half its pixel width. The image
+file and Markdown source remain unchanged. Explicit HTML image sizes take precedence.
+
 **Copy images:** Copying from the preview or WYSIWYG supplies local images
 to other apps as embedded HTML data and RTFD image attachments. Image data
 is added in the background, with limits of 32 MiB per image and 64 MiB for

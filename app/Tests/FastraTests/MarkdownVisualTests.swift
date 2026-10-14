@@ -7,6 +7,52 @@ import Testing
 
 @Suite("Markdown-WYSIWYG", .serialized)
 struct MarkdownVisualTests {
+    @Test("DPI-Metadaten bestimmen die Bildgröße in WYSIWYG und Vorschau", arguments: [72.0, 144.0, 216.0])
+    @MainActor
+    func imageLogicalSize(_ dpi: Double) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let image = directory.appendingPathComponent("image.png")
+        let bitmap = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 594, pixelsHigh: 500,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        bitmap.size = NSSize(width: 594 * 72 / dpi, height: 500 * 72 / dpi)
+        try #require(bitmap.representation(using: .png, properties: [:])).write(to: image)
+        let url = directory.appendingPathComponent("test.md")
+        let source = "![Bild](image.png)\n"
+        let (_, coordinator, visual, window) = try await editor(source, documentURL: url)
+        defer { visual.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let fragment = MarkdownRichText.renderedFragment(markdown: source, documentURL: url)
+        let handler = MarkdownPreviewSchemeHandler()
+        handler.setImageURLs(fragment.imageURLs)
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        config.setURLSchemeHandler(handler, forURLScheme: MarkdownPreviewAssets.scheme)
+        let preview = WKWebView(frame: visual.frame, configuration: config)
+        preview.loadHTMLString(MarkdownRichText.htmlDocument(fragment: fragment, fontName: PreviewFonts.systemName,
+                                                            fontSize: 14, darkMode: false), baseURL: nil)
+        for web in [visual, preview] {
+            var dimensions: [Double] = []
+            for _ in 0..<240 {
+                dimensions = (try? await web.evaluateJavaScript("""
+                    (()=>{const i=document.querySelector('img');if(!i?.complete || !i.naturalWidth)return [];
+                    const r=i.getBoundingClientRect();return [r.width,r.height];})()
+                    """)) as? [Double] ?? []
+                if dimensions.count == 2 { break }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            try #require(dimensions.count == 2)
+            #expect(abs(dimensions[0] - 594 * 72 / dpi) < 1)
+            #expect(abs(dimensions[1] - 500 * 72 / dpi) < 1)
+        }
+        #expect(try await visual.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        let explicit = MarkdownImages.resolve(in: "<img src=\"image.png\" width=\"123\">", relativeTo: url)
+        #expect(explicit.html.contains("width=\"123\""))
+        #expect(!explicit.html.contains("width=\"\(594 * 72 / dpi)\""))
+        withExtendedLifetime(coordinator) {}
+    }
+
     @Test("Die erste Entfernung geladener Bilder hält Eingabe und Speichern bis zum Dateiabschluss an")
     @MainActor
     func firstImageRemovalWaitsForFiles() async throws {

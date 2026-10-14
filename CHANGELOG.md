@@ -7,6 +7,12 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.139.19] — 2026-10-14
+
+### Behoben
+
+- Retina-Bilder mit DPI-Metadaten erscheinen in Markdown-WYSIWYG und Vorschau in ihrer logischen Größe statt doppelt so groß. Explizite HTML-Bildgrößen bleiben erhalten.
+
 ## [v1.139.18] — 2026-10-14
 
 ### Geändert

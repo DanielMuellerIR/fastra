@@ -560,6 +560,11 @@ Browsern und Office-Programmen mit dem separat installierten Werkzeug
 Umwandlung. Wechselst du währenddessen das Ziel oder bearbeitest den Inhalt,
 wird kontrolliert abgebrochen und nichts in ein anderes Dokument eingefügt.
 
+Rasterbilder mit einer Auflösung über 72 dpi werden in Vorschau und WYSIWYG
+in ihrer logischen Größe dargestellt; ein Retina-Bild mit 144 dpi erscheint
+mit halber Pixelbreite. Die Bilddatei und der Markdown-Quelltext bleiben unverändert.
+Explizite HTML-Bildgrößen haben Vorrang.
+
 **Bilder kopieren:** Kopieren aus Vorschau oder WYSIWYG liefert lokale Bilder
 als eingebettete HTML-Daten und als RTFD-Bildattachments an andere Apps.
 Die Bilddaten werden im Hintergrund ergänzt. Es gelten 32 MiB pro Bild und

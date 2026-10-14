@@ -78,6 +78,12 @@ benötigt exklusiven Fensterfokus.
 
 ## Markdown-Bilder und Undo
 
+`./test.sh --fast-only --filter 'MarkdownVisualTests/imageLogicalSize|MarkdownRichTextTests|MarkdownPreviewSchemeHandlerTests'`
+prüft die tatsächlichen WebKit-Bildrechtecke bei 72, 144 und 216 dpi in Vorschau
+und WYSIWYG sowie die Quelltexttreue. DPI-Metadaten verkleinern die natürliche
+Darstellungsbreite auf die logische Mac-Größe; explizite HTML-Maße bleiben erhalten.
+Der begrenzte Metadaten-Cache verwendet dieselbe Dateiidentität wie die Bild-URLs.
+
 Entfernte Undo-Bilder liegen im gemeinsamen `MarkdownImageUndoBuffer`, ausschließlich
 im RAM. Das Limit von 512 MiB zählt auch reservierte, noch nicht eingelesene Bytes.
 Bei Platzmangel verfällt der älteste betroffene Dokumentverlauf vollständig;

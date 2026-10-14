@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import cmark_gfm
 
 /// Ergebnis eines Render-Schritts: HTML plus die bewusst freigegebenen lokalen
@@ -458,6 +459,17 @@ enum MarkdownMath {
 /// relative URLs und beliebige Schemes werden geleert, bevor WebKit das HTML
 /// sieht; dadurch kann das Öffnen einer Datei keinen Netzabruf auslösen.
 enum MarkdownImages {
+    private final class ImageSize: NSObject {
+        let width: Double?
+        init(width: Double?) { self.width = width }
+    }
+
+    private static let imageSizes: NSCache<NSString, ImageSize> = {
+        let cache = NSCache<NSString, ImageSize>()
+        cache.countLimit = 512
+        return cache
+    }()
+
     private static let imageTags = try! NSRegularExpression(
         pattern: #"(?i)<img\b(?:[^"'<>]|"[^"]*"|'[^']*')*>"#
     )
@@ -469,17 +481,25 @@ enum MarkdownImages {
         var images: [String: URL] = [:]
         for tag in imageTags.matches(in: html, range: NSRange(location: 0, length: ns.length)).reversed() {
             let rawTag = ns.substring(with: tag.range)
-            guard let attribute = MarkdownHTMLAttributes.parse(rawTag).first(where: { $0.name == "src" }) else { continue }
+            let attributes = MarkdownHTMLAttributes.parse(rawTag)
+            guard let attribute = attributes.first(where: { $0.name == "src" }) else { continue }
             let replacement: String
+            var displayWidth: Double?
             if let imageURL = localImageURL(from: attribute.value, documentURL: documentURL),
                MarkdownPreviewAssets.imageMIMEType(for: imageURL) != nil {
                 let token = imageToken(for: imageURL)
                 images[token] = imageURL
                 replacement = "\(MarkdownPreviewAssets.scheme)://image/\(token)"
+                if !attributes.contains(where: { $0.name == "width" || $0.name == "height" }) {
+                    displayWidth = logicalWidth(of: imageURL, token: token)
+                }
             } else { replacement = "" }
             let output = NSMutableString(string: rawTag)
             // Ein eigenes Attribut vermeidet Abhängigkeiten vom Quote-Zeichen des src.
             output.replaceCharacters(in: attribute.valueRange, with: replacement)
+            if let displayWidth {
+                output.insert(" width=\"\(displayWidth)\"", at: 4)
+            }
             if preservingSource {
                 let escaped = attribute.value.replacingOccurrences(of: "&", with: "&amp;")
                     .replacingOccurrences(of: "\"", with: "&quot;")
@@ -489,6 +509,25 @@ enum MarkdownImages {
             mutable.replaceCharacters(in: tag.range, with: output as String)
         }
         return MarkdownRenderedFragment(html: mutable as String, imageURLs: images)
+    }
+
+    //DM 2026-10-14 WebKit ignoriert die DPI für die Layoutgröße. Metadaten ohne
+    // Pixeldekodierung lesen und nach Dateiidentität puffern, nicht bei jedem Tastendruck.
+    private static func logicalWidth(of url: URL, token: String) -> Double? {
+        if let cached = imageSizes.object(forKey: token as NSString) { return cached.width }
+        var width: Double?
+        if let data = try? MarkdownPreviewAssets.readImageData(url),
+           let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+           let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+            let rotated = (5...8).contains((properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1)
+            let pixels = (properties[rotated ? kCGImagePropertyPixelHeight : kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 0
+            let dpi = (properties[rotated ? kCGImagePropertyDPIHeight : kCGImagePropertyDPIWidth] as? NSNumber)?.doubleValue ?? 0
+            if pixels.isFinite, pixels > 0, dpi.isFinite, dpi > 72 {
+                width = pixels * 72 / dpi
+            }
+        }
+        imageSizes.setObject(ImageSize(width: width), forKey: token as NSString)
+        return width
     }
 
     /// Interner Name, unter dem WebKit ein Bild anfordert.
