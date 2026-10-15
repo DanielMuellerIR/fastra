@@ -424,7 +424,7 @@ struct MarkdownVisualTests {
     @Test("Normale Absätze sind kompakt; ein Zeilenumbruch bleibt innerhalb desselben Absatzes")
     @MainActor
     func compactParagraphs() async throws {
-        let source = "Erste Zeile  \nZweite Zeile\n\nNächster Absatz\n"
+        let source = "Erste Zeile  \nZweite Zeile\n\nNächster Absatz\n\n  \n"
         let (_, coordinator, visual, window) = try await editor(source)
         defer { visual.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
         let config = WKWebViewConfiguration()
@@ -437,20 +437,22 @@ struct MarkdownVisualTests {
             var metrics: [Double] = []
             for _ in 0..<120 {
                 metrics = (try? await web.evaluateJavaScript("""
-                    (() => { const p = document.querySelectorAll('p'); if (p.length !== 2) return [];
+                    (() => { const p = document.querySelectorAll('p:not(.fastra-visible-blank-line)');
+                      const blank = document.querySelector('.fastra-visible-blank-line'); if (p.length !== 2 || !blank) return [];
                       const style = getComputedStyle(p[0]), font = parseFloat(style.fontSize);
                       const first = p[0].getBoundingClientRect(), second = p[1].getBoundingClientRect();
                       return [parseFloat(style.lineHeight)/font, parseFloat(style.marginBottom)/font,
-                        first.height/font, (second.top-first.bottom)/font]; })()
+                        first.height/font, (second.top-first.bottom)/font, blank.getBoundingClientRect().height/font]; })()
                     """)) as? [Double] ?? []
-                if metrics.count == 4 { break }
+                if metrics.count == 5 { break }
                 try await Task.sleep(for: .milliseconds(50))
             }
-            try #require(metrics.count == 4)
+            try #require(metrics.count == 5)
             #expect(abs(metrics[0] - 1.4) < 0.01)
             #expect(abs(metrics[1] - 0.4) < 0.01)
             #expect(abs(metrics[2] - 2.8) < 0.1, "Zwei Zeilen dürfen keinen Absatzabstand enthalten: \(metrics)")
             #expect(abs(metrics[3] - 0.4) < 0.1, "Absätze behalten einen kleinen Abstand: \(metrics)")
+            #expect(abs(metrics[4] - 1.4) < 0.1, "Sichtbare Leerzeilen müssen dieselbe Höhe wie Textzeilen haben: \(metrics)")
         }
         #expect(try await visual.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
         withExtendedLifetime(coordinator) {}

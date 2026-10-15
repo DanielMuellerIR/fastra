@@ -772,8 +772,16 @@ activate_once() {
     local target_pid="$1"
     local pid=""
     ACTIVATION_STARTING=1
+    # Frontmost allein macht ein spät erzeugtes Fenster nicht zum Key-Window.
+    # Erst ein sichtbares Ziel zulassen und es ausdrücklich nach vorn holen.
     osascript -e 'with timeout of 3 seconds' \
-              -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $target_pid) to true" \
+              -e 'tell application "System Events"' \
+              -e "tell (first process whose unix id is $target_pid)" \
+              -e 'if (count of windows) is 0 then error "Fenster noch nicht bereit" number -1728' \
+              -e 'set frontmost to true' \
+              -e 'perform action "AXRaise" of window 1' \
+              -e 'end tell' \
+              -e 'end tell' \
               -e 'end timeout' >/dev/null 2>&1 &
     pid=$!
     # Der Hook liegt absichtlich nach dem Fork, aber vor der globalen

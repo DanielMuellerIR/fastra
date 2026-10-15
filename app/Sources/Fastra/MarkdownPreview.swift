@@ -218,9 +218,9 @@ enum MarkdownRichText {
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: fastra-preview:; style-src 'unsafe-inline' fastra-preview:; script-src 'nonce-\(nonce)' fastra-preview:; connect-src 'none'; media-src 'none'; frame-src 'none'">
         <link rel="stylesheet" href="fastra-preview://resource/highlight.css">
         <style>
-        body { margin: 0; padding: 20px; box-sizing: border-box;
+        body { --fastra-text-line-height: 1.4; margin: 0; padding: 20px; box-sizing: border-box;
                color: \(bodyColor); background: \(surface);
-               font-family: \(cssFont); font-size: \(fontSize)px; line-height: 1.4; }
+               font-family: \(cssFont); font-size: \(fontSize)px; line-height: var(--fastra-text-line-height); }
         h1, h2, h3, h4, h5, h6 { color: \(bodyColor); margin: 1.1em 0 0.45em; }
         h1 { font-size: 2em; } h2 { font-size: 1.55em; } h3 { font-size: 1.25em; }
         p, ul, ol, pre, blockquote, table { margin: 0.65em 0; }
@@ -262,7 +262,8 @@ enum MarkdownRichText {
         .mermaid-render svg { max-width: 100%; height: auto; }
         /* Fastras dokumentierte Markdown-Erweiterung: Jede dieser Zeilen ist
            exakt eine normale, aber vollständig leere Textzeile. */
-        .\(MarkdownVisibleBlankLines.cssClass) { min-height: 1.55em; margin: 0; padding: 0; }
+        .\(MarkdownVisibleBlankLines.cssClass) { min-height: calc(var(--fastra-text-line-height) * 1em); margin: 0; padding: 0; }
+        li .\(MarkdownVisibleBlankLines.cssClass) { min-height: 1.55em; }
         pre.mermaid-error::before { content: attr(data-error); display: block;
                                     color: \(secondary); margin-bottom: 0.55em; }
         hr { border: 0; border-top: 1px solid \(border); }

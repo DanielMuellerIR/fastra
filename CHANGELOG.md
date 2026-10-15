@@ -7,6 +7,12 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.140.1] — 2026-10-16
+
+### Behoben
+
+- Sichtbare Markdown-Leerzeilen folgen ebenfalls der kompakteren Textzeilenhöhe. Die bisherigen Leerzeilenabstände innerhalb von Listen bleiben erhalten.
+
 ## [v1.140.0] — 2026-10-16
 
 ### Verbessert
