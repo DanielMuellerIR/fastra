@@ -230,8 +230,7 @@ func fileLoadKeepsScratchAndRestoresItAfterFailure() async {
     #expect(workspace.tabs.contains { $0.url == missing && $0.isLoading })
     #expect(!workspace.isWelcomeScreen)
 
-    let deadline = Date().addingTimeInterval(5)
-    while result == nil, Date() < deadline { await Task.yield() }
+    #expect(await waitUntil { result != nil })
 
     #expect(result == false)
     #expect(workspace.projectURL == nil)
