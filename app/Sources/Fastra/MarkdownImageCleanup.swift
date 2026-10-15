@@ -34,7 +34,10 @@ enum MarkdownImageCleanup {
                 guard scheme.lowercased() == "file", components.host == nil || components.host == "" || components.host == "localhost",
                       let url = components.url else { return }
                 used.insert(url.canonicalFileURL)
-            } else if let decoded = path.removingPercentEncoding {
+            } else {
+                // Auch ein nacktes Prozentzeichen ist ein gültiger Dateiname.
+                // Dieselbe Rückfallauflösung wie die Vorschau schützt dessen Bild.
+                let decoded = path.removingPercentEncoding ?? path
                 let url = decoded.hasPrefix("/") ? URL(fileURLWithPath: decoded)
                     : documentURL.deletingLastPathComponent().appendingPathComponent(decoded)
                 used.insert(url.canonicalFileURL)
@@ -63,11 +66,11 @@ enum MarkdownImageCleanup {
                     let name = ns.substring(with: match.range(at: 1)).lowercased()
                     guard let range = (2...4).map({ match.range(at: $0) }).first(where: { $0.location != NSNotFound }) else { continue }
                     let value = MarkdownHTMLEntities.decode(ns.substring(with: range))
-                    if ["src", "href", "xlink:href", "poster"].contains(name) { add(value) }
+                    if ["src", "href", "xlink:href", "poster", "data"].contains(name) { add(value) }
                 }
                 // CSS, alternative Bildquellen und Vorlagen haben eigene Grammatiken.
                 // Ohne sichere Auflösung bleiben alle Dateien dieses Images-Ordners erhalten.
-                if html.range(of: #"(?i)srcset\s*=|style\s*=|[{}$]|<\s*(?:script|style)\b"#, options: .regularExpression) != nil {
+                if html.range(of: #"(?i)\b(?:srcset|imagesrcset|style|codebase|archive|srcdoc|background)\s*=|[{}$]|<\s*(?:script|style)\b"#, options: .regularExpression) != nil {
                     protectImagesDirectory()
                 }
             }

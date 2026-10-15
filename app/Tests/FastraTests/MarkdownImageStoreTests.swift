@@ -875,6 +875,9 @@ func cleanupProtectsSharedImagesAndPreview() throws {
     "<img src=images/logo.png>",
     "![Logo][ref]\n\n[ref]: images/logo.png",
     "[Download](images/logo.png)",
+    "<object data=\"images/logo.png\" type=\"image/png\"></object>",
+    "<object data=images/logo.png type=image/png></object>",
+    "<object data=\"logo.png\" codebase=\"images/\" type=\"image/png\"></object>",
     "<picture><source srcset=\"images/logo.png 1x, images/other.png 2x\"></picture>"
 ])
 func cleanupProtectsSourceReferences(_ source: String) throws {
@@ -903,6 +906,38 @@ func cleanupProtectsSourceReferences(_ source: String) throws {
     }
 }
 
+@Test("Prozentzeichen schützen Bildreferenzen in Dokument, Nachbardatei und Undo",
+      arguments: ["100%.png", "100%25.png"])
+func cleanupProtectsPercentReferences(_ destination: String) throws {
+    try withTempDir { directory in
+        let doc = directory.appendingPathComponent("test.md")
+        let other = directory.appendingPathComponent("other.md")
+        let images = directory.appendingPathComponent("images")
+        try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+        let image = images.appendingPathComponent("100%.png")
+        let unused = images.appendingPathComponent("unused.png")
+        try tinyPNG().write(to: image)
+        try tinyPNG().write(to: unused)
+        let source = "![image](images/\(destination))"
+        try source.write(to: doc, atomically: true, encoding: .utf8)
+        let preview = try MarkdownImageCleanup.plan(documentURL: doc, content: source, openDocuments: [:])
+        #expect(preview.candidates.map { $0.fileURL.canonicalFileURL } == [unused.canonicalFileURL])
+        try MarkdownImageCleanup.apply(preview)
+        #expect(try Data(contentsOf: image) == tinyPNG())
+
+        try "".write(to: doc, atomically: true, encoding: .utf8)
+        try source.write(to: other, atomically: true, encoding: .utf8)
+        #expect(try MarkdownImageCleanup.plan(documentURL: doc, content: "", openDocuments: [:]).candidates.isEmpty)
+        try FileManager.default.removeItem(at: other)
+        #expect(try MarkdownImageCleanup.plan(documentURL: doc, content: "", openDocuments: [other: [source]]).candidates.isEmpty)
+
+        let stored = try MarkdownImageStore.captureExisting(image)
+        let effect = MarkdownImageUndoSideEffect(images: [stored])
+        #expect(effect.undo(usedImages: MarkdownImageCleanup.references(source, documentURL: doc)))
+        #expect(FileManager.default.fileExists(atPath: image.path))
+    }
+}
+
 @Test("Bild-Undo erhält Finder-Tags, Rechte und Änderungsdatum unabhängig von der umask")
 func imageUndoPreservesMetadata() throws {
     try withTempDir { directory in
@@ -913,6 +948,11 @@ func imageUndoPreservesMetadata() throws {
         let assigned = tag.withUnsafeBytes { setxattr(stored.fileURL.path, name, $0.baseAddress, $0.count, 0, 0) }
         try #require(assigned == 0)
         try #require(chmod(stored.fileURL.path, 0o664) == 0)
+        let acl = try #require(acl_from_text("!#acl 1\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:deny:write\n"))
+        defer { acl_free(UnsafeMutableRawPointer(acl)) }
+        try #require(acl_set_file(stored.fileURL.path, ACL_TYPE_EXTENDED, acl) == 0)
+        var original = stat()
+        try #require(lstat(stored.fileURL.path, &original) == 0)
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: stored.fileURL.path)
         let image = try MarkdownImageStore.captureExisting(stored.fileURL)
@@ -929,6 +969,40 @@ func imageUndoPreservesMetadata() throws {
         #expect(count == tag.count)
         #expect(restored == tag)
         #expect(try Data(contentsOf: image.fileURL) == tinyPNG())
+        let restoredACL = try #require(acl_get_file(image.fileURL.path, ACL_TYPE_EXTENDED))
+        defer { acl_free(UnsafeMutableRawPointer(restoredACL)) }
+        let aclText = try #require(acl_to_text(acl, nil))
+        defer { acl_free(aclText) }
+        let restoredText = try #require(acl_to_text(restoredACL, nil))
+        defer { acl_free(restoredText) }
+        #expect(String(cString: restoredText) == String(cString: aclText))
+        var actual = stat()
+        try #require(lstat(image.fileURL.path, &actual) == 0)
+        #expect(actual.st_uid == original.st_uid)
+        #expect(actual.st_gid == original.st_gid)
+    }
+}
+
+@Test("Nicht restaurierbare geerbte Zugriffsregeln verhindern das Entfernen")
+func imageUndoRejectsUnrestorableMetadata() throws {
+    try withTempDir { directory in
+        let doc = directory.appendingPathComponent("test.md")
+        let image = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"), documentURL: doc)
+        let tag = Data("tag".utf8)
+        try #require(tag.withUnsafeBytes {
+            setxattr(image.fileURL.path, "com.example.fastra-test", $0.baseAddress, $0.count, 0, 0)
+        } == 0)
+        // Nur neu angelegte Dateien erben die Sperre; das Original bleibt lesbar.
+        let acl = try #require(acl_from_text("!#acl 1\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:deny,only_inherit,file_inherit:writeextattr\n"))
+        defer { acl_free(UnsafeMutableRawPointer(acl)) }
+        let images = image.fileURL.deletingLastPathComponent()
+        try #require(acl_set_file(images.path, ACL_TYPE_EXTENDED, acl) == 0)
+        let buffer = MarkdownImageUndoBuffer(byteLimit: 1024 * 1024)
+        let files = MarkdownImageUndoFiles(images: [image], buffer: buffer)
+        #expect(!files.removeForUndo())
+        #expect(try Data(contentsOf: image.fileURL) == tinyPNG())
+        #expect(buffer.byteCount == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: images.path) == [image.fileURL.lastPathComponent])
     }
 }
 

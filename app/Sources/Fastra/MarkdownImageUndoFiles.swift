@@ -108,11 +108,10 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
                 let temporary = ".fastra-image-restore-\(UUID().uuidString).tmp"
                 let output = openat(fd, temporary, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, mode_t(0o600))
                 guard output >= 0 else { removePublished(published, in: fd); return false }
-                let times = [timespec(tv_sec: 0, tv_nsec: Int(UTIME_OMIT)),
-                             timespec(tv_sec: Int(identities[index].modificationSeconds), tv_nsec: Int(identities[index].modificationNanoseconds))]
+                let modificationTime = timespec(tv_sec: Int(identities[index].modificationSeconds),
+                                                tv_nsec: Int(identities[index].modificationNanoseconds))
                 let wrote = write(data[index * 2], to: output)
-                    && metadata.restore(to: output)
-                    && times.withUnsafeBufferPointer { futimens(output, $0.baseAddress) == 0 }
+                    && metadata.restore(to: output, modificationTime: modificationTime)
                     && fsync(output) == 0
                 Darwin.close(output)
                 guard wrote, renameatx_np(fd, temporary, fd, name, UInt32(RENAME_EXCL)) == 0,
@@ -145,14 +144,41 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
 
     private struct Metadata: Codable {
         let mode: UInt16
+        let owner: UInt32
+        let group: UInt32
+        let accessControl: Data
         let attributes: [String: Data]
 
-        func restore(to fd: Int32) -> Bool {
+        func restore(to fd: Int32, modificationTime: timespec) -> Bool {
+            var info = stat()
+            guard fstat(fd, &info) == 0 else { return false }
+            if info.st_uid != owner || info.st_gid != group {
+                guard fchown(fd, uid_t(owner), gid_t(group)) == 0 else { return false }
+            }
             for (name, value) in attributes {
                 guard value.withUnsafeBytes({ fsetxattr(fd, name, $0.baseAddress, $0.count, 0, 0) }) == 0 else { return false }
             }
-            // openat wendet die umask an; erst fchmod stellt die Originalrechte exakt her.
-            return fchmod(fd, mode_t(mode)) == 0
+            // Eigentümerwechsel und umask können Modusbits ändern. Die ACL kommt
+            // zuletzt, weil sie selbst Metadatenänderungen verbieten darf.
+            let times = [timespec(tv_sec: 0, tv_nsec: Int(UTIME_OMIT)), modificationTime]
+            guard fchmod(fd, mode_t(mode)) == 0,
+                  times.withUnsafeBufferPointer({ futimens(fd, $0.baseAddress) }) == 0,
+                  let acl = accessControl.withUnsafeBytes({ acl_copy_int($0.baseAddress) }) else { return false }
+            defer { acl_free(UnsafeMutableRawPointer(acl)) }
+            guard acl_set_fd_np(fd, acl, ACL_TYPE_EXTENDED) == 0,
+                  fstat(fd, &info) == 0 else { return false }
+            return info.st_uid == owner && info.st_gid == group && info.st_mode & 0o7777 == mode
+        }
+
+        func canRestore(in directory: Int32, modificationTime: timespec) -> Bool {
+            let name = ".fastra-image-metadata-\(UUID().uuidString).tmp"
+            let fd = openat(directory, name, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, mode_t(0o600))
+            guard fd >= 0 else { return false }
+            defer { Darwin.close(fd) }
+            // Vor der Rechteprobe vom Verzeichnis trennen: Selbst eine ACL mit
+            // Löschsperre hinterlässt so keine unzugängliche Nachbardatei.
+            guard unlinkat(directory, name, 0) == 0 else { return false }
+            return restore(to: fd, modificationTime: modificationTime)
         }
     }
 
@@ -170,12 +196,20 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
         // Metadaten bleiben ebenso begrenzt wie Bildbytes. Nicht sicher lesbare
         // Attribute verhindern das Entfernen, statt ein unvollständiges Undo zu sichern.
         let limit = byteLimit
+        var acl = acl_get_fd_np(fd, ACL_TYPE_EXTENDED)
+        if acl == nil && errno == ENOENT { acl = acl_init(0) }
+        guard let acl else { return nil }
+        defer { acl_free(UnsafeMutableRawPointer(acl)) }
+        let aclSize = acl_size(acl)
+        guard aclSize > 0, aclSize <= limit else { return nil }
+        var accessControl = Data(count: aclSize)
+        guard accessControl.withUnsafeMutableBytes({ acl_copy_ext($0.baseAddress, acl, $0.count) }) == aclSize else { return nil }
         let count = flistxattr(fd, nil, 0, 0)
-        guard count >= 0, count <= limit else { return nil }
+        guard count >= 0, count <= limit - aclSize else { return nil }
         var names = [CChar](repeating: 0, count: count)
         guard names.withUnsafeMutableBufferPointer({ flistxattr(fd, $0.baseAddress, $0.count, 0) }) == count else { return nil }
         var attributes: [String: Data] = [:]
-        var total = count
+        var total = count + aclSize
         for bytes in names.split(separator: 0) {
             let key = String(decoding: bytes.map { UInt8(bitPattern: $0) }, as: UTF8.self)
             let size = fgetxattr(fd, key, nil, 0, 0, 0)
@@ -186,9 +220,12 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
             total += size
         }
         var after = stat()
+        let metadata = Metadata(mode: UInt16(before.st_mode & 0o7777), owner: before.st_uid,
+                                group: before.st_gid, accessControl: accessControl, attributes: attributes)
         guard fstat(fd, &after) == 0, FileSnapshot.describesSameOpenedVersion(before, after),
               identity(named: name, in: directory) == snapshot,
-              let data = try? PropertyListEncoder().encode(Metadata(mode: UInt16(before.st_mode & 0o7777), attributes: attributes)) else { return nil }
+              let data = try? PropertyListEncoder().encode(metadata), data.count <= byteLimit,
+              metadata.canRestore(in: directory, modificationTime: before.st_mtimespec) else { return nil }
         return (data, snapshot)
     }
 

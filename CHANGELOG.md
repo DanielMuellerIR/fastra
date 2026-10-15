@@ -7,6 +7,14 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.139.21] — 2026-10-15
+
+### Behoben
+
+- „Images-Ordner aufräumen“ und Bild-Undo erhalten referenzierte Bilder auch bei einem nicht codierten Prozentzeichen im Dateinamen.
+- HTML-Bildverweise über `object[data]` schützen Dateien auch in anderen Markdown-Dokumenten. Nicht sicher auflösbare HTML-Ressourcen schützen vorsichtshalber den Images-Ordner.
+- Bild-Undo stellt macOS-Zugriffsregeln (ACLs), Eigentümer und Gruppe wieder her. Ist die Wiederherstellung der Metadaten nicht möglich, bleibt das Originalbild erhalten.
+
 ## [v1.139.20] — 2026-10-14
 
 ### Behoben

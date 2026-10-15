@@ -564,11 +564,13 @@ documents are preserved. Files outside the immediate `images` folder are not
 removed automatically.
 
 Removed Undo images are held only in memory, without hidden backup folders.
-Image bytes and metadata such as Finder tags and access permissions share
+Image bytes and metadata such as Finder tags, access permissions including
+macOS access control lists (ACLs), owner and group share
 a 512 MiB limit across all windows. When space runs out, the oldest
 affected document history is discarded completely. An image action larger than
 the limit loses its history immediately. Closing or quitting releases the
 retained Undo images.
+If the metadata cannot be restored, the image file is preserved.
 
 ⌘Z after an unsaved insertion also removes the newly created image file; Redo
 restores both while the history is available. The original source file is no

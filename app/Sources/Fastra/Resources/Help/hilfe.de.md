@@ -591,8 +591,10 @@ Markdown-Dateien im selben Ordner und anderer offener Dokumente bleiben erhalten
 Dateien außerhalb des unmittelbaren `images`-Ordners werden nicht automatisch entfernt.
 
 Entfernte Undo-Bilder liegen ausschließlich im Arbeitsspeicher, ohne versteckte
-Sicherungsordner. Bildbytes und Metadaten wie Finder-Tags und Zugriffsrechte
+Sicherungsordner. Bildbytes und Metadaten wie Finder-Tags, Zugriffsrechte
+einschließlich macOS-Zugriffsregeln (ACLs), Eigentümer und Gruppe
 teilen sich insgesamt 512 MiB für alle Fenster.
+Lassen sich die Metadaten nicht wiederherstellen, bleibt die Bilddatei erhalten.
 Bei Platzmangel entfällt der älteste betroffene Dokumentverlauf vollständig.
 Übersteigt schon eine einzelne Bildaktion das Limit, entfällt ihr Verlauf sofort.
 Schließen oder Beenden gibt die gespeicherten Undo-Bilder frei.
