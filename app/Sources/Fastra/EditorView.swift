@@ -462,7 +462,7 @@ struct EditorView: View {
                     }
                     .buttonStyle(.plain)
                     .background(SelfTestMarker(id: "markdownCommand-\(command.rawValue)").frame(width: 0, height: 0))
-                    .help(Text(verbatim: command.helpText))
+                    .help(Text(verbatim: command.helpText(visualEditor: workspace.activeMarkdownIsVisual)))
                     .accessibilityLabel(Text(verbatim: command.menuTitle))
                     if command == .hardBreak || command == .plainParagraph || command == .quote {
                         Divider().frame(height: 14).opacity(0.5)

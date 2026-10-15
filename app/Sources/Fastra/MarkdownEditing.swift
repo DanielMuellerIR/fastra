@@ -60,6 +60,10 @@ extension MarkdownFormatCommand {
 
     /// Jeder Tooltip erklärt die Wirkung und nennt das zugehörige Tastenkürzel.
     var helpText: String {
+        helpText(visualEditor: false)
+    }
+
+    func helpText(visualEditor: Bool) -> String {
         let base: String
         switch self {
         case .bold: base = L10n.string("Ausgewählten Text fett formatieren oder Fettung entfernen.")
@@ -78,14 +82,15 @@ extension MarkdownFormatCommand {
         case .insertTable: base = L10n.string("Eine Tabelle mit wählbarer Spaltenzahl einfügen.")
         case .hardBreak: base = L10n.string("Eine neue Zeile innerhalb desselben Absatzes beginnen.")
         }
-        guard let shortcut else { return base }
-        return "\(base) (\(shortcut.display))"
+        let display = visualEditor && self == .hardBreak ? "⇧↩" : shortcut?.display
+        guard let display else { return base }
+        return "\(base) (\(display))"
     }
 
-    /// Tastenkürzel des Befehls — EINE Quelle für Menü und Tooltip. Das
-    /// Markdown-Menü in `FastraApp` übersetzt diese puren Daten in echte
-    /// SwiftUI-Kürzel; wer hier etwas ändert, ändert Menü und Tooltip
-    /// gemeinsam. `nil` = Befehl ist nur per Klick/Menü erreichbar.
+    /// Menükürzel des Befehls, zugleich im Quelltext-Tooltip. Das Markdown-Menü
+    /// in `FastraApp` übersetzt diese Daten in SwiftUI-Kürzel. Im visuellen
+    /// Editor kommt Shift-Return als direktes Editor-Kürzel hinzu.
+    /// `nil` = Befehl ist nur per Klick/Menü erreichbar.
     var shortcut: MarkdownFormatShortcut? {
         switch self {
         case .bold:           MarkdownFormatShortcut(key: "b")

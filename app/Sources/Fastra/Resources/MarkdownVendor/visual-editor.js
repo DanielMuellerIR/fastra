@@ -17,11 +17,35 @@
     return prefix+content+'\n';
   }
   td.addRule('listItem',{filter:'li',replacement:listItem});
+  // Eine ATX-Überschrift endet am Quellzeilenende; ihr sichtbarer Umbruch
+  // braucht deshalb ein Inline-HTML-Element statt eines Markdown-Zeilenendes.
+  td.addRule('headingLineBreak',{
+    filter:n=>n.nodeName==='BR' && !!n.closest('h1,h2,h3,h4,h5,h6'),
+    replacement:(_,node)=>{
+      const heading=node.closest('h1,h2,h3,h4,h5,h6'),tail=document.createRange();
+      tail.setStartAfter(node);tail.setEnd(heading,heading.childNodes.length);
+      // Ein einzelnes abschließendes BR ist WebKits Cursor-Platzhalter.
+      if(heading.querySelectorAll('br').length===1 && !tail.toString() && !tail.cloneContents().querySelector('img,[data-tex]'))return '';
+      return '<br>';
+    }
+  });
   td.addRule('spaces',{filter:n=>n.hasAttribute('data-md-spaces'),replacement:(_,n)=>'&nbsp;'.repeat(Number(n.dataset.mdSpaces))});
   function randomToken(prefix) { return prefix+Array.from(crypto.getRandomValues(new Uint32Array(4)),n=>n.toString(16)).join('')+'END'; }
   function toMarkdown(html) {
     const holder=document.createElement('div');holder.innerHTML=html;
     holder.querySelectorAll('[data-md-edit-boundary]').forEach(n=>n.remove());
+    // Markdown-Code-Spannen normalisieren Zeilenenden zu Leerzeichen.
+    // Getrennte Spannen erhalten den sichtbaren Umbruch und die Codeformatierung.
+    holder.querySelectorAll('code').forEach(code=>{
+      if(code.closest('pre') || !code.querySelector('br'))return;
+      code.querySelectorAll('br').forEach(br=>br.replaceWith(document.createTextNode('\n')));
+      const fragment=document.createDocumentFragment(),parts=code.textContent.split('\n');
+      parts.forEach((part,index)=>{
+        if(index)fragment.append(document.createElement('br'));
+        if(part){const span=document.createElement('code');span.textContent=part;fragment.append(span);}
+      });
+      code.replaceWith(fragment);
+    });
     // Geschützte Leerzeichen bleiben nach Speichern und erneutem Öffnen
     // sichtbar. Turndown würde gewöhnliche Leerzeichen zusammenziehen.
     const walker=document.createTreeWalker(holder,NodeFilter.SHOW_TEXT), texts=[];
@@ -403,6 +427,11 @@
       });
       root.addEventListener('dragover',e=>e.preventDefault());
       root.addEventListener('keydown',e=>{
+        if(e.key==='Enter' && e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing && !composing && !fenced){
+          e.preventDefault();
+          window.fastraVisual.command('hardBreak');
+          return;
+        }
         if(e.key!=='Tab' || e.altKey || e.ctrlKey || e.metaKey || e.isComposing || composing || fenced)return;
         e.preventDefault();
         const items=selectedItems();

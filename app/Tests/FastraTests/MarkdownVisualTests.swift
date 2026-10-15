@@ -421,6 +421,111 @@ struct MarkdownVisualTests {
         return (workspace, coordinator, web, window)
     }
 
+    @Test("Normale Absätze sind kompakt; ein Zeilenumbruch bleibt innerhalb desselben Absatzes")
+    @MainActor
+    func compactParagraphs() async throws {
+        let source = "Erste Zeile  \nZweite Zeile\n\nNächster Absatz\n"
+        let (_, coordinator, visual, window) = try await editor(source)
+        defer { visual.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        config.setURLSchemeHandler(MarkdownPreviewSchemeHandler(), forURLScheme: MarkdownPreviewAssets.scheme)
+        let preview = WKWebView(frame: visual.frame, configuration: config)
+        preview.loadHTMLString(MarkdownRichText.htmlDocument(markdown: source, fontName: PreviewFonts.systemName,
+                                                           fontSize: 14, darkMode: false), baseURL: nil)
+        for web in [preview, visual] {
+            var metrics: [Double] = []
+            for _ in 0..<120 {
+                metrics = (try? await web.evaluateJavaScript("""
+                    (() => { const p = document.querySelectorAll('p'); if (p.length !== 2) return [];
+                      const style = getComputedStyle(p[0]), font = parseFloat(style.fontSize);
+                      const first = p[0].getBoundingClientRect(), second = p[1].getBoundingClientRect();
+                      return [parseFloat(style.lineHeight)/font, parseFloat(style.marginBottom)/font,
+                        first.height/font, (second.top-first.bottom)/font]; })()
+                    """)) as? [Double] ?? []
+                if metrics.count == 4 { break }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            try #require(metrics.count == 4)
+            #expect(abs(metrics[0] - 1.4) < 0.01)
+            #expect(abs(metrics[1] - 0.4) < 0.01)
+            #expect(abs(metrics[2] - 2.8) < 0.1, "Zwei Zeilen dürfen keinen Absatzabstand enthalten: \(metrics)")
+            #expect(abs(metrics[3] - 0.4) < 0.1, "Absätze behalten einen kleinen Abstand: \(metrics)")
+        }
+        #expect(try await visual.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Shift-Return und der Umbruchbefehl erhalten Absatz, Speichern und Undo", arguments: [false, true])
+    @MainActor
+    func hardBreakWithinParagraph(_ keyboard: Bool) async throws {
+        let source = "VorherNachher\n\nUnverändert 😀\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let result = try await web.evaluateJavaScript("""
+            {const root=document.getElementById('fastra-visual'),p=root.querySelector('p'),r=document.createRange();
+            r.setStart(p.firstChild,6);r.collapse(true);root.focus();getSelection().removeAllRanges();getSelection().addRange(r);
+            if(\(keyboard ? "true" : "false"))root.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true,cancelable:true}));
+            else fastraVisual.command('hardBreak');
+            fastraVisual.markdown();}
+            """) as? String
+        let expected = try #require(result)
+        #expect(expected.hasPrefix("Vorher  \nNachher\n\n"))
+        #expect(expected.hasSuffix("Unverändert 😀\n"))
+        try #require(await waitUntil { workspace.activeTab?.content == expected })
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p').length") as? Int == 2)
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p:first-child br').length") as? Int == 1)
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == expected })
+        coordinator.load(expected, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
+        try #require(await waitUntil { coordinator.ready })
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p').length") as? Int == 2)
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual br').length") as? Int == 1)
+    }
+
+    @Test("Return und zusätzliche Modifikatoren behalten ihre eigene Tastaturbedienung")
+    @MainActor
+    func hardBreakDoesNotConsumeOtherKeys() async throws {
+        let source = "Text\n"
+        let (_, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let allowed = try await web.evaluateJavaScript("""
+            [{},{shiftKey:true,metaKey:true},{shiftKey:true,altKey:true},{shiftKey:true,ctrlKey:true},{shiftKey:true,isComposing:true}]
+            .every(flags=>document.getElementById('fastra-visual').dispatchEvent(new KeyboardEvent('keydown',
+              {key:'Enter',bubbles:true,cancelable:true,...flags})))
+            """) as? Bool
+        #expect(allowed == true)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Shift-Return bleibt auch in strukturierten Markdown-Blöcken erhalten", arguments: [
+        ["VorherNachher\n", "p"], ["> VorherNachher\n", "blockquote p"],
+        ["- VorherNachher\n", "li"], ["- [ ] VorherNachher\n", "li"],
+        ["# VorherNachher\n", "h1"], ["```\nVorherNachher\n```\n", "pre code"],
+        ["`VorherNachher`\n", "p"]
+    ])
+    @MainActor
+    func hardBreakInStructuredBlocks(_ fixture: [String]) async throws {
+        let (_, coordinator, web, window) = try await editor(fixture[0])
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            {const root=document.getElementById('fastra-visual'),walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+            let text;while(walker.nextNode())if(walker.currentNode.textContent.includes('VorherNachher')){text=walker.currentNode;break;}
+            const r=document.createRange();r.setStart(text,text.textContent.indexOf('VorherNachher')+6);r.collapse(true);root.focus();getSelection().removeAllRanges();getSelection().addRange(r);
+            root.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true,cancelable:true}));}
+            """)
+        let saved = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
+        let before = try await web.evaluateJavaScript("document.querySelector('\(fixture[1])').innerText.trim()") as? String
+        #expect(before == "Vorher\nNachher")
+        coordinator.load(saved, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
+        try #require(await waitUntil { coordinator.ready })
+        let after = try await web.evaluateJavaScript("document.querySelector('\(fixture[1])')?.innerText.trim()") as? String
+        #expect(after == before, Comment(rawValue: "Gespeichert: " + saved))
+    }
+
     @Test("Listen sind in Vorschau und WYSIWYG kompakt und quelltexttreu", arguments: [
         "- Suchfeld = OK\n- Art = OK\n- Firma = OK\n",
         "- Suchfeld = OK\n\n- Art = OK\n\n- Firma = OK\n",

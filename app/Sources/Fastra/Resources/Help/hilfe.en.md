@@ -474,6 +474,11 @@ to edit directly in the formatted view or use source text with a preview.
 WYSIWYG hides Markdown syntax. The format toolbar works in both modes.
 Typing, formatting and Undo happen directly in the document.
 
+**Return** starts a new paragraph with a small gap. **Shift-Return (⇧↩)** starts
+a new line within the same paragraph, without extra paragraph spacing.
+The **↵ button** beside the Bold and Italic formatting buttons inserts the same
+line break; its tooltip also shows the keyboard shortcut.
+
 A minus followed by a space starts a bulleted list. Return continues the list;
 Return in an empty item ends it. Bold and italic inside headings are preserved
 as Markdown formatting.

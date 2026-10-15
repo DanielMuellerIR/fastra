@@ -220,10 +220,11 @@ enum MarkdownRichText {
         <style>
         body { margin: 0; padding: 20px; box-sizing: border-box;
                color: \(bodyColor); background: \(surface);
-               font-family: \(cssFont); font-size: \(fontSize)px; line-height: 1.55; }
+               font-family: \(cssFont); font-size: \(fontSize)px; line-height: 1.4; }
         h1, h2, h3, h4, h5, h6 { color: \(bodyColor); margin: 1.1em 0 0.45em; }
         h1 { font-size: 2em; } h2 { font-size: 1.55em; } h3 { font-size: 1.25em; }
         p, ul, ol, pre, blockquote, table { margin: 0.65em 0; }
+        p { margin: 0.4em 0; }
         /* Listen bleiben kompakt, auch wenn CommonMark die Einträge wegen
            Quell-Leerzeilen als Absätze rendert. Mehrere Absätze innerhalb
            desselben Eintrags behalten einen kleinen sichtbaren Abstand. */

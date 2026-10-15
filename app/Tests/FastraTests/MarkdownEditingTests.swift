@@ -351,4 +351,6 @@ func shortcut_appearsInHelpText() {
     #expect(MarkdownFormatCommand.quote.helpText.hasSuffix("(⇧⌘9)"))
     #expect(MarkdownFormatCommand.insertTable.helpText.hasSuffix("(⌥⇧⌘T)"))
     #expect(MarkdownFormatCommand.hardBreak.helpText.hasSuffix("(⌥⌘↩)"))
+    #expect(MarkdownFormatCommand.hardBreak.helpText(visualEditor: true).hasSuffix("(⇧↩)"))
+    #expect(MarkdownFormatCommand.bold.helpText(visualEditor: true) == MarkdownFormatCommand.bold.helpText)
 }

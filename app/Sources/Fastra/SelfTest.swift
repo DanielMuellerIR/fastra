@@ -2982,12 +2982,13 @@ enum SelfTest {
         }
     }
 
-    /// Postet einen unmodifizierten Tastendruck an das angegebene Fenster.
+    /// Postet einen Tastendruck mit optionalen Zusatztasten an das angegebene Fenster.
     /// Damit prüft `navmatch` den echten SwiftUI-Fokus-/onKeyPress-Pfad der
     /// Trefferliste statt bloß die zugrunde liegende Notification aufzurufen.
-    private static func postKey(_ char: String, keyCode: UInt16, windowNumber: Int) {
+    private static func postKey(_ char: String, keyCode: UInt16, windowNumber: Int,
+                                modifiers: NSEvent.ModifierFlags = []) {
         guard let key = NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [],
+            with: .keyDown, location: .zero, modifierFlags: modifiers,
             timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: windowNumber, context: nil,
             characters: char, charactersIgnoringModifiers: char,
@@ -23643,12 +23644,22 @@ enum SelfTest {
                 NSApp.appearance = NSAppearance(named: .aqua)
                 try await wait { (web.underPageBackgroundColor?.usingColorSpace(.sRGB)?.redComponent ?? 0) > 0.5 }
                 stage = "Bildauswahl und Kontextmenü"
+                activateApplication(ignoringOtherApps: true)
+                window.makeKeyAndOrderFront(nil)
+                try await wait { NSApp.isActive && window.isKeyWindow }
                 let imagePoint = try await web.evaluateJavaScript("{const image=document.querySelector('#fastra-visual img');image.scrollIntoView({block:'center'});const r=image.getBoundingClientRect();({x:r.x+r.width/2,y:r.y+r.height/2});}") as? [String: Double]
                 guard let imagePoint, let x = imagePoint["x"], let y = imagePoint["y"] else { throw NSError(domain: "fixture", code: 5) }
                 let click = web.convert(NSPoint(x: x, y: web.isFlipped ? y : web.bounds.height - y), to: nil)
+                _ = try await web.evaluateJavaScript("window.fastraTestClicks=[];document.getElementById('fastra-visual').addEventListener('mousedown',e=>fastraTestClicks.push({tag:e.target.tagName,x:e.clientX,y:e.clientY}));")
                 try require(sendMouseClick(at: click, in: window, modifiers: [], viaApp: true), "Bildklick fehlt")
                 try await Task.sleep(nanoseconds: 300_000_000)
-                try require(try await web.evaluateJavaScript("document.querySelectorAll('img[data-md-selected-image]').length") as? Int == 1, "Bild wird durch Klick nicht ausgewählt")
+                let imageSelected = try await web.evaluateJavaScript("document.querySelectorAll('img[data-md-selected-image]').length") as? Int == 1
+                if !imageSelected {
+                    diagnostic = "\nAktiv: \(NSApp.isActive), Key: \(window.isKeyWindow), Web: \(web.frame), Flipped: \(web.isFlipped), Klick: \(click)\n"
+                    diagnostic += String(describing: try await web.evaluateJavaScript("JSON.stringify({clicks:fastraTestClicks,image:document.querySelector('img').getBoundingClientRect().toJSON(),selection:getSelection().toString()})"))
+                    await capture("image-click-failure")
+                }
+                try require(imageSelected, "Bild wird durch Klick nicht ausgewählt")
                 await capture("selected-image")
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 500_000_000)
@@ -23715,6 +23726,44 @@ enum SelfTest {
                     in: cleanupSheet, modifiers: [], viaApp: true), "Aufräumen-Bestätigung nicht bedienbar")
                 try await wait { window.sheets.isEmpty && !FileManager.default.fileExists(atPath: base.appendingPathComponent("images/unused.png").path) }
                 try require(FileManager.default.fileExists(atPath: base.appendingPathComponent("images/original.png").path), "Aufräumen entfernt verknüpftes Bild")
+                stage = "Shift-Return und Umbruch-Button"
+                func placeBreakCursor() async throws {
+                    _ = try await web.evaluateJavaScript("""
+                        {const root=document.getElementById('fastra-visual'),p=root.querySelector('p'),r=document.createRange();
+                        r.setStart(p.firstChild,10);r.collapse(true);root.focus();getSelection().removeAllRanges();getSelection().addRange(r);}
+                        """)
+                }
+                try await placeBreakCursor()
+                postKey("\r", keyCode: 36, windowNumber: window.windowNumber, modifiers: .shift)
+                try await wait { ws.activeTab?.content != source }
+                let withBreak = ws.activeTab!.content
+                try require(MarkdownRichText.htmlFragment(markdown: withBreak).contains("<br"), "Shift-Return erzeugt keinen dauerhaften Zeilenumbruch")
+                let paragraphCount = try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p').length") as? Int
+                await capture("visual-line-break")
+                ws.saveActiveTab()
+                try await wait { (try? String(contentsOf: file)) == withBreak }
+                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                try await wait { ws.activeTab?.content == source }
+                try await placeBreakCursor()
+                guard let toolbarRoot = window.contentView,
+                      let breakButton = markerView(id: "markdownCommand-\(MarkdownFormatCommand.hardBreak.rawValue)", in: toolbarRoot) else {
+                    throw NSError(domain: "fixture", code: 9)
+                }
+                try require(sendMouseClick(at: breakButton.convert(CGPoint(x: breakButton.bounds.midX, y: breakButton.bounds.midY), to: nil),
+                    in: window, modifiers: [], viaApp: true), "Umbruch-Button konnte nicht bedient werden")
+                try await wait { ws.activeTab?.content == withBreak }
+                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                try await wait { ws.activeTab?.content == source }
+                try await placeBreakCursor()
+                postKey("\r", keyCode: 36, windowNumber: window.windowNumber)
+                try await wait { ws.activeTab?.content != source }
+                try require(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p').length") as? Int == (paragraphCount ?? 0) + 1,
+                    "Return muss einen zusätzlichen Absatz erzeugen")
+                try require(!MarkdownRichText.htmlFragment(markdown: ws.activeTab!.content).contains("<br"), "Return erzeugt einen Zeilenumbruch statt eines Absatzes")
+                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                try await wait { ws.activeTab?.content == source }
+                ws.saveActiveTab()
+                try await wait { (try? String(contentsOf: file)) == source }
                 stage = "Toolbar"
                 _ = try await web.evaluateJavaScript("""
                     const p=document.querySelector('#fastra-visual p'),r=document.createRange();r.selectNodeContents(p);

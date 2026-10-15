@@ -7,6 +7,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.140.0] — 2026-10-16
+
+### Verbessert
+
+- Markdown-Text hat eine kompaktere Zeilenhöhe von 1,4 und Absatzabstände von 0,4 em. Die kompakten Listen bleiben unverändert.
+- Shift-Return fügt im WYSIWYG-Editor einen Zeilenumbruch im selben Absatz ein. Der Umbruch-Button in der Format-Toolbar nennt das Tastenkürzel im Tooltip.
+
+### Behoben
+
+- Zeilenumbrüche innerhalb visuell bearbeiteter Überschriften und Inline-Code bleiben beim Speichern und erneuten Öffnen erhalten.
+
 ## [v1.139.21] — 2026-10-15
 
 ### Behoben

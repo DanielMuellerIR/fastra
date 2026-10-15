@@ -495,6 +495,11 @@ in der formatierten Ansicht oder mit Quelltext und Vorschau arbeiten möchtest.
 Im WYSIWYG-Modus bleiben Markdown-Kürzel verborgen. Die Format-Toolbar funktioniert
 in beiden Modi. Tippen, Formatieren und Rückgängig erfolgen direkt im Dokument.
 
+**Return** beginnt einen neuen Absatz mit etwas Abstand. **Shift-Return (⇧↩)**
+beginnt eine neue Zeile im selben Absatz, ohne zusätzlichen Absatzabstand.
+Den gleichen Zeilenumbruch fügt der **↵-Button** neben den Formatierungsbuttons
+für Fett und Kursiv ein; sein Tooltip nennt auch das Tastenkürzel.
+
 Ein Minus mit anschließendem Leerzeichen beginnt eine Aufzählung. Return setzt
 die Liste fort; Return in einem leeren Listenpunkt beendet sie. Fett und Kursiv
 sind auch innerhalb von Überschriften dauerhafte Textauszeichnungen.

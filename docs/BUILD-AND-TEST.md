@@ -1233,11 +1233,17 @@ und prüft beim späten Treffer zusätzlich, dass der Editor gescrollt hat.
 Versuch und den verzögerten Nachrück-Sprung nach Einzel-Ersetzen.
 
 `mdvisual` bedient den echten Erstwahl-Dialog und die Format-Toolbar, prüft Undo,
+Shift-Return und den Umbruch-Button als Zeilenumbruch im selben Absatz sowie
+Return als neuen Absatz. Ein gespeicherter Umbruch muss nach Undo wieder
+verschwinden. Der Fenstertest prüft außerdem
 Listenverschachtelung mit der echten Tab-Taste, Aufgabenlisten und Häkchen,
 letzte Eingaben vor dem Speichern, den Moduswechsel sowie die Bildkopien von
 „Speichern unter“. `FASTRA_MD_VISUAL_DIR` speichert den Erstwahl-Dialog, Ansichten
 bei 650 und 1100 pt, den Dunkelmodus, bearbeitete Listen und den Quelltext nach dem Zurückwechseln;
 jeweils Deutsch und Englisch ansehen.
+
+`MarkdownVisualTests` misst Zeilenhöhe und Absatzabstand in Vorschau und WYSIWYG
+und prüft Umbruch, Undo/Redo und erneutes Öffnen bei unveränderter Listen-Geometrie.
 
 `MarkdownClipboardImageReviewTests` hält den nativen Export gezielt auf und
 prüft die Veröffentlichung nach Invalidierung und Freigabe des Quell-Coordinators
