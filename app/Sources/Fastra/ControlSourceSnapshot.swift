@@ -76,6 +76,19 @@ final class ControlSourceSnapshot {
         }
     }
 
+    private static func explicitEncoding(_ name: String?, data: Data) throws -> String.Encoding? {
+        guard let name else { return nil }
+        let encodings: [String: String.Encoding] = ["utf-8": .utf8, "utf-16-le": .utf16LittleEndian,
+            "utf-16-be": .utf16BigEndian, "windows-1252": .windowsCP1252,
+            "iso-8859-1": .isoLatin1, "mac-roman": .macOSRoman]
+        guard let encoding = encodings[name] else { throw ControlFailure.invalidRequest }
+        let (bom, detected) = ApplyEngine.detectBOM(in: data)
+        // FileLoader entfernt eine erkannte Datei-BOM auch bei forcedEncoding.
+        // Ein widersprüchlicher Hinweis darf deshalb keine anderen Bytes verbergen.
+        guard bom.isEmpty || detected == encoding else { throw ControlFailure.source }
+        return encoding
+    }
+
     static func adopt(_ request: ControlRequest, temporaryRoot: URL = FileManager.default.temporaryDirectory) throws -> ControlSourceSnapshot {
         // Der Controller hat die Annahmefrist bereits geprüft. Wartende
         // Jobs behalten danach ihre eigene Ausführungsfrist.
@@ -88,6 +101,7 @@ final class ControlSourceSnapshot {
             try verifyOuter(provenance)
             let raw = try FileSnapshot.read(from: URL(fileURLWithPath: path), byteLimit: UInt64(ControlProtocol.maximumSnapshotBytes))
             guard raw.snapshot.sha256 == request.sha256 else { throw ControlFailure.stale }
+            let encoding = try explicitEncoding(request.textEncoding, data: raw.data)
             try Task.checkCancellation()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
                                                     attributes: [.posixPermissions: 0o700])
@@ -97,7 +111,7 @@ final class ControlSourceSnapshot {
             let destination = directory.appendingPathComponent("source.snapshot")
             try raw.data.write(to: destination, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o400], ofItemAtPath: destination.path)
-            let loaded = try FileLoader.load(url: destination, largeFileThreshold: UInt64(ControlProtocol.maximumSnapshotBytes),
+            let loaded = try FileLoader.load(url: destination, forcedEncoding: encoding, largeFileThreshold: UInt64(ControlProtocol.maximumSnapshotBytes),
                                             isCancelled: { Task.isCancelled })
             guard loaded.displayMode == .text, loaded.diskSnapshot?.sha256 == request.sha256 else { throw ControlFailure.source }
             try ControlSelection(location: request.location!, length: request.length!).validate(in: loaded.content)

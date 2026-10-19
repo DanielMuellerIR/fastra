@@ -153,6 +153,20 @@ enum SelfTest {
         panel.directoryURL = destination.deletingLastPathComponent()
         panel.nameFieldStringValue = destination.lastPathComponent
     }
+    @MainActor private static var snippetExportDestination: URL?
+    @MainActor private static var snippetImportDirectory: URL?
+    @MainActor private static weak var snippetFilePanel: NSSavePanel?
+
+    @MainActor static func configureTextSnippetPanel(_ panel: NSSavePanel, importing: Bool) {
+        guard requestedTest == "snippetfiles" else { return }
+        snippetFilePanel = panel
+        if importing { panel.directoryURL = snippetImportDirectory }
+        else if let destination = snippetExportDestination {
+            panel.directoryURL = destination.deletingLastPathComponent()
+            panel.nameFieldStringValue = destination.lastPathComponent
+        }
+    }
+
     /// Pro Selbsttest-Prozess genau eine isolierte Defaults-Suite. Mehrere
     /// Dokumentfenster müssen dieselbe Suite teilen; würde jeder Aufruf sie
     /// erneut leeren, hielte sich auch das zweite Fenster fälschlich für den
@@ -555,6 +569,8 @@ enum SelfTest {
         case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
         case "searchoptions": waitForMainWindow { openSearchThen { runSearchOptionsTest() } }
         case "searchlayout": waitForMainWindow { openSearchThen { runSearchLayoutTest() } }
+        case "searchapproval": waitForMainWindow { openSearchThen { runSearchApprovalTest() } }
+        case "searchapprovalclose": waitForMainWindow { openSearchThen { runSearchApprovalTest(closeOnly: true) } }
         case "searchfocus": waitForMainWindow { openSearchThen { runSearchFocusTest() } }
         case "dialoglayout": waitForMainWindow { openSearchThen { runDialogLayoutTest() } }
         case "projectinput": waitForMainWindow { openSearchThen { runProjectInputTest() } }
@@ -584,6 +600,17 @@ enum SelfTest {
         case "markdownjump": waitForMainWindow { runMarkdownJumpTest() }
         case "markdownappearance": waitForMainWindow { runMarkdownAppearanceTest() }
         case "mdvisual": waitForMainWindow { runMarkdownVisualTest() }
+        case "mdoutline": waitForMainWindow { runMarkdownOutlineTest() }
+        case "sourcesplit": waitForMainWindow { runSourceSplitTest() }
+        case "snippets": waitForMainWindow { runTextSnippetTest() }
+        case "snippetfiles": waitForMainWindow { runTextSnippetFilesTest() }
+        case "codeoutline": waitForMainWindow { runCodeOutlineTest() }
+        case "mdvisualfind": waitForMainWindow { runMarkdownVisualFindTest() }
+        case "mdtable": waitForMainWindow { runMarkdownTableTest() }
+        case "mdtableinteraction": waitForMainWindow { runMarkdownTableTest(interactionOnly: true) }
+        case "mdtableinput": waitForMainWindow { runMarkdownTableTest(inputOnly: true) }
+        case "mdcomfort": waitForMainWindow { runMarkdownComfortTest() }
+        case "mdblocks": waitForMainWindow { runMarkdownBlocksTest() }
         case "mdsearchnavigation": waitForMainWindow { runMarkdownSearchNavigationTest() }
         case "jump":      waitForMainWindow { runJumpTest() }
         case "ghosttext": waitForMainWindow { runGhostTextTest() }
@@ -627,6 +654,9 @@ enum SelfTest {
         case "hscroll":   waitForMainWindow { runHScrollTest() }
         case "crjump":    waitForMainWindow { runCRJumpTest() }
         case "textop":    waitForMainWindow { runTextOpTest() }
+        case "textworkflow": waitForMainWindow { runTextWorkflowTest() }
+        case "textworkflowmulti": waitForMainWindow { runTextWorkflowMultiTest() }
+        case "textworkflowonesided": waitForMainWindow { runTextWorkflowMultiTest(onlyOneSided: true) }
         case "joinundo":  waitForMainWindow { runJoinUndoTest() }
         case "colsel":    waitForMainWindow { runColumnSelectionTest() }
         case "colselwrap": waitForMainWindow { runWrappedColumnSelectionTest() }
@@ -659,6 +689,9 @@ enum SelfTest {
         case "sidebarstate": waitForMainWindow { runSidebarStateTest() }
         case "githistory": waitForMainWindow { runGitHistoryTest() }
         case "filediff": waitForMainWindow { runFileDiffTest() }
+        case "filedifftransfer": waitForMainWindow { runFileDiffTransferTest() }
+        case "foldercompare": waitForMainWindow { runFolderComparisonTest() }
+        case "mdreferences": waitForMainWindow { runMarkdownReferencesTest() }
         case "externaldiff": waitForMainWindow { MainActor.assumeIsolated { runExternalDiffTest() } }
         case "externaldiffcold": waitForMainWindow { MainActor.assumeIsolated { pollExternalDiffCold() } }
         case "controlhost":
@@ -858,7 +891,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchapproval, searchapprovalclose, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdoutline, codeoutline, sourcesplit, snippets, snippetfiles, mdvisualfind, mdtable, mdtableinteraction, mdtableinput, mdcomfort, mdblocks, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, textworkflow, textworkflowmulti, textworkflowonesided, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, filedifftransfer, foldercompare, mdreferences, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -2999,6 +3032,137 @@ enum SelfTest {
         NSApp.postEvent(key, atStart: false)
     }
 
+    /// AppKit gleicht Menü-Kürzel mit dem aktuellen Tastaturlayout ab.
+    /// Der feste US-Keycode6 bezeichnet auf QWERTZ ein Y statt eines Z.
+    @MainActor private static func historyKeyCode() -> UInt16? {
+        return (UInt16(0)..<128).first { code in
+            guard let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true) else { return false }
+            event.flags = .maskCommand
+            guard let native = NSEvent(cgEvent: event), native.type == .keyDown else { return false }
+            return native.charactersIgnoringModifiers?.lowercased() == "z"
+        }
+    }
+
+    @MainActor private static func postHistoryKey(redo: Bool = false, windowNumber: Int) {
+        guard let code = historyKeyCode() else { finish(.environment, "Das aktive Tastaturlayout liefert kein Z für die Undo-/Redo-Prüfung.") }
+        guard let nativeEvent = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true) else {
+            finish(.environment, "Das native Undo-/Redo-Ereignis konnte nicht erzeugt werden.")
+        }
+        nativeEvent.flags = redo ? [.maskCommand, .maskShift] : .maskCommand
+        guard let native = NSEvent(cgEvent: nativeEvent), native.type == .keyDown,
+              let characters = native.characters, let ignoringModifiers = native.charactersIgnoringModifiers else {
+            finish(.environment, "Das native Undo-/Redo-Ereignis liefert keine Zeichen.")
+        }
+        // Bei ⇧⌘Z liefert macOS characters="z", aber ignoringModifiers="Z".
+        // AppKits Menüabgleich und WebKit müssen dieselben echten Werte erhalten.
+        let modifiers = native.modifierFlags
+        for (type, flags, keyCode, text, ignoring) in [
+            (NSEvent.EventType.flagsChanged, modifiers, UInt16(55), "", ""),
+            (.keyDown, modifiers, code, characters, ignoringModifiers),
+            (.keyUp, modifiers, code, characters, ignoringModifiers),
+            (.flagsChanged, [], UInt16(55), "", "")
+        ] {
+            guard let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags,
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: windowNumber, context: nil,
+                characters: text, charactersIgnoringModifiers: ignoring, isARepeat: false, keyCode: keyCode) else {
+                finish(.environment, "Das native Undo-/Redo-Ereignis konnte nicht erzeugt werden.")
+            }
+            NSApp.postEvent(event, atStart: false)
+        }
+    }
+
+    @MainActor private static func redoFromEditMenu() async throws {
+        try await historyFromEditMenu("redo:")
+    }
+
+    @MainActor private static func undoFromEditMenu() async throws {
+        try await historyFromEditMenu("undo:")
+    }
+
+    @MainActor private static func trackedHistoryFromEditMenu(_ action: Selector) async throws {
+        guard let main = NSApp.mainMenu,
+              let root = main.items.first(where: { $0.submenu?.items.contains(where: { $0.action == action }) == true }),
+              let menu = root.submenu else { throw NSError(domain: "SelfTestTrackedMenu", code: 1) }
+        var tracking = false, pressed = false
+        let began = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification,
+            object: main, queue: .main) { _ in tracking = true }
+        defer { // trackedHistoryFromEditMenu kehrt vor dem äußeren finish regulär zurück oder wirft.
+            NotificationCenter.default.removeObserver(began)
+            menu.cancelTracking(); main.cancelTracking()
+        }
+        let success: Bool = await withCheckedContinuation { continuation in
+            var timer: Timer?, ticks = 0
+            func conclude(_ value: Bool) {
+                timer?.invalidate(); timer = nil
+                menu.cancelTracking(); main.cancelTracking()
+                DispatchQueue.main.async { continuation.resume(returning: value) }
+            }
+            timer = Timer(timeInterval: 0.05, repeats: true) { _ in
+                ticks += 1
+                if ticks >= 160 { conclude(false); return }
+                guard tracking, !pressed,
+                      let item = menu.items.first(where: { $0.action == action }), item.isEnabled else { return }
+                // AXPress am Eintrag führte die Aktion aus, kehrte im
+                // Prüflauf aber nicht zurück. Die AppKit-Menüaktion nutzt
+                // denselben Responder im bereits geöffneten echten Menü.
+                timer?.invalidate(); timer = nil
+                pressed = true
+                menu.performActionForItem(at: menu.index(of: item))
+                conclude(true)
+            }
+            if let timer { RunLoop.main.add(timer, forMode: .common); RunLoop.main.add(timer, forMode: .eventTracking) }
+            DispatchQueue.main.async { _ = root.accessibilityPerformPress() }
+        }
+        guard success else {
+            throw NSError(domain: "SelfTestTrackedMenu", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Echtes Verlaufsmenü: Beginn=\(tracking), Aktion=\(pressed)"])
+        }
+        FileHandle.standardError.write(Data(("HISTORY_MENU_TRACKED action=\(NSStringFromSelector(action)) began=\(tracking) pressed=\(pressed) cleanup=cancelTracking\n").utf8))
+    }
+
+    @MainActor private static func historyFromEditMenu(_ actionName: String) async throws {
+        let action = NSSelectorFromString(actionName)
+        if testLabel == "filedifftransfer" {
+            try await trackedHistoryFromEditMenu(action)
+            return
+        }
+        guard let main = NSApp.mainMenu,
+              let menu = main.items.compactMap(\.submenu).first(where: {
+                  $0.items.contains(where: { $0.action == action })
+              }) else { throw NSError(domain: "SelfTestMenu", code: 1) }
+        menu.update()
+        guard let item = menu.items.first(where: { $0.action == action }), item.isEnabled else {
+            throw NSError(domain: "SelfTestMenu", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Native Verlaufsaktion im Bearbeiten-Menü nicht verfügbar"])
+        }
+        // AppKits Menüaktion trifft den echten Responder-/Undo-Pfad, ohne
+        // daneben ein asynchron öffnendes Menü im Test zurückzulassen.
+        menu.performActionForItem(at: menu.index(of: item))
+        FileHandle.standardError.write(Data(("HISTORY_MENU_ACTION action=\(actionName) method=appkit-menu-action\n").utf8))
+    }
+
+    @MainActor private static func requestSystemUndoIfAvailable(before: String, expected: String, mode: String) async throws -> Bool {
+        guard let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { return false }
+        let directory = URL(fileURLWithPath: output)
+        guard FileManager.default.fileExists(atPath: directory.appendingPathComponent("history-driver-ready").path) else { return false }
+        guard let code = historyKeyCode() else { finish(.environment, "Das aktive Tastaturlayout liefert kein Z") }
+        let nonce = UUID().uuidString
+        let request: [String: Any] = ["mode": mode, "nonce": nonce, "pid": Int(getpid()),
+            "keyCode": Int(code), "before": before, "expected": expected]
+        try JSONSerialization.data(withJSONObject: request, options: [.sortedKeys]).write(
+            to: directory.appendingPathComponent("history-request.json"), options: .atomic)
+        let responseURL = directory.appendingPathComponent("history-response.json")
+        try await nativeUIWait("Systemtastentreiber bestätigt vollständige Zustellung") {
+            FileManager.default.fileExists(atPath: responseURL.path)
+        }
+        let response = try JSONSerialization.jsonObject(with: Data(contentsOf: responseURL)) as? [String: Any]
+        guard response?["nonce"] as? String == nonce, response?["ok"] as? Bool == true else {
+            throw NSError(domain: "SelfTestSystemHistory", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Systemtastentreiber meldet einen Fehler: " + String(describing: response)])
+        }
+        return true
+    }
+
     private static func runFindBarTest() {
         testLabel = "findbar"
         // Hauptfenster = sichtbares Fenster, das NICHT die Suchmaske ist.
@@ -3523,9 +3687,383 @@ enum SelfTest {
                 })
     }
 
+    private static func runSearchApprovalTest(closeOnly: Bool = false) {
+        testLabel = closeOnly ? "searchapprovalclose" : "searchapproval"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws),
+                  let search = NSApp.windows.first(where: { $0.frameAutosaveName == SearchWindow.frameAutosaveName }) else {
+                finish(false, "Dokument- oder Suchfenster fehlt")
+            }
+            var stage = "Fixture"
+            let originalAppearance = NSApp.appearance
+            var permissionFixtures: [URL] = []
+            @MainActor func cleanup() {
+                NSApp.appearance = originalAppearance
+                for file in permissionFixtures {
+                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+                }
+            }
+            func require(_ value: Bool, _ message: String) throws {
+                if !value { throw NSError(domain: "SearchApprovalSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            func requireValue<T>(_ value: T?, _ message: String) throws -> T {
+                guard let value else { throw NSError(domain: "SearchApprovalSelfTest", code: 2, userInfo: [NSLocalizedDescriptionKey: message]) }
+                return value
+            }
+            @MainActor func wait(_ detail: String = "Zustand", _ condition: @MainActor () -> Bool) async throws {
+                var budget = SelfTestPollBudget(budget: 10, pause: 0.03, hardCap: 18,
+                    now: ProcessInfo.processInfo.systemUptime)
+                while !condition() {
+                    try require(budget.recordMiss(now: ProcessInfo.processInfo.systemUptime) == .keepWaiting,
+                                "Zustand wurde nicht bereit: " + stage + " / " + detail + " (aktiv=\(NSApp.isActive), Key=\(NSApp.keyWindow?.frameAutosaveName ?? "nil"), HauptfensterKey=\(window.isKeyWindow), Editorfokus=\(window.firstResponder === CommandTargeting.editorTextView(for: ws)), Undo=\(CommandTargeting.editorTextView(for: ws)?.undoManager?.canUndo == true), Redo=\(CommandTargeting.editorTextView(for: ws)?.undoManager?.canRedo == true), Text=\(String(reflecting: ws.activeTab.map { String($0.content.prefix(120)) })), Freigaben=\(ws.searchApproval.approvedIDs.count))")
+                    try await Task.sleep(for: .milliseconds(30))
+                }
+            }
+            @MainActor func click(_ id: String, in target: NSWindow) throws {
+                guard let root = target.contentView, let marker = markerView(id: id, in: root) else {
+                    try require(false, "Bedienelement fehlt: " + id); return
+                }
+                target.makeKeyAndOrderFront(nil)
+                let rect = marker.convert(marker.bounds, to: nil)
+                try require(sendMouseClick(at: NSPoint(x: rect.midX, y: rect.midY), in: target, modifiers: [], viaApp: true),
+                            "Klick fehlgeschlagen: " + id)
+            }
+            @MainActor func checkbox(_ id: String) throws -> NSButton {
+                func find(in view: NSView) -> NSButton? {
+                    if let button = view as? NSButton, button.accessibilityIdentifier() == id + "-control" { return button }
+                    for child in view.subviews { if let found = find(in: child) { return found } }
+                    return nil
+                }
+                guard let root = search.contentView, let button = find(in: root) else {
+                    throw NSError(domain: "SearchApprovalSelfTest", code: 4, userInfo: [NSLocalizedDescriptionKey: "Native Checkbox fehlt: " + id])
+                }
+                return button
+            }
+            @MainActor func sheet() -> NSWindow? {
+                search.sheets.first { $0.contentView.flatMap { markerView(id: "searchApprovalSheet", in: $0) } != nil }
+            }
+            @MainActor func capture(_ name: String, in target: NSWindow) async throws {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_SEARCHLAYOUT_DIR"] else { return }
+                // Ein View-Cache lässt AppKits Sheet-Hintergrund transparent
+                // und zeichnet native Knöpfe ohne ihren Bildschirm-Verbund.
+                let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { continuation in
+                    typeScrollCapture(window: target) { continuation.resume(returning: $0) }
+                }
+                guard let snapshot, snapshot.source == "screen" else {
+                    cleanup()
+                    finish(.environment, "Echte Fensteraufnahme fehlt; prüfe die Bildschirmaufnahme-Berechtigung: " + name)
+                }
+                let output = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
+                try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try snapshot.data.write(to: output)
+                FileHandle.standardError.write(Data(("SEARCH_APPROVAL_CAPTURE " + name + " source=" + snapshot.source + "\n").utf8))
+            }
+            @MainActor func captureMatrix(_ name: String, in target: NSWindow, minimumWidth: CGFloat, minimumHeight: CGFloat) async throws {
+                for (mode, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    for width in [minimumWidth, 1000] {
+                        target.setContentSize(NSSize(width: width, height: minimumHeight))
+                        try await Task.sleep(for: .milliseconds(350))
+                        try require(abs((target.contentView?.bounds.width ?? 0) - width) < 1, "Angeforderte Breite fehlt")
+                        try await capture(name + "-" + mode + "-" + String(Int(width)), in: target)
+                    }
+                }
+            }
+            @MainActor func preview() async throws -> NSWindow {
+                try await wait { search.contentView.flatMap { markerView(id: "searchApprovalPreviewReady", in: $0) } != nil }
+                try click("searchApprovalPreview", in: search)
+                try await wait { sheet()?.contentView.flatMap { markerView(id: "searchApprovalApplyReady", in: $0) } != nil }
+                return sheet()!
+            }
+            @MainActor func approve(_ id: UUID) async throws {
+                let marker = "searchApprove-" + id.uuidString
+                try await wait("Checkbox aktiviert") { (try? checkbox(marker).isEnabled) == true }
+                try click(marker, in: search)
+                try await wait("Checkbox angewählt") { ws.searchApproval.approvedIDs.contains(id) && (try? checkbox(marker).state) == .on }
+            }
+            @MainActor func ready(_ scope: Workspace.SearchScope) async throws {
+                ws.scope = scope
+                try await wait {
+                    guard ws.searchApproval.isComplete, let id = ws.navMatches.first?.id, let root = search.contentView else { return false }
+                    return markerView(id: "searchApprove-" + id.uuidString, in: root) != nil
+                }
+            }
+            do {
+                let fixtureDirectory = selfTestTemporaryDirectory().appendingPathComponent("Freigaben-\(UUID().uuidString)")
+                shortSearchFixtureDirectory = fixtureDirectory
+                try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+                // canonicalPathKey löst erst vorhandene Pfade auf; sonst
+                // vergleicht der Test /tmp mit dem enumerierten /private/tmp.
+                let root = fixtureDirectory.canonicalFileURL
+                shortSearchFixtureDirectory = root
+                let a = root.appendingPathComponent("A.txt"), b = root.appendingPathComponent("B.txt"), ro = root.appendingPathComponent("Z-read-only.txt")
+                let diskOriginal = Data("foo\r\nfoo\n".utf8)
+                try diskOriginal.write(to: a); try Data("foo\n".utf8).write(to: b); try Data("foo\n".utf8).write(to: ro)
+                try FileManager.default.setAttributes([.posixPermissions: 0o400], ofItemAtPath: ro.path)
+                permissionFixtures.append(ro)
+                ws.openProject(at: root)
+                ws.recentSearchFolders = [SearchFolderEntry(path: root.path, enabled: true)]
+                let first = EditorTab(title: "Erstes.txt", path: "", content: "foo\n🙂 foo\n")
+                let second = EditorTab(title: "Zweites.txt", path: "", content: "foo\nfoo\n")
+                let locked = EditorTab(title: "Read-only.txt", path: "", content: "foo\n", readOnlyReason: "Selftest")
+                ws.tabs = [first, second, locked]; ws.activeTabID = first.id
+                ws.findPattern = "foo"; ws.replacePattern = "bar"; ws.useRegex = false
+                ws.showSearchDialog = true
+                @MainActor func closeDuringSynchronization() async throws {
+                    stage = "Schließen während WebKit-Synchronisierung"
+                    var markdown = EditorTab(title: "Cancel.md", path: "", content: "# foo\n\nfoo\n")
+                    markdown.markdownVisualOverride = true
+                    ws.tabs = [markdown]; ws.activeTabID = markdown.id
+                    try await ready(.file)
+                    try await wait("WebKit bereit") { ws.visualMarkdownEditor?.ready == true }
+                    try await approve(ws.navMatches[0].id)
+                    let target = try await preview()
+                    let before = try requireValue(ws.activeTab?.content, "Quellbasis fehlt")
+                    try require(before == markdown.content && ws.lastSearchApprovalMemoryChange == nil, "Quellbasis änderte sich schon vor Apply")
+                    guard let web = ws.visualMarkdownEditor?.web else { try require(false, "WebKit fehlt"); return }
+                    var busyFinished = false
+                    // Hält nur den getrennten Webprozess kurz auf, damit der
+                    // native Schließenklick vor der PrepareAction-Antwort läuft.
+                    web.callAsyncJavaScript("const end = Date.now() + 1000; while (Date.now() < end) {} return true;",
+                        arguments: [:], in: nil, in: .page) { _ in busyFinished = true }
+                    try click("searchApprovalApply", in: target)
+                    try await wait("Sichtbare Apply-Vorbereitung") {
+                        sheet() === target && target.contentView.flatMap { markerView(id: "searchApprovalPreparing", in: $0) } != nil
+                    }
+                    try require(!busyFinished, "WebKit-Antwort war bereits vor dem Abbrechen fertig")
+                    try require(ws.activeTab?.content == before && ws.lastSearchApprovalMemoryChange == nil,
+                                "Apply war bereits vor dem Abbrechen beendet")
+                    try click("searchApprovalClose", in: target)
+                    try await wait("Sheet geschlossen und WebKit-Antwort beendet") { sheet() == nil && busyFinished }
+                    try await Task.sleep(for: .milliseconds(700))
+                    let evidence = "vorher=\(String(reflecting: before)), nachher=\(String(reflecting: ws.activeTab?.content)), Speicheränderung=\(ws.lastSearchApprovalMemoryChange != nil)"
+                    FileHandle.standardError.write(Data(("SEARCH_APPROVAL_CLOSE " + evidence + "\n").utf8))
+                    try require(ws.activeTab?.content == before, "Quelle änderte sich nach Abbrechen: " + evidence)
+                    try require(ws.lastSearchApprovalMemoryChange == nil, "Geschlossene Vorschau hinterließ eine Speicheränderung: " + evidence)
+                }
+                if closeOnly {
+                    try await closeDuringSynchronization()
+                    cleanup()
+                    finish(true, "Natives Schließen während der realen WebKit-Synchronisierung verhindert verspätetes Apply")
+                }
+                stage = "Layout und Checkboxen"
+                for scope in Workspace.SearchScope.allCases {
+                    stage = "Layout und Checkboxen · " + scope.rawValue
+                    try await ready(scope)
+                    try click("searchApproveNone", in: search)
+                    try await wait { ws.searchApproval.approvedIDs.isEmpty }
+                    let hit = try requireValue(ws.navMatches.first(where: { ws.editableSearchMatchIDs.contains($0.id) && (!scope.isFolderLike || $0.url == a) }),
+                        "Treffer fehlt (\(ws.navMatches.count) Treffer, \(ws.editableSearchMatchIDs.count) editierbar)")
+                    let active = ws.activeMatchIndex
+                    try await approve(hit.id)
+                    try require(ws.activeMatchIndex == active, "Freigabe löst eine Treffernavigation aus")
+                    let groupID = scope == .file ? "buffer" : scope == .open ? first.id.uuidString : a.path
+                    let groupMarker = "searchApproveFile-" + groupID
+                    try await wait { (try? checkbox(groupMarker).state) == .mixed }
+                    try require(try checkbox(groupMarker).state == .mixed, "Dateifreigabe zeigt keinen Teilzustand")
+                    try click(groupMarker, in: search)
+                    try await wait { ws.searchApproval.approvedIDs.count == 2 }
+                    try click(groupMarker, in: search)
+                    try await wait { ws.searchApproval.approvedIDs.isEmpty }
+                    try await approve(hit.id)
+                    for (mode, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                        NSApp.appearance = NSAppearance(named: appearance)
+                        for width in [max(520, search.contentMinSize.width), 1000] {
+                            search.setContentSize(NSSize(width: width, height: 760))
+                            try await Task.sleep(for: .milliseconds(350))
+                            guard let content = search.contentView else { try require(false, "Suchinhalt fehlt"); continue }
+                            var outside: [String] = []
+                            collectControlsOutside(content.bounds.insetBy(dx: -1, dy: -1), in: content, root: content, into: &outside)
+                            try require(outside.isEmpty, "\(scope.rawValue)/\(mode)/\(width): Controls außerhalb: \(outside.prefix(3))")
+                            for id in ["fastra.findField", "fastra.replaceField"] {
+                                try require((markerView(id: id, in: content)?.bounds.width ?? 0) >= 100, "Feld zu schmal: " + id)
+                            }
+                            try await capture("approval-\(scope.rawValue)-\(mode)-\(Int(width))", in: search)
+                        }
+                    }
+                    try click("searchApproveAll", in: search)
+                    try await wait { ws.searchApproval.approvedIDs == ws.editableSearchMatchIDs }
+                    try require(ws.searchApproval.approvedIDs.count == (scope == .file ? 2 : scope == .open ? 4 : 3), "Alle erfasst schreibgeschützte Treffer oder lässt editierbare aus")
+                    try click("searchApproveNone", in: search)
+                    try await wait { ws.searchApproval.approvedIDs.isEmpty }
+                }
+                NSApp.appearance = NSAppearance(named: .aqua)
+                stage = "Datei: vollständige Teilfreigabevorschau"
+                try await ready(.file)
+                let selected = ws.navMatches[1].id
+                try await approve(selected)
+                let fileSheet = try await preview()
+                try require(ws.activeTab?.content == first.content, "Vorschau ändert den Speicher")
+                for (mode, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    for width in [CGFloat(620), 1000] {
+                        fileSheet.setContentSize(NSSize(width: width, height: width == 620 ? 440 : 650))
+                        try await Task.sleep(for: .milliseconds(300))
+                        try await capture("approval-preview-\(mode)-\(Int(width))", in: fileSheet)
+                    }
+                }
+                try click("searchApprovalApply", in: fileSheet)
+                try await wait { sheet() == nil && ws.activeTab?.content == "foo\n🙂 bar\n" }
+                stage = "Datei: Dokumentfokus vor nativem Undo"
+                guard let close = search.standardWindowButton(.closeButton) else { try require(false, "Schließenknopf der Suchmaske fehlt"); return }
+                let closePoint = close.convert(NSPoint(x: close.bounds.midX, y: close.bounds.midY), to: nil)
+                try require(sendMouseClick(at: closePoint, in: search, modifiers: [], viaApp: true), "Suchmaske nicht schließbar")
+                try await wait("Suchmaske tatsächlich geschlossen") { !search.isVisible && !ws.showSearchDialog }
+                window.makeKeyAndOrderFront(nil)
+                try await wait("Montierter Editor zeigt Apply") {
+                    CommandTargeting.editorTextView(for: ws)?.window === window
+                        && CommandTargeting.editorTextView(for: ws)?.string == "foo\n🙂 bar\n"
+                }
+                guard let editor = CommandTargeting.editorTextView(for: ws) else { try require(false, "Editor fehlt"); return }
+                try require(window.makeFirstResponder(nil), "Alter Fokus ließ sich nicht freigeben")
+                let visible = editor.visibleRect
+                let editorPoint = editor.convert(NSPoint(x: visible.minX + min(100, visible.width / 2),
+                    y: visible.minY + min(20, visible.height / 2)), to: nil)
+                try require(sendMouseClick(at: editorPoint, in: window, modifiers: [], viaApp: true), "Nativer Editorklick fehlt")
+                try await wait("Hauptfenster/Editorfokus und Undo verfügbar") {
+                    NSApp.keyWindow === window && window.isKeyWindow && window.firstResponder === editor && editor.undoManager?.canUndo == true
+                }
+                stage = "Datei: erste native Rücknahme"
+                postHistoryKey(windowNumber: window.windowNumber)
+                try await wait("Originaltext nach Cmd-Z") { ws.activeTab?.content == first.content }
+                stage = "Datei: natives Wiederholen"
+                try await wait("Redo verfügbar") { editor.undoManager?.canRedo == true }
+                try await redoFromEditMenu()
+                try await wait("Apply-Text nach Redo-Menü") { ws.activeTab?.content == "foo\n🙂 bar\n" }
+                stage = "Datei: zweite native Rücknahme"
+                var secondUndoMethod = "menu"
+                let historyDirectory = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"].map { URL(fileURLWithPath: $0) }
+                if try await requestSystemUndoIfAvailable(before: "foo\n🙂 bar\n", expected: first.content, mode: "undo-after-redo") {
+                    secondUndoMethod = "system-command-z"
+                } else {
+                    try await undoFromEditMenu()
+                }
+                try await wait("Originaltext nach zweiter nativer Rücknahme (" + secondUndoMethod + ")") { ws.activeTab?.content == first.content }
+                if let historyDirectory {
+                    try FileManager.default.createDirectory(at: historyDirectory, withIntermediateDirectories: true)
+                    let proof: [String: Any] = ["firstUndo": "appkit-command-z", "redo": "appkit-menu-action", "secondUndo": secondUndoMethod,
+                        "originalRestored": ws.activeTab?.content == first.content]
+                    try JSONSerialization.data(withJSONObject: proof, options: [.sortedKeys]).write(
+                        to: historyDirectory.appendingPathComponent("native-history.json"), options: .atomic)
+                }
+                stage = "Geöffnet: zwei Dokumente und gemeinsame Rücknahme"
+                ws.showSearchDialog = true
+                try await ready(.open)
+                let one = try requireValue(ws.navMatches.first(where: { $0.tabID == first.id }), "Erster Dokumenttreffer fehlt")
+                let two = try requireValue(ws.navMatches.first(where: { $0.tabID == second.id }), "Zweiter Dokumenttreffer fehlt")
+                try await approve(one.id); try await approve(two.id)
+                let openSheet = try await preview()
+                try click("searchApprovalApply", in: openSheet)
+                try await wait { sheet() == nil && ws.tabs.first(where: { $0.id == second.id })?.content == "bar\nfoo\n" }
+                try require(ws.tabs.first(where: { $0.id == first.id })?.content == "bar\n🙂 foo\n", "Falscher Treffer im ersten Dokument")
+                try require(ws.tabs.first(where: { $0.id == locked.id })?.content == locked.content, "Read-only-Tab verändert")
+                try click("searchApprovalMemoryUndo", in: search)
+                try await wait { ws.tabs.first(where: { $0.id == first.id })?.content == first.content && ws.tabs.first(where: { $0.id == second.id })?.content == second.content }
+                stage = "Ordner: Teilfreigabe, Platte und Backup-Undo"
+                try await ready(.folder)
+                let diskHits = ws.navMatches.filter { $0.url == a }
+                try require(diskHits.count == 2, "Dateitreffer fehlen")
+                let diskHit = diskHits[1]
+                try await approve(diskHit.id)
+                let diskSheet = try await preview()
+                try click("searchApprovalApply", in: diskSheet)
+                try await wait { !ws.folderApplying && ws.lastApplySession != nil }
+                try require(try Data(contentsOf: a) == Data("foo\r\nbar\n".utf8), "Nicht freigegebener Treffer verändert")
+                try require(try Data(contentsOf: b) == Data("foo\n".utf8) && Data(contentsOf: ro) == Data("foo\n".utf8), "Nicht freigegebene Datei verändert")
+                let diskUndoWasMounted = search.contentView.flatMap { markerView(id: "searchApprovalDiskUndo", in: $0) } != nil
+                let diskUndoWaitStart = ProcessInfo.processInfo.systemUptime
+                // Der fertige Plattenauftrag garantiert noch keinen SwiftUI-Render.
+                // Erst das geschlossene Sheet und der sichtbare Knopf erlauben den Klick.
+                try await wait("Backup-Rückgängig montiert und Sheet geschlossen") {
+                    sheet() == nil && search.contentView.flatMap { markerView(id: "searchApprovalDiskUndo", in: $0) } != nil
+                }
+                if let directory = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] {
+                    let proof: [String: Any] = ["mountedAfterModelCompletion": diskUndoWasMounted,
+                        "mountedBeforeClick": true, "sheetClosedBeforeClick": sheet() == nil,
+                        "waitMilliseconds": (ProcessInfo.processInfo.systemUptime - diskUndoWaitStart) * 1000]
+                    try JSONSerialization.data(withJSONObject: proof, options: [.sortedKeys]).write(
+                        to: URL(fileURLWithPath: directory).appendingPathComponent("disk-undo-readiness.json"), options: .atomic)
+                }
+                try click("searchApprovalDiskUndo", in: search)
+                try await wait { !ws.folderApplying && (try? Data(contentsOf: a)) == diskOriginal }
+                stage = "Veraltetes Sheet und reale neue Suchoption"
+                try await ready(.file)
+                try await approve(ws.navMatches[0].id)
+                let staleSheet = try await preview()
+                ws.tabs[0].content = "external foo\n"
+                try await wait { staleSheet.contentView.flatMap { markerView(id: "searchApprovalApplyBlocked", in: $0) } != nil }
+                try await captureMatrix("approval-stale", in: staleSheet, minimumWidth: 620, minimumHeight: 440)
+                try click("searchApprovalClose", in: staleSheet)
+                try await wait { sheet() == nil && ws.searchApproval.isComplete }
+                try await approve(ws.navMatches[0].id)
+                guard let field = search.contentView.flatMap({ markerView(id: "fastra.replaceField", in: $0) }) as? NSTextView else { try require(false, "Ersetzen-Feld fehlt"); return }
+                search.makeKeyAndOrderFront(nil); try require(search.makeFirstResponder(field), "Ersetzen-Fokus fehlt")
+                field.selectAll(nil)
+                for (text, code) in [("b", UInt16(11)), ("a", 0), ("z", 6)] { postKey(text, keyCode: code, windowNumber: search.windowNumber) }
+                try await wait { ws.replacePattern == "baz" && ws.searchApproval.approvedIDs.isEmpty }
+                stage = "Geöffnet: tatsächliche Trefferkappung"
+                let many = String(repeating: "foo\n", count: 6000)
+                let manyA = EditorTab(title: "LimitedA.txt", path: "", content: many)
+                let manyB = EditorTab(title: "LimitedB.txt", path: "", content: many)
+                ws.tabs = [manyA, manyB]; ws.activeTabID = manyA.id
+                ws.scope = .open; ws.replacePattern = "bar"
+                try await wait("Gekappte Geöffnet-Liste sichtbar") {
+                    !ws.bufferSearching && ws.openResultsWereCapped && search.contentView.flatMap { markerView(id: "searchCappedResults", in: $0) } != nil
+                }
+                try require(ws.searchApproval.ticket == nil && !ws.searchApproval.isComplete, "Gekappte Geöffnet-Liste ist freigabefähig")
+                try await captureMatrix("approval-capped-open", in: search, minimumWidth: max(520, search.contentMinSize.width), minimumHeight: 760)
+                stage = "Ordner: Kappung pro Datei unter dem Gesamtlimit"
+                try Data(String(repeating: "foo\n", count: 6000).utf8).write(to: a, options: .atomic)
+                ws.scope = .folder
+                try await wait("Kappung pro Datei sichtbar") {
+                    !ws.folderSearching && ws.folderResultsContainCappedFiles && !ws.folderResultsWereCapped
+                        && search.contentView.flatMap { markerView(id: "searchCappedResults", in: $0) } != nil
+                }
+                try require(ws.navMatches.count == 5002 && ws.folderTotalMatches == 6002,
+                            "Falsche sichtbare/gezählte Trefferzahl bei Kappung pro Datei")
+                try require(!ws.searchApproval.isComplete && ws.searchApproval.ticket == nil, "Teilweise Dateiliste ist freigabefähig")
+                try await captureMatrix("approval-capped-file", in: search, minimumWidth: max(520, search.contentMinSize.width), minimumHeight: 760)
+                stage = "Ordner: tatsächliche Gesamtkappung"
+                try Data(String(repeating: "foo\n", count: 12_000).utf8).write(to: a, options: .atomic)
+                ws.runFolderSearchNow()
+                try await wait("Gekappte Ordnerliste sichtbar") {
+                    !ws.folderSearching && ws.folderResultsWereCapped && search.contentView.flatMap { markerView(id: "searchCappedResults", in: $0) } != nil
+                }
+                try require(ws.searchApproval.ticket == nil && !ws.searchApproval.isComplete, "Gekappte Ordnerliste ist freigabefähig")
+                try await captureMatrix("approval-capped-folder", in: search, minimumWidth: max(520, search.contentMinSize.width), minimumHeight: 760)
+                stage = "Fehlende Suchquelle"
+                try diskOriginal.write(to: a, options: .atomic)
+                ws.recentSearchFolders.append(SearchFolderEntry(path: root.appendingPathComponent("missing-source").path, enabled: true))
+                try await wait("Fehlerhafte Quelle sichtbar") { !ws.folderSearching && ws.searchError != nil }
+                try require(ws.searchApproval.ticket == nil && ws.folderResults.isEmpty, "Fehlerhafte Teilsuche ist freigabefähig")
+                try await captureMatrix("approval-missing-source", in: search, minimumWidth: max(520, search.contentMinSize.width), minimumHeight: 760)
+                stage = "Nicht lesbare und zu große Suchquellen"
+                let unreadable = root.appendingPathComponent("Nicht-lesbar.txt"), large = root.appendingPathComponent("Zu-gross.txt")
+                try Data("foo\n".utf8).write(to: unreadable)
+                permissionFixtures.append(unreadable)
+                try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: unreadable.path)
+                try require(FileManager.default.createFile(atPath: large.path, contents: Data()), "Große Fixture fehlt")
+                let handle = try FileHandle(forWritingTo: large)
+                try handle.truncate(atOffset: FileLoader.largeFileThreshold + 1)
+                try handle.close()
+                ws.recentSearchFolders = [SearchFolderEntry(path: root.path, enabled: true)]
+                ws.runFolderSearchNow()
+                try await wait("Erklärte unvollständige Suche sichtbar") {
+                    !ws.folderSearching && ws.searchApprovalIncompleteFiles.count == 2
+                        && search.contentView.flatMap { markerView(id: "searchIncompleteFiles", in: $0) } != nil
+                }
+                try require(ws.searchError == nil && !ws.searchApproval.isComplete && ws.searchApproval.ticket == nil,
+                            "Unvollständige Dateien fehlen oder geben Apply frei")
+                try await captureMatrix("approval-incomplete-files", in: search, minimumWidth: max(520, search.contentMinSize.width), minimumHeight: 760)
+                cleanup()
+                finish(true, "Native Treffer-/Dateifreigabe, Alle/Keine, 16 Bereich/Theme/Breite-Ansichten, vier vollständige Vorschauansichten, 24 Fehler-/Cap-Ansichten, Speicher-/Platten-Apply, natives Undo/Redo, gemeinsame Rücknahme, Read-only und Ticketentwertung bestanden")
+            } catch { cleanup(); finish(false, stage + ": " + error.localizedDescription) }
+        }
+    }
+
     // MARK: - searchlayout: Geometrie der Suchmaske je Bereich und Breite
 
-    /// Vermisst die Suchmaske in JEDEM Bereich (Datei, Ordner, Projekt) bei
+    /// Vermisst die Suchmaske in JEDEM Bereich (Datei, Geöffnet, Ordner, Projekt) bei
     /// Mindestbreite und bei 1000 pt. Entstanden nach dem Befund vom
     /// 2026-09-15: Der Layout-Umbau war nur im Datei-Bereich angesehen worden,
     /// im Projekt-Bereich bei 500 pt brachen die Tab-Beschriftungen um, der
@@ -3619,7 +4157,7 @@ enum SelfTest {
         let widths: [CGFloat] = [max(500, searchWindow.contentMinSize.width), 1000]
         var combinations: [(Workspace.SearchScope, CGFloat, LayoutVariant)] = []
         for variant in LayoutVariant.allCases {
-            for scope in [Workspace.SearchScope.file, .folder, .project] {
+            for scope in Workspace.SearchScope.allCases {
                 for width in widths { combinations.append((scope, width, variant)) }
             }
         }
@@ -14374,6 +14912,593 @@ enum SelfTest {
     /// Geprüft wird jeweils der ECHTE Editor-Inhalt. Deckt Observer
     /// (AppDelegate) → EditorContextMenu → native TextView → Undo-fähige
     /// Ersetzung ab.
+    private static func runTextWorkflowMultiTest(onlyOneSided: Bool = false) {
+        testLabel = onlyOneSided ? "textworkflowonesided" : "textworkflowmulti"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else { finish(false, "Dokumentfenster fehlt") }
+            let base = selfTestTemporaryDirectory().canonicalFileURL.appendingPathComponent("WorkflowMulti-" + UUID().uuidString)
+            let root = base.appendingPathComponent("inputs")
+            let one = root.appendingPathComponent("one.txt"), two = root.appendingPathComponent("two.txt")
+            let original = "b  \na  \n", expected = "B\nA\n"
+            var stage = "Vorbereitung", trackingMenus = Set<ObjectIdentifier>()
+            let begin = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { event in
+                if let menu = event.object as? NSMenu { trackingMenus.insert(ObjectIdentifier(menu)) }
+            }
+            let end = NotificationCenter.default.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { event in
+                if let menu = event.object as? NSMenu { trackingMenus.remove(ObjectIdentifier(menu)) }
+            }
+            @MainActor func cleanup() {
+                NotificationCenter.default.removeObserver(begin); NotificationCenter.default.removeObserver(end)
+                let mayRemoveFixtures = ws.textWorkflowSession?.isDiskOperation != true
+                ws.textWorkflowSession?.close(); ws.folderApplyBackupRoot = nil
+                if mayRemoveFixtures { try? FileManager.default.removeItem(at: base) }
+            }
+            func require(_ value: Bool, _ detail: String) throws {
+                if !value { throw NSError(domain: "WorkflowMultiSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: detail]) }
+            }
+            @MainActor func wait(_ condition: @MainActor () -> Bool) async throws {
+                for _ in 0..<300 { if condition() { return }; try await Task.sleep(for: .milliseconds(50)) }
+                try require(condition(), "Zustand wurde nicht bereit")
+            }
+            @MainActor func click(_ id: String, in target: NSWindow) throws {
+                guard let root = target.contentView, let marker = markerView(id: id, in: root) else { try require(false, "Control fehlt: " + id); return }
+                let rect = marker.convert(marker.bounds, to: nil)
+                try require(sendMouseClick(at: NSPoint(x: rect.midX, y: rect.midY), in: target, modifiers: [], viaApp: true), "Klick fehlgeschlagen: " + id)
+            }
+            @MainActor func capture(_ name: String, in target: NSWindow) async throws {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { return }
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                let data: Data? = await withCheckedContinuation { done in typeScrollCapture(window: target) { done.resume(returning: $0?.data) } }
+                try require(data != nil, "Fensteraufnahme fehlt")
+                try data?.write(to: url)
+            }
+            @MainActor func select(_ id: String, delta: Int, in sheet: NSWindow) async throws {
+                try click(id, in: sheet)
+                try await Task.sleep(for: .milliseconds(350))
+                for _ in 0..<abs(delta) {
+                    postKey(delta > 0 ? "\u{F701}" : "\u{F700}", keyCode: delta > 0 ? 125 : 126, windowNumber: sheet.windowNumber)
+                }
+                postKey("\r", keyCode: 36, windowNumber: sheet.windowNumber)
+                try await wait { trackingMenus.isEmpty && sheet.isKeyWindow }
+                try await Task.sleep(for: .milliseconds(400))
+            }
+            @MainActor func matrix(_ name: String, in sheet: NSWindow, requiresDiff: Bool = true, errorAtEnd: Bool? = nil) async throws {
+                for (mode, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    for (size, width) in [("minimum", CGFloat(900)), ("wide", CGFloat(1200))] {
+                        sheet.setContentSize(NSSize(width: width, height: size == "minimum" ? 760 : 820))
+                        try await Task.sleep(for: .milliseconds(300))
+                        guard let content = sheet.contentView else { try require(false, "Dialoginhalt fehlt"); return }
+                        try require(abs(content.bounds.width - width) < 1, "Angeforderte Dialogbreite nicht erreicht: \(content.bounds.width)/\(width)")
+                        if let atEnd = errorAtEnd {
+                            guard let scroll = markerView(id: "textWorkflowErrorContent", in: content)?.enclosingScrollView,
+                                  let document = scroll.documentView else { try require(false, "Fehlerliste ist nicht scrollbar"); return }
+                            let top = document.isFlipped ? document.bounds.minY : document.bounds.maxY - scroll.contentView.bounds.height
+                            let bottom = document.isFlipped ? document.bounds.maxY - scroll.contentView.bounds.height : document.bounds.minY
+                            let target = atEnd ? bottom : top
+                            scroll.contentView.scroll(to: NSPoint(x: 0, y: target))
+                            scroll.reflectScrolledClipView(scroll.contentView)
+                            try await Task.sleep(for: .milliseconds(100))
+                            try require(scroll.contentView.bounds.height <= 96 && document.bounds.height > scroll.contentView.bounds.height + 20,
+                                        "Fehlerliste ist nicht auf einen scrollbaren Bereich begrenzt")
+                            try require(abs(scroll.contentView.bounds.minY - target) < 1, "Angefordertes Listenende nicht erreicht")
+                            if atEnd { try require(abs(scroll.contentView.bounds.minY - top) > 10, "Fehlerliste wurde nicht gescrollt") }
+                        }
+                        try await capture(name + "-" + mode + "-" + size, in: sheet)
+                        if requiresDiff {
+                            guard let viewport = markerView(id: "dualPaneDiffViewport", in: content) else { try require(false, "Diff-Ansicht fehlt"); return }
+                            let rect = viewport.convert(viewport.bounds, to: content).intersection(content.bounds)
+                            try require(rect.width >= 300 && rect.height >= 80, "Diff bei Mindestgröße nicht erreichbar: \(rect)")
+                            if name == "one-sided-unicode-lines", size == "minimum" {
+                                func horizontalScroll(in view: NSView) -> NSScrollView? {
+                                    if let scroll = view as? NSScrollView,
+                                       let document = scroll.documentView,
+                                       document.bounds.width > scroll.contentView.bounds.width + 20 { return scroll }
+                                    for child in view.subviews { if let found = horizontalScroll(in: child) { return found } }
+                                    return nil
+                                }
+                                guard let scroll = horizontalScroll(in: content), let document = scroll.documentView else {
+                                    try require(false, "Schmaler Diff hat keinen horizontalen Scrollbereich"); return
+                                }
+                                let before = scroll.contentView.bounds.minX
+                                let end = document.bounds.maxX - scroll.contentView.bounds.width
+                                scroll.contentView.scroll(to: NSPoint(x: end, y: scroll.contentView.bounds.minY))
+                                scroll.reflectScrolledClipView(scroll.contentView)
+                                try await Task.sleep(for: .milliseconds(100))
+                                try require(scroll.contentView.bounds.minX > before + 20 && abs(scroll.contentView.bounds.minX - end) < 1,
+                                            "Rechtes Diff-Ende wurde nicht erreicht")
+                                try await capture(name + "-" + mode + "-" + size + "-scrolled", in: sheet)
+                                scroll.contentView.scroll(to: NSPoint(x: before, y: scroll.contentView.bounds.minY))
+                                scroll.reflectScrolledClipView(scroll.contentView)
+                            }
+                        }
+                        for id in ["textWorkflowClose", "textWorkflowApply"] {
+                            guard let marker = markerView(id: id, in: content) else { try require(false, "Control fehlt: " + id); return }
+                            try require(content.bounds.contains(marker.convert(NSPoint.zero, to: content)), "Control außerhalb des Dialogs: " + id)
+                        }
+                    }
+                }
+            }
+            do {
+                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+                try Data(original.utf8).write(to: one); try Data("TWO\n".utf8).write(to: two)
+                window.setContentSize(NSSize(width: 1200, height: 850))
+                activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                try await wait { window.isVisible && window.isKeyWindow && NSApp.isActive }
+                for url in [two, one] {
+                    stage = "Datei laden: " + url.lastPathComponent
+                    var loaded = false; ws.loadFile(at: url) { loaded = $0 }
+                    try await wait { loaded && CommandTargeting.editorTextView(for: ws)?.string == (url == one ? original : "TWO\n") }
+                }
+                ws.tabs.removeAll { $0.url == nil }
+                ws.folderApplyBackupRoot = base.appendingPathComponent("journal")
+                stage = "Dialog öffnen"
+                ws.presentTextWorkflows()
+                try await wait { ws.textWorkflowSession != nil && !window.sheets.isEmpty }
+                var session = ws.textWorkflowSession!, sheet = window.sheets[0]
+                if onlyOneSided {
+                    stage = "Einseitige Unicode-Zeilen"
+                    var insertion = TextWorkflowStep(kind: .prefixLines)
+                    insertion.argument = "\u{200B}\r\n"
+                    session.new()
+                    session.definition = TextWorkflow(name: "Unicode Lines", steps: [insertion])
+                    try click("textWorkflowSave", in: sheet)
+                    try await wait { !session.dirty }
+                    try click("textWorkflowPreview", in: sheet)
+                    try await wait { session.canApply && session.representationDetails }
+                    try require(session.diffDocument?.result?.rows.contains(where: { ($0.before ?? $0.after ?? "").contains("\\u{200B}") }) == true
+                                && session.diffDocument?.result?.rows.contains(where: { ($0.before ?? $0.after ?? "").contains("⟦CRLF⟧") }) == true,
+                                "Einseitige unsichtbare Zeilen sind nicht annotiert")
+                    try await matrix("one-sided-unicode-lines", in: sheet)
+                    try require(try String(contentsOf: one, encoding: .utf8) == original, "Unicode-Vorschau hat Platte verändert")
+                    try click("textWorkflowClose", in: sheet)
+                    try await wait { ws.textWorkflowSession == nil && window.sheets.isEmpty }
+                    cleanup()
+                    finish(true, "Einseitige Unicode-/CRLF-Zeilen im echten Ablaufdialog, hell/dunkel, Mindestbreite/breit")
+                }
+                session.definition = TextWorkflow(name: "Multi Workflow", steps: [.init(kind: .trimTrailing), .init(kind: .uppercase)])
+                try click("textWorkflowSave", in: sheet)
+                try await wait { !session.dirty }
+                stage = "Offene Dokumente: Bereich wählen"
+                try await select("textWorkflowBatchScope", delta: 1, in: sheet)
+                try require(session.scope == .openDocuments, "Bereichsauswahl hat offene Dokumente nicht gewählt")
+                stage = "Offene Dokumente: Vorschau berechnen"
+                try click("textWorkflowPreview", in: sheet)
+                try await wait { session.batch?.entries.count == 2 && session.canApply }
+                try require(try String(contentsOf: one, encoding: .utf8) == original, "Vorschau hat Platte verändert")
+                guard let firstID = session.batch?.entries.first(where: { $0.title == "one.txt" })?.id else { throw NSError(domain: "WorkflowMultiSelfTest", code: 2) }
+                stage = "Offene Dokumente: Änderungsdatei wählen"
+                try await capture("diagnose-before-input-selection", in: sheet)
+                try click("textWorkflowInput-" + firstID, in: sheet)
+                try await wait { session.selectedInputID == firstID && session.canApply }
+                try await matrix("open", in: sheet)
+                try await select("textWorkflowPreviewChoice", delta: 1, in: sheet)
+                try await wait { session.selectedPreview == 0 && session.diffDocument != nil }
+                try require(!session.canApply, "Schrittvorschau gibt Apply frei")
+                try await matrix("open-step", in: sheet)
+                try await select("textWorkflowPreviewChoice", delta: -1, in: sheet)
+                try await wait { session.canApply }
+                try click("textWorkflowApply", in: sheet)
+                try await wait { session.appliedDocuments != nil && ws.tabs.first(where: { $0.url == one })?.content == expected }
+                try require(try String(contentsOf: one, encoding: .utf8) == original, "Speicher-Apply hat Platte verändert")
+                try await matrix("open-applied", in: sheet, requiresDiff: false)
+                try click("textWorkflowMemoryUndo", in: sheet)
+                try await wait { ws.tabs.first(where: { $0.url == one })?.content == original && session.memoryRestored }
+                try click("textWorkflowMemoryUndo", in: sheet)
+                try await wait { ws.tabs.first(where: { $0.url == one })?.content == expected && !session.memoryRestored }
+                try click("textWorkflowMemoryUndo", in: sheet)
+                try await wait { ws.tabs.first(where: { $0.url == one })?.content == original }
+                stage = "Geschlossener Tab und gemeinsame Rücknahme"
+                try click("textWorkflowClose", in: sheet)
+                try await wait { ws.textWorkflowSession == nil && window.sheets.isEmpty }
+                if let tab = ws.tabs.first(where: { $0.url == one }) { ws.closeTab(id: tab.id) }
+                var reopened = false
+                ws.loadFile(at: one) { reopened = $0 }
+                try await wait { reopened && CommandTargeting.editorTextView(for: ws)?.string == original }
+                ws.presentTextWorkflows()
+                try await wait { ws.textWorkflowSession != nil && !window.sheets.isEmpty }
+                session = ws.textWorkflowSession!; sheet = window.sheets[0]
+                try await select("textWorkflowBatchScope", delta: 1, in: sheet)
+                try require(!session.canRestoreDocuments && session.appliedDocuments != nil, "Geschlossener Tab ließ gemeinsame Rücknahme zu")
+                try await matrix("open-restore-unavailable", in: sheet, requiresDiff: false)
+                stage = "Ordner und wirkungslose Fremdänderung"
+                session.folderURLs = [root]
+                try await select("textWorkflowBatchScope", delta: 1, in: sheet)
+                try require(session.scope == .folder, "Ordnerbereich fehlt")
+                try click("textWorkflowPreview", in: sheet)
+                try await wait { session.batch?.entries.count == 2 && session.canApply }
+                try await matrix("folder", in: sheet)
+                try Data("external\n".utf8).write(to: two)
+                try click("textWorkflowApply", in: sheet)
+                try await wait { !session.isBusy && session.error != nil }
+                try require(try String(contentsOf: one, encoding: .utf8) == original, "Fremdänderung ließ Teil-Apply zu")
+                try await matrix("folder-stale", in: sheet, requiresDiff: false)
+                try Data("TWO\n".utf8).write(to: two)
+                try click("textWorkflowPreview", in: sheet)
+                try await wait { session.canApply }
+                try click("textWorkflowApply", in: sheet)
+                try await wait { !session.isBusy && session.diskAppliedSession != nil && ws.tabs.first(where: { $0.url == one })?.content == expected }
+                try require(try String(contentsOf: one, encoding: .utf8) == expected, "Platten-Apply fehlt")
+                try await matrix("folder-applied", in: sheet, requiresDiff: false)
+                try click("textWorkflowDiskUndo", in: sheet)
+                try await wait { !session.isBusy && session.diskAppliedSession == nil && ws.tabs.first(where: { $0.url == one })?.content == original }
+                try require(try String(contentsOf: one, encoding: .utf8) == original, "Platten-Rücknahme fehlt")
+                stage = "Projekt"
+                ws.projectURL = root
+                session.projectSetID = ws.projectSearchConfiguration.activeSetID
+                try await select("textWorkflowBatchScope", delta: 1, in: sheet)
+                try require(session.scope == .project, "Projektbereich fehlt")
+                try click("textWorkflowPreview", in: sheet)
+                try await wait { session.canApply && session.batch?.entries.count == 2 }
+                try await matrix("project", in: sheet)
+                stage = "Fehler und Abbruch"
+                try Data([0, 1, 2]).write(to: root.appendingPathComponent("binary.txt"))
+                try click("textWorkflowPreview", in: sheet)
+                try await wait { !session.isBusy && session.batch?.entries.count == 3 }
+                try require(!session.canApply && session.batch?.entries.contains(where: { $0.issue != nil }) == true, "Fehlerhafte Vorschau gibt Apply frei")
+                let errorID = session.batch!.entries.first(where: { $0.issue != nil })!.id
+                try click("textWorkflowInput-" + errorID, in: sheet)
+                try await matrix("project-error", in: sheet, requiresDiff: false)
+                session.calculate(); session.abortCalculation()
+                try await Task.sleep(for: .milliseconds(300))
+                try require(!session.isBusy && session.batch == nil && !session.canApply, "Abbruch veröffentlichte alte Vorschau")
+                try require(try String(contentsOf: one, encoding: .utf8) == original, "Abbruch hat Platte verändert")
+                try click("textWorkflowClose", in: sheet)
+                try await wait { ws.textWorkflowSession == nil && window.sheets.isEmpty }
+                stage = "Einseitige Unicode-Zeilen"
+                try await wait { CommandTargeting.editorTextView(for: ws)?.string == original }
+                ws.presentTextWorkflows()
+                try await wait { ws.textWorkflowSession != nil && !window.sheets.isEmpty }
+                session = ws.textWorkflowSession!; sheet = window.sheets[0]
+                var insertion = TextWorkflowStep(kind: .prefixLines)
+                insertion.argument = "\u{200B}\r\n"
+                session.new()
+                session.definition = TextWorkflow(name: "Unicode Lines", steps: [insertion])
+                try click("textWorkflowSave", in: sheet)
+                try await wait { !session.dirty }
+                try click("textWorkflowPreview", in: sheet)
+                try await wait { session.canApply && session.representationDetails }
+                try require(session.diffDocument?.result?.rows.contains(where: { ($0.before ?? $0.after ?? "").contains("\\u{200B}") }) == true
+                            && session.diffDocument?.result?.rows.contains(where: { ($0.before ?? $0.after ?? "").contains("⟦CRLF⟧") }) == true,
+                            "Einseitige unsichtbare Zeilen sind nicht annotiert")
+                try await matrix("one-sided-unicode-lines", in: sheet)
+                try require(try String(contentsOf: one, encoding: .utf8) == original, "Unicode-Vorschau hat Platte verändert")
+                try click("textWorkflowClose", in: sheet)
+                try await wait { ws.textWorkflowSession == nil && window.sheets.isEmpty }
+                stage = "Lange nachträgliche Konfliktliste"
+                let conflictRoot = base.appendingPathComponent("conflicts")
+                try FileManager.default.createDirectory(at: conflictRoot, withIntermediateDirectories: true)
+                var conflictIDs = Set<UUID>()
+                for index in 0..<40 {
+                    let name = "\(index)-" + String(repeating: "a", count: 180) + ".txt"
+                    let url = conflictRoot.appendingPathComponent(name).canonicalFileURL
+                    try Data("one".utf8).write(to: url)
+                    var tab = EditorTab(title: name, path: url.path, url: url, content: "one")
+                    tab.recordSavedContentBaseline()
+                    conflictIDs.insert(tab.id); ws.tabs.append(tab)
+                }
+                ws.presentTextWorkflows()
+                try await wait { ws.textWorkflowSession != nil && !window.sheets.isEmpty }
+                session = ws.textWorkflowSession!; sheet = window.sheets[0]
+                session.new()
+                session.definition = TextWorkflow(name: "Conflict List", steps: [.init(kind: .uppercase)])
+                session.folderURLs = [conflictRoot]
+                try await select("textWorkflowBatchScope", delta: 2, in: sheet)
+                try require(session.scope == .folder, "Konfliktprobe benötigt Ordnerbereich")
+                try click("textWorkflowSave", in: sheet)
+                try await wait { !session.dirty }
+                try click("textWorkflowPreview", in: sheet)
+                try await wait { session.canApply && session.batch?.entries.count == 40 }
+                for index in ws.tabs.indices where conflictIDs.contains(ws.tabs[index].id) {
+                    ws.tabs[index].content = "dirty"; ws.tabs[index].isDirty = true
+                }
+                try click("textWorkflowApply", in: sheet)
+                try await wait { !session.isBusy && session.error != nil }
+                try require(session.error?.contains("39-" + String(repeating: "a", count: 180) + ".txt") == true,
+                            "Konfliktliste enthält nicht alle Eingaben")
+                try await matrix("folder-conflicts-top", in: sheet, requiresDiff: false, errorAtEnd: false)
+                try await matrix("folder-conflicts-end", in: sheet, requiresDiff: false, errorAtEnd: true)
+                for tab in ws.tabs where conflictIDs.contains(tab.id) {
+                    try require(try Data(contentsOf: tab.url!) == Data("one".utf8), "Konfliktprüfung hat Platte verändert")
+                }
+                try click("textWorkflowClose", in: sheet)
+                try await wait { ws.textWorkflowSession == nil && window.sheets.isEmpty }
+                ws.tabs.removeAll { conflictIDs.contains($0.id) }
+                cleanup()
+                finish(true, "Offene Dokumente, Ordner/Projekt, vollständige Vorschau, Schritte, Speicher-/Platten-Apply und geschützte Rücknahme, wirkungslose Fremdänderung, Fehler und Abbruch")
+            } catch {
+                if let current = ws.textWorkflowSession {
+                    let inputs = current.batch?.entries.map { entry in
+                        [entry.title, entry.id, entry.issue ?? "OK"].joined(separator: ":")
+                    }.joined(separator: "|") ?? "nil"
+                    let flags = "scope=\(current.scope) busy=\(current.isBusy) dirty=\(current.dirty) canApply=\(current.canApply)"
+                    let selection = "selected=\(current.selectedInputID ?? "nil") preview=\(current.selectedPreview) diff=\(current.diffDocument?.result != nil)"
+                    fputs("WORKFLOW-DIAG \(flags) \(selection) inputs=\(inputs)\n", stderr)
+                    let project = current.workspace?.projectURL
+                    let paths = current.workspace?.projectSearchConfiguration.activeSet?.paths.joined(separator: "|") ?? "nil"
+                    fputs("WORKFLOW-SOURCE project=\(project?.path ?? "nil") standard=\(project?.standardizedFileURL.path ?? "nil") paths=\(paths)\n", stderr)
+                }
+                try? await capture("diagnose-failure", in: window.sheets.first ?? window)
+                let foreground = NSWorkspace.shared.frontmostApplication
+                let message = "Mehrdokumentabläufe [\(stage)]: \(error.localizedDescription); \(ws.textWorkflowSession?.error ?? ""); aktiv=\(NSApp.isActive), key=\(window.isKeyWindow), Sheetkey=\(window.sheets.first?.isKeyWindow == true), Frontmost=\(foreground?.bundleIdentifier ?? "nil")/\(foreground?.processIdentifier ?? -1)"
+                ws.textWorkflowSession?.abortCalculation()
+                try? await wait { ws.textWorkflowSession?.isBusy != true }
+                cleanup()
+                finish(false, message)
+            }
+        }
+    }
+
+    private static func runTextWorkflowTest() {
+        testLabel = "textworkflow"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else { finish(false, "Dokumentfenster fehlt") }
+            let source = "b  \na  \n", expected = "B\nA\n"
+            let base = selfTestTemporaryDirectory().appendingPathComponent("TextWorkflow-\(UUID().uuidString)")
+            let file = base.appendingPathComponent("Ablauf.txt")
+            var stage = "Vorbereitung"
+            var diagnostics = [String]()
+            let keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                diagnostics.append("Taste: \(event.keyCode), Modifier: \(event.modifierFlags.rawValue), Zeichen: \(event.characters ?? ""), Fenster: \(event.windowNumber)")
+                return event
+            }
+            var trackingMenus = Set<ObjectIdentifier>()
+            let menus = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { notification in
+                if let menu = notification.object as? NSMenu {
+                    trackingMenus.insert(ObjectIdentifier(menu))
+                    diagnostics.append("Menü beginnt: \(menu.title), Einträge=\(menu.items.prefix(5).map { "\($0.title) [\($0.state.rawValue)]" })")
+                }
+            }
+            let menusEnded = NotificationCenter.default.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { notification in
+                if let menu = notification.object as? NSMenu {
+                    trackingMenus.remove(ObjectIdentifier(menu))
+                    diagnostics.append("Menü endet: \(menu.title)")
+                }
+            }
+            @MainActor func diagnose(_ label: String) {
+                let editor = CommandTargeting.editorTextView(for: ws)
+                if let session = ws.textWorkflowSession {
+                    diagnostics.append("Modell: Vorschau=\(session.selectedPreview), canApply=\(session.canApply), dirty=\(session.dirty), busy=\(session.isBusy), diff=\(session.diffDocument != nil), revision=\(session.snapshot.revision)/\(ws.activeTab?.contentRevision ?? 0)")
+                }
+                diagnostics.append("Auswahl: Editor=\(String(describing: editor?.fastraSafeSelectedRange)), Snapshot=\(String(describing: ws.textWorkflowSession?.snapshot.selection)), nurAuswahl=\(ws.textWorkflowSession?.selectionOnly == true)")
+                diagnostics.append("\(label): aktiv=\(NSApp.isActive), key=\(window.isKeyWindow), Sheets=\(window.sheets.count), Responder=\(String(describing: window.firstResponder)), Editor=\(String(describing: editor)), Undo=\(editor?.undoManager?.canUndo == true), Redo=\(editor?.undoManager?.canRedo == true), Undoziel=\(String(describing: NSApp.target(forAction: NSSelectorFromString("undo:")))), Redoziel=\(String(describing: NSApp.target(forAction: NSSelectorFromString("redo:")))), Text=\(String(reflecting: ws.activeTab?.content))")
+            }
+            func require(_ value: Bool, _ text: String) throws {
+                if !value { throw NSError(domain: "TextWorkflowSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: text]) }
+            }
+            @MainActor func wait(_ condition: @MainActor () -> Bool) async throws {
+                for _ in 0..<250 { if condition() { return }; try await Task.sleep(for: .milliseconds(50)) }
+                try require(condition(), "Zustand wurde nicht bereit")
+            }
+            @MainActor func click(_ id: String, in target: NSWindow) -> Bool {
+                guard let root = target.contentView, let marker = markerView(id: id, in: root) else { return false }
+                let rect = marker.convert(marker.bounds, to: nil)
+                let point = NSPoint(x: rect.midX, y: rect.midY)
+                var hit = root.hitTest(root.convert(point, from: nil))
+                var chain = [String]()
+                while let view = hit, chain.count < 5 { chain.append(String(describing: type(of: view))); hit = view.superview }
+                diagnostics.append("Klick \(id): Punkt=\(point), Marker=\(rect), Treffer=\(chain)")
+                return sendMouseClick(at: point, in: target, modifiers: [], viaApp: true)
+            }
+            @MainActor func requirePreviewVisible(in target: NSWindow) async throws {
+                try await wait {
+                    guard let root = target.contentView, let viewport = markerView(id: "dualPaneDiffViewport", in: root) else { return false }
+                    let visible = viewport.convert(viewport.bounds, to: root).intersection(root.bounds)
+                    return visible.height >= 66
+                }
+            }
+            @MainActor func capture(_ name: String, in target: NSWindow) async {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { return }
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
+                try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                    typeScrollCapture(window: target) { snapshot in try? snapshot?.data.write(to: url); done.resume() }
+                }
+            }
+            @MainActor func openMenu() async throws {
+                guard let main = NSApp.mainMenu, let root = main.items.first(where: { $0.title == L10n.string("Text") }), let menu = root.submenu else { throw NSError(domain: "TextWorkflowSelfTest", code: 2) }
+                let selected: Bool = await withCheckedContinuation { continuation in
+                    var timer: Timer?, ticks = 0
+                    timer = Timer(timeInterval: 0.05, repeats: true) { _ in
+                        ticks += 1
+                        if let item = menu.items.first(where: { $0.title == L10n.string("Gespeicherte Textabläufe…") }), item.isEnabled {
+                            timer?.invalidate(); timer = nil
+                            _ = item.accessibilityPerformPress()
+                            continuation.resume(returning: true)
+                        } else if ticks >= 100 {
+                            timer?.invalidate(); timer = nil; menu.cancelTracking(); main.cancelTracking()
+                            continuation.resume(returning: false)
+                        }
+                    }
+                    if let timer { RunLoop.main.add(timer, forMode: .common); RunLoop.main.add(timer, forMode: .eventTracking) }
+                    // Ein Timer feuert während seines eigenen Callbacks nicht
+                    // erneut. Das Öffnen darf daher in einer modalen Menüschleife
+                    // nicht den Timer für die anschließende Auswahl festhalten.
+                    DispatchQueue.main.async { _ = root.accessibilityPerformPress() }
+                }
+                try require(selected, "Textabläufe-Menü nicht bedienbar")
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                try source.write(to: file, atomically: true, encoding: .utf8)
+                var loaded = false
+                ws.loadFile(at: file) { loaded = $0 }
+                window.setContentSize(NSSize(width: 1100, height: 700))
+                NSApp.appearance = NSAppearance(named: .aqua)
+                activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                try await wait { loaded && CommandTargeting.editorTextView(for: ws)?.string == source }
+                stage = "Echtes Textmenü"
+                try await openMenu()
+                try await wait { ws.textWorkflowSession != nil && !window.sheets.isEmpty }
+                let sheet = window.sheets[0], session = ws.textWorkflowSession!
+                stage = "Name eingeben"
+                try require(click("textWorkflowName", in: sheet), "Namensfeld fehlt")
+                try await wait { (sheet.firstResponder as? NSTextView)?.isFieldEditor == true }
+                guard let field = sheet.firstResponder as? NSTextView else { throw NSError(domain: "TextWorkflowSelfTest", code: 3) }
+                field.selectAll(nil); field.insertText("Native Workflow 😀", replacementRange: NSRange(location: 0, length: field.string.utf16.count))
+                try await wait { session.definition.name == "Native Workflow 😀" }
+                stage = "Schritt hinzufügen"
+                var chosen = false
+                var menuTimer: Timer?
+                let observer = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { notification in
+                    guard let menu = notification.object as? NSMenu else { return }
+                    var ticks = 0
+                    menuTimer?.invalidate()
+                    menuTimer = Timer(timeInterval: 0.05, repeats: true) { _ in
+                        ticks += 1
+                        if let item = menu.items.first(where: { $0.title == TextOpKind.uppercase.title }), item.isEnabled {
+                            menuTimer?.invalidate(); menuTimer = nil
+                            chosen = true
+                            _ = item.accessibilityPerformPress()
+                        } else if ticks >= 200 { menuTimer?.invalidate(); menuTimer = nil; menu.cancelTracking() }
+                    }
+                    if let menuTimer { RunLoop.main.add(menuTimer, forMode: .common); RunLoop.main.add(menuTimer, forMode: .eventTracking) }
+                }
+                try require(click("textWorkflowAddStep", in: sheet), "Schritte-Menü fehlt")
+                try await wait { chosen && session.definition.steps.count == 2 }
+                NotificationCenter.default.removeObserver(observer)
+                try require(click("textWorkflowSave", in: sheet), "Speichern fehlt")
+                try await wait { !session.dirty && session.saved.count == 1 }
+                stage = "Vorschau"
+                try require(click("textWorkflowPreview", in: sheet), "Vorschaubutton fehlt")
+                try await wait { session.canApply && session.preview?.output == expected }
+                try require(ws.activeTab?.content == source && (try? String(contentsOf: file, encoding: .utf8)) == source, "Vorschau schreibt vor Apply")
+                try await requirePreviewVisible(in: sheet)
+                await capture("workflow-light-wide", in: sheet)
+                stage = "Schrittvorschau"
+                try require(click("textWorkflowPreviewChoice", in: sheet), "Vorschau-Auswahl fehlt")
+                try await Task.sleep(for: .milliseconds(350))
+                postKey("\u{F701}", keyCode: 125, windowNumber: sheet.windowNumber)
+                postKey("\r", keyCode: 36, windowNumber: sheet.windowNumber)
+                try await wait { session.selectedPreview == 0 && session.diffDocument != nil }
+                try require(!session.canApply, "Zwischenergebnis darf nicht als Gesamtergebnis angewendet werden")
+                try await requirePreviewVisible(in: sheet)
+                await capture("workflow-step-preview", in: sheet)
+                stage = "Schrittmenü vollständig geschlossen"
+                try await wait { trackingMenus.isEmpty && sheet.isKeyWindow && NSApp.isActive }
+                // Der native Pop-up-Button nimmt während seiner Schließanimation
+                // noch keinen zweiten Klick an. Die schnelle Mini-Vorschau kann
+                // ihren Diff vorher bereits geliefert haben.
+                try await Task.sleep(for: .milliseconds(400))
+                stage = "Gesamtergebnis über sichtbaren Menüeintrag"
+                diagnose("Vor Rückwechsel zur Gesamtvorschau")
+                try require(click("textWorkflowPreviewChoice", in: sheet), "Gesamtergebnis-Auswahl fehlt")
+                try await Task.sleep(for: .milliseconds(350))
+                postKey("\u{F700}", keyCode: 126, windowNumber: sheet.windowNumber)
+                postKey("\r", keyCode: 36, windowNumber: sheet.windowNumber)
+                try await wait { session.selectedPreview == -1 && session.canApply }
+                for (name, appearance, width) in [
+                    ("workflow-light-minimum", NSAppearance.Name.aqua, CGFloat(900)),
+                    ("workflow-dark-wide", NSAppearance.Name.darkAqua, CGFloat(1100)),
+                    ("workflow-dark-minimum", NSAppearance.Name.darkAqua, CGFloat(900))
+                ] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    sheet.setContentSize(NSSize(width: width, height: 760))
+                    try await Task.sleep(for: .milliseconds(300))
+                    try await requirePreviewVisible(in: sheet)
+                    await capture(name, in: sheet)
+                }
+                stage = "Apply und natives Undo"
+                try require(click("textWorkflowApply", in: sheet), "Apply fehlt")
+                try await wait { ws.textWorkflowSession == nil && ws.activeTab?.content == expected }
+                try require((try? String(contentsOf: file, encoding: .utf8)) == source, "Apply schreibt ungefragt auf Platte")
+                guard let editor = CommandTargeting.editorTextView(for: ws) else { throw NSError(domain: "TextWorkflowSelfTest", code: 4) }
+                stage = "Dokument: Editor nach Sheet fokussieren"
+                try await wait { window.sheets.isEmpty && window.isKeyWindow }
+                try require(window.makeFirstResponder(editor), "Editor nahm nach dem Sheet keinen Fokus an")
+                try await wait { window.firstResponder === editor }
+                diagnose("Vor nativem Undo")
+                stage = "Dokument: natives Undo"
+                postHistoryKey(windowNumber: window.windowNumber)
+                try await wait { ws.activeTab?.content == source }
+                diagnose("Nach nativem Undo")
+                stage = "Dokument: natives Redo"
+                try await wait { editor.undoManager?.canRedo == true }
+                try await redoFromEditMenu()
+                try await wait { ws.activeTab?.content == expected }
+                try await Task.sleep(for: .milliseconds(300))
+                await capture("workflow-after-redo", in: window)
+                ws.saveActiveTab()
+                try await wait { ws.activeTab?.isDirty == false && (try? String(contentsOf: file, encoding: .utf8)) == expected }
+                stage = "Gespeicherten Ablauf erneut öffnen"
+                try await openMenu()
+                try await wait { ws.textWorkflowSession?.definition.name == "Native Workflow 😀" && !window.sheets.isEmpty }
+                try require(ws.textWorkflowSession?.definition.steps.count == 2, "Gespeicherte Schritte fehlen")
+                try require(click("textWorkflowClose", in: window.sheets[0]), "Schließen fehlt")
+                try await wait { ws.textWorkflowSession == nil && window.sheets.isEmpty && window.isKeyWindow }
+                stage = "Datei schließen und erneut öffnen"
+                let closedID = ws.activeTabID!
+                ws.openNewTab()
+                try await wait { ws.activeTabID != closedID }
+                ws.closeTab(id: closedID)
+                try await wait { !ws.tabs.contains(where: { $0.id == closedID }) }
+                loaded = false
+                ws.loadFile(at: file) { loaded = $0 }
+                try await wait { loaded && ws.activeTab?.content == expected && CommandTargeting.editorTextView(for: ws)?.string == expected }
+                stage = "Auswahl: Editor nach Wiederöffnen bereit"
+                try await wait { window.sheets.isEmpty && window.isKeyWindow }
+                try await Task.sleep(for: .milliseconds(300))
+                guard let selectionEditor = CommandTargeting.editorTextView(for: ws) else { throw NSError(domain: "TextWorkflowSelfTest", code: 5) }
+                try require(window.makeFirstResponder(selectionEditor), "Auswahleditor nahm keinen Fokus an")
+                selectionEditor.insertText("b", replacementRange: NSRange(location: 0, length: 1))
+                let selectionSource = "b\nA\n"
+                try await wait { ws.activeTab?.content == selectionSource }
+                try await Task.sleep(for: .milliseconds(300))
+                try require(CommandTargeting.editorTextView(for: ws) === selectionEditor, "Editor wurde während der Auswahlvorbereitung ersetzt")
+                selectionEditor.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+                stage = "Auswahl: echte Shift-Pfeiltaste"
+                postKey("\u{F703}", keyCode: 124, windowNumber: window.windowNumber, modifiers: .shift)
+                try await wait { selectionEditor.fastraSafeSelectedRange == NSRange(location: 0, length: 1) }
+                diagnose("Vor Öffnen der Auswahlvorschau")
+                stage = "Auswahl: Snapshot im nativen Dialog"
+                try await openMenu()
+                try await wait { ws.textWorkflowSession?.snapshot.selection == NSRange(location: 0, length: 1) && !window.sheets.isEmpty }
+                let selectionSheet = window.sheets[0], selectionSession = ws.textWorkflowSession!
+                func segmentedControl(in view: NSView) -> NSSegmentedControl? {
+                    if let control = view as? NSSegmentedControl, control.segmentCount == 2 { return control }
+                    return view.subviews.lazy.compactMap { segmentedControl(in: $0) }.first
+                }
+                guard let root = selectionSheet.contentView, let control = segmentedControl(in: root) else { throw NSError(domain: "TextWorkflowSelfTest", code: 6) }
+                let point = control.convert(NSPoint(x: control.bounds.width * 0.75, y: control.bounds.midY), to: nil)
+                try require(sendMouseClick(at: point, in: selectionSheet, modifiers: [], viaApp: true), "Auswahlsegment nicht bedienbar")
+                stage = "Auswahl: Wirkbereich umschalten"
+                try await wait { selectionSession.selectionOnly }
+                stage = "Auswahl: Vorschau berechnen"
+                try require(click("textWorkflowPreview", in: selectionSheet), "Auswahlvorschau fehlt")
+                try await wait { selectionSession.canApply && selectionSession.preview?.output == expected }
+                try require(ws.activeTab?.content == selectionSource, "Auswahlvorschau verändert das Dokument")
+                try await requirePreviewVisible(in: selectionSheet)
+                await capture("workflow-selection-preview", in: selectionSheet)
+                try require(click("textWorkflowApply", in: selectionSheet), "Auswahl anwenden fehlt")
+                try await wait { ws.textWorkflowSession == nil && ws.activeTab?.content == expected }
+                try await wait { window.sheets.isEmpty && window.isKeyWindow }
+                try require(window.makeFirstResponder(selectionEditor), "Auswahleditor nahm nach dem Sheet keinen Fokus an")
+                stage = "Auswahl: natives Undo"
+                postHistoryKey(windowNumber: window.windowNumber)
+                try await wait { ws.activeTab?.content == selectionSource }
+                try require((try? String(contentsOf: file, encoding: .utf8)) == expected, "Auswahl-Apply oder Undo schreibt ungefragt auf Platte")
+                if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+                NotificationCenter.default.removeObserver(menus)
+                NotificationCenter.default.removeObserver(menusEnded)
+                finish(true, "Echtes Textmenü, Name, Schritte-Menü, Speichern, native Schritt-/Endvorschau, Dokument/Auswahl, Apply, natives Undo/Redo, Datei speichern, schließen/wiederöffnen und Ablauf neu laden; hell/dunkel bei Mindestgröße und breit geprüft")
+            } catch {
+                diagnose("Fehler")
+                if stage == "Dokument: natives Redo" {
+                    diagnostics.append("Direkte native Redo-Aktion: \(NSApp.sendAction(NSSelectorFromString("redo:"), to: nil, from: nil))")
+                    try? await Task.sleep(for: .milliseconds(300))
+                    diagnose("Nach direkter nativer Redo-Aktion")
+                }
+                fputs((diagnostics.joined(separator: "\n") + "\n").cString(using: .utf8)!, stderr)
+                if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+                NotificationCenter.default.removeObserver(menus)
+                NotificationCenter.default.removeObserver(menusEnded)
+                await capture("workflow-failure", in: window.sheets.first ?? window)
+                finish(false, "Textabläufe [\(stage)]: \(error.localizedDescription); Fehler=\(ws.textWorkflowSession?.error ?? "keiner")")
+            }
+        }
+    }
+
     private static func runTextOpTest() {
         testLabel = "textop"
         guard let ws = Workspace.shared else {
@@ -15788,13 +16913,28 @@ enum SelfTest {
                     + "(erwartet ≥ \(HelpSection.allCases.count)) — \(book.summary)")
             },
             then: {
-                // (c) Anker-Sprung: Abschnitt weiter unten ansteuern.
-                MainActor.assumeIsolated {
-                    HelpWindow.show(anchor: HelpSection.encodings.anchor())
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    pollHelpAnchorScrolled(webView: webView, workspace: workspace,
-                                           tabSnapshot: tabSnapshot)
+                Task { @MainActor in
+                    do {
+                        let code = try await webView.evaluateJavaScript("document.querySelector('pre > code')?.textContent")
+                        guard let code = code as? String, !code.isEmpty else {
+                            finish(false, "Hilfe enthält keinen prüfbaren Codeblock")
+                        }
+                        prepareSelfTestPasteboardMutationOrFinish()
+                        _ = try await webView.evaluateJavaScript("document.querySelector('.fastra-code-copy')?.click()")
+                        try await nativeUIWait("Hilfecode vollständig kopiert") {
+                            NSPasteboard.general.string(forType: .string) == code
+                        }
+                        noteSelfTestPasteboardMutationOrFinish(expectedItems: try plainTextPasteboardItems(code))
+                        let label = try await webView.evaluateJavaScript("document.querySelector('.fastra-code-copy')?.getAttribute('aria-label')")
+                        guard label as? String == L10n.string("Code kopiert") else {
+                            finish(false, "Codekopie zeigt keine Erfolgsrückmeldung")
+                        }
+                        HelpWindow.show(anchor: HelpSection.encodings.anchor())
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            pollHelpAnchorScrolled(webView: webView, workspace: workspace,
+                                                   tabSnapshot: tabSnapshot)
+                        }
+                    } catch { finish(false, "Codekopie in der Hilfe: " + error.localizedDescription) }
                 }
             }
         )
@@ -16164,6 +17304,69 @@ enum SelfTest {
                 })
     }
 
+    @MainActor
+    private static func verifyPathCopyMenus(_ workspace: Workspace) async throws {
+        guard let window = CommandTargeting.registeredWindow(for: workspace), let root = window.contentView,
+              let tab = workspace.activeTab, let file = tab.url, let project = workspace.projectURL else {
+            throw NSError(domain: "PathCopyMenu", code: 1)
+        }
+        for (markerID, expected) in [
+            ("sidebarProjectHeader", project.standardizedFileURL.path),
+            ("fileTreeRow-\(file.lastPathComponent)-voll", file.standardizedFileURL.path),
+            ("documentTab-current-\(tab.id.uuidString)", file.standardizedFileURL.path)
+        ] {
+            guard let marker = markerView(id: markerID, in: root) else {
+                throw NSError(domain: "PathCopyMenu", code: 2, userInfo: [NSLocalizedDescriptionKey: "Kontextmenü-Anker fehlt: \(markerID)"])
+            }
+            let rect = marker.convert(marker.bounds, to: nil)
+            let point = NSPoint(x: rect.midX, y: rect.midY)
+            var shown: NSMenu?, timer: Timer?, done = false, selected = false, ticks = 0
+            let observer = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { notification in
+                if let menu = notification.object as? NSMenu { shown = menu }
+            }
+            NSPasteboard.general.clearContents()
+            timer = Timer(timeInterval: 0.05, repeats: true) { _ in
+                ticks += 1
+                guard let menu = shown else { if ticks >= 100 { done = true; timer?.invalidate() }; return }
+                let items = menu.items.filter { $0.title == L10n.string("Pfad kopieren") }
+                if items.count == 1, let item = items.first, item.isEnabled,
+                   menu.items.contains(where: { $0.title == L10n.string("Im Finder zeigen…") }) {
+                    if !selected {
+                        if menu.highlightedItem === item {
+                            selected = true
+                            postKey("\r", keyCode: 36, windowNumber: window.windowNumber)
+                        } else {
+                            postKey("\u{F701}", keyCode: 125, windowNumber: window.windowNumber)
+                        }
+                    } else if NSPasteboard.general.string(forType: .string) == expected {
+                        timer?.invalidate(); timer = nil; done = true
+                    }
+                    if ticks >= 100 { timer?.invalidate(); menu.cancelTracking(); done = true }
+                } else if ticks >= 100 { timer?.invalidate(); menu.cancelTracking(); done = true }
+            }
+            if let timer { RunLoop.main.add(timer, forMode: .common); RunLoop.main.add(timer, forMode: .eventTracking) }
+            for type in [NSEvent.EventType.rightMouseDown, .rightMouseUp] {
+                if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                    context: nil, eventNumber: 0, clickCount: 1, pressure: type == .rightMouseUp ? 0 : 1) {
+                    NSApp.postEvent(event, atStart: false)
+                }
+            }
+            for _ in 0..<220 { if done { break }; try await Task.sleep(for: .milliseconds(25)) }
+            if selected {
+                for _ in 0..<200 {
+                    if NSPasteboard.general.string(forType: .string) == expected { break }
+                    try await Task.sleep(for: .milliseconds(25))
+                }
+            }
+            timer?.invalidate(); shown?.cancelTracking(); NotificationCenter.default.removeObserver(observer)
+            guard selected, NSPasteboard.general.string(forType: .string) == expected else {
+                throw NSError(domain: "PathCopyMenu", code: 3, userInfo: [NSLocalizedDescriptionKey: "Echter Pfad-kopieren-Befehl fehlgeschlagen: \(markerID), gedrückt=\(selected), erwartet=\(expected), Clipboard=\(NSPasteboard.general.string(forType: .string) ?? "nil")"])
+            }
+            FileHandle.standardError.write(Data("PATH_COPY_MENU passed \(markerID)\n".utf8))
+        }
+    }
+
     /// Prüft im ECHTEN Fenster (Etappe 1 Wunschpaket 2026-07b):
     /// (a) Nach dem Projekt-Öffnen erscheint der gemeinsame Seitenleisten-
     ///     Kopf (`sidebarProjectHeader`) im Accessibility-Baum.
@@ -16217,8 +17420,15 @@ enum SelfTest {
                 then: {
                     // (c) Ungespeicherter Tab bietet nur die Text-Ansicht — der
                     // Umschalter muss aus der Fußzeile verschwinden.
-                    ws.openNewTab()
-                    pollViewModePickerGone(base: base)
+                    Task { @MainActor in
+                        do { try await verifyPathCopyMenus(ws) }
+                        catch {
+                            try? FileManager.default.removeItem(at: base)
+                            finish(false, "Finder-Kontextmenüs: \(error.localizedDescription)")
+                        }
+                        ws.openNewTab()
+                        pollViewModePickerGone(base: base)
+                    }
                 })
     }
 
@@ -16269,6 +17479,7 @@ enum SelfTest {
                     }
                 }
             }
+            var optionsObserver: NSObjectProtocol?
             do {
                 let source = "Leerzeichen  zwischen Wörtern\n\tTabulator\nEnde 😀\n"
                 // Eigenes Dokument statt des möglicherweise asynchronen
@@ -16286,6 +17497,19 @@ enum SelfTest {
                 guard let gear = markerView(id: "editorOptionsButton", in: root) else {
                     finish(false, "Zahnrad fehlt")
                 }
+                var shownOptions: NSPopover?
+                let popoverObserver = NotificationCenter.default.addObserver(
+                    forName: NSPopover.didShowNotification, object: nil, queue: .main
+                ) { notification in
+                    MainActor.assumeIsolated {
+                        guard let popover = notification.object as? NSPopover,
+                              let content = popover.contentViewController?.view,
+                              markerViewExists(id: "editorOptionsPopover", in: content) else { return }
+                        shownOptions = popover
+                        FileHandle.standardError.write(Data("EDITOR_OPTIONS_POPOVER_DID_SHOW\n".utf8))
+                    }
+                }
+                optionsObserver = popoverObserver
                 try require(sendMouseClick(at: gear.convert(NSPoint(x: gear.bounds.midX, y: gear.bounds.midY), to: nil),
                                            in: window, modifiers: [], viaApp: true), "Zahnrad nicht klickbar")
                 var panel: NSWindow?
@@ -16293,10 +17517,11 @@ enum SelfTest {
                     panel = NSApp.windows.first { candidate in
                         candidate.contentView.map { markerViewExists(id: "editorOptionsPopover", in: $0) } == true
                     }
-                    return panel != nil
+                    return panel != nil && shownOptions?.isShown == true
                 }
                 guard let panel, let panelRoot = panel.contentView,
                       let toggle = markerView(id: "showInvisiblesToggle", in: panelRoot) else {
+                    NotificationCenter.default.removeObserver(popoverObserver)
                     finish(false, "Popover oder Zeichenschalter fehlt")
                 }
                 // Die Markierung existiert schon während der Öffnungsanimation.
@@ -16439,8 +17664,10 @@ enum SelfTest {
                     }
                 }
                 try require(ws.activeTab?.content == markdown, "Ansichtswechsel änderte Markdown")
+                if let optionsObserver { NotificationCenter.default.removeObserver(optionsObserver) }
                 finish(true, "Zahnrad, Popover, echter Menüpfad, drei Zeichenarten, Unteroptionen, unveränderter Text/Auswahl/Änderungsstatus und beide Markdown-Ansichten bei 760/1100 pt geprüft")
             } catch {
+                if let optionsObserver { NotificationCenter.default.removeObserver(optionsObserver) }
                 finish(false, error.localizedDescription)
             }
         }
@@ -18197,13 +19424,791 @@ enum SelfTest {
                 then: { evaluate() })
     }
 
-    /// Prüft den git-losen Datei-Vergleich im ECHTEN Fenster:
-    /// (a) „Dateien vergleichen…" öffnet wirklich ein Sheet.
-    /// (b) Zwei Fixture-Dateien mit drei bekannten Unterschieden rendern
-    ///     einen Diff-Tab mit drei Blöcken (Marker `fileDiffState-b3-c-1`).
-    /// (c) Ein ECHTER Mausklick auf den letzten Eintrag der Differenzen-
-    ///     Liste wählt ihn aus (Marker `…-c2`) und scrollt den Diff dorthin
-    ///     (Scrollposition ändert sich beobachtbar).
+    /// Prüft echte Blockbefehle, die genaue Bestätigung und natives Undo/Redo
+    /// einschließlich aktueller Diffs beim Zurückwechseln.
+    @MainActor
+    private static func nativeUIWait(_ detail: String, _ condition: @MainActor () -> Bool) async throws {
+        var budget = SelfTestPollBudget(budget: 10, pause: 0.03, hardCap: 18,
+            now: ProcessInfo.processInfo.systemUptime)
+        while !condition() {
+            guard budget.recordMiss(now: ProcessInfo.processInfo.systemUptime) == .keepWaiting else {
+                throw NSError(domain: "NativeUISelfTest", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Nicht bereit: " + detail])
+            }
+            try await Task.sleep(for: .milliseconds(30))
+        }
+    }
+
+    @MainActor
+    private static func stableMarkerClick(_ id: String, in target: NSWindow, stage: String,
+                                          repetitions: Int = 1) async throws {
+        target.makeKeyAndOrderFront(nil)
+        var previous: (marker: NSView, point: NSPoint, window: NSRect)?
+        var stableTicks = 0
+        var found: NSPoint?
+        try await nativeUIWait(stage + " / Stabile Klickposition: " + id) {
+            target.layoutIfNeeded()
+            guard let root = target.contentView, let marker = markerView(id: id, in: root),
+                  marker.window === target, !marker.isHiddenOrHasHiddenAncestor else {
+                previous = nil; stableTicks = 0; return false
+            }
+            let point = marker.convert(NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil)
+            guard root.visibleRect.contains(root.convert(point, from: nil)) else {
+                previous = nil; stableTicks = 0; return false
+            }
+            // Gepostete Events kommen später an. Eine ein-/ausfahrende
+            // Seitenleiste darf den Knopf bis dahin nicht verschieben.
+            let stable = previous.map {
+                $0.marker === marker && $0.window == target.frame
+                    && abs($0.point.x - point.x) < 0.5 && abs($0.point.y - point.y) < 0.5
+            } ?? false
+            stableTicks = stable ? stableTicks + 1 : 0
+            previous = (marker, point, target.frame)
+            guard stableTicks >= 3 else { return false }
+            found = point
+            let hit = root.hitTest(root.convert(point, from: nil))
+            FileHandle.standardError.write(Data(("NATIVE_UI_CLICK stage=\(stage) id=\(id) point=\(point) hit=\(hit.map { String(describing: type(of: $0)) } ?? "nil")\n").utf8))
+            return true
+        }
+        guard let found else { throw NSError(domain: "NativeUISelfTest", code: 2) }
+        for _ in 0..<repetitions {
+            guard sendMouseClick(at: found, in: target, modifiers: [], viaApp: true) else {
+                throw NSError(domain: "NativeUISelfTest", code: 3,
+                    userInfo: [NSLocalizedDescriptionKey: "Klick fehlgeschlagen: " + id])
+            }
+        }
+    }
+
+    private static func runMarkdownReferencesTest() {
+        testLabel = "mdreferences"
+        Task { @MainActor in
+            guard let workspace = Workspace.shared,
+                  let window = CommandTargeting.registeredWindow(for: workspace) else { finish(false, "Dokumentfenster fehlt") }
+            let base = selfTestTemporaryDirectory().appendingPathComponent("fastra-references-native-\(UUID().uuidString)")
+            let appearance = NSApp.appearance
+            let gate = DispatchSemaphore(value: 0)
+            let controller = workspace.markdownReferences
+            var stage = "Fixture"
+            @MainActor func cleanup() {
+                gate.signal(); controller.close(); NSApp.appearance = appearance
+                try? FileManager.default.removeItem(at: base)
+            }
+            func require(_ ok: Bool, _ message: String) throws {
+                if !ok { throw NSError(domain: "MarkdownReferencesSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            func value<T>(_ input: T?, _ message: String) throws -> T {
+                guard let input else { throw NSError(domain: "MarkdownReferencesSelfTest", code: 2, userInfo: [NSLocalizedDescriptionKey: message]) }
+                return input
+            }
+            @MainActor func wait(_ detail: String, _ condition: @MainActor () -> Bool) async throws {
+                try await nativeUIWait(stage + " / " + detail, condition)
+            }
+            @MainActor func click(_ marker: String, in target: NSWindow) async throws {
+                try await stableMarkerClick(marker, in: target, stage: stage)
+            }
+            @MainActor func matrix(_ name: String, in target: NSWindow, minimum: CGFloat = 640) async throws {
+                guard let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { return }
+                for (mode, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    for width in [minimum, 1100] {
+                        target.setContentSize(NSSize(width: width, height: 720))
+                        try await Task.sleep(for: .milliseconds(350))
+                        try require(abs((target.contentView?.bounds.width ?? 0) - width) < 1, "Breite stimmt nicht")
+                        let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { continuation in
+                            typeScrollCapture(window: target) { continuation.resume(returning: $0) }
+                        }
+                        guard let snapshot, snapshot.source == "screen" else { cleanup(); finish(.environment, "Echte Fensteraufnahme fehlt: " + name) }
+                        let url = URL(fileURLWithPath: output).appendingPathComponent(name + "-" + mode + "-\(Int(width)).png")
+                        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try snapshot.data.write(to: url)
+                    }
+                }
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                let source = "# Gleich\r\n\r\n## Gleich\r\n\r\n[Mehrdeutig](#gleich)\r\n[Fehlt](missing.md)\r\n![Bild](bild%231.png)\r\n[Ziel][ref]\r\n[Netz](https://example.invalid)\r\n\r\n[ref]: target.md#titel\r\n"
+                let expectedOffset = "# Gleich\r\n\r\n## Gleich\r\n\r\n[Mehrdeutig](#gleich)\r\n".utf16.count
+                let sourceURL = base.appendingPathComponent("doc.md")
+                try Data(source.utf8).write(to: sourceURL)
+                try Data("# Titel\n".utf8).write(to: base.appendingPathComponent("target.md"))
+                try Data([0, 255, 1]).write(to: base.appendingPathComponent("bild#1.png"))
+                var tab = EditorTab(title: "doc.md", path: sourceURL.path, url: sourceURL, content: source, isDirty: true)
+                tab.markdownVisualOverride = false
+                workspace.tabs = [tab]; workspace.activeTabID = tab.id
+                workspace.projectURL = base
+                NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                stage = "Markdown-Menü"
+                try await wait("Aktives Dokument") { NSApp.isActive && window.isKeyWindow && workspace.activeTabIsMarkdown }
+                guard let main = NSApp.mainMenu, let root = main.items.first(where: { $0.title == "Markdown" }), let menu = root.submenu else { throw NSError(domain: "MarkdownReferenceMenu", code: 1) }
+                let menuError: String? = await withCheckedContinuation { continuation in
+                    var tracking = false, ticks = 0
+                    let observer = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: main, queue: .main) { _ in tracking = true }
+                    var timer: Timer?
+                    timer = Timer(timeInterval: 0.05, repeats: true) { _ in
+                        ticks += 1
+                        if tracking, let item = menu.items.first(where: { $0.title == L10n.string("Lokale Verweise prüfen…") }), item.isEnabled {
+                            timer?.invalidate(); timer = nil; NotificationCenter.default.removeObserver(observer)
+                            menu.performActionForItem(at: menu.index(of: item)); menu.cancelTracking(); main.cancelTracking()
+                            continuation.resume(returning: nil)
+                        } else if ticks >= 100 {
+                            timer?.invalidate(); timer = nil; NotificationCenter.default.removeObserver(observer)
+                            menu.cancelTracking(); main.cancelTracking(); continuation.resume(returning: "Menüeintrag fehlt oder bleibt deaktiviert")
+                        }
+                    }
+                    if let timer { RunLoop.main.add(timer, forMode: .common); RunLoop.main.add(timer, forMode: .eventTracking) }
+                    DispatchQueue.main.async { _ = root.accessibilityPerformPress() }
+                }
+                try require(menuError == nil, menuError ?? "")
+                try await wait("Leeres Sheet") { window.attachedSheet?.contentView.flatMap { markerView(id: "referenceStart", in: $0) } != nil }
+                let sheet = try value(window.attachedSheet, "Sheet fehlt")
+                try await matrix("reference-empty", in: sheet)
+                stage = "Befundliste"
+                try await click("referenceStart", in: sheet)
+                try await wait("Prüfung vollständig") { controller.report?.isComplete == true && !controller.running }
+                let report = try value(controller.report, "Bericht fehlt")
+                try require(report.findings.map(\.status) == [.ambiguous, .missing, .valid, .valid] && report.remoteCount == 1, "Lokale Ergebnisse falsch")
+                try await matrix("reference-problems", in: sheet)
+                @MainActor func toggleProblems() async throws {
+                    var point: NSPoint?
+                    var previous: NSPoint?
+                    var stable = 0
+                    try await wait("Checkbox-Geometrie") {
+                        sheet.layoutIfNeeded()
+                        guard let root = sheet.contentView,
+                              let marker = markerView(id: "referenceProblemsOnly", in: root),
+                              marker.bounds.width > 20, marker.bounds.height > 10 else { return false }
+                        // Das Kästchen liegt am linken Rand der gemessenen Toggle-Zeile;
+                        // deren Mitte kann weit rechts im leeren Hintergrund liegen.
+                        let next = marker.convert(NSPoint(x: marker.bounds.minX + marker.bounds.height / 2,
+                                                          y: marker.bounds.midY), to: nil)
+                        stable = previous == next ? stable + 1 : 0
+                        previous = next; point = next
+                        return stable >= 3
+                    }
+                    try require(sendMouseClick(at: try value(point, "Filterposition fehlt"), in: sheet,
+                                               modifiers: [], viaApp: true), "Filterklick fehlt")
+                }
+                stage = "Problemfilter ausschalten"
+                try await toggleProblems()
+                try await wait("Alle vier Befunde sichtbar") {
+                    guard let root = sheet.contentView else { return false }
+                    return markerViewExists(id: "referenceFilterOff", in: root)
+                        && markerViewExists(id: "referenceFinding-7", in: root)
+                        && markerViewExists(id: "referenceFinding-8", in: root)
+                }
+                try await matrix("reference-results", in: sheet)
+                stage = "Problemfilter einschalten"
+                try await toggleProblems()
+                try await wait("Nur zwei Probleme sichtbar") {
+                    guard let root = sheet.contentView else { return false }
+                    return markerViewExists(id: "referenceFilterOn", in: root)
+                        && !markerViewExists(id: "referenceFinding-7", in: root)
+                        && !markerViewExists(id: "referenceFinding-8", in: root)
+                }
+                stage = "Projektbereich"
+                func segmentedControl(in view: NSView) -> NSSegmentedControl? {
+                    if let control = view as? NSSegmentedControl, control.segmentCount == 2 { return control }
+                    return view.subviews.lazy.compactMap { segmentedControl(in: $0) }.first
+                }
+                let control = try value(sheet.contentView.flatMap { segmentedControl(in: $0) }, "Bereichsauswahl fehlt")
+                let point = control.convert(NSPoint(x: control.bounds.width * 0.75, y: control.bounds.midY), to: nil)
+                try require(sendMouseClick(at: point, in: sheet, modifiers: [], viaApp: true), "Projektbereich nicht bedienbar")
+                try await wait("Projekt ausgewählt") { sheet.contentView.flatMap { markerView(id: "referenceScopeProject", in: $0) } != nil }
+                try require(controller.report == nil && !controller.running, "Alter Bericht überlebt Bereichswechsel")
+                try await click("referenceStart", in: sheet)
+                try await wait("Projekt vollständig geprüft") { controller.report?.sources.count == 2 && controller.report?.isComplete == true && !controller.running }
+                try await matrix("reference-project", in: sheet)
+                stage = "Nativer Quellsprung"
+                try await click("referenceFinding-6", in: sheet)
+                try await wait("Sprung freigegeben") { sheet.contentView.flatMap { markerView(id: "referenceJumpReady", in: $0) } != nil }
+                try await click("referenceJumpReady", in: sheet)
+                try await wait("Geprüfte Quellposition") {
+                    window.attachedSheet == nil && workspace.activeTab?.documentID == tab.documentID
+                        && CommandTargeting.editorTextView(for: workspace)?.fastraSafeSelectedRange.location == expectedOffset
+                }
+                try await matrix("reference-source", in: window, minimum: MainWindowSizing.minimumWidth)
+                stage = "Prüfung aus WYSIWYG"
+                try await click("markdownEditingModeButton", in: window)
+                try await wait("Visueller Editor bereit") { workspace.activeMarkdownIsVisual && workspace.visualMarkdownEditor?.ready == true }
+                controller.present(in: workspace)
+                try await wait("Synchronisiertes Sheet") { window.attachedSheet != nil }
+                let visualSheet = try value(window.attachedSheet, "Visuelles Prüfsheet fehlt")
+                try await click("referenceStart", in: visualSheet)
+                try await wait("Visuelle Quelle geprüft") { controller.report?.findings.count == 4 && !controller.running }
+                try require(workspace.activeTab?.content.utf8.elementsEqual(source.utf8) == true, "Visuelle Prüfung änderte Quelle")
+                try await matrix("reference-from-visual", in: visualSheet)
+                try await click("referenceFinding-6", in: visualSheet)
+                try await click("referenceJumpReady", in: visualSheet)
+                try await wait("Visueller Quellsprung") {
+                    window.attachedSheet == nil && !workspace.activeMarkdownIsVisual
+                        && CommandTargeting.editorTextView(for: workspace)?.fastraSafeSelectedRange.location == expectedOffset
+                }
+                stage = "Veraltete Quelle"
+                controller.present(in: workspace)
+                try await wait("Sheet erneut geöffnet") { window.attachedSheet != nil }
+                let staleSheet = try value(window.attachedSheet, "Sheet fehlt")
+                try await click("referenceStart", in: staleSheet)
+                try await wait("Erneut geprüft") { controller.report != nil && !controller.running }
+                workspace.tabs[0].content = source + "\r\nGeändert\r\n"
+                try await wait("Veralteter Bericht erkannt") { controller.hasChanged(in: workspace) }
+                try await matrix("reference-stale", in: staleSheet)
+                try await click("referenceFinding-6", in: staleSheet)
+                try await click("referenceJumpReady", in: staleSheet)
+                try await wait("Sprung abgewiesen") { controller.notice != nil && window.attachedSheet != nil }
+                stage = "Abbruch während Renderqueue belegt"
+                MarkdownRichText.renderQueue.async { _ = gate.wait(timeout: .now() + 10) }
+                try await click("referenceStart", in: staleSheet)
+                try await wait("Prüfung läuft") { controller.running && controller.progress != nil }
+                try await click("referenceCancel", in: staleSheet)
+                gate.signal()
+                try await wait("Abbruch sichtbar") { controller.cancelled && !controller.running }
+                try await matrix("reference-cancelled", in: staleSheet)
+                try require(try Data(contentsOf: sourceURL) == Data(source.utf8), "Quelldatei geschrieben")
+                try require(workspace.tabs.count == 1 && workspace.tabs[0].content.utf8.elementsEqual((source + "\r\nGeändert\r\n").utf8), "Speicherquelle verändert")
+                cleanup(); finish(true, "Lokale Verweise: echtes Markdown-Menü, Liste/Filter, Quellsprung, stale Guard, Abbruch und unveränderte Dateien")
+            } catch {
+                if let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] {
+                    let target = window.attachedSheet ?? window
+                    let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { continuation in typeScrollCapture(window: target) { continuation.resume(returning: $0) } }
+                    if let snapshot { try? snapshot.data.write(to: URL(fileURLWithPath: output).appendingPathComponent("failure.png")) }
+                }
+                cleanup(); finish(false, stage + ": " + error.localizedDescription)
+            }
+        }
+    }
+
+    private static func runFolderComparisonTest() {
+        testLabel = "foldercompare"
+        Task { @MainActor in
+            guard let workspace = Workspace.shared,
+                  let window = CommandTargeting.registeredWindow(for: workspace) else { finish(false, "Dokumentfenster fehlt") }
+            let base = selfTestTemporaryDirectory().appendingPathComponent("fastra-folder-native-\(UUID().uuidString)")
+            let left = base.appendingPathComponent("left"), right = base.appendingPathComponent("right")
+            let blocked = left.appendingPathComponent("blocked")
+            let appearance = NSApp.appearance
+            var stage = "Fixture"
+            @MainActor func cleanup() {
+                workspace.fileDiffComputations.cancelAll()
+                NSApp.appearance = appearance
+                try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: blocked.path)
+                try? FileManager.default.removeItem(at: base)
+            }
+            func require(_ ok: Bool, _ message: String) throws {
+                if !ok { throw NSError(domain: "FolderComparisonSelfTest", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            func value<T>(_ input: T?, _ message: String) throws -> T {
+                guard let input else { throw NSError(domain: "FolderComparisonSelfTest", code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: message]) }
+                return input
+            }
+            @MainActor func wait(_ detail: String, _ condition: @MainActor () -> Bool) async throws {
+                try await nativeUIWait(stage + " / " + detail, condition)
+            }
+            @MainActor func click(_ id: String, in target: NSWindow? = nil) async throws {
+                try await stableMarkerClick(id, in: target ?? window, stage: stage)
+            }
+            func write(_ data: Data, at url: URL) throws {
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try data.write(to: url)
+            }
+            @MainActor func matrix(_ name: String, in target: NSWindow, minimum: CGFloat, height: CGFloat) async throws {
+                guard let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { return }
+                for (mode, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    for width in [minimum, 1100] {
+                        target.setContentSize(NSSize(width: width, height: height))
+                        try await Task.sleep(for: .milliseconds(350))
+                        try require(abs((target.contentView?.bounds.width ?? 0) - width) < 1, "Fensterbreite stimmt nicht")
+                        let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { continuation in
+                            typeScrollCapture(window: target) { continuation.resume(returning: $0) }
+                        }
+                        guard let snapshot, snapshot.source == "screen" else {
+                            cleanup(); finish(.environment, "Echte Fensteraufnahme fehlt: " + name)
+                        }
+                        let url = URL(fileURLWithPath: output).appendingPathComponent(name + "-" + mode + "-\(Int(width)).png")
+                        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try snapshot.data.write(to: url)
+                    }
+                }
+            }
+            @MainActor func selectTab(_ id: UUID) async throws {
+                let root = try value(window.contentView, "Fensterinhalt fehlt")
+                scrollTabIntoView(id: id, in: root)
+                let marker = try value(["current", "comparison", "idle"].compactMap {
+                    markerView(id: "documentTab-" + $0 + "-" + id.uuidString, in: root)
+                }.first, "Tabmarker fehlt")
+                try require(sendTabClick(on: marker, in: window, modifiers: []) == nil, "Tabklick fehlgeschlagen")
+                try await wait("Tab montiert") {
+                    workspace.activeTabID == id && window.contentView.flatMap { markerView(id: "folderComparisonFinished", in: $0) } != nil
+                }
+            }
+            @MainActor func typeFilter(_ text: String) async throws {
+                let root = try value(window.contentView, "Fensterinhalt fehlt")
+                var fields: [NSTextField] = []
+                collectEditableFields(in: root, into: &fields)
+                // SwiftUI kann den Identifier am Wrapper anbringen. Der
+                // eindeutige lokalisierte Placeholder bezeichnet dasselbe Feld.
+                let field = try value(fields.first {
+                    $0.accessibilityIdentifier() == "folderComparisonFilter"
+                        || $0.placeholderString == L10n.string("Ergebnisse filtern")
+                }, "Filterfeld fehlt: " + fields.map { describe($0) }.joined(separator: ", "))
+                try require(window.makeFirstResponder(field), "Filterfokus fehlt")
+                let editor = try value(field.currentEditor(), "Nativer Feldeditor fehlt")
+                editor.selectAll(nil)
+                editor.insertText(text)
+            }
+            @MainActor func openFromMenu() async throws {
+                guard let main = NSApp.mainMenu,
+                      let root = main.items.first(where: { $0.title == L10n.string("Suchen") }),
+                      let menu = root.submenu else { throw NSError(domain: "FolderComparisonMenu", code: 1) }
+                // SwiftUI erzeugt die Einträge erst beim echten Öffnen.
+                // Der Timer läuft deshalb auch in AppKits Menü-Tracking.
+                let failure: String? = await withCheckedContinuation { continuation in
+                    var timer: Timer?, ticks = 0
+                    timer = Timer(timeInterval: 0.05, repeats: true) { _ in
+                        ticks += 1
+                        if let item = menu.items.first(where: { $0.title == L10n.string("Ordner vergleichen…") }), item.isEnabled {
+                            timer?.invalidate(); timer = nil
+                            _ = item.accessibilityPerformPress()
+                            continuation.resume(returning: nil)
+                        } else if ticks >= 100 {
+                            timer?.invalidate(); timer = nil; menu.cancelTracking(); main.cancelTracking()
+                            continuation.resume(returning: menu.items.map { "\($0.title):\($0.isEnabled)" }.joined(separator: ", "))
+                        }
+                    }
+                    if let timer { RunLoop.main.add(timer, forMode: .common); RunLoop.main.add(timer, forMode: .eventTracking) }
+                    DispatchQueue.main.async { _ = root.accessibilityPerformPress() }
+                }
+                try require(failure == nil, "Ordnervergleich im geöffneten Menü nicht bedienbar: " + (failure ?? ""))
+            }
+            do {
+                for root in [left, right] { try write(Data([0, 1, 255]), at: root.appendingPathComponent("über/common.bin")) }
+                try write(Data("left\n".utf8), at: left.appendingPathComponent("über/change.txt"))
+                try write(Data("right\n".utf8), at: right.appendingPathComponent("über/change.txt"))
+                try write(Data(), at: left.appendingPathComponent("only-left.txt"))
+                try write(Data(), at: right.appendingPathComponent("only-right.txt"))
+                let untouched = EditorTab(title: "kept.txt", path: "", content: "keep this document", isDirty: true)
+                workspace.tabs = [untouched]; workspace.activeTabID = untouched.id
+                NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                window.setContentSize(NSSize(width: MainWindowSizing.minimumWidth, height: 700))
+                stage = "Ordnerauswahl"
+                try await wait("Aktives Dokumentfenster") {
+                    NSApp.isActive && window.isKeyWindow && CommandTargeting.targetWorkspace() === workspace
+                }
+                try await openFromMenu()
+                try await wait("Leeres Sheet sperrt Start") {
+                    window.attachedSheet?.contentView.flatMap { markerView(id: "folderComparisonStartBlocked", in: $0) } != nil
+                }
+                try await click("folderComparisonDialogCancel", in: try value(window.attachedSheet, "Sheet fehlt"))
+                try await wait("Menüsheet geschlossen") { window.attachedSheet == nil && !workspace.showFolderComparisonDialog }
+                workspace.presentFolderComparisonDialog(left: left, right: right)
+                try await wait("Vorausgefülltes Sheet") {
+                    window.attachedSheet?.contentView.flatMap { markerView(id: "folderComparisonStartReady", in: $0) } != nil
+                }
+                let sheet = try value(window.attachedSheet, "Auswahlsheet fehlt")
+                try await matrix("folder-dialog", in: sheet, minimum: 640, height: 480)
+                try await click("folderComparisonStart", in: sheet)
+                try await wait("Vollständiges Ergebnis") {
+                    window.attachedSheet == nil && workspace.activeTab?.folderComparison?.result?.isComplete == true
+                        && window.contentView.flatMap { markerView(id: "folderComparisonFinished", in: $0) } != nil
+                }
+                let folderID = try value(workspace.activeTabID, "Ergebnistab fehlt")
+                let initial = try value(workspace.activeTab?.folderComparison, "Ordnerzustand fehlt")
+                try require(initial.result?.rows.count == 5 && initial.result?.budgetBytes == 17, "Einträge oder Bytebudget falsch")
+                try require(workspace.activeTab?.isEditableTextDocument == false && workspace.activeTab?.hasUnsavedChanges == false, "Ordnerergebnis editierbar oder dirty")
+                stage = "Vollständige Liste und Filter"
+                try await matrix("folder-results", in: window, minimum: MainWindowSizing.minimumWidth, height: 700)
+                try await typeFilter("only-left")
+                try await wait("Ein gefilterter Eintrag") { window.contentView.flatMap { markerView(id: "folderComparisonVisibleCount-1", in: $0) } != nil }
+                try await typeFilter("")
+                try await wait("Filter zurückgesetzt") { window.contentView.flatMap { markerView(id: "folderComparisonVisibleCount-5", in: $0) } != nil }
+                let changedRow = try value(initial.result?.rows.first { $0.path.hasSuffix("/change.txt") }, "Textpaar fehlt")
+                try await click("folderComparisonRow-" + changedRow.id.base64EncodedString())
+                try await wait("Dateipaar freigegeben") { window.contentView.flatMap { markerView(id: "folderComparisonOpenPairReady", in: $0) } != nil }
+                stage = "Dateipaar im vorhandenen Vergleich"
+                try await click("folderComparisonOpenPairReady")
+                try await wait("Frischer Datei-Diff") { workspace.activeTab?.fileDiffDocument?.result?.blocks.count == 1 }
+                try require(workspace.activeTab?.fileDiffRequest?.left.documentOrigin == nil
+                    && workspace.activeTab?.fileDiffRequest?.right.documentOrigin == nil, "Externe Dateiseite hat Schreibursprung")
+                try await matrix("folder-pair", in: window, minimum: MainWindowSizing.minimumWidth, height: 700)
+                try await selectTab(folderID)
+                stage = "Fremdänderung und erneute Prüfung"
+                try Data("left\n".utf8).write(to: right.appendingPathComponent("über/change.txt"), options: .atomic)
+                try await click("folderComparisonRefresh")
+                try await wait("Aktuelle Dateistände") {
+                    guard let state = workspace.activeTab?.folderComparison, state.request.id != initial.request.id,
+                          let row = state.result?.rows.first(where: { $0.id == changedRow.id }) else { return false }
+                    return row.status == .identical && !state.running
+                }
+                try await matrix("folder-refreshed", in: window, minimum: MainWindowSizing.minimumWidth, height: 700)
+                stage = "Nicht prüfbare Einträge"
+                for root in [left, right] {
+                    try write(Data(), at: root.appendingPathComponent("blocked/a.txt"))
+                    let file = root.appendingPathComponent("large.bin")
+                    FileManager.default.createFile(atPath: file.path, contents: nil)
+                    let handle = try FileHandle(forWritingTo: file)
+                    try handle.truncate(atOffset: FileSnapshot.maximumReadBytes + 1); try handle.close()
+                }
+                try FileManager.default.createSymbolicLink(at: left.appendingPathComponent("linked.txt"), withDestinationURL: right.appendingPathComponent("über/change.txt"))
+                try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: blocked.path)
+                try await click("folderComparisonRefresh")
+                try await wait("Ergebnis sichtbar unvollständig") {
+                    workspace.activeTab?.folderComparison?.result?.isComplete == false && workspace.activeTab?.folderComparison?.running == false
+                }
+                let incomplete = try value(workspace.activeTab?.folderComparison?.result, "Unvollständige Liste fehlt")
+                let large = try value(incomplete.rows.first { $0.path == "large.bin" }, "Großdatei fehlt")
+                try require(large.status == .unavailable && !large.canOpenPair, "Großdatei fälschlich freigegeben")
+                try await matrix("folder-incomplete", in: window, minimum: MainWindowSizing.minimumWidth, height: 700)
+                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: blocked.path)
+                stage = "Native Abbruchaktion"
+                let cancelLeft = base.appendingPathComponent("cancel-left"), cancelRight = base.appendingPathComponent("cancel-right")
+                for root in [cancelLeft, cancelRight] {
+                    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+                    for index in 0..<8 {
+                        let file = root.appendingPathComponent("part-\(index).bin")
+                        FileManager.default.createFile(atPath: file.path, contents: nil)
+                        let handle = try FileHandle(forWritingTo: file)
+                        try handle.truncate(atOffset: 128 * 1024 * 1024); try handle.close()
+                    }
+                }
+                workspace.openFolderComparison(request: .init(left: cancelLeft, right: cancelRight, options: .init()))
+                try await wait("Sichtbarer Abbrechen-Knopf") { window.contentView.flatMap { markerView(id: "folderComparisonCancel", in: $0) } != nil }
+                try await click("folderComparisonCancel")
+                try await wait("Abgebrochen und ausgetragen") {
+                    workspace.activeTab?.folderComparison?.cancelled == true && workspace.fileDiffComputations.activeCount == 0
+                }
+                try await Task.sleep(for: .milliseconds(250))
+                try require(workspace.activeTab?.folderComparison?.result == nil, "Abbruch veröffentlichte spät ein Ergebnis")
+                try await matrix("folder-cancelled", in: window, minimum: MainWindowSizing.minimumWidth, height: 700)
+                try require(workspace.tabs.first { $0.id == untouched.id }?.content == untouched.content
+                    && workspace.tabs.first { $0.id == untouched.id }?.isDirty == true, "Offenes Dokument verändert")
+                try require(try Data(contentsOf: left.appendingPathComponent("über/change.txt")) == Data("left\n".utf8), "Linke Datei verändert")
+                cleanup()
+                finish(true, "Native Ordnerauswahl, vollständige/ungeprüfte Liste, Filter, Dateipaar, Fremdänderung, erneute Prüfung und Abbruch; Quellen und Dokument geschützt")
+            } catch {
+                FileHandle.standardError.write(Data(("FOLDER_COMPARE_FAILURE stage=\(stage) error=\(error.localizedDescription)\n").utf8))
+                if let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] {
+                    let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { continuation in
+                        typeScrollCapture(window: window.attachedSheet ?? window) { continuation.resume(returning: $0) }
+                    }
+                    if let snapshot {
+                        let directory = URL(fileURLWithPath: output)
+                        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                        try? snapshot.data.write(to: directory.appendingPathComponent("folder-failure-" + snapshot.source + ".png"))
+                    }
+                }
+                cleanup(); finish(false, stage + ": " + error.localizedDescription)
+            }
+        }
+    }
+
+    private static func runFileDiffTransferTest() {
+        testLabel = "filedifftransfer"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else {
+                finish(false, "Dokumentfenster fehlt")
+            }
+            var stage = "Fixture"
+            let appearance = NSApp.appearance
+            let base = selfTestTemporaryDirectory().appendingPathComponent("fastra-block-transfer-\(UUID().uuidString)")
+            @MainActor func cleanup() { NSApp.appearance = appearance; try? FileManager.default.removeItem(at: base) }
+            func require(_ value: Bool, _ message: String) throws {
+                if !value { throw NSError(domain: "FileDiffTransferSelfTest", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            func value<T>(_ input: T?, _ message: String) throws -> T {
+                guard let input else { throw NSError(domain: "FileDiffTransferSelfTest", code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: message]) }
+                return input
+            }
+            @MainActor func wait(_ detail: String, _ condition: @MainActor () -> Bool) async throws {
+                try await nativeUIWait(stage + " / " + detail, condition)
+            }
+            @MainActor func click(_ id: String, in target: NSWindow, repetitions: Int = 1) async throws {
+                try await stableMarkerClick(id, in: target, stage: stage, repetitions: repetitions)
+            }
+            @MainActor func selectTab(_ id: UUID) async throws {
+                let root = try value(window.contentView, "Fensterinhalt fehlt")
+                window.makeKeyAndOrderFront(nil)
+                scrollTabIntoView(id: id, in: root)
+                let marker = try value(["current", "comparison", "idle"].compactMap {
+                    markerView(id: "documentTab-" + $0 + "-" + id.uuidString, in: root)
+                }.first, "Tabmarker fehlt")
+                try require(sendTabClick(on: marker, in: window, modifiers: []) == nil, "Tabklick fehlgeschlagen")
+                try await wait("Tabwechsel") { ws.activeTabID == id }
+            }
+            @MainActor func sheet() -> NSWindow? {
+                window.sheets.first { $0.contentView.flatMap { markerView(id: "fileDiffTransferSheet", in: $0) } != nil }
+            }
+            @MainActor func matrix(_ name: String, in target: NSWindow, minimum: CGFloat, height: CGFloat) async throws {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { return }
+                for (mode, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    for width in [minimum, 1100] {
+                        target.setContentSize(NSSize(width: width, height: height))
+                        try await Task.sleep(for: .milliseconds(350))
+                        try require(abs((target.contentView?.bounds.width ?? 0) - width) < 1, "Fensterbreite stimmt nicht")
+                        let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { continuation in
+                            typeScrollCapture(window: target) { continuation.resume(returning: $0) }
+                        }
+                        guard let snapshot, snapshot.source == "screen" else {
+                            cleanup(); finish(.environment, "Echte Fensteraufnahme fehlt: " + name)
+                        }
+                        let output = URL(fileURLWithPath: directory).appendingPathComponent(name + "-" + mode + "-\(Int(width)).png")
+                        try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try snapshot.data.write(to: output)
+                    }
+                }
+            }
+            @MainActor func prepare(_ direction: FileDiffTransfer.Direction) async throws -> NSWindow {
+                try await wait("Aktueller Vergleich montiert") {
+                    guard let request = ws.activeTab?.fileDiffRequest, let root = window.contentView else { return false }
+                    return ws.activeTab?.fileDiffDocument?.result != nil
+                        && markerView(id: "fileDiffRequest-" + request.id.uuidString, in: root) != nil
+                        && markerView(id: "fileDiffTransferRefreshReady", in: root) != nil
+                }
+                let request = try value(ws.activeTab?.fileDiffRequest, "Aktueller Auftrag fehlt")
+                let readyID = (direction == .toLeft ? "fileDiffTransferLeftReady-" : "fileDiffTransferRightReady-") + request.id.uuidString
+                let initialReady = window.contentView.flatMap { markerView(id: readyID, in: $0) } != nil
+                let initialSheets = window.sheets.count
+                let started = ProcessInfo.processInfo.systemUptime
+                try await wait("Aktiver Übernahmeknopf und freies Dokumentfenster") {
+                    window.attachedSheet == nil && window.contentView.flatMap { markerView(id: readyID, in: $0) } != nil
+                }
+                FileHandle.standardError.write(Data(("FILE_DIFF_TRANSFER_READY stage=\(stage) initialReady=\(initialReady) initialSheets=\(initialSheets) waitedMs=\((ProcessInfo.processInfo.systemUptime - started) * 1000)\n").utf8))
+                try await click(direction == .toLeft ? "fileDiffTransferLeft" : "fileDiffTransferRight", in: window)
+                try await wait("Bestätigungsvorschau") {
+                    sheet()?.contentView.flatMap { markerView(id: "fileDiffTransferApplyReady", in: $0) } != nil
+                }
+                return try value(sheet(), "Vorschausheet fehlt")
+            }
+            @MainActor func focusEditor(_ id: UUID, content: String) async throws {
+                let wasActive = NSApp.isActive
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKeyAndOrderFront(nil)
+                try await wait("Aktives Dokumentfenster ohne Sheet") {
+                    NSApp.isActive && window.isKeyWindow && NSApp.keyWindow === window && window.attachedSheet == nil
+                }
+                try await selectTab(id)
+                let initial = CommandTargeting.editorTextView(for: ws)
+                let started = ProcessInfo.processInfo.systemUptime
+                try await wait("Editor tatsächlich im Dokumentfenster montiert") {
+                    guard let editor = CommandTargeting.editorTextView(for: ws), let root = window.contentView else { return false }
+                    return editor.window === window && editor.isDescendant(of: root)
+                        && !editor.isHiddenOrHasHiddenAncestor && editor.visibleRect.width > 1 && editor.visibleRect.height > 1
+                        && editor.string == content
+                }
+                let editor = try value(CommandTargeting.editorTextView(for: ws), "Editor fehlt")
+                FileHandle.standardError.write(Data(("FILE_DIFF_TRANSFER_FOCUS stage=\(stage) wasActive=\(wasActive) initialWindowMatches=\(initial?.window === window) sameEditor=\(initial === editor) mountedAfterMs=\((ProcessInfo.processInfo.systemUptime - started) * 1000)\n").utf8))
+                try require(window.makeFirstResponder(nil), "Alter Editorfokus ließ sich nicht freigeben")
+                let rect = editor.visibleRect
+                let point = editor.convert(NSPoint(x: rect.minX + min(100, rect.width / 2),
+                    y: rect.minY + min(20, rect.height / 2)), to: nil)
+                var mouseUpDelivered = false
+                let focusStage = stage
+                let monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
+                    if event.windowNumber == window.windowNumber,
+                       abs(event.locationInWindow.x - point.x) < 1,
+                       abs(event.locationInWindow.y - point.y) < 1 {
+                        DispatchQueue.main.async {
+                            mouseUpDelivered = true
+                            FileHandle.standardError.write(Data(("FILE_DIFF_FOCUS_MOUSE_UP stage=\(focusStage) time=\(ProcessInfo.processInfo.systemUptime)\n").utf8))
+                        }
+                    }
+                    return event
+                }
+                defer { if let monitor { NSEvent.removeMonitor(monitor) } }
+                try require(sendMouseClick(at: point, in: window, modifiers: [], viaApp: true), "Editorklick fehlt")
+                try await wait("Editorfokus") {
+                    guard let current = CommandTargeting.editorTextView(for: ws) else { return false }
+                    return mouseUpDelivered && NSApp.isActive && window.isKeyWindow && NSApp.keyWindow === window
+                        && current.window === window && window.firstResponder === current && current.string == content
+                }
+            }
+            @MainActor func compare(_ left: EditorTab, _ right: EditorTab, options: FileDiffOptions = FileDiffOptions()) async throws -> UUID {
+                try await wait("Vorgänger-Sheet vollständig geschlossen") { window.attachedSheet == nil }
+                ws.tabs = [left, right, EditorTab(title: "untouched.txt", path: "", content: "unberührt")]
+                ws.activeTabID = left.id
+                let lhs = try value(FileDiffSide.document(left, in: ws), "Linker Ursprung fehlt")
+                let rhs = try value(FileDiffSide.document(right, in: ws), "Rechter Ursprung fehlt")
+                ws.openFileDiffTab(request: FileDiffRequest(left: lhs, right: rhs, options: options))
+                let id = try value(ws.activeTabID, "Vergleichstab fehlt")
+                try await wait("Diff") { ws.activeTab?.fileDiffDocument?.result != nil }
+                return id
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                let url = base.appendingPathComponent("left.txt")
+                let original = "one\r\nleft\r\nend\r\n", rightText = "one\nright\nend\nextra\n"
+                let bytes = Data(original.utf8); try bytes.write(to: url)
+                var left = EditorTab(title: "left.txt", path: url.path, content: original)
+                left.url = url
+                let right = EditorTab(title: "right.txt", path: "", content: rightText)
+                ws.tabs = [left, right, EditorTab(title: "untouched.txt", path: "", content: "unberührt")]
+                ws.activeTabID = left.id
+                window.setContentSize(NSSize(width: max(760, window.contentMinSize.width), height: 700))
+                ws.presentCompareFilesDialog(prefillingTabIDs: [left.id, right.id])
+                try await wait("Vergleichsdialog") { window.attachedSheet?.contentView.flatMap { markerView(id: "compareFilesStart", in: $0) } != nil }
+                try await matrix("block-compare-dialog", in: window,
+                    minimum: max(760, window.contentMinSize.width), height: 700)
+                try await click("compareFilesStart", in: window.attachedSheet!)
+                try await wait("Dialog geschlossen, zwei Blöcke") {
+                    !ws.showCompareFilesDialog && window.attachedSheet == nil && ws.activeTab?.fileDiffDocument?.result?.blocks.count == 2
+                }
+                let diff = try value(ws.activeTabID, "Vergleichstab fehlt")
+                let minimum = max(760, window.contentMinSize.width)
+                stage = "Dateivergleich: zwei Richtungen"
+                try await matrix("block-diff", in: window, minimum: minimum, height: 700)
+                let confirmation = try await prepare(.toLeft)
+                try require(ws.fileDiffTransferPreview?.hasAnnotations == true, "Zeilenenden nicht in genauer Vorschau sichtbar")
+                try await matrix("block-preview", in: confirmation, minimum: 620, height: 600)
+                try await click("fileDiffTransferApply", in: confirmation)
+                let changed = "one\r\nright\nend\r\n"
+                try await wait("Übernahme und Neuberechnung") {
+                    sheet() == nil && ws.tabs.first { $0.id == left.id }?.content == changed
+                        && ws.activeTab?.fileDiffDocument?.result?.blocks.count == 1
+                }
+                try require(ws.tabs.first { $0.id == left.id }?.isDirty == true, "Dirty fehlt")
+                try require(try Data(contentsOf: url) == bytes, "Plattendatei ohne Speichern verändert")
+                try require(ws.tabs.first { $0.id == right.id }?.content == rightText, "Falsches Dokument verändert")
+                stage = "Undo: Dokumenteditor fokussieren"
+                try await focusEditor(left.id, content: changed)
+                stage = "Native Rücknahme"
+                let systemUndo = try await requestSystemUndoIfAvailable(before: changed, expected: original, mode: "block-transfer-undo")
+                if !systemUndo { try await undoFromEditMenu() }
+                try await wait("Original nach Undo-Menü") { ws.activeTab?.content == original }
+                try await selectTab(diff)
+                try await wait("Aktueller Diff nach Undo") { ws.activeTab?.fileDiffDocument?.result?.blocks.count == 2 }
+                stage = "Redo: Dokumenteditor fokussieren"
+                try await focusEditor(left.id, content: original)
+                stage = "Natives Wiederholen"
+                try await redoFromEditMenu()
+                try await wait("Übernahme nach Redo-Menü") { ws.activeTab?.content == changed }
+                if let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] {
+                    let directory = URL(fileURLWithPath: output)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    let proof: [String: Any] = ["undo": systemUndo ? "system-command-z" : "appkit-menu-action",
+                        "redo": "appkit-menu-action", "restoredAfterUndo": true, "restoredAfterRedo": ws.activeTab?.content == changed]
+                    try JSONSerialization.data(withJSONObject: proof, options: [.sortedKeys]).write(
+                        to: directory.appendingPathComponent("native-history.json"), options: .atomic)
+                }
+                try await selectTab(diff)
+                try await wait("Aktueller Diff nach Redo") { ws.activeTab?.fileDiffDocument?.result?.blocks.count == 1 }
+                stage = "Richtung rechts: EOF-Löschung"
+                let deletion = try await prepare(.toRight)
+                try await click("fileDiffTransferApply", in: deletion)
+                try await wait("Rechter Block entfernt") { sheet() == nil && ws.activeTab?.fileDiffDocument?.result?.isIdentical == true }
+                try require(ws.tabs.first { $0.id == right.id }?.content == "one\nright\nend\n", "EOF-Löschung falsch")
+                try require(ws.tabs.first { $0.id == right.id }?.isDirty == true, "Rechtes Dirty fehlt")
+                try require(ws.tabs.first { $0.title == "untouched.txt" }?.content == "unberührt", "Unbeteiligtes Dokument verändert")
+                try require(try Data(contentsOf: url) == bytes, "Platte nach zweiter Übernahme verändert")
+                try await matrix("block-identical", in: window, minimum: minimum, height: 700)
+
+                stage = "EOF, Einfügen, Entfernen und ignorierte Unterschiede"
+                for (caseIndex, example) in [
+                    ("a", "a\n", "a\n", FileDiffOptions()),
+                    ("a\r\n", "a", "a", FileDiffOptions()),
+                    ("a\nz\n", "a\nx\nz\n", "a\nx\nz\n", FileDiffOptions()),
+                    ("a\nx\nz\n", "a\nz\n", "a\nz\n", FileDiffOptions()),
+                    ("a  \nold\nz", "A\nnew\nz", "a  \nnew\nz", FileDiffOptions(ignoreTrailingWhitespace: true, ignoreCase: true))
+                ].enumerated() {
+                    let (before, sourceText, expected, options) = example
+                    stage = "EOF/Einfügen/Löschen/ignoriert, Fall \(caseIndex)"
+                    let target = EditorTab(title: "target.txt", path: "", content: before)
+                    let source = EditorTab(title: "source.txt", path: "", content: sourceText)
+                    _ = try await compare(target, source, options: options)
+                    let confirmation = try await prepare(.toLeft)
+                    try await click("fileDiffTransferApply", in: confirmation)
+                    try await wait("Einzelblock abgeschlossen") { sheet() == nil && ws.activeTab?.fileDiffDocument?.result != nil }
+                    try require(ws.tabs.first { $0.id == target.id }?.content.utf8.elementsEqual(expected.utf8) == true, "Einzelblock verändert falsche Bytes")
+                    try require(ws.tabs.first { $0.id == source.id }?.content == source.content, "Quellseite verändert")
+                }
+                stage = "Veraltete Quelle im offenen Sheet"
+                let target = EditorTab(title: "target.txt", path: "", content: "old\n")
+                let source = EditorTab(title: "source.txt", path: "", content: "new\n")
+                _ = try await compare(target, source)
+                let stale = try await prepare(.toLeft)
+                let sourceIndex = try value(ws.tabs.firstIndex { $0.id == source.id }, "Quelle fehlt")
+                ws.tabs[sourceIndex].content = "external\n"
+                try await wait("Anwenden gesperrt") { stale.contentView.flatMap { markerView(id: "fileDiffTransferApplyBlocked", in: $0) } != nil }
+                try await matrix("block-stale", in: stale, minimum: 620, height: 600)
+                try await click("fileDiffTransferApply", in: stale)
+                try await click("fileDiffTransferClose", in: stale)
+                try await wait("Sheet geschlossen") { sheet() == nil }
+                try require(ws.tabs.first { $0.id == target.id }?.content == target.content, "Veraltete Quelle angewandt")
+                stage = "Schnelle Folgeaktionen und Schließen"
+                try await click("fileDiffTransferRefresh", in: window)
+                try await wait("Neuer Diff") { ws.activeTab?.fileDiffDocument?.result != nil }
+                try await click("fileDiffTransferLeft", in: window, repetitions: 2)
+                try await wait("Einzelnes Vorschausheet") { sheet() != nil }
+                try require(window.sheets.count == 1, "Mehrere Vorschauen nach schnellem Doppelklick")
+                try await click("fileDiffTransferClose", in: sheet()!)
+                try await wait("Vorschau verworfen") { sheet() == nil && ws.fileDiffTransferPreview == nil }
+                try require(ws.tabs.first { $0.id == target.id }?.content == target.content, "Abgebrochene Vorschau übernommen")
+
+                stage = "Laufende Vorbereitung über sichtbaren Abbrechen-Knopf beenden"
+                let largeText = (1...150_000).map { "stable-\($0) " + String(repeating: "x", count: 130) }.joined(separator: "\n") + "\n"
+                let largeTarget = EditorTab(title: "large-target.txt", path: "", content: largeText)
+                let largeSource = EditorTab(title: "large-source.txt", path: "", content:
+                    largeText.replacingOccurrences(of: "stable-75000 ", with: "changed-75000 "))
+                _ = try await compare(largeTarget, largeSource)
+                try await wait("Großer Vergleich montiert") {
+                    guard let request = ws.activeTab?.fileDiffRequest, let root = window.contentView else { return false }
+                    return markerView(id: "fileDiffRequest-" + request.id.uuidString, in: root) != nil
+                        && markerView(id: "fileDiffTransferRefreshReady", in: root) != nil
+                }
+                try await click("fileDiffTransferLeft", in: window)
+                try await wait("Abbrechen tatsächlich montiert") {
+                    ws.activeTab?.fileDiff?.pendingTransferID != nil
+                        && window.contentView.flatMap { markerView(id: "fileDiffTransferCancelReady", in: $0) } != nil
+                }
+                try await click("fileDiffTransferCancelReady", in: window)
+                try await wait("Vorbereitung abgebrochen") { ws.activeTab?.fileDiff?.pendingTransferID == nil && ws.fileDiffComputations.activeCount == 0 }
+                try await Task.sleep(for: .milliseconds(250))
+                try require(sheet() == nil && ws.fileDiffTransferPreview == nil, "Abgebrochene Vorbereitung öffnet spät eine Vorschau")
+                try require(ws.tabs.first { $0.id == largeTarget.id }?.content.utf8.elementsEqual(largeText.utf8) == true, "Abbruch verändert großen Zieltext")
+                _ = try await compare(target, source)
+
+                stage = "Externe Dateiquellen bleiben schreibgeschützt"
+                let file = base.appendingPathComponent("external.txt")
+                try Data("external-file\n".utf8).write(to: file)
+                try FileManager.default.setAttributes([.posixPermissions: 0o400], ofItemAtPath: file.path)
+                ws.openFileDiffTab(request: FileDiffRequest(left: .file(file),
+                    right: try value(FileDiffSide.document(ws.tabs.first { $0.id == target.id }!, in: ws), "Dokumentursprung fehlt"), options: FileDiffOptions()))
+                try await wait("Externer Vergleich") { ws.activeTab?.fileDiffDocument?.result != nil }
+                let external = try value(ws.activeTab, "Externer Vergleich fehlt")
+                let request = try value(external.fileDiffRequest, "Externer Auftrag fehlt")
+                try require(!ws.fileDiffTransferIsAvailable(tabID: external.id, requestID: request.id, direction: .toLeft), "Externe Datei ist Schreibziel")
+                try require(ws.fileDiffTransferIsAvailable(tabID: external.id, requestID: request.id, direction: .toRight), "Offenes Ziel trotz lesbarer Read-only-Quelle gesperrt")
+                try await matrix("block-external", in: window, minimum: minimum, height: 700)
+                let externalSheet = try await prepare(.toRight)
+                try Data("changed-source\n".utf8).write(to: file, options: .atomic)
+                try await click("fileDiffTransferApply", in: externalSheet)
+                try await wait("Datei-Preflight erklärt Fehler") { externalSheet.contentView.flatMap { markerView(id: "fileDiffTransferApplyBlocked", in: $0) } != nil }
+                try require(ws.tabs.first { $0.id == target.id }?.content == target.content, "Veraltete Plattendatei angewandt")
+                try await click("fileDiffTransferClose", in: externalSheet)
+                try await wait("Letzte Vorschau geschlossen") { sheet() == nil }
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+                cleanup()
+                finish(true, "Blockübernahme links/rechts, genaue Vorschau, native Undo/Redo mit aktuellem Diff, EOF, ignorierte Unterschiede, stale Speicher/Platte, schnelle Folgeaktionen und Read-only-Quelle geprüft")
+            } catch {
+                FileHandle.standardError.write(Data(("FILE_DIFF_TRANSFER_FAILURE stage=\(stage) active=\(NSApp.isActive) keyWindow=\(NSApp.keyWindow === window) currentEditorInWindow=\(CommandTargeting.editorTextView(for: ws)?.window === window) currentEditorFocused=\(window.firstResponder === CommandTargeting.editorTextView(for: ws)) sheets=\(window.sheets.count) pending=\(String(describing: ws.activeTab?.fileDiff?.pendingTransferID)) preview=\(String(describing: ws.fileDiffTransferPreview?.id)) transferError=\(String(describing: ws.activeTab?.fileDiff?.transferError))\n").utf8))
+                if let directory = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] {
+                    let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { continuation in
+                        typeScrollCapture(window: sheet() ?? window) { continuation.resume(returning: $0) }
+                    }
+                    if let snapshot {
+                        let output = URL(fileURLWithPath: directory).appendingPathComponent("block-failure-" + snapshot.source + ".png")
+                        try? FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try? snapshot.data.write(to: output)
+                    }
+                }
+                cleanup(); finish(false, stage + ": " + error.localizedDescription)
+            }
+        }
+    }
+
     private static func runFileDiffTest() {
         testLabel = "filediff"
         guard let ws = Workspace.shared else {
@@ -18484,7 +20489,7 @@ enum SelfTest {
         guard L10n.string("Abbrechen", language: "en") == "Cancel" else {
             finish(false, "SwiftPM-Modulbundle löst Englisch nicht auf")
         }
-        let markdownResources = ["katex.js", "highlight.js", "highlight.css", "mermaid.js", "turndown-7.2.0.js", "visual-editor.js"]
+        let markdownResources = ["katex.js", "highlight.js", "highlight.css", "mermaid.js", "turndown-7.2.0.js", "visual-editor.js", "markdown-presentation.js", "preview-blocks.js"]
         guard markdownResources.allSatisfy({ MarkdownPreviewAssets.resource(named: $0) != nil }) else {
             finish(false, "lokale Markdown-Renderbibliotheken fehlen im gepackten Ressourcenbundle")
         }
@@ -23438,6 +25443,1795 @@ enum SelfTest {
         )
     }
 
+    private static func runMarkdownComfortTest() {
+        testLabel = "mdcomfort"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else { finish(false, "Dokumentfenster fehlt") }
+            let base = selfTestTemporaryDirectory().appendingPathComponent("Markdown-Comfort-\(UUID().uuidString)")
+            let originalAppearance = NSApp.appearance
+            let english = L10n.string("Code kopieren") == "Copy Code"
+            let heading = english ? "Markdown reading comfort" : "Markdown angenehm lesen"
+            let prose = english ? "The reading column keeps prose comfortable in a wide window. Tables can use more space without making the whole document scroll sideways. " : "Die Lesespalte hält Fließtext auch im breiten Fenster gut lesbar. Tabellen dürfen mehr Platz nutzen, ohne das ganze Dokument seitlich zu verschieben. "
+            let headers = (1...8).map { (english ? "Column " : "Spalte ") + String($0) }.joined(separator: " | ")
+            let separators = Array(repeating: "---", count: 8).joined(separator: " | ")
+            let values = (1...8).map { "\($0)-" + String(repeating: "ABCDEFGHIJ", count: 2) }.joined(separator: " | ")
+            let code = "let text = \"Grüße 🙂 <&>\"\nprint(text)\n  \n"
+            let source = "# \(heading)\n\n\(prose)\n\n| \(headers) |\n| \(separators) |\n| \(values) |\n\n```swift\n\(code)```\n"
+            var stage = "Vorbereitung", diagnostics = [String]()
+            @MainActor func require(_ result: Bool, _ message: String) throws {
+                if !result { throw NSError(domain: "MarkdownComfort", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            @MainActor func wait(_ condition: @MainActor () -> Bool) async throws {
+                for _ in 0..<300 { if condition() { return }; try await Task.sleep(for: .milliseconds(50)) }
+                try require(condition(), "Zustand wurde nicht bereit")
+            }
+            @MainActor func ready(_ web: WKWebView) async throws {
+                for _ in 0..<300 {
+                    if (try? await web.evaluateJavaScript("document.querySelectorAll('.fastra-code-copy').length===1")) as? Bool == true { return }
+                    try await Task.sleep(for: .milliseconds(50))
+                }
+                try require(false, "Codeknopf wurde nicht bereit")
+            }
+            @MainActor func jsWait(_ web: WKWebView, _ expression: String) async throws {
+                for _ in 0..<300 {
+                    if (try? await web.evaluateJavaScript(expression)) as? Bool == true { return }
+                    try await Task.sleep(for: .milliseconds(25))
+                }
+                try require(false, "Vorschauzustand wurde nicht bereit: " + expression)
+            }
+            @MainActor func capture(_ name: String) async {
+                guard let raw = ProcessInfo.processInfo.environment["FASTRA_MD_COMFORT_DIR"], !raw.isEmpty else { return }
+                let file = URL(fileURLWithPath: raw).appendingPathComponent(name + ".png")
+                try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                    typeScrollCapture(window: window) { image in try? image?.data.write(to: file); done.resume() }
+                }
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
+                workspaceDefaults().set(true, forKey: MarkdownAssist.firstUseDefaultsKey)
+                for visual in [false, true] {
+                    stage = visual ? "WYSIWYG laden" : "Vorschau laden"
+                    let mode = visual ? "wysiwyg" : "preview"
+                    workspaceDefaults().set(visual, forKey: MarkdownEditingMode.defaultsKey)
+                    let file = base.appendingPathComponent(mode + ".md")
+                    try source.write(to: file, atomically: true, encoding: .utf8)
+                    var loaded = false
+                    ws.loadFile(at: file) { loaded = $0 }
+                    window.setContentSize(NSSize(width: 1200, height: 800))
+                    ws.markdownPreviewWidth = 820
+                    ws.sidebarWidth = Double(SidebarLayout.minimumSidebarWidth)
+                    activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                    try await wait { loaded && ws.activeTab?.isLoading == false && (visual ? ws.visualMarkdownEditor?.ready == true : true) }
+                    var found: WKWebView?
+                    for _ in 0..<300 {
+                        found = visual ? ws.visualMarkdownEditor?.web : window.contentView.flatMap { markdownWebView(in: $0) }
+                        if found != nil { break }; try await Task.sleep(for: .milliseconds(50))
+                    }
+                    guard let web = found else { throw NSError(domain: "MarkdownComfort", code: 2, userInfo: [NSLocalizedDescriptionKey: "Webansicht fehlt"]) }
+                    try await ready(web)
+                    for dark in [false, true] {
+                        NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+                        for wide in [false, true] {
+                            stage = "\(mode) \(dark ? "dunkel" : "hell") \(wide ? "breit" : "Minimum")"
+                            window.setContentSize(NSSize(width: wide ? 1200 : MainWindowSizing.minimumWidth, height: 800))
+                            ws.markdownPreviewWidth = wide ? 820 : 320
+                            try await ready(web)
+                            _ = try await web.evaluateJavaScript("window.scrollTo(0,0);window.fastraMarkdownPresentation.update();")
+                            try await Task.sleep(for: .milliseconds(120))
+                            try await jsWait(web, "getComputedStyle(document.body).backgroundColor==='" + (dark ? "rgb(23, 23, 23)" : "rgb(255, 255, 255)") + "'")
+                            if !visual {
+                                guard let editor = CommandTargeting.editorTextView(for: ws) else { throw NSError(domain: "MarkdownComfort", code: 3) }
+                                let range = (source as NSString).range(of: prose)
+                                try require(range.location != NSNotFound, "Absatz für Live-Eingabe fehlt")
+                                _ = try await web.evaluateJavaScript("window.comfortParagraph=document.querySelector('p').textContent;window.comfortCode=document.querySelector('pre');void 0;")
+                                editor.selectionManager.setSelectedRange(NSRange(location: range.location + range.length, length: 0))
+                                window.makeFirstResponder(editor)
+                                postKey("x", keyCode: 7, windowNumber: window.windowNumber)
+                                try await wait { ws.activeTab?.content != source }
+                                try await jsWait(web, "document.querySelector('p').textContent!==comfortParagraph")
+                                postHistoryKey(windowNumber: window.windowNumber)
+                                try await wait { ws.activeTab?.content.utf8.elementsEqual(source.utf8) == true }
+                                try await jsWait(web, "document.querySelector('p').textContent===comfortParagraph")
+                                try require(try await web.evaluateJavaScript("comfortCode===document.querySelector('pre')") as? Bool == true, "Live-Aktualisierung ersetzt einen unveränderten Codeblock")
+                                diagnostics.append(stage + ": native Live-Eingabe/Rücknahme und Codeblockidentität bestanden")
+                            }
+                            let metrics = try await web.evaluateJavaScript("""
+                                (() => {const p=document.querySelector('p'),t=document.querySelector('table'),b=document.querySelector('.fastra-code-copy');
+                                  const r=p.getBoundingClientRect(),tr=t.getBoundingClientRect(),br=b.getBoundingClientRect();
+                                  return [r.width,tr.width,t.scrollWidth,t.clientWidth,document.documentElement.scrollWidth,innerWidth,
+                                    br.width,br.height,parseFloat(getComputedStyle(document.body).fontSize),
+                                    getComputedStyle(b).backgroundColor];})()
+                                """) as? [Any] ?? []
+                            diagnostics.append(stage + ": " + String(describing: metrics))
+                            try require(metrics.count == 10, "Layoutmessung fehlt")
+                            let n = metrics.prefix(9).compactMap { ($0 as? NSNumber)?.doubleValue }
+                            try require(n.count == 9 && n[4] <= n[5] + 1 && n[6] >= 26 && n[7] >= 26, "Seite oder Kopierknopf überschreitet Layout")
+                            if wide { try require(n[0] < n[5] - 50 && n[1] > n[0] + 50, "Lesespalte oder Tabellen-Ausbruch fehlt") }
+                            try require(n[2] > n[3] + 100, "Breite Tabelle ist nicht horizontal erreichbar")
+                            let name = mode + "-" + (dark ? "dark" : "light") + "-" + (wide ? "wide" : "minimum")
+                            await capture(name)
+                            let end = try await web.evaluateJavaScript("(() => {const t=document.querySelector('table');t.scrollLeft=t.scrollWidth;return t.scrollLeft;})()") as? Double ?? 0
+                            try require(end > 100, "Tabelle wurde nicht bis zum Ende gescrollt")
+                            // ScrollLeft gilt sofort; das Fensterbild folgt erst im dargestellten Frame.
+                            try await Task.sleep(for: .milliseconds(180))
+                            await capture(name + "-table-end")
+                            _ = try await web.evaluateJavaScript("document.querySelector('table').scrollLeft=0;document.querySelector('pre').scrollIntoView({block:'nearest'});fastraMarkdownPresentation.update();")
+                            try await Task.sleep(for: .milliseconds(120))
+                            let label = try await web.evaluateJavaScript("document.querySelector('.fastra-code-copy').getAttribute('aria-label')") as? String
+                            try require(label == L10n.string("Code kopieren"), "Lokalisierte Knopfbeschriftung fehlt")
+                            let point = try await web.evaluateJavaScript("(() => {const r=document.querySelector('.fastra-code-copy').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2];})()") as? [Double] ?? []
+                            try require(point.count == 2 && point[0] > 0 && point[0] < web.bounds.width && point[1] > 0 && point[1] < web.bounds.height, "Kopierknopf ist nicht sichtbar")
+                            activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil); window.makeFirstResponder(web)
+                            NSPasteboard.general.clearContents(); NSPasteboard.general.setString("sentinel", forType: .string)
+                            let click = web.convert(NSPoint(x: point[0], y: web.isFlipped ? point[1] : web.bounds.height-point[1]), to: nil)
+                            stage = name + " · Mauscopy"
+                            try require(sendMouseClick(at: click, in: window, modifiers: [], viaApp: true), "Echter Kopierklick fehlt")
+                            try await wait { NSPasteboard.general.string(forType: .string) == code }
+                            try require(NSPasteboard.general.types?.contains(.string) == true && NSPasteboard.general.types?.allSatisfy { $0 == .string || $0.rawValue == "NSStringPboardType" } == true, "Codekopie enthält fremde Formate")
+                            try require(ws.activeTab?.content.utf8.elementsEqual(source.utf8) == true, "Codekopie verändert Markdown")
+                            diagnostics.append(name + ": Mauscopy bestanden")
+                            stage = name + " · Tastaturcopy"
+                            _ = try await web.evaluateJavaScript("document.querySelector('.fastra-code-copy').focus();")
+                            NSPasteboard.general.clearContents(); NSPasteboard.general.setString("keyboard-sentinel", forType: .string)
+                            postKey(" ", keyCode: 49, windowNumber: window.windowNumber)
+                            // HTML-Knöpfe lösen die Leertastenaktion erst beim Loslassen aus.
+                            if let up = NSEvent.keyEvent(with: .keyUp, location: .zero, modifierFlags: [],
+                                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                context: nil, characters: " ", charactersIgnoringModifiers: " ", isARepeat: false, keyCode: 49) {
+                                NSApp.postEvent(up, atStart: false)
+                            } else { try require(false, "Leertaste konnte nicht losgelassen werden") }
+
+                            try await wait { NSPasteboard.general.string(forType: .string) == code }
+                            _ = try await web.evaluateJavaScript("document.activeElement.blur();")
+                            // Die Rückmeldung läuft aus, bevor die nächste Variante ihren Ausgangszustand prüft.
+                            try await Task.sleep(for: .milliseconds(1900))
+                        }
+                    }
+                    if visual {
+                        stage = "Nativer Dokumentverlauf nach Kopierklicks"
+                        _ = try await web.evaluateJavaScript("(() => {const p=document.querySelector('p'),r=document.createRange();r.selectNodeContents(p);r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);document.getElementById('fastra-visual').focus();})()")
+                        window.makeFirstResponder(web)
+                        postKey("x", keyCode: 7, windowNumber: window.windowNumber)
+                        try await wait { ws.activeTab?.content != source }
+                        postHistoryKey(windowNumber: window.windowNumber)
+                        try await wait { ws.activeTab?.content.utf8.elementsEqual(source.utf8) == true }
+                        try require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source, "Rücknahme verliert Originalquelle")
+                    }
+                    try require(try String(contentsOf: file, encoding: .utf8) == source, "Prüfung verändert Plattendatei")
+                }
+                NSApp.appearance = originalAppearance
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "Lesespalte, breite Tabellen, echter Maus-/Tastatur-Codecopy und Undo in Vorschau/WYSIWYG bei Mindestbreite/breit hell/dunkel bestanden")
+            } catch {
+                await capture("comfort-failure")
+                NSApp.appearance = originalAppearance
+                finish(false, stage + ": " + error.localizedDescription + "\n" + diagnostics.joined(separator: "\n"))
+            }
+        }
+    }
+
+    private static func runMarkdownBlocksTest() {
+        testLabel = "mdblocks"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else { finish(false, "Dokumentfenster fehlt") }
+            let base = selfTestTemporaryDirectory().appendingPathComponent("Markdown-Blocks-\(UUID().uuidString)")
+            var stage = "Vorbereitung", results = [[String: Any]](), diagnostics = [String]()
+            func require(_ value: Bool, _ message: String) throws {
+                if !value { throw NSError(domain: "MarkdownBlocks", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            @MainActor func wait(_ condition: @MainActor () -> Bool) async throws {
+                for _ in 0..<600 { if condition() { return }; try await Task.sleep(for: .milliseconds(25)) }
+                try require(condition(), "Zustand wurde nicht bereit")
+            }
+            @MainActor func jsWait(_ web: WKWebView, _ expression: String) async throws {
+                for _ in 0..<1200 {
+                    if (try? await web.evaluateJavaScript(expression)) as? Bool == true { return }
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                try require(false, "Vorschau wurde nicht aktuell: " + expression)
+            }
+            func saveResults() throws {
+                guard !results.isEmpty,
+                      let directory = ProcessInfo.processInfo.environment["FASTRA_MD_COMFORT_DIR"] else { return }
+                let output = URL(fileURLWithPath: directory).appendingPathComponent("block-performance.json")
+                try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try JSONSerialization.data(withJSONObject: results, options: [.prettyPrinted, .sortedKeys]).write(to: output, options: .atomic)
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
+                workspaceDefaults().set(false, forKey: MarkdownEditingMode.defaultsKey)
+                workspaceDefaults().set(true, forKey: MarkdownAssist.firstUseDefaultsKey)
+                for count in [64, 4096] {
+                    stage = "\(count) Absätze laden"
+                    let paragraphs = (0..<count).map { "Absatz \($0): Lesbarer Text mit Unicode ä🙂 und **Formatierung**." }.joined(separator: "\n\n")
+                    let source = "# Blockprüfung\n\nEingabe.\n\n```swift\nlet number = 42\n```\n\n$$x^2$$\n\n```mermaid\ngraph TD; A-->B;\n```\n\n" + paragraphs + "\n"
+                    let file = base.appendingPathComponent("\(count).md")
+                    try source.write(to: file, atomically: true, encoding: .utf8)
+                    var loaded = false
+                    ws.loadFile(at: file) { loaded = $0 }
+                    window.setContentSize(NSSize(width: 1200, height: 800))
+                    ws.markdownPreviewWidth = 700
+                    activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                    try await wait { loaded && CommandTargeting.editorTextView(for: ws)?.string == source }
+                    guard let web = window.contentView.flatMap({ markdownWebView(in: $0) }),
+                          let editor = CommandTargeting.editorTextView(for: ws) else {
+                        throw NSError(domain: "MarkdownBlocks", code: 2)
+                    }
+                    try await jsWait(web, "document.documentElement.getAttribute('data-fastra-enhanced')==='1' && !!window.fastraPreviewBlocks")
+                    var renderTimes = [Double]()
+                    for _ in 0..<6 {
+                        let duration = await withCheckedContinuation { (done: CheckedContinuation<Double, Never>) in
+                            MarkdownRichText.renderQueue.async {
+                                let start = DispatchTime.now().uptimeNanoseconds
+                                _ = MarkdownRichText.renderFragmentOnQueue(markdown: source, documentURL: file)
+                                done.resume(returning: Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
+                            }
+                        }
+                        renderTimes.append(duration)
+                    }
+                    renderTimes.removeFirst()
+                    _ = try await web.evaluateJavaScript("window.nativeBlockUpdate=fastraPreviewBlocks.update;void 0;")
+                    for legacy in [true, false] {
+                        stage = "\(count) Absätze · \(legacy ? "vollständiger Body" : "Blockabgleich")"
+                        let body = legacy ? """
+                            const x=scrollX,y=scrollY;const generation=window.markdownGeneration=(window.markdownGeneration||0)+1;
+                            document.body.innerHTML=html;await fastraEnhanceMarkdown(document.body);
+                            if(generation===window.markdownGeneration)scrollTo(x,y);return null;
+                            """ : "return await nativeBlockUpdate(html);"
+                        _ = try await web.evaluateJavaScript("""
+                            window.blockCompleted=0;
+                            fastraPreviewBlocks.update=async html=>{
+                              const start=performance.now();const result=await(async()=>{\(body)})();
+                              window.blockDOMMilliseconds=performance.now()-start;window.blockMetrics=result;
+                              await new Promise(resolve=>requestAnimationFrame(resolve));window.blockCompleted++;return result;
+                            };void 0;
+                            """)
+                        var inputTimes = [Double](), domTimes = [Double]()
+                        for sample in 0..<6 {
+                            let before = ws.activeTab!.content
+                            let range = (before as NSString).range(of: "Eingabe.")
+                            try require(range.location != NSNotFound, "Eingabestelle fehlt")
+                            let insertion = range.location + range.length
+                            editor.selectionManager.setSelectedRange(NSRange(location: insertion, length: 0))
+                            window.makeFirstResponder(editor)
+                            let sequence = try await web.evaluateJavaScript("blockCompleted") as? Int ?? 0
+                            let started = DispatchTime.now().uptimeNanoseconds
+                            postKey("x", keyCode: 7, windowNumber: window.windowNumber)
+                            try await wait { ws.activeTab?.content != before }
+                            let current = ws.activeTab!.content
+                            let expected = (before as NSString).replacingCharacters(in: NSRange(location: insertion, length: 0), with: "x")
+                            try require(current.utf8.elementsEqual(expected.utf8), "Native Eingabe verändert unerwartete Quelle")
+                            try await jsWait(web, "blockCompleted>\(sequence) && document.querySelector('p').textContent===\"Eingabe." + String(repeating: "x", count: legacy ? sample + 1 : sample + 7) + "\"")
+                            if !legacy {
+                                if sample == 0 {
+                                    _ = try await web.evaluateJavaScript("window.stableDiagram=document.querySelector('.mermaid-render');window.stableCode=document.querySelector('pre');void 0;")
+                                } else {
+                                    try require(try await web.evaluateJavaScript("stableDiagram===document.querySelector('.mermaid-render') && stableCode===document.querySelector('pre')") as? Bool == true, "Unveränderte Diagramme oder Codeblöcke werden neu aufgebaut")
+                                }
+                            }
+                            if sample > 0 {
+                                inputTimes.append(Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
+                                domTimes.append(try await web.evaluateJavaScript("blockDOMMilliseconds") as? Double ?? -1)
+                            }
+                        }
+                        let metrics = try await web.evaluateJavaScript("blockMetrics")
+                        results.append(["paragraphs": count, "bytes": source.utf8.count,
+                                        "mode": legacy ? "body" : "blocks", "renderMilliseconds": renderTimes,
+                                        "inputToFrameMilliseconds": inputTimes, "DOMMilliseconds": domTimes,
+                                        "blocks": metrics ?? NSNull()])
+                        try saveResults()
+                    }
+                    stage = "\(count) Absätze · aktualisierte Quellpositionen"
+                    editor.insertText("# Vorspann\n\n", replacementRange: NSRange(location: 0, length: 0))
+                    try await jsWait(web, "document.querySelector('p').getAttribute('data-srcline')==='5'")
+                    try await Task.sleep(for: .milliseconds(180))
+                    let coordinates = try await web.evaluateJavaScript("(()=>{const r=document.querySelector('p').getBoundingClientRect();return [r.left+12,r.top+r.height/2];})()") as? [Double] ?? []
+                    try require(coordinates.count == 2 && coordinates[1] > 0 && coordinates[1] < web.bounds.height, "Vorschauziel nicht sichtbar")
+                    diagnostics.append("\(count) Absätze vor Vorschauklick: Cursorzeile=\(ws.cursorLine ?? -1), Editorfokus=\(window.firstResponder === editor)")
+                    // Die Präfixeingabe verschiebt den alten Cursor bereits auf
+                    // Zeile 5. Erst ein anderer Ausgangspunkt belegt, dass der
+                    // gepostete Klick wirklich verarbeitet wurde.
+                    editor.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+                    try await wait { ws.cursorLine == 1 }
+                    let point = web.convert(NSPoint(x: coordinates[0], y: web.isFlipped ? coordinates[1] : web.bounds.height-coordinates[1]), to: nil)
+                    try require(sendMouseClick(at: point, in: window, modifiers: [], viaApp: true), "Vorschauklick fehlt")
+                    try await wait { ws.cursorLine == 5 }
+                    stage = "\(count) Absätze · Fokus nach Quellsprung"
+                    try await wait { window.firstResponder === editor }
+                    stage = "\(count) Absätze · native Rücknahme"
+                    let edited = ws.activeTab!.content
+                    postHistoryKey(windowNumber: window.windowNumber)
+                    try await wait { ws.activeTab?.content != edited }
+                    stage = "\(count) Absätze · natives Wiederholen"
+                    try await wait { editor.undoManager?.canRedo == true }
+                    try await redoFromEditMenu()
+                    try await wait { ws.activeTab?.content.utf8.elementsEqual(edited.utf8) == true }
+                    try require(try String(contentsOf: file, encoding: .utf8) == source, "Vorschau schreibt die Plattendatei")
+                    stage = "\(count) Absätze · WYSIWYG-Serialisierung"
+                    ws.toggleMarkdownEditingMode()
+                    try await wait { ws.visualMarkdownEditor?.ready == true }
+                    guard let visual = ws.visualMarkdownEditor?.web else { throw NSError(domain: "MarkdownBlocks", code: 3) }
+                    let serialized = try await visual.evaluateJavaScript("(() => {const times=[];let source;for(let i=0;i<6;i++){const start=performance.now();source=fastraVisual.markdown();if(i)times.push(performance.now()-start);}return {times,source};})()") as? [String: Any] ?? [:]
+                    try require((serialized["source"] as? String)?.utf8.elementsEqual(edited.utf8) == true, "WYSIWYG verliert die Originalquelle")
+                    results.append(["paragraphs": count, "mode": "wysiwyg", "serializationMilliseconds": serialized["times"] ?? []])
+                    ws.toggleMarkdownEditingMode()
+                    try await wait { !ws.activeMarkdownIsVisual && CommandTargeting.editorTextView(for: ws) != nil }
+                }
+                try saveResults()
+                try? FileManager.default.removeItem(at: base)
+                finish(true, "Native Eingabe→cmark→Vorschau bei 64/4096 Absätzen, vollständiger Body gegen Blockabgleich, nächster Animationsframe, Rendering getrennt, WYSIWYG-Serialisierung, bytegleiche Quelle/Platte und natives Undo/Redo geprüft\n" + diagnostics.joined(separator: "\n"))
+            } catch {
+                try? saveResults()
+                try? FileManager.default.removeItem(at: base)
+                finish(false, "Blockvorschau [\(stage)]: \(error.localizedDescription)\n" + diagnostics.joined(separator: "\n"))
+            }
+        }
+    }
+
+    @MainActor
+    private static func verifyTableSelectionAndPaste(workspace: Workspace, window: NSWindow, web: WKWebView, source: String) async throws {
+        func require(_ value: Bool, _ message: String) throws {
+            if !value { throw NSError(domain: "TableSelection", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+        }
+        func wait(_ condition: () -> Bool) async throws {
+            for _ in 0..<200 { if condition() { return }; try await Task.sleep(for: .milliseconds(25)) }
+            try require(condition(), "Tabellenzustand wurde nicht bereit")
+        }
+        for width in [MainWindowSizing.minimumWidth, CGFloat(1100)] {
+            window.setContentSize(NSSize(width: width, height: 650))
+            try await Task.sleep(for: .milliseconds(200))
+            _ = try await web.evaluateJavaScript("document.querySelector('table').rows[1].cells[0].scrollIntoView({block:'center',inline:'nearest'})")
+            let points = try await web.evaluateJavaScript("""
+                (()=>{const c=document.querySelector('table').rows[1].cells,a=c[0].getBoundingClientRect(),b=c[1].getBoundingClientRect();
+                return [a.x+10,a.y+a.height/2,b.x+b.width-10,b.y+b.height/2,b.x];})()
+                """) as? [Double] ?? []
+            try require(points.count == 5, "Ziehziele fehlen")
+            func point(_ x: Double, _ y: Double) -> NSPoint {
+                web.convert(NSPoint(x: x, y: web.isFlipped ? y : web.bounds.height-y), to: nil)
+            }
+            let endX = min(points[2], web.bounds.width-12)
+            let start = point(max(12, points[0]), points[1]), end = point(endX, points[3])
+            let frame = web.convert(web.bounds, to: nil)
+            func post(_ type: NSEvent.EventType, _ location: NSPoint) throws {
+                guard let event = NSEvent.mouseEvent(with: type, location: location, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                    context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) else {
+                    throw NSError(domain: "TableSelection", code: 2)
+                }
+                NSApp.postEvent(event, atStart: false)
+            }
+            try post(.leftMouseDown, start)
+            do {
+                try await Task.sleep(for: .milliseconds(80))
+                for step in 1...8 {
+                    let f = CGFloat(step)/8
+                    try post(.leftMouseDragged, NSPoint(x: start.x+(end.x-start.x)*f, y: start.y+(end.y-start.y)*f))
+                    try await Task.sleep(for: .milliseconds(70))
+                    let current = web.convert(web.bounds, to: nil)
+                    try require(abs(current.minY-frame.minY)<1 && abs(current.height-frame.height)<1,
+                                "Editor verschiebt sich während des Ziehens bei Breite \(width): \(frame) → \(current)")
+                }
+            } catch {
+                try? post(.leftMouseUp, end)
+                throw error
+            }
+            try post(.leftMouseUp, end)
+            if endX > points[4] { try await wait { workspace.markdownTable.context?.reason == "selection" } }
+            try require(try await web.evaluateJavaScript("!getSelection().isCollapsed") as? Bool == true, "Echter Mauszug erzeugte keine Auswahl")
+            try require(workspace.activeTab?.content == source, "Auswahl verändert den Quelltext")
+            _ = try await web.evaluateJavaScript("""
+                {const c=document.querySelector('table').rows[1].cells[0],r=document.createRange();r.selectNodeContents(c);
+                getSelection().removeAllRanges();getSelection().addRange(r);}
+                """)
+            try await wait { workspace.markdownTable.context?.reason.isEmpty == true }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString("Neu", forType: .string)
+            NSPasteboard.general.setString("<strong>Neu</strong>", forType: .html)
+            window.makeFirstResponder(web)
+            postKey("v", keyCode: 9, windowNumber: window.windowNumber, modifiers: .command)
+            try await wait { workspace.activeTab?.content != source }
+            try require(try await web.evaluateJavaScript("document.querySelector('td').innerText") as? String == "Neu", "Natives Einfügen ergänzt einen Zellumbruch")
+            try require(try await web.evaluateJavaScript("document.querySelector('td strong')?.textContent") as? String == "Neu", "Inline-Formatierung ging verloren")
+            postHistoryKey(windowNumber: window.windowNumber)
+            try await wait { workspace.activeTab?.content == source }
+            postHistoryKey(redo: true, windowNumber: window.windowNumber)
+            try await wait { workspace.activeTab?.content != source }
+            try require(try await web.evaluateJavaScript("document.querySelector('td').innerText") as? String == "Neu", "Redo ergänzt einen Zellumbruch")
+            postHistoryKey(windowNumber: window.windowNumber)
+            try await wait { workspace.activeTab?.content == source }
+        }
+        window.setContentSize(NSSize(width: 1100, height: 650))
+    }
+
+    private static func runMarkdownTableTest(inputOnly: Bool = false, interactionOnly: Bool = false) {
+        testLabel = inputOnly ? "mdtableinput" : interactionOnly ? "mdtableinteraction" : "mdtable"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else { finish(false, "Dokumentfenster fehlt") }
+            let source = "# Tabellen bearbeiten\n\nVorher **unverändert** 😀.\n\n| Name | Anzahl | Notiz |\n| :--- | ---: | :---: |\n| Alpha | 12 | **Fett** |\n| Beta | 34 | `Code` |\n\nNachher unverändert.\n"
+            let base = selfTestTemporaryDirectory().appendingPathComponent("Markdown-Table-\(UUID().uuidString)")
+            let file = base.appendingPathComponent("Tabellen.md")
+            var stage = "Vorbereitung"
+            var diagnostics = [String]()
+            var trackingMenus = Set<ObjectIdentifier>()
+            let trackingBegin = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { notification in
+                if let menu = notification.object as? NSMenu {
+                    trackingMenus.insert(ObjectIdentifier(menu))
+                    diagnostics.append("Menü beginnt: \(menu.title)")
+                }
+            }
+            let trackingEnd = NotificationCenter.default.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { notification in
+                if let menu = notification.object as? NSMenu {
+                    trackingMenus.remove(ObjectIdentifier(menu))
+                    diagnostics.append("Menü endet: \(menu.title)")
+                }
+            }
+            let keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                diagnostics.append("Taste: \(event.keyCode), Modifier: \(event.modifierFlags.rawValue), Fenster: \(event.windowNumber)")
+                return event
+            }
+            func removeDiagnostics() {
+                NotificationCenter.default.removeObserver(trackingBegin)
+                NotificationCenter.default.removeObserver(trackingEnd)
+                if let keys { NSEvent.removeMonitor(keys) }
+            }
+            @MainActor func diagnose(_ label: String) async {
+                func historyItems(_ menu: NSMenu) -> [String] {
+                    menu.items.flatMap { item in
+                        let own = item.keyEquivalent.lowercased() == "z" ? ["\(item.title): Aktion=\(String(describing: item.action)), aktiv=\(item.isEnabled), Ziel=\(String(describing: item.target))"] : []
+                        return own + (item.submenu.map(historyItems) ?? [])
+                    }
+                }
+                diagnostics.append("Verlaufsmenüs: " + (NSApp.mainMenu.map(historyItems) ?? []).joined(separator: "; "))
+                diagnostics.append("Nativer Verlauf: Undo=\(ws.visualMarkdownEditor?.web?.undoManager?.canUndo == true), Redo=\(ws.visualMarkdownEditor?.web?.undoManager?.canRedo == true)")
+                let foreground = NSWorkspace.shared.frontmostApplication
+                let native = "\(label): aktiv=\(NSApp.isActive), key=\(window.isKeyWindow), Frontmost=\(foreground?.bundleIdentifier ?? "nil")/\(foreground?.processIdentifier ?? -1), Responder=\(String(describing: window.firstResponder)), Textsuche=\(ws.markdownVisualFind.isPresented), Menüanzahl=\(trackingMenus.count), Undoziel=\(String(describing: NSApp.target(forAction: NSSelectorFromString("undo:"))))"
+                let state = try? await ws.visualMarkdownEditor?.web?.evaluateJavaScript("({undo:document.queryCommandEnabled('undo'),redo:document.queryCommandEnabled('redo'),editable:document.getElementById('fastra-visual').isContentEditable,active:document.activeElement?.id,selection:getSelection().anchorNode?.parentElement?.outerHTML,rows:document.querySelector('table')?.rows.length,source:fastraVisual.markdown()})")
+                diagnostics.append(native + "; WebKit=" + String(describing: state))
+            }
+            func require(_ success: Bool, _ message: String) throws {
+                if !success { throw NSError(domain: "TableSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            @MainActor func wait(_ condition: @MainActor () -> Bool) async throws {
+                for _ in 0..<300 { if condition() { return }; try await Task.sleep(for: .milliseconds(50)) }
+                try require(condition(), "Zustand wurde nicht bereit")
+            }
+            @MainActor func click(_ id: String, in target: NSWindow? = nil) -> Bool {
+                let target = target ?? window
+                guard let root = target.contentView, let marker = markerView(id: id, in: root) else { return false }
+                let rect = marker.convert(marker.bounds, to: nil)
+                return sendMouseClick(at: NSPoint(x: rect.midX, y: rect.midY), in: target, modifiers: [], viaApp: true)
+            }
+            @MainActor func capture(_ name: String, in target: NSWindow? = nil) async {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_MD_TABLE_DIR"] else { return }
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
+                try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                    typeScrollCapture(window: target ?? window) { snapshot in try? snapshot?.data.write(to: url); done.resume() }
+                }
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                try source.write(to: file, atomically: true, encoding: .utf8)
+                workspaceDefaults().set(true, forKey: MarkdownEditingMode.defaultsKey)
+                workspaceDefaults().set(true, forKey: MarkdownAssist.firstUseDefaultsKey)
+                NSApp.appearance = NSAppearance(named: .aqua)
+                var loaded = false
+                ws.loadFile(at: file) { loaded = $0 }
+                window.setContentSize(NSSize(width: 1100, height: 650))
+                activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                try await wait { loaded && ws.visualMarkdownEditor?.ready == true }
+                stage = "Fokus vor Zellklick"
+                activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                try await wait { NSApp.isActive && window.isKeyWindow && window.isVisible }
+                let web = ws.visualMarkdownEditor!.web!
+                window.makeFirstResponder(web)
+                await capture("table-ready-before-click")
+                stage = "Zelle anklicken"
+                let coordinates = try await web.evaluateJavaScript("(() => {const r=document.querySelector('table').rows[1].cells[0].getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2];})()") as? [Double] ?? []
+                try require(coordinates.count == 2, "Zelle fehlt")
+                let point = web.convert(NSPoint(x: coordinates[0], y: web.isFlipped ? coordinates[1] : web.bounds.height-coordinates[1]), to: nil)
+                diagnostics.append("Zellklick: DOM=\(coordinates), Punkt=\(point), WK-Frame=\(web.frame), Bounds=\(web.bounds), flipped=\(web.isFlipped), zoom=\(web.pageZoom), aktiv=\(NSApp.isActive), key=\(window.isKeyWindow)")
+                try require(sendMouseClick(at: point, in: window, modifiers: [], viaApp: true), "Zellklick fehlt")
+                try await wait { ws.markdownTable.context?.row == 1 }
+                if interactionOnly {
+                    stage = "Tabellenauswahl und einzeiliges natives Einfügen"
+                    try await verifyTableSelectionAndPaste(workspace: ws, window: window, web: web, source: source)
+                    if let path = ProcessInfo.processInfo.environment["FASTRA_MD_TABLE_REPRO_FILE"] {
+                        let reproduction = URL(fileURLWithPath: path)
+                        let data = try Data(contentsOf: reproduction, options: .mappedIfSafe)
+                        try require(data.count <= 1_048_576, "Externe Tabellen-Testkopie ist zu groß")
+                        let copiedSource = try String(contentsOf: reproduction, encoding: .utf8)
+                        var copiedLoaded = false
+                        ws.loadFile(at: reproduction) { copiedLoaded = $0 }
+                        try await wait { copiedLoaded && ws.activeTab?.url?.canonicalFileURL == reproduction.canonicalFileURL && ws.visualMarkdownEditor?.tabID == ws.activeTabID && ws.visualMarkdownEditor?.ready == true }
+                        try await verifyTableSelectionAndPaste(workspace: ws, window: window,
+                            web: ws.visualMarkdownEditor!.web!, source: copiedSource)
+                        try require(try Data(contentsOf: reproduction) == data, "Private Testkopie wurde auf Platte verändert")
+                    }
+                    removeDiagnostics()
+                    finish(true, "Echte Tabellen-Mausauswahl bleibt bei Mindestbreite und breit stabil; natives einzeiliges Einfügen mit Formatierung und Undo/Redo geprüft")
+                }
+                await capture("table-light-wide")
+                if inputOnly {
+                    guard let directory = ProcessInfo.processInfo.environment["FASTRA_MD_TABLE_DIR"] else {
+                        finish(.environment, "TSV-Eingabeprüfung benötigt den externen nativen Tastentreiber")
+                    }
+                    let output = URL(fileURLWithPath: directory)
+                    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+                    var failures = [String]()
+                    var index = 0
+                    for initial in ["", "Vorbelegt\t17"] {
+                        for mode in ["type", "paste", "synthetic"] {
+                            for opening in 0..<2 {
+                                stage = "TSV-Eingabe \(index) \(mode) Öffnung \(opening)"
+                                NSPasteboard.general.clearContents()
+                                if !initial.isEmpty { NSPasteboard.general.setString(initial, forType: .string) }
+                                try require(click("markdownTablePaste"), "TSV-Button fehlt")
+                                try await wait { !window.sheets.isEmpty }
+                                let sheet = window.sheets[0]
+                                func input(_ view: NSView) -> NSTextView? {
+                                    if let text = view as? NSTextView, !text.isFieldEditor { return text }
+                                    return view.subviews.lazy.compactMap { input($0) }.first
+                                }
+                                guard let root = sheet.contentView, let field = input(root) else {
+                                    throw NSError(domain: "TableSelfTest", code: 10)
+                                }
+                                try await wait { sheet.isKeyWindow && field.isEditable && field.string == initial }
+                                sheet.makeFirstResponder(field)
+                                try await wait { sheet.firstResponder === field }
+                                let expected = "Neu 😀\t42\nEnde\tWert"
+                                var changes = [String]()
+                                let observer = NotificationCenter.default.addObserver(forName: NSText.didChangeNotification,
+                                    object: field, queue: .main) { _ in changes.append(field.string) }
+                                if mode == "synthetic" {
+                                    field.selectAll(nil)
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(expected, forType: .string)
+                                    postKey("v", keyCode: 9, windowNumber: sheet.windowNumber, modifiers: .command)
+                                    try await wait { field.string == expected }
+                                } else if mode == "paste" {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(expected, forType: .string)
+                                }
+                                let request: [String: Any] = ["pid": ProcessInfo.processInfo.processIdentifier,
+                                    "index": index, "mode": mode, "initial": initial, "expected": expected,
+                                    "fieldBefore": field.string, "focus": sheet.firstResponder === field]
+                                try JSONSerialization.data(withJSONObject: request, options: [.sortedKeys])
+                                    .write(to: output.appendingPathComponent("request-\(index).json"), options: .atomic)
+                                let response = output.appendingPathComponent("response-\(index).json")
+                                try await wait { FileManager.default.fileExists(atPath: response.path) }
+                                let receipt = try JSONSerialization.jsonObject(with: Data(contentsOf: response)) as? [String: Any] ?? [:]
+                                let correct = field.string == expected && receipt["buttonEnabled"] as? Bool == true
+                                if !correct { failures.append("Fall \(index): Text=\(field.string == expected), Knopf=\(String(describing: receipt["buttonEnabled"]))") }
+                                var result = request
+                                result["fieldAfter"] = field.string
+                                result["delegate"] = String(describing: field.delegate)
+                                result["notifications"] = changes
+                                result["buttonEnabled"] = receipt["buttonEnabled"]
+                                result["correct"] = correct
+                                try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys, .prettyPrinted])
+                                    .write(to: output.appendingPathComponent("result-\(index).json"), options: .atomic)
+                                NotificationCenter.default.removeObserver(observer)
+                                await capture("input-\(index)", in: sheet)
+                                postKey("\u{1b}", keyCode: 53, windowNumber: sheet.windowNumber)
+                                try await wait { window.sheets.isEmpty }
+                                try require(ws.activeTab?.content == source, "Abbrechen verändert die Dokumentquelle")
+                                index += 1
+                            }
+                        }
+                    }
+                    for opening in 0..<2 {
+                        stage = "Systemtasten: Textsuche öffnen/schließen \(opening)"
+                        window.makeFirstResponder(web)
+                        try await wait { window.firstResponder === web }
+                        let focusRequest = ws.markdownVisualFind.focusRequest
+                        let request: [String: Any] = ["pid": ProcessInfo.processInfo.processIdentifier,
+                            "index": index, "mode": "find-escape", "focus": true]
+                        try JSONSerialization.data(withJSONObject: request, options: [.sortedKeys])
+                            .write(to: output.appendingPathComponent("request-\(index).json"), options: .atomic)
+                        let response = output.appendingPathComponent("response-\(index).json")
+                        try await wait { FileManager.default.fileExists(atPath: response.path) }
+                        let receipt = try JSONSerialization.jsonObject(with: Data(contentsOf: response)) as? [String: Any] ?? [:]
+                        try await wait { !ws.markdownVisualFind.isPresented && window.firstResponder === web }
+                        let correct = receipt["opened"] as? Bool == true && receipt["closed"] as? Bool == true
+                            && ws.markdownVisualFind.focusRequest > focusRequest
+                        if !correct { failures.append("System-Textsuche \(opening): \(receipt)") }
+                        let result: [String: Any] = ["index": index, "mode": "find-escape", "correct": correct,
+                            "controllerOpen": ws.markdownVisualFind.isPresented, "editorFocused": window.firstResponder === web]
+                        try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys, .prettyPrinted])
+                            .write(to: output.appendingPathComponent("result-\(index).json"), options: .atomic)
+                        try require(ws.activeTab?.content.utf8.elementsEqual(source.utf8) == true, "Textsuche verändert die Dokumentquelle")
+                        index += 1
+                    }
+                    removeDiagnostics()
+                    try? FileManager.default.removeItem(at: base)
+                    finish(failures.isEmpty, "TSV: 12 Eingabe-/Pastefälle und 2 Systemtastenfälle zur Textsuche; " + failures.joined(separator: "; "))
+                }
+                for (name, appearance, width) in [
+                    ("table-light-narrow", NSAppearance.Name.aqua, MainWindowSizing.minimumWidth),
+                    ("table-dark-wide", NSAppearance.Name.darkAqua, CGFloat(1100)),
+                    ("table-dark-narrow-original", NSAppearance.Name.darkAqua, MainWindowSizing.minimumWidth)
+                ] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    window.setContentSize(NSSize(width: width, height: width == MainWindowSizing.minimumWidth ? MainWindowSizing.minimumHeight : 650))
+                    try await Task.sleep(for: .milliseconds(300))
+                    await capture(name)
+                }
+                NSApp.appearance = NSAppearance(named: .aqua)
+                window.setContentSize(NSSize(width: 1100, height: 650))
+                try await Task.sleep(for: .milliseconds(300))
+                stage = "Echte Tabnavigation"
+                postKey("\t", keyCode: 48, windowNumber: window.windowNumber)
+                try await wait { ws.markdownTable.context?.column == 1 }
+                postKey("\t", keyCode: 48, windowNumber: window.windowNumber, modifiers: .shift)
+                try await wait { ws.markdownTable.context?.column == 0 }
+                try require(ws.activeTab?.content == source, "Zellnavigation verändert Markdown")
+                stage = "Zeilenmenü"
+                var chosen = false
+                var menuTimer: Timer?
+                let observer = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { notification in
+                    guard let menu = notification.object as? NSMenu else { return }
+                    var ticks = 0
+                    menuTimer?.invalidate()
+                    menuTimer = Timer(timeInterval: 0.05, repeats: true) { _ in
+                        ticks += 1
+                        if let item = menu.items.first(where: { $0.title == L10n.string("Darunter einfügen") }), item.isEnabled {
+                            menuTimer?.invalidate(); menuTimer = nil
+                            chosen = true
+                            _ = item.accessibilityPerformPress()
+                        } else if ticks >= 200 { menuTimer?.invalidate(); menuTimer = nil; menu.cancelTracking() }
+                    }
+                    if let menuTimer { RunLoop.main.add(menuTimer, forMode: .common); RunLoop.main.add(menuTimer, forMode: .eventTracking) }
+                }
+                try require(click("markdownTableRows"), "Zeilenmenü fehlt")
+                try await wait { chosen && ws.markdownTable.context?.rows == 4 }
+                NotificationCenter.default.removeObserver(observer)
+                let inserted = ws.activeTab!.content
+                stage = "Textsuche schließen und natives Undo/Redo"
+                postKey("f", keyCode: 3, windowNumber: window.windowNumber, modifiers: .command)
+                try await wait { ws.markdownVisualFind.isPresented && (window.firstResponder as? NSTextView)?.isFieldEditor == true }
+                try require(click("markdownVisualFindClose"), "Schließen der Textsuche fehlt")
+                try await wait { !ws.markdownVisualFind.isPresented && window.firstResponder === web }
+                await diagnose("Nach Schließen der Textsuche, vor Cmd-Z")
+                postHistoryKey(windowNumber: window.windowNumber)
+                try await wait { ws.activeTab?.content == source }
+                await diagnose("Nach Cmd-Z")
+                stage = "Natives Wiederholen"
+                postHistoryKey(redo: true, windowNumber: window.windowNumber)
+                try await wait { ws.activeTab?.content == inserted }
+                stage = "Zelle für TSV auswählen"
+                let pasteCoordinates = try await web.evaluateJavaScript("(() => {const r=document.querySelector('table').rows[2].cells[0].getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2];})()") as? [Double] ?? []
+                try require(pasteCoordinates.count == 2, "TSV-Zielzelle fehlt")
+                let pastePoint = web.convert(NSPoint(x: pasteCoordinates[0], y: web.isFlipped ? pasteCoordinates[1] : web.bounds.height-pasteCoordinates[1]), to: nil)
+                try require(sendMouseClick(at: pastePoint, in: window, modifiers: [], viaApp: true), "TSV-Zellklick fehlt")
+                try await wait { ws.markdownTable.context?.row == 2 && ws.markdownTable.context?.column == 0 }
+                stage = "TSV-Dialog"
+                try require(click("markdownTablePaste"), "TSV-Button fehlt")
+                try await wait { !window.sheets.isEmpty }
+                let sheet = window.sheets[0]
+                guard let root = sheet.contentView, let marker = markerView(id: "markdownTableTSVField", in: root) else { throw NSError(domain: "TableSelfTest", code: 2) }
+                func textView(_ view: NSView) -> NSTextView? {
+                    if let text = view as? NSTextView, !text.isFieldEditor { return text }
+                    return view.subviews.lazy.compactMap { textView($0) }.first
+                }
+                guard let field = textView(marker.superview ?? root) ?? textView(root) else { throw NSError(domain: "TableSelfTest", code: 3) }
+                stage = "TSV-Texteingabe"
+                try await wait { sheet.isKeyWindow && field.window === sheet && field.isEditable }
+                // Erst die präsentierte SwiftUI-Eingabe fokussieren, dann über den echten Paste-Befehl füllen.
+                try await Task.sleep(for: .milliseconds(180))
+                sheet.makeFirstResponder(field)
+                try await wait { sheet.firstResponder === field }
+                let tsv = "Neu 😀\t42\tA|B\t  Vierte  Spalte  \tFünfte Spalte\tSechste Spalte\nEnde\t\t**Klartext**\t4\t5\t6"
+                field.selectAll(nil)
+                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(tsv, forType: .string)
+                // SwiftUI muss die Eingabetransaktion samt losgelassenen Zusatztasten abschließen.
+                guard let cg = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true) else {
+                    throw NSError(domain: "TableSelfTest", code: 7)
+                }
+                cg.flags = .maskCommand
+                guard let native = NSEvent(cgEvent: cg),
+                      let characters = native.characters,
+                      let ignoring = native.charactersIgnoringModifiers,
+                      ignoring.lowercased() == "v" else {
+                    throw NSError(domain: "TableSelfTest", code: 8)
+                }
+                for (type, flags, keyCode, text, plain) in [
+                    (NSEvent.EventType.flagsChanged, native.modifierFlags, UInt16(55), "", ""),
+                    (.keyDown, native.modifierFlags, UInt16(9), characters, ignoring),
+                    (.keyUp, native.modifierFlags, UInt16(9), characters, ignoring),
+                    (.flagsChanged, [], UInt16(55), "", "")
+                ] {
+                    guard let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags,
+                        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: sheet.windowNumber,
+                        context: nil, characters: text, charactersIgnoringModifiers: plain,
+                        isARepeat: false, keyCode: keyCode) else {
+                        throw NSError(domain: "TableSelfTest", code: 9)
+                    }
+                    NSApp.postEvent(event, atStart: false)
+                }
+                try await wait { field.string == tsv }
+                diagnostics.append("TSV-Feld: Delegate=\(String(describing: field.delegate)), Fokus=\(sheet.firstResponder === field), Zeichen=\(field.string.utf16.count)")
+                // Der native Textspeicher wird vor SwiftUIs nächster Bindungs-/View-Transaktion sichtbar.
+                // Erst die neu gerenderte aktive Bestätigung anklicken, nicht nach einer festen Pause.
+                try await wait { sheet.contentView.flatMap { markerView(id: "markdownTableTSVInsertReady", in: $0) } != nil }
+                try require(field.string == tsv, "TSV-Feld verliert die eingefügte Quelle")
+                await capture("table-tsv-sheet", in: sheet)
+                stage = "TSV-Bestätigung"
+                try require(click("markdownTableTSVInsert", in: sheet), "TSV-Einfügen fehlt")
+                try await wait { window.sheets.isEmpty && ws.activeTab?.content.contains("Neu") == true }
+                try require(ws.markdownTable.error == nil, "TSV wurde abgewiesen")
+                stage = "Schmale dunkle Ansicht"
+                window.setContentSize(NSSize(width: MainWindowSizing.minimumWidth, height: MainWindowSizing.minimumHeight))
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+                try await Task.sleep(for: .milliseconds(300))
+                guard let content = window.contentView, let bar = markerView(id: "markdownTableBar", in: content) else { throw NSError(domain: "TableSelfTest", code: 4) }
+                let rect = bar.convert(bar.bounds, to: content)
+                try require(rect.minX >= -1 && rect.maxX <= content.bounds.maxX+1, "Tabellenleiste ragt über das Fenster")
+                await capture("table-dark-narrow")
+                stage = "Speichern und erneut öffnen"
+                let saved = ws.activeTab!.content
+                ws.saveActiveTab()
+                try await wait { !ws.activeTab!.isDirty && (try? String(contentsOf: file, encoding: .utf8)) == saved }
+                stage = "Quelltext und WYSIWYG wechseln"
+                try require(click("markdownEditingModeButton"), "Quelltext-Umschalter fehlt")
+                try await wait { !ws.activeMarkdownIsVisual && CommandTargeting.editorTextView(for: ws)?.string == saved }
+                try await Task.sleep(for: .milliseconds(300))
+                await capture("table-source-after-save")
+                try require(click("markdownEditingModeButton"), "WYSIWYG-Umschalter fehlt")
+                try await wait { ws.activeMarkdownIsVisual && ws.visualMarkdownEditor?.ready == true }
+                stage = "Datei schließen und erneut öffnen"
+                let closedID = ws.activeTabID!
+                ws.openNewTab()
+                try await wait { ws.activeTabID != closedID && ws.visualMarkdownEditor == nil }
+                ws.closeTab(id: closedID)
+                try await wait { !ws.tabs.contains(where: { $0.id == closedID }) }
+                loaded = false
+                ws.loadFile(at: file) { loaded = $0 }
+                try await wait { loaded && ws.activeTab?.url?.canonicalFileURL == file.canonicalFileURL && ws.activeTab?.content == saved && ws.visualMarkdownEditor?.ready == true }
+                guard let reopenedWeb = ws.visualMarkdownEditor?.web else { throw NSError(domain: "TableSelfTest", code: 5) }
+                let text = try await reopenedWeb.evaluateJavaScript("document.querySelector('table').textContent") as? String ?? ""
+                try require(text.contains("A|B") && text.contains("**Klartext**") && text.contains("Fett"), "Neu gerenderte Tabelle verliert Zelltext oder Formatierung")
+                try require(try await reopenedWeb.evaluateJavaScript("document.querySelector('table').rows[0].cells.length") as? Int == 6, "Breite Tabelle verliert Spalten")
+                try require(try await reopenedWeb.evaluateJavaScript("document.querySelector('table').rows[2].cells[3].textContent") as? String == "  Vierte  Spalte  ", "TSV-Leerzeichen gehen beim Speichern/Wiederöffnen verloren")
+                try require(saved.contains("Vorher **unverändert** 😀.") && saved.contains("Nachher unverändert."), "Nachbarabsätze wurden verändert")
+                await capture("table-reopened-wide-content")
+                stage = "Echte Tab-Taste am Tabellenlimit"
+                let limitFile = file.deletingLastPathComponent().appendingPathComponent("limit.md")
+                let limitSource = "| Kopf |\n| --- |\n" + String(repeating: "| x |\n", count: 999)
+                try limitSource.write(to: limitFile, atomically: true, encoding: .utf8)
+                loaded = false; ws.loadFile(at: limitFile) { loaded = $0 }
+                try await wait { loaded && ws.visualMarkdownEditor?.ready == true && ws.activeTab?.content == limitSource }
+                guard let limitWeb = ws.visualMarkdownEditor?.web else { throw NSError(domain: "TableSelfTest", code: 6) }
+                _ = try await limitWeb.evaluateJavaScript("{const c=document.querySelector('table').rows[999].cells[0],r=document.createRange();c.scrollIntoView({block:'center'});r.selectNodeContents(c);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);document.getElementById('fastra-visual').focus();}")
+                window.makeFirstResponder(limitWeb)
+                postKey("\t", keyCode: 48, windowNumber: window.windowNumber)
+                try await wait { ws.markdownTable.error != nil }
+                try require(ws.activeTab?.content == limitSource, "Tab am Limit verändert die Tabelle")
+                try require(try await limitWeb.evaluateJavaScript("document.querySelector('table').rows.length") as? Int == 1000, "Tab am Limit fügt trotzdem eine Zeile hinzu")
+                await capture("table-limit-error")
+                removeDiagnostics()
+                finish(true, "Zellklick, Tab/Shift-Tab, echtes Zeilenmenü, natives Undo/Redo, breites TSV, Moduswechsel, Speichern und echtes Schließen/Wiederöffnen; hell/dunkel bei Mindestbreite und breit geprüft")
+            } catch {
+                await diagnose("Fehler")
+                if stage == "Textsuche schließen und natives Undo/Redo" {
+                    diagnostics.append("Direkte native Undo-Aktion: \(NSApp.sendAction(NSSelectorFromString("undo:"), to: nil, from: nil))")
+                    try? await Task.sleep(for: .milliseconds(500))
+                    await diagnose("Nach direkter nativer Undo-Aktion")
+                }
+                fputs((diagnostics.joined(separator: "\n") + "\n").cString(using: .utf8)!, stderr)
+                await capture("table-failure")
+                removeDiagnostics()
+                finish(false, "Tabellen [\(stage)]: \(error.localizedDescription); Kontext=\(String(describing: ws.markdownTable.context)); Fehler=\(ws.markdownTable.error ?? "keiner")")
+            }
+        }
+    }
+
+    /// Echte Tasten und Mausaktionen prüfen die native Suchleiste im Dokument.
+    private static func runMarkdownVisualFindTest() {
+        testLabel = "mdvisualfind"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else { finish(false, "Dokumentfenster fehlt") }
+            let source = "# Textsuche\n\nNEEDLE oben.\n\nEin **fetter** Text 😀.\n\n[Linktext](https://hidden.invalid/target)\n\n"
+                + String(repeating: "Weiterer Absatz.\n\n", count: 180) + "NEEDLE unten.\n"
+            let base = selfTestTemporaryDirectory().appendingPathComponent("Markdown-VisualFind-\(UUID().uuidString)")
+            let file = base.appendingPathComponent("Textsuche.md")
+            NSApp.appearance = NSAppearance(named: .aqua)
+            var stage = "Vorbereitung"
+            func require(_ success: Bool, _ message: String) throws {
+                if !success { throw NSError(domain: "VisualFindSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            func wait(_ condition: () -> Bool) async throws {
+                for _ in 0..<300 { if condition() { return }; try await Task.sleep(for: .milliseconds(50)) }
+                try require(condition(), "Zustand wurde nicht bereit")
+            }
+            func focusedFindEditor() -> NSTextView? {
+                guard let root = window.contentView else { return nil }
+                var fields: [NSTextField] = []
+                collectEditableFields(in: root, into: &fields)
+                guard let field = fields.first(where: {
+                    $0.accessibilityIdentifier() == "markdownVisualFindField"
+                        || $0.placeholderString == L10n.string("Im formatierten Text suchen")
+                }), let editor = field.currentEditor() as? NSTextView,
+                      window.firstResponder === editor else { return nil }
+                // Den Fokus dem konkreten Suchfeld zuordnen; ein beliebiger
+                // Feldeditor als First Responder kann zu einem anderen Feld gehören.
+                return editor
+            }
+            func click(_ id: String) -> Bool {
+                guard let root = window.contentView, let marker = markerView(id: id, in: root) else { return false }
+                let rect = marker.convert(marker.bounds, to: nil)
+                return sendMouseClick(at: NSPoint(x: rect.midX, y: rect.midY), in: window, modifiers: [], viaApp: true)
+            }
+            func capture(_ name: String) async {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_MD_VISUAL_FIND_DIR"]
+                    ?? ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { return }
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
+                try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                    typeScrollCapture(window: window) { snapshot in try? snapshot?.data.write(to: url); done.resume() }
+                }
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                try source.write(to: file, atomically: true, encoding: .utf8)
+                workspaceDefaults().set(true, forKey: MarkdownEditingMode.defaultsKey)
+                workspaceDefaults().set(true, forKey: MarkdownAssist.firstUseDefaultsKey)
+                var loaded = false
+                ws.loadFile(at: file) { loaded = $0 }
+                window.setContentSize(NSSize(width: 1100, height: 650))
+                activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                stage = "Editor laden"
+                try await wait { loaded && ws.visualMarkdownEditor?.ready == true }
+                let expectedStats = DocumentStats.format(DocumentStats.counts(of: source))
+                try await wait { ws.documentStatsText == expectedStats && !ws.statsIsSelection }
+                let web = ws.visualMarkdownEditor!.web!
+                window.makeFirstResponder(web)
+                postKey("f", keyCode: 3, windowNumber: window.windowNumber, modifiers: .command)
+                let find = ws.markdownVisualFind
+                stage = "Suchfeld fokussieren"
+                try await wait { find.isPresented && focusedFindEditor() != nil }
+                guard let field = focusedFindEditor() else { throw NSError(domain: "VisualFindSelfTest", code: 2) }
+                field.insertText("NEEDLE", replacementRange: NSRange(location: 0, length: field.string.utf16.count))
+                try await wait { find.query == "NEEDLE" && find.status == .found }
+                await capture("find-light-wide")
+                let first = (try await web.evaluateJavaScript("window.scrollY")) as? Double ?? -1
+                postKey("g", keyCode: 5, windowNumber: window.windowNumber, modifiers: .command)
+                var second = first
+                for _ in 0..<100 {
+                    second = (try await web.evaluateJavaScript("window.scrollY")) as? Double ?? -1
+                    if second > first + 100 { break }; try await Task.sleep(for: .milliseconds(30))
+                }
+                try require(second > first + 100, "⌘G hat nicht sichtbar zum späten Treffer gescrollt")
+                postKey("g", keyCode: 5, windowNumber: window.windowNumber, modifiers: [.command, .shift])
+                var previous = second
+                for _ in 0..<100 {
+                    previous = (try await web.evaluateJavaScript("window.scrollY")) as? Double ?? -1
+                    if abs(previous - first) < 2 { break }; try await Task.sleep(for: .milliseconds(30))
+                }
+                try require(abs(previous - first) < 2, "⇧⌘G hat nicht zurückgescrollt")
+                postKey("\r", keyCode: 36, windowNumber: window.windowNumber)
+                var returned = first
+                for _ in 0..<100 {
+                    returned = (try await web.evaluateJavaScript("window.scrollY")) as? Double ?? -1
+                    if returned > first + 100 { break }; try await Task.sleep(for: .milliseconds(30))
+                }
+                try require(returned > first + 100, "Return hat nicht zum nächsten Treffer geführt")
+                postKey("\r", keyCode: 36, windowNumber: window.windowNumber, modifiers: .shift)
+                for _ in 0..<100 {
+                    returned = (try await web.evaluateJavaScript("window.scrollY")) as? Double ?? -1
+                    if abs(returned - first) < 2 { break }; try await Task.sleep(for: .milliseconds(30))
+                }
+                try require(abs(returned - first) < 2, "⇧Return hat nicht zum vorigen Treffer geführt")
+                stage = "Text über Formatgrenze"
+                field.insertText("fetter Text 😀", replacementRange: NSRange(location: 0, length: field.string.utf16.count))
+                try await wait { find.query == "fetter Text 😀" && find.status == .found }
+                try require(ws.activeMarkdownIsVisual && !ws.showSearchDialog, "Textsuche wechselte den Modus")
+                stage = "Quelltextsuche öffnen"
+                postKey("f", keyCode: 3, windowNumber: window.windowNumber, modifiers: [.command, .option])
+                try await wait { ws.showSearchDialog && !find.isPresented }
+                ws.showSearchDialog = false
+                activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                stage = "Suchbutton öffnen"
+                try require(click("markdownVisualFindButton"), "Sichtbarer Suchbutton fehlt")
+                try await wait { find.isPresented }
+                window.setContentSize(NSSize(width: MainWindowSizing.minimumWidth, height: 650))
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+                find.query = "ABSENT-12345"; find.schedule(in: ws)
+                stage = "Keine Treffer"
+                try await wait { find.status == .missing }
+                try await Task.sleep(for: .milliseconds(200))
+                if let root = window.contentView, let bar = markerView(id: "markdownVisualFindBar", in: root) {
+                    let rect = bar.convert(bar.bounds, to: root)
+                    try require(rect.minX >= -1 && rect.maxX <= root.bounds.maxX + 1, "Suchleiste ragt über das Fenster")
+                } else { try require(false, "Suchleiste fehlt") }
+                await capture("find-dark-narrow-missing")
+                stage = "Maus-Schließen"
+                try require(click("markdownVisualFindClose"), "Schließen fehlt")
+                try await wait { !find.isPresented }
+                stage = "Escape vorbereiten"
+                try require(click("markdownVisualFindButton"), "Suchbutton nach Schließen fehlt")
+                try await wait { find.isPresented && focusedFindEditor() != nil }
+                guard let escapeEditor = focusedFindEditor() else { throw NSError(domain: "VisualFindSelfTest", code: 3) }
+                let beforeTyping = escapeEditor.string as NSString
+                let typingRange = escapeEditor.selectedRange()
+                try require(typingRange.location <= beforeTyping.length
+                    && typingRange.length <= beforeTyping.length - typingRange.location,
+                    "Suchfeldauswahl ist ungültig")
+                let expectedTypedQuery = beforeTyping.replacingCharacters(in: typingRange, with: "x")
+                postKey("x", keyCode: 7, windowNumber: window.windowNumber)
+                try await wait { find.query == expectedTypedQuery && escapeEditor.string == find.query }
+                let escapeWasFieldEditor = escapeEditor.isFieldEditor
+                FileHandle.standardError.write(Data(("VISUAL_FIND_FOCUS actualField=true isFieldEditor=\(escapeWasFieldEditor) queryMatches=\(escapeEditor.string == find.query)\n").utf8))
+                postKey("\u{1b}", keyCode: 53, windowNumber: window.windowNumber)
+                try await wait { !find.isPresented }
+                try require(ws.activeTab?.content == source && !ws.activeTab!.isDirty, "Suche hat den Inhalt verändert")
+                try require(try String(contentsOf: file, encoding: .utf8) == source, "Suche hat die Datei verändert")
+                finish(true, "⌘F, echte Texteingabe, ⌘G/⇧⌘G, Formatgrenzen, Quelltextsuche, Maus und schmale Ansicht geprüft; tatsächlicher Suchfeldfokus=true, isFieldEditorVorEscape=\(escapeWasFieldEditor)")
+            } catch {
+                await capture("find-failure")
+                finish(false, "Visuelle Suche [\(stage)]: \(error.localizedDescription); Query=\(ws.markdownVisualFind.query), offen=\(ws.markdownVisualFind.isPresented), Quelle=\(ws.activeTab?.content == source), Responder=\(String(describing: window.firstResponder))")
+            }
+        }
+    }
+
+    private static func runTextSnippetFilesTest() {
+        testLabel = "snippetfiles"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws),
+                  let path = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { finish(.environment, "Dateidialog-Test benötigt den vorhandenen externen Tastenpfad") }
+            let output = URL(fileURLWithPath: path)
+            guard FileManager.default.fileExists(atPath: output.appendingPathComponent("panel-driver-ready").path) else { finish(.environment, "Externer Dateidialog-Treiber fehlt") }
+            let base = selfTestTemporaryDirectory().appendingPathComponent("fastra-snippet-files-\(UUID())")
+            let exported = base.appendingPathComponent("Export/Sammlung.json")
+            let bulk = base.appendingPathComponent("Bulk/Sammlung.json")
+            let invalid = base.appendingPathComponent("Invalid/Sammlung.json")
+            let source = "Dokument bleibt unverändert 😀\n"
+            let store = TextSnippetStore()
+            let originalAppearance = NSApp.appearance
+            var stage = "Fixture", keyIndex = 0, panelTimer: Timer?, panelError: String?
+            func require(_ ok: Bool, _ message: String) throws {
+                if !ok { throw NSError(domain: "SnippetFiles", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            @MainActor func wait(_ detail: String, _ condition: @MainActor () -> Bool) async throws { try await nativeUIWait(stage + " / " + detail, condition) }
+            @MainActor func request(_ code: Int?, capture: String? = nil, window: NSWindow? = nil) throws {
+                var value: [String: Any] = ["pid": ProcessInfo.processInfo.processIdentifier, "nonce": UUID().uuidString]
+                if let code { value["keyCode"] = code }
+                if let capture, let window { value["capture"] = capture; value["windowID"] = window.windowNumber }
+                try JSONSerialization.data(withJSONObject: value).write(to: output.appendingPathComponent("panel-key-\(keyIndex).json"), options: .atomic)
+                keyIndex += 1
+            }
+            @MainActor func confirmationList(in view: NSView) -> NSTextView? {
+                if let text = view as? NSTextView, !text.isEditable, text.enclosingScrollView != nil { return text }
+                return view.subviews.lazy.compactMap { confirmationList(in: $0) }.first
+            }
+            @MainActor func button(_ title: String, in view: NSView) -> NSButton? {
+                if let button = view as? NSButton, button.title == title { return button }
+                return view.subviews.lazy.compactMap { button(title, in: $0) }.first
+            }
+            @MainActor func startPanel(importing file: URL? = nil, names: [String]? = nil, capture: String) {
+                panelTimer?.invalidate(); snippetFilePanel = nil; panelError = nil
+                var step = 0, next = Date.distantPast, topCaptureIndex: Int?, captureIndex = 0
+                let appearances: [(NSAppearance.Name, Bool, String)] = [
+                    (.aqua, false, "light-top"), (.darkAqua, false, "dark-top"),
+                    (.aqua, true, "light-end"), (.darkAqua, true, "dark-end")
+                ]
+                let timer = Timer(timeInterval: 0.05, repeats: true) { _ in
+                    do {
+                        if step == 0, let panel = snippetFilePanel {
+                            guard panel.directoryURL?.canonicalFileURL == (file?.deletingLastPathComponent() ?? exported.deletingLastPathComponent()).canonicalFileURL else { return }
+                            if file != nil { try request(124); next = Date().addingTimeInterval(0.3); step = 1 }
+                            else { try request(36); panelTimer?.invalidate(); step = 6 }
+                        } else if step == 1, Date() >= next, let panel = snippetFilePanel {
+                            guard panel.directoryURL?.canonicalFileURL == file?.deletingLastPathComponent().canonicalFileURL else { throw NSError(domain: "SnippetFiles", code: 2, userInfo: [NSLocalizedDescriptionKey: "Dateidialog verließ die Fixture"]) }
+                            try request(125); step = 7
+                        } else if step == 7, let panel = snippetFilePanel as? NSOpenPanel,
+                                  panel.urls.count == 1, panel.urls.first?.canonicalFileURL == file?.canonicalFileURL {
+                            try request(36); step = 2
+                            if names == nil { panelTimer?.invalidate(); step = 6 }
+                        } else if step == 2, let alert = NSApp.modalWindow, !(alert is NSSavePanel),
+                                  let root = alert.contentView, button(L10n.string("Importieren"), in: root) != nil,
+                                  let names, let list = confirmationList(in: root), list.string == names.joined(separator: "\n") {
+                            guard let scroll = list.enclosingScrollView, scroll.frame.height > 0 else { return }
+                            try require(scroll.frame.height <= 180, "Importnamen sind nicht in begrenzter Scrollansicht")
+                            step = 3
+                        } else if step == 3, let alert = NSApp.modalWindow, let root = alert.contentView,
+                                  let list = confirmationList(in: root) {
+                            let appearance = appearances[captureIndex]
+                            NSApp.appearance = NSAppearance(named: appearance.0)
+                            list.scrollRangeToVisible(NSRange(location: appearance.1 ? list.string.utf16.count : 0, length: 0))
+                            next = Date().addingTimeInterval(0.2); step = 4
+                        } else if step == 4, Date() >= next, let alert = NSApp.modalWindow {
+                            topCaptureIndex = keyIndex
+                            try request(nil, capture: capture + "-" + appearances[captureIndex].2, window: alert); step = 5
+                        } else if step == 5, let index = topCaptureIndex,
+                                  FileManager.default.fileExists(atPath: output.appendingPathComponent("panel-response-\(index).json").path) {
+                            let reply = try Data(contentsOf: output.appendingPathComponent("panel-response-\(index).json"))
+                            let replyObject = try JSONSerialization.jsonObject(with: reply) as? [String: Any]
+                            try require(replyObject?["ok"] as? Bool == true, "Native Aufnahme wurde nicht bestätigt")
+                            captureIndex += 1
+                            if captureIndex < appearances.count { step = 3 }
+                            else {
+                                NSApp.appearance = originalAppearance
+                                try request(36); panelTimer?.invalidate(); step = 6
+                            }
+                        }
+                    } catch {
+                        panelError = error.localizedDescription; panelTimer?.invalidate(); snippetFilePanel?.cancel(nil)
+                    }
+                }
+                panelTimer = timer; RunLoop.main.add(timer, forMode: .common); RunLoop.main.add(timer, forMode: .modalPanel)
+            }
+            @MainActor func cleanup() {
+                panelTimer?.invalidate(); snippetFilePanel?.cancel(nil); snippetFilePanel = nil
+                snippetExportDestination = nil; snippetImportDirectory = nil
+                NSApp.appearance = originalAppearance
+                ws.textSnippetSession?.close()
+                try? Data("done".utf8).write(to: output.appendingPathComponent("panel-driver-done"))
+                try? FileManager.default.removeItem(at: base)
+            }
+            do {
+                for directory in [exported, bulk, invalid].map({ $0.deletingLastPathComponent() }) { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+                let original = try store.save(TextSnippetDefinition(name: "Roundtrip 😀", template: "Hallo {{Name}}\n{{Name}}"), expectedRevision: nil)
+                let incoming = (0..<48).map { TextSnippetDefinition(name: String(format: "%02d ", $0) + String(repeating: "Langer Unicode-Name 😀 ", count: 3), template: "{{Name}}") }
+                let bulkData = try TextSnippetArchive.encode(incoming)
+                try bulkData.write(to: bulk, options: .atomic); try Data("kein JSON".utf8).write(to: invalid)
+                let tab = EditorTab(title: "SnippetFiles.txt", path: "", content: source)
+                ws.tabs = [tab]; ws.activeTabID = tab.id
+                window.setContentSize(NSSize(width: 1100, height: 700))
+                activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                try await wait("Editor bereit") { CommandTargeting.editorTextView(for: ws)?.string == source }
+                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
+                try await wait("Picker offen") { ws.textSnippetSession != nil && !window.sheets.isEmpty }
+                guard let session = ws.textSnippetSession, let picker = window.sheets.first else { throw NSError(domain: "SnippetFiles", code: 3) }
+                snippetExportDestination = exported
+                stage = "Sammlung über echten Speicherdialog exportieren"
+                startPanel(capture: "export")
+                try await stableMarkerClick("snippetExport", in: picker, stage: stage)
+                try await wait("Exportdatei und UI-Rückgabe") { FileManager.default.fileExists(atPath: exported.path) && !session.isBusy && snippetFilePanel?.isVisible != true }
+                try require(panelError == nil && session.error == nil, panelError ?? session.error ?? "Exportfehler")
+                let exportedData = try FileSnapshot.read(from: exported, byteLimit: UInt64(TextSnippetArchive.maximumBytes)).data
+                try require(try TextSnippetArchive.decode(exportedData) == [original], "Export enthält andere Definitionen")
+                stage = "Exportdatei über echten Öffnendialog importieren"
+                snippetImportDirectory = exported.deletingLastPathComponent()
+                let roundtripNames = try store.previewImport(exportedData).map(\.name)
+                startPanel(importing: exported, names: roundtripNames, capture: "import-roundtrip")
+                try await stableMarkerClick("snippetImport", in: picker, stage: stage)
+                try await wait("Import und Konfliktumbenennung") { session.saved.count == 2 && !session.isBusy }
+                try require(panelError == nil && session.error == nil && session.saved.first == original, "Import überschreibt Original oder meldet Fehler")
+                try require(session.saved[1].name == "Roundtrip 😀 (2)" && session.saved[1].id != original.id, "Importkonflikt nicht getrennt")
+                stage = "Lange vollständige Importliste"
+                snippetImportDirectory = bulk.deletingLastPathComponent()
+                let names = try store.previewImport(bulkData).map(\.name)
+                startPanel(importing: bulk, names: names, capture: "import-bulk")
+                try await stableMarkerClick("snippetImport", in: picker, stage: stage)
+                try await wait("Alle 48 Definitionen übernommen") { session.saved.count == 50 && !session.isBusy }
+                try require(panelError == nil && session.error == nil && session.saved.first == original, "Großimport verändert vorhandene Daten")
+                stage = "Ungültige Datei vollständig abweisen"
+                snippetImportDirectory = invalid.deletingLastPathComponent()
+                let before = try store.load()
+                startPanel(importing: invalid, capture: "import-invalid")
+                try await stableMarkerClick("snippetImport", in: picker, stage: stage)
+                try await wait("Importfehler sichtbar") { session.error != nil && !session.isBusy }
+                try require(try store.load() == before && ws.activeTab?.content == source, "Ungültiger Import verändert Daten")
+                try require(panelError == nil, panelError ?? "Dialogfehler")
+                let finalResponse = output.appendingPathComponent("panel-response-\(keyIndex - 1).json")
+                try await wait("Letzte native Eingabe bestätigt") { FileManager.default.fileExists(atPath: finalResponse.path) }
+                let finalReply = try JSONSerialization.jsonObject(with: Data(contentsOf: finalResponse)) as? [String: Any]
+                try require(finalReply?["ok"] as? Bool == true, "Letzte native Eingabe meldet einen Fehler")
+                panelTimer?.invalidate()
+                try await stableMarkerClick("snippetClose", in: picker, stage: stage)
+                try await wait("Picker geschlossen") { ws.textSnippetSession == nil && window.sheets.isEmpty }
+                cleanup()
+                finish(true, "Echter Export/Import über macOS-Dateidialoge mit nativen Systemtasten, unveränderte Originale, Konfliktumbenennung, vollständige begrenzte 48-Namen-Vorschau, 50er-Grenze und ungültige JSON-Datei")
+            } catch {
+                let detail = "Textbaustein-Dateien [\(stage)]: \(error.localizedDescription); Panel=\(panelError ?? "nil"), UI=\(ws.textSnippetSession?.error ?? "nil")"
+                cleanup(); finish(false, detail)
+            }
+        }
+    }
+
+    private static func runTextSnippetTest() {
+        testLabel = "snippets"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else { finish(false, "Dokumentfenster fehlt") }
+            let base = selfTestTemporaryDirectory().appendingPathComponent("fastra-snippets-\(UUID())")
+            let file = base.appendingPathComponent("Snippet.txt")
+            let source = "vor OLD nach\r\nUnberührt 😀\n"
+            let originalAppearance = NSApp.appearance
+            var stage = "Fixture"
+            func require(_ ok: Bool, _ message: String) throws {
+                if !ok { throw NSError(domain: "TextSnippetSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            @MainActor func wait(_ detail: String, _ condition: @MainActor () -> Bool) async throws { try await nativeUIWait(stage + " / " + detail, condition) }
+            @MainActor func sheet() throws -> NSWindow {
+                guard let sheet = window.sheets.first else { throw NSError(domain: "TextSnippetSelfTest", code: 2) }; return sheet
+            }
+            @MainActor func input(_ id: String, in target: NSWindow) -> NSTextView? {
+                func find(_ view: NSView) -> NSTextView? {
+                    if let text = view as? NSTextView, text.accessibilityIdentifier() == id { return text }
+                    for child in view.subviews { if let found = find(child) { return found } }; return nil
+                }
+                return target.contentView.flatMap(find)
+            }
+            @MainActor func fill(_ id: String, _ value: String, in target: NSWindow) async throws {
+                try await wait("Textfeld montiert: " + id) { input(id, in: target)?.window === target && input(id, in: target)?.isEditable == true }
+                guard let text = input(id, in: target), target.makeFirstResponder(text) else { throw NSError(domain: "TextSnippetSelfTest", code: 3, userInfo: [NSLocalizedDescriptionKey: "Textfeld fehlt: " + id]) }
+                try await wait("Textfeld fokussiert: " + id) { target.firstResponder === text }
+                text.selectAll(nil); text.insertText(value, replacementRange: text.selectedRange())
+                try await wait("Native Eingabe übernommen: " + id) { input(id, in: target)?.string.utf8.elementsEqual(value.utf8) == true }
+            }
+            @MainActor func matrix(_ name: String, in target: NSWindow) async throws {
+                guard let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { return }
+                for (mode, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    for width in [760, 1100] {
+                        target.setContentSize(NSSize(width: width, height: width == 760 ? 650 : 740))
+                        try await Task.sleep(for: .milliseconds(300))
+                        guard let root = target.contentView else { continue }
+                        for id in ["snippetSave", "snippetClose", "snippetInsert"] {
+                            guard let marker = markerView(id: id, in: root) else { try require(false, "Control fehlt: " + id); continue }
+                            let rect = marker.convert(marker.bounds, to: root)
+                            try require(root.bounds.contains(NSPoint(x: rect.midX, y: rect.midY)), "Control abgeschnitten: " + id)
+                        }
+                        let url = URL(fileURLWithPath: output).appendingPathComponent("\(name)-\(mode)-\(width).png")
+                        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                            typeScrollCapture(window: target) { snapshot in try? snapshot?.data.write(to: url); done.resume() }
+                        }
+                    }
+                }
+            }
+            @MainActor func cleanup() {
+                ws.textSnippetSession?.close(); NSApp.appearance = originalAppearance
+                try? FileManager.default.removeItem(at: base)
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                try source.write(to: file, atomically: true, encoding: .utf8)
+                var loaded = false; ws.loadFile(at: file) { loaded = $0 }
+                window.setContentSize(NSSize(width: 1100, height: 700))
+                activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                try await wait("Quelle bereit") { loaded && CommandTargeting.editorTextView(for: ws)?.string == source }
+                guard let editor = CommandTargeting.editorTextView(for: ws) else { throw NSError(domain: "TextSnippetSelfTest", code: 4) }
+                try require(window.makeFirstResponder(editor), "Editor nimmt Fokus nicht an")
+                editor.selectionManager.setSelectedRange((source as NSString).range(of: "OLD"))
+                stage = "Sichtbaren Befehl öffnen"
+                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
+                try await wait("Sheet geöffnet") { ws.textSnippetSession != nil && !window.sheets.isEmpty }
+                guard let session = ws.textSnippetSession else { throw NSError(domain: "TextSnippetSelfTest", code: 5) }
+                let picker = try sheet()
+                await Task.yield()
+                stage = "Neue Vorlage tatsächlich bearbeiten"
+                try await stableMarkerClick("snippetName", in: picker, stage: stage)
+                func nameEditor() -> NSTextView? {
+                    guard let root = picker.contentView else { return nil }
+                    var fields: [NSTextField] = []; collectEditableFields(in: root, into: &fields)
+                    guard let field = fields.first(where: { $0.placeholderString == L10n.string("Name des Textbausteins") }),
+                          let editor = field.currentEditor() as? NSTextView, picker.firstResponder === editor else { return nil }
+                    return editor
+                }
+                try await wait("Namensfeld besitzt konkreten Editor") { nameEditor() != nil }
+                guard let name = nameEditor() else { throw NSError(domain: "TextSnippetSelfTest", code: 6) }
+                name.selectAll(nil); name.insertText("Brief 😀", replacementRange: name.selectedRange())
+                try await fill("snippetTemplateInput", "{{Name}} / {{Ort}} / {{Name}}", in: picker)
+                try await wait("Vorlage übernommen") { session.definition.name == "Brief 😀" && session.placeholders == ["Name", "Ort"] }
+                try await stableMarkerClick("snippetSave", in: picker, stage: stage)
+                try await wait("Vorlage gespeichert") { !session.dirty && session.saved.count == 1 }
+                let savedID = session.definition.id
+                try await fill("snippetValue-0", "Hallo 😀\ne\u{301}", in: picker)
+                let first = input("snippetValue-0", in: picker)
+                postKey("\t", keyCode: 48, windowNumber: picker.windowNumber)
+                try await wait("Tab erreicht zweites Feld") { picker.firstResponder === input("snippetValue-1", in: picker) }
+                try await fill("snippetValue-1", "{{Name}} Köln", in: picker)
+                postKey("\u{19}", keyCode: 48, windowNumber: picker.windowNumber, modifiers: .shift)
+                try await wait("Umschalt-Tab erreicht erstes Feld") { picker.firstResponder === first }
+                let replacement = "Hallo 😀\ne\u{301} / {{Name}} Köln / Hallo 😀\ne\u{301}"
+                try await wait("Vorschau vollständig") { session.preview?.utf8.elementsEqual(replacement.utf8) == true && session.canInsert }
+                try require(input("snippetPreviewInput", in: picker)?.string.utf8.elementsEqual(replacement.utf8) == true, "Sichtbare Vorschau weicht ab")
+                try require(ws.activeTab?.content == source && (try String(contentsOf: file, encoding: .utf8)) == source, "Vorlage oder Vorschau schreibt ins Dokument")
+                try await matrix("snippets-values", in: picker)
+                stage = "Vorlagenfehler sichtbar"
+                try await fill("snippetTemplateInput", "{{offen", in: picker)
+                try await wait("Fehler blockiert Einfügen") { session.validationMessage != nil && !session.canInsert && !session.canSave }
+                try await matrix("snippets-invalid", in: picker)
+                try await fill("snippetTemplateInput", "{{Name}} / {{Ort}} / {{Name}}", in: picker)
+                try await wait("Vorlage wieder sauber") { !session.dirty }
+                try await fill("snippetValue-0", "Hallo 😀\ne\u{301}", in: picker)
+                try await fill("snippetValue-1", "{{Name}} Köln", in: picker)
+                stage = "Auswahl einfügen, Undo und Redo"
+                try await stableMarkerClick("snippetInsert", in: picker, stage: stage)
+                let expected = (source as NSString).replacingOccurrences(of: "OLD", with: replacement)
+                try await wait("Einfügung fertig") { ws.textSnippetSession == nil && window.sheets.isEmpty && ws.activeTab?.content.utf8.elementsEqual(expected.utf8) == true }
+                try require((try String(contentsOf: file, encoding: .utf8)) == source, "Einfügen speichert ungefragt")
+                try await wait("Dokumentfenster nach Sheet bereit") { window.sheets.isEmpty && window.isKeyWindow }
+                try require(window.makeFirstResponder(editor), "Dokumentfokus nach Sheet fehlt")
+                try await wait("Dokument besitzt Fokus") { window.firstResponder === editor }
+                postHistoryKey(windowNumber: window.windowNumber)
+                try await wait("Ein Undo stellt Quelle wieder her") { ws.activeTab?.content.utf8.elementsEqual(source.utf8) == true }
+                try await wait("Redo verfügbar") { editor.undoManager?.canRedo == true }
+                try await redoFromEditMenu()
+                try await wait("Redo") { ws.activeTab?.content.utf8.elementsEqual(expected.utf8) == true }
+                postHistoryKey(windowNumber: window.windowNumber)
+                try await wait("Original wieder da") { ws.activeTab?.content == source }
+                stage = "Erneut öffnen und Abbrechen"
+                editor.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
+                try await wait("Gespeicherter Baustein") { ws.textSnippetSession?.definition.id == savedID && !window.sheets.isEmpty }
+                let reopened = try sheet()
+                try await matrix("snippets-reopened", in: reopened)
+                try await stableMarkerClick("snippetClose", in: reopened, stage: stage)
+                try await wait("Abgebrochen") { ws.textSnippetSession == nil && window.sheets.isEmpty }
+                try require(ws.activeTab?.content == source, "Abbrechen verändert Quelle")
+                stage = "Duplizieren und Löschen"
+                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
+                try await wait("Verwaltung offen") { ws.textSnippetSession != nil && !window.sheets.isEmpty }
+                let management = try sheet()
+                guard let managed = ws.textSnippetSession else { throw NSError(domain: "TextSnippetSelfTest", code: 8) }
+                try await stableMarkerClick("snippetDuplicate", in: management, stage: stage)
+                try await wait("Unabhängige Kopie") { managed.dirty && managed.definition.id != savedID }
+                let duplicateID = managed.definition.id
+                try await stableMarkerClick("snippetSave", in: management, stage: stage)
+                try await wait("Kopie gespeichert") { !managed.dirty && managed.saved.count == 2 }
+                try require(managed.definition.template == "{{Name}} / {{Ort}} / {{Name}}", "Duplikat verliert Vorlage")
+                try await matrix("snippets-management", in: management)
+                try await stableMarkerClick("snippetDelete", in: management, stage: stage)
+                func deleteButton(_ view: NSView) -> NSButton? {
+                    if let button = view as? NSButton, button.title == L10n.string("Löschen") { return button }
+                    return view.subviews.lazy.compactMap { deleteButton($0) }.first
+                }
+                var confirmation: (NSWindow, NSButton)?
+                try await wait("Sichtbare Löschbestätigung") {
+                    for alert in management.sheets + window.sheets {
+                        if let root = alert.contentView, let button = deleteButton(root) { confirmation = (alert, button); return true }
+                    }
+                    return false
+                }
+                if let (alert, button) = confirmation {
+                    try require(sendMouseClick(at: button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil), in: alert, modifiers: [], viaApp: true), "Löschbestätigung nicht bedienbar")
+                }
+                try await wait("Nur Kopie gelöscht") { managed.saved.count == 1 && !managed.saved.contains(where: { $0.id == duplicateID }) && managed.definition.id == savedID }
+                try await wait("Löschbestätigung vollständig geschlossen") { management.sheets.isEmpty && management.isKeyWindow }
+                stage = "Exportdialog abbrechen"
+                var exportPanelSeen = false
+                var panelTimer: Timer?
+                panelTimer = Timer(timeInterval: 0.05, repeats: true) { _ in
+                    guard let panel = NSApp.modalWindow as? NSSavePanel else { return }
+                    exportPanelSeen = true; panelTimer?.invalidate(); panelTimer = nil; panel.cancel(nil)
+                }
+                if let panelTimer { RunLoop.main.add(panelTimer, forMode: .common); RunLoop.main.add(panelTimer, forMode: .modalPanel) }
+                try await stableMarkerClick("snippetExport", in: management, stage: stage)
+                try await wait("Exportpanel abgebrochen") { exportPanelSeen && NSApp.modalWindow == nil }
+                panelTimer?.invalidate(); panelTimer = nil
+                try require(managed.saved.count == 1 && ws.activeTab?.content == source, "Exportabbruch verändert Daten")
+                try await stableMarkerClick("snippetClose", in: management, stage: stage)
+                try await wait("Verwaltung geschlossen") { ws.textSnippetSession == nil && window.sheets.isEmpty }
+                stage = "WYSIWYG-Einfügen"
+                var markdown = EditorTab(title: "Snippet.md", path: "", content: "# Kopf\n\nOLD\n\nUnberührt  _Original_ 😀\n")
+                markdown.markdownVisualOverride = true
+                ws.tabs.append(markdown); ws.activeTabID = markdown.id
+                try await wait("WebKit bereit") { ws.visualMarkdownEditor?.ready == true }
+                guard let web = ws.visualMarkdownEditor?.web else { throw NSError(domain: "TextSnippetSelfTest", code: 7) }
+                _ = try await web.evaluateJavaScript("const p=Array.from(document.querySelectorAll('p')).find(p=>p.textContent==='OLD'),r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'));void 0;")
+                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
+                try await wait("Visueller Picker") { ws.textSnippetSession != nil && !window.sheets.isEmpty }
+                let visualPicker = try sheet()
+                try await fill("snippetValue-0", "Visuell 😀\nzweite Zeile", in: visualPicker)
+                try await fill("snippetValue-1", "Köln", in: visualPicker)
+                try await matrix("snippets-visual", in: visualPicker)
+                try await stableMarkerClick("snippetInsert", in: visualPicker, stage: stage)
+                try await wait("Visuelle Einfügung") { ws.textSnippetSession == nil && window.sheets.isEmpty && ws.activeTab?.content.contains("Visuell 😀") == true }
+                try require(ws.activeTab?.content.hasPrefix("# Kopf\n\n") == true && ws.activeTab?.content.hasSuffix("Unberührt  _Original_ 😀\n") == true && ws.activeTab?.content.contains("OLD") == false, "Fremde Markdown-Blöcke wurden verändert")
+                try await wait("Visuelles Dokumentfenster nach Sheet bereit") { window.sheets.isEmpty && window.isKeyWindow }
+                try require(window.makeFirstResponder(web), "WebKit-Fokus nach Sheet fehlt")
+                try await wait("WebKit besitzt Fokus") { window.firstResponder === web }
+                postHistoryKey(windowNumber: window.windowNumber)
+                try await wait("Visuelles Undo") { ws.activeTab?.content.utf8.elementsEqual(markdown.content.utf8) == true }
+                stage = "Veraltetes Ziel"
+                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
+                try await wait("Picker erneut offen") { ws.textSnippetSession != nil && !window.sheets.isEmpty }
+                let stalePicker = try sheet()
+                ws.tabs[ws.tabs.firstIndex(where: { $0.id == markdown.id })!].content = "Extern neuer Inhalt\n"
+                try await wait("Stale blockiert") { ws.textSnippetSession?.targetIsCurrent == false && ws.textSnippetSession?.canInsert == false }
+                try await matrix("snippets-stale", in: stalePicker)
+                try await stableMarkerClick("snippetClose", in: stalePicker, stage: stage)
+                try await wait("Stale geschlossen") { ws.textSnippetSession == nil && window.sheets.isEmpty }
+                try require(ws.activeTab?.content == "Extern neuer Inhalt\n", "Stale-Abbruch überschreibt Dokument")
+                cleanup()
+                finish(true, "Sichtbarer Picker, Vorlage speichern, wiederholte Unicode-/Mehrzeilenwerte, Tab/Shift-Tab, vollständige Vorschau, echte Quelle-/WYSIWYG-Einfügung und natives Undo, Abbruch und stale Ziel; DE/EN-Layoutmatrix")
+            } catch {
+                fputs("SNIPPET-DIAG stage=\(stage) error=\(error.localizedDescription) session=\(String(describing: ws.textSnippetSession?.error)) responder=\(String(describing: window.sheets.first?.firstResponder))\n", stderr)
+                if let session = ws.textSnippetSession {
+                    fputs("SNIPPET-MODEL name=\(String(reflecting: session.definition.name)) template=\(String(reflecting: session.definition.template)) placeholders=\(session.placeholders) values=\(session.values)\n", stderr)
+                }
+                if let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] {
+                    let url = URL(fileURLWithPath: output).appendingPathComponent("snippets-failure.png")
+                    try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                        typeScrollCapture(window: window.sheets.first ?? window) { snapshot in try? snapshot?.data.write(to: url); done.resume() }
+                    }
+                }
+                cleanup(); finish(false, "Textbausteine [\(stage)]: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private static func runSourceSplitTest() {
+        testLabel = "sourcesplit"
+        Task { @MainActor in
+            guard let workspace = Workspace.shared, let window = CommandTargeting.registeredWindow(for: workspace) else { finish(false, "Dokumentfenster fehlt") }
+            let base = selfTestTemporaryDirectory().appendingPathComponent("fastra-source-split-\(UUID().uuidString)")
+            let file = base.appendingPathComponent("Example.4dm")
+            let source = "Function example()\r\nIf (True)\r\n" + (1...240).map {
+                "// Zeile \($0) 😀" + ["\r\n", "\n", "\r"][($0 - 1) % 3]
+            }.joined() + "End if\r\n"
+            let originalBytes = Data([0xff, 0xfe]) + source.data(using: .utf16LittleEndian)!
+            let originalAppearance = NSApp.appearance
+            let originalZoom = SelfTest.workspaceDefaults().object(forKey: DocumentZoom.defaultsKey)
+            var stage = "Fixture", sourceLoaded = false
+            @MainActor func cleanup() {
+                NSApp.appearance = originalAppearance
+                if let originalZoom { SelfTest.workspaceDefaults().set(originalZoom, forKey: DocumentZoom.defaultsKey) }
+                else { SelfTest.workspaceDefaults().removeObject(forKey: DocumentZoom.defaultsKey) }
+                try? FileManager.default.removeItem(at: base)
+            }
+            func require(_ ok: Bool, _ message: String) throws {
+                if !ok { throw NSError(domain: "SourceSplitSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            @MainActor func wait(_ detail: String, _ condition: @MainActor () -> Bool) async throws { try await nativeUIWait(stage + " / " + detail, condition) }
+            @MainActor func view(_ pane: SourcePaneID) -> TextView? { workspace.sourcePanes.view(for: pane, documentID: workspace.activeDocumentID) }
+            @MainActor func focus(_ pane: SourcePaneID) async throws {
+                try await wait("Ansicht montiert") { view(pane)?.window === window }
+                try require(window.makeFirstResponder(view(pane)), "Quellansicht nimmt Fokus nicht an")
+                try await wait("Fokus und Befehlsziel") { workspace.sourcePanes.activePane == pane && CommandTargeting.editorTextView(for: workspace) === view(pane) }
+            }
+            @MainActor func capture(_ name: String) async throws {
+                guard let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { return }
+                for (mode, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    for width in [MainWindowSizing.minimumWidth, 1100] {
+                        window.setContentSize(NSSize(width: width, height: 650))
+                        try await Task.sleep(for: .milliseconds(350))
+                        if name == "split-open" || name == "split-resized" {
+                            for pane in [SourcePaneID.primary, .secondary] {
+                                guard let textView = view(pane) else { continue }
+                                var node: NSView? = textView
+                                var geometry: [String] = []
+                                while let current = node {
+                                    geometry.append("\(type(of: current)):frame=\(current.frame),bounds=\(current.bounds),visible=\(current.visibleRect),clip=\(current.clipsToBounds)")
+                                    if current is NSSplitView { break }
+                                    node = current.superview
+                                }
+                                FileHandle.standardError.write(Data(("SOURCE_SPLIT_GEOMETRY image=\(name)-\(mode)-\(Int(width)) pane=\(pane) " + geometry.joined(separator: " | ") + "\n").utf8))
+                            }
+                        }
+                        let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { done in typeScrollCapture(window: window) { done.resume(returning: $0) } }
+                        guard let snapshot, snapshot.source == "screen" else { cleanup(); finish(.environment, "Echte Aufnahme fehlt") }
+                        let url = URL(fileURLWithPath: output).appendingPathComponent(name + "-" + mode + "-\(Int(width)).png")
+                        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try snapshot.data.write(to: url)
+                    }
+                }
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                try originalBytes.write(to: file)
+                workspace.loadFile(at: file) { sourceLoaded = $0 }
+                window.makeKeyAndOrderFront(nil); activateApplication(ignoringOtherApps: true)
+                try await wait("Quelle geladen") { sourceLoaded && workspace.activeTab?.url?.canonicalFileURL == file.canonicalFileURL && workspace.activeTab?.isLoading == false && view(.primary)?.string == source }
+                let id = workspace.activeTab!.id
+                stage = "Sichtbare Teilung"
+                try await stableMarkerClick("sourceSplitToggle", in: window, stage: stage)
+                try await wait("Zwei Ansichten") { workspace.sourceSplitEnabled && view(.secondary)?.window === window }
+                let first = try requireSourceView(view(.primary)), second = try requireSourceView(view(.secondary))
+                try require(first.textStorage === second.textStorage, "Abweichende Textspeicher")
+                first.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+                let selected = (source as NSString).range(of: "Zeile 100 😀")
+                try require(selected.location != NSNotFound, "Auswahlfixture fehlt")
+                second.selectionManager.setSelectedRange(selected)
+                if let rect = second.layoutManager.rectForOffset(selected.location) { _ = second.scrollToVisible(rect) }
+                try await wait("Unabhängiger Ausschnitt") { (second.enclosingScrollView?.contentView.bounds.origin.y ?? 0) > 100 }
+                try await capture("split-open")
+                stage = "Trennlinie verschieben"
+                var ancestor: NSView? = first.superview
+                var nativeSplit: NSSplitView?
+                while let current = ancestor {
+                    if let split = current as? NSSplitView, !split.isVertical,
+                       second.isDescendant(of: split) { nativeSplit = split; break }
+                    ancestor = current.superview
+                }
+                guard let nativeSplit, let upperPane = nativeSplit.arrangedSubviews.first else {
+                    throw NSError(domain: "SourceSplitDivider", code: 1)
+                }
+                let originalHeight = upperPane.frame.height
+                let beforeResize = [first.selectedRange(), second.selectedRange()]
+                nativeSplit.setPosition(nativeSplit.bounds.height * 0.65, ofDividerAt: 0)
+                try await wait("Native Ausschnitte neu angeordnet") {
+                    abs(upperPane.frame.height - originalHeight) > 30
+                        && first.visibleRect.height > 90 && second.visibleRect.height > 90
+                }
+                try require([first.selectedRange(), second.selectedRange()] == beforeResize
+                    && first.string == source && second.string == source,
+                    "Größenänderung veränderte Auswahl oder Quelle")
+                try await capture("split-resized")
+                nativeSplit.setPosition(originalHeight, ofDividerAt: 0)
+                stage = "Eingabe oben"
+                try await focus(.primary)
+                postKey("x", keyCode: 7, windowNumber: window.windowNumber)
+                try await wait("Gemeinsame Quelle und Auswahl") { workspace.activeTab?.content == "x" + source && second.string == "x" + source && second.selectedRange() == NSRange(location: selected.location + 1, length: selected.length) }
+                try require(try Data(contentsOf: file) == originalBytes, "Eingabe schrieb schon auf Platte")
+                (first.undoManager as? CEUndoManager)?.endUndoGrouping()
+                try await capture("split-edit-top")
+                stage = "Eingabe unten und gemeinsames Undo"
+                try await focus(.secondary)
+                postKey("y", keyCode: 16, windowNumber: window.windowNumber)
+                let replacementRange = NSRange(location: selected.location + 1, length: selected.length)
+                let edited = ("x" + source as NSString).replacingCharacters(in: replacementRange, with: "y")
+                try await wait("Eingabe in beiden Ansichten") { workspace.activeTab?.content == edited && first.string == edited && second.string == edited }
+                (second.undoManager as? CEUndoManager)?.endUndoGrouping()
+                try await capture("split-edit-bottom")
+                try await focus(.primary)
+                postHistoryKey(windowNumber: window.windowNumber)
+                try await wait("Gemeinsame Rücknahme") { workspace.activeTab?.content == "x" + source && first.string == "x" + source && second.string == "x" + source }
+                try await redoFromEditMenu()
+                try await wait("Gemeinsames Wiederholen") { workspace.activeTab?.content == edited && second.string == edited }
+                try await capture("split-undo-redo")
+                stage = "Sprung in aktiver Ansicht"
+                try await focus(.secondary)
+                let upperSelection = first.selectedRange()
+                let jump = (edited as NSString).range(of: "Zeile 200 😀")
+                try require(jump.location != NSNotFound, "Sprungfixture fehlt")
+                NotificationCenter.default.post(name: .fastraJumpToRange, object: workspace, userInfo: ["range": NSValue(range: jump)])
+                try await wait("Nur aktiver Ausschnitt springt samt Footer") { second.selectedRange() == jump && first.selectedRange() == upperSelection && workspace.cursorLine == 202 }
+                try await capture("split-jump")
+                stage = "Unabhängige Faltung und Darstellung"
+                func controller(_ view: TextView) -> TextViewController? {
+                    var responder: NSResponder? = view
+                    while let current = responder {
+                        if let controller = current as? TextViewController { return controller }
+                        responder = current.nextResponder
+                    }
+                    return nil
+                }
+                guard let upperController = controller(first), let lowerController = controller(second) else { throw NSError(domain: "SourceSplitController", code: 1) }
+                try await wait("Beide Faltungsanalysen") { !upperController.fastraFoldRegions.isEmpty && !lowerController.fastraFoldRegions.isEmpty }
+                let foldStart = (edited as NSString).range(of: "If (True)").location
+                try require(foldStart != NSNotFound, "Faltfixture fehlt")
+                second.selectionManager.setSelectedRange(NSRange(location: foldStart, length: 0))
+                CodeFoldingCommands.toggleCurrent()
+                try await wait("Nur aktiver Ausschnitt gefaltet") { lowerController.fastraFoldRegions.contains(where: \.isCollapsed) && !upperController.fastraFoldRegions.contains(where: \.isCollapsed) }
+                try await capture("split-folded")
+                CodeFoldingCommands.expandAll()
+                try await wait("Wieder geöffnet") { !lowerController.fastraFoldRegions.contains(where: \.isCollapsed) }
+                let wrap = workspace.softWrapEnabled, fontSize = first.font.pointSize
+                workspace.toggleSoftWrap()
+                SelfTest.workspaceDefaults().set(1, forKey: DocumentZoom.defaultsKey)
+                try await wait("Beide Ausschnitte folgen Wrap und Zoom") { first.wrapLines == !wrap && second.wrapLines == !wrap && first.font.pointSize > fontSize && second.font.pointSize == first.font.pointSize }
+                try await capture("split-wrap-zoom")
+                workspace.toggleSoftWrap()
+                if let originalZoom { SelfTest.workspaceDefaults().set(originalZoom, forKey: DocumentZoom.defaultsKey) }
+                else { SelfTest.workspaceDefaults().removeObject(forKey: DocumentZoom.defaultsKey) }
+                try await wait("Darstellung zurückgesetzt") { first.wrapLines == wrap && second.wrapLines == wrap }
+                stage = "Speichern mit Kodierung und BOM"
+                postCmd("s", keyCode: 1, windowNumber: window.windowNumber)
+                let expected = Data([0xff, 0xfe]) + edited.data(using: .utf16LittleEndian)!
+                try await wait("Gespeicherte Bytes") { (try? Data(contentsOf: file)) == expected && workspace.activeTab?.isDirty == false }
+                try await capture("split-saved")
+                stage = "Tabwechsel und Rückkehr"
+                let primarySelection = first.selectedRange(), secondarySelection = second.selectedRange()
+                let other = base.appendingPathComponent("Other.txt")
+                try "Other\n".write(to: other, atomically: true, encoding: .utf8)
+                workspace.loadFile(at: other)
+                try await wait("Neuer geladener Tab") { workspace.activeTabID != id && workspace.activeTab?.isLoading == false && view(.primary)?.string == "Other\n" }
+                workspace.selectTab(id: id)
+                try await wait("Beide ursprünglichen Ansichten") { view(.primary)?.string == edited && view(.secondary)?.string == edited }
+                try await wait("Getrennte Auswahlen erhalten") { view(.primary)?.selectedRange() == primarySelection && view(.secondary)?.selectedRange() == secondarySelection }
+                try await capture("split-tab-return")
+                stage = "Teilung schließen"
+                try await stableMarkerClick("sourceSplitToggle", in: window, stage: stage)
+                try await wait("Ein Ausschnitt") { !workspace.sourceSplitEnabled && view(.secondary)?.window == nil && view(.primary)?.string == edited }
+                try require(try Data(contentsOf: file) == expected, "Schließen veränderte gespeicherte Datei")
+                try await capture("split-closed")
+                stage = "Identischer Text in neuem Dokument"
+                let oldEditor = try requireSourceView(view(.primary))
+                let clone = EditorTab(title: "Same.txt", path: "", content: edited)
+                workspace.tabs.append(clone)
+                workspace.activeTabID = clone.id
+                try require(CommandTargeting.editorTextView(for: workspace) == nil,
+                    "Der neue Tab übernimmt die alte native Editoransicht")
+                var staleTarget: Result<TextSnippetInsertionTarget, Error>?
+                TextSnippetInsertionTarget.capture(in: workspace) { staleTarget = $0 }
+                if case .success(let target) = staleTarget {
+                    target.release()
+                    try require(false, "Bausteinziel wird vor dem neuen Dokumenteditor freigegeben")
+                }
+                try await wait("Neuer dokumentgebundener Editor") {
+                    guard let current = CommandTargeting.editorTextView(for: workspace) else { return false }
+                    return current !== oldEditor && current.string == edited
+                }
+                try await focus(.primary)
+                let cloneEditor = try requireSourceView(view(.primary))
+                cloneEditor.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+                postKey("z", keyCode: 6, windowNumber: window.windowNumber)
+                try await wait("Nur neues Dokument beschrieben") { workspace.activeTab?.content == "z" + edited }
+                try require(workspace.tabs.first(where: { $0.id == id })?.content == edited
+                    && oldEditor.string == edited, "Alter Dokumentzustand wurde verändert")
+                (cloneEditor.undoManager as? CEUndoManager)?.endUndoGrouping()
+                postHistoryKey(windowNumber: window.windowNumber)
+                try await wait("Neues Dokument zurückgenommen") { workspace.activeTab?.content == edited }
+                try require(try Data(contentsOf: file) == expected, "Tabwechsel schrieb die Originaldatei")
+                cleanup(); finish(true, "Geteilter Textspeicher, Eingaben, unabhängige Auswahl/Ausschnitte, gemeinsames Undo/Redo, aktiver Sprung, UTF-16/BOM/gemischte Zeilenenden, Faltung/Zoom/Wrap, Tabwechsel und Schließen sowie gleichlautende Dokumente mit neuem Editorziel geprüft")
+            } catch {
+                let detail = "SOURCE_SPLIT_STATE stage=\(stage) loaded=\(sourceLoaded) actualURL=\(workspace.activeTab?.url?.path ?? "nil") expectedURL=\(file.path) loading=\(workspace.activeTab?.isLoading.description ?? "nil") modelMatches=\(workspace.activeTab?.content.utf8.elementsEqual(source.utf8) == true) primary=\(view(.primary) != nil) primaryMatches=\(view(.primary)?.string.utf8.elementsEqual(source.utf8) == true)\n"
+                FileHandle.standardError.write(Data(detail.utf8))
+                cleanup(); finish(false, stage + ": " + error.localizedDescription)
+            }
+        }
+    }
+
+    private static func requireSourceView(_ view: TextView?) throws -> TextView {
+        guard let view else { throw NSError(domain: "SourceSplitView", code: 1) }
+        return view
+    }
+
+    private static func runCodeOutlineTest() {
+        testLabel = "codeoutline"
+        Task { @MainActor in
+            guard let workspace = Workspace.shared, let window = CommandTargeting.registeredWindow(for: workspace) else { finish(false, "Dokumentfenster fehlt") }
+            let base = selfTestTemporaryDirectory().appendingPathComponent("fastra-code-outline-\(UUID().uuidString)")
+            let classes = base.appendingPathComponent("Project/Sources/Classes")
+            let methods = base.appendingPathComponent("Project/Sources/Methods")
+            let file = classes.appendingPathComponent("Example.4dm")
+            let source = "/*\nFunction phantom()\n*/\nClass constructor()\n"
+                + String(repeating: "// Absatz\n", count: 90)
+                + "Function first()\nTargetMethod()\nFunction second()\n"
+                + String(repeating: "// Weiter\n", count: 90)
+                + "Function get name()->$name : Text\nFunction set name($name : Text)\n"
+            let appearance = NSApp.appearance
+            var stage = "Fixture", shownPopover: NSPopover?
+            let observer = NotificationCenter.default.addObserver(forName: NSPopover.didShowNotification, object: nil, queue: .main) { notification in
+                MainActor.assumeIsolated {
+                    if let popover = notification.object as? NSPopover,
+                       let root = popover.contentViewController?.view,
+                       markerViewExists(id: "documentOutlinePopover", in: root) { shownPopover = popover }
+                }
+            }
+            @MainActor func cleanup() {
+                NotificationCenter.default.removeObserver(observer); NSApp.appearance = appearance
+                try? FileManager.default.removeItem(at: base)
+            }
+            func require(_ ok: Bool, _ message: String) throws {
+                if !ok { throw NSError(domain: "CodeOutlineSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            @MainActor func wait(_ detail: String, _ condition: @MainActor () -> Bool) async throws { try await nativeUIWait(stage + " / " + detail, condition) }
+            @MainActor func click(_ marker: String, in target: NSWindow? = nil) async throws { try await stableMarkerClick(marker, in: target ?? window, stage: stage) }
+            @MainActor func capture(_ name: String) async throws {
+                guard let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { return }
+                for (mode, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearance)
+                    for width in [MainWindowSizing.minimumWidth, 1100] {
+                        window.setContentSize(NSSize(width: width, height: 650))
+                        try await Task.sleep(for: .milliseconds(350))
+                        let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { done in typeScrollCapture(window: window) { done.resume(returning: $0) } }
+                        guard let snapshot, snapshot.source == "screen" else { cleanup(); finish(.environment, "Echte Aufnahme fehlt") }
+                        let url = URL(fileURLWithPath: output).appendingPathComponent(name + "-" + mode + "-\(Int(width)).png")
+                        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try snapshot.data.write(to: url)
+                    }
+                }
+            }
+            @MainActor func menuBack() async throws {
+                guard let main = NSApp.mainMenu,
+                      let root = main.items.first(where: { ["Darstellung", "View"].contains($0.title) }),
+                      let menu = root.submenu else { throw NSError(domain: "CodeOutlineMenu", code: 1) }
+                let passed: Bool = await withCheckedContinuation { done in
+                    var tracking = false, ticks = 0
+                    let observer = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: main, queue: .main) { _ in tracking = true }
+                    var timer: Timer?
+                    timer = Timer(timeInterval: 0.05, repeats: true) { _ in
+                        ticks += 1
+                        if tracking, let index = menu.items.firstIndex(where: { $0.title == L10n.string("Voriger Sprung") && $0.isEnabled }) {
+                            timer?.invalidate(); timer = nil; NotificationCenter.default.removeObserver(observer)
+                            menu.performActionForItem(at: index)
+                            menu.cancelTracking(); main.cancelTracking(); done.resume(returning: true)
+                        } else if ticks >= 100 {
+                            timer?.invalidate(); timer = nil; NotificationCenter.default.removeObserver(observer)
+                            let detail = menu.items.map { "\($0.title):enabled=\($0.isEnabled):view=\($0.view.map { String(describing: type(of: $0)) } ?? "nil")" }.joined(separator: " | ")
+                            FileHandle.standardError.write(Data(("CODE_OUTLINE_MENU tracking=\(tracking) items=\(detail)\n").utf8))
+                            menu.cancelTracking(); main.cancelTracking(); done.resume(returning: false)
+                        }
+                    }
+                    if let timer { RunLoop.main.add(timer, forMode: .common); RunLoop.main.add(timer, forMode: .eventTracking) }
+                    DispatchQueue.main.async { _ = root.accessibilityPerformPress() }
+                }
+                try require(passed, "Rücksprungeintrag im geöffneten Menü fehlt oder bleibt deaktiviert")
+            }
+
+            do {
+                try FileManager.default.createDirectory(at: classes, withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(at: methods, withIntermediateDirectories: true)
+                try source.write(to: file, atomically: true, encoding: .utf8)
+                try "// Ziel\n".write(to: methods.appendingPathComponent("TargetMethod.4dm"), atomically: true, encoding: .utf8)
+                workspace.projectURL = base
+                var loaded = false; workspace.loadFile(at: file) { loaded = $0 }
+                window.makeKeyAndOrderFront(nil); activateApplication(ignoringOtherApps: true)
+                try await wait("Klasse analysiert") { loaded && workspace.documentOutline.ready && workspace.documentOutline.headings.count == 5 }
+                let id = workspace.activeTab!.documentID
+                try await capture("code-overview")
+                stage = "Gliederung öffnen"; shownPopover = nil
+                try await click("documentOutlineButton")
+                try await wait("Popoveranimation beendet") { shownPopover?.isShown == true }
+                guard let popup = shownPopover?.contentViewController?.view.window else { throw NSError(domain: "CodeOutlinePopover", code: 1) }
+                try await capture("code-popover")
+                try await click("documentOutlineHeading-2", in: popup)
+                let secondRange = (source as NSString).range(of: "Function second")
+                try await wait("Zweite Funktion ausgewählt") { CommandTargeting.editorTextView(for: workspace)?.fastraSafeSelectedRange.location == secondRange.location }
+                try await capture("code-selection")
+                stage = "Zurück/Vorwärts"
+                try await click("documentOutlineBack")
+                try await wait("Anfang") { CommandTargeting.editorTextView(for: workspace)?.fastraSafeSelectedRange.location == 0 }
+                try await click("documentOutlineForward")
+                try await wait("Wieder zweite Funktion") { CommandTargeting.editorTextView(for: workspace)?.fastraSafeSelectedRange.location == secondRange.location }
+                workspace.documentOutline.jump(to: workspace.documentOutline.headings[1], in: workspace)
+                try await wait("Erste Funktion") { CommandTargeting.editorTextView(for: workspace)?.fastraSafeSelectedRange.location == (source as NSString).range(of: "Function first").location }
+                if let editor = CommandTargeting.editorTextView(for: workspace),
+                   let rect = editor.layoutManager.rectsFor(range: (source as NSString).range(of: "TargetMethod")).first {
+                    editor.scrollToVisible(rect)
+                }
+                stage = "Echte Alt-Doppelklick-Geste"
+                await withCheckedContinuation { done in goToTargetClick(workspace, base: base, needle: "TargetMethod", expectedFile: "TargetMethod.4dm") { done.resume() } }
+                try await wait("Datei und Verlauf fertig") { workspace.activeTab?.isLoading == false && workspace.documentOutline.history.points.last?.documentID == workspace.activeTab?.documentID }
+                let targetID = workspace.activeTabID!
+                try await capture("code-target")
+                stage = "Echtes Rücksprungmenü"
+                try await menuBack()
+                try await wait("Ursprungsdokument") { workspace.activeTab?.documentID == id && CommandTargeting.editorTextView(for: workspace)?.string == source && workspace.documentOutline.ready && workspace.documentOutline.headings.count == 5 }
+                stage = "Geschlossenes Ziel"
+                workspace.closeTab(id: targetID)
+                let index = workspace.documentOutline.history.index
+                workspace.sidebarNotice = nil
+                workspace.documentOutline.move(1, in: workspace)
+                try await wait("Geschlossenes Ziel erklärt") { workspace.sidebarNotice == L10n.string("Das Dokument im Sprungverlauf wurde geschlossen oder ersetzt.") }
+                try require(workspace.activeTab?.documentID == id && workspace.documentOutline.history.index == index, "Geschlossener Tab wurde verwechselt")
+                try await capture("code-closed")
+                stage = "Änderung vor Rücksprung"
+                workspace.documentOutline.jump(to: workspace.documentOutline.headings[2], in: workspace)
+                try await wait("Zweite Funktion bereit") { CommandTargeting.editorTextView(for: workspace)?.fastraSafeSelectedRange.location == secondRange.location }
+                let returnOffset = workspace.documentOutline.history.points[workspace.documentOutline.history.index - 1].offset + 10
+                guard let editor = CommandTargeting.editorTextView(for: workspace) else { throw NSError(domain: "CodeOutlineEditor", code: 1) }
+                window.makeFirstResponder(editor)
+                editor.insertText("// Prefix\n", replacementRange: NSRange(location: 0, length: 0))
+                try await wait("Neue Analyse") { workspace.documentOutline.ready && workspace.documentOutline.headings[2].range.location == secondRange.location + 10 }
+                try await click("documentOutlineBack")
+                try await wait("Anker nach Änderung") { workspace.activeTab?.documentID == id && CommandTargeting.editorTextView(for: workspace)?.fastraSafeSelectedRange.location == returnOffset }
+                try require(NSLocationInRange(returnOffset, (("// Prefix\n" + source) as NSString).range(of: "TargetMethod")), "Rücksprung landete außerhalb des Aufrufs")
+                try require(workspace.activeTab?.content == "// Prefix\n" + source && workspace.activeTab?.isDirty == true, "Native Texteingabe nicht erhalten")
+                try await capture("code-reanchored")
+                try require(try String(contentsOf: file, encoding: .utf8) == source, "Navigation schrieb die Datei")
+                cleanup(); finish(true, "Codegliederung, echte Geste, natives Menü, gemeinsamer Verlauf, Quelländerung und geschlossene Ziele geprüft")
+            } catch {
+                cleanup(); finish(false, "Codegliederung [\(stage)]: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private static func runMarkdownOutlineTest() {
+        testLabel = "mdoutline"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else { finish(false, "Dokumentfenster fehlt") }
+            let source = "# Anfang 😀\n\n" + String(repeating: "Absatz mit **Formatierung**.\n\n", count: 90)
+                + "## Mitte\n\n" + String(repeating: "Weiterer Absatz.\n\n", count: 90) + "### Ende\n\nLetzter Absatz.\n"
+            let base = selfTestTemporaryDirectory().appendingPathComponent("Markdown-Outline-\(UUID().uuidString)")
+            let file = base.appendingPathComponent("Gliederung.md")
+            NSApp.appearance = NSAppearance(named: .aqua)
+            var stage = "Vorbereitung"
+            var shownPopover: NSPopover?
+            // Die Markierungen liegen schon während AppKits Öffnungsanimation im
+            // View-Baum. Gepostete Klicks erst nach deren Ende zustellen.
+            let popoverObserver = NotificationCenter.default.addObserver(
+                forName: NSPopover.didShowNotification, object: nil, queue: .main
+            ) { notification in
+                MainActor.assumeIsolated {
+                    guard let popover = notification.object as? NSPopover,
+                          let root = popover.contentViewController?.view,
+                          markerViewExists(id: "documentOutlinePopover", in: root) else { return }
+                    shownPopover = popover
+                    FileHandle.standardError.write(Data("OUTLINE_POPOVER_DID_SHOW\n".utf8))
+                }
+            }
+            func require(_ success: Bool, _ message: String) throws {
+                if !success { throw NSError(domain: "OutlineSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            func wait(_ condition: () -> Bool) async throws {
+                for _ in 0..<300 { if condition() { return }; try await Task.sleep(for: .milliseconds(50)) }
+                try require(condition(), "Zustand wurde nicht bereit")
+            }
+            @MainActor func click(_ id: String) async throws {
+                guard let target = NSApp.windows.first(where: { $0.isVisible && $0.contentView.flatMap { markerView(id: id, in: $0) } != nil }) else {
+                    throw NSError(domain: "OutlineSelfTest", code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "Klickziel fehlt: " + id])
+                }
+                try await stableMarkerClick(id, in: target, stage: stage)
+            }
+            func capture(_ name: String, of target: NSWindow) async {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_MD_OUTLINE_DIR"] else { return }
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
+                try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                    typeScrollCapture(window: target) { snapshot in try? snapshot?.data.write(to: url); done.resume() }
+                }
+            }
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                try source.write(to: file, atomically: true, encoding: .utf8)
+                workspaceDefaults().set(false, forKey: MarkdownEditingMode.defaultsKey)
+                workspaceDefaults().set(true, forKey: MarkdownAssist.firstUseDefaultsKey)
+                var loaded = false
+                ws.loadFile(at: file) { loaded = $0 }
+                window.setContentSize(NSSize(width: 760, height: 650))
+                window.makeKeyAndOrderFront(nil)
+                activateApplication(ignoringOtherApps: true)
+                stage = "Quelle laden"
+                try await wait { loaded && ws.documentOutline.ready }
+                try require(ws.documentOutline.headings.count == 3, "Überschriften fehlen")
+                stage = "Quellgliederung öffnen"
+                shownPopover = nil
+                try await click("documentOutlineButton")
+                try await wait {
+                    guard let popover = shownPopover, popover.isShown,
+                          let root = popover.contentViewController?.view else { return false }
+                    return markerViewExists(id: "documentOutlineHeading-2", in: root)
+                }
+                if let popup = NSApp.windows.first(where: { $0.isVisible && $0.contentView.flatMap { markerView(id: "documentOutlinePopover", in: $0) } != nil }) { await capture("outline-source-popover", of: popup) }
+                stage = "Quellsprung"
+                try await click("documentOutlineHeading-2")
+                try await wait { CommandTargeting.editorTextView(for: ws)?.fastraSafeSelectedRange.location == ws.documentOutline.headings[2].range.location }
+                try await wait { (CommandTargeting.editorTextView(for: ws)?.enclosingScrollView?.contentView.bounds.minY ?? 0) > 0 }
+                await capture("outline-source-760", of: window)
+                stage = "Zurück"
+                try await click("documentOutlineBack")
+                try await wait { CommandTargeting.editorTextView(for: ws)?.fastraSafeSelectedRange.location == 0 }
+                stage = "Vorwärts"
+                try await click("documentOutlineForward")
+                try await wait { CommandTargeting.editorTextView(for: ws)?.fastraSafeSelectedRange.location == ws.documentOutline.headings[2].range.location }
+                stage = "WYSIWYG laden"
+                ws.toggleMarkdownEditingMode()
+                try await wait { ws.visualMarkdownEditor?.ready == true }
+                window.setContentSize(NSSize(width: 1100, height: 650))
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+                stage = "Visuelle Gliederung öffnen"
+                shownPopover = nil
+                try await click("documentOutlineButton")
+                try await wait {
+                    guard let popover = shownPopover, popover.isShown,
+                          let root = popover.contentViewController?.view else { return false }
+                    return markerViewExists(id: "documentOutlineHeading-2", in: root)
+                }
+                try await click("documentOutlineHeading-2")
+                let web = ws.visualMarkdownEditor!.web!
+                var visibleHeading = "", scroll = 0.0
+                for _ in 0..<100 {
+                    visibleHeading = (try? await web.evaluateJavaScript("(()=>{const n=getSelection().anchorNode;return (n?.nodeType===1?n:n?.parentElement)?.closest('h3')?.textContent || '';})()")) as? String ?? ""
+                    scroll = (try? await web.evaluateJavaScript("window.scrollY")) as? Double ?? 0
+                    if visibleHeading == "Ende", scroll > 0 { break }
+                    try await Task.sleep(for: .milliseconds(50))
+                }
+                await capture("outline-visual-dark-1100", of: window)
+                try require(visibleHeading == "Ende" && scroll > 0, "WYSIWYG-Sprung blieb unsichtbar: Titel=\(visibleHeading), Scroll=\(scroll), Popup=\(ws.documentOutline.isPresented)")
+                try require(ws.activeTab?.content == source && !ws.activeTab!.isDirty, "Navigation hat den Inhalt verändert")
+                try require(try String(contentsOf: file, encoding: .utf8) == source, "Navigation hat die Datei verändert")
+                NotificationCenter.default.removeObserver(popoverObserver)
+                finish(true, "Gliederung per Maus, Zurück/Vorwärts, Quelltext und WYSIWYG sichtbar, Inhalt unverändert")
+            } catch {
+                await capture("outline-failure", of: window)
+                NotificationCenter.default.removeObserver(popoverObserver)
+                finish(false, "Gliederung [\(stage)]: \(error.localizedDescription); bereit=\(ws.documentOutline.ready), Titel=\(ws.documentOutline.headings.count), visuell=\(ws.activeMarkdownIsVisual), Popup=\(ws.documentOutline.isPresented), Auswahl=\(String(describing: CommandTargeting.editorTextView(for: ws)?.fastraSafeSelectedRange)), Scroll=\(String(describing: CommandTargeting.editorTextView(for: ws)?.enclosingScrollView?.contentView.bounds))")
+            }
+        }
+    }
+
     /// Die echte Suchmaske muss auf WebKit warten und danach den Treffer im
     /// sichtbaren Quelltext auswählen; eine Notification allein belegt das nicht.
     private static func runMarkdownSearchNavigationTest() {
@@ -23451,6 +27245,7 @@ enum SelfTest {
             let file = base.appendingPathComponent("Search.md")
             let source = "# Suche\n\n" + (1...240).map { "Absatz \($0) ohne Suchwort." }.joined(separator: "\n\n") + "\n\nNEEDLE\n"
             var stage = "Vorbereitung"
+            var capturedTargetID: UUID?
             func require(_ condition: Bool, _ message: String) throws {
                 if !condition { throw NSError(domain: "MarkdownSearchSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
             }
@@ -23476,7 +27271,7 @@ enum SelfTest {
                 ws.loadFile(at: file) { loaded = $0 }
                 try await wait { loaded && ws.visualMarkdownEditor?.ready == true }
                 let markdownID = ws.activeTabID!
-                NotificationCenter.default.post(name: .fastraShowSearchFile, object: ws)
+                NotificationCenter.default.post(name: .fastraShowSearchFile, object: ws, userInfo: ["source": true])
                 ws.useRegex = false
                 ws.findPattern = "NEEDLE"
                 try await wait { ws.navMatches.count == 1 && !ws.bufferSearching }
@@ -23499,13 +27294,17 @@ enum SelfTest {
                 for route in ["Tastatur", "Trefferklick"] {
                     stage = "Geöffnet-Suche: " + route
                     ws.selectTab(id: markdownID)
+                    stage = "Geöffnet-Suche / " + route + " / Dokumentwechsel"
                     try await wait { ws.activeTabID == markdownID }
                     if !ws.activeMarkdownIsVisual { ws.toggleMarkdownEditingMode() }
+                    stage = "Geöffnet-Suche / " + route + " / Visueller Editor"
                     try await wait { ws.visualMarkdownEditor?.ready == true && ws.activeMarkdownIsVisual }
                     ws.scope = .open
+                    stage = "Geöffnet-Suche / " + route + " / Suchergebnisse"
                     try await wait { ws.navMatches.count == 2 && !ws.bufferSearching }
                     ws.activeMatchIndex = 0
                     let target = ws.navMatches[1]
+                    capturedTargetID = target.id
                     guard let web = ws.visualMarkdownEditor?.web else { throw NSError(domain: "fixture", code: 1) }
                     _ = try await web.evaluateJavaScript("""
                         const prepare=fastraVisual.prepareAction;
@@ -23515,21 +27314,35 @@ enum SelfTest {
                     if route == "Tastatur" {
                         NotificationCenter.default.post(name: .fastraGotoNextMatch, object: ws)
                     } else {
-                        try await wait {
-                            NSApp.windows.first(where: { $0.frameAutosaveName == SearchWindow.frameAutosaveName })?
-                                .contentView.map { markerViewExists(id: "searchHit-\(target.id.uuidString)", in: $0) } == true
-                        }
                         guard let search = NSApp.windows.first(where: { $0.frameAutosaveName == SearchWindow.frameAutosaveName }),
                               let root = search.contentView else {
-                            throw NSError(domain: "fixture", code: 2, userInfo: [NSLocalizedDescriptionKey: "Trefferzeile fehlt"])
+                            throw NSError(domain: "fixture", code: 2, userInfo: [NSLocalizedDescriptionKey: "Suchfenster fehlt"])
                         }
                         activateApplication(ignoringOtherApps: true)
                         search.makeKeyAndOrderFront(nil)
+                        func hitTable(in view: NSView) -> NSTableView? {
+                            if let table = view as? NSTableView { return table }
+                            for child in view.subviews { if let table = hitTable(in: child) { return table } }
+                            return nil
+                        }
+                        stage = "Geöffnet-Suche / Trefferklick / Ergebnisliste scrollen"
+                        try await wait { hitTable(in: root)?.enclosingScrollView?.documentView != nil }
+                        guard let listScroll = hitTable(in: root)?.enclosingScrollView else { throw NSError(domain: "fixture", code: 4) }
+                        // Die native Liste erzeugt nur sichtbare Zeilen. Seit den
+                        // Freigabecontrols liegt der zweite Treffer unterhalb des
+                        // kleinen Ausschnitts; vor der Markersuche wirklich scrollen.
+                        scrollGitChangesList(listScroll, by: .greatestFiniteMagnitude)
+                        let maximum = max(0, (listScroll.documentView?.bounds.height ?? 0) - listScroll.contentView.bounds.height)
+                        try require(maximum <= 1 || listScroll.contentView.bounds.minY > 0,
+                                    "Ergebnisliste wurde nicht gescrollt")
                         let markerID = "searchHit-\(target.id.uuidString)"
+                        stage = "Geöffnet-Suche / Trefferklick / Trefferzeile nach Scrollen vorhanden"
+                        try await wait { markerViewExists(id: markerID, in: root) }
                         markerView(id: markerID, in: root)?.scrollToVisible(
                             markerView(id: markerID, in: root)?.bounds ?? .zero)
                         var previousFrame: NSRect?
                         var stableFrames = 0
+                        stage = "Geöffnet-Suche / Trefferklick / Geometrie stabil"
                         try await wait {
                             guard NSApp.isActive, search.isKeyWindow,
                                   let marker = markerView(id: markerID, in: root),
@@ -23546,6 +27359,7 @@ enum SelfTest {
                         try require(sendMouseClick(at: point, in: search,
                                                    modifiers: [], viaApp: true), "Trefferklick nicht zustellbar")
                     }
+                    stage = "Geöffnet-Suche / " + route + " / WebKit-Übernahme"
                     var waiting = false
                     for _ in 0..<100 {
                         waiting = try await web.evaluateJavaScript("typeof window.releasePrepare") as? String == "function"
@@ -23555,6 +27369,7 @@ enum SelfTest {
                     try require(waiting, "Navigation wartet nicht auf WebKit")
                     try require(ws.activeTabID == markdownID && ws.activeMatchIndex == 0, "Ziel wurde vor WebKit bestätigt")
                     _ = try await web.evaluateJavaScript("window.releasePrepare();")
+                    stage = "Geöffnet-Suche / " + route + " / Ziel und Auswahl"
                     try await wait { ws.activeTabID == other.id && ws.activeMatchIndex == 1 && selected(target.match) }
                 }
                 ws.showSearchDialog = false
@@ -23567,7 +27382,16 @@ enum SelfTest {
                     + "pending=\(String(describing: ws.pendingEditorJump)), "
                     + "selection=\(String(describing: tv?.fastraSafeSelectedRange)), "
                     + "expected=\(String(describing: ws.navMatches.first?.match.range)), "
-                    + "scroll=\(String(describing: tv?.enclosingScrollView?.contentView.bounds))"
+                    + "scroll=\(String(describing: tv?.enclosingScrollView?.contentView.bounds)), "
+                    + "capturedTargetStillPresent=\(capturedTargetID.map { id in ws.navMatches.contains { $0.id == id } } ?? false), "
+                    + "matchCount=\(ws.navMatches.count), searching=\(ws.bufferSearching), searchVisible=\(ws.showSearchDialog)"
+                if let directory = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] {
+                    let targets = [window] + NSApp.windows.filter { $0.frameAutosaveName == SearchWindow.frameAutosaveName }
+                    for (index, target) in targets.enumerated() {
+                        let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { done in typeScrollCapture(window: target) { done.resume(returning: $0) } }
+                        if let snapshot { try? snapshot.data.write(to: URL(fileURLWithPath: directory).appendingPathComponent("navigation-failure-\(index).png")) }
+                    }
+                }
                 ws.showSearchDialog = false
                 window.orderOut(nil)
                 try? FileManager.default.removeItem(at: base)

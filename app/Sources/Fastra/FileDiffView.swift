@@ -8,6 +8,16 @@
 
 import SwiftUI
 
+struct FileDiffTransferControls {
+    let leftAvailable: Bool
+    let rightAvailable: Bool
+    let preparing: Bool
+    let error: String?
+    let prepare: @MainActor (Int, FileDiffTransfer.Direction) -> Void
+    let refresh: @MainActor () -> Void
+    let cancel: @MainActor () -> Void
+}
+
 struct FileDiffView: View {
     let request: FileDiffRequest
     /// `nil` = Berechnung läuft noch.
@@ -16,6 +26,8 @@ struct FileDiffView: View {
     /// Zeilen. Im Hauptfenster kommt der Wert aus der Fußzeile; Fenster ohne
     /// Fußzeile (externer Vergleich, 4D-Makro-Vorschau) behalten den Umbruch.
     var softWrapEnabled: Bool = true
+    var allowsExport = true
+    var transferControls: FileDiffTransferControls? = nil
 
     @State private var expandedFolds: Set<String> = []
     /// Index des gewählten Unterschieds in `result.blocks`.
@@ -25,37 +37,83 @@ struct FileDiffView: View {
     private var blocks: [FileDiff.Block] { result?.blocks ?? [] }
 
     var body: some View {
-        Group {
-            if let limitation = document?.limitation {
-                limitationView(limitation)
-            } else if document == nil {
-                VStack(spacing: 10) {
-                    ProgressView()
-                    Text("Vergleich wird berechnet …")
-                        .fastraFont(.small)
-                        .foregroundColor(Theme.textSecondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let result, result.isIdentical {
-                identicalView(result)
-            } else {
-                DualPaneDiffView(
-                    items: displayItems,
-                    entries: listEntries,
-                    expandedFolds: $expandedFolds,
-                    currentEntry: $currentBlock,
-                    softWrapEnabled: softWrapEnabled,
-                    exportSnapshot: result.map { .file(request, $0) }
-                ) {
-                    toolbarLeading
+        VStack(spacing: 0) {
+            if let transferControls {
+                transferBar(transferControls)
+                Divider()
+            }
+            Group {
+                if let limitation = document?.limitation {
+                    limitationView(limitation)
+                } else if document == nil {
+                    VStack(spacing: 10) {
+                        ProgressView()
+                        Text("Vergleich wird berechnet …")
+                            .fastraFont(.small)
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let result, result.isIdentical {
+                    identicalView(result)
+                } else {
+                    DualPaneDiffView(
+                        items: displayItems,
+                        entries: listEntries,
+                        expandedFolds: $expandedFolds,
+                        currentEntry: $currentBlock,
+                        softWrapEnabled: softWrapEnabled,
+                        exportSnapshot: allowsExport ? result.map { .file(request, $0) } : nil
+                    ) {
+                        toolbarLeading
+                    }
                 }
             }
         }
         .background(Theme.surfaceRaised)
+        .background(SelfTestMarker(id: "fileDiffRequest-" + request.id.uuidString).frame(width: 0, height: 0))
         .onChange(of: request.id) {
             expandedFolds.removeAll()
             currentBlock = nil
         }
+    }
+
+    @MainActor private func transferBar(_ controls: FileDiffTransferControls) -> some View {
+        let selected = blocks.first(where: { $0.id == currentBlock }) ?? blocks.first
+        let leftReady = controls.leftAvailable && selected != nil && !controls.preparing
+        let rightReady = controls.rightAvailable && selected != nil && !controls.preparing
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Button("Nach links", systemImage: "arrow.left") {
+                    if let selected { controls.prepare(selected.id, .toLeft) }
+                }.disabled(!leftReady)
+                    .id("left-\(request.id)-\(selected?.id ?? -1)")
+                    .help("Ersetzt den gewählten linken Block durch die rechte Fassung. Ein nur links vorhandener Block wird entfernt. Vorher erscheint die genaue Vorschau.")
+                    .background(SelfTestMarker(id: "fileDiffTransferLeft").frame(width: 0, height: 0))
+                    .background(SelfTestMarker(id: (leftReady ? "fileDiffTransferLeftReady-" : "fileDiffTransferLeftBlocked-") + request.id.uuidString).frame(width: 0, height: 0))
+                Button("Nach rechts", systemImage: "arrow.right") {
+                    if let selected { controls.prepare(selected.id, .toRight) }
+                }.disabled(!rightReady)
+                    .id("right-\(request.id)-\(selected?.id ?? -1)")
+                    .help("Ersetzt den gewählten rechten Block durch die linke Fassung. Ein nur rechts vorhandener Block wird entfernt. Vorher erscheint die genaue Vorschau.")
+                    .background(SelfTestMarker(id: "fileDiffTransferRight").frame(width: 0, height: 0))
+                    .background(SelfTestMarker(id: (rightReady ? "fileDiffTransferRightReady-" : "fileDiffTransferRightBlocked-") + request.id.uuidString).frame(width: 0, height: 0))
+                Button(controls.preparing ? L10n.string("Abbrechen") : L10n.string("Neu berechnen")) {
+                    if controls.preparing { controls.cancel() } else { controls.refresh() }
+                }.id("refresh-\(request.id)-\(controls.preparing)")
+                    .background(SelfTestMarker(id: "fileDiffTransferRefresh").frame(width: 0, height: 0))
+                    .background(SelfTestMarker(id: controls.preparing ? "fileDiffTransferCancelReady" : "fileDiffTransferRefreshReady").frame(width: 0, height: 0))
+                if controls.preparing { ProgressView().controlSize(.small) }
+                Spacer(minLength: 0)
+                if let selected { Text(Self.blockDescription(selected)).lineLimit(1).fastraFont(.small) }
+            }
+            Text(controls.preparing
+                 ? L10n.string("Übernahmevorschau wird berechnet…")
+                 : L10n.string("Übernehmen ist nur in zugeordnete offene editierbare Dokumente möglich. Dateien werden dabei nicht gespeichert."))
+                .fastraFont(.small).foregroundStyle(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            if let error = controls.error {
+                Text(error).foregroundStyle(.red).fastraFont(.small).fixedSize(horizontal: false, vertical: true)
+            }
+        }.padding(8)
     }
 
     // MARK: - Abbildung auf das gemeinsame Anzeige-Modell

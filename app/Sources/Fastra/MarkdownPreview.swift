@@ -172,7 +172,8 @@ enum MarkdownRichText {
                              fontName: String,
                              fontSize: CGFloat,
                              darkMode: Bool,
-                             purpose: Purpose = .preview) -> String {
+                             purpose: Purpose = .preview,
+                             blockUpdates: Bool = true) -> String {
         let bodyColor = darkMode ? "#F2F2F2" : "#363636"
         let secondary = darkMode ? "#A8A8A8" : "#737373"
         let surface = darkMode ? "#171717" : "#FFFFFF"
@@ -218,7 +219,8 @@ enum MarkdownRichText {
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: fastra-preview:; style-src 'unsafe-inline' fastra-preview:; script-src 'nonce-\(nonce)' fastra-preview:; connect-src 'none'; media-src 'none'; frame-src 'none'">
         <link rel="stylesheet" href="fastra-preview://resource/highlight.css">
         <style>
-        body { --fastra-text-line-height: 1.4; margin: 0; padding: 20px; box-sizing: border-box;
+        body { --fastra-text-line-height: 1.4; --fastra-copy-border: \(border);
+               --fastra-copy-background: \(control); margin: 0; padding: 20px; box-sizing: border-box;
                color: \(bodyColor); background: \(surface);
                font-family: \(cssFont); font-size: \(fontSize)px; line-height: var(--fastra-text-line-height); }
         h1, h2, h3, h4, h5, h6 { color: \(bodyColor); margin: 1.1em 0 0.45em; }
@@ -267,11 +269,19 @@ enum MarkdownRichText {
         pre.mermaid-error::before { content: attr(data-error); display: block;
                                     color: \(secondary); margin-bottom: 0.55em; }
         hr { border: 0; border-top: 1px solid \(border); }
+        \(MarkdownPresentation.css)
         \(printStyle)</style>
         <script src="fastra-preview://resource/katex.js"></script>
         <script src="fastra-preview://resource/highlight.js"></script>
         <script src="fastra-preview://resource/mermaid.js"></script>
+        \(purpose == .preview ? "<script src=\"fastra-preview://resource/markdown-presentation.js\"></script>" : "")
+        \(purpose == .preview && blockUpdates ? "<script src=\"fastra-preview://resource/preview-blocks.js\"></script>" : "")
         <script nonce="\(nonce)">
+        window.fastraMarkdownCopyLabels = {
+          copy: "\(javascriptEscaped(L10n.string("Code kopieren")))",
+          copied: "\(javascriptEscaped(L10n.string("Code kopiert")))",
+          failed: "\(javascriptEscaped(L10n.string("Code konnte nicht kopiert werden.")))"
+        };
         const mermaidError = "\(javascriptEscaped(L10n.string("Diagramm konnte nicht gerendert werden.")))";
         let markdownDark = \(darkMode ? "true" : "false");
         const diagramSources = new Map();
@@ -306,7 +316,16 @@ enum MarkdownRichText {
           }
         };
 
+        function pruneDiagramSources(root) {
+          // Im Schreibmodus können alte SVGs über Undo zurückkehren. Die
+          // Vorschau braucht dagegen nur Quellen ihrer aktuellen Diagramme.
+          if (root !== document.body || window.fastraVisual) return;
+          const live = new Set(Array.from(root.querySelectorAll('.mermaid-render'), node => node.dataset.mdDiagram));
+          for (const key of diagramSources.keys()) if (!live.has(key)) diagramSources.delete(key);
+        }
+
         async function enhanceMarkdown(root) {
+          pruneDiagramSources(root);
           if (window.katex) {
             root.querySelectorAll('[data-tex]:not([data-rendered])').forEach(element => {
               try {
@@ -335,12 +354,16 @@ enum MarkdownRichText {
               root.querySelectorAll('pre > code.language-mermaid:not([data-rendered])')
             );
             for (const code of blocks) {
+              if (!code.isConnected) continue;
               code.dataset.rendered = '1';
               const pre = code.parentElement;
               const diagram = document.createElement('div');
               diagram.className = 'mermaid mermaid-render';
               diagram.textContent = code.textContent;
               diagram.dataset.mdDiagram = String(++diagramID);
+              for (const name of ['data-srcline', 'data-fastra-position']) {
+                if (pre.hasAttribute(name)) diagram.setAttribute(name, pre.getAttribute(name));
+              }
               diagramSources.set(diagram.dataset.mdDiagram, code.textContent);
               pre.before(diagram);
               try {
@@ -354,6 +377,7 @@ enum MarkdownRichText {
               }
             }
           }
+          pruneDiagramSources(root);
         }
 
         window.fastraEnhanceMarkdown = enhanceMarkdown;
@@ -365,11 +389,18 @@ enum MarkdownRichText {
           for (let index = 0; index < selection.rangeCount; index++) {
             rich.appendChild(selection.getRangeAt(index).cloneContents());
           }
+          rich.querySelectorAll('#fastra-code-controls').forEach(element => element.remove());
           // Die Quellzeilen sind Fastra-Interna und haben in fremden
           // Dokumenten nichts verloren.
           rich.querySelectorAll('[\(MarkdownSourceMarkers.attribute)]').forEach(
             element => element.removeAttribute('\(MarkdownSourceMarkers.attribute)')
           );
+          rich.querySelectorAll('[data-fastra-position]').forEach(element => element.removeAttribute('data-fastra-position'));
+          const comments = document.createTreeWalker(rich, NodeFilter.SHOW_COMMENT), internalComments = [];
+          while (comments.nextNode()) {
+            if (/^\\/?fastra-block-[0-9]+$/.test(comments.currentNode.data)) internalComments.push(comments.currentNode);
+          }
+          internalComments.forEach(node => node.remove());
           // Sichtbare Leerzeilen werden beim Kopieren zu gewöhnlichen
           // Umbrüchen. Interne Klassen oder Attribute verlassen Fastra nicht.
           rich.querySelectorAll('.\(MarkdownVisibleBlankLines.cssClass)').forEach(
@@ -462,6 +493,7 @@ enum MarkdownRichText {
         // Code-Einfärbung sind fertig". Der Ausdruck wartet darauf, sonst
         // druckte er das halbfertige Dokument (siehe MarkdownPrintJob).
         window.addEventListener('DOMContentLoaded', () => {
+          window.fastraPreviewBlocks?.initialize();
           enhanceMarkdown(document.body).then(() => {
             document.documentElement.setAttribute('data-fastra-enhanced', '1');
           });
@@ -494,8 +526,13 @@ enum MarkdownRichText {
     }
 
     /// Der eigentliche Renderlauf. NUR von `renderQueue` aus aufrufen.
-    static func renderFragmentOnQueue(markdown: String,
-                                                  documentURL: URL?) -> MarkdownRenderedFragment {
+    /// Abgebrochene Platzhalter veröffentlicht der generationengeprüfte Coalescer nie.
+    static func renderFragmentOnQueue(
+        markdown: String,
+        documentURL: URL?,
+        isCancelled: () -> Bool = { false }
+    ) -> MarkdownRenderedFragment {
+        if isCancelled() { return MarkdownRenderedFragment(html: "", imageURLs: [:]) }
         let math = MarkdownMath.extract(from: markdown)
         // cmark rendert Erweiterungen nur, wenn dieselbe Extension-Liste auch
         // an den HTML-Renderer gereicht wird. Fehlt sie dort, würden Tabellen
@@ -526,8 +563,15 @@ enum MarkdownRichText {
         }
 
         math.markdown.withCString { bytes in
-            cmark_parser_feed(parser, bytes, math.markdown.utf8.count)
+            let count = math.markdown.utf8.count
+            var offset = 0
+            while offset < count && !isCancelled() {
+                let length = min(65_536, count - offset)
+                cmark_parser_feed(parser, bytes.advanced(by: offset), length)
+                offset += length
+            }
         }
+        if isCancelled() { return MarkdownRenderedFragment(html: "", imageURLs: [:]) }
         guard let document = cmark_parser_finish(parser) else {
             return MarkdownRenderedFragment(html: escapedPlainText(markdown), imageURLs: [:])
         }
@@ -575,6 +619,7 @@ enum MarkdownRichText {
             codeBlockLines: codeBlockLines
         )
         let withMath = math.insertingHTML(into: positioned)
+        if isCancelled() { return MarkdownRenderedFragment(html: "", imageURLs: [:]) }
         return MarkdownImages.resolve(in: withMath, relativeTo: documentURL)
     }
 
@@ -625,6 +670,7 @@ final class MarkdownRenderCoalescer: @unchecked Sendable {
         let markdown: String
         let documentURL: URL?
         let completion: (MarkdownRenderedFragment) -> Void
+        let revision: UInt64
     }
 
     private let lock = NSLock()
@@ -632,14 +678,29 @@ final class MarkdownRenderCoalescer: @unchecked Sendable {
     private var pending: Request?
     /// `true`, solange ein Block auf der Render-Queue liegt oder gerade läuft.
     private var isScheduled = false
+    private var revision: UInt64 = 0
+
+    func cancel() {
+        lock.lock()
+        revision &+= 1
+        pending = nil
+        lock.unlock()
+    }
+
+    private func isCurrent(_ value: UInt64) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return revision == value
+    }
 
     /// Meldet eine Renderanforderung an. `completion` läuft auf dem
     /// Main-Thread, aber nur für die jeweils zuletzt angemeldete Anforderung.
     func render(markdown: String, documentURL: URL?,
                 completion: @escaping (MarkdownRenderedFragment) -> Void) {
         lock.lock()
+        revision &+= 1
         pending = Request(markdown: markdown, documentURL: documentURL,
-                          completion: completion)
+                          completion: completion, revision: revision)
         let needsSchedule = !isScheduled
         isScheduled = true
         lock.unlock()
@@ -666,9 +727,13 @@ final class MarkdownRenderCoalescer: @unchecked Sendable {
         lock.unlock()
 
         let fragment = MarkdownRichText.renderFragmentOnQueue(
-            markdown: request.markdown, documentURL: request.documentURL
+            markdown: request.markdown, documentURL: request.documentURL,
+            isCancelled: { !self.isCurrent(request.revision) }
         )
-        DispatchQueue.main.async { request.completion(fragment) }
+        DispatchQueue.main.async { [weak self] in
+            guard self?.isCurrent(request.revision) == true else { return }
+            request.completion(fragment)
+        }
 
         lock.lock()
         let hasMore = pending != nil
@@ -783,6 +848,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         // die Vorschau bleibt ein lokaler Dokument-Renderer.
         configuration.websiteDataStore = .nonPersistent()
         configuration.userContentController.add(context.coordinator, name: "markdownCopy")
+        configuration.userContentController.add(context.coordinator, name: "markdownCodeCopy")
         configuration.userContentController.add(context.coordinator, name: "markdownJump")
         configuration.setURLSchemeHandler(
             context.coordinator.assetHandler,
@@ -799,6 +865,13 @@ private struct MarkdownRichTextView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         update(webView: webView, coordinator: context.coordinator)
+    }
+
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        coordinator.renderGeneration &+= 1
+        coordinator.renderRequest.cancel()
+        webView.stopLoading()
+        webView.configuration.userContentController.removeAllScriptMessageHandlers()
     }
 
     private func update(webView: WKWebView, coordinator: Coordinator) {
@@ -823,7 +896,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         coordinator.fontName = fontName
         coordinator.fontSize = fontSize
         coordinator.darkMode = darkMode
-        let styleIdentity = "\(darkMode)|\(fontName)|\(fontSize)|\(documentURL?.path ?? "")"
+        let styleIdentity = "\(documentID)|\(darkMode)|\(fontName)|\(fontSize)|\(documentURL?.path ?? "")"
         if coordinator.styleIdentity != styleIdentity {
             coordinator.styleIdentity = styleIdentity
             coordinator.markdown = markdown
@@ -871,10 +944,12 @@ private struct MarkdownRichTextView: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        var pasteboard = NSPasteboard.general
         var styleIdentity = ""
         var markdown = ""
         var isReady = false
         var pendingFragment: MarkdownRenderedFragment?
+        private var currentNavigation: WKNavigation?
         /// Stilwerte des letzten Updates — nötig, um aus einem fertigen
         /// Fragment ein vollständiges HTML-Dokument bauen zu können.
         var fontName = PreviewFonts.systemName
@@ -966,7 +1041,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
                     fontSize: fontSize,
                     darkMode: darkMode
                 )
-                webView.loadHTMLString(document, baseURL: nil)
+                currentNavigation = webView.loadHTMLString(document, baseURL: nil)
                 return
             }
             guard isReady else {
@@ -1060,6 +1135,8 @@ private struct MarkdownRichTextView: NSViewRepresentable {
                                    didReceive message: WKScriptMessage) {
             guard message.frameInfo.isMainFrame, let payload = message.body as? [String: Any] else { return }
             switch message.name {
+            case "markdownCodeCopy":
+                MarkdownPresentation.copyCode(payload, in: message.webView, pasteboard: pasteboard)
             case "markdownCopy":
                 guard let plain = payload["plain"] as? String,
                       let html = payload["html"] as? String else { return }
@@ -1096,37 +1173,20 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard navigation === currentNavigation else { return }
             isReady = true
             if let pendingFragment {
                 self.pendingFragment = nil
-                replaceBody(with: pendingFragment.html, in: webView)
+                replaceBody(with: pendingFragment, in: webView)
             }
         }
 
-        /// Nur der Body wird live ersetzt. Scrollposition und Auswahl bleiben
-        /// so stabiler als bei einem vollständigen Seiten-Reload pro Tastendruck.
+        /// cmark liefert den vollständigen semantischen Stand. Der DOM-Abgleich
+        /// ersetzt nur veränderte Blöcke und erhält die übrigen Browserobjekte.
         func replaceBody(with fragment: MarkdownRenderedFragment, in webView: WKWebView) {
-            replaceBody(with: fragment.html, in: webView)
-        }
-
-        private func replaceBody(with fragment: String, in webView: WKWebView) {
-            guard let data = try? JSONSerialization.data(withJSONObject: [fragment]),
+            guard let data = try? JSONSerialization.data(withJSONObject: [fragment.html]),
                   let json = String(data: data, encoding: .utf8) else { return }
-            // `window.markdownGeneration` entwertet die gemerkte Scrollposition:
-            // Sowohl ein neuerer Body-Tausch als auch ein erfolgreicher
-            // Reveal-Sprung (siehe `scrollPreview`) zählen sie hoch — in beiden
-            // Fällen wäre das Wiederherstellen der alten Position falsch.
-            let script = """
-            (async () => {
-              const x = window.scrollX, y = window.scrollY;
-              window.markdownGeneration = (window.markdownGeneration || 0) + 1;
-              const generation = window.markdownGeneration;
-              document.body.innerHTML = \(json)[0];
-              await enhanceMarkdown(document.body);
-              if (generation === window.markdownGeneration) window.scrollTo(x, y);
-            })();
-            """
-            webView.evaluateJavaScript(script)
+            webView.evaluateJavaScript("void window.fastraPreviewBlocks.update(\(json)[0])")
         }
 
         /// Ein bewusster Link-Klick darf den Standardbrowser öffnen; die lokale

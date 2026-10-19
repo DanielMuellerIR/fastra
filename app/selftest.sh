@@ -89,7 +89,7 @@ case "${FASTRA_SELFTEST_LANGUAGE:-}" in
     *) echo "Selbsttest-Sprache muss de oder en sein." >&2; exit 2 ;;
 esac
 
-ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions searchlayout searchfocus dialoglayout projectinput tabswitch tabcommitfocus tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapindent softwrapindentcore softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge searchundo dirtyundo emojisplit emojipaste emojipreview tabscroll tabsearchmemory typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdvisual mdsearchnavigation mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop joinundo colsel colselwrap colpaste gutterdim codefolding gitremotedialogs sidebarheader editoroptions footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist mdimagequit search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit diffselection markdownimport markdownimportui filemodes selsearch wildcard openscope loadperf contrast cmdw)
+ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions searchlayout searchapproval searchapprovalclose searchfocus dialoglayout projectinput tabswitch tabcommitfocus tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapindent softwrapindentcore softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge searchundo dirtyundo emojisplit emojipaste emojipreview tabscroll tabsearchmemory typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdvisual mdoutline codeoutline sourcesplit snippets mdvisualfind mdtable mdtableinteraction mdcomfort mdblocks mdsearchnavigation mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop textworkflow textworkflowmulti textworkflowonesided joinundo colsel colselwrap colpaste gutterdim codefolding gitremotedialogs sidebarheader editoroptions footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff filedifftransfer foldercompare mdreferences externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist mdimagequit search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit diffselection markdownimport markdownimportui filemodes selsearch wildcard openscope loadperf contrast cmdw)
 # `windows` bleibt als gezielter Diagnosemodus verfügbar, prüft aber keine
 # Produktfunktion und startet deshalb nicht mehr in jedem Standardlauf.
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
@@ -97,7 +97,7 @@ WINDOWLESS_TESTS=(search searchperf project projectperf localization markdownimp
 # Nur diese Tests brauchen echten Vordergrundfokus. `newwindow`,
 # `projectinput` und `help` bedienen ihre Fenster dagegen direkt im
 # Testprozess und laufen wie `welcomenew` im Hintergrund.
-FOCUS_REQUIRED_TESTS=(mdvisual searchundo editoroptions cmdw completion4d softwrapindent diffselection gitremotedialogs)
+FOCUS_REQUIRED_TESTS=(mdtableinteraction sidebarheader snippetfiles mdreferences foldercompare filedifftransfer searchapprovalclose searchapproval textworkflow textworkflowmulti textworkflowonesided mdvisual mdoutline codeoutline sourcesplit snippets mdvisualfind mdtable mdtableinput mdcomfort mdblocks searchundo editoroptions cmdw completion4d softwrapindent diffselection gitremotedialogs)
 # Diese Fensterläufe sind so gebaut, dass sie ihre AppKit-Objekte direkt
 # bedienen. Der Runner sperrt für sie auch produktive Aktivierungshelfer,
 # damit sie die gerade benutzte App nicht verdrängen.
@@ -162,6 +162,9 @@ timeout_for_test() {
         print) echo 240 ;;
         softwrapindent) echo 180 ;;
         cmdw)  echo 120 ;;
+        mdblocks) echo 180 ;;
+        searchapproval) echo 180 ;;
+        filedifftransfer|foldercompare|mdreferences|codeoutline|sourcesplit|snippets|snippetfiles) echo 180 ;;
         # Die Diagnose hält nach dem Aufbau 60 s für den externen leaks-Aufruf offen.
         leakscenario) echo 120 ;;
         controlhost) echo 130 ;;
@@ -1563,7 +1566,9 @@ for t in "${TESTS[@]}"; do
         # Ein leeres Aufnahmeziel muss fehlen: Die App interpretiert schon
         # die Anwesenheit der Variable als Auftrag, PNGs dort zu speichern.
         review_environment=()
-        for review_key in FASTRA_MD_VISUAL_DIR FASTRA_DIFFSELECTION_DIR FASTRA_REMOTE_DIALOG_DIR \
+        for review_key in FASTRA_MD_VISUAL_DIR FASTRA_MD_OUTLINE_DIR FASTRA_MD_VISUAL_FIND_DIR \
+            FASTRA_MD_TABLE_DIR FASTRA_MD_TABLE_REPRO_FILE FASTRA_MD_COMFORT_DIR FASTRA_TEXT_WORKFLOW_DIR \
+            FASTRA_DIFFSELECTION_DIR FASTRA_REMOTE_DIALOG_DIR \
             FASTRA_EDITOR_OPTIONS_DIR FASTRA_SOFTWRAPINDENT_DIR \
             FASTRA_SOFTWRAPINDENT_REVIEW_DIR FASTRA_SOFTWRAPINDENT_REVIEW_WIDTH; do
             review_value="${!review_key:-}"

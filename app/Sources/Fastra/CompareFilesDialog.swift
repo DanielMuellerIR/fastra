@@ -16,8 +16,7 @@ enum CompareDialogLogic {
     enum FieldProblem: Equatable {
         /// Datei existiert nicht (mehr).
         case missing
-        /// Pfad ist ein Ordner — Ordner-Vergleich ist bewusst nicht Teil
-        /// dieser Etappe.
+        /// Pfad ist ein Ordner; dafür gibt es den eigenen Ordnervergleich.
         case directory
         /// Sieht nach Binärdatei aus (Nullbyte-Probe).
         case binary
@@ -25,7 +24,7 @@ enum CompareDialogLogic {
         var message: String {
             switch self {
             case .missing: return L10n.string("Datei nicht gefunden.")
-            case .directory: return L10n.string("Ordner lassen sich (noch) nicht vergleichen.")
+            case .directory: return L10n.string("Wähle hier eine Datei. Für zwei Ordner nutze „Ordner vergleichen…“.")
             case .binary: return L10n.string("Binärdatei — ein Zeilenvergleich ist nicht möglich.")
             }
         }
@@ -135,6 +134,8 @@ struct CompareFilesDialog: View {
     @State private var right: CompareSelection = .none
     @State private var leftDropTargeted = false
     @State private var rightDropTargeted = false
+    @State private var startingComparison = false
+    @State private var startTicket: UUID?
 
     // Optionen überleben App-Neustarts (BBEdit-Verhalten); Erstzustand:
     // nichts ignorieren (Produktvorgabe).
@@ -159,7 +160,8 @@ struct CompareFilesDialog: View {
                     .padding(.top, 44)
                 sidePanel(role: .right, selection: $right, targeted: $rightDropTargeted)
             }
-            optionsSection
+            .disabled(startingComparison)
+            optionsSection.disabled(startingComparison)
             HStack {
                 Spacer()
                 Button("Abbrechen") {
@@ -168,13 +170,15 @@ struct CompareFilesDialog: View {
                 .keyboardShortcut(.cancelAction)
                 Button("Vergleichen") { compare() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!canCompare)
+                    .disabled(!canCompare || startingComparison)
+                    .background(SelfTestMarker(id: "compareFilesStart").frame(width: 0, height: 0))
             }
         }
         .padding(20)
         .frame(width: 640)
         .fastraScalingRoot()
         .onAppear(perform: prefillSelections)
+        .onDisappear { startTicket = nil; startingComparison = false }
     }
 
     // MARK: - Seiten
@@ -415,9 +419,8 @@ struct CompareFilesDialog: View {
             && problem(for: right) == nil
     }
 
-    /// Auswahl → Vergleichsseite. Saubere Tabs mit Datei vergleichen den
-    /// Plattenstand; dirty Tabs und unbenannte Tabs den Editor-Inhalt —
-    /// verglichen wird immer das, was der Nutzer gerade sieht.
+    /// Ein gewählter Tab vergleicht seinen sichtbaren Speicherinhalt und
+    /// bindet eine spätere Übernahme an genau dieses Dokument und Fenster.
     private func side(for selection: CompareSelection,
                       role: FileDiffSideRole) -> FileDiffSide? {
         switch selection {
@@ -431,27 +434,33 @@ struct CompareFilesDialog: View {
             ) else {
                 return nil
             }
-            if let url = tab.url, !tab.isDirty {
-                return .file(url)
-            }
-            let name = tab.isDirty && tab.url != nil
-                ? L10n.format("%@ (ungespeichert)", tab.title)
-                : tab.title
-            return .text(tab.content, name: name, path: tab.url?.path)
+            return FileDiffSide.document(tab, in: workspace)
         }
     }
 
-    private func compare() {
-        guard let leftSide = side(for: left, role: .left),
-              let rightSide = side(for: right, role: .right) else { return }
+    @MainActor private func compare() {
+        guard !startingComparison else { return }
+        let selectedLeft = left, selectedRight = right
         var options = FileDiffOptions()
         options.ignoreTrailingWhitespace = ignoreTrailingWhitespace
         options.ignoreAllWhitespace = ignoreAllWhitespace
         options.ignoreBlankLines = ignoreBlankLines
         options.ignoreCase = ignoreCase
-        workspace.showCompareFilesDialog = false
-        workspace.openFileDiffTab(request: FileDiffRequest(
-            left: leftSide, right: rightSide, options: options
-        ))
+        let ticket = UUID()
+        startTicket = ticket
+        startingComparison = true
+        let start = {
+            guard startTicket == ticket else { return }
+            startTicket = nil
+            startingComparison = false
+            guard workspace.showCompareFilesDialog,
+                  let leftSide = side(for: selectedLeft, role: .left),
+                  let rightSide = side(for: selectedRight, role: .right) else { return }
+            workspace.showCompareFilesDialog = false
+            workspace.openFileDiffTab(request: FileDiffRequest(left: leftSide, right: rightSide, options: options))
+        }
+        if !workspace.synchronizeVisualMarkdownBefore(start, onFailure: {
+            if startTicket == ticket { startTicket = nil; startingComparison = false }
+        }) { start() }
     }
 }

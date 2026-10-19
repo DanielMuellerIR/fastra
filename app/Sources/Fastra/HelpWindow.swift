@@ -54,6 +54,7 @@ enum HelpWindow {
         // Wie die Markdown-Vorschau: rein lokaler Renderer ohne Cookies,
         // Cache oder persistente Website-Daten.
         configuration.websiteDataStore = .nonPersistent()
+        configuration.userContentController.add(helpCoordinator, name: "markdownCodeCopy")
         configuration.setURLSchemeHandler(helpCoordinator.assetHandler,
                                           forURLScheme: MarkdownPreviewAssets.scheme)
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -110,10 +111,17 @@ enum HelpWindow {
 }
 
 /// Navigation + Anker-Sprung + Hell/Dunkel-Beobachtung des Hilfe-Fensters.
-private final class HelpWebCoordinator: NSObject, WKNavigationDelegate {
+private final class HelpWebCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     let assetHandler = MarkdownPreviewSchemeHandler()
     var pendingAnchor: String?
     private var appearanceObservation: NSKeyValueObservation?
+
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame, message.name == "markdownCodeCopy",
+              let payload = message.body as? [String: Any] else { return }
+        MainActor.assumeIsolated { MarkdownPresentation.copyCode(payload, in: message.webView) }
+    }
 
     func observeAppearance(_ onChange: @escaping () -> Void) {
         appearanceObservation = NSApp.observe(\.effectiveAppearance) { _, _ in

@@ -253,7 +253,7 @@ func soakFocusOutcomePreservesFailures(_ failureFirst: Bool) {
 }
 
 @Test("Dauertest vergleicht Editor, Modell und die tatsächlichen Dateibytes",
-      arguments: ["saved", "editor", "unicode", "missingEditor", "utf16", "bom", "crlf", "dirty", "dirtyMissing", "utf16DirtyMissing"])
+      arguments: ["saved", "editor", "unicode", "missingEditor", "utf16", "bom", "crlf", "endingMismatch", "dirty", "dirtyMissing", "utf16DirtyMissing"])
 @MainActor
 func soakChecksVisibleTextAndFileRepresentation(_ mode: String) throws {
     _ = NSApplication.shared
@@ -287,7 +287,9 @@ func soakChecksVisibleTextAndFileRepresentation(_ mode: String) throws {
         encoding = .utf16LittleEndian; bom = Data([0xff, 0xfe])
         if mode == "utf16DirtyMissing" { model = "neuer\n"; shown = model }
     case "bom": bom = Data([0xef, 0xbb, 0xbf])
-    case "crlf": disk = "gleich\r\n"; lineEnding = .crlf
+    case "crlf":
+        model = "gleich\r\n"; shown = model; disk = model; lineEnding = .crlf
+    case "endingMismatch": disk = "gleich\r\n"; lineEnding = .crlf
     case "dirty", "dirtyMissing": model = "neuer\n"; shown = model
     default: break
     }
@@ -307,7 +309,7 @@ func soakChecksVisibleTextAndFileRepresentation(_ mode: String) throws {
     if mode != "missingEditor" { window.contentView = TextView(string: shown) }
     #expect(!window.isVisible)
     let brokenBinding = ["editor", "unicode", "missingEditor"].contains(mode)
-    let missingDirtyFlag = ["dirtyMissing", "utf16DirtyMissing"].contains(mode)
+    let missingDirtyFlag = ["dirtyMissing", "utf16DirtyMissing", "endingMismatch"].contains(mode)
 
     SoakTest.checkDirtyFlagMatchesDisk(window: window)
     #expect(SoakTest.findings.isEmpty == !(brokenBinding || missingDirtyFlag))

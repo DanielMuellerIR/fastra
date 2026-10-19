@@ -23,7 +23,7 @@ import CodeEditSourceEditor
 // MARK: - Aktionen und Provider-Schnittstelle
 
 /// Ergebnis einer Ziel-Auflösung.
-enum GoToTargetAction: Equatable {
+enum GoToTargetAction: Equatable, Sendable {
     /// Datei im Editor öffnen (4D-Methode/Klasse, relative Markdown-Datei).
     case openFile(URL)
     /// In der AKTUELLEN Datei springen (Function-Definition, Markdown-Anker).
@@ -38,7 +38,7 @@ enum GoToTargetAction: Equatable {
 
 /// Eingaben einer Auflösung — pure Daten, damit die Provider ohne UI
 /// testbar bleiben (FileManager injizierbar).
-struct GoToTargetContext {
+struct GoToTargetContext: Sendable {
     let text: String
     /// UTF-16-Offset des Doppelklicks.
     let location: Int
@@ -133,6 +133,10 @@ enum FourDGoToTarget: GoToTargetProvider {
         // Schlüsselwort mit ein („Function zwei") — Keyword-Wörter vorn
         // abwerfen, übrig bleibt der eigentliche Name.
         var words = name.split(separator: " ").map(String.init)
+        if let function = words.firstIndex(where: { $0.caseInsensitiveCompare("Function") == .orderedSame }),
+           words[..<function].allSatisfy({ FourDDefinitions.functionModifiers.contains($0.lowercased()) }) {
+            words = Array(words.dropFirst(function))
+        }
         while let first = words.first,
               FourDTokenizer.keywords.contains(first.lowercased()) {
             words.removeFirst()
@@ -148,12 +152,16 @@ enum FourDGoToTarget: GoToTargetProvider {
         }
 
         // 1) Function-Definition in der aktuellen Datei (Klassen-Methoden).
-        if let functionRange = functionDefinitionRange(named: name,
-                                                       in: context.text) {
-            return .jumpToRange(functionRange)
+        guard let definitions = FourDDefinitions.definitions(in: context.text, isCancelled: { Task.isCancelled }) else {
+            return Task.isCancelled ? nil : .notFound(L10n.string("Die Zielauflösung ist auf 10 MiB / 200.000 Zeilen begrenzt."))
         }
+        guard definitions.count < 10_000 else { return .notFound(L10n.string("Die Zielauflösung hat die Grenze von 10.000 Definitionen erreicht.")) }
+        let functions = matchingFunctions(named: name, in: definitions)
+        if functions.count > 1 { return .notFound(L10n.format("Mehrere Funktionen heißen „%@“. Wähle die Definition in der Gliederung.", name)) }
+        if let function = functions.first { return .jumpToRange(function.range) }
         // 2) Projektmethode bzw. Klasse im 4D-Projektbaum.
         for root in sourceRoots(context: context) {
+            guard !Task.isCancelled else { return nil }
             let method = root.appendingPathComponent("Methods/\(name).4dm")
             if context.fileManager.fileExists(atPath: method.path) {
                 return .openFile(method)
@@ -170,19 +178,17 @@ enum FourDGoToTarget: GoToTargetProvider {
         return .notFound(L10n.format("Kein Ziel für „%@“ gefunden.", name))
     }
 
-    /// `Function <name>` bzw. `Class constructor` am Zeilenanfang der
-    /// aktuellen Datei — Ziel ist der Zeilenbeginn (UTF-16-Range).
-    static func functionDefinitionRange(named name: String,
-                                        in text: String) -> NSRange? {
-        let ns = text as NSString
-        let escaped = NSRegularExpression.escapedPattern(for: name)
-        let pattern = "^[ \\t]*Function[ \\t]+\(escaped)\\b"
-        guard let regex = try? NSRegularExpression(
-            pattern: pattern, options: [.anchorsMatchLines, .caseInsensitive]
-        ) else { return nil }
-        return regex.firstMatch(in: text,
-                                range: NSRange(location: 0, length: ns.length))?
-            .range
+    /// Nur eindeutig benannte normale Funktionen sind ein implizites Ziel.
+    /// Accessoren bleiben über ihre ausdrücklich gewählte Gliederungszeile erreichbar.
+    static func functionDefinitionRange(named name: String, in text: String) -> NSRange? {
+        guard let definitions = FourDDefinitions.definitions(in: text, isCancelled: { Task.isCancelled }),
+              definitions.count < 10_000 else { return nil }
+        let functions = matchingFunctions(named: name, in: definitions)
+        return functions.count == 1 ? functions[0].range : nil
+    }
+
+    private static func matchingFunctions(named name: String, in definitions: [FourDDefinitions.Definition]) -> [FourDDefinitions.Definition] {
+        definitions.filter { $0.kind == .function && $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
     /// Mögliche `Project/Sources`-Wurzeln: Vorfahren der aktiven Datei
@@ -340,6 +346,8 @@ enum MarkdownGoToTarget: GoToTargetProvider {
 final class GoToTargetGesture: NSObject {
 
     private var monitor: Any?
+    private var resolutions: [ObjectIdentifier: Task<Void, Never>] = [:]
+    private var requests: [ObjectIdentifier: UUID] = [:]
 
     func install() {
         guard monitor == nil else { return }
@@ -384,13 +392,35 @@ final class GoToTargetGesture: NSObject {
             documentURL: tab.url,
             projectURL: workspace.projectURL
         )
-        guard let action = provider.resolve(context) else {
-            // Kein Ziel an dieser Stelle → normales Doppelklick-Verhalten.
-            return event
+        MainActor.assumeIsolated {
+            resolve(provider, context: context, workspace: workspace, textView: textView)
         }
-        perform(action, workspace: workspace, textView: textView,
-                clickLocation: location)
-        return nil
+        return event
+    }
+
+    @MainActor private func resolve(_ provider: GoToTargetProvider.Type, context: GoToTargetContext,
+                                   workspace: Workspace, textView: TextView) {
+        guard let tab = workspace.activeTab else { return }
+        let key = ObjectIdentifier(workspace), request = UUID()
+        let documentID = tab.documentID, revision = tab.contentRevision
+        resolutions[key]?.cancel(); requests[key] = request
+        resolutions[key] = Task { @MainActor [weak self, weak workspace, weak textView] in
+            let resolver: Task<GoToTargetAction?, Never> = Task.detached(priority: .userInitiated) {
+                guard context.text.utf8.count <= 10 * 1024 * 1024 else {
+                    return GoToTargetAction.notFound(L10n.string("Die Zielauflösung ist auf 10 MiB Quelltext begrenzt."))
+                }
+                return provider.resolve(context)
+            }
+            let action = await withTaskCancellationHandler(operation: { await resolver.value }, onCancel: { resolver.cancel() })
+            guard let self, self.requests[key] == request else { return }
+            self.requests[key] = nil; self.resolutions[key] = nil
+            guard !Task.isCancelled, let action, let workspace, let textView,
+                  workspace.activeTab?.documentID == documentID, workspace.activeTab?.contentRevision == revision,
+                  workspace.activeTab?.url == context.documentURL, workspace.projectURL == context.projectURL,
+                  CommandTargeting.editorTextView(for: workspace) === textView,
+                  textView.string.utf8.elementsEqual(context.text.utf8) else { return }
+            self.perform(action, workspace: workspace, textView: textView, clickLocation: context.location)
+        }
     }
 
     private func textViewAncestor(of view: NSView) -> TextView? {
@@ -404,16 +434,13 @@ final class GoToTargetGesture: NSObject {
 
     /// Führt die aufgelöste Aktion aus. Alles sind normale, sichtbare
     /// Editor-/App-Aktionen — nichts davon schreibt Dateien.
-    private func perform(_ action: GoToTargetAction, workspace: Workspace,
+    @MainActor private func perform(_ action: GoToTargetAction, workspace: Workspace,
                          textView: TextView, clickLocation: Int) {
         switch action {
         case .openFile(let url):
-            workspace.loadFile(at: url)
+            workspace.documentOutline.openFile(at: url, in: workspace, originRange: NSRange(location: clickLocation, length: 0))
         case .jumpToRange(let range):
-            NotificationCenter.default.post(
-                name: .fastraJumpToRange, object: workspace,
-                userInfo: ["range": NSValue(range: range)]
-            )
+            workspace.documentOutline.jump(to: range, in: workspace, originRange: NSRange(location: clickLocation, length: 0))
         case .openURL(let url):
             NSWorkspace.shared.open(url)
         case .searchProject(let name):

@@ -100,6 +100,7 @@ private final class ScreenshotRunnerFixture {
                          runner.path]
         }
         return try runTestProcess("/bin/bash", arguments: arguments, environment: [
+            "PATH": try pathIgnoringForeignFastraProcess(in: root),
             "FASTRA_SELFTEST_APP_BIN": app.path,
             "FASTRA_SELFTEST_SCREENSHOT_DIR": output.path,
             "FASTRA_TEST_SCREENCAPTURE": capture.path,

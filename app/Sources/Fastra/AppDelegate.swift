@@ -995,6 +995,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 isSearchWindowKey: isSearchKey,
                 isHelpWindowKey: isHelpKey,
                 isDocumentWindowKey: keyWorkspace != nil,
+                isMarkdownVisual: MainActor.assumeIsolated { keyWorkspace?.activeMarkdownIsVisual ?? false },
                 fourDMacroShortcuts: macroShortcuts
             )
 
@@ -1069,7 +1070,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Die app-weite Notification trägt ihr bereits bestimmtes Ziel.
             // Sonst würden bei mehreren Dokumenten auch fremde ContentViews
             // und Suchlisten auf denselben Tastendruck reagieren.
-            NotificationCenter.default.post(name: name, object: routedWorkspace)
+            NotificationCenter.default.post(name: name, object: routedWorkspace,
+                                             userInfo: route == .showSearchSource ? ["source": true] : nil)
             return nil         // Event verbrauchen
         }
     }

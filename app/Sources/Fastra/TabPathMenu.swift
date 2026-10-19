@@ -9,6 +9,14 @@
 
 import AppKit
 
+enum FilePathClipboard {
+    @MainActor
+    static func copy(_ url: URL, to pasteboard: NSPasteboard = .general) {
+        pasteboard.clearContents()
+        pasteboard.setString(url.standardizedFileURL.path, forType: .string)
+    }
+}
+
 /// Reine, unit-testbare Logik: die Pfadkette einer Datei von der Datei
 /// selbst (zuoberst) aufwärts bis zur Wurzel „/“.
 enum TabPathMenuModel {

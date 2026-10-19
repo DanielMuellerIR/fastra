@@ -929,3 +929,106 @@ asynchronen Datei-Completions dann nicht bedienen. Der Quit-Selbsttest sendet
 deshalb Command-Q durch die Ereigniswarteschlange. Ein lokaler Ereignisbeobachter
 gibt erst beim zugestellten Tastendruck den absichtlich angehaltenen Undo-Auftrag
 frei; der echte Beenden-Hook muss anschließend alle Dateiaktionen abschließen.
+
+### Verspätete Syntaxfarben brauchen aktuelle Speichergrenzen (2026-10-16)
+
+Bei einer parallelen Editor-/Markdown-Regression brach `ImmediateAttributeTextStorage`
+in `Highlighter.styleContainerDidUpdate` mit einem zu langen Attributbereich ab.
+Der gleiche Umfang bestand seriell. Ein deterministischer Regressionstest bildet
+den bereits berechneten Stilbereich einer längeren Fassung mit einem inzwischen
+gekürzten Textspeicher nach. Auch eine Kürzung im Theme-Provider darf den unmittelbar
+folgenden Schreibbereich nicht mehr entwerten.
+
+Patch 4z26 begrenzt zuerst den angefragten Bereich und anschließend jeden tatsächlichen
+Attributschreibvorgang an der aktuellen Speicherlänge. Er bindet `beginEditing` und
+`endEditing` an dasselbe Speicherobjekt. Die Selbstprüfung im Patch schützt seinen
+vollständigen Anker; `HighlightStyleBoundsTests` prüft echte Attributschreibvorgänge,
+Unicode und ungültige Startpositionen.
+
+### Gemeinsamer Textspeicher und lokale Syntaxfarben (2026-10-19)
+
+Jeder Ausschnitt besitzt eigene gültige Highlight-Bereiche. Setzt ein
+Theme-Wechsel die Attribute des gesamten gemeinsamen Textspeichers zurück,
+verliert der andere Ausschnitt seine Farben, obwohl dessen Highlighter die
+Bereiche weiter als gültig betrachtet. Ein reiner Textspeicher-Test findet
+diese Darstellungsabweichung nicht zuverlässig.
+
+Patch 4z28 setzt deshalb nur die tatsächlich sichtbaren Altattribute des
+jeweiligen Ausschnitts zurück und begrenzt jeden Bereich an der aktuellen
+Speicherlänge. `splitHostHighlightsBothViewports` prüft einen echten SwiftUI-Split
+mit gemischten Zeilenenden und die Farben der gezeichneten CoreText-Zeilen beim
+Wechsel von hell nach dunkel und zurück. Vor der Korrektur waren beide Wechsel
+rot, danach bestanden sie unverändert.
+
+### Controller-View erst nach Anschluss des Textspeichers laden (2026-10-19)
+
+`SourceEditor.makeNSViewController` erzeugt zuerst den Controller und ruft dabei
+`prepareCoordinator` auf. Erst danach schließt er den übergebenen Textspeicher
+an. Ein Zugriff auf `controller.view` im vorbereitenden Coordinator lädt schon
+die Minimap am anfänglichen leeren Speicher; der Editor erhält anschließend
+den richtigen Inhalt, die Minimap bleibt leer. Die Begrenzung der Pane deshalb
+in `controllerDidAppear` setzen. Die echte SwiftUI-Host-Probe
+`splitHostMinimapsFollowSharedStorage` war davor mit vier Abweichungen rot und
+ist danach grün; der native `softwrapindent` bleibt die Bedienungsregression.
+
+### Fokus nach Wiederöffnen und virtualisierte Trefferzeilen (2026-10-19)
+
+Eine bedingt montierte SwiftUI-Suchleiste darf beim erneuten Öffnen nicht nur
+noch einmal `FocusState = true` setzen. Der bisherige Feldeditor kann noch als
+First Responder eingetragen sein, während das neue Feld keinen eigenen Editor
+besitzt. Den Zustand beim Schließen zurücksetzen und den Fokus nach der Montage
+neu anfordern; Suchauftrag und Dokument begrenzen die verzögerte Rückgabe.
+`mdvisualfind` prüft das `currentEditor()` des konkreten Suchfelds, echte Eingabe
+gegen dessen tatsächliche Auswahl und anschließend Escape. Ein beliebiger
+Feldeditor oder ein erfolgreicher erster Aufruf belegt diesen Lebenszyklus nicht.
+
+Die Suchtrefferliste ist virtualisiert. Zusätzliche Freigabecontrols verkleinern
+ihren sichtbaren Ausschnitt; schon der zweite Treffer kann noch keine native
+Zeile besitzen. `mdsearchnavigation` scrollt deshalb die echte Ergebnisliste,
+prüft den Offset und sucht erst danach den Zielmarker. Auf den Marker zu warten
+und erst anschließend zu scrollen kann bei gültiger Trefferkennung nie gelingen.
+
+
+### Geschützte neue WebKit-Atome müssen vollständig rückgängig machbar bleiben (2026-10-19)
+
+HTML für eine visuelle Einfügung kann opake Platzhalter für nicht ausgeführtes
+HTML enthalten. Steht `contenteditable=false` schon im an `execCommand` übergebenen
+HTML, lässt WebKits Undo Teile dieser neu eingefügten Atome stehen. Der Einfügepfad
+entfernt diese Attribute deshalb vor dem nativen Schritt; `exec` schützt die
+entstandenen Atome unmittelbar danach wieder. Die Regression fügt unter anderem
+Script- und Ereignisattribute als inaktive Quelle ein, prüft fehlende Ausführung
+und danach den exakten Originaltext nach Undo sowie einen vollständigen Redo-/
+Undo-Zyklus. Eine reine Kontrolle auf nicht ausgeführtes JavaScript reicht nicht.
+
+
+## Dokumentidentität in verzögerten Editoraktionen
+
+Ein Tabplatz und identischer Text belegen keine Dokumentidentität. Beim
+SwiftUI-Neuaufbau bleibt die vorige native Textansicht kurz montiert; globale
+Befehle müssen ihre registrierte Dokument-ID zusätzlich zur Fensterzuordnung
+prüfen. `CrossPackageIntegrationTests.snippetDuringTabTransition` belegt den
+Fehler auch bei wiederverwendetem Tabplatz und prüft danach frisches Einfügen
+und Undo.
+
+Dasselbe gilt nach dem Start einer WebKit-Aktion: Die erste Bookmark-Prüfung
+reicht nicht. `MarkdownVisualCoordinator` bindet geladene Seiten und jede
+schreibende asynchrone Rückmeldung an die Dokument-ID. Sonst kann eine späte
+Einfügung einen neuen Inhalt im selben Tabplatz überschreiben, obwohl dessen
+Ausgangstext identisch ist. Wächter:
+`MarkdownVisualTests.snippetInFlightReusedDocument`.
+
+Die Formelvorverarbeitung darf bei fehlenden Schlussmarkern nicht für jeden
+Anfang den gesamten Rest erneut durchsuchen. Indizierte Schlussmarker erhalten
+die bestehende Syntax; Tokenersetzungen laufen einmal vorwärts. Die
+Regressionen in `MarkdownMathTests` vergleichen gemischte Marker mit der
+bisherigen Syntax und prüfen große Eingaben, Abbruch und Quellzeilen.
+
+Ein UTF-8-Elementvergleich über `NSTextStorage.string` kann wegen dessen
+NSString-Backing einen großen unveränderten Text bei jedem SwiftUI-Aufbau
+zeichenweise durchlaufen. Der literale NSString-Vergleich erhält exakte
+Unicode-Schreibweisen, NUL und Zeilenenden ohne diese Zusatzkosten.
+Auch der Undo-Abgleich erhält nach nativen Eingaben einen NSString-String.
+Derselbe literale Vergleich verhindert dort erneut den vollständigen
+UTF-8-Durchlauf beim SwiftUI-Neuaufbau.
+`DocumentTextStorageTests` schützt Speicheridentität, Undo-Verlauf und diese Unterschiede;
+`loadperf` bleibt die native Hauptthread-Abnahme mit unveränderter Grenze.

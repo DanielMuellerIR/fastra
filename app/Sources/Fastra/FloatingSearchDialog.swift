@@ -4,7 +4,7 @@ import AppKit
 // Floating Search Dialog (L1) — Variante 1.
 //
 // Stand v0.5: Grobschnitt-Layout nach Suchmasken-Konzept v1.0.
-// Sichtbare Bausteine (statisch — Logik kommt in v0.6/v0.7):
+// Sichtbare Bausteine:
 //   • Scope-Tabs
 //   • Vorlagen-Dropdown (Pattern aus BuiltInPatterns auswählen)
 //   • Find-Feld mit Token-Highlighting + Element-Picker-Button [+]
@@ -15,9 +15,8 @@ import AppKit
 //   • Trefferliste in der Maske (Sofort-Treffer — Konzept Abschnitt 2)
 //   • Detail-Bereich für aktiven Treffer mit Group-Markierungen
 //     (Konzept Abschnitt 3 — Capture-Group-Definition am Treffer)
-//   • Action-Zeile (Preview · Alle ersetzen)
-//
-// Die Logik (echte Suche, Token-Parsing, Group-Snap) folgt in späteren v0.x.
+//   • Treffer-/Dateifreigaben, Zähler und Alle/Keine
+//   • Aktionen für Suche, Einzel-Ersetzung und Freigabevorschau
 
 struct FloatingSearchDialog: View {
     @EnvironmentObject var workspace: Workspace
@@ -49,6 +48,8 @@ struct FloatingSearchDialog: View {
     @StateObject private var patternLibrary = PatternLibrary(defaults: SelfTest.workspaceDefaults())
     @State private var showPatternEditor = false
     @State private var showExampleTransformation = false
+    @State private var approvalRequest: SearchApprovalPreview.Request?
+    @State private var approvalError: String?
     /// Tastaturfokus der Trefferliste. Solange er aktiv ist, bleiben Return
     /// und Pfeiltasten im Suchfenster und können das Dokument nicht ändern.
     @FocusState private var hitListFocused: Bool
@@ -191,6 +192,12 @@ struct FloatingSearchDialog: View {
                 _ = workspace.extractHits(options: options)
             }
         }
+        .sheet(item: $approvalRequest) { request in
+            SearchApprovalPreviewSheet(workspace: workspace, request: request)
+        }
+        .alert("Freigabevorschau", isPresented: Binding(get: { approvalError != nil }, set: { if !$0 { approvalError = nil } })) {
+            Button("OK", role: .cancel) { approvalError = nil }
+        } message: { Text(approvalError ?? "") }
         .sheet(isPresented: $showPatternEditor) {
             PatternEditorView(library: patternLibrary, onApply: applyTemplate)
         }
@@ -1038,8 +1045,8 @@ struct FloatingSearchDialog: View {
     // MARK: - Inline Live-Vorschau Vorher→Nachher (Feature J, todo 3)
 
     /// Zeilen-Obergrenze der INLINE-Vorschau. Bewusst klein — das große
-    /// „Vorschau der Änderungen"-Sheet zeigt alle Zeilen; hier geht es nur um
-    /// Sofort-Feedback beim Tippen.
+    /// Freigabe-Sheet zeigt alle Änderungen; hier erscheinen nur die ersten
+    /// bereits freigegebenen Zeilen des aktiven Dokuments.
     private var livePreviewMaxRows: Int { 3 }
 
     /// Kompakte, LIVE mittippende Vorher→Nachher-Vorschau direkt unter den
@@ -1067,7 +1074,7 @@ struct FloatingSearchDialog: View {
            ),
            !source.matches.isEmpty {
             let preview = ReplacePreview.build(text: workspace.activeTab?.content ?? "",
-                                               matches: source.matches,
+                                               matches: source.matches.filter { workspace.searchApproval.approvedIDs.contains($0.id) },
                                                maxRows: livePreviewMaxRows)
             // Treffer, deren Ersetzung == Original (z.B. Suchen == Ersetzen),
             // liefern keine Zeilen → dann zeigen wir nichts.
@@ -1084,7 +1091,7 @@ struct FloatingSearchDialog: View {
                     // Trunkierung"): auf das vollständige Sheet verweisen.
                     if preview.totalChangedLines > preview.rows.count {
                         Text(verbatim: L10n.format(
-                            "… und %ld weitere geänderte Zeilen — „Vorschau der Änderungen\" zeigt alle.",
+                            "… und %ld weitere geänderte Zeilen — „Freigaben prüfen“ zeigt alle.",
                             preview.totalChangedLines - preview.rows.count
                         ))
                             .fastraFont(size: 10)
@@ -1105,7 +1112,10 @@ struct FloatingSearchDialog: View {
     // MARK: - Trefferliste in der Maske (Sofort-Treffer)
 
     private var hitsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let generation = workspace.searchApproval.generation
+        let editable = workspace.editableSearchMatchIDs
+        let incompleteFiles = workspace.searchApprovalIncompleteFiles
+        return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(verbatim: L10n.format("Treffer (%ld)", scopeTotalMatches))
                     .fastraFont(.small)
@@ -1121,6 +1131,19 @@ struct FloatingSearchDialog: View {
                 Spacer()
                 hitNavigator
             }
+            HStack(spacing: 8) {
+                Text(workspace.searchApproval.isComplete
+                    ? L10n.format("Freigegeben: %ld von %ld · editierbar: %ld", workspace.searchApproval.approvedIDs.count, scopeTotalMatches, editable.count)
+                    : L10n.format("Freigegeben: %ld von %ld", workspace.searchApproval.approvedIDs.count, scopeTotalMatches))
+                    .fastraFont(.small).foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Button("Alle") { workspace.setAllSearchMatchesApproved(true, generation: generation) }
+                    .disabled(!workspace.searchApproval.isComplete || editable.isEmpty || workspace.folderApplying)
+                    .background(SelfTestMarker(id: "searchApproveAll").frame(width: 0, height: 0))
+                Button("Keine") { workspace.setAllSearchMatchesApproved(false, generation: generation) }
+                    .disabled(workspace.searchApproval.approvedIDs.isEmpty || workspace.folderApplying)
+                    .background(SelfTestMarker(id: "searchApproveNone").frame(width: 0, height: 0))
+            }.id(generation)
 
             // Fehler-Streifen unter dem Header, wenn das Pattern kaputt
             // ist. Erfüllt Interview-Erkenntnis 5 (Fehler erklären, nicht
@@ -1134,6 +1157,7 @@ struct FloatingSearchDialog: View {
                         .fastraFont(size: 11)
                         .foregroundColor(.red)
                         .lineLimit(2)
+                        .help(msg)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -1142,6 +1166,20 @@ struct FloatingSearchDialog: View {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(Color.red.opacity(0.08))
                 )
+            }
+
+            if !incompleteFiles.isEmpty && !workspace.folderSearching && !workspace.folderNeedsSearch
+                && workspace.searchError == nil {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+                    Text(verbatim: incompleteFilesNotice(incompleteFiles))
+                        .fastraFont(size: 11).foregroundColor(.orange).lineLimit(3)
+                        .help(incompleteFilesHelp(incompleteFiles))
+                }
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Color.orange.opacity(0.08)))
+                .background(SelfTestMarker(id: "searchIncompleteFiles").frame(width: 0, height: 0))
             }
 
             if let notice = workspace.folderNavigationNotice {
@@ -1162,22 +1200,24 @@ struct FloatingSearchDialog: View {
                 )
             }
 
-            // Cap-Hinweis: Trefferliste wurde durch den Gesamt-Cap abgeschnitten.
-            // Erscheint NUR im Ordner-Scope und NUR wenn der Cap tatsächlich
-            // ausgelöst hat — stilles Abschneiden ist schlechter UX.
+            // Cap-Hinweis für die gekappte Ordner-/Projekt- oder Geöffnet-Suche.
+            // Unvollständige Trefferlisten dürfen keine Freigaben erhalten.
             // Stil analog zum Fehler-Streifen, aber Gelb/Orange statt Rot,
             // da es kein Fehler ist, sondern ein informativer Hinweis.
-            if (workspace.scope.isFolderLike && workspace.folderResultsWereCapped)
+            if (workspace.scope.isFolderLike && (workspace.folderResultsWereCapped || workspace.folderResultsContainCappedFiles))
                 || (workspace.scope == .open && workspace.openResultsWereCapped) {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
-                    Text(verbatim: L10n.string(workspace.scope.isFolderLike
-                         ? "Trefferliste auf 10.000 gekappt — Suchbegriff verfeinern."
-                         : "Trefferliste gekappt — „Alle ersetzen“ bleibt gesperrt, bis alle Treffer sichtbar sind."))
+                    let message = workspace.scope.isFolderLike
+                        ? L10n.format("Trefferliste gekappt: %ld sichtbar, mindestens %ld gezählt. Verfeinere die Suche; Freigaben bleiben gesperrt.",
+                                      workspace.navMatches.count, scopeTotalMatches)
+                        : L10n.format("Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. Anwenden bleibt gesperrt, bis alle Treffer sichtbar sind.",
+                                      workspace.navMatches.count, scopeTotalMatches)
+                    Text(verbatim: message)
                         .fastraFont(size: 11)
                         .foregroundColor(.orange)
-                        .lineLimit(2)
+                        .lineLimit(3)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -1186,17 +1226,16 @@ struct FloatingSearchDialog: View {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(Color.orange.opacity(0.08))
                 )
+                .background(SelfTestMarker(id: "searchCappedResults").frame(width: 0, height: 0))
             }
 
-            // Im Geöffnet-Scope bleibt die Vorschau vollständig sichtbar,
-            // auch wenn ein Treffer aus einer schreibgeschützten Git-Ansicht
-            // stammt. Da Apply diesen Treffer nicht ändern könnte, sperrt die
-            // Maske die gesamte Aktion und erklärt die Sicherheitsgrenze.
+            // Schreibgeschützte Treffer bleiben navigierbar; freigegeben
+            // werden können nur die editierbaren Dokumente.
             if workspace.scope == .open && workspace.openResultsContainReadOnlyTabs {
                 HStack(spacing: 6) {
                     Image(systemName: "lock.fill")
                         .foregroundColor(.orange)
-                    Text("Treffer in schreibgeschützten Tabs — „Alle ersetzen“ bleibt gesperrt.")
+                    Text("Treffer in schreibgeschützten Tabs können nicht freigegeben werden.")
                         .fastraFont(size: 11)
                         .foregroundColor(.orange)
                         .lineLimit(2)
@@ -1213,7 +1252,7 @@ struct FloatingSearchDialog: View {
             // Cap-Hinweis im Buffer-Scope: nur die ersten N von vielen Treffern
             // sind als Liste materialisiert. Der Header zeigt die echte
             // Gesamtzahl; hier steht ehrlich, wie viele davon gelistet sind.
-            // „Alle ersetzen" bleibt bis zu einer vollständigen sichtbaren
+            // Die Freigabe bleibt bis zu einer vollständigen sichtbaren
             // Trefferbasis gesperrt (Produktinvariante Vorschau vor Apply).
             if !workspace.scope.isFolderLike && workspace.bufferResultsWereCapped {
                 HStack(spacing: 6) {
@@ -1262,9 +1301,22 @@ struct FloatingSearchDialog: View {
                             ForEach(groupedHits) { group in
                                 Section {
                                     ForEach(group.matches) { match in
+                                        HStack(spacing: 0) {
+                                        SearchApprovalCheckbox(identifier: "searchApprove-\(match.id.uuidString)",
+                                            state: workspace.searchApproval.approvedIDs.contains(match.id) ? .on : .off,
+                                            isEnabled: workspace.searchApproval.isComplete && editable.contains(match.id) && !workspace.folderApplying,
+                                            label: workspace.searchApproval.isComplete && !editable.contains(match.id)
+                                                ? L10n.format("Treffer in Zeile %ld ist zurzeit nicht editierbar.", match.line)
+                                                : L10n.format("Treffer in Zeile %ld freigeben", match.line)) {
+                                                workspace.setSearchMatchesApproved(!workspace.searchApproval.approvedIDs.contains(match.id),
+                                                    ids: [match.id], generation: generation)
+                                            }
+                                            .frame(width: 22, height: 22).id(generation)
+                                            .background(SelfTestMarker(id: "searchApprove-\(match.id.uuidString)").frame(width: 0, height: 0))
                                         HitRow(match: match,
                                                isActive: activeMatch?.id == match.id) {
                                             handleMatchTap(matchID: match.id)
+                                        }
                                         }
                                         .listRowInsets(EdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 4))
                                         .listRowSeparator(.hidden)
@@ -1274,10 +1326,7 @@ struct FloatingSearchDialog: View {
                                         .id(match.id)
                                     }
                                 } header: {
-                                    Text(verbatim: L10n.format("%@ (%ld)", group.label,
-                                                              group.matches.count))
-                                        .fastraFont(size: 11, weight: .semibold)
-                                        .foregroundColor(Theme.textSecondary)
+                                    approvalGroupHeader(group, editable: editable, generation: generation)
                                 }
                             }
                         }
@@ -1356,6 +1405,75 @@ struct FloatingSearchDialog: View {
                     .fill(Theme.surfaceSand.opacity(0.5))
             )
         }
+    }
+
+    private func incompleteFileReason(_ reason: FolderSearch.SkipReason) -> String {
+        switch reason {
+        case .tooLarge: return L10n.format("Über %ld MiB", Int(FileLoader.largeFileThreshold / (1024 * 1024)))
+        case .undecodable: return L10n.string("Unbekannte Kodierung")
+        default: return L10n.string("Nicht lesbar")
+        }
+    }
+
+    private func incompleteFilesNotice(_ files: [FolderSearch.PerFileResult]) -> String {
+        var unreadable = 0, tooLarge = 0, undecodable = 0
+        for file in files {
+            switch file.skipped {
+            case .tooLarge: tooLarge += 1
+            case .undecodable: undecodable += 1
+            default: unreadable += 1
+            }
+        }
+        let groups: [(FolderSearch.SkipReason, Int)] = [(.unreadable, unreadable), (.tooLarge, tooLarge), (.undecodable, undecodable)]
+        let reasons = groups.filter { $0.1 > 0 }.map { L10n.format("%@: %ld", incompleteFileReason($0.0), $0.1) }.joined(separator: " · ")
+        return L10n.format("Unvollständige Suche (%@). Freigaben bleiben gesperrt. Prüfe die Dateien oder verfeinere den Bereich.", reasons)
+    }
+
+    private func incompleteFilesHelp(_ files: [FolderSearch.PerFileResult]) -> String {
+        var lines = files.prefix(8).map { $0.url.path + " — " + incompleteFileReason($0.skipped ?? .unreadable) }
+        if files.count > 8 { lines.append(L10n.format("… und %ld weitere Dateien.", files.count - 8)) }
+        return lines.joined(separator: "\n")
+    }
+
+    private func approvalGroupHeader(_ group: HitGroup, editable: Set<UUID>, generation: UInt64) -> some View {
+        let ids = Set(group.matches.map(\.id)).intersection(editable)
+        let count = ids.intersection(workspace.searchApproval.approvedIDs).count
+        let state: NSControl.StateValue = count == 0 ? .off : count == ids.count ? .on : .mixed
+        return HStack(spacing: 0) {
+            SearchApprovalCheckbox(identifier: "searchApproveFile-" + group.id, state: state,
+                isEnabled: workspace.searchApproval.isComplete && !ids.isEmpty && !workspace.folderApplying,
+                label: L10n.format("Treffer in %@ freigeben", group.label)) {
+                    workspace.setSearchMatchesApproved(!ids.isSubset(of: workspace.searchApproval.approvedIDs),
+                        ids: ids, generation: generation)
+                }.frame(width: 22, height: 22).id(generation)
+                .background(SelfTestMarker(id: "searchApproveFile-" + group.id).frame(width: 0, height: 0))
+            if workspace.searchApproval.isComplete && ids.isEmpty {
+                Image(systemName: "lock.fill").foregroundStyle(Theme.textSecondary).padding(.trailing, 4)
+                    .help("Diese Treffer sind zurzeit nicht editierbar und können nicht freigegeben werden.")
+            }
+            Text(verbatim: L10n.format("%@ (%ld · %ld freigegeben)", group.label, group.matches.count, count))
+                .fastraFont(size: 11, weight: .semibold).foregroundColor(Theme.textSecondary).lineLimit(1)
+        }
+    }
+
+    private func openApprovalPreview() {
+        if workspace.synchronizeVisualMarkdownBefore({ openApprovalPreview() }, onFailure: {
+            approvalError = TextWorkflowFailure.stale
+        }) { return }
+        do { approvalRequest = try SearchApprovalPreview.Request.capture(in: workspace) }
+        catch { approvalError = TextWorkflowFailure.message(error) }
+    }
+
+    private var canReviewApprovals: Bool {
+        workspace.searchApproval.ticket != nil && !workspace.folderApplying
+    }
+
+    private func restoreApprovalMemory() {
+        if workspace.synchronizeVisualMarkdownBefore({ restoreApprovalMemory() }, onFailure: {
+            approvalError = TextWorkflowFailure.stale
+        }) { return }
+        do { try workspace.restoreSearchApprovalMemory() }
+        catch { approvalError = TextWorkflowFailure.message(error) }
     }
 
     /// Das vollständige Navigationsziel des aktuell aktiven Treffers. Anders
@@ -1438,7 +1556,7 @@ struct FloatingSearchDialog: View {
     /// die ersten N markiert sind.
     private var bufferCapHint: String {
         var text = L10n.format(
-            "Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. „Alle ersetzen“ bleibt gesperrt, bis alle Treffer sichtbar sind.",
+            "Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. Anwenden bleibt gesperrt, bis alle Treffer sichtbar sind.",
             workspace.bufferMatches.count, workspace.bufferTotalMatches
         )
         if workspace.scope == .file {
@@ -1883,7 +2001,7 @@ struct FloatingSearchDialog: View {
             // Eine Knopfzeile (Layout-Umbau 2026-09-15): links das Suchen-
             // Cluster, rechts das Ersetzen-Cluster. Reicht die Breite nicht,
             // teilt `ViewThatFits` die Zeile in zwei, bei Mindestbreite in
-            // drei — sonst schnitt SwiftUI „Vorschau der Änderungen" ab. Der
+            // drei, damit auch lange Aktionsbeschriftungen sichtbar bleiben. Der
             // frühere Knopf „Abbrechen" ist entfallen — Escape und der rote
             // Punkt schließen die Maske.
             ViewThatFits(in: .horizontal) {
@@ -1956,13 +2074,6 @@ struct FloatingSearchDialog: View {
                 Button("Aus Beispiel…") { showExampleTransformation = true }
                     .help("Leitet aus einem Vorher/Nachher-Beispiel ein Platzhalter-Muster ab.")
 
-                Button("Vorschau der Änderungen") { workspace.livePreview = true }
-                    .buttonStyle(.bordered)
-                    .disabled(workspace.scope != .file
-                              || workspace.bufferMatches.isEmpty
-                              || workspace.searchError != nil
-                              || !visibleResultsMatchCurrentSearch)
-                    .help("Zeigt im Hauptfenster ein Vorher/Nachher-Diff aller Ersetzungen im aktiven Buffer — jede betroffene Zeile vorher und nachher.")
         }
     }
 
@@ -1983,6 +2094,13 @@ struct FloatingSearchDialog: View {
                     Button("Rückgängig") { workspace.undoLastFolderApply() }
                         .disabled(workspace.folderApplying)
                         .help("Spielt die letzte Ordner-Apply-Session bit-exakt aus dem Backup-Ordner zurück.")
+                        .background(SelfTestMarker(id: "searchApprovalDiskUndo").frame(width: 0, height: 0))
+                }
+                if !workspace.scope.isFolderLike, let change = workspace.lastSearchApprovalMemoryChange {
+                    Button(workspace.searchApprovalMemoryRestored ? L10n.string("Gemeinsam wiederherstellen") : L10n.string("Speicheränderungen zurücknehmen")) {
+                        restoreApprovalMemory()
+                    }.disabled(!change.source.isCurrent(in: workspace))
+                        .background(SelfTestMarker(id: "searchApprovalMemoryUndo").frame(width: 0, height: 0))
                 }
 
                 if workspace.scope.isFolderLike, workspace.folderApplying {
@@ -2003,39 +2121,15 @@ struct FloatingSearchDialog: View {
                         .help("Bricht Planung und Preflight ab. Eine bereits begonnene atomare Schreibphase wird sicher abgeschlossen.")
                 }
 
-                Button(L10n.format("Alle ersetzen · %ld", scopeTotalMatches)) {
-                    switch workspace.scope {
-                    case .folder, .project: workspace.applyAllInFolder()
-                    case .open:   workspace.applyAllInOpenTabs()
-                    case .file:   workspace.applyAllInActiveBuffer()
-                    }
-                }
+                Button(L10n.format("Freigaben prüfen · %ld", workspace.searchApproval.approvedIDs.count)) { openApprovalPreview() }
                     .keyboardShortcut(.return, modifiers: .command)
-                    // Bewusst KEIN .borderedProminent mehr (Etappe 2 Wunschpaket
-                    // 2026-07b): Der Return-Button („Nächster" bzw. „Suchen")
-                    // trägt bereits den blauen Default-Look — zwei
-                    // hervorgehobene Buttons wirkten wie zwei Standardaktionen.
                     .buttonStyle(.bordered)
-                    .disabled(scopeTotalMatches == 0 || workspace.searchError != nil
-                              || (workspace.scope == .file
-                                  && !workspace.canApplyAllInActiveBuffer)
-                              || (workspace.scope == .open
-                                  && !workspace.canApplyAllInOpenTabs)
-                              || (workspace.scope.isFolderLike
-                                  && (workspace.folderSearching
-                                      || workspace.folderNeedsSearch))
-                              || workspace.folderApplying
-                              || !visibleResultsMatchCurrentSearch)
-                    .help({
-                        switch workspace.scope {
-                        case .folder, .project:
-                            return L10n.string("Alle Treffer in allen aktivierten Ordnern ersetzen — atomar pro Datei, mit automatischem Backup unter ~/Library/Application Support/Fastra/undo/.")
-                        case .open:
-                            return L10n.string("Alle Treffer in ALLEN geöffneten Tabs ersetzen — nur im Speicher, geänderte Tabs werden als ungesichert markiert. Speichern wie gewohnt mit ⌘S.")
-                        case .file:
-                            return L10n.string("Alle Treffer im aktiven Buffer durch das Replace-Pattern ersetzen.")
-                        }
-                    }())
+                    .disabled(!canReviewApprovals)
+                    .help("Zeigt alle freigegebenen Änderungen vollständig. Erst in dieser Vorschau kannst du sie anwenden.")
+                    .id(workspace.searchApproval.ticket)
+                    .background(SelfTestMarker(id: "searchApprovalPreview").frame(width: 0, height: 0))
+                    .background(SelfTestMarker(id: canReviewApprovals ? "searchApprovalPreviewReady" : "searchApprovalPreviewBlocked").frame(width: 0, height: 0))
+
         }
     }
 
@@ -2251,7 +2345,7 @@ private struct WildcardPill: View {
 /// Eine kompakte Inline-Vorschau-Zeile (Feature J, todo 3): Zeilennummer ·
 /// Vorher (getönt entfernt) → Nachher (getönt hinzugefügt). Schmaler und
 /// einzeilig (Truncation in der Mitte) — die ausführliche, mehrzeilige
-/// `DiffRow` lebt im großen „Vorschau der Änderungen"-Sheet.
+/// Freigabevorschau zeigt dagegen den vollständigen mehrzeiligen Diff.
 private struct LivePreviewRow: View {
     let row: ReplacePreview.Row
 

@@ -20,6 +20,8 @@ import AppKit
 enum KeyRoute: Equatable {
     /// CMD+F — Suchmaske im Datei-Modus zeigen.
     case showSearchFile
+    /// ⌥⌘F — explizite Quelltextsuche aus dem formatierten Markdown.
+    case showSearchSource
     /// CMD+SHIFT+F — Suchmaske im Ordner-Modus zeigen.
     case showSearchFolder
     /// ESC bei aktiver Suchmaske — ausblenden.
@@ -74,6 +76,7 @@ enum KeyRouting {
         isSearchWindowKey: Bool,
         isHelpWindowKey: Bool = false,
         isDocumentWindowKey: Bool = false,
+        isMarkdownVisual: Bool = false,
         fourDMacroShortcuts: Set<Character> = []
     ) -> KeyRoute {
         guard isKeyDown else { return .passThrough }
@@ -137,6 +140,12 @@ enum KeyRouting {
             }
         }
 
+        if isDocumentWindowKey, isMarkdownVisual,
+           charactersIgnoringModifiers?.lowercased() == "f",
+           modifierFlags.intersection([.command, .option, .control, .shift]) == [.command, .option] {
+            return .showSearchSource
+        }
+
         // CMD+G / CMD+SHIFT+G — Treffer-Navigation.
         if modifierFlags.contains(.command),
            charactersIgnoringModifiers?.lowercased() == "g" {
@@ -171,7 +180,7 @@ enum KeyRouting {
     /// `nil` bei `.passThrough`.
     static func notificationName(for route: KeyRoute) -> Notification.Name? {
         switch route {
-        case .showSearchFile:     return .fastraShowSearchFile
+        case .showSearchFile, .showSearchSource: return .fastraShowSearchFile
         case .showSearchFolder:   return .fastraShowSearchFolder
         case .hideSearch:         return .fastraHideSearch
         case .gotoNextMatch:      return .fastraGotoNextMatch

@@ -3,7 +3,7 @@
 // Tests für die Pfadkette des Tab-Pfadmenüs (Etappe 1 Wunschpaket 2026-07b):
 // Datei zuoberst, dann jeder Elternordner aufwärts bis zur Wurzel „/“.
 
-import Foundation
+import AppKit
 import Testing
 @testable import Fastra
 
@@ -37,4 +37,17 @@ func pathChain_standardizesDotSegments() {
     #expect(chain.first == "/Users/test/b/datei.txt")
     #expect(chain.last == "/")
     #expect(!chain.contains { $0.contains("..") })
+}
+
+@Test("Pfad kopieren übernimmt den vollständigen POSIX-Pfad ohne URL- oder Shell-Escapes")
+@MainActor
+func copyFilePath() {
+    let board = NSPasteboard.withUniqueName()
+    defer { board.releaseGlobally() }
+    board.setString("Alt", forType: .string)
+    let path = "/tmp/Ordner mit Leerzeichen/Änderung #1 '😀'.md"
+    FilePathClipboard.copy(URL(fileURLWithPath: path), to: board)
+    #expect(board.string(forType: .string) == path)
+    FilePathClipboard.copy(URL(fileURLWithPath: "/tmp/a/../Ordner"), to: board)
+    #expect(board.string(forType: .string) == "/tmp/Ordner")
 }

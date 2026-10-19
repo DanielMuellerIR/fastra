@@ -67,6 +67,8 @@ handles that through “PDF” in its bottom-left corner.
 
 ## Search and Replace
 
+In Markdown WYSIWYG mode, ⌘F opens text search directly above the document;
+⌥⌘F opens source search with replacement. In source mode,
 ⌘F opens the search panel in file scope, ⇧⌘F in project scope (or folder
 scope when no project is open); ⌘E uses the current selection as the search
 term. If the panel is already open and its search field is populated, ⌘F and
@@ -102,8 +104,7 @@ directories exclude their complete subtree, while patterns containing a slash
 are relative to the project root. Case is respected as entered. `DerivedData`
 is always excluded from project searches at any depth; the tooltip of the
 exclusions field says so. When you change the search term, file type, or
-exclusions, Fastra removes the old results immediately; navigation, preview,
-and “Replace All” become available again only for the new result.
+exclusions, Fastra removes the old results immediately; navigation and approvals become available again only for the new result.
 
 Folder and project searches skip files larger than 32 MiB because Fastra can
 open them only in sections rather than as a fully navigable text editor. If a
@@ -137,41 +138,18 @@ are limited to 1 MB; invalid entries are skipped.
 **Options:** case sensitivity, “Whole word”, “Wrap-around”, and
 “Selection only” (searches exclusively within the frozen selection).
 
-**Replacing:**
+**Replacing and approving matches:**
 
-For replacements across files, each output file may be at most 256 MiB so
-that the change can be verified and undone. If an output exceeds this limit,
-none of the files in the operation are written.
-
-- “Replace” replaces only the active match and moves on.
-- Replacements in “File” and “Open” can be undone per document with **⌘Z** and redone with **⇧⌘Z**. Earlier edits remain available after switching tabs and in the split Markdown view.
-- “Replace All · N” (⌘Return) replaces every match in the scope.
-- If the match count exceeds the visible limit, “Replace All” stays disabled.
-  Refine the search term until the complete match set is visible.
-- If the match set in the “Open” scope contains a read-only tab, “Replace All”
-  also stays disabled. Fastra never silently skips a visible match.
-- “Preview changes” shows every affected line as a before/after diff
-  prior to replacing. What gets applied is **exactly** the match set you
-  saw — that is a safety guarantee. In very long documents Fastra trims
-  unchanged context, never a change line without warning; if even the display
-  limit cannot hold every change, Apply remains disabled. Fastra calculates the
-  full diff in a cancellable background task and binds it to that exact document
-  and match generation. The before and after text are limited to 32 MiB each,
-  either side to 200,000 lines, and the actually differing middle section to
-  30,000 lines. If a request exceeds a limit, the preview explains it and
-  Replace All remains disabled. A search capped at 2,000 matches also appears
-  in the sheet as its own explained limit instead of a seemingly complete
-  preview.
-- In folder/project scope Fastra rechecks every file against the visible
-  preview before the first write. Changed files and affected tabs with unsaved
-  edits block the whole operation. Planning, backup and writing run in the
-  background with progress feedback; cancelling before the short write phase
-  leaves every target file unchanged. A file whose replacement yields exactly
-  the same text is skipped — there is nothing to write for it. The operation is
-  refused only when not a single file would change.
-- Fastra writes atomically per file and creates an automatic backup. “Undo”
-  restores only files that were actually changed and stops if any of them was
-  edited again after the replace.
+- “Replace” replaces only the active match in memory and moves on. This single edit is independent of the approval checkboxes.
+- For multiple changes, select individual matches or whole files. A dash in a file checkbox means that some of its matches are approved. Every new search starts without approvals.
+- “All” approves all editable matches in a complete search; “None” clears approvals. The counters show total, approved and editable matches. Non-editable matches remain visible for navigation and cannot be selected.
+- “Review Approvals · N” (⌘Return) opens the complete before/after preview of the approved changes only. Choose a file from the menu to inspect its changes. Unchanged context may be folded; every change remains accessible. Annotations in ⟦…⟧ explain exact Unicode characters and line endings and are not inserted.
+- Only “Apply Approved Changes” executes the reviewed operation. Search options, sources, document revisions and the originating window must still match the preview. Changes invalidate old approvals. Closing or cancelling during preparation prevents a delayed Apply from that preview.
+- In **File** and **Open**, Apply changes memory only. Save the documents explicitly afterwards. Each document change is one native Undo step: **⌘Z** undoes it and **⇧⌘Z** redoes it. Earlier edits remain available after switching tabs and in the split Markdown view.
+- “Restore Memory Changes” undoes the last approval operation together; “Reapply Together” reapplies it. The documents actually changed must still be on their exact expected basis. Later edits in unrelated documents are preserved. After editing an affected document again, use its individual Undo history.
+- In **Folder** and **Project**, Apply writes to disk. Before the preview and before the first write, Fastra also rechecks listed match files without approvals. External changes, unsaved edits in affected open files or write protection block the operation. Replacements without an actual change do not write a file.
+- Planning, backups and writes run in the background with progress feedback. “Cancel Apply” stops before the write phase without changing targets. A write phase that has already started finishes safely. Writes are **atomic per file**, with automatic backups; a failed operation across several files may have partially completed. “Undo” restores files actually changed byte for byte and stops on later changes or write protection.
+- Capped match lists, missing search sources, read errors and incomplete diffs never enable Apply. A cap within a single file also reports the actual visible and counted matches. Unreadable, oversized, or undecodable files are explained with counts and reasons; the tooltip lists up to eight paths and the number of further files. Deliberately skipped binary files do not block approvals. Refine the search or fix the cause and search again. Approval previews are limited to 500 inputs, 64 MiB each of original, output and preview text, 32 MiB of text per file, 100,000 total preview rows and 60 seconds. The diff handles at most 200,000 lines per side and 30,000 differing lines in the remaining comparison range. Encoding, BOM and unchanged line endings are preserved; unrepresentable replacements are rejected.
 
 **Navigation:** Return or ⌘G jumps to the next match, ⇧⌘G to the
 previous one; the arrow keys walk the results list, which scrolls to the
@@ -183,7 +161,7 @@ is emphasized. Escape hides the panel.
 
 ## Comparing Files
 
-**Search → Compare Files…** (⌃⌘D) shows two files side by side — no Git
+**Find → Compare Files…** (⌃⌘D) shows two files side by side — no Git
 required. Fill the left and right side via the file chooser, drag and
 drop, or from open tabs and recently opened files; the active tab
 pre-fills the left side.
@@ -238,10 +216,62 @@ comparison captured when the save dialog opens remains the report’s basis.
 Git limitations are stated explicitly. Choose a separate report file; comparison
 sources cannot be overwritten.
 
-The comparison only displays — it never changes files. Closing the
+**Transfer individual blocks:** Select a difference in the list, then choose
+“To Left” or “To Right” above the columns. The destination must be an associated,
+still-open editable document. Fastra presents an exact before/after preview.
+Annotations in ⟦…⟧ explain transferred line endings and exact Unicode characters;
+they are not inserted. A block found only on the destination side is removed;
+a block found only on the other side is inserted. Ignored differences outside
+the selected block remain unchanged.
+
+“Transfer Block” changes only the destination document in memory and supports
+native Undo/Redo. Save separately as usual using the selected encoding and line
+ending convention. The comparison refreshes after transfer and when returning
+after document changes. “Recalculate” reads the sources again. Changed, closed or
+replaced documents and changed files on disk invalidate an old preview. Preparation
+can be cancelled; incomplete previews, inputs/outputs exceeding 32 MiB or preview
+text exceeding 64 MiB cannot be applied. File-only sides and external comparison
+windows remain read-only. Open a document as a tab before comparing if you want
+to use it as the destination.
+
+The comparison does not write files itself. Closing the
 comparison tab or the window while it is still computing stops the
 computation immediately; comparing the same files again replaces a
 computation that is still running instead of running alongside it.
+
+## Compare Folders
+
+**Find → Compare Folders…** compares two local folders without writing.
+Choose the left and right folders, file type filter and optional exclusion
+patterns as in folder search. Hidden entries remain excluded. The list shows
+relative paths as **Only on Left**, **Only on Right**, **Identical**, **Different**
+or **Cannot Verify**. Binary files are compared byte for byte. Symbolic links
+and special files are shown as unverifiable and are not followed. Filters and
+exclusions apply to both sides.
+Exclusion patterns treat composed and decomposed Unicode spellings of the same
+filename equally.
+
+**Identical** means equal file bytes, including encoding, BOM and line endings.
+The file comparison shows differences in decoded text lines. Encoding, BOM or
+line-ending style may therefore differ even when that text comparison reports
+no differences.
+
+Select a file pair and choose **Open File Pair**. The existing file comparison
+reads both files afresh; its text, binary and size restrictions still apply.
+These external file sides remain read-only. There is no automatic synchronization
+and no change to open documents.
+
+A folder comparison is a timestamped snapshot. **Compare Again** rereads the
+folders. Progress and **Cancel** accompany the operation. Read errors, changes
+during comparison and reached limits explicitly mark results as incomplete.
+An absent entry is confirmed as one-sided only when the other side was read
+completely.
+
+Comparison is limited to 20,000 entries and 100,000 visited entries per folder,
+64 folder levels, 256 MiB per file and a 2 GiB read budget. Files are streamed
+in small blocks; complete file contents are not retained in memory. Cancelled
+results do not claim a complete comparison. Closing the tab or window cancels
+its background work.
 
 ## Text Transformations
 
@@ -361,7 +391,182 @@ the open file. A file or folder path with pending byte changes can only be moved
 to the Trash through Fastra's file tree after those changes are saved or
 discarded.
 
+## Text snippets with placeholders
+
+**Text → Text Snippets…** or the editor button opens local, named templates.
+Markdown also offers the button in the formatted editor. Snippets complement
+the existing 4D macros and do not execute scripts.
+
+Choose **New**, enter a name and template, then save it. **Duplicate** creates an
+independent copy. You can edit, delete and search templates by name. Switching or
+closing asks about unsaved template changes. **Reload** reads collection changes
+made in other windows. Saving refuses to overwrite a template changed elsewhere.
+
+Write placeholders as `{{Name}}`, for example:
+
+```text
+Hello {{Name}},
+
+let us meet in {{Place}}.
+Best wishes to {{Name}}!
+```
+
+Each distinct name gets one field in order of first appearance. Repeated names
+share the same value. Leading and trailing spaces are removed from names; empty
+names, braces, control characters and line breaks are not allowed. Single braces
+remain literal. Values may be empty or span multiple lines. Return adds a line
+break, Tab moves to the next field, and Shift-Tab to the previous one. Unicode is
+preserved. A value such as `{{Place}}` is inserted literally and is not evaluated
+again as a placeholder.
+
+The **Insertion Preview** shows the complete result. **Insert Snippet** replaces exactly
+the selection captured when the sheet opened, or inserts at the captured caret.
+Save the template first. A changed document or insertion point invalidates the
+target: close the picker and reopen it at the intended position. **Close** leaves
+the document unchanged. Insertion is one Undo step and reaches disk only when
+you save the document. Split source views use the pane you were editing. In
+formatted Markdown, the generated Markdown goes through the existing safe
+renderer; unrelated source blocks are preserved.
+
+**Import…** reads a local JSON collection. The proposed names appear before
+importing. Conflicting names are numbered; existing snippets are preserved.
+If the collection changes during confirmation, nothing is imported; open the
+import again. Invalid files are rejected in full. **Export Collection…** writes saved templates
+as JSON; filled-in values are neither stored nor exported. Limits: 50 snippets,
+80 characters per snippet name, 16 KiB per template and field value, 32 distinct
+placeholders with at most 64 characters per name, 256 KiB output and a 1 MiB
+collection file.
+
+## Saved text workflows
+
+**Text → Saved Text Workflows…** opens reusable, named workflows for an ordinary
+editable document in source view. Rectangular and multiple selections are not
+supported. Switch Markdown WYSIWYG to source view first using the mode switch.
+
+A workflow contains up to 32 ordered steps: existing text operations, sorting,
+deduplication and find/replace with regex, wildcards, capture groups and case
+operators. Enable or disable steps, add or remove them, and reorder them with
+the arrow buttons. Parameters stay in the definition. Each step processes the
+result of its predecessor.
+
+Choose **Active Document**, **Open Documents in This Window**, **Files in Folders**
+or **Files in Project** in **Scope**. For the active document, choose
+**Entire Document** or **Selection (exact range)**. The selection is
+processed as one text fragment; neighboring content remains unchanged. Even
+line operations cannot change characters outside it. **Calculate Preview**
+shows the final result. Use the preview picker to inspect each enabled step.
+**Apply in Memory** requires a saved definition and the visible, complete final result;
+it creates one undo step and does not save the document to disk. If the document
+snapshot changes, close the dialog and start again.
+
+**Open Documents in This Window** lists every fully loaded editable text document
+in this window, including unsaved documents. Other windows are outside this scope.
+Select any input and its final or individual step comparison. Every document is
+checked before the first mutation, then all changes are published together in
+memory. Save the documents explicitly afterwards. **Restore Memory Changes**
+restores the entire set; **Reapply Together** reapplies it. This action survives
+reopening the dialog while every document still matches the exact applied version.
+Closing, reusing or editing a tab, or native undo in one document, invalidates
+joint restoration. Each document retains its own undo history.
+
+Folder and project scopes explicitly read **files on disk**. The folder scope
+starts with the enabled saved search folders and lets you add or remove folders.
+Project uses existing file sets and exclusions; both scopes offer the existing
+file type filter. Choices in the workflow dialog apply to this preview. Every
+matching input remains listed, including unchanged inputs and errors. Errors or
+incomplete comparisons block the entire plan; no input is silently skipped and
+no partial list can be applied.
+
+**Apply to Disk** rechecks every snapshot, including unchanged inputs. Unsaved
+text or hex changes, loading documents and concurrent file operations are checked
+across all windows. The last WYSIWYG input is synchronized first. File changes are
+briefly locked across the app during preflight and writing. Clean open files are
+then refreshed through the normal workspace loading paths.
+
+Long conflict lists can be scrolled in full within the error area while the
+dialog actions remain visible.
+
+
+The original encoding and BOM are retained; characters that cannot be represented
+produce an error. The exact preview result bytes are written, with no additional
+line ending normalization when saving. Line operations that keep the same number
+of lines preserve mixed endings too; explicitly inserted or removed lines and
+endings remain visible in the comparison. Aliases and hard links cannot name the
+same input more than once.
+
+Disk writes are **atomic per file**, not one transaction covering every file.
+A preflight failure changes no input. A later write failure can leave a protected
+partial session, explained in the dialog. **Restore Disk Changes** checks the
+applied file version before writing each original back. External or unsaved
+changes prevent overwriting. After closing the dialog, the last disk session also
+remains available through the existing folder undo action. After the first write,
+cancellation completes the prepared file set with its recovery journal; it no
+longer stops the write phase between files.
+
+Visually identical Unicode changes, control characters and different line endings
+receive annotations in ⟦…⟧. These are preview details only and are never inserted
+into the actual text. Search expressions and text parameters are limited to
+4 KiB each. After a save conflict, **Reload** loads the current definition once
+you have saved or discarded your local edits.
+
+**New**, **Duplicate**, **Save** and confirmed **Delete** manage local definitions.
+Leaving a modified definition prompts to save or discard it. **Import… / Export…**
+use bounded JSON files; importing adds copies and never overwrites existing
+workflows. Saving detects changes made in another window.
+
+Limits: 50 saved workflows, 32 steps each, 4 MiB of document and result text,
+100,000 replacements per step, five seconds of computation and 1 MiB per JSON
+file. Oversized intermediate results, invalid expressions and cancellation
+never yield an applicable partial preview. As with the individual command,
+line filters preserve text if they would remove every line. Multi-document
+workflows allow up to 500 inputs and 64 MiB each for original data, output data and
+retained preview text across the entire set; the 4 MiB limit still applies to each
+input. Enumeration and the combined preview share a 60-second limit; the complete file list is also
+limited to 8 MiB of path output. Enumeration, decoding, previews and disk preflight
+run in the background. Progress and cancellation are visible; canceled or
+superseded calculations never enable Apply.
+
 ## Markdown
+
+### Check Local Markdown References
+
+**Markdown → Check Local References…** opens the findings list. Choose **Document**
+or, with an open project, **Project**, then **Check**. **Show Problems Only** hides
+existing targets. Select a finding and **Go to Source** to reveal its source line;
+WYSIWYG switches to source view. Changed or closed sources need another check.
+**Cancel** stops the run.
+
+The check reads locally and never writes files. Network addresses (including
+`https:`, `mailto:` and remote `file:` hosts) are counted and skipped. Relative paths
+need a saved source document; own anchors also work in unsaved documents. Paths
+and literal `#` fragments are split before decoding: `%23` remains in the filename.
+Reference links follow CommonMark; undefined references are literal text. Code
+and comments are not references.
+
+Heading anchors follow Fastra’s existing convention: lowercase letters and digits,
+with other characters replaced by collapsed hyphens. Setext headings and inline
+formatting are considered. Duplicate headings or HTML IDs are **ambiguous**;
+automatically numbered anchors are not assumed. Quoted HTML `href`/`src` and
+`id`/`name` are supported. Unquoted attributes, CSS, `srcset`, scripts, styles and
+anchors in other file formats remain visibly unchecked.
+
+Project scope includes only files under the checked root; an active document
+outside that root is excluded. Open files explicitly set to Markdown are also
+included. Changing scope discards the old report. The list names its checked root.
+
+Project exclusions apply; hidden files, package contents and symbolic-link sources
+are excluded. Local symbolic-link targets are allowed. Limits: 200 Markdown files,
+10 MiB and 200,000 CR/LF characters per source, 64 MiB of source text, and 10,000
+references and anchors each in total. Read errors, undecodable sources, limits and
+cancellation produce an incomplete list. Open project files in this window use
+their current contents. Reports are dated snapshots; **Check Again** reads external
+changes anew.
+
+
+
+Preview and WYSIWYG show prose in a centered reading column. Wide tables may extend beyond it and get their own horizontal scrollbar when needed; the rest of the page stays in place.
+
+A Copy Code button appears above each code block. It copies the displayed code as plain text, including spaces and line breaks, without Markdown fences or syntax colors. Press Space when the button has keyboard focus; a checkmark confirms the copy. The source and undo history stay unchanged. The buttons are omitted when printing.
 
 For Markdown documents the split view renders a live preview on the right —
 automatically for a `.md` file, otherwise as soon as you set the format to
@@ -370,7 +575,10 @@ tables, code blocks with syntax colors, formulas (KaTeX), and Mermaid
 diagrams — fully local, no network access. **Clicking in the preview**
 jumps the editor to the matching source line. In the other direction,
 **clicking in the source** aligns the preview as closely as possible to the
-same place. Copying from the preview yields real rich text (headings, lists,
+same place. While you edit, Fastra updates the changed preview blocks. Unchanged
+blocks retain their selection, visible position and code-copy buttons. Changes
+to reference definitions appear in every affected block.
+Copying from the preview yields real rich text (headings, lists,
 and bold survive). Copying from the
 editor always yields plain text instead: no font, no color, and nothing a
 target application can alter while converting.
@@ -467,7 +675,74 @@ usually configurable, but they are rarely visible. You can check any tool
 yourself: open a document containing a remote image and watch the outbound
 connections.
 
+## Two views of the same file
+
+Use **Split source editor** above the source or in the **View** menu to show
+two parts of the same document, one above the other. Drag the divider to resize
+them. Each view keeps its selection, folding and scroll position. Click a view
+to make it the target for editor commands, search jumps and the status display.
+
+Both views edit the same text and share the document undo history. Changes
+appear in both immediately; Undo and Redo apply to the shared document. Save
+continues to save that document. **Close split** returns to a single source
+view. Splitting is local to this window; switching tabs remembers both views
+for each document.
+
+Splitting is available for ordinary editable source documents. WYSIWYG,
+preview, hex, large section views and read-only special views keep their existing
+presentations. Return to source to use the split again, or close it in View.
+
+## Document outline and jump history
+
+**View → Show document outline** or the list button opens the native outline.
+Markdown lists headings; 4D lists constructors and class functions with line numbers,
+including `get`/`set` accessors and supported modifiers. A 4D project method without
+class functions appears under its filename. Comments, strings and SQL do not become
+functions. This is not a full syntax check: incomplete or unrecognized headers are
+omitted. Other code formats do not claim function analysis.
+
+The arrows and **View → Previous Jump / Next Jump** move through outline jumps,
+**Option-double-click → Go to Target**, and source jumps from local Markdown findings.
+History belongs to the window and covers its open documents; other windows retain
+their own histories. It holds up to 100 points. Ordinary scrolling and typing do not
+create extra jump points.
+
+After source edits, Fastra finds definitions or bounded line anchors again and only
+jumps to a unique target. Changed, ambiguous, closed or replaced documents produce an
+explanation; a failed jump does not move the history position. Closed documents are
+not reopened automatically. Navigation does not edit or save document contents.
+The existing target command opens network addresses externally only after your
+explicit click; they do not become internal jump points.
+
+New analyses and target resolution run in the background and discard superseded
+results. Limits: 10 MiB of source, 200,000 lines and 10,000 outline entries. Re-finding
+line anchors also uses at most 10 MiB / 200,000 lines; very long or ambiguous lines
+cannot safely be found again after changes. Unchanged open documents do not need
+this extra search.
+
 ## Writing Markdown
+
+The **document outline** lists Markdown headings and jumps in the current editing
+mode. A checkmark marks the current section. Code blocks and protected HTML do not
+count as headings. The shared history is described under **Document outline and jump history**.
+
+**Editing tables:** Placing the cursor in a Markdown table cell shows a context
+bar with the current row and column. **Row** and **Column** offer insertion,
+deletion and moving; alignment applies to the whole column. The header row and
+last column are protected. **Tab / Shift-Tab** select the next or previous cell.
+Tab in the last cell appends a data row. At the row or cell limit, a message
+explains why no row can be added. Shift-Tab in the first cell leaves the table.
+
+**Paste TSV…** opens an editable dialog prefilled with tab-separated clipboard
+text. Pasting starts at the current cell, replaces destination cells and expands
+the table as needed. Directly pasting multiline or tab-separated plain text into
+a cell uses the same operation. Formatting syntax and formulas remain plain
+text. Leading, repeated and trailing spaces survive saving and reopening.
+Limits: 1,000 rows, 100 columns, 10,000 cells and 1 MiB of pasted text.
+Exceeding a limit changes nothing. Use ⌘Z/⇧⌘Z to undo/redo structural changes.
+Merged HTML cells and selections across multiple cells cannot be restructured;
+Fastra explains the reason. The toolbar stays stable while you drag a selection.
+Pasting a single line over the entire cell text does not add a line break.
 
 **WYSIWYG:** On first opening a Markdown document, Fastra asks whether you want
 to edit directly in the formatted view or use source text with a preview.
@@ -484,7 +759,7 @@ Return in an empty item ends it. Bold and italic inside headings are preserved
 as Markdown formatting.
 
 In WYSIWYG mode, **Tab** nests a list item one level deeper; **⇧Tab** moves it
-back out. This also works with numbered lists and task lists. Outside lists,
+back out. This also works with numbered lists and task lists. Outside lists and tables,
 Tab inserts four nonbreaking spaces that retain their visible width after
 saving; in code blocks, it inserts a tab character. **Markdown → Task list**
 or the checkbox button in the format toolbar creates tasks with checkboxes.
@@ -503,8 +778,17 @@ The button to the right of the **Text/Hex switch** (⌃⇧⌘M) changes the view
 for the current document. Under **Settings → Markdown**,
 “Edit Markdown in WYSIWYG mode” changes the default for further documents.
 
-Jumping to a search match first commits your latest input and switches that
-document to source mode. This selects the exact match, including Markdown syntax.
+**Find in formatted text:** ⌘F or the magnifying glass in the Markdown toolbar
+opens text search directly above the document. Return/⌘G and ⇧Return/⇧⌘G move to
+the next or previous match; the arrow buttons do the same. “Aa” matches case.
+Search finds visible text across bold/italic boundaries without changing Markdown
+or undo history. Escape or × closes the bar. Search terms are kept separately for
+each open document, only in memory.
+
+**Source…** in this bar or **Find → Find and replace Markdown source…** (⌥⌘F)
+opens the complete search for Markdown syntax, RegEx and replacements.
+Jumping to a match in that search or a multi-file search first commits your latest
+input and switches that document to source mode. This selects the exact match, including Markdown syntax.
 The default for other documents stays the same.
 
 Unchanged blocks retain their original source. Edited paragraphs are converted
@@ -987,7 +1271,8 @@ nested and untracked files do not change that rule. The sidebar header shows
 the project name (tooltip: full path);
 **⌘-click the name** for a menu of neighboring folders to switch
 projects quickly, and the right-click menu offers “Show in Finder” and
-more. **⌘-click a document tab** shows the file’s macOS path menu. The
+“Copy Path”. The latter copies the complete POSIX path, including the file name,
+to the clipboard. **⌘-click a document tab** shows the file’s macOS path menu. The
 file tree can create, rename, and trash files and folders.
 It can also duplicate an item: the copy gets “copy” and, when needed, a running
 number before its extension and opens immediately as the active tab. A saved
@@ -1127,6 +1412,10 @@ The footer shows the encoding and line ending of the active tab:
   with a different encoding.
 - **Line-ending chip:** choose LF, CRLF, or CR — the change takes
   effect on the next save.
+
+An ordinary save preserves mixed line endings unchanged. Only a changed
+line-ending choice converts them on the next save. The converted text then
+appears in both source views and has a shared undo step.
 
 UTF-32 files with a BOM are recognized in both byte orders. If the contents
 do not match the BOM or end with an incomplete UTF-16/UTF-32 code unit,
@@ -1300,6 +1589,12 @@ The area explicitly explains when only the source generation has been checked,
 rather than the outer content identity. An unconfirmed hit position is not shown
 as an exact jump. Closing the session and quitting the app remove the owned copy;
 cancelled and failed handoffs do not confirm adoption.
+
+The sender can explicitly specify the text encoding for these handoffs:
+UTF-8, UTF-16 LE/BE, Windows-1252, ISO-8859-1 or MacRoman. Capabilities list
+the supported encodings. Without a hint, existing detection remains in use.
+A conflicting file BOM prevents adoption; original bytes, decoded text and
+selection are checked separately.
 
 ## Saved code explanations
 

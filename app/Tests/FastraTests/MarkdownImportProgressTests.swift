@@ -140,8 +140,16 @@ struct MarkdownImportProgressTests {
         let service = MarkdownImportService()
         service.locateTool = { tool }
         var complete = false
+        let started = Date()
+        var markerSeenAfter: TimeInterval?
         service.convert(source) { result in #expect(result == nil); complete = true }
-        let hasProgress = await waitUntil { service.progress?.completed == 2 }
+        let hasProgress = await waitUntil {
+            if markerSeenAfter == nil, FileManager.default.fileExists(atPath: childPID.path) {
+                markerSeenAfter = Date().timeIntervalSince(started)
+            }
+            return service.progress?.completed == 2
+        }
+        print("MARKDOWN_PROCESS_PROBE progress=\(hasProgress) elapsed=\(Date().timeIntervalSince(started)) childMarkerAfter=\(String(describing: markerSeenAfter)) complete=\(complete)")
         #expect(hasProgress, "Zustand: \(service.state), laufend: \(service.isRunning)")
         let wasRunning = !complete && service.isRunning
         #expect(wasRunning)

@@ -428,6 +428,8 @@ struct MarkdownRichTextTests {
         #expect(MarkdownPreviewAssets.resource(named: "highlight.js") != nil)
         #expect(MarkdownPreviewAssets.resource(named: "highlight.css") != nil)
         #expect(MarkdownPreviewAssets.resource(named: "mermaid.js") != nil)
+        #expect(MarkdownPreviewAssets.resource(named: "markdown-presentation.js") != nil)
+        #expect(MarkdownPreviewAssets.resource(named: "preview-blocks.js") != nil)
     }
 
     @Test("Vorschaubild-Prüfung folgt einem Symlink bis zur regulären Datei")

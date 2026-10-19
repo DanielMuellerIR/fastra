@@ -2,9 +2,10 @@
    diesem geschlossenen Zustand, niemals in kopiertem HTML oder DOM-Attributen. */
 (() => {
   'use strict';
+  // Turndowns Blank-Regel darf absichtliche Leerzeichen in Code nicht verwerfen.
   const td = new TurndownService({headingStyle:'atx', bulletListMarker:'-',
     codeBlockStyle:'fenced', emDelimiter:'*', strongDelimiter:'**', preformattedCode:true,
-    blankReplacement:(content,node)=>node.nodeName==='LI'?listItem(content,node):
+    blankReplacement:(content,node)=>node.nodeName==='CODE' && node.textContent.length?'`'+node.textContent+'`':node.nodeName==='TABLE'?tableMarkdown(node):node.nodeName==='LI'?listItem(content,node):
       content.trim() ? (node.isBlock?'\n\n'+content+'\n\n':content) : (node.isBlock?'\n\n':'')});
   // Turndowns Blank-Regel läuft vor benutzerdefinierten Regeln. Auch ein
   // vollständig leerer Listenpunkt ist hier absichtlicher Dokumentinhalt.
@@ -48,10 +49,16 @@
     });
     // Geschützte Leerzeichen bleiben nach Speichern und erneutem Öffnen
     // sichtbar. Turndown würde gewöhnliche Leerzeichen zusammenziehen.
-    const walker=document.createTreeWalker(holder,NodeFilter.SHOW_TEXT), texts=[];
+    const walker=document.createTreeWalker(holder,NodeFilter.SHOW_TEXT), texts=[],tableSpaces=[];
     while(walker.nextNode())texts.push(walker.currentNode);
     for(const text of texts) {
-      if(text.parentElement.closest('pre,code,[data-md-opaque],[data-tex]') || !text.data.includes('\u00a0'))continue;
+      if(text.parentElement.closest('pre,code,[data-md-opaque],[data-tex]'))continue;
+      // Der äußere Turndown-Durchlauf normalisiert Tabellen bereits vor
+      // tableMarkdown. Zell-Leerzeichen deshalb vorher als Tokens schützen.
+      if(text.parentElement.closest('table') && text.data.includes(' '))text.data=text.data.replace(/ +/g,spaces=>{
+        const token=randomToken('FASTRATABLESPACES');tableSpaces.push([token,'&#32;'.repeat(spaces.length)]);return token;
+      });
+      if(!text.data.includes('\u00a0'))continue;
       const fragment=document.createDocumentFragment();
       for(const part of text.data.split(/(\u00a0+)/)) {
         if(part.startsWith('\u00a0')){const span=document.createElement('span');span.dataset.mdSpaces=String(part.length);span.textContent='\u2060';fragment.append(span);}
@@ -76,6 +83,7 @@
       n.replaceWith(lines);
     });
     let markdown=td.turndown(holder.innerHTML);
+    for(const [token,spaces] of tableSpaces)markdown=markdown.replace(token,()=>spaces);
     for(const token of blanks)markdown=markdown.replace(token,'  ');
     return markdown;
   }
@@ -92,8 +100,8 @@
     const title=n.getAttribute('title');
     return src ? '!['+(n.alt || '').replace(/[\\[\]]/g,'\\$&')+'](<'+src.replace(/</g,'%3C').replace(/>/g,'%3E')+'>'+(title?' "'+title.replace(/[\\"]/g,'\\$&')+'"':'')+')' : '';
   }});
-  td.addRule('math', {filter:n => n.hasAttribute('data-tex'), replacement:(_,n) =>
-    n.classList.contains('math-block') ? '\n\n$$\n'+n.dataset.tex+'\n$$\n\n' : '$'+n.dataset.tex+'$'});
+  function mathMarkdown(n) {return n.classList.contains('math-block') ? '\n\n$$\n'+n.dataset.tex+'\n$$\n\n' : '$'+n.dataset.tex+'$';}
+  td.addRule('math', {filter:n => n.hasAttribute('data-tex'), replacement:(_,n) => mathMarkdown(n)});
   td.addRule('task', {filter:n => n.nodeName==='INPUT' && n.type==='checkbox',
     replacement:(_,n) => n.checked ? '[x] ' : '[ ] '});
   td.addRule('fence', {filter:'pre', replacement:(_,n) => {
@@ -102,7 +110,7 @@
     const language=code?.className.match(/(?:^|\s)language-([\w+-]+)/)?.[1] || '';
     return '\n\n'+fence+language+'\n'+text+'\n'+fence+'\n\n';
   }});
-  td.addRule('table', {filter:'table', replacement:(_,n) => {
+  function tableMarkdown(n) {
     // Markdown-Tabellen haben keine verbundenen Zellen. Sicheres HTML bewahrt deren Position.
     if(n.querySelector('[colspan],[rowspan]')) {
       const clone=n.cloneNode(true), atoms=[];
@@ -117,13 +125,26 @@
         atoms.push([token,source]);math.replaceWith(document.createTextNode(token));
       });
       let html=sanitizePaste(clone.outerHTML);
-      for(const [token,source] of atoms)html=html.replace(token,source);
+      for(const [token,source] of atoms)html=html.replace(token,()=>source);
       return '\n\n'+html+'\n\n';
     }
     const rows=Array.from(n.rows), width=Math.max(1,...rows.map(r=>r.cells.length));
     const lines=rows.map(r=>'| '+Array.from({length:width},(_,i)=>{
       const cell=r.cells[i];
-      return cell ? toMarkdown(cell.innerHTML).replace(/\n+/g,'<br>').replace(/\|/g,'\\|') : '';
+      if(!cell)return '';
+      const clone=cell.cloneNode(true),atoms=[];
+      // Formeln werden vor dem GFM-Parser ausgeblendet: zusätzliche Pipe-
+      // Escapes würden ihre TeX-Bedeutung ändern. Opaque HTML dagegen braucht
+      // den vom Tabellenparser entfernten Pipe-Escape wieder genau einmal.
+      clone.querySelectorAll('[data-tex],[data-md-opaque]').forEach(atom=>{
+        if(!clone.contains(atom))return;
+        const token=randomToken('FASTRATABLECELL');
+        const source=atom.hasAttribute('data-tex')?mathMarkdown(atom):(opaqueSources[atom.dataset.mdOpaque] || '').replace(/\|/g,'\\|');
+        atoms.push([token,source]);atom.replaceWith(document.createTextNode(token));
+      });
+      let source=toMarkdown(clone.innerHTML).replace(/\n+/g,'<br>').replace(/\|/g,'\\|');
+      for(const [token,original] of atoms)source=source.replace(token,()=>original);
+      return source;
     }).join(' | ')+' |');
     if(!lines.length) return '';
     if(!Array.from(rows[0].cells).some(c=>c.tagName==='TH')) lines.unshift('| '+Array(width).fill(' ').join(' | ')+' |');
@@ -132,14 +153,24 @@
       return align==='center'?':---:':align==='right'?'---:':align==='left'?':---':'---';
     }).join(' | ')+' |');
     return '\n\n'+lines.join('\n')+'\n\n';
-  }});
-  let root, originals=new Map(), blocks=[], selection=null, base='', session='', composing=false, revision=0, fenced=false, bookmarkID=0, bookmarks=new Map(), editingCommand=false, lastInputType='';
+  }
+  td.addRule('table', {filter:'table', replacement:(_,n) => tableMarkdown(n)});
+  let root, originals=new Map(), blocks=[], hiddenPrefixes=new Map(), selection=null, base='', session='', composing=false, revision=0, fenced=false, bookmarkID=0, bookmarks=new Map(), editingCommand=false, lastInputType='';
   let actionFenced=false, clipboardBookmark=null, imageFenceRevision=null, lastImageTransactions="[]";
+  function outlineHeadings(){return Array.from(root.querySelectorAll('h1,h2,h3,h4,h5,h6')).filter(n=>!n.closest('[data-md-opaque],[data-tex]') && !n.hasAttribute('data-md-outline-ignore'));}
+  function outlinePosition(){
+    const node=getSelection().anchorNode,element=node?.nodeType===1?node:node?.parentElement;
+    if(!element || !root.contains(element))return -1;
+    let index=-1;
+    outlineHeadings().forEach((heading,i)=>{if(heading.contains(element) || heading===element || (heading.compareDocumentPosition(element)&Node.DOCUMENT_POSITION_FOLLOWING))index=i;});
+    return index;
+  }
   function updateFence(){fenced=actionFenced || clipboardBookmark!==null || imageFenceRevision!==null;root.contentEditable=fenced?'false':'true';}
   function normalized(node) {
     const clone=node.cloneNode(true);
     clone.querySelectorAll('[contenteditable]').forEach(n=>n.removeAttribute('contenteditable'));
     clone.querySelectorAll('[data-md-selected-image]').forEach(n=>n.removeAttribute('data-md-selected-image'));
+    clone.querySelectorAll('[data-md-outline-ignore]').forEach(n=>n.removeAttribute('data-md-outline-ignore'));
     clone.querySelectorAll('[data-md-opaque]').forEach(n=>n.textContent='');
     clone.querySelectorAll('[data-tex]').forEach(n=>{n.textContent='';n.removeAttribute('data-rendered');});
     clone.querySelectorAll('pre code').forEach(n=>{n.textContent=n.textContent;n.removeAttribute('data-highlighted');n.classList.remove('hljs');});
@@ -157,13 +188,9 @@
     }
   }
   function serialize() {
-    const used=new Set(), hidden=new Set();let output='';
+    const used=new Set();let output='';
     function hiddenBefore(id) {
-      const index=blocks.findIndex(b=>String(b.id)===id);
-      if(index<0)return;
-      for(let i=index-1;i>=0 && blocks[i].hidden;i--) hidden.add(blocks[i].id);
-      const preceding=blocks.slice(0,index).filter(b=>b.hidden && hidden.has(b.id));
-      for(const b of preceding){output+=b.source;hidden.delete(b.id);used.add('hidden:'+b.id);}
+      for(const b of hiddenPrefixes.get(id) || []){output+=b.source;used.add('hidden:'+b.id);}
     }
     for(const node of root.childNodes) {
       if(node.nodeType===Node.ELEMENT_NODE && node.hasAttribute('data-md-edit-boundary'))continue;
@@ -190,6 +217,16 @@
   function changed(event) {
     if(event?.inputType)lastInputType=event.inputType;
     if(composing || editingCommand)return;
+    root.querySelectorAll('[data-md-block]').forEach(block=>{
+      const original=originals.get(block.dataset.mdBlock);
+      if(!original?.ignoredHeadings.length && !block.querySelector('[data-md-outline-ignore]'))return;
+      const unchanged=original && normalized(block)===original.snapshot;
+      const headings=Array.from(block.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+      headings.forEach((heading,index)=>{
+        if(unchanged && original.ignoredHeadings.includes(index))heading.setAttribute('data-md-outline-ignore','true');
+        else heading.removeAttribute('data-md-outline-ignore');
+      });
+    });
     if(event?.inputType==='insertParagraph'){
       const node=getSelection().anchorNode,element=node?.nodeType===1?node:node?.parentElement,item=element?.closest('li');
       if(item && !taskCheckbox(item) && item.previousElementSibling?.tagName==='LI' && taskCheckbox(item.previousElementSibling)){
@@ -303,6 +340,9 @@
       if(!collapsed)marker(point(items.at(-1),items.at(-1),live.endContainer,live.endOffset,true),'data-md-selection-end');
       marker(point(items[0],items[0],live.startContainer,live.startOffset,false),'data-md-selection-start');
     }
+    replaceVisualBlocks(affected,holder.innerHTML);
+  }
+  function replaceVisualBlocks(affected,html) {
     function boundary(neighbor){
       const node=neighbor?.hasAttribute('data-md-edit-boundary')?neighbor:document.createElement('p');
       node.dataset.mdEditBoundary='';if(!node.firstChild)node.append(document.createTextNode('\u200b'));node.style.display='';return node;
@@ -313,7 +353,21 @@
     selection=range;getSelection().removeAllRanges();getSelection().addRange(range);
     // Die Grenzen gehören zu beiden Undo-Zuständen. Ihre Knoten bleiben
     // erhalten, weil WebKits Redo sie als Einfügeanker verwendet.
-    exec('insertHTML',before.outerHTML+holder.innerHTML+after.outerHTML,restoreMarkers);
+    exec('insertHTML',before.outerHTML+html+after.outerHTML,restoreMarkers);
+  }
+  function replaceTable(table,transform) {
+    const block=Array.from(root.children).find(n=>n.contains(table));
+    if(!block)return false;
+    const clone=block.cloneNode(true),index=Array.from(block.querySelectorAll('table')).indexOf(table);
+    const copied=clone.querySelectorAll('table')[index],target=transform(copied);
+    const cell=copied.rows[target.row]?.cells[target.column];if(!cell)return false;
+    const marker=document.createElement('span');marker.dataset.mdSelectionStart='';marker.textContent='\u200b';cell.prepend(marker);
+    const live=getSelection().rangeCount?getSelection().getRangeAt(0):null;
+    if(live){
+      if(!live.collapsed){const end=marker.cloneNode(true);end.removeAttribute('data-md-selection-start');end.dataset.mdSelectionEnd='';const r=live.cloneRange();r.collapse(false);r.insertNode(end);}
+      const r=live.cloneRange();r.collapse(true);r.insertNode(marker.cloneNode(true));
+    }
+    replaceVisualBlocks([block],clone.outerHTML);return true;
   }
   function restoreMarkers() {
     if(!root)return;
@@ -378,24 +432,79 @@
     });
     return template.innerHTML;
   }
+  let tables, selectingWithMouse=false, lastTableContext=null;
+  function tableRange(){const s=getSelection();return s.rangeCount && root.contains(s.getRangeAt(0).commonAncestorContainer)?s.getRangeAt(0):selection;}
+  function toolbarTableContext(){
+    // Auch native Rückfragen nach Tippen oder Undo dürfen während eines
+    // Mauszuges keinen neuen Kontext und damit kein anderes Layout liefern.
+    if(!selectingWithMouse)lastTableContext=tables?.context() || null;
+    return lastTableContext;
+  }
+  function reportTableContext(){if(selectingWithMouse)return;window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'tableContext',session,revision,context:toolbarTableContext()});}
+  function insertCellHTML(html,singleLine) {
+    const range=tableRange(),start=range?.startContainer,cell=(start?.nodeType===1?start:start?.parentElement)?.closest('td,th');
+    if(!singleLine || !cell || !cell.contains(range.endContainer) || range.collapsed || range.toString()!==cell.textContent || tables.context()?.reason)return null;
+    // Sichtbarer Zelltext allein beweist keine vollständige Auswahl:
+    // Bilder und geschützte Atome können außerhalb der Auswahl liegen.
+    for(const atom of cell.querySelectorAll('img,input,[data-tex],[data-md-opaque]')){
+      const boundary=document.createRange();boundary.selectNode(atom);
+      if(range.compareBoundaryPoints(Range.START_TO_START,boundary)>0 || range.compareBoundaryPoints(Range.END_TO_END,boundary)<0)return null;
+    }
+    const fragment=document.createElement('template');fragment.innerHTML=html;
+    if(fragment.content.querySelector('br,table,pre,ul,ol,blockquote,h1,h2,h3,h4,h5,h6') ||
+       Array.from(fragment.content.querySelectorAll('p,div')).filter(n=>!n.querySelector('p,div')).length>1)return null;
+    // Renderer-Zeilenenden zwischen HTML-Blöcken sind kein Clipboard-Text.
+    Array.from(fragment.content.childNodes).filter(n=>n.nodeType===Node.TEXT_NODE && /[\r\n]/.test(n.data) && !n.data.trim()).forEach(n=>n.remove());
+    fragment.content.querySelectorAll('p,div').forEach(n=>n.replaceWith(...n.childNodes));
+    // Der direkte native HTML-Ersatz ergänzt in einer geleerten Zelle einen
+    // Umbruch, auch beim Redo. Der Tabellen-Undo-Pfad vermeidet ihn und gilt
+    // ebenso für Fastras eigenes Markdown-Clipboard.
+    const result=tables.command('pasteCell',fragment.innerHTML);
+    if(!result.ok)window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'tableError',session,reason:result.reason});
+    return result.ok;
+  }
   window.fastraVisual={
+    tableContext(){return tables?.context() || null;},
+    tableState(){return {revision,context:toolbarTableContext()};},
+    tableCommand(name,value,token){restoreSelection();return tables.command(name,value,token);},
+    outlinePosition,
+    revealHeading(index){
+      if(composing)return false;
+      const heading=outlineHeadings()[index],node=index<0?root:heading;
+      if(!node)return false;
+      const range=document.createRange();range.selectNodeContents(node);range.collapse(true);
+      root.focus();getSelection().removeAllRanges();getSelection().addRange(range);selection=range.cloneRange();
+      if(heading)heading.scrollIntoView({block:'center'});else window.scrollTo(0,0);
+      return true;
+    },
     async start(configuration) {
       const until=Date.now()+5000;
       while(!document.documentElement.hasAttribute('data-fastra-enhanced') && Date.now()<until)await new Promise(r=>setTimeout(r,10));
       root=document.getElementById('fastra-visual');blocks=configuration.blocks;base=configuration.markdown;session=configuration.session;opaqueSources=configuration.opaqueSources || {};
+      // Verdeckte Definitionen einmal ihrem nächsten sichtbaren Block zuordnen.
+      // Wiederholte Präfixsuchen würden jede Eingabe mit der Blockzahl quadratisch verteuern.
+      hiddenPrefixes=new Map();let preceding=[];
+      for(const b of blocks) {
+        if(b.hidden)preceding.push(b);
+        else {if(preceding.length)hiddenPrefixes.set(String(b.id),preceding);preceding=[];}
+      }
       root.querySelectorAll('img').forEach(image=>{const token=image.getAttribute('src')?.split('/').pop(),id=configuration.imageTransactions?.[token];if(id)image.dataset.mdImageTransaction=id;});
       lastImageTransactions=JSON.stringify(imageTransactions().slice().sort());
       root.contentEditable='true';root.setAttribute('role','textbox');root.setAttribute('aria-multiline','true');
       root.querySelectorAll('input[type=checkbox]').forEach(n=>{n.removeAttribute('disabled');n.contentEditable='false';});
       root.querySelectorAll('[data-tex],.mermaid-render').forEach(n=>n.contentEditable='false');
-      for(const b of blocks)if(!b.hidden){const n=root.querySelector('[data-md-block="'+b.id+'"]');if(n)originals.set(String(b.id),{source:b.source,snapshot:normalized(n)});}
+      for(const b of blocks)if(!b.hidden){const n=root.querySelector('[data-md-block="'+b.id+'"]');if(n)originals.set(String(b.id),{source:b.source,snapshot:normalized(n),ignoredHeadings:Array.from(n.querySelectorAll('h1,h2,h3,h4,h5,h6')).flatMap((heading,index)=>heading.hasAttribute('data-md-outline-ignore')?[index]:[])});}
       if(!root.children.length)root.innerHTML='<p data-md-empty="true"><br></p>';
+      tables=window.fastraCreateTableEditor({root,range:tableRange,blocked:()=>fenced || composing,revision:()=>revision,apply:replaceTable,report:reportTableContext,
+        fail:reason=>window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'tableError',session,reason})});
       document.execCommand('defaultParagraphSeparator',false,'p');
       root.addEventListener('input',changed);
       root.addEventListener('compositionstart',()=>composing=true);
       root.addEventListener('compositionend',()=>{composing=false;changed();});
       document.addEventListener('selectionchange',()=>{
+        window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'outlinePosition',session,revision,index:outlinePosition()});
         const s=getSelection();if(s.rangeCount && root.contains(s.getRangeAt(0).commonAncestorContainer))selection=s.getRangeAt(0).cloneRange();
+        reportTableContext();
       });
       const copySelection=e=>{
         const s=getSelection();if(fenced || !s.rangeCount || s.isCollapsed)return;
@@ -412,12 +521,26 @@
       };
       root.addEventListener('copy',copySelection);
       root.addEventListener('cut',copySelection);
+      // Eine wechselnde Werkzeugleistenhöhe verschiebt sonst während des
+      // Ziehens den Text unter der Maus und verändert die Auswahl erneut.
+      root.addEventListener('mousedown',e=>{if(e.button===0)selectingWithMouse=true;});
+      const finishMouseSelection=()=>{if(selectingWithMouse){selectingWithMouse=false;reportTableContext();}};
+      document.addEventListener('mouseup',finishMouseSelection,true);
+      root.addEventListener('keydown',e=>{if(!['Shift','Alt','Control','Meta'].includes(e.key))finishMouseSelection();});
+      window.addEventListener('blur',finishMouseSelection);
       root.addEventListener('paste',e=>{
         e.preventDefault();
+        const plain=e.clipboardData.getData('text/plain'), html=e.clipboardData.getData('text/html');
+        if(tables.context() && (plain.includes('\t') || (/[\r\n]/.test(plain) && (!html || /<table(?=[\s>])/i.test(html))))){
+          const result=tables.command('pasteTSV',plain);
+          if(!result.ok)window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'tableError',session,reason:result.reason});
+          return;
+        }
         if(e.clipboardData.getData('application/x-fastra-markdown')){window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'pasteMarkdown',session,bookmark:window.fastraVisual.bookmark()});return;}
         if(e.clipboardData.files.length){window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'pasteImage',session,bookmark:window.fastraVisual.bookmark()});return;}
-        const html=e.clipboardData.getData('text/html');
-        exec(html ? 'insertHTML' : 'insertText',html ? sanitizePaste(html) : e.clipboardData.getData('text/plain'));
+        const cleaned=html?sanitizePaste(html):'';
+        if(html && insertCellHTML(cleaned,!/[\r\n]/.test(plain))!==null)return;
+        exec(html ? 'insertHTML' : 'insertText',html ? cleaned : plain);
       });
       root.addEventListener('drop',e=>{
         e.preventDefault();
@@ -427,12 +550,17 @@
       });
       root.addEventListener('dragover',e=>e.preventDefault());
       root.addEventListener('keydown',e=>{
+        tables.inspect(null);
         if(e.key==='Enter' && e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing && !composing && !fenced){
           e.preventDefault();
           window.fastraVisual.command('hardBreak');
           return;
         }
         if(e.key!=='Tab' || e.altKey || e.ctrlKey || e.metaKey || e.isComposing || composing || fenced)return;
+        if(tables.context()){
+          if(tables.navigate(e.shiftKey))e.preventDefault();
+          return;
+        }
         e.preventDefault();
         const items=selectedItems();
         if(items.length)nestItems(items,e.shiftKey);
@@ -456,6 +584,7 @@
         window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'imageMenu',session,x:e.clientX,y:e.clientY});
       });
       root.addEventListener('click',e=>{
+        tables.inspect(e.target.closest('td,th'));
         if(fenced){e.preventDefault();return;}
         if(e.target.closest('img')){e.preventDefault();selectImage(e.target.closest('img'));return;}
         if(e.target.closest('a'))e.preventDefault();
@@ -545,7 +674,28 @@
     },
     caret(x,y){const r=document.caretRangeFromPoint?.(x,y);if(!r || !root.contains(r.commonAncestorContainer))return null;selection=r;getSelection().removeAllRanges();getSelection().addRange(r);return window.fastraVisual.bookmark();},
     bookmark(existing){if(existing)return bookmarks.has(existing)?existing:null;restoreSelection();const key=String(++bookmarkID);bookmarks.set(key,{range:selection.cloneRange(),base:serialize()});return key;},
-    insertBookmarked(key,html,atoms,transaction,imageSources){if(fenced)return false;const saved=bookmarks.get(key);bookmarks.delete(key);if(!saved || saved.base!==serialize() || !root.contains(saved.range.commonAncestorContainer))return false;Object.assign(opaqueSources,atoms || {});const template=document.createElement('template');template.innerHTML=html;if(transaction)template.content.querySelectorAll('img').forEach(n=>{if(imageSources.includes(n.getAttribute('src')))n.dataset.mdImageTransaction=transaction;});template.content.querySelectorAll('[data-tex]').forEach(n=>n.textContent=n.dataset.tex);html=template.innerHTML;selection=saved.range;getSelection().removeAllRanges();getSelection().addRange(selection);exec('insertHTML',html);window.fastraEnhanceMarkdown?.(root).then(()=>{root.querySelectorAll('[data-tex],.mermaid-render').forEach(n=>n.contentEditable='false');});return true;},
+    discardBookmark(key){return bookmarks.delete(key);},
+    insertBookmarked(key,html,atoms,transaction,imageSources,singleLine=false){
+      if(fenced)return false;
+      const saved=bookmarks.get(key);bookmarks.delete(key);
+      if(!saved || saved.base!==serialize() || !root.contains(saved.range.commonAncestorContainer))return false;
+      Object.assign(opaqueSources,atoms || {});
+      const template=document.createElement('template');template.innerHTML=html;
+      if(transaction)template.content.querySelectorAll('img').forEach(n=>{
+        if(imageSources.includes(n.getAttribute('src')))n.dataset.mdImageTransaction=transaction;
+      });
+      template.content.querySelectorAll('[data-tex]').forEach(n=>n.textContent=n.dataset.tex);
+      // WebKit muss neue Atome zunächst als editierbare Einfügung verbuchen,
+      // sonst lässt Undo Teile davon stehen. exec schützt sie danach wieder.
+      template.content.querySelectorAll('[contenteditable]').forEach(n=>n.removeAttribute('contenteditable'));
+      selection=saved.range;getSelection().removeAllRanges();getSelection().addRange(selection);
+      const cellResult=insertCellHTML(template.innerHTML,singleLine);
+      if(cellResult===null)exec('insertHTML',template.innerHTML);else if(!cellResult)return false;
+      window.fastraEnhanceMarkdown?.(root).then(()=>{
+        root.querySelectorAll('[data-tex],.mermaid-render').forEach(n=>n.contentEditable='false');
+      });
+      return true;
+    },
     completeClipboard(key,cut,succeeded){
       if(key!==clipboardBookmark)return false;
       const saved=bookmarks.get(key);bookmarks.delete(key);
@@ -555,10 +705,14 @@
       return !!unchanged;
     },
     async updateStyle(font,size,dark){
+      document.body.style.setProperty('--fastra-copy-border',dark?'#484848':'#D7D7D7');
+      document.body.style.setProperty('--fastra-copy-background',dark?'#333333':'#ECECEC');
       let sheet=document.getElementById('fastra-visual-style');if(!sheet){sheet=document.createElement('style');sheet.id='fastra-visual-style';document.head.append(sheet);}
       const family=font==='System'?'-apple-system, BlinkMacSystemFont, sans-serif':JSON.stringify(font)+', -apple-system, sans-serif';
       sheet.textContent=`body{font-family:${family};font-size:${size}px;color:${dark?'#F2F2F2':'#363636'};background:${dark?'#171717':'#FFFFFF'}}h1,h2,h3,h4,h5,h6{color:inherit}blockquote,pre.mermaid-error::before{color:${dark?'#A8A8A8':'#737373'}}a{color:${dark?'#8BB7F2':'#3F69A8'}}code,pre,blockquote,th{background:${dark?'#333333':'#ECECEC'}}td,th,blockquote,hr{border-color:${dark?'#484848':'#D7D7D7'}}mark{background:${dark?'#665200':'#FFEE9A'};color:inherit}`;
+      window.fastraMarkdownPresentation?.update();
       await window.fastraUpdateMarkdownTheme?.(root,dark);
+      window.fastraMarkdownPresentation?.update();
     },
     prepareAction(){
       if(composing)return {composing:true};

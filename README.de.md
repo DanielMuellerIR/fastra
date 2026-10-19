@@ -60,6 +60,8 @@ Capture Groups.
 
 ## Funktionen
 
+- **Textbausteine:** Lokale benannte Vorlagen mit ausfüllbaren Platzhaltern verwalten, das vollständige Ergebnis prüfen und mit einem Undo-Schritt in Quelle oder formatiertes Markdown einfügen. Begrenzter JSON-Import und Export erhalten vorhandene Bausteine.
+- **Geteilte Quelltextansicht:** Zwei unabhängige Ausschnitte desselben Texts mit gemeinsamem Dokument-Undo bearbeiten.
 - **Lokale Snapshot-Steuerung**: Der gebündelte
   [Helfer `fastra-control`](docs/LOCAL-CONTROL.md) zeigt begrenzten Text in einer
   eigenen schreibgeschützten Sitzung und bestätigt Inhalt und Auswahl über Jobs.
@@ -71,8 +73,9 @@ Capture Groups.
 - **Gespeicherte Code-Erklärungen**: Vorbereitete Erklärungen neben syntaxgefärbten
   Quellsnapshots wiedergeben, mit Splitter, Schrittnavigation und Soft Wrap.
 - **Code-Faltung**: Methoden und Kontrollblöcke einklappen, auch in 4D-`.4dm`-Dateien.
-- **Vorschau vor Apply**: Vorher/Nachher side-by-side für jede Operation;
-  geschrieben wird erst nach Bestätigung.
+- **Vorschau vor Apply**: Vorher/Nachher nebeneinander für Mehrfachänderungen;
+  angewendet wird die geprüfte Trefferbasis.
+- **Gezielte Trefferfreigabe**: Treffer oder Dateien ankreuzen, nur diese Änderungen vollständig prüfen und anschließend im Speicher oder auf der Platte anwenden. Neue Quellen oder Suchoptionen entwerten alte Freigaben.
 - **`*`-Platzhalter-Suche** mit Capture-Semantik, ganz ohne RegEx-Kenntnisse.
 - **Voller RegEx-Modus** mit farbigem Token-Highlighting und kuratierter Vorlagen-Bibliothek.
 - **Capture Groups per Drag & Drop** vom Such- ins Ersetzen-Feld.
@@ -90,16 +93,25 @@ Capture Groups.
   Änderungen, nativer mehrspuriger Commit-Graph und aussagekräftige Diffs direkt
   im Editor.
 - **4D-Projektunterstützung**: Vertraute `.4dm`-Farben, Vervollständigung mit
-  Signaturen, Prüfungen und Alt-Doppelklick-Navigation zu Methoden und Klassen.
+  Signaturen, Prüfungen, Methodengliederung und Alt-Doppelklick-Navigation zu Methoden und Klassen.
+  Ein gemeinsamer Sprungverlauf führt durch Gliederung, lokale Ziele und Markdown-Befunde.
 - **Markdown**: Lokale Live-Vorschau, Formatierungswerkzeuge, Bilder, Formeln und
   Mermaid-Diagramme direkt neben dem Quelltext.
+  Lokale Datei-, Bild- und Ankerverweise lassen sich im Dokument oder begrenzt
+  im Projekt prüfen, mit nativer Befundliste und Quellsprüngen.
 - **Dateien side-by-side vergleichen**: Zwei gespeicherte Dateien oder offene
   Tabs lassen sich frei wählen, ein bearbeiteter Tab auch mit seiner Fassung
   auf der Platte vergleichen. Shift-Klick auf einen zweiten Tab wählt beide
   Dokumente für den Schnellweg vor.
+  Einzelne Blöcke lassen sich nach genauer Vorschau in einen zugeordneten
+  editierbaren Tab übernehmen, mit nativem Undo/Redo; gespeichert wird separat.
   Andere Programme öffnen über den mitgelieferten
   [Helfer `fastra-diff`](docs/EXTERNAL-DIFF.md) einen schreibgeschützten
   Vergleich mit eigenen Seitennamen in einem separaten Fenster.
+- **Lokale Ordner schreibgeschützt vergleichen**: Relative Pfade filtern,
+  einseitige, identische, verschiedene oder nicht prüfbare Einträge ansehen
+  und Dateipaare im vorhandenen Vergleich öffnen. Fortschritt, Abbruch und
+  sichtbare Grenzen kennzeichnen unvollständige Ergebnisse.
 - **Rechteckauswahl unter Soft Wrap** bleibt auf logischen Textzeilen;
   Spalten-Copy/Paste, Tippen, Löschen, Transformationen und „Spalte einfügen“
   sind jeweils eine widerrufbare Aktion.
@@ -202,11 +214,25 @@ dem Namen, statt still nichts zu tun.
   XML. Transformationen im Text-Menü entfernen Token-Suffixe aus kanonischen
   4D-Exporten oder ergänzen Befehls-Token erneut.
 
+## Gespeicherte Textabläufe
+
+**Text → Gespeicherte Textabläufe…** kombiniert vorhandene Transformationen und
+Suchen/Ersetzen zu benannten, geordneten Abläufen. Prüfe jeden Schritt und das
+Gesamtergebnis für das aktive Dokument, eine exakte Auswahl oder alle offenen
+editierbaren Dokumente dieses Fensters. Speicheränderungen werden ausdrücklich
+gespeichert und können gemeinsam zurückgenommen werden. Ordner und Projekt
+verwenden Dateitypen, Datei-Sets und Ausschlüsse; Plattenänderungen prüfen alle
+Snapshots und offene Fenster erneut und besitzen eine geschützte Rücknahme.
+Fehler oder unvollständige Vorschauen blockieren den gesamten Plan. Definitionen
+bleiben lokal und unterstützen begrenzten JSON-Import/-Export.
+
 ## Markdown bleibt lokal
+
+Vorschau und WYSIWYG verwenden eine zentrierte Lesespalte. Breite Tabellen dürfen mehr Platz nutzen und lassen sich innerhalb der Tabelle horizontal scrollen. Jeder Codeblock besitzt einen Kopierknopf für reinen Code ohne Markdown-Zäune; im Ausdruck erscheinen die Knöpfe nicht.
 
 Markdown lässt sich auch im WYSIWYG-Modus ohne sichtbaren Quelltext bearbeiten. Beim ersten Öffnen wählst du den Standard; später änderst du ihn in den Einstellungen oder wechselst das aktuelle Dokument mit dem Button neben Text/Hex (⌃⇧⌘M). Speichern unter kopiert nur verwendete lokale Bilder; neue Bilder erhalten kurze Dateinamen.
 
-Tab und Umschalt-Tab rücken Listenpunkte ein und aus. Aufgabenlisten haben anklickbare Kästchen; leere Listenpunkte bleiben beim Kopieren als Platzhalter erhalten. Außerhalb von Listen fügt Tab vier geschützte Leerzeichen ein.
+Tab und Shift-Tab rücken Listenpunkte ein und aus. Aufgabenlisten haben anklickbare Kästchen; leere Listenpunkte bleiben beim Kopieren als Platzhalter erhalten. In Tabellen wechseln Tab und Shift-Tab zwischen Zellen; Tab am Ende fügt eine Datenzeile hinzu. Eine Kontextleiste fügt Zeilen und Spalten ein, löscht oder verschiebt sie, richtet Spalten aus und fügt tabulatorgetrennten Text ein. Außerhalb von Listen und Tabellen fügt Tab vier geschützte Leerzeichen ein.
 
 Für Markdown-Dateien lässt sich rechts neben dem Editor eine optionale,
 live aktualisierte Vorschau mit dauerhaftem Splitter einblenden. Der lokale

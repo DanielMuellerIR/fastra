@@ -1,6 +1,6 @@
 // FileDiffComputations.swift
 //
-// Verwaltete Hintergrund-Berechnungen der Datei-Vergleichs-Tabs eines
+// Verwaltete Hintergrund-Berechnungen der Datei- und Ordnervergleiche eines
 // Fensters (Folgeauftrag „Diff tatsächlich abbrechen", 2026-09-05).
 //
 // Vorher lief jeder Vergleich als anonymer `Task.detached`, den niemand mehr
@@ -20,7 +20,7 @@ final class FileDiffComputations {
     /// Ein laufender Vergleich. Die `id` entwertet verspätete Rückmeldungen:
     /// Nur wer noch unter seiner eigenen `id` eingetragen ist, darf sein
     /// Ergebnis veröffentlichen und sich austragen.
-    struct Ticket: Equatable {
+    struct Ticket: Equatable, Sendable {
         let id: UUID
         let tabID: UUID
     }

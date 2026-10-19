@@ -24,7 +24,7 @@ private func makeBudgetStub(name: String, body: String) throws -> URL {
 }
 
 @Test("markdownFromClipboard: endlose Ausgabe wird am Budget abgebrochen")
-func miscReviewFix_outputBudgetStopsEndlessOutput() throws {
+func serialRunnerIntegration_miscReviewFix_outputBudgetStopsEndlessOutput() throws {
     // `yes` schreibt endlos auf stdout. Ohne Gesamtbudget wuchs der Puffer bis
     // zum Fristablauf; mit Budget muss der Lauf sofort mit einem sichtbaren
     // Fehler enden.
@@ -51,7 +51,7 @@ func miscReviewFix_outputBudgetStopsEndlessOutput() throws {
 }
 
 @Test("markdownFromClipboard: Ausgabe unterhalb des Budgets bleibt unangetastet")
-func miscReviewFix_outputBudgetKeepsSmallOutput() throws {
+func serialRunnerIntegration_miscReviewFix_outputBudgetKeepsSmallOutput() throws {
     let stub = try makeBudgetStub(
         name: "small", body: "printf '# Titel\\nAbsatz\\n'")
     defer { try? FileManager.default.removeItem(at: stub) }
@@ -67,7 +67,7 @@ func miscReviewFix_outputBudgetKeepsSmallOutput() throws {
 }
 
 @Test("markdownFromClipboard: auch endlose stderr-Ausgabe zählt aufs Budget")
-func miscReviewFix_outputBudgetCoversStderr() throws {
+func serialRunnerIntegration_miscReviewFix_outputBudgetCoversStderr() throws {
     // Das Budget gilt für BEIDE Ströme zusammen — ein Fehlerkanal-Schwall darf
     // den Speicher genauso wenig füllen wie stdout.
     let stub = try makeBudgetStub(
@@ -88,7 +88,7 @@ func miscReviewFix_outputBudgetCoversStderr() throws {
 }
 
 @Test("markdownFromClipboard: letztes Byte nach Prozessende überschreitet das Budget")
-func miscReviewFix_outputBudgetChecksFinalDrain() throws {
+func serialRunnerIntegration_miscReviewFix_outputBudgetChecksFinalDrain() throws {
     let output = String(repeating: "x", count: 65)
     let stub = try makeBudgetStub(name: "final-drain", body: "printf '\(output)'")
     defer { try? FileManager.default.removeItem(at: stub) }

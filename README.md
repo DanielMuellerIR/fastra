@@ -58,6 +58,8 @@ token highlighting, curated patterns, and guided capture groups.
 
 ## Features
 
+- **Text snippets:** Manage local named templates with fillable placeholders, preview the complete result, and insert into source or formatted Markdown with one Undo step. Bounded JSON import and export preserve existing snippets.
+- **Split source editor:** Edit two independent views of the same text with a shared document undo history.
 - **Local snapshot control**: The bundled [`fastra-control` helper](docs/LOCAL-CONTROL.md)
   opens bounded read-only text in a separate session and reports confirmed
   content and selection through jobs. AppleScript uses the same controller. Handoffs with
@@ -67,8 +69,9 @@ token highlighting, curated patterns, and guided capture groups.
 - **Saved code explanations**: Replay prepared explanations alongside syntax-coloured
   source snapshots, with resizable panes, step navigation and soft wrap.
 - **Code folding**: Collapse methods and control blocks, including 4D `.4dm` files.
-- **Preview before apply**: Side-by-side before/after for every operation;
-  nothing is written until you confirm.
+- **Preview before apply**: Side-by-side before/after for multiple changes;
+  apply uses the reviewed match basis.
+- **Match approvals**: Select individual matches or files, review only those changes in full, then apply them in memory or to disk. Changed sources or search options invalidate old approvals.
 - **`*` wildcard search** with capture semantics, no regex knowledge needed.
 - **Full RegEx mode** with colored token highlighting and a curated pattern library.
 - **Drag & drop capture groups** from the find field into the replace field.
@@ -85,14 +88,23 @@ token highlighting, curated patterns, and guided capture groups.
 - **Projects and Git**: A live file tree, separate staged and unstaged changes,
   a native multi-lane commit graph, and rich diffs without leaving the editor.
 - **4D project support**: Familiar `.4dm` coloring, completion with signatures,
-  checks, and Option-double-click navigation to methods and classes.
+  checks, a method outline, and Option-double-click navigation to methods and classes.
+  A shared jump history covers outlines, local targets and Markdown findings.
 - **Markdown**: Local live preview, formatting tools, images, formulas and
   Mermaid diagrams alongside the source.
+  Check local file, image and anchor references in the document or a bounded
+  project scan, with a native findings list and source jumps.
 - **Compare files side by side**: Choose any two saved files or open tabs, or
   compare an edited tab with its version on disk. Shift-clicking a companion
   tab preselects both documents for the quick path.
+  Transfer individual blocks into either associated editable tab after an exact
+  preview, with native Undo/Redo; save the changed document separately.
   Other programs can open a read-only comparison with custom labels through
   the bundled [`fastra-diff` helper](docs/EXTERNAL-DIFF.md).
+- **Compare local folders** without writing: filter relative paths, inspect
+  one-sided, identical, different or unverifiable entries, and open file pairs
+  in the existing comparison. Progress, cancellation and visible limits keep
+  incomplete results clear.
 - **Column selection under Soft Wrap** stays on logical text lines; column
   copy/paste, typing, deletion, transformations, and Paste Column are each
   undoable as one action.
@@ -185,11 +197,24 @@ failing silently.
   XML. Text-menu transformations can strip token suffixes from canonical 4D
   exports or add command tokens again.
 
+## Saved text workflows
+
+**Text → Saved Text Workflows…** combines existing transformations and find/replace
+into named, ordered workflows. Preview each step and the final result for the
+active document, an exact selection or all open editable documents in this
+window. Memory changes are saved explicitly and support joint restoration.
+Folder and project scopes use file types, file sets and exclusions; disk changes
+recheck every snapshot and open window and support protected restoration.
+Errors or incomplete previews block the entire plan. Definitions stay local
+and support bounded JSON import/export.
+
 ## Markdown that stays local
+
+Preview and WYSIWYG use a centered reading column. Wide tables can use more space and scroll horizontally within the table. Each code block has a Copy Code button that copies plain code without Markdown fences; the buttons are omitted when printing.
 
 Markdown can also be edited in a WYSIWYG view with no visible source. Choose your default on first opening; change it in Settings or switch the current document with the button beside Text/Hex (⌃⇧⌘M). Save As copies only referenced local images; newly added images receive short filenames.
 
-Tab and Shift-Tab nest and unnest list items. Task lists have clickable checkboxes, and copying preserves empty list items used as placeholders. Outside lists, Tab inserts four nonbreaking spaces.
+Tab and Shift-Tab nest and unnest list items. Task lists have clickable checkboxes, and copying preserves empty list items used as placeholders. In tables, Tab and Shift-Tab move between cells; Tab at the end adds a data row. A context bar inserts, removes and moves rows or columns, aligns columns, and pastes tab-separated text. Outside lists and tables, Tab inserts four nonbreaking spaces.
 
 Markdown files can show an optional live preview on the right, separated from
 the editor by a persistent splitter. The renderer supports GitHub-flavoured

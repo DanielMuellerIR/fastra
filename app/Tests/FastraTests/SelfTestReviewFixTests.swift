@@ -166,7 +166,7 @@ func windowHeightSuiteIsRegisteredForPurge() throws {
 /// Temp-Verzeichnis, eine persistente Umbruchwahl und ein gemerktes
 /// Teilungsverhältnis liegen (Code-Review 2026-09-10, vier Fundstellen).
 ///
-/// Der Test führt deshalb die beiden ERLAUBTEN `defer`-Blöcke namentlich und
+/// Der Test führt deshalb die erlaubten `defer`-Blöcke namentlich und
 /// weist jeden weiteren zurück. Ein neuer `defer` ist damit kein Versehen mehr,
 /// sondern eine bewusste Entscheidung samt Begründung — dieselbe Mechanik wie
 /// bei den Soft-Wrap-Werkseinstellungen, wo ein neues Format den Test bricht,
@@ -182,7 +182,13 @@ func everyDeferInSelfTestIsAccountedFor() throws {
     // zusätzlich bei `TestDefaultsPurge` an, der `defer` ist nur der Weg für
     // den Fall, dass die Funktion doch einmal regulär zurückkehrt.
     let defaultsDomainCleanup = "defer { defaults.removePersistentDomain(forName: suiteName) }"
-    let allowed = [screenshotCleanup, defaultsDomainCleanup]
+    // focusEditor kehrt regulär zurück oder wirft vor dem äußeren `finish`.
+    // Sein vorübergehender Mausmonitor muss in beiden Fällen entfernt werden.
+    let focusMonitorCleanup = "defer { if let monitor { NSEvent.removeMonitor(monitor) } }"
+    // Der getrackte Menühilfsaufruf beendet sich regulär oder wirft; der äußere
+    // Selbsttest ruft erst danach finish auf. Seine Observer müssen immer weg.
+    let trackedMenuCleanup = "defer { // trackedHistoryFromEditMenu kehrt vor dem äußeren finish regulär zurück oder wirft."
+    let allowed = [screenshotCleanup, defaultsDomainCleanup, focusMonitorCleanup, trackedMenuCleanup]
 
     // Nur echte Anweisungen zählen, keine Kommentare über `defer`.
     let statements = source

@@ -990,6 +990,7 @@ struct FileTreeContextMenu: View {
         Divider()
         if includeFinderReveal {
             Button("Im Finder zeigen…") { revealInFinder() }
+            Button("Pfad kopieren") { FilePathClipboard.copy(node?.url ?? directory) }
         }
         Button("Terminal hier öffnen …") { workspace.openTerminal(at: directory) }
             .help("Öffnet Terminal.app nativ in diesem Ordner.")

@@ -155,20 +155,23 @@ struct FileSnapshot: Codable, Equatable, Hashable, Sendable {
     /// Vorher-/Nachher-`fstat` sichern wie bei `read` zu, dass Hash und
     /// Identität zu genau einem unveränderten Dateistand gehören.
     static func readSnapshotOnly(from url: URL,
-                                 byteLimit: UInt64 = maximumReadBytes) throws
+                                 byteLimit: UInt64 = maximumReadBytes,
+                                 isCancelled: () -> Bool = { false }) throws
         -> FileSnapshot {
+        if isCancelled() { throw CancellationError() }
         let (descriptor, before) = try openRegularFile(at: url)
         defer { close(descriptor) }
 
         return try readSnapshotOnly(descriptor: descriptor, fileStat: before,
-                                    byteLimit: byteLimit)
+                                    byteLimit: byteLimit, isCancelled: isCancelled)
     }
 
     /// Bildet den Snapshot aus einem bereits geöffneten, regulären
     /// Dateiobjekt. Der Aufrufer behält den Deskriptor und kann dadurch genau
     /// diese Version bis zu einem anschließenden atomaren Tausch festhalten.
     static func readSnapshotOnly(descriptor: Int32, fileStat before: stat,
-                                 byteLimit: UInt64 = maximumReadBytes) throws
+                                 byteLimit: UInt64 = maximumReadBytes,
+                                 isCancelled: () -> Bool = { false }) throws
         -> FileSnapshot {
 
         guard before.st_size >= 0, UInt64(before.st_size) <= byteLimit else {
@@ -181,15 +184,20 @@ struct FileSnapshot: Codable, Equatable, Hashable, Sendable {
         var hasher = SHA256()
         var totalBytes: UInt64 = 0
         while true {
-            let chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
+            if isCancelled() { throw CancellationError() }
+            // Ein Prüfbyte erkennt Wachstum, ohne nach einer kleinen
+            // Restgrenze noch einen ganzen 4-MiB-Block einzulesen.
+            let remaining = byteLimit - totalBytes
+            let chunkLimit = remaining >= 4 * 1024 * 1024 ? 4 * 1024 * 1024 : Int(remaining) + 1
+            let chunk = try handle.read(upToCount: chunkLimit) ?? Data()
             if chunk.isEmpty { break }
-            hasher.update(data: chunk)
             totalBytes += UInt64(chunk.count)
             // Grenze auch hier während des Lesens prüfen: Die Datei kann
             // unter dem Reader wachsen, und der Hash wäre sonst beliebig teuer.
             guard totalBytes <= byteLimit else {
                 throw FileSnapshotReadError.tooLarge(byteCount: totalBytes)
             }
+            hasher.update(data: chunk)
         }
         var after = stat()
         guard fstat(descriptor, &after) == 0 else {

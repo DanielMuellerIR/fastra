@@ -11,8 +11,8 @@ import UniformTypeIdentifiers
 // Alle Theme-Farben unten via `rgb(...)`-Helper im sRGB-Space.
 
 /// Merkt Einfügemarken und Selektionen pro Tab. `SourceEditorState` lebt im
-/// stabilen `EditorView` und überlebt den per `.id` neu erzeugten eigentlichen
-/// Editor. Ohne diese Trennung wurde deshalb die Auswahl aus Datei A
+/// fenstergebundenen `SourcePaneMemory` und überlebt den per `.id` neu
+/// erzeugten eigentlichen Editor. Ohne diese Trennung wurde deshalb die Auswahl aus Datei A
 /// unverändert auf Datei B angewandt.
 ///
 /// Suchsprünge können nur Zeile/Spalte tragen; ihre Range bleibt im Binding
@@ -74,33 +74,6 @@ struct EditorScrollMemory {
 struct EditorView: View {
     @EnvironmentObject var workspace: Workspace
     @Environment(\.uiScale) private var uiScale
-    @State private var editorState = SourceEditorState(cursorPositions: [], findPanelVisible: false)
-    @State private var cursorMemory = EditorCursorMemory()
-    /// Das Dokument, zu dem `editorState.cursorPositions` momentan gehört.
-    /// Beim Wechsel ist `workspace.activeDocumentID` bereits neu; diese ID
-    /// verhindert, dass die alte Auswahl versehentlich unter dem neuen Tab
-    /// abgelegt wird.
-    @State private var cursorMemoryTabID: UUID?
-    /// Ausschnitt pro Tab (siehe `EditorScrollMemory`).
-    @State private var scrollMemory = EditorScrollMemory()
-    /// Ausschnitt, der nach dem nächsten Editor-Aufbau wiederhergestellt werden
-    /// soll. Solange er gesetzt ist, wird NICHT gemerkt — der frisch montierte
-    /// Editor meldet zuerst seine Startposition (0,0) und würde den gemerkten
-    /// Wert sonst überschreiben, bevor er angewandt ist.
-    @State private var pendingScrollRestore: CGPoint?
-    @StateObject private var minimapLayoutCoordinator = MinimapLayoutCoordinator()
-    /// Highlight-Provider der Eigen-Sprachen (Registry, Etappe 3 Wunschpaket
-    /// 2026-07b) — ein Provider je Sprache, überlebt Tab-Wechsel/Remounts.
-    @StateObject private var customProviders = CustomLanguageProviders()
-
-    /// Anker-Offset der laufenden Selektion (Zeichen-Index der *fixen*
-    /// Kante). Brauchen wir, weil `CursorPosition` nur den Bereich kennt
-    /// (start = unten, end = oben), aber NICHT die Richtung, in die der
-    /// Nutzer gerade zieht. Der Footer soll die *bewegte* Kante (am
-    /// Mauszeiger) zeigen — dafür merken wir uns, welche Kante stillsteht.
-    /// `nil` = aktuell keine Selektion (nur Cursor).
-    @State private var selectionAnchor: Int?
-
     /// Erst-Nutzungs-Hinweis des Markdown-Assistenten (Etappe 5 Wunschpaket
     /// 2026-07b): einmal bestätigt → dauerhaft aus (AppStorage-Flag).
     @AppStorage(MarkdownAssist.firstUseDefaultsKey, store: SelfTest.workspaceDefaults())
@@ -116,15 +89,6 @@ struct EditorView: View {
     /// Treibt die Markdown-Umwandlungsleiste: Ein Zustandswechsel (läuft,
     /// fertig, fehlgeschlagen) muss die Ansicht neu zeichnen.
     @ObservedObject private var markdownImportService = MarkdownImportService.shared
-
-    /// 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c). Stark gehalten —
-    /// der `completionDelegate` des Editors ist nur eine weak-Referenz.
-    @StateObject private var fourDCompletion = FourDCompletionDelegate()
-    @StateObject private var foldProviders = CodeFoldProviders()
-    /// Parameterhilfe für 4D-Aufrufe (Panel unter der Aufrufzeile). Lebt wie
-    /// der Completion-Delegate pro Editor-Ansicht und wirkt nur bei aktiver
-    /// 4D-Sprache.
-    @StateObject private var fourDSignatureHelp = FourDSignatureHelpController()
 
     /// Rechter Vorschau-Streifen (CESE-Minimap) an/aus. App-weit und persistent,
     /// umschaltbar über „Darstellung → Minimap anzeigen". Default AUS
@@ -253,7 +217,6 @@ struct EditorView: View {
             // unsichtbaren 140-pt-Ausgangslage auf 180 pt springt.
             workspace.sidebarWidth = min(max(workspace.sidebarWidth, Double(sidebarMinWidth)),
                                          Double(sidebarMaxWidth))
-            cursorMemoryTabID = workspace.activeDocumentID
         }
         .onChange(of: effectiveSidebarMaximum) { _, maximum in
             // Wird das Fenster nach einem breiten Sidebar-Drag verkleinert,
@@ -269,36 +232,6 @@ struct EditorView: View {
         // beginnen und dessen Markerbreite neu prüfen.
         .onChange(of: workspace.activeTabID) {
             workspace.activeGitConflictFileDidChange()
-        }
-        .onChange(of: workspace.activeDocumentID) { _, newTabID in
-            let restoredPositions = cursorMemory.switchTab(
-                from: cursorMemoryTabID,
-                currentPositions: editorState.cursorPositions ?? [],
-                to: newTabID
-            )
-            // Ausschnitt des verlassenen Tabs sichern und den des neuen
-            // vormerken. Der Live-Wert aus der noch montierten ScrollView hat
-            // Vorrang: `editorState.scrollPosition` kommt einen Runloop
-            // versetzt zurück und wäre nach schnellem Scrollen + Tab-Wechsel
-            // veraltet.
-            let liveOffset = EditorView.currentScrollOffset(in: workspace)
-            pendingScrollRestore = scrollMemory.switchTab(
-                from: cursorMemoryTabID,
-                currentOffset: liveOffset ?? editorState.scrollPosition,
-                to: newTabID
-            )
-            EditorView.scrollRestoreDebug("switchTab gemerkt="
-                + "\(Int((liveOffset ?? editorState.scrollPosition ?? .zero).y)) "
-                + "live=\(liveOffset != nil) "
-                + "restore=\(pendingScrollRestore.map { Int($0.y) }.map(String.init) ?? "nil")")
-            cursorMemoryTabID = newTabID
-            selectionAnchor = nil
-            editorState.cursorPositions = restoredPositions
-            // Der State-Wechsel wird normalerweise über den Beobachter am
-            // Editor gespiegelt. Diese direkte Aktualisierung schließt auch
-            // den kurzen Remount-Moment ohne montierten SourceEditor ab.
-            updateFooterCursor(from: editorState.cursorPositions ?? [])
-            scheduleStats(for: editorState.cursorPositions ?? [])
         }
         // Erste Nutzung von Markdown-Toolbar/Bild-Einfügen → dezenten,
         // nicht-modalen Hinweis mit Hilfe-Sprung zeigen (einmalig).
@@ -331,6 +264,9 @@ struct EditorView: View {
                 MarkdownEditingMode.choiceOwner = nil
                 asksMarkdownEditingMode = false
             }
+        }
+        .sheet(item: $workspace.fileDiffTransferPreview) { preview in
+            FileDiffTransferPreviewSheet(workspace: workspace, preview: preview)
         }
     }
 
@@ -442,6 +378,25 @@ struct EditorView: View {
     /// Kompakte Markdown-Toolbar: dieselben Befehle wie Menüleiste und
     /// Rechtsklickmenü, die häufigsten direkt klickbar (Etappe 5).
     private var markdownToolbar: some View {
+        HStack(spacing: 0) {
+            DocumentOutlineControls(workspace: workspace, outline: workspace.documentOutline)
+                .padding(.leading, 6)
+            if workspace.activeMarkdownIsVisual {
+                TextSnippetButton(workspace: workspace, compact: true)
+                Button { workspace.markdownVisualFind.present(in: workspace) } label: {
+                    Image(systemName: "magnifyingglass").frame(width: 26, height: 24)
+                }.buttonStyle(.plain).foregroundStyle(Theme.textSecondary)
+                    .help("Im formatierten Text suchen (⌘F)")
+                    .accessibilityLabel("Im formatierten Text suchen")
+                    .background(SelfTestMarker(id: "markdownVisualFindButton").frame(width: 0, height: 0))
+            }
+            Divider().frame(height: 16).opacity(0.5)
+            markdownFormattingButtons
+        }
+        .background(Theme.surfaceRaised)
+    }
+
+    private var markdownFormattingButtons: some View {
         // Horizontal scrollbar: In einem schmalen Editor (Markdown-Split!)
         // würde ein überlaufender HStack von SwiftUI ZENTRIERT und vom
         // `.clipped()` der Spalte BEIDSEITIG beschnitten — ausgerechnet
@@ -616,13 +571,27 @@ struct EditorView: View {
     /// greift nicht.
     private var sourceEditor: some View {
         Group {
-            if let tab = workspace.activeTab,
+            if let tab = workspace.activeTab, let state = tab.folderComparison {
+                FolderComparisonView(workspace: workspace, tabID: tab.id, state: state).id(tab.id)
+            } else if let tab = workspace.activeTab,
                let request = tab.fileDiffRequest {
-                // Datei-Vergleichs-Tab (Etappe 1 Wunschpaket 2026-07c):
-                // read-only Dual-Pane-Diff ohne Git.
+                // Die Spalten bleiben schreibgeschützt; einzelne Blöcke
+                // werden erst nach genauer Vorschau ins Quelldokument übernommen.
                 FileDiffView(request: request, document: tab.fileDiffDocument,
-                             softWrapEnabled: workspace.softWrapEnabled)
+                             softWrapEnabled: workspace.softWrapEnabled,
+                             transferControls: FileDiffTransferControls(
+                                leftAvailable: workspace.fileDiffTransferIsAvailable(tabID: tab.id, requestID: request.id, direction: .toLeft),
+                                rightAvailable: workspace.fileDiffTransferIsAvailable(tabID: tab.id, requestID: request.id, direction: .toRight),
+                                preparing: tab.fileDiff?.pendingTransferID != nil,
+                                error: workspace.fileDiffTransferStatus(tabID: tab.id, requestID: request.id),
+                                prepare: { blockID, direction in
+                                    workspace.prepareFileDiffTransfer(tabID: tab.id, requestID: request.id, blockID: blockID, direction: direction)
+                                },
+                                refresh: { workspace.refreshFileDiffComparison(tabID: tab.id, requestID: request.id) },
+                                cancel: { workspace.cancelFileDiffTransfer(tabID: tab.id, requestID: request.id) }
+                             ))
                     .id(tab.id)
+                    .onAppear { workspace.refreshFileDiffOnReturn(tabID: tab.id, requestID: request.id) }
             } else if let tab = workspace.activeTab,
                let request = tab.gitDiffRequest {
                 // Git-Diff auf dem GEMEINSAMEN Dual-Pane-Renderer
@@ -702,9 +671,16 @@ struct EditorView: View {
                     // Markdown-Toolbar (Etappe 5 Wunschpaket 2026-07b):
                     // Formatierungsbefehle auf den Quelltext, nur für
                     // Markdown-Tabs in der Text-Ansicht.
+                    if !activeTabIsMarkdown, workspace.activeViewMode == .text, workspace.activeTab?.isOrdinaryTextDocument == true {
+                        DocumentNavigationBar(workspace: workspace, outline: workspace.documentOutline)
+                    }
                     if activeTabIsMarkdown, workspace.activeViewMode == .text {
                         markdownToolbar
                         Divider().opacity(0.3)
+                        if workspace.activeMarkdownIsVisual {
+                            MarkdownVisualFindBar(workspace: workspace, find: workspace.markdownVisualFind)
+                            MarkdownTableBar(workspace: workspace, table: workspace.markdownTable)
+                        }
                         if showMarkdownAssistHint {
                             markdownAssistHintBar
                             Divider().opacity(0.3)
@@ -843,255 +819,9 @@ struct EditorView: View {
         }
     }
 
-    /// Der eigentliche CodeEditSourceEditor — nur gezeigt, wenn isLoading = false.
     private var actualEditor: some View {
-        SourceEditor(
-            workspace.sourceEditorContent,
-            language: detectedLanguage,
-            configuration: editorConfiguration,
-            // Hinweis Scroll-Verhalten: CESEs State-Reconcile drehte mit der
-            // stets einen Runloop alten `state.scrollPosition` frische
-            // Tipp-Scrolls zurück (F.23). Der Reconcile-Zweig ist per
-            // build.sh-Patch 4x deaktiviert — Fastra scrollt ausschließlich
-            // selbst (convergeScroll) und setzt nie ein Scroll-Soll über den
-            // State. Ein Filter-Binding mit eigenen get/set-Closures war die
-            // erste Fassung und crashte in SwiftUIs Zugriffsverfolgung
-            // (SIGSEGV in swift_beginAccess) — daher bewusst das normale
-            // @State-Binding.
-            state: $editorState,
-            // Eigen-Sprache aktiv (z. B. 4D): eigener leichter Tokenizer
-            // statt tree-sitter — Provider kommt aus der Registry.
-            highlightProviders: activeCustomLanguage.map { language in
-                [customProviders.provider(
-                    for: language,
-                    projectMethodNames: language.id == CustomLanguageRegistry.fourD.id
-                        ? workspace.fourDMethodIndexSnapshot.projectMethodNames : [],
-                    componentMethodNames: language.id == CustomLanguageRegistry.fourD.id
-                        ? Set(workspace.fourDMethodIndexSnapshot.componentMethods.keys) : []
-                )]
-            },
-            foldProvider: foldProviders.provider(language: detectedLanguage,
-                isFourD: activeCustomLanguage?.id == CustomLanguageRegistry.fourD.id),
-            undoManager: workspace.activeTab.map { $0.undoHistory.manager(for: $0.content) },
-            coordinators: [minimapLayoutCoordinator],
-            // 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c) — NUR
-            // bei aktiver 4D-Sprache; sonst bleibt das Vorschlagsfenster
-            // komplett aus (Delegate nil).
-            completionDelegate: activeCustomLanguage?.id == CustomLanguageRegistry.fourD.id
-                ? fourDCompletion : nil
-        )
-        .background(GutterDimmingBridge().frame(width: 0, height: 0))
-        // Frisch erscheinender Editor (neuer Tab ⌘T, Tab-Wechsel, fertig geladene
-        // Datei, programmatischer Reload) soll sofort den Tastaturfokus bekommen —
-        // sonst verpuffte nach ⌘T ein direktes ⌘V (Daniel-Befund 2026-06-25).
-        .onAppear { Self.focusActiveEditor(in: workspace) }
-        .onChange(of: activeTabIsMarkdown) { _, _ in
-            Self.configureMarkdownDrop(in: workspace)
-        }
-        // Gemerkten Ausschnitt des Tabs zurückholen. Ohne das riss CESEs
-        // „Einfügemarke sichtbar machen" die Cursorzeile beim Zurückwechseln in
-        // die oberste Bildschirmzeile.
-        .onAppear {
-            guard let target = pendingScrollRestore else {
-                EditorView.scrollRestoreDebug("onAppear ohne Restore-Ziel")
-                return
-            }
-            // Das Ziel-Dokument festhalten: Wechselt der Nutzer währenddessen
-            // erneut den Tab, darf weder weiter auf dessen ScrollView
-            // gescrollt noch sein frischer Auftrag gelöscht werden.
-            let restoreDocumentID = workspace.activeDocumentID
-            EditorView.scrollRestoreDebug("onAppear startet Restore auf y=\(Int(target.y))")
-            EditorView.restoreScrollOffset(target, in: workspace,
-                                           documentID: restoreDocumentID) {
-                guard workspace.activeDocumentID == restoreDocumentID else { return }
-                pendingScrollRestore = nil
-            }
-        }
-        // Scrollen des Nutzers pro Tab mitschreiben. Während eine
-        // Wiederherstellung aussteht, absichtlich nicht: die Startposition des
-        // frisch montierten Editors darf den gemerkten Wert nicht ersetzen.
-        .onChange(of: editorState.scrollPosition) { _, position in
-            guard pendingScrollRestore == nil else { return }
-            scrollMemory.remember(position,
-                                  for: cursorMemoryTabID ?? workspace.activeDocumentID)
-        }
-        // Typeahead kennt die Projektmethoden: Der Provider liest den
-        // Workspace erst beim Aufruf, damit ein Index-Refresh (neue Methode
-        // angelegt) ohne Editor-Neuaufbau wirkt.
-        .onAppear {
-            fourDCompletion.projectMethodProvider = { [weak workspace] in
-                workspace?.fourDMethodIndexSnapshot.projectMethodDisplayNames ?? []
-            }
-            fourDCompletion.componentMethodProvider = { [weak workspace] in
-                guard let workspace else { return [] }
-                let snapshot = workspace.fourDMethodIndexSnapshot
-                return snapshot.componentMethodDisplayNames.map { name in
-                    FourDCompletionLogic.ComponentMethodEntry(
-                        name: name,
-                        componentName: snapshot
-                            .componentMethods[name.lowercased()]?
-                            .componentName ?? ""
-                    )
-                }
-            }
-        }
-        // Live-Trefferanzeige (Etappe 2 Wunschpaket 2026-07b): Markierungen
-        // leben auf der TextView-Instanz und verschwinden bei jedem Remount
-        // (Tab-Wechsel, Reload) von selbst — onAppear zeichnet sie für den
-        // neuen Editor nach. Die übrigen Auslöser: neue Suchtreffer aus dem
-        // Debounce, Scope-Wechsel, Öffnen/Schließen der Suchmaske.
-        .onAppear { EditorView.updateSearchEmphasis(in: workspace) }
-        .onReceive(workspace.$bufferMatches) { _ in
-            EditorView.updateSearchEmphasis(in: workspace)
-        }
-        .onReceive(workspace.$folderResults) { _ in
-            EditorView.updateSearchEmphasis(in: workspace)
-        }
-        .onReceive(workspace.$openResults) { _ in
-            EditorView.updateSearchEmphasis(in: workspace)
-        }
-        .onChange(of: workspace.activeTabID) {
-            EditorView.updateSearchEmphasis(in: workspace)
-        }
-        .onChange(of: workspace.scope) {
-            EditorView.updateSearchEmphasis(in: workspace)
-        }
-        .onChange(of: workspace.showSearchDialog) {
-            EditorView.updateSearchEmphasis(in: workspace)
-        }
-        // Cursor-Position aus dem Editor-State in den Workspace spiegeln,
-        // damit der Footer (StatusBarView) Zeile/Spalte zeigen kann.
-        .onChange(of: editorState.cursorPositions) { _, positions in
-            let list = positions ?? []
-            cursorMemory.remember(list,
-                                  for: cursorMemoryTabID ?? workspace.activeDocumentID)
-            updateFooterCursor(from: list)
-            scheduleStats(for: list)
-            // 4D-Parameterhilfe folgt jeder Cursorbewegung; außerhalb eines
-            // Aufrufs (oder ohne 4D) blendet sie sich selbst aus.
-            fourDSignatureHelp.update(
-                workspace: workspace,
-                cursorPositions: list,
-                isFourDActive: activeCustomLanguage?.id
-                    == CustomLanguageRegistry.fourD.id
-            )
-        }
-        .onChange(of: workspace.activeTabID) {
-            fourDSignatureHelp.hide()
-        }
-        .onDisappear {
-            fourDSignatureHelp.hide()
-        }
-        // Zombie-Find-Bar deterministisch verhindern: Wenn der Editor sein
-        // eigenes Find-Panel öffnet (CMD+F bei fokussiertem Editor), schreibt
-        // CodeEditSourceEditor `findPanelVisible = true` in den State zurück.
-        // Wir fangen das ab, schließen das Editor-Panel sofort wieder
-        // (findPanelVisible = false → der Editor reconciled und blendet aus)
-        // und öffnen STATTDESSEN unsere eigene Suchmaske. Das ist unabhängig
-        // von der (nicht steuerbaren) Reihenfolge der Event-Monitore.
-        .onChange(of: editorState.findPanelVisible) { _, visible in
-            guard visible == true else { return }
-            editorState.findPanelVisible = false
-            NotificationCenter.default.post(name: .fastraShowSearchFile,
-                                            object: workspace)
-        }
-        // Inhalts-Änderungen (Tippen, Datei-Wechsel) lösen ebenfalls eine
-        // Neuberechnung aus — sonst hinkt die Zeichen-/Wort-/Zeilen-Zahl.
-        .onChange(of: workspace.activeTabContent.wrappedValue) { _, _ in
-            scheduleStats(for: editorState.cursorPositions ?? [])
-        }
-        .onAppear {
-            scheduleStats(for: editorState.cursorPositions ?? [])
-            // Ein Sprung, dessen Notification in die Editor-Neuerzeugung
-            // fiel (alter Empfänger abgehängt, neuer noch nicht abonniert),
-            // wird hier nachgeholt. Ohne dieses Nachholen wirkte der Klick
-            // auf einen Suchtreffer unter Last gelegentlich „folgenlos"
-            // (reproduziert 2026-08-19 im jump-Selbsttest, 1 von 3 Läufen).
-            guard let pending = workspace.pendingEditorJump,
-                  pending.documentID == workspace.activeTab?.documentID else {
-                return
-            }
-            applyEditorJump(pending)
-        }
-        // Editor-Sprung zur Treffer-Range (CMD+G / List-Klick / Chevron-
-        // Button). Wir schreiben die Range direkt in cursorPositions —
-        // CodeEditSourceEditor synchronisiert das in eine Selektion +
-        // scrollt automatisch in die sichtbare Region.
-        .onReceive(NotificationCenter.default.publisher(for: .fastraJumpToRange)) { note in
-            // NotificationCenter ist app-weit. Jedes Dokumentfenster besitzt
-            // aber einen eigenen Workspace und darf ausschließlich seine
-            // eigenen Suchtreffer verarbeiten.
-            guard Self.jumpNotification(note, targets: workspace) else { return }
-            let info = note.userInfo
-            let jump = PendingEditorJump(
-                documentID: workspace.activeTab?.documentID,
-                startLine: info?["startLine"] as? Int,
-                startColumn: info?["startColumn"] as? Int,
-                endLine: info?["endLine"] as? Int,
-                endColumn: info?["endColumn"] as? Int,
-                range: (info?["range"] as? NSValue)?.rangeValue)
-            applyEditorJump(jump)
-        }
-        // WICHTIG: CodeEditSourceEditor setzt den Text NUR EINMAL in
-        // `makeNSViewController`. Sein `updateNSViewController` schiebt
-        // Binding-Änderungen NICHT in die TextView zurück (Text fließt nur
-        // TextView → Binding). Bei einem Tab-Wechsel UND nach abgeschlossenem
-        // asynchronen Laden (isLoading wechselt false → sourceEditor wechselt
-        // auf actualEditor) wird der Editor neu erzeugt → `makeNSViewController`
-        // läuft mit dem bereits vollständig geladenen Inhalt. Die ID bleibt
-        // beim Tippen konstant — Eingaben werden NICHT unterbrochen.
-        //
-        // `editorReloadNonce` hängt zusätzlich an der ID: ein PROGRAMMATISCHER
-        // Buffer-Replace (Alle/Einzel-Ersetzen) zählt ihn hoch → der Editor wird
-        // mit dem ersetzten Inhalt neu erzeugt und zeigt die Änderung sofort
-        // (sonst bliebe der alte Text stehen — „Ersetzen wirkt folgenlos“).
-        // Der dokumentgebundene Undo-Manager überlebt diesen Neuaufbau.
-        .id(EditorView.editorIdentity(tabID: workspace.activeTab?.documentID,
-                                      reloadNonce: workspace.editorReloadNonce))
-        // Willkommens-Platzhalter (Umbau 2026-07-30, ersetzt den früheren
-        // Einzeilen-Hinweis): Solange der aktive Tab ein unberührter leerer
-        // Tab ist, liegt der Willkommensinhalt über der Editorfläche —
-        // Cursor und Tastatur gehören weiter dem Editor dahinter. Beim
-        // ersten getippten Zeichen ist der Tab nicht mehr unberührt →
-        // SwiftUI blendet das Overlay automatisch aus; der Editor wird dabei
-        // NICHT neu erzeugt, weil .id(tab.id) konstant bleibt. Die
-        // Willkommens-Knöpfe bleiben klickbar; freie Flächen reichen Klicks
-        // an den Editor durch (WelcomeView hat bewusst keinen Hintergrund).
-        .overlay(
-            Group {
-                if workspace.isWelcomeScreen {
-                    WelcomeView()
-                }
-            }
-        )
-    }
-
-    /// Wendet einen Editor-Sprung an und verbraucht den hinterlegten
-    /// Pending-Zustand. Gemeinsamer Pfad für die Notification (Normalfall)
-    /// und das Nachholen in `onAppear` (Editor wurde währenddessen neu
-    /// erzeugt). Bevorzugt Zeile/Spalte (robust gegen Offset-Drift, siehe
-    /// `NotificationCenter.postMatchJump`); die absolute Range bleibt der
-    /// Fallback für Sprünge ohne Treffer-Kontext („Zu Zeile springen").
-    private func applyEditorJump(_ jump: PendingEditorJump) {
-        workspace.pendingEditorJump = nil
-        var jumpLine: Int? = nil
-        if let sl = jump.startLine, let sc = jump.startColumn,
-           let el = jump.endLine, let ec = jump.endColumn {
-            editorState.cursorPositions = [CursorPosition(
-                start: CursorPosition.Position(line: sl, column: sc),
-                end: CursorPosition.Position(line: el, column: ec))]
-            jumpLine = sl
-        } else if let range = jump.range {
-            editorState.cursorPositions = [CursorPosition(range: range)]
-        } else {
-            return
-        }
-        // Sichtbar scrollen, aber den Fokus in der Suchmaske lassen. Der
-        // nächste Tastendruck darf das Dokument niemals verändern.
-        EditorView.scrollEditorForVisibleJump(in: workspace,
-                                              targetLine: jumpLine,
-                                              fallbackRange: jump.range,
-                                              cursorPositions: editorState.cursorPositions ?? [])
+        SourceSplitEditor(workspace: workspace, language: detectedLanguage,
+                          configuration: editorConfiguration)
     }
 
     /// Stabile, hashbare Editor-Identität aus Tab-ID + Reload-Nonce. Ändert
@@ -1101,59 +831,6 @@ struct EditorView: View {
     // codereview-ok: doppelter Identitätswechsel bei isLoading-Flip + Nonce-Inkrement ist bewusstes Design (Editor-Neuerzeugung ist der einzige Reload-Weg); kein sichtbares Fehlverhalten (2026-07-06)
     static func editorIdentity(tabID: UUID?, reloadNonce: Int) -> String {
         "\(tabID?.uuidString ?? "none")#\(reloadNonce)"
-    }
-
-    /// Footer-Statistik neu anstoßen: bei aktiver Selektion auf die
-    /// Selektion bezogen, sonst auf die ganze Datei.
-    private func scheduleStats(for positions: [CursorPosition]) {
-        let primaryRange = positions.last?.range
-        let selection = (primaryRange?.length ?? 0) > 0 ? primaryRange : nil
-        // Selektion in den Workspace spiegeln — Quelle für „Nur in Auswahl"
-        // (K3) und „Auswahl als Suchbegriff" (⌘E, K5). Bewusst die LIVE-
-        // Selektion; das Einfrieren für die Suche macht der Workspace selbst
-        // (setSearchInSelectionOnly), damit ein Treffer-Sprung den Such-
-        // Bereich nicht zusammenschrumpft.
-        workspace.selectionRange = selection
-        workspace.recomputeDocumentStats(
-            fullText: workspace.activeTabContent.wrappedValue,
-            selectionNSRange: selection
-        )
-    }
-
-    /// Bestimmt aus den Selektionen die Position der *bewegten* Kante und
-    /// schreibt sie in den Workspace (Footer-Anzeige).
-    ///
-    /// Hintergrund: `CursorPosition` liefert `start` (untere Offset-Kante)
-    /// und `end` (obere Kante) eines Bereichs, aber keine Information
-    /// darüber, in welche Richtung gerade gezogen wird. BBEdit zeigt im
-    /// Footer immer die Kante am Mauszeiger. Dafür merken wir uns in
-    /// `selectionAnchor` die *stillstehende* Kante und zeigen die andere.
-    private func updateFooterCursor(from positions: [CursorPosition]) {
-        // Für den Footer zählt der primäre (letzte) Cursor.
-        guard let primary = positions.last else {
-            workspace.cursorLine = nil
-            workspace.cursorColumn = nil
-            selectionAnchor = nil
-            return
-        }
-
-        let resolved = CursorFooter.resolve(
-            rangeLocation: primary.range.location,
-            rangeLength: primary.range.length,
-            startLine: primary.start.line,
-            startColumn: primary.start.column,
-            endLine: primary.end?.line,
-            endColumn: primary.end?.column,
-            previousAnchor: selectionAnchor
-        )
-        setFooter(line: resolved.line, column: resolved.column)
-        selectionAnchor = resolved.anchor
-    }
-
-    private func setFooter(line: Int, column: Int) {
-        guard line > 0, column > 0 else { return }
-        workspace.cursorLine = line
-        workspace.cursorColumn = column
     }
 
     /// SwiftUI-Identität einer datei-gebundenen Ansicht (Bild, PDF, Hex,
@@ -1183,9 +860,9 @@ struct EditorView: View {
 
     /// Aktuelle Scrollposition der montierten Editor-ScrollView (oder `nil`,
     /// wenn gerade keine da ist — etwa im Remount-Moment).
-    static func currentScrollOffset(in workspace: Workspace) -> CGPoint? {
+    static func currentScrollOffset(in workspace: Workspace, pane: SourcePaneID? = nil) -> CGPoint? {
         guard let root = editorWindow(for: workspace)?.contentView,
-              let textView = firstEditorTextView(in: root),
+              let textView = pane.flatMap { workspace.sourcePanes.view(for: $0, documentID: workspace.activeDocumentID) } ?? firstEditorTextView(in: root),
               let clipView = textView.enclosingScrollView?.contentView else { return nil }
         return clipView.bounds.origin
     }
@@ -1213,7 +890,7 @@ struct EditorView: View {
     /// sprang dann an den Ausschnitt des vorherigen (die Generation allein
     /// reicht nicht: ein Tabwechsel erhöht sie nicht).
     static func restoreScrollOffset(_ offset: CGPoint, in workspace: Workspace,
-                                    documentID: UUID?,
+                                    pane: SourcePaneID? = nil, documentID: UUID?,
                                     attempt: Int = 0,
                                     stablePasses: Int = 0,
                                     completion: @escaping () -> Void) {
@@ -1231,7 +908,7 @@ struct EditorView: View {
                 completion(); return
             }
             guard let root = editorWindow(for: workspace)?.contentView,
-                  let textView = firstEditorTextView(in: root) as? CodeEditTextView.TextView,
+                  let textView = pane.flatMap { workspace.sourcePanes.view(for: $0, documentID: workspace.activeDocumentID) } ?? firstEditorTextView(in: root) as? CodeEditTextView.TextView,
                   let scrollView = textView.enclosingScrollView else {
                 scrollRestoreDebug("attempt=\(attempt) abgebrochen: "
                     + "window=\(editorWindow(for: workspace) != nil) "
@@ -1286,7 +963,7 @@ struct EditorView: View {
                 completion()
                 return
             }
-            restoreScrollOffset(offset, in: workspace, documentID: documentID,
+            restoreScrollOffset(offset, in: workspace, pane: pane, documentID: documentID,
                                 attempt: attempt + 1, stablePasses: confirmedPasses,
                                 completion: completion)
         }
@@ -1549,7 +1226,7 @@ struct EditorView: View {
 
     /// Ein Relay pro montierter TextView. Das Associated Object sorgt dafür,
     /// dass der lokale Event-Monitor beim Editor-Remount zuverlässig endet.
-    private static func installMarkdownSourceClickRelay(
+    static func installMarkdownSourceClickRelay(
         on textView: CodeEditTextView.TextView,
         workspace: Workspace
     ) {
@@ -1675,7 +1352,7 @@ struct EditorView: View {
         }
     }
 
-    private static func configureMarkdownDrop(in workspace: Workspace) {
+    static func configureMarkdownDrop(in workspace: Workspace) {
         DispatchQueue.main.async {
             guard let window = CommandTargeting.documentWindow(for: workspace),
                   let root = window.contentView,
@@ -1772,6 +1449,10 @@ struct EditorView: View {
     /// CodeEditTextView) — daher Suche über den Klassennamen (gleiche Heuristik
     /// wie im Selbsttest `editorTextView`).
     private static func firstEditorTextView(in view: NSView) -> NSView? {
+        if let window = view.window, let workspace = WorkspaceWindowRegistry.workspace(for: window),
+           let preferred = workspace.sourcePanes.preferred(in: view, documentID: workspace.activeDocumentID) {
+            return preferred
+        }
         let name = String(describing: type(of: view))
         if name.contains("TextView"), view.acceptsFirstResponder, view.frame.height > 50 {
             return view

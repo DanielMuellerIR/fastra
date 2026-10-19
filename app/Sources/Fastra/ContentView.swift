@@ -1,9 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Variante 1: Editor oben (45 %), Vorschau-Hero unten (55 %).
-/// Die Suchmaske ist seit v0.5 ein eigenes, draggbares NSPanel —
-/// das Hauptfenster bleibt während der Suche bedienbar.
+/// Dokumentfenster mit Tabs, Editor und Statusleiste. Die Quelltextsuche
+/// steht in einem eigenen Fenster; die formatierte Textsuche bleibt im Dokument.
 struct ContentView: View {
     @EnvironmentObject var workspace: Workspace
     @Environment(\.uiScale) private var uiScale
@@ -23,7 +22,7 @@ struct ContentView: View {
     /// auf der Willkommen-Seite, auf der noch kein `EditorView` existiert.
     @State private var isDropTargeted = false
 
-    var body: some View {
+    private var documentContent: some View {
         VStack(spacing: 0) {
             TabBarView()
                 .frame(height: 36 * uiScale)
@@ -62,9 +61,11 @@ struct ContentView: View {
             // hinauswachsen; unten schnitt ihn der Fensterrand ab, sodass die
             // Fußzeile beim Öffnen einer vorhandenen Datei nur halb zu sehen
             // war (Daniel-Befund 2026-08-06).
-            StatusBarView()
-                .frame(minHeight: 24 * uiScale)
-                .fixedSize(horizontal: false, vertical: true)
+            if workspace.activeTab?.folderComparison == nil {
+                StatusBarView()
+                    .frame(minHeight: 24 * uiScale)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .background(Theme.surfaceBase)
         .foregroundColor(Theme.textPrimary)
@@ -110,6 +111,12 @@ struct ContentView: View {
             FourDMacroPreviewSheet(state: state)
                 .environmentObject(workspace)
         }
+        .sheet(item: $workspace.textWorkflowSession) { session in
+            TextWorkflowSheet(session: session)
+        }
+        .sheet(item: $workspace.textSnippetSession) { session in
+            TextSnippetSheet(session: session)
+        }
         // „Dateien vergleichen…" (Etappe 1 Wunschpaket 2026-07c): Sheet mit
         // Links/Rechts-Auswahl und Vergleichsoptionen; das Ergebnis öffnet
         // als eigener Diff-Tab.
@@ -119,6 +126,14 @@ struct ContentView: View {
                 preselectedTabIDs: workspace.compareDialogPrefillTabIDs
             )
         }
+        .sheet(isPresented: $workspace.showFolderComparisonDialog) {
+            FolderComparisonDialog(workspace: workspace)
+        }
+        .background(MarkdownReferencePresentation(workspace: workspace, controller: workspace.markdownReferences))
+    }
+
+    var body: some View {
+        documentContent
         .onAppear {
             // Beim ersten Erscheinen Controller anlegen und — falls per
             // Default sichtbar — gleich öffnen.
@@ -147,6 +162,12 @@ struct ContentView: View {
         // befüllte Suche wird nur nach vorn geholt und behält ihren Scope.
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFile)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
+            if workspace.activeMarkdownIsVisual, !workspace.showSearchDialog,
+               note.userInfo?["source"] as? Bool != true {
+                workspace.markdownVisualFind.present(in: workspace)
+                return
+            }
+            workspace.markdownVisualFind.close(in: workspace, focusEditor: false)
             // „Nur in Auswahl" (K3) automatisch einschalten, wenn beim Öffnen
             // eine MEHRZEILIGE Selektion im Editor steht (BBEdit-Verhalten).
             workspace.presentSearch(requestedScope: .file, captureSelection: true)
@@ -157,6 +178,7 @@ struct ContentView: View {
         // die gespeicherten Ordner (Produktentscheidung 2026-09-15).
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolder)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
+            workspace.markdownVisualFind.close(in: workspace, focusEditor: false)
             workspace.presentSearch(requestedScope: workspace.preferredMultiFileSearchScope)
             searchPanel?.show()
         }
@@ -165,27 +187,38 @@ struct ContentView: View {
         // erzwungen — anders als beim bereichserhaltenden Kurzbefehl darüber.
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolderForced)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
+            workspace.markdownVisualFind.close(in: workspace, focusEditor: false)
             workspace.presentSearch(requestedScope: workspace.preferredMultiFileSearchScope,
                                     forceScope: true)
             searchPanel?.show()
         }
         .onReceive(NotificationCenter.default.publisher(for: .fastraBringSearchToFront)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
+            workspace.markdownVisualFind.close(in: workspace, focusEditor: false)
             searchPanel?.show()
         }
         .onReceive(NotificationCenter.default.publisher(for: .fastraHideSearch)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
             workspace.showSearchDialog = false
+            workspace.markdownVisualFind.close(in: workspace)
         }
         // CMD+G / CMD+SHIFT+G: durch die Treffer im aktiven Buffer
         // navigieren. Wir bewegen `activeMatchIndex` und schicken
         // einen Range-Sprung an den Editor.
         .onReceive(NotificationCenter.default.publisher(for: .fastraGotoNextMatch)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
+            if workspace.activeMarkdownIsVisual, workspace.markdownVisualFind.isPresented {
+                workspace.markdownVisualFind.find(in: workspace)
+                return
+            }
             navigateMatch(action: .move(.next, wrapAround: workspace.wrapAround))
         }
         .onReceive(NotificationCenter.default.publisher(for: .fastraGotoPreviousMatch)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
+            if workspace.activeMarkdownIsVisual, workspace.markdownVisualFind.isPresented {
+                workspace.markdownVisualFind.find(in: workspace, backwards: true)
+                return
+            }
             navigateMatch(action: .move(.previous, wrapAround: workspace.wrapAround))
         }
         .onReceive(NotificationCenter.default.publisher(for: .fastraGotoFirstMatch)) { note in

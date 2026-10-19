@@ -4,6 +4,9 @@ Hier stehen nur offene Produktarbeit und bewusst zurückgestellte Grenzen.
 Erledigte Arbeit und historische Entscheidungen stehen in
 [CHANGELOG.md](CHANGELOG.md).
 
+## Editor-Erweiterungen
+
+
 ## Code-Erklärungen und Skriptbarkeit: weitere Etappen
 
 - Kurze, vorbereitete Code-Erklärungen und Commit-Reviews direkt in der
@@ -70,9 +73,6 @@ Timeout-Ursache wird getrennt weiter diagnostiziert.
   (4D-Vervollständigung/`.4DForm`-Schema/Export-Transformation,
   v1.37.0), Etappe 7 (Alt-Doppelklick „Gehe zum Ziel“, v1.38.0), Etappe 8
   (4D-Syntaxdiagnosen via tool4d-LSP, v1.39.0).**
-  - **Bewusst NICHT in Etappe 1** (Kandidaten für eigene Aufträge):
-    Ordner-Vergleich, „Apply to Left/Right“-Übernahme einzelner
-    Unterschiede ins Dokument.
   - **Bewusste Grenze des Datei-Diffs:** Eindeutige gemeinsame Zeilen
     teilen große Vergleiche ab v1.133.0 in geordnete Teilbereiche auf.
     Ohne ausreichend passende Anker bleibt das Rechenbudget begrenzt:

@@ -171,7 +171,7 @@ extension Workspace {
         }
         guard let expectedData = FileLoader.encodedData(
             content: tab.content, encoding: tab.encoding,
-            bom: tab.bom, lineEnding: tab.lineEnding
+            bom: tab.bom, lineEnding: tab.lineEnding, preservingLineEndings: true
         ) else {
             Self.presentGitErrorText(
                 label: "Konfliktauflösung",

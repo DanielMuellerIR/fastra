@@ -230,7 +230,17 @@ enum CommandTargeting {
     }
 
     private static func descendantTextView(in view: NSView) -> TextView? {
-        if let textView = view as? TextView { return textView }
+        if let window = view.window, let workspace = WorkspaceWindowRegistry.workspace(for: window),
+           let preferred = workspace.sourcePanes.preferred(in: view, documentID: workspace.activeDocumentID) {
+            return preferred
+        }
+        if let textView = view as? TextView {
+            // Während SwiftUI den neuen Tab montiert, kann der alte Editor
+            // noch im Fenster liegen und sogar denselben Text anzeigen.
+            if let window = view.window, let workspace = WorkspaceWindowRegistry.workspace(for: window),
+               !workspace.sourcePanes.allowsTargeting(textView, documentID: workspace.activeDocumentID) { return nil }
+            return textView
+        }
         for sub in view.subviews {
             if let found = descendantTextView(in: sub) { return found }
         }

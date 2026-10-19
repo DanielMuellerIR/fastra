@@ -58,6 +58,15 @@ enum LineFilter {
             return nil
         }
 
+        return filter(in: text, selection: selection, keepMatching: keepMatching) { line in
+            regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil
+        }
+    }
+
+    /// Die Abläufe liefern eine abbrechbare Trefferprüfung; Einzelbefehle
+    /// verwenden weiterhin denselben Filter- und Zeilenaufbau.
+    static func filter(in text: String, selection: NSRange, keepMatching: Bool,
+                       matching: (String) throws -> Bool) rethrows -> LineOperations.Result? {
         // Wirkbereich: Selektion auf ganze Zeilen ausgeweitet, ohne Selektion
         // der ganze Text. `range` ist im ALTEN Text und wird am Ende ersetzt.
         let range = LineOperations.expandToFullLines(in: text, selection: selection)
@@ -77,18 +86,10 @@ enum LineFilter {
         // Weniger als eine echte Inhaltszeile → nichts zu filtern.
         guard realLines.count >= 1 else { return nil }
 
-        // Prüft, ob eine Zeile irgendwo einen Treffer hat. `firstMatch` reicht —
-        // mehrere Treffer in derselben Zeile zählen trotzdem als „eine
-        // treffende Zeile" (wir filtern auf Zeilen-, nicht auf Treffer-Ebene).
-        func matches(_ line: String) -> Bool {
-            let lineRange = NSRange(location: 0, length: (line as NSString).length)
-            return regex.firstMatch(in: line, range: lineRange) != nil
-        }
-
         // Behalte genau die Zeilen, deren Treffer-Status zu `keepMatching` passt:
         //   keepMatching == true  → behalte Zeilen MIT Treffer  (matches == true)
         //   keepMatching == false → behalte Zeilen OHNE Treffer (matches == false)
-        let kept = realLines.filter { matches($0) == keepMatching }
+        let kept = try realLines.filter { try matching($0) == keepMatching }
 
         // Voller Dokument-Wipe vermeiden: würde der Filter ALLE Inhaltszeilen
         // entfernen, lieber nil → Beep (siehe Vertrag oben). So löscht ein

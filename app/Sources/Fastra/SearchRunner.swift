@@ -98,6 +98,8 @@ final class SearchRunner {
         previous.count == current.count && zip(previous, current).allSatisfy { old, new in
             old.id == new.id && old.documentID == new.documentID
                 && old.title == new.title
+                && old.contentRevision == new.contentRevision
+                && old.isOrdinaryTextDocument == new.isOrdinaryTextDocument
                 // String-Gleichheit ignoriert Unicode-Normalisierungsunterschiede,
                 // obwohl sie die UTF-16-Bereiche der Treffer verschieben können.
                 && old.content.utf8.elementsEqual(new.content.utf8)
@@ -271,6 +273,7 @@ final class SearchRunner {
     }
 
     private func cancelPendingWork() {
+        workspace?.searchApproval.invalidate()
         folderTask?.cancel()
         folderTask = nil
         folderRunID &+= 1
@@ -533,6 +536,7 @@ final class SearchRunner {
                 ws.visibleBufferResultsOptions = options
                 ws.searchError = result.invalidPatternMessage
                 ws.bufferSearching = false
+                ws.publishSearchApprovals()
                 if ws.activeMatchIndex >= result.matches.count {
                     ws.activeMatchIndex = max(0, result.matches.count - 1)
                 }
@@ -598,6 +602,7 @@ final class SearchRunner {
                 ws.visibleBufferResultsOptions = options
                 ws.searchError = result.invalidPatternMessage
                 ws.bufferSearching = false
+                ws.publishSearchApprovals()
                 let materialized = result.perTab.reduce(0) { $0 + $1.matches.count }
                 if ws.activeMatchIndex >= materialized {
                     ws.activeMatchIndex = max(0, materialized - 1)
@@ -681,6 +686,7 @@ final class SearchRunner {
                 ws.folderResultsWereCapped = result.wasCapped
                 ws.searchError = result.invalidPatternMessage
                 ws.folderSearching = false
+                ws.publishSearchApprovals()
             }
         }
     }

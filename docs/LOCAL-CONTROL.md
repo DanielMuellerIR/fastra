@@ -366,6 +366,18 @@ Ab 1.137.0 ergänzt `sourceSnapshot` den bestehenden `snapshot`-Auftrag.
 Clients prüfen `sourceSnapshotSchemaVersion: 1` in den Fähigkeiten. Die
 Transportversion bleibt 1. Bestehende Aufträge ändern sich nicht.
 
+`sourceSnapshotTextEncodings` nennt die ausdrücklich unterstützten Decoder:
+`utf-8`, `utf-16-le`, `utf-16-be`, `windows-1252`, `iso-8859-1` und `mac-roman`.
+Nur `sourceSnapshot` darf optional `textEncoding` mit einem dieser Werte tragen.
+Fehlt der Hinweis, bleibt die bisherige FileLoader-Erkennung erhalten; `auto`
+ist kein Decodername im Empfängerprotokoll. Alte Empfänger ohne die Capability
+weisen neue Request-Schlüssel ab. Eine erkannte Datei-BOM muss zur ausdrücklich
+gewählten Kodierung passen. Die Rohbytes bleiben unverändert, und die Bestätigung
+nennt wie bisher Rohbyte-SHA, SHA256 des tatsächlich dekodierten Texts und die
+geprüfte UTF-16-Auswahl. Eine zweite inhaltliche BOM und ursprüngliche
+Zeilentrenner gehören zum Text. Dateigrößen-, Herkunfts- und Abbruchgrenzen
+bleiben unverändert.
+
 Zusätzlich zu `path`, `sha256`, `location` und `length` ist `provenance`
 erforderlich. `path` bezeichnet die zu übernehmende Original- oder
 materialisierte Blattdatei. Der Hash bindet deren exakte Bytes einschließlich

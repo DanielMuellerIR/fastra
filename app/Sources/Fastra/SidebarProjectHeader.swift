@@ -225,6 +225,7 @@ struct SidebarProjectHeader<ExtraMenu: View, Accessory: View>: View {
             Button("Im Finder zeigen…") {
                 NSWorkspace.shared.activateFileViewerSelecting([rootURL])
             }
+            Button("Pfad kopieren") { FilePathClipboard.copy(rootURL) }
             Button("Projektansicht schließen") { workspace.closeProject() }
             extraMenu()
         }

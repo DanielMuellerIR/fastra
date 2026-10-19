@@ -665,59 +665,80 @@ enum TextOperations {
     /// Folgezeilen beginnen ohne Einrückung. Leere/whitespace-only Eingabezeilen bleiben
     /// unverändert (Absatztrenner). Zeilen-Scope. nil bei column <= 0 oder wenn sich nichts ändert.
     static func hardWrap(in text: String, selection: NSRange, column: Int) -> LineOperations.Result? {
+        hardWrap(in: text, selection: selection, column: column, check: {})
+    }
+
+    static func hardWrap(in text: String, selection: NSRange, column: Int,
+                         check: () throws -> Void) rethrows -> LineOperations.Result? {
         // Sinnlose Spaltenbreite (0 oder negativ) → es gibt keinen Umbruch, den man berechnen
         // könnte; früh raus, bevor wir überhaupt ausweiten.
         guard column > 0 else { return nil }
         // transformLines weitet auf ganze Zeilen aus, liefert nil bei No-Op und reicht die
         // Phantom-Leerzeile (Datei-End-Newline) korrekt durch — `wrapLine("")` gibt `[""]` zurück,
         // sodass aus der einen Phantom-Zeile genau eine bleibt.
-        return transformLines(in: text, selection: selection) { lines in
-            lines.flatMap { wrapLine($0, column) }
+        return try transformLines(in: text, selection: selection) { lines in
+            try lines.flatMap { try check(); return try wrapLine($0, column, check: check) }
         }
     }
 
     /// Bricht EINE Eingabezeile greedy an Wortgrenzen um, sodass keine Ausgabezeile mehr als
     /// `width` Grapheme zählt. Liefert die Liste der Ausgabezeilen (mindestens eine).
-    private static func wrapLine(_ line: String, _ width: Int) -> [String] {
+    private static func wrapLine(_ line: String, _ width: Int, check: () throws -> Void) rethrows -> [String] {
         // Passt die Zeile ohnehin in die Spaltenbreite (`count` = Grapheme-Anzahl), bleibt sie
         // unverändert — das deckt auch leere und whitespace-only Zeilen ab (Absatztrenner).
-        guard line.count > width else { return [line] }
+        var length = 0, leadingLength = 0, inLeading = true
+        for character in line {
+            if length % 2048 == 0 { try check() }
+            if inLeading && (character == " " || character == "\t") { leadingLength += 1 }
+            else { inLeading = false }
+            length += 1
+        }
+        guard length > width else { return [line] }
 
         // Führende Einrückung (Leerzeichen/Tabs) bewahren: sie bleibt nur an der ERSTEN
         // Ausgabezeile; Folgezeilen beginnen bündig links.
-        let leadingWS = String(line.prefix(while: { $0 == " " || $0 == "\t" }))
+        let leadingWS = String(line.prefix(leadingLength))
         // Der Rest hinter der Einrückung ist der umzubrechende Inhalt.
-        let body = String(line.dropFirst(leadingWS.count))
+        let body = line.dropFirst(leadingLength)
         // In Wörter zerlegen: maximale Läufe ohne Leerzeichen/Tab. Damit werden Mehrfach-
         // Whitespace zwischen Wörtern automatisch zu EINEM Trenner normalisiert.
-        let words = body.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
-        // Nur Whitespace und kein einziges Wort → die Zeile unverändert lassen.
-        guard !words.isEmpty else { return [line] }
-
         // Greedy auffüllen: Wörter so lange in die aktuelle Zeile packen, wie sie (plus das
         // Trenner-Leerzeichen) in die verfügbare Spaltenzahl passen.
         var out: [String] = []
-        var current = ""
-        for word in words {
+        var current = "", currentLength = 0, word = "", wordLength = 0
+        func appendWord() {
+            guard wordLength > 0 else { return }
             // Die ERSTE Ausgabezeile hat weniger Platz, weil die Einrückung Spalten belegt;
             // Folgezeilen haben die volle `width`.
-            let avail = out.isEmpty ? max(0, width - leadingWS.count) : width
+            let avail = out.isEmpty ? max(0, width - leadingLength) : width
             if current.isEmpty {
                 // Erstes Wort der aktuellen Zeile: immer aufnehmen, auch wenn es allein schon
                 // zu lang ist (ein überlanges Einzelwort bleibt ungebrochen auf eigener Zeile).
                 current = word
-            } else if current.count + 1 + word.count <= avail {
+                currentLength = wordLength
+            } else if currentLength + 1 + wordLength <= avail {
                 // Wort passt noch (inkl. einem Trenner-Leerzeichen) → anhängen.
                 current += " " + word
+                currentLength += 1 + wordLength
             } else {
                 // Wort passt nicht mehr → aktuelle Zeile abschließen, neue mit diesem Wort starten.
                 out.append(current)
                 current = word
+                currentLength = wordLength
             }
+            word = ""; wordLength = 0
         }
+        // Fortlaufende Graphemzahlen vermeiden quadratische Zählungen bei
+        // breiten Zeilen; kein Array hält Millionen einzelner Wörter fest.
+        for (index, character) in body.enumerated() {
+            if index % 2048 == 0 { try check() }
+            if character == " " || character == "\t" { appendWord() }
+            else { word.append(character); wordLength += 1 }
+        }
+        appendWord()
         // Die zuletzt gefüllte Zeile noch ausgeben.
         if !current.isEmpty { out.append(current) }
-        // Defensive: sollte nie eintreten (words war nicht leer), aber dann die Zeile unverändert.
+        // Nur Whitespace und kein einziges Wort → die Zeile unverändert lassen.
         if out.isEmpty { return [line] }
         // Die Einrückung nur der ersten Ausgabezeile wieder voranstellen.
         out[0] = leadingWS + out[0]
@@ -1148,7 +1169,7 @@ enum TextOperations {
     /// bliebe (z.B. nichts zu trimmen). `minLines`: Mindestzeilenzahl, sonst nil.
     private static func transformLines(in text: String, selection: NSRange,
                                        requireChange: Bool = true, minLines: Int = 1,
-                                       _ transform: ([String]) -> [String]) -> LineOperations.Result? {
+                                       _ transform: ([String]) throws -> [String]) rethrows -> LineOperations.Result? {
         let ns = text as NSString
         guard ns.length > 0 else { return nil }
         let range = LineOperations.expandToFullLines(in: text, selection: selection)
@@ -1156,7 +1177,7 @@ enum TextOperations {
         let (lines, hasFinalSeparator) = LineOperations.splitContentLines(block, selection: selection)
         guard lines.count >= minLines else { return nil }
 
-        let newLines = transform(lines)
+        let newLines = try transform(lines)
         let separator = LineOperations.separator(of: text)
         let newBlock = newLines.joined(separator: separator)
             + (hasFinalSeparator && !newLines.isEmpty ? separator : "")

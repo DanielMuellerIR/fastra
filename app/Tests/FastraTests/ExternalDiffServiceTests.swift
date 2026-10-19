@@ -10,7 +10,8 @@ import FastraDiffProtocol
 @testable import Fastra
 
 @Suite("External diff service", .serialized)
-struct ExternalDiffServiceTests {
+// Echte IPC-Fristen dürfen nicht mit schweren Editor-Tests um Main konkurrieren.
+struct ExternalDiffServiceSerialRunnerIntegrationTests {
     /// Zwei echte Dateien: `validate()` öffnet die Pfade. Der Ordner gehört
     /// zum Ergebnis, damit jeder Test ihn per `defer` wieder abräumt — bis
     /// 2026-09-17 blieb er nach jedem Aufruf liegen, 168 Reste im Benutzer-Temp

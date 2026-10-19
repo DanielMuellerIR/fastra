@@ -20,7 +20,7 @@ import Foundation
 
 /// Vergleichsoptionen — BBEdit-Teilmenge aus „Find Differences"
 /// (User Manual 16.0.1, S. 130–134). Voreinstellung: nichts ignorieren.
-struct FileDiffOptions: Hashable {
+struct FileDiffOptions: Hashable, Sendable {
     /// Leerraum am Zeilenende ignorieren.
     var ignoreTrailingWhitespace = false
     /// ALLE Leerraum-Unterschiede ignorieren (schließt das Zeilenende ein).
@@ -49,7 +49,7 @@ struct FileDiffOptions: Hashable {
 
 /// Rolle einer Vergleichsseite — für verständliche Fehlermeldungen
 /// („linke Datei …") ohne den Dateinamen ins Modell zu ziehen.
-enum FileDiffSideRole: Hashable {
+enum FileDiffSideRole: Hashable, Sendable {
     case left, right
 }
 
@@ -57,7 +57,7 @@ enum FileDiffSideRole: Hashable {
 /// bereits vorliegender Text (`text`, z. B. der ungespeicherte Editor-Inhalt
 /// bei „Mit gespeicherter Fassung vergleichen"). Genau eines von beiden ist
 /// gesetzt.
-struct FileDiffSide: Hashable {
+struct FileDiffSide: Hashable, Sendable {
     /// Anzeigename im Kopf der Diff-Ansicht (Dateiname bzw. Tab-Titel).
     let name: String
     /// Voller Pfad für den Tooltip; `nil` bei reinem Editor-Inhalt.
@@ -66,6 +66,11 @@ struct FileDiffSide: Hashable {
     let url: URL?
     /// Bereits vorliegender Inhalt; `nil`, wenn aus `url` geladen wird.
     let text: String?
+    let documentOrigin: FileDiffDocumentOrigin?
+
+    init(name: String, path: String?, url: URL?, text: String?, documentOrigin: FileDiffDocumentOrigin? = nil) {
+        self.name = name; self.path = path; self.url = url; self.text = text; self.documentOrigin = documentOrigin
+    }
 
     /// Seite aus einer Datei auf der Platte.
     static func file(_ url: URL) -> FileDiffSide {
@@ -73,23 +78,27 @@ struct FileDiffSide: Hashable {
     }
 
     /// Seite aus einem bereits vorliegenden Text (ungespeicherter Editor).
-    static func text(_ text: String, name: String, path: String? = nil) -> FileDiffSide {
-        FileDiffSide(name: name, path: path, url: nil, text: text)
+    static func text(_ text: String, name: String, path: String? = nil,
+                     documentOrigin: FileDiffDocumentOrigin? = nil) -> FileDiffSide {
+        FileDiffSide(name: name, path: path, url: nil, text: text, documentOrigin: documentOrigin)
     }
 
-    /// Gleiche LOGISCHE Quelle (Name, Pfad, Datei) — der Textinhalt zählt
-    /// bewusst nicht: „Editor-Inhalt von X" bleibt dieselbe Quelle, auch
-    /// wenn der Nutzer inzwischen weitergetippt hat. Basis der Tab-
-    /// Wiederverwendung.
+    /// Dokumente behalten ihre Identität auch nach Bearbeiten oder Speichern.
+    /// Andere Quellen vergleichen Name, Pfad und Datei; Inhalt und Revision
+    /// entwerten den Auftrag, erzeugen aber keinen weiteren Vergleichs-Tab.
     func matchesLogically(_ other: FileDiffSide) -> Bool {
-        name == other.name && path == other.path && url == other.url
+        if documentOrigin != nil || other.documentOrigin != nil {
+            guard let documentOrigin, let otherOrigin = other.documentOrigin else { return false }
+            return documentOrigin.matchesLogically(otherOrigin)
+        }
+        return name == other.name && path == other.path && url == other.url
             && (text == nil) == (other.text == nil)
     }
 }
 
 /// Auftrag für einen Datei-Vergleichs-Tab. `id` unterscheidet Neuberechnungen
 /// desselben Vergleichs; inhaltlich gleiche Aufträge erkennt `matches(_:)`.
-struct FileDiffRequest: Hashable, Identifiable {
+struct FileDiffRequest: Hashable, Identifiable, Sendable {
     let id: UUID
     let left: FileDiffSide
     let right: FileDiffSide
@@ -112,12 +121,21 @@ struct FileDiffRequest: Hashable, Identifiable {
 
 /// Fertig berechneter Inhalt eines Datei-Vergleichs-Tabs: entweder ein
 /// Ergebnis oder eine erklärte Grenze (nie beides).
-struct FileDiffDocument: Hashable {
+struct FileDiffDocument: Hashable, Sendable {
     let result: FileDiff.Result?
     let limitation: FileDiffLimitation?
+    let leftSource: FileDiffSource?
+    let rightSource: FileDiffSource?
 
-    static func success(_ result: FileDiff.Result) -> FileDiffDocument {
-        FileDiffDocument(result: result, limitation: nil)
+    init(result: FileDiff.Result?, limitation: FileDiffLimitation?,
+         leftSource: FileDiffSource? = nil, rightSource: FileDiffSource? = nil) {
+        self.result = result; self.limitation = limitation
+        self.leftSource = leftSource; self.rightSource = rightSource
+    }
+
+    static func success(_ result: FileDiff.Result,
+                        leftSource: FileDiffSource? = nil, rightSource: FileDiffSource? = nil) -> FileDiffDocument {
+        FileDiffDocument(result: result, limitation: nil, leftSource: leftSource, rightSource: rightSource)
     }
     static func failure(_ limitation: FileDiffLimitation) -> FileDiffDocument {
         FileDiffDocument(result: nil, limitation: limitation)
@@ -150,13 +168,13 @@ enum FileDiff {
 
     // MARK: - Ergebnistypen
 
-    enum RowKind: Hashable {
+    enum RowKind: Hashable, Sendable {
         case unchanged, changed, removed, added
     }
 
     /// Eine ausgerichtete Anzeigezeile: links Vorher, rechts Nachher.
     /// `nil` auf einer Seite = dort existiert keine Gegenzeile.
-    struct Row: Hashable, Identifiable {
+    struct Row: Hashable, Identifiable, Sendable {
         /// Fortlaufender Index — stabile ForEach-Identität UND Scroll-Ziel.
         let id: Int
         /// 1-basierte Zeilennummern (wie im Editor-Gutter).
@@ -176,7 +194,7 @@ enum FileDiff {
         let isIgnoredBlank: Bool
     }
 
-    enum BlockKind: Hashable {
+    enum BlockKind: Hashable, Sendable {
         /// Zeilen auf beiden Seiten verändert.
         case changed
         /// Zeilen existieren nur links (entfernt).
@@ -187,7 +205,7 @@ enum FileDiff {
 
     /// Ein Eintrag der Differenzen-Liste: ein zusammenhängender Lauf
     /// veränderter Zeilen („Zeilen 12–14 geändert", „Zeile 30 nur links").
-    struct Block: Hashable, Identifiable {
+    struct Block: Hashable, Identifiable, Sendable {
         let id: Int
         /// Erste/letzte Zeile des Blocks im `rows`-Array (Scroll-Ziel und
         /// Hervorhebung des gewählten Blocks).
@@ -199,7 +217,7 @@ enum FileDiff {
         let afterLines: ClosedRange<Int>?
     }
 
-    struct Result: Hashable {
+    struct Result: Hashable, Sendable {
         let rows: [Row]
         let blocks: [Block]
         /// Zeilenanzahl beider Eingaben (für „N Zeilen identisch").
@@ -263,13 +281,12 @@ enum FileDiff {
         func checkCancellation() throws {
             if isCancelled() { throw CancellationError() }
         }
-        let leftLines = try logicalLines(in: left, isCancelled: isCancelled)
-        let rightLines = try logicalLines(in: right, isCancelled: isCancelled)
-        guard leftLines.count <= maximumLineCount else {
-            return .limitation(.tooManyLines(side: .left, limit: maximumLineCount))
-        }
-        guard rightLines.count <= maximumLineCount else {
-            return .limitation(.tooManyLines(side: .right, limit: maximumLineCount))
+        let leftLines: [String], rightLines: [String]
+        do {
+            leftLines = try logicalLines(in: left, side: .left, isCancelled: isCancelled)
+            rightLines = try logicalLines(in: right, side: .right, isCancelled: isCancelled)
+        } catch let limitation as FileDiffLimitation {
+            return .limitation(limitation)
         }
 
         // Vergleichs-Schlüssel je Zeile (Optionen); Anzeige bleibt Original.
@@ -385,31 +402,11 @@ enum FileDiff {
     /// `NSString.getLineStart` versteht LF, CR, CRLF und die Unicode-
     /// Zeilentrenner. Ein abschließender Terminator erzeugt ausdrücklich eine
     /// letzte Leerzeile, damit dieser Dateiunterschied sichtbar bleibt.
-    private static func logicalLines(in text: String,
+    private static func logicalLines(in text: String, side: FileDiffSideRole,
                                      isCancelled: () -> Bool) throws -> [String] {
+        let map = try FileDiffLineMap(text, side: side, isCancelled: isCancelled)
         let ns = text as NSString
-        guard ns.length > 0 else { return [""] }
-
-        var lines: [String] = []
-        var index = 0
-        var endedWithTerminator = false
-        while index < ns.length {
-            if lines.count % cancellationCheckStride == 0, isCancelled() {
-                throw CancellationError()
-            }
-            var end = NSNotFound
-            var contentsEnd = NSNotFound
-            ns.getLineStart(nil, end: &end, contentsEnd: &contentsEnd,
-                            for: NSRange(location: index, length: 0))
-            guard end != NSNotFound, contentsEnd != NSNotFound,
-                  end > index, contentsEnd >= index else { break }
-            lines.append(ns.substring(with: NSRange(
-                location: index, length: contentsEnd - index)))
-            endedWithTerminator = contentsEnd < end
-            index = end
-        }
-        if endedWithTerminator { lines.append("") }
-        return lines
+        return try mapCancellable(map.lines, isCancelled: isCancelled) { ns.substring(with: $0.contentRange) }
     }
 
     // MARK: - Zeilen-Ausrichtung

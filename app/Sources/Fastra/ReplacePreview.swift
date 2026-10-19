@@ -161,24 +161,27 @@ enum ReplacePreview {
         return Result(rows: rows, totalChangedLines: changed)
     }
 
-    /// Vollständiger Dokument-Diff. Zuerst entsteht der echte Nachher-Text
-    /// über alle Treffer hinweg; anschließend richtet `CollectionDifference`
-    /// eingefügte und entfernte Zeilen aus. Damit bleiben auch mehrzeilige
-    /// Ersetzungen korrekt — anders als bei der kompakten Inline-Vorschau.
-    static func buildSideBySide(
-        text: String,
-        matches: [BufferSearch.Match],
-        maxRows: Int = 5_000,
+    enum ReplacementTextOutcome {
+        case text(String)
+        case empty
+        case limitation(SideBySideLimitation)
+        case cancelled
+    }
+
+    /// Vorschau und freigegebene Speicheränderungen verwenden denselben
+    /// begrenzten Nachher-Text statt zwei unabhängiger Zusammensetzungen.
+    static func replacementText(
+        text: String, matches: [BufferSearch.Match],
         limits: SideBySideLimits = .standard,
         shouldCancel: @Sendable () -> Bool = { false }
-    ) -> SideBySideOutcome {
+    ) -> ReplacementTextOutcome {
         guard !shouldCancel() else { return .cancelled }
         let ns = text as NSString
         let valid = matches
             .filter { $0.range.location >= 0 && NSMaxRange($0.range) <= ns.length }
             .sorted { $0.range.location < $1.range.location }
         guard !shouldCancel() else { return .cancelled }
-        guard !valid.isEmpty else { return .result(.empty) }
+        guard !valid.isEmpty else { return .empty }
         guard text.utf8.count <= limits.maximumTextBytes else {
             return .limitation(.tooLarge(maximumBytes: limits.maximumTextBytes))
         }
@@ -221,6 +224,28 @@ enum ReplacePreview {
             }
         }
         guard !shouldCancel() else { return .cancelled }
+
+        return .text(after)
+    }
+
+    /// Vollständiger Dokument-Diff. Zuerst entsteht der echte Nachher-Text
+    /// über alle Treffer hinweg; anschließend richtet `CollectionDifference`
+    /// eingefügte und entfernte Zeilen aus. Damit bleiben auch mehrzeilige
+    /// Ersetzungen korrekt — anders als bei der kompakten Inline-Vorschau.
+    static func buildSideBySide(
+        text: String,
+        matches: [BufferSearch.Match],
+        maxRows: Int = 5_000,
+        limits: SideBySideLimits = .standard,
+        shouldCancel: @Sendable () -> Bool = { false }
+    ) -> SideBySideOutcome {
+        let after: String
+        switch replacementText(text: text, matches: matches, limits: limits, shouldCancel: shouldCancel) {
+        case .text(let value): after = value
+        case .empty: return .result(.empty)
+        case .limitation(let reason): return .limitation(reason)
+        case .cancelled: return .cancelled
+        }
 
         let beforeLines: [String]
         switch logicalLines(in: text, maximum: limits.maximumLineCount,

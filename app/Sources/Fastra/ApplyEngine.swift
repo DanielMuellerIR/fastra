@@ -128,6 +128,12 @@ struct PlannedMatch: Equatable {
     let before: String
     /// Der Text, der durch Apply dort stehen würde.
     let after: String
+
+    // Die Vorschau bindet exakte Bytes, nicht nur kanonisch gleiche Zeichen.
+    static func == (lhs: PlannedMatch, rhs: PlannedMatch) -> Bool {
+        lhs.range == rhs.range && lhs.before.utf8.elementsEqual(rhs.before.utf8)
+            && lhs.after.utf8.elementsEqual(rhs.after.utf8)
+    }
 }
 
 /// Plan für eine einzelne Datei. Entweder Treffer + neue Bytes, oder
@@ -149,6 +155,22 @@ struct PlannedFileChange: Equatable {
     let matches: [PlannedMatch]
     /// Wenn gesetzt, gibt es keine `matches`, keine `newBytes`.
     let skipped: SkipReason?
+    /// nil wendet alle Treffer an; eine leere Menge schreibt keinen Treffer.
+    let approvedRanges: Set<NSRange>?
+
+    init(url: URL, originalSnapshot: FileSnapshot?, encoding: String.Encoding?, bom: Data,
+         originalBytes: Data, newBytes: Data, matches: [PlannedMatch], skipped: SkipReason?,
+         approvedRanges: Set<NSRange>? = nil) {
+        self.url = url
+        self.originalSnapshot = originalSnapshot
+        self.encoding = encoding
+        self.bom = bom
+        self.originalBytes = originalBytes
+        self.newBytes = newBytes
+        self.matches = matches
+        self.skipped = skipped
+        self.approvedRanges = approvedRanges
+    }
 
     var hasChanges: Bool { skipped == nil && originalBytes != newBytes }
 }
@@ -185,6 +207,15 @@ struct ApplyTransaction {
         let url: URL
         let snapshot: FileSnapshot
         let matches: [PlannedMatch]
+        let approvedRanges: Set<NSRange>?
+
+        init(url: URL, snapshot: FileSnapshot, matches: [PlannedMatch],
+             approvedRanges: Set<NSRange>? = nil) {
+            self.url = url
+            self.snapshot = snapshot
+            self.matches = matches
+            self.approvedRanges = approvedRanges
+        }
     }
 
     enum Phase: Equatable {
@@ -238,6 +269,7 @@ struct ApplyTransaction {
 // MARK: - Engine
 
 enum ApplyEngine {
+    enum PlanningError: Error { case outputTooLarge }
     /// Erstellt einen Dry-Run-Plan über alle übergebenen Dateien. Liest die
     /// Dateien, BERÜHRT SIE ABER NICHT. Reihenfolge der Eingabe bleibt
     /// erhalten, damit Tests deterministisch arbeiten.
@@ -303,7 +335,8 @@ enum ApplyEngine {
                                    searchPlan: SearchPlan) -> PlannedFileChange {
         // Der normale Dry-Run besitzt kein Abbruchsignal. Der transaktionale
         // Pfad darunter verwendet dieselbe Logik mit einem echten Signal.
-        planSingleCancellable(url: url, data: data, snapshot: snapshot,
+        // Ohne Ausgabegrenze wirft der gemeinsame Planer keinen Fehler.
+        try! planSingleCancellable(url: url, data: data, snapshot: snapshot,
                               searchPlan: searchPlan,
                               shouldCancel: { false })!
     }
@@ -316,8 +349,11 @@ enum ApplyEngine {
         data: Data,
         snapshot: FileSnapshot,
         searchPlan: SearchPlan,
+        approvedRanges: Set<NSRange>? = nil,
+        maximumOutputTextBytes: Int? = nil,
+        maximumOutputBytes: Int? = nil,
         shouldCancel: @escaping () -> Bool
-    ) -> PlannedFileChange? {
+    ) throws -> PlannedFileChange? {
         if shouldCancel() { return nil }
         let originalSnapshot = snapshot
 
@@ -357,6 +393,16 @@ enum ApplyEngine {
         assembled.reserveCapacity(text.count)
         var cursor = 0
         var cancelled = false
+        var outputTooLarge = false
+        var outputBytes = 0
+        func append(_ piece: String) -> Bool {
+            if let maximumOutputTextBytes {
+                guard piece.utf8.count <= maximumOutputTextBytes - outputBytes else { return false }
+                outputBytes += piece.utf8.count
+            }
+            assembled.append(piece)
+            return true
+        }
         // RegEx und Template stammen aus dem einmal vorbereiteten Laufplan.
         searchPlan.regex.enumerateMatches(in: text, options: [.reportProgress],
                                           range: full) { result, _, stop in
@@ -370,7 +416,9 @@ enum ApplyEngine {
             // Stück vor dem Treffer unverändert übernehmen.
             if r.location > cursor {
                 let chunk = ns.substring(with: NSRange(location: cursor, length: r.location - cursor))
-                assembled.append(chunk)
+                guard append(chunk) else {
+                    outputTooLarge = true; stop.pointee = true; return
+                }
             }
             let before = ns.substring(with: r)
             // Über CaseTemplate statt direkt: unterstützt BBEdits
@@ -380,21 +428,30 @@ enum ApplyEngine {
                 for: result, in: text, regex: searchPlan.regex,
                 template: searchPlan.replacementTemplate
             )
-            assembled.append(after)
+            guard append(approvedRanges.map { $0.contains(r) } == false ? before : after) else {
+                outputTooLarge = true; stop.pointee = true; return
+            }
             matches.append(PlannedMatch(range: r, before: before, after: after))
             cursor = r.location + r.length
         }
         if cancelled { return nil }
+        if outputTooLarge { throw PlanningError.outputTooLarge }
         // Rest hinter dem letzten Treffer.
         if cursor < ns.length {
             let tail = ns.substring(with: NSRange(location: cursor, length: ns.length - cursor))
-            assembled.append(tail)
+            guard append(tail) else { throw PlanningError.outputTooLarge }
         }
 
         // 5. Re-Encoding. Wenn das fehlschlägt (z.B. neuer Text enthält
         //    Umlaute, die im Original-Encoding nicht darstellbar sind),
         //    melden wir das ehrlich — kein stiller Datenverlust.
-        guard let body = assembled.data(using: encoding) else {
+        if let maximumOutputBytes,
+           encodedSize(assembled, encoding: encoding) > maximumOutputBytes - bom.count {
+            throw PlanningError.outputTooLarge
+        }
+        guard let body = assembled.data(using: encoding, allowLossyConversion: false),
+              let roundTrip = decode(payload: body, encoding: encoding),
+              roundTrip.utf8.elementsEqual(assembled.utf8) else {
             return PlannedFileChange(url: url, originalSnapshot: originalSnapshot,
                                      encoding: encoding, bom: bom,
                                      originalBytes: data, newBytes: data,
@@ -407,24 +464,76 @@ enum ApplyEngine {
         return PlannedFileChange(url: url, originalSnapshot: originalSnapshot,
                                  encoding: encoding, bom: bom,
                                  originalBytes: data, newBytes: rebuilt,
-                                 matches: matches, skipped: nil)
+                                 matches: matches, skipped: nil, approvedRanges: approvedRanges)
     }
 
     /// Plant genau die stabil gelesene sichtbare Basis einer Transaktions-
     /// Datei und reicht Cancellation bis in die RegEx-Enumeration durch.
-    private static func planTransactionInput(
-        _ input: ReplacePlanInput,
+    static func planApprovedInput(
+        _ input: ApplyTransaction.Input,
+        data: Data,
+        snapshot: FileSnapshot,
         searchPlan: SearchPlan,
+        maximumOutputTextBytes: Int? = nil,
+        maximumOutputBytes: Int? = nil,
         shouldCancel: @escaping () -> Bool
     ) throws -> PlannedFileChange {
         if shouldCancel() { throw ApplyError.cancelled }
-        guard let file = planSingleCancellable(
-            url: input.url, data: input.data, snapshot: input.snapshot,
-            searchPlan: searchPlan, shouldCancel: shouldCancel
+        guard snapshot == input.snapshot else {
+            throw ApplyError.conflict(L10n.format(
+                "„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert.", input.url.lastPathComponent))
+        }
+        guard let file = try planSingleCancellable(
+            url: input.url, data: data, snapshot: snapshot,
+            searchPlan: searchPlan, approvedRanges: input.approvedRanges,
+            maximumOutputTextBytes: maximumOutputTextBytes, maximumOutputBytes: maximumOutputBytes,
+            shouldCancel: shouldCancel
         ) else {
             throw ApplyError.cancelled
         }
+        guard file.skipped == nil else {
+            if file.skipped == .undecodable, file.encoding != nil {
+                throw ApplyError.planNotApplyable(L10n.format("%@: %@", input.url.lastPathComponent,
+                    L10n.string("Das Ergebnis enthält Zeichen, die sich in der ursprünglichen Kodierung nicht verlustfrei speichern lassen.")))
+            }
+            throw ApplyError.planNotApplyable(L10n.format(
+                "„%@“ kann nicht auf der sichtbaren Vorschau-Basis ersetzt werden.", input.url.lastPathComponent))
+        }
+        // Unfreigegebene Treffer bleiben Teil der geprüften Basis. Nur die
+        // Ausgabe wird gefiltert; eine Teilfreigabe darf keine Lücke im
+        // Snapshot- oder Treffervergleich erzeugen.
+        guard file.matches == input.matches,
+              input.approvedRanges.map({ $0.isSubset(of: Set(file.matches.map(\.range))) }) != false else {
+            throw ApplyError.conflict(L10n.string(
+                "Die berechnete Änderung stimmt nicht mehr mit der sichtbaren Vorschau überein. Starte die Suche erneut; es wurde nichts verändert."))
+        }
+        if file.hasChanges { try checkWritePermission(at: input.url) }
         return file
+    }
+
+    static func isWritableTarget(_ url: URL) -> Bool {
+        FileManager.default.isWritableFile(atPath: url.path)
+            && FileManager.default.isWritableFile(atPath: url.deletingLastPathComponent().path)
+    }
+
+    static func checkWritePermission(at url: URL) throws {
+        guard isWritableTarget(url) else {
+            throw ApplyError.planNotApplyable(writePermissionMessage(at: url))
+        }
+    }
+
+    static func encodedSize(_ text: String, encoding: String.Encoding) -> Int {
+        switch encoding {
+        case .utf8: return text.utf8.count
+        case .utf16LittleEndian, .utf16BigEndian: return text.utf16.count * 2
+        case .utf32LittleEndian, .utf32BigEndian: return text.unicodeScalars.count * 4
+        default: return text.unicodeScalars.count
+        }
+    }
+
+    private static func writePermissionMessage(at url: URL) -> String {
+        L10n.format("%@: %@", url.lastPathComponent,
+            L10n.string("Die Datei oder ihr Ordner ist schreibgeschützt."))
     }
 
     // MARK: - Pattern-Bau
@@ -741,13 +850,6 @@ extension ApplyEngine {
         atomicReplace: ((Data, URL, URL) throws -> Void)? = nil,
         manifestWriter: ((ApplySession) throws -> Void)? = nil
     ) throws -> ApplySession {
-        // Testhaken wie beim Undo: `manifestWriter` ersetzt das Schreiben des
-        // Journals, `atomicReplace` den atomaren Austausch. Das Produkt
-        // übergibt beides nie.
-        func persist(_ candidate: ApplySession) throws {
-            if let manifestWriter { try manifestWriter(candidate) }
-            else { try writeManifest(candidate) }
-        }
         guard !transaction.inputs.isEmpty, !transaction.options.isEmpty else {
             throw ApplyError.planNotApplyable(L10n.string("Der Apply-Auftrag ist leer."))
         }
@@ -759,6 +861,97 @@ extension ApplyEngine {
             throw ApplyError.planNotApplyable((error as NSError).localizedDescription)
         }
 
+        return try executePrepared(
+            inputs: transaction.inputs, sourceURL: { $0.url }, sourceSnapshot: { $0.snapshot },
+            prepare: { input, data, snapshot in
+                let file = try planApprovedInput(
+                    input, data: data, snapshot: snapshot,
+                    searchPlan: searchPlan, shouldCancel: shouldCancel)
+                return PreparedReplacement(originalBytes: file.originalBytes, newBytes: file.newBytes,
+                                           encoding: file.encoding, bom: file.bom)
+            }, backupRoot: backupRoot, cleanupOlderThan: cleanupOlderThan,
+            shouldCancel: shouldCancel, progress: progress, beforePreflight: beforePreflight,
+            beforeAtomicReplace: beforeAtomicReplace, atomicReplace: atomicReplace, manifestWriter: manifestWriter)
+    }
+
+    /// Der Ablaufplan trägt seine vollständigen Original-/Nachherbytes selbst.
+    /// Suche und Ablauf teilen danach Preflight, Journal, Austausch und Undo.
+    static func execute(
+        workflowPlan: TextWorkflowFilePlan,
+        backupRoot: URL? = nil,
+        cleanupOlderThan: TimeInterval? = 30 * 24 * 60 * 60,
+        shouldCancel: @escaping @Sendable () -> Bool = { false },
+        progress: (ApplyTransaction.Progress) -> Void = { _ in },
+        beforePreflight: (() throws -> Void)? = nil,
+        beforeAtomicReplace: ((URL) throws -> Void)? = nil,
+        atomicReplace: ((Data, URL, URL) throws -> Void)? = nil,
+        manifestWriter: ((ApplySession) throws -> Void)? = nil
+    ) throws -> ApplySession {
+        guard workflowPlan.changedFileCount > 0 else { throw TextWorkflowFilePlan.Failure.noChanges }
+        let byURL = Dictionary(uniqueKeysWithValues: workflowPlan.files.map { ($0.url, $0) })
+        func validateBinding(_ file: TextWorkflowFilePlan.File) throws {
+            guard file.requestedURL.canonicalFileURL == file.url else {
+                throw ApplyError.conflict(L10n.format(
+                    "„%@“ wurde während des Apply geändert.", file.requestedURL.lastPathComponent))
+            }
+            if file.changed { try TextWorkflowFilePlan.requireWritable(file.url) }
+        }
+        return try executePrepared(
+            inputs: workflowPlan.files, sourceURL: { $0.url }, sourceSnapshot: { $0.snapshot },
+            prepare: { file, data, _ in
+                try validateBinding(file)
+                guard data == file.originalBytes else {
+                    throw ApplyError.conflict(L10n.format(
+                        "„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert.", file.requestedURL.lastPathComponent))
+                }
+                return PreparedReplacement(originalBytes: data, newBytes: file.newBytes,
+                                           encoding: file.encoding, bom: file.bom)
+            }, backupRoot: backupRoot, cleanupOlderThan: cleanupOlderThan,
+            shouldCancel: shouldCancel, progress: progress,
+            beforePreflight: {
+                try beforePreflight?()
+                for file in workflowPlan.files { try validateBinding(file) }
+            }, beforeAtomicReplace: { url in
+                try beforeAtomicReplace?(url)
+                if let file = byURL[url] { try validateBinding(file) }
+            }, atomicReplace: atomicReplace, manifestWriter: manifestWriter)
+    }
+
+    private struct PreparedReplacement {
+        let originalBytes: Data
+        let newBytes: Data
+        let encoding: String.Encoding?
+        let bom: Data
+        var hasChanges: Bool { originalBytes != newBytes }
+    }
+
+    private struct StagedFile {
+        let url: URL
+        let expectedSnapshot: FileSnapshot
+        let backupRelativePath: String
+        let stagedNewURL: URL
+        let originalSHA256: String
+        let expectedNewContent: FileSnapshot
+        let encodingRawValue: UInt?
+        let bom: Data
+    }
+
+    private static func executePrepared<Input>(
+        inputs: [Input], sourceURL: (Input) -> URL, sourceSnapshot: (Input) -> FileSnapshot,
+        prepare: (Input, Data, FileSnapshot) throws -> PreparedReplacement,
+        backupRoot: URL?, cleanupOlderThan: TimeInterval?,
+        shouldCancel: @escaping @Sendable () -> Bool,
+        progress: (ApplyTransaction.Progress) -> Void,
+        beforePreflight: (() throws -> Void)?, beforeAtomicReplace: ((URL) throws -> Void)?,
+        atomicReplace: ((Data, URL, URL) throws -> Void)?, manifestWriter: ((ApplySession) throws -> Void)?
+    ) throws -> ApplySession {
+        // Testhaken wie beim Undo: `manifestWriter` ersetzt das Schreiben des
+        // Journals, `atomicReplace` den atomaren Austausch. Das Produkt
+        // übergibt beides nie.
+        func persist(_ candidate: ApplySession) throws {
+            if let manifestWriter { try manifestWriter(candidate) }
+            else { try writeManifest(candidate) }
+        }
         let root = backupRoot ?? defaultBackupRoot
         if let maxAge = cleanupOlderThan {
             try? cleanupBackups(maxAge: maxAge, in: root)
@@ -778,17 +971,6 @@ extension ApplyEngine {
                 "Backup-Ordner anlegen: %@", error.localizedDescription))
         }
 
-        struct StagedFile {
-            let url: URL
-            let expectedSnapshot: FileSnapshot
-            let backupRelativePath: String
-            let stagedNewURL: URL
-            let originalSHA256: String
-            let expectedNewContent: FileSnapshot
-            let encodingRawValue: UInt?
-            let bom: Data
-        }
-
         var keepSession = false
         defer {
             try? FileManager.default.removeItem(at: stagedDir)
@@ -796,50 +978,40 @@ extension ApplyEngine {
         }
 
         var staged: [StagedFile] = []
-        staged.reserveCapacity(transaction.inputs.count)
+        staged.reserveCapacity(inputs.count)
         // Erwarteter Platten-Stand JEDER Eingabe — auch der wirkungslosen, die
         // unten übersprungen werden. Der globale Preflight prüft diese Liste,
         // nicht nur `staged`: Sonst bliebe eine Datei, die sich nach ihrer
         // Planung noch ändert, unbemerkt, obwohl die Transaktion zusagt, vor
         // dem ersten Schreiben ALLE Ziele erneut zu prüfen (Review 2026-08-06).
         var expectedOnDisk: [(url: URL, snapshot: FileSnapshot)] = []
-        expectedOnDisk.reserveCapacity(transaction.inputs.count)
-        let total = transaction.inputs.count
+        expectedOnDisk.reserveCapacity(inputs.count)
+        let total = inputs.count
 
         // Planung + Backup halten immer nur die aktuelle Datei im Speicher.
-        // Die Vorschau-Matches werden noch einmal byte-/rangegenau verglichen.
-        for (index, input) in transaction.inputs.enumerated() {
+        // Der jeweilige Planadapter bestätigt dabei die vollständige Vorschaubasis.
+        for (index, input) in inputs.enumerated() {
             if shouldCancel() { throw ApplyError.cancelled }
-            guard let current = try? FileSnapshot.read(from: input.url),
-                  current.snapshot == input.snapshot else {
+            let url = sourceURL(input)
+            let snapshot = sourceSnapshot(input)
+            guard let current = try? FileSnapshot.read(from: url, byteLimit: UInt64(max(0, snapshot.byteCount))),
+                  current.snapshot == snapshot else {
                 throw ApplyError.conflict(L10n.format(
                     "„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert.",
-                    input.url.lastPathComponent))
+                    url.lastPathComponent))
             }
-            let file = try planTransactionInput(
-                ReplacePlanInput(url: input.url, data: current.data,
-                                 snapshot: current.snapshot),
-                searchPlan: searchPlan, shouldCancel: shouldCancel)
-            guard file.skipped == nil else {
-                throw ApplyError.planNotApplyable(L10n.format(
-                    "„%@“ kann nicht auf der sichtbaren Vorschau-Basis ersetzt werden.",
-                    input.url.lastPathComponent))
-            }
-            guard file.matches == input.matches else {
-                throw ApplyError.conflict(L10n.string(
-                    "Die berechnete Änderung stimmt nicht mehr mit der sichtbaren Vorschau überein. Starte die Suche erneut; es wurde nichts verändert."))
-            }
+            let file = try prepare(input, current.data, current.snapshot)
             // Nachher-Prüfung und Undo lesen über dieselbe feste Grenze.
             // Eine größere Ausgabe muss vor dem ersten Ziel-Write scheitern.
             guard UInt64(file.newBytes.count) <= FileSnapshot.maximumReadBytes else {
                 throw ApplyError.planNotApplyable(L10n.format(
                     "Die Ersetzung würde „%@“ über die sichere Größe von 256 MiB vergrößern. Es wurde nichts verändert.",
-                    input.url.lastPathComponent))
+                    url.lastPathComponent))
             }
-            expectedOnDisk.append((url: input.url, snapshot: current.snapshot))
+            expectedOnDisk.append((url: url, snapshot: current.snapshot))
             progress(ApplyTransaction.Progress(
                 phase: .planned, completedFiles: index + 1,
-                totalFiles: total, fileName: input.url.lastPathComponent))
+                totalFiles: total, fileName: url.lastPathComponent))
 
             // Datei mit Treffern, deren Ersetzungen aber exakt den Ausgangstext
             // ergeben (etwa „foo" → „foo"): Es gibt nichts zu schreiben. Diese
@@ -848,6 +1020,7 @@ extension ApplyEngine {
             // Datei den GESAMTEN Auftrag ab und verhinderte damit alle echten
             // Änderungen der übrigen Dateien (Review 2026-08-02).
             guard file.hasChanges else { continue }
+            try checkWritePermission(at: url)
 
             let backupRelativePath = "files/\(index).bin"
             let backupURL = sessionDir.appendingPathComponent(backupRelativePath)
@@ -857,11 +1030,11 @@ extension ApplyEngine {
                 try file.newBytes.write(to: stagedNewURL, options: .atomic)
             } catch {
                 throw ApplyError.backupFailed(L10n.format(
-                    "Backup vorbereiten (%@): %@", input.url.lastPathComponent,
+                    "Backup vorbereiten (%@): %@", url.lastPathComponent,
                     error.localizedDescription))
             }
             staged.append(StagedFile(
-                url: input.url, expectedSnapshot: current.snapshot,
+                url: url, expectedSnapshot: current.snapshot,
                 backupRelativePath: backupRelativePath,
                 stagedNewURL: stagedNewURL,
                 originalSHA256: current.snapshot.sha256,
@@ -869,7 +1042,7 @@ extension ApplyEngine {
                 encodingRawValue: file.encoding?.rawValue, bom: file.bom))
             progress(ApplyTransaction.Progress(
                 phase: .backedUp, completedFiles: index + 1,
-                totalFiles: total, fileName: input.url.lastPathComponent))
+                totalFiles: total, fileName: url.lastPathComponent))
         }
 
         // Ändert sich durch die Ersetzung KEINE einzige Datei, ist der Auftrag
@@ -886,12 +1059,16 @@ extension ApplyEngine {
         // wird. Der Durchlauf liest weiterhin nur eine Datei gleichzeitig.
         for item in expectedOnDisk {
             if shouldCancel() { throw ApplyError.cancelled }
-            guard let current = try? FileSnapshot.read(from: item.url),
+            guard let current = try? FileSnapshot.read(from: item.url, byteLimit: UInt64(max(0, item.snapshot.byteCount))),
                   current.snapshot == item.snapshot else {
                 throw ApplyError.conflict(L10n.format(
                     "„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert.",
                     item.url.lastPathComponent))
             }
+        }
+        for item in staged {
+            if shouldCancel() { throw ApplyError.cancelled }
+            try checkWritePermission(at: item.url)
         }
         if shouldCancel() { throw ApplyError.cancelled }
 
@@ -974,6 +1151,7 @@ extension ApplyEngine {
                                 item.url.lastPathComponent))
                         }
                         try beforeAtomicReplace?(coordinatedURL)
+                        try checkWritePermission(at: coordinatedURL)
                         // Der injizierte Testpfad kann nach einer Nebenwirkung
                         // werfen. Dann bleibt `pending` wie bisher erhalten.
                         replacementAttempted = true
@@ -986,7 +1164,10 @@ extension ApplyEngine {
                                 withPreparedFile: temporaryURL,
                                 expecting: item.expectedSnapshot,
                                 replacementContent: expectedApplied,
-                                beforeSwap: beforeAtomicReplace)
+                                beforeSwap: { url in
+                                    try beforeAtomicReplace?(url)
+                                    try checkWritePermission(at: url)
+                                })
                         } catch let failure as AtomicFileCommit.Failure {
                             preserveTemporaryForRecovery =
                                 failure.mustPreservePreparedPath
@@ -1044,6 +1225,10 @@ extension ApplyEngine {
                     if !keepSession { throw ApplyError.conflict(message) }
                     throw ApplyError.writeFailed(partial: session, message: message)
                 }
+                if case ApplyError.planNotApplyable(let message) = error {
+                    if !keepSession { throw ApplyError.planNotApplyable(message) }
+                    throw ApplyError.writeFailed(partial: session, message: message)
+                }
                 throw ApplyError.writeFailed(
                     partial: session,
                     message: L10n.format("%@: %@", item.url.lastPathComponent,
@@ -1085,7 +1270,7 @@ extension ApplyEngine {
             .compactMap { file -> ApplyTransaction.Input? in
                 guard let snapshot = file.originalSnapshot else { return nil }
                 return ApplyTransaction.Input(url: file.url, snapshot: snapshot,
-                                              matches: file.matches)
+                                              matches: file.matches, approvedRanges: file.approvedRanges)
             }
         let transaction = ApplyTransaction(inputs: inputs, options: plan.options)
         return try execute(transaction: transaction,
@@ -1231,6 +1416,9 @@ extension ApplyEngine {
                                          state: .applied)
                 working = replacing(working, index: index, with: resolved)
             }
+            guard isWritableTarget(target) else {
+                throw conflictError(writePermissionMessage(at: target))
+            }
             prepared.append(index)
         }
 
@@ -1280,6 +1468,9 @@ extension ApplyEngine {
                                 target.lastPathComponent))
                         }
                         try beforeAtomicReplace?(coordinatedURL)
+                        guard isWritableTarget(coordinatedURL) else {
+                            throw ApplyError.undoConflict(writePermissionMessage(at: coordinatedURL))
+                        }
                         try atomicReplace(backupBytes, coordinatedURL, tmp)
                     } else {
                         do {
@@ -1289,7 +1480,12 @@ extension ApplyEngine {
                                 expecting: appliedSnapshot,
                                 replacementContent: FileSnapshot(
                                     data: backupBytes, identity: nil),
-                                beforeSwap: beforeAtomicReplace)
+                                beforeSwap: { url in
+                                    try beforeAtomicReplace?(url)
+                                    guard isWritableTarget(url) else {
+                                        throw ApplyError.undoConflict(writePermissionMessage(at: url))
+                                    }
+                                })
                         } catch let failure as AtomicFileCommit.Failure {
                             preserveTemporaryForRecovery =
                                 failure.mustPreservePreparedPath

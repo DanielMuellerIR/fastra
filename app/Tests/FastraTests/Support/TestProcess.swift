@@ -185,3 +185,28 @@ func stopTestFixtureProcess(_ pid: pid_t, marker: String,
         usleep(10_000)
     }
 }
+
+/// Die Runner-Fixtures dürfen eine parallel benutzte Produkt-App nicht als
+/// Teil ihrer künstlichen Prozesswelt behandeln. Nur die eine globale
+/// Fremd-App-Abfrage wird ausgeblendet; Kindprozess-Abfragen gehen weiter an
+/// das echte `pgrep`, damit die Cleanup-Tests aussagekräftig bleiben.
+func pathIgnoringForeignFastraProcess(in root: URL) throws -> String {
+    let bin = root.appendingPathComponent("bin")
+    let pgrep = bin.appendingPathComponent("pgrep")
+    try FileManager.default.createDirectory(
+        at: bin, withIntermediateDirectories: true
+    )
+    try #"""
+    #!/bin/bash
+    if [ "${1:-}" = "-f" ] \
+       && [ "${2:-}" = '/Fastra\.app/Contents/MacOS/Fastra([[:space:]]|$)' ]; then
+      exit 1
+    fi
+    exec /usr/bin/pgrep "$@"
+    """#.write(to: pgrep, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: pgrep.path
+    )
+    let oldPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+    return bin.path + ":" + oldPath
+}

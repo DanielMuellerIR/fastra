@@ -70,6 +70,7 @@ enum FolderSearch {
         /// Such-/Ersetzungssemantik, unter der diese Treffer entstanden sind.
         /// Sie schützt auch das kurze Debounce-Fenster nach einer UI-Änderung.
         let searchOptions: SearchOptions
+        var isWritable = true
 
         var hasMatches: Bool { skipped == nil && !matches.isEmpty }
 
@@ -77,6 +78,7 @@ enum FolderSearch {
             lhs.url == rhs.url && lhs.matches == rhs.matches
                 && lhs.totalMatches == rhs.totalMatches && lhs.skipped == rhs.skipped
                 && lhs.snapshot == rhs.snapshot && lhs.searchOptions == rhs.searchOptions
+                && lhs.isWritable == rhs.isWritable
         }
     }
 
@@ -219,7 +221,9 @@ enum FolderSearch {
             let fm = FileManager.default
             var rootIsDirectory: ObjCBool = false
             guard fm.fileExists(atPath: folder.path, isDirectory: &rootIsDirectory) else {
-                continue
+                return Result(perFile: [], invalidPatternMessage: L10n.format(
+                    "Die Suchquelle „%@“ fehlt oder ist nicht zugänglich. Die Suche ist unvollständig.", folder.lastPathComponent),
+                    wasCapped: false)
             }
             // Einzelne Datei und Ordner liefern Kandidaten für denselben
             // Suchpfad: Dateibasis, Abbruch und Treffergrenzen dürfen nicht
@@ -380,7 +384,7 @@ enum FolderSearch {
     /// Merkt für jeden Elternordner, ob er selbst oder ein Vorfahr unterhalb
     /// der Suchwurzel ein macOS-Paket ist. So kostet ein Ordner mit tausenden
     /// Dateien nur eine `resourceValues`-Abfrage statt tausender identischer.
-    private struct PackageMembershipCache {
+    struct PackageMembershipCache {
         let rootPath: String
         var membershipByDirectory: [String: Bool] = [:]
 
@@ -394,7 +398,8 @@ enum FolderSearch {
 
         private mutating func containsDirectory(_ directory: URL) -> Bool {
             let path = directory.standardizedFileURL.path
-            guard path == rootPath || path.hasPrefix(rootPath + "/") else { return false }
+            let prefix = rootPath == "/" ? "/" : rootPath + "/"
+            guard path == rootPath || path.hasPrefix(prefix) else { return false }
             if let cached = membershipByDirectory[path] { return cached }
 
             let directoryIsPackage =
@@ -495,7 +500,8 @@ enum FolderSearch {
         // bleiben materialisiert begrenzt (UI-Speicher).
         return PerFileResult(url: url, matches: capped,
                              totalMatches: search.totalMatches, skipped: nil,
-                             snapshot: read.snapshot, searchOptions: options)
+                             snapshot: read.snapshot, searchOptions: options,
+                             isWritable: ApplyEngine.isWritableTarget(url))
     }
 }
 
@@ -510,8 +516,12 @@ enum PathExclusion {
             let expression: NSRegularExpression
 
             func matches(_ value: String) -> Bool {
-                let range = NSRange(location: 0, length: (value as NSString).length)
-                return expression.firstMatch(in: value, range: range) != nil
+                // Verzeichnislisten können zerlegte Zeichen liefern,
+                // Eingabemuster zusammengesetzte. Beide Schreibweisen
+                // müssen dieselben Ausschlüsse treffen.
+                let candidate = value.precomposedStringWithCanonicalMapping
+                let range = NSRange(location: 0, length: (candidate as NSString).length)
+                return expression.firstMatch(in: candidate, range: range) != nil
             }
         }
 
@@ -522,7 +532,7 @@ enum PathExclusion {
             rootPath = root?.standardizedFileURL.path
             rules = patterns.compactMap { raw in
                 guard let pattern = PathExclusion.normalizedPattern(raw) else { return nil }
-                let regex = PathExclusion.regularExpression(for: pattern)
+                let regex = PathExclusion.regularExpression(for: pattern.precomposedStringWithCanonicalMapping)
                 return Rule(
                     matchesWholeRelativePath: pattern.contains("/"),
                     expression: try! NSRegularExpression(pattern: regex)
@@ -535,9 +545,10 @@ enum PathExclusion {
             let relative: String
             if let rootPath {
                 let path = url.standardizedFileURL.path
-                guard path == rootPath || path.hasPrefix(rootPath + "/") else { return false }
+                let prefix = rootPath == "/" ? "/" : rootPath + "/"
+                guard path == rootPath || path.hasPrefix(prefix) else { return false }
                 relative = path == rootPath
-                    ? "" : String(path.dropFirst(rootPath.count + 1))
+                    ? "" : String(path.dropFirst(prefix.count))
             } else {
                 relative = url.lastPathComponent
             }

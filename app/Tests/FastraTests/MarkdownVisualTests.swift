@@ -7,6 +7,59 @@ import Testing
 
 @Suite("Markdown-WYSIWYG", .serialized)
 struct MarkdownVisualTests {
+
+    @Test("Inline-HTML-Gliederungsmarker überleben Bearbeiten und Undo ohne Quelländerung")
+    @MainActor func outlineMarkerUndoRoundtrip() async throws {
+        let source = "# Echt\n\nText <h2>Inline-HTML</h2> danach.\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("""
+            const h=document.querySelector('[data-md-outline-ignore]'),r=document.createRange();
+            r.selectNodeContents(h);r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);
+            document.execCommand('insertText',false,'X');fastraVisual.flush();
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content.utf8.elementsEqual(source.utf8) == true })
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('[data-md-outline-ignore]').length") as? Int == 1)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        #expect(MarkdownOutline.headings(in: workspace.activeTab!.content).map(\.title) == ["Echt"])
+    }
+
+    @Test("Leerzeichenzeilen zwischen Inline-Code-Umbrüchen bleiben beim Öffnen erhalten")
+    @MainActor func inlineCodeWhitespaceLine() async throws {
+        let (_, coordinator, web, window) = try await editor("Text\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("""
+            const p=document.querySelector('p'),r=document.createRange();r.selectNodeContents(p);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            document.execCommand('insertHTML',false,'<code>A<br>  <br>B</code>');fastraVisual.flush();
+            """)
+        let source = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
+        coordinator.load(source, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
+        try #require(await waitUntil { coordinator.ready })
+        #expect(try await web.evaluateJavaScript("Array.from(document.querySelectorAll('code'),n=>n.textContent)") as? [String] == ["A", "  ", "B"], Comment(rawValue: source))
+    }
+
+    @Test("Quelltext-Ursprünge springen nach Moduswechsel zur bisherigen Überschrift")
+    @MainActor func outlineModeSwitchHistory() async throws {
+        let source = "# A\n\n## B\n\n### C\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let outline = workspace.documentOutline
+        outline.refresh(in: workspace)
+        try #require(await waitUntil { outline.ready })
+        workspace.tabs[0].markdownVisualOverride = false
+        workspace.visualMarkdownEditor = nil
+        workspace.cursorLine = 3; outline.follow(line: 3)
+        outline.jump(to: outline.headings[2], in: workspace)
+        workspace.tabs[0].markdownVisualOverride = true
+        workspace.visualMarkdownEditor = coordinator
+        outline.move(-1, in: workspace)
+        try #require(await waitUntil { outline.activeHeading == 1 })
+        #expect(try await web.evaluateJavaScript("(()=>{const n=getSelection().anchorNode;return (n?.nodeType===1?n:n?.parentElement)?.closest('h2')?.textContent || '';})()") as? String == "B")
+    }
+
     @Test("DPI-Metadaten bestimmen die Bildgröße in WYSIWYG und Vorschau", arguments: [72.0, 144.0, 216.0])
     @MainActor
     func imageLogicalSize(_ dpi: Double) async throws {
@@ -390,6 +443,148 @@ struct MarkdownVisualTests {
         withExtendedLifetime(coordinator) {}
     }
 
+    @Test("Gliederung springt und folgt im echten visuellen DOM ohne Markdown oder Undo zu ändern")
+    @MainActor func outlineNavigation() async throws {
+        let source = "# Anfang\n\nText 😀\n\n<div><h2>Geschützt</h2></div>\n\nText <h2>Inline-HTML</h2> danach.\n\nUntertitel\n----------\n\n> ### Dritter\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let outline = workspace.documentOutline
+        outline.refresh(in: workspace)
+        try #require(await waitUntil { outline.ready })
+        #expect(outline.headings.count == 3)
+        outline.jump(to: outline.headings[2], in: workspace)
+        try #require(await waitUntil { outline.activeHeading == 2 })
+        let selectedScript = "(()=>{const n=getSelection().anchorNode;return (n?.nodeType===1?n:n?.parentElement)?.closest('h1,h2,h3')?.textContent || '';})()"
+        var selected = try await web.evaluateJavaScript(selectedScript) as? String
+        #expect(selected == "Dritter")
+        outline.move(-1, in: workspace)
+        try #require(await waitUntil { outline.activeHeading != 2 })
+        outline.move(1, in: workspace)
+        try #require(await waitUntil { outline.activeHeading == 2 })
+        selected = try await web.evaluateJavaScript(selectedScript) as? String
+        #expect(selected == "Dritter")
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        #expect(workspace.activeTab?.content == source)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Ein Gliederungssprung in langen Dokumenten scrollt die wirkliche WebKit-Ansicht")
+    @MainActor func outlineScrollsLongDocument() async throws {
+        let source = "# Anfang\n\n" + String(repeating: "Absatz.\n\n", count: 180) + "### Ende\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        workspace.documentOutline.refresh(in: workspace)
+        try #require(await waitUntil { workspace.documentOutline.ready })
+        workspace.documentOutline.jump(to: workspace.documentOutline.headings[1], in: workspace)
+        var scroll = 0.0
+        for _ in 0..<100 {
+            scroll = (try await web.evaluateJavaScript("window.scrollY")) as? Double ?? 0
+            if scroll > 0 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(scroll > 0)
+        #expect(try await web.evaluateJavaScript("document.querySelector('h3').getBoundingClientRect().top < innerHeight") as? Bool == true)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Native Suche findet sichtbaren Text über Formatgrenzen und ignoriert Markdown und Linkadressen")
+    @MainActor func visualFindRenderedText() async throws {
+        let source = "# Titel\n\nEin **fetter** Text 😀 Ende.\n\n[Linktext](https://hidden.invalid/target)\n\n| Links | Rechts |\n| --- | --- |\n| Zelle | Wert |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let find = workspace.markdownVisualFind
+        find.present(in: workspace)
+        try #require(await waitUntil { find.isPresented })
+        func search(_ query: String, sensitive: Bool = false) async throws -> MarkdownVisualFindController.Status {
+            find.query = query; find.caseSensitive = sensitive
+            find.schedule(in: workspace)
+            try #require(await waitUntil { find.status == .found || find.status == .missing })
+            return find.status
+        }
+        #expect(try await search("fetter Text 😀") == .found)
+        #expect(try await search("**fetter**") == .missing)
+        #expect(try await search("hidden.invalid") == .missing)
+        #expect(try await search("FETTER", sensitive: true) == .missing)
+        #expect(try await search("FETTER") == .found)
+        #expect(try await search("Zelle") == .found)
+        find.close(in: workspace)
+        #expect(!find.isPresented)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        #expect(workspace.activeTab?.content == source)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Native Suchnavigation scrollt vorwärts, rückwärts und um den Dokumentrand")
+    @MainActor func visualFindNavigation() async throws {
+        let source = "# Titel\n\nNEEDLE oben\n\n" + String(repeating: "Absatz.\n\n", count: 180) + "NEEDLE unten\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let find = workspace.markdownVisualFind
+        find.present(in: workspace)
+        try #require(await waitUntil { find.isPresented })
+        find.query = "NEEDLE"; find.schedule(in: workspace)
+        try #require(await waitUntil { find.status == .found })
+        let first = (try await web.evaluateJavaScript("window.scrollY")) as? Double ?? -1
+        find.find(in: workspace)
+        try #require(await waitUntil { find.status == .found })
+        let second = (try await web.evaluateJavaScript("window.scrollY")) as? Double ?? -1
+        #expect(second > first + 100)
+        find.find(in: workspace, backwards: true)
+        try #require(await waitUntil { find.status == .found })
+        let previous = (try await web.evaluateJavaScript("window.scrollY")) as? Double ?? -1
+        #expect(abs(previous - first) < 2)
+        find.find(in: workspace, backwards: true)
+        try #require(await waitUntil { find.status == .found })
+        let wrapped = (try await web.evaluateJavaScript("window.scrollY")) as? Double ?? -1
+        #expect(abs(wrapped - second) < 2)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Verspätete Suchantworten gehören weder zu einem anderen Tab noch zu einem anderen Fenster")
+    @MainActor func visualFindIsolation() async throws {
+        let (workspace, coordinator, web, window) = try await editor("# A\n\nAlpha\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let find = workspace.markdownVisualFind, originalID = workspace.activeTabID!
+        find.present(in: workspace)
+        try #require(await waitUntil { find.isPresented })
+        find.query = "Alpha"; find.schedule(in: workspace)
+        var second = EditorTab(title: "b.md", path: "", content: "# B\n\nBeta\n")
+        second.markdownVisualOverride = true
+        workspace.tabs.append(second); workspace.activeTabID = second.id
+        find.bind(in: workspace)
+        try await Task.sleep(for: .milliseconds(250))
+        #expect(!find.isPresented && find.status == .idle && find.query.isEmpty)
+        #expect(Workspace().markdownVisualFind.query.isEmpty)
+        workspace.activeTabID = originalID
+        find.bind(in: workspace)
+        #expect(find.query == "Alpha")
+        #expect(workspace.tabs[1].content == second.content)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Native Suche erhält den bestehenden Undo-/Redo-Schritt einer Texteingabe")
+    @MainActor func visualFindPreservesUndo() async throws {
+        let source = "# Titel\n\nText.\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('insertText',false,'!');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("!") == true })
+        let changed = workspace.activeTab!.content
+        let find = workspace.markdownVisualFind
+        find.present(in: workspace)
+        try #require(await waitUntil { find.isPresented })
+        find.query = "Text"; find.schedule(in: workspace)
+        try #require(await waitUntil { find.status == .found })
+        find.close(in: workspace)
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == changed })
+        withExtendedLifetime(coordinator) {}
+    }
+
     @MainActor
     private func editor(_ source: String, documentURL: URL? = nil) async throws -> (Workspace, MarkdownVisualCoordinator, MarkdownVisualWKWebView, NSWindow) {
         let workspace = Workspace()
@@ -732,6 +927,207 @@ struct MarkdownVisualTests {
         withExtendedLifetime(coordinator) {}
     }
 
+    @Test("Abbauen der Tabellenansicht invalidiert keinen zerstörten SwiftUI-Graphen")
+    @MainActor
+    func tableViewTeardown() async throws {
+        let workspace = Workspace()
+        var tab = EditorTab(title: "table.md", path: "", content: "| Kopf |\n| --- |\n| Zelle |\n")
+        tab.markdownVisualOverride = true
+        workspace.tabs = [tab]; workspace.activeTabID = tab.id
+        var host: NSHostingView<AnyView>? = NSHostingView(rootView: AnyView(EditorView().environmentObject(workspace)))
+        host?.frame = NSRect(x: 0, y: 0, width: 700, height: 500)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        host?.layoutSubtreeIfNeeded()
+        defer { window.close() }
+        try #require(await waitUntil(timeout: 12) { workspace.visualMarkdownEditor?.ready == true })
+        _ = try await workspace.visualMarkdownEditor?.web?.evaluateJavaScript("{const c=document.querySelector('td'),r=document.createRange();r.selectNodeContents(c);getSelection().removeAllRanges();getSelection().addRange(r);}")
+        try #require(await waitUntil { workspace.markdownTable.context != nil })
+        window.contentView = nil
+        host = nil
+        try #require(await waitUntil { workspace.visualMarkdownEditor == nil && workspace.markdownTable.context == nil })
+    }
+
+    @Test("Strukturelle Tabellenänderung bewahrt Nachbarn und natives Undo/Redo")
+    @MainActor
+    func tableStructureUndo() async throws {
+        let source = "Vorher 😀\n\n| Links | Rechts |\n| :--- | ---: |\n| **A** | B |\n\nNachher exakt\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let result = try await web.evaluateJavaScript("""
+            (() => {const cell=document.querySelector('td'),r=document.createRange();r.selectNodeContents(cell);r.collapse(true);
+            getSelection().removeAllRanges();getSelection().addRange(r);return fastraVisual.tableCommand('rowAfter');})()
+            """) as? [String: Any]
+        #expect(result?["ok"] as? Bool == true)
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        let changed = try #require(workspace.activeTab?.content)
+        #expect(changed.hasPrefix("Vorher 😀\n\n"))
+        #expect(changed.hasSuffix("Nachher exakt\n"))
+        #expect(changed.contains("**A**"))
+        #expect(try await web.evaluateJavaScript("document.querySelector('table').rows.length") as? Int == 3)
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == changed })
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Tabellenänderungen erreichen AppKits nativen Undo-Verwalter")
+    @MainActor
+    func tableAppKitUndo() async throws {
+        let source = "| Kopf | Wert |\n| --- | --- |\n| A | B |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("{const cell=document.querySelector('td'),r=document.createRange();r.selectNodeContents(cell);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.tableCommand('rowAfter');}")
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        let changed = try #require(workspace.activeTab?.content)
+        let manager = try #require(web.undoManager)
+        try #require(manager.canUndo)
+        manager.undo()
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        try #require(manager.canRedo)
+        manager.redo()
+        try #require(await waitUntil { workspace.activeTab?.content == changed })
+    }
+
+    @Test("Tabellenstruktur bewahrt Pipe-Zeichen in Formeln und geschützten Kommentaren")
+    @MainActor
+    func tableProtectedPipes() async throws {
+        let source = "| Kopf | Ende |\n| --- | --- |\n| $x\\|y$ <!-- merken \\| exakt $& $$ --> | B |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let diagnostic = MarkdownVisualDocument.render(source, documentURL: nil)
+        _ = try await web.evaluateJavaScript("{const c=document.querySelector('td'),r=document.createRange();r.selectNodeContents(c);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.tableCommand('columnAfter');}")
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        let saved = try #require(workspace.activeTab?.content)
+        #expect(saved.contains("$x\\|y$"), Comment(rawValue: saved))
+        #expect(saved.contains("<!-- merken \\| exakt $& $$ -->"), Comment(rawValue: saved + "\nOPAQUE=" + String(describing: diagnostic.opaqueSources) + "\nHTML=" + diagnostic.fragment.html))
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == saved })
+        coordinator.load(saved, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "protected-pipes")
+        try #require(await waitUntil { coordinator.ready })
+        #expect(try await web.evaluateJavaScript("document.querySelector('[data-tex]').dataset.tex") as? String == "x\\|y")
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('[data-md-opaque]').length") as? Int == 1)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Einzeiliges Einfügen über Zelltext erhält ein nicht markiertes Bild")
+    @MainActor
+    func tablePastePreservesUnselectedImage() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("table-paste-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+        try bytes.write(to: directory.appendingPathComponent("keep.png"))
+        let source = "| Kopf |\n| --- |\n| ![Bild](keep.png) Alt |\n"
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: directory.appendingPathComponent("file.md"))
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        try #require(try await web.evaluateJavaScript("document.querySelectorAll('td img').length") as? Int == 1)
+        _ = try await web.evaluateJavaScript("""
+            {const cell=document.querySelector('td'),text=cell.lastChild,r=document.createRange();r.selectNodeContents(text);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            const e=new Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(e,'clipboardData',{value:{files:[],getData:t=>t==='text/html'?'<strong>Neu</strong>':t==='text/plain'?'Neu':''}});cell.dispatchEvent(e);}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('td img').length") as? Int == 1)
+        #expect(workspace.activeTab?.content.contains("keep.png") == true)
+        #expect(workspace.activeTab?.content.contains("Neu") == true)
+    }
+
+    @Test("Fastras Markdown-Clipboard ersetzt eine ganze Zelle ohne zusätzlichen Umbruch")
+    @MainActor
+    func tableInternalClipboardSingleLine() async throws {
+        let source = "| Kopf |\n| --- |\n| Alt |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        coordinator.pasteboard.setData(try JSONSerialization.data(withJSONObject: ["markdown": "**Neu**"]), forType: MarkdownVisualCoordinator.clipboardType)
+        _ = try await web.evaluateJavaScript("{const r=document.createRange();r.selectNodeContents(document.querySelector('td'));getSelection().removeAllRanges();getSelection().addRange(r);}")
+        #expect(coordinator.pasteImages())
+        try #require(await waitUntil { workspace.activeTab?.content.contains("**Neu**") == true })
+        let pasted = try await web.evaluateJavaScript("document.querySelector('td').innerText") as? String
+        #expect(pasted == "Neu", "Zellinhalt: \(String(describing: pasted))")
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("**Neu**") == true })
+        #expect(try await web.evaluateJavaScript("document.querySelector('td').innerText") as? String == "Neu")
+    }
+
+    @Test("Tabellenwerkzeuge bleiben während einer gezogenen Auswahl unverändert")
+    @MainActor
+    func tableSelectionDragContext() async throws {
+        let source = "| Kopf | Andere |\n| --- | --- |\n| Alt | Bleibt |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("""
+            {const c=document.querySelector('td'),r=document.createRange();r.selectNodeContents(c);r.collapse(true);
+            getSelection().removeAllRanges();getSelection().addRange(r);}
+            """)
+        try #require(await waitUntil { workspace.markdownTable.context?.row == 1 })
+        let context = workspace.markdownTable.context
+        _ = try await web.evaluateJavaScript("""
+            {const cells=document.querySelectorAll('td');cells[0].dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0,buttons:1}));
+            const r=document.createRange();r.setStart(cells[0].firstChild,0);r.setEnd(cells[1].firstChild,2);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            document.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,buttons:0}));}
+            """)
+        coordinator.reportTableContext()
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(workspace.markdownTable.context == context)
+        _ = try await web.evaluateJavaScript("document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,button:0}));")
+        try #require(await waitUntil { workspace.markdownTable.context?.reason == "selection" })
+        #expect(workspace.activeTab?.content == source)
+    }
+
+    @Test("Vollständiger Zelltext wird ohne zusätzlichen Umbruch ersetzt", arguments: ["", "<span>Neu</span>", "<p>Neu</p>", "<div>Neu</div>", "<strong>Neu</strong>", "<p><strong>Neu</strong></p>\n"])
+    @MainActor
+    func tableSingleLinePaste(_ html: String) async throws {
+        let source = "| Kopf | Andere |\n| --- | --- |\n| Alt | Bleibt |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let result = try await web.callAsyncJavaScript("""
+            const cell=document.querySelector('td'),range=document.createRange();
+            range.selectNodeContents(cell);getSelection().removeAllRanges();getSelection().addRange(range);
+            const event=new Event('paste',{bubbles:true,cancelable:true});
+            Object.defineProperty(event,'clipboardData',{value:{files:[],getData:t=>t==='text/html'?html:t==='text/plain'?'Neu':''}});
+            cell.dispatchEvent(event);const current=document.querySelector('td');return {html:current.innerHTML,text:current.innerText};
+            """, arguments: ["html": html], in: nil, contentWorld: .page) as? [String: String]
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        #expect(result?["text"] == "Neu", "DOM: \(String(describing: result))")
+        if html.contains("strong") {
+            #expect(try await web.evaluateJavaScript("document.querySelector('td strong')?.textContent") as? String == "Neu")
+        }
+        #expect(workspace.activeTab?.content.contains("<br") == false)
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('td').length") as? Int == 2)
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('td')[1].textContent") as? String == "Bleibt")
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        #expect(try await web.evaluateJavaScript("document.querySelector('td').innerText") as? String == "Neu")
+        #expect(workspace.activeTab?.content.contains("<br") == false)
+    }
+
+    @Test("Formatierte Absätze werden innerhalb einer Zelle nicht versehentlich zu TSV-Zeilen")
+    @MainActor
+    func tableRichPaste() async throws {
+        let source = "| Kopf |\n| --- |\n| Alt |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            {const c=document.querySelector('td'),r=document.createRange();r.selectNodeContents(c);getSelection().removeAllRanges();getSelection().addRange(r);
+            const event=new Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(event,'clipboardData',{value:{files:[],getData:t=>t==='text/html'?'<strong>Zwei</strong><br>Drei':t==='text/plain'?'Zwei\\nDrei':''}});c.dispatchEvent(event);}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        #expect(workspace.activeTab?.content.contains("**Zwei**") == true)
+        #expect(try await web.evaluateJavaScript("document.querySelector('table').rows.length") as? Int == 2)
+        #expect(try await web.evaluateJavaScript("document.querySelector('td strong').textContent") as? String == "Zwei")
+        withExtendedLifetime(coordinator) {}
+    }
+
     @Test("Ein bearbeiteter Tabellenblock bewahrt Spaltenausrichtung")
     @MainActor
     func tableAlignment() async throws {
@@ -742,6 +1138,173 @@ struct MarkdownVisualTests {
         let html = MarkdownRichText.htmlFragment(markdown: workspace.activeTab!.content)
         #expect(html.contains("align=\"left\""))
         #expect(html.contains("align=\"right\""))
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Tabellenaktionen erhalten Formatierung und lassen sich einzeln rückgängig machen", arguments: [
+        "rowBefore", "rowAfter", "deleteRow", "rowUp", "rowDown", "columnBefore", "columnAfter",
+        "deleteColumn", "columnLeft", "columnRight", "alignDefault", "alignLeft", "alignCenter", "alignRight"
+    ])
+    @MainActor
+    func tableActions(_ command: String) async throws {
+        let middle = command == "alignCenter" ? ":---" : ":---:"
+        let source = "Davor\n\n| A | B | C |\n| :--- | \(middle) | ---: |\n| **eins** | `zwei` | $x$ |\n| vier | fünf | sechs |\n| sieben | acht | neun |\n\nDanach\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let result = try await web.callAsyncJavaScript("""
+            const cell=document.querySelector('table').rows[2].cells[1],r=document.createRange();
+            r.selectNodeContents(cell);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);
+            return fastraVisual.tableCommand(command);
+            """, arguments: ["command": command], in: nil, contentWorld: .page) as? [String: Any]
+        #expect(result?["ok"] as? Bool == true)
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        let changed = try #require(workspace.activeTab?.content)
+        #expect(changed.hasPrefix("Davor\n\n") && changed.hasSuffix("Danach\n"))
+        #expect(changed.contains("**eins**") && changed.contains("$x$"))
+        if command != "deleteColumn" { #expect(changed.contains("`zwei`")) }
+        let dimensions = try await web.evaluateJavaScript("[document.querySelector('table').rows.length,document.querySelector('table').rows[0].cells.length]") as? [Int]
+        #expect(dimensions == [command.hasPrefix("rowB") || command == "rowAfter" ? 5 : command == "deleteRow" ? 3 : 4,
+                               command.hasPrefix("columnB") || command == "columnAfter" ? 4 : command == "deleteColumn" ? 2 : 3])
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == changed })
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("TSV erweitert Tabellen, schützt Klartext und verwirft zu große Eingaben", arguments: ["A\tB\r\nC\t\r\n", "=1+1\t<b>kein HTML</b>\n😀|Pipe\\\t**klar**", "\t\n\t", "  A  B  \tC\n \t  D  "])
+    @MainActor
+    func tableTSV(_ text: String) async throws {
+        let source = "Vorher\n\n| Kopf |\n| --- |\n| Alt |\n\nNachher\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let result = try await web.callAsyncJavaScript("""
+            const cell=document.querySelector('td'),r=document.createRange();r.selectNodeContents(cell);r.collapse(true);
+            getSelection().removeAllRanges();getSelection().addRange(r);return fastraVisual.tableCommand('pasteTSV',text);
+            """, arguments: ["text": text], in: nil, contentWorld: .page) as? [String: Any]
+        #expect(result?["ok"] as? Bool == true)
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        #expect(try await web.evaluateJavaScript("Array.from(document.querySelector('table').rows).map(r=>Array.from(r.cells,c=>c.textContent))") as? [[String]] == [["Kopf", ""], text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")[0].components(separatedBy: "\t"), text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")[1].components(separatedBy: "\t")])
+        let saved = try #require(workspace.activeTab?.content)
+        #expect(saved.hasPrefix("Vorher\n\n") && saved.hasSuffix("Nachher\n"))
+        let oversized = try await web.evaluateJavaScript("fastraVisual.tableCommand('pasteTSV','x\\n'.repeat(1001))") as? [String: Any]
+        #expect(oversized?["reason"] as? String == "size")
+        #expect(workspace.activeTab?.content == saved)
+        let stale = try await web.evaluateJavaScript("fastraVisual.tableCommand('deleteRow','','expired')") as? [String: Any]
+        #expect(stale?["reason"] as? String == "stale")
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        coordinator.load(saved, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "tsv-reopen")
+        try #require(await waitUntil { coordinator.ready })
+        let reopened = try await web.evaluateJavaScript("Array.from(document.querySelector('table').rows).slice(1).map(r=>Array.from(r.cells,c=>c.textContent))") as? [[String]]
+        let expected = text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).prefix(2).map { $0.components(separatedBy: "\t") }
+        #expect(reopened == expected)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Auch vollständig leere Tabellen bleiben als Markdown-Struktur erhalten")
+    @MainActor
+    func tableEmptyStructure() async throws {
+        let source = "| | |\n| --- | --- |\n| | |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("{const c=document.querySelector('td'),r=document.createRange();r.selectNodeContents(c);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.tableCommand('rowAfter');}")
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        let saved = try #require(workspace.activeTab?.content)
+        #expect(saved.contains("| --- | --- |"))
+        #expect(try await web.evaluateJavaScript("document.querySelector('table').rows.length") as? Int == 3)
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        coordinator.load(saved, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "empty-table")
+        try #require(await waitUntil { coordinator.ready })
+        #expect(try await web.evaluateJavaScript("document.querySelector('table').rows.length") as? Int == 3)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Tabellenbefehle schützen Zellenauswahl, Kopfzeile, letzte Spalte und HTML")
+    @MainActor
+    func tableGuards() async throws {
+        let source = "| Kopf |\n| --- |\n| Inhalt |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let reasons = try await web.evaluateJavaScript("""
+            (()=>{const table=document.querySelector('table'),s=getSelection(),r=document.createRange();
+            function select(a,b=a){r.setStart(a,0);r.setEnd(b,b.childNodes.length);s.removeAllRanges();s.addRange(r);}
+            select(table.rows[0].cells[0]);const header=fastraVisual.tableCommand('deleteRow').reason;
+            const last=fastraVisual.tableCommand('deleteColumn').reason;
+            select(table.rows[0].cells[0],table.rows[1].cells[0]);const multi=fastraVisual.tableCommand('rowAfter').reason;
+            select(table.rows[1].cells[0]);table.removeAttribute('data-md-table');const html=fastraVisual.tableCommand('rowAfter').reason;
+            table.dataset.mdTable='gfm';return [header,last,multi,html];})()
+            """) as? [String]
+        #expect(reasons == ["edge", "edge", "selection", "html"])
+        #expect(workspace.activeTab?.content == source)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Tab navigiert zwischen Zellen und fügt am Ende eine Datenzeile ein")
+    @MainActor
+    func tableKeyboard() async throws {
+        let source = "| H1 | H2 |\n| --- | --- |\n| A | B |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("{const c=document.querySelector('table').rows[1].cells[1],r=document.createRange();r.selectNodeContents(c);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);document.getElementById('fastra-visual').dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));}")
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        #expect(try await web.evaluateJavaScript("fastraVisual.tableContext().row") as? Int == 2)
+        #expect(try await web.evaluateJavaScript("fastraVisual.tableContext().column") as? Int == 0)
+        _ = try await web.evaluateJavaScript("document.getElementById('fastra-visual').dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));")
+        #expect(try await web.evaluateJavaScript("fastraVisual.tableContext().row") as? Int == 1)
+        #expect(try await web.evaluateJavaScript("fastraVisual.tableContext().column") as? Int == 1)
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Tab am Zeilen- oder Zellenlimit meldet den Größenfehler sichtbar", arguments: [false, true])
+    @MainActor
+    func tableKeyboardLimits(_ rowLimit: Bool) async throws {
+        let source = "| Kopf |\n| --- |\n| Inhalt |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let rows = rowLimit ? 1000 : 100, columns = rowLimit ? 1 : 100
+        let prevented = try await web.callAsyncJavaScript("""
+            const table=document.querySelector('table');
+            table.innerHTML='<thead><tr>'+('<th>H</th>'.repeat(columns))+'</tr></thead><tbody>'+
+                ('<tr>'+('<td>x</td>'.repeat(columns))+'</tr>').repeat(rows-1)+'</tbody>';
+            const cell=table.rows[rows-1].cells[columns-1],r=document.createRange();r.selectNodeContents(cell);r.collapse(true);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            const event=new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true});
+            document.getElementById('fastra-visual').dispatchEvent(event);return event.defaultPrevented;
+            """, arguments: ["rows": rows, "columns": columns], in: nil, contentWorld: .page) as? Bool
+        #expect(prevented == true)
+        try #require(await waitUntil { workspace.markdownTable.error != nil })
+        #expect(workspace.markdownTable.error == L10n.string("Die Tabelle darf höchstens 1.000 Zeilen, 100 Spalten und 10.000 Zellen enthalten; eingefügter Text höchstens 1 MiB."))
+        #expect(workspace.activeTab?.content == source)
+        #expect(try await web.evaluateJavaScript("document.querySelector('table').rows.length") as? Int == rows)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Plattenabläufe schützen noch nicht zurückgemeldete WYSIWYG-Eingaben anderer Fenster")
+    @MainActor
+    func serialRunnerIntegrationWorkflowPendingVisualInput() async throws {
+        let root = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("input.md"), source = "Original\n"
+        try Data(source.utf8).write(to: url)
+        let (other, coordinator, web, window) = try await editor(source, documentURL: url)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        other.tabs[0].recordSavedContentBaseline()
+        _ = try await web.evaluateJavaScript("document.querySelector('p').textContent='Pending edit';")
+        #expect(other.tabs[0].content == source && !other.tabs[0].hasUnsavedChanges)
+        let owner = Workspace(); owner.fileTreeMutationWorkspaceProvider = { [other] }
+        let (success, held) = await owner.synchronizeTextWorkflowDiskDocuments()
+        defer { held.forEach { $0.completeAction() } }
+        #expect(success && other.tabs[0].content.contains("Pending edit") && other.tabs[0].hasUnsavedChanges)
+        let mutation = try owner.beginTextWorkflowDiskMutation(urls: [url])
+        defer { owner.finishTextWorkflowDiskMutation(mutation, changedURLs: [], session: nil) }
+        let result = await Task.detached { Result { try mutation.preflight(in: owner) } }.value
+        if case .success = result { Issue.record("Nicht zurückgemeldete WYSIWYG-Eingabe wurde überschreibbar") }
+        #expect(try Data(contentsOf: url) == Data(source.utf8))
         withExtendedLifetime(coordinator) {}
     }
 
@@ -1684,5 +2247,108 @@ struct MarkdownVisualTests {
         #expect(copied.contains("colspan=\"2\""))
         #expect(!copied.contains("⋯"))
     }
+
+    @Test("Textbaustein ersetzt ein visuelles Bookmark sicher und erhält fremde Blöcke sowie Undo")
+    @MainActor func snippetBookmarkInsertion() async throws {
+        let source = "# Kopf\n\nOLD\n\nUnberührt  _Original_ 😀\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        WorkspaceWindowRegistry.register(workspace, for: window)
+        defer { WorkspaceWindowRegistry.unregister(window); web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("""
+            const p=Array.from(document.querySelectorAll('p')).find(p=>p.textContent==='OLD'),r=document.createRange();
+            r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);
+            document.dispatchEvent(new Event('selectionchange'));void 0;
+            """)
+        let target: TextSnippetInsertionTarget = try await withCheckedThrowingContinuation { done in
+            TextSnippetInsertionTarget.capture(in: workspace) { done.resume(with: $0) }
+        }
+        defer { target.release() }
+        let replacement = try TextSnippetTemplate("{{Name}}\n\n{{Name}}").render(values: ["Name": "Hallo 😀\nzweite Zeile"])
+        try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in target.insert(replacement) { done.resume(with: $0) } }
+        let changed = try #require(workspace.activeTab?.content)
+        #expect(!changed.contains("OLD"))
+        #expect(changed.components(separatedBy: "Hallo 😀").count == 3)
+        #expect(changed.hasPrefix("# Kopf\n\n"))
+        #expect(changed.hasSuffix("Unberührt  _Original_ 😀\n"), Comment(rawValue: changed))
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        #expect(await waitUntil { workspace.activeTab?.content.utf8.elementsEqual(source.utf8) == true })
+    }
+
+    @Test("Textbausteine führen HTML nicht aus und können nach Freigabe des Bookmarks nicht schreiben")
+    @MainActor func snippetSafeHTMLAndCancellation() async throws {
+        let source = "# Kopf\n\nOLD\n\nUnverändert\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        WorkspaceWindowRegistry.register(workspace, for: window)
+        defer { WorkspaceWindowRegistry.unregister(window); web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("const p=Array.from(document.querySelectorAll('p')).find(p=>p.textContent==='OLD'),r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'));void 0;")
+        let target: TextSnippetInsertionTarget = try await withCheckedThrowingContinuation { done in TextSnippetInsertionTarget.capture(in: workspace) { done.resume(with: $0) } }
+        defer { target.release() }
+        let value = "<script>window.snippetAttack=1</script>\n\n<img src=\"bad\" onerror=\"window.snippetAttack=2\">\n\n[link](javascript:window.snippetAttack=3)"
+        try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in target.insert(value) { done.resume(with: $0) } }
+        #expect(try await web.evaluateJavaScript("window.snippetAttack===undefined") as? Bool == true)
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual script,#fastra-visual [onerror],#fastra-visual a[href^=\\\"javascript:\\\"]').length") as? Int == 0)
+        #expect(workspace.activeTab?.content.hasPrefix("# Kopf\n\n") == true)
+        #expect(workspace.activeTab?.content.hasSuffix("Unverändert\n") == true)
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        let restored = await waitUntil { workspace.activeTab?.content == source }
+        if !restored {
+            let dom = try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML")
+            Issue.record(Comment(rawValue: "Textbaustein-Undo: " + (workspace.activeTab?.content ?? "nil") + "\nDOM=" + String(describing: dom)))
+        }
+        try #require(restored)
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content.contains("window.snippetAttack=1") == true })
+        #expect(try await web.evaluateJavaScript("window.snippetAttack===undefined") as? Bool == true)
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        let cancelled: TextSnippetInsertionTarget = try await withCheckedThrowingContinuation { done in TextSnippetInsertionTarget.capture(in: workspace) { done.resume(with: $0) } }
+        cancelled.release()
+        let result: Result<Void, Error> = await withCheckedContinuation { done in cancelled.insert("FALSCH") { done.resume(returning: $0) } }
+        if case .success = result { Issue.record("Freigegebenes Bookmark wurde beschrieben") }
+        #expect(workspace.activeTab?.content == source)
+    }
+
+    @Test("Visuelles Textbausteinziel verwirft Dokumentwechsel und gibt abgebrochene Bookmarks frei")
+    @MainActor func snippetBookmarkStaleDocument() async throws {
+        let source = "Unverändert\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        WorkspaceWindowRegistry.register(workspace, for: window)
+        defer { WorkspaceWindowRegistry.unregister(window); web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let target: TextSnippetInsertionTarget = try await withCheckedThrowingContinuation { done in
+            TextSnippetInsertionTarget.capture(in: workspace) { done.resume(with: $0) }
+        }
+        workspace.tabs = [EditorTab(title: "Anderes.txt", path: "", content: "Fremd")]
+        workspace.activeTabID = workspace.tabs[0].id
+        #expect(!target.isCurrent)
+        let result: Result<Void, Error> = await withCheckedContinuation { done in target.insert("FALSCH") { done.resume(returning: $0) } }
+        if case .success = result { Issue.record("Fremdes Dokument wurde getroffen") }
+        target.release()
+        #expect(workspace.activeTab?.content == "Fremd")
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+    }
+
+    @Test("Ein bereits gestarteter visueller Baustein darf keinen wiederverwendeten Dokumentplatz beschreiben")
+    @MainActor func snippetInFlightReusedDocument() async throws {
+        let source = "Unverändert\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        WorkspaceWindowRegistry.register(workspace, for: window)
+        defer { WorkspaceWindowRegistry.unregister(window); web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let target: TextSnippetInsertionTarget = try await withCheckedThrowingContinuation { done in
+            TextSnippetInsertionTarget.capture(in: workspace) { done.resume(with: $0) }
+        }
+        defer { target.release() }
+        var result: Result<Void, Error>?
+        target.insert("FALSCH") { result = $0 }
+        let old = try #require(workspace.activeTab)
+        var replacement = EditorTab(id: old.id, title: old.title, path: old.path, content: source)
+        replacement.markdownVisualOverride = true
+        workspace.tabs = [replacement]
+        try #require(await waitUntil { result != nil })
+        if case .success = result { Issue.record("Laufende visuelle Einfügung traf ein anderes Dokument im selben Tabplatz") }
+        #expect(workspace.activeTab?.documentID == replacement.documentID)
+        #expect(workspace.activeTab?.content.utf8.elementsEqual(source.utf8) == true)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+    }
+
 
 }

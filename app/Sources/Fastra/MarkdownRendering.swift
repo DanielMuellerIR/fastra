@@ -223,44 +223,55 @@ enum MarkdownMath {
         }
 
         func insertingHTML(into renderedHTML: String) -> String {
-            replacements.reduce(renderedHTML) { html, replacement in
-                var result = html
-                if replacement.block {
-                    result = Extraction.replacingLoneParagraph(
-                        token: replacement.token,
-                        with: replacement.html,
-                        in: result
-                    )
-                }
-                return result.replacingOccurrences(
-                    of: replacement.token,
-                    with: replacement.html
-                )
+            let values = Dictionary(uniqueKeysWithValues: replacements.map { ($0.token, $0) })
+            let ns = renderedHTML as NSString
+            let changes = MarkdownMath.htmlTokens.matches(
+                in: renderedHTML, range: NSRange(location: 0, length: ns.length)
+            ).compactMap { match -> (NSRange, String)? in
+                let paragraphToken = match.range(at: 1)
+                let tokenRange = paragraphToken.location != NSNotFound ? paragraphToken : match.range(at: 2)
+                guard let value = values[ns.substring(with: tokenRange)] else { return nil }
+                // Ein alleinstehender Block ersetzt auch den Absatz mit seinen
+                // Quellzeilen-Attributen; Inline-Formeln behalten den Absatz.
+                return (value.block && paragraphToken.location != NSNotFound ? match.range : tokenRange, value.html)
             }
+            return MarkdownMath.applying(changes, to: renderedHTML)
         }
+    }
 
-        /// Ersetzt einen Absatz, der NUR aus dem Token besteht, komplett durch
-        /// das Block-HTML — eine Formel als eigener Block soll nicht in einem
-        /// überflüssigen `<p>` stecken.
-        ///
-        /// Der Öffnungs-Tag wird mit beliebigen Attributen gematcht, weil der
-        /// Renderer inzwischen die Quellzeile daran hängt
-        /// (`<p data-srcline="12">`). Ein wörtliches `<p>` würde seit dieser
-        /// Ergänzung nie mehr greifen und Block-Formeln still auf den
-        /// Inline-Pfad fallen lassen.
-        private static func replacingLoneParagraph(token: String,
-                                                   with html: String,
-                                                   in source: String) -> String {
-            let pattern = "<p[^>]*>\(NSRegularExpression.escapedPattern(for: token))</p>"
-            guard let regex = try? NSRegularExpression(pattern: pattern) else {
-                return source
-            }
-            return regex.stringByReplacingMatches(
-                in: source,
-                range: NSRange(source.startIndex..., in: source),
-                withTemplate: NSRegularExpression.escapedTemplate(for: html)
-            )
+    private static let mathTokenPattern = #"FASTRAMATH[0-9A-F]{32}TOKEN"#
+    private static let mathTokens = try! NSRegularExpression(pattern: mathTokenPattern)
+    private static let htmlTokens = try! NSRegularExpression(
+        pattern: "<p[^>]*>(\(mathTokenPattern))</p>|(\(mathTokenPattern))"
+    )
+    private static let codeTokens = try! NSRegularExpression(
+        pattern: #"FASTRACODE(?:BLOCK|SPAN)[0-9A-F]{32}TOKEN"#
+    )
+
+    /// Alle Spannen beziehen sich auf denselben Quellstand. Ein Vorwärtslauf
+    /// vermeidet wiederholtes Verschieben und erneutes Durchsuchen des Textes.
+    private static func applying(_ changes: [(NSRange, String)], to source: String) -> String {
+        guard !changes.isEmpty else { return source }
+        let ns = source as NSString
+        var result = "", cursor = 0
+        result.reserveCapacity(source.utf8.count)
+        for (range, replacement) in changes {
+            result += ns.substring(with: NSRange(location: cursor, length: range.location - cursor))
+            result += replacement
+            cursor = range.upperBound
         }
+        result += ns.substring(from: cursor)
+        return result
+    }
+
+    private static func restoringCode(in source: String, values: [String: String]) -> String {
+        let ns = source as NSString
+        let changes = codeTokens.matches(in: source, range: NSRange(location: 0, length: ns.length))
+            .compactMap { match -> (NSRange, String)? in
+                guard let value = values[ns.substring(with: match.range)] else { return nil }
+                return (match.range, value)
+            }
+        return applying(changes, to: source)
     }
 
     private static let fencedCode = try! NSRegularExpression(
@@ -279,15 +290,139 @@ enum MarkdownMath {
         pattern: #"(?<![\\$])\$(?![\s$])([^$\n]+?)(?<![\s$])\$(?!\$)"#
     )
 
+    private struct Match: Equatable {
+        let range: NSRange
+        let content: NSRange
+    }
+
+    private static let fenceOpen = try! NSRegularExpression(
+        pattern: #"(?m)^[ \t]{0,3}(`{3,}+|~{3,}+)"#
+    )
+    private static let fenceClose = try! NSRegularExpression(
+        pattern: #"(?m)\n[ \t]{0,3}(`{3,}+|~{3,}+)[ \t]*+(?=\n|$)"#
+    )
+    private static let blockOpen = try! NSRegularExpression(pattern: #"(?m)^[ \t]*+\$\$"#)
+    private static let blockClose = try! NSRegularExpression(pattern: #"(?m)\$\$[ \t]*+$"#)
+    private static let doubleOpen = try! NSRegularExpression(pattern: #"(?=(?<!\\)\$\$(?!\s))"#)
+    private static let doubleClose = try! NSRegularExpression(pattern: #"(?=((?<!\s)\$\$))"#)
+
+    /// Die TeX-Syntax bleibt bei den bisherigen regulären Ausdrücken. Ein
+    /// vorher indizierter Schlussmarker verhindert aber, dass jeder erfolglose
+    /// Anfang erneut den gesamten Rest des Dokuments durchsucht.
+    private static func boundedMatches(of regex: NSRegularExpression, in source: String) -> [Match] {
+        boundedMatches(of: regex, in: source, checkCancellation: {})
+    }
+
+    private static func boundedMatches(of regex: NSRegularExpression, in source: String,
+                                       checkCancellation: () throws -> Void) rethrows -> [Match] {
+        try checkCancellation()
+        let ns = source as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        if regex === fencedCode { return try fenceMatches(in: source, checkCancellation: checkCancellation) }
+        let openings: NSRegularExpression
+        let closings: NSRegularExpression
+        if regex === blockMath { openings = blockOpen; closings = blockClose }
+        else if regex === inlineDoubleMath { openings = doubleOpen; closings = doubleClose }
+        else {
+            return regex.matches(in: source, range: full).map {
+                Match(range: $0.range, content: $0.numberOfRanges > 1 ? $0.range(at: 1) : $0.range)
+            }
+        }
+        let ends = closings.matches(in: source, range: full).map {
+            regex === inlineDoubleMath ? $0.range(at: 1) : $0.range
+        }
+        guard !ends.isEmpty else { return [] }
+        var result: [Match] = [], consumed = 0
+        // Bei Inline-Formeln ist der letzte Schlussmarker derselben Zeile
+        // nötig: Der Punkt im bestehenden Ausdruck überschreitet keine Zeile.
+        var lineEnds: [Int: Int] = [:]
+        var lineForOffset: [Int] = []
+        if regex === inlineDoubleMath {
+            lineForOffset = [Int](repeating: 0, count: ns.length + 1)
+            var line = 0
+            for offset in 0..<ns.length {
+                if offset % 4096 == 0 { try checkCancellation() }
+                lineForOffset[offset] = line
+                if [UInt16(10), 13, 0x85, 0x2028, 0x2029].contains(ns.character(at: offset)) { line += 1 }
+            }
+            for end in ends { lineEnds[lineForOffset[end.location]] = end.upperBound }
+        }
+        for opening in openings.matches(in: source, range: full) where opening.range.location >= consumed {
+            try checkCancellation()
+            let start = opening.range.location
+            let end = regex === inlineDoubleMath ? lineEnds[lineForOffset[start]] : ends.last?.upperBound
+            guard let end, end > start + 2,
+                  let match = regex.firstMatch(in: source,
+                    options: [.anchored, .withTransparentBounds, .withoutAnchoringBounds],
+                    range: NSRange(location: start, length: end - start)) else { continue }
+            result.append(Match(range: match.range, content: match.range(at: 1)))
+            consumed = match.range.upperBound
+        }
+        return result
+    }
+
+    private static func fenceMatches(in source: String,
+                                     checkCancellation: () throws -> Void) rethrows -> [Match] {
+        let ns = source as NSString, full = NSRange(location: 0, length: source.utf16.count)
+        var closingByMarker: [UInt16: [Int: [NSRange]]] = [:]
+        for closing in fenceClose.matches(in: source, range: full) {
+            try checkCancellation()
+            let marker = closing.range(at: 1)
+            closingByMarker[ns.character(at: marker.location), default: [:]][marker.length, default: []].append(closing.range)
+        }
+        let newlines = Array(source.utf16).enumerated().compactMap { $0.element == 10 ? $0.offset : nil }
+        var result: [Match] = [], consumed = 0
+        for opening in fenceOpen.matches(in: source, range: full) {
+            try checkCancellation()
+            let rawStart = opening.range.location
+            let start = rawStart > 0 && ns.character(at: rawStart - 1) == 10 && rawStart - 1 >= consumed ? rawStart - 1 : rawStart
+            guard start >= consumed else { continue }
+            let marker = opening.range(at: 1)
+            var lineLower = 0, lineUpper = newlines.count
+            while lineLower < lineUpper {
+                let middle = (lineLower + lineUpper) / 2
+                if newlines[middle] < marker.upperBound { lineLower = middle + 1 } else { lineUpper = middle }
+            }
+            guard lineLower < newlines.count else { continue }
+            let openingEnd = newlines[lineLower] + 1
+            guard let lengths = closingByMarker[ns.character(at: marker.location)] else { continue }
+            // Der alte Backreference-Ausdruck versucht zuerst die längste
+            // öffnende Fence und verkürzt sie nur, wenn dafür kein Ende folgt.
+            var selected: NSRange?
+            for length in stride(from: marker.length, through: 3, by: -1) {
+                guard let candidates = lengths[length] else { continue }
+                var lower = 0, upper = candidates.count
+                while lower < upper {
+                    let middle = (lower + upper) / 2
+                    if candidates[middle].location < openingEnd { lower = middle + 1 }
+                    else { upper = middle }
+                }
+                if lower < candidates.count { selected = candidates[lower]; break }
+            }
+            guard let selected else { continue }
+            let range = NSRange(location: start, length: selected.upperBound - start)
+            result.append(Match(range: range, content: range))
+            consumed = range.upperBound
+        }
+        return result
+    }
+
     /// Quellbereiche, die der Renderer als Formel behandelt. Andere Parser
     /// dürfen darin keine vermeintlichen Bildlinks oder Formatierungen übernehmen.
     static func formulaRanges(in markdown: String) -> [NSRange] {
+        formulaRanges(in: markdown, checkCancellation: {})
+    }
+
+    static func formulaRanges(in markdown: String,
+                              checkCancellation: () throws -> Void) rethrows -> [NSRange] {
+        try checkCancellation()
         // CRLF schrumpft nur im Analyse-Text; die Grenzpositionen bleiben
         // auf UTF-16-Indizes der unveränderten Quelle abgebildet.
         let units = Array(markdown.utf16)
         var normalized: [UInt16] = [], positions = [0]
         var offset = 0
         while offset < units.count {
+            if offset % 4096 == 0 { try checkCancellation() }
             let unit = units[offset]
             offset += 1
             if unit == 13, offset < units.count, units[offset] == 10 { offset += 1 }
@@ -295,11 +430,22 @@ enum MarkdownMath {
             positions.append(offset)
         }
         let source = String(decoding: normalized, as: UTF16.self)
-        let full = NSRange(location: 0, length: normalized.count)
-        let code = [fencedCode, inlineCode].flatMap { $0.matches(in: source, range: full).map(\.range) }
-        return [blockMath, inlineDoubleMath, inlineMath].flatMap {
-            $0.matches(in: source, range: full).map(\.range)
-        }.filter { candidate in !code.contains { NSIntersectionRange($0, candidate).length > 0 } }
+        let code = try [fencedCode, inlineCode].flatMap {
+            try boundedMatches(of: $0, in: source, checkCancellation: checkCancellation).map(\.range)
+        }.sorted { $0.location < $1.location }
+        var codeEnds: [Int] = []
+        for range in code { codeEnds.append(max(codeEnds.last ?? 0, range.upperBound)) }
+        return try [blockMath, inlineDoubleMath, inlineMath].flatMap {
+            try boundedMatches(of: $0, in: source, checkCancellation: checkCancellation).map(\.range)
+        }.filter { candidate in
+            try checkCancellation()
+            var lower = 0, upper = code.count
+            while lower < upper {
+                let middle = (lower + upper) / 2
+                if code[middle].location < candidate.upperBound { lower = middle + 1 } else { upper = middle }
+            }
+            return lower == 0 || codeEnds[lower - 1] <= candidate.location
+        }
             .map { NSRange(location: positions[$0.location], length: positions[$0.upperBound] - positions[$0.location]) }
     }
 
@@ -344,9 +490,7 @@ enum MarkdownMath {
             consumed: &consumed
         )
 
-        for item in protected {
-            working = working.replacingOccurrences(of: item.token, with: item.source)
-        }
+        working = restoringCode(in: working, values: Dictionary(uniqueKeysWithValues: protected.map { ($0.token, $0.source) }))
         return Extraction(
             markdown: working,
             replacements: replacements,
@@ -370,14 +514,13 @@ enum MarkdownMath {
     ) -> [Int] {
         // Zusätzliche Zeilen je Token; einzeilige Ersetzungen sind uninteressant.
         var extraLines: [String: Int] = [:]
+        let code = Dictionary(uniqueKeysWithValues: protected.map { ($0.token, $0.source) })
         for item in consumed {
             var raw = item.rawSource
             // Ein `$$`-Block kann geschützte Code-Token enthalten. Für die
             // Zeilenzählung muss dort der echte Quelltext stehen.
             if raw.contains("FASTRACODE") {
-                for entry in protected {
-                    raw = raw.replacingOccurrences(of: entry.token, with: entry.source)
-                }
+                raw = restoringCode(in: raw, values: code)
             }
             let additional = raw.components(separatedBy: "\n").count - 1
             if additional > 0 { extraLines[item.token] = additional }
@@ -392,8 +535,9 @@ enum MarkdownMath {
             map.append(map.count + 1 + offset)
             // Schnellprüfung: nur Zeilen mit Math-Token können etwas verschieben.
             guard line.contains("FASTRAMATH") else { continue }
-            for (token, additional) in extraLines where line.contains(token) {
-                offset += additional
+            let ns = line as NSString
+            for match in mathTokens.matches(in: line, range: NSRange(location: 0, length: ns.length)) {
+                offset += extraLines[ns.substring(with: match.range)] ?? 0
             }
         }
         return map
@@ -403,18 +547,15 @@ enum MarkdownMath {
                                      in source: String,
                                      prefix: String,
                                      storage: inout [(token: String, source: String)]) -> String {
-        let mutable = NSMutableString(string: source)
-        let matches = regex.matches(
-            in: source,
-            range: NSRange(source.startIndex..., in: source)
-        )
-        for match in matches.reversed() {
+        var changes: [(NSRange, String)] = []
+        let matches = boundedMatches(of: regex, in: source)
+        for match in matches {
             let token = "\(prefix)\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))TOKEN"
             let original = (source as NSString).substring(with: match.range)
             storage.append((token, original))
-            mutable.replaceCharacters(in: match.range, with: token)
+            changes.append((match.range, token))
         }
-        return mutable as String
+        return applying(changes, to: source)
     }
 
     private static func replaceMath(
@@ -424,13 +565,10 @@ enum MarkdownMath {
         storage: inout [(token: String, html: String, block: Bool)],
         consumed: inout [(token: String, rawSource: String)]
     ) -> String {
-        let mutable = NSMutableString(string: source)
-        let matches = regex.matches(
-            in: source,
-            range: NSRange(source.startIndex..., in: source)
-        )
-        for match in matches.reversed() where match.numberOfRanges > 1 {
-            let tex = (source as NSString).substring(with: match.range(at: 1))
+        var changes: [(NSRange, String)] = []
+        let matches = boundedMatches(of: regex, in: source)
+        for match in matches {
+            let tex = (source as NSString).substring(with: match.content)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !tex.isEmpty else { continue }
             let token = "FASTRAMATH\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))TOKEN"
@@ -441,9 +579,9 @@ enum MarkdownMath {
             // Ganzen ersetzten Bereich merken (nicht nur die TeX-Gruppe): nur
             // daraus lässt sich die im Original belegte Zeilenzahl bestimmen.
             consumed.append((token, (source as NSString).substring(with: match.range)))
-            mutable.replaceCharacters(in: match.range, with: token)
+            changes.append((match.range, token))
         }
-        return mutable as String
+        return applying(changes, to: source)
     }
 
     private static func htmlAttributeEscaped(_ value: String) -> String {

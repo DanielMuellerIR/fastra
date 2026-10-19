@@ -44,6 +44,8 @@ struct MarkdownVisualDocument {
         }
         defer { cmark_node_free(document) }
         var opaqueSources: [String: String] = [:]
+        var opaqueInlineHTML: [String: String] = [:]
+        let opaquePattern = try! NSRegularExpression(pattern: "FASTRAOPAQUE[0-9A-F]{32}TOKEN")
         if let iterator = cmark_iter_new(document) {
             var replacements: [(UnsafeMutablePointer<cmark_node>, String)] = []
             while cmark_iter_next(iterator) != CMARK_EVENT_DONE {
@@ -59,17 +61,40 @@ struct MarkdownVisualDocument {
             }
             cmark_iter_free(iterator)
             for (node, raw) in replacements {
-                guard let atom = cmark_node_new(CMARK_NODE_CUSTOM_INLINE) else { continue }
+                // GFM-Zellen erlauben keinen CUSTOM_INLINE-Knoten. Ein
+                // geprüfter Textplatzhalter funktioniert in allen Inline-
+                // Containern; das feste HTML folgt erst nach der Bereinigung.
+                guard let atom = cmark_node_new(CMARK_NODE_TEXT) else { return fallback(markdown, documentURL: documentURL) }
                 let key = UUID().uuidString
                 opaqueSources[key] = raw
+                let token = "FASTRAOPAQUE" + key.replacingOccurrences(of: "-", with: "") + "TOKEN"
                 let html = "<span data-md-opaque=\"\(key)\" contenteditable=\"false\" class=\"fastra-preserved-content\">⋯</span>"
-                html.withCString { _ = cmark_node_set_on_enter(atom, $0) }
-                _ = cmark_node_replace(node, atom)
+                guard token.withCString({ cmark_node_set_literal(atom, $0) }) == 1,
+                      cmark_node_replace(node, atom) == 1 else {
+                    cmark_node_free(atom)
+                    return fallback(markdown, documentURL: documentURL)
+                }
+                opaqueInlineHTML[token] = html
                 cmark_node_free(node)
             }
         }
         guard MarkdownHTMLSanitizing.apply(to: document) else {
             return fallback(markdown, documentURL: documentURL)
+        }
+        // Erlaubtes Inline-HTML kann ebenfalls h1–h6 erzeugen. Solche Tags
+        // sind keine Markdown-Überschriften und verschieben sonst DOM-Sprungziele.
+        if let iterator = cmark_iter_new(document) {
+            while cmark_iter_next(iterator) != CMARK_EVENT_DONE {
+                guard cmark_iter_get_event_type(iterator) == CMARK_EVENT_ENTER,
+                      let node = cmark_iter_get_node(iterator), cmark_node_get_type(node) == CMARK_NODE_HTML_INLINE,
+                      let literal = cmark_node_get_literal(node) else { continue }
+                var raw = String(cString: literal)
+                if let tag = raw.range(of: #"^<h[1-6](?=[\s>])"#, options: [.regularExpression, .caseInsensitive]) {
+                    raw.insert(contentsOf: " data-md-outline-ignore=\"true\"", at: tag.upperBound)
+                    raw.withCString { _ = cmark_node_set_literal(node, $0) }
+                }
+            }
+            cmark_iter_free(iterator)
         }
         // Zwischenräume außerhalb der Blöcke übernimmt appendGap. Innerhalb
         // einer Liste muss derselbe AST-Pfad wie in der Vorschau arbeiten.
@@ -114,6 +139,14 @@ struct MarkdownVisualDocument {
             if let rendered = cmark_render_html(current, CMARK_OPT_UNSAFE,
                                                 cmark_parser_get_syntax_extensions(parser)) {
                 html = math.insertingHTML(into: String(cString: rendered))
+                if !opaqueInlineHTML.isEmpty {
+                    let mutable = NSMutableString(string: html)
+                    for match in opaquePattern.matches(in: html, range: NSRange(location: 0, length: html.utf16.count)).reversed() {
+                        let token = (html as NSString).substring(with: match.range)
+                        if let replacement = opaqueInlineHTML[token] { mutable.replaceCharacters(in: match.range, with: replacement) }
+                    }
+                    html = mutable as String
+                }
                 free(rendered)
             } else {
                 html = "<p>" + escaped(source(start, end)) + "</p>"
@@ -127,6 +160,22 @@ struct MarkdownVisualDocument {
                     free(rendered)
                 }
                 trailing = cmark_node_next(blank)
+            }
+            var tableCount = 0
+            if let iterator = cmark_iter_new(current) {
+                while cmark_iter_next(iterator) != CMARK_EVENT_DONE {
+                    if cmark_iter_get_event_type(iterator) == CMARK_EVENT_ENTER,
+                       let node = cmark_iter_get_node(iterator), let type = cmark_node_get_type_string(node),
+                       String(cString: type) == "table" { tableCount += 1 }
+                }
+                cmark_iter_free(iterator)
+            }
+            // Nur vom GFM-Parser erkannte Tabellen bekommen Strukturwerkzeuge.
+            // Gemischtes Inline-HTML bleibt bei mehrdeutiger Zuordnung geschützt.
+            let tableTags = try! NSRegularExpression(pattern: "<table(?=[\\s>])")
+                .numberOfMatches(in: html, range: NSRange(location: 0, length: html.utf16.count))
+            if tableCount > 0 && tableCount == tableTags {
+                html = html.replacingOccurrences(of: "<table>", with: "<table data-md-table=\"gfm\">")
             }
             var enhancedHTML = html
             let diagrams = try! NSRegularExpression(pattern: #"(?s)<pre><code class="language-mermaid">(.*?)</code></pre>"#)

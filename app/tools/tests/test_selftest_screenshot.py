@@ -91,15 +91,23 @@ class ScreenshotTests(unittest.TestCase):
         tool.chmod(0o755)
         environment = dict(os.environ, FASTRA_TEST_SCREENCAPTURE=str(tool),
                            FASTRA_TEST_SCREEN_CAPTURE_ALLOWED="1")
+        process_log = self.root / "capture-process.log"
+        process_output = process_log.open("wb")
+        self.addCleanup(process_output.close)
         process = subprocess.Popen([
             "/usr/bin/python3", str(Path(screenshot.__file__)), str(self.log),
             "wildcardshot", "de", str(self.root), str(os.getpid())
-        ], env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ], env=environment, stdout=process_output, stderr=subprocess.STDOUT)
         try:
             deadline = time.monotonic() + 3
             while not ready.exists() and time.monotonic() < deadline:
                 time.sleep(0.01)
-            self.assertTrue(ready.exists(), "Ersatzaufnahme startete nicht")
+            self.assertTrue(
+                ready.exists(),
+                f"Ersatzaufnahme startete nicht; Prozessstatus={process.poll()}; "
+                f"Prozesslog={process_log.read_text(errors='replace')}; "
+                f"Aufnahmelog={self.log.read_text(errors='replace')}",
+            )
             process.send_signal(signal.SIGTERM)
             process.wait(timeout=3)
             self.assertEqual(self.destination.read_bytes(), b"previous image")

@@ -124,6 +124,11 @@ struct EditorTab: Identifiable, Hashable {
     var encoding: String.Encoding
     var bom: Data
     var lineEnding: LineEnding
+    var pendingLineEndingConversion: LineEnding?
+
+    func textForSaving(_ source: String) -> String {
+        pendingLineEndingConversion?.converting(source) ?? source
+    }
     var displayMode: EditorDisplayMode
     var fileSize: UInt64
     var hits: Int
@@ -215,6 +220,7 @@ struct EditorTab: Identifiable, Hashable {
     /// haben `url == nil` und werden nicht gespeichert. Ergebnis und
     /// Generation hängen am Auftrag (`FileDiffTabState`).
     var fileDiff: FileDiffTabState?
+    var folderComparison: FolderComparisonTabState? = nil
 
     /// Nur-Lese-Sichten für die vielen Prüfstellen („ist das ein Vergleich?").
     var gitDiffRequest: GitDiffRequest? { gitDiff?.request }
@@ -339,6 +345,7 @@ struct EditorTab: Identifiable, Hashable {
         savedContentUTF8Length = content.utf8.count
         savedContentHash = Self.exactContentHash(content)
         savedLineEnding = lineEnding
+        pendingLineEndingConversion = nil
     }
 
     /// String.hashValue normalisiert Unicode: Auch gleich lange, anders
@@ -415,10 +422,10 @@ struct EditorTab: Identifiable, Hashable {
     /// Ein normaler, vollständig geladener Textpuffer. Diese Grundgrenze bleibt
     /// auch bei offenen Hex-Änderungen wahr: Verschwindet dann die Datei, muss
     /// Fastra die letzte Volltextkopie unabhängig vom Hex-Zustand schützen.
-    private var isOrdinaryTextDocument: Bool {
+    var isOrdinaryTextDocument: Bool {
         !isLoading && displayMode == .text && readOnlyReason == nil
             && gitSnapshotRequest == nil && gitKind == nil
-            && gitDiffRequest == nil && fileDiffRequest == nil
+            && gitDiffRequest == nil && fileDiffRequest == nil && folderComparison == nil
     }
 
     /// Gemeinsame Schreibbarkeitsgrenze für Editorbefehle und Ersetzen.
@@ -440,7 +447,7 @@ struct EditorTab: Identifiable, Hashable {
     var isPristineScratch: Bool {
         url == nil && content.isEmpty && !isDirty && !isLoading
             && gitKind == nil && fileDiffRequest == nil && gitSnapshotRequest == nil
-            && displayMode == .text
+            && folderComparison == nil && displayMode == .text
     }
 }
 
@@ -585,31 +592,46 @@ enum FileLoadOutcome: Equatable {
 private enum WorkspacePathOperationRegistry {
     private static let lock = NSLock()
     private static var pathsByOperation: [UUID: [String]] = [:]
+    private static var exclusiveOperation: UUID?
 
-    static func begin(paths: [URL]) -> UUID? {
+    static func begin(paths: [URL], exclusive: Bool = false) -> UUID? {
         let standardized = Array(Set(paths.map { $0.standardizedFileURL.path }))
         guard !standardized.isEmpty else { return nil }
         return lock.withLock {
+            guard exclusiveOperation == nil, !exclusive || pathsByOperation.isEmpty else { return nil }
             let occupied = pathsByOperation.values.joined()
             guard !standardized.contains(where: { candidate in
                 occupied.contains(where: { pathsOverlap(candidate, $0) })
             }) else { return nil }
             let id = UUID()
             pathsByOperation[id] = standardized
+            if exclusive { exclusiveOperation = id }
             return id
         }
     }
 
     static func finish(_ id: UUID) {
-        _ = lock.withLock { pathsByOperation.removeValue(forKey: id) }
+        lock.withLock {
+            pathsByOperation.removeValue(forKey: id)
+            if exclusiveOperation == id { exclusiveOperation = nil }
+        }
     }
 
     static func contains(_ url: URL?) -> Bool {
         guard let path = url?.standardizedFileURL.path else { return false }
         return lock.withLock {
-            pathsByOperation.values.joined().contains {
+            if exclusiveOperation != nil { return true }
+            return pathsByOperation.values.joined().contains {
                 path == $0 || path.hasPrefix($0 + "/")
             }
+        }
+    }
+
+    static func blocksOpening(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        return lock.withLock {
+            guard let id = exclusiveOperation, let targets = pathsByOperation[id] else { return false }
+            return targets.contains { path == $0 || path.hasPrefix($0 + "/") }
         }
     }
 
@@ -788,6 +810,8 @@ final class Workspace: ObservableObject {
     /// sichtbaren Vorschau möglich — Produktinvariante „keine Schreibänderung
     /// ohne Vorschau".
     @Published var fourDMacroPreview: FourDMacroPreviewState?
+    @Published var textWorkflowSession: TextWorkflowSession?
+    @Published var textSnippetSession: TextSnippetSession?
     /// `true`, während ein tool4d-Makrolauf dieses Fensters läuft. Sperrt
     /// Menüeinträge und Shortcuts gegen parallele Läufe desselben Puffers.
     @Published var fourDMacroEngineBusy = false
@@ -977,6 +1001,9 @@ final class Workspace: ObservableObject {
     /// Öffnet den Dialog „Dateien vergleichen…" (Etappe 1 Wunschpaket
     /// 2026-07c) als Sheet auf dem Hauptfenster.
     @Published var showCompareFilesDialog: Bool = false
+    @Published var showFolderComparisonDialog = false
+    var folderComparisonPrefill: (left: URL?, right: URL?) = (nil, nil)
+    @Published var fileDiffTransferPreview: FileDiffTransferPreview?
     /// Geordnete Vorbelegung für den nächsten Vergleichsdialog. Die Reihenfolge
     /// folgt der sichtbaren Tab-Leiste, nicht der Klickreihenfolge.
     @Published private(set) var compareDialogPrefillTabIDs: [UUID] = []
@@ -1190,6 +1217,9 @@ final class Workspace: ObservableObject {
     /// Echte Treffer im aktiven Buffer — gefüttert vom `SearchRunner`,
     /// gilt im Datei-Scope.
     @Published var bufferMatches: [BufferSearch.Match] = []
+    @Published var searchApproval = SearchApproval()
+    @Published var lastSearchApprovalMemoryChange: TextWorkflowOpenDocumentsPlan.AppliedChange?
+    @Published var searchApprovalMemoryRestored = false
     /// ECHTE Gesamtzahl der Buffer-Treffer. Kann `bufferMatches.count`
     /// übersteigen, wenn der Cap (`BufferSearch.defaultMaxMatches`) griff —
     /// die Maske zeigt diese Zahl (ehrlicher Count wie BBEdits Statuszeile).
@@ -1700,6 +1730,12 @@ final class Workspace: ObservableObject {
     /// Vorschau, Toolbar, Bild-Drop, Tab-Leiste und Markdown-Menü — alle
     /// folgen damit derselben Formatwahl wie der Sprach-Chip in der Fußzeile.
     weak var visualMarkdownEditor: MarkdownVisualCoordinator?
+    let documentOutline = DocumentOutlineController()
+    let sourcePanes = SourcePaneRegistry()
+    @Published var sourceSplitEnabled = false
+    let markdownReferences = MarkdownReferenceController()
+    let markdownVisualFind = MarkdownVisualFindController()
+    let markdownTable = MarkdownTableController()
 
     var activeMarkdownIsVisual: Bool {
         activeTabIsMarkdown && activeViewMode == .text
@@ -1759,10 +1795,10 @@ final class Workspace: ObservableObject {
     }
 
     var activeTabIsMarkdown: Bool {
-        // Git-Verlauf und Dateivergleiche sind read-only Sonderansichten und
+        // Git-Verlauf, Datei- und Ordnervergleiche sind read-only Sonderansichten und
         // bekommen keine Markdown-Werkzeuge, auch wenn ihr Inhalt Markdown ist.
         guard let tab = activeTab, tab.gitKind == nil,
-              tab.fileDiffRequest == nil else { return false }
+              tab.fileDiffRequest == nil, tab.folderComparison == nil else { return false }
         return MarkdownFormat.isMarkdown(format: activeDocumentFormat)
     }
 
@@ -1967,6 +2003,7 @@ final class Workspace: ObservableObject {
         showSearchDialog = false
         livePreview = false
         showCompareFilesDialog = false
+        showFolderComparisonDialog = false
         compareDialogPrefillTabIDs = []
         comparisonTabID = nil
 
@@ -2559,14 +2596,15 @@ final class Workspace: ObservableObject {
     // MARK: - Zeilenenden umschalten (K7)
 
     /// Setzt die Zeilenende-Konvention des aktiven Tabs. Der Inhalt wird NICHT
-    /// sofort umgeschrieben (das überlebte die CESE-Binding-Reconcile-Falle
-    /// nicht) — stattdessen konvertiert `write` beim Speichern. Der Tab wird
-    /// als geändert markiert, damit klar ist, dass Speichern nötig ist.
+    /// sofort umgeschrieben. `write` konvertiert erst nach dieser ausdrücklichen
+    /// Wahl und übernimmt nach erfolgreichem Speichern denselben Inhalt in
+    /// Modell, Undo und Ansichten. Der Tab zeigt die vorgemerkte Änderung an.
     func setActiveLineEnding(_ ending: LineEnding) {
         guard let idx = activeTabIndex,
               textEditingIsAllowed(for: tabs[idx]) else { return }
         guard tabs[idx].lineEnding != ending else { return }
         tabs[idx].lineEnding = ending
+        tabs[idx].pendingLineEndingConversion = ending == tabs[idx].savedLineEnding ? nil : ending
         tabs[idx].hexEditSession.invalidateHistory()
         // Zurückschalten auf das gespeicherte Zeilenende (bei unverändertem
         // Text) macht den Tab wieder sauber — wie eine rückgängig gemachte
@@ -3407,11 +3445,6 @@ final class Workspace: ObservableObject {
                   acceptance: FileLoadAcceptance? = nil,
                   folderMatchReadToken: UUID? = nil,
                   outcome: ((FileLoadOutcome) -> Void)? = nil) {
-        if synchronizeVisualMarkdownBefore({
-            self.loadFile(atCanonicalURL: url, preview: preview, expectedGitContext: expectedGitContext,
-                          expectedDiskSnapshot: expectedDiskSnapshot, acceptance: acceptance,
-                          folderMatchReadToken: folderMatchReadToken, outcome: outcome)
-        }, onFailure: { outcome?(.cancelled) }) { return }
         // Ein Restore-Ladevorgang kann bereits entwertet sein, bevor er hier
         // startet. Dann weder einen vorhandenen Tab aktivieren noch einen
         // Platzhalter veröffentlichen.
@@ -3419,6 +3452,19 @@ final class Workspace: ObservableObject {
             outcome?(.cancelled)
             return
         }
+        // Ein nach dem Preflight gestarteter Read könnte erst nach dem Reload
+        // alte Bytes veröffentlichen. Reservierte Ziele daher vor dem Laden
+        // abweisen; unbeteiligte Dateien bleiben weiterhin lesbar.
+        guard !WorkspacePathOperationRegistry.blocksOpening(url) else {
+            if outcome == nil { saveSafetyWarningHandler(L10n.string("Dateioperation läuft"), TextWorkflowFailure.busy) }
+            outcome?(.busyLoading)
+            return
+        }
+        if synchronizeVisualMarkdownBefore({
+            self.loadFile(atCanonicalURL: url, preview: preview, expectedGitContext: expectedGitContext,
+                          expectedDiskSnapshot: expectedDiskSnapshot, acceptance: acceptance,
+                          folderMatchReadToken: folderMatchReadToken, outcome: outcome)
+        }, onFailure: { outcome?(.cancelled) }) { return }
         // ── (1) Dedup ──────────────────────────────────────────────────────
         // Wenn die Datei schon als Tab offen ist, nur aktivieren — kein zweiter Tab.
         if let existingIdx = tabs.firstIndex(where: { $0.url == url }) {
@@ -4101,15 +4147,16 @@ final class Workspace: ObservableObject {
                     && current.encoding == tab.encoding
                     && current.bom == tab.bom
                     && current.lineEnding == tab.lineEnding
+                    && current.pendingLineEndingConversion == tab.pendingLineEndingConversion
                     && current.diskSnapshot == tab.diskSnapshot
                     && current.url?.canonicalFileURL.path == tab.url?.canonicalFileURL.path
             }
-            // Zeilenenden auf die gewählte Konvention bringen (K7) — der Editor
-            // hält intern u.U. andere Umbrüche; maßgeblich ist die im Footer
-            // gewählte `lineEnding`. converting() normalisiert auch gemischte.
+            // Nur eine ausdrücklich geänderte Zeilenendenwahl vereinheitlicht.
+            // Normales Speichern erhält auch gemischte Umbrüche bytegenau.
+            let savedContent = tab.textForSaving(relocatedMarkdown ?? tab.content)
             guard let out = FileLoader.encodedData(
-                content: relocatedMarkdown ?? tab.content, encoding: tab.encoding,
-                bom: tab.bom, lineEnding: tab.lineEnding
+                content: savedContent, encoding: tab.encoding,
+                bom: tab.bom, lineEnding: tab.lineEnding, preservingLineEndings: true
             ) else { throw CocoaError(.fileWriteInapplicableStringEncoding) }
             let fm = FileManager.default
             let targetExists = fm.fileExists(atPath: url.path)
@@ -4221,15 +4268,14 @@ final class Workspace: ObservableObject {
             guard let finalIndex = tabs.firstIndex(where: { $0.id == tab.id }) else {
                 throw CoordinatedSaveError.tabChangedAfterWrite
             }
-            if let relocatedMarkdown,
-               !tabs[finalIndex].content.utf8.elementsEqual(relocatedMarkdown.utf8) {
+            if !tabs[finalIndex].content.utf8.elementsEqual(savedContent.utf8) {
                 if sameDocument, visualMarkdownEditor?.tabID == tab.id {
                     visualMarkdownEditor?.invalidateForSourceReplacement()
                 }
-                // Neue Bildpfade sind eine Modelländerung: Verlauf und Editor
-                // müssen gemeinsam wechseln, sonst bleibt der Manager abgekoppelt.
-                tabs[finalIndex].undoHistory.replace(tabs[finalIndex].content, with: relocatedMarkdown)
-                tabs[finalIndex].content = relocatedMarkdown
+                // Neue Bildpfade oder ausdrücklich konvertierte Zeilenenden
+                // wechseln in Modell, Verlauf und beiden Quellansichten gemeinsam.
+                tabs[finalIndex].undoHistory.replace(tabs[finalIndex].content, with: savedContent)
+                tabs[finalIndex].content = savedContent
                 if activeTabID == tab.id { editorReloadNonce += 1 }
             }
             tabs[finalIndex].isDirty = false
@@ -6132,10 +6178,10 @@ final class Workspace: ObservableObject {
         request: FileDiffRequest, isCancelled: () -> Bool
     ) throws -> FileDiffDocument {
         func loadSide(_ side: FileDiffSide, role: FileDiffSideRole) throws
-            -> Swift.Result<String, FileDiffLimitation> {
+            -> Swift.Result<FileDiffSource, FileDiffLimitation> {
             if isCancelled() { throw CancellationError() }
             // Ungespeicherter Editor-Inhalt liegt schon vor — nichts laden.
-            if let text = side.text { return .success(text) }
+            if let text = side.text { return .success(FileDiffSource(text: text, documentOrigin: side.documentOrigin)) }
             guard let url = side.url else { return .failure(.unreadable(side: role)) }
             do {
                 let loaded = try FileLoader.load(url: url, isCancelled: isCancelled)
@@ -6147,7 +6193,8 @@ final class Workspace: ObservableObject {
                     // Inhalt — ein Diff wäre eine stille Verfälschung.
                     return .failure(.tooLarge(side: role))
                 case .text:
-                    return .success(loaded.content)
+                    guard let snapshot = loaded.diskSnapshot else { return .failure(.unreadable(side: role)) }
+                    return .success(FileDiffSource(text: loaded.content, fileURL: url, snapshot: snapshot))
                 }
             } catch FileLoader.LoadError.cancelled {
                 throw CancellationError()
@@ -6162,10 +6209,10 @@ final class Workspace: ObservableObject {
         case (_, .failure(let limitation)):
             return .failure(limitation)
         case (.success(let left), .success(let right)):
-            switch try FileDiff.compare(left: left, right: right,
+            switch try FileDiff.compare(left: left.text, right: right.text,
                                         options: request.options,
                                         isCancelled: isCancelled) {
-            case .result(let result): return .success(result)
+            case .result(let result): return .success(result, leftSource: left, rightSource: right)
             case .limitation(let limitation): return .failure(limitation)
             }
         }
@@ -6187,16 +6234,17 @@ final class Workspace: ObservableObject {
     /// Editor-Inhalt (Nachher) — gleiche Leserichtung wie die Ersetzungs-
     /// Vorschau und der Git-Diff.
     func compareActiveTabAgainstDisk() {
+        if synchronizeVisualMarkdownBefore({ [weak self] in self?.compareActiveTabAgainstDisk() }) { return }
         guard canCompareActiveTabAgainstDisk,
-              let tab = activeTab, let url = tab.url else {
+              let tab = activeTab, let url = tab.url,
+              let editorSide = MainActor.assumeIsolated({ FileDiffSide.document(tab, in: self) }) else {
             NSSound.beep()
             return
         }
         let request = FileDiffRequest(
             left: FileDiffSide(name: L10n.format("%@ (gespeichert)", tab.title),
                                path: url.path, url: url, text: nil),
-            right: FileDiffSide(name: L10n.format("%@ (ungespeichert)", tab.title),
-                                path: url.path, url: nil, text: tab.content),
+            right: editorSide,
             options: FileDiffOptions()
         )
         openFileDiffTab(request: request)
@@ -6340,7 +6388,7 @@ final class Workspace: ObservableObject {
     /// erfassten Bereich (Treffer am Ende fehlten). Die Location bleibt — der
     /// ersetzte Treffer liegt innerhalb der Auswahl, nur deren Ende wandert.
     /// No-op, wenn „Nur in Auswahl" aus ist.
-    private func adjustSearchSelectionRange(lengthDelta delta: Int) {
+    func adjustSearchSelectionRange(lengthDelta delta: Int) {
         guard searchInSelectionOnly, let r = searchSelectionRange else { return }
         searchSelectionRange = NSRange(location: r.location,
                                        length: max(0, r.length + delta))
@@ -6495,8 +6543,9 @@ final class Workspace: ObservableObject {
                 ? root.standardizedFileURL
                 : root.appendingPathComponent(relative).standardizedFileURL
             let path = candidate.path
-            guard path == rootPath || path.hasPrefix(rootPath + "/"),
-                  FileManager.default.fileExists(atPath: path) else { return nil }
+            // Fehlende gültige Quellen gehören in den Suchauftrag: Der
+            // Worker erklärt sie als Fehler statt eine Teilsuche freizugeben.
+            guard path == rootPath || path.hasPrefix(rootPath + "/") else { return nil }
             return candidate
         }
     }
@@ -6636,6 +6685,8 @@ final class Workspace: ObservableObject {
     /// Letzte ausgeführte Folder-Apply-Session. UI bietet darauf
     /// basierend „Rückgängig"-Aktion an.
     @Published var lastApplySession: ApplySession? = nil
+    @Published var lastTextWorkflowMemoryChange: TextWorkflowOpenDocumentsPlan.AppliedChange?
+    var textWorkflowMemoryRestored = false
 
     /// Nur für isolierte Tests/gezielte Laufzeitkonfiguration. `nil` nutzt den
     /// normalen Application-Support-Ordner; Tests schreiben nie dorthin.
@@ -6704,6 +6755,128 @@ final class Workspace: ObservableObject {
         }
     }
 
+    struct TextWorkflowDiskMutation: @unchecked Sendable {
+        struct TabState: Equatable, Sendable {
+            let workspaceID: ObjectIdentifier
+            let id: UUID
+            let documentID: UUID
+            let url: URL
+            let title: String
+            let revision: UInt64
+            let blocked: Bool
+        }
+        let id: UUID
+        let urls: [URL]
+        let workspaces: [Workspace]
+        let tabs: [TabState]
+        let editors: [(workspace: Workspace, editor: TextView, wasEditable: Bool)]
+
+        /// Dateiidentitäten werden ausschließlich im Worker aufgelöst. Die
+        /// kurze globale Schreibsperre schützt auch neu geöffnete Hardlink-
+        /// Aliase, die beim Start noch kein Fenster kannte.
+        func preflight(in workspace: Workspace, shouldCancel: () -> Bool = { false }) throws {
+            func check() throws { if shouldCancel() { throw ApplyError.cancelled } }
+            var targetPaths = Set<String>(), identities = Set<FileIdentity>()
+            for url in urls {
+                try check()
+                let resolved = url.canonicalFileURL
+                targetPaths.insert(resolved.path)
+                if let identity = FileIdentity(url: resolved) { identities.insert(identity) }
+            }
+            var blocked: [TabState] = []
+            for tab in tabs where tab.blocked {
+                try check()
+                let resolved = tab.url.canonicalFileURL
+                if targetPaths.contains(resolved.path)
+                    || FileIdentity(url: resolved).map(identities.contains) == true { blocked.append(tab) }
+            }
+            guard blocked.isEmpty else {
+                throw ApplyError.conflict(L10n.format(
+                    "Diese Eingaben sind in einem Fenster ungespeichert oder werden geladen:\n• %@\nSpeichere oder schließe sie und berechne die Vorschau erneut.",
+                    blocked.map(\.title).sorted().joined(separator: "\n• ")))
+            }
+            try check()
+            let current = DispatchQueue.main.sync {
+                workspace.textWorkflowMutationTabs(in: workspace.fileTreeMutationWorkspaces(including: workspaces)) == tabs
+            }
+            guard current else { throw ApplyError.conflict(TextWorkflowFailure.workspaceChanged) }
+        }
+    }
+
+    private func textWorkflowMutationTabs(in workspaces: [Workspace]) -> [TextWorkflowDiskMutation.TabState] {
+        workspaces.flatMap { workspace in
+            workspace.tabs.compactMap { tab in
+                guard let url = tab.url else { return nil }
+                return TextWorkflowDiskMutation.TabState(workspaceID: ObjectIdentifier(workspace), id: tab.id,
+                    documentID: tab.documentID, url: url.standardizedFileURL, title: tab.title,
+                    revision: tab.contentRevision, blocked: tab.hasUnsavedChanges || tab.isLoading || tab.undoHistory.isPerformingAction)
+            }
+        }.sorted { ($0.workspaceID.hashValue, $0.id.uuidString) < ($1.workspaceID.hashValue, $1.id.uuidString) }
+    }
+
+    @MainActor func textWorkflowDiskTabStates() -> [TextWorkflowDiskMutation.TabState] {
+        textWorkflowMutationTabs(in: fileTreeMutationWorkspaces())
+    }
+
+    @MainActor func synchronizeTextWorkflowDiskDocuments() async -> (Bool, [MarkdownVisualCoordinator]) {
+        let editors = fileTreeMutationWorkspaces().compactMap(\.visualMarkdownEditor).filter(\.ready)
+        guard !editors.isEmpty else { return (true, []) }
+        // WebKit kann die letzte Eingabe noch im DOM halten. Alle betroffenen
+        // Fenster vor der Pfadsperre synchronisieren und Eingaben bis zum
+        // Abschluss halten; sonst würde die Sperre ihre Rückmeldung ablehnen.
+        let succeeded: Bool = await withCheckedContinuation { continuation in
+            let group = DispatchGroup()
+            var success = true
+            for editor in editors {
+                group.enter()
+                editor.synchronize(holdingInput: true) { value in success = success && value; group.leave() }
+            }
+            group.notify(queue: .main) { continuation.resume(returning: success) }
+        }
+        return (succeeded, editors)
+    }
+
+    @MainActor func textWorkflowDiskEditorsAreHeld(_ editors: [MarkdownVisualCoordinator]) -> Bool {
+        let held = Set(editors.map(ObjectIdentifier.init))
+        return fileTreeMutationWorkspaces().compactMap(\.visualMarkdownEditor).filter(\.ready)
+            .allSatisfy { held.contains(ObjectIdentifier($0)) }
+    }
+
+    @MainActor func beginTextWorkflowDiskMutation(urls: [URL]) throws -> TextWorkflowDiskMutation {
+        guard !folderApplying, let id = WorkspacePathOperationRegistry.begin(paths: urls, exclusive: true) else {
+            throw ApplyError.conflict(TextWorkflowFailure.busy)
+        }
+        let workspaces = fileTreeMutationWorkspaces()
+        let tabs = textWorkflowMutationTabs(in: workspaces)
+        // Native Eingaben schon vor dem Worker sperren. SwiftUIs späterer
+        // Konfigurationsabgleich allein ließe noch ein Ereignisfenster offen.
+        let editors = workspaces.compactMap { workspace -> (workspace: Workspace, editor: TextView, wasEditable: Bool)? in
+            guard workspace.activeTab?.url != nil, let editor = CommandTargeting.editorTextView(for: workspace) else { return nil }
+            let wasEditable = editor.isEditable
+            editor.isEditable = false
+            return (workspace, editor, wasEditable)
+        }
+        noteFileMutationChange(in: workspaces)
+        return TextWorkflowDiskMutation(id: id, urls: urls, workspaces: workspaces, tabs: tabs, editors: editors)
+    }
+
+    @MainActor func finishTextWorkflowDiskMutation(_ mutation: TextWorkflowDiskMutation, changedURLs: [URL], session: ApplySession?) {
+        WorkspacePathOperationRegistry.finish(mutation.id)
+        let workspaces = fileTreeMutationWorkspaces(including: mutation.workspaces)
+        noteFileMutationChange(in: workspaces)
+        for item in mutation.editors where item.wasEditable {
+            if CommandTargeting.editorTextView(for: item.workspace) === item.editor,
+               item.workspace.activeTab.map({ item.workspace.textEditingIsAllowed(for: $0) }) == true {
+                item.editor.isEditable = true
+            }
+        }
+        if let session { lastApplySession = session }
+        if !changedURLs.isEmpty {
+            for workspace in workspaces { workspace.searchRunner?.folderResultsBecameStale() }
+            reloadOpenTabsAcrossWorkspaces(for: changedURLs, capturedWorkspaces: workspaces)
+        }
+    }
+
     /// Ein Hex-Save schreibt direkt aus der Abschnittsansicht. Alle Fenster,
     /// die dieselbe Datei sauber geöffnet haben, müssen den neuen Plattenstand
     /// trotzdem sofort übernehmen; ein App-Aktivierungswechsel findet bei
@@ -6750,7 +6923,11 @@ final class Workspace: ObservableObject {
     /// neu von der Platte geladen (sonst zeigt der Editor noch den
     /// alten Inhalt).
     @discardableResult
-    func applyAllInFolder() -> Bool {
+    func applyAllInFolder(approvedPreview: SearchApprovalPreview? = nil) -> Bool {
+        if let approvedPreview {
+            guard MainActor.assumeIsolated({ approvedPreview.request.isCurrent(in: self) }), approvedPreview.changedCount > 0,
+                  case .files = approvedPreview.request.source else { return false }
+        }
         guard scope.isFolderLike,
               searchError == nil,
               !folderSearching,
@@ -6765,7 +6942,6 @@ final class Workspace: ObservableObject {
                 "Die sichtbare Vorschau ist gekürzt. Verfeinere die Suche, bis alle Treffer sichtbar sind, bevor du Änderungen anwendest."))
             return false
         }
-        let urls = visibleResults.map(\.url)
         recordSearchHistory()
 
         // Nur billige, bereits mit der Vorschau gelieferte Metadaten werden
@@ -6779,15 +6955,21 @@ final class Workspace: ObservableObject {
                 "Dateien oder Suchoptionen haben sich seit der sichtbaren Vorschau geändert. Starte die Suche erneut; es wurde nichts verändert."))
             return false
         }
-        let inputs = visibleResults.map { result in
-            ApplyTransaction.Input(
-                url: result.url,
-                snapshot: result.snapshot!,
-                matches: result.matches.map {
-                    PlannedMatch(range: $0.range, before: $0.matchText,
-                                 after: $0.replacedText)
-                })
+        let inputs: [ApplyTransaction.Input]
+        if let approvedPreview, case .files(let approvedInputs) = approvedPreview.request.source {
+            inputs = approvedInputs
+        } else {
+            inputs = visibleResults.map { result in
+                ApplyTransaction.Input(
+                    url: result.url,
+                    snapshot: result.snapshot!,
+                    matches: result.matches.map {
+                        PlannedMatch(range: $0.range, before: $0.matchText,
+                                     after: $0.replacedText)
+                    })
+            }
         }
+        let urls = inputs.filter { $0.approvedRanges?.isEmpty != true }.map(\.url)
 
         // Die Warnung kommt VOR jedem Voll-Read. `byteCount` stammt aus dem
         // stabilen Vorschau-Snapshot und ist damit zugleich billig und exakt.
@@ -6809,6 +6991,8 @@ final class Workspace: ObservableObject {
         // Ein Alert pumpt die Runloop; auch ein zweites Fenster kann bis hier
         // noch Text oder Bytes geändert haben. Erst unmittelbar vor dem
         // Hintergrundstart wird deshalb app-weit erneut geprüft und gesperrt.
+        if let approvedPreview,
+           !MainActor.assumeIsolated({ approvedPreview.request.isCurrent(in: self) }) { return false }
         let mutationWorkspaces = fileTreeMutationWorkspaces()
         let blockedTabs = blockedTabsForFileMutation(
             urls: urls, workspaces: mutationWorkspaces

@@ -12,6 +12,7 @@ public enum ControlProtocol {
     public static let maximumJobs = 128
     public static let maximumSessions = 16
     public static let maximumOuterArchiveBytes = 67_108_864
+    public static let sourceSnapshotTextEncodings = ["utf-8", "utf-16-le", "utf-16-be", "windows-1252", "iso-8859-1", "mac-roman"]
     public static let operations = ["capabilities", "objects", "snapshot", "sourceSnapshot", "explanation", "status", "cancel", "navigate", "close"]
     public static func endpoint(bundleIdentifier: String) -> String {
         "\(bundleIdentifier).control.v1.\(getuid())"
@@ -24,6 +25,7 @@ public struct ControlCapabilities: Codable, Equatable {
     public var operations = ControlProtocol.operations
     public var sourceKinds = ["fileSnapshot", "archiveMaterialization"]
     public var sourceSnapshotSchemaVersion: Int? = 1
+    public var sourceSnapshotTextEncodings: [String]? = ControlProtocol.sourceSnapshotTextEncodings
     public var maximumOuterArchiveBytes: Int? = ControlProtocol.maximumOuterArchiveBytes
     public var coordinates = "zero-based UTF-16; start inclusive, end exclusive; grapheme boundaries required"
     public var readOnly = true
@@ -76,26 +78,27 @@ public struct ControlRequest: Codable, Equatable {
     public var documentID: UUID?
     public var jobID: UUID?
     public var provenance: ControlSourceProvenance?
+    public var textEncoding: String?
 
     public init(operation: String, id: UUID = UUID(), now: Date = Date(),
                 path: String? = nil, sha256: String? = nil,
                 location: Int? = nil, length: Int? = nil,
                 sessionID: UUID? = nil, documentID: UUID? = nil, jobID: UUID? = nil, runtimeID: UUID? = nil,
-                provenance: ControlSourceProvenance? = nil) {
+                provenance: ControlSourceProvenance? = nil, textEncoding: String? = nil) {
         version = ControlProtocol.version; self.id = id
         deadline = now.timeIntervalSince1970 + ControlProtocol.requestTimeout
         self.operation = operation; self.path = path; self.sha256 = sha256
         self.runtimeID = runtimeID
         self.location = location; self.length = length
         self.sessionID = sessionID; self.documentID = documentID; self.jobID = jobID
-        self.provenance = provenance
+        self.provenance = provenance; self.textEncoding = textEncoding
     }
 
     public static func decode(_ data: Data) throws -> Self {
         guard data.count <= ControlProtocol.maximumMessageBytes,
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               !object.values.contains(where: { $0 is NSNull }),
-              Set(object.keys).isSubset(of: ["version", "id", "deadline", "operation", "runtimeID", "path", "sha256", "location", "length", "sessionID", "documentID", "jobID", "provenance"]),
+              Set(object.keys).isSubset(of: ["version", "id", "deadline", "operation", "runtimeID", "path", "sha256", "location", "length", "sessionID", "documentID", "jobID", "provenance", "textEncoding"]),
               let request = try? JSONDecoder().decode(Self.self, from: data) else {
             throw ControlFailure.invalidRequest
         }
@@ -111,6 +114,11 @@ public struct ControlRequest: Codable, Equatable {
               (allowExpired || deadline > now.timeIntervalSince1970),
               deadline <= now.timeIntervalSince1970 + ControlProtocol.requestTimeout + 1 else {
             throw ControlFailure.expired
+        }
+        if let textEncoding {
+            guard operation == "sourceSnapshot", ControlProtocol.sourceSnapshotTextEncodings.contains(textEncoding) else {
+                throw ControlFailure.invalidRequest
+            }
         }
         var present = Set<String>()
         if path != nil { present.insert("path") }

@@ -68,7 +68,9 @@ Systemdialog über „PDF“ unten links.
 
 ## Suchen und Ersetzen
 
-⌘F öffnet die Suchmaske im Datei-Bereich, ⇧⌘F im Projekt-Bereich (ohne
+Im Markdown-WYSIWYG-Modus öffnet ⌘F die Textsuche direkt im Dokument;
+⌥⌘F öffnet dort die Quelltextsuche mit Ersetzen. Im Quelltextmodus öffnet
+⌘F die Suchmaske im Datei-Bereich, ⇧⌘F im Projekt-Bereich (ohne
 geöffnetes Projekt im Ordner-Bereich); ⌘E übernimmt die aktuelle Auswahl als
 Suchbegriff. Ist die Maske bereits offen und das Suchfeld befüllt, holen ⌘F und
 ⇧⌘F sie nur nach vorn — der gewählte Bereich und die Treffer bleiben erhalten;
@@ -106,7 +108,7 @@ auf die Projektwurzel. Groß-/Kleinschreibung wird wie eingegeben beachtet.
 `DerivedData` bleibt bei jeder Projekt-Suche unabhängig von der Tiefe
 verbindlich ausgeschlossen; der Tooltip des Ausschlussfelds nennt das.
 Änderst du Suchbegriff, Dateityp oder Ausschlüsse, entfernt Fastra
-die alte Trefferliste sofort; Navigation, Vorschau und „Alle ersetzen“ werden
+die alte Trefferliste sofort; Navigation und Freigaben werden
 erst mit dem Ergebnis des neuen Laufs wieder aktiv.
 
 Ordner- und Projekt-Suchen überspringen Dateien über 32 MiB, weil Fastra sie
@@ -142,45 +144,18 @@ Importdateien sind auf 1 MB begrenzt; ungültige Einträge werden übersprungen.
 **Optionen:** Groß-/Kleinschreibung, „Ganzes Wort“, „Wrap-around“ und
 „Nur in Auswahl“ (sucht ausschließlich in der eingefrorenen Selektion).
 
-**Ersetzen:**
+**Ersetzen und Treffer freigeben:**
 
-Bei Ersetzungen über Dateien darf eine Ausgabedatei höchstens 256 MiB groß
-werden, damit die Änderung überprüfbar und rückgängig zu machen bleibt.
-Überschreitet sie diese Grenze, wird keine Datei des Auftrags geschrieben.
-
-- „Ersetzen“ ersetzt nur den aktiven Treffer und springt weiter.
-- Ersetzungen in „Datei“ und „Geöffnet“ lassen sich pro Dokument mit **⌘Z** zurücknehmen und mit **⇧⌘Z** wiederholen. Frühere Bearbeitungsschritte bleiben erhalten, auch nach einem Tabwechsel und in der geteilten Markdown-Ansicht.
-- „Alle ersetzen · N“ (⌘Return) ersetzt alle Treffer des Suchbereichs.
-- Überschreitet die Trefferzahl die sichtbare Obergrenze, bleibt „Alle
-  ersetzen“ gesperrt. Verfeinere dann den Suchbegriff, bis die vollständige
-  Trefferbasis sichtbar ist.
-- Enthält die Trefferbasis im Bereich „Geöffnet“ einen schreibgeschützten Tab,
-  bleibt „Alle ersetzen“ ebenfalls gesperrt. Fastra überspringt keinen
-  sichtbaren Treffer stillschweigend.
-- „Vorschau der Änderungen“ zeigt vor dem Ersetzen jede betroffene Zeile
-  als Vorher/Nachher-Diff. Angewendet wird **exakt** die angezeigte
-  Trefferbasis — das ist eine Sicherheitsgarantie. In sehr langen Dokumenten
-  kürzt Fastra dafür unveränderten Kontext, nie unbemerkt eine Änderungszeile;
-  reicht selbst das Anzeigelimit nicht für alle Änderungen, bleibt Apply
-  gesperrt. Den vollständigen Diff berechnet Fastra abbrechbar im Hintergrund
-  und bindet ihn an genau diese Dokument- und Treffergeneration. Vorher- und
-  Nachher-Text sind auf je 32 MiB, jede Seite auf 200.000 Zeilen und der
-  tatsächlich unterschiedliche Diff-Mittelteil auf 30.000 Zeilen begrenzt.
-  Überschreitet ein Auftrag eine Grenze, erklärt die Vorschau sie sichtbar und
-  „Alle ersetzen“ bleibt gesperrt. Auch eine auf 2.000 Treffer gekappte Suche
-  erscheint im Sheet als eigene erklärte Grenze statt als scheinbar
-  vollständige Vorschau.
-- Im Ordner-/Projekt-Bereich prüft Fastra vor dem ersten Schreiben noch einmal
-  alle Dateien gegen die sichtbare Vorschau. Geänderte Dateien und betroffene
-  Tabs mit ungespeicherten Änderungen blockieren den gesamten Vorgang. Planung,
-  Backup und Schreiben laufen mit Fortschrittsanzeige im Hintergrund; ein
-  Abbruch vor der kurzen Schreibphase verändert keine Zieldatei. Eine Datei,
-  bei der die Ersetzung genau denselben Text ergibt, wird übersprungen — es
-  gibt für sie nichts zu schreiben. Abgelehnt wird der Vorgang nur, wenn sich
-  keine einzige Datei ändert.
-- Fastra schreibt atomar pro Datei und legt automatisch ein Backup an.
-  „Rückgängig“ spielt nur tatsächlich angewendete Dateien bit-exakt zurück und
-  bricht ab, wenn sich eine davon nach dem Ersetzen erneut geändert hat.
+- „Ersetzen“ ersetzt nur den aktiven Treffer im Speicher und springt weiter. Diese einzelne Bearbeitung ist unabhängig von den Freigabe-Checkboxen.
+- Für Mehrfachänderungen kreuzt du einzelne Treffer oder ganze Dateien an. Ein Strich in der Datei-Checkbox bedeutet: Ein Teil ihrer Treffer ist freigegeben. Neue Suchläufe beginnen ohne Freigaben.
+- „Alle“ gibt alle editierbaren Treffer einer vollständigen Suche frei; „Keine“ entfernt die Freigaben. Die Zähler zeigen Gesamtzahl, Freigaben und editierbare Treffer. Nicht editierbare Treffer bleiben zur Navigation sichtbar und können nicht angekreuzt werden.
+- „Freigaben prüfen · N“ (⌘Return) öffnet die vollständige Vorher/Nachher-Vorschau ausschließlich der freigegebenen Änderungen. Wähle die Datei im Menü, um ihre Änderungen zu prüfen. Unveränderter Kontext kann gefaltet sein; alle Änderungen bleiben erreichbar. Markierungen in ⟦…⟧ erklären exakte Unicode-Zeichen und Zeilenenden und werden nicht eingefügt.
+- Erst „Freigegebene Änderungen anwenden“ führt den geprüften Auftrag aus. Suchoptionen, Quellen, Dokumentrevisionen und Ursprungsfenster müssen weiterhin zur Vorschau passen. Änderungen entwerten alte Freigaben. Schließen oder Abbrechen während der Vorbereitung verhindert ein späteres Apply dieser Vorschau.
+- In **Datei** und **Geöffnet** ändert Apply ausschließlich den Speicher. Speichere die Dokumente anschließend ausdrücklich. Jede Änderung ist pro Dokument ein nativer Undo-Schritt: **⌘Z** nimmt sie zurück, **⇧⌘Z** wiederholt sie. Frühere Bearbeitungen bleiben erhalten, auch nach einem Tabwechsel und in der geteilten Markdown-Ansicht.
+- „Speicheränderungen zurücknehmen“ nimmt die letzte Freigabe gemeinsam zurück; „Gemeinsam wiederherstellen“ wendet sie erneut an. Dafür müssen die tatsächlich geänderten Dokumente noch exakt auf der erwarteten Basis stehen. Spätere Änderungen an unbeteiligten Dokumenten bleiben erhalten. Nach weiteren Bearbeitungen eines betroffenen Dokuments nutze dessen eigenen Undo-Verlauf.
+- In **Ordner** und **Projekt** schreibt Apply auf die Platte. Fastra prüft vor der Vorschau und vor dem ersten Schreiben auch die gelisteten Trefferdateien ohne Freigaben erneut. Fremdänderungen, ungesicherte Änderungen in betroffenen offenen Dateien oder Schreibschutz verhindern den Vorgang. Wirkungslose Ersetzungen schreiben keine Datei.
+- Planung, Backup und Schreiben laufen mit Fortschritt im Hintergrund. „Apply abbrechen“ stoppt vor der Schreibphase ohne Zieldateiänderung. Eine bereits begonnene Schreibphase wird sicher beendet. Fastra schreibt **atomar pro Datei**, mit automatischem Backup; eine Mehrdateiänderung kann bei Fehlern teilweise erfolgt sein. „Rückgängig“ restauriert tatsächlich angewendete Dateien bitgenau und stoppt bei späteren Änderungen oder Schreibschutz.
+- Gekappte Trefferlisten, fehlende Suchquellen, Lesefehler und unvollständige Diffs geben kein Apply frei. Auch eine Kappung innerhalb einer einzelnen Datei nennt die tatsächlich sichtbare und die gezählte Trefferzahl. Nicht lesbare, zu große oder nicht dekodierbare Dateien werden mit Anzahl und Grund erklärt; der Tooltip nennt bis zu acht Pfade und die Zahl weiterer Dateien. Bewusst übersprungene Binärdateien sperren die Freigaben nicht. Verfeinere die Suche oder behebe die Ursache und suche erneut. Die Freigabevorschau ist auf 500 Eingaben, je 64 MiB Original-, Ausgabe- und Vorschautext, 32 MiB Text pro Datei, 100.000 gemeinsame Vorschauzeilen und 60 Sekunden begrenzt. Der Diff verarbeitet höchstens 200.000 Zeilen pro Seite und 30.000 unterschiedliche Zeilen im verbleibenden Vergleichsbereich. Kodierung, BOM und unveränderte Zeilenenden bleiben erhalten; nicht darstellbare Ersetzungen werden abgewiesen.
 
 **Navigation:** Return bzw. ⌘G springt zum nächsten, ⇧⌘G zum vorherigen
 Treffer; die Pfeiltasten wandern durch die Trefferliste, die dabei zum
@@ -253,10 +228,64 @@ Bereichen. Die beim Öffnen des Speicherdialogs fertige Vergleichsbasis bleibt
 maßgeblich. Bei Git stehen Einschränkungen ausdrücklich im Bericht. Wähle eine
 eigene Berichtsdatei; Vergleichsquellen dürfen nicht überschrieben werden.
 
-Der Vergleich zeigt nur an — er ändert nie Dateien. Schließt du den
+**Einzelne Blöcke übernehmen:** Wähle einen Unterschied in der Liste und
+„Nach links“ oder „Nach rechts“ oberhalb der Spalten. Die gewählte Zielseite
+muss ein zugeordnetes, weiterhin offenes editierbares Dokument sein.
+Fastra zeigt vor dem Anwenden eine genaue Vorher-/Nachher-Vorschau. Markierungen
+in ⟦…⟧ erklären übertragene Zeilenenden und exakte Unicode-Zeichen; sie werden
+nicht eingefügt. Ein nur auf der Zielseite vorhandener Block wird entfernt,
+ein nur auf der anderen Seite vorhandener eingefügt. Ignorierte Unterschiede
+außerhalb des Blocks bleiben erhalten.
+
+„Block übernehmen“ ändert ausschließlich das Zieldokument im Speicher und
+besitzt natives Undo/Redo. Speichern erfolgt anschließend wie gewohnt mit der
+gewählten Kodierung und Zeilenendkonvention. Der Vergleich wird nach der Übernahme
+und bei der Rückkehr nach Dokumentänderungen neu berechnet. „Neu berechnen“ liest
+die Quellen erneut. Veränderte, geschlossene oder ersetzte Dokumente und geänderte
+Plattendateien sperren eine alte Vorschau. Die Vorbereitung ist abbrechbar;
+unvollständige Vorschauen und Eingaben/Ausgaben über 32 MiB beziehungsweise
+Vorschautext über 64 MiB geben keine Übernahme frei. Reine Dateiseiten und externe
+Vergleichsfenster bleiben schreibgeschützt. Öffne ein Dokument vor dem Vergleich
+als Tab, wenn du es als Ziel verwenden möchtest.
+
+Der Vergleich schreibt selbst keine Dateien. Schließt du den
 Vergleichs-Tab oder das Fenster, während er noch rechnet, endet die
 Berechnung sofort; ein erneuter Vergleich derselben Dateien ersetzt eine
 noch laufende Berechnung statt neben ihr zu laufen.
+
+## Ordner vergleichen
+
+**Suchen → Ordner vergleichen…** prüft zwei lokale Ordner ausschließlich lesend.
+Wähle links und rechts einen Ordner, den Dateitypfilter und bei Bedarf dieselben
+Ausschlussmuster wie in der Ordnersuche. Versteckte Einträge bleiben ausgeschlossen.
+Die Liste zeigt relative Pfade mit **Nur links**, **Nur rechts**, **Identisch**,
+**Verschieden** oder **Nicht prüfbar**. Binärdateien werden bytegenau verglichen.
+Symlinks und besondere Dateien erscheinen als nicht prüfbar und werden nicht
+verfolgt. Dateitypfilter und Ausschlüsse gelten für beide Seiten.
+Ausschlussmuster behandeln zusammengesetzte und zerlegte Unicode-Schreibweisen
+desselben Dateinamens gleich.
+
+**Identisch** bedeutet gleiche Dateibytes, einschließlich Kodierung, BOM und
+Zeilenenden. Der Dateivergleich zeigt dagegen Unterschiede im dekodierten
+Zeilentext. Kodierung, BOM oder Zeilenendenstil können daher abweichen, obwohl
+dieser Textvergleich keine Unterschiede anzeigt.
+
+Markiere ein Dateipaar und wähle **Dateipaar öffnen**. Der vorhandene Dateivergleich
+liest beide Dateien frisch; seine Text-, Binär- und Größenbeschränkungen gelten
+weiter. Diese externen Dateiseiten bleiben schreibgeschützt. Es gibt keine
+automatische Synchronisierung und keine Änderung an offenen Dokumenten.
+
+Der Ordnervergleich ist eine datierte Momentaufnahme. **Neu vergleichen** liest
+die Ordner erneut. Fortschritt und **Abbrechen** begleiten den Lauf. Lesefehler,
+Änderungen während der Prüfung und erreichte Grenzen kennzeichnen das Ergebnis
+ausdrücklich als unvollständig. Ein fehlender Eintrag gilt nur dann sicher als
+einseitig, wenn die Gegenseite vollständig gelesen wurde.
+
+Die Prüfung ist auf 20.000 Einträge und 100.000 besuchte Einträge je Ordner,
+64 Verzeichnisebenen, 256 MiB je Datei und 2 GiB Lesebudget begrenzt. Dateien
+werden in kleinen Blöcken gelesen; der Vergleich sammelt keine vollständigen
+Dateiinhalte im Speicher. Abgebrochene Ergebnisse geben keinen vollständigen
+Vergleich vor. Schließen des Tabs oder Fensters beendet seine Hintergrundarbeit.
 
 ## Text-Transformationen
 
@@ -381,7 +410,196 @@ nicht verfügbar; die Vorschau speichert ausschließlich in die geöffnete Datei
 Ein Datei- oder Ordnerpfad mit offenen Byte-Änderungen lässt sich über Fastras
 Dateibaum erst nach dem Speichern oder Verwerfen in den Papierkorb legen.
 
+## Textbausteine mit Platzhaltern
+
+**Text → Textbausteine…** oder der Knopf im Editor öffnet lokale, benannte
+Vorlagen. In Markdown steht der Knopf auch im formatierten Editor zur Verfügung.
+Die Bausteine ergänzen die vorhandenen 4D-Makros; sie führen keine Skripte aus.
+
+Wähle **Neu**, gib einen Namen und die Vorlage ein und speichere sie.
+**Duplizieren** erzeugt eine unabhängige Kopie. Vorlagen lassen sich bearbeiten,
+löschen und nach Namen durchsuchen. Nicht gespeicherte Vorlagenänderungen werden
+vor dem Wechsel oder Schließen abgefragt. **Neu laden** übernimmt Änderungen der
+Sammlung aus anderen Fenstern. Eine inzwischen geänderte Vorlage wird beim
+Speichern nicht überschrieben.
+
+Schreibe Platzhalter als `{{Name}}`, zum Beispiel:
+
+```text
+Hallo {{Name}},
+
+wir treffen uns in {{Ort}}.
+Viele Grüße an {{Name}}!
+```
+
+Jeder unterschiedliche Name erhält ein Feld in der Reihenfolge seines ersten
+Auftretens. Wiederholte Namen verwenden denselben Wert. Leerzeichen am Anfang und
+Ende des Namens werden entfernt; leere Namen, Klammern, Steuerzeichen und
+Zeilenumbrüche sind darin nicht erlaubt. Einzelne Klammern bleiben wörtlich.
+Feldwerte dürfen leer oder mehrzeilig sein. Return fügt einen Zeilenumbruch ein,
+Tab wechselt zum nächsten Feld, Umschalt-Tab zum vorherigen. Unicode bleibt
+erhalten. Ein Feldwert wie `{{Ort}}` wird wörtlich eingesetzt und nicht nochmals
+als Platzhalter ausgewertet.
+
+Die **Einfügevorschau** zeigt das vollständige Ergebnis. **Baustein einfügen** ersetzt genau
+die Auswahl, die beim Öffnen im Dokument festgehalten wurde, oder fügt an der
+festgehaltenen Schreibmarke ein. Die Vorlage muss vorher gespeichert sein. Ändert
+sich das Dokument oder die Einfügestelle, ist das Ziel ungültig: schließe den
+Picker und öffne ihn an der gewünschten Stelle erneut. **Schließen** verändert
+den Dokumentinhalt nicht. Eine Einfügung ist ein Undo-Schritt und schreibt erst
+beim normalen Speichern auf die Platte. Im geteilten Quelltext gilt die zuvor
+bediente Ansicht. Im formatierten Markdown wird der erzeugte Markdown-Text über
+den vorhandenen sicheren Renderer eingefügt; andere Quellblöcke bleiben erhalten.
+
+**Importieren…** liest eine lokale JSON-Sammlung. Vor der Übernahme erscheinen die
+vorgesehenen Namen. Namenskonflikte erhalten Nummern, vorhandene Bausteine werden
+nicht ersetzt. Ändert sich die Sammlung während der Bestätigung, wird nichts
+übernommen; öffne den Import erneut. Ungültige Dateien werden vollständig
+abgewiesen. **Sammlung exportieren…** schreibt nur gespeicherte Vorlagen als JSON; ausgefüllte Feldwerte
+werden weder gespeichert noch exportiert. Grenzen: 50 Bausteine, 80 Zeichen pro
+Name, 16 KiB pro Vorlage und Feldwert, 32 unterschiedliche Platzhalter mit je
+höchstens 64 Zeichen pro Name, 256 KiB Ergebnis und 1 MiB Sammlungsdatei.
+
+## Gespeicherte Textabläufe
+
+**Text → Gespeicherte Textabläufe…** öffnet wiederverwendbare, benannte Abläufe
+für ein normales bearbeitbares Dokument in der Quelltextansicht. Rechteck- und
+Mehrfachauswahl sind ausgeschlossen. In Markdown-WYSIWYG wechselst du zuerst
+über den Umschalter zur Quelltextansicht.
+
+Ein Ablauf besteht aus höchstens 32 geordneten Schritten: den vorhandenen
+Textoperationen, Sortieren, Duplikate entfernen sowie Suchen/Ersetzen mit
+RegEx, Wildcards, Capture-Gruppen und Case-Operatoren. Schritte lassen sich
+aktivieren, deaktivieren, hinzufügen, entfernen und mit den Pfeilen umordnen.
+Ihre Parameter bleiben in der Definition gespeichert. Jeder Schritt verwendet
+das Ergebnis seines Vorgängers.
+
+Wähle im **Bereich** das **Aktive Dokument**, **Offene Dokumente dieses Fensters**,
+**Dateien aus Ordnern** oder **Dateien aus dem Projekt**. Beim aktiven Dokument
+wählst du **Ganzes Dokument** oder **Auswahl (exakter Bereich)**. Die Auswahl wird
+als ein Textausschnitt verarbeitet; ihre Nachbarn bleiben unverändert. Auch
+Zeilenoperationen können dadurch keine außerhalb liegenden Zeichen verändern.
+**Vorschau berechnen** zeigt das Gesamtergebnis. Über die Vorschau-Auswahl
+prüfst du jeden aktiven Zwischenschritt. **Im Speicher anwenden** ist erst mit gespeicherter
+Definition und sichtbarem, vollständigem Gesamtergebnis möglich und erzeugt
+genau einen Rückgängig-Schritt. Es schreibt noch keine Datei auf die Platte.
+Ändert sich die Dokumentbasis, musst du den Dialog schließen und neu starten.
+
+Bei **Offene Dokumente dieses Fensters** zeigt die Eingabeliste alle vollständig
+geladenen, editierbaren Textdokumente dieses Fensters, auch ungespeicherte. Andere
+Fenster gehören nicht dazu. Wähle jede Eingabe und ihr Gesamtergebnis oder einen
+Schrittvergleich. Alle Dokumente werden vor der ersten Änderung gemeinsam
+geprüft und zusammen im Speicher geändert. Speichere sie anschließend ausdrücklich.
+**Speicheränderungen zurücknehmen** setzt den ganzen Satz zurück; **Gemeinsam
+wiederherstellen** wendet ihn erneut an. Diese Aktion bleibt auch nach erneutem
+Öffnen des Dialogs verfügbar, solange alle Dokumente exakt der angewendeten Basis
+entsprechen. Schließen, Wiederverwenden oder Ändern eines Tabs sowie einzelnes
+natives Undo entwerten die gemeinsame Rücknahme. Die einzelnen Dokumentverläufe
+bleiben erhalten.
+
+Ordner und Projekt lesen ausdrücklich die **Dateien auf der Platte**. Der
+Ordnerbereich übernimmt die gemerkten aktiven Suchordner und lässt Ordner hinzufügen
+oder entfernen. Projekt verwendet die vorhandenen Datei-Sets und Ausschlüsse;
+beide Bereiche bieten den vorhandenen Dateitypfilter. Die Auswahl im Ablaufdialog
+gilt für diese Vorschau. Jede passende Eingabe bleibt in der Liste, auch ohne
+wirksame Änderung oder mit Fehler. Fehler und unvollständige Diffs blockieren
+den ganzen Plan; es gibt kein stilles Überspringen und kein Anwenden einer Teilliste.
+
+**Auf Platte anwenden** prüft alle Snapshots erneut, einschließlich wirkungsloser
+Eingaben. Ungespeicherte Text- oder Hex-Zustände, Ladeaufträge und konkurrierende
+Dateioperationen werden über alle Fenster geprüft. Die letzte WYSIWYG-Eingabe wird
+zuvor synchronisiert. Dateiänderungen sind während Preflight und Schreiben appweit
+kurz gesperrt. Saubere offene Dateien werden anschließend über die normalen
+Workspace-Ladewege aktualisiert.
+
+Lange Konfliktlisten lassen sich im Fehlerbereich vollständig scrollen; die
+Dialogaktionen bleiben dabei sichtbar.
+
+
+Die ursprüngliche Kodierung und BOM bleiben erhalten; nicht darstellbare Zeichen
+werden als Fehler gemeldet. Geschrieben werden exakt die Ergebnisbytes der Vorschau,
+ohne zusätzliche Zeilenenden-Normalisierung beim Speichern. Zeilenweise Schritte
+mit unveränderter Zeilenzahl erhalten auch gemischte Endungen; ausdrücklich
+eingefügte oder entfernte Zeilen und Zeilenenden bleiben im Vergleich sichtbar.
+Aliase und Hardlinks dürfen dieselbe Eingabe nicht mehrfach bezeichnen.
+
+Plattenschreiben ist **atomar pro Datei**, keine Gesamttransaktion über alle
+Dateien. Ein Preflight-Fehler ändert keine Eingabe. Ein später Schreibfehler kann
+eine geschützte Teilsitzung hinterlassen; der Dialog erklärt diesen Zustand.
+**Plattenänderungen zurücknehmen** prüft vor jedem Zurückschreiben die angewendete
+Dateibasis. Externe oder ungespeicherte Änderungen verhindern eine Überschreibung.
+Nach dem Schließen bleibt die letzte Plattensitzung auch über die vorhandene
+Ordner-Rückgängig-Aktion erreichbar. Nach dem ersten Schreibschritt führt ein
+Abbruch den vorbereiteten Dateisatz mit Journal kontrolliert zu Ende; er stoppt
+die Schreibphase dann nicht mehr zwischen Dateien.
+
+Gleich aussehende Unicode-Änderungen, Steuerzeichen und abweichende Zeilenenden
+werden zusätzlich in ⟦…⟧ dargestellt. Die Zusätze gehören nur zur Vorschau;
+der tatsächliche Text bekommt sie nicht. Suchausdrücke und Textparameter sind
+auf je 4 KiB begrenzt. **Neu laden** holt nach einem Speicherkonflikt die aktuelle
+Definition, nachdem du deine lokalen Änderungen gespeichert oder verworfen hast.
+
+**Neu**, **Duplizieren**, **Speichern** und bestätigtes **Löschen** verwalten die
+lokalen Definitionen. Ungespeicherte Änderungen werden vor dem Verlassen
+abgefragt. **Importieren… / Exportieren…** verwenden begrenzte JSON-Dateien;
+Import fügt Kopien hinzu und überschreibt keine vorhandenen Abläufe. Änderungen
+anderer Fenster werden beim Speichern geprüft.
+
+Grenzen: 50 gespeicherte Abläufe, 32 Schritte je Ablauf, 4 MiB Dokument- und
+Ergebnistext, 100.000 Ersetzungen je Schritt, fünf Sekunden Rechenzeit und
+1 MiB je JSON-Datei. Zu große Zwischenstände, ungültige Ausdrücke oder Abbruch
+liefern keine anwendbare Teilvorschau. Zeilenfilter behalten wie der Einzelbefehl
+den Text, wenn sonst alle Zeilen entfernt würden. Mehrdokumentabläufe erlauben
+höchstens 500 Eingaben und je 64 MiB Originaldaten, Ausgabedaten und gehaltene
+Vorschautexte insgesamt; die 4-MiB-Grenze gilt weiter je Eingabe. Die gemeinsame
+Dateiliste samt Vorschau ist auf 60 Sekunden begrenzt, die vollständige Dateiliste zusätzlich auf
+8 MiB Pfadausgabe. Dateiliste, Dekodierung, Vorschau und Platten-Preflight laufen
+im Hintergrund. Fortschritt und Abbruch sind im Dialog sichtbar; ein abgebrochener
+oder durch neue Eingaben überholter Lauf gibt keinen Apply frei.
+
 ## Markdown
+
+### Lokale Markdown-Verweise prüfen
+
+**Markdown → Lokale Verweise prüfen…** öffnet die Befundliste. Wähle **Dokument**
+oder bei geöffnetem Projekt **Projekt**, dann **Prüfen**. **Nur Probleme anzeigen**
+blendet vorhandene Ziele aus. Wähle einen Befund und **Zur Quelle** für den Sprung
+zur Quellzeile; WYSIWYG wechselt dabei in den Quelltext. Geänderte oder geschlossene
+Quellen brauchen eine neue Prüfung. **Abbrechen** beendet den Lauf.
+
+Die Prüfung liest ausschließlich lokal und schreibt keine Dateien. Netzadressen
+(einschließlich `https:`, `mailto:` und fremden `file:`-Hosts) werden gezählt und
+übersprungen. Relative Dateipfade brauchen eine gespeicherte Ausgangsdatei;
+eigene Anker funktionieren auch ungespeichert. Pfad und echtes `#`-Fragment werden
+vor dem Decodieren getrennt: `%23` bleibt Teil des Dateinamens. Referenzlinks folgen
+CommonMark; nicht definierte Referenzen sind wörtlicher Text. Code und Kommentare
+zählen nicht als Verweise.
+
+Überschriftenanker folgen der bestehenden Fastra-Konvention: Kleinbuchstaben,
+Buchstaben/Ziffern behalten, andere Zeichen als zusammengefasste Bindestriche.
+Setext-Überschriften und Inline-Auszeichnungen zählen. Gleiche Überschriften oder
+HTML-IDs sind **mehrdeutig**; automatisch nummerierte Anker werden nicht behauptet.
+Gequotete HTML-`href`/`src` und `id`/`name` werden geprüft. Ungequotete Attribute,
+CSS, `srcset`, Skripte, Stile und Anker fremder Dateiformate bleiben sichtbar ungeprüft.
+
+Im Projektbereich zählen nur Dateien der geprüften Wurzel; eine äußere aktive
+Datei bleibt außen vor. Offene Dateien mit bewusst gewähltem Markdown-Format
+werden ebenfalls berücksichtigt. Ein Bereichswechsel verwirft den alten Bericht.
+Die Liste nennt ihre tatsächlich geprüfte Projektwurzel.
+
+Projekt-Ausschlüsse gelten; versteckte Dateien, Paketinhalte und Symlinkquellen
+bleiben außen vor. Lokale Symlinkziele sind zulässig. Grenzen: 200 Markdown-Dateien,
+10 MiB und 200.000 CR/LF-Zeichen je Quelle, 64 MiB Quelltext sowie jeweils 10.000
+Verweise und Anker insgesamt. Lesefehler, nicht dekodierbare Quellen, Grenzen und
+Abbruch ergeben eine unvollständige Liste. Offene Projektdateien dieses Fensters
+zählen in ihrer aktuellen Fassung. Der Bericht ist eine datierte Momentaufnahme;
+**Erneut prüfen** liest externe Änderungen neu.
+
+
+
+Vorschau und WYSIWYG zeigen Fließtext in einer zentrierten Lesespalte. Breite Tabellen dürfen darüber hinausgehen und besitzen bei Bedarf einen eigenen horizontalen Rollbalken; die übrige Seite bleibt an ihrer Position.
+
+Über jedem Codeblock steht ein Kopierknopf. Er kopiert den dargestellten Code als Klartext, einschließlich Leerzeichen und Zeilenumbrüchen, ohne Markdown-Zäune oder Syntaxfarben. Mit Tastaturfokus lässt sich der Knopf per Leertaste auslösen; ein Häkchen bestätigt die Kopie. Quelle und Rückgängig-Verlauf bleiben unverändert. Im Ausdruck fehlen die Knöpfe.
 
 Bei Markdown-Dokumenten zeigt die geteilte Ansicht rechts die gerenderte
 Vorschau — bei einer `.md`-Datei automatisch, sonst sobald du das Format
@@ -389,6 +607,9 @@ im Sprach-Chip der Fußzeile auf Markdown stellst: Tabellen, Codeblöcke mit Syn
 Mermaid-Diagramme — vollständig lokal, ohne Netzzugriff. Ein **Klick in
 die Vorschau** springt im Editor zur passenden Quellzeile. Umgekehrt richtet
 ein **Klick in den Quelltext** die Vorschau möglichst an derselben Stelle aus.
+Beim Bearbeiten aktualisiert Fastra die geänderten Vorschau-Blöcke. Unveränderte
+Blöcke behalten ihre Auswahl, den sichtbaren Ausschnitt und ihre Code-Kopierknöpfe.
+Änderungen an Referenzdefinitionen werden in allen betroffenen Blöcken sichtbar.
 Kopieren aus der Vorschau liefert echten Rich-Text (Überschriften, Listen, Fettung
 bleiben erhalten). Aus dem Editor kopiert Fastra dagegen immer reinen Text:
 ohne Schrift und Farbe und ohne dass ein Zielprogramm beim Umwandeln etwas
@@ -488,7 +709,81 @@ umstellbar, aber selten sichtbar. Nachprüfen können Sie es bei jedem Werkzeug
 selbst: ein Dokument mit einem entfernten Bild öffnen und die ausgehenden
 Verbindungen beobachten.
 
+## Zwei Ausschnitte derselben Datei
+
+Mit **Quelltextansicht teilen** über der Quelle oder im Menü **Darstellung**
+sehen Sie zwei Stellen desselben Dokuments übereinander. Die Trennlinie lässt
+sich ziehen. Jeder Ausschnitt behält seine Auswahl, Faltung und Scrollposition.
+Ein Klick in einen Ausschnitt bestimmt das Ziel für Editorbefehle, Suchsprünge
+und die Statusanzeige.
+
+Beide Ausschnitte bearbeiten denselben Text und denselben Undo-Verlauf.
+Änderungen erscheinen sofort auf beiden Seiten; Rückgängig und Wiederholen
+gelten gemeinsam. Speichern sichert weiterhin das Dokument. **Teilung schließen**
+führt zur einzelnen Quelltextansicht zurück. Die Teilung gilt nur für dieses
+Fenster; Tabwechsel merken beide Ausschnitte je Dokument.
+
+Die Teilung steht für normale editierbare Quelltextdokumente zur Verfügung.
+WYSIWYG, Vorschau, Hex, große Abschnittsansichten und schreibgeschützte
+Sonderansichten verwenden ihre bisherigen Ansichten. Nach Rückkehr zur Quelle
+kann die Teilung weiter genutzt oder über Darstellung geschlossen werden.
+
+## Dokumentgliederung und Sprungverlauf
+
+**Darstellung → Dokumentgliederung anzeigen** oder der Listenknopf öffnet die native
+Gliederung. Markdown zeigt Überschriften, 4D zeigt Konstruktoren und Klassenfunktionen
+mit Zeilennummern, einschließlich `get`/`set`-Accessoren und unterstützter Modifikatoren.
+Eine 4D-Projektmethode ohne Klassenfunktionen erscheint unter ihrem Dateinamen.
+Kommentare, Strings und SQL werden nicht als Funktionen ausgelegt. Die Gliederung ist
+keine vollständige Syntaxprüfung; unvollständige oder nicht erkannte Kopfzeilen fehlen.
+Weitere Codeformate erhalten keine behauptete Funktionsanalyse.
+
+Die Pfeile und **Darstellung → Voriger Sprung / Nächster Sprung** führen durch
+Gliederungssprünge, **Alt-Doppelklick → Gehe zum Ziel** und Quellsprünge aus lokalen
+Markdown-Befunden. Der Verlauf gehört zum Fenster und umfasst seine geöffneten
+Dokumente; andere Fenster behalten ihren eigenen Verlauf. Er merkt bis zu 100 Punkte.
+Normales Blättern und Tippen erzeugen keine zusätzlichen Sprungpunkte.
+
+Nach Quelländerungen werden Definitionen oder begrenzte Zeilenanker erneut gesucht.
+Nur ein eindeutiges Ziel wird angesprungen. Geänderte, mehrdeutige, geschlossene oder
+im Tabplatz ersetzte Ziele erklärt Fastra; ein fehlgeschlagener Rücksprung verschiebt
+den Verlauf nicht. Geschlossene Dokumente werden nicht automatisch wieder geöffnet.
+Navigation verändert und speichert keine Dokumentinhalte. Netzadressen werden vom
+vorhandenen Zielbefehl erst auf deinen ausdrücklichen Klick extern geöffnet; sie
+werden kein interner Sprungpunkt.
+
+Neue Analysen und Zielauflösungen laufen im Hintergrund und verwerfen überholte
+Ergebnisse. Grenzen: 10 MiB Quelle, 200.000 Zeilen und 10.000 Gliederungseinträge.
+Die erneute Zeilenankersuche verwendet ebenfalls höchstens 10 MiB / 200.000 Zeilen;
+sehr lange oder mehrdeutige Zeilen können nach Änderungen nicht sicher aufgelöst
+werden. Unveränderte offene Dokumente benötigen diese erneute Suche nicht.
+
 ## Markdown schreiben
+
+Die **Dokumentgliederung** zeigt Markdown-Überschriften und springt im aktuellen
+Bearbeitungsmodus zur Stelle. Ein Häkchen markiert den aktuellen Abschnitt. Codeblöcke
+und geschütztes HTML zählen nicht als Überschriften. Der gemeinsame Sprungverlauf
+ist im Abschnitt **Dokumentgliederung und Sprungverlauf** beschrieben.
+
+**Tabellen bearbeiten:** Sobald der Cursor in einer Markdown-Tabellenzelle steht,
+zeigt eine zusätzliche Leiste die aktuelle Zeile und Spalte. Über **Zeile** und
+**Spalte** kannst du einfügen, löschen und verschieben; das Ausrichtungsmenü gilt
+für die ganze Spalte. Die Kopfzeile und die letzte Spalte bleiben erhalten.
+**Tab / Shift-Tab** wechseln zur nächsten bzw. vorigen Zelle; Tab in der letzten
+Zelle fügt eine Datenzeile an. Am Zeilen- oder Zellenlimit erklärt eine Meldung,
+warum keine neue Zeile eingefügt wird. Shift-Tab in der ersten Zelle verlässt die Tabelle.
+
+**TSV einfügen…** zeigt tabulatorgetrennten Text aus der Zwischenablage in einem
+bearbeitbaren Dialog. Einfügen beginnt an der aktuellen Zelle, ersetzt die
+Zielzellen und erweitert die Tabelle bei Bedarf. Auch direktes Einfügen von
+mehrzeiligem oder tabulatorgetrenntem Klartext in eine Zelle nutzt diesen Weg.
+Formatkürzel und Formeln bleiben dabei Klartext. Führende, mehrfache und
+nachgestellte Leerzeichen bleiben auch nach Speichern und erneutem Öffnen erhalten.
+Grenzen: 1.000 Zeilen,
+100 Spalten, 10.000 Zellen und 1 MiB eingefügter Text. Es gibt keine Teilübernahme
+bei Überschreitung. Strukturänderungen lassen sich mit ⌘Z/⇧⌘Z rückgängig machen
+und wiederholen. Verbundene HTML-Zellen und Auswahlen über mehrere Zellen
+bekommen keine Strukturänderung; Fastra zeigt den Grund an. Während du eine Auswahl ziehst, bleibt die Werkzeugleiste stabil. Einzeiliger eingefügter Text erzeugt beim Ersetzen des gesamten Zellinhalts keinen zusätzlichen Umbruch.
 
 **WYSIWYG:** Beim ersten Öffnen eines Markdown-Dokuments fragt Fastra, ob du direkt
 in der formatierten Ansicht oder mit Quelltext und Vorschau arbeiten möchtest.
@@ -506,8 +801,8 @@ sind auch innerhalb von Überschriften dauerhafte Textauszeichnungen.
 
 Im WYSIWYG-Modus rückt **Tab** einen Listenpunkt um eine Ebene ein;
 **⇧Tab** rückt ihn wieder aus. Das funktioniert auch mit nummerierten Listen
-und Aufgabenlisten. Außerhalb einer Liste fügt Tab vier geschützte Leerzeichen
-ein, die ihre sichtbare Breite auch nach dem Speichern behalten; in Codeblöcken
+und Aufgabenlisten. Außerhalb von Listen und Tabellen fügt Tab vier geschützte
+Leerzeichen ein, die ihre sichtbare Breite auch nach dem Speichern behalten; in Codeblöcken
 fügt Tab ein Tabulatorzeichen ein. **Markdown → Aufgabenliste** oder der
 Kästchen-Button in der Format-Toolbar erstellt ankreuzbare Aufgaben. Ein Klick
 auf ein Kästchen ändert seinen Zustand; ⌘Z macht das rückgängig.
@@ -527,7 +822,18 @@ Der Button rechts vom **Text/Hex-Umschalter** (⌃⇧⌘M) wechselt die Ansicht 
 das aktuelle Dokument. Unter **Einstellungen → Markdown** ändert
 „Markdown im WYSIWYG-Modus bearbeiten“ den Standard für weitere Dokumente.
 
-Ein Sprung zu einem Suchtreffer übernimmt zuerst deine letzten Eingaben und
+**Im formatierten Text suchen:** ⌘F oder die Lupe in der Markdown-Leiste öffnet
+die Textsuche direkt über dem Dokument. Return/⌘G und ⇧Return/⇧⌘G gehen zum
+nächsten beziehungsweise vorigen Treffer; die Pfeilbuttons tun dasselbe.
+„Aa“ beachtet die Groß-/Kleinschreibung. Die Suche findet sichtbaren Text auch
+über Fett-/Kursivgrenzen hinweg und verändert weder Markdown noch Undo.
+Escape oder × schließt die Leiste. Suchbegriffe werden pro geöffnetem Dokument
+nur im Arbeitsspeicher gemerkt.
+
+**Quelltext…** in dieser Leiste beziehungsweise **Suchen → Markdown-Quelltext
+suchen und ersetzen…** (⌥⌘F) öffnet die vollständige Suche für Markdown-Kürzel,
+RegEx und Ersetzungen. Ein Sprung zu einem Treffer dieser Suche oder einer
+Mehrdatei-Suche übernimmt zuerst deine letzten Eingaben und
 wechselt für dieses Dokument zum Quelltext-Modus. Dort wird auch ein Treffer in
 Markdown-Kürzeln exakt ausgewählt. Der Standard für andere Dokumente bleibt erhalten.
 
@@ -1042,7 +1348,7 @@ Tabs; tief verschachtelte und ungetrackte Dateien ändern daran nichts. Der Kopf
 der Seitenleiste zeigt den Projektnamen (Tooltip:
 voller Pfad); **⌘-Klick auf den Namen** öffnet ein Menü der
 Nachbarordner zum schnellen Projektwechsel, das Rechtsklickmenü bietet
-„Im Finder zeigen“ und mehr. **⌘-Klick auf einen Dokument-Tab** zeigt
+„Im Finder zeigen“ und „Pfad kopieren“. Letzteres kopiert den vollständigen POSIX-Pfad einschließlich Dateinamen in die Zwischenablage. **⌘-Klick auf einen Dokument-Tab** zeigt
 das macOS-Pfadmenü der Datei. Der Dateibaum kann Dateien und Ordner
 anlegen, umbenennen, duplizieren und in den Papierkorb legen. Ein Duplikat
 erhält vor der Endung „Kopie“ samt nötiger laufender Nummer und öffnet sofort
@@ -1195,6 +1501,11 @@ Die Fußzeile zeigt Encoding und Zeilenende des aktiven Tabs:
   anderen Encoding neu von der Platte.
 - **Zeilenenden-Chip:** wählt LF, CRLF oder CR — die Umstellung wirkt
   beim nächsten Speichern.
+
+Normales Speichern erhält auch gemischte Zeilenenden unverändert. Erst eine
+geänderte Zeilenendenwahl vereinheitlicht sie beim nächsten Speichern. Der
+konvertierte Inhalt erscheint anschließend in beiden Quelltextausschnitten
+und besitzt einen gemeinsamen Rückgängig-Schritt.
 
 UTF-32-Dateien mit BOM werden in beiden Byte-Reihenfolgen erkannt. Passt der
 Inhalt nicht zur BOM oder endet er mit einer unvollständigen UTF-16-/UTF-32-
@@ -1381,6 +1692,12 @@ wenn nur die Quellengeneration statt des äußeren Inhaltsstands geprüft wurde.
 Eine unbestätigte Trefferposition wird nicht als genauer Sprung ausgegeben.
 Schließen und App-Ende entfernen die eigene Kopie; abgebrochene und
 fehlgeschlagene Übergaben bestätigen keine Übernahme.
+
+Der Sender kann für diese Übergaben die Textkodierung ausdrücklich angeben:
+UTF-8, UTF-16 LE/BE, Windows-1252, ISO-8859-1 oder MacRoman. Die Fähigkeiten
+nennen die unterstützten Kodierungen. Ohne Hinweis bleibt die bisherige
+Erkennung erhalten. Eine widersprüchliche Datei-BOM verhindert die Übernahme;
+Originalbytes, dekodierter Text und Markierung werden getrennt geprüft.
 
 ## Gespeicherte Code-Erklärungen
 

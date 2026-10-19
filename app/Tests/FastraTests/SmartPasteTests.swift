@@ -288,14 +288,14 @@ func markdownReview_changedClipboard() {
 // MARK: - markdownFromClipboard Prozess-Lebenszyklus
 
 @Test("Markdown-Konvertierung erhält semantische Einrückung und abschließenden Leerraum")
-func markdownReview_smartPasteWhitespace() throws {
+func serialRunnerIntegration_smartPasteWhitespace() throws {
     let stub = try makeMdClipStub(name: "markdown-whitespace", body: "printf '    code\\n    more\\n\\nEnde  \\n'")
     defer { try? FileManager.default.removeItem(at: stub) }
     #expect(SmartPaste.markdownFromClipboard(mdClipURL: stub) == .success("    code\n    more\n\nEnde  \n"))
 }
 
 @Test("markdownFromClipboard: großer stdout-Output blockiert die Pipe nicht")
-func markdownFromClipboard_largeOutputDoesNotBlock() throws {
+func serialRunnerIntegration_markdownFromClipboard_largeOutputDoesNotBlock() throws {
     // Deutlich mehr als ein typischer Pipe-Puffer: Die alte Implementierung
     // wartete auf Prozessende, während der Prozess auf freien Puffer wartete.
     let stub = try makeMdClipStub(
@@ -319,7 +319,7 @@ func markdownFromClipboard_largeOutputDoesNotBlock() throws {
 }
 
 @Test("markdownFromClipboard: geerbter stderr-Descriptor blockiert Fehlerpfad nicht")
-func markdownFromClipboard_inheritedStderrDoesNotBlock() throws {
+func serialRunnerIntegration_markdownFromClipboard_inheritedStderrDoesNotBlock() throws {
     // Der Hintergrundprozess hält stderr nach dem Ende des Stubs noch offen.
     // Auf EOF zu lesen würde bis zum Ende des `sleep` blockieren.
     let stub = try makeMdClipStub(
@@ -346,7 +346,7 @@ func markdownFromClipboard_inheritedStderrDoesNotBlock() throws {
 }
 
 @Test("markdownFromClipboard: Timeout beendet auch SIGTERM-resistenten Prozess")
-func markdownFromClipboard_timeoutKillsResistantProcess() throws {
+func serialRunnerIntegration_markdownFromClipboard_timeoutKillsResistantProcess() throws {
     // Kein Kindprozess: Nach ignoriertem SIGTERM muss Fastra den Stub selbst
     // per SIGKILL beenden und darf nicht auf offene Descriptoren warten.
     let stub = try makeMdClipStub(
@@ -364,7 +364,7 @@ func markdownFromClipboard_timeoutKillsResistantProcess() throws {
 }
 
 @Test("markdownFromClipboard: Fristablauf beendet auch Enkelprozesse")
-func markdownFromClipboard_timeoutKillsGrandchildren() throws {
+func serialRunnerIntegration_markdownFromClipboard_timeoutKillsGrandchildren() throws {
     // Der Stub startet einen langlebigen Enkel und blockiert dann SIGTERM.
     // Beim Fristablauf muss die GANZE Prozessgruppe enden — vorher überlebte
     // der Enkel den Abbruch (Roadmap „Bekannte Fehler", Review 2026-08-02).

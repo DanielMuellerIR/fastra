@@ -468,7 +468,7 @@
 "%ld geänderte Zeilen" = "%ld Changed Lines";
 "Ersetzen hat ein ∗ mehr als Suchen — das überzählige ∗ bleibt leer." = "Replace contains one more ∗ than Find—the extra ∗ remains empty.";
 "Ersetzen hat %ld ∗ mehr als Suchen — die überzähligen bleiben leer." = "Replace contains %ld more ∗ wildcards than Find—the extra wildcards remain empty.";
-"… und %ld weitere geänderte Zeilen — „Vorschau der Änderungen\" zeigt alle." = "… and %ld more changed lines—Preview Changes shows all of them.";
+"… und %ld weitere geänderte Zeilen — „Freigaben prüfen“ zeigt alle." = "… and %ld more changed lines — Review Approvals shows all of them.";
 "Treffer (%ld)" = "Matches (%ld)";
 "Die Datei hat sich seit der Suche geändert. Bitte erneut suchen." = "The file has changed since the search. Please search again.";
 "Die Funddatei ist mit ungesicherten Änderungen geöffnet. Ohne Speichern schließen und erneut springen – oder speichern und danach erneut suchen." = "The matched file is open with unsaved changes. Close it without saving, then jump again—or save it and search again.";
@@ -1193,7 +1193,7 @@
 "„Wort“ und „wort“ gelten als gleich." = "“Word” and “word” are treated as equal.";
 "Vergleichen" = "Compare";
 "Datei nicht gefunden." = "File not found.";
-"Ordner lassen sich (noch) nicht vergleichen." = "Folders cannot be compared (yet).";
+"Wähle hier eine Datei. Für zwei Ordner nutze „Ordner vergleichen…“." = "Choose a file here. For two folders, use “Compare Folders…”.";
 "Binärdatei — ein Zeilenvergleich ist nicht möglich." = "Binary file — a line comparison is not possible.";
 
 /* Gemeinsamer Dual-Pane-Renderer (Etappe 2 Wunschpaket 2026-07c) */
@@ -1826,3 +1826,463 @@
 "Speichere das Markdown-Dokument vor dem Aufräumen." = "Save the Markdown document before cleaning up.";
 "Keine unbenutzten Dateien im Images-Ordner gefunden." = "No unused files found in the images folder.";
 "Diese Dateien werden gelöscht. Bilder anderer Markdown-Dateien im selben Ordner und offener Dokumente bleiben erhalten. Unterordner werden nicht verändert." = "These files will be deleted. Images used by other Markdown files in the same folder or by open documents are preserved. Subfolders are left unchanged.";
+
+"Voriger Gliederungssprung" = "Previous outline jump";
+
+"Nächster Gliederungssprung" = "Next outline jump";
+
+"Dokumentgliederung anzeigen" = "Show document outline";
+
+"Dokumentgliederung" = "Document outline";
+
+"Keine Überschriften im Dokument" = "No headings in this document";
+
+"Die Überschrift im Sprungverlauf wurde geändert oder entfernt." = "The heading in the navigation history was changed or removed.";
+
+"Im formatierten Text suchen" = "Find in formatted text";
+
+"Im formatierten Text suchen…" = "Find in formatted text…";
+
+"Im formatierten Text suchen (⌘F)" = "Find in formatted text (⌘F)";
+
+"Voriger Treffer im formatierten Text (⇧⌘G)" = "Previous match in formatted text (⇧⌘G)";
+
+"Voriger Treffer im formatierten Text" = "Previous match in formatted text";
+
+"Nächster Treffer im formatierten Text (⌘G)" = "Next match in formatted text (⌘G)";
+
+"Nächster Treffer im formatierten Text" = "Next match in formatted text";
+
+"Textsuche schließen (Escape)" = "Close text search (Escape)";
+
+"Textsuche schließen" = "Close text search";
+
+"Groß-/Kleinschreibung beachten" = "Match case";
+
+"Quelltext…" = "Source…";
+
+"Markdown-Quelltext suchen und ersetzen (⌥⌘F)" = "Find and replace Markdown source (⌥⌘F)";
+
+"Markdown-Quelltext suchen und ersetzen…" = "Find and replace Markdown source…";
+
+"Suche läuft…" = "Searching…";
+
+"Treffer gefunden" = "Match found";
+
+"Aa" = "Aa";
+
+/* Tabellenwerkzeuge */
+"Darüber einfügen" = "Insert Above";
+"Darunter einfügen" = "Insert Below";
+"Nach oben verschieben" = "Move Up";
+"Nach unten verschieben" = "Move Down";
+"Zeile löschen" = "Delete Row";
+"Links einfügen" = "Insert Left";
+"Rechts einfügen" = "Insert Right";
+"Nach links verschieben" = "Move Left";
+"Nach rechts verschieben" = "Move Right";
+"Spalte löschen" = "Delete Column";
+"Ausrichtung der aktuellen Tabellenspalte ändern." = "Change the alignment of the current table column.";
+"TSV einfügen…" = "Paste TSV…";
+"Tabulatorgetrennten Text ab der aktuellen Zelle einfügen. Tab und Shift-Tab wechseln zwischen Zellen." = "Paste tab-separated text starting at the current cell. Tab and Shift-Tab move between cells.";
+"Tabulatorgetrennten Text einfügen" = "Paste Tab-Separated Text";
+"Jede Zeile wird eine Tabellenzeile, jeder Tabulator trennt zwei Zellen. Die Tabelle wächst bei Bedarf nach rechts und unten. Bestehende Zielzellen werden ersetzt." = "Each line becomes a table row; each tab separates two cells. The table expands right and down as needed. Existing destination cells are replaced.";
+"Grenzen: 1.000 Zeilen, 100 Spalten, 10.000 Zellen und 1 MiB Text." = "Limits: 1,000 rows, 100 columns, 10,000 cells and 1 MiB of text.";
+"Diese HTML-Tabelle hat keine bearbeitbare Markdown-Struktur." = "This HTML table has no editable Markdown structure.";
+"Bitte den Cursor in eine einzelne Tabellenzelle setzen." = "Please place the cursor in a single table cell.";
+"Die Tabelle darf höchstens 1.000 Zeilen, 100 Spalten und 10.000 Zellen enthalten; eingefügter Text höchstens 1 MiB." = "Tables may contain up to 1,000 rows, 100 columns and 10,000 cells; pasted text up to 1 MiB.";
+"Die Kopfzeile und die letzte Spalte bleiben erhalten. Verschieben ist an dieser Position nicht möglich." = "The header row and last column are protected. Moving is not possible at this position.";
+"Bitte die laufende Eingabe oder Bildaktion zuerst abschließen." = "Please finish the current text input or image action first.";
+"Die Tabellenposition hat sich geändert. Bitte die gewünschte Zelle erneut auswählen." = "The table position has changed. Please select the desired cell again.";
+"Zeile" = "Row";
+"Spalte" = "Column";
+"Linksbündig" = "Left Aligned";
+"Zentriert" = "Centered";
+"Rechtsbündig" = "Right Aligned";
+
+/* Gespeicherte Textabläufe */
+"Aktion" = "Action";
+"Aktiv" = "Enabled";
+"Alle Schritte wirken zuerst auf eine Vorschau." = "All steps are applied to a preview first.";
+"Auswahl (exakter Bereich)" = "Selection (exact range)";
+"Berechne die Vorschau, um jeden Schritt und das Gesamtergebnis zu prüfen." = "Calculate the preview to inspect each step and the final result.";
+"Bitte eine zusammenhängende Auswahl vollständiger Zeichen verwenden." = "Please use a contiguous selection of complete characters.";
+"Das Dokument oder die Auswahl entspricht nicht mehr der Vorschau. Schließe den Dialog und starte den Ablauf erneut." = "The document or selection no longer matches the preview. Close the dialog and start the workflow again.";
+"Das sichtbare Gesamtergebnis auf dieselbe Dokumentbasis anwenden." = "Apply the visible final result to the same document snapshot.";
+"Der Ablauf enthält mehr als 100.000 Ersetzungen in einem Schritt. Es wurde nichts angewendet." = "The workflow contains more than 100,000 replacements in one step. Nothing was applied.";
+"Der Ablauf überschreitet die Rechenzeit von fünf Sekunden. Es wurde nichts angewendet." = "The workflow exceeds the five-second computation limit. Nothing was applied.";
+"Der Ablauf überschreitet eine Größenbegrenzung. Es wurde nichts angewendet." = "The workflow exceeds a size limit. Nothing was applied.";
+"Der Suchausdruck darf nicht leer sein." = "The search expression must not be empty.";
+"Die Ablaufdatei ist beschädigt, unbekannt oder überschreitet die erlaubte Anzahl von 50 Abläufen." = "The workflow file is damaged, unsupported or exceeds the limit of 50 workflows.";
+"Die Ablaufdefinition wurde geändert. Der Dokumentinhalt bleibt bis zum Anwenden unverändert." = "The workflow definition has changed. Document content stays unchanged until you apply it.";
+"Die Auswahl bleibt über alle Schritte derselbe Textausschnitt. Jeder Schritt verarbeitet das Ergebnis seines Vorgängers." = "The selection remains the same text fragment through all steps. Each step processes the result of its predecessor.";
+"Die Berechnung wurde abgebrochen." = "The calculation was cancelled.";
+"Dieser Ablauf wurde in einem anderen Fenster geändert. Lade die gespeicherte Fassung erneut." = "This workflow was changed in another window. Reload the saved version.";
+"Dieser Schritt benötigt keine weiteren Parameter." = "This step requires no additional parameters.";
+"Ein Ablauf benötigt einen Namen und 1 bis 32 Schritte, davon mindestens einen aktiven." = "A workflow needs a name and 1 to 32 steps, with at least one enabled.";
+"Ein Parameter überschreitet die zulässige Grenze." = "A parameter exceeds its allowed limit.";
+"Ein gespeicherter Ablauf hat bereits diesen Namen. Bitte wähle einen anderen Namen." = "A saved workflow already has this name. Please choose another name.";
+"Einrückbreite: %ld" = "Indent width: %ld";
+"Ganzes Dokument" = "Entire Document";
+"Gesamtergebnis" = "Final Result";
+"Gespeichert" = "Saved";
+"Gespeicherte Textabläufe" = "Saved Text Workflows";
+"Gespeicherte Textabläufe…" = "Saved Text Workflows…";
+"Gespeicherten Ablauf löschen?" = "Delete Saved Workflow?";
+"Gespeicherten Ablauf löschen…" = "Delete Saved Workflow…";
+"Grenzen: 32 Schritte, 4 MiB Text, 50 gespeicherte Abläufe. Anwenden ist ein Undo-Schritt." = "Limits: 32 steps, 4 MiB of text, 50 saved workflows. Applying takes one undo step.";
+"Keine wirksame Änderung" = "No Effective Change";
+"Mit Tabs einrücken" = "Indent with Tabs";
+"Nach Schritt %ld: %@" = "After Step %ld: %@";
+"Name des Ablaufs" = "Workflow Name";
+"Neuer Ablauf" = "New Workflow";
+"RegEx-Muster" = "Regex Pattern";
+"Schritt %ld ist ungültig: %@" = "Step %ld is invalid: %@";
+"Schritt entfernen" = "Remove Step";
+"Schritt hinzufügen" = "Add Step";
+"Schritt nach oben verschieben" = "Move Step Up";
+"Schritt nach unten verschieben" = "Move Step Down";
+"Spaltenbreite" = "Column Width";
+"Speichere die Ablaufdefinition vor dem Anwenden." = "Save the workflow definition before applying.";
+"Sterne wörtlich" = "Literal Stars";
+"Suchen und Ersetzen" = "Find and Replace";
+"Textabläufe" = "Text Workflows";
+"Textabläufe benötigen ein bearbeitbares Dokument in der Quelltextansicht und eine zusammenhängende Auswahl." = "Text workflows require an editable document in source view and a contiguous selection.";
+"Ungespeicherte Änderungen am Ablauf" = "Unsaved Workflow Changes";
+"Vorschau berechnen" = "Calculate Preview";
+"Wie beim Einzelbefehl bleibt der Text erhalten, wenn der Filter alle Zeilen entfernen würde." = "As with the individual command, text is preserved if the filter would remove every line.";
+"Wirkbereich" = "Scope";
+"Wähle einen Schritt, um seine Parameter zu bearbeiten." = "Select a step to edit its parameters.";
+
+"Zusätze in ⟦…⟧ zeigen Unicode-Werte und Zeilenenden. Sie gehören nur zur Vorschau und werden nicht eingefügt." = "Annotations in ⟦…⟧ show Unicode values and line endings. They are preview details only and are not inserted.";
+
+/* Textabläufe über mehrere Dokumente */
+"%@\nBereits geschriebene Dateien bilden eine geschützte Teilsitzung. Nutze „Plattenänderungen zurücknehmen“." = "%@\nFiles already written form a protected partial session. Use “Restore Disk Changes”.";
+"%@\nDie Rücknahme ist teilweise erfolgt. Die geschützte Rücknahme kann fortgesetzt werden." = "%@\nRestoration is partially complete. Protected restoration can be continued.";
+"Auf der Platte geänderte Dateien: %ld. Die geschützte Rücknahme prüft vor jedem Zurückschreiben den aktuellen Stand." = "Files changed on disk: %ld. Protected restoration checks the current version before writing each original back.";
+"Im Speicher geänderte Dokumente: %ld. Speichere die Dokumente ausdrücklich; die gemeinsame Rücknahme bleibt auf dieser unveränderten Basis verfügbar." = "Documents changed in memory: %ld. Save the documents explicitly; joint restoration remains available while this applied version is unchanged.";
+"Eingaben: %ld · Änderungen: %ld" = "Inputs: %ld · Changes: %ld";
+"Abbruch angefordert. Hat die Schreibphase begonnen, wird der vorbereitete Satz mit Journal zu Ende geführt." = "Cancellation requested. Once writing has started, the prepared set will finish with its recovery journal.";
+"Aktives Dokument" = "Active Document";
+"Alle editierbaren Textdokumente dieses Fensters werden im Speicher geändert. Speichern erfolgt anschließend ausdrücklich. Andere Fenster gehören nicht zu diesem Bereich." = "All editable text documents in this window are changed in memory. Save them explicitly afterwards. Other windows are outside this scope.";
+"Auf Platte anwenden" = "Apply to Disk";
+"Bereich" = "Scope";
+"Das Ergebnis enthält Zeichen, die sich in der ursprünglichen Kodierung nicht verlustfrei speichern lassen." = "The result contains characters that cannot be saved losslessly in the original encoding.";
+"Das gebündelte Werkzeug für die Dateiliste ist nicht verfügbar. Es wurde nichts angewendet." = "The bundled file enumeration tool is unavailable. Nothing was applied.";
+"Dateien aus Ordnern" = "Files in Folders";
+"Dateien aus dem Projekt" = "Files in Project";
+"Der Bereich enthält keine passenden Eingaben. Prüfe Ordner, Datei-Set und Filter." = "This scope contains no matching inputs. Check the folders, file set and filter.";
+"Die Datei enthält Binärdaten und kann nicht als Textablauf verarbeitet werden." = "The file contains binary data and cannot be processed by a text workflow.";
+"Die Datei ist nicht vollständig lesbar oder hat sich beim Lesen geändert." = "The file cannot be read completely or changed while being read.";
+"Die Datei lässt sich nicht verlustfrei dekodieren und zurückkodieren." = "The file cannot be decoded and encoded again without data loss.";
+"Die Datei oder ihr Ordner ist schreibgeschützt." = "The file or its folder is read-only.";
+"Die Dateiliste ist zu groß. Verfeinere den Bereich; es wurde nichts angewendet." = "The file list is too large. Narrow the scope; nothing was applied.";
+"Die Dateiliste konnte nicht rechtzeitig vollständig gelesen werden." = "The complete file list could not be read within the time limit.";
+"Die Dateiliste konnte nicht vollständig gelesen werden: %@" = "The file list could not be read completely: %@";
+"Die Eingaben haben sich seit der Vorschau geändert. Berechne die Vorschau erneut; es wurde nichts angewendet." = "The inputs have changed since the preview. Calculate a new preview; nothing was applied.";
+"Die Plattenänderungen wurden zurückgenommen." = "The disk changes were restored.";
+"Die Vorschau enthält Fehler. Keine Eingabe kann angewendet werden." = "The preview contains errors. No input can be applied.";
+"Die Vorschau ist unvollständig: höchstens 500 Eingaben, je 64 MiB Original-, Ausgabe- und Vorschautext sowie 4 MiB Text pro Eingabe. Verfeinere den Bereich." = "The preview is incomplete: limits are 500 inputs, 64 MiB each for original data, output data and preview text, and 4 MiB of text per input. Narrow the scope.";
+"Die Vorschau liest Plattendateien. Anwenden schreibt atomar pro Datei; ein später Schreibfehler kann eine geschützte Teilsitzung erzeugen. Währenddessen sind Dateiänderungen appweit kurz gesperrt." = "The preview reads files from disk. Apply writes atomically per file; a later write failure may leave a protected partial session. File changes are briefly locked across the app during this operation.";
+"Die gemeinsame Rücknahme benötigt alle Dokumente auf der exakt angewendeten Basis." = "Joint restoration requires every document to match the exact applied version.";
+"Die gemeinsame Vorschau überschreitet 60 Sekunden. Verfeinere den Bereich." = "The combined preview exceeds 60 seconds. Narrow the scope.";
+"Die gemeinsamen Speicheränderungen wurden wiederhergestellt." = "The joint memory changes were reapplied.";
+"Die gemeinsamen Speicheränderungen wurden zurückgenommen." = "The joint memory changes were restored.";
+"Die gewählte Kodierung widerspricht der Byte-Reihenfolgemarkierung (BOM)." = "The selected encoding conflicts with the byte order mark (BOM).";
+"Die vollständig geprüften Gesamtergebnisse auf dieselben Eingaben anwenden." = "Apply the fully checked final results to the same inputs.";
+"Diese Eingaben sind in einem Fenster ungespeichert oder werden geladen:\n• %@\nSpeichere oder schließe sie und berechne die Vorschau erneut." = "These inputs have unsaved changes or are still loading in a window:\n• %@\nSave or close them and calculate a new preview.";
+"Diese Kodierung wird für Textabläufe nicht unterstützt." = "This encoding is not supported for text workflows.";
+"Eine andere Dateioperation ist noch aktiv. Warte auf ihren Abschluss und berechne die Vorschau erneut." = "Another file operation is active. Wait until it finishes and calculate a new preview.";
+"Eingaben werden ermittelt…" = "Finding inputs…";
+"Gemeinsam wiederherstellen" = "Reapply Together";
+"Geschützte Rücknahme wird geprüft…" = "Checking protected restoration…";
+"Grenzen: 500 Eingaben, 64 MiB je Datenbudget, 4 MiB Text pro Eingabe. Fehler blockieren den gesamten Plan." = "Limits: 500 inputs, 64 MiB per data budget, 4 MiB text per input. Errors block the entire plan.";
+"Hinzufügen…" = "Add…";
+"Im Speicher anwenden" = "Apply in Memory";
+"Mehrere Eingaben bezeichnen dieselbe Datei (Alias oder Hardlink). Entferne die doppelte Eingabe." = "Multiple inputs refer to the same file (alias or hard link). Remove the duplicate input.";
+"Offene Dokumente dieses Fensters" = "Open Documents in This Window";
+"Ordner entfernen" = "Remove Folder";
+"Plattenänderung: %ld von %ld · %@" = "Disk change: %ld of %ld · %@";
+"Plattenänderungen werden vorbereitet…" = "Preparing disk changes…";
+"Plattenänderungen zurücknehmen" = "Restore Disk Changes";
+"Speicheränderungen zurücknehmen" = "Restore Memory Changes";
+"Ungespeichertes Dokument" = "Unsaved Document";
+"Vorschau: %ld von %ld · %@" = "Preview: %ld of %ld · %@";
+"Änderung" = "Change";
+"In einem Fenster ungespeichert oder noch nicht vollständig geladen. Speichere oder schließe die Datei und berechne die Vorschau erneut." = "Unsaved or still loading in a window. Save or close the file and calculate a new preview.";
+"Die gemeinsame Rücknahme ist auf dem aktuellen Dokumentstand nicht verfügbar. Warte auf laufende Dateioperationen oder nutze den einzelnen Dokumentverlauf." = "Joint restoration is unavailable for the current document state. Wait for file operations to finish or use the individual document history.";
+"Offene Dokumente oder ihre Zustände haben sich während der Prüfung geändert. Prüfe sie und wiederhole die Aktion." = "Open documents or their states changed during validation. Check them and try the action again.";
+"Offene Dokumente werden synchronisiert…" = "Synchronizing open documents…";
+"%@\nEs wurden keine Dateien geschrieben." = "%@\nNo files were written.";
+"Dateioperation läuft" = "File Operation in Progress";
+"Code kopieren" = "Copy Code";
+"Code kopiert" = "Code Copied";
+"Code konnte nicht kopiert werden." = "Code could not be copied.";
+
+"%@ (%ld · %ld freigegeben)" = "%@ (%ld · %ld approved)";
+"Alle" = "All";
+"Keine" = "None";
+"Anwenden schreibt auf die Platte: atomar pro Datei, mit geschütztem Backup. Eine fehlgeschlagene Mehrdateiänderung kann teilweise erfolgt sein." = "Apply writes to disk: atomic per file, with a protected backup. A failed change across several files may have partially completed.";
+"Anwenden ändert nur offene Dokumente im Speicher. Speichern erfolgt wie gewohnt separat; jede Dokumentänderung besitzt natives Undo." = "Apply changes open documents in memory only. Save them separately as usual; each document change supports native Undo.";
+"Der Vergleich konnte nicht vollständig berechnet werden. Verfeinere die Suche; es wurde nichts angewendet." = "The comparison could not be completed. Refine the search; nothing was applied.";
+"Die Freigabevorschau ist unvollständig: höchstens 500 Dateien, je 64 MiB Original-, Ausgabe- und Vorschautext, 32 MiB pro Datei sowie 100.000 Vorschauzeilen. Verfeinere die Suche." = "The approval preview is incomplete: at most 500 files, 64 MiB each of original, output and preview text, 32 MiB per file, and 100,000 preview rows. Refine the search.";
+"Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. Anwenden bleibt gesperrt, bis alle Treffer sichtbar sind." = "First %ld of %ld matches listed — refine the search. Apply remains disabled until all matches are visible.";
+"Freigaben prüfen · %ld" = "Review Approvals · %ld";
+"Freigabevorschau" = "Approval Preview";
+"Freigabevorschau wird berechnet…" = "Calculating approval preview…";
+"Freigegebene Treffer: %ld · Geänderte Dateien: %ld" = "Approved matches: %ld · Changed files: %ld";
+"Freigegeben: %ld von %ld" = "Approved: %ld of %ld";
+"Freigegebene Änderungen" = "Approved Changes";
+"Freigegebene Änderungen anwenden" = "Apply Approved Changes";
+"Markierungen in ⟦…⟧ zeigen Zeilenenden und exakte Unicode-Zeichen; sie werden nicht eingefügt." = "Annotations in ⟦…⟧ show line endings and exact Unicode characters; they are not inserted.";
+"Treffer in %@ freigeben" = "Approve matches in %@";
+"Treffer in Zeile %ld freigeben" = "Approve match on line %ld";
+"Treffer in schreibgeschützten Tabs können nicht freigegeben werden." = "Matches in read-only tabs cannot be approved.";
+"Vorschau nicht anwendbar" = "Preview Cannot Be Applied";
+"Vorschau: %ld von %ld" = "Preview: %ld of %ld";
+"Zeigt alle freigegebenen Änderungen vollständig. Erst in dieser Vorschau kannst du sie anwenden." = "Shows all approved changes in full. You can apply them from this preview.";
+
+"Freigegeben: %ld von %ld · editierbar: %ld" = "Approved: %ld of %ld · editable: %ld";
+"Treffer in Zeile %ld ist zurzeit nicht editierbar." = "The match on line %ld is not currently editable.";
+"Diese Treffer sind zurzeit nicht editierbar und können nicht freigegeben werden." = "These matches are not currently editable and cannot be approved.";
+
+"Die Suchquelle „%@“ fehlt oder ist nicht zugänglich. Die Suche ist unvollständig." = "Search source “%@” is missing or inaccessible. The search is incomplete.";
+
+"Trefferliste gekappt — Anwenden bleibt gesperrt, bis alle Treffer sichtbar sind." = "Match list limited — Apply stays disabled until every match is visible.";
+
+"%@: %ld" = "%@: %ld";
+"Nicht lesbar" = "Unreadable";
+"Unbekannte Kodierung" = "Unknown Encoding";
+"Unvollständige Suche (%@). Freigaben bleiben gesperrt. Prüfe die Dateien oder verfeinere den Bereich." = "Incomplete search (%@). Approvals remain disabled. Check these files or narrow the scope.";
+"Über %ld MiB" = "Over %ld MiB";
+"… und %ld weitere Dateien." = "… and %ld more files.";
+
+"Trefferliste gekappt: %ld sichtbar, mindestens %ld gezählt. Verfeinere die Suche; Freigaben bleiben gesperrt." = "Match list capped: %ld visible, at least %ld counted. Refine the search; approvals remain disabled.";
+
+"Die Vergleichsquellen haben sich geändert oder sind nicht mehr verfügbar. Berechne den Vergleich erneut; es wurde nichts übernommen." = "The comparison sources have changed or are no longer available. Recalculate the comparison; nothing was transferred.";
+
+"Der gewählte Block enthält keine wirksame Änderung." = "The selected block contains no effective change.";
+
+"Die Übernahme ist auf 32 MiB Text je Quelle und Ausgabe sowie 64 MiB Vorschautext begrenzt." = "Transfer is limited to 32 MiB of text per source and output, and 64 MiB of preview text.";
+
+"Die Übernahmevorschau konnte nicht vollständig berechnet werden. Es wurde nichts übernommen." = "The transfer preview could not be calculated in full. Nothing was transferred.";
+
+"Blockübernahme prüfen" = "Review Block Transfer";
+
+"Anwenden ändert nur das Zieldokument im Speicher und besitzt natives Undo. Speichere das Dokument anschließend wie gewohnt." = "Apply changes only the target document in memory and supports native Undo. Save the document afterwards as usual.";
+
+"Block übernehmen" = "Transfer Block";
+
+"Nach links" = "To Left";
+
+"Nach rechts" = "To Right";
+
+"Neu berechnen" = "Recalculate";
+
+"Ersetzt den gewählten linken Block durch die rechte Fassung. Ein nur links vorhandener Block wird entfernt. Vorher erscheint die genaue Vorschau." = "Replaces the selected left block with the right version. A block present only on the left is removed. The exact preview appears first.";
+
+"Ersetzt den gewählten rechten Block durch die linke Fassung. Ein nur rechts vorhandener Block wird entfernt. Vorher erscheint die genaue Vorschau." = "Replaces the selected right block with the left version. A block present only on the right is removed. The exact preview appears first.";
+
+"Übernehmen ist nur in zugeordnete offene editierbare Dokumente möglich. Dateien werden dabei nicht gespeichert." = "Transfer is available only into associated open editable documents. Files are not saved during transfer.";
+
+"Quellen werden geprüft…" = "Checking sources…";
+
+"Übernahmevorschau wird berechnet…" = "Calculating transfer preview…";
+
+/* Ordnervergleich. */
+"%d Einträge · Lesebudget: %@" = "%d entries · Read budget: %@";
+"Abgebrochen – Ergebnis unvollständig." = "Cancelled – result incomplete.";
+"Das Gesamtlesebudget des Ordnervergleichs wurde erreicht." = "The folder comparison read budget has been reached.";
+"Datei und Ordner stehen am selben relativen Pfad." = "A file and a folder occupy the same relative path.";
+"Dateien werden verglichen: %d von %d" = "Comparing files: %d of %d";
+"Dateipaar öffnen" = "Open File Pair";
+"Dateistände werden geprüft: %d von %d" = "Validating files: %d of %d";
+"Dateityp" = "File Type";
+"Der Eintrag hat sich während der Prüfung geändert. Vergleiche die Ordner erneut." = "The entry changed during comparison. Compare the folders again.";
+"Der Eintrag konnte nicht gelesen werden." = "The entry could not be read.";
+"Der Ordnerinhalt konnte nicht vollständig gelesen werden." = "The folder contents could not be read completely.";
+"Die Datei überschreitet die Grenze von 256 MiB je Datei." = "The file exceeds the limit of 256 MiB per file.";
+"Die Gegenseite wurde nicht vollständig gelesen; ein fehlender Eintrag ist nicht sicher belegt." = "The other side was not read completely; an absent entry cannot be confirmed.";
+"Die Grenze für Ordner- und Dateieinträge wurde erreicht." = "The folder and file entry limit has been reached.";
+"Die Ordnerstruktur hat sich während der Prüfung geändert. Das Ergebnis ist unvollständig." = "The folder structure changed during comparison. The result is incomplete.";
+"Die maximale Ordnertiefe wurde erreicht." = "The maximum folder depth has been reached.";
+"Eine Vergleichswurzel ist kein verfügbarer lokaler Ordner." = "A comparison root is not an available local folder.";
+"Ergebnisse filtern" = "Filter Results";
+"Identisch" = "Identical";
+"Keine Einträge im gewählten Filter." = "No entries match the selected filter.";
+"Mehrere Ausschlussmuster mit Komma oder Zeilenumbruch trennen. Die Muster entsprechen der Ordnersuche." = "Separate exclusion patterns with commas or line breaks. Patterns work as in folder search.";
+"Neu vergleichen" = "Compare Again";
+"Nicht prüfbar" = "Cannot Verify";
+"Nur links" = "Only on Left";
+"Nur rechts" = "Only on Right";
+"Ordner auswählen…" = "Choose Folder…";
+"Ordner vergleichen" = "Compare Folders";
+"Ordner vergleichen…" = "Compare Folders…";
+"Ordner werden gelesen: %d Einträge" = "Reading folders: %d entries";
+"Ordner werden gelesen…" = "Reading folders…";
+"Ordner: %@ ↔ %@" = "Folders: %@ ↔ %@";
+"Ordnervergleich" = "Folder Comparison";
+"Ordnervergleiche sind schreibgeschützt." = "Folder comparisons are read-only.";
+"Schreibgeschützter Bytevergleich als Momentaufnahme. Dateipaare öffnen den Textvergleich." = "Read-only byte comparison snapshot. File pairs open the text comparison.";
+"Status" = "Status";
+"Symlinks und besondere Dateien werden nicht verfolgt oder verglichen." = "Symbolic links and special files are not followed or compared.";
+"Unvollständig – nicht alle Einträge konnten geprüft werden." = "Incomplete – some entries could not be verified.";
+"Vergleich vollständig" = "Comparison Complete";
+"Vergleicht ausschließlich lesend. Dateipaare lassen sich anschließend im Dateivergleich öffnen; es werden keine Dateien synchronisiert." = "Compares without writing. File pairs can then be opened in the file comparison; no files are synchronized.";
+"Verschieden" = "Different";
+"Versteckte Einträge bleiben ausgeschlossen. Symlinks werden angezeigt, aber nicht verfolgt. Grenzen: 20.000 Einträge je Ordner, 256 MiB je Datei und 2 GiB Lesebudget." = "Hidden entries remain excluded. Symbolic links are shown but not followed. Limits: 20,000 entries per folder, 256 MiB per file and a 2 GiB read budget.";
+
+"%@: Es können nur lokale Ordner verglichen werden." = "%@: Only local folders can be compared.";
+"%@: Der Ordner ist nicht verfügbar oder kein Verzeichnis." = "%@: The folder is unavailable or is not a directory.";
+"%@: Der Ordnerinhalt konnte nicht vollständig gelesen werden." = "%@: The folder contents could not be read completely.";
+"Mindestens ein Untereintrag konnte nicht geprüft werden." = "At least one child entry could not be verified.";
+
+"%d von %d Einträgen angezeigt" = "%d of %d entries shown";
+
+"Kodierung, BOM oder Zeilenendenstil können abweichen, obwohl der Textvergleich keine Unterschiede zeigt." = "Encoding, BOM or line-ending style can differ even when the text comparison shows no differences.";
+
+// Lokale Markdown-Verweise
+"Anker mehrdeutig" = "Ambiguous Anchor";
+"Anker werden nur in Markdown-Dateien geprüft." = "Anchors are checked only in Markdown files.";
+"Das Lesebudget für Markdown-Quellen wurde erreicht." = "The Markdown source read budget was reached.";
+"Das Ziel ist keine normale Datei und kein Ordner." = "The target is not a regular file or folder.";
+"Das lokale Ziel ist vorhanden." = "The local target exists.";
+"Das lokale Ziel konnte nicht gelesen werden." = "The local target could not be read.";
+"Das lokale Ziel konnte nicht geprüft werden: %@" = "The local target could not be checked: %@";
+"Der lokale Anker fehlt." = "The local anchor is missing.";
+"Der lokale Anker ist vorhanden." = "The local anchor exists.";
+"Der lokale Pfad oder Anker ist ungültig codiert." = "The local path or anchor has invalid encoding.";
+"Die Ausgangsdatei ist nicht mehr geöffnet." = "The source document is no longer open.";
+"Die Grenze der Markdown-Dateien wurde erreicht." = "The Markdown file limit was reached.";
+"Die Grenze der Verweise wurde erreicht." = "The reference limit was reached.";
+"Die Projektdateiliste ist unvollständig: %@" = "The project file list is incomplete: %@";
+"Die Quelle konnte nicht auf der geprüften Basis geöffnet werden. Bitte erneut prüfen." = "The source could not be opened on the checked basis. Please check again.";
+"Die Quelle wurde geändert oder geschlossen. Bitte erneut prüfen." = "The source was changed or closed. Please check again.";
+"Die Quelle wurde geändert. Bitte erneut prüfen." = "The source was changed. Please check again.";
+"Die Zielquelle konnte nicht geprüft werden." = "The target source could not be checked.";
+"Die lokale Zieldatei fehlt." = "The local target file is missing.";
+"Erneut prüfen" = "Check Again";
+"Keine Befunde in dieser Ansicht." = "No findings in this view.";
+"Lokale Markdown-Verweise" = "Local Markdown References";
+"Lokale Verweise prüfen…" = "Check Local References…";
+"Mehrere Überschriften oder HTML-Ziele verwenden diesen Anker." = "Multiple headings or HTML targets use this anchor.";
+"Nicht unterstützte HTML-Verweise in „%@“ bleiben ungeprüft." = "Unsupported HTML references in “%@” remain unchecked.";
+"Nicht unterstütztes HTML verhindert eine vollständige Ankerprüfung." = "Unsupported HTML prevents a complete anchor check.";
+"Noch keine Prüfung ausgeführt." = "No check has been run yet.";
+"Nur Probleme anzeigen" = "Show Problems Only";
+"Prüft Datei- und Bildziele sowie Markdown- und HTML-Anker ausschließlich lokal. Netzadressen werden nicht geöffnet. Die Liste ist eine Momentaufnahme; Dateien werden nicht geändert." = "Checks file and image targets, Markdown and HTML anchors locally. Network addresses are not opened. The list is a snapshot; files are not changed.";
+"Prüfung unvollständig" = "Check Incomplete";
+"Prüfung vollständig" = "Check Complete";
+"Quelle konnte nicht geprüft werden: %@" = "Source could not be checked: %@";
+"Quelle „%@“ konnte nicht geprüft werden: %@" = "Source “%@” could not be checked: %@";
+"Verweise werden geprüft…" = "Checking references…";
+"Ziel fehlt" = "Missing Target";
+"Ziel vorhanden" = "Target Exists";
+"Zur Quelle" = "Go to Source";
+
+"Die Grenze der Verweise oder Anker wurde erreicht." = "The reference or anchor limit was reached.";
+"Die Ankerliste ist unvollständig." = "The anchor list is incomplete.";
+"Dokument" = "Document";
+"Prüfen" = "Check";
+"Projekt-Ausschlüsse gelten. Versteckte Dateien, Pakete und Linkquellen bleiben ausgeschlossen. Grenzen: 200 Dateien, 10 MiB und 200.000 Umbruchzeichen je Quelle, 64 MiB insgesamt sowie jeweils 10.000 Verweise und Anker. Gequotete HTML-Verweise werden geprüft; weitere Grenzen stehen in der Hilfe." = "Project exclusions apply. Hidden files, packages and symbolic-link sources are excluded. Limits: 200 files, 10 MiB and 200,000 line-break characters per source, 64 MiB in total, and 10,000 references and anchors each. Quoted HTML references are checked; further limits are described in Help.";
+
+"Keine abgeschlossenen Befunde." = "No completed findings.";
+"Die Quelle überschreitet die Datei- oder Lesebudgetgrenze." = "The source exceeds the file or read budget limit.";
+"Die Quelle wurde während des Lesens geändert." = "The source changed while it was being read.";
+"Die Quelle ist keine normale Datei." = "The source is not a regular file.";
+"Nur Ziele auf lokalen Datenträgern werden geprüft." = "Only targets on local volumes are checked.";
+"Das Werkzeug für die Projektdateiliste ist nicht verfügbar." = "The project file listing tool is unavailable.";
+"Die Projektdateiliste konnte nicht rechtzeitig gelesen werden." = "The project file list could not be read in time.";
+"Die Projektdateiliste überschreitet die Speichergrenze." = "The project file list exceeds the memory limit.";
+
+"Die Quelle enthält mehr als 200.000 Zeilenumbruchzeichen." = "The source contains more than 200,000 line-break characters.";
+
+"Es ist kein Projekt geöffnet." = "No project is open.";
+"Geprüftes Projekt: %@" = "Checked project: %@";
+"Geprüftes Dokument: %@" = "Checked document: %@";
+"%d Dateien" = "%d files";
+"1 Verweis" = "1 reference";
+"%d Verweise" = "%d references";
+"1 lokaler Verweis" = "1 local reference";
+"%d lokale Verweise" = "%d local references";
+"1 andere Adresse übersprungen" = "1 other address skipped";
+"%d andere Adressen übersprungen" = "%d other addresses skipped";
+"Das Dokument im Sprungverlauf wurde geschlossen oder ersetzt." = "The document in jump history was closed or replaced.";
+"Das Ziel im Sprungverlauf wurde geändert oder ist nicht mehr eindeutig." = "The target in jump history changed or is no longer unique.";
+"Die Gliederung hat die Grenze von 10.000 Einträgen erreicht." = "The outline reached its limit of 10,000 entries.";
+"Die Gliederung ist für diese Quelle nicht vollständig prüfbar (10 MiB / 200.000 Zeilen)." = "The outline cannot fully check this source (10 MiB / 200,000 lines).";
+"Die Zielauflösung ist auf 10 MiB Quelltext begrenzt." = "Target resolution is limited to 10 MiB of source text.";
+"Keine Gliederungseinträge im Dokument" = "No outline entries in this document";
+"Nächster Sprung" = "Next Jump";
+"Voriger Sprung" = "Previous Jump";
+"Die Zielauflösung ist auf 10 MiB / 200.000 Zeilen begrenzt." = "Target resolution is limited to 10 MiB / 200,000 lines.";
+"Die Zielauflösung hat die Grenze von 10.000 Definitionen erreicht." = "Target resolution reached its limit of 10,000 definitions.";
+"Mehrere Funktionen heißen „%@“. Wähle die Definition in der Gliederung." = "Several functions are named “%@”. Choose the definition in the outline.";
+
+"Quelltextansicht teilen" = "Split source editor";
+"Teilung schließen" = "Close split";
+
+"Platzhalter verwenden {{Name}} mit höchstens 64 Zeichen pro Name. Klammern und Zeilenumbrüche sind im Namen nicht erlaubt." = "Placeholders use {{Name}} with at most 64 characters per name. Braces and line breaks are not allowed in names.";
+
+"Textbaustein zu groß: höchstens 16 KiB Vorlage oder Feldwert, 32 Platzhalter, 256 KiB Ergebnis und 1 MiB Importdatei." = "Text snippet too large: at most 16 KiB per template or field value, 32 placeholders, 256 KiB output and a 1 MiB import file.";
+
+"Bitte fülle die Platzhalter aus. Ein leerer Wert ist erlaubt." = "Please fill in the placeholders. Empty values are allowed.";
+
+"Textbausteine benötigen ein editierbares Textdokument mit einer einzelnen Auswahl." = "Text snippets require an editable text document with a single selection.";
+
+"Das Dokument oder die Einfügestelle hat sich geändert. Öffne die Textbausteine erneut; der vorhandene Inhalt blieb erhalten." = "The document or insertion point has changed. Open text snippets again; the existing content was preserved.";
+
+"Die Datei enthält keine gültige Textbausteinsammlung. Es wurde nichts übernommen." = "The file does not contain a valid text snippet collection. Nothing was imported.";
+
+"Ein Textbaustein mit diesem Namen ist bereits vorhanden." = "A text snippet with this name already exists.";
+
+"Dieser Textbaustein wurde inzwischen geändert. Lade die Sammlung neu, bevor du speicherst." = "This text snippet has changed. Reload the collection before saving.";
+
+"Textbaustein einfügen" = "Insert text snippet";
+
+"Der Textbaustein konnte nicht eingefügt werden. Prüfe den Hinweis und öffne die Textbausteine bei Bedarf erneut." = "The text snippet could not be inserted. Check the message and reopen text snippets if needed.";
+
+"Ein Textbaustein benötigt einen Namen mit höchstens 80 Zeichen und eine nicht leere Vorlage." = "A text snippet needs a name with at most 80 characters and a non-empty template.";
+
+/* Lokale Textbausteine */
+"Textbausteine" = "Text Snippets";
+"Textbausteine…" = "Text Snippets…";
+"Neuer Textbaustein" = "New Text Snippet";
+"Textbaustein gespeichert." = "Text snippet saved.";
+"Textbaustein gelöscht." = "Text snippet deleted.";
+"%ld Textbausteine importiert. Doppelte Namen erhielten eine Nummer." = "Imported %ld text snippets. Duplicate names were numbered.";
+"Textbausteinsammlung exportiert." = "Text snippet collection exported.";
+"Lokal gespeichert · keine Skripte" = "Stored locally · no scripts";
+"Ersetzt die beim Öffnen festgehaltene Auswahl als einen Undo-Schritt. Die Datei wird erst beim Speichern geändert." = "Replaces the selection captured when this sheet opened as one Undo step. The file changes only when you save it.";
+"Ungespeicherte Änderungen am Textbaustein" = "Unsaved Text Snippet Changes";
+"Die Vorlage wurde geändert. Der Dokumentinhalt bleibt bis zum Einfügen unverändert." = "The template has changed. The document stays unchanged until insertion.";
+"Textbaustein löschen?" = "Delete Text Snippet?";
+"Textbausteine durchsuchen" = "Search text snippets";
+"Noch keine Textbausteine. Erstelle eine Vorlage mit Neu." = "No text snippets yet. Choose New to create a template.";
+"Keine passenden Textbausteine." = "No matching text snippets.";
+"Sammlung exportieren…" = "Export Collection…";
+"Bis zu 50 Textbausteine. Import: höchstens 1 MiB; Namenskonflikte werden durch Nummern aufgelöst." = "Up to 50 text snippets. Import limit: 1 MiB; conflicting names are numbered.";
+"Name des Textbausteins" = "Text snippet name";
+"Speichere die Vorlage vor dem Einfügen." = "Save the template before inserting it.";
+"Platzhalter: {{Name}}. Wiederholte Namen teilen ein Feld. Feldwerte werden wörtlich eingesetzt; Return fügt einen Zeilenumbruch ein." = "Placeholders: {{Name}}. Repeated names share one field. Field values are inserted literally; Return adds a line break.";
+"Platzhalter ausfüllen" = "Fill in Placeholders";
+"Tab: nächstes Feld · Umschalt-Tab: vorheriges Feld · Leere Werte sind erlaubt." = "Tab: next field · Shift-Tab: previous field · Empty values are allowed.";
+"Einfügevorschau" = "Insertion Preview";
+"Grenzen: 16 KiB pro Vorlage und Feldwert, 32 verschiedene Platzhalter, 256 KiB Ergebnis." = "Limits: 16 KiB per template and field value, 32 distinct placeholders, 256 KiB output.";
+"Textbausteine mit ausfüllbaren Platzhaltern einfügen" = "Insert text snippets with fillable placeholders";
+
+"Löschen…" = "Delete…";
+
+"Textbausteine importieren?" = "Import Text Snippets?";
+"Die vorhandene Sammlung bleibt erhalten. Folgende Namen werden übernommen; Namenskonflikte sind bereits nummeriert:" = "The existing collection is preserved. These names will be imported; conflicting names have already been numbered:";
+
+"Importieren" = "Import";
+
+"Textbausteine.json" = "Text-Snippets.json";
+"Die Sammlung enthält höchstens 50 Textbausteine. Lösche zuerst nicht mehr benötigte Vorlagen oder importiere eine kleinere Sammlung." = "The collection holds at most 50 text snippets. Delete templates you no longer need or import a smaller collection.";
+
+"Die Textbausteinsammlung hat sich während der Bestätigung geändert. Es wurde nichts importiert. Öffne den Import erneut." = "The snippet collection changed during confirmation. Nothing was imported. Open the import again.";
+
+"Baustein einfügen" = "Insert Snippet";
+
+"Pfad kopieren" = "Copy Path";

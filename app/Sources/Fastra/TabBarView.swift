@@ -573,6 +573,7 @@ private struct TabPill: View {
             Button("Neuer Ordner…") { }.disabled(true)
             Divider()
             Button("Im Finder zeigen…") { }.disabled(true)
+            Button("Pfad kopieren") { }.disabled(true)
             Button("Terminal hier öffnen …") { }.disabled(true)
             Divider()
             Button("Duplizieren") { }.disabled(true)

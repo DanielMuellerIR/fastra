@@ -1,3 +1,4 @@
+import AppKit
 import CodeEditTextView
 import Foundation
 
@@ -6,6 +7,17 @@ import Foundation
 final class DocumentUndoHistory: Hashable {
     private var storage: CEUndoManager?
     private var content: String?
+    private var sourceStorage: NSTextStorage?
+
+    @MainActor func textStorage(for text: String) -> NSTextStorage {
+        // UTF8Sequence iteriert den NSString-Speicher zeichenweise. Der
+        // literale UTF-16-Vergleich bleibt auch bei kanonisch gleichen,
+        // verschieden codierten Zeichen exakt und vermeidet diese Kosten.
+        if sourceStorage == nil || (sourceStorage!.string as NSString).compare(text, options: .literal) != .orderedSame {
+            sourceStorage = TextView.fastraMakeTextStorage(text)
+        }
+        return sourceStorage!
+    }
 
     func manager(for text: String) -> CEUndoManager {
         if storage == nil { storage = CEUndoManager() }
@@ -42,8 +54,9 @@ final class DocumentUndoHistory: Hashable {
     }
 
     private func synchronize(with text: String) {
-        // Kanonische String-Gleichheit würde geänderte Unicode-Bytes verlieren.
-        if let content, !content.utf8.elementsEqual(text.utf8) {
+        // Literal bleibt bytegenau; UTF8Sequence kopiert beim NSString-Rückweg
+        // aus dem Editor sonst jedes unveränderte große Dokument.
+        if let content, (content as NSString).compare(text, options: .literal) != .orderedSame {
             storage?.fastraRegisterDocumentReplacement(from: content, to: text)
         }
         content = text

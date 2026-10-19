@@ -120,64 +120,69 @@ struct DualPaneDiffView<Leading: View>: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            VStack(spacing: 0) {
-                toolbar(proxy: proxy)
-                Divider().opacity(0.6)
-                HStack(spacing: 0) {
-                    GeometryReader { geometry in
-                        // Die Spaltenbreiten stehen fest, bevor die Zeilen
-                        // gebaut werden — beide Seiten und alle Zeilen nutzen
-                        // dieselben Werte, sonst versetzte sich die Trennlinie.
-                        let content = DiffColumnLayout.contentWidth(
-                            availableWidth: geometry.size.width)
-                        let leadingColumn = DiffColumnLayout.leadingWidth(
-                            contentWidth: content, ratio: CGFloat(splitRatio))
-                        let trailingColumn = DiffColumnLayout.trailingWidth(
-                            contentWidth: content, ratio: CGFloat(splitRatio))
-                        ScrollView([.vertical, .horizontal]) {
-                            LazyVStack(alignment: .leading, spacing: 0) {
-                                ForEach(items) { item in
-                                    itemView(item, leadingWidth: leadingColumn,
-                                             trailingWidth: trailingColumn,
-                                             contentWidth: content)
-                                        .id(item.id)
+        GeometryReader { available in
+            ScrollViewReader { proxy in
+                VStack(spacing: 0) {
+                    toolbar(proxy: proxy)
+                    Divider().opacity(0.6)
+                    HStack(spacing: 0) {
+                        GeometryReader { geometry in
+                            // Die Spaltenbreiten stehen fest, bevor die Zeilen
+                            // gebaut werden — beide Seiten und alle Zeilen nutzen
+                            // dieselben Werte, sonst versetzte sich die Trennlinie.
+                            let content = DiffColumnLayout.contentWidth(
+                                availableWidth: geometry.size.width)
+                            let leadingColumn = DiffColumnLayout.leadingWidth(
+                                contentWidth: content, ratio: CGFloat(splitRatio))
+                            let trailingColumn = DiffColumnLayout.trailingWidth(
+                                contentWidth: content, ratio: CGFloat(splitRatio))
+                            ScrollView([.vertical, .horizontal]) {
+                                LazyVStack(alignment: .leading, spacing: 0) {
+                                    ForEach(items) { item in
+                                        itemView(item, leadingWidth: leadingColumn,
+                                                 trailingWidth: trailingColumn,
+                                                 contentWidth: content)
+                                            .id(item.id)
+                                    }
+                                }
+                                .frame(minWidth: content,
+                                       minHeight: geometry.size.height,
+                                       alignment: .topLeading)
+                                // Der Griff liegt IM gescrollten Inhalt, nicht
+                                // über dem Sichtfenster: In einem schmalen Fenster
+                                // ist die Fläche breiter als der Ausschnitt, und
+                                // ein Griff am Sichtfenster stünde dann nicht mehr
+                                // auf der Spaltengrenze.
+                                .overlay(alignment: .topLeading) {
+                                    splitter(contentWidth: content)
                                 }
                             }
-                            .frame(minWidth: content,
-                                   minHeight: geometry.size.height,
-                                   alignment: .topLeading)
-                            // Der Griff liegt IM gescrollten Inhalt, nicht
-                            // über dem Sichtfenster: In einem schmalen Fenster
-                            // ist die Fläche breiter als der Ausschnitt, und
-                            // ein Griff am Sichtfenster stünde dann nicht mehr
-                            // auf der Spaltengrenze.
-                            .overlay(alignment: .topLeading) {
-                                splitter(contentWidth: content)
+                            .coordinateSpace(name: "dualPaneDiffScroll")
+                            .onPreferenceChange(DiffEntryOffsetsKey.self) { offsets in
+                                if let until = suppressFollowUntil, Date() < until {
+                                    return
+                                }
+                                let positions = offsets.mapValues(Double.init)
+                                if let visible = GitDiffViewModel.currentHunkIndex(
+                                    positions: positions,
+                                    orderedIDs: entries.map(\.scrollTargetID)
+                                ) {
+                                    currentEntry = visible
+                                }
                             }
                         }
-                        .coordinateSpace(name: "dualPaneDiffScroll")
-                        .onPreferenceChange(DiffEntryOffsetsKey.self) { offsets in
-                            if let until = suppressFollowUntil, Date() < until {
-                                return
-                            }
-                            let positions = offsets.mapValues(Double.init)
-                            if let visible = GitDiffViewModel.currentHunkIndex(
-                                positions: positions,
-                                orderedIDs: entries.map(\.scrollTargetID)
-                            ) {
-                                currentEntry = visible
-                            }
-                        }
-                    }
-                    .accessibilityLabel("Vergleich beider Dateien")
+                        .accessibilityLabel("Vergleich beider Dateien")
 
+                        Divider().opacity(0.6)
+                        overviewRuler(proxy: proxy)
+                            .frame(width: 20)
+                    }
+                    .background(SelfTestMarker(id: "dualPaneDiffViewport"))
                     Divider().opacity(0.6)
-                    overviewRuler(proxy: proxy)
-                        .frame(width: 20)
+                    // In eingebetteten Vorschauen darf die Liste den eigentlichen
+                    // Vergleich nicht verdrängen; weitere Einträge bleiben scrollbar.
+                    differencesList(proxy: proxy, height: min(132, max(24, available.size.height / 4)))
                 }
-                Divider().opacity(0.6)
-                differencesList(proxy: proxy)
             }
         }
         .onChange(of: items) {
@@ -268,10 +273,10 @@ struct DualPaneDiffView<Leading: View>: View {
 
     // MARK: Differenzen-Liste (unten, BBEdit-Vorbild)
 
-    private func differencesList(proxy: ScrollViewProxy) -> some View {
+    private func differencesList(proxy: ScrollViewProxy, height: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(L10n.format("%ld Unterschiede", entries.count))
+                Text(L10n.format("Unterschiede: %ld", entries.count))
                     .fastraFont(size: 10)
                     .foregroundColor(Theme.textSecondary)
                 Spacer()
@@ -296,7 +301,7 @@ struct DualPaneDiffView<Leading: View>: View {
                     }
                 }
             }
-            .frame(height: 132)
+            .frame(height: height)
         }
         .accessibilityLabel("Liste der Unterschiede")
     }

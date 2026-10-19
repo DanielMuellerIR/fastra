@@ -352,3 +352,16 @@ func macroShortcut_requiresDocumentWindow() {
     )
     #expect(route == .passThrough)
 }
+
+@Test("⌥⌘F öffnet ausschließlich im formatierten Dokument die Quelltextsuche")
+func markdownSourceSearchShortcut() {
+    let route = KeyRouting.route(isKeyDown: true, modifierFlags: [.command, .option],
+        charactersIgnoringModifiers: "f", keyCode: 3, isSearchWindowKey: false,
+        isDocumentWindowKey: true, isMarkdownVisual: true)
+    #expect(route == .showSearchSource)
+    #expect(KeyRouting.notificationName(for: route) == .fastraShowSearchFile)
+    let background = KeyRouting.route(isKeyDown: true, modifierFlags: [.command, .option],
+        charactersIgnoringModifiers: "f", keyCode: 3, isSearchWindowKey: false,
+        isDocumentWindowKey: false, isMarkdownVisual: true)
+    #expect(background == .passThrough)
+}

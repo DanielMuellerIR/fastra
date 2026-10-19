@@ -315,8 +315,9 @@ enum FileLoader {
     /// Laden. Der allgemeine Save-Pfad und die Git-Konfliktprüfung verwenden
     /// dieselbe Funktion, damit beide dieselben Bytes meinen.
     static func encodedData(content: String, encoding: String.Encoding,
-                            bom: Data, lineEnding: LineEnding) -> Data? {
-        let normalized = lineEnding.converting(content)
+                            bom: Data, lineEnding: LineEnding,
+                            preservingLineEndings: Bool = false) -> Data? {
+        let normalized = preservingLineEndings ? content : lineEnding.converting(content)
         let bodyEncoding = explicitBodyEncoding(encoding,
                                                 bomEncoding: ApplyEngine.detectBOM(in: bom).1)
         guard let body = normalized.data(using: bodyEncoding,
@@ -329,7 +330,7 @@ enum FileLoader {
         return result
     }
 
-    private static func explicitBodyEncoding(_ encoding: String.Encoding,
+    static func explicitBodyEncoding(_ encoding: String.Encoding,
                                              bomEncoding: String.Encoding?)
         -> String.Encoding {
         if encoding == .utf16 {

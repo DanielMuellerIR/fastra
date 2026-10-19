@@ -739,9 +739,18 @@ struct GitIntegrationReviewFixPushFlowTests {
 
         workspace.gitPush(to: GitPushTarget(remote: "github",
                                              addresses: [github.path]))
-        #expect(await waitUntil(timeout: 5) {
-            FileManager.default.fileExists(atPath: started.path)
-        })
+        let waitingStarted = ProcessInfo.processInfo.systemUptime
+        var lastPoll = waitingStarted, longestGap: TimeInterval = 0, polls = 0
+        let hookStarted = await waitUntil(timeout: 5) {
+            let now = ProcessInfo.processInfo.systemUptime
+            longestGap = max(longestGap, now - lastPoll); lastPoll = now; polls += 1
+            return FileManager.default.fileExists(atPath: started.path)
+        }
+        let elapsed = ProcessInfo.processInfo.systemUptime - waitingStarted
+        // Bei einer gerissenen Frist müssen verzögerter Push-Start und
+        // eine nicht bediente Warteschleife unterscheidbar bleiben.
+        print("GIT_PUSH_HOOK_WAIT started=\(hookStarted) seconds=\(elapsed) polls=\(polls) longestGap=\(longestGap)")
+        #expect(hookStarted)
         #expect((await reviewFixGit(["config", "branch.main.remote", "primary"],
                                     in: root)).ok)
         #expect((await reviewFixGit(["config", "branch.main.merge",

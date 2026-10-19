@@ -24,6 +24,8 @@ struct FileDiffTabState: Hashable {
     /// Jede Neuberechnung desselben Tabs erhöht diesen Wert. Nur die
     /// Completion derselben Generation darf den Tab noch verändern.
     private(set) var loadGeneration: UInt64
+    var pendingTransferID: UUID?
+    var transferError: String?
 
     init(request: FileDiffRequest) {
         self.request = request

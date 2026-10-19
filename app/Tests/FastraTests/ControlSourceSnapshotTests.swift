@@ -22,6 +22,75 @@ struct ControlSourceSnapshotTests {
                 sha256: FileSnapshot.sha256Hex(bytes), location: 5, length: 4, provenance: provenance))
     }
 
+    @Test("Explizite Decoder erhalten Rohbytes, Text und UTF16-Auswahl")
+    func explicitDecoders() throws {
+        let (root, _, leaf, original) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let text = "vor\r\nJahresbericht für Köln\r\n"
+        for (name, encoding) in [("utf-8", String.Encoding.utf8), ("utf-16-le", .utf16LittleEndian),
+                                 ("utf-16-be", .utf16BigEndian), ("windows-1252", .windowsCP1252),
+                                 ("iso-8859-1", .isoLatin1), ("mac-roman", .macOSRoman)] {
+            let bytes = try #require(text.data(using: encoding))
+            try bytes.write(to: leaf)
+            var request = original
+            request.textEncoding = name
+            request.sha256 = FileSnapshot.sha256Hex(bytes)
+            request.location = 5; request.length = 22
+            #expect(try ControlRequest.decode(JSONEncoder().encode(request)) == request)
+            let snapshot = try ControlSourceSnapshot.adopt(request, temporaryRoot: root)
+            defer { snapshot.remove() }
+            #expect(snapshot.loaded.content.utf8.elementsEqual(text.utf8))
+            #expect(snapshot.loaded.encoding == encoding)
+            #expect(snapshot.loaded.diskSnapshot?.sha256 == request.sha256)
+            #expect(try Data(contentsOf: snapshot.fileURL) == bytes)
+            try ControlSelection(location: 5, length: 22).validate(in: snapshot.loaded.content)
+        }
+    }
+
+    @Test("Explizites UTF16 erhält zweite BOM, Emoji, NFD und CRLF bytegenau")
+    func explicitUTF16BOM() throws {
+        let (root, _, leaf, original) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let text = "\u{feff}😀 e\u{301}\r\nJahresbericht\r\n"
+        for (name, encoding, bom) in [("utf-16-le", String.Encoding.utf16LittleEndian, Data([0xff, 0xfe])),
+                                      ("utf-16-be", .utf16BigEndian, Data([0xfe, 0xff]))] {
+            let bytes = bom + (try #require(text.data(using: encoding)))
+            try bytes.write(to: leaf)
+            var request = original; request.textEncoding = name
+            request.sha256 = FileSnapshot.sha256Hex(bytes)
+            request.location = 8; request.length = 13
+            let snapshot = try ControlSourceSnapshot.adopt(request, temporaryRoot: root)
+            defer { snapshot.remove() }
+            #expect(snapshot.loaded.content.utf8.elementsEqual(text.utf8))
+            #expect(snapshot.loaded.bom == bom)
+            #expect(snapshot.loaded.diskSnapshot?.sha256 == request.sha256)
+            #expect(try Data(contentsOf: snapshot.fileURL) == bytes)
+        }
+    }
+
+    @Test("Unbekannte Decoder, falsche Operation und BOM-Widerspruch mutieren nichts")
+    func invalidDecoderRequests() throws {
+        let (root, _, leaf, original) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        for name in ["auto", "utf-7", "UTF-8", "cp1252", ""] {
+            var request = original; request.textEncoding = name
+            #expect(throws: ControlFailure.invalidRequest) { try request.validate() }
+        }
+        var other = ControlRequest(operation: "capabilities"); other.textEncoding = "utf-8"
+        #expect(throws: ControlFailure.invalidRequest) { try other.validate() }
+        let bytes = Data([0xff, 0xfe, 0x41, 0])
+        try bytes.write(to: leaf)
+        var request = original; request.sha256 = FileSnapshot.sha256Hex(bytes)
+        request.textEncoding = "utf-16-be"
+        #expect(throws: ControlFailure.source) { try ControlSourceSnapshot.adopt(request, temporaryRoot: root) }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).count == 2)
+        var old = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(ControlProtocol.capabilities)) as? [String: Any])
+        old.removeValue(forKey: "sourceSnapshotTextEncodings")
+        let decoded = try JSONDecoder().decode(ControlCapabilities.self, from: JSONSerialization.data(withJSONObject: old))
+        #expect(decoded.sourceSnapshotTextEncodings == nil)
+        #expect(ControlProtocol.capabilities.sourceSnapshotTextEncodings == ControlProtocol.sourceSnapshotTextEncodings)
+    }
+
     @Test("Eigene Rohbyte-Kopie überlebt entfernte Senderdatei und wird gezielt entfernt")
     func adoptionAndCleanup() throws {
         let (root, _, leaf, request) = try fixture()

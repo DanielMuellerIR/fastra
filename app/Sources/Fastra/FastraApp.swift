@@ -233,6 +233,10 @@ struct FastraApp: App {
                     .disabled(activeDocumentContext.workspace == nil)
                 Toggle("Markdown-Vorschau rechts anzeigen", isOn: $showMarkdownPreview)
                 .keyboardShortcut("m", modifiers: [.command, .shift])
+                if let workspace = commandWorkspace {
+                    SourceSplitMenuItem(workspace: workspace)
+                    DocumentNavigationCommands(workspace: workspace, outline: workspace.documentOutline)
+                }
             }
 
             CommandGroup(replacing: .newItem) {
@@ -366,14 +370,24 @@ struct FastraApp: App {
                 }
             }
             CommandMenu("Suchen") {
-                // CMD+F: Suchen in der aktuellen Datei (kompakter Modus).
-                Button("Suchen & Ersetzen…") {
+                // CMD+F: formatierten Text oder den Quelltext der Datei suchen.
+                Button {
                     guard let commandWorkspace else { return }
                     NotificationCenter.default.post(name: .fastraShowSearchFile,
                                                     object: commandWorkspace)
+                } label: {
+                    Text(verbatim: commandWorkspace?.activeMarkdownIsVisual == true && commandWorkspace?.showSearchDialog != true
+                         ? L10n.string("Im formatierten Text suchen…") : L10n.string("Suchen & Ersetzen…"))
                 }
                 .disabled(commandWorkspace == nil)
                 .keyboardShortcut("f", modifiers: .command)
+                if commandWorkspace?.activeMarkdownIsVisual == true {
+                    Button("Markdown-Quelltext suchen und ersetzen…") {
+                        guard let commandWorkspace else { return }
+                        NotificationCenter.default.post(name: .fastraShowSearchFile, object: commandWorkspace,
+                                                        userInfo: ["source": true])
+                    }.keyboardShortcut("f", modifiers: [.command, .option])
+                }
 
                 // CMD+SHIFT+F: Mehrdatei-Suche (erweiterter Modus). Beim
                 // Öffnen wird der Scope auf „Projekt" gesetzt, wenn das
@@ -414,6 +428,7 @@ struct FastraApp: App {
 
                 Button("Suchen & Ersetzen ausblenden") {
                     commandWorkspace?.showSearchDialog = false
+                    if let commandWorkspace { commandWorkspace.markdownVisualFind.close(in: commandWorkspace) }
                 }
                     .keyboardShortcut(.escape, modifiers: [])
 
@@ -440,6 +455,10 @@ struct FastraApp: App {
                 }
                 .keyboardShortcut("d", modifiers: [.command, .control])
 
+                Button("Ordner vergleichen…") {
+                    commandWorkspace?.presentFolderComparisonDialog()
+                }.disabled(commandWorkspace == nil)
+
                 // BBEdit „Compare Against Disk File": ungespeicherten
                 // Editor-Inhalt gegen den Plattenstand derselben Datei —
                 // ohne Dialog, direkt ins Differenzfenster.
@@ -457,6 +476,11 @@ struct FastraApp: App {
             // den aktiven Editor an (gleiche Logik wie das Rechtsklick-Submenü).
             // Operieren auf der Selektion bzw. — ohne Selektion — der ganzen Datei.
             CommandMenu("Text") {
+                Button("Textbausteine…") { commandWorkspace?.openTextSnippets() }
+                    .disabled(commandWorkspace?.canUseTextSnippets != true)
+                Button("Gespeicherte Textabläufe…") { commandWorkspace?.presentTextWorkflows() }
+                    .disabled(commandWorkspace?.activeTab?.isEditableTextDocument != true || commandWorkspace?.activeViewMode != .text)
+                Divider()
                 Button("Dokument formatieren") { postDocumentFormatting() }
                     .disabled(commandWorkspace?.activeDocumentFormattingID == nil)
                 // Etappe 6 (Wunschpaket 2026-07): native JSON-/XML-Prüfung
@@ -587,6 +611,9 @@ struct FastraApp: App {
                     markdownFormatButton(.insertTable)
                     Divider()
                     Button("Images-Ordner aufräumen…") { MarkdownImageCleanup.present() }
+                    Button("Lokale Verweise prüfen…") {
+                        if let workspace = commandWorkspace { workspace.markdownReferences.present(in: workspace) }
+                    }
                 }
                 .disabled(!activeTabIsMarkdown)
             }

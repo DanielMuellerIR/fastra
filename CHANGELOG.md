@@ -7,6 +7,212 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.155.0] — 2026-10-19
+
+### Hinzugefügt
+
+- „Pfad kopieren“ ergänzt die Finder-Kontextmenüs im Dateibaum, Projektkopf und in gespeicherten Dokument-Tabs. Die Zwischenablage enthält den vollständigen POSIX-Pfad einschließlich Dateinamen.
+
+### Behoben
+
+- Die Tabellenwerkzeuge verändern während einer gezogenen Textauswahl nicht mehr die Höhe des WYSIWYG-Editors.
+- Einzeiliger Clipboard-Inhalt ersetzt vollständig ausgewählten Tabellenzelltext ohne einen zusätzlichen Umbruch. Inline-Formatierung und Rückgängig bleiben erhalten.
+
+## [v1.154.1] — 2026-10-19
+
+### Behoben
+
+- Unvollständige Code- und Formelmarker blockieren die Markdown-Referenzprüfung nicht mehr durch wiederholte Volltextsuchen. Auch viele Formeln werden ohne wiederholte Token-Volltextsuchen in die Vorschau eingesetzt. Die bisherige Formelsyntax und die Quellpositionen bleiben erhalten; abgebrochene Prüfungen beenden auch die Formelbereichsanalyse.
+
+- Ein schneller Tabwechsel kann Befehle und Textbausteine nicht mehr auf eine noch montierte Editoransicht des vorherigen Dokuments richten, auch wenn beide Dokumente identischen Text enthalten.
+
+- Verspätete WYSIWYG-Einfügungen und WebKit-Rückmeldungen dürfen keinen neuen Dokumentinhalt in einem wiederverwendeten Tabplatz verändern.
+
+- Wiederholte SwiftUI-Aktualisierungen gleichen große gemeinsame Quelltextspeicher und deren Undo-Zustand mit einem exakten literalen Vergleich ab, ohne den gesamten NSString-Inhalt zeichenweise über UTF-8 zu durchlaufen.
+
+## [v1.154.0] — 2026-10-19
+
+### Hinzugefügt
+
+- Lokale benannte Textbausteine lassen sich im sichtbaren Picker erstellen, bearbeiten, duplizieren, löschen und als begrenzte JSON-Sammlung importieren oder exportieren.
+- Ausfüllbare Platzhalter bieten eine vollständige Einfügevorschau. Wiederholte Namen teilen einen Wert; mehrzeilige Unicode-Werte werden wörtlich und ohne Skriptausführung eingesetzt. Quelle und WYSIWYG ersetzen nur die festgehaltene Auswahl als einen Undo-Schritt; veraltete Ziele werden abgewiesen.
+### Behoben
+
+- Natives Undo entfernt neu eingefügte geschützte Markdown-Atome vollständig.
+
+## [v1.153.2] — 2026-10-19
+
+### Behoben
+
+- Die WYSIWYG-Suchleiste erhält beim erneuten Öffnen den Fokus am neu erzeugten Suchfeld. Eingaben und Escape erreichen damit auch nach dem Schließen wieder die sichtbare Suche.
+
+## [v1.153.1] — 2026-10-19
+
+### Behoben
+
+- Quellsprünge über einen Textbereich aktualisieren die Zeilen- und Spaltenanzeige des aktiven Ausschnitts sofort.
+- Kopierknöpfe an Codeblöcken der eingebauten Hilfe kopieren den vollständigen Text und zeigen eine Rückmeldung.
+- Die Minimap verwendet auch beim geteilten Editor von Anfang an den zugehörigen Textspeicher und die passenden Umbruchgrenzen.
+
+## [v1.153.0] — 2026-10-19
+
+### Hinzugefügt
+
+- Die Quelltextansicht lässt sich in zwei übereinanderliegende Ausschnitte teilen. Beide bearbeiten denselben Textspeicher und Dokument-Undo-Verlauf, behalten eigene Auswahlen, Faltung und Scrollpositionen und lassen sich über sichtbare Befehle teilen oder schließen.
+- Suche, Gliederung und Editorbefehle folgen dem aktiven Ausschnitt desselben Fensters. Tabwechsel, Zoom und Soft Wrap verwenden die vorhandenen Dokument- und Ansichtswege; Abschnitts- und Sonderansichten bleiben von der Teilung ausgenommen.
+
+### Behoben
+
+- Normales Speichern erhält gemischte Zeilenenden exakt. Eine ausdrücklich gewählte Konvertierung übernimmt nach erfolgreichem Speichern denselben Inhalt in Dokument, Ansichten und Undo-Verlauf.
+
+## [v1.152.0] — 2026-10-19
+
+### Hinzugefügt
+
+- Die Dokumentgliederung zeigt 4D-Methoden, Konstruktoren und Klassenfunktionen einschließlich Accessoren. Die vorhandene Tokenanalyse schließt Kommentare, Strings und SQL aus.
+- Gliederung, „Gehe zum Ziel“ und lokale Markdown-Befunde verwenden einen gemeinsamen, je Fenster getrennten Sprungverlauf. Sichtbare Pfeile und Menübefehle führen zurück und vorwärts; geschlossene oder nicht mehr eindeutig auffindbare Ziele werden erklärt.
+- Zielauflösung und neue Quellanalysen laufen abbrechbar im Hintergrund. Dokumentidentität und Inhaltsgeneration schützen die Rückgabe; nach Quelländerungen werden begrenzte Anker erneut aufgelöst.
+
+### Behoben
+
+- Der lokale 4D-Zielsprung behandelt Function-Zeilen in Blockkommentaren nicht mehr als Definitionen.
+
+## [v1.151.0] — 2026-10-18
+
+### Hinzugefügt
+
+- Lokale Markdown-Datei-, Bild- und Ankerverweise lassen sich im Dokument oder begrenzt im Projekt prüfen. Eine native Befundliste bietet Quellsprünge, Fortschritt, Abbruch und eine erneute Prüfung; Netzadressen werden ausschließlich übersprungen.
+- Der vorhandene Markdown-Parser löst Referenzlinks auf. Codierte Pfade, lokale Symlinkziele und gequotete HTML-Verweise werden geprüft; gleiche Überschriften ergeben ausdrücklich mehrdeutige Anker. Fehler, nicht unterstütztes HTML und Ressourcenlimits kennzeichnen unvollständige Prüfungen.
+- Quellsprünge schützen die geprüfte Dokument-/Dateibasis und wechseln bei Bedarf aus WYSIWYG in den Quelltext. Die Prüfung schreibt keine Dateien.
+
+## [v1.150.0] — 2026-10-18
+
+### Hinzugefügt
+
+- Zwei lokale Ordner lassen sich schreibgeschützt vergleichen. Eine native Liste zeigt einseitige, identische, verschiedene und nicht prüfbare Einträge; Dateipaare öffnen den vorhandenen Dateivergleich.
+- Dateityp- und Pfadfilter, Fortschritt und Abbruch begleiten die begrenzte Prüfung. Binärdateien werden bytegenau verglichen, Symlinks ausdrücklich gekennzeichnet. Lesefehler, Grenzen und externe Änderungen ergeben sichtbar unvollständige Ergebnisse.
+
+### Behoben
+
+- Streamende Dateivergleiche begrenzen auch bei während des Lesens wachsenden Dateien die gelesene Datenmenge. Pfadfilter berücksichtigen die Dateisystemwurzel und Unicode-äquivalente Dateinamenschreibweisen korrekt.
+
+## [v1.149.0] — 2026-10-18
+
+### Hinzugefügt
+
+- Einzelne Änderungsblöcke eines Dateivergleichs lassen sich nach links oder rechts in zugeordnete offene editierbare Dokumente übernehmen. Eine genaue Bestätigungsvorschau zeigt auch übertragene Zeilenenden und Unicode-Zeichen.
+- Die Übernahme ändert ausschließlich den Speicher, besitzt natives Dokument-Undo und berechnet anschließend den Vergleich neu. Externe Dateiseiten bleiben schreibgeschützte Quellen; Speichern erfolgt separat.
+- Dokumentidentität, Revision, Ursprungsfenster und geladene Dateisnapshots schützen jede Übernahme. Veraltete Quellen, unvollständige Vorschauen und überschrittene Textgrenzen verhindern Änderungen; laufende Vorbereitungen sind abbrechbar.
+
+## [v1.148.0] — 2026-10-18
+
+### Hinzugefügt
+
+- Treffer lassen sich einzeln oder pro Datei freigeben. „Alle“ und „Keine“ sowie Zähler für Gesamtzahl, Freigaben und editierbare Treffer unterstützen die Auswahl. Neue Suchläufe beginnen ohne Freigaben; nicht editierbare Treffer bleiben sichtbar.
+- Eine vollständige Vorschau zeigt ausschließlich freigegebene Änderungen, einschließlich exakter Unicode- und Zeilenendenunterschiede. Die geprüfte Basis bleibt an Suche, Optionen, Dokumentrevisionen, Dateien und Ursprungsfenster gebunden. Unvollständige Ergebnisse oder überschrittene Grenzen sperren Apply.
+- Freigegebene Änderungen wirken in offenen Dokumenten nur im Speicher und besitzen natives Undo sowie eine gemeinsame Rücknahme der tatsächlich geänderten Dokumente. Ordner- und Projekt-Apply verwenden weiter atomare Dateiaustausche, geschützte Backups und die bestehende Rücknahme.
+
+### Behoben
+
+- Schreibschutz am Ziel oder Elternordner verhindert Apply und Rückgängig auch unmittelbar vor dem atomaren Austausch.
+- Fehlende Suchquellen werden als unvollständige Suche gemeldet; ihre übrigen Treffer können keine Mehrfachersetzung freigeben.
+
+## [v1.147.0] — 2026-10-18
+
+### Verbessert
+
+- Die Markdown-Vorschau aktualisiert geänderte Blöcke gezielt. Unveränderte Absätze, Tabellen, Formeln, Diagramme und Codeblöcke behalten ihre Browserobjekte; Auswahl, sichtbarer Ausschnitt und Codekopierknöpfe bleiben erhalten. Geänderte Referenzdefinitionen aktualisieren alle abhängigen Blöcke, Quellpositionen folgen Einfügungen und Verschiebungen.
+- Überholte Hintergrund-Renderarbeit wird vor weiteren Parser- und Bildschritten abgebrochen. Dokument- und Darstellungswechsel behalten den vollständigen Neuaufbau bei.
+
+## [v1.146.0] — 2026-10-18
+
+### Hinzugefügt
+
+- Markdown-Vorschau und WYSIWYG begrenzen Fließtext auf eine zentrierte Lesespalte. Breite Tabellen nutzen den verfügbaren Platz und bleiben innerhalb ihrer eigenen horizontalen Scrollfläche vollständig erreichbar.
+- Codeblöcke besitzen sichtbare Kopierknöpfe mit Tastaturbedienung und Rückmeldung. Sie kopieren ausschließlich den dargestellten Code als Klartext, ohne Markdown-Zäune oder Formatierungsreste; Dokumentquelle und Rückgängig-Verlauf bleiben erhalten. Im Ausdruck erscheinen die Knöpfe nicht.
+
+### Behoben
+
+- Die WYSIWYG-Quellzusammenstellung vermeidet wiederholte Präfixsuchen über alle Blöcke. Große Dokumente mit vielen Absätzen lassen sich dadurch flüssiger bearbeiten; unveränderte Originalblöcke und verdeckte Referenzdefinitionen bleiben erhalten.
+- Wiederholte Inhaltswechsel der Markdown-Vorschau halten keine überholten Diagrammquellen mehr im Speicher. Diagrammquellen für den WYSIWYG-Rückgängig-Verlauf bleiben erhalten.
+
+## [v1.145.1] — 2026-10-18
+
+### Behoben
+
+- Lange Konfliktlisten im Ablaufdialog bleiben vollständig scrollbar. Auch bei Mindestgröße bleiben Vorschau, Schließen und Anwenden erreichbar; abgewiesene Plattenänderungen verändern keine Datei.
+- Eingaben im Ablaufdialog lassen sich auf der gesamten Zeilenfläche auswählen, einschließlich freier Flächen neben kurzen Dateinamen.
+- Projektdatei-Sets erkennen die Projektwurzel auch bei gleichwertigen macOS-Pfadschreibweisen wie `/private/tmp` und `/tmp`.
+
+## [v1.145.0] — 2026-10-17
+
+### Hinzugefügt
+
+- Textabläufe besitzen Bereiche für das aktive Dokument, offene editierbare Dokumente dieses Fensters sowie Ordner und Projekt mit vorhandenen Dateitypen, Datei-Sets und Ausschlüssen. Jede Eingabe zeigt ihren Zustand und vollständig erreichbare Schritt- und Endvergleiche; Fehler und Grenzen sperren den gesamten Plan.
+- Mehrere offene Dokumente werden gemeinsam im Speicher geändert und geschützt zurückgenommen. Der einzelne Dokumentverlauf bleibt erhalten; Speichern erfolgt ausdrücklich.
+- Plattenabläufe erhalten Kodierung, BOM und die exakten Ergebnisbytes. Sie verwenden den bestehenden Snapshot-, Journal-, atomaren Schreib- und Rücknahmekern. Auch wirkungslose Eingaben gehören zum Preflight; ungespeicherte Text-/Hex-Zustände anderer Fenster und konkurrierende Dateioperationen verhindern das Schreiben. Ein später Schreibfehler bleibt als geschützte Teilsitzung sichtbar.
+- Dateiliste, Dekodierung, Vorschau und Plattenprüfung laufen im Hintergrund mit Fortschritt, Generation und Abbruch. Gemeinsame Grenzen schützen Originaldaten, Ausgaben und Vorschautexte.
+
+### Behoben
+
+- TSV-Tabellenzellen erhalten führende, mehrfache und nachgestellte ASCII-Leerzeichen auch nach Speichern und erneutem Öffnen. Tab am Tabellenlimit zeigt die vorhandene Größenmeldung, statt ohne Erklärung stehenzubleiben.
+- Ablaufvergleiche kennzeichnen auch unsichtbare Zeichen und Zeilenenden einseitig hinzugefügter oder entfernter Zeilen.
+- Harter Zeilenumbruch zählt Spalten fortlaufend und prüft Abbruch sowie Zeitgrenze innerhalb großer Eingaben.
+- Wirkungslose Zeilenfilter und Umbruchschritte erhalten gemischte Zeilenenden bytegenau.
+- Native Ablauf- und Tabellenprüfungen erhalten ihre angeforderten Aufnahmeziele auch beim LaunchServices-Start.
+
+## [v1.144.2] — 2026-10-16
+
+### Hinzugefügt
+
+- Herkunftsgebundene Text-Snapshots können UTF-8, UTF-16 LE/BE, Windows-1252, ISO-8859-1 oder MacRoman ausdrücklich vorgeben. Die Fähigkeiten nennen die unterstützten Decoder; Rohbytes, dekodierter Text und UTF-16-Auswahl bleiben getrennt geprüft. Widersprüchliche BOM-Hinweise werden vor der Übernahme abgewiesen.
+
+## [v1.144.0] — 2026-10-16
+
+### Hinzugefügt
+
+- Benannte Textabläufe kombinieren vorhandene Transformationen und Suchen/Ersetzen mit gespeicherten Parametern. Schritte lassen sich deaktivieren und umordnen; Dokument oder exakte Auswahl bilden den Wirkbereich.
+- Jeder Ablauf zeigt Schrittvorschauen und ein vollständiges Gesamtergebnis. Anwenden prüft die Dokumentbasis erneut und erzeugt einen gemeinsamen Undo-Schritt, ohne ungefragt auf Platte zu speichern.
+- Lokale Definitionen unterstützen begrenzten JSON-Import/-Export; Importe erzeugen Kopien. Gleichzeitige Bearbeitung in mehreren Fenstern wird beim Speichern erkannt.
+
+### Behoben
+
+- Die Differenzenliste lässt in kleinen Vorschauen ausreichend Platz für den eigentlichen Vergleich; Textabläufe bleiben bei Mindestgröße sichtbar prüfbar.
+- Die Markdown-Gliederung erholt sich nach einem Tabwechsel während der Analyse. Der Sprungverlauf erhält Überschriftenanker und berücksichtigt den Wechsel zwischen Quelltext und WYSIWYG.
+- Bearbeiten und Rückgängig in Inline-HTML stellen die exakte Markdown-Quelle wieder her. Reine Leerzeichenzeilen zwischen Inline-Code-Umbrüchen bleiben beim Speichern erhalten.
+
+## [v1.143.0] — 2026-10-16
+
+### Hinzugefügt
+
+- Markdown-Tabellen lassen sich im WYSIWYG-Modus über eine Kontextleiste bearbeiten: Zeilen und Spalten einfügen, löschen oder verschieben sowie Spalten ausrichten. Die Kopfzeile und die letzte Spalte bleiben geschützt.
+- Tab und Shift-Tab wechseln zwischen Tabellenzellen; Tab in der letzten Zelle legt eine neue Datenzeile an. Strukturänderungen gehören zur nativen Rückgängig-/Wiederholen-Historie.
+- Tabulatorgetrennter Klartext lässt sich ab der aktuellen Zelle einfügen, auch über einen sichtbaren TSV-Dialog. Die Tabelle wächst bei Bedarf; Größenüberschreitungen und ungeeignete Tabellen werden ohne Teiländerung erklärt.
+
+### Behoben
+
+- Tabellenänderungen erhalten auch Pipe-Zeichen in Formeln und geschützte Kommentare. Der Austausch von Inline-Inhalten prüft, ob der Tabellenparser den Ersatz tatsächlich akzeptiert.
+
+## [v1.142.0] — 2026-10-16
+
+### Hinzugefügt
+
+- Im Markdown-WYSIWYG-Modus öffnet ⌘F eine native Textsuche direkt über dem Dokument. Sichtbare Treffer lassen sich auch über Formatgrenzen hinweg finden und mit ⌘G/⇧⌘G anspringen. Eine Lupe in der Toolbar macht die Funktion sichtbar; Groß-/Kleinschreibung ist wählbar.
+- Die vollständige Markdown-Quelltextsuche mit Ersetzen bleibt über „Quelltext…“, das Suchmenü und ⌥⌘F erreichbar. Suchbegriffe der formatierten Ansicht bleiben je Dokument getrennt im Arbeitsspeicher.
+
+### Behoben
+
+- Verspätete Syntaxfarben nach einer Textkürzung können keine Attribute mehr außerhalb des aktuellen Textspeichers schreiben und dadurch den Editor zum Absturz bringen.
+- Zeichen-, Wort- und Zeilenzähler werden auch beim direkten Öffnen und Bearbeiten im WYSIWYG-Modus aktualisiert; eine frühere Quelltextauswahl bleibt dort nicht als Statistik-Auswahl stehen.
+- Die Gliederung zeigt hervorgehobene und durchgestrichene Überschriften sowie Zeilenumbrüche ohne Markdown- oder HTML-Kürzel im Titel.
+- Auch gleich aussehende Änderungen der Unicode-Schreibweise berechnen die Sprungpositionen der Gliederung neu.
+
+## [v1.141.0] — 2026-10-16
+
+### Hinzugefügt
+
+- Eine native Markdown-Gliederung zeigt Überschriften und springt im Quelltext oder WYSIWYG-Modus direkt zur gewählten Stelle. Zurück und Vorwärts führen durch die Überschriftensprünge des jeweiligen Dokuments.
+
 ## [v1.140.1] — 2026-10-16
 
 ### Behoben

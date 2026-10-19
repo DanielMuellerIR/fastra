@@ -6408,6 +6408,27 @@ if [ "$IMAGE_UNDO_MEMORY_PATCH" = "changed" ]; then
   rm -f .build/*/{debug,release}/Modules/CodeEditTextView.swiftmodule
 fi
 
+# 4z26. Verspätete Syntaxfarben bleiben innerhalb des aktuellen Textspeichers.
+HIGHLIGHT_STYLE_BOUNDS_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/highlight-style-bounds.py "$CHECKOUTS/CodeEditSourceEditor")
+if [ "$HIGHLIGHT_STYLE_BOUNDS_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditSourceEditor.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z27. Zwei Quellansichten teilen Text und Undo, behalten eigene Auswahlen.
+SHARED_SOURCE_PATCH=$(/usr/bin/python3 Patches/CodeEditTextView/shared-source.py "$CHECKOUTS/CodeEditTextView")
+if [ "$SHARED_SOURCE_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditTextView.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditTextView.swiftmodule
+fi
+
+# 4z28. Theme-Wechsel dürfen die Farben des anderen Ausschnitts nicht löschen.
+SHARED_APPEARANCE_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/shared-source-appearance.py "$CHECKOUTS/CodeEditSourceEditor")
+if [ "$SHARED_APPEARANCE_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditSourceEditor.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
 # Hinweis zu den `rm .build/*/{debug,release}/<Modul>.build`-Zeilen oben:
 # Sie gelten nur für das alte Build-System `native`, das Änderungen in
 # .build/checkouts nicht neu übersetzt. Ab Swift 6.4 baut `swift build`

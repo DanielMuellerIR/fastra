@@ -35,6 +35,230 @@ Klicks nach Scrollen sowie Copy des vollständigen
 Quelltexts. Dazu kommen Editor-Tests für alte Analyseergebnisse, Kopf-/Tiefenänderungen
 und überlappende Löschungen einschließlich der verbleibenden Zeilenhöhen.
 
+## Textsuche im WYSIWYG-Modus
+
+Nach `./build.sh` prüft `./test.sh --fast-only --filter
+'MarkdownVisualTests/visualFind'` WebKits echte Suche über Formatgrenzen,
+Unicode, ausgeblendete Linkadressen und Markdown-Syntax, Groß-/Kleinschreibung,
+Vorwärts/Rückwärts mit sichtbarem Scrollen sowie verspätete Antworten nach
+Dokumentwechseln. Markdown-Originale und bestehende Bearbeitungsschritte bleiben erhalten.
+
+`FASTRA_MD_VISUAL_FIND_DIR=/pfad/zur/aufnahme ./selftest.sh mdvisualfind`
+öffnet die Leiste per echtem ⌘F, tippt in das native Textfeld, navigiert mit
+⌘G/⇧⌘G und öffnet per ⌥⌘F die explizite Quelltextsuche. Der Lauf prüft
+zusätzlich den sichtbaren Toolbar-Einstieg, Mausbedienung, einen schmalen
+dunklen Zustand ohne Treffer und unveränderte Datei-/Dokumentinhalte.
+Deutsch und Englisch getrennt laufen lassen und die Aufnahmen ansehen.
+Der Fokusbeleg ist das `currentEditor()` des konkreten Suchfelds als First
+Responder. Nach Schließen und Wiederöffnen prüft eine weitere echte Eingabe
+die native Auswahlersetzung, danach Escape. Ein Fokusauftrag wird nach der
+Montage erneut gesetzt und an Suchanfrage sowie Dokument gebunden.
+
+`mdsearchnavigation` prüft zusätzlich den echten Trefferklick nach einer
+verzögerten WebKit-Übernahme. Eine virtualisierte Ergebnisliste erzeugt nur
+sichtbare Zeilen: zuerst die echte `NSScrollView` scrollen und den veränderten
+Ausschnitt prüfen, erst danach den Zeilenmarker suchen und klicken.
+
+Patch 4z26 (`Patches/CodeEditSourceEditor/highlight-style-bounds.py`) begrenzt
+verspätete Syntax-Attributbereiche am tatsächlichen Textspeicher. Die Grenze
+wird nach der Attributberechnung erneut geprüft, weil ein Theme-Provider
+AppKit reentrant zur Textbearbeitung bringen kann. `HighlightStyleBoundsTests`
+führt beide Kürzungen gegen den echten CodeEdit-Highlighter aus; Text und
+gültige Farben bleiben erhalten. Nach Änderungen an diesem Patch den vollständigen
+Build-/Unit-/Selbsttestpfad ausführen.
+
+## Markdown-Tabellen
+
+Nach `./build.sh` prüft `./test.sh --fast-only --filter
+'MarkdownVisualTests/table'`
+die GFM-Strukturänderungen, Tab-Navigation, begrenztes TSV, geschützte
+Kopfzeilen/HTML-Tabellen, native Undo-Schritte und Formel-/Kommentar-Roundtrips.
+
+`FASTRA_MD_TABLE_DIR=/pfad/zur/aufnahme ./selftest.sh mdtable` prüft
+Zellklicks und echte Tab-/Shift-Tab-Tasten, das native Zeilenmenü,
+Undo/Redo ohne künstlichen Wechsel des nativen WebKit-Responders, den TSV-Dialog
+mit breiter Tabelle, Moduswechsel sowie echtes Schließen und erneutes Öffnen.
+Deutsch und Englisch getrennt laufen lassen; Hell/Dunkel jeweils bei Mindestbreite
+und breit sowie TSV-Sheet und Quelltextansicht visuell prüfen. Auf dem Test-Mac das aktuelle notarisiert
+installierte Bundle über `FASTRA_SELFTEST_APP_BUNDLE` und
+`FASTRA_SELFTEST_APP_BIN` verwenden.
+
+`./selftest.sh mdtableinteraction` prüft echte gezogene Textauswahlen bei
+Mindestbreite und breitem Fenster sowie einzeiliges natives Clipboard-Einfügen
+über den gesamten Zelltext mit Formatierung und Undo/Redo. Den fokussierten
+Lauf ebenfalls in Deutsch und Englisch ausführen; er verändert die
+Ausgangsauswahl des getrennten Strukturtests nicht.
+
+## Textbausteine
+
+`FASTRA_TEXT_WORKFLOW_DIR=/pfad/zur/aufnahme ./selftest.sh snippets` prüft den
+sichtbaren Picker, native Namens- und Vorlageneingaben, wiederholte Unicode- und
+Mehrzeilenwerte, Tab/Umschalt-Tab, vollständige Vorschau, Auswahlersetzung in
+Quelle und WYSIWYG, natives Undo/Redo, Abbruch, erneutes Öffnen, Duplizieren,
+Löschbestätigung und Exportabbruch. Die Aufnahmen umfassen beide Erscheinungsbilder
+bei Mindestgröße und breitem Sheet; jeden Sprachlauf visuell prüfen.
+Quelltext-Undo läuft über Command-Z in AppKits Event-Queue, Redo über die native
+Bearbeiten-Menüaktion; ein synthetisch gepostetes Umschalt-Command-Z belegt diesen
+Menüpfad nicht. Die Plattendatei bleibt bis zum normalen Speichern unverändert.
+`TextSnippetTests` prüft zusätzlich Store-Revisionen aus mehreren Fenstern,
+Importkonflikte und atomare Größen-/Validierungsgrenzen. Die WebKit-Regressionen
+prüfen auch, dass unsicheres HTML nicht ausgeführt wird und Undo geschützte
+Einfügeatome vollständig entfernt. Ein beliebiger Feldeditor belegt keinen
+Fokus: vor der Eingabe muss `NSTextField.currentEditor()` zum konkreten Namensfeld
+und zum First Responder des Sheets gehören.
+
+`snippetfiles` ergänzt die positive JSON-Dateirundreise über echte macOS-Dateidialoge,
+Konfliktumbenennung, eine vollständige 48-Namen-Importbestätigung und ungültige JSON.
+Die Namenliste wird oben und unten in beiden Erscheinungsbildern aufgenommen.
+Dieser gezielte Test benötigt einen externen, prozess- und fokusgebundenen
+Tastentreiber: `FASTRA_TEXT_WORKFLOW_DIR/panel-key-*.json` enthält PID, Nonce und
+keyCode 36 (Return), 124 (Rechtspfeil in die Dateispalte) oder 125 (Abwärtspfeil).
+Return folgt erst, wenn `NSOpenPanel.urls` exakt die erwartete Fixture auswählt.
+Optionale Fensteraufnahmen laufen vor der nächsten Taste. Antworten und Bilder bleiben im selben Aufnahmeverzeichnis.
+Die Fixturepfade werden vor dem Panelstart gesetzt; der normale Appbetrieb erhält
+keine Pfadvorgabe. Der Test gehört wie `diffexport` nicht zum Standardlauf.
+
+## Gespeicherte Textabläufe
+
+`./test.sh --filter 'TextWorkflow|ApplyTransaction|AtomicFileCommit|SearchUndo|HardWrap'`
+prüft zusätzlich vollständige Mehrdokumentpläne, gemeinsame Speicher-Rücknahme,
+Dateitypen/Ausschlüsse/Pakete, mehrere Fehler, Dirty-/Hex-Konflikte und Hardlinks
+anderer Fenster, Pfadreservierung, verspätete Generationen und Reload über alle
+Fenster. Die Tests mit appweiter Reservierung tragen `serialRunnerIntegration`
+und laufen exklusiv in der seriellen Phase.
+
+`FASTRA_TEXT_WORKFLOW_DIR=/pfad/zur/aufnahme ./selftest.sh textworkflowmulti`
+bedient die echten Bereichs- und Vorschau-Picker, Eingabezeilen, Speicher-Apply
+samt gemeinsamer Rücknahme/Wiederherstellung sowie Platten-Apply und geschützte
+Rücknahme. Eine nach Vorschau veränderte, vorher wirkungslose Datei muss beide
+Eingaben schützen. Fehler und sofortiger Abbruch dürfen keine Apply-Basis liefern.
+Offene Dokumente, Ordner und Projekt werden jeweils bei 900/1200 pt sowie
+Hell/Dunkel aufgenommen; zusätzliche Bilder zeigen Schrittvorschau, Fehler und
+die beiden angewendeten Zustände. DE/EN gegen das frisch notarisiert installierte
+Bundle ausführen und jede Aufnahme ansehen. Die Aufnahmevariable wird ausdrücklich
+an LaunchServices weitergereicht; fehlende angeforderte PNGs sind ein Fehler.
+
+Nach `./build.sh` prüft `./test.sh --fast-only --filter
+'TextWorkflowTests|TextOp|LineFilter'` Engine, gemeinsame Texttransformationen,
+Grenzen, Persistenzkonflikte sowie die Vorschau-/Apply-Bindung an das konkrete
+Dokument. `MarkdownOutlineTests|MarkdownVisualTests/outline|MarkdownVisualTests/inlineCodeWhitespaceLine`
+deckt zusätzlich Gliederungsverlauf, Tab-/Moduswechsel und verlustfreie
+Markdown-Roundtrips ab.
+
+`FASTRA_TEXT_WORKFLOW_DIR=/pfad/zur/aufnahme ./selftest.sh textworkflow`
+öffnet das echte Textmenü, bearbeitet Name und Schritte, speichert die
+Definition und prüft Schritt-/Endvorschau, Anwenden, natives Undo per Tastenkürzel
+und Wiederholen über das echte Bearbeiten-Menü, Dateispeichern, echtes
+Schließen/Wiederöffnen und erneutes Laden der Definition. Die synthetische
+Shift-Command-Z-Zustellung an CodeEdit ist separat als Prüfgrenze dokumentiert;
+der Menütest prüft den sichtbaren Eintrag und dessen tatsächliche Wirkung.
+Schritt-/Endvorschau und exakte Auswahl werden über die sichtbaren Controls bedient.
+DE/EN jeweils gegen das aktuelle notarisiert installierte Bundle ausführen. Hell/Dunkel
+jeweils breit und bei der Mindestgröße des Sheets visuell prüfen; zusätzlich `filediff`
+und `localization` aus dem gepackten Bundle ausführen.
+
+## Blockübernahme im Dateivergleich
+
+`./selftest.sh filedifftransfer` bedient den vorausgefüllten Vergleichsdialog,
+beide Übernahmerichtungen und die genaue Bestätigung mit echten Mausklicks.
+Er prüft Dirty-Zustand, unveränderte Plattendateien, native Undo/Redo über das
+Bearbeiten-Menü und den beim Zurückwechseln aktualisierten Diff. EOF-Einfügungen
+und -Löschungen, ignorierte Unterschiede, veraltete Speicher-/Dateiquellen,
+schnelle Folgeaktionen und schreibgeschützte externe Quellen gehören zum Lauf.
+`FASTRA_TEXT_WORKFLOW_DIR` sammelt echte Bildschirmaufnahmen des vorausgefüllten Dialogs, des Vergleichs,
+der Vorschau, des identischen Ergebnisses, der veralteten Vorschau und der externen
+Quelle in hell/dunkel bei Mindestbreite/breit. DE/EN gegen das frisch notarisiert
+installierte Bundle ausführen und alle Bilder selbst prüfen. Fehlende echte
+Aufnahmen ergeben einen Umgebungsfehler.
+
+Nach `./build.sh` decken `FileDiffTransferTests`, `FileDiffTransferPreviewTests`
+und `FileDiffTransferWorkspaceTests` die bytegenauen Blockgrenzen, Unicode-
+Terminatoren, Limits, Snapshots, Fenster-/Dokumentidentität und Abbruch ab.
+Der bestehende Datei-Diff und sein Renderer bleiben gemeinsame Regressionen.
+
+## Schreibgeschützter Ordnervergleich
+
+Nach `./build.sh` prüfen `FolderComparisonTests` und
+`FolderComparisonWorkspaceTests` relative Pfade einschließlich `/var`-Alias,
+Unicode, Binärbytes, Filter, Symlink-Schleifen, reale unlesbare Unterordner,
+Datei-/Ordnerkonflikte, Grenzen, Abbruch und Veränderungen während der Prüfung.
+Die Wachstumsprobe beobachtet die echte gelesene Deskriptorposition des
+gemeinsamen Snapshot-Readers. Dateipaare benutzen den bestehenden Datei-Diff;
+Tab-Schluss, Abbruch und neuere Aufträge müssen ältere Rückmeldungen entwerten.
+Offene Dokumente und Plattendateien bleiben unverändert.
+
+Die native Abnahme muss Ordnerauswahl, Ergebnisliste, Filter, Dateipaaröffnung,
+erneute Prüfung und Abbruch über sichtbare Controls am frisch notarisiert
+installierten Bundle bedienen. DE/EN, hell/dunkel, Mindestbreite/breit sowie
+vollständige und unvollständige Ergebnisse als echte Bildschirmbilder prüfen.
+Die Datei-Diff-/Blockübernahmeprüfungen und `localization` bleiben Regressionen.
+`FASTRA_TEXT_WORKFLOW_DIR=/pfad/zur/aufnahme ./selftest.sh foldercompare`
+bedient den echten Menübefehl und die sichtbaren Controls. Der Lauf erzeugt
+Bildschirmaufnahmen von Auswahl, Ergebnissen, Dateipaar, erneuter Prüfung,
+unvollständigem Ergebnis und Abbruch in beiden Darstellungen und Breiten.
+
+## Markdown-Gliederung
+
+Nach `./build.sh` prüft `./test.sh --fast-only --filter
+'MarkdownOutlineTests|MarkdownVisualTests/outline'` Parserstruktur, Unicode-
+und Zeilenendpositionen, dokumentgebundenen Verlauf, echte WebKit-Selektion
+und den sichtbaren Ausschnitt langer Dokumente. Inline-HTML-Überschriften
+dürfen die Markdown-Sprungziele nicht verschieben.
+
+`FASTRA_MD_OUTLINE_DIR=/pfad/zur/aufnahme ./selftest.sh mdoutline` öffnet die
+native Gliederung per Maus, wählt einen späten Titel und bedient Zurück/Vorwärts.
+Der Lauf prüft Quelltext und WYSIWYG sowie unveränderte Dokument- und Dateiinhalte.
+Die Aufnahmen zeigen die schmale Quelltextansicht, den Gliederungs-Popover und
+die breite dunkle Schreibansicht. Mit `FASTRA_SELFTEST_LANGUAGE=de` und `en`
+wiederholen. Der Test wartet nach dem Popover-Aufbau auf dessen Layout, bevor
+er einen über die echte Event-Queue zugestellten Klick misst.
+
+## Geteilte Quelltextansicht
+
+Patch 4z27 (`Patches/CodeEditTextView/shared-source.py`) hält schwache
+Ansichtsreferenzen je gemeinsamem Textspeicher, verschiebt fremde Auswahlen
+nach tatsächlichen Mutationen und bindet Undo an die bediente Ansicht. Er
+prüft alle Anker sowie das geschriebene Ergebnis unmittelbar. Patch 4z28
+(`Patches/CodeEditSourceEditor/shared-source-appearance.py`) setzt beim
+Theme-Wechsel ausschließlich die sichtbaren Attribute dieses Ausschnitts
+zurück. Ein Reset des gesamten gemeinsamen Speichers würde die bereits
+berechneten Farben des anderen Ausschnitts löschen. Die Regression prüft
+die tatsächlich gezeichneten CoreText-Farben beider Theme-Wechsel im echten
+SwiftUI-Split. Beide Patches prüfen den Anker und Erfolg unmittelbar. Nach
+Änderungen vollständigen Build-/Unit-/Selbsttestpfad ausführen.
+
+`SplitEditorTests` prüft echte TextViews, gemeinsamen Storage, wechselseitige
+Eingaben, Dokument-Undo und Workspace-Rückgaben. Der echte SwiftUI-Host
+prüft außerdem die Minimap-Fragmentgrenzen beider Ausschnitte und die
+Footerposition nach einem bereichsbasierten Sprung. `prepareCoordinator`
+darf die Controller-View nicht laden: Der gemeinsame Speicher wird erst
+danach angeschlossen. Die AppKit-Begrenzung wird in `controllerDidAppear`
+gesetzt, damit die Minimap von Anfang an die richtige Textbasis erhält. `SearchUndoTests`, Cursor-/
+Scroll-, Faltungs-, Suchsprung- und Markdown-Tests ergänzen die Regression.
+`FASTRA_TEXT_WORKFLOW_DIR=/pfad/zur/aufnahme ./selftest.sh sourcesplit`
+bedient den sichtbaren Split-Schalter, echte Tastatureingaben und Undo/Redo,
+prüft getrennte Auswahlen/Ausschnitte, aktiven Sprung, UTF-16/BOM/gemischte Zeilenenden auf
+Platte, native Trennlinienverschiebung, getrennte Faltung, Zoom/Wrap sowie echte Dateilade-Tabwechsel und Schließen. DE/EN sowie alle erzeugten
+Hell-/Dunkel-/Mindestbreite-/Breit-Aufnahmen visuell prüfen. Gemischte
+Zeilenenden sind zusätzlich über den allgemeinen Speicherpfad abzunehmen.
+
+## 4D-Gliederung und gemeinsamer Sprungverlauf
+
+Nach `./build.sh` prüft `./test.sh --fast-only --filter
+'CodeOutlineTests|MarkdownOutlineTests|GoToTargetTests'` tokenbasierte
+4D-Definitionen, Kommentare/Strings/SQL, Unicode, Grenzen, eindeutige Ziele
+und dokumentgebundene Quellanker. Der Verlauf bleibt je Fenster getrennt;
+geschlossene oder nach Änderungen mehrdeutige Ziele dürfen ihn nicht verschieben.
+
+`FASTRA_MD_OUTLINE_DIR=/pfad/zur/aufnahme ./selftest.sh codeoutline`
+bedient die native Gliederung, Zurück/Vorwärts, echten Alt-Doppelklick und
+das Darstellungsmenü. Danach prüft er geschlossene Ziele und Rücksprünge nach
+eingefügten Quellzeilen. DE/EN, hell/dunkel und 760/1100 pt ergeben sechs
+Ansichtszustände je Variante. Menüeinträge erst nach Öffnen und Beginn des
+echten Menü-Trackings suchen; SwiftUI baut sie beim ersten Öffnen auf.
+`mdoutline`, `gototarget`, `gototargetwin`, `mdreferences`, `mdblocks`, `colsel`
+und `localization` ergänzen die native Regression.
+
 ## Editoroptionen und Markdown-Listen
 
 Nach `./build.sh` prüft `./test.sh --fast-only --filter
@@ -561,10 +785,15 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Prozessnahe Runner-Regressionen tragen getrennt davon das Kennzeichen
   `serialRunnerIntegration`/`SerialRunnerIntegration`, weil sie selbst
   Prozessgruppen, Pipe-Grenzfälle oder Cleanup-Läufe starten und den parallelen
-  Kern sonst künstlich belasten. Auch die asynchrone JSON-Responsivitätsmessung
+  Kern sonst künstlich belasten. Dazu gehören auch die Smart-Paste-Fixtures
+  mit echten Shell-Prozessen, geerbten Deskriptoren und Ausgabebudgets. Ihre
+  Zeitgrenzen bleiben unverändert. Auch die asynchrone JSON-Responsivitätsmessung
   trägt diesen Marker: Ihre Wanduhrgrenzen dürfen nicht die Arbeit fremder
   MainActor-Tests während der Parser-Wartezeit mitmessen. `.serialized` an
   ihrer Suite allein verhindert diese Überlagerung nicht.
+  Dasselbe gilt für `ExternalDiffServiceSerialRunnerIntegrationTests`: Die
+  echten Annahme-/Zustellfristen dürfen nicht durch schwere Editor-Tests auf
+  demselben MainActor ablaufen. Die Fristen selbst bleiben unverändert.
   Die sichtbaren, lokalisierten Testtitel sind ausdrücklich kein Teil der
   Gruppierung. Für gezielte Runner-Diagnosen stehen `./test.sh --fast-only` und
   `./test.sh --serial-integration-only` bereit; ohne diese Optionen bleibt der
@@ -613,12 +842,14 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   installiert), nimmt es das im Repo mitgelieferte Binary unter
   `app/Sources/Fastra/Resources/ripgrep` (seit 2026-09-02).
 - **Suchmasken-Layout:** `./selftest.sh searchlayout` vermisst die Suchmaske
-  in jedem Bereich (Datei, Ordner, Projekt) bei Mindestbreite und 1000 pt:
+  in jedem Bereich (Datei, Geöffnet, Ordner, Projekt) bei Mindestbreite und 1000 pt:
   Tab-Beschriftungen einzeilig, kein Bedienelement außerhalb des Fensters,
   Trefferliste mindestens 25 % der Höhe. Mit
   `FASTRA_SEARCHLAYOUT_DIR=<ordner>` legt er je Kombination ein PNG des
   Fensterinhalts ab (`search-<Bereich>-<Breite>.png`) — nach jeder Änderung
-  an der Suchmaske alle sechs ansehen (Befund 2026-09-15).
+  an der Suchmaske alle Bereichs-, Breiten- und Mustervarianten ansehen (Befund 2026-09-15).
+- **Trefferfreigabe:** `./selftest.sh searchapproval` bedient Treffer- und Datei-Checkboxen, Alle/Keine, die vollständige Vorschau und Apply per echten AppKit-Ereignissen. Er prüft Speicher-/Plattenänderungen, natives Undo/Redo, gemeinsame Rücknahme, Read-only und Ticketentwertung. `FASTRA_SEARCHLAYOUT_DIR` sammelt die befüllten vier Bereiche in hell/dunkel bei Mindestbreite/breit sowie die Vorschau- und Fehlerzustände. Alle Sprachfassungen visuell prüfen.
+  `./selftest.sh searchapprovalclose` verzögert den getrennten Webprozess kurz und schließt das Sheet per Maus während einer realen Synchronisierung. Die Rückmeldung darf danach keine Speicheränderung mehr ausführen. Die Probe kontrolliert die unveränderte Quelle vor Apply und protokolliert Vorher/Nachher und den Rücknahmestand. Die Undo-Probe schließt die Suchmaske über ihren nativen Fensterknopf und fokussiert den Dokumenteditor per Mausklick; vor ⌘Z müssen das Hauptfenster und dessen Editor tatsächlich den Tastaturfokus besitzen. Eine gesetzte First-Responder-Referenz allein belegt das aktive Fenster nicht. Sie benötigt wie `searchapproval` eine kontrollierte Fokus-Sitzung.
 - **Übrige Dialoge:** `./selftest.sh dialoglayout` öffnet Einstellungen,
   Dateivergleich und die vier Blätter der Suchmaske (Extraktion, Vorlagen,
   Beispiel-Ableitung, Datei-Set) und prüft, dass kein Bedienelement über den
@@ -1222,7 +1453,46 @@ modalen RunLoop-Schleife bedient. Mit
 `FASTRA_REMOTE_DIALOG_DIR` werden fünf Dialogzustände als PNG gesichert; beide
 UI-Sprachen visuell prüfen.
 
+### Blockweise Vorschau-Aktualisierung
+
+`./test.sh --fast-only --filter MarkdownPreviewBlocksTests` prüft echte WebKit-
+Blockobjekte nach Einfügen, Löschen, Verschieben und Bearbeiten, verschachtelte
+Quellpositionen, Referenzdefinitionen, Bildwechsel, Auswahl, Scrollanker,
+Codeknopffokus und verspätete Diagrammantworten. WYSIWYG verwendet weiterhin
+seinen getrennten Quellerhalt; `MarkdownVisualTests` bleibt dessen Regression.
+
+`FASTRA_MD_COMFORT_DIR=<Belegverzeichnis> ./selftest.sh mdblocks` misst für
+64 und 4096 Absätze je einen Aufwärmdurchlauf und fünf Werte. Derselbe native
+Eingabepfad wird einmal mit vollständigem Body-Tausch und einmal mit dem
+Blockabgleich gefahren. Der Quellsprung beginnt ausdrücklich außerhalb seiner
+Zielzeile; Undo läuft als Tastendruck, Redo über den echten Bearbeiten-Menüeintrag.
+`block-performance.json` trennt cmark-/Bild-Rendering,
+DOM-Arbeit, Zeit vom geposteten AppKit-Eingabeereignis bis zum nächsten
+Animationsframe der Vorschau und die tatsächliche WYSIWYG-Serialisierung. Diese Zeit umfasst
+keine Hardware-/System-Eingabelatenz. Der Lauf prüft außerdem erhaltene Code-
+und Diagrammobjekte, aktualisierte Quellsprünge, bytegleiche Dokument-/Dateibasen
+sowie natives Undo/Redo. DE und EN gegen das frisch notarisiert installierte
+Bundle ausführen; `mdcomfort` ergänzt alle Darstellungs- und Größenvarianten.
+
+Der Tabellenlauf `mdtable` wartet nach dem nativen Paste auf die neu gerenderte
+aktive Bestätigung. Der sichtbare NSTextView-Inhalt kann der SwiftUI-Bindung
+vorauslaufen; eine feste Pause oder ein Screenshot ersetzt diesen Zustand nicht.
+`mdtableinput` ist eine gezielte Diagnose mit externem nativen Tastentreiber
+und dem vorhandenen Aufnahmeverzeichnis als Request-/Receipt-Ablage.
+
 ### Visuelle Markdown-Bearbeitung
+
+`mdcomfort` prüft Lesespalte und breite Tabellen in den echten Vorschau- und
+WYSIWYG-Ansichten bei Mindestbreite und breit, hell und dunkel. Er scrollt die
+Tabelle tatsächlich bis zum Ende, bedient den Code-Kopierknopf mit echter Maus
+und Leertaste und prüft Klartext, unveränderte Quelle/Platte sowie natives Undo.
+`FASTRA_MD_COMFORT_DIR` speichert die Ansichten und das jeweils erreichte
+Tabellenende. Beide Sprachfassungen visuell prüfen. Die Knöpfe liegen außerhalb
+des bearbeitbaren DOM und werden im Ausdruck nicht erzeugt.
+`MarkdownPresentationTests` ergänzt verdeckte WebKit-Fenster, den Austausch des
+Vorschauinhalts, mehrere Codeblöcke und die unabhängigen Layoutrechtecke.
+Verdeckte Referenzdefinitionen bleiben beim Bearbeiten und Löschen eines
+Nachbarblocks sowie nach WebKit-Undo mit LF, CRLF und CR erhalten.
 
 `mdsearchnavigation` prüft einen weit unten liegenden Suchtreffer aus dem
 WYSIWYG-Modus sowie Geöffnet-Navigation und echte Trefferklicks. Eine bewusst
@@ -1327,3 +1597,18 @@ Editor-/Modellbytes, bevor die bleibenden Invarianten geprüft werden. Ein
 beobachteter Aufbauunterschied wird mit seiner Auflösungszeit protokolliert;
 eine nicht aufgelöste Abweichung bleibt ein Fehler. Dieser Testaufbau ist kein
 Beleg für die Ursache früherer sporadischer Editorbefunde.
+
+Der gezielte Selbsttest `textworkflowonesided` prüft die Darstellung eingefügter
+Unicode-/CRLF-Zeilen im Ablaufdialog. Mit `FASTRA_TEXT_WORKFLOW_DIR` entstehen
+Aufnahmen in hell/dunkel bei Mindestbreite und breiter Ansicht.
+
+### Lokale Markdown-Verweise
+
+`FASTRA_TEXT_WORKFLOW_DIR=/pfad/zur/aufnahme ./selftest.sh mdreferences` prüft den
+echten Markdown-Menüweg, Dokument-/Projektbereich, Befundfilter, Quellsprung und
+veraltete Quellen. Eine befristet belegte Renderqueue bildet Konkurrenz zur
+Vorschau ab und erlaubt deterministischen nativen Abbruch; Cleanup gibt sie vor
+Erfolg oder Fehler frei. Aufnahmen zeigen alle Zustände hell/dunkel, bei
+Mindestbreite und breit. Unit-Regressionen prüfen cmark-Referenzlinks, HTML/Anker,
+Encoding/BOM, codierte Pfade, Symlinks, Projekt-Ausschlüsse, Ressourcenlimits und
+Dokumentidentitäten. Es werden ausschließlich temporäre Fixtures verwendet.

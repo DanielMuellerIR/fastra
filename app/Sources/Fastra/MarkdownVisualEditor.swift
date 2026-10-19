@@ -61,6 +61,14 @@ struct MarkdownVisualEditorView: View {
                               darkMode: colorScheme == .dark)
             .background(Theme.surfaceRaised)
             .background(SelfTestMarker(id: "markdownVisualEditor").frame(width: 0, height: 0))
+            .onAppear { updateDocumentStats() }
+            .onChange(of: tab.contentRevision) { _, _ in updateDocumentStats() }
+    }
+
+    private func updateDocumentStats() {
+        // Die Quelltext-View ist hier unmontiert und zählt geladene Dateien nicht.
+        workspace.selectionRange = nil
+        workspace.recomputeDocumentStats(fullText: tab.content, selectionNSRange: nil)
     }
 }
 
@@ -84,7 +92,8 @@ struct MarkdownVisualWebView: NSViewRepresentable {
         configuration.setURLSchemeHandler(coordinator.assets, forURLScheme: MarkdownPreviewAssets.scheme)
         configuration.userContentController.add(coordinator, name: "visualMarkdown")
         configuration.userContentController.add(coordinator, name: "markdownCopy")
-        for name in ["turndown-7.2.0.js", "visual-editor.js"] {
+        configuration.userContentController.add(coordinator, name: "markdownCodeCopy")
+        for name in ["turndown-7.2.0.js", "visual-tables.js", "visual-editor.js"] {
             if let url = AppResources.bundle.url(forResource: name, withExtension: nil, subdirectory: "MarkdownVendor")
                 ?? AppResources.bundle.url(forResource: name, withExtension: nil),
                let source = try? String(contentsOf: url, encoding: .utf8) {
@@ -126,6 +135,7 @@ struct MarkdownVisualWebView: NSViewRepresentable {
 
 final class MarkdownVisualWKWebView: WKWebView {
     weak var visualCoordinator: MarkdownVisualCoordinator?
+
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] else {
             return super.performDragOperation(sender)
@@ -151,6 +161,14 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     weak var workspace: Workspace?
     weak var web: WKWebView?
     var tabID: UUID?
+    private var loadedDocumentID: UUID?
+    private var documentIdentityMatches: Bool {
+        // Ohne Workspace kann die WebView weiterhin lesen und kopieren;
+        // jeder schreibende Commit benötigt zusätzlich seinen Workspace.
+        guard let workspace else { return true }
+        guard let tabID, let loadedDocumentID else { return false }
+        return workspace.tabs.contains { $0.id == tabID && $0.documentID == loadedDocumentID }
+    }
     let assets = MarkdownPreviewSchemeHandler()
     var markdown = ""
     var style = ""
@@ -249,7 +267,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             let invalidations = MarkdownImageUndoBuffer.shared.takeInvalidations()
             DispatchQueue.main.async {
                 defer { MarkdownImageUndoSideEffect.pendingIO.leave() }
-                guard generation == request, session == expectedSession else {
+                guard generation == request, session == expectedSession, documentIdentityMatches else {
                     reconcilingImages = false
                     completion(false)
                     let waiters = imageReconciliationWaiters
@@ -343,12 +361,14 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         currentFontSize = fontSize
         currentDarkMode = darkMode
         markdown = source
+        loadedDocumentID = workspace?.tabs.first(where: { $0.id == tabID })?.documentID
         self.documentURL = documentURL
         self.style = style
         generation &+= 1
         let request = generation
         session = UUID().uuidString
         ready = false
+        scheduleTableReset()
         pending = nil
         currentNavigation = nil
         acceptedInputRevision = 0
@@ -362,7 +382,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 }
             }
             DispatchQueue.main.async {
-                guard let self, self.generation == request, let web = self.web else { return }
+                guard let self, self.generation == request, self.documentIdentityMatches, let web = self.web else { return }
                 self.pending = document
                 for (url, image) in existing {
                     let id = UUID().uuidString
@@ -377,8 +397,8 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                     html: "<main id=\"fastra-visual\">\(document.fragment.html)</main>",
                     imageURLs: document.fragment.imageURLs)
                 let html = MarkdownRichText.htmlDocument(fragment: fragment, fontName: fontName,
-                                                         fontSize: fontSize, darkMode: darkMode)
-                    .replacingOccurrences(of: "</style>", with: "#fastra-visual { outline: none; min-height: calc(100vh - 40px); } #fastra-visual > div:first-child > :first-child { margin-top: 0; } #fastra-visual [contenteditable=false] { user-select: all; } #fastra-visual img[data-md-selected-image] { outline: 3px solid -apple-system-control-accent; outline-offset: 2px; }</style>")
+                                                         fontSize: fontSize, darkMode: darkMode, blockUpdates: false)
+                    .replacingOccurrences(of: "</style>", with: "#fastra-visual { outline: none; min-height: calc(100vh - 40px); } #fastra-visual > div:first-child > :first-child { margin-top: 0; } #fastra-visual [contenteditable=false] { user-select: all; } #fastra-visual table[data-md-table=gfm] :is(td,th) { white-space: pre-wrap; } #fastra-visual img[data-md-selected-image] { outline: 3px solid -apple-system-control-accent; outline-offset: 2px; }</style>")
                 web.underPageBackgroundColor = darkMode ? NSColor(srgbRed: 0.09, green: 0.09, blue: 0.09, alpha: 1) : .white
                 self.currentNavigation = web.loadHTMLString(html, baseURL: nil)
             }
@@ -394,9 +414,16 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         webView.callAsyncJavaScript("return await window.fastraVisual.start(configuration);",
             arguments: ["configuration": ["blocks": blocks, "opaqueSources": pending.opaqueSources, "markdown": markdown, "session": session, "imageTransactions": initialImageTransactions]],
             in: nil, in: .page) { [weak self] result in
-                guard let self, self.generation == request else { return }
+                guard let self, self.generation == request, self.documentIdentityMatches else { return }
                 if case .success(let value) = result, value as? Bool == true {
                     self.ready = true
+                    self.reportOutlinePosition()
+                    self.reportTableContext()
+                    Task { @MainActor [weak self] in
+                        guard let self, let workspace = self.workspace, self.ready,
+                              workspace.visualMarkdownEditor === self else { return }
+                        workspace.markdownVisualFind.editorBecameReady(in: workspace)
+                    }
                 } else {
                     self.workspace?.saveSafetyWarningHandler(L10n.string("Markdown-Ansicht konnte nicht gestartet werden"),
                         L10n.string("Der Dokumentinhalt blieb erhalten. Bitte öffne das Dokument erneut oder wechsle mit dem Umschalter zur Quelltext-Ansicht."))
@@ -405,8 +432,12 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame,
+        guard message.frameInfo.isMainFrame, documentIdentityMatches,
               let body = message.body as? [String: Any] else { return }
+        if message.name == "markdownCodeCopy" {
+            MarkdownPresentation.copyCode(body, in: message.webView, pasteboard: pasteboard)
+            return
+        }
         if message.name == "markdownCopy", let plain = body["plain"] as? String,
            let html = body["html"] as? String {
             guard body["session"] as? String == session else { return }
@@ -418,6 +449,17 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         guard body["session"] as? String == session,
               let workspace, let tabID else { return }
         switch body["kind"] as? String {
+        case "tableContext":
+            guard workspace.activeTabID == tabID, workspace.visualMarkdownEditor === self,
+                  body["revision"] as? Int == acceptedInputRevision else { return }
+            workspace.markdownTable.update(body["context"] as? [String: Any])
+        case "tableError":
+            guard workspace.activeTabID == tabID, workspace.visualMarkdownEditor === self else { return }
+            workspace.markdownTable.showError(body["reason"] as? String ?? "stale")
+        case "outlinePosition":
+            guard workspace.activeTabID == tabID, body["revision"] as? Int == acceptedInputRevision,
+                  let index = body["index"] as? Int else { return }
+            workspace.documentOutline.followVisualHeading(index)
         case "change":
             guard let base = body["base"] as? String,
                   let value = body["markdown"] as? String,
@@ -425,9 +467,10 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             let revision = body["revision"] as? Int ?? acceptedInputRevision
             reconcileImageUndo(body["imageTransactions"] as? [String] ?? [], previous: base,
                                inputType: body["inputType"] as? String ?? "", newEdit: true) { [self] success in
-                if success, workspace.acceptVisualMarkdown(value, previous: base, tabID: tabID) {
+                if success, documentIdentityMatches, workspace.acceptVisualMarkdown(value, previous: base, tabID: tabID) {
                     markdown = value
                     acceptedInputRevision = revision
+                    reportTableContext()
                 }
                 completeImageAction(revision: revision)
             }
@@ -440,6 +483,24 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             menu.popUp(positioning: nil, at: NSPoint(x: x, y: web.isFlipped ? y : web.bounds.height - y), in: web)
         case "pasteImage", "pasteMarkdown": _ = pasteImages(bookmark: body["bookmark"] as? String)
         default: break
+        }
+    }
+
+    func revealHeading(_ index: Int) {
+        guard ready else { return }
+        web?.callAsyncJavaScript("return window.fastraVisual.revealHeading(index);",
+                                 arguments: ["index": index], in: nil, in: .page) { _ in }
+    }
+
+    func reportOutlinePosition() {
+        guard ready, let workspace, workspace.activeTabID == tabID else { return }
+        let request = generation
+        let source = markdown
+        web?.callAsyncJavaScript("return window.fastraVisual.outlinePosition();", arguments: [:], in: nil, in: .page) { [weak self, weak workspace] result in
+            guard let self, let workspace, self.generation == request, workspace.activeTabID == self.tabID,
+                  self.markdown == source, workspace.activeTab?.content == source,
+                  case .success(let value) = result, let index = value as? Int else { return }
+            workspace.documentOutline.followVisualHeading(index)
         }
     }
 
@@ -492,6 +553,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             return
         }
         guard ready, let web else { completion(true); return }
+        guard documentIdentityMatches else { completion(false); return }
         let request = generation
         let requestSession = session
         web.callAsyncJavaScript("return window.fastraVisual.prepareAction();",
@@ -503,7 +565,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 completion(false)
                 return
             }
-            guard generation == request, let workspace, let tabID,
+            guard generation == request, documentIdentityMatches, let workspace, let tabID,
                   case .success(let value) = result, let snapshot = value as? [String: Any],
                   let content = snapshot["markdown"] as? String,
                   let revision = snapshot["revision"] as? Int, revision >= acceptedInputRevision else {
@@ -517,7 +579,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             }
             reconcileImageUndo(snapshot["imageTransactions"] as? [String] ?? [], previous: markdown,
                                inputType: snapshot["inputType"] as? String ?? "", newEdit: revision > acceptedInputRevision) { [self] success in
-                let accepted = success && workspace.acceptVisualMarkdown(content, previous: markdown, tabID: tabID)
+                let accepted = success && documentIdentityMatches && workspace.acceptVisualMarkdown(content, previous: markdown, tabID: tabID)
                 if accepted { markdown = content; acceptedInputRevision = revision }
                 else {
                     warnUnacceptedInput()
@@ -545,6 +607,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     func invalidateForSourceReplacement() {
         discardImageUndo()
         ready = false
+        scheduleTableReset()
         generation &+= 1
         pending = nil
         currentNavigation = nil
@@ -581,9 +644,10 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             value = field.stringValue
         } else if command == .insertTable {
             guard let configuration = MarkdownAssist.promptForTable() else { return }
-            let cell = configuration.header ? "th" : "td"
-            value = "<table><tbody><tr>" + String(repeating: "<\(cell)> </\(cell)>", count: configuration.columns)
-                + "</tr><tr>" + String(repeating: "<td> </td>", count: configuration.columns) + "</tr></tbody></table><p><br></p>"
+            let header = "<tr>" + String(repeating: "<th><br></th>", count: configuration.columns) + "</tr>"
+            let row = "<tr>" + String(repeating: "<td><br></td>", count: configuration.columns) + "</tr>"
+            value = "<table data-md-table=\"gfm\"><thead>" + header + "</thead><tbody>"
+                + row + (configuration.header ? "" : row) + "</tbody></table><p><br></p>"
         }
         execute(names[command.rawValue], value: value)
         MarkdownAssist.noteFirstUse(in: workspace)
@@ -592,6 +656,46 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     func execute(_ command: String, value: String) {
         web?.callAsyncJavaScript("window.fastraVisual.command(command, value);",
                                  arguments: ["command": command, "value": value], in: nil, in: .page) { _ in }
+    }
+
+    func reportTableContext() {
+        guard ready, let web else { return }
+        let request = generation
+        web.evaluateJavaScript("window.fastraVisual.tableState()") { [weak self] value, _ in
+            guard let self, self.ready, self.generation == request, let workspace = self.workspace,
+                  workspace.activeTabID == self.tabID, workspace.visualMarkdownEditor === self,
+                  let state = value as? [String: Any], state["revision"] as? Int == self.acceptedInputRevision,
+                  let content = workspace.activeTab?.content, content.utf8.elementsEqual(self.markdown.utf8) else { return }
+            workspace.markdownTable.update(state["context"] as? [String: Any])
+        }
+    }
+
+    private func scheduleTableReset() {
+        let request = generation, tab = tabID
+        // dismantleNSView läuft auch während der Zerstörung des SwiftUI-Graphen.
+        // Ein Publisher darf diesen Graphen erst im nächsten Durchlauf ändern.
+        DispatchQueue.main.async { [weak self, weak workspace] in
+            guard let workspace, workspace.activeTabID == tab else { return }
+            if let editor = workspace.visualMarkdownEditor, editor !== self { return }
+            if let self, self.generation != request { return }
+            workspace.markdownTable.clear()
+        }
+    }
+
+    func editTable(_ command: String, value: String, token: String, completion: @escaping (String?) -> Void) {
+        guard ready, let workspace, workspace.activeMarkdownIsVisual, workspace.activeTabID == tabID,
+              workspace.visualMarkdownEditor === self, let content = workspace.activeTab?.content,
+              content.utf8.elementsEqual(markdown.utf8) else { completion("stale"); return }
+        let request = generation
+        web?.callAsyncJavaScript("return window.fastraVisual.tableCommand(command, value, token);",
+            arguments: ["command": command, "value": value, "token": token], in: nil, in: .page) { [weak self] result in
+                guard let self, self.generation == request, self.ready else { completion("stale"); return }
+                if case .success(let value) = result, let body = value as? [String: Any], body["ok"] as? Bool == true {
+                    completion(nil)
+                } else if case .success(let value) = result, let body = value as? [String: Any] {
+                    completion(body["reason"] as? String ?? "stale")
+                } else { completion("stale") }
+            }
     }
 
     @discardableResult
@@ -627,6 +731,71 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         }
     }
 
+    struct InsertionBookmark {
+        fileprivate let key: String
+        fileprivate let generation: UInt64
+        fileprivate let session: String
+        fileprivate let tabID: UUID
+        fileprivate let documentID: UUID
+        fileprivate let url: URL?
+    }
+
+    @MainActor
+    func captureInsertionBookmark(_ completion: @escaping (Result<InsertionBookmark, Error>) -> Void) {
+        guard ready, let workspace, let web, let tabID, workspace.activeTabID == tabID,
+              let documentID = workspace.activeDocumentID, workspace.activeMarkdownIsVisual else {
+            completion(.failure(TextSnippetError.unavailable)); return
+        }
+        let request = generation, capturedSession = session, url = workspace.activeTab?.url
+        func current() -> Bool {
+            self.ready && self.generation == request && self.session == capturedSession
+                && workspace.visualMarkdownEditor === self && workspace.activeTabID == tabID
+                && workspace.activeDocumentID == documentID && workspace.activeTab?.url == url
+                && workspace.activeMarkdownIsVisual
+        }
+        synchronize(holdingInput: true) { [weak self] success in
+            guard let self else { completion(.failure(TextSnippetError.staleTarget)); return }
+            guard success, current() else {
+                self.completeAction(session: capturedSession)
+                completion(.failure(TextSnippetError.staleTarget)); return
+            }
+            web.callAsyncJavaScript("return window.fastraVisual.bookmark();", arguments: [:], in: nil, in: .page) { result in
+                defer { self.completeAction(session: capturedSession) }
+                guard current(), case .success(let value) = result, let key = value as? String else {
+                    completion(.failure(TextSnippetError.staleTarget)); return
+                }
+                completion(.success(InsertionBookmark(key: key, generation: request, session: capturedSession,
+                    tabID: tabID, documentID: documentID, url: url)))
+            }
+        }
+    }
+
+    @MainActor
+    func ownsInsertionBookmark(_ bookmark: InsertionBookmark) -> Bool {
+        guard let workspace else { return false }
+        return ready && generation == bookmark.generation && session == bookmark.session
+            && workspace.visualMarkdownEditor === self && workspace.activeTabID == bookmark.tabID
+            && workspace.activeDocumentID == bookmark.documentID && workspace.activeTab?.url == bookmark.url
+            && workspace.activeMarkdownIsVisual
+    }
+
+    @MainActor
+    func discardInsertionBookmark(_ bookmark: InsertionBookmark) {
+        guard generation == bookmark.generation, session == bookmark.session else { return }
+        web?.callAsyncJavaScript("return window.fastraVisual.discardBookmark(bookmark);",
+            arguments: ["bookmark": bookmark.key], in: nil, in: .page) { _ in }
+    }
+
+    @MainActor
+    func insertTextSnippet(_ source: String, at bookmark: InsertionBookmark, completion: @escaping (Bool) -> Void) {
+        guard ownsInsertionBookmark(bookmark) else { completion(false); return }
+        insertMarkdown(source, from: nil, bookmark: bookmark.key,
+            actionTitle: L10n.string("Textbaustein einfügen"), completion: { [weak self] inserted in
+                guard inserted, let self else { completion(false); return }
+                self.synchronize { accepted in completion(accepted) }
+            })
+    }
+
     private func storeImages(bookmark: String?, _ operation: @escaping (URL) throws -> [MarkdownImageStore.StoredImage]) {
         insertPrepared(bookmark: bookmark) { url in
             guard let url else { throw MarkdownImageStore.StoreError.documentNotSaved }
@@ -636,8 +805,9 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         }
     }
 
-    private func insertMarkdown(_ source: String, from sourceURL: URL?, bookmark: String?, imageData: [String: Data] = [:]) {
-        insertPrepared(bookmark: bookmark) { target in
+    private func insertMarkdown(_ source: String, from sourceURL: URL?, bookmark: String?, imageData: [String: Data] = [:],
+                                actionTitle: String = L10n.string("Bild einfügen"), completion: @escaping (Bool) -> Void = { _ in }) {
+        insertPrepared(bookmark: bookmark, actionTitle: actionTitle, completion: completion) { target in
             guard let target else {
                 if !MarkdownVisualDocument.render(source, documentURL: sourceURL).fragment.imageURLs.isEmpty {
                     throw MarkdownImageStore.StoreError.documentNotSaved
@@ -649,27 +819,29 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         }
     }
 
-    private func insertPrepared(bookmark: String?, _ operation: @escaping (URL?) throws -> MarkdownSaveAs.Prepared) {
-        guard ready, let workspace, workspace.activeTabID == tabID,
+    private func insertPrepared(bookmark: String?, actionTitle: String = L10n.string("Bild einfügen"),
+                                completion: @escaping (Bool) -> Void = { _ in },
+                                _ operation: @escaping (URL?) throws -> MarkdownSaveAs.Prepared) {
+        guard ready, documentIdentityMatches, let workspace, workspace.activeTabID == tabID,
               let web else {
-            self.workspace?.saveSafetyWarningHandler(L10n.string("Bild einfügen"), MarkdownImageStore.StoreError.documentNotSaved.localizedDescription)
-            return
+            self.workspace?.saveSafetyWarningHandler(actionTitle, MarkdownImageStore.StoreError.documentNotSaved.localizedDescription)
+            completion(false); return
         }
         let url = workspace.activeTab?.url
         let capturedSession = session
         let request = generation
         func isCurrent() -> Bool {
-            self.ready && self.generation == request && self.session == capturedSession
+            self.ready && self.documentIdentityMatches && self.generation == request && self.session == capturedSession
                 && workspace.visualMarkdownEditor === self
                 && workspace.activeTabID == self.tabID && workspace.activeTab?.url == url
                 && workspace.activeMarkdownIsVisual
         }
         web.callAsyncJavaScript("return window.fastraVisual.bookmark(bookmark);", arguments: ["bookmark": bookmark ?? ""], in: nil, in: .page) { [weak self] bookmarkResult in
-            guard self != nil, isCurrent() else { return }
+            guard self != nil, isCurrent() else { completion(false); return }
             guard case .success(let bookmark) = bookmarkResult, let bookmark = bookmark as? String else {
                 workspace.saveSafetyWarningHandler(L10n.string("Einfügen abgebrochen"),
                     L10n.string("Die Einfügestelle konnte nicht festgehalten werden. Bitte versuche es erneut."))
-                return
+                completion(false); return
             }
             MarkdownImageUndoSideEffect.pendingIO.enter()
             DispatchQueue.global(qos: .userInitiated).async {
@@ -683,7 +855,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                             MarkdownImageUndoSideEffect.perform({ prepared.rollback(); return true }, completion: { _ in })
                         }
                         MarkdownImageUndoSideEffect.pendingIO.leave()
-                        return
+                        completion(false); return
                     }
                     switch result {
                     case .success(let (prepared, visual)):
@@ -699,21 +871,25 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                         let createdURLs = Set(created.map(\.fileURL))
                         let imageSources = visual.fragment.imageURLs.filter { createdURLs.contains($0.value) }
                             .map { "fastra-preview://image/" + $0.key }
-                        web.callAsyncJavaScript("return window.fastraVisual.insertBookmarked(bookmark, html, atoms, transaction, imageSources);",
-                            arguments: ["bookmark": bookmark, "html": html, "atoms": visual.opaqueSources, "transaction": transactionID, "imageSources": imageSources], in: nil, in: .page) { result in
+                        web.callAsyncJavaScript("return window.fastraVisual.insertBookmarked(bookmark, html, atoms, transaction, imageSources, singleLine);",
+                            arguments: ["bookmark": bookmark, "html": html, "atoms": visual.opaqueSources, "transaction": transactionID, "imageSources": imageSources, "singleLine": !prepared.content.contains("\n") && !prepared.content.contains("\r")], in: nil, in: .page) { result in
                                 defer { MarkdownImageUndoSideEffect.pendingIO.leave() }
-                                if case .success(let inserted) = result, inserted as? Bool == true { prepared.commit() }
+                                if case .success(let inserted) = result, inserted as? Bool == true {
+                                    prepared.commit(); completion(true)
+                                }
                                 else {
                                     self.imageTransactions.removeValue(forKey: transactionID)?.effect.discard()
                                     MarkdownImageUndoSideEffect.perform({ prepared.rollback(); return true }, completion: { _ in })
-                                    guard isCurrent() else { return }
+                                    guard isCurrent() else { completion(false); return }
                                     workspace.saveSafetyWarningHandler(L10n.string("Einfügen abgebrochen"),
                                         L10n.string("Das Dokument wurde während des Einfügens bearbeitet. Die vorhandene Eingabe blieb erhalten; bitte füge erneut ein."))
+                                    completion(false)
                                 }
                             }
                     case .failure(let error):
                         MarkdownImageUndoSideEffect.pendingIO.leave()
-                        workspace.saveSafetyWarningHandler(L10n.string("Bild einfügen"), error.localizedDescription)
+                        workspace.saveSafetyWarningHandler(actionTitle, error.localizedDescription)
+                        completion(false)
                     }
                 }
             }

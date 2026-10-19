@@ -302,8 +302,8 @@ enum SoakTest {
                    + "(Editor \(shown.utf8.count), Modell \(tab.content.utf8.count) UTF-8-Bytes)")
             return nil
         }
-        guard let bytes = FileLoader.encodedData(content: shown, encoding: tab.encoding,
-                                                 bom: tab.bom, lineEnding: tab.lineEnding) else {
+        guard let bytes = FileLoader.encodedData(content: tab.textForSaving(shown), encoding: tab.encoding,
+                                                 bom: tab.bom, lineEnding: tab.lineEnding, preservingLineEndings: true) else {
             record("Editorinhalt ist speicherbar",
                    "\(window.title): Inhalt passt nicht in die gewählte Dateikodierung")
             return nil
