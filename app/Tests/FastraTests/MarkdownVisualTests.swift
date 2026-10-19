@@ -515,6 +515,48 @@ struct MarkdownVisualTests {
         withExtendedLifetime(coordinator) {}
     }
 
+    @Test("Geschlossene Textsuche stellt den vom Feldabbau entfernten Editorfokus wieder her")
+    @MainActor func visualFindCloseRestoresFocusAfterFieldTeardown() async throws {
+        let (workspace, coordinator, web, window) = try await editor("# Fokus\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let find = workspace.markdownVisualFind
+        find.present(in: workspace)
+        try #require(await waitUntil { find.isPresented })
+        find.close(in: workspace)
+        window.makeFirstResponder(nil)
+        #expect(window.firstResponder !== web)
+        find.restoreEditorFocusAfterClosing(in: workspace)
+        try #require(await waitUntil { window.firstResponder === web })
+        #expect(workspace.activeTab?.content == "# Fokus\n")
+    }
+
+    @Test("Veraltete Fokus-Rückgabe übergeht weder neue Suche noch Dokumentwechsel", arguments: [false, true])
+    @MainActor func visualFindCloseRejectsStaleFocus(changeDocument: Bool) async throws {
+        let (workspace, coordinator, web, window) = try await editor("# Fokus\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let find = workspace.markdownVisualFind
+        find.present(in: workspace)
+        try #require(await waitUntil { find.isPresented })
+        find.close(in: workspace)
+        // Die legitime WebKit-Suche des Schließens zuerst abschließen;
+        // sie darf den Fokus unabhängig von unserem Rückruf verändern.
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            web.find("", configuration: WKFindConfiguration()) { _ in done.resume() }
+        }
+        window.makeFirstResponder(nil)
+        find.restoreEditorFocusAfterClosing(in: workspace)
+        if changeDocument {
+            let tab = EditorTab(title: "Anderes Dokument", path: "", content: "Anderes Dokument")
+            workspace.tabs.append(tab); workspace.activeTabID = tab.id
+        } else {
+            find.present(in: workspace)
+        }
+        let restoredOldEditor = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+            DispatchQueue.main.async { done.resume(returning: window.firstResponder === web) }
+        }
+        #expect(!restoredOldEditor)
+    }
+
     @Test("Native Suchnavigation scrollt vorwärts, rückwärts und um den Dokumentrand")
     @MainActor func visualFindNavigation() async throws {
         let source = "# Titel\n\nNEEDLE oben\n\n" + String(repeating: "Absatz.\n\n", count: 180) + "NEEDLE unten\n"

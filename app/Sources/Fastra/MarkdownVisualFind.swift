@@ -11,6 +11,7 @@ final class MarkdownVisualFindController: ObservableObject {
     @Published private(set) var status: Status = .idle
     private var documentID: UUID?
     private var request = 0
+    private var pendingEditorFocusRequest: Int?
     private var pendingSearch: DispatchWorkItem?
     private weak var searchedWeb: WKWebView?
     private var saved: [UUID: (query: String, caseSensitive: Bool)] = [:]
@@ -29,6 +30,7 @@ final class MarkdownVisualFindController: ObservableObject {
     }
 
     @MainActor func present(in workspace: Workspace) {
+        pendingEditorFocusRequest = nil
         let id = workspace.activeTab?.documentID
         if workspace.synchronizeVisualMarkdownBefore({ [weak self, weak workspace] in
             guard let workspace, workspace.activeTab?.documentID == id else { return }
@@ -44,6 +46,7 @@ final class MarkdownVisualFindController: ObservableObject {
     }
 
     @MainActor func close(in workspace: Workspace, focusEditor: Bool = true) {
+        pendingEditorFocusRequest = nil
         pendingSearch?.cancel()
         request += 1
         isPresented = false
@@ -54,8 +57,29 @@ final class MarkdownVisualFindController: ObservableObject {
               workspace.activeTab?.documentID == documentID,
               let editor = workspace.visualMarkdownEditor, editor.tabID == workspace.activeTabID,
               let web = editor.web else { return }
+        pendingEditorFocusRequest = request
         web.window?.makeFirstResponder(web)
         web.evaluateJavaScript("document.getElementById('fastra-visual')?.focus();", completionHandler: nil)
+    }
+
+    @MainActor func restoreEditorFocusAfterClosing(in workspace: Workspace) {
+        guard pendingEditorFocusRequest == request, !isPresented,
+              workspace.activeMarkdownIsVisual, workspace.activeTab?.documentID == documentID,
+              let editor = workspace.visualMarkdownEditor, editor.tabID == workspace.activeTabID,
+              let web = editor.web, let window = web.window else { return }
+        let token = request, id = documentID
+        // SwiftUI kann beim Abbau des Suchfelds den zuvor gesetzten AppKit-
+        // Fokus wieder entfernen. Erst nach dem tatsächlichen Abbau nachholen.
+        DispatchQueue.main.async { [weak self, weak workspace, weak editor, weak web, weak window] in
+            guard let self, let workspace, let editor, let web, let window,
+                  self.pendingEditorFocusRequest == token, self.request == token, !self.isPresented,
+                  workspace.activeMarkdownIsVisual, workspace.activeTab?.documentID == id,
+                  workspace.visualMarkdownEditor === editor, editor.tabID == workspace.activeTabID,
+                  editor.web === web, web.window === window else { return }
+            self.pendingEditorFocusRequest = nil
+            window.makeFirstResponder(web)
+            web.evaluateJavaScript("document.getElementById('fastra-visual')?.focus();", completionHandler: nil)
+        }
     }
 
     @MainActor func schedule(in workspace: Workspace) {
@@ -177,7 +201,10 @@ struct MarkdownVisualFindBar: View {
         .onAppear { find.bind(in: workspace) }
         .onChange(of: workspace.activeTab?.documentID) { _, _ in find.bind(in: workspace) }
         .onChange(of: workspace.activeTab?.contentRevision) { _, _ in if find.isPresented { find.schedule(in: workspace) } }
-        .onDisappear { find.close(in: workspace, focusEditor: false) }
+        .onDisappear {
+            if find.isPresented { find.close(in: workspace, focusEditor: false) }
+            else { find.restoreEditorFocusAfterClosing(in: workspace) }
+        }
     }
 
     private func requestSearchFocus() {

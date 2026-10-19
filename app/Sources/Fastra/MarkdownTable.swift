@@ -131,24 +131,10 @@ struct MarkdownTableBar: View {
         }
         .onChange(of: workspace.activeTabID) { _, _ in table.clear(); showPaste = false }
         .sheet(isPresented: $showPaste) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Tabulatorgetrennten Text einfügen").fastraFont(size: 17, weight: .semibold)
-                Text("Jede Zeile wird eine Tabellenzeile, jeder Tabulator trennt zwei Zellen. Die Tabelle wächst bei Bedarf nach rechts und unten. Bestehende Zielzellen werden ersetzt.").fastraFont(.ui)
-                TextEditor(text: $pasteText).font(.system(.body, design: .monospaced))
-                    .frame(minHeight: 180).border(Theme.textSecondary.opacity(0.3))
-                    .background(SelfTestMarker(id: "markdownTableTSVField").frame(width: 0, height: 0))
-                Text("Grenzen: 1.000 Zeilen, 100 Spalten, 10.000 Zellen und 1 MiB Text.").fastraFont(.ui).foregroundStyle(Theme.textSecondary)
-                HStack {
-                    Button("Abbrechen") { showPaste = false }.keyboardShortcut(.cancelAction)
-                    Spacer()
-                    Button("Einfügen") {
-                        showPaste = false
-                        table.perform("pasteTSV", value: pasteText, token: pasteToken, in: workspace)
-                    }.keyboardShortcut(.defaultAction).disabled(pasteText.isEmpty)
-                        .background(SelfTestMarker(id: "markdownTableTSVInsert").frame(width: 0, height: 0))
-                        .background(SelfTestMarker(id: pasteText.isEmpty ? "markdownTableTSVInsertEmpty" : "markdownTableTSVInsertReady").frame(width: 0, height: 0))
-                }
-            }.padding(20).frame(width: 520, height: 380)
+            MarkdownTablePasteSheet(text: $pasteText, cancel: { showPaste = false }) { text in
+                showPaste = false
+                table.perform("pasteTSV", value: text, token: pasteToken, in: workspace)
+            }
         }
     }
 
@@ -161,5 +147,31 @@ struct MarkdownTableBar: View {
             if current.alignment == value.lowercased() { Label(title, systemImage: "checkmark") }
             else { Text(title) }
         }
+    }
+}
+
+/// Feld und Bestätigung müssen dieselbe aktuelle Bindung beobachten.
+private struct MarkdownTablePasteSheet: View {
+    @Binding var text: String
+    let cancel: () -> Void
+    let insert: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Tabulatorgetrennten Text einfügen").fastraFont(size: 17, weight: .semibold)
+            Text("Jede Zeile wird eine Tabellenzeile, jeder Tabulator trennt zwei Zellen. Die Tabelle wächst bei Bedarf nach rechts und unten. Bestehende Zielzellen werden ersetzt.").fastraFont(.ui)
+            TextEditor(text: $text).font(.system(.body, design: .monospaced))
+                .frame(minHeight: 180).border(Theme.textSecondary.opacity(0.3))
+                .background(SelfTestMarker(id: "markdownTableTSVField").frame(width: 0, height: 0))
+            Text("Grenzen: 1.000 Zeilen, 100 Spalten, 10.000 Zellen und 1 MiB Text.").fastraFont(.ui).foregroundStyle(Theme.textSecondary)
+            HStack {
+                Button("Abbrechen", action: cancel).keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Einfügen") { insert(text) }
+                    .keyboardShortcut(.defaultAction).disabled(text.isEmpty)
+                    .background(SelfTestMarker(id: "markdownTableTSVInsert").frame(width: 0, height: 0))
+                    .background(SelfTestMarker(id: text.isEmpty ? "markdownTableTSVInsertEmpty" : "markdownTableTSVInsertReady").frame(width: 0, height: 0))
+            }
+        }.padding(20).frame(width: 520, height: 380)
     }
 }

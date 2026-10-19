@@ -7,6 +7,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.155.1] — 2026-10-19
+
+### Behoben
+
+- Nach dem Schließen der WYSIWYG-Textsuche bleibt der native Tastaturfokus zuverlässig im Editor, auch wenn das Suchfeld verzögert abgebaut wird. Erneutes Öffnen und Dokumentwechsel entwerten eine ausstehende Fokusrückgabe.
+- Der TSV-Dialog berechnet Feldinhalt und Bestätigung aus derselben aktuellen Textbindung. Nach wiederholter Bearbeitung bleibt die Bestätigung dadurch nicht bei sichtbar eingefügtem Text deaktiviert.
+
 ## [v1.155.0] — 2026-10-19
 
 ### Hinzugefügt

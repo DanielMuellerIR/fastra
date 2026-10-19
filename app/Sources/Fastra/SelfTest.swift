@@ -25886,6 +25886,7 @@ enum SelfTest {
                 }
                 diagnostics.append("Verlaufsmenüs: " + (NSApp.mainMenu.map(historyItems) ?? []).joined(separator: "; "))
                 diagnostics.append("Nativer Verlauf: Undo=\(ws.visualMarkdownEditor?.web?.undoManager?.canUndo == true), Redo=\(ws.visualMarkdownEditor?.web?.undoManager?.canRedo == true)")
+                diagnostics.append("Such-Fokuszustand: " + Mirror(reflecting: ws.markdownVisualFind).children.filter { ["request", "pendingEditorFocusRequest"].contains($0.label ?? "") }.map { "\($0.label ?? "?")=\($0.value)" }.joined(separator: ", "))
                 let foreground = NSWorkspace.shared.frontmostApplication
                 let native = "\(label): aktiv=\(NSApp.isActive), key=\(window.isKeyWindow), Frontmost=\(foreground?.bundleIdentifier ?? "nil")/\(foreground?.processIdentifier ?? -1), Responder=\(String(describing: window.firstResponder)), Textsuche=\(ws.markdownVisualFind.isPresented), Menüanzahl=\(trackingMenus.count), Undoziel=\(String(describing: NSApp.target(forAction: NSSelectorFromString("undo:"))))"
                 let state = try? await ws.visualMarkdownEditor?.web?.evaluateJavaScript("({undo:document.queryCommandEnabled('undo'),redo:document.queryCommandEnabled('redo'),editable:document.getElementById('fastra-visual').isContentEditable,active:document.activeElement?.id,selection:getSelection().anchorNode?.parentElement?.outerHTML,rows:document.querySelector('table')?.rows.length,source:fastraVisual.markdown()})")
@@ -26091,10 +26092,12 @@ enum SelfTest {
                 NotificationCenter.default.removeObserver(observer)
                 let inserted = ws.activeTab!.content
                 stage = "Textsuche schließen und natives Undo/Redo"
-                postKey("f", keyCode: 3, windowNumber: window.windowNumber, modifiers: .command)
-                try await wait { ws.markdownVisualFind.isPresented && (window.firstResponder as? NSTextView)?.isFieldEditor == true }
-                try require(click("markdownVisualFindClose"), "Schließen der Textsuche fehlt")
-                try await wait { !ws.markdownVisualFind.isPresented && window.firstResponder === web }
+                for _ in 0..<3 {
+                    postKey("f", keyCode: 3, windowNumber: window.windowNumber, modifiers: .command)
+                    try await wait { ws.markdownVisualFind.isPresented && (window.firstResponder as? NSTextView)?.isFieldEditor == true }
+                    try require(click("markdownVisualFindClose"), "Schließen der Textsuche fehlt")
+                    try await wait { !ws.markdownVisualFind.isPresented && window.firstResponder === web }
+                }
                 await diagnose("Nach Schließen der Textsuche, vor Cmd-Z")
                 postHistoryKey(windowNumber: window.windowNumber)
                 try await wait { ws.activeTab?.content == source }
@@ -26127,31 +26130,10 @@ enum SelfTest {
                 let tsv = "Neu 😀\t42\tA|B\t  Vierte  Spalte  \tFünfte Spalte\tSechste Spalte\nEnde\t\t**Klartext**\t4\t5\t6"
                 field.selectAll(nil)
                 NSPasteboard.general.clearContents(); NSPasteboard.general.setString(tsv, forType: .string)
-                // SwiftUI muss die Eingabetransaktion samt losgelassenen Zusatztasten abschließen.
-                guard let cg = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true) else {
-                    throw NSError(domain: "TableSelfTest", code: 7)
-                }
-                cg.flags = .maskCommand
-                guard let native = NSEvent(cgEvent: cg),
-                      let characters = native.characters,
-                      let ignoring = native.charactersIgnoringModifiers,
-                      ignoring.lowercased() == "v" else {
-                    throw NSError(domain: "TableSelfTest", code: 8)
-                }
-                for (type, flags, keyCode, text, plain) in [
-                    (NSEvent.EventType.flagsChanged, native.modifierFlags, UInt16(55), "", ""),
-                    (.keyDown, native.modifierFlags, UInt16(9), characters, ignoring),
-                    (.keyUp, native.modifierFlags, UInt16(9), characters, ignoring),
-                    (.flagsChanged, [], UInt16(55), "", "")
-                ] {
-                    guard let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags,
-                        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: sheet.windowNumber,
-                        context: nil, characters: text, charactersIgnoringModifiers: plain,
-                        isARepeat: false, keyCode: keyCode) else {
-                        throw NSError(domain: "TableSelfTest", code: 9)
-                    }
-                    NSApp.postEvent(event, atStart: false)
-                }
+                // Die Systemtasten-Matrix prüft den echten Tastaturweg separat.
+                // Hier den regulären AppKit-Paste-Befehl statt eines zweiten
+                // synthetischen Modifier-Pakets an SwiftUI zustellen.
+                field.paste(nil)
                 try await wait { field.string == tsv }
                 diagnostics.append("TSV-Feld: Delegate=\(String(describing: field.delegate)), Fokus=\(sheet.firstResponder === field), Zeichen=\(field.string.utf16.count)")
                 // Der native Textspeicher wird vor SwiftUIs nächster Bindungs-/View-Transaktion sichtbar.
@@ -26350,7 +26332,7 @@ enum SelfTest {
                 await capture("find-dark-narrow-missing")
                 stage = "Maus-Schließen"
                 try require(click("markdownVisualFindClose"), "Schließen fehlt")
-                try await wait { !find.isPresented }
+                try await wait { !find.isPresented && window.firstResponder === web }
                 stage = "Escape vorbereiten"
                 try require(click("markdownVisualFindButton"), "Suchbutton nach Schließen fehlt")
                 try await wait { find.isPresented && focusedFindEditor() != nil }
@@ -26366,7 +26348,7 @@ enum SelfTest {
                 let escapeWasFieldEditor = escapeEditor.isFieldEditor
                 FileHandle.standardError.write(Data(("VISUAL_FIND_FOCUS actualField=true isFieldEditor=\(escapeWasFieldEditor) queryMatches=\(escapeEditor.string == find.query)\n").utf8))
                 postKey("\u{1b}", keyCode: 53, windowNumber: window.windowNumber)
-                try await wait { !find.isPresented }
+                try await wait { !find.isPresented && window.firstResponder === web }
                 try require(ws.activeTab?.content == source && !ws.activeTab!.isDirty, "Suche hat den Inhalt verändert")
                 try require(try String(contentsOf: file, encoding: .utf8) == source, "Suche hat die Datei verändert")
                 finish(true, "⌘F, echte Texteingabe, ⌘G/⇧⌘G, Formatgrenzen, Quelltextsuche, Maus und schmale Ansicht geprüft; tatsächlicher Suchfeldfokus=true, isFieldEditorVorEscape=\(escapeWasFieldEditor)")
