@@ -97,6 +97,23 @@ struct FolderComparisonTests {
         }
     }
 
+    @Test("Eintrags- und Besuchslimits bestätigen keinen ungeprüften Unterordner", arguments: [false, true])
+    func truncatedDirectory(_ visitedLimit: Bool) throws {
+        try fixture { left, right in
+            try write(Data("left".utf8), "d/a.txt", in: left)
+            try write(Data("right".utf8), "d/a.txt", in: right)
+            var options = FolderComparison.Options()
+            if visitedLimit { options.maximumVisitedEntries = 1 }
+            else { options.maximumEntries = 1 }
+            let result = try FolderComparison.compare(left: left, right: right, options: options)
+            #expect(!result.isComplete)
+            #expect(result.rows.count == 1)
+            #expect(result.rows.first?.path == "d")
+            #expect(result.rows.first?.status == .unavailable)
+            #expect(result.rows.first?.detail != nil)
+        }
+    }
+
     @Test("Änderungen nach dem Bytevergleich werden vor dem Ergebnis erkannt")
     func changes() throws {
         try fixture { left, right in

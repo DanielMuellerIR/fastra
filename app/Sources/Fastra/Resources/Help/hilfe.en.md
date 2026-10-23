@@ -547,7 +547,8 @@ Heading anchors follow Fastra’s existing convention: lowercase letters and dig
 with other characters replaced by collapsed hyphens. Setext headings and inline
 formatting are considered. Duplicate headings or HTML IDs are **ambiguous**;
 automatically numbered anchors are not assumed. Quoted HTML `href`/`src` and
-`id`/`name` are supported. Unquoted attributes, CSS, `srcset`, scripts, styles and
+`id` are supported; `name` defines an anchor only on an `a` element.
+Unquoted attributes, CSS, `srcset`, scripts, styles and
 anchors in other file formats remain visibly unchecked.
 
 Project scope includes only files under the checked root; an active document
@@ -765,6 +766,10 @@ saving; in code blocks, it inserts a tab character. **Markdown → Task list**
 or the checkbox button in the format toolbar creates tasks with checkboxes.
 Click a checkbox to change its state; ⌘Z undoes the change. Intentionally empty
 list items survive copying and pasting.
+Selected text also retains its formatting and links when copied or cut,
+including its heading, quote, list or code-block context. Underline, superscript
+and subscript remain as permitted HTML. Neighboring text is excluded; selected
+cell text can be pasted with its inline formatting without an additional table.
 Cut (⌘X) also carries the sources of protected formulas and diagrams;
 ⌘Z restores the cut selection. Copied and cut images carry their own image
 data and can be pasted after closing the source. A pending copy export also
@@ -1107,6 +1112,7 @@ the method's `.4dm` file directly: both
 return value). For built-in 4D commands the signature comes from the
 bundled command list. Nested calls follow the cursor: inside the inner
 method's parentheses its signature applies, behind them the outer one again.
+In the split source editor, parameter help follows the active pane.
 
 **Components:** Fastra also knows the shared methods of the components
 under `Components/` — from unpacked `.4dbase` folders as well as from

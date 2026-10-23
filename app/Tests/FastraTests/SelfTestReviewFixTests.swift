@@ -6,6 +6,7 @@
 // zusätzliche Preferences-Domain —, sieht man erst der UMGEBUNG an. Geprüft
 // wird deshalb die Quelle selbst, nach dem Vorbild von
 // `AppStorageIsolationTests`.
+// Der Systemtastentreiber wird zusätzlich mit echten Antwortdateien geprüft.
 //
 // Hintergrund (Code-Review 2026-08-10):
 //
@@ -19,6 +20,26 @@
 import Foundation
 import Testing
 @testable import Fastra
+
+@Test("Der Systemtastentreiber wartet trotz alter oder unvollständiger Antwort auf die aktuelle Nonce", arguments: [false, true])
+@MainActor func systemHistoryIgnoresStaleResponse(_ malformed: Bool) async throws {
+    let directory = testTemporaryDirectory().appendingPathComponent("history-response-\(UUID())")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("history-response.json")
+    try Data((malformed ? "{" : "{\"nonce\":\"old\",\"ok\":true}").utf8).write(to: url)
+    let nonce = UUID().uuidString
+    let driver = Task { @MainActor in
+        try await Task.sleep(for: .milliseconds(60))
+        try JSONSerialization.data(withJSONObject: ["nonce": nonce, "ok": false])
+            .write(to: url, options: .atomic)
+    }
+    defer { driver.cancel() }
+    let response = try await SelfTest.waitForSystemHistoryResponse(at: url, nonce: nonce)
+    try await driver.value
+    #expect(response["nonce"] as? String == nonce)
+    #expect(response["ok"] as? Bool == false)
+}
 
 /// Die Selbsttest-Quelle, robust aus der Testdatei-Position abgeleitet
 /// (app/Tests/FastraTests/… → app/Sources/Fastra/SelfTest.swift).

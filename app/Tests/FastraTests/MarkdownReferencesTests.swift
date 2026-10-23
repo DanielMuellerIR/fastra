@@ -4,6 +4,26 @@ import Testing
 
 @Suite("Lokale Markdown-Verweise")
 struct MarkdownReferencesTests {
+    @Test("Nur echte a-Elemente erzeugen benannte HTML-Anker", arguments: ["article", "abbr", "a-custom", "a:custom"])
+    func similarHTMLTagIsNotAnchor(_ tag: String) throws {
+        let source = MarkdownReferenceCheck.Source(url: nil, title: "doc.md",
+            content: "<\(tag) name=\"ziel\"></\(tag)>\n\n[Link](#ziel)\n")
+        let result = try MarkdownReferenceCheck.check(document: source)
+        #expect(result.findings.first?.status == .missing)
+        let valid = try MarkdownReferences.parse("<A name=\"ziel\"></A>\n")
+        #expect(valid.anchors["ziel"] == 1)
+    }
+
+    @Test("Leere Slugs verschleiern keine abgeschnittene Überschriftenanalyse")
+    func emptySlugsExhaustHeadingBudget() throws {
+        let source = String(repeating: "# !\n", count: 10_001) + "# Ziel\n\n[Link](#ziel)\n"
+        let parsed = try MarkdownReferences.parse(source)
+        #expect(parsed.incomplete && !parsed.anchorsComplete)
+        let result = try MarkdownReferenceCheck.check(document: .init(url: nil, title: "doc.md", content: source))
+        #expect(!result.isComplete)
+        #expect(result.findings.first?.status == .unverified)
+    }
+
     @Test("cmark löst Referenzlinks auf und lässt Code und Kommentare aus")
     func smallestProbe() throws {
         let source = "# Gleich\r\n\r\n# Gleich\r\n\r\n[Datei][ziel]\r\n![Bild](image%23one.png)\r\n\r\n[ziel]: <über%20uns.md#teil>\r\n\r\n<a href=\"other.md#html\">HTML</a>\r\n<!-- <img src=\"ignored.png\"> -->\r\n\r\n```md\r\n[Code](ignored.md)\r\n```\r\n"

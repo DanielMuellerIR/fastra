@@ -3152,15 +3152,24 @@ enum SelfTest {
         try JSONSerialization.data(withJSONObject: request, options: [.sortedKeys]).write(
             to: directory.appendingPathComponent("history-request.json"), options: .atomic)
         let responseURL = directory.appendingPathComponent("history-response.json")
-        try await nativeUIWait("Systemtastentreiber bestätigt vollständige Zustellung") {
-            FileManager.default.fileExists(atPath: responseURL.path)
-        }
-        let response = try JSONSerialization.jsonObject(with: Data(contentsOf: responseURL)) as? [String: Any]
-        guard response?["nonce"] as? String == nonce, response?["ok"] as? Bool == true else {
+        let response = try await waitForSystemHistoryResponse(at: responseURL, nonce: nonce)
+        guard response["ok"] as? Bool == true else {
             throw NSError(domain: "SelfTestSystemHistory", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "Systemtastentreiber meldet einen Fehler: " + String(describing: response)])
         }
         return true
+    }
+
+    @MainActor static func waitForSystemHistoryResponse(at url: URL, nonce: String) async throws -> [String: Any] {
+        var response: [String: Any]?
+        try await nativeUIWait("Systemtastentreiber bestätigt vollständige Zustellung") {
+            guard let data = try? Data(contentsOf: url),
+                  let decoded = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  decoded["nonce"] as? String == nonce else { return false }
+            response = decoded
+            return true
+        }
+        return response!
     }
 
     private static func runFindBarTest() {
@@ -17324,7 +17333,6 @@ enum SelfTest {
             let observer = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { notification in
                 if let menu = notification.object as? NSMenu { shown = menu }
             }
-            NSPasteboard.general.clearContents()
             timer = Timer(timeInterval: 0.05, repeats: true) { _ in
                 ticks += 1
                 guard let menu = shown else { if ticks >= 100 { done = true; timer?.invalidate() }; return }
@@ -17333,12 +17341,14 @@ enum SelfTest {
                    menu.items.contains(where: { $0.title == L10n.string("Im Finder zeigen…") }) {
                     if !selected {
                         if menu.highlightedItem === item {
+                            prepareSelfTestPasteboardMutationOrFinish()
                             selected = true
                             postKey("\r", keyCode: 36, windowNumber: window.windowNumber)
                         } else {
                             postKey("\u{F701}", keyCode: 125, windowNumber: window.windowNumber)
                         }
-                    } else if NSPasteboard.general.string(forType: .string) == expected {
+                    } else if NSPasteboard.general.string(forType: .string) == expected,
+                              NSPasteboard.general.changeCount == selfTestPasteboardBackup?.ownedChangeCount {
                         timer?.invalidate(); timer = nil; done = true
                     }
                     if ticks >= 100 { timer?.invalidate(); menu.cancelTracking(); done = true }
@@ -17355,11 +17365,13 @@ enum SelfTest {
             for _ in 0..<220 { if done { break }; try await Task.sleep(for: .milliseconds(25)) }
             if selected {
                 for _ in 0..<200 {
-                    if NSPasteboard.general.string(forType: .string) == expected { break }
+                    if NSPasteboard.general.string(forType: .string) == expected,
+                       NSPasteboard.general.changeCount == selfTestPasteboardBackup?.ownedChangeCount { break }
                     try await Task.sleep(for: .milliseconds(25))
                 }
             }
             timer?.invalidate(); shown?.cancelTracking(); NotificationCenter.default.removeObserver(observer)
+            if selected { noteSelfTestPasteboardMutationOrFinish(expectedItems: try plainTextPasteboardItems(expected)) }
             guard selected, NSPasteboard.general.string(forType: .string) == expected else {
                 throw NSError(domain: "PathCopyMenu", code: 3, userInfo: [NSLocalizedDescriptionKey: "Echter Pfad-kopieren-Befehl fehlgeschlagen: \(markerID), gedrückt=\(selected), erwartet=\(expected), Clipboard=\(NSPasteboard.general.string(forType: .string) ?? "nil")"])
             }
@@ -25564,17 +25576,20 @@ enum SelfTest {
                             let point = try await web.evaluateJavaScript("(() => {const r=document.querySelector('.fastra-code-copy').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2];})()") as? [Double] ?? []
                             try require(point.count == 2 && point[0] > 0 && point[0] < web.bounds.width && point[1] > 0 && point[1] < web.bounds.height, "Kopierknopf ist nicht sichtbar")
                             activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil); window.makeFirstResponder(web)
-                            NSPasteboard.general.clearContents(); NSPasteboard.general.setString("sentinel", forType: .string)
+                            writeSelfTestPasteboardString("sentinel")
+                            try prepareSelfTestPasteboardMutation()
                             let click = web.convert(NSPoint(x: point[0], y: web.isFlipped ? point[1] : web.bounds.height-point[1]), to: nil)
                             stage = name + " · Mauscopy"
                             try require(sendMouseClick(at: click, in: window, modifiers: [], viaApp: true), "Echter Kopierklick fehlt")
                             try await wait { NSPasteboard.general.string(forType: .string) == code }
+                            try noteSelfTestPasteboardMutation(expectedItems: plainTextPasteboardItems(code))
                             try require(NSPasteboard.general.types?.contains(.string) == true && NSPasteboard.general.types?.allSatisfy { $0 == .string || $0.rawValue == "NSStringPboardType" } == true, "Codekopie enthält fremde Formate")
                             try require(ws.activeTab?.content.utf8.elementsEqual(source.utf8) == true, "Codekopie verändert Markdown")
                             diagnostics.append(name + ": Mauscopy bestanden")
                             stage = name + " · Tastaturcopy"
                             _ = try await web.evaluateJavaScript("document.querySelector('.fastra-code-copy').focus();")
-                            NSPasteboard.general.clearContents(); NSPasteboard.general.setString("keyboard-sentinel", forType: .string)
+                            writeSelfTestPasteboardString("keyboard-sentinel")
+                            try prepareSelfTestPasteboardMutation()
                             postKey(" ", keyCode: 49, windowNumber: window.windowNumber)
                             // HTML-Knöpfe lösen die Leertastenaktion erst beim Loslassen aus.
                             if let up = NSEvent.keyEvent(with: .keyUp, location: .zero, modifierFlags: [],
@@ -25584,6 +25599,7 @@ enum SelfTest {
                             } else { try require(false, "Leertaste konnte nicht losgelassen werden") }
 
                             try await wait { NSPasteboard.general.string(forType: .string) == code }
+                            try noteSelfTestPasteboardMutation(expectedItems: plainTextPasteboardItems(code))
                             _ = try await web.evaluateJavaScript("document.activeElement.blur();")
                             // Die Rückmeldung läuft aus, bevor die nächste Variante ihren Ausgangszustand prüft.
                             try await Task.sleep(for: .milliseconds(1900))
@@ -25827,9 +25843,10 @@ enum SelfTest {
                 getSelection().removeAllRanges();getSelection().addRange(r);}
                 """)
             try await wait { workspace.markdownTable.context?.reason.isEmpty == true }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString("Neu", forType: .string)
-            NSPasteboard.general.setString("<strong>Neu</strong>", forType: .html)
+            let item = NSPasteboardItem()
+            item.setString("Neu", forType: .string)
+            item.setString("<strong>Neu</strong>", forType: .html)
+            writeSelfTestPasteboardItem(item)
             window.makeFirstResponder(web)
             postKey("v", keyCode: 9, windowNumber: window.windowNumber, modifiers: .command)
             try await wait { workspace.activeTab?.content != source }
@@ -25968,8 +25985,7 @@ enum SelfTest {
                         for mode in ["type", "paste", "synthetic"] {
                             for opening in 0..<2 {
                                 stage = "TSV-Eingabe \(index) \(mode) Öffnung \(opening)"
-                                NSPasteboard.general.clearContents()
-                                if !initial.isEmpty { NSPasteboard.general.setString(initial, forType: .string) }
+                                writeSelfTestPasteboardString(initial)
                                 try require(click("markdownTablePaste"), "TSV-Button fehlt")
                                 try await wait { !window.sheets.isEmpty }
                                 let sheet = window.sheets[0]
@@ -25989,13 +26005,11 @@ enum SelfTest {
                                     object: field, queue: .main) { _ in changes.append(field.string) }
                                 if mode == "synthetic" {
                                     field.selectAll(nil)
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(expected, forType: .string)
+                                    writeSelfTestPasteboardString(expected)
                                     postKey("v", keyCode: 9, windowNumber: sheet.windowNumber, modifiers: .command)
                                     try await wait { field.string == expected }
                                 } else if mode == "paste" {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(expected, forType: .string)
+                                    writeSelfTestPasteboardString(expected)
                                 }
                                 let request: [String: Any] = ["pid": ProcessInfo.processInfo.processIdentifier,
                                     "index": index, "mode": mode, "initial": initial, "expected": expected,
@@ -26129,7 +26143,7 @@ enum SelfTest {
                 try await wait { sheet.firstResponder === field }
                 let tsv = "Neu 😀\t42\tA|B\t  Vierte  Spalte  \tFünfte Spalte\tSechste Spalte\nEnde\t\t**Klartext**\t4\t5\t6"
                 field.selectAll(nil)
-                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(tsv, forType: .string)
+                writeSelfTestPasteboardString(tsv)
                 // Die Systemtasten-Matrix prüft den echten Tastaturweg separat.
                 // Hier den regulären AppKit-Paste-Befehl statt eines zweiten
                 // synthetischen Modifier-Pakets an SwiftUI zustellen.
@@ -27581,6 +27595,28 @@ enum SelfTest {
                 try require(sendMouseClick(at: bold.convert(CGPoint(x: bold.bounds.midX, y: bold.bounds.midY), to: nil),
                                            in: window, modifiers: [], viaApp: true), "Fett-Button konnte nicht bedient werden")
                 try await wait { ws.activeTab?.content.contains("**Ergebnis: bestanden 😀**") == true }
+                stage = "Native Clipboard-Rundreise einer fett formatierten Teilauswahl"
+                let formatted = ws.activeTab!.content
+                // Dieser Testprozess verwendet für Copy/Paste eine eigene Zwischenablage.
+                editor.pasteboard = NSPasteboard.withUniqueName()
+                _ = try await web.evaluateJavaScript("""
+                    {const root=document.getElementById('fastra-visual'),text=root.querySelector('p b,p strong').firstChild,
+                    r=document.createRange(),start=text.data.indexOf('bestanden');r.setStart(text,start);r.setEnd(text,start+9);
+                    root.focus();getSelection().removeAllRanges();getSelection().addRange(r);}
+                    """)
+                window.makeFirstResponder(web)
+                try require(NSApp.sendAction(NSSelectorFromString("copy:"), to: nil, from: nil), "Nativer Copy-Responder fehlt")
+                try await wait { editor.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil }
+                let payload = try JSONSerialization.jsonObject(with: editor.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType)!) as? [String: String]
+                try require(payload?["markdown"]?.trimmingCharacters(in: .whitespacesAndNewlines) == "**bestanden**", "Copy verliert die Fettung der Teilauswahl: \(payload ?? [:])")
+                _ = try await web.evaluateJavaScript("{const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual p'));getSelection().removeAllRanges();getSelection().addRange(r);}")
+                postKey("v", keyCode: 9, windowNumber: window.windowNumber, modifiers: .command)
+                try await wait { ws.activeTab?.content != formatted }
+                try require(try await web.evaluateJavaScript("document.querySelector('#fastra-visual p').innerHTML") as? String == "<strong>bestanden</strong>", "Natives Einfügen verliert Formatierung oder übernimmt Nachbartext")
+                await capture("visual-clipboard")
+                postHistoryKey(windowNumber: window.windowNumber)
+                try await wait { ws.activeTab?.content == formatted }
+                stage = "Toolbar-Undo"
                 _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
                 try await wait { ws.activeTab?.content == source }
                 _ = try await web.evaluateJavaScript("""

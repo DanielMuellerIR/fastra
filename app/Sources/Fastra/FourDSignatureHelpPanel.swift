@@ -32,6 +32,7 @@ final class FourDSignatureHelpController: ObservableObject {
     private var updateGeneration = 0
     private struct PanelRequestIdentity: Equatable {
         let window: ObjectIdentifier
+        let editor: ObjectIdentifier
         let method: String
         let openParenLocation: Int
     }
@@ -39,6 +40,7 @@ final class FourDSignatureHelpController: ObservableObject {
 
     /// Zentraler Einstieg: bei jeder Cursorbewegung im aktiven 4D-Editor.
     func update(workspace: Workspace,
+                textView: TextView?,
                 cursorPositions: [CursorPosition],
                 isFourDActive: Bool) {
         // Zuerst ALLE noch laufenden Hintergrundauflösungen entwerten — auch
@@ -52,9 +54,10 @@ final class FourDSignatureHelpController: ObservableObject {
               cursorPositions.count == 1,
               let cursor = cursorPositions.first,
               cursor.range.length == 0,
-              let window = Self.editorWindow(for: workspace),
-              let root = window.contentView,
-              let textView = Self.firstTextView(in: root),
+              let textView,
+              let window = CommandTargeting.documentWindow(for: workspace),
+              textView.window === window,
+              Self.isActive(textView, in: workspace),
               let context = FourDSignatureHelpLogic.callContext(
                 in: textView.string,
                 utf16CursorLocation: cursor.range.location
@@ -65,6 +68,7 @@ final class FourDSignatureHelpController: ObservableObject {
         }
         let panelRequestIdentity = PanelRequestIdentity(
             window: ObjectIdentifier(window),
+            editor: ObjectIdentifier(textView),
             method: context.methodName.lowercased(),
             openParenLocation: context.openParenLocation)
         if let visibleRequestIdentity,
@@ -80,10 +84,12 @@ final class FourDSignatureHelpController: ObservableObject {
         // dem Workspace werden hier nur reine Daten entnommen; die Generation
         // verwirft ein verspätetes Ergebnis.
         let request = titleRequest(workspace: workspace, context: context)
+        let documentID = workspace.activeDocumentID
+        let revision = workspace.activeTab?.contentRevision
         let cache = cache
         resolutionScheduler.submit(key: request, work: {
             FourDSignatureResolver.title(for: request, cache: cache)
-        }) { [weak self] resolved in
+        }) { [weak self, weak workspace, weak textView, weak window] resolved in
                 guard let self, generation == self.updateGeneration else { return }
                 guard let resolved else {
                     self.hidePanel()
@@ -92,7 +98,11 @@ final class FourDSignatureHelpController: ObservableObject {
                 // Fenster oder Editor können sich während eines Hintergrund-
                 // Reads geändert haben — dann nicht mehr an die alte Ansicht
                 // ankern.
-                guard textView.window === window, window.isVisible else {
+                guard let workspace, let textView, let window,
+                      workspace.activeDocumentID == documentID,
+                      workspace.activeTab?.contentRevision == revision,
+                      Self.isActive(textView, in: workspace),
+                      textView.window === window, window.isVisible else {
                     self.hidePanel()
                     return
                 }
@@ -311,20 +321,10 @@ final class FourDSignatureHelpController: ObservableObject {
         return panel
     }
 
-    // MARK: - Fenster-/View-Suche (gleiche Muster wie EditorView)
-
-    private static func editorWindow(for workspace: Workspace) -> NSWindow? {
-        CommandTargeting.documentWindow(for: workspace)
-    }
-
-    private static func firstTextView(in view: NSView) -> TextView? {
-        if let textView = view as? TextView, textView.frame.height > 50 {
-            return textView
-        }
-        for sub in view.subviews {
-            if let found = firstTextView(in: sub) { return found }
-        }
-        return nil
+    private static func isActive(_ textView: TextView, in workspace: Workspace) -> Bool {
+        let pane: SourcePaneID = workspace.sourceSplitEnabled && workspace.canSplitSourceEditor
+            ? workspace.sourcePanes.activePane : .primary
+        return workspace.sourcePanes.view(for: pane, documentID: workspace.activeDocumentID) === textView
     }
 }
 

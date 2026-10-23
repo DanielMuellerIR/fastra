@@ -1482,6 +1482,13 @@ und dem vorhandenen Aufnahmeverzeichnis als Request-/Receipt-Ablage.
 
 ### Visuelle Markdown-Bearbeitung
 
+`MarkdownVisualTests/copyPasteSelectionStyles` prüft Textteilauswahlen innerhalb
+von Auszeichnungen, Links, Überschriften, Zitaten, Listen und Codeblöcken über
+das echte WebKit und ein isoliertes natives Clipboard (Markdown, HTML und RTF).
+`copyPasteDocumentStyles` ergänzt gemischte Dokumente, Ausschneiden, Undo/Redo
+und erneutes Rendern über Markdown- und HTML-Clipboard; Inline-HTML-Auszeichnungen,
+Tabellen und die Codesprache bleiben erhalten.
+
 `mdcomfort` prüft Lesespalte und breite Tabellen in den echten Vorschau- und
 WYSIWYG-Ansichten bei Mindestbreite und breit, hell und dunkel. Er scrollt die
 Tabelle tatsächlich bis zum Ende, bedient den Code-Kopierknopf mit echter Maus
@@ -1502,7 +1509,8 @@ und prüft beim späten Treffer zusätzlich, dass der Editor gescrollt hat.
 `MarkdownVisualTests` prüft außerdem abgewiesene Dateiöffnungen mit erneutem
 Versuch und den verzögerten Nachrück-Sprung nach Einzel-Ersetzen.
 
-`mdvisual` bedient den echten Erstwahl-Dialog und die Format-Toolbar, prüft Undo,
+`mdvisual` bedient den echten Erstwahl-Dialog und die Format-Toolbar, prüft eine
+native Copy-/Paste-Rundreise einer fett formatierten Teilauswahl samt Undo,
 Shift-Return und den Umbruch-Button als Zeilenumbruch im selben Absatz sowie
 Return als neuen Absatz. Ein gespeicherter Umbruch muss nach Undo wieder
 verschwinden. Der Fenstertest prüft außerdem

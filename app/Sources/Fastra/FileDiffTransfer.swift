@@ -80,6 +80,15 @@ enum FileDiffTransfer {
         } else if sourceNumbers.isEmpty && destinationVirtualOnly {
             range = destination.lines[destinationNumbers[0] - 2].terminatorRange
         } else {
+            if sourceNumbers.isEmpty, NSMaxRange(range) == (destination.text as NSString).length,
+               previousSourceCount == source.lines.count, previousSourceCount > 0,
+               source.lines[previousSourceCount - 1].terminatorRange.length == 0,
+               previousDestinationCount > 0 {
+                // Die letzte verbleibende Quellzeile ist unterminiert. Der
+                // Zielterminator gehört deshalb ebenfalls zur EOF-Löschung.
+                let terminator = destination.lines[previousDestinationCount - 1].terminatorRange
+                range = NSRange(location: terminator.location, length: NSMaxRange(range) - terminator.location)
+            }
             if !replacement.isEmpty, previousDestinationCount > 0,
                destination.lines[previousDestinationCount - 1].terminatorRange.length == 0,
                NSMaxRange(destination.lines[previousDestinationCount - 1].fullRange) == range.location,

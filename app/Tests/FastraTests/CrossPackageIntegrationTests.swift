@@ -7,6 +7,49 @@ import Testing
 @Suite("Paketübergreifende Editorabläufe", .serialized)
 @MainActor
 struct CrossPackageIntegrationTests {
+    @Test("4D-Parameterhilfe folgt dem unteren Ausschnitt und verwirft Hilfe beim Pane-Wechsel")
+    func splitSignatureHelpFollowsActivePane() async throws {
+        let workspace = Workspace(defaults: testSuiteDefaults(named: "fastra.tests.integration.signature.\(UUID())"))
+        let source = String(repeating: "// Line\n", count: 150) + "ALERT(\"Hi\")\n"
+        let tab = EditorTab(title: "Caller.4dm", path: "Caller.4dm", content: source)
+        workspace.tabs = [tab]; workspace.activeTabID = tab.id; workspace.sourceSplitEnabled = true
+        let host = NSHostingView(rootView: EditorView().environmentObject(workspace))
+        host.frame = NSRect(x: 0, y: 0, width: 900, height: 700)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = host
+        WorkspaceWindowRegistry.register(workspace, for: window)
+        defer { WorkspaceWindowRegistry.unregister(window); window.close() }
+        window.alphaValue = 0; window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000)); window.orderBack(nil)
+        try #require(await waitUntil { workspace.sourcePanes.view(for: .secondary, documentID: tab.documentID)?.window === window })
+        let first = try #require(workspace.sourcePanes.view(for: .primary, documentID: tab.documentID))
+        let second = try #require(workspace.sourcePanes.view(for: .secondary, documentID: tab.documentID))
+        let call = (source as NSString).range(of: "ALERT")
+        let rect = try #require(second.layoutManager.rectForOffset(call.location))
+        _ = second.scrollToVisible(rect)
+        try #require(await waitUntil { second.visibleRect.intersects(rect) })
+        #expect(!first.visibleRect.intersects(try #require(first.layoutManager.rectForOffset(call.location))))
+        #expect(window.makeFirstResponder(second))
+        second.selectionManager.setSelectedRange(NSRange(location: call.location + 9, length: 0))
+        try #require(await waitUntil { workspace.sourcePanes.activePane == .secondary && workspace.cursorLine == 151 })
+        func panels() -> [NSWindow] { (window.childWindows ?? []).filter { $0 is NSPanel && $0.isVisible } }
+        try #require(await waitUntil { panels().count == 1 })
+        let panel = try #require(panels().first)
+        let anchor = window.convertToScreen(second.convert(rect, to: nil))
+        #expect(abs(panel.frame.maxY - (anchor.minY - 4)) < 2
+            || abs(panel.frame.minY - (anchor.maxY + 4)) < 2)
+        #expect(window.makeFirstResponder(first))
+        try #require(await waitUntil { workspace.sourcePanes.activePane == .primary && panels().isEmpty })
+        // Der Cursor der unteren Pane bleibt gleich: Zurückwechseln muss
+        // die Hilfe auch ohne neue Cursorbewegung wieder berechnen.
+        #expect(window.makeFirstResponder(second))
+        try #require(await waitUntil { panels().count == 1 })
+        second.selectionManager.setSelectedRange(NSRange(location: call.location + 8, length: 0))
+        #expect(window.makeFirstResponder(first))
+        try #require(await waitUntil { panels().isEmpty })
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(panels().isEmpty)
+    }
+
     @Test("Ein gleichlautender neuer Tab darf keinen noch montierten Editor des alten Dokuments übernehmen", arguments: [false, true])
     func snippetDuringTabTransition(_ reusedSlot: Bool) async throws {
         let workspace = Workspace(defaults: testSuiteDefaults(named: "fastra.tests.integration.transition.\(UUID())"))

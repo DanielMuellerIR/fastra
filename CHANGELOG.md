@@ -7,6 +7,24 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.155.3] — 2026-10-23
+
+### Behoben
+
+- Kopierte und ausgeschnittene Textteile im Markdown-WYSIWYG-Modus behalten ihre umgebenden Auszeichnungen, Links, Überschriften, Zitate, Listen und Codeblöcke. Die Auswahl übernimmt keinen benachbarten Text; nummerierte Listen behalten die ausgewählte Nummer und Aufgabenlisten ihren Hakenstatus.
+- Unterstreichung, Hoch-/Tiefstellung und weitere erlaubte HTML-Textauszeichnungen bleiben beim Einfügen und bei der Rückwandlung bearbeiteter Absätze erhalten.
+- Beim Einfügen über das HTML-Format der Zwischenablage behalten Codeblöcke ihre Sprachangabe und Syntaxhervorhebung.
+
+## [v1.155.2] — 2026-10-22
+
+### Behoben
+
+- Die Übernahme einer EOF-Löschung im Dateivergleich entfernt bei unterminierter Quelle auch den zugehörigen Zeilenabschluss. Ein durch Eintrags- oder Besuchslimits unvollständig gelesener Unterordner wird nicht mehr als identisch bestätigt.
+- Die Markdown-Referenzprüfung erkennt benannte HTML-Anker ausschließlich an echten `a`-Elementen. Überschriften ohne erzeugbaren Anker können eine abgeschnittene Analyse nicht mehr als vollständig erscheinen lassen.
+- Die 4D-Parameterhilfe folgt dem aktiven Editor-Ausschnitt und verwirft ausstehende Hilfe beim Wechsel. Die Gliederung zeigt umbenannte Projektmethoden auch ohne Textänderung korrekt an.
+- Ein neuer Sprung entwertet eine noch laufende Rückauflösung im Sprungverlauf; Zielposition und Verlauf bleiben zusammengehörig.
+- Pfad-, Tabellen- und Codekopierprüfungen sichern und restaurieren die Zwischenablage über das bestehende Besitzprotokoll. Der optionale Systemtastentreiber wartet auf die Antwort des aktuellen Auftrags, auch wenn eine alte Antwortdatei vorhanden ist.
+
 ## [v1.155.1] — 2026-10-19
 
 ### Behoben

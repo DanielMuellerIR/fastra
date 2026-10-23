@@ -55,6 +55,9 @@ struct FileDiffTransferTests {
     func terminators(_ separator: String) throws {
         for example in [
             Example(target: "a", source: "a" + separator + "b", expected: "a" + separator + "b"),
+            Example(target: "a" + separator + "b", source: "a", expected: "a"),
+            Example(target: "a" + separator + "b" + separator + "c", source: "a", expected: "a"),
+            Example(target: "a" + separator + "b", source: "a" + separator, expected: "a" + separator),
             Example(target: "a", source: "a" + separator, expected: "a" + separator),
             Example(target: "a" + separator, source: "a", expected: "a")
         ] { try transfer(example) }

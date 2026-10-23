@@ -138,12 +138,15 @@ enum FolderComparison {
                 return tree
             }
             var visited = 0
+            var entryLimitReached = false
             for case let enumeratedURL as URL in enumerator {
                 try checkCancellation()
                 visited += 1
                 totalVisited += 1
                 if visited > max(0, options.maximumVisitedEntries) || tree.entries.count >= max(0, options.maximumEntries) {
-                    tree.issues.append(L10n.string("Die Grenze für Ordner- und Dateieinträge wurde erreicht.")); break
+                    tree.issues.append(L10n.string("Die Grenze für Ordner- und Dateieinträge wurde erreicht."))
+                    entryLimitReached = true
+                    break
                 }
                 // Foundation kann beim Enumerieren /private/var liefern,
                 // obwohl die Wurzel /var heißt. Die tatsächliche Rekursionstiefe
@@ -172,7 +175,9 @@ enum FolderComparison {
             if !enumerationIssues.isEmpty {
                 tree.issues.append(L10n.format("%@: Der Ordnerinhalt konnte nicht vollständig gelesen werden.", side))
                 tree.issues.append(contentsOf: enumerationIssues.prefix(10))
-                // Nach einem Rekursionsfehler ist der Inhalt der betroffenen
+            }
+            if entryLimitReached || !enumerationIssues.isEmpty {
+                // Nach Abbruch oder Rekursionsfehler ist der Inhalt der
                 // Struktur nicht vollständig belegt. Keine Ordnerzeile darf
                 // dann aus einer leeren Kinderliste „identisch“ ableiten.
                 for key in Array(tree.entries.keys) where tree.entries[key]?.version?.isDirectory == true {

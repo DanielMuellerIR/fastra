@@ -75,6 +75,7 @@ final class DocumentOutlineController: ObservableObject {
     private var documentID: UUID?
     private var revision: UInt64?
     private var formatID: DocumentFormatID?
+    private var documentTitle: String?
     private var generation = UUID()
     private var analysisTask: Task<Void, Never>?
     private var navigationTask: Task<Void, Never>?
@@ -117,8 +118,8 @@ final class DocumentOutlineController: ObservableObject {
             headings = []; activeHeading = nil; ready = false; return
         }
         let format = workspace.activeDocumentFormat.id
-        guard documentID != tab.documentID || revision != tab.contentRevision || formatID != format || (!ready && analysisTask == nil) else { return }
-        documentID = tab.documentID; revision = tab.contentRevision; formatID = format
+        guard documentID != tab.documentID || revision != tab.contentRevision || formatID != format || documentTitle != tab.title || (!ready && analysisTask == nil) else { return }
+        documentID = tab.documentID; revision = tab.contentRevision; formatID = format; documentTitle = tab.title
         source = tab.content; ready = false; headings = []; activeHeading = nil; notice = nil
         generation = UUID(); let request = generation
         analysisTask?.cancel(); analysisTask = nil
@@ -132,7 +133,9 @@ final class DocumentOutlineController: ObservableObject {
                 guard let self, self.generation == request else { return }
                 self.analysisTask = nil
                 guard let workspace, workspace.activeTab?.documentID == id,
-                      workspace.activeTab?.contentRevision == revision else { return }
+                      workspace.activeTab?.contentRevision == revision,
+                      workspace.activeTab?.title == title,
+                      workspace.activeDocumentFormat.id == format else { return }
                 self.headings = entries ?? []; self.ready = true
                 if entries == nil { self.notice = L10n.string("Die Gliederung ist für diese Quelle nicht vollständig prüfbar (10 MiB / 200.000 Zeilen).") }
                 else if entries?.count == 10_000 { self.notice = L10n.string("Die Gliederung hat die Grenze von 10.000 Einträgen erreicht.") }
@@ -150,7 +153,7 @@ final class DocumentOutlineController: ObservableObject {
 
     @MainActor func currentPoint(in workspace: Workspace, range: NSRange? = nil) -> DocumentNavigationPoint? {
         guard let tab = workspace.activeTab, tab.isOrdinaryTextDocument else { return nil }
-        let currentAnalysis = ready && documentID == tab.documentID && revision == tab.contentRevision
+        let currentAnalysis = ready && documentID == tab.documentID && revision == tab.contentRevision && documentTitle == tab.title
         let heading = currentAnalysis ? activeHeading.flatMap { headings.indices.contains($0) ? headings[$0] : nil } : nil
         let pending = workspace.pendingEditorJump.flatMap { $0.documentID == tab.documentID ? $0.range : nil }
         let selected = range ?? (workspace.activeMarkdownIsVisual ? heading?.range : CommandTargeting.editorTextView(for: workspace)?.fastraSafeSelectedRange)
@@ -162,6 +165,7 @@ final class DocumentOutlineController: ObservableObject {
     }
 
     @MainActor func jump(to heading: DocumentOutlineEntry, in workspace: Workspace) {
+        beginNavigation()
         if workspace.synchronizeVisualMarkdownBefore({ self.jump(to: heading, in: workspace) }) { return }
         guard ready, documentID == workspace.activeTab?.documentID, revision == workspace.activeTab?.contentRevision,
               headings.contains(heading), let origin = currentPoint(in: workspace), let tab = workspace.activeTab else { refresh(in: workspace); return }
@@ -171,11 +175,13 @@ final class DocumentOutlineController: ObservableObject {
     }
 
     @MainActor func recordJump(in workspace: Workspace, from origin: DocumentNavigationPoint?, range: NSRange) {
+        beginNavigation()
         guard let origin, let target = currentPoint(in: workspace, range: range) else { return }
         history.visit(target, from: origin)
     }
 
     @MainActor func jump(to range: NSRange, in workspace: Workspace, originRange: NSRange? = nil) {
+        beginNavigation()
         if workspace.synchronizeVisualMarkdownBefore({ self.jump(to: range, in: workspace, originRange: originRange) }) { return }
         let origin = currentPoint(in: workspace, range: originRange)
         guard let point = currentPoint(in: workspace, range: range) else { return }
@@ -184,9 +190,9 @@ final class DocumentOutlineController: ObservableObject {
     }
 
     @MainActor func openFile(at url: URL, in workspace: Workspace, originRange: NSRange? = nil) {
+        let request = beginNavigation()
         if workspace.synchronizeVisualMarkdownBefore({ self.openFile(at: url, in: workspace, originRange: originRange) }) { return }
         let origin = currentPoint(in: workspace, range: originRange)
-        navigationTask?.cancel(); navigationGeneration = UUID(); let request = navigationGeneration
         let acceptance = FileLoadAcceptance { [weak self, weak workspace] in
             guard self?.navigationGeneration == request, let workspace else { return false }
             guard let origin, let id = origin.documentID, let anchor = origin.anchor else { return true }
@@ -200,6 +206,7 @@ final class DocumentOutlineController: ObservableObject {
     }
 
     @MainActor func move(_ delta: Int, in workspace: Workspace) {
+        let request = beginNavigation()
         if workspace.synchronizeVisualMarkdownBefore({ self.move(delta, in: workspace) }) { return }
         let next = history.index + delta
         guard history.points.indices.contains(next) else { return }
@@ -207,11 +214,12 @@ final class DocumentOutlineController: ObservableObject {
         guard let id = point.documentID, let tab = workspace.tabs.first(where: { $0.documentID == id && $0.isOrdinaryTextDocument }) else {
             workspace.showSidebarNotice(L10n.string("Das Dokument im Sprungverlauf wurde geschlossen oder ersetzt.")); return
         }
-        navigationTask?.cancel(); navigationGeneration = UUID(); let request = navigationGeneration
+        let startingIndex = history.index
         let active = workspace.activeTab?.documentID, activeRevision = workspace.activeTab?.contentRevision
         func finish(_ range: NSRange?) {
             guard self.navigationGeneration == request, workspace.activeTab?.documentID == active,
                   workspace.activeTab?.contentRevision == activeRevision,
+                  self.history.index == startingIndex,
                   self.history.points.indices.contains(next), self.history.points[next] == point,
                   let current = workspace.tabs.first(where: { $0.documentID == id && $0.contentRevision == tab.contentRevision }) else { return }
             guard let range else { workspace.showSidebarNotice(L10n.string("Das Ziel im Sprungverlauf wurde geändert oder ist nicht mehr eindeutig.")); return }
@@ -239,6 +247,12 @@ final class DocumentOutlineController: ObservableObject {
                 finish(range)
             }
         }
+    }
+
+    @discardableResult private func beginNavigation() -> UUID {
+        navigationTask?.cancel(); navigationTask = nil
+        navigationGeneration = UUID()
+        return navigationGeneration
     }
 
     func visualHeadingIndex(for point: DocumentNavigationPoint) -> Int { headings.lastIndex { $0.line <= point.line } ?? -1 }
@@ -332,6 +346,7 @@ struct DocumentOutlineControls: View {
             .onAppear { outline.refresh(in: workspace) }
             .onChange(of: workspace.activeTab?.documentID) { _, _ in outline.refresh(in: workspace) }
             .onChange(of: workspace.activeTab?.contentRevision) { _, _ in outline.refresh(in: workspace) }
+            .onChange(of: workspace.activeTab?.title) { _, _ in outline.refresh(in: workspace) }
             .onChange(of: workspace.activeDocumentFormat.id) { _, _ in outline.refresh(in: workspace) }
             .onChange(of: workspace.cursorLine) { _, line in if !workspace.activeMarkdownIsVisual { outline.follow(line: line ?? 1) } }
     }

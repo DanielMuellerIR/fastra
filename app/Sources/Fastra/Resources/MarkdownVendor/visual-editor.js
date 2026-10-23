@@ -95,6 +95,16 @@
   td.addRule('opaque',{filter:n=>n.hasAttribute('data-md-opaque'),replacement:(_,n)=>opaqueSources[n.dataset.mdOpaque] || ''});
   td.addRule('highlight', {filter:'mark', replacement:(c,n)=>n.parentElement?.closest('mark')?c:(c.trim()?'=='+c.trim()+'==':'')});
   td.addRule('strike', {filter:['del','s','strike'], replacement:c => '~~'+c+'~~'});
+  // Diese erlaubten HTML-Auszeichnungen haben kein Markdown-Gegenstück.
+  td.addRule('inlineHTML',{
+    filter:['u','ins','small','sub','sup','kbd','samp','var','q','cite','abbr','dfn'],
+    replacement:(content,node)=>{
+      const tag=node.nodeName.toLowerCase(),attributes=Array.from(node.attributes)
+        .filter(a=>['title','dir','lang'].includes(a.name))
+        .map(a=>' '+a.name+'="'+a.value.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'"').join('');
+      return '<'+tag+attributes+'>'+content+'</'+tag+'>';
+    }
+  });
   td.addRule('images', {filter:'img', replacement:(_,n) => {
     const src=n.getAttribute('data-md-src');
     const title=n.getAttribute('title');
@@ -426,7 +436,10 @@
     const template=document.createElement('template');template.innerHTML=html;
     template.content.querySelectorAll('script,style,iframe,object,embed,svg,math,link,meta').forEach(n=>n.remove());
     template.content.querySelectorAll('*').forEach(n=>{
+      const language=n.tagName==='CODE'?n.className.match(/(?:^|\s)language-([\w+-]+)(?=\s|$)/)?.[1]:null;
       for(const a of Array.from(n.attributes))if(!['href','src','alt','title','align','colspan','rowspan','start','type','checked'].includes(a.name))n.removeAttribute(a.name);
+      // Nur die Codesprache trägt Formatsemantik; fremde CSS-Klassen bleiben entfernt.
+      if(language)n.className='language-'+language;
       if(n.tagName==='IMG'){const src=n.getAttribute('src') || '';if(/^(https?:|[^:\/]+(?:\/|$))/i.test(src))n.dataset.mdSrc=src;else n.remove();}
       if(n.hasAttribute('href') && !/^(https?:|mailto:|#|[^:\/]+(?:\/|$))/i.test(n.getAttribute('href')))n.removeAttribute('href');
     });
@@ -508,7 +521,34 @@
       });
       const copySelection=e=>{
         const s=getSelection();if(fenced || !s.rangeCount || s.isCollapsed)return;
-        const rich=document.createElement('div');rich.append(s.getRangeAt(0).cloneContents());
+        const range=s.getRangeAt(0);if(!root.contains(range.commonAncestorContainer))return;
+        const rich=document.createElement('div');rich.append(range.cloneContents());
+        function preserveListContext(original,clone){
+          if(original.tagName==='OL'){
+            const items=Array.from(original.children),first=items.findIndex(n=>range.intersectsNode(n));
+            if(first>=0)clone.setAttribute('start',String(Number(original.getAttribute('start') || 1)+first));
+          }
+          const checkbox=original.tagName==='LI'?taskCheckbox(original):null;
+          if(checkbox && !taskCheckbox(clone))clone.prepend(checkbox.cloneNode(true),document.createTextNode(' '));
+        }
+        // Auch beim Start mitten in einer Liste und Ende im Folgeabsatz
+        // fehlen im ersten geklonten Eintrag Nummer bzw. Aufgaben-Kästchen.
+        const common=range.commonAncestorContainer;
+        const listSources=common.querySelectorAll?Array.from(common.querySelectorAll('ol,li')).filter(n=>range.intersectsNode(n)):[];
+        rich.querySelectorAll('ol,li').forEach((clone,index)=>preserveListContext(listSources[index],clone));
+        // cloneContents lässt den gemeinsamen Vorfahren weg: Eine Auswahl
+        // innerhalb von <strong> wäre sonst nur noch unformatierter Text.
+        // Zelltext bleibt inline; die übrigen Container erhalten Überschrift,
+        // Zitat, Listenebene und Codeblock, ohne Nachbartext mitzukopieren.
+        for(let node=range.commonAncestorContainer.nodeType===1?range.commonAncestorContainer:range.commonAncestorContainer.parentElement;
+            node && node!==root && !node.matches('td,th');node=node.parentElement){
+          const wrapper=node.cloneNode(false);
+          // Eine Teilauswahl in geschütztem HTML ist nicht dessen volle Quelle.
+          wrapper.removeAttribute('data-md-opaque');
+          wrapper.append(...rich.childNodes);
+          preserveListContext(node,wrapper);
+          rich.append(wrapper);
+        }
         const markdown=toMarkdown(rich.innerHTML);
         const html=rich.cloneNode(true);
         html.querySelectorAll('[data-md-edit-boundary]').forEach(n=>n.remove());

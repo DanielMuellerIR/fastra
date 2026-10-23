@@ -4,6 +4,62 @@ import Testing
 
 @Suite("Codegliederung und Navigation")
 struct CodeOutlineTests {
+    @Test("Umbenennen aktualisiert den synthetischen 4D-Methodeneintrag ohne Textänderung")
+    @MainActor func renamedMethodTitle() async throws {
+        let workspace = Workspace()
+        let tab = EditorTab(title: "a.4dm", path: "a.4dm", content: "#DECLARE($value : Text)\n")
+        workspace.tabs = [tab]; workspace.activeTabID = tab.id
+        let outline = workspace.documentOutline
+        outline.refresh(in: workspace)
+        try #require(await waitUntil { outline.ready })
+        #expect(outline.headings.map(\.title) == ["a.4dm"])
+        workspace.tabs[0].title = "b.4dm"
+        outline.refresh(in: workspace)
+        try #require(await waitUntil { outline.ready })
+        #expect(workspace.activeTab?.contentRevision == tab.contentRevision)
+        #expect(outline.headings.map(\.title) == ["b.4dm"])
+    }
+
+    @Test("Ein neuer Sprung verdrängt eine ausstehende Rückauflösung", arguments: ["range", "heading", "record"])
+    @MainActor func newerJumpInvalidatesPendingHistory(_ kind: String) async throws {
+        let workspace = Workspace()
+        let text = "Function zero()\nFunction a()\nFunction b()\nFunction c()\n"
+        let tab = EditorTab(title: "a.4dm", path: "a.4dm", content: text)
+        workspace.tabs = [tab]; workspace.activeTabID = tab.id
+        let outline = workspace.documentOutline
+        func range(_ name: String, in source: String) -> NSRange {
+            NSRange(location: (source as NSString).range(of: "Function \(name)").location, length: 0)
+        }
+        outline.jump(to: range("a", in: text), in: workspace, originRange: range("zero", in: text))
+        outline.jump(to: range("b", in: text), in: workspace, originRange: range("a", in: text))
+        workspace.tabs[0].content = "// Prefix\n" + text
+        outline.refresh(in: workspace)
+        try #require(await waitUntil { outline.ready })
+        let changed = workspace.tabs[0].content
+        let target = range("c", in: changed)
+        workspace.pendingEditorJump = .init(documentID: tab.documentID, startLine: nil, startColumn: nil,
+            endLine: nil, endColumn: nil, range: range("b", in: changed))
+        outline.move(-1, in: workspace)
+        // Bis zur nächsten Main-Actor-Freigabe kann die alte Completion
+        // noch nicht wirken; der neue Sprung kommt sicher zuvor an.
+        switch kind {
+        case "heading": outline.jump(to: try #require(outline.headings.last), in: workspace)
+        case "record":
+            let origin = outline.currentPoint(in: workspace, range: range("b", in: changed))
+            outline.recordJump(in: workspace, from: origin, range: target)
+            workspace.pendingEditorJump = .init(documentID: tab.documentID, startLine: nil, startColumn: nil,
+                endLine: nil, endColumn: nil, range: target)
+        default: outline.jump(to: target, in: workspace)
+        }
+        let expectedIndex = outline.history.index
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(outline.history.index == expectedIndex)
+        #expect(outline.history.points.last?.offset == target.location)
+        #expect(workspace.pendingEditorJump?.range?.location == target.location)
+        outline.move(-1, in: workspace)
+        #expect(await waitUntil { workspace.pendingEditorJump?.range?.location == range("b", in: changed).location })
+    }
+
     @Test("4D-Definitionen in Blockkommentaren sind keine Sprungziele")
     func commentedFunctionIsNotTarget() {
         let source = "/*\nFunction phantom()\n*/\nFunction actual()\n"

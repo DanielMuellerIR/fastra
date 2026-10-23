@@ -153,7 +153,7 @@ enum MarkdownReferences {
                         for attribute in attributes {
                             if ["href", "src"].contains(attribute.name) {
                                 add(attribute.value, line: tagLine, range: NSRange(location: offset, length: 0), image: attribute.name == "src")
-                            } else if attribute.name == "id" || (attribute.name == "name" && tagText.lowercased().hasPrefix("<a")) {
+                            } else if attribute.name == "id" || (attribute.name == "name" && tagText.range(of: #"(?i)^<a(?=[\s/>])"#, options: .regularExpression) != nil) {
                                 if result.anchorCount < maximumAnchors {
                                     result.anchors[attribute.value, default: 0] += 1; result.anchorCount += 1
                                 } else { result.incomplete = true; result.anchorsComplete = false }
@@ -179,7 +179,10 @@ enum MarkdownReferences {
 private extension MarkdownReferences.Parsed {
     func addingHeadings(_ source: String, maximum: Int, isCancelled: () -> Bool) -> Self {
         var result = self
-        for heading in MarkdownOutline.headings(in: source, maximumHeadings: maximum + 1, isCancelled: isCancelled) {
+        let headings = MarkdownOutline.headings(in: source, maximumHeadings: maximum + 1, isCancelled: isCancelled)
+        // Auch Überschriften ohne Slug verbrauchen das Analysebudget.
+        if headings.count > maximum { result.incomplete = true; result.anchorsComplete = false }
+        for heading in headings.prefix(maximum) {
             let anchor = HelpContent.anchor(forHeading: heading.title)
             if !anchor.isEmpty {
                 guard result.anchorCount < maximum else { result.incomplete = true; result.anchorsComplete = false; break }

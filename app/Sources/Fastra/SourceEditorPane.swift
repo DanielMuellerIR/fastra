@@ -160,12 +160,18 @@ struct SourceEditorPane: View {
         }
         // Cursor-Position aus dem Editor-State in den Workspace spiegeln,
         // damit der Footer (StatusBarView) Zeile/Spalte zeigen kann.
-        .onChange(of: panes.activePane) { _, active in
-            guard active == pane else { return }
+        .onChange(of: isActive) { _, active in
+            guard active else { fourDSignatureHelp.hide(); return }
             EditorView.updateSearchEmphasis(in: workspace)
             EditorView.configureMarkdownDrop(in: workspace)
             updateFooterCursor(from: memory.editorState.cursorPositions ?? [])
             scheduleStats(for: memory.editorState.cursorPositions ?? [])
+            fourDSignatureHelp.update(
+                workspace: workspace,
+                textView: panes.view(for: pane, documentID: workspace.activeDocumentID),
+                cursorPositions: memory.editorState.cursorPositions ?? [],
+                isFourDActive: activeCustomLanguage?.id == CustomLanguageRegistry.fourD.id
+            )
         }
         .onChange(of: memory.editorState.cursorPositions) { _, positions in
             let list = positions ?? []
@@ -178,6 +184,7 @@ struct SourceEditorPane: View {
             // Aufrufs (oder ohne 4D) blendet sie sich selbst aus.
             fourDSignatureHelp.update(
                 workspace: workspace,
+                textView: panes.view(for: pane, documentID: workspace.activeDocumentID),
                 cursorPositions: list,
                 isFourDActive: activeCustomLanguage?.id
                     == CustomLanguageRegistry.fourD.id

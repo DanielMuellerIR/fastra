@@ -579,7 +579,8 @@ zählen nicht als Verweise.
 Buchstaben/Ziffern behalten, andere Zeichen als zusammengefasste Bindestriche.
 Setext-Überschriften und Inline-Auszeichnungen zählen. Gleiche Überschriften oder
 HTML-IDs sind **mehrdeutig**; automatisch nummerierte Anker werden nicht behauptet.
-Gequotete HTML-`href`/`src` und `id`/`name` werden geprüft. Ungequotete Attribute,
+Gequotete HTML-`href`/`src` und `id` werden geprüft; `name` zählt nur an einem
+`a`-Element als Sprungziel. Ungequotete Attribute,
 CSS, `srcset`, Skripte, Stile und Anker fremder Dateiformate bleiben sichtbar ungeprüft.
 
 Im Projektbereich zählen nur Dateien der geprüften Wurzel; eine äußere aktive
@@ -807,6 +808,11 @@ fügt Tab ein Tabulatorzeichen ein. **Markdown → Aufgabenliste** oder der
 Kästchen-Button in der Format-Toolbar erstellt ankreuzbare Aufgaben. Ein Klick
 auf ein Kästchen ändert seinen Zustand; ⌘Z macht das rückgängig.
 Absichtlich leere Listenpunkte bleiben beim Kopieren und Einfügen erhalten.
+Auch ausgewählte Textteile behalten beim Kopieren und Ausschneiden ihre
+Auszeichnungen und Links sowie den Überschriften-, Zitat-, Listen- oder
+Codeblock-Kontext. Unterstreichung und Hoch-/Tiefstellung bleiben als erlaubtes
+HTML erhalten. Benachbarter Text wird nicht mitkopiert; ausgewählter Zelltext
+lässt sich mit seiner Inline-Formatierung ohne eine zusätzliche Tabelle einsetzen.
 Ausschneiden (⌘X) nimmt auch die Quellen geschützter Formeln und Diagramme mit;
 ⌘Z stellt die ausgeschnittene Auswahl wieder her. Kopierte und ausgeschnittene
 Bilder besitzen eigene Bilddaten und lassen sich auch nach dem Schließen der
@@ -1174,7 +1180,7 @@ dazwischen. Fastra liest dafür direkt die `.4dm`-Datei der Methode: sowohl
 Rückgabe). Für eingebaute 4D-Befehle erscheint die Signatur aus der
 Befehlsliste. Verschachtelte Aufrufe folgen dem Cursor: Innerhalb der
 Klammern der inneren Methode gilt deren Signatur, dahinter wieder die der
-äußeren.
+äußeren. In der geteilten Quelltextansicht folgt die Hilfe dem aktiven Ausschnitt.
 
 **Komponenten:** Auch geteilte Methoden (`shared`) der Komponenten unter
 `Components/` kennt Fastra — aus entpackten `.4dbase`-Ordnern ebenso wie

@@ -1404,6 +1404,167 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { workspace.activeTab?.content.contains("完成 weiter") == true })
     }
 
+    @Test("Textauswahlen bewahren ihre umgebenden Markdown-Stile beim Kopieren und Einfügen", arguments: [
+        ["**Anfang Ziél😀 Ende**", "strong", "strong"],
+        ["*Anfang Ziél😀 Ende*", "em", "em"],
+        ["~~Anfang Ziél😀 Ende~~", "del", "del"],
+        ["==Anfang Ziél😀 Ende==", "mark", "mark"],
+        ["`Anfang Ziél😀 Ende`", "code", "code"],
+        ["[Anfang Ziél😀 Ende](https://example.com/ziel)", "a", "a[href='https://example.com/ziel']"],
+        ["***Anfang Ziél😀 Ende***", "em", "em strong, strong em"],
+        ["**Anfang *Ziél😀* Ende**", "em", "strong em, em strong"],
+        ["## Anfang Ziél😀 Ende", "h2", "h2"],
+        ["> Anfang Ziél😀 Ende", "p", "blockquote"],
+        ["- Anfang Ziél😀 Ende", "li", "ul li"],
+        ["7. Anfang Ziél😀 Ende", "li", "ol[start='7'] li"],
+        ["7. Vorher\n8. Anfang Ziél😀 Ende\n9. Nachher", "li:nth-child(2)", "ol[start='8'] li"],
+        ["- Außen\n    - Anfang Ziél😀 Ende", "li li", "ul li ul li"],
+        ["- [x] Anfang Ziél😀 Ende", "li", "ul li input:checked"],
+        ["- [ ] Anfang Ziél😀 Ende", "li", "ul li input:not(:checked)"],
+        ["| Kopf |\n| --- |\n| **Anfang Ziél😀 Ende** |", "td strong", "strong"],
+        ["```swift\n// Anfang Ziél😀 Ende\n```", "code", "pre code.language-swift"],
+        ["<u>Anfang Ziél😀 Ende</u>", "u", "u"],
+        ["Anfang <sub>Ziél😀</sub> Ende", "sub", "sub"],
+        ["Anfang <sup>Ziél😀</sup> Ende", "sup", "sup"],
+        ["Anfang <kbd>Ziél😀</kbd> Ende", "kbd", "kbd"],
+        ["Anfang <ins>Ziél😀</ins> Ende", "ins", "ins"],
+        ["Anfang <small>Ziél😀</small> Ende", "small", "small"],
+        ["Anfang <samp>Ziél😀</samp> Ende", "samp", "samp"],
+        ["Anfang <var>Ziél😀</var> Ende", "var", "var"],
+        ["Anfang <q>Ziél😀</q> Ende", "q", "q"],
+        ["Anfang <cite>Ziél😀</cite> Ende", "cite", "cite"],
+        ["Anfang <abbr title=\"Erklärung\">Ziél😀</abbr> Ende", "abbr", "abbr[title='Erklärung']"],
+        ["Anfang <dfn>Ziél😀</dfn> Ende", "dfn", "dfn"]
+    ])
+    @MainActor
+    func copyPasteSelectionStyles(_ fixture: [String]) async throws {
+        let source = fixture[0] + "\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.callAsyncJavaScript("""
+            const walker=document.createTreeWalker(document.querySelector('#fastra-visual '+selector),NodeFilter.SHOW_TEXT);
+            let text;while(walker.nextNode()){if(walker.currentNode.data.includes('Ziél😀')){text=walker.currentNode;break;}}
+            const range=document.createRange(),start=text.data.indexOf('Ziél😀');
+            range.setStart(text,start);range.setEnd(text,start+'Ziél😀'.length);
+            getSelection().removeAllRanges();getSelection().addRange(range);
+            document.getElementById('fastra-visual').dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));
+            """, arguments: ["selector": fixture[1]], in: nil, contentWorld: .page)
+        try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        let payload = try #require(coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType))
+        let copied = try #require(try JSONSerialization.jsonObject(with: payload) as? [String: String])["markdown"] ?? ""
+        #expect(workspace.activeTab?.content == source)
+        #expect(coordinator.pasteboard.string(forType: .string) == "Ziél😀")
+        let html = try #require(coordinator.pasteboard.string(forType: .html))
+        #expect(try await web.callAsyncJavaScript("return !!new DOMParser().parseFromString(html,'text/html').querySelector(selector);",
+            arguments: ["html": html, "selector": fixture[2]], in: nil, contentWorld: .page) as? Bool == true)
+        let rtf = try #require(coordinator.pasteboard.data(forType: .rtf))
+        let attributed = try NSAttributedString(data: rtf, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil)
+        let offset = (attributed.string as NSString).range(of: "Ziél😀").location
+        try #require(offset != NSNotFound)
+        let font = attributed.attribute(.font, at: offset, effectiveRange: nil) as? NSFont
+        if fixture[2] == "strong" { #expect(font.map { NSFontManager.shared.traits(of: $0).contains(.boldFontMask) } == true) }
+        if fixture[2] == "em" { #expect(font.map { NSFontManager.shared.traits(of: $0).contains(.italicFontMask) } == true) }
+        if fixture[2] == "u" { #expect((attributed.attribute(.underlineStyle, at: offset, effectiveRange: nil) as? Int ?? 0) != 0) }
+        if fixture[2] == "del" { #expect((attributed.attribute(.strikethroughStyle, at: offset, effectiveRange: nil) as? Int ?? 0) != 0) }
+        if fixture[2] == "mark" { #expect(attributed.attribute(.backgroundColor, at: offset, effectiveRange: nil) != nil) }
+        let (target, receiver, targetWeb, targetWindow) = try await editor("Ziel\n")
+        defer { targetWeb.configuration.userContentController.removeAllScriptMessageHandlers(); targetWindow.close(); withExtendedLifetime(receiver) {} }
+        receiver.pasteboard = coordinator.pasteboard
+        _ = try await targetWeb.evaluateJavaScript("{const r=document.createRange();r.selectNodeContents(document.getElementById('fastra-visual'));getSelection().removeAllRanges();getSelection().addRange(r);}")
+        #expect(receiver.pasteImages())
+        try #require(await waitUntil { target.activeTab?.content != "Ziel\n" })
+        let matched = try await targetWeb.callAsyncJavaScript("return !!document.querySelector('#fastra-visual '+selector);",
+            arguments: ["selector": fixture[2]], in: nil, contentWorld: .page) as? Bool
+        #expect(matched == true, Comment(rawValue: "Quelle: " + source + " Kopie: " + copied + " Ziel: " + target.activeTab!.content))
+        #expect(!target.activeTab!.content.contains("Anfang"))
+        #expect(!target.activeTab!.content.contains("Ende"))
+    }
+
+    @Test("Blockübergreifende Teilauswahl behält Listennummer und Aufgabenstatus", arguments: [false, true])
+    @MainActor
+    func copyPartialListAcrossBlocks(_ task: Bool) async throws {
+        let source = (task ? "- [ ] Auslassen\n- [x] Anfang **Ziél😀** Ende\n- [ ] Danach" : "7. Auslassen\n8. Anfang **Ziél😀** Ende\n9. Danach") + "\n\nSchluss\n"
+        let (_, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("""
+            {const root=document.getElementById('fastra-visual'),r=document.createRange();
+            r.setStart(root.querySelector('li:nth-child(2) strong').firstChild,0);
+            r.setEnd(root.lastElementChild.querySelector('p').firstChild,7);
+            getSelection().removeAllRanges();getSelection().addRange(r);root.dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));}
+            """)
+        try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        let data = try #require(coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType))
+        let copied = try #require(try JSONSerialization.jsonObject(with: data) as? [String: String])["markdown"] ?? ""
+        #expect(copied.hasPrefix(task ? "- [x] " : "8. ") && copied.contains("**Ziél😀**"), Comment(rawValue: copied))
+        #expect(!copied.contains("Auslassen"))
+        #expect(!copied.contains("Anfang"))
+        #expect(copied.contains("Schluss"))
+    }
+
+    @Test("Gemischte Clipboard-Inhalte behalten alle Auszeichnungen nach Einfügen, Undo und erneutem Öffnen", arguments: [[false, false], [true, false], [false, true], [true, true]])
+    @MainActor
+    func copyPasteDocumentStyles(_ scenario: [Bool]) async throws {
+        let cut = scenario[0], htmlOnly = scenario[1]
+        let source = """
+        ## **Titel** mit *Kursiv*
+
+        **Fett** *Kursiv* ***Beides*** ~~Gestrichen~~ ==Markiert== `Code`
+        [Verweis](https://example.com/ziel "Titel") <u>Unterstrichen</u> <sub>Tief</sub> <sup>Hoch</sup> <kbd>Taste</kbd>
+
+        > **Zitat** mit *Stil*
+
+        7. **Sieben**
+        8. *Acht*
+            - ==Verschachtelt==
+
+        - [x] **Erledigt**
+        - [ ] *Offen*
+
+        | Links | Rechts |
+        | :--- | ---: |
+        | **Fett** | <u>Unterstrichen</u> |
+
+        ```swift
+        // Code mit Leerzeichen und 😀
+        let value = 7
+        ```
+        """ + "\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let snapshot = """
+            Array.from(document.querySelectorAll('#fastra-visual h2,#fastra-visual strong,#fastra-visual em,#fastra-visual del,#fastra-visual mark,#fastra-visual a,#fastra-visual u,#fastra-visual sub,#fastra-visual sup,#fastra-visual kbd,#fastra-visual blockquote,#fastra-visual ol,#fastra-visual ul,#fastra-visual li,#fastra-visual input,#fastra-visual table,#fastra-visual th,#fastra-visual td,#fastra-visual code'),n=>[n.tagName,n.textContent.trim(),n.getAttribute('href'),n.getAttribute('title'),n.getAttribute('align'),n.getAttribute('start'),n.tagName==='INPUT'?n.checked:null,n.tagName==='CODE'?Array.from(n.classList).find(c=>c.startsWith('language-')) || '':null])
+            """
+        let expected = try #require(try await web.evaluateJavaScript("JSON.stringify(" + snapshot + ")") as? String)
+        _ = try await web.evaluateJavaScript("{const root=document.getElementById('fastra-visual'),r=document.createRange();r.selectNodeContents(root);getSelection().removeAllRanges();getSelection().addRange(r);root.dispatchEvent(new Event('\(cut ? "cut" : "copy")',{bubbles:true,cancelable:true}));}")
+        try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        if cut {
+            try #require(await waitUntil { workspace.activeTab?.content != source })
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.content == source })
+        }
+        let (target, receiver, targetWeb, targetWindow) = try await editor("Ziel\n")
+        defer { targetWeb.configuration.userContentController.removeAllScriptMessageHandlers(); targetWindow.close(); withExtendedLifetime(receiver) {} }
+        receiver.pasteboard = coordinator.pasteboard
+        _ = try await targetWeb.evaluateJavaScript("{const r=document.createRange();r.selectNodeContents(document.getElementById('fastra-visual'));getSelection().removeAllRanges();getSelection().addRange(r);}")
+        if htmlOnly {
+            _ = try await targetWeb.callAsyncJavaScript("""
+                const event=new Event('paste',{bubbles:true,cancelable:true});
+                Object.defineProperty(event,'clipboardData',{value:{files:[],getData:type=>type==='text/html'?html:type==='text/plain'?plain:''}});
+                document.getElementById('fastra-visual').dispatchEvent(event);
+                """, arguments: ["html": coordinator.pasteboard.string(forType: .html) ?? "", "plain": coordinator.pasteboard.string(forType: .string) ?? ""], in: nil, contentWorld: .page)
+        } else { #expect(receiver.pasteImages()) }
+        try #require(await waitUntil { target.activeTab?.content != "Ziel\n" })
+        let pasted = target.activeTab!.content
+        #expect(try await targetWeb.evaluateJavaScript("JSON.stringify(" + snapshot + ")") as? String == expected, Comment(rawValue: pasted))
+        _ = try await targetWeb.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { target.activeTab?.content == "Ziel\n" })
+        _ = try await targetWeb.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { target.activeTab?.content == pasted })
+        receiver.load(pasted, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
+        try #require(await waitUntil { receiver.ready })
+        #expect(try await targetWeb.evaluateJavaScript("JSON.stringify(" + snapshot + ")") as? String == expected, Comment(rawValue: pasted))
+    }
+
     @Test("Kopieren und Einfügen bewahrt Bilder, Formeln und Kommentare in einer zweiten Datei")
     @MainActor
     func copyPasteRichMarkdown() async throws {
@@ -1414,7 +1575,7 @@ struct MarkdownVisualTests {
         try FileManager.default.createDirectory(at: firstURL.deletingLastPathComponent().appendingPathComponent("images"), withIntermediateDirectories: true)
         let image = firstURL.deletingLastPathComponent().appendingPathComponent("images/long.png")
         try Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!.write(to: image)
-        let source = "**Bild** ![Alt](images/long.png) $x$ <!-- erhalten -->\n"
+        let source = "<u>**Bild** ![Alt](images/long.png) $x$ <!-- erhalten --></u>\n"
         let (_, first, firstWeb, firstWindow) = try await editor(source, documentURL: firstURL)
         defer { firstWeb.configuration.userContentController.removeAllScriptMessageHandlers(); firstWindow.close() }
         _ = try await firstWeb.evaluateJavaScript("""
@@ -1437,6 +1598,9 @@ struct MarkdownVisualTests {
         try #require(pasted)
         #expect(secondWorkspace.activeTab?.content.contains("$x$") == true)
         #expect(secondWorkspace.activeTab?.content.contains("<!-- erhalten -->") == true)
+        #expect(secondWorkspace.activeTab?.content.contains("<u>") == true)
+        #expect(secondWorkspace.activeTab?.content.contains("data-md-") == false)
+        #expect(secondWorkspace.activeTab?.content.contains("fastra-preview:") == false)
         #expect(try Data(contentsOf: secondURL.deletingLastPathComponent().appendingPathComponent("images/1.png")) == Data(contentsOf: image))
     }
 
