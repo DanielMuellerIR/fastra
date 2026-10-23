@@ -1561,7 +1561,8 @@ struct MarkdownVisualTests {
         _ = try await targetWeb.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
         try #require(await waitUntil { target.activeTab?.content == pasted })
         receiver.load(pasted, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
-        try #require(await waitUntil { receiver.ready })
+        // WebKits erneuter Start braucht dieselbe Frist wie das erste Öffnen.
+        try #require(await waitUntil(timeout: 12) { receiver.ready })
         #expect(try await targetWeb.evaluateJavaScript("JSON.stringify(" + snapshot + ")") as? String == expected, Comment(rawValue: pasted))
     }
 
