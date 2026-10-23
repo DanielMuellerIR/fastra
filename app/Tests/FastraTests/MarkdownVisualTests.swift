@@ -820,6 +820,29 @@ struct MarkdownVisualTests {
         withExtendedLifetime(coordinator) {}
     }
 
+    @Test("Geschützte Leerzeichen an Stilgrenzen überleben erneutes Rendern", arguments: ["strong", "em", "mark", "del"])
+    @MainActor
+    func styledNonbreakingSpaces(_ tag: String) async throws {
+        let (workspace, coordinator, web, window) = try await editor("Anfang\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let html = "<p>Vor<\(tag)>&nbsp;Ziél😀&nbsp;</\(tag)>danach</p>"
+        _ = try await web.callAsyncJavaScript("""
+            const root=document.getElementById('fastra-visual'),r=document.createRange();
+            r.selectNodeContents(root);getSelection().removeAllRanges();getSelection().addRange(r);
+            document.execCommand('insertHTML',false,html);fastraVisual.flush();
+            """, arguments: ["html": html], in: nil, contentWorld: .page)
+        try #require(await waitUntil { workspace.activeTab?.content != "Anfang\n" })
+        let source = try #require(workspace.activeTab?.content)
+        for cycle in 0..<3 {
+            coordinator.load(source, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload-\(cycle)")
+            try #require(await waitUntil(timeout: 12) { coordinator.ready })
+            let text = try await web.callAsyncJavaScript("return document.querySelector('#fastra-visual '+tag)?.textContent || '';",
+                arguments: ["tag": tag], in: nil, contentWorld: .page) as? String
+            #expect(text == "\u{00a0}Ziél😀\u{00a0}", Comment(rawValue: source))
+            #expect(try await web.evaluateJavaScript("document.querySelector('#fastra-visual').textContent.trim()") as? String == "Vor\u{00a0}Ziél😀\u{00a0}danach", Comment(rawValue: source))
+        }
+    }
+
     @Test("Formatieren, Tippen und Undo arbeiten ohne Quelltext; andere Blöcke bleiben exakt")
     @MainActor
     func editingAndUndo() async throws {

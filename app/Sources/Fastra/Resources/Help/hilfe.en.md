@@ -17,6 +17,21 @@ fallback.
 menu offers every bundled syntax language plus CSV and XML and changes the
 extension when you choose one. You can still type any custom extension directly
 in the name field.
+When the sidebar shows the folder of the only open file, saving it under a new
+path also switches the sidebar to the new document folder.
+
+When you return to Fastra, externally renamed files and project folders on the
+same volume are located by their identity if its filesystem supports persistent
+file IDs, for example APFS and HFS+. ExFAT does not use automatic relocation.
+Names, paths and the sidebar update
+while unsaved text is preserved. Deleted files and targets that cannot be
+identified reliably are not rebound automatically. Replaced or externally edited
+contents remain protected by the usual reload and save confirmations.
+A multi-file preview keeps its original paths. If its files or folders are
+renamed, run the search again before applying replacements.
+Support for safe atomic file replacement is checked separately. If it is
+unavailable, Fastra explains why the operation was stopped and preserves the
+affected original file; it does not use an unsafe write fallback.
 
 Drag a saved document from its tab into Finder or another app. If it has
 unsaved changes, the drag passes on the **saved version**, as explained by the
@@ -770,6 +785,8 @@ Selected text also retains its formatting and links when copied or cut,
 including its heading, quote, list or code-block context. Underline, superscript
 and subscript remain as permitted HTML. Neighboring text is excluded; selected
 cell text can be pasted with its inline formatting without an additional table.
+Formatting containing nonbreaking spaces may appear as inline HTML in the source
+so that its appearance survives saving and switching editing modes.
 Cut (⌘X) also carries the sources of protected formulas and diagrams;
 ⌘Z restores the cut selection. Copied and cut images carry their own image
 data and can be pasted after closing the source. A pending copy export also

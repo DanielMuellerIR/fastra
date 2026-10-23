@@ -339,6 +339,20 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         invalidateForSourceReplacement()
     }
 
+    func relocateDocument(from previous: URL, to url: URL) {
+        guard documentURL == previous else { return }
+        documentURL = url
+        generation &+= 1
+        let oldDirectory = previous.deletingLastPathComponent().standardizedFileURL
+        let newDirectory = url.deletingLastPathComponent().standardizedFileURL
+        guard oldDirectory != newDirectory else { return }
+        let prefix = oldDirectory.path + "/"
+        assets.setImageURLs(assets.imageURLSnapshot().mapValues { image in
+            guard image.standardizedFileURL.path.hasPrefix(prefix) else { return image }
+            return newDirectory.appendingPathComponent(String(image.standardizedFileURL.path.dropFirst(prefix.count)))
+        })
+    }
+
     func documentSaved(at url: URL) {
         guard ready, documentURL == url else { return }
         let transactions = Array(imageTransactions.values)

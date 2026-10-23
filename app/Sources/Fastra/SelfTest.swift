@@ -17433,7 +17433,10 @@ enum SelfTest {
                     // (c) Ungespeicherter Tab bietet nur die Text-Ansicht — der
                     // Umschalter muss aus der Fußzeile verschwinden.
                     Task { @MainActor in
-                        do { try await verifyPathCopyMenus(ws) }
+                        do {
+                            try await verifyPathCopyMenus(ws)
+                            try await verifyExternalFileLocations(ws, base: base)
+                        }
                         catch {
                             try? FileManager.default.removeItem(at: base)
                             finish(false, "Finder-Kontextmenüs: \(error.localizedDescription)")
@@ -17442,6 +17445,56 @@ enum SelfTest {
                         pollViewModePickerGone(base: base)
                     }
                 })
+    }
+
+    @MainActor
+    private static func verifyExternalFileLocations(_ workspace: Workspace, base: URL) async throws {
+        let base = base.canonicalFileURL
+        func require(_ value: Bool, _ message: String) throws {
+            if !value { throw NSError(domain: "FileLocations", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+        }
+        func wait(_ condition: () -> Bool) async throws {
+            for _ in 0..<200 {
+                if condition() { return }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            try require(condition(), "Pfad oder Ansicht wurde nicht aktualisiert")
+        }
+        guard let original = workspace.activeTab?.url,
+              let window = CommandTargeting.registeredWindow(for: workspace), let root = window.contentView else {
+            throw NSError(domain: "FileLocations", code: 2)
+        }
+        try await wait { workspace.projectLocationReference != nil }
+        workspace.activeTabContent.wrappedValue = "KOPFTEST – ungespeichert"
+        let renamed = original.deletingLastPathComponent().appendingPathComponent("Umbenannt.txt")
+        try FileManager.default.moveItem(at: original, to: renamed)
+        workspace.checkExternalChanges()
+        try await wait { workspace.activeTab?.url == renamed && markerViewExists(id: "fileTreeRow-Umbenannt.txt-voll", in: root) }
+        try require(workspace.activeTab?.content == "KOPFTEST – ungespeichert", "Ungespeicherter Inhalt verloren")
+        try await verifyPathCopyMenus(workspace)
+        let newDirectory = base.appendingPathComponent("Neuer Ordner").canonicalFileURL
+        try FileManager.default.moveItem(at: renamed.deletingLastPathComponent(), to: newDirectory)
+        workspace.checkExternalChanges()
+        try await wait { workspace.projectURL?.path == newDirectory.path && workspace.activeTab?.url?.path == newDirectory.appendingPathComponent("Umbenannt.txt").path }
+        try await wait { markerViewExists(id: "fileTreeRow-Umbenannt.txt-voll", in: root) }
+        try await verifyPathCopyMenus(workspace)
+        let target = base.appendingPathComponent("nachbar/Gespeichert.txt").canonicalFileURL
+        var saved: Bool?
+        workspace.saveTabAs(id: workspace.activeTab!.id, to: target, expectedTargetState: .absent, isMarkdown: false) { saved = $0 }
+        try await wait { saved == true && workspace.projectURL == target.deletingLastPathComponent() }
+        try await wait { markerViewExists(id: "fileTreeRow-Gespeichert.txt-voll", in: root) }
+        try await verifyPathCopyMenus(workspace)
+        try require(try String(contentsOf: target, encoding: .utf8) == "KOPFTEST – ungespeichert", "Gespeicherter Inhalt weicht ab")
+        if let directory = ProcessInfo.processInfo.environment["FASTRA_FILE_LOCATIONS_DIR"] {
+            let output = URL(fileURLWithPath: directory).appendingPathComponent("file-locations.png")
+            try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                typeScrollCapture(window: window) { snapshot in
+                    try? snapshot?.data.write(to: output)
+                    continuation.resume()
+                }
+            }
+        }
     }
 
     private static func pollViewModePickerGone(base: URL) {
@@ -27671,6 +27724,51 @@ enum SelfTest {
                 try await Task.sleep(nanoseconds: 500_000_000)
                 await capture("source-after-switch")
                 try require(workspaceDefaults().bool(forKey: MarkdownEditingMode.defaultsKey), "Dokumentwechsel verändert den Standard")
+                stage = "Textmarker und geschützte Leerzeichen nach Moduswechsel"
+                let spacesDirectory = base.canonicalFileURL.appendingPathComponent("Stile")
+                try FileManager.default.createDirectory(at: spacesDirectory, withIntermediateDirectories: true)
+                let spacesFile = spacesDirectory.appendingPathComponent("Leerzeichen.md")
+                try "Stilprüfung\n".write(to: spacesFile, atomically: true, encoding: .utf8)
+                loaded = false
+                ws.loadFile(at: spacesFile) { loaded = $0 }
+                try await wait { loaded && ws.visualMarkdownEditor?.ready == true && ws.visualMarkdownEditor?.tabID == ws.activeTabID }
+                guard let spacesEditor = ws.visualMarkdownEditor, let spacesWeb = spacesEditor.web else { throw NSError(domain: "fixture", code: 8) }
+                _ = try await spacesWeb.evaluateJavaScript("""
+                    {const r=document.createRange();r.selectNodeContents(document.getElementById('fastra-visual'));
+                    getSelection().removeAllRanges();getSelection().addRange(r);
+                    document.execCommand('insertHTML',false,'<p>Vor<strong>&nbsp;Fett&nbsp;</strong>danach</p><p>Vor<mark>&nbsp;Textmarker&nbsp;</mark>danach</p>');fastraVisual.flush();}
+                    """)
+                try await wait { ws.activeTab?.content.contains("Textmarker") == true }
+                for _ in 0..<3 {
+                    ws.toggleMarkdownEditingMode()
+                    try await wait { !ws.activeMarkdownIsVisual && ws.visualMarkdownEditor == nil
+                        && window.contentView.flatMap { editorTextView(in: $0) as? TextView }?.string == ws.activeTab?.content }
+                    ws.toggleMarkdownEditingMode()
+                    try await wait { ws.visualMarkdownEditor?.ready == true && ws.visualMarkdownEditor?.tabID == ws.activeTabID }
+                    guard let current = ws.visualMarkdownEditor?.web else { throw NSError(domain: "fixture", code: 9) }
+                    try require(try await current.evaluateJavaScript("document.querySelector('#fastra-visual strong')?.textContent === '\\u00a0Fett\\u00a0' && document.querySelector('#fastra-visual mark')?.textContent === '\\u00a0Textmarker\\u00a0'") as? Bool == true,
+                                "Moduswechsel verliert Textmarker oder Fettung an geschützten Leerzeichen")
+                }
+                await capture("visual-styled-spaces")
+                stage = "WYSIWYG-Undo nach Datei- und Ordnerumbenennung"
+                guard let renameWeb = ws.visualMarkdownEditor?.web else { throw NSError(domain: "fixture", code: 10) }
+                _ = try await renameWeb.evaluateJavaScript("""
+                    {const r=document.createRange();r.selectNodeContents(document.getElementById('fastra-visual'));r.collapse(false);
+                    getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('insertText',false,' Zusatz');fastraVisual.flush();}
+                    """)
+                try await wait { ws.activeTab?.content.contains("Zusatz") == true }
+                let renamedFile = spacesDirectory.appendingPathComponent("Umbenannt.md")
+                try FileManager.default.moveItem(at: spacesFile, to: renamedFile)
+                ws.checkExternalChanges()
+                try await wait { ws.activeTab?.url?.path == renamedFile.path }
+                let renamedDirectory = base.canonicalFileURL.appendingPathComponent("Neue Stile")
+                try FileManager.default.moveItem(at: spacesDirectory, to: renamedDirectory)
+                ws.checkExternalChanges()
+                try await wait { ws.activeTab?.url?.path == renamedDirectory.appendingPathComponent("Umbenannt.md").path }
+                _ = try await renameWeb.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                try await wait { ws.activeTab?.content.contains("Zusatz") == false }
+                try require(try await renameWeb.evaluateJavaScript("document.querySelector('#fastra-visual strong')?.textContent === '\\u00a0Fett\\u00a0' && document.querySelector('#fastra-visual mark')?.textContent === '\\u00a0Textmarker\\u00a0'") as? Bool == true,
+                            "Umbenennung verliert Stile oder den WYSIWYG-Verlauf")
                 try? FileManager.default.removeItem(at: base)
                 window.orderOut(nil)
                 NSApp.appearance = originalAppearance

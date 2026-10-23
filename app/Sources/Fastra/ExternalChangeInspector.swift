@@ -21,8 +21,9 @@ struct ExternalFileObservation: Equatable, Hashable, Sendable {
     let modificationNanoseconds: Int64
     let statusChangeSeconds: Int64
     let statusChangeNanoseconds: Int64
+    let locationReference: FileLocationReference?
 
-    init(fileStat info: stat) {
+    init(fileStat info: stat, descriptor: Int32? = nil) {
         device = UInt64(info.st_dev)
         inode = UInt64(info.st_ino)
         byteCount = Int64(info.st_size)
@@ -30,12 +31,13 @@ struct ExternalFileObservation: Equatable, Hashable, Sendable {
         modificationNanoseconds = Int64(info.st_mtimespec.tv_nsec)
         statusChangeSeconds = Int64(info.st_ctimespec.tv_sec)
         statusChangeNanoseconds = Int64(info.st_ctimespec.tv_nsec)
+        locationReference = descriptor.flatMap { FileLocationReference(descriptor: $0, fileStat: info) }
     }
 
     init?(url: URL) {
         guard let opened = try? FileSnapshot.openRegularFile(at: url) else { return nil }
         defer { Darwin.close(opened.descriptor) }
-        self.init(fileStat: opened.stat)
+        self.init(fileStat: opened.stat, descriptor: opened.descriptor)
     }
 
     /// Prüft, ob Beobachtung und Inhalts-Snapshot vom selben geöffneten
@@ -71,12 +73,15 @@ final class ExternalChangeInspector: @unchecked Sendable {
         /// dann zur Rückfrage, deren „Behalten" einen Snapshot der
         /// akzeptierten Fremdfassung braucht — auch bei anderer Dateigröße.
         let isDirty: Bool
+        var locationReference: FileLocationReference? = nil
     }
 
     struct Inspection: Sendable {
         let tabID: UUID
         let documentID: UUID
         let url: URL
+        let resolvedURL: URL
+        let originalLocationReference: FileLocationReference?
         let observation: ExternalFileObservation?
         let stableSnapshot: FileSnapshot?
         /// Dirty-Zustand, mit dem die Prüfung gestartet wurde. Ändert er
@@ -124,7 +129,11 @@ final class ExternalChangeInspector: @unchecked Sendable {
 
         let snapshotReader = snapshotReader
         Task.detached(priority: .utility) { [weak self] in
-            let before = ExternalFileObservation(url: request.url)
+            // Ein vorhandener Pfad gewinnt: Safe-Save ersetzt seine Inode.
+            // Nur ein wirklich fehlender Pfad darf der alten Identität folgen.
+            let resolvedURL = FileLocationReference.isMissing(request.url)
+                ? (request.locationReference?.resolvedURL() ?? request.url) : request.url
+            let before = ExternalFileObservation(url: resolvedURL)
             // Die Bytes lohnen sich nur bei einem veränderten Fingerabdruck,
             // und auch dann nur, wenn (a) die Größe gleich blieb — erst der
             // Hash entscheidet dann über echt/unecht — oder (b) der Tab
@@ -136,17 +145,19 @@ final class ExternalChangeInspector: @unchecked Sendable {
             if let current = before, current != request.knownObservation,
                let observedByteCount = request.observedByteCount,
                Int64(observedByteCount) == current.byteCount || request.isDirty {
-                snapshot = snapshotReader(request.url)
+                snapshot = snapshotReader(resolvedURL)
                 // Vorher/Nachher-Fingerabdruck ergänzt die bereits interne
                 // Konsistenzprüfung von FileSnapshot um die kleine Lücke
                 // zwischen dessen Rückgabe und unserer Beobachtung.
-                after = ExternalFileObservation(url: request.url)
+                after = ExternalFileObservation(url: resolvedURL)
             }
             let inspection = Inspection(
                 tabID: request.tabID,
                 documentID: request.documentID,
                 url: request.url,
-                observation: after,
+                resolvedURL: resolvedURL,
+                originalLocationReference: request.locationReference,
+                observation: resolvedURL == request.url || after?.locationReference == request.locationReference ? after : nil,
                 stableSnapshot: snapshot.flatMap { candidate in
                     before == after && after?.matches(snapshot: candidate) == true
                         ? candidate : nil

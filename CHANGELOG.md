@@ -7,6 +7,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.156.0] — 2026-10-23
+
+### Hinzugefügt
+
+- Geöffnete Dateien und Projektordner werden nach externen Umbenennungen auf demselben Datenträger wiedererkannt, sofern dieser dauerhafte Datei-IDs unterstützt. Tabtitel, Dateipfad und Seitenleiste folgen der geprüften Dateiidentität; ungespeicherte Änderungen bleiben erhalten. Mehrdatei-Vorschauen behalten ihre ursprünglichen Ziele und der bestehende Schreibschutz gilt weiterhin. Auf ExFAT bleibt die automatische Wiedererkennung deaktiviert.
+
+### Behoben
+
+- Geschützte Leerzeichen in formatiertem Markdown erhalten Fettung, Kursivschrift, Durchstreichen und Textmarker auch nach erneutem Rendern und Moduswechseln.
+- Beim Speichern einer einzelnen Datei unter einem neuen Pfad folgt die Seitenleiste dem neuen Ordner, wenn sie zuvor den Dokumentordner angezeigt hat.
+
 ## [v1.155.3] — 2026-10-23
 
 ### Behoben

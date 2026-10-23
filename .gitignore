@@ -37,3 +37,6 @@ app/dist/
 # Lokale Datenquellen des Dauertests: private Pfade zu echten Dokumenten und
 # Projekten. Ohne die Datei läuft der Dauertest mit erzeugten Fixtures.
 /app/soak-test.local
+
+# Private Testprotokolle und ihre Begleitdateien
+/Testprotokolle/

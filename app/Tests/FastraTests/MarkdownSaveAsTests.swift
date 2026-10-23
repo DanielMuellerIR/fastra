@@ -37,6 +37,25 @@ struct MarkdownSaveAsTests {
         #expect(!FileManager.default.fileExists(atPath: target.path))
     }
 
+    @Test("Speichern unter führt den Einzeldatei-Ordner zum neuen Ziel mit")
+    @MainActor
+    func saveAsFollowsSingleFileDirectory() async throws {
+        let (root, source, target) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "Inhalt\n".write(to: source, atomically: true, encoding: .utf8)
+        let workspace = Workspace()
+        var loaded = false
+        workspace.loadFile(at: source) { loaded = $0 }
+        try #require(await waitUntil { loaded && workspace.projectURL == source.deletingLastPathComponent().canonicalFileURL })
+        var saved: Bool?
+        workspace.saveTabAs(id: workspace.activeTab!.id, to: target, expectedTargetState: .absent, isMarkdown: true) { saved = $0 }
+        try #require(await waitUntil { saved != nil })
+        #expect(saved == true)
+        #expect(await waitUntil { workspace.projectURL == target.deletingLastPathComponent().canonicalFileURL })
+        #expect(workspace.activeTab?.url == target)
+        #expect(try String(contentsOf: target, encoding: .utf8) == "Inhalt\n")
+    }
+
     private func fixture() throws -> (URL, URL, URL) {
         let root = testTemporaryDirectory().appendingPathComponent("fastra-save-images-\(UUID().uuidString)")
         let source = root.appendingPathComponent("source/protocol.md")

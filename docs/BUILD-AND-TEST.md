@@ -284,6 +284,24 @@ Aufgabenlisten in beiden Ansichten bei 760 und 1100 pt. Für die Sichtprüfung
 den Lauf mit `FASTRA_SELFTEST_LANGUAGE=de` und `en` wiederholen; zusätzlich
 `softwrapmodes`, `softwrapindentcore`, `footerfit` und `sidebarheader` prüfen.
 
+`sidebarheader` benennt außerdem eine geöffnete Datei und ihren Elternordner
+extern um und speichert anschließend unter neuem Namen. Es prüft die sichtbaren
+Dateibaumzeilen sowie die echten Pfad-Kopiermenüs von Kopf und Tab.
+`FASTRA_FILE_LOCATIONS_DIR` speichert die Abschlussansicht. Die ergänzenden
+`FileLocationTests` prüfen wiederverwendete Namen, atomare Dateiaustausche,
+verspätete Prüfungen nach einem Save, Hardlinks und Papierkorbziele.
+
+`FileSystemSafetyTests` prüft auf dem gewählten echten Dateisystem die
+Mehrdatei-Vorschau vor und während des Preflights, wiederverwendete Namen,
+wirkungslose Eingaben sowie einen Zielaustausch zwischen zwei Schreibschritten.
+Apply/Undo müssen entweder sicher funktionieren oder alle betroffenen Originale
+erhalten. Die Tests verwenden im Normalfall die Test-Sandbox. Für gesondert
+eingehängte Testdatenträger setzt man `FASTRA_FILESYSTEM_TEST_ROOT` auf deren
+Mountpunkt und `FASTRA_FILESYSTEM_EXPECTED` auf `hfs`, `exfat` oder `apfs`;
+`./test.sh --fast-only --no-parallel --filter FileSystemSafetyTests` prüft vor
+jeder Fixture den tatsächlichen Dateisystemtyp. Ein versehentlich nicht
+eingehängter Datenträger kann damit keinen grünen Ersatzlauf auf APFS erzeugen.
+
 ## Rückgängig nach Suchen/Ersetzen
 
 Patch 4z24 bindet einen dokumentgebundenen `CEUndoManager` erst nach der
@@ -1516,7 +1534,10 @@ Return als neuen Absatz. Ein gespeicherter Umbruch muss nach Undo wieder
 verschwinden. Der Fenstertest prüft außerdem
 Listenverschachtelung mit der echten Tab-Taste, Aufgabenlisten und Häkchen,
 letzte Eingaben vor dem Speichern, den Moduswechsel sowie die Bildkopien von
-„Speichern unter“. `FASTRA_MD_VISUAL_DIR` speichert den Erstwahl-Dialog, Ansichten
+„Speichern unter“. Fettung und Textmarker mit geschützten Leerzeichen müssen
+mehrere Moduswechsel überstehen; eine externe Datei- und Ordnerumbenennung darf
+den WYSIWYG-Undo-Verlauf nicht verlieren.
+`FASTRA_MD_VISUAL_DIR` speichert den Erstwahl-Dialog, Ansichten
 bei 650 und 1100 pt, den Dunkelmodus, bearbeitete Listen und den Quelltext nach dem Zurückwechseln;
 jeweils Deutsch und Englisch ansehen.
 

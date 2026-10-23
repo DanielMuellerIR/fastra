@@ -195,6 +195,7 @@ struct EditorTab: Identifiable, Hashable {
     /// Aktivierung erneut fragen, der spätere Save muss den Fremdstand aber
     /// weiterhin als Überschreibkonflikt erkennen.
     var externalFileObservation: ExternalFileObservation?
+    var fileLocationReference: FileLocationReference?
     var externalContentSnapshot: FileSnapshot?
     /// Erhöht sich, wenn der Nutzer einen fremden Inhaltsstand ausdrücklich
     /// behält. Anders als ein Snapshot funktioniert die Generation auch für
@@ -378,6 +379,11 @@ struct EditorTab: Identifiable, Hashable {
             displayedExternalContentGeneration = externalContentGeneration
         }
         externalFileObservation = observation
+        if let reference = observation?.locationReference {
+            fileLocationReference = reference
+        } else if let identity = snapshot?.identity, fileLocationReference?.identity != identity {
+            fileLocationReference = nil
+        }
         externalContentSnapshot = snapshot
         externalFileUnavailable = false
     }
@@ -744,6 +750,8 @@ final class Workspace: ObservableObject {
     /// Sitzungswiederherstellung persistiert den Pfad; der Workspace selbst
     /// bleibt frei von implizitem Startzustand.
     @Published var projectURL: URL?
+    var projectLocationReference: FileLocationReference?
+    private var projectLocationCheckID: UUID?
     /// In der Projekt-Seitenleiste zuletzt angeklickter Ordner (Etappe 1
     /// Wunschpaket 2026-07). Dient dem Save-Dialog als Vorschlagsordner;
     /// ein Klick auf eine Datei hebt die Ordner-Markierung wieder auf.
@@ -2741,6 +2749,49 @@ final class Workspace: ObservableObject {
         return alert.runModal() == .alertSecondButtonReturn
     }
 
+    private func rebindMovedFile(at index: Int, to url: URL) {
+        guard let previous = tabs[index].url else { return }
+        languageChoices.moveChoices(from: previous, to: url)
+        visualMarkdownEditor?.relocateDocument(from: previous, to: url)
+        tabs[index].url = url
+        tabs[index].title = url.lastPathComponent
+        tabs[index].path = url.deletingLastPathComponent().path
+        if activeTabID == tabs[index].id {
+            synchronizeProjectWithActiveTabIfNeeded(previousDocumentURL: previous)
+        }
+    }
+
+    private func captureProjectLocation(_ url: URL, generation: UInt64) {
+        Task.detached(priority: .utility) { [weak self] in
+            let reference = FileLocationReference(url: url)
+            await MainActor.run { [weak self] in
+                guard let self, self.projectGeneration == generation, self.projectURL == url else { return }
+                self.projectLocationReference = reference
+            }
+        }
+    }
+
+    private func checkProjectLocation() {
+        guard !showSearchDialog, !livePreview, projectLocationCheckID == nil,
+              let oldURL = projectURL, let reference = projectLocationReference else { return }
+        let request = UUID(), generation = projectGeneration
+        projectLocationCheckID = request
+        Task.detached(priority: .utility) { [weak self] in
+            let relocated = reference.resolvedURL()
+            await MainActor.run { [weak self] in
+                guard let self, self.projectLocationCheckID == request else { return }
+                self.projectLocationCheckID = nil
+                guard self.projectGeneration == generation, self.projectURL == oldURL,
+                      !self.showSearchDialog, !self.livePreview,
+                      let relocated, relocated != oldURL else { return }
+                self.languageChoices.moveChoices(from: oldURL, to: relocated)
+                self.openProject(at: relocated, keepingUnrelatedTabs: true,
+                                 invalidatingSessionRestore: false)
+                self.checkExternalChanges()
+            }
+        }
+    }
+
     /// Prüft alle offenen Tabs gegen die Platte (Aufruf: App wird aktiv —
     /// der dominante Fall „woanders editiert, zurückgewechselt"; BBEdits
     /// „Automatically refresh documents"-Default). Der leichte `stat`-
@@ -2752,9 +2803,11 @@ final class Workspace: ObservableObject {
     /// Nachprüfungen aus der Completion, damit sie nicht für alle Tabs
     /// neue Inspektionen anstoßen.
     func checkExternalChanges(only limitedTabID: UUID? = nil) {
+        if limitedTabID == nil { checkProjectLocation() }
         for tab in tabs {
             if let limitedTabID, tab.id != limitedTabID { continue }
-            guard let url = tab.url, !tab.isLoading else { continue }
+            guard let url = tab.url, !tab.isLoading, !tab.hexEditSession.isSaving,
+                  !fileMutationIsInFlight(for: url) else { continue }
             guard !externalChangeInspector.isInspecting(tabID: tab.id) else {
                 // Läuft schon eine Prüfung, darf dieser Anlass nicht
                 // stillschweigend entfallen: Die laufende Inspektion kann
@@ -2773,97 +2826,117 @@ final class Workspace: ObservableObject {
                 url: url,
                 knownObservation: tab.externalFileObservation,
                 observedByteCount: observedContent?.byteCount,
-                isDirty: tab.hasUnsavedChanges
+                isDirty: tab.hasUnsavedChanges,
+                locationReference: tab.fileLocationReference
             )
             externalChangeInspector.inspect(request) { [weak self] inspection in
-                guard let self else { return }
-                // Während der Prüfung eingegangene Anlässe jetzt nachholen —
-                // unabhängig davon, ob dieses Ergebnis unten noch verwertbar
-                // ist. Die Nachprüfung startet mit frischem Modellzustand.
-                let rerunPending = self.pendingExternalCheckTabIDs
-                    .remove(inspection.tabID) != nil
-                defer {
-                    if rerunPending {
-                        self.checkExternalChanges(only: inspection.tabID)
-                    }
-                }
-                guard let idx = self.tabs.firstIndex(where: {
-                          $0.id == inspection.tabID
-                              && $0.documentID == inspection.documentID
-                      }),
-                      !self.tabs[idx].isLoading,
-                      // „Sichern unter" und Verschieben im Dateibaum wechseln
-                      // die URL bei unveränderter Dokument-Identität. Ein
-                      // Befund zum alten Pfad darf dann weder Dialog noch
-                      // Reload am neu gebundenen Tab auslösen.
-                      self.tabs[idx].url == inspection.url else {
-                    return
-                }
-
-                // Ein verschwundener, unlesbarer oder nicht mehr regulärer
-                // Pfad ist gerade bei einem zuvor sauberen Tab gefährlich:
-                // Ohne Schutz könnte der Nutzer die letzte geladene Kopie
-                // ohne Rückfrage schließen. Nur vollständige Textinhalte
-                // werden dabei dirty; Hex-/Abschnittsansichten besitzen keine
-                // speicherbare Vollfassung.
-                guard let after = inspection.observation else {
-                    self.tabs[idx].protectContentAfterExternalFileBecameUnavailable()
-                    return
-                }
-                guard after != self.tabs[idx].externalFileObservation else { return }
-
-                // Hat sich der Dirty-Zustand seit dem Start der Prüfung
-                // geändert, passt die damalige Lese-Entscheidung nicht mehr
-                // zum Tab: Eine sauber gestartete Prüfung hat z. B. keinen
-                // Snapshot gelesen, den die Rückfrage eines inzwischen
-                // dirty gewordenen Tabs aber bräuchte. Ergebnis verwerfen
-                // und sofort mit dem aktuellen Zustand neu prüfen.
-                guard inspection.wasDirty == self.tabs[idx].hasUnsavedChanges else {
-                    // Läuft ohnehin gleich eine gemerkte Nachprüfung (defer
-                    // oben), genügt die; sonst hier selbst neu anstoßen.
-                    if !rerunPending {
-                        self.checkExternalChanges(only: inspection.tabID)
-                    }
-                    return
-                }
-
-                let observedContent = self.tabs[idx].externalContentSnapshot
-                    ?? self.tabs[idx].diskSnapshot
-                if let observedContent, let stableSnapshot = inspection.stableSnapshot,
-                   observedContent.hasSameContent(as: stableSnapshot) {
-                    // Nur Metadaten oder Dateiidentität haben sich
-                    // geändert. Das ist kein sichtbarer Fremdinhalt.
-                    let wasUnavailable = self.tabs[idx].externalFileUnavailable
-                    self.tabs[idx].recordExternalFileObservation(
-                        snapshot: stableSnapshot,
-                        observation: after
-                    )
-                    // Ein Schutzpunkt wegen vorübergehend verschwundener Datei
-                    // darf nur dann wieder weg, wenn der Editorinhalt seitdem
-                    // unverändert auf seiner gespeicherten Basis steht.
-                    if wasUnavailable && self.tabs[idx].matchesSavedContentBaseline {
-                        self.tabs[idx].isDirty = false
-                    }
-                    return
-                }
-
-                if self.tabs[idx].hasUnsavedChanges {
-                    if self.externalReloadConfirmHandler(self.tabs[idx].title) {
-                        self.reloadTabFromDisk(id: inspection.tabID)
-                    } else {
-                        // Die automatische Rückfrage gilt als beantwortet;
-                        // `diskSnapshot` bleibt absichtlich alt, damit ein
-                        // späteres Speichern weiterhin gesondert warnt.
-                        self.tabs[idx].recordExternalFileObservation(
-                            snapshot: inspection.stableSnapshot,
-                            observation: after,
-                            contentChangeAccepted: true
-                        )
-                    }
-                } else {
-                    self.reloadTabFromDisk(id: inspection.tabID)
-                }
+                self?.finishExternalChangeInspection(inspection)
             }
+        }
+    }
+
+    private func finishExternalChangeInspection(_ inspection: ExternalChangeInspector.Inspection) {
+        if inspection.resolvedURL != inspection.url,
+           synchronizeVisualMarkdownBefore({ self.finishExternalChangeInspection(inspection) }) { return }
+        // Während der Prüfung eingegangene Anlässe jetzt nachholen —
+        // unabhängig davon, ob dieses Ergebnis unten noch verwertbar
+        // ist. Die Nachprüfung startet mit frischem Modellzustand.
+        let rerunPending = self.pendingExternalCheckTabIDs
+            .remove(inspection.tabID) != nil
+        defer {
+            if rerunPending {
+                self.checkExternalChanges(only: inspection.tabID)
+            }
+        }
+        guard let idx = self.tabs.firstIndex(where: {
+                  $0.id == inspection.tabID
+                      && $0.documentID == inspection.documentID
+              }),
+              !self.tabs[idx].isLoading,
+              !self.tabs[idx].hexEditSession.isSaving,
+              !self.fileMutationIsInFlight(for: inspection.url),
+              !self.fileMutationIsInFlight(for: inspection.resolvedURL),
+              // „Sichern unter" und Verschieben im Dateibaum wechseln
+              // die URL bei unveränderter Dokument-Identität. Ein
+              // Befund zum alten Pfad darf dann weder Dialog noch
+              // Reload am neu gebundenen Tab auslösen.
+              self.tabs[idx].url == inspection.url else {
+            return
+        }
+
+        // Ein verschwundener, unlesbarer oder nicht mehr regulärer
+        // Pfad ist gerade bei einem zuvor sauberen Tab gefährlich:
+        // Ohne Schutz könnte der Nutzer die letzte geladene Kopie
+        // ohne Rückfrage schließen. Nur vollständige Textinhalte
+        // werden dabei dirty; Hex-/Abschnittsansichten besitzen keine
+        // speicherbare Vollfassung.
+        guard let after = inspection.observation else {
+            self.tabs[idx].protectContentAfterExternalFileBecameUnavailable()
+            return
+        }
+        if inspection.resolvedURL != inspection.url {
+            // Ein inzwischen gespeicherter oder neu bestätigter Tab darf
+            // niemals einer verspäteten Referenz auf seine alte Inode folgen.
+            guard let reference = inspection.originalLocationReference,
+                  self.tabs[idx].fileLocationReference == reference else { return }
+            guard !self.tabs.contains(where: { $0.id != inspection.tabID && $0.url == inspection.resolvedURL }) else {
+                self.tabs[idx].protectContentAfterExternalFileBecameUnavailable()
+                return
+            }
+            self.rebindMovedFile(at: idx, to: inspection.resolvedURL)
+        }
+        guard after != self.tabs[idx].externalFileObservation else { return }
+
+        // Hat sich der Dirty-Zustand seit dem Start der Prüfung
+        // geändert, passt die damalige Lese-Entscheidung nicht mehr
+        // zum Tab: Eine sauber gestartete Prüfung hat z. B. keinen
+        // Snapshot gelesen, den die Rückfrage eines inzwischen
+        // dirty gewordenen Tabs aber bräuchte. Ergebnis verwerfen
+        // und sofort mit dem aktuellen Zustand neu prüfen.
+        guard inspection.wasDirty == self.tabs[idx].hasUnsavedChanges else {
+            // Läuft ohnehin gleich eine gemerkte Nachprüfung (defer
+            // oben), genügt die; sonst hier selbst neu anstoßen.
+            if !rerunPending {
+                self.checkExternalChanges(only: inspection.tabID)
+            }
+            return
+        }
+
+        let observedContent = self.tabs[idx].externalContentSnapshot
+            ?? self.tabs[idx].diskSnapshot
+        if let observedContent, let stableSnapshot = inspection.stableSnapshot,
+           observedContent.hasSameContent(as: stableSnapshot) {
+            // Nur Metadaten oder Dateiidentität haben sich
+            // geändert. Das ist kein sichtbarer Fremdinhalt.
+            let wasUnavailable = self.tabs[idx].externalFileUnavailable
+            self.tabs[idx].recordExternalFileObservation(
+                snapshot: stableSnapshot,
+                observation: after
+            )
+            // Ein Schutzpunkt wegen vorübergehend verschwundener Datei
+            // darf nur dann wieder weg, wenn der Editorinhalt seitdem
+            // unverändert auf seiner gespeicherten Basis steht.
+            if wasUnavailable && self.tabs[idx].matchesSavedContentBaseline {
+                self.tabs[idx].isDirty = false
+            }
+            return
+        }
+
+        if self.tabs[idx].hasUnsavedChanges {
+            if self.externalReloadConfirmHandler(self.tabs[idx].title) {
+                self.reloadTabFromDisk(id: inspection.tabID)
+            } else {
+                // Die automatische Rückfrage gilt als beantwortet;
+                // `diskSnapshot` bleibt absichtlich alt, damit ein
+                // späteres Speichern weiterhin gesondert warnt.
+                self.tabs[idx].recordExternalFileObservation(
+                    snapshot: inspection.stableSnapshot,
+                    observation: after,
+                    contentChangeAccepted: true
+                )
+            }
+        } else {
+            self.reloadTabFromDisk(id: inspection.tabID)
         }
     }
 
@@ -4030,7 +4103,7 @@ final class Workspace: ObservableObject {
                 return
             }
             adoptSavedTarget(url, forTabAt: savedIndex)
-            synchronizeProjectWithActiveTabIfNeeded()
+            synchronizeProjectWithActiveTabIfNeeded(previousDocumentURL: tab.url)
             complete(true)
         }
         guard isMarkdown, let sourceURL = tab.url else {
@@ -4284,6 +4357,9 @@ final class Workspace: ObservableObject {
             // nachziehen, sonst schlüge die Erkennung beim nächsten
             // App-Wechsel auf die selbst geschriebene Datei an.
             tabs[finalIndex].diskSnapshot = writtenSnapshot
+            tabs[finalIndex].fileLocationReference = writtenSnapshot.identity.flatMap {
+                FileLocationReference(url: url, expectedIdentity: $0)
+            }
             tabs[finalIndex].fileSize = UInt64(writtenSnapshot.byteCount)
             tabs[finalIndex].recordExternalFileObservation(
                 snapshot: writtenSnapshot, observation: nil,
@@ -4404,7 +4480,7 @@ final class Workspace: ObservableObject {
     /// Lässt Projekt- und Git-Seitenleiste dem tatsächlich aktiven Datei-Tab
     /// folgen. Fremde Tabs bleiben offen; ein Wechsel der sichtbaren Datei ist
     /// kein Auftrag, ihren Inhalt oder andere Tabs zu schließen.
-    private func synchronizeProjectWithActiveTabIfNeeded() {
+    private func synchronizeProjectWithActiveTabIfNeeded(previousDocumentURL: URL? = nil) {
         guard !showSearchDialog, !livePreview,
               let tab = activeTab, !tab.isLoading,
               let url = tab.url else {
@@ -4417,7 +4493,9 @@ final class Workspace: ObservableObject {
         // Dateisystem ab und gehört deshalb ebenfalls in den Hintergrundteil.
         let expectedURL = url.standardizedFileURL
         let expectedProjectGeneration = projectGeneration
-        let currentProject = projectURL
+        let followsSavedFile = tabs.count == 1 && previousDocumentURL != nil
+            && previousDocumentURL?.deletingLastPathComponent().standardizedFileURL == projectURL?.standardizedFileURL
+        let currentProject = followsSavedFile ? nil : projectURL
         let resolve = resolveProjectContext
         let deliver = deliverProjectContextResult
         scheduleProjectContextWork { [weak self] in
@@ -5054,6 +5132,9 @@ final class Workspace: ObservableObject {
         showsConflictBase = false
         projectURL = url
         let generation = projectGeneration
+        projectLocationCheckID = nil
+        projectLocationReference = nil
+        captureProjectLocation(url, generation: generation)
         fourDMethodIndexSnapshot = .empty
         fourDProjectIndexController.start(
             projectURL: url,
@@ -5115,6 +5196,8 @@ final class Workspace: ObservableObject {
     /// Blendet den Projekt-Dateibaum wieder aus (Seitenleiste zeigt dann
     /// wie bisher nur die geöffneten Tabs). Offene Tabs bleiben unberührt.
     func closeProject() {
+        projectLocationCheckID = nil
+        projectLocationReference = nil
         sessionRestoreGeneration &+= 1
         NotificationCenter.default.post(name: .fastraProjectContextWillChange, object: self)
         fourDProjectIndexController.stop()

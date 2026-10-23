@@ -17,6 +17,22 @@ als Rückfall.
 beziehungsweise `.md`. Das Format-Menü bietet alle mitgelieferten
 Syntaxsprachen sowie CSV und XML und setzt beim Wechsel die passende Endung.
 Eine beliebige eigene Endung kannst du weiterhin direkt im Namensfeld eingeben.
+Zeigt die Seitenleiste den Ordner der einzigen geöffneten Datei, folgt sie beim
+Speichern unter einem neuen Pfad dem neuen Dokumentordner.
+
+Beim Zurückwechseln zu Fastra werden extern umbenannte Dateien und Projektordner
+auf demselben Datenträger anhand ihrer Identität wiedergefunden, sofern dessen
+Dateisystem dauerhafte Datei-IDs unterstützt (beispielsweise APFS und HFS+).
+Auf ExFAT erfolgt keine automatische Wiedererkennung. Dateiname, Pfad
+und Seitenleiste werden aktualisiert; ungespeicherter Text bleibt erhalten.
+Gelöschte Dateien oder nicht eindeutig wiedererkennbare Ziele werden nicht
+automatisch neu gebunden. Ein ausgetauschter oder fremd geänderter Dateiinhalt
+bleibt durch die üblichen Rückfragen beim Neuladen und Speichern geschützt.
+Eine offene Mehrdatei-Vorschau behält ihre ursprünglichen Pfade. Werden ihre
+Dateien oder Ordner umbenannt, muss die Suche vor dem Ersetzen erneut laufen.
+Die Fähigkeit zum sicheren atomaren Dateiaustausch wird unabhängig davon
+geprüft. Fehlt sie, erklärt Fastra den Abbruch und lässt die betroffene
+Ausgangsdatei erhalten; es gibt keinen unsicheren Schreib-Rückfall.
 
 Gespeicherte Dokumente kannst du direkt vom Tab in den Finder oder eine andere
 App ziehen. Bei ungespeicherten Änderungen wird die **gespeicherte Fassung**
@@ -813,6 +829,8 @@ Auszeichnungen und Links sowie den Überschriften-, Zitat-, Listen- oder
 Codeblock-Kontext. Unterstreichung und Hoch-/Tiefstellung bleiben als erlaubtes
 HTML erhalten. Benachbarter Text wird nicht mitkopiert; ausgewählter Zelltext
 lässt sich mit seiner Inline-Formatierung ohne eine zusätzliche Tabelle einsetzen.
+Formatierungen mit geschützten Leerzeichen können im Quelltext als Inline-HTML
+erscheinen, damit ihre Darstellung beim Speichern und Moduswechsel erhalten bleibt.
 Ausschneiden (⌘X) nimmt auch die Quellen geschützter Formeln und Diagramme mit;
 ⌘Z stellt die ausgeschnittene Auswahl wieder her. Kopierte und ausgeschnittene
 Bilder besitzen eigene Bilddaten und lassen sich auch nach dem Schließen der

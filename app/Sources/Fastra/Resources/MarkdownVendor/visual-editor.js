@@ -95,6 +95,17 @@
   td.addRule('opaque',{filter:n=>n.hasAttribute('data-md-opaque'),replacement:(_,n)=>opaqueSources[n.dataset.mdOpaque] || ''});
   td.addRule('highlight', {filter:'mark', replacement:(c,n)=>n.parentElement?.closest('mark')?c:(c.trim()?'=='+c.trim()+'==':'')});
   td.addRule('strike', {filter:['del','s','strike'], replacement:c => '~~'+c+'~~'});
+  // Entitäten an Formatgrenzen ändern CommonMarks Trennzeichen-Erkennung:
+  // **Text&nbsp;**danach wird als Klartext gelesen. Inline-HTML bewahrt in
+  // diesem Fall sowohl die Auszeichnung als auch ihre geschützten Leerzeichen.
+  td.addRule('styledSpaces', {
+    filter:n=>['STRONG','B','EM','I','MARK','DEL','S','STRIKE'].includes(n.nodeName)
+      && !!n.querySelector('[data-md-spaces]'),
+    replacement:(content,node)=>{
+      const tag={B:'strong',I:'em',S:'del',STRIKE:'del'}[node.nodeName] || node.nodeName.toLowerCase();
+      return '<'+tag+'>'+content+'</'+tag+'>';
+    }
+  });
   // Diese erlaubten HTML-Auszeichnungen haben kein Markdown-Gegenstück.
   td.addRule('inlineHTML',{
     filter:['u','ins','small','sub','sup','kbd','samp','var','q','cite','abbr','dfn'],

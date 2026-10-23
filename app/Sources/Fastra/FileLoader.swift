@@ -163,7 +163,7 @@ enum FileLoader {
         guard info.st_mode & S_IFMT == S_IFREG else { throw LoadError.notRegularFile }
         let opened = (descriptor: descriptor, stat: info)
         let fileSize = UInt64(max(0, opened.stat.st_size))
-        let openedObservation = ExternalFileObservation(fileStat: opened.stat)
+        let openedObservation = ExternalFileObservation(fileStat: opened.stat, descriptor: descriptor)
         let handle = FileHandle(fileDescriptor: opened.descriptor, closeOnDealloc: false)
         let probe: Data
         do {
@@ -401,7 +401,7 @@ enum FileLoader {
         return (
             data,
             FileSnapshot(data: data, identity: FileIdentity(stat: after)),
-            ExternalFileObservation(fileStat: after)
+            ExternalFileObservation(fileStat: after, descriptor: descriptor)
         )
     }
 
