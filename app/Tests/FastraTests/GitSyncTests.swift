@@ -612,31 +612,20 @@ private final class MutableGitClock: GitSyncClock {
 
 private struct AsyncTestTimeout: Error {}
 
-/// Das Budget ist eine Hänge-Erkennung, keine Laufzeitbehauptung: Die geprüften
-/// Zustände treten in einem gesunden Lauf in Millisekunden ein. Unter der
-/// vollständigen parallelen Suite und zusätzlicher Fremdlast auf dem Rechner
-/// reichten drei Sekunden lastabhängig nicht (belegt am 2026-07-26: „Mehrere
-/// Fenster zeigen nur eine Erstfrage …" und „Erster Pull persistiert Rebase …"
-/// fielen nur unter Last). 20 Sekunden bleiben klar unter den Zeitgrenzen der
-/// Tests und machen ein echtes Steckenbleiben weiter sicher rot.
-///
-/// `@MainActor` wie die Workspace-Pull-Suite (Begründung dort): So liest auch
-/// die Poll-Closure Workspace-Zustand nie neben einer Main-Queue-Completion.
-/// Während `Task.sleep` ist der Main-Thread frei, die Completions laufen
-/// dazwischen. Für die übrigen Aufrufer (Auto-Fetch-Tests) ist die Isolation
-/// folgenlos: Deren Bedingungen lesen nur intern verriegelte Zähler.
+// Wie die Workspace-Completions laufen auch diese Prüfungen auf dem MainActor.
+// Der gemeinsame Helfer prüft den Zustand nach einer verspäteten Zustellung
+// zuerst und verrechnet fremde MainActor-Arbeit nicht als reguläre Wartezeit.
 @MainActor
 private func waitUntil(_ description: String = "Asynchroner Testzustand wurde nicht erreicht",
                        timeout: Duration = .seconds(20),
+                       file: StaticString = #fileID, line: UInt = #line,
                        _ condition: @escaping () -> Bool) async throws {
-    let clock = ContinuousClock()
-    let deadline = clock.now.advanced(by: timeout)
-    while clock.now < deadline {
-        if condition() { return }
-        try await Task.sleep(for: .milliseconds(2))
+    let components = timeout.components
+    let seconds = Double(components.seconds) + Double(components.attoseconds) / 1e18
+    guard await waitUntil(timeout: seconds, file: file, line: line, condition) else {
+        Issue.record(Comment(rawValue: description))
+        throw AsyncTestTimeout()
     }
-    Issue.record(Comment(rawValue: description))
-    throw AsyncTestTimeout()
 }
 
 @Suite("Auto-Fetch-Steuerung", .serialized)
@@ -1072,4 +1061,16 @@ private extension NSLock {
         lock(); defer { unlock() }
         return body()
     }
+}
+
+@Test("waitUntil: verzögerte Main-Queue-Zustellung wird vor dem Timeout geprüft")
+@MainActor
+func syncWaitChecksStateAfterMainActorDelay() async throws {
+    var ready = false
+    DispatchQueue.main.async {
+        Thread.sleep(forTimeInterval: 0.05)
+        ready = true
+    }
+    try await waitUntil("Bereits zugestellter Zustand wurde übersehen", timeout: .milliseconds(20)) { ready }
+    #expect(ready)
 }

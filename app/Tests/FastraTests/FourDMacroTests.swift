@@ -1640,6 +1640,7 @@ func macroPostprocessingStopsOnWorkspaceDeinit() async {
     let defaults = testSuiteDefaults(named: suite)
     defer { defaults.removePersistentDomain(forName: suite) }
     let (reference, probe) = workspaceWithMacroCancellationProbe(defaults: defaults)
+    defer { probe.task.cancel() }
 
     // Der appweite Dokumentkontext beobachtet absichtlich den zuletzt aktiven
     // Workspace. Erst ein Fensterwechsel löst diese Beobachtung; danach ist
@@ -1652,7 +1653,13 @@ func macroPostprocessingStopsOnWorkspaceDeinit() async {
     // Parallele Tests können über allLive kurzzeitig starke Referenzen halten.
     // Die begrenzte Freigabeprüfung unterscheidet diese von dauerhaftem Besitz.
     #expect(await waitUntil { reference.workspace == nil })
-    #expect(probe.cancelled.wait(timeout: .now() + 10) == .success)
+    // Eine schwache Referenz kann schon beim Beginn eines fremden deinit
+    // nil werden. Abbruchanforderung und Taskabschluss deshalb getrennt und
+    // ohne blockierendes Warten auf dem MainActor prüfen.
+    #expect(await waitUntil { probe.task.isCancelled })
+    #expect(await waitUntil(timeout: 10) {
+        probe.cancelled.wait(timeout: .now()) == .success
+    })
 }
 
 private final class WeakMacroWorkspaceReference {

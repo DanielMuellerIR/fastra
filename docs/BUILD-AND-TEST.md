@@ -805,7 +805,11 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Prozessgruppen, Pipe-Grenzfälle oder Cleanup-Läufe starten und den parallelen
   Kern sonst künstlich belasten. Dazu gehören auch die Smart-Paste-Fixtures
   mit echten Shell-Prozessen, geerbten Deskriptoren und Ausgabebudgets. Ihre
-  Zeitgrenzen bleiben unverändert. Auch die asynchrone JSON-Responsivitätsmessung
+  Zeitgrenzen bleiben unverändert. Dasselbe gilt für die ripgrep-Prozessfixtures:
+  Ausgabegrenzen, Timeout und Abbruch werden mit unveränderten Produktfristen
+  geprüft, ohne mit hunderten gleichzeitig gestarteten Testaufgaben um
+  Prozess- und Threadressourcen zu konkurrieren.
+  Auch die asynchrone JSON-Responsivitätsmessung
   trägt diesen Marker: Ihre Wanduhrgrenzen dürfen nicht die Arbeit fremder
   MainActor-Tests während der Parser-Wartezeit mitmessen. `.serialized` an
   ihrer Suite allein verhindert diese Überlagerung nicht.
@@ -818,6 +822,12 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Lauf vollständig. Weitergereichte `--filter`-Ausdrücke werden mit dem
   jeweiligen Phasenmarker geschnitten. Swift 6.3 vereinigt mehrere Filter
   ansonsten und würde schnelle Zieltests in der seriellen Phase erneut starten.
+- Asynchrone Workspace-Prüfungen verwenden den gemeinsamen `waitUntil` aus
+  `TestWaiting.swift`, auch die Git-Diff- und Sync-Helfer. Nach einer verzögerten
+  Main-Queue-Zustellung muss der bereits erreichte Zustand noch geprüft werden;
+  eine vorher abgelaufene Wanduhrfrist allein ist kein Zustandsfehler.
+  Abbruchtests prüfen die synchrone Abbruchanforderung getrennt vom späteren
+  Taskabschluss und warten auf dem MainActor niemals blockierend darauf.
 - CLI-Fixtures verwenden `Tests/FastraTests/Support/TestProcess.swift`.
   Der gemeinsame Helfer begrenzt Prozessende und Ausgabe auf standardmäßig
   120 Sekunden. Nach Überschreitung wirft er einen Fehler samt bisheriger

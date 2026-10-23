@@ -169,7 +169,7 @@ func find_recursesIntoSubfolders() throws {
 }
 
 @Test("Gebündeltes ripgrep liefert auch mehr Ausgaben als ein Pipe-Puffer")
-func ripgrepEnumerationDrainsLargeOutput() throws {
+func serialRunnerIntegrationRipgrepEnumerationDrainsLargeOutput() throws {
     let c = try FolderCorpus()
     // 2.000 absolute Pfade liegen deutlich über einem üblichen 64-KiB-Puffer.
     // Der Test schützt gegen den früheren Deadlock „Prozess wartet auf Pipe,
@@ -182,7 +182,7 @@ func ripgrepEnumerationDrainsLargeOutput() throws {
 }
 
 @Test("ripgrep leert stdout und stderr gleichzeitig")
-func ripgrepEnumerationDrainsBothPipes() throws {
+func serialRunnerIntegrationRipgrepEnumerationDrainsBothPipes() throws {
     let c = try FolderCorpus()
     let fixture = try makeRipgrepStub("""
     i=0
@@ -204,7 +204,7 @@ func ripgrepEnumerationDrainsBothPipes() throws {
 }
 
 @Test("ripgrep-Timeout liefert keine partielle Dateiliste")
-func ripgrepEnumerationTimesOutExplicitly() throws {
+func serialRunnerIntegrationRipgrepEnumerationTimesOutExplicitly() throws {
     let c = try FolderCorpus()
     let fixture = try makeRipgrepStub("sleep 5")
     defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
@@ -220,7 +220,7 @@ func ripgrepEnumerationTimesOutExplicitly() throws {
 }
 
 @Test("ripgrep-Exit 1 ohne Ausgabe bedeutet einen gültigen leeren Ordner")
-func ripgrepEnumerationAcceptsEmptyDirectory() throws {
+func serialRunnerIntegrationRipgrepEnumerationAcceptsEmptyDirectory() throws {
     let c = try FolderCorpus()
     let fixture = try makeRipgrepStub("exit 1")
     defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
@@ -231,7 +231,7 @@ func ripgrepEnumerationAcceptsEmptyDirectory() throws {
 }
 
 @Test("ripgrep-Ausgabelimit liefert keine gekürzte Dateiliste")
-func ripgrepEnumerationRejectsTruncatedStdout() throws {
+func serialRunnerIntegrationRipgrepEnumerationRejectsTruncatedStdout() throws {
     let c = try FolderCorpus()
     let fixture = try makeRipgrepStub("""
     i=0
@@ -253,7 +253,7 @@ func ripgrepEnumerationRejectsTruncatedStdout() throws {
 }
 
 @Test("ripgrep-Abbruch beendet den Prozess ohne Fallback-Vollscan")
-func ripgrepEnumerationCancelsProcess() throws {
+func serialRunnerIntegrationRipgrepEnumerationCancelsProcess() throws {
     let c = try FolderCorpus()
     let fixture = try makeRipgrepStub("while :; do sleep 1; done")
     let counter = CancellationCounter(cancelAfter: 3)
@@ -569,7 +569,7 @@ func pathExclusion_pathGlobSemantics() {
 }
 
 @Test("Sichere Komponenten-Ausschlüsse reduzieren bereits die ripgrep-Dateiliste")
-func ripgrepEnumerationPushesDownSafeExclusions() throws {
+func serialRunnerIntegrationRipgrepEnumerationPushesDownSafeExclusions() throws {
     let c = try FolderCorpus()
     try c.write("keep.txt", "NADEL", in: "Sources")
     try c.write("generated.txt", "NADEL", in: "Project/DerivedData/cache")

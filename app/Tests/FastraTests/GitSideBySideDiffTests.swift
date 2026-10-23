@@ -729,26 +729,20 @@ private func drainMainQueue() async {
     }
 }
 
-// Die Frist ist bewusst großzügig: Sie ist keine Leistungsaussage, sondern nur
-// eine Obergrenze gegen ewiges Warten. Die Schleife endet, sobald die Bedingung
-// zutrifft — ein erfüllter Zustand kostet also nichts. Auf ausgelasteten
-// Maschinen (parallele Testsuite, CI) kann eine knappe Frist dagegen zuschlagen,
-// bevor der erwartete Zustand überhaupt publiziert werden konnte.
-//
-// `@MainActor` wie die Lifecycle-Tests (Begründung an makeDiffWorkspace): So
-// liest auch die Poll-Closure Workspace-Zustand nie neben einer
-// Main-Queue-Completion. Während `Task.sleep` ist der Main-Thread frei.
+// Wie die Workspace-Completions laufen auch diese Prüfungen auf dem MainActor.
+// Der gemeinsame Helfer prüft den Zustand nach einer verspäteten Zustellung
+// zuerst und verrechnet fremde MainActor-Arbeit nicht als reguläre Wartezeit.
 @MainActor
-private func waitForDiffState(_ description: String, timeout: Duration = .seconds(30),
+private func waitForDiffState(_ description: String,
+                              timeout: Duration = .seconds(30),
+                              file: StaticString = #fileID, line: UInt = #line,
                               _ condition: @escaping () -> Bool) async throws {
-    let clock = ContinuousClock()
-    let deadline = clock.now.advanced(by: timeout)
-    while clock.now < deadline {
-        if condition() { return }
-        try await Task.sleep(for: .milliseconds(2))
+    let components = timeout.components
+    let seconds = Double(components.seconds) + Double(components.attoseconds) / 1e18
+    guard await waitUntil(timeout: seconds, file: file, line: line, condition) else {
+        Issue.record(Comment(rawValue: description))
+        throw DiffStateTimeout()
     }
-    Issue.record(Comment(rawValue: description))
-    throw DiffStateTimeout()
 }
 
 // MARK: - Einzel- und Doppelklick in der Änderungen-Liste (2026-09-02)
@@ -1073,4 +1067,16 @@ func gitPreviewCancellationIsWindowLocal(snapshot: Bool) async throws {
     firstExecutor.complete(5, result: controlledPreviewResult("ERSTES_FENSTER_ALT", snapshot: snapshot))
     await drainMainQueue()
     #expect(first.activeTab?.content.contains("ERSTES_FENSTER_ALT") == false)
+}
+
+@Test("waitForDiffState: verzögerte Main-Queue-Zustellung wird vor dem Timeout geprüft")
+@MainActor
+func diffWaitChecksStateAfterMainActorDelay() async throws {
+    var ready = false
+    DispatchQueue.main.async {
+        Thread.sleep(forTimeInterval: 0.05)
+        ready = true
+    }
+    try await waitForDiffState("Bereits zugestellter Zustand wurde übersehen", timeout: .milliseconds(20)) { ready }
+    #expect(ready)
 }
