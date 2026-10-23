@@ -36,9 +36,10 @@ jobs:
 
       - name: Swift-Tests ausführen
         working-directory: app
-        # Der gemeinsame Runner isoliert Temp-Dateien und Einstellungen und
-        # trennt die parallele Kernphase von seriellen Prozess-/Git-Prüfungen.
-        run: ./test.sh
+        # Der gemeinsame Runner isoliert Temp-Dateien und Einstellungen.
+        # Auf dem Hosted Runner bleibt auch die Kernphase seriell, damit
+        # gemeinsame Worker-Pools und die Main-Queue nicht überlastet werden.
+        run: ./test.sh --no-parallel
 
       - name: Lokalisierung prüfen
         working-directory: app
