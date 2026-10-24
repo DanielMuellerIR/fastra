@@ -110,11 +110,13 @@ struct MarkdownVisualDocument {
         let lines = sourceLines(markdown)
         var blocks: [Block] = []
         var images: [String: URL] = [:]
+        var imageSources: [String: String] = [:]
         var cursor = 0
         func append(_ source: String, html: String, hidden: Bool) {
             let resolved = MarkdownImages.resolve(in: html, relativeTo: documentURL,
                                                   preservingSource: true)
             images.merge(resolved.imageURLs) { _, new in new }
+            imageSources.merge(resolved.imageSources) { _, new in new }
             blocks.append(Block(id: blocks.count, source: source,
                                 html: resolved.html, hidden: hidden))
         }
@@ -202,7 +204,7 @@ struct MarkdownVisualDocument {
         }
         if cursor < lines.count { appendGap(source(cursor, lines.count)) }
         let html = blocks.filter { !$0.hidden }.map { "<div data-md-block=\"\($0.id)\">\($0.html)</div>" }.joined()
-        return Self(blocks: blocks, opaqueSources: opaqueSources, fragment: MarkdownRenderedFragment(html: html, imageURLs: images))
+        return Self(blocks: blocks, opaqueSources: opaqueSources, fragment: MarkdownRenderedFragment(html: html, imageURLs: images, imageSources: imageSources))
     }
 
     static func normalizedLines(_ source: String) -> String {

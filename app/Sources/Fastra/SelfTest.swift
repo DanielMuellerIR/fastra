@@ -25676,7 +25676,7 @@ enum SelfTest {
             } catch {
                 await capture("comfort-failure")
                 NSApp.appearance = originalAppearance
-                finish(false, stage + ": " + error.localizedDescription + "\n" + diagnostics.joined(separator: "\n"))
+                finish(selfTestPasteboardOutcome(for: error), stage + ": " + error.localizedDescription + "\n" + diagnostics.joined(separator: "\n"))
             }
         }
     }

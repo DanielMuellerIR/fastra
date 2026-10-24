@@ -170,6 +170,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         return workspace.tabs.contains { $0.id == tabID && $0.documentID == loadedDocumentID }
     }
     let assets = MarkdownPreviewSchemeHandler()
+    private var imageSources: [String: String] = [:]
     var markdown = ""
     var style = ""
     private(set) var documentURL: URL?
@@ -346,10 +347,10 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         let oldDirectory = previous.deletingLastPathComponent().standardizedFileURL
         let newDirectory = url.deletingLastPathComponent().standardizedFileURL
         guard oldDirectory != newDirectory else { return }
-        let prefix = oldDirectory.path + "/"
-        assets.setImageURLs(assets.imageURLSnapshot().mapValues { image in
-            guard image.standardizedFileURL.path.hasPrefix(prefix) else { return image }
-            return newDirectory.appendingPathComponent(String(image.standardizedFileURL.path.dropFirst(prefix.count)))
+        // Die ursprünglichen Quellen gelten auch für ../ und für Bilder in
+        // Undo-Schritten. DOM-Tokens bleiben bestehen, damit WebKit sein Undo behält.
+        assets.setImageURLs(imageSources.compactMapValues { source in
+            MarkdownImages.localImageURL(from: source, documentURL: url)
         })
     }
 
@@ -407,6 +408,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                     }
                 }
                 self.assets.setImageURLs(document.fragment.imageURLs)
+                self.imageSources = document.fragment.imageSources
                 let fragment = MarkdownRenderedFragment(
                     html: "<main id=\"fastra-visual\">\(document.fragment.html)</main>",
                     imageURLs: document.fragment.imageURLs)
@@ -874,6 +876,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                     switch result {
                     case .success(let (prepared, visual)):
                         self.assets.addImageURLs(visual.fragment.imageURLs)
+                        self.imageSources.merge(visual.fragment.imageSources) { _, new in new }
                         // Neue IDs sind von den Originalblöcken unabhängig.
                         // Der Einfügeschritt selbst bleibt ein WebKit-Undo-Schritt.
                         let html = visual.blocks.map(\.html).joined()

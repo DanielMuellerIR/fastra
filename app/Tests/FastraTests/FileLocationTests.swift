@@ -143,6 +143,36 @@ struct FileLocationTests {
         #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 
+    @Test("Safe-Save während der Umbenennungsprüfung bleibt am ursprünglichen Dokumentpfad", arguments: [false, true])
+    func originalPathReappearsDuringInspection(_ dirty: Bool) async throws {
+        let (root, directory) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = directory.appendingPathComponent("Alt.txt")
+        let backup = directory.appendingPathComponent("Backup.txt")
+        try "Original".write(to: url, atomically: true, encoding: .utf8)
+        let reader = PausedLocationReader()
+        defer { reader.release() }
+        let inspector = ExternalChangeInspector(snapshotReader: { reader.read($0) })
+        let ws = try await load(url, workspace: Workspace(externalChangeInspector: inspector))
+        let documentID = ws.activeTab!.documentID
+        var confirmations = 0
+        ws.externalReloadConfirmHandler = { _ in confirmations += 1; return true }
+        if dirty { ws.activeTabContent.wrappedValue = "Eigene Änderung" }
+        try FileManager.default.moveItem(at: url, to: backup)
+        ws.checkExternalChanges()
+        try #require(await waitUntil { reader.started })
+        try "Neue Fassung".write(to: url, atomically: true, encoding: .utf8)
+        reader.release()
+        try #require(await waitUntil { ws.activeTab?.content == "Neue Fassung" })
+        #expect(ws.activeTab?.url == url)
+        #expect(ws.activeTab?.documentID == documentID)
+        #expect(confirmations == (dirty ? 1 : 0))
+        ws.activeTabContent.wrappedValue = "Danach gespeichert"
+        #expect(ws.write(tab: ws.activeTab!, to: url))
+        #expect(try String(contentsOf: url, encoding: .utf8) == "Danach gespeichert")
+        #expect(try String(contentsOf: backup, encoding: .utf8) == "Original")
+    }
+
     @Test("Austausch während der Wiedererkennung bestätigt keine falsche Zielidentität")
     func replacementDuringInspection() async throws {
         let (root, directory) = try fixture()

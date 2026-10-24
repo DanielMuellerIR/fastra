@@ -7,6 +7,7 @@ import cmark_gfm
 struct MarkdownRenderedFragment {
     let html: String
     let imageURLs: [String: URL]
+    var imageSources: [String: String] = [:]
 }
 
 /// Fastra-Dialekt für bewusst sichtbare Leerzeilen: Eine Quellzeile aus
@@ -617,6 +618,7 @@ enum MarkdownImages {
         let mutable = NSMutableString(string: html)
         let ns = html as NSString
         var images: [String: URL] = [:]
+        var sources: [String: String] = [:]
         for tag in imageTags.matches(in: html, range: NSRange(location: 0, length: ns.length)).reversed() {
             let rawTag = ns.substring(with: tag.range)
             let attributes = MarkdownHTMLAttributes.parse(rawTag)
@@ -627,6 +629,7 @@ enum MarkdownImages {
                MarkdownPreviewAssets.imageMIMEType(for: imageURL) != nil {
                 let token = imageToken(for: imageURL)
                 images[token] = imageURL
+                sources[token] = attribute.value
                 replacement = "\(MarkdownPreviewAssets.scheme)://image/\(token)"
                 if !attributes.contains(where: { $0.name == "width" || $0.name == "height" }) {
                     displayWidth = logicalWidth(of: imageURL, token: token)
@@ -646,7 +649,7 @@ enum MarkdownImages {
             }
             mutable.replaceCharacters(in: tag.range, with: output as String)
         }
-        return MarkdownRenderedFragment(html: mutable as String, imageURLs: images)
+        return MarkdownRenderedFragment(html: mutable as String, imageURLs: images, imageSources: sources)
     }
 
     //DM 2026-10-14 WebKit ignoriert die DPI für die Layoutgröße. Metadaten ohne
@@ -728,8 +731,8 @@ enum MarkdownImages {
         return String(hash, radix: 16)
     }
 
-    private static func localImageURL(from rawSource: String,
-                                      documentURL: URL?) -> URL? {
+    static func localImageURL(from rawSource: String,
+                              documentURL: URL?) -> URL? {
         let unescaped = rawSource
         // Ein echtes `#` trennt das URL-Fragment ab. `%23` ist dagegen ein
         // zulässiges Rautezeichen IM Dateinamen und darf erst danach decodiert

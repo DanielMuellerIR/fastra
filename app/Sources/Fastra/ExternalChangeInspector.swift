@@ -133,37 +133,48 @@ final class ExternalChangeInspector: @unchecked Sendable {
             // Nur ein wirklich fehlender Pfad darf der alten Identität folgen.
             let resolvedURL = FileLocationReference.isMissing(request.url)
                 ? (request.locationReference?.resolvedURL() ?? request.url) : request.url
-            let before = ExternalFileObservation(url: resolvedURL)
-            // Die Bytes lohnen sich nur bei einem veränderten Fingerabdruck,
-            // und auch dann nur, wenn (a) die Größe gleich blieb — erst der
-            // Hash entscheidet dann über echt/unecht — oder (b) der Tab
-            // dirty ist und die Rückfrage einen Snapshot der Fremdfassung
-            // braucht. Eine andere Größe bei sauberem Tab beweist die
-            // Änderung bereits ohne Lesen.
-            var snapshot: FileSnapshot?
-            var after = before
-            if let current = before, current != request.knownObservation,
-               let observedByteCount = request.observedByteCount,
-               Int64(observedByteCount) == current.byteCount || request.isDirty {
-                snapshot = snapshotReader(resolvedURL)
-                // Vorher/Nachher-Fingerabdruck ergänzt die bereits interne
-                // Konsistenzprüfung von FileSnapshot um die kleine Lücke
-                // zwischen dessen Rückgabe und unserer Beobachtung.
-                after = ExternalFileObservation(url: resolvedURL)
+            func read(at resolvedURL: URL) -> Inspection {
+                let before = ExternalFileObservation(url: resolvedURL)
+                // Die Bytes lohnen sich nur bei einem veränderten Fingerabdruck,
+                // und auch dann nur, wenn (a) die Größe gleich blieb — erst der
+                // Hash entscheidet dann über echt/unecht — oder (b) der Tab
+                // dirty ist und die Rückfrage einen Snapshot der Fremdfassung
+                // braucht. Eine andere Größe bei sauberem Tab beweist die
+                // Änderung bereits ohne Lesen.
+                var snapshot: FileSnapshot?
+                var after = before
+                if let current = before, current != request.knownObservation,
+                   let observedByteCount = request.observedByteCount,
+                   Int64(observedByteCount) == current.byteCount || request.isDirty {
+                    snapshot = snapshotReader(resolvedURL)
+                    // Vorher/Nachher-Fingerabdruck ergänzt die bereits interne
+                    // Konsistenzprüfung von FileSnapshot um die kleine Lücke
+                    // zwischen dessen Rückgabe und unserer Beobachtung.
+                    after = ExternalFileObservation(url: resolvedURL)
+                }
+                return Inspection(
+                    tabID: request.tabID,
+                    documentID: request.documentID,
+                    url: request.url,
+                    resolvedURL: resolvedURL,
+                    originalLocationReference: request.locationReference,
+                    observation: resolvedURL == request.url || after?.locationReference == request.locationReference ? after : nil,
+                    stableSnapshot: snapshot.flatMap { candidate in
+                        before == after && after?.matches(snapshot: candidate) == true
+                            ? candidate : nil
+                    },
+                    wasDirty: request.isDirty
+                )
             }
-            let inspection = Inspection(
-                tabID: request.tabID,
-                documentID: request.documentID,
-                url: request.url,
-                resolvedURL: resolvedURL,
-                originalLocationReference: request.locationReference,
-                observation: resolvedURL == request.url || after?.locationReference == request.locationReference ? after : nil,
-                stableSnapshot: snapshot.flatMap { candidate in
-                    before == after && after?.matches(snapshot: candidate) == true
-                        ? candidate : nil
-                },
-                wasDirty: request.isDirty
-            )
+            let candidate = read(at: resolvedURL)
+            let inspection: Inspection
+            // Safe-Save kann den ursprünglichen Namen während der Lektüre
+            // wieder anlegen. Dann gewinnt dessen neue Fassung vor dem Backup.
+            if resolvedURL != request.url, !FileLocationReference.isMissing(request.url) {
+                inspection = read(at: request.url)
+            } else {
+                inspection = candidate
+            }
 
             await MainActor.run { [weak self] in
                 guard let self,

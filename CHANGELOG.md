@@ -7,6 +7,14 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.156.1] — 2026-10-24
+
+### Behoben
+
+- Wird der ursprüngliche Dokumentpfad während einer externen Umbenennungsprüfung neu angelegt, bleibt der Tab an diesem Pfad und lädt die neue Fassung statt einer alten Backup-Datei.
+- Nach einem externen Ordnerumzug bleiben Markdown-Bilder aus benachbarten Ordnern auch in HTML- und Rich-Text-Kopien erhalten. Der WYSIWYG-Undo-Verlauf bleibt bestehen.
+- Der Markdown-Darstellungsselbsttest stuft fremde Zwischenablageänderungen und nicht lesbare fremde Clipboard-Daten als Umgebungsprobleme ein.
+
 ## [v1.156.0] — 2026-10-23
 
 ### Hinzugefügt

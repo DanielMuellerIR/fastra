@@ -1589,6 +1589,63 @@ struct MarkdownVisualTests {
         #expect(try await targetWeb.evaluateJavaScript("JSON.stringify(" + snapshot + ")") as? String == expected, Comment(rawValue: pasted))
     }
 
+    @Test("Ordnerumzüge erhalten benachbarte Bildquellen, Rich-Text-Kopien und WebKit-Undo")
+    @MainActor
+    func relocatedParentImageClipboard() async throws {
+        let root = testTemporaryDirectory().appendingPathComponent("visual-relocation-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let original = root.appendingPathComponent("A")
+        let file = original.appendingPathComponent("docs/doc.md")
+        for directory in [file.deletingLastPathComponent(), original.appendingPathComponent("images")] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        let bytes = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII="))
+        try bytes.write(to: original.appendingPathComponent("images/p #.png"))
+        let source = "Text\n\n![Bild](../images/p%20%23.png)\n"
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: file)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("""
+            (() => {
+            window.originalImage=document.querySelector('img');
+            const p=document.querySelector('p'),r=document.createRange();r.selectNodeContents(p);r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            document.execCommand('insertText',false,'X');fastraVisual.flush();
+            })();
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content != source })
+        var previous = file
+        for name in ["B", "C"] {
+            let directory = root.appendingPathComponent(name)
+            try FileManager.default.moveItem(at: previous.deletingLastPathComponent().deletingLastPathComponent(), to: directory)
+            let moved = directory.appendingPathComponent("docs/doc.md")
+            workspace.tabs[0].url = moved
+            coordinator.relocateDocument(from: previous, to: moved)
+            previous = moved
+            #expect(try await web.evaluateJavaScript("originalImage===document.querySelector('img')") as? Bool == true)
+            _ = try await web.evaluateJavaScript("""
+                (() => {
+                const root=document.getElementById('fastra-visual'),r=document.createRange();r.selectNodeContents(root);
+                getSelection().removeAllRanges();getSelection().addRange(r);
+                root.dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));
+                })();
+                """)
+            try #require(await waitUntil { coordinator.pasteboard.data(forType: .rtfd) != nil })
+            #expect(coordinator.pasteboard.string(forType: .html)?.contains("data:image/png;base64," + bytes.base64EncodedString()) == true)
+            let rtfd = try #require(coordinator.pasteboard.data(forType: .rtfd))
+            let rich = try #require(NSAttributedString(rtfd: rtfd, documentAttributes: nil))
+            var attachments = [Data]()
+            rich.enumerateAttribute(.attachment, in: NSRange(location: 0, length: rich.length)) { value, _, _ in
+                if let data = (value as? NSTextAttachment)?.fileWrapper?.regularFileContents { attachments.append(data) }
+            }
+            #expect(attachments == [bytes])
+            coordinator.pasteboard.clearContents()
+        }
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        #expect(try String(contentsOf: previous, encoding: .utf8) == source)
+    }
+
     @Test("Kopieren und Einfügen bewahrt Bilder, Formeln und Kommentare in einer zweiten Datei")
     @MainActor
     func copyPasteRichMarkdown() async throws {

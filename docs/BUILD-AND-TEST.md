@@ -290,6 +290,9 @@ Dateibaumzeilen sowie die echten Pfad-Kopiermenüs von Kopf und Tab.
 `FASTRA_FILE_LOCATIONS_DIR` speichert die Abschlussansicht. Die ergänzenden
 `FileLocationTests` prüfen wiederverwendete Namen, atomare Dateiaustausche,
 verspätete Prüfungen nach einem Save, Hardlinks und Papierkorbziele.
+Die Wiederanlage des ursprünglichen Pfads während einer pausierten
+Snapshot-Lektüre muss sowohl bei sauberen als auch bei ungespeicherten Tabs
+am ursprünglichen Dokument bleiben; ein späteres Speichern lässt das Backup unverändert.
 
 `FileSystemSafetyTests` prüft auf dem gewählten echten Dateisystem die
 Mehrdatei-Vorschau vor und während des Preflights, wiederverwendete Namen,
@@ -1561,6 +1564,9 @@ Bildsnapshot darf HTML und Attachments nicht verändern; ein fehlender Snapshot
 darf keine neue Dateilesung auslösen. `MarkdownVisualTests` prüft im echten WebKit
 beide Abschlussreihenfolgen von Clipboard und Dokumentaktion: Die Aktionssperre
 bleibt erhalten, und ein abgebrochener Cut verändert den Snapshot nicht nachträglich.
+`MarkdownVisualTests/relocatedParentImageClipboard` verschiebt einen Dokumentbaum
+zweimal mit einer `../`-Bildquelle. Die echte WebKit-Kopie muss jeweils dieselben
+Bildbytes in HTML und RTFD liefern; DOM-Bildobjekt und natives Undo bleiben erhalten.
 
 `MarkdownVisualTests` prüft Einfügen am Listenanfang mit sofortigem Cursorwechsel,
 sichtbare Leerzeilen nach erneutem Rendern und die tatsächlichen WebKit-Rechtecke
