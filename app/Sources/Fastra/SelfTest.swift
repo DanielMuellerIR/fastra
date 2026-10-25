@@ -11006,12 +11006,27 @@ enum SelfTest {
                             + "erhalten \(actual))"]
             )
         }
-        guard try capturePasteboardItems() == expectedItems else {
-            throw NSError(
-                domain: "FastraSelfTestPasteboard", code: 9,
-                userInfo: [NSLocalizedDescriptionKey:
-                    "Zwischenablage-Zähler passte, der Inhalt stammt aber nicht vom Test"]
-            )
+        do {
+            guard try capturePasteboardItems() == expectedItems else {
+                throw NSError(
+                    domain: "FastraSelfTestPasteboard", code: 9,
+                    userInfo: [NSLocalizedDescriptionKey:
+                        "Zwischenablage-Zähler passte, der Inhalt stammt aber nicht vom Test"]
+                )
+            }
+            guard NSPasteboard.general.changeCount == actual else {
+                throw NSError(domain: "FastraSelfTestPasteboard", code: 5)
+            }
+        } catch {
+            // Auch ein zugesagter Datentyp kann erst während des Lesens durch
+            // eine fremde Kopie verschwinden. Vor `finish` den Besitz abgeben.
+            if NSPasteboard.general.changeCount != actual {
+                abandonSelfTestPasteboardBackup()
+                throw NSError(domain: "FastraSelfTestPasteboard", code: 5,
+                              userInfo: [NSLocalizedDescriptionKey:
+                                "Umgebungsproblem: Zwischenablage wurde während der Nachkontrolle benutzt"])
+            }
+            throw error
         }
         backup.mutationConfirmed = true
         try persistSelfTestPasteboardBackup(backup)

@@ -6,6 +6,8 @@
 // zusätzliche Preferences-Domain —, sieht man erst der UMGEBUNG an. Geprüft
 // wird deshalb die Quelle selbst, nach dem Vorbild von
 // `AppStorageIsolationTests`.
+// Die Clipboard-Nachkontrolle und `finish` laufen zusätzlich unverändert in
+// einem isolierten Kindprozess gegen eine Zwischenablage-Attrappe.
 // Der Systemtastentreiber wird zusätzlich mit echten Antwortdateien geprüft.
 //
 // Hintergrund (Code-Review 2026-08-10):
@@ -81,6 +83,83 @@ private func functionBody(named declaration: String, in source: String) throws -
     }
     Issue.record("Rumpf von \(declaration) endet nicht — Klammern zählen nicht auf")
     return body
+}
+
+@Test("Fremdzugriff während der Clipboard-Nachkontrolle bleibt bis zum Prozessabschluss ENV")
+func pasteboardCaptureSerialRunnerIntegration() throws {
+    let source = try String(contentsOf: selfTestSourceURL, encoding: .utf8)
+    let directory = testTemporaryDirectory().appendingPathComponent("clipboard-race-\(UUID())")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    // Die privaten Originalfunktionen laufen unverändert mit einer Attrappe.
+    // So sind auch `finish`/exit und das Rettungsjournal Teil der Gegenprobe,
+    // ohne jemals die Systemzwischenablage anzusprechen.
+    let declarations = try ["enum SelfTestOutcome:", "enum SelfTestPasteboardMutationRouting"].map {
+        try functionBody(named: $0, in: source)
+    }.joined(separator: "\n")
+    let methods = try [
+        "private struct SoakPasteboardBackup", "private enum SelfTestPasteboardCleanup",
+        "func noteSelfTestPasteboardMutation(", "func abandonSelfTestPasteboardBackup()",
+        "func finishSelfTestPasteboardMutation()", "func selfTestPasteboardOutcome(for",
+        "func finish(_ outcome: SelfTestOutcome,"
+    ].map { try functionBody(named: $0, in: source) }.joined(separator: "\n")
+    let fixture = """
+        import Foundation
+        import Darwin
+        \(declarations)
+        final class NSPasteboard {
+            static let general = NSPasteboard()
+            var changeCount = 7
+        }
+        enum SelfTest {
+            typealias StoredPasteboardItems = [[String: Data]]
+            static let testLabel = "clipboard-capture-race"
+            static let testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
+            static var selfTestPasteboardBackupURL: URL? { URL(fileURLWithPath: CommandLine.arguments[2]) }
+            private static var selfTestPasteboardBackup: SoakPasteboardBackup? = .init(
+                items: [["original": Data([1])]], ownedChangeCount: 7, mutationConfirmed: false)
+            static func capturePasteboardItems() throws -> StoredPasteboardItems {
+                let mode = CommandLine.arguments[1]
+                if mode.hasPrefix("foreign") { NSPasteboard.general.changeCount += 1 }
+                if mode.hasSuffix("unreadable") {
+                    throw NSError(domain: "FastraSelfTestPasteboard", code: 4)
+                }
+                return [["foreign": Data([3])]]
+            }
+            private static func persistSelfTestPasteboardBackup(_ backup: SoakPasteboardBackup) throws {}
+            static func preparedPasteboardItems(_ items: StoredPasteboardItems) throws -> StoredPasteboardItems { items }
+            static func writePreparedPasteboardItems(_ items: StoredPasteboardItems) throws { fatalError("fremden Inhalt überschrieben") }
+            static func pasteboardIsStillOwned(since count: Int) -> Bool { count == NSPasteboard.general.changeCount }
+            static func cleanupScreenshotFixtures() {}
+            static func cleanupFixtureDirectories() {}
+            \(methods)
+            static func run() {
+                _ = testStartedNanoseconds
+                do {
+                    try noteSelfTestPasteboardMutation(expectedItems: [["test": Data([2])]])
+                    finish(.pass, "unerwartet bestätigt")
+                } catch { finish(selfTestPasteboardOutcome(for: error), "Nachkontrolle") }
+            }
+        }
+        SelfTest.run()
+        """
+    let script = directory.appendingPathComponent("fixture.swift")
+    let binary = directory.appendingPathComponent("fixture")
+    try fixture.write(to: script, atomically: true, encoding: .utf8)
+    let compiler = try runTestProcess("/usr/bin/xcrun", arguments: [
+        "swiftc", "-swift-version", "5", "-module-cache-path",
+        directory.appendingPathComponent("cache").path, script.path, "-o", binary.path
+    ])
+    try #require(compiler.status == 0, Comment(rawValue: compiler.output))
+    for mode in ["foreign-unreadable", "foreign-readable", "own-unreadable", "own-mismatch"] {
+        let journal = directory.appendingPathComponent(mode + ".plist")
+        try Data([1]).write(to: journal)
+        let process = try runTestProcess(binary.path, arguments: [mode, journal.path], timeout: 10)
+        let foreign = mode.hasPrefix("foreign")
+        #expect(process.status == 1, Comment(rawValue: process.output))
+        #expect(process.output.contains("test=clipboard-capture-race status=\(foreign ? "ENV" : "FAIL")"), Comment(rawValue: process.output))
+        #expect(FileManager.default.fileExists(atPath: journal.path) == !foreign)
+    }
 }
 
 @Test("pasteindent nutzt die zentrale, absturzfeste Zwischenablage-Sicherung")

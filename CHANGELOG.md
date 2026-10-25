@@ -7,6 +7,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.156.2] — 2026-10-25
+
+### Behoben
+
+- Unterschiedliche relative Verweise auf dieselbe Markdown-Bilddatei bleiben nach einem Ordnerumzug getrennt zugeordnet. Einzelne Bilder werden dadurch weiterhin mit ihren Daten in HTML und Rich Text kopiert.
+- Ein fremder Zwischenablagezugriff während der Selbsttest-Nachkontrolle bleibt bis zum Prozessabschluss ein Umgebungsproblem; neuere fremde Inhalte behalten keinen veralteten Rettungsauftrag. Eigene unbestätigte Schreibfehler bleiben Fehler.
+
 ## [v1.156.1] — 2026-10-24
 
 ### Behoben

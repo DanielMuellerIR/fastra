@@ -1567,6 +1567,13 @@ bleibt erhalten, und ein abgebrochener Cut verändert den Snapshot nicht nachtr�
 `MarkdownVisualTests/relocatedParentImageClipboard` verschiebt einen Dokumentbaum
 zweimal mit einer `../`-Bildquelle. Die echte WebKit-Kopie muss jeweils dieselben
 Bildbytes in HTML und RTFD liefern; DOM-Bildobjekt und natives Undo bleiben erhalten.
+`relocatedImageSourceAliasesClipboard` ergänzt unterschiedliche relative Verweise
+auf dieselbe Datei, auch innerhalb eines Absatzes. Nach dem Umzug in einen anders
+benannten Ordner müssen einzeln kopierte gültige Bilder ihre HTML-/RTFD-Daten behalten.
+`pasteboardCaptureSerialRunnerIntegration` führt die privaten Clipboard-Nachkontrollen
+und den wirklichen Prozessabschluss mit einer Zwischenablage-Attrappe aus. Fremde
+lesbare oder nicht lesbare Daten während der Nachkontrolle ergeben `ENV` ohne
+veraltetes Rettungsjournal; eigene unbestätigte Schreibfehler bleiben `FAIL` mit Journal.
 
 `MarkdownVisualTests` prüft Einfügen am Listenanfang mit sofortigem Cursorwechsel,
 sichtbare Leerzeilen nach erneutem Rendern und die tatsächlichen WebKit-Rechtecke

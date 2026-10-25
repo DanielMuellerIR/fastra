@@ -627,12 +627,15 @@ enum MarkdownImages {
             var displayWidth: Double?
             if let imageURL = localImageURL(from: attribute.value, documentURL: documentURL),
                MarkdownPreviewAssets.imageMIMEType(for: imageURL) != nil {
-                let token = imageToken(for: imageURL)
+                let identity = imageToken(for: imageURL)
+                // Relative Quellen können nach einem Umzug auseinanderfallen,
+                // obwohl sie jetzt dieselbe Datei bezeichnen.
+                let token = identity + "-" + stableHash(attribute.value)
                 images[token] = imageURL
                 sources[token] = attribute.value
                 replacement = "\(MarkdownPreviewAssets.scheme)://image/\(token)"
                 if !attributes.contains(where: { $0.name == "width" || $0.name == "height" }) {
-                    displayWidth = logicalWidth(of: imageURL, token: token)
+                    displayWidth = logicalWidth(of: imageURL, token: identity)
                 }
             } else { replacement = "" }
             let output = NSMutableString(string: rawTag)

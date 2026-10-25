@@ -1646,6 +1646,48 @@ struct MarkdownVisualTests {
         #expect(try String(contentsOf: previous, encoding: .utf8) == source)
     }
 
+    @Test("Quellaliasse desselben Bildes bleiben nach einem Ordnerumzug unabhängig kopierbar")
+    @MainActor
+    func relocatedImageSourceAliasesClipboard() async throws {
+        let root = testTemporaryDirectory().appendingPathComponent("visual-alias-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let original = root.appendingPathComponent("A/docs")
+        let relocated = root.appendingPathComponent("B/renamed")
+        try FileManager.default.createDirectory(at: original, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: relocated.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let bytes = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII="))
+        try bytes.write(to: original.appendingPathComponent("img.png"))
+        // Der dritte Alias liegt im selben Absatz und prüft zusätzlich den Renderloop.
+        let source = "![a](img.png)\n\n![b](../docs/img.png) ![c](./img.png)\n"
+        let file = original.appendingPathComponent("doc.md")
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: file)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        try FileManager.default.moveItem(at: original, to: relocated)
+        let moved = relocated.appendingPathComponent("doc.md")
+        workspace.tabs[0].url = moved
+        coordinator.relocateDocument(from: file, to: moved)
+        for alt in ["a", "c"] {
+            coordinator.pasteboard.clearContents()
+            _ = try await web.callAsyncJavaScript("""
+                const root=document.getElementById('fastra-visual'),range=document.createRange();
+                range.selectNode(document.querySelector('img[alt="'+alt+'"]'));
+                getSelection().removeAllRanges();getSelection().addRange(range);
+                root.dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));
+                """, arguments: ["alt": alt], in: nil, contentWorld: .page)
+            try #require(await waitUntil { coordinator.pasteboard.data(forType: .rtfd) != nil })
+            #expect(coordinator.pasteboard.string(forType: .html)?.contains("data:image/png;base64," + bytes.base64EncodedString()) == true)
+            let rtfd = try #require(coordinator.pasteboard.data(forType: .rtfd))
+            let rich = try #require(NSAttributedString(rtfd: rtfd, documentAttributes: nil))
+            var attachments = [Data]()
+            rich.enumerateAttribute(.attachment, in: NSRange(location: 0, length: rich.length)) { value, _, _ in
+                if let data = (value as? NSTextAttachment)?.fileWrapper?.regularFileContents { attachments.append(data) }
+            }
+            #expect(attachments == [bytes])
+        }
+        #expect(workspace.activeTab?.content == source)
+    }
+
     @Test("Kopieren und Einfügen bewahrt Bilder, Formeln und Kommentare in einer zweiten Datei")
     @MainActor
     func copyPasteRichMarkdown() async throws {
