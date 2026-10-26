@@ -37,7 +37,7 @@ und überlappende Löschungen einschließlich der verbleibenden Zeilenhöhen.
 
 ## Textsuche im WYSIWYG-Modus
 
-Nach `./build.sh` prüft `./test.sh --fast-only --filter
+Nach `./build.sh` prüft `./test.sh --filter
 'MarkdownVisualTests/visualFind'` WebKits echte Suche über Formatgrenzen,
 Unicode, ausgeblendete Linkadressen und Markdown-Syntax, Groß-/Kleinschreibung,
 Vorwärts/Rückwärts mit sichtbarem Scrollen sowie verspätete Antworten nach
@@ -69,7 +69,7 @@ Build-/Unit-/Selbsttestpfad ausführen.
 
 ## Markdown-Tabellen
 
-Nach `./build.sh` prüft `./test.sh --fast-only --filter
+Nach `./build.sh` prüft `./test.sh --filter
 'MarkdownVisualTests/table'`
 die GFM-Strukturänderungen, Tab-Navigation, begrenztes TSV, geschützte
 Kopfzeilen/HTML-Tabellen, native Undo-Schritte und Formel-/Kommentar-Roundtrips.
@@ -199,7 +199,7 @@ unvollständigem Ergebnis und Abbruch in beiden Darstellungen und Breiten.
 
 ## Markdown-Gliederung
 
-Nach `./build.sh` prüft `./test.sh --fast-only --filter
+Nach `./build.sh` prüft `./test.sh --filter
 'MarkdownOutlineTests|MarkdownVisualTests/outline'` Parserstruktur, Unicode-
 und Zeilenendpositionen, dokumentgebundenen Verlauf, echte WebKit-Selektion
 und den sichtbaren Ausschnitt langer Dokumente. Inline-HTML-Überschriften
@@ -261,7 +261,7 @@ und `localization` ergänzen die native Regression.
 
 ## Editoroptionen und Markdown-Listen
 
-Nach `./build.sh` prüft `./test.sh --fast-only --filter
+Nach `./build.sh` prüft `./test.sh --filter
 'EditorDisplayOptionsTests|MarkdownVisualTests|SoftWrap|Indentation'` die
 Dokumentisolation, echten Zeichen-Bitmaps, Auswahl- und Texttreue sowie die
 Listen-Geometrie in Vorschau und WYSIWYG. WebKit rundet die tatsächlichen
@@ -323,7 +323,7 @@ benötigt exklusiven Fensterfokus.
 
 ## Markdown-Bilder und Undo
 
-`./test.sh --fast-only --filter 'MarkdownVisualTests/imageLogicalSize|MarkdownRichTextTests|MarkdownPreviewSchemeHandlerTests'`
+`./test.sh --filter 'MarkdownVisualTests/imageLogicalSize|MarkdownRichTextTests|MarkdownPreviewSchemeHandlerTests'`
 prüft die tatsächlichen WebKit-Bildrechtecke bei 72, 144 und 216 dpi in Vorschau
 und WYSIWYG sowie die Quelltexttreue. DPI-Metadaten verkleinern die natürliche
 Darstellungsbreite auf die logische Mac-Größe; explizite HTML-Maße bleiben erhalten.
@@ -345,7 +345,7 @@ Dateiinhalte werden im Hintergrund geprüft. Unmittelbar vor dem Entfernen gleic
 der Main-Thread alle offenen Dokumentreferenzen erneut ab und führt nur noch die
 kurze Metadatenoperation aus. Geänderte Referenzen lösen eine neue Prüfung aus.
 
-Nach `./build.sh` prüfen `./test.sh --fast-only --filter
+Nach `./build.sh` prüfen `./test.sh --filter
 'MarkdownImageUndoBufferTests|MarkdownImageStoreTests|MarkdownVisualTests|SearchUndoTests|AtomicFileCommitTests'`
 das Speicherlimit, Verwerfen während einer laufenden Aktion, gespeicherte und
 geteilte Bildreferenzen, Dateikollisionen sowie echte WebKit-Undo-Vorgänge.
@@ -819,6 +819,10 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Dasselbe gilt für `ExternalDiffServiceSerialRunnerIntegrationTests`: Die
   echten Annahme-/Zustellfristen dürfen nicht durch schwere Editor-Tests auf
   demselben MainActor ablaufen. Die Fristen selbst bleiben unverändert.
+  `MarkdownVisualTests` läuft ebenfalls im frischen seriellen Prozess. Die
+  echten WebViews sollen keine verbliebenen Layout- und Hintergrundaufgaben
+  des großen Editor-Belastungskorpus übernehmen; alle Formatierungs-, Speicher-
+  und Wiederöffnungsprüfungen bleiben unverändert aktiv.
   Die sichtbaren, lokalisierten Testtitel sind ausdrücklich kein Teil der
   Gruppierung. Für gezielte Runner-Diagnosen stehen `./test.sh --fast-only` und
   `./test.sh --serial-integration-only` bereit; ohne diese Optionen bleibt der
@@ -1539,7 +1543,7 @@ Fixtures ersetzen ihn nicht.
 ### Visuelle Markdown-Bearbeitung
 
 Bei Änderungen an WYSIWYG-Formatierung, Serialisierung oder Rendering ist
-`./test.sh --fast-only --filter Markdown` nach dem Build erforderlich.
+`./test.sh --filter Markdown` nach dem Build erforderlich.
 `MarkdownVisualTests/formatOptionsSaveReopen` bedient alle 15 Formatierungsbefehle
 mit echten WebKit-Auswahlen in Hell und Dunkel, speichert über den Workspace,
 schließt den Tab und erzeugt aus der Plattendatei einen frischen Editor.

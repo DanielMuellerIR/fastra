@@ -68,34 +68,39 @@ extension DifficultDocumentCorpusTests {
 @Test("Dokumenttransformationen blockieren den UI-Thread nicht")
 @MainActor
 func documentTransformationsRunOutsideTheMainThread() async {
-    let operationStarted = DispatchSemaphore(value: 0)
     let mayFinish = DispatchSemaphore(value: 0)
     let clock = ContinuousClock()
 
-    let completion: (value: String, ranOnMainThread: Bool) =
+    let completion: (value: String, operationRanOnMainThread: Bool,
+                     completionRanOnMainThread: Bool, releasedAfterEnqueue: Bool) =
         await withCheckedContinuation { continuation in
             let invocationStart = clock.now
             EditorDocumentTransformationScheduler.run(
                 operation: {
-                    operationStarted.signal()
-                    _ = mayFinish.wait(timeout: .now() + 2)
-                    return "fertig"
+                    let ranOnMainThread = Thread.isMainThread
+                    let released = mayFinish.wait(timeout: .now() + 2) == .success
+                    return (value: "fertig", ranOnMainThread: ranOnMainThread, released: released)
                 },
                 completion: { value in
-                    continuation.resume(returning: (value, Thread.isMainThread))
+                    continuation.resume(returning: (value.value, value.ranOnMainThread,
+                                                     Thread.isMainThread, value.released))
                 }
             )
             let invocationDuration = invocationStart.duration(to: clock.now)
 
             #expect(invocationDuration < .milliseconds(100),
                     "Das Einreihen wartete \(invocationDuration) auf die Transformation")
-            #expect(operationStarted.wait(timeout: .now() + 1) == .success,
-                    "Die Hintergrundtransformation startete nicht")
+            // Die Operation darf erst nach der Rückkehr des Einreihens fertig
+            // werden. Ihr Startzeitpunkt hängt dagegen von der Fremdlast ab.
             mayFinish.signal()
         }
 
     #expect(completion.value == "fertig")
-    #expect(completion.ranOnMainThread,
+    #expect(!completion.operationRanOnMainThread,
+            "Die Transformation muss außerhalb des Main-Threads laufen")
+    #expect(completion.releasedAfterEnqueue,
+            "Das Einreihen muss zurückkehren, bevor die Operation freigegeben wird")
+    #expect(completion.completionRanOnMainThread,
             "Das Ergebnis muss für die Editoränderung auf den Main-Thread zurückkehren")
 }
 

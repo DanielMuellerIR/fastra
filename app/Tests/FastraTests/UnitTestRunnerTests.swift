@@ -184,10 +184,10 @@ struct SerialRunnerIntegrationTests {
         #expect(calls.count == 2)
         #expect(calls[0].arguments
                 == ["test", "--parallel", "--skip",
-                    "[Gg]itIntegration|[Ss]erialRunnerIntegration"])
+                    "[Gg]itIntegration|[Ss]erialRunnerIntegration|MarkdownVisualTests"])
         #expect(calls[1].arguments
                 == ["test", "--no-parallel", "--filter",
-                    "[Gg]itIntegration|[Ss]erialRunnerIntegration"])
+                    "[Gg]itIntegration|[Ss]erialRunnerIntegration|MarkdownVisualTests"])
         #expect(calls[0].tmp == calls[1].tmp)
         #expect(calls[0].cf == calls[1].cf)
         #expect(result.output.contains(
@@ -226,16 +226,16 @@ struct SerialRunnerIntegrationTests {
         #expect(calls.count == 2)
         #expect(calls[0].arguments == [
             "test", "--parallel", "--skip",
-            "[Gg]itIntegration|[Ss]erialRunnerIntegration",
+            "[Gg]itIntegration|[Ss]erialRunnerIntegration|MarkdownVisualTests",
             "--filter", "(?<probe>SelfTestOutcomeTests)",
             "--filter", "(?<probe>UnitTestRunnerTests)",
         ])
         #expect(calls[1].arguments == [
             "test", "--no-parallel", "--filter",
-            "^(?=.*(?:[Gg]itIntegration|[Ss]erialRunnerIntegration))"
+            "^(?=.*(?:[Gg]itIntegration|[Ss]erialRunnerIntegration|MarkdownVisualTests))"
                 + "(?=.*(?:(?<probe>SelfTestOutcomeTests))).*$",
             "--filter",
-            "^(?=.*(?:[Gg]itIntegration|[Ss]erialRunnerIntegration))"
+            "^(?=.*(?:[Gg]itIntegration|[Ss]erialRunnerIntegration|MarkdownVisualTests))"
                 + "(?=.*(?:(?<probe>UnitTestRunnerTests))).*$",
         ])
     }

@@ -13,7 +13,7 @@ cd "$(dirname "$0")"
 . ./tools/test-process-tree.sh
 
 TEST_PROCESS_PID=""
-SERIAL_INTEGRATION_FILTER='[Gg]itIntegration|[Ss]erialRunnerIntegration'
+SERIAL_INTEGRATION_FILTER='[Gg]itIntegration|[Ss]erialRunnerIntegration|MarkdownVisualTests'
 RUN_FAST_PHASE=1
 RUN_SERIAL_INTEGRATION_PHASE=1
 FAST_PHASE_PARALLEL=1
