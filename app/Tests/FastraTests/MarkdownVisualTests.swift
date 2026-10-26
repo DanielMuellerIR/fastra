@@ -5,6 +5,17 @@ import PDFKit
 import Testing
 @testable import Fastra
 
+// Im Produkt besitzt das Dokumentfenster seinen Workspace. Der Coordinator
+// hält ihn bewusst schwach; dieselbe Lebensdauer braucht die Renderer-Fixture.
+private final class MarkdownVisualFixtureWindow: NSWindow {
+    var retainedWorkspace: Workspace?
+
+    override func close() {
+        super.close()
+        retainedWorkspace = nil
+    }
+}
+
 @Suite("Markdown-WYSIWYG", .serialized)
 struct MarkdownVisualTests {
 
@@ -1011,9 +1022,18 @@ struct MarkdownVisualTests {
         workspace.visualMarkdownEditor = coordinator
         let web = MarkdownVisualWebView.makeWebView(coordinator: coordinator)
         web.frame = NSRect(x: 0, y: 0, width: 700, height: 500)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = MarkdownVisualFixtureWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
+        window.retainedWorkspace = workspace
         window.isReleasedWhenClosed = false
         window.contentView = web
+        if ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" {
+            // Die visuelle Integration nutzt den dedizierten CI-Desktop.
+            // Lokale Renderer-Prüfungen übernehmen weiterhin keinen Fokus.
+            NSApplication.shared.setActivationPolicy(.accessory)
+            window.orderFrontRegardless()
+            try #require(await waitUntil { window.occlusionState.contains(.visible) },
+                         "Die WebKit-Fixture muss auf dem CI-Desktop sichtbar sein")
+        }
         var error: String?
         workspace.saveSafetyWarningHandler = { title, text in error = title + text }
         coordinator.load(source, documentURL: documentURL, fontName: PreviewFonts.systemName,
