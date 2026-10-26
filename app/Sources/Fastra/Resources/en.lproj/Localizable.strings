@@ -1,5 +1,10 @@
 /* Fastra — English user interface */
 
+"Geschützter Markdown-Bereich" = "Protected Markdown content";
+"Dieser Bereich kann im WYSIWYG-Modus nicht bearbeitet werden. Bitte zum Ändern in den Markdown-Quelltext wechseln. Es wurde nichts verändert." = "This content cannot be edited in WYSIWYG mode. Switch to the Markdown source to change it. Nothing was changed.";
+
+"Markdown-Tabellenzellen unterstützen Textformatierung, Links und Zeilenumbrüche, aber keine Überschriften, Listen, Zitate oder verschachtelten Tabellen." = "Markdown table cells support text formatting, links and line breaks, but not headings, lists, quotes or nested tables.";
+
 "Die Ersetzung würde „%@“ über die sichere Größe von 256 MiB vergrößern. Es wurde nichts verändert." = "The replacement would enlarge “%@” beyond the safe size of 256 MiB. Nothing was changed.";
 
 "(kein Verlauf)" = "(no history)";
@@ -453,7 +458,7 @@
 "Die Datei wurde während des Speicherns erneut geändert. Der Plattenstand blieb erhalten." = "The file changed again while saving. The on-disk version was preserved.";
 "Die Datei wurde während des Lesens geändert. Lade sie über „Ablage“ > „Von Festplatte neu laden“ erneut." = "The file changed while it was being read. Reload it with File > Reload from Disk.";
 "Der Datenträger unterstützt keinen sicheren atomaren Dateiaustausch. Die Datei wurde nicht geändert." = "The volume does not support safe atomic file exchange. The file was not changed.";
-"Der Dateiaustausch konnte nach einer gleichzeitigen Fremdänderung nicht sicher zurückgesetzt werden. Prüfe „%@“ und „%@“; Fastra löscht in diesem Zustand keinen der beiden Pfade." = "The file exchange could not be safely rolled back after a concurrent external change. Check “%@” and “%@”; Fastra does not delete either path in this state.";
+"Der sichere Dateiaustausch konnte nicht vollständig abgeschlossen werden. Prüfe „%@“ und „%@“; Fastra löscht in diesem Zustand keinen der beiden Pfade." = "The safe file exchange could not be fully completed. Check “%@” and “%@”; Fastra does not delete either path in this state.";
 "Die sichtbare Vorschau ist gekürzt. Verfeinere die Suche, bis alle Treffer sichtbar sind, bevor du Änderungen anwendest." = "The visible preview is truncated. Refine the search until every match is visible before applying changes.";
 "Dateien oder Suchoptionen haben sich seit der sichtbaren Vorschau geändert. Starte die Suche erneut; es wurde nichts verändert." = "Files or search options changed after the visible preview. Run the search again; nothing was changed.";
 "Die berechnete Änderung stimmt nicht mehr mit der sichtbaren Vorschau überein. Starte die Suche erneut; es wurde nichts verändert." = "The calculated change no longer matches the visible preview. Run the search again; nothing was changed.";

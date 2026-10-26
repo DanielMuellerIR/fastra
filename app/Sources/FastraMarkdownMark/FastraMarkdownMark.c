@@ -56,10 +56,10 @@ static cmark_node *match_mark(cmark_syntax_extension *extension,
     return text;
 }
 
-/// Wandelt den Öffner in einen kontrollierten Custom-Inline-Knoten um und
-/// verschiebt alle bereits von cmark geparsten Kinder hinein. Dadurch bleiben
-/// Fett, Kursiv, Links und Softbreaks innerhalb der Markierung vollwertiges
-/// Markdown; der Nutzer kann trotzdem kein eigenes HTML einschleusen.
+/// Kontrollierte Inline-Tags erhalten die schon geparsten Geschwister.
+/// GFM-Tabellenzellen erlauben keine CUSTOM_INLINE-Knoten; der frühere
+/// Knotentausch scheiterte dort und entfernte trotzdem beide Delimiter.
+/// Die festen Tags durchlaufen dieselbe HTML-Positivliste wie Inline-HTML.
 static delimiter *insert_mark(cmark_syntax_extension *extension,
                               cmark_parser *parser,
                               cmark_inline_parser *inline_parser,
@@ -71,21 +71,12 @@ static delimiter *insert_mark(cmark_syntax_extension *extension,
     delimiter *result = closer->next;
     cmark_node *mark = opener->inl_text;
 
-    if (!cmark_node_set_type(mark, CMARK_NODE_CUSTOM_INLINE)
-        || !cmark_node_set_on_enter(mark, "<mark>")
-        || !cmark_node_set_on_exit(mark, "</mark>")) {
+    if (!cmark_node_set_type(mark, CMARK_NODE_HTML_INLINE)
+        || !cmark_node_set_literal(mark, "<mark>")
+        || !cmark_node_set_type(closer->inl_text, CMARK_NODE_HTML_INLINE)
+        || !cmark_node_set_literal(closer->inl_text, "</mark>")) {
         goto remove_delimiters;
     }
-
-    cmark_node *node = cmark_node_next(mark);
-    while (node != NULL && node != closer->inl_text) {
-        cmark_node *next = cmark_node_next(node);
-        if (!cmark_node_append_child(mark, node)) {
-            goto remove_delimiters;
-        }
-        node = next;
-    }
-    cmark_node_free(closer->inl_text);
 
 remove_delimiters:
     {

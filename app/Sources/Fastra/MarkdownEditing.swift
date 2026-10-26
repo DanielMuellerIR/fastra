@@ -58,6 +58,17 @@ extension MarkdownFormatCommand {
     /// Beschriftung in Menüleiste und Rechtsklickmenü.
     var menuTitle: String { L10n.string(menuTitleKey) }
 
+    var supportsTableCell: Bool {
+        switch self {
+        case .heading1, .heading2, .heading3, .bulletList, .orderedList, .taskList, .quote, .insertTable: false
+        default: true
+        }
+    }
+
+    static var tableCellRestriction: String {
+        L10n.string("Markdown-Tabellenzellen unterstützen Textformatierung, Links und Zeilenumbrüche, aber keine Überschriften, Listen, Zitate oder verschachtelten Tabellen.")
+    }
+
     /// Jeder Tooltip erklärt die Wirkung und nennt das zugehörige Tastenkürzel.
     var helpText: String {
         helpText(visualEditor: false)

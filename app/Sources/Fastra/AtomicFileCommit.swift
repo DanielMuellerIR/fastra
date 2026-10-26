@@ -9,6 +9,7 @@
 
 import Darwin
 import Foundation
+import OSLog
 
 enum AtomicFileCommit {
     typealias PreparedSnapshotReader = (Int32, stat, UInt64) throws -> FileSnapshot
@@ -35,7 +36,7 @@ enum AtomicFileCommit {
                     "Der Datenträger unterstützt keinen sicheren atomaren Dateiaustausch. Die Datei wurde nicht geändert.")
             case .recoveryRequired(let target, let displaced):
                 return L10n.format(
-                    "Der Dateiaustausch konnte nach einer gleichzeitigen Fremdänderung nicht sicher zurückgesetzt werden. Prüfe „%@“ und „%@“; Fastra löscht in diesem Zustand keinen der beiden Pfade.",
+                    "Der sichere Dateiaustausch konnte nicht vollständig abgeschlossen werden. Prüfe „%@“ und „%@“; Fastra löscht in diesem Zustand keinen der beiden Pfade.",
                     target.path, displaced.path)
             }
         }
@@ -117,7 +118,7 @@ enum AtomicFileCommit {
             guard sameVersion(verifiedTargetStat, targetBefore),
                   expected.identity == FileIdentity(stat: targetBefore),
                   expected.byteCount == Int(targetBefore.st_size) else {
-                throw Failure.conflictUnchanged
+                throw conflict(.conflictUnchanged)
             }
         } else {
             guard targetBefore.st_size == off_t(expected.byteCount),
@@ -125,7 +126,7 @@ enum AtomicFileCommit {
                     descriptor: targetFD, fileStat: targetBefore,
                     byteLimit: UInt64(expected.byteCount)),
                   current == expected else {
-                throw Failure.conflictUnchanged
+                throw conflict(.conflictUnchanged)
             }
         }
 
@@ -192,7 +193,7 @@ enum AtomicFileCommit {
         // Identitätsprüfung, damit danach kein breites Unlink-Rennfenster bleibt.
         guard fsync(directoryFD) == 0 else {
             shouldFinishRecoveryJournal = false
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
 
@@ -213,12 +214,12 @@ enum AtomicFileCommit {
             guard sameIdentity(preparedAtPath, preparedRollbackVersion),
                   sameVersion(preparedAtPath, preparedRollbackVersion),
                   sameVersionAcrossRename(preparedBefore, preparedRollbackVersion) else {
-                throw Failure.recoveryRequired(target: targetURL,
+                throw recoveryRequired(target: targetURL,
                                                displaced: preparedURL)
             }
         } catch {
             shouldFinishRecoveryJournal = false
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         // Ab hier enthält der Temp-Name den tatsächlich verdrängten Zielstand.
@@ -243,35 +244,47 @@ enum AtomicFileCommit {
                 && sameIdentity(displacedAtPath, displacedAfterSwap)
 
             guard installedPrepared, displacedWasExpected else {
-                throw Failure.conflictRolledBack
+                throw conflict(.conflictRolledBack)
             }
 
             // Metadaten erst vom TATSÄCHLICH verdrängten Dateiobjekt
             // übernehmen. Eine ACL-/Xattr-Änderung vor dem Tausch geht damit
             // nicht aufgrund eines früheren Kopierzeitpunkts verloren.
-            let displacedBeforeMetadata = displacedAfterSwap
-            let metadataResult = copyDisplacedMetadata?(targetFD, preparedFD)
-                ?? fcopyfile(targetFD, preparedFD, nil,
-                             UInt32(COPYFILE_METADATA))
-            guard metadataResult == 0 else {
-                throw currentPOSIXError()
-            }
-            let refreshedTimes = [preparedAccessTime, preparedModificationTime]
-            let restoredTimes = refreshedTimes.withUnsafeBufferPointer { times in
-                futimens(preparedFD, times.baseAddress)
-            }
-            guard restoredTimes == 0 else { throw currentPOSIXError() }
-            try synchronizeFile(preparedFD)
-
-            var displacedAfterMetadata = stat()
+            var metadataSourceVersion = displacedAfterSwap
             var preparedAfterMetadata = stat()
-            guard fstat(targetFD, &displacedAfterMetadata) == 0,
-                  fstat(preparedFD, &preparedAfterMetadata) == 0,
-                  sameVersion(displacedBeforeMetadata, displacedAfterMetadata),
-                  isRegular(preparedAfterMetadata),
-                  preparedAfterMetadata.st_size
-                    == off_t(replacementContent.byteCount) else {
-                throw Failure.conflictRolledBack
+            var displacedAfterMetadata = stat()
+            for attempt in 0...1 {
+                let metadataResult = copyDisplacedMetadata?(targetFD, preparedFD)
+                    ?? fcopyfile(targetFD, preparedFD, nil, UInt32(COPYFILE_METADATA))
+                guard metadataResult == 0 else { throw currentPOSIXError() }
+                let refreshedTimes = [preparedAccessTime, preparedModificationTime]
+                let restoredTimes = refreshedTimes.withUnsafeBufferPointer { times in
+                    futimens(preparedFD, times.baseAddress)
+                }
+                guard restoredTimes == 0 else { throw currentPOSIXError() }
+                guard fstat(preparedFD, &preparedAfterMetadata) == 0,
+                      sameIdentity(preparedAfterSwap, preparedAfterMetadata),
+                      isRegular(preparedAfterMetadata),
+                      preparedAfterMetadata.st_size == off_t(replacementContent.byteCount) else {
+                    throw conflict(.conflictRolledBack)
+                }
+                // Eigene Metadaten ändern ctime. Auch ein nachfolgender
+                // Lesefehler braucht diesen belegten Stand für den Rücktausch.
+                preparedRollbackVersion = preparedAfterMetadata
+                try synchronizeFile(preparedFD)
+                guard fstat(targetFD, &displacedAfterMetadata) == 0 else { throw currentPOSIXError() }
+                if sameVersion(metadataSourceVersion, displacedAfterMetadata) { break }
+                // Beim nativen Speichern kann sich nur die Statuszeit ändern.
+                // Keine Änderung übergehen: Inhalt erneut belegen und die
+                // aktuellen Metadaten genau einmal vollständig übernehmen.
+                guard attempt == 0,
+                      sameVersionAcrossRename(metadataSourceVersion, displacedAfterMetadata),
+                      try FileSnapshot.readSnapshotOnly(
+                        descriptor: targetFD, fileStat: displacedAfterMetadata,
+                        byteLimit: UInt64(expected.byteCount)) == expected else {
+                    throw conflict(.conflictRolledBack)
+                }
+                metadataSourceVersion = displacedAfterMetadata
             }
 
             // Beide Inhalte werden am weiterhin gebundenen Deskriptor erneut
@@ -284,11 +297,10 @@ enum AtomicFileCommit {
                 preparedFD, preparedAfterMetadata,
                 UInt64(replacementContent.byteCount))
             guard installedSnapshot.hasSameContent(as: replacementContent) else {
-                throw Failure.conflictRolledBack
+                throw conflict(.conflictRolledBack)
             }
-            preparedRollbackVersion = preparedAfterMetadata
             guard displacedSnapshot == expected else {
-                throw Failure.conflictRolledBack
+                throw conflict(.conflictRolledBack)
             }
 
             var displacedFinal = stat()
@@ -301,7 +313,7 @@ enum AtomicFileCommit {
                   sameVersion(preparedAfterMetadata, preparedFinal),
                   sameVersion(displacedPathFinal, displacedFinal),
                   sameVersion(targetPathFinal, preparedFinal) else {
-                throw Failure.conflictRolledBack
+                throw conflict(.conflictRolledBack)
             }
 
             // Erst nach belegtem Erfolg verschwindet die alte Fassung — und
@@ -402,21 +414,21 @@ enum AtomicFileCommit {
                 preparedFD, preparedVersion,
                 UInt64(replacementContent.byteCount)),
               preparedSnapshot.hasSameContent(as: replacementContent) else {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         let displacedFD = openat(
             directoryFD, preparedName,
             O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)
         guard displacedFD >= 0 else {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         defer { Darwin.close(displacedFD) }
         var displacedVersion = stat()
         guard fstat(displacedFD, &displacedVersion) == 0,
               isRegular(displacedVersion) else {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         let targetNow: stat
@@ -425,7 +437,7 @@ enum AtomicFileCommit {
             targetNow = try childStat(directoryFD, targetName)
             displacedNow = try childStat(directoryFD, preparedName)
         } catch {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         guard sameIdentity(targetNow, preparedVersion),
@@ -435,14 +447,14 @@ enum AtomicFileCommit {
               !sameIdentity(preparedVersion, displacedVersion),
               renameatx_np(directoryFD, preparedName,
                            directoryFD, targetName, flags) == 0 else {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         // Erst den Rücktausch dauerhaft machen, dann die Namen NOCHMALS
         // prüfen. So liegt kein langsamer Sync mehr zwischen der letzten
         // Bindungsprüfung und dem Löschen unserer vorbereiteten Inode.
         guard fsync(directoryFD) == 0 else {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
 
@@ -452,7 +464,7 @@ enum AtomicFileCommit {
             restoredTarget = try childStat(directoryFD, targetName)
             restoredPrepared = try childStat(directoryFD, preparedName)
         } catch {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         var preparedAfterRollback = stat()
@@ -462,7 +474,7 @@ enum AtomicFileCommit {
               sameIdentity(restoredPrepared, preparedAfterRollback),
               sameVersionAcrossRename(expectedPreparedVersion,
                                       preparedAfterRollback) else {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         // `sameVersionAcrossRename` blendet die vom Rücktausch selbst
@@ -475,7 +487,7 @@ enum AtomicFileCommit {
                 preparedFD, preparedAfterRollback,
                 UInt64(replacementContent.byteCount)),
               rolledBackSnapshot.hasSameContent(as: replacementContent) else {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         try unlinkVerifiedChild(
@@ -485,7 +497,7 @@ enum AtomicFileCommit {
             verifiedVersion: preparedAfterRollback,
             targetURL: targetURL, preparedURL: preparedURL)
         guard fsync(directoryFD) == 0 else {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
     }
@@ -532,7 +544,7 @@ enum AtomicFileCommit {
         var verified = stat()
         guard fstat(verifiedFD, &verified) == 0,
               sameVersion(verifiedVersion, verified) else {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         // `RENAME_EXCL`: Der private Name darf nichts überschreiben.
@@ -541,7 +553,7 @@ enum AtomicFileCommit {
             | UInt32(RENAME_RESOLVE_BENEATH)
         guard renameatx_np(directoryFD, name,
                            directoryFD, claimName, claimFlags) == 0 else {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         let claimURL = targetURL.deletingLastPathComponent()
@@ -550,7 +562,7 @@ enum AtomicFileCommit {
         do {
             claimed = try childStat(directoryFD, claimName)
         } catch {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: claimURL)
         }
         // `sameVersionAcrossRename` statt `sameVersion`: Das Beanspruchen
@@ -565,14 +577,14 @@ enum AtomicFileCommit {
             // privaten Namen erreichbar und wird im Fehler benannt.
             guard renameatx_np(directoryFD, claimName,
                                directoryFD, name, claimFlags) == 0 else {
-                throw Failure.recoveryRequired(target: targetURL,
+                throw recoveryRequired(target: targetURL,
                                                displaced: claimURL)
             }
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
         guard unlinkat(directoryFD, claimName, 0) == 0 else {
-            throw Failure.recoveryRequired(target: targetURL,
+            throw recoveryRequired(target: targetURL,
                                            displaced: claimURL)
         }
     }
@@ -602,9 +614,13 @@ enum AtomicFileCommit {
     }
 
     private static func sameVersion(_ lhs: stat, _ rhs: stat) -> Bool {
-        sameVersionAcrossRename(lhs, rhs)
+        let matches = sameVersionAcrossRename(lhs, rhs)
             && lhs.st_ctimespec.tv_sec == rhs.st_ctimespec.tv_sec
             && lhs.st_ctimespec.tv_nsec == rhs.st_ctimespec.tv_nsec
+        if !matches {
+            recoveryLogger.error("Dateiversion abweichend: Identität \(sameIdentity(lhs, rhs), privacy: .public), Größe \(lhs.st_size == rhs.st_size, privacy: .public), mtime \(lhs.st_mtimespec.tv_sec == rhs.st_mtimespec.tv_sec && lhs.st_mtimespec.tv_nsec == rhs.st_mtimespec.tv_nsec, privacy: .public), ctime \(lhs.st_ctimespec.tv_sec == rhs.st_ctimespec.tv_sec && lhs.st_ctimespec.tv_nsec == rhs.st_ctimespec.tv_nsec, privacy: .public), Rechte \(lhs.st_mode == rhs.st_mode, privacy: .public), Flags \(lhs.st_flags == rhs.st_flags, privacy: .public)")
+        }
+        return matches
     }
 
     /// Rename ändert ctime selbst. Inhalt und alle übrigen für einen
@@ -626,6 +642,20 @@ enum AtomicFileCommit {
 
     private static func validChildName(_ name: String) -> Bool {
         !name.isEmpty && name != "." && name != ".." && !name.contains("/")
+    }
+
+    private static let recoveryLogger = Logger(subsystem: "de.dm0.fastra", category: "AtomicFileCommit")
+
+    private static func conflict(_ failure: Failure, checkpoint: Int = #line) -> Failure {
+        recoveryLogger.error("Dateiaustausch abgebrochen; Prüfstelle \(checkpoint, privacy: .public)")
+        return failure
+    }
+
+    private static func recoveryRequired(target: URL, displaced: URL, checkpoint: Int = #line) -> Failure {
+        // Nur die Prüfstelle protokollieren, keine Dateinamen oder Inhalte.
+        // Ohne sie wären Sync-, Metadaten- und Inhaltsfehler nicht unterscheidbar.
+        recoveryLogger.error("Dateiaustausch benötigt Wiederherstellung; Prüfstelle \(checkpoint, privacy: .public)")
+        return .recoveryRequired(target: target, displaced: displaced)
     }
 
     private static func currentPOSIXError() -> POSIXError {

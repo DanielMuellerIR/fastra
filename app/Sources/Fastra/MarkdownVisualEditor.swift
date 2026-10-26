@@ -412,9 +412,11 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 let fragment = MarkdownRenderedFragment(
                     html: "<main id=\"fastra-visual\">\(document.fragment.html)</main>",
                     imageURLs: document.fragment.imageURLs)
+                // Absatzränder bleiben im Bearbeitungsbereich. Unsichtbare
+                // Undo-Grenzen dürfen den ersten sichtbaren Block nicht verschieben.
                 let html = MarkdownRichText.htmlDocument(fragment: fragment, fontName: fontName,
                                                          fontSize: fontSize, darkMode: darkMode, blockUpdates: false)
-                    .replacingOccurrences(of: "</style>", with: "#fastra-visual { outline: none; min-height: calc(100vh - 40px); } #fastra-visual > div:first-child > :first-child { margin-top: 0; } #fastra-visual [contenteditable=false] { user-select: all; } #fastra-visual table[data-md-table=gfm] :is(td,th) { white-space: pre-wrap; } #fastra-visual img[data-md-selected-image] { outline: 3px solid -apple-system-control-accent; outline-offset: 2px; }</style>")
+                    .replacingOccurrences(of: "</style>", with: "#fastra-visual { display: flow-root; outline: none; min-height: calc(100vh - 40px); } #fastra-visual > :nth-child(1 of :not([data-md-edit-boundary])) > :first-child { margin-top: 0; } #fastra-visual [contenteditable=false] { user-select: all; } #fastra-visual table[data-md-table=gfm] :is(td,th) { white-space: pre-wrap; } #fastra-visual img[data-md-selected-image] { outline: 3px solid -apple-system-control-accent; outline-offset: 2px; }</style>")
                 web.underPageBackgroundColor = darkMode ? NSColor(srgbRed: 0.09, green: 0.09, blue: 0.09, alpha: 1) : .white
                 self.currentNavigation = web.loadHTMLString(html, baseURL: nil)
             }
@@ -472,6 +474,10 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         case "tableError":
             guard workspace.activeTabID == tabID, workspace.visualMarkdownEditor === self else { return }
             workspace.markdownTable.showError(body["reason"] as? String ?? "stale")
+        case "protectedFormat":
+            guard workspace.activeTabID == tabID, workspace.visualMarkdownEditor === self else { return }
+            workspace.saveSafetyWarningHandler(L10n.string("Geschützter Markdown-Bereich"),
+                L10n.string("Dieser Bereich kann im WYSIWYG-Modus nicht bearbeitet werden. Bitte zum Ändern in den Markdown-Quelltext wechseln. Es wurde nichts verändert."))
         case "outlinePosition":
             guard workspace.activeTabID == tabID, body["revision"] as? Int == acceptedInputRevision,
                   let index = body["index"] as? Int else { return }

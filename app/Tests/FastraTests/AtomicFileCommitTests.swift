@@ -542,6 +542,107 @@ struct AtomicFileCommitTests {
         #expect(try Data(contentsOf: target) == replacement)
     }
 
+    @Test("Statusänderung während der Metadatenkopie wird nur nach Inhaltsbeleg wiederholt", arguments: [0, 1, 2])
+    func metadataChangeDuringCopyKeepsContentBoundary(_ change: Int) throws {
+        let directory = try makeDirectory("metadata-retry")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt"), prepared = directory.appendingPathComponent(".prepared.tmp")
+        let original = Data("original\n".utf8), replacement = Data("replacement\n".utf8), foreign = Data("fremder!\n".utf8)
+        let attribute = "com.fastra.tests.metadata-retry"
+        try original.write(to: target); try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        var copies = 0
+        do {
+            _ = try AtomicFileCommit.replaceExisting(
+                at: target, withPreparedFile: prepared, expecting: expected,
+                replacementContent: FileSnapshot(data: replacement, identity: nil), recoveryStore: testRecoveryStore(in: directory),
+                copyDisplacedMetadata: { source, destination in
+                    do {
+                        copies += 1
+                        let result = fcopyfile(source, destination, nil, UInt32(COPYFILE_METADATA))
+                        if copies == 1 || change == 1 {
+                            try setExtendedAttribute(Data("Stand \(copies)".utf8), named: attribute, at: prepared)
+                        }
+                        if change == 2, copies == 1 {
+                            let info = try fileStat(prepared)
+                            try writeInPlace(foreign, to: prepared)
+                            let times = [info.st_atimespec, info.st_mtimespec]
+                            let descriptor = Darwin.open(prepared.path, O_RDONLY | O_CLOEXEC)
+                            defer { Darwin.close(descriptor) }
+                            #expect(times.withUnsafeBufferPointer { futimens(descriptor, $0.baseAddress) } == 0)
+                        }
+                        return result
+                    } catch {
+                        Issue.record("Metadaten-Fixture fehlgeschlagen: \(error)")
+                        errno = EIO
+                        return -1
+                    }
+                })
+            #expect(change == 0)
+        } catch let failure as AtomicFileCommit.Failure {
+            #expect(change != 0, "Eine einmalige Statusänderung bei identischen Bytes darf Speichern nicht verhindern")
+            if case .conflictRolledBack = failure {} else { Issue.record("Sicherer Rücktausch erwartet: \(failure)") }
+        }
+        #expect(copies == (change == 2 ? 1 : 2))
+        #expect(try Data(contentsOf: target) == (change == 0 ? replacement : change == 2 ? foreign : original))
+        #expect(!FileManager.default.fileExists(atPath: prepared.path))
+        if change == 0 { #expect(try extendedAttribute(named: attribute, at: target) == Data("Stand 1".utf8)) }
+        if change == 1 { #expect(try extendedAttribute(named: attribute, at: target) == Data("Stand 2".utf8)) }
+    }
+
+    @Test("Lesefehler nach eigener Metadatenänderung schützt beide Inhaltsstände", arguments: [false, true])
+    func finalReadFailureUsesCurrentRollbackVersion(_ foreignWrite: Bool) throws {
+        let directory = try makeDirectory("final-read-failure")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let original = Data("original\n".utf8), replacement = Data("replacement\n".utf8)
+        let foreign = Data("FOREIGN!!!!\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let store = testRecoveryStore(in: directory)
+        var reads = 0
+
+        do {
+            _ = try AtomicFileCommit.replaceExisting(
+                at: target, withPreparedFile: prepared,
+                expecting: FileSnapshot.readSnapshotOnly(from: target),
+                replacementContent: FileSnapshot(data: replacement, identity: nil),
+                recoveryStore: store,
+                preparedSnapshotReader: { descriptor, info, limit in
+                    reads += 1
+                    if reads == 2 {
+                        if foreignWrite {
+                            // Gleiche Länge und zurückgesetzte mtime dürfen
+                            // den Fremdstand beim Rücktausch nicht verbergen.
+                            let count = foreign.withUnsafeBytes { pwrite(descriptor, $0.baseAddress, $0.count, 0) }
+                            #expect(count == foreign.count)
+                            let times = [info.st_atimespec, info.st_mtimespec]
+                            #expect(times.withUnsafeBufferPointer { futimens(descriptor, $0.baseAddress) } == 0)
+                        }
+                        throw POSIXError(.EIO)
+                    }
+                    return try FileSnapshot.readSnapshotOnly(descriptor: descriptor, fileStat: info, byteLimit: limit)
+                })
+            Issue.record("Der injizierte Lesefehler muss gemeldet werden")
+        } catch let failure as AtomicFileCommit.Failure {
+            #expect(foreignWrite, "Eigene Metadatenänderungen sind keine Fremdänderung: \(failure)")
+            if case .recoveryRequired = failure {} else { Issue.record("Fremdstand muss erhalten bleiben") }
+        } catch let error as POSIXError {
+            #expect(!foreignWrite)
+            #expect(error.code == .EIO)
+        }
+        if foreignWrite {
+            #expect(try Data(contentsOf: target) == foreign)
+            #expect(try Data(contentsOf: prepared) == original)
+            #expect(try store.inspectPending().count == 1)
+        } else {
+            #expect(try Data(contentsOf: target) == original)
+            #expect(!FileManager.default.fileExists(atPath: prepared.path))
+            #expect(try store.inspectPending().isEmpty)
+        }
+    }
+
     @Test("Folgenlos gescheiterte Metadatenkopie tauscht den Ausgangsstand zurück")
     func metadataCopyFailureWithoutMutationRollsBackCleanly() throws {
         let directory = try makeDirectory("metadata-copy-failure")

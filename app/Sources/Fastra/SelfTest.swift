@@ -654,6 +654,7 @@ enum SelfTest {
         case "hscroll":   waitForMainWindow { runHScrollTest() }
         case "crjump":    waitForMainWindow { runCRJumpTest() }
         case "textop":    waitForMainWindow { runTextOpTest() }
+        case "saveexisting": waitForMainWindow { runExistingFileSaveTest() }
         case "textworkflow": waitForMainWindow { runTextWorkflowTest() }
         case "textworkflowmulti": waitForMainWindow { runTextWorkflowMultiTest() }
         case "textworkflowonesided": waitForMainWindow { runTextWorkflowMultiTest(onlyOneSided: true) }
@@ -891,7 +892,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchapproval, searchapprovalclose, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdoutline, codeoutline, sourcesplit, snippets, snippetfiles, mdvisualfind, mdtable, mdtableinteraction, mdtableinput, mdcomfort, mdblocks, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, textworkflow, textworkflowmulti, textworkflowonesided, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, filedifftransfer, foldercompare, mdreferences, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchapproval, searchapprovalclose, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdoutline, codeoutline, sourcesplit, snippets, snippetfiles, mdvisualfind, mdtable, mdtableinteraction, mdtableinput, mdcomfort, mdblocks, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, saveexisting, textworkflow, textworkflowmulti, textworkflowonesided, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, filedifftransfer, foldercompare, mdreferences, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -15254,6 +15255,161 @@ enum SelfTest {
         }
     }
 
+    private static func runExistingFileSaveTest() {
+        testLabel = "saveexisting"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws),
+                  let fixturePath = ProcessInfo.processInfo.environment["FASTRA_SAVEEXISTING_DIR"] else {
+                finish(false, "Externe Bestandsdateien oder Dokumentfenster fehlen")
+            }
+            let base = URL(fileURLWithPath: fixturePath).canonicalFileURL
+            let variants = ["clean", "stale", "corrupt", "directory", "symlink"]
+            let baseline = "Bestand äöü 😀\n\nVor Ergebnis\n"
+            let defaults = workspaceDefaults(), oldWarning = ws.saveSafetyWarningHandler
+            let oldVisual = defaults.object(forKey: MarkdownEditingMode.defaultsKey)
+            let oldPreview = defaults.object(forKey: "markdown.integratedPreview")
+            var stage = "Extern vorbereitete Bestandsdateien", warning: String?, editDiagnostic = ""
+            func require(_ value: Bool, _ message: String) throws {
+                if !value { throw NSError(domain: "ExistingSaveSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+            }
+            @MainActor func wait(_ condition: @MainActor () -> Bool) async throws {
+                for _ in 0..<240 { if condition() { return }; try await Task.sleep(for: .milliseconds(50)) }
+                try require(condition(), "Zustand nicht bereit: \(stage)")
+            }
+            @MainActor func webViews(_ root: NSView) -> [WKWebView] {
+                if let web = root as? WKWebView { return [web] }
+                return root.subviews.flatMap { webViews($0) }
+            }
+            @MainActor func open(_ file: URL, visual: Bool) async throws {
+                defaults.set(visual, forKey: MarkdownEditingMode.defaultsKey)
+                var loaded = false
+                ws.loadFile(at: file) { loaded = $0 }
+                try await wait { loaded && ws.activeTab?.url?.canonicalFileURL == file.canonicalFileURL }
+                if visual { try await wait { ws.visualMarkdownEditor?.ready == true && ws.visualMarkdownEditor?.tabID == ws.activeTabID } }
+                else { try await wait { CommandTargeting.editorTextView(for: ws)?.string == ws.activeTab?.content } }
+            }
+            @MainActor func renderedContains(_ web: WKWebView, _ text: String) async -> Bool {
+                for _ in 0..<120 {
+                    if let found = try? await web.callAsyncJavaScript("return !!document.body?.innerText.includes(text)",
+                        arguments: ["text": text], in: nil, contentWorld: .page) as? Bool, found { return true }
+                    try? await Task.sleep(for: .milliseconds(50))
+                }
+                return false
+            }
+            ws.saveSafetyWarningHandler = { warning = $0 + ": " + $1 }
+            defaults.set(true, forKey: "markdown.integratedPreview")
+            defer {
+                ws.saveSafetyWarningHandler = oldWarning
+                defaults.set(oldVisual, forKey: MarkdownEditingMode.defaultsKey)
+                defaults.set(oldPreview, forKey: "markdown.integratedPreview")
+            }
+            do {
+                try require(base.lastPathComponent.hasPrefix("saveexisting."), "Unbekanntes Bestands-Testverzeichnis")
+                // Diese Dateien stammen vom Runner vor dem App-Start; die App
+                // darf sich ihre Ausgangsdatei hier nicht selbst erzeugen.
+                for variant in variants {
+                    for name in ["normal.txt", "preview.md", "visual.md"] {
+                        try require(try String(contentsOf: base.appendingPathComponent(variant).appendingPathComponent(name), encoding: .utf8) == baseline,
+                                    "Externe Ausgangsdatei fehlt oder wurde schon geändert: \(variant)/\(name)")
+                    }
+                }
+                window.setContentSize(NSSize(width: 1100, height: 720))
+                // Der letzte Tab schließt das Fenster. Ein nicht leerer
+                // Anker hält es für das anschließende frische Öffnen bereit.
+                let anchor = EditorTab(title: "Prüffenster.txt", path: "—", content: "Speicherprüfung")
+                ws.tabs.append(anchor); ws.activeTabID = anchor.id
+                activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+                try await wait { NSApp.isActive && window.isKeyWindow }
+                let cases = variants.flatMap { variant in
+                    [("normal.txt", false), ("preview.md", false), ("visual.md", true)].map { (variant, $0.0, $0.1) }
+                }
+                for (variant, name, visual) in cases {
+                    let file = base.appendingPathComponent(variant).appendingPathComponent(name)
+                    var expected = baseline, visualBeforeSave = ""
+                    stage = "\(variant)/\(name): Öffnen"
+                    try await open(file, visual: visual)
+                    for round in 1...2 {
+                        stage = "\(variant)/\(name): Runde \(round), Bearbeiten"
+                        editDiagnostic = ""
+                        let oldText = round == 1 ? "Ergebnis" : "Ergebnis Änderung 1"
+                        let newText = "Ergebnis Änderung \(round)"
+                        if visual {
+                            guard let web = ws.visualMarkdownEditor?.web else { throw NSError(domain: "fixture", code: 1) }
+                            try require(window.makeFirstResponder(web), "WYSIWYG bekommt keinen Fokus")
+                            let edit = try await web.callAsyncJavaScript("""
+                                const root=document.querySelector('#fastra-visual'),walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+                                let n;while(walker.nextNode()){if(walker.currentNode.data.includes(oldText)){n=walker.currentNode;break;}}
+                                if(!n)throw Error('Ausgangstext fehlt');
+                                root.focus();
+                                const r=document.createRange(),start=n.data.indexOf(oldText);r.setStart(n,start);r.setEnd(n,start+oldText.length);
+                                getSelection().removeAllRanges();getSelection().addRange(r);const applied=document.execCommand('insertText',false,newText);
+                                fastraVisual.flush();
+                                return JSON.stringify({applied,markdown:fastraVisual.markdown(),html:root.innerHTML});
+                                """, arguments: ["oldText": oldText, "newText": newText], in: nil, contentWorld: .page)
+                            editDiagnostic = String(describing: edit)
+                        } else {
+                            guard let editor = CommandTargeting.editorTextView(for: ws) else { throw NSError(domain: "fixture", code: 2) }
+                            try require(window.makeFirstResponder(editor), "Texteditor bekommt keinen Fokus")
+                            let range = (editor.string as NSString).range(of: oldText)
+                            try require(range.location != NSNotFound, "Ausgangstext fehlt im sichtbaren Editor")
+                            editor.selectionManager.setSelectedRange(range); editor.insertText(newText, replacementRange: range)
+                        }
+                        expected = expected.replacingOccurrences(of: oldText, with: newText)
+                        try await wait { ws.activeTab?.isDirty == true && ws.activeTab?.content == expected }
+                        if visual, let web = ws.visualMarkdownEditor?.web {
+                            visualBeforeSave = try await web.evaluateJavaScript("document.querySelector('#fastra-visual').innerText") as? String ?? ""
+                        }
+                        stage = "\(variant)/\(name): Runde \(round), ⌘S"
+                        warning = nil
+                        postCmd("s", keyCode: 1, windowNumber: window.windowNumber)
+                        try await wait { warning != nil || ws.activeTab?.isDirty == false }
+                        try require(warning == nil, warning ?? "")
+                        try require(try Data(contentsOf: file) == Data(expected.utf8), "Plattenbytes weichen nach ⌘S ab")
+                        let id = ws.activeTabID!
+                        let oldWeb = ws.visualMarkdownEditor?.web
+                        ws.closeTab(id: id)
+                        try await wait { !ws.tabs.contains { $0.id == id } }
+                        stage = "\(variant)/\(name): Runde \(round), frisch Öffnen"
+                        try await open(file, visual: visual)
+                        try require(ws.activeTabID != id && ws.activeTab?.content == expected && ws.activeTab?.isDirty == false,
+                                    "Frisch geöffneter Tab zeigt nicht den gespeicherten Inhalt")
+                        if visual {
+                            guard let web = ws.visualMarkdownEditor?.web else { throw NSError(domain: "fixture", code: 3) }
+                            try require(web !== oldWeb, "Alter WYSIWYG-Editor wurde wiederverwendet")
+                            let visible = try await web.evaluateJavaScript("document.querySelector('#fastra-visual').innerText") as? String
+                            try require(visible == visualBeforeSave, "Sichtbarer WYSIWYG-Inhalt verändert sich nach Speichern und Öffnen")
+                            try require(try await web.evaluateJavaScript("document.querySelector('#fastra-visual').textContent.includes('Änderung \(round)')") as? Bool == true,
+                                        "WYSIWYG zeigt die gespeicherte Änderung nicht")
+                        } else {
+                            try require(CommandTargeting.editorTextView(for: ws)?.string == expected, "Texteditor zeigt veraltete Daten")
+                            if name == "preview.md" {
+                                guard let root = window.contentView, let preview = webViews(root).first else { throw NSError(domain: "fixture", code: 4) }
+                                try await wait { !preview.isLoading }
+                                try require(await renderedContains(preview, "Änderung \(round)"),
+                                            "Markdown-Vorschau zeigt die gespeicherte Änderung nicht")
+                            }
+                        }
+                        if variant == "clean", round == 2,
+                           let path = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] {
+                            let image = URL(fileURLWithPath: path).appendingPathComponent("saveexisting-\(name).png")
+                            try FileManager.default.createDirectory(at: image.deletingLastPathComponent(), withIntermediateDirectories: true)
+                            await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                                typeScrollCapture(window: window) { snapshot in try? snapshot?.data.write(to: image); done.resume() }
+                            }
+                        }
+                        print("SAVEEXISTING variant=\(variant) mode=\(name) round=\(round) reopened=pass")
+                    }
+                    if let id = ws.activeTabID { ws.closeTab(id: id); try await wait { !ws.tabs.contains { $0.id == id } } }
+                }
+                window.orderOut(nil)
+                finish(true, "Fünf Temp-Dateizustände in Normal, Markdown-Vorschau und WYSIWYG je zweimal an Bestandsdateien bearbeitet, per ⌘S gespeichert und frisch geöffnet; Plattenbytes und sichtbarer Inhalt stimmen")
+            } catch {
+                window.orderOut(nil)
+                finish(false, stage + ": " + error.localizedDescription + "\nModell: " + (ws.activeTab?.content ?? "nil") + "\nEingabe: " + editDiagnostic)
+            }
+        }
+    }
+
     private static func runTextWorkflowTest() {
         testLabel = "textworkflow"
         Task { @MainActor in
@@ -27626,7 +27782,7 @@ enum SelfTest {
                 try await wait { ws.activeTab?.content != source }
                 let withBreak = ws.activeTab!.content
                 try require(MarkdownRichText.htmlFragment(markdown: withBreak).contains("<br"), "Shift-Return erzeugt keinen dauerhaften Zeilenumbruch")
-                let paragraphCount = try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p').length") as? Int
+                let paragraphCount = try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p:not([data-md-edit-boundary])').length") as? Int
                 await capture("visual-line-break")
                 ws.saveActiveTab()
                 try await wait { (try? String(contentsOf: file)) == withBreak }
@@ -27645,7 +27801,7 @@ enum SelfTest {
                 try await placeBreakCursor()
                 postKey("\r", keyCode: 36, windowNumber: window.windowNumber)
                 try await wait { ws.activeTab?.content != source }
-                try require(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p').length") as? Int == (paragraphCount ?? 0) + 1,
+                try require(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p:not([data-md-edit-boundary])').length") as? Int == (paragraphCount ?? 0) + 1,
                     "Return muss einen zusätzlichen Absatz erzeugen")
                 try require(!MarkdownRichText.htmlFragment(markdown: ws.activeTab!.content).contains("<br"), "Return erzeugt einen Zeilenumbruch statt eines Absatzes")
                 _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
@@ -27654,7 +27810,7 @@ enum SelfTest {
                 try await wait { (try? String(contentsOf: file)) == source }
                 stage = "Toolbar"
                 _ = try await web.evaluateJavaScript("""
-                    const p=document.querySelector('#fastra-visual p'),r=document.createRange();r.selectNodeContents(p);
+                    const p=document.querySelector('#fastra-visual p:not([data-md-edit-boundary])'),r=document.createRange();r.selectNodeContents(p);
                     getSelection().removeAllRanges();getSelection().addRange(r);
                     """)
                 guard let root = window.contentView, let bold = markerView(id: "markdownCommand-0", in: root) else {
@@ -27677,10 +27833,10 @@ enum SelfTest {
                 try await wait { editor.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil }
                 let payload = try JSONSerialization.jsonObject(with: editor.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType)!) as? [String: String]
                 try require(payload?["markdown"]?.trimmingCharacters(in: .whitespacesAndNewlines) == "**bestanden**", "Copy verliert die Fettung der Teilauswahl: \(payload ?? [:])")
-                _ = try await web.evaluateJavaScript("{const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual p'));getSelection().removeAllRanges();getSelection().addRange(r);}")
+                _ = try await web.evaluateJavaScript("{const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual p:not([data-md-edit-boundary])'));getSelection().removeAllRanges();getSelection().addRange(r);}")
                 postKey("v", keyCode: 9, windowNumber: window.windowNumber, modifiers: .command)
                 try await wait { ws.activeTab?.content != formatted }
-                try require(try await web.evaluateJavaScript("document.querySelector('#fastra-visual p').innerHTML") as? String == "<strong>bestanden</strong>", "Natives Einfügen verliert Formatierung oder übernimmt Nachbartext")
+                try require(try await web.evaluateJavaScript("document.querySelector('#fastra-visual p:not([data-md-edit-boundary])').innerHTML") as? String == "<strong>bestanden</strong>", "Natives Einfügen verliert Formatierung oder übernimmt Nachbartext")
                 await capture("visual-clipboard")
                 postHistoryKey(windowNumber: window.windowNumber)
                 try await wait { ws.activeTab?.content == formatted }
@@ -27697,7 +27853,7 @@ enum SelfTest {
                 try require(nestedCount == 1, "Echte Tab-Taste erzeugt keine verschachtelte Liste")
                 let nested = ws.activeTab!.content
                 _ = try await web.evaluateJavaScript("""
-                    {const p=document.querySelector('#fastra-visual p'),r=document.createRange();r.selectNodeContents(p);
+                    {const p=document.querySelector('#fastra-visual p:not([data-md-edit-boundary])'),r=document.createRange();r.selectNodeContents(p);
                     getSelection().removeAllRanges();getSelection().addRange(r);}
                     """)
                 guard let taskButton = markerView(id: "markdownCommand-\(MarkdownFormatCommand.taskList.rawValue)", in: root) else {
@@ -27784,10 +27940,46 @@ enum SelfTest {
                 try await wait { ws.activeTab?.content.contains("Zusatz") == false }
                 try require(try await renameWeb.evaluateJavaScript("document.querySelector('#fastra-visual strong')?.textContent === '\\u00a0Fett\\u00a0' && document.querySelector('#fastra-visual mark')?.textContent === '\\u00a0Textmarker\\u00a0'") as? Bool == true,
                             "Umbenennung verliert Stile oder den WYSIWYG-Verlauf")
+                stage = "Neue Toolbar-Formatierungen speichern und wiederöffnen"
+                for command in [MarkdownFormatCommand.highlight, .bold, .italic, .code] {
+                    let roundtripFile = base.appendingPathComponent("Format-\(command.rawValue).md")
+                    try "Vor Ergebnis\n".write(to: roundtripFile, atomically: true, encoding: .utf8)
+                    loaded = false; ws.loadFile(at: roundtripFile) { loaded = $0 }
+                    try await wait { loaded && ws.visualMarkdownEditor?.ready == true && ws.visualMarkdownEditor?.tabID == ws.activeTabID }
+                    guard let current = ws.visualMarkdownEditor?.web, let id = ws.activeTabID else { throw NSError(domain: "fixture", code: 11) }
+                    _ = try await current.evaluateJavaScript("""
+                        {const n=document.querySelector('#fastra-visual p:not([data-md-edit-boundary])').firstChild,r=document.createRange(),start=n.data.indexOf('Ergebnis');
+                        r.setStart(n,start);r.setEnd(n,start+8);getSelection().removeAllRanges();getSelection().addRange(r);}
+                        """)
+                    guard let content = window.contentView,
+                          let button = markerView(id: "markdownCommand-\(command.rawValue)", in: content) else { throw NSError(domain: "fixture", code: 12) }
+                    try require(sendMouseClick(at: button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil),
+                                               in: window, modifiers: [], viaApp: true), "Formatierungsbutton fehlt")
+                    try await wait { ws.activeTab?.isDirty == true }
+                    let selector = command == .highlight ? "mark" : command == .bold ? "strong,b" : command == .italic ? "em,i" : "code"
+                    let hasStyle = "Array.from(document.querySelectorAll('\(selector)')).some(n=>n.textContent==='Ergebnis')"
+                    try require(try await current.evaluateJavaScript(hasStyle) as? Bool == true, "Toolbar hat die Auswahl nicht formatiert")
+                    ws.saveActiveTab()
+                    try await wait { ws.activeTab?.isDirty == false }
+                    let written = try String(contentsOf: roundtripFile, encoding: .utf8)
+                    try require(written == ws.activeTab?.content, "Datei und Dokument unterscheiden sich")
+                    ws.closeTab(id: id)
+                    try await wait { !ws.tabs.contains { $0.id == id } }
+                    loaded = false; ws.loadFile(at: roundtripFile) { loaded = $0 }
+                    try await wait { loaded && ws.visualMarkdownEditor?.ready == true && ws.visualMarkdownEditor?.tabID == ws.activeTabID }
+                    guard let reopened = ws.visualMarkdownEditor?.web else { throw NSError(domain: "fixture", code: 13) }
+                    try require(reopened !== current, "Wiederöffnen verwendet den alten Editor")
+                    try require(try await reopened.evaluateJavaScript(hasStyle) as? Bool == true, "Gespeicherte Formatierung ist nach Wiederöffnen verschwunden: \(written)")
+                    if command == .highlight {
+                        try require(try await reopened.evaluateJavaScript("getComputedStyle(document.querySelector('mark')).backgroundColor !== 'rgba(0, 0, 0, 0)'") as? Bool == true,
+                                    "Wiedergeöffnete Markierung hat keinen sichtbaren Hintergrund")
+                        await capture("visual-highlight-reopened")
+                    }
+                }
                 try? FileManager.default.removeItem(at: base)
                 window.orderOut(nil)
                 NSApp.appearance = originalAppearance
-                finish(true, "Modusdialog, Bildklick, Kontext-Löschen, Aufräumen, Toolbar, Undo, Speichern und gezielte Bildkopie geprüft")
+                finish(true, "Modusdialog, Bildklick, Kontext-Löschen, Aufräumen, Undo und Bildkopie; vier neue Inline-Formate per Toolbar gesetzt, gespeichert, geschlossen und frisch geöffnet")
             } catch {
                 try? FileManager.default.removeItem(at: base)
                 window.orderOut(nil)

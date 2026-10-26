@@ -89,7 +89,7 @@ case "${FASTRA_SELFTEST_LANGUAGE:-}" in
     *) echo "Selbsttest-Sprache muss de oder en sein." >&2; exit 2 ;;
 esac
 
-ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions searchlayout searchapproval searchapprovalclose searchfocus dialoglayout projectinput tabswitch tabcommitfocus tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapindent softwrapindentcore softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge searchundo dirtyundo emojisplit emojipaste emojipreview tabscroll tabsearchmemory typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdvisual mdoutline codeoutline sourcesplit snippets mdvisualfind mdtable mdtableinteraction mdcomfort mdblocks mdsearchnavigation mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop textworkflow textworkflowmulti textworkflowonesided joinundo colsel colselwrap colpaste gutterdim codefolding gitremotedialogs sidebarheader editoroptions footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff filedifftransfer foldercompare mdreferences externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist mdimagequit search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit diffselection markdownimport markdownimportui filemodes selsearch wildcard openscope loadperf contrast cmdw)
+ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions searchlayout searchapproval searchapprovalclose searchfocus dialoglayout projectinput tabswitch tabcommitfocus tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapindent softwrapindentcore softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge searchundo dirtyundo emojisplit emojipaste emojipreview tabscroll tabsearchmemory typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdvisual mdoutline codeoutline sourcesplit snippets mdvisualfind mdtable mdtableinteraction mdcomfort mdblocks mdsearchnavigation mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop saveexisting textworkflow textworkflowmulti textworkflowonesided joinundo colsel colselwrap colpaste gutterdim codefolding gitremotedialogs sidebarheader editoroptions footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff filedifftransfer foldercompare mdreferences externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist mdimagequit search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit diffselection markdownimport markdownimportui filemodes selsearch wildcard openscope loadperf contrast cmdw)
 # `windows` bleibt als gezielter Diagnosemodus verfügbar, prüft aber keine
 # Produktfunktion und startet deshalb nicht mehr in jedem Standardlauf.
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
@@ -97,7 +97,7 @@ WINDOWLESS_TESTS=(search searchperf project projectperf localization markdownimp
 # Nur diese Tests brauchen echten Vordergrundfokus. `newwindow`,
 # `projectinput` und `help` bedienen ihre Fenster dagegen direkt im
 # Testprozess und laufen wie `welcomenew` im Hintergrund.
-FOCUS_REQUIRED_TESTS=(mdtableinteraction sidebarheader snippetfiles mdreferences foldercompare filedifftransfer searchapprovalclose searchapproval textworkflow textworkflowmulti textworkflowonesided mdvisual mdoutline codeoutline sourcesplit snippets mdvisualfind mdtable mdtableinput mdcomfort mdblocks searchundo editoroptions cmdw completion4d softwrapindent diffselection gitremotedialogs)
+FOCUS_REQUIRED_TESTS=(saveexisting mdtableinteraction sidebarheader snippetfiles mdreferences foldercompare filedifftransfer searchapprovalclose searchapproval textworkflow textworkflowmulti textworkflowonesided mdvisual mdoutline codeoutline sourcesplit snippets mdvisualfind mdtable mdtableinput mdcomfort mdblocks searchundo editoroptions cmdw completion4d softwrapindent diffselection gitremotedialogs)
 # Diese Fensterläufe sind so gebaut, dass sie ihre AppKit-Objekte direkt
 # bedienen. Der Runner sperrt für sie auch produktive Aktivierungshelfer,
 # damit sie die gerade benutzte App nicht verdrängen.
@@ -876,12 +876,13 @@ activate_app() {
     return 1
 }
 
-# Der echte LaunchServices-Kaltstart braucht eine schon vor dem App-Start
-# vorhandene Datei. Nur dieses exakt bekannte mktemp-Verzeichnis wird danach
-# aufgeräumt; kein breiter oder unaufgelöster Löschpfad.
+# Kaltstart und Bestandsdatei-Test brauchen extern vorbereitete Dateien.
+# Nur die selbst erzeugten und gebundenen Fixture-Pfade werden aufgeräumt.
 coldopen_fixture_dir=""
 coldopen_fixture_file=""
-cleanup_coldopen_fixture() {
+existing_save_fixture_dir=""
+existing_save_parent=""
+cleanup_open_file_fixtures() {
     if [[ -n "$coldopen_fixture_file" && -f "$coldopen_fixture_file" ]]; then
         rm -f -- "$coldopen_fixture_file"
     fi
@@ -890,6 +891,20 @@ cleanup_coldopen_fixture() {
     fi
     coldopen_fixture_dir=""
     coldopen_fixture_file=""
+    if [ -n "$existing_save_fixture_dir" ]; then
+        case "$existing_save_fixture_dir" in
+            "$existing_save_parent"/saveexisting.*)
+                if [ -d "$existing_save_fixture_dir" ] && [ ! -L "$existing_save_fixture_dir" ] \
+                   && [ "$(cat "$existing_save_fixture_dir/.runner-owner" 2>/dev/null)" = "$$" ] \
+                   && [ "$(stat -f '%u' "$existing_save_fixture_dir")" = "$UID" ]; then
+                    rm -rf -- "$existing_save_fixture_dir" || SELFTEST_CLEANUP_FAILED=1
+                else
+                    SELFTEST_CLEANUP_FAILED=1
+                fi ;;
+            *) SELFTEST_CLEANUP_FAILED=1 ;;
+        esac
+    fi
+    existing_save_fixture_dir=""
 }
 
 # Nach Crash oder Timeout liegt die itemgetreue Sicherung noch in der
@@ -1287,7 +1302,7 @@ cleanup_on_exit() {
         # alte Prozessbaum möglicherweise noch schreibt.
         keep_sandbox=1
     fi
-    cleanup_coldopen_fixture
+    cleanup_open_file_fixtures
     if [ "$process_cleanup_failed" -eq 0 ]; then
         unregister_test_bundle_from_launch_services || SELFTEST_CLEANUP_FAILED=1
     fi
@@ -1399,7 +1414,7 @@ cleanup_on_signal() {
     else
         keep_sandbox=1
     fi
-    cleanup_coldopen_fixture
+    cleanup_open_file_fixtures
     if [ "$process_cleanup_failed" -eq 0 ]; then
         unregister_test_bundle_from_launch_services || cleanup_failed=1
     fi
@@ -1521,6 +1536,33 @@ for t in "${TESTS[@]}"; do
         selftest_activation=0
     fi
 
+    if [[ "$t" == "saveexisting" ]]; then
+        existing_save_parent="${FASTRA_SAVEEXISTING_PARENT:-$FASTRA_TEST_TMPDIR}"
+        FASTRA_SAVEEXISTING_DIR="$(mktemp -d "$existing_save_parent/saveexisting.XXXXXX")" || exit 2
+        existing_save_fixture_dir="$FASTRA_SAVEEXISTING_DIR"
+        printf '%s\n' "$$" > "$existing_save_fixture_dir/.runner-owner" || exit 2
+        export FASTRA_SAVEEXISTING_DIR
+        existing_temp='.fastra-save-00000000-0000-0000-0000-000000000001.tmp'
+        for existing_variant in clean stale corrupt directory symlink; do
+            existing_dir="$FASTRA_SAVEEXISTING_DIR/$existing_variant"
+            mkdir "$existing_dir" || exit 2
+            for existing_name in normal.txt preview.md visual.md; do
+                printf 'Bestand äöü 😀\n\nVor Ergebnis\n' > "$existing_dir/$existing_name" || exit 2
+                chmod 640 "$existing_dir/$existing_name" || exit 2
+                touch -t 202001020304 "$existing_dir/$existing_name" || exit 2
+                xattr -w com.fastra.tests.existing preserved "$existing_dir/$existing_name" || exit 2
+            done
+            case "$existing_variant" in
+                stale) cp "$existing_dir/normal.txt" "$existing_dir/$existing_temp" || exit 2 ;;
+                corrupt) printf '\000\377unvollstaendig' > "$existing_dir/$existing_temp" || exit 2 ;;
+                directory) mkdir "$existing_dir/$existing_temp" || exit 2
+                    printf 'Unverändert\n' > "$existing_dir/$existing_temp/sentinel.txt" || exit 2 ;;
+                symlink) printf 'Unverändert\n' > "$existing_dir/sentinel.txt" || exit 2
+                    ln -s sentinel.txt "$existing_dir/$existing_temp" || exit 2 ;;
+            esac
+        done
+    fi
+
     launch_started="$(now_milliseconds)"
     launch_mode="direct"
     CURRENT_LAUNCH_MODE="direct"
@@ -1566,7 +1608,7 @@ for t in "${TESTS[@]}"; do
         # Ein leeres Aufnahmeziel muss fehlen: Die App interpretiert schon
         # die Anwesenheit der Variable als Auftrag, PNGs dort zu speichern.
         review_environment=()
-        for review_key in FASTRA_MD_VISUAL_DIR FASTRA_MD_OUTLINE_DIR FASTRA_MD_VISUAL_FIND_DIR \
+        for review_key in FASTRA_SAVEEXISTING_DIR FASTRA_MD_VISUAL_DIR FASTRA_MD_OUTLINE_DIR FASTRA_MD_VISUAL_FIND_DIR \
             FASTRA_MD_TABLE_DIR FASTRA_MD_TABLE_REPRO_FILE FASTRA_MD_COMFORT_DIR FASTRA_TEXT_WORKFLOW_DIR \
             FASTRA_DIFFSELECTION_DIR FASTRA_REMOTE_DIALOG_DIR \
             FASTRA_EDITOR_OPTIONS_DIR FASTRA_SOFTWRAPINDENT_DIR \
@@ -1707,7 +1749,7 @@ for t in "${TESTS[@]}"; do
             SELFTEST_CLEANUP_FAILED=1
             break
         fi
-        cleanup_coldopen_fixture
+        cleanup_open_file_fixtures
         continue
     fi
 
@@ -1716,6 +1758,42 @@ for t in "${TESTS[@]}"; do
     app_ms="$(sed -n 's/^SELFTEST-METRIC test=[^ ]* app_ms=\([0-9][0-9]*\)$/\1/p' "$errfile" | tail -1)"
     app_ms="${app_ms:--1}"
     classify_selftest_result "$t" "$errfile" "$line"
+    if [[ "$t" == "saveexisting" && "$SELFTEST_RESULT_STATUS" == "PASS" ]] && ! kill_leftovers 80; then
+        SELFTEST_RESULT_STATUS="ENV"
+        line="SELFTEST saveexisting: ENV — Testprozess vor unabhängigem Read nicht vollständig beendet"
+    fi
+    if [[ "$t" == "saveexisting" && "$SELFTEST_RESULT_STATUS" == "PASS" ]]; then
+        existing_expected="$FASTRA_TEST_TMPDIR/saveexisting-expected.txt"
+        printf 'Bestand äöü 😀\n\nVor Ergebnis Änderung 2\n' > "$existing_expected" || exit 2
+        printf 'Bestand äöü 😀\n\nVor Ergebnis\n' > "$FASTRA_TEST_TMPDIR/saveexisting-baseline.txt" || exit 2
+        printf '\000\377unvollstaendig' > "$FASTRA_TEST_TMPDIR/saveexisting-corrupt.txt" || exit 2
+        printf 'Unverändert\n' > "$FASTRA_TEST_TMPDIR/saveexisting-sentinel.txt" || exit 2
+        for existing_variant in clean stale corrupt directory symlink; do
+            existing_dir="$FASTRA_SAVEEXISTING_DIR/$existing_variant"
+            for existing_name in normal.txt preview.md visual.md; do
+                existing_path="$existing_dir/$existing_name"
+                if ! cmp -s "$existing_expected" "$existing_path" \
+                    || [ "$(stat -f '%Lp' "$existing_path")" != 640 ] \
+                    || [ "$(xattr -p com.fastra.tests.existing "$existing_path" 2>/dev/null)" != preserved ]; then
+                    SELFTEST_RESULT_STATUS="FAIL"
+                    line="SELFTEST saveexisting: FAIL — Unabhängiger Runner-Read oder Metadaten stimmen für $existing_variant/$existing_name nicht"
+                fi
+            done
+            existing_leftover="$existing_dir/$existing_temp"
+            existing_leftover_ok=0
+            case "$existing_variant" in
+                clean) [ ! -e "$existing_leftover" ] && existing_leftover_ok=1 ;;
+                stale) cmp -s "$FASTRA_TEST_TMPDIR/saveexisting-baseline.txt" "$existing_leftover" && existing_leftover_ok=1 ;;
+                corrupt) cmp -s "$FASTRA_TEST_TMPDIR/saveexisting-corrupt.txt" "$existing_leftover" && existing_leftover_ok=1 ;;
+                directory) [ -d "$existing_leftover" ] && cmp -s "$FASTRA_TEST_TMPDIR/saveexisting-sentinel.txt" "$existing_leftover/sentinel.txt" && existing_leftover_ok=1 ;;
+                symlink) [ -L "$existing_leftover" ] && [ "$(readlink "$existing_leftover")" = sentinel.txt ] && cmp -s "$FASTRA_TEST_TMPDIR/saveexisting-sentinel.txt" "$existing_dir/sentinel.txt" && existing_leftover_ok=1 ;;
+            esac
+            if [ "$existing_leftover_ok" -ne 1 ]; then
+                SELFTEST_RESULT_STATUS="FAIL"
+                line="SELFTEST saveexisting: FAIL — Vorhandener Temp-Pfad wurde verändert: $existing_variant"
+            fi
+        done
+    fi
     performance_status="$SELFTEST_RESULT_STATUS"
     if [ -n "$SELFTEST_PROTOCOL_ERROR" ]; then
         emit_selftest_result "$t" "FAIL"
@@ -1758,7 +1836,7 @@ for t in "${TESTS[@]}"; do
         "$t" "$performance_status" "$app_ms" "$launch_ms" "$total_ms" \
         "$cleanup_ms" "$launch_mode" >> "$PERFORMANCE_SAMPLES_FILE"
     echo "PERFORMANCE $t cleanup_ms=$cleanup_ms launch_to_result_ms=$launch_ms app_ms=$app_ms total_ms=$total_ms"
-    cleanup_coldopen_fixture
+    cleanup_open_file_fixtures
 done
 
 final_cleanup_failed=0
@@ -1775,7 +1853,7 @@ if [ "$final_cleanup_failed" -ne 0 ]; then
     summary+="⚠ Abschließendes Runner-Aufräumen fehlgeschlagen\n"
     cleanup_env_errors=$((cleanup_env_errors + 1))
 fi
-cleanup_coldopen_fixture
+cleanup_open_file_fixtures
 
 # ── Zusammenfassung ──────────────────────────────────────────────────────
 

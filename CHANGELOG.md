@@ -7,6 +7,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.156.4] — 2026-10-26
+
+### Behoben
+
+- Der Standard-Selbsttest öffnet extern vorbereitete Bestandsdateien in allen drei Editormodi, bearbeitet und speichert sie per ⌘S und prüft nach frischem Öffnen zweimal sichtbaren Inhalt und Dateibytes. Der Runner kontrolliert den Plattenstand zusätzlich unabhängig.
+- Wiederholte Text- und Inline-Änderungen in WYSIWYG hängen bestehenden Absätzen keine zusätzlichen Leerzeilen an. Ihre bisherigen Zeilenabschlüsse bleiben erhalten; neue Blockarten bleiben korrekt getrennt.
+- Hervorhebungen bis zum Absatzende bleiben beim Speichern erhalten. WebKit konnte solche Markierungen als gelbe CSS-Spans statt als speicherbare Textmarker einfügen.
+- Eine reine Statuszeitänderung während der Metadatenübernahme verhindert das Speichern bestehender Dateien nicht mehr sofort: Nach erneutem Inhaltsnachweis übernimmt Fastra die aktuellen Metadaten genau einmal neu. Inhaltsänderungen und erneut instabile Stände bleiben geschützt.
+- Scheitert die Abschlussprüfung eines Dateiaustauschs nach der eigenen Metadatenübernahme, verwendet der sichere Rücktausch deren aktuellen Stand. Ein Lesefehler verlangt dadurch nicht mehr allein wegen Fastras eigener Statuszeitänderung eine manuelle Wiederherstellung; echte Fremdänderungen bleiben geschützt.
+
+## [v1.156.3] — 2026-10-26
+
+### Behoben
+
+- WYSIWYG-Formatierungen bleiben auch an problematischen Satzzeichengrenzen nach Speichern und erneutem Öffnen erhalten. Hervorhebungen funktionieren ebenfalls in Markdown-Tabellen.
+- Formatieren einer vollständigen Dokumentauswahl erhält Überschriften, Listen und Tabellen. Neu angelegte Listen und Zitate erzeugen keine abweichende Absatzstruktur beim Wiederöffnen.
+- Tabellenzellen behalten Zeilenumbrüche; „Normaler Text“ verändert nur die gewählte Zelle. In Zellen nicht darstellbare Blockformate sind mit erklärendem Tooltip gesperrt.
+- Formatbefehle innerhalb geschützter HTML- oder Formelbereiche werden vor der Änderung erklärt und abgewiesen. Dadurch entstehen dort keine Markierungen, die beim Speichern still verschwinden.
+- Die Markdown-Regressionen prüfen alle Formatierungswerkzeuge über Speichern, Schließen und frisches Öffnen sowie Schrift, Farben und Zeichenpositionen in beiden Erscheinungsbildern.
+
 ## [v1.156.2] — 2026-10-25
 
 ### Behoben

@@ -44,6 +44,7 @@ final class MarkdownTableController: ObservableObject {
         case "size": error = L10n.string("Die Tabelle darf höchstens 1.000 Zeilen, 100 Spalten und 10.000 Zellen enthalten; eingefügter Text höchstens 1 MiB.")
         case "edge": error = L10n.string("Die Kopfzeile und die letzte Spalte bleiben erhalten. Verschieben ist an dieser Position nicht möglich.")
         case "busy": error = L10n.string("Bitte die laufende Eingabe oder Bildaktion zuerst abschließen.")
+        case "format": error = MarkdownFormatCommand.tableCellRestriction
         default: error = L10n.string("Die Tabellenposition hat sich geändert. Bitte die gewünschte Zelle erneut auswählen.")
         }
     }
@@ -127,6 +128,15 @@ struct MarkdownTableBar: View {
                     .background(Theme.surfaceRaised)
                     .background(SelfTestMarker(id: "markdownTableBar").frame(width: 0, height: 0))
                 Divider().opacity(0.3)
+            } else if let error = table.error {
+                HStack {
+                    Text(error).fastraFont(.ui).foregroundStyle(.red)
+                    Spacer(minLength: 0)
+                    Button { table.clear() } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.plain).help("Hinweis ausblenden")
+                        .accessibilityLabel("Hinweis ausblenden")
+                }.padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Theme.surfaceRaised)
             }
         }
         .onChange(of: workspace.activeTabID) { _, _ in table.clear(); showPaste = false }

@@ -53,6 +53,9 @@
     while(walker.nextNode())texts.push(walker.currentNode);
     for(const text of texts) {
       if(text.parentElement.closest('pre,code,[data-md-opaque],[data-tex]'))continue;
+      if(text.parentElement.closest('td,th') && /[\r\n]/.test(text.data))text.data=text.data.replace(/\r\n?|\n/g,()=>{
+        const token=randomToken('FASTRATABLEBREAK');tableSpaces.push([token,'<br>']);return token;
+      });
       // Der äußere Turndown-Durchlauf normalisiert Tabellen bereits vor
       // tableMarkdown. Zell-Leerzeichen deshalb vorher als Tokens schützen.
       if(text.parentElement.closest('table') && text.data.includes(' '))text.data=text.data.replace(/ +/g,spaces=>{
@@ -93,7 +96,28 @@
   td.escape=text=>commonEscape(text.replace(/&/g,'&amp;').replace(/</g,'&lt;')).replace(/^(\d+)\) /,'$1\\) ').replace(/[$~]|(?<!\\)=(?==)|(?<==)=/g,'\\$&');
   let opaqueSources={};
   td.addRule('opaque',{filter:n=>n.hasAttribute('data-md-opaque'),replacement:(_,n)=>opaqueSources[n.dataset.mdOpaque] || ''});
-  td.addRule('highlight', {filter:'mark', replacement:(c,n)=>n.parentElement?.closest('mark')?c:(c.trim()?'=='+c.trim()+'==':'')});
+  function adjacentCharacter(node,forward) {
+    while(node && !/^(DIV|P|H[1-6]|LI|TD|TH|BLOCKQUOTE)$/.test(node.nodeName)) {
+      const sibling=forward?node.nextSibling:node.previousSibling;
+      if(sibling){const text=Array.from(sibling.textContent);if(text.length)return forward?text[0]:text.at(-1);node=sibling;}
+      else node=node.parentNode;
+    }
+    return '';
+  }
+  function inlineFormat(content,node,tag,delimiter) {
+    const text=Array.from(node.textContent.trim()),first=text[0] || '',last=text.at(-1) || '';
+    const punctuation=c=>/[\p{P}\p{S}]/u.test(c),space=c=>!c || /\s/u.test(c);
+    const before=adjacentCharacter(node,false),after=adjacentCharacter(node,true);
+    // CommonMark erkennt z. B. a**!**b nicht als Auszeichnung. Inline-HTML
+    // erhält solche Grenzen und verschachtelte Auszeichnungen verlustfrei.
+    const unsafe=(punctuation(first) && !space(before) && !punctuation(before))
+      || (punctuation(last) && !space(after) && !punctuation(after))
+      || !!node.querySelector('strong,b,em,i,mark,del,s,strike');
+    return unsafe?'<'+tag+'>'+content+'</'+tag+'>':delimiter+content+delimiter;
+  }
+  td.addRule('strong',{filter:['strong','b'],replacement:(c,n)=>inlineFormat(c,n,'strong','**')});
+  td.addRule('emphasis',{filter:['em','i'],replacement:(c,n)=>inlineFormat(c,n,'em','*')});
+  td.addRule('highlight', {filter:'mark', replacement:(c,n)=>n.parentElement?.closest('mark')?c:(c.trim()?inlineFormat(c.trim(),n,'mark','=='):'')});
   td.addRule('strike', {filter:['del','s','strike'], replacement:c => '~~'+c+'~~'});
   // Entitäten an Formatgrenzen ändern CommonMarks Trennzeichen-Erkennung:
   // **Text&nbsp;**danach wird als Klartext gelesen. Inline-HTML bewahrt in
@@ -154,6 +178,20 @@
       const cell=r.cells[i];
       if(!cell)return '';
       const clone=cell.cloneNode(true),atoms=[];
+      // WebKit schreibt Umbrüche in pre-wrap-Zellen als Text-Newlines.
+      // Vor Turndowns Leerraum-Normalisierung in echte Umbrüche überführen.
+      const walker=document.createTreeWalker(clone,NodeFilter.SHOW_TEXT),texts=[];
+      while(walker.nextNode())texts.push(walker.currentNode);
+      for(const text of texts){
+        if(!text.data.includes('\n') || text.parentElement.closest('pre,code,[data-tex],[data-md-opaque]'))continue;
+        const fragment=document.createDocumentFragment();text.data.split('\n').forEach((part,index)=>{
+          if(index)fragment.append(document.createElement('br'));fragment.append(document.createTextNode(part));
+        });text.replaceWith(fragment);
+      }
+      clone.querySelectorAll('br').forEach(br=>{
+        if(br.closest('pre,code,[data-tex],[data-md-opaque]'))return;
+        const token=randomToken('FASTRATABLEBREAK');atoms.push([token,'<br>']);br.replaceWith(document.createTextNode(token));
+      });
       // Formeln werden vor dem GFM-Parser ausgeblendet: zusätzliche Pipe-
       // Escapes würden ihre TeX-Bedeutung ändern. Opaque HTML dagegen braucht
       // den vom Tabellenparser entfernten Pipe-Escape wieder genau einmal.
@@ -208,6 +246,16 @@
       getSelection().removeAllRanges();getSelection().addRange(r);
     }
   }
+  function blockStructure(html) {
+    const holder=document.createElement('div');holder.innerHTML=html;
+    function signature(node) {
+      if(node.nodeType!==Node.ELEMENT_NODE)return '';
+      const children=Array.from(node.childNodes,signature).join('');
+      return /^(DIV|P|H[1-6]|LI|UL|OL|BLOCKQUOTE|TABLE|THEAD|TBODY|TR|TD|TH|PRE|HR|BR)$/.test(node.nodeName)
+        ? '('+node.nodeName+children+')' : children;
+    }
+    return Array.from(holder.childNodes,signature).join('');
+  }
   function serialize() {
     const used=new Set();let output='';
     function hiddenBefore(id) {
@@ -220,7 +268,15 @@
       const original=id===null ? null : originals.get(id);
       if(original && !used.has(id)) {
         hiddenBefore(id);used.add(id);
-        output+=normalized(node)===original.snapshot ? original.source : toMarkdown(node.innerHTML)+'\n\n';
+        const snapshot=normalized(node);
+        if(snapshot===original.snapshot)output+=original.source;
+        else {
+          // Text- und Inline-Änderungen behalten die vorhandenen Zeilenenden.
+          // Neue Blockarten brauchen dagegen eine sichere Absatztrennung:
+          // Eine Überschrift vor Fließtext darf nicht mit ihm verschmelzen.
+          const suffix=blockStructure(snapshot)===original.structure ? original.source.match(/[\r\n]*$/)[0] : '\n\n';
+          output+=toMarkdown(node.innerHTML)+suffix;
+        }
       } else if(node.nodeType===Node.ELEMENT_NODE && node.hasAttribute('data-md-empty') && !node.textContent.length && !node.querySelector('img')) {
         continue;
       } else {
@@ -303,6 +359,15 @@
     changed();
   }
   function plainParagraph() {
+    restoreSelection();const current=getSelection().getRangeAt(0),element=current.startContainer.nodeType===1?current.startContainer:current.startContainer.parentElement;
+    const cell=element.closest('td,th');
+    if(cell && cell.contains(current.endContainer)){
+      const clone=cell.cloneNode(true);
+      clone.querySelectorAll('mark,code,strong,b,em,i,del,s,strike,a,u,font,span').forEach(n=>{
+        if(!n.closest('[data-tex],[data-md-opaque]'))n.replaceWith(...n.childNodes);
+      });
+      tables.command('pasteCell',clone.innerHTML);return;
+    }
     exec('formatBlock','p');
     restoreSelection();const r=getSelection().getRangeAt(0);
     const selected=Array.from(root.children).filter(n=>r.intersectsNode(n));
@@ -319,8 +384,33 @@
       clone.querySelectorAll('ul,ol,blockquote').forEach(n=>{if(!protectedNode(n))n.replaceWith(...n.childNodes);});
       return clone.outerHTML;
     }).join('');
-    const outer=document.createRange();outer.setStartBefore(selected[0]);outer.setEndAfter(selected[selected.length-1]);
-    getSelection().removeAllRanges();getSelection().addRange(outer);selection=outer;exec('insertHTML',html);
+    replaceVisualBlocks(selected,html);
+  }
+  function formatParagraphBlocks(tag) {
+    restoreSelection();const range=getSelection().getRangeAt(0);
+    const blocks=Array.from(root.children).filter(n=>!n.hasAttribute('data-md-edit-boundary') && range.intersectsNode(n));
+    const paragraphs=blocks.map(n=>n.children.length===1 && n.firstElementChild.matches('p,h1,h2,h3,h4,h5,h6')?n.firstElementChild:null);
+    if(!blocks.length || paragraphs.some(n=>!n))return false;
+    const wrapper=blocks[0].cloneNode(false),formatted=document.createElement(tag);
+    for(const paragraph of paragraphs){
+      const item=document.createElement(tag==='blockquote'?'p':'li');
+      item.append(...paragraph.cloneNode(true).childNodes);formatted.append(item);
+    }
+    function position(node,offset,end) {
+      const index=paragraphs.findIndex(p=>p.contains(node));
+      if(index<0){const item=end?formatted.lastChild:formatted.firstChild;return [item,end?item.childNodes.length:0];}
+      const path=[];while(node!==paragraphs[index]){path.unshift(Array.from(node.parentNode.childNodes).indexOf(node));node=node.parentNode;}
+      let clone=formatted.children[index];for(const part of path)clone=clone.childNodes[part];return [clone,offset];
+    }
+    const start=position(range.startContainer,range.startOffset,false),end=position(range.endContainer,range.endOffset,true);
+    function marker(point,name){const span=document.createElement('span');span.setAttribute(name,'');span.textContent='\u200b';const r=document.createRange();r.setStart(...point);r.collapse(true);r.insertNode(span);}
+    if(!range.collapsed)marker(end,'data-md-selection-end');
+    marker(start,'data-md-selection-start');
+    wrapper.append(formatted);replaceVisualBlocks(blocks,wrapper.outerHTML);return true;
+  }
+  function listCommand(ordered) {
+    if(!selectedItems().length && formatParagraphBlocks(ordered?'ol':'ul'))return;
+    exec(ordered?'insertOrderedList':'insertUnorderedList');
   }
   function selectedItems() {
     restoreSelection();const range=getSelection().getRangeAt(0);
@@ -376,6 +466,27 @@
     // erhalten, weil WebKits Redo sie als Einfügeanker verwendet.
     exec('insertHTML',before.outerHTML+html+after.outerHTML,restoreMarkers);
   }
+  function replaceFormattedSelection(range,fragment) {
+    const children=Array.from(root.children),affected=children.filter(n=>!n.hasAttribute('data-md-edit-boundary') && range.intersectsNode(n));
+    if(!affected.length)return;
+    const interval=children.slice(children.indexOf(affected[0]),children.indexOf(affected.at(-1))+1),holder=document.createElement('div');
+    interval.forEach(n=>holder.append(n.cloneNode(true)));
+    function position(node,offset) {
+      if(node===root)return [holder,interval.filter(n=>Array.from(root.childNodes).indexOf(n)<offset).length];
+      const path=[];let top=node;
+      while(top.parentNode!==root){path.unshift(Array.from(top.parentNode.childNodes).indexOf(top));top=top.parentNode;}
+      let clone=holder.childNodes[interval.indexOf(top)];for(const index of path)clone=clone.childNodes[index];
+      return [clone,offset];
+    }
+    const copied=document.createRange();copied.setStart(...position(range.startContainer,range.startOffset));copied.setEnd(...position(range.endContainer,range.endOffset));
+    copied.deleteContents();
+    const start=document.createElement('span'),end=document.createElement('span');
+    start.dataset.mdSelectionStart='';end.dataset.mdSelectionEnd='';start.textContent=end.textContent='\u200b';
+    fragment.prepend(start);fragment.append(end);copied.insertNode(fragment);
+    // WebKit fügt ganze Listen/Tabellen sonst in den ersten ausgewählten
+    // Absatz oder die erste Zelle ein. Neutrale Blockgrenzen verhindern dies.
+    replaceVisualBlocks(interval,holder.innerHTML);
+  }
   function replaceTable(table,transform) {
     const block=Array.from(root.children).find(n=>n.contains(table));
     if(!block)return false;
@@ -396,7 +507,11 @@
     if(!start)return;
     const range=document.createRange();range.setStartBefore(start);
     if(end)range.setEndBefore(end);else range.collapse(true);
-    start.remove();end?.remove();getSelection().removeAllRanges();getSelection().addRange(range);selection=range.cloneRange();
+    const startParent=start.parentNode,endParent=end?.parentNode;
+    // Marker teilen Textknoten. Nach ihrer Entfernung wieder zusammenführen,
+    // damit die native Schriftformung dieselben Textläufe wie beim Öffnen sieht.
+    start.remove();end?.remove();startParent.normalize();if(endParent && endParent!==startParent)endParent.normalize();
+    getSelection().removeAllRanges();getSelection().addRange(range);selection=range.cloneRange();
   }
   function replaceListBlocks(items,transform) {
     editListBlocks(items,selected=>selected.forEach(transform));
@@ -435,7 +550,7 @@
   }
   function taskList() {
     let items=selectedItems();
-    if(!items.length){exec('insertUnorderedList');items=selectedItems();}
+    if(!items.length){listCommand(false);items=selectedItems();}
     const remove=items.length>0 && items.every(taskCheckbox);
     replaceListBlocks(items,item=>{
       const existing=taskCheckbox(item);
@@ -517,7 +632,15 @@
       root.contentEditable='true';root.setAttribute('role','textbox');root.setAttribute('aria-multiline','true');
       root.querySelectorAll('input[type=checkbox]').forEach(n=>{n.removeAttribute('disabled');n.contentEditable='false';});
       root.querySelectorAll('[data-tex],.mermaid-render').forEach(n=>n.contentEditable='false');
-      for(const b of blocks)if(!b.hidden){const n=root.querySelector('[data-md-block="'+b.id+'"]');if(n)originals.set(String(b.id),{source:b.source,snapshot:normalized(n),ignoredHeadings:Array.from(n.querySelectorAll('h1,h2,h3,h4,h5,h6')).flatMap((heading,index)=>heading.hasAttribute('data-md-outline-ignore')?[index]:[])});}
+      for(const b of blocks) {
+        if(b.hidden)continue;
+        const n=root.querySelector('[data-md-block="'+b.id+'"]');if(!n)continue;
+        const snapshot=normalized(n);
+        originals.set(String(b.id),{
+          source:b.source,snapshot,structure:blockStructure(snapshot),
+          ignoredHeadings:Array.from(n.querySelectorAll('h1,h2,h3,h4,h5,h6')).flatMap((heading,index)=>heading.hasAttribute('data-md-outline-ignore')?[index]:[])
+        });
+      }
       if(!root.children.length)root.innerHTML='<p data-md-empty="true"><br></p>';
       tables=window.fastraCreateTableEditor({root,range:tableRange,blocked:()=>fenced || composing,revision:()=>revision,apply:replaceTable,report:reportTableContext,
         fail:reason=>window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'tableError',session,reason})});
@@ -654,6 +777,15 @@
     },
     command(command,value) {
       if(fenced)return false;
+      const range=tableRange(),element=node=>node?.nodeType===1?node:node?.parentElement;
+      if(element(range?.startContainer)?.closest('[data-md-opaque],[data-tex],.mermaid-render')
+          || element(range?.endContainer)?.closest('[data-md-opaque],[data-tex],.mermaid-render')){
+        window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'protectedFormat',session});return false;
+      }
+      if((element(range?.startContainer)?.closest('td,th') || element(range?.endContainer)?.closest('td,th'))
+          && ['heading1','heading2','heading3','bulletList','orderedList','taskList','quote','insertTable'].includes(command)){
+        window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'tableError',session,reason:'format'});return false;
+      }
       switch(command){
         case 'deleteImage': {
           restoreSelection();const range=getSelection().rangeCount?getSelection().getRangeAt(0):null;
@@ -664,10 +796,10 @@
         case 'heading2':exec('formatBlock','h2');break;
         case 'heading3':exec('formatBlock','h3');break;
         case 'plainParagraph':plainParagraph();break;
-        case 'bulletList':exec('insertUnorderedList');break;
-        case 'orderedList':exec('insertOrderedList');break;
+        case 'bulletList':listCommand(false);break;
+        case 'orderedList':listCommand(true);break;
         case 'taskList':taskList();break;
-        case 'quote':exec('formatBlock','blockquote');break;
+        case 'quote':if(!formatParagraphBlocks('blockquote'))exec('formatBlock','blockquote');break;
         case 'hardBreak':exec('insertLineBreak');break;
         case 'link':exec('createLink',value);break;
         case 'insertTable':exec('insertHTML',value);break;
@@ -702,8 +834,7 @@
             const path=[];let current=marked;while(current!==block){path.unshift(Array.from(current.parentNode.childNodes).indexOf(current));current=current.parentNode;}
             const clone=block.cloneNode(true);let target=clone;for(const index of path)target=target.childNodes[index];
             const template=document.createElement('template');template.innerHTML=html;target.replaceWith(template.content);
-            const outer=document.createRange();outer.selectNode(block);s.removeAllRanges();s.addRange(outer);selection=outer;
-            exec('insertHTML',clone.outerHTML);
+            replaceVisualBlocks([block],clone.outerHTML);
           }
           else {
             const holder=document.createElement('div');holder.append(r.cloneContents());
@@ -713,11 +844,15 @@
               for(const child of Array.from(parent.childNodes)){
                 if(child.nodeType===1 && /^(DIV|P|H[1-6]|LI|UL|OL|BLOCKQUOTE|TABLE|THEAD|TBODY|TR|TD|TH|PRE|SECTION)$/.test(child.tagName)){
                   flush();if(child.contentEditable!=='false')wrap(child);
-                }else group.push(child);
+                }else if(!(child.nodeType===3 && !child.data.trim() && /^(DIV|UL|OL|TABLE|THEAD|TBODY|TR|BLOCKQUOTE)$/.test(parent.nodeName)))group.push(child);
               }
               flush();
             }
-            wrap(holder);exec('insertHTML',holder.innerHTML);
+            wrap(holder);
+            // Auch Inline-Auswahlen brauchen neutrale Absatzgrenzen: Am
+            // Absatzende wandelt WebKit <mark> sonst in einen CSS-Span um,
+            // dessen gelbe Farbe beim Markdown-Speichern verloren ginge.
+            const fragment=document.createDocumentFragment();fragment.append(...holder.childNodes);replaceFormattedSelection(r,fragment);
           }
           break;
         }

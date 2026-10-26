@@ -179,6 +179,17 @@ struct MarkdownRichTextTests {
         #expect(fragment.contains("<mark>erste\nzweite</mark>"))
     }
 
+    @Test("Textmarker bleibt auch in GFM-Tabellen ein semantisches Mark-Element")
+    func highlightInTable() {
+        let source = "| ==Kopf== |\n| --- |\n| ==Text und **fett**== |\n"
+        let fragment = MarkdownRichText.htmlFragment(markdown: source)
+        #expect(fragment.contains("<mark>Kopf</mark>"))
+        #expect(fragment.contains("<mark>Text und <strong>fett</strong></mark>"))
+        let visual = MarkdownVisualDocument.render(source, documentURL: nil)
+        #expect(visual.fragment.html.contains("<mark>Kopf</mark>"))
+        #expect(visual.fragment.html.contains("<mark>Text und <strong>fett</strong></mark>"))
+    }
+
     @Test("Textmarker ändert die sichere HTML-Grenze nicht")
     func highlightDoesNotEnableRawHTML() {
         let fragment = MarkdownRichText.htmlFragment(

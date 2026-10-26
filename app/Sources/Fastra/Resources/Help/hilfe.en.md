@@ -749,6 +749,11 @@ last column are protected. **Tab / Shift-Tab** select the next or previous cell.
 Tab in the last cell appends a data row. At the row or cell limit, a message
 explains why no row can be added. Shift-Tab in the first cell leaves the table.
 
+Cells support bold, italic, highlighting, code, links and line breaks.
+“Plain Text” removes formatting within the selected cell.
+Headings, lists, quotes and nested tables cannot be stored inside a Markdown
+table cell; those buttons are disabled there, with a tooltip explaining the limit.
+
 **Paste TSV…** opens an editable dialog prefilled with tab-separated clipboard
 text. Pasting starts at the current cell, replaces destination cells and expands
 the table as needed. Directly pasting multiline or tab-separated plain text into
@@ -764,6 +769,11 @@ Pasting a single line over the entire cell text does not add a line break.
 to edit directly in the formatted view or use source text with a preview.
 WYSIWYG hides Markdown syntax. The format toolbar works in both modes.
 Typing, formatting and Undo happen directly in the document.
+When Markdown delimiters cannot express the selected formatting unambiguously,
+Fastra uses allowed HTML tags in the source so that saving and reopening preserve
+its appearance.
+Protected HTML and math content cannot be formatted in WYSIWYG mode. Fastra
+explains this before making changes; edit these parts in the Markdown source.
 
 **Return** starts a new paragraph with a small gap. **Shift-Return (⇧↩)** starts
 a new line within the same paragraph, without extra paragraph spacing.

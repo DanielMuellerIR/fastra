@@ -39,6 +39,10 @@ Timeout-Ursache wird getrennt weiter diagnostiziert.
 
 ## Jetzt
 
+- **Intermittierende Markdown-Tooltips eingrenzen.** Die Formatierungsbuttons
+  besitzen Hilfetexte; der Auslöser für zeitweise ausbleibende Tooltips im
+  WYSIWYG-Modus ist noch nicht reproduzierbar belegt.
+
 - **4D-Parameterhilfe/Typeahead: verbliebene Komponenten-/Plugin-Grenzen**
   (verbleibende Grenze nach der Komponentenmethoden-Unterstützung; diese ist mit
   v1.50.0 umgesetzt — Typeahead + Signaturhilfe aus `.4dbase`, `.4DZ` und

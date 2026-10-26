@@ -1511,7 +1511,57 @@ vorauslaufen; eine feste Pause oder ein Screenshot ersetzt diesen Zustand nicht.
 `mdtableinput` ist eine gezielte Diagnose mit externem nativen Tastentreiber
 und dem vorhandenen Aufnahmeverzeichnis als Request-/Receipt-Ablage.
 
+### Bestehende Dateien in allen Editormodi speichern
+
+`./selftest.sh saveexisting` gehört zum Standardlauf. Der Runner legt vor dem
+App-Start drei Bestandsdateien mit älterem Änderungsdatum und definierten
+Zugriffsrechten an. Die installierte App öffnet sie im normalen Texteditor,
+als Markdown mit Vorschau und in WYSIWYG. Je Modus bearbeitet der Test den
+sichtbaren Editor, speichert über ⌘S, schließt den Tab und öffnet ihn neu;
+anschließend wiederholt er den Ablauf. Die fünf Ordnerzustände sind: ohne
+Temp-Rest, unveränderte alte Temp-Datei, beschädigte Binärdaten, Ordner unter
+einem Temp-Namen und Symlink unter einem Temp-Namen. Diese Pfade müssen
+unverändert bleiben. Insgesamt entstehen 30 Speichervorgänge. Sichtbarer Inhalt und tatsächliche
+Plattenbytes müssen nach jedem Speichern und Wiederöffnen übereinstimmen. Der vollständige sichtbare
+WYSIWYG-Text wird zusätzlich vor und nach dem Öffnen exakt verglichen.
+Nach dem App-Prozess vergleicht zusätzlich der Runner alle drei Dateien mit
+unabhängig erzeugten Sollbytes. Ein grüner App-Status allein genügt nicht.
+
+Die native Abnahme läuft auch mit `FASTRA_SAVEEXISTING_PARENT` unter einem
+vorbereiteten Desktop-Testverzeichnis gegen die notarisierte installierte App.
+Der Runner entfernt nur sein markiertes Fixture-Unterverzeichnis.
+Damit bleiben Testdateien außerhalb ihres Test-Homes und betreffen den realen
+Desktop-Zugriff. Fehlende Systemfreigaben gelten als offene Prüfung. Nach
+Speicher-, Editor- oder Berechtigungsänderungen ist dieser Ablauf in beiden
+Sprachen erforderlich; reine In-Memory- oder frisch appintern angelegte
+Fixtures ersetzen ihn nicht.
+
 ### Visuelle Markdown-Bearbeitung
+
+Bei Änderungen an WYSIWYG-Formatierung, Serialisierung oder Rendering ist
+`./test.sh --fast-only --filter Markdown` nach dem Build erforderlich.
+`MarkdownVisualTests/formatOptionsSaveReopen` bedient alle 15 Formatierungsbefehle
+mit echten WebKit-Auswahlen in Hell und Dunkel, speichert über den Workspace,
+schließt den Tab und erzeugt aus der Plattendatei einen frischen Editor.
+Erwartete Elemente sowie tatsächliche Schrift, Farben und Glyphenpositionen
+werden vor und nach dem Öffnen verglichen. Link- und Tabellenrückfragen erhalten
+feste Testwerte; ihre Dialogbedienung bleibt Aufgabe der Fenstertests.
+Range-Rechtecke tolerieren wegen Textknoten-Grenzen und Kerning 1 pt;
+Zeichen, Schriftattribute und Farben müssen exakt übereinstimmen.
+`repeatedEditsKeepBlockSeparators` prüft drei echte Speicherrundreisen mit
+fehlendem, einfachem und doppeltem Dateizeilenabschluss in LF und CRLF.
+`plainParagraphKeepsAdjacentBlockBoundary` schützt die nötige Trennung nach
+dem Umwandeln einer direkt benachbarten Überschrift in Fließtext.
+`highlightSaveReopen` ergänzt Wort-/Dokumentauswahlen bis zum Absatzende in Absätzen,
+Überschriften, Listen, Zitaten und Tabellen; `punctuationFormatSaveReopen`
+prüft Satzzeichen zwischen Buchstaben. `tableFormatsSaveReopen` prüft die
+speicherbaren Zellformate, `tableRejectsBlockFormats` die erklärte, unverändernde
+Abweisung von Blockformaten. Eine Prüfung des vorhandenen DOM allein reicht
+für diese Fälle nicht. Der Fensterlauf `mdvisual` setzt zusätzlich neue
+Inline-Formate bis zum Absatzende über echte Toolbar-Klicks und prüft ihre Speicherrundreise.
+`blockFormatKeepsSelection` tippt nach Listen-/Zitatformatierung weiter und
+prüft Cursor sowie Teilauswahl. `protectedHTMLRejectsFormatting` verhindert
+vorübergehende Auszeichnungen in unveränderlich erhaltenen HTML-Bereichen.
 
 `MarkdownVisualTests/copyPasteSelectionStyles` prüft Textteilauswahlen innerhalb
 von Auszeichnungen, Links, Überschriften, Zitaten, Listen und Codeblöcken über

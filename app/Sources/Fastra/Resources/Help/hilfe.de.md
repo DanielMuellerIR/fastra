@@ -790,6 +790,12 @@ für die ganze Spalte. Die Kopfzeile und die letzte Spalte bleiben erhalten.
 Zelle fügt eine Datenzeile an. Am Zeilen- oder Zellenlimit erklärt eine Meldung,
 warum keine neue Zeile eingefügt wird. Shift-Tab in der ersten Zelle verlässt die Tabelle.
 
+In Zellen sind Fett, Kursiv, Hervorhebung, Code, Links und Zeilenumbrüche möglich.
+„Normaler Text“ entfernt die Formatierung innerhalb der gewählten Zelle.
+Überschriften, Listen, Zitate und weitere Tabellen lassen sich in einer
+Markdown-Tabellenzelle nicht speichern; diese Buttons sind dort gesperrt und
+erklären die Grenze im Tooltip.
+
 **TSV einfügen…** zeigt tabulatorgetrennten Text aus der Zwischenablage in einem
 bearbeitbaren Dialog. Einfügen beginnt an der aktuellen Zelle, ersetzt die
 Zielzellen und erweitert die Tabelle bei Bedarf. Auch direktes Einfügen von
@@ -806,6 +812,12 @@ bekommen keine Strukturänderung; Fastra zeigt den Grund an. Während du eine Au
 in der formatierten Ansicht oder mit Quelltext und Vorschau arbeiten möchtest.
 Im WYSIWYG-Modus bleiben Markdown-Kürzel verborgen. Die Format-Toolbar funktioniert
 in beiden Modi. Tippen, Formatieren und Rückgängig erfolgen direkt im Dokument.
+Wo Markdown-Trennzeichen eine gewählte Formatierung nicht eindeutig ausdrücken
+können, verwendet Fastra erlaubte HTML-Auszeichnungen im Quelltext, damit die
+Darstellung beim Speichern und Wiederöffnen erhalten bleibt.
+Geschützte HTML- und Formelbereiche lassen sich im WYSIWYG-Modus nicht
+formatieren. Fastra erklärt dies vor der Änderung; bearbeite solche Bereiche
+im Markdown-Quelltext.
 
 **Return** beginnt einen neuen Absatz mit etwas Abstand. **Shift-Return (⇧↩)**
 beginnt eine neue Zeile im selben Absatz, ohne zusätzlichen Absatzabstand.

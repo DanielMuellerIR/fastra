@@ -397,40 +397,55 @@ struct EditorView: View {
     }
 
     private var markdownFormattingButtons: some View {
-        // Horizontal scrollbar: In einem schmalen Editor (Markdown-Split!)
-        // würde ein überlaufender HStack von SwiftUI ZENTRIERT und vom
-        // `.clipped()` der Spalte BEIDSEITIG beschnitten — ausgerechnet
-        // Fett/Kursiv (vorn) und Link/Tabelle (hinten) verschwänden.
-        // Im ScrollView bleiben alle Befehle erreichbar.
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
-                ForEach(MarkdownFormatCommand.displayOrder, id: \.rawValue) { command in
-                    Button {
-                        NotificationCenter.default.post(name: .fastraMarkdownFormat,
-                                                        object: command.rawValue)
-                    } label: {
-                        Image(systemName: command.systemImage)
-                            .fastraFont(size: 12)
-                            .foregroundColor(Theme.textSecondary)
-                            .frame(width: 26, height: 22)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .background(SelfTestMarker(id: "markdownCommand-\(command.rawValue)").frame(width: 0, height: 0))
-                    .help(Text(verbatim: command.helpText(visualEditor: workspace.activeMarkdownIsVisual)))
-                    .accessibilityLabel(Text(verbatim: command.menuTitle))
-                    if command == .hardBreak || command == .plainParagraph || command == .quote {
-                        Divider().frame(height: 14).opacity(0.5)
+        MarkdownFormattingButtons(workspace: workspace, table: workspace.markdownTable)
+    }
+
+    private struct MarkdownFormattingButtons: View {
+        @ObservedObject var workspace: Workspace
+        @ObservedObject var table: MarkdownTableController
+
+        var body: some View {
+            // Horizontal scrollbar: In einem schmalen Editor (Markdown-Split!)
+            // würde ein überlaufender HStack von SwiftUI ZENTRIERT und vom
+            // `.clipped()` der Spalte BEIDSEITIG beschnitten — ausgerechnet
+            // Fett/Kursiv (vorn) und Link/Tabelle (hinten) verschwänden.
+            // Im ScrollView bleiben alle Befehle erreichbar.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 2) {
+                    ForEach(MarkdownFormatCommand.displayOrder, id: \.rawValue) { command in
+                        let unavailableInCell = workspace.activeMarkdownIsVisual
+                            && table.context != nil && !command.supportsTableCell
+                        let help = unavailableInCell ? MarkdownFormatCommand.tableCellRestriction
+                            : command.helpText(visualEditor: workspace.activeMarkdownIsVisual)
+                        Button {
+                            NotificationCenter.default.post(name: .fastraMarkdownFormat,
+                                                            object: command.rawValue)
+                        } label: {
+                            Image(systemName: command.systemImage)
+                                .fastraFont(size: 12)
+                                .foregroundColor(Theme.textSecondary)
+                                .frame(width: 26, height: 22)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(unavailableInCell)
+                        .background(SelfTestMarker(id: "markdownCommand-\(command.rawValue)").frame(width: 0, height: 0))
+                        .help(Text(verbatim: help))
+                        .fastraHelp(help)
+                        .accessibilityLabel(Text(verbatim: command.menuTitle))
+                        if command == .hardBreak || command == .plainParagraph || command == .quote {
+                            Divider().frame(height: 14).opacity(0.5)
+                        }
                     }
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surfaceRaised)
+            // Marker für den Fenster-Selbsttest `mdassist`.
+            .background(SelfTestMarker(id: "markdownToolbar").frame(width: 0, height: 0))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surfaceRaised)
-        // Marker für den Fenster-Selbsttest `mdassist`.
-        .background(SelfTestMarker(id: "markdownToolbar").frame(width: 0, height: 0))
     }
 
     /// Dezenter, NICHT-modaler Erst-Nutzungs-Hinweis (Etappe 5 Punkt 6):

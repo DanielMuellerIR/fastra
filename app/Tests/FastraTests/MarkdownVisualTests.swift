@@ -8,6 +8,341 @@ import Testing
 @Suite("Markdown-WYSIWYG", .serialized)
 struct MarkdownVisualTests {
 
+    @Test("Wiederholte Texteingaben erhalten Absatzabstände und Dateiende", arguments: ["", "\n", "\n\n", "\r\n", "\r\n\r\n"])
+    @MainActor
+    func repeatedEditsKeepBlockSeparators(_ ending: String) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-existing-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("fixture.md")
+        let separator = ending.contains("\r") ? "\r\n" : "\n"
+        let prefix = "Anfang äöü 😀" + separator + separator + "Vor "
+        try (prefix + "Ergebnis" + ending).write(to: file, atomically: true, encoding: .utf8)
+        for round in 1...3 {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            let (workspace, coordinator, web, window) = try await editor(source, documentURL: file)
+            defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+            workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
+            var saveError: String?
+            workspace.saveSafetyWarningHandler = { saveError = $0 + ": " + $1 }
+            _ = try await web.callAsyncJavaScript("""
+                const root=document.querySelector('#fastra-visual'),walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+                let n;while(walker.nextNode()){if(walker.currentNode.data.includes('Ergebnis')){n=walker.currentNode;break;}}
+                root.focus();const r=document.createRange();r.setStart(n,n.data.indexOf('Ergebnis'));r.setEnd(n,n.data.length);
+                getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('insertText',false,text);fastraVisual.flush();
+                """, arguments: ["text": "Ergebnis \(round)"], in: nil, contentWorld: .page)
+            try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+            let expected = prefix + "Ergebnis \(round)" + ending
+            #expect(workspace.activeTab?.content == expected, Comment(rawValue: "Runde \(round): \(String(reflecting: workspace.activeTab?.content))"))
+            workspace.saveActiveTab()
+            try #require(await waitUntil { saveError != nil || workspace.activeTab?.isDirty == false })
+            try #require(saveError == nil, Comment(rawValue: saveError ?? ""))
+            #expect(try Data(contentsOf: file) == Data(expected.utf8))
+            let id = try #require(workspace.activeTabID)
+            workspace.closeTab(id: id)
+            try #require(await waitUntil { !workspace.tabs.contains { $0.id == id } })
+        }
+    }
+
+    @Test("Überschrift zu Fließtext erhält die Trennung zum Folgeabsatz")
+    @MainActor
+    func plainParagraphKeepsAdjacentBlockBoundary() async throws {
+        try await assertFormatPersistence("# Ergebnis\nDanach\n", selection: """
+            const n=document.querySelector('#fastra-visual h1').firstChild,r=document.createRange();r.selectNodeContents(n);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            """, dark: false, command: .plainParagraph,
+            expectation: "JSON.stringify(Array.from(document.querySelectorAll('#fastra-visual p:not([data-md-edit-boundary])'),n=>n.textContent)) === JSON.stringify(['Ergebnis','Danach'])")
+    }
+
+    @Test("Neu gesetzte Hervorhebung übersteht echtes Speichern und einen frischen Editor", arguments: ["Textmarker", "Vor Textmarker danach", "VorTextmarkerdanach", "Vor Textmarker", "– Textmarker", "Textmarker\n\nZweiter Textmarker", "# Textmarker", "- Textmarker", "> Textmarker", "| Textmarker |\n| --- |\n| Textmarker |"], [false, true])
+    @MainActor
+    func highlightSaveReopen(_ text: String, _ selectAll: Bool) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-highlight-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("fixture.md"), source = text + "\n"
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: file)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
+        var saveError: String?
+        workspace.saveSafetyWarningHandler = { saveError = $0 + ": " + $1 }
+        let structureScript = "JSON.stringify(Array.from(document.querySelectorAll('#fastra-visual :is(p,h1,h2,h3,ul,ol,li,blockquote,table,tr,th,td)')).filter(n=>!n.hasAttribute('data-md-edit-boundary')).map(n=>n.tagName))"
+        let originalStructure = try await web.evaluateJavaScript(structureScript) as? String
+        _ = try await web.evaluateJavaScript("""
+            const root=document.querySelector('#fastra-visual'),walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+            let n;while(walker.nextNode()){if(walker.currentNode.data.includes('Textmarker')){n=walker.currentNode;break;}}
+            const r=document.createRange(),start=n.data.indexOf('Textmarker');
+            if(\(selectAll)){r.selectNodeContents(root);}else{r.setStart(n,start);r.setEnd(n,start+'Textmarker'.length);}
+            getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('highlight');
+            """)
+        let live = try #require(try await web.evaluateJavaScript("document.querySelector('#fastra-visual').innerHTML") as? String)
+        #expect(try await web.evaluateJavaScript(structureScript) as? String == originalStructure, Comment(rawValue: live))
+        #expect(try await web.evaluateJavaScript("Array.from(document.querySelectorAll('mark')).some(n=>n.textContent.includes('Textmarker'))") as? Bool == true, Comment(rawValue: live))
+        workspace.saveActiveTab()
+        try #require(await waitUntil { saveError != nil || (workspace.activeTab?.isDirty == false && (try? String(contentsOf: file, encoding: .utf8)) != source) }, Comment(rawValue: "DOM: \(live); Quelle: \(workspace.activeTab?.content ?? "nil")"))
+        try #require(saveError == nil, Comment(rawValue: saveError ?? ""))
+        let saved = try String(contentsOf: file, encoding: .utf8)
+        web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close()
+        let (_, reopened, freshWeb, freshWindow) = try await editor(saved, documentURL: file)
+        defer { freshWeb.configuration.userContentController.removeAllScriptMessageHandlers(); freshWindow.close(); withExtendedLifetime(reopened) {} }
+        #expect(try await freshWeb.evaluateJavaScript(structureScript) as? String == originalStructure, Comment(rawValue: saved))
+        #expect(try await freshWeb.evaluateJavaScript("Array.from(document.querySelectorAll('mark')).some(n=>n.textContent.includes('Textmarker'))") as? Bool == true, Comment(rawValue: "Gespeichert: \(saved); vorher: \(live)"))
+        #expect(try await freshWeb.evaluateJavaScript("getComputedStyle(document.querySelector('mark') || document.body).backgroundColor") as? String == "rgb(255, 238, 154)")
+    }
+
+    @Test("Alle Markdown-Werkzeuge erhalten ihre sichtbare Wirkung nach Speichern und Wiederöffnen",
+          arguments: MarkdownFormatCommand.allCases, [false, true])
+    @MainActor
+    func formatOptionsSaveReopen(_ command: MarkdownFormatCommand, _ dark: Bool) async throws {
+        var source = "Vor Ergebnis danach\n", value = "", selector = "p", expectation: String
+        switch command {
+        case .bold: expectation = "document.querySelector('strong,b')?.textContent === 'Ergebnis'"
+        case .italic: expectation = "document.querySelector('em,i')?.textContent === 'Ergebnis'"
+        case .highlight: expectation = "document.querySelector('mark')?.textContent === 'Ergebnis'"
+        case .code: expectation = "document.querySelector('code')?.textContent === 'Ergebnis'"
+        case .heading1: expectation = "document.querySelector('h1')?.textContent === 'Vor Ergebnis danach'"
+        case .heading2: expectation = "document.querySelector('h2')?.textContent === 'Vor Ergebnis danach'"
+        case .heading3: expectation = "document.querySelector('h3')?.textContent === 'Vor Ergebnis danach'"
+        case .plainParagraph:
+            source = "# **Ergebnis**\n"; selector = "h1"
+            expectation = "!document.querySelector('h1,strong,b') && document.querySelector('p:not([data-md-edit-boundary])')?.textContent === 'Ergebnis'"
+        case .bulletList: expectation = "document.querySelector('ul li')?.textContent === 'Vor Ergebnis danach'"
+        case .orderedList: expectation = "document.querySelector('ol li')?.textContent === 'Vor Ergebnis danach'"
+        case .taskList: expectation = "!!document.querySelector('li input[type=checkbox]')"
+        case .quote: expectation = "document.querySelector('blockquote')?.textContent.includes('Ergebnis') === true"
+        case .hardBreak:
+            source = "ErgebnisDanach\n"
+            expectation = "document.querySelector('p')?.querySelectorAll('br').length === 1"
+        case .link:
+            value = "https://example.invalid/ziel"
+            expectation = "document.querySelector('a')?.getAttribute('href') === 'https://example.invalid/ziel'"
+        case .insertTable:
+            source = "Ergebnis\n"
+            value = "<table data-md-table=\"gfm\"><thead><tr><th>Kopf</th></tr></thead><tbody><tr><td>Zelle</td></tr></tbody></table><p><br></p>"
+            expectation = "document.querySelector('th')?.textContent === 'Kopf' && document.querySelector('td')?.textContent === 'Zelle'"
+        }
+        let selection = """
+            const p=document.querySelector('#fastra-visual \(selector)'),walker=document.createTreeWalker(p,NodeFilter.SHOW_TEXT);
+            let n;while(walker.nextNode()){if(walker.currentNode.data.includes('Ergebnis')){n=walker.currentNode;break;}}
+            const r=document.createRange(),start=n.data.indexOf('Ergebnis');
+            r.setStart(n,start);r.setEnd(n,start+'Ergebnis'.length);
+            if(\(command == .hardBreak))r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            """
+        try await assertFormatPersistence(source, selection: selection, dark: dark,
+                                          command: command, value: value, expectation: expectation)
+    }
+
+    @Test("Inline-Formate erhalten Satzzeichen zwischen Buchstaben", arguments: [MarkdownFormatCommand.bold, .italic, .highlight, .code])
+    @MainActor
+    func punctuationFormatSaveReopen(_ command: MarkdownFormatCommand) async throws {
+        let selector: String
+        switch command {
+        case .bold: selector = "strong,b"
+        case .italic: selector = "em,i"
+        case .highlight: selector = "mark"
+        default: selector = "code"
+        }
+        try await assertFormatPersistence("a!b\n", selection: """
+            const n=document.querySelector('#fastra-visual p').firstChild,r=document.createRange();
+            r.setStart(n,1);r.setEnd(n,2);getSelection().removeAllRanges();getSelection().addRange(r);
+            """, dark: false, command: command,
+            expectation: "document.querySelector('\(selector)')?.textContent === '!'")
+    }
+
+    @Test("Formatierungen in Tabellenzellen bleiben nach Wiederöffnen erhalten",
+          arguments: [MarkdownFormatCommand.bold, .italic, .highlight, .code, .hardBreak, .link, .plainParagraph])
+    @MainActor
+    func tableFormatsSaveReopen(_ command: MarkdownFormatCommand) async throws {
+        var source = "| Kopf |\n| --- |\n| ErgebnisDanach |\n", selector: String, expected: String
+        switch command {
+        case .bold: selector = "strong,b"
+        case .italic: selector = "em,i"
+        case .highlight: selector = "mark"
+        case .code: selector = "code"
+        case .heading1: selector = "h1"
+        case .heading2: selector = "h2"
+        case .heading3: selector = "h3"
+        case .bulletList: selector = "ul li"
+        case .orderedList: selector = "ol li"
+        case .taskList: selector = "li input[type=checkbox]"
+        case .quote: selector = "blockquote"
+        case .hardBreak: selector = "br"
+        case .link: selector = "a"
+        default: source = "| Kopf |\n| --- |\n| **Ergebnis**Danach |\n"; selector = ""
+        }
+        expected = selector.isEmpty ? "!document.querySelector('td strong,td b')" : command == .hardBreak
+            ? "document.querySelector('td').textContent.includes('\\n') || !!document.querySelector('td br')"
+            : "!!document.querySelector('td')?.querySelector('\(selector)')"
+        try await assertFormatPersistence(source, selection: """
+            const cell=document.querySelector('td'),walker=document.createTreeWalker(cell,NodeFilter.SHOW_TEXT);
+            walker.nextNode();const n=walker.currentNode,r=document.createRange();r.setStart(n,0);r.setEnd(n,'Ergebnis'.length);
+            if(\(command == .hardBreak))r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            """, dark: false, command: command, value: "https://example.invalid/ziel", expectation: expected)
+    }
+
+    @Test("Nicht speicherbare Blockformate in Tabellen werden vor der Änderung erklärt",
+          arguments: ["heading1", "heading2", "heading3", "bulletList", "orderedList", "taskList", "quote", "insertTable"])
+    @MainActor
+    func tableRejectsBlockFormats(_ command: String) async throws {
+        let source = "| Kopf |\n| --- |\n| Ergebnis |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let before = try await renderedFormatState(web)
+        let applied = try await web.evaluateJavaScript("""
+            const n=document.querySelector('td'),r=document.createRange();r.selectNodeContents(n);
+            getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('\(command)','');
+            """) as? Bool
+        #expect(applied == false)
+        try #require(await waitUntil { workspace.markdownTable.error != nil })
+        #expect(workspace.activeTab?.content == source)
+        #expect(workspace.activeTab?.isDirty == false)
+        #expect(try await renderedFormatState(web) == before)
+    }
+
+    @Test("Listen und Zitate erhalten Cursor und Teilauswahl beim anschließenden Tippen",
+          arguments: [MarkdownFormatCommand.bulletList, .orderedList, .taskList, .quote], [false, true])
+    @MainActor
+    func blockFormatKeepsSelection(_ command: MarkdownFormatCommand, _ selected: Bool) async throws {
+        let expected = selected ? "Alpha !" : "Alpha! Beta"
+        try await assertFormatPersistence("Alpha Beta\n", selection: """
+            const n=document.querySelector('#fastra-visual p').firstChild,r=document.createRange();
+            r.setStart(n,\(selected ? 6 : 5));r.setEnd(n,\(selected ? 10 : 5));getSelection().removeAllRanges();getSelection().addRange(r);
+            """, dark: false, command: command,
+            expectation: "document.getElementById('fastra-visual').innerText.trim() === '\(expected)'",
+            afterFormat: "document.execCommand('insertText',false,'!');fastraVisual.flush();")
+    }
+
+    @Test("Blockformatierung über eine Tabellenzellgrenze verändert keinen Inhalt")
+    @MainActor
+    func blockFormatAcrossCellBoundary() async throws {
+        let source = "Vorher\n\n| Kopf |\n| --- |\n| Ergebnis |\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let applied = try await web.evaluateJavaScript("""
+            const p=document.querySelector('p').firstChild,cell=document.querySelector('td'),r=document.createRange();
+            r.setStart(p,0);r.setEnd(cell,cell.childNodes.length);getSelection().removeAllRanges();getSelection().addRange(r);
+            fastraVisual.command('bulletList');
+            """) as? Bool
+        #expect(applied == false)
+        try #require(await waitUntil { workspace.markdownTable.error != nil })
+        #expect(workspace.activeTab?.content == source)
+        #expect(workspace.activeTab?.isDirty == false)
+    }
+
+    @Test("Hervorheben in einem geschützten HTML-Absatz darf keine nur vorübergehende Markierung erzeugen")
+    @MainActor
+    func protectedHTMLRejectsFormatting() async throws {
+        let source = "<p>Vor Ergebnis danach</p>\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        var warning: String?
+        workspace.saveSafetyWarningHandler = { warning = $0 + ": " + $1 }
+        let applied = try await web.evaluateJavaScript("""
+            const n=document.querySelector('#fastra-visual p').firstChild,r=document.createRange(),start=n.data.indexOf('Ergebnis');
+            r.setStart(n,start);r.setEnd(n,start+8);getSelection().removeAllRanges();getSelection().addRange(r);
+            fastraVisual.command('highlight');
+            """) as? Bool
+        #expect(applied == false)
+        try #require(await waitUntil { warning != nil })
+        #expect(try await web.evaluateJavaScript("document.querySelector('mark') === null") as? Bool == true)
+        #expect(workspace.activeTab?.content == source)
+    }
+
+    @MainActor
+    private func assertFormatPersistence(_ source: String, selection: String, dark: Bool,
+                                         command: MarkdownFormatCommand, value: String = "", expectation: String,
+                                         afterFormat: String = "") async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-format-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("fixture.md")
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: file)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
+        coordinator.updateStyle(fontName: PreviewFonts.systemName, fontSize: 14, darkMode: dark, style: "persistence")
+        _ = try await web.evaluateJavaScript(selection)
+        if command == .link { coordinator.execute("link", value: value) }
+        else if command == .insertTable { coordinator.execute("insertTable", value: value) }
+        else { coordinator.format(command) }
+        try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+        if !afterFormat.isEmpty { _ = try await web.evaluateJavaScript(afterFormat) }
+        let liveHTML = try await web.evaluateJavaScript("document.querySelector('#fastra-visual').innerHTML") as? String ?? ""
+        try #require(try await web.evaluateJavaScript(expectation) as? Bool == true, Comment(rawValue: liveHTML))
+        let before = try await renderedFormatState(web)
+        var saveError: String?
+        workspace.saveSafetyWarningHandler = { saveError = $0 + ": " + $1 }
+        workspace.saveActiveTab()
+        try #require(await waitUntil { saveError != nil || workspace.activeTab?.isDirty == false })
+        try #require(saveError == nil, Comment(rawValue: saveError ?? ""))
+        let saved = try String(contentsOf: file, encoding: .utf8)
+        #expect(saved == workspace.activeTab?.content)
+        let id = try #require(workspace.activeTabID)
+        workspace.closeTab(id: id)
+        try #require(await waitUntil { !workspace.tabs.contains { $0.id == id } })
+        web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close()
+        let (_, reopened, fresh, freshWindow) = try await editor(try String(contentsOf: file, encoding: .utf8), documentURL: file)
+        defer { fresh.configuration.userContentController.removeAllScriptMessageHandlers(); freshWindow.close(); withExtendedLifetime(reopened) {} }
+        reopened.updateStyle(fontName: PreviewFonts.systemName, fontSize: 14, darkMode: dark, style: "reopened")
+        #expect(try await fresh.evaluateJavaScript(expectation) as? Bool == true, Comment(rawValue: "Gespeichert: \(saved); vorher: \(liveHTML)"))
+        let after = try await renderedFormatState(fresh)
+        let appearanceMatches = try renderedFormatStatesMatch(before, after)
+        if !appearanceMatches {
+            let details: [String: Any] = ["command": String(describing: command), "dark": dark, "before": before, "after": after,
+                "liveHTML": liveHTML, "reopenedHTML": try await fresh.evaluateJavaScript("document.querySelector('#fastra-visual').innerHTML") as? String ?? ""]
+            let data = try JSONSerialization.data(withJSONObject: details, options: [.sortedKeys])
+            FileHandle.standardError.write(Data("FORMAT_PERSISTENCE_DIAGNOSTIC ".utf8) + data + Data("\n".utf8))
+        }
+        #expect(appearanceMatches, Comment(rawValue: "Darstellung geändert nach \(command): \(saved)"))
+    }
+
+    private func renderedFormatStatesMatch(_ before: String, _ after: String) throws -> Bool {
+        let first = try #require(JSONSerialization.jsonObject(with: Data(before.utf8)) as? [[Any]])
+        let second = try #require(JSONSerialization.jsonObject(with: Data(after.utf8)) as? [[Any]])
+        guard first.count == second.count else { return false }
+        for (left, right) in zip(first, second) {
+            guard left.count == right.count else { return false }
+            for index in left.indices {
+                if (1...4).contains(index) {
+                    // Textknoten-Grenzen und Kerning runden Range-Rechtecke
+                    // unterschiedlich. Ein Punkt Toleranz betrifft nur Geometrie;
+                    // Zeichen, Schriften und Farben müssen exakt übereinstimmen.
+                    guard let a = left[index] as? Double, let b = right[index] as? Double,
+                          abs(a - b) <= 1 else { return false }
+                } else if left[index] as? String != right[index] as? String { return false }
+            }
+        }
+        return true
+    }
+
+    /// Sichtbare Zeichen, tatsächliche CSS-Werte und Glyphenpositionen vergleichen.
+    /// Gleiche Markdown-Texte allein würden einen Darstellungsverlust nicht bemerken.
+    @MainActor
+    private func renderedFormatState(_ web: WKWebView) async throws -> String {
+        try #require(try await web.evaluateJavaScript("""
+            (()=>{
+              const root=document.getElementById('fastra-visual'),origin=root.getBoundingClientRect(),walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),state=[];
+              const round=n=>Math.round(n*10)/10;
+              while(walker.nextNode()){
+                const n=walker.currentNode,p=n.parentElement;
+                if(p.closest('[data-md-edit-boundary]') || (!n.data.trim() && !p.closest('p,h1,h2,h3,li,td,th,code,mark,strong,b,em,i')))continue;
+                const style=getComputedStyle(p);let background='';
+                for(let a=p;a && a!==root;a=a.parentElement){const color=getComputedStyle(a).backgroundColor;if(color!=='rgba(0, 0, 0, 0)'){background=color;break;}}
+                let offset=0;
+                for(const char of n.data){
+                  const r=document.createRange();r.setStart(n,offset);offset+=char.length;r.setEnd(n,offset);
+                  const rect=r.getBoundingClientRect();if(!rect.width)continue;
+                  state.push([char,round(rect.x-origin.x),round(rect.y-origin.y),round(rect.width),round(rect.height),style.fontWeight,style.fontStyle,style.fontFamily,style.fontSize,style.color,background,p.closest('a')?.getAttribute('href') || '']);
+                }
+              }
+              return JSON.stringify(state);
+            })()
+            """) as? String)
+    }
+
     @Test("Inline-HTML-Gliederungsmarker überleben Bearbeiten und Undo ohne Quelländerung")
     @MainActor func outlineMarkerUndoRoundtrip() async throws {
         let source = "# Echt\n\nText <h2>Inline-HTML</h2> danach.\n"
