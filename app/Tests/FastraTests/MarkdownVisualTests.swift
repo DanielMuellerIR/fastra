@@ -1026,14 +1026,6 @@ struct MarkdownVisualTests {
         window.retainedWorkspace = workspace
         window.isReleasedWhenClosed = false
         window.contentView = web
-        if ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" {
-            // Die visuelle Integration nutzt den dedizierten CI-Desktop.
-            // Lokale Renderer-Prüfungen übernehmen weiterhin keinen Fokus.
-            NSApplication.shared.setActivationPolicy(.accessory)
-            window.orderFrontRegardless()
-            try #require(await waitUntil { window.occlusionState.contains(.visible) },
-                         "Die WebKit-Fixture muss auf dem CI-Desktop sichtbar sein")
-        }
         var error: String?
         workspace.saveSafetyWarningHandler = { title, text in error = title + text }
         coordinator.load(source, documentURL: documentURL, fontName: PreviewFonts.systemName,
@@ -1043,7 +1035,14 @@ struct MarkdownVisualTests {
             let roundtrip = try? await web.evaluateJavaScript("window.fastraVisual.markdown()")
             Issue.record(Comment(rawValue: error + " ROUNDTRIP=" + String(describing: roundtrip)))
         }
-        try #require(ready && coordinator.ready, "Editor wurde nicht bereit")
+        let loaded = ready && coordinator.ready
+        if !loaded {
+            // Bei fehlgeschlagenem Aufbau erhält der Aufrufer kein Fenster
+            // und kann dessen Ressourcen deshalb nicht selbst freigeben.
+            web.configuration.userContentController.removeAllScriptMessageHandlers()
+            window.close()
+        }
+        try #require(loaded, "Editor wurde nicht bereit")
         return (workspace, coordinator, web, window)
     }
 
@@ -1974,7 +1973,11 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { target.activeTab?.content == pasted })
         receiver.load(pasted, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
         // WebKits erneuter Start braucht dieselbe Frist wie das erste Öffnen.
-        try #require(await waitUntil(timeout: 12) { receiver.ready })
+        let reloaded = await waitUntil(timeout: 12) { receiver.ready }
+        if !reloaded {
+            print("MARKDOWN_RELOAD_DIAGNOSTIC cut=\(cut) htmlOnly=\(htmlOnly) loading=\(targetWeb.isLoading) progress=\(targetWeb.estimatedProgress) generation=\(receiver.generation) ownerPresent=\(receiver.workspace != nil) activeTabMatches=\(receiver.tabID == target.activeTabID) sourceMatches=\(receiver.markdown == pasted)")
+        }
+        try #require(reloaded)
         #expect(try await targetWeb.evaluateJavaScript("JSON.stringify(" + snapshot + ")") as? String == expected, Comment(rawValue: pasted))
     }
 

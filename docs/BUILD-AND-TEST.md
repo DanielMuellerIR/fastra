@@ -823,9 +823,11 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   echten WebViews sollen keine verbliebenen Layout- und Hintergrundaufgaben
   des großen Editor-Belastungskorpus übernehmen; alle Formatierungs-, Speicher-
   und Wiederöffnungsprüfungen bleiben unverändert aktiv.
-  Auf dem GitHub-Runner werden diese Fixture-Fenster sichtbar realisiert und
-  ihr Sichtbarkeitszustand geprüft. Lokale Renderer-Prüfungen bleiben ohne
-  Fensterübernahme. Das Fixture-Fenster hält seinen Workspace bis zum Schließen.
+  Die Renderer-Fixtures übernehmen keinen Desktop. Der gehostete Runner meldet
+  auch nach `orderFrontRegardless` keinen sichtbaren Fensterzustand; dieser ist
+  deshalb keine Voraussetzung der Renderer-Prüfung. Sichtbare Bedienung wird
+  separat mit den nativen Fenster-Selbsttests abgenommen. Das Fixture-Fenster
+  hält seinen Workspace bis zum Schließen.
   Die sichtbaren, lokalisierten Testtitel sind ausdrücklich kein Teil der
   Gruppierung. Für gezielte Runner-Diagnosen stehen `./test.sh --fast-only` und
   `./test.sh --serial-integration-only` bereit; ohne diese Optionen bleibt der
