@@ -15338,11 +15338,11 @@ enum SelfTest {
                             let characters = keyCode == 123 ? "\u{F702}" : "\u{F703}"
                             if visual, let web = ws.visualMarkdownEditor?.web {
                                 try require(window.makeFirstResponder(web), "WYSIWYG bekommt keinen Auswahlfokus")
-                                _ = try await web.evaluateJavaScript("""
+                                _ = try await web.callAsyncJavaScript("""
                                     const root=document.querySelector('#fastra-visual'),walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
                                     let n;while(walker.nextNode()){if(walker.currentNode.data.includes('Vor Ergebnis')){n=walker.currentNode;break;}}
                                     root.focus();getSelection().collapse(n,n.data.indexOf('Ergebnis'));
-                                    """)
+                                    """, arguments: [:], in: nil, contentWorld: .page)
                                 postKey(characters, keyCode: keyCode, windowNumber: window.windowNumber, modifiers: modifiers)
                                 var actual = ""
                                 for _ in 0..<120 {

@@ -684,8 +684,9 @@ struct MarkdownVisualTests {
                 if observed?.utf8.elementsEqual(expected.utf8) == true { return true }
                 if !reading {
                     reading = true
-                    web.evaluateJavaScript("document.querySelector('p')?.textContent") { value, _ in
-                        observed = value as? String
+                    guard let currentWeb = findWeb(host) else { reading = false; return false }
+                    currentWeb.evaluateJavaScript("document.querySelector('p')?.textContent") { value, _ in
+                        if currentWeb === findWeb(host) { observed = value as? String }
                         reading = false
                     }
                 }
@@ -697,6 +698,15 @@ struct MarkdownVisualTests {
         workspace.activeTabContent.wrappedValue = "e\u{0301}\n"
         #expect(workspace.activeTab?.content.utf8.elementsEqual("e\u{0301}\n".utf8) == true)
         #expect(workspace.activeTab?.contentRevision != revision)
+        if visual {
+            // Auch ein byteweiser Unicode-Wechsel lädt das Webdokument neu.
+            // Seine Ladebereitschaft gehört vor die anschließende Textprüfung.
+            try #require(await waitUntil(timeout: 12) {
+                guard let coordinator = workspace.visualMarkdownEditor else { return false }
+                return coordinator.ready && coordinator.markdown.utf8.elementsEqual("e\u{0301}\n".utf8)
+                    && coordinator.web === findWeb(host)
+            })
+        }
         let updated = await waitForText("e\u{0301}")
         if !updated {
             let dom = try? await web.evaluateJavaScript("Array.from(document.querySelectorAll('p')).map(n=>({text:n.textContent,boundary:n.hasAttribute('data-md-edit-boundary')}))")

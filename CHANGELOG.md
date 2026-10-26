@@ -7,6 +7,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.156.6] — 2026-10-26
+
+### Prüfungen
+
+- Wiederholte Tastaturprüfungen im WYSIWYG-Modus verwenden getrennte JavaScript-Aufrufbereiche. Der native Bestandsdateitest kann dadurch beide Zeilengrenzen und die wortweise Auswahl nacheinander prüfen.
+- Der Unicode-Anzeigetest liest die aktuell montierte Webansicht und verwirft Antworten einer inzwischen ersetzten Ansicht.
+
 ## [v1.156.5] — 2026-10-26
 
 ### Behoben
