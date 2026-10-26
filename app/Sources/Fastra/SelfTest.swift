@@ -15298,7 +15298,7 @@ enum SelfTest {
             }
             ws.saveSafetyWarningHandler = { warning = $0 + ": " + $1 }
             defaults.set(true, forKey: "markdown.integratedPreview")
-            defer {
+            @MainActor func restoreState() {
                 ws.saveSafetyWarningHandler = oldWarning
                 defaults.set(oldVisual, forKey: MarkdownEditingMode.defaultsKey)
                 defaults.set(oldPreview, forKey: "markdown.integratedPreview")
@@ -15401,9 +15401,11 @@ enum SelfTest {
                     }
                     if let id = ws.activeTabID { ws.closeTab(id: id); try await wait { !ws.tabs.contains { $0.id == id } } }
                 }
+                restoreState()
                 window.orderOut(nil)
                 finish(true, "Fünf Temp-Dateizustände in Normal, Markdown-Vorschau und WYSIWYG je zweimal an Bestandsdateien bearbeitet, per ⌘S gespeichert und frisch geöffnet; Plattenbytes und sichtbarer Inhalt stimmen")
             } catch {
+                restoreState()
                 window.orderOut(nil)
                 finish(false, stage + ": " + error.localizedDescription + "\nModell: " + (ws.activeTab?.content ?? "nil") + "\nEingabe: " + editDiagnostic)
             }
