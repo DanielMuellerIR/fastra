@@ -1521,7 +1521,7 @@ sichtbaren Editor, speichert über ⌘S, schließt den Tab und öffnet ihn neu;
 anschließend wiederholt er den Ablauf. Die fünf Ordnerzustände sind: ohne
 Temp-Rest, unveränderte alte Temp-Datei, beschädigte Binärdaten, Ordner unter
 einem Temp-Namen und Symlink unter einem Temp-Namen. Diese Pfade müssen
-unverändert bleiben. Insgesamt entstehen 30 Speichervorgänge. Sichtbarer Inhalt und tatsächliche
+unverändert bleiben. Vor den Änderungen prüft der Test in allen drei Modi außerdem ⌘⇧←/→ bis zur sichtbaren Zeilengrenze und die unveränderte wortweise Auswahl mit ⌥⇧→. Die Auswahl darf das Dokument nicht verändern. Insgesamt entstehen 30 Speichervorgänge. Sichtbarer Inhalt und tatsächliche
 Plattenbytes müssen nach jedem Speichern und Wiederöffnen übereinstimmen. Der vollständige sichtbare
 WYSIWYG-Text wird zusätzlich vor und nach dem Öffnen exakt verglichen.
 Nach dem App-Prozess vergleicht zusätzlich der Runner alle drei Dateien mit

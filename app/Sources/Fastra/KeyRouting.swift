@@ -41,6 +41,8 @@ enum KeyRoute: Equatable {
     case moveToBeginningOfDocument(modifySelection: Bool)
     /// End bzw. FN+→ — an das Ende des Dokuments springen.
     case moveToEndOfDocument(modifySelection: Bool)
+    /// CMD+SHIFT+←/→ erweitert die Auswahl bis zur sichtbaren Zeilengrenze.
+    case extendSelectionToLineBoundary(backward: Bool)
     /// CMD+<Kürzel> eines 4D-Makros bei aktiver `.4dm`-Datei. Kontextsensitiv
     /// gewinnt das Makro über gleichlautende Menü-Shortcuts (⌘T „Neuer Tab"),
     /// weil die Kürzelmenge nur bei aktiver 4D-Methode überhaupt gefüllt ist.
@@ -95,6 +97,12 @@ enum KeyRouting {
             if keyCode == endKeyCode {
                 return .moveToEndOfDocument(modifySelection: modifiesSelection)
             }
+        }
+
+        if isDocumentWindowKey,
+           modifierFlags.intersection([.command, .shift, .option, .control]) == [.command, .shift],
+           keyCode == 123 || keyCode == 124 {
+            return .extendSelectionToLineBoundary(backward: keyCode == 123)
         }
 
         // ESC blendet die Suchmaske aus — aber nur, wenn sie vorn ist.
@@ -187,7 +195,7 @@ enum KeyRouting {
         case .gotoPreviousMatch:  return .fastraGotoPreviousMatch
         case .showGotoLine:       return .fastraShowGotoLine
         case .closeHelp, .closeDocument,
-             .moveToBeginningOfDocument, .moveToEndOfDocument,
+             .moveToBeginningOfDocument, .moveToEndOfDocument, .extendSelectionToLineBoundary,
              .runFourDMacro:
             // Diese Aktionen gehen direkt an die fokussierte Editor-TextView
             // bzw. den Workspace des Key-Windows; eine globale Notification

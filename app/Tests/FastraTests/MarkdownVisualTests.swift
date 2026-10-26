@@ -196,7 +196,7 @@ struct MarkdownVisualTests {
             getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('\(command)','');
             """) as? Bool
         #expect(applied == false)
-        try #require(await waitUntil { workspace.markdownTable.error != nil })
+        try #require(await waitUntil { workspace.markdownTable.context != nil && workspace.markdownTable.error != nil })
         #expect(workspace.activeTab?.content == source)
         #expect(workspace.activeTab?.isDirty == false)
         #expect(try await renderedFormatState(web) == before)
@@ -281,11 +281,12 @@ struct MarkdownVisualTests {
         let saved = try String(contentsOf: file, encoding: .utf8)
         #expect(saved == workspace.activeTab?.content)
         let id = try #require(workspace.activeTabID)
+        workspace.tabs.append(EditorTab(title: "anchor.txt", path: "", content: "Anker"))
         workspace.closeTab(id: id)
         try #require(await waitUntil { !workspace.tabs.contains { $0.id == id } })
         web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close()
-        let (_, reopened, fresh, freshWindow) = try await editor(try String(contentsOf: file, encoding: .utf8), documentURL: file)
-        defer { fresh.configuration.userContentController.removeAllScriptMessageHandlers(); freshWindow.close(); withExtendedLifetime(reopened) {} }
+        let (reopenedWorkspace, reopened, fresh, freshWindow) = try await editor(try String(contentsOf: file, encoding: .utf8), documentURL: file)
+        defer { fresh.configuration.userContentController.removeAllScriptMessageHandlers(); freshWindow.close(); withExtendedLifetime((reopenedWorkspace, reopened)) {} }
         reopened.updateStyle(fontName: PreviewFonts.systemName, fontSize: 14, darkMode: dark, style: "reopened")
         #expect(try await fresh.evaluateJavaScript(expectation) as? Bool == true, Comment(rawValue: "Gespeichert: \(saved); vorher: \(liveHTML)"))
         let after = try await renderedFormatState(fresh)
@@ -692,8 +693,16 @@ struct MarkdownVisualTests {
             }
         }
         try #require(await waitForText("é"))
+        let revision = workspace.activeTab?.contentRevision
         workspace.activeTabContent.wrappedValue = "e\u{0301}\n"
-        #expect(await waitForText("e\u{0301}"))
+        #expect(workspace.activeTab?.content.utf8.elementsEqual("e\u{0301}\n".utf8) == true)
+        #expect(workspace.activeTab?.contentRevision != revision)
+        let updated = await waitForText("e\u{0301}")
+        if !updated {
+            let dom = try? await web.evaluateJavaScript("Array.from(document.querySelectorAll('p')).map(n=>({text:n.textContent,boundary:n.hasAttribute('data-md-edit-boundary')}))")
+            Issue.record(Comment(rawValue: "Unicode-Update: Modell=\(String(reflecting: workspace.activeTab?.content)), beobachtet=\(String(reflecting: observed)), bereit=\(workspace.visualMarkdownEditor?.ready == true), Coordinator=\(String(reflecting: workspace.visualMarkdownEditor?.markdown)), DOM=\(String(describing: dom))"))
+        }
+        #expect(updated)
         if visual {
             #expect(workspace.visualMarkdownEditor?.markdown.utf8.elementsEqual("e\u{0301}\n".utf8) == true)
         }

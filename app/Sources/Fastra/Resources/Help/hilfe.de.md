@@ -13,6 +13,10 @@ einfügst oder den neuen Tab leer speicherst. Ein bewusst in der Seitenleiste
 markierter Ordner hat Vorrang; ohne Dokumentkontext dient der Projektordner
 als Rückfall.
 
+⌘⇧← und ⌘⇧→ erweitern die Auswahl vom Cursor bis zum Anfang beziehungsweise Ende der
+sichtbaren Zeile. Dies gilt im Texteditor sowie im Markdown-Quelltext und WYSIWYG. ⌥⇧←
+und ⌥⇧→ wählen weiterhin wortweise aus.
+
 „Speichern unter…“ ergänzt bei neuen Text- und Markdown-Dokumenten `.txt`
 beziehungsweise `.md`. Das Format-Menü bietet alle mitgelieferten
 Syntaxsprachen sowie CSV und XML und setzt beim Wechsel die passende Endung.

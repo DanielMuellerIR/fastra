@@ -365,3 +365,20 @@ func markdownSourceSearchShortcut() {
         isDocumentWindowKey: false, isMarkdownVisual: true)
     #expect(background == .passThrough)
 }
+
+@Test("Command-Shift-Pfeile gelten nur im Dokumentfenster", arguments: [123, 124])
+func lineBoundaryShortcutRouting(_ keyCode: UInt16) {
+    let characters = keyCode == 123 ? "\u{F702}" : "\u{F703}"
+    for document in [false, true] {
+        let route = KeyRouting.route(isKeyDown: true, modifierFlags: [.command, .shift],
+            charactersIgnoringModifiers: characters, keyCode: keyCode,
+            isSearchWindowKey: false, isDocumentWindowKey: document)
+        #expect(route == (document ? .extendSelectionToLineBoundary(backward: keyCode == 123) : .passThrough))
+    }
+    let otherModifiers: [NSEvent.ModifierFlags] = [[.option, .shift], [.command, .shift, .option], [.command, .shift, .control]]
+    for modifiers in otherModifiers {
+        #expect(KeyRouting.route(isKeyDown: true, modifierFlags: modifiers,
+            charactersIgnoringModifiers: characters, keyCode: keyCode,
+            isSearchWindowKey: false, isDocumentWindowKey: true) == .passThrough)
+    }
+}

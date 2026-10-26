@@ -7,6 +7,14 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.156.5] — 2026-10-26
+
+### Behoben
+
+- ⌘⇧← und ⌘⇧→ erweitern die Auswahl im aktiven Texteditor und im Markdown-WYSIWYG-Modus ausdrücklich bis zur sichtbaren Zeilengrenze. Suchfelder behalten ihre normale Tastaturbedienung.
+- Hinweise auf nicht speicherbare Tabellenformate bleiben auch erhalten, wenn der Tabellenkontext erst unmittelbar mit dem Formatbefehl bekannt wird.
+- Die Markdown-Speichertests halten ihre neu geöffneten Workspaces am Leben und prüfen das Schließen eines Dokumenttabs unabhängig vom letzten Fenster-Tab.
+
 ## [v1.156.4] — 2026-10-26
 
 ### Behoben

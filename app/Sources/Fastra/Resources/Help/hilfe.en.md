@@ -13,6 +13,10 @@ the new tab while it is still empty. A folder deliberately selected in the
 sidebar takes priority; without document context, the project folder is the
 fallback.
 
+⌘⇧← and ⌘⇧→ extend the selection from the cursor to the start or end of the visible
+line. This works in the text editor, Markdown source and WYSIWYG. ⌥⇧← and ⌥⇧→ continue
+to select by word.
+
 “Save As…” adds `.txt` or `.md` to new text and Markdown documents. Its format
 menu offers every bundled syntax language plus CSV and XML and changes the
 extension when you choose one. You can still type any custom extension directly

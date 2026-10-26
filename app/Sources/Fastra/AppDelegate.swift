@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import CodeEditTextView
+import WebKit
 import Sparkle
 
 /// Notifications, die AppDelegate beim Drücken globaler Shortcuts postet.
@@ -1026,6 +1027,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     keyWorkspace.runFourDMacro(shortcut: key)
                 }
                 return handled ? nil : event
+
+            case .extendSelectionToLineBoundary(let backward):
+                guard let keyWindow else { return event }
+                if let textView = keyWindow.firstResponder as? TextView {
+                    if backward { textView.moveToLeftEndOfLineAndModifySelection(nil) }
+                    else { textView.moveToRightEndOfLineAndModifySelection(nil) }
+                    return nil
+                }
+                if let web = keyWorkspace?.visualMarkdownEditor?.web,
+                   let focusedView = keyWindow.firstResponder as? NSView,
+                   focusedView === web || focusedView.isDescendant(of: web) {
+                    web.callAsyncJavaScript("""
+                        const root=document.getElementById('fastra-visual'),s=getSelection();
+                        if(!root || !s?.rangeCount || !root.contains(s.anchorNode) || !root.contains(s.focusNode))return false;
+                        s.modify('extend',backward?'backward':'forward','lineboundary');return true;
+                        """, arguments: ["backward": backward], in: nil, in: .page) { _ in }
+                    return nil
+                }
+                return event
 
             case .moveToBeginningOfDocument(let modifySelection):
                 guard let textView = NSApp.keyWindow?.firstResponder as? TextView else {

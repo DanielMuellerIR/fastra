@@ -784,6 +784,7 @@
       }
       if((element(range?.startContainer)?.closest('td,th') || element(range?.endContainer)?.closest('td,th'))
           && ['heading1','heading2','heading3','bulletList','orderedList','taskList','quote','insertTable'].includes(command)){
+        reportTableContext();
         window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'tableError',session,reason:'format'});return false;
       }
       switch(command){

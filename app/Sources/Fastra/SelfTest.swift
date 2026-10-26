@@ -15328,6 +15328,43 @@ enum SelfTest {
                     var expected = baseline, visualBeforeSave = ""
                     stage = "\(variant)/\(name): Öffnen"
                     try await open(file, visual: visual)
+                    if variant == "clean" {
+                        for (keyCode, modifiers, selected) in [
+                            (UInt16(123), NSEvent.ModifierFlags([.command, .shift]), "Vor "),
+                            (UInt16(124), NSEvent.ModifierFlags([.command, .shift]), "Ergebnis"),
+                            (UInt16(124), NSEvent.ModifierFlags([.option, .shift]), "Ergebnis")
+                        ] {
+                            stage = "\(name): Zeilenauswahl Taste \(keyCode)"
+                            let characters = keyCode == 123 ? "\u{F702}" : "\u{F703}"
+                            if visual, let web = ws.visualMarkdownEditor?.web {
+                                try require(window.makeFirstResponder(web), "WYSIWYG bekommt keinen Auswahlfokus")
+                                _ = try await web.evaluateJavaScript("""
+                                    const root=document.querySelector('#fastra-visual'),walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+                                    let n;while(walker.nextNode()){if(walker.currentNode.data.includes('Vor Ergebnis')){n=walker.currentNode;break;}}
+                                    root.focus();getSelection().collapse(n,n.data.indexOf('Ergebnis'));
+                                    """)
+                                postKey(characters, keyCode: keyCode, windowNumber: window.windowNumber, modifiers: modifiers)
+                                var actual = ""
+                                for _ in 0..<120 {
+                                    actual = try await web.evaluateJavaScript("getSelection().toString()") as? String ?? ""
+                                    if actual == selected { break }
+                                    try await Task.sleep(for: .milliseconds(50))
+                                }
+                                try require(actual == selected, "WYSIWYG-Auswahl stimmt nicht: \(String(reflecting: actual))")
+                            } else if let editor = CommandTargeting.editorTextView(for: ws) {
+                                try require(window.makeFirstResponder(editor), "Texteditor bekommt keinen Auswahlfokus")
+                                let cursor = (editor.string as NSString).range(of: "Ergebnis").location
+                                editor.selectionManager.setSelectedRange(NSRange(location: cursor, length: 0))
+                                postKey(characters, keyCode: keyCode, windowNumber: window.windowNumber, modifiers: modifiers)
+                                try await wait {
+                                    let range = editor.fastraSafeSelectedRange
+                                    return range.length > 0 && (editor.string as NSString).substring(with: range) == selected
+                                }
+                            } else { throw NSError(domain: "fixture", code: 5) }
+                            try require(ws.activeTab?.isDirty == false, "Zeilenauswahl verändert das Dokument")
+                            print("LINE_SELECTION mode=\(name) key=\(keyCode) modifiers=\(modifiers.rawValue) pass")
+                        }
+                    }
                     for round in 1...2 {
                         stage = "\(variant)/\(name): Runde \(round), Bearbeiten"
                         editDiagnostic = ""
@@ -15442,6 +15479,7 @@ enum SelfTest {
                 let editor = CommandTargeting.editorTextView(for: ws)
                 if let session = ws.textWorkflowSession {
                     diagnostics.append("Modell: Vorschau=\(session.selectedPreview), canApply=\(session.canApply), dirty=\(session.dirty), busy=\(session.isBusy), diff=\(session.diffDocument != nil), revision=\(session.snapshot.revision)/\(ws.activeTab?.contentRevision ?? 0)")
+                    diagnostics.append("Ablaufname: \(String(reflecting: session.definition.name)); gespeicherte Namen: \(session.saved.map { String(reflecting: $0.name) }); Store: \((try? TextWorkflowStore().load().map { String(reflecting: $0.name) }) ?? [])")
                 }
                 diagnostics.append("Auswahl: Editor=\(String(describing: editor?.fastraSafeSelectedRange)), Snapshot=\(String(describing: ws.textWorkflowSession?.snapshot.selection)), nurAuswahl=\(ws.textWorkflowSession?.selectionOnly == true)")
                 diagnostics.append("\(label): aktiv=\(NSApp.isActive), key=\(window.isKeyWindow), Sheets=\(window.sheets.count), Responder=\(String(describing: window.firstResponder)), Editor=\(String(describing: editor)), Undo=\(editor?.undoManager?.canUndo == true), Redo=\(editor?.undoManager?.canRedo == true), Undoziel=\(String(describing: NSApp.target(forAction: NSSelectorFromString("undo:")))), Redoziel=\(String(describing: NSApp.target(forAction: NSSelectorFromString("redo:")))), Text=\(String(reflecting: ws.activeTab?.content))")
@@ -15604,10 +15642,17 @@ enum SelfTest {
                 ws.saveActiveTab()
                 try await wait { ws.activeTab?.isDirty == false && (try? String(contentsOf: file, encoding: .utf8)) == expected }
                 stage = "Gespeicherten Ablauf erneut öffnen"
+                diagnose("Vor erneutem Öffnen")
                 try await openMenu()
+                diagnose("Nach erneutem Öffnen")
                 try await wait { ws.textWorkflowSession?.definition.name == "Native Workflow 😀" && !window.sheets.isEmpty }
                 try require(ws.textWorkflowSession?.definition.steps.count == 2, "Gespeicherte Schritte fehlen")
-                try require(click("textWorkflowClose", in: window.sheets[0]), "Schließen fehlt")
+                stage = "Gespeicherten Ablauf schließen"
+                try await wait { trackingMenus.isEmpty && window.sheets.first?.isKeyWindow == true }
+                try require(window.sheets[0].contentView.map { markerViewExists(id: "textWorkflowClose", in: $0) } == true, "Schließen fehlt")
+                // Das sichtbare Schließen-Kürzel prüft den nativen Cancel-Pfad;
+                // ein synthetischer Mausklick konnte hier noch die Menüanimation treffen.
+                postKey("\u{1b}", keyCode: 53, windowNumber: window.sheets[0].windowNumber, modifiers: [])
                 try await wait { ws.textWorkflowSession == nil && window.sheets.isEmpty && window.isKeyWindow }
                 stage = "Datei schließen und erneut öffnen"
                 let closedID = ws.activeTabID!
