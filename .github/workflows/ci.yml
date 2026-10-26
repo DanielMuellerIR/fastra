@@ -19,7 +19,9 @@ jobs:
     # bewusst fest gewählt: Der noch aktive Runner-Default 26.5 kann den
     # SwiftPM-Testhelfer bei der seriellen Suite mit SIGSEGV beenden.
     runs-on: macos-26
-    timeout-minutes: 30
+    # Kalte Runner übersetzen App und isolierte Test-Sandbox getrennt.
+    # Dafür muss nach dem Build noch Zeit für beide vollständigen Testphasen bleiben.
+    timeout-minutes: 60
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 
