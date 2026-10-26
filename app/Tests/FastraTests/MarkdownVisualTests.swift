@@ -282,8 +282,23 @@ struct MarkdownVisualTests {
         #expect(saved == workspace.activeTab?.content)
         let id = try #require(workspace.activeTabID)
         workspace.tabs.append(EditorTab(title: "anchor.txt", path: "", content: "Anker"))
+        var closeConfirmationRequested = false
+        workspace.confirmCloseHandler = { _ in closeConfirmationRequested = true; return .cancel }
+        let closeStarted = Date()
         workspace.closeTab(id: id)
-        try #require(await waitUntil { !workspace.tabs.contains { $0.id == id } })
+        // Die verdeckte WebView synchronisiert vor dem Schließen erneut mit
+        // WebKit. Auf dem Hosted-Runner dauern einzelne Schließvorgänge über
+        // fünf Sekunden; dafür gilt dieselbe Frist wie beim initialen Laden.
+        let closed = await waitUntil(timeout: 12) { !workspace.tabs.contains { $0.id == id } }
+        let closeDiagnostic = "command=\(command) dark=\(dark) elapsed=\(Date().timeIntervalSince(closeStarted)) "
+            + "closed=\(closed) confirmation=\(closeConfirmationRequested) ready=\(coordinator.ready) "
+            + "dirty=\(String(describing: workspace.tabs.first { $0.id == id }?.isDirty)) warning=\(saveError ?? "none") "
+            + "model=\(String(describing: workspace.tabs.first { $0.id == id }?.content)) "
+            + "saved=\(saved.debugDescription) browser=\(coordinator.markdown.debugDescription)"
+        if !closed || Date().timeIntervalSince(closeStarted) >= 5 {
+            print("FORMAT_CLOSE_DIAGNOSTIC \(closeDiagnostic)")
+        }
+        try #require(closed && !closeConfirmationRequested, Comment(rawValue: closeDiagnostic))
         web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close()
         let (reopenedWorkspace, reopened, fresh, freshWindow) = try await editor(try String(contentsOf: file, encoding: .utf8), documentURL: file)
         defer { fresh.configuration.userContentController.removeAllScriptMessageHandlers(); freshWindow.close(); withExtendedLifetime((reopenedWorkspace, reopened)) {} }
