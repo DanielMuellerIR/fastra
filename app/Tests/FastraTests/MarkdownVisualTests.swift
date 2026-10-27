@@ -7,12 +7,15 @@ import Testing
 
 // Im Produkt besitzt das Dokumentfenster seinen Workspace. Der Coordinator
 // hält ihn bewusst schwach; dieselbe Lebensdauer braucht die Renderer-Fixture.
+// Den Coordinator hält im Produkt der View-Context ebenfalls bis zum Schließen.
 private final class MarkdownVisualFixtureWindow: NSWindow {
     var retainedWorkspace: Workspace?
+    var retainedCoordinator: MarkdownVisualCoordinator?
 
     override func close() {
         super.close()
         retainedWorkspace = nil
+        retainedCoordinator = nil
     }
 }
 
@@ -580,8 +583,16 @@ struct MarkdownVisualTests {
         try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
         let target = targetDirectory.appendingPathComponent("copy.md")
         var saved: Bool?
+        let saveStarted = Date()
         workspace.saveTabAs(id: workspace.activeTabID!, to: target, expectedTargetState: .absent, isMarkdown: true) { saved = $0 }
-        try #require(await waitUntil { saved != nil })
+        // Speichern umfasst WebKit-Synchronisierung und Bild-Dateiarbeit.
+        // Dafür gilt dieselbe begrenzte Frist wie für den Browseraufbau.
+        let saveCompleted = await waitUntil(timeout: 12) { saved != nil }
+        let saveElapsed = Date().timeIntervalSince(saveStarted)
+        if !saveCompleted || saveElapsed >= 5 {
+            print("IMAGE_SAVE_AS_DIAGNOSTIC saved=\(String(describing: saved)) elapsed=\(saveElapsed) ready=\(coordinator.ready) undoBusy=\(workspace.activeTab?.undoHistory.isPerformingAction == true)")
+        }
+        try #require(saveCompleted)
         try #require(saved == true)
         await withCheckedContinuation { continuation in
             MarkdownImageUndoSideEffect.pendingIO.notify(queue: .main) { continuation.resume() }
@@ -1047,6 +1058,7 @@ struct MarkdownVisualTests {
         web.frame = NSRect(x: 0, y: 0, width: 700, height: 500)
         let window = MarkdownVisualFixtureWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
         window.retainedWorkspace = workspace
+        window.retainedCoordinator = coordinator
         window.isReleasedWhenClosed = false
         window.contentView = web
         var error: String?
