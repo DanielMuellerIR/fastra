@@ -3060,32 +3060,41 @@ final class Workspace: ObservableObject {
     }
 
     /// Öffnet die gewählte URL passend: Ordner → als Projekt laden (Dateibaum +
-    /// Git wie über den Willkommensbildschirm), Datei → in einen Tab. RTF und
-    /// Dokumentpakete bieten vorher die Umwandlung an. Gemeinsamer Einstieg für ⌘O.
-    func openFileOrFolder(at url: URL) {
+    /// Git wie über den Willkommensbildschirm), Datei → in einen Tab. Alle vom
+    /// Werkzeug erkannten Dokumente bieten vorher die Umwandlung an.
+    func openFileOrFolder(at url: URL, preview: Bool = false,
+                          expectedGitContext: GitActionContext? = nil,
+                          onFileOpened: ((URL) -> Void)? = nil) {
+        guard expectedGitContext?.isCurrent(in: self) != false else { return }
+        let openSource = { [weak self] in
+            self?.loadFile(at: url, preview: preview, expectedGitContext: expectedGitContext) { opened in
+                if opened { onFileOpened?(url.canonicalFileURL) }
+            }
+        }
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else {
             // Nicht mehr vorhanden → loadFile durchlaufen lassen, das meldet den Fehler.
-            loadFile(at: url)
+            openSource()
             return
         }
         guard isDir.boolValue else {
-            // RTF-Quelltext ist für gewöhnliches Lesen ungeeignet. Wie beim
-            // RTFD-Paket fällt die Entscheidung deshalb vor dem Laden.
-            guard url.pathExtension.lowercased() == "rtf" else {
-                loadFile(at: url)
+            guard !url.pathExtension.isEmpty else {
+                openSource()
                 return
             }
             MarkdownImportService.shared.withCatalog { [weak self] catalog in
-                guard let self else { return }
+                guard let self, expectedGitContext?.isCurrent(in: self) != false else { return }
                 guard let format = catalog?.format(forExtension: url.pathExtension),
-                      !format.isPackage else {
-                    self.loadFile(at: url)
+                      format.supportsContainer(isDirectory: false) else {
+                    openSource()
                     return
                 }
                 switch Workspace.askMarkdownImportFileChoice(for: url, format: format) {
-                case .convert:    self.convertToMarkdown(url)
-                case .openAsText: self.loadFile(at: url)
+                case .convert:
+                    guard expectedGitContext?.isCurrent(in: self) != false else { return }
+                    self.convertToMarkdown(url, onFileOpened: onFileOpened)
+                case .openAsText:
+                    openSource()
                 case .cancel:     break
                 }
             }
@@ -3106,7 +3115,7 @@ final class Workspace: ObservableObject {
             // statt das Dokumentpaket stillschweigend als Ordner zu öffnen
             // (Daniel-Befund 2026-07-29).
             guard let format = catalog?.format(forExtension: url.pathExtension),
-                  format.isPackage else {
+                  format.supportsContainer(isDirectory: true) else {
                 self.openProject(at: url)
                 return
             }
@@ -3154,7 +3163,7 @@ final class Workspace: ObservableObject {
             "Fastra kann das %@-Dokument in Markdown umwandeln und danach öffnen. Das Original bleibt unverändert.",
             format.identifier.uppercased()
         )
-        alert.addButton(withTitle: L10n.string("In Markdown umwandeln"))
+        addMarkdownConversionButton(to: alert)
         alert.addButton(withTitle: L10n.string("Als Quelltext öffnen"))
         alert.addButton(withTitle: L10n.string("Abbrechen"))
         switch alert.runModal() {
@@ -3218,7 +3227,7 @@ final class Workspace: ObservableObject {
             "Fastra kann das %@-Dokument in Markdown umwandeln und danach öffnen. Das Original bleibt unverändert.",
             format.identifier.uppercased()
         )
-        alert.addButton(withTitle: L10n.string("In Markdown umwandeln"))
+        addMarkdownConversionButton(to: alert)
         alert.addButton(withTitle: L10n.string("Als Ordner öffnen"))
         alert.addButton(withTitle: L10n.string("Abbrechen"))
         switch alert.runModal() {
@@ -3250,6 +3259,14 @@ final class Workspace: ObservableObject {
         return lines.joined(separator: " ")
     }
 
+    private static func addMarkdownConversionButton(to alert: NSAlert) {
+        let button = alert.addButton(withTitle: L10n.string("In Markdown umwandeln"))
+        if MarkdownImportService.shared.isRunning {
+            button.isEnabled = false
+            alert.informativeText += "\n\n" + L10n.string("Eine andere Umwandlung läuft bereits.")
+        }
+    }
+
     // MARK: - Markdown-Umwandlung
 
     /// Angebot für den aktiven Tab — oder `nil`, wenn es keins gibt.
@@ -3279,14 +3296,14 @@ final class Workspace: ObservableObject {
     }
 
     /// Format, WENN dieser Ordner in Wahrheit ein Dokumentpaket ist (`.rtfd`).
-    /// `nil` für jeden echten Ordner — und auch dann, wenn der Formatkatalog
-    /// noch nicht vorliegt; dann bleibt es beim gewohnten Ordnerverhalten.
+    /// `nil` für jeden echten Ordner. Der Dateibaum wartet vor dieser Abfrage
+    /// auf den Formatkatalog, damit auch der erste Klick ein Paket erkennt.
     /// Ein bekanntes, aber gerade nicht umwandelbares Paket zählt mit, damit
     /// die Rückfrage erklären kann, was fehlt (statt wortlos aufzuklappen).
     func markdownImportPackageFormat(at url: URL) -> MarkdownImportFormat? {
         guard let format = MarkdownImportService.shared.cachedCatalog?
             .format(forExtension: url.pathExtension),
-              format.isPackage else { return nil }
+              format.supportsContainer(isDirectory: true) else { return nil }
         return format
     }
 
@@ -3298,14 +3315,16 @@ final class Workspace: ObservableObject {
 
     /// Wandelt um und öffnet das Ergebnis. Die Quelle bleibt unverändert und
     /// ihr Tab offen; das Markdown kommt als neuer, aktiver Tab dazu.
-    func convertToMarkdown(_ url: URL) {
+    func convertToMarkdown(_ url: URL, onFileOpened: ((URL) -> Void)? = nil) {
         MarkdownImportService.shared.convert(url, owner: self) { [weak self] markdownFile in
             guard let self, let markdownFile else { return }
             self.dismissedMarkdownImports.insert(url)
             // Den Projektbaum aktualisiert der FSEvents-Watcher von selbst; nur
             // der Git-Status wird nicht ereignisgetrieben nachgezogen.
             self.refreshGitStatus()
-            self.loadFile(at: markdownFile)
+            self.loadFile(at: markdownFile) { opened in
+                if opened { onFileOpened?(markdownFile.canonicalFileURL) }
+            }
         }
     }
 
@@ -5781,7 +5800,7 @@ final class Workspace: ObservableObject {
                 && $0.gitDiffRequest?.source.changeListPath == path
         })?.id
         let takesPreviewSlot = preview || supersededDiffTabID != nil
-        defer {
+        func removeSupersededDiff() {
             // Der Tabplatz wurde wiederverwendet (gleiche ID, jetzt die
             // Datei) oder die Datei war schon offen und wurde nur aktiviert —
             // dann steht die Diff-Vorschau noch daneben und muss weg. Die
@@ -5808,14 +5827,16 @@ final class Workspace: ObservableObject {
         }
         guard let source = snapshotSource else {
             let url = context.root.appendingPathComponent(path)
-            loadFile(at: url, preview: takesPreviewSlot, expectedGitContext: context)
-            if !preview, let index = tabs.firstIndex(where: {
-                $0.url == url.canonicalFileURL
-            }) {
-                tabs[index].isPreview = false
+            openFileOrFolder(at: url, preview: takesPreviewSlot, expectedGitContext: context) { [weak self] openedURL in
+                guard let self else { return }
+                if !preview, let index = self.tabs.firstIndex(where: { $0.url == openedURL }) {
+                    self.tabs[index].isPreview = false
+                }
+                removeSupersededDiff()
             }
             return
         }
+        defer { removeSupersededDiff() }
         let request = GitFileSnapshotRequest(
             repositoryPath: GitOperationRequest.canonicalRepositoryPath(context.root),
             path: path,

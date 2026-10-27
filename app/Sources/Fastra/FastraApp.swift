@@ -805,7 +805,7 @@ private struct RecentFilesMenu: View {
                 ForEach(workspace.recentFiles, id: \.self) { path in
                     Button((path as NSString).lastPathComponent) {
                         let expanded = (path as NSString).expandingTildeInPath
-                        commandWorkspace?.loadFile(
+                        commandWorkspace?.openFileOrFolder(
                             at: URL(fileURLWithPath: expanded)
                         )
                     }

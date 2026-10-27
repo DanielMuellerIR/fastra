@@ -1821,7 +1821,7 @@
 
 "Diese Optionen gelten im Texteditor. Für Markdown zuerst zum Quelltext wechseln." = "These options apply in the text editor. For Markdown, switch to source mode first.";
 
-"„%@“ ist ein %@-Dokument." = "“%@” is an %@ document.";
+"„%@“ ist ein %@-Dokument." = "“%@” is a document in %@ format.";
 "Als Quelltext öffnen" = "Open as Source Text";
 
 "Bild bearbeiten" = "Edit image";

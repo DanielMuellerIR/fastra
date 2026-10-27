@@ -291,16 +291,18 @@ die Installation.
 
 **Ganze Dokumente in Markdown umwandeln** kann Fastra, wenn
 [Poor Man's Text](https://github.com/DanielMuellerIR/poormans_text) installiert
-ist. Öffnest du dann etwa eine `.docx`-, `.odt`-, `.doc`- oder `.rtf`-Datei,
-erscheint über dem Editor das Angebot **In Markdown umwandeln**; denselben
-Befehl gibt es im Ablage-Menü und im Rechtsklickmenü des Projektbaums. Ein
-`.rtfd`-Dokument sieht im Finder wie ein Ordner aus — ein Klick darauf fragt
-deshalb, ob es umgewandelt oder als Ordner geöffnet werden soll.
+ist. Jedes erkannte Format — etwa DOCX, ODT, RTF, PDF, Tabellen,
+Präsentationen, Bilder und E-Mails — bietet vor dem Öffnen **In Markdown
+umwandeln** an. Das gilt im Öffnen-Dialog, im Finder, bei Drag-and-drop, auf dem
+Willkommensbildschirm, unter „Zuletzt benutzt“ und in der Projekt-Seitenleiste,
+einschließlich des Öffnens aktueller Dateien aus Git-Ansichten. **Als Quelltext
+öffnen** zeigt das Original; **Abbrechen** öffnet nichts. Dokumentpakete wie RTFD
+und MBOX bieten stattdessen **Als Ordner öffnen** an. Der Umwandlungsbefehl bleibt
+auch im Ablage-Menü und im Rechtsklickmenü erreichbar.
 
-Welche Dateitypen angeboten werden, fragt Fastra beim Start direkt bei Poor
-Man's Text ab. Kommen dort später Formate hinzu, kann Fastra sie sofort, ohne
-eigenes Update. Fehlt das Werkzeug oder das von ihm benötigte Pandoc, bleibt
-das Angebot still aus.
+Fastra fragt Poor Man's Text nach seinen Formaten und Containern. Neue Formate
+brauchen dadurch kein Fastra-Update. Fehlt das Werkzeug, öffnen Dateien wie
+gewohnt. Fehlt ein Zusatzprogramm wie Pandoc, erklärt der Dialog, was benötigt wird.
 
 Das Ergebnis landet neben dem Original: entstand nur Text, als `Name.md`;
 entstanden zusätzlich Bilder, als Ordner `Name` mit `Name.md` und `images/`.

@@ -939,11 +939,13 @@ no network traffic.
 ## Converting Documents to Markdown
 
 When the separately installed **Poor Man's Text** tool is present, Fastra can
-convert whole documents to Markdown. Opening a recognized file — depending on
-the tool's version, for example `.docx`, `.odt`, or `.doc` —
-shows a **Convert to Markdown** hint above the editor. The same command is in
-the **File** menu and in the project sidebar's context menu. Fastra never
-converts on its own: choosing the command is your consent.
+convert whole documents to Markdown. Every recognized format — such as DOCX,
+ODT, RTF, PDF, spreadsheets, presentations, images and email — prompts before
+opening: **Convert to Markdown**, **Open as Source Text**, or **Cancel**. This works
+from the Open dialog, Finder, drag and drop, the welcome screen, recent files,
+the project sidebar and opening current files from Git views. **Cancel** opens
+and changes nothing. The conversion command remains available in the **File**
+menu, the project sidebar's context menu and above the opened original.
 
 Only one conversion runs across the app at a time. A second window keeps its
 own offer visible, explains that another conversion is active, and disables
@@ -955,13 +957,10 @@ Fastra waits for the tool to exit, removes its working folder and imports no
 output. The source remains unchanged. Older tool versions without progress
 reports still show the ongoing conversion and can also be cancelled.
 
-When opening an `.rtf` file, including from the project sidebar, Fastra asks
-whether to convert it to Markdown or open its source text. **Cancel** opens
-and changes nothing.
-
-An `.rtfd` document is a folder in Finder. Fastra therefore asks whether to
-convert it or open it as a folder — both when opening it and when clicking it
-in the project sidebar.
+Document packages such as `.rtfd` and MBOX are folders on disk. When opening
+them, including from the project sidebar, Fastra offers conversion or **Open as
+Folder**. A format may support both files and packages; the installed tool's
+catalog determines which are recognized.
 
 **Where the result goes:** right next to the original. If only text was
 produced, as `Name.md`. If images were extracted as well, as a folder `Name`
@@ -979,7 +978,7 @@ launch, remembering the answer for five minutes. If the tool later supports more
 formats, Fastra uses them without an update of its own — if you just updated it
 and do not want to wait, restart Fastra. When the tool itself is missing,
 nothing is offered. When it is installed but a helper it needs (usually Pandoc)
-is missing, Fastra says so: the bar above the editor — or the `.rtfd` folder
+is missing, Fastra says so: the bar above the editor — or the opening
 prompt — explains what is missing. You can install Pandoc in Terminal with
 `brew install pandoc`, then restart Fastra.
 

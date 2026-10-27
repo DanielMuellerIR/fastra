@@ -7,8 +7,8 @@
 //
 // 1. Die Formatabfrage blockiert nie den UI-Thread. Der Katalog wird beim
 //    App-Start vorgewärmt und danach höchstens alle fünf Minuten neu erfragt.
-//    RTF und Dokumentpakete warten asynchron auf das Konvertierungsangebot;
-//    andere Dateien öffnen sofort. Neu installierte Formate sind spätestens
+//    Öffnungsaufträge warten asynchron auf den Katalog; ein warmer Katalog
+//    antwortet sofort. Neu installierte Formate sind spätestens
 //    nach dem nächsten App-Start bekannt.
 // 2. Die Quelle wird nie verändert. Das Werkzeug schreibt in ein verstecktes
 //    Zwischenverzeichnis; erst das fertige Ergebnis wandert unter seinen

@@ -32,7 +32,9 @@ func openFileOrFolder_fileOpensTab() async throws {
     let ws = Workspace(defaults: testSuiteDefaults(named: "ff-\(UUID().uuidString)"))
     ws.openFileOrFolder(at: file)
 
-    // loadFile legt den (Platzhalter-)Tab mit gesetzter URL sofort synchron an.
+    // Der Öffnen-Router wartet zuerst auf den Formatkatalog. Erst danach
+    // darf eine unbekannte Datei als Original in einen Tab gelangen.
+    #expect(await waitUntil { ws.tabs.contains { $0.url == file.canonicalFileURL && !$0.isLoading } })
     #expect(ws.tabs.contains { $0.url == file.canonicalFileURL })
 
     // Nach dem asynchronen Laden öffnet der Einzeldatei-Pfad den

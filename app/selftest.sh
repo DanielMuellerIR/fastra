@@ -154,7 +154,8 @@ timeout_for_test() {
     # Die optionale manuelle Abnahme braucht zusätzlich fünf Minuten.
     # Normale Läufe behalten die kürzere Frist und alle Funktionsprüfungen.
     if [[ "$1" == "softwrapindent" && -n "${FASTRA_SOFTWRAPINDENT_REVIEW_DIR:-}" ]] ||
-       [[ "$1" == "githistory" && -n "${FASTRA_GITHISTORY_REVIEW_DIR:-}" ]]; then
+       [[ "$1" == "githistory" && -n "${FASTRA_GITHISTORY_REVIEW_DIR:-}" ]] ||
+       [[ "$1" == "markdownimportui" && -n "${FASTRA_MARKDOWN_IMPORT_REVIEW_DIR:-}" ]]; then
         echo 420
         return
     fi

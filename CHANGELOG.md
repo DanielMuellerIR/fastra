@@ -7,6 +7,17 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.157.0] — 2026-10-27
+
+### Hinzugefügt
+
+- Alle vom installierten Poor Man's Text gemeldeten Dokumentformate bieten vor dem Öffnen die Umwandlung in Markdown, das Öffnen des Originals oder Abbrechen an. Das gilt auch für DOCX, PDF, Tabellen, Präsentationen und E-Mails sowie für Öffnen-Dialog, Finder, Drag-and-drop, zuletzt benutzte Dateien, Projektbaum und aktuelle Dateien aus Git-Ansichten.
+- Formate mit mehreren Containern, etwa MBOX als Datei oder Dokumentpaket, werden in beiden Varianten erkannt.
+
+### Behoben
+
+- Inline-Formatierungen über eine Teilauswahl mehrerer Markdown-Absätze erhalten die ursprünglichen Absatzgrenzen auch nach Speichern und erneutem Öffnen.
+
 ## [v1.156.6] — 2026-10-26
 
 ### Prüfungen

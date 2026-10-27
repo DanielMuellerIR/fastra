@@ -466,7 +466,7 @@
     // erhalten, weil WebKits Redo sie als Einfügeanker verwendet.
     exec('insertHTML',before.outerHTML+html+after.outerHTML,restoreMarkers);
   }
-  function replaceFormattedSelection(range,fragment) {
+  function replaceFormattedSelection(range,tag) {
     const children=Array.from(root.children),affected=children.filter(n=>!n.hasAttribute('data-md-edit-boundary') && range.intersectsNode(n));
     if(!affected.length)return;
     const interval=children.slice(children.indexOf(affected[0]),children.indexOf(affected.at(-1))+1),holder=document.createElement('div');
@@ -479,10 +479,39 @@
       return [clone,offset];
     }
     const copied=document.createRange();copied.setStart(...position(range.startContainer,range.startOffset));copied.setEnd(...position(range.endContainer,range.endOffset));
-    copied.deleteContents();
     const start=document.createElement('span'),end=document.createElement('span');
     start.dataset.mdSelectionStart='';end.dataset.mdSelectionEnd='';start.textContent=end.textContent='\u200b';
-    fragment.prepend(start);fragment.append(end);copied.insertNode(fragment);
+    const finish=copied.cloneRange();finish.collapse(false);finish.insertNode(end);
+    copied.collapse(true);copied.insertNode(start);
+    copied.setStartAfter(start);copied.setEndBefore(end);
+    // Nur Inline-Gruppen innerhalb ihrer ursprünglichen Absätze ersetzen.
+    // Teilweise geklonte äußere Blöcke würden Präfix und Suffix abtrennen
+    // und dieselbe Block-ID mehrfach in das Dokument einsetzen.
+    const parts=[];
+    function collect(parent){
+      let group=[];
+      function flush(){
+        if(!group.length)return;
+        const part=document.createRange();part.setStartBefore(group[0]);part.setEndAfter(group.at(-1));group=[];
+        const from=part.comparePoint(copied.startContainer,copied.startOffset),to=part.comparePoint(copied.endContainer,copied.endOffset);
+        if(from>0 || to<0)return;
+        if(from===0)part.setStart(copied.startContainer,copied.startOffset);
+        if(to===0)part.setEnd(copied.endContainer,copied.endOffset);
+        if(!part.collapsed)parts.push(part);
+      }
+      for(const child of Array.from(parent.childNodes)){
+        if(child.nodeType===1 && /^(DIV|P|H[1-6]|LI|UL|OL|BLOCKQUOTE|TABLE|THEAD|TBODY|TR|TD|TH|PRE|SECTION)$/.test(child.tagName)){
+          flush();if(child.contentEditable!=='false')collect(child);
+        }else if(child!==start && child!==end && !(child.nodeType===3 && !child.data.trim() && /^(DIV|UL|OL|TABLE|THEAD|TBODY|TR|BLOCKQUOTE)$/.test(parent.nodeName)))group.push(child);
+        else flush();
+      }
+      flush();
+    }
+    collect(holder);
+    for(const part of parts.reverse()){
+      const wrapper=document.createElement(tag);wrapper.append(part.extractContents());
+      wrapper.querySelectorAll(tag).forEach(n=>n.replaceWith(...n.childNodes));part.insertNode(wrapper);
+    }
     // WebKit fügt ganze Listen/Tabellen sonst in den ersten ausgewählten
     // Absatz oder die erste Zelle ein. Neutrale Blockgrenzen verhindern dies.
     replaceVisualBlocks(interval,holder.innerHTML);
@@ -838,22 +867,10 @@
             replaceVisualBlocks([block],clone.outerHTML);
           }
           else {
-            const holder=document.createElement('div');holder.append(r.cloneContents());
-            function wrap(parent){
-              let group=[];
-              function flush(){if(!group.length)return;const wrapper=document.createElement(tag);group[0].before(wrapper);wrapper.append(...group);wrapper.querySelectorAll(tag).forEach(n=>n.replaceWith(...n.childNodes));group=[];}
-              for(const child of Array.from(parent.childNodes)){
-                if(child.nodeType===1 && /^(DIV|P|H[1-6]|LI|UL|OL|BLOCKQUOTE|TABLE|THEAD|TBODY|TR|TD|TH|PRE|SECTION)$/.test(child.tagName)){
-                  flush();if(child.contentEditable!=='false')wrap(child);
-                }else if(!(child.nodeType===3 && !child.data.trim() && /^(DIV|UL|OL|TABLE|THEAD|TBODY|TR|BLOCKQUOTE)$/.test(parent.nodeName)))group.push(child);
-              }
-              flush();
-            }
-            wrap(holder);
             // Auch Inline-Auswahlen brauchen neutrale Absatzgrenzen: Am
             // Absatzende wandelt WebKit <mark> sonst in einen CSS-Span um,
             // dessen gelbe Farbe beim Markdown-Speichern verloren ginge.
-            const fragment=document.createDocumentFragment();fragment.append(...holder.childNodes);replaceFormattedSelection(r,fragment);
+            replaceFormattedSelection(r,tag);
           }
           break;
         }

@@ -915,7 +915,8 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   erfolgreicher Aufnahme. Danach beide Sprachfassungen visuell prüfen.
 - **Markdown-Umwandlung:** `./selftest.sh markdownimport` läuft fensterlos gegen
   das echte `poormans-text`: Formatkatalog (RTF als Datei, RTFD als Paket),
-  Zwischenspeicher, RTF-Öffnen mit Umwandeln/Quelltext/Abbrechen, eine Umwandlung
+  Zwischenspeicher, Öffnen/Abbruch aller gemeldeten Endungs-/Containerkombinationen,
+  echter DOCX-Direktimport, RTF-Öffnen mit Umwandeln/Quelltext/Abbrechen, eine Umwandlung
   ohne Bilder, eine mit eingebettetem PNG und
   der Kollisionsschutz — jeweils an echten temporären Dateien. Der RTFD-Paketweg
   prüft außerdem zusammenhängende Aufzählungen mit wörtlichem „• “ und erhält
@@ -924,6 +925,13 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Umgebungsproblem (Exit 2) statt eines Funktionsfehlers. Gegen einen frisch
   gebauten, noch nicht installierten Stand testen:
   `FASTRA_POORMANS_TEXT=<pfad>/.build/debug/poormans-text ./selftest.sh markdownimport`.
+  `markdownimportui` bedient die echten RTF-/DOCX-Dialoge mit und ohne Pandoc
+  sowie Fortschritt, Abbruch, Warnungen und Fehler. `FASTRA_MARKDOWN_IMPORT_UI_DIR`
+  speichert Fensteraufnahmen. Für eine isolierte native Abnahme hält
+  `FASTRA_MARKDOWN_IMPORT_REVIEW_DIR=<ordner>` die Testinstanz nach den Prüfungen
+  höchstens 300 Sekunden offen: `ready` meldet Bereitschaft, `continue` beendet
+  die Abnahme. Der Runner erlaubt dafür 420 Sekunden; normale Läufe behalten
+  ihre bisherige Frist. Nutzer-Einstellungen und Sitzungsdaten bleiben isoliert.
 - **Markdown-Vorschau:** `./selftest.sh markdown` lädt ein echtes temporäres PNG,
   eine TeX-Formel, einen Swift-Code-Block und ein Mermaid-Diagramm. Der Test liest
   unabhängig das fertige WebKit-DOM: Bildbreite, MathML, SVG und Highlight-Spans

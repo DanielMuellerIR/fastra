@@ -82,11 +82,18 @@ struct MarkdownImportFormat: Equatable {
     let identifier: String
     /// Kleingeschriebene Endungen ohne Punkt.
     let fileExtensions: [String]
-    /// `true` = die Quelle ist ein Ordner-Paket (`.rtfd`) und keine Datei.
+    /// Primärer Container älterer Werkzeugversionen (`.rtfd` ist ein Paket).
     let isPackage: Bool
     /// `false`, wenn ein benötigtes Werkzeug (meist Pandoc) gerade fehlt.
     let isAvailable: Bool
     let unavailableReason: String?
+    /// Neuere Kataloge erlauben mehrere Container, etwa Datei UND Paket für MBOX.
+    var containers: [String] = []
+
+    func supportsContainer(isDirectory: Bool) -> Bool {
+        if !containers.isEmpty { return containers.contains(isDirectory ? "package" : "file") }
+        return isDirectory == isPackage
+    }
 
     /// Namen der laut Werkzeug fehlenden Zusatzprogramme, z. B. `["pandoc"]`.
     ///
@@ -156,7 +163,8 @@ struct MarkdownImportCatalog: Equatable {
                 // Ordner — das ist das bekannte Verhalten, kein neuer Schaden.
                 isPackage: (entry["container"] as? String) == "package",
                 isAvailable: entry["available"] as? Bool ?? false,
-                unavailableReason: entry["unavailableReason"] as? String
+                unavailableReason: entry["unavailableReason"] as? String,
+                containers: entry["containers"] as? [String] ?? []
             )
         }
         guard !formats.isEmpty else { return nil }

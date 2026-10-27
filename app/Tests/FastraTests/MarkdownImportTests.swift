@@ -95,6 +95,21 @@ struct MarkdownImportCatalogTests {
         #expect(catalog.availableFormat(forExtension: "pdf")?.identifier == "pdf")
         #expect(catalog.isUsable)
     }
+
+    @Test("Ein Format darf als Datei und als Dokumentpaket vorkommen")
+    func multipleContainers() throws {
+        let catalog = try #require(MarkdownImportCatalog.decode(Data("""
+        {"ok":true,"formats":[{"format":"mbox","extensions":["mbox"],
+          "container":"file","containers":["file","package"],"available":true}]}
+        """.utf8)))
+        let format = try #require(catalog.format(forExtension: "MBOX"))
+        #expect(format.supportsContainer(isDirectory: false))
+        #expect(format.supportsContainer(isDirectory: true))
+        let legacy = try #require(MarkdownImportCatalog.decode(catalogSample))
+        #expect(legacy.format(forExtension: "rtfd")?.supportsContainer(isDirectory: true) == true)
+        #expect(legacy.format(forExtension: "rtfd")?.supportsContainer(isDirectory: false) == false)
+        #expect(legacy.format(forExtension: "rtf")?.supportsContainer(isDirectory: false) == true)
+    }
 }
 
 @Suite("Zielname der Markdown-Umwandlung")

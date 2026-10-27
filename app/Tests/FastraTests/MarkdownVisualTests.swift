@@ -162,6 +162,29 @@ struct MarkdownVisualTests {
             expectation: "document.querySelector('\(selector)')?.textContent === '!'")
     }
 
+    @Test("Inline-Teilauswahl über zwei Absätze erhält Absatzgrenzen beim Speichern",
+          arguments: [MarkdownFormatCommand.bold, .italic, .highlight, .code])
+    @MainActor
+    func partialMultiParagraphFormatSaveReopen(_ command: MarkdownFormatCommand) async throws {
+        let selector: String
+        switch command {
+        case .bold: selector = "strong,b"
+        case .italic: selector = "em,i"
+        case .highlight: selector = "mark"
+        default: selector = "code"
+        }
+        try await assertFormatPersistence("Alpha eins\n\nBeta zwei\n", selection: """
+            const ps=document.querySelectorAll('#fastra-visual p'),r=document.createRange();
+            r.setStart(ps[0].firstChild,6);r.setEnd(ps[1].firstChild,4);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            """, dark: false, command: command, expectation: """
+            (()=>{const root=document.querySelector('#fastra-visual'),ps=Array.from(root.querySelectorAll('p:not([data-md-edit-boundary])'));
+            return ps.length===2 && ps[0].textContent==='Alpha eins' && ps[1].textContent==='Beta zwei'
+              && Array.from(ps[0].querySelectorAll('\(selector)')).some(n=>n.textContent==='eins')
+              && Array.from(ps[1].querySelectorAll('\(selector)')).some(n=>n.textContent==='Beta');})()
+            """)
+    }
+
     @Test("Formatierungen in Tabellenzellen bleiben nach Wiederöffnen erhalten",
           arguments: [MarkdownFormatCommand.bold, .italic, .highlight, .code, .hardBreak, .link, .plainParagraph])
     @MainActor

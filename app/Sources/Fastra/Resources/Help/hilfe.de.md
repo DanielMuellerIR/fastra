@@ -993,12 +993,14 @@ einer Markdown-Datei erzeugt also weiterhin keinen Netzverkehr.
 ## Dokumente in Markdown umwandeln
 
 Ist das separat installierte Werkzeug **Poor Man's Text** vorhanden, kann Fastra
-ganze Dokumente in Markdown umwandeln. Öffnest du eine erkannte Datei — je nach
-Stand des Werkzeugs etwa `.docx`, `.odt` oder `.doc` —,
-erscheint über dem Editor der Hinweis **In Markdown umwandeln**. Denselben
-Befehl findest du im Menü **Ablage** und im Rechtsklickmenü der Projekt-
-Seitenleiste. Fastra wandelt nichts von selbst um: Der Klick auf den Befehl ist
-die Zustimmung.
+ganze Dokumente in Markdown umwandeln. Für jedes erkannte Format — etwa DOCX,
+ODT, RTF, PDF, Tabellen, Präsentationen, Bilder und E-Mails — erscheint vor dem
+Öffnen eine Rückfrage: **In Markdown umwandeln**, **Als Quelltext öffnen** oder
+**Abbrechen**. Das gilt im Öffnen-Dialog, im Finder, bei Drag-and-drop, auf dem
+Willkommensbildschirm, unter „Zuletzt benutzt“, in der Projekt-Seitenleiste und
+beim Öffnen aktueller Dateien aus Git-Ansichten. **Abbrechen** öffnet und verändert
+nichts. Der Umwandlungsbefehl bleibt auch im Menü **Ablage**, im Rechtsklickmenü
+der Projekt-Seitenleiste und über dem geöffneten Original erreichbar.
 
 Es läuft appweit höchstens eine Umwandlung. In einem zweiten Fenster bleibt das
 eigene Angebot sichtbar, erklärt aber den laufenden Vorgang und ist bis zu
@@ -1011,13 +1013,10 @@ Arbeitsordner auf und übernimmt keine Ausgabe. Die Quelle bleibt unverändert.
 Ältere Werkzeugstände ohne Fortschrittsmeldungen zeigen weiter den laufenden
 Vorgang und bleiben ebenfalls abbrechbar.
 
-Bei `.rtf` fragt Fastra beim Öffnen und in der Projekt-Seitenleiste direkt nach,
-ob es das Dokument in Markdown umwandeln oder als Quelltext öffnen soll.
-**Abbrechen** öffnet und verändert nichts.
-
-Ein `.rtfd`-Dokument ist im Finder ein Ordner. Fastra fragt deshalb nach, ob
-es umgewandelt oder als Ordner geöffnet werden soll — sowohl beim Öffnen als
-auch beim Klick darauf in der Projekt-Seitenleiste.
+Dokumentpakete wie `.rtfd` und MBOX liegen als Ordner auf der Platte. Fastra
+fragt beim Öffnen und in der Projekt-Seitenleiste, ob es sie umwandeln oder
+**Als Ordner öffnen** soll. Ein Format kann sowohl Dateien als auch Pakete
+unterstützen; maßgeblich ist der Katalog des installierten Werkzeugs.
 
 **Wo das Ergebnis landet:** direkt neben dem Original. Entstand nur Text, als
 `Name.md`. Wurden Bilder mit herausgelöst, als Ordner `Name` mit `Name.md` und
@@ -1037,7 +1036,7 @@ mehr Formate, nutzt Fastra sie ohne eigenes Update — hast du gerade
 aktualisiert und willst nicht warten, starte Fastra neu. Fehlt das Werkzeug
 selbst, wird schlicht nichts angeboten. Ist es installiert, fehlt aber ein von
 ihm benötigtes Zusatzprogramm (meist Pandoc), sagt Fastra das offen: Die Leiste
-über dem Editor beziehungsweise die Rückfrage beim `.rtfd`-Ordner erklärt, was
+über dem Editor beziehungsweise die Rückfrage beim Öffnen erklärt, was
 fehlt — Pandoc installierst du im Terminal mit `brew install pandoc` und
 startest Fastra danach neu.
 

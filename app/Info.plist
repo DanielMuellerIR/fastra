@@ -79,11 +79,11 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.156.6</string>
+	<string>1.157.0</string>
 	<key>CFBundleVersion</key>
-	<string>362</string>
+	<string>363</string>
 	<key>FastraVersionDate</key>
-	<string>2026-10-26</string>
+	<string>2026-10-27</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>

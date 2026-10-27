@@ -270,15 +270,17 @@ explains how to install it when it is not available.
 
 **Converting whole documents to Markdown** works when
 [Poor Man's Text](https://github.com/DanielMuellerIR/poormans_text) is
-installed. Opening a `.docx`, `.odt`, `.doc`, or `.rtf` file then shows a
-**Convert to Markdown** offer above the editor; the same command sits in the
-File menu and in the project tree's context menu. An `.rtfd` document looks like
-a folder in Finder, so clicking one asks whether to convert it or open it as a
-folder.
+installed. Every recognized format — including DOCX, ODT, RTF, PDF, spreadsheets,
+presentations, images and email — offers **Convert to Markdown** before opening.
+This works from the Open dialog, Finder, drag and drop, the welcome screen,
+recent files and the project sidebar, including opening current files from Git
+views. Choose **Open as Source Text** to inspect the original, or **Cancel** to open
+nothing. Document packages such as RTFD and MBOX offer **Open as Folder** instead.
+The conversion command also remains available in the File menu and context menu.
 
-Fastra asks Poor Man's Text at launch which file types it supports. Formats
-added there later work immediately, with no Fastra update. When the tool or the
-Pandoc it needs is missing, the offer stays hidden.
+Fastra asks Poor Man's Text which file types and containers it supports; formats
+added there need no Fastra update. If the tool is missing, files open normally.
+If a required helper such as Pandoc is missing, the dialog explains what is needed.
 
 The result lands next to the original: as `Name.md` when only text was produced,
 or as a folder `Name` containing `Name.md` and `images/` when images were

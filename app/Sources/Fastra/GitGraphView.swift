@@ -634,7 +634,7 @@ private struct GraphCommitFileRow: View {
                     // oder die Datei verschwinden. Den aktuellen Stand erneut prüfen.
                     guard context.isCurrent(in: workspace),
                           let current = GitFileHistory.currentFileURL(for: file, in: context.root) else { return }
-                    workspace.loadFile(at: current, expectedGitContext: context)
+                    workspace.openFileOrFolder(at: current, expectedGitContext: context)
                 }
                 Divider()
                 FileTreeContextMenu(directory: url.deletingLastPathComponent(),

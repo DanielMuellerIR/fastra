@@ -814,36 +814,7 @@ private struct FileTreeLevel: View {
                             && workspace.gitFolderHasChanges(node.url),
                         onMutation: onMutation) {
                 if node.isDirectory {
-                    // Ein Dokumentpaket (`.rtfd`) liegt auf der Platte als
-                    // Ordner, ist aber ein Dokument. Ohne diese Abzweigung
-                    // klappte ein Klick es nur auf — die Umwandlung war im
-                    // Dateibaum nur über das Rechtsklickmenü erreichbar.
-                    if let format = workspace.markdownImportPackageFormat(at: node.url) {
-                        switch Workspace.askMarkdownImportPackageChoice(for: node.url,
-                                                                        format: format) {
-                        case .convert:
-                            workspace.selectedFileTreeFolder = nil
-                            workspace.convertToMarkdown(node.url)
-                            return
-                        case .cancel:
-                            return
-                        case .openAsFolder:
-                            break   // unten wie ein gewöhnlicher Ordner aufklappen
-                        }
-                    }
-                    // Ordner-Klick markiert den Ordner (Save-Dialog-Vorschlag,
-                    // Etappe 1); leere Ordner bleiben selektierbar, klappen
-                    // aber nichts auf.
-                    workspace.selectedFileTreeFolder = node.url
-                    if emptiness.isKnownEmpty(node.url) { return }
-                    // Beim Filtern ist die Aufklappung erzwungen — der
-                    // gespeicherte Zustand darf sich nicht still ändern.
-                    if filter != nil { return }
-                    if expanded.contains(node.id) {
-                        expanded.remove(node.id)
-                    } else {
-                        expanded.insert(node.id)
-                    }
+                    openDirectory(node)
                 } else {
                     // Datei-Klick hebt die Ordner-Markierung wieder auf.
                     workspace.selectedFileTreeFolder = nil
@@ -860,6 +831,51 @@ private struct FileTreeLevel: View {
                               emptiness: emptiness,
                               onMutation: onMutation)
             }
+        }
+    }
+
+    private func openDirectory(_ node: FileTreeNode) {
+        guard !node.url.pathExtension.isEmpty else {
+            toggleDirectory(node)
+            return
+        }
+        let project = workspace.projectURL
+        MarkdownImportService.shared.withCatalog { _ in
+            guard workspace.projectURL == project else { return }
+            toggleDirectory(node)
+        }
+    }
+
+    private func toggleDirectory(_ node: FileTreeNode) {
+        // Ein Dokumentpaket (`.rtfd`) liegt auf der Platte als
+        // Ordner, ist aber ein Dokument. Ohne diese Abzweigung
+        // klappte ein Klick es nur auf — die Umwandlung war im
+        // Dateibaum nur über das Rechtsklickmenü erreichbar.
+        if let format = workspace.markdownImportPackageFormat(at: node.url) {
+            switch Workspace.askMarkdownImportPackageChoice(for: node.url,
+                                                            format: format) {
+            case .convert:
+                workspace.selectedFileTreeFolder = nil
+                workspace.convertToMarkdown(node.url)
+                return
+            case .cancel:
+                return
+            case .openAsFolder:
+                break   // unten wie ein gewöhnlicher Ordner aufklappen
+            }
+        }
+        // Ordner-Klick markiert den Ordner (Save-Dialog-Vorschlag,
+        // Etappe 1); leere Ordner bleiben selektierbar, klappen
+        // aber nichts auf.
+        workspace.selectedFileTreeFolder = node.url
+        if emptiness.isKnownEmpty(node.url) { return }
+        // Beim Filtern ist die Aufklappung erzwungen — der
+        // gespeicherte Zustand darf sich nicht still ändern.
+        if filter != nil { return }
+        if expanded.contains(node.id) {
+            expanded.remove(node.id)
+        } else {
+            expanded.insert(node.id)
         }
     }
 

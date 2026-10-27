@@ -805,6 +805,9 @@ func changeListPinnedFileSupersedesOwnDiffPreview() async throws {
     )
     // Zweiter Klick: die Datei dauerhaft — am selben Platz, die Vorschau ist weg.
     workspace.openGitChangeFile(change: a, staged: false, preview: false)
+    #expect(await waitUntil {
+        workspace.tabs.contains { $0.url == aURL.canonicalFileURL && !$0.isLoading && !$0.isPreview }
+    })
     #expect(!workspace.tabs.contains(where: { $0.gitDiffRequest != nil }))
     let fileTab = try #require(
         workspace.tabs.first(where: { $0.url == aURL.canonicalFileURL })
