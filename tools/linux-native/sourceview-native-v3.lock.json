@@ -1,0 +1,35 @@
+{
+  "after_delete_files": {
+    "gtksourceview/gtksourcebuffer-private.h": "91053a94174cdf5e52254a637768390b6d1bb596f24c9f6149763d3fa9c9f996",
+    "gtksourceview/gtksourcebuffer.c": "ef37f436b84e05e70041f4774b4f3d26047e274b0f36987d756412737f5a41cd",
+    "gtksourceview/gtksourceview.c": "2b4037ec188d9192f8787e8c6b9ea54a2fa44550d9c335b05d971c1030d0ba5a"
+  },
+  "base_source_lock_sha256": "9559643b2fb9904c5a0eb019271856fae608649d0d6410e4b635af34d3de39bd",
+  "builder_image": "sha256:befa617d33d98b0d07f8e1a8fd6f85f07582e1ed71b6698ea01bf0e9b1b2d554",
+  "format": 1,
+  "indenter_unchanged_sha256": "8ba363de08d690baf2f97ec8da98061e0ac232a8c62587657ae5d56e58f20460",
+  "meson_options": [
+    "--buildtype=release",
+    "--prefix=/usr",
+    "--libdir=lib/x86_64-linux-gnu",
+    "-Dintrospection=disabled",
+    "-Dvapi=false",
+    "-Ddocumentation=false",
+    "-Dsysprof=false",
+    "-Dbuild-testsuite=false"
+  ],
+  "patch_series": [
+    {
+      "filename": "gtksourceview-native-edits-v1.patch",
+      "sha256": "e938b472a144f4cf2805252f61e73cccd4a594eaf877fb5b687251066ba92e02"
+    },
+    {
+      "filename": "sourceview-default-return-v1.patch",
+      "sha256": "3a809d187442437d0a9083ea157957220d975710969c5c0baab93ed1cf15627d"
+    }
+  ],
+  "return_after_sha256": "901a8f3df0d0b79cda3fa43d20b4e5d7ac443c39b83333a6481283dca6a2dffa",
+  "return_before_sha256": "2b4037ec188d9192f8787e8c6b9ea54a2fa44550d9c335b05d971c1030d0ba5a",
+  "return_magic": 1381256753,
+  "version": "5.12.0-1build1"
+}

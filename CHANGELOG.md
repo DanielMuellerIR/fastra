@@ -7,6 +7,886 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.236.0] — 2026-11-09
+
+### Behoben
+
+- Zusätzliche und wiederhergestellte Mac-Dokumentfenster blenden den nativen Dateititel auch dann aus, wenn der spätere Fensteraufbau ihn erneut sichtbar setzt. Beim gemeinsamen Öffnen mehrerer Finder-Dateien überlagert dadurch kein zweiter Titel mehr die eigene Tab-Leiste. Dateiname, Dokument-URL und Bearbeitungszustand bleiben als Fenstermetadaten erhalten.
+
+## [v1.235.0] — 2026-11-09
+
+### Hinzugefügt
+
+- Die Linux-Einstellungen besitzen den Mac-Bereich „Drucken“ mit gemeinsamen Vorgaben für Zeilennummern, Kopf-/Fußzeilen, Syntaxfarben und 6 bis 18 Punkt Schriftgröße. Einstellungen und nativer Druckdialog speichern dieselben Werte atomar im Hintergrund; ein geöffneter Auftrag behält seine eigenen Optionen. Lade- und Speicherfehler erhalten vorhandene Daten und bieten einen erneuten Versuch.
+- Quelltext druckt mit der gewählten Festbreitenschrift und den hellen Syntaxfarben der Sprache, unabhängig vom Erscheinungsbild. Eine getrennte Druckkopie bewahrt Editor, Auswahl und Undo. Zeilennummern stehen rechtsbündig in einer passenden grauen Spalte. Hex-Abzüge verwenden die Druckgröße und passen bei Bedarf bis zur Untergrenze auf das Papier; Markdown und Rich übernehmen die gemeinsame Punktgröße.
+
+### Behoben
+
+- Die Erscheinungsbild-Auswahl unterscheidet ihre Wunschbreite von der tatsächlichen Mindestbreite. Dadurch lässt sich das Einstellungsfenster auch bei der kleinsten Oberflächenskalierung auf das vorgesehene Mindestmaß verkleinern.
+- WebKit-Ausdrucke vermeiden optionale Ligaturen und kontextabhängige Alternativglyphen. Damit bleiben unter anderem ASCII-Bindestriche zwischen Großbuchstaben beim Kopieren aus einer PDF erhalten. Weitere Unicode-Zuordnungen des Skia-PDF-Backends bleiben eine dokumentierte Grenze.
+
+## [v1.234.0] — 2026-11-09
+
+### Hinzugefügt
+
+- Unter Linux stellt „Start → Zuletzt geöffnete Fenster und Dokumente wiederherstellen“ standardmäßig gespeicherte Dateipfade, Projektfenster, Tab-Reihenfolge, aktiven Tab, Größe und Maximierung wieder her. Unter X11 kommen auch die Fensterpositionen zurück; außerhalb der aktuellen Bildschirme liegende Fenster werden sichtbar platziert. Ungesicherte Inhalte, unbenannte Dokumente und erzeugte Vergleiche gehören nicht zu diesem Startzustand. Die freiwillige Sicherung ungesicherter Entwürfe bleibt getrennt.
+- Die Wiederherstellung liest den aktuellen Plattenstand im Hintergrund und verwendet dieselben schreibgeschützten, Abschnitts-, Hex- und Bildansichten wie normales Öffnen. Fehlende Dateien und leere Projektfenster werden übersprungen. Eigene Eingaben und Öffnungswünsche behalten Vorrang vor verspäteten Ladeergebnissen.
+- Ausschalten löscht die gemerkte Fensterliste. Beschädigte Einstellungen bleiben erhalten und bieten einen erneuten Versuch. Schlägt das Speichern beim Beenden fehl, stehen Abbrechen, Wiederholen und ausdrücklich „Ohne Aktualisierung beenden“ zur Wahl.
+
+### Behoben
+
+- Neue und vollständig wiederhergestellte Linux-Tabs erhalten den Tastaturfokus im Quelltext. Direktes Tippen nach Ctrl+T und nach dem Neustart funktioniert auch von der Startseite aus.
+
+## [v1.233.0] — 2026-11-09
+
+### Behoben
+
+- Unter Linux lesen bestätigte Diff-Übernahmen ihre Dateibasis vollständig im Hintergrund. Vor der Änderung im Editor werden Dateibindung und Dokumentrevision nochmals geprüft, ohne die Dateien im UI-Thread erneut einzulesen.
+- Bereits geöffnete Vergleiche und Übernahmevorschauen wechseln ihre Text- und Absatzfarben mit dem appweiten Erscheinungsbild. Eine ausdrücklich gewählte helle Darstellung gilt auch unter einer dunklen GTK-Desktopvorgabe; Vergleichsbasis und Auswahl bleiben erhalten.
+- Rich-Übernahmen berücksichtigen gemeinsam die Grenzen für Bildanzahl, komprimierte Bytes und dekodierte Pixel einschließlich der für Undo gehaltenen Bilder. Unveränderte Bildversionen verwenden vorhandene Adressen wieder, statt bei jeder Textübernahme weitere Cache-Einträge anzulegen.
+
+### Geändert
+
+- Quell- und Leseschrift teilen ihren internen Wahl-, Speicher- und Wiederholungsablauf sowie den Listenabgleich. Schriftfilter, Darstellung und Anwendungshalter bleiben ausdrücklich getrennt. Ein unerreichbarer zweiter Baustein-Exportpfad wurde entfernt.
+
+## [v1.232.0] — 2026-11-09
+
+### Hinzugefügt
+
+- Unter Linux bestimmt „Markdown im WYSIWYG-Modus bearbeiten“ den appweiten Standard. Bereits geöffnete und neue Markdown-Dokumente übernehmen ihn; eine ausdrücklich im Dokument gewählte Quelltext- oder Rich-Ansicht behält Vorrang. Ctrl+Shift+Alt+M und der Modusknopf ändern nur das aktuelle Dokument.
+- Beim ersten bearbeitbaren Markdown-Dokument fragt Fastra wie am Mac nach Quelltext und Vorschau oder WYSIWYG. Alt+Return bzw. Return wählen den Standard; die lokale Wahl bleibt beim Neustart erhalten. Dialogtexte, Maße, Schriften und Aktionsknöpfe folgen der Mac-Referenz.
+
+### Behoben
+
+- Ein globaler Moduswechsel synchronisiert Rich-Ansichten mit gehaltener Eingabe und prüft alle betroffenen Dokumente, bevor die erste Ansicht verschwindet. Noch laufende Aktionen, Speichern oder inzwischen geschlossene Tabs halten den Wechsel an. Dokumentinhalte, Undo und ausdrückliche Moduswahlen bleiben geschützt; schreibgeschützte und nicht unterstützte Texte bleiben im Quelltext.
+- Fehlgeschlagene Änderungen und Speichervorgänge zeigen passende Wiederholungsaktionen. Verzögerte GTK-Schaltermeldungen überschreiben die letzte Nutzerwahl nicht mehr. Die Einstellungen lassen sich auch dann erneut öffnen, wenn eine Referenz auf das bereits geschlossene Fenster noch existiert.
+
+## [v1.231.0] — 2026-11-09
+
+### Geändert
+
+- Die seitliche Markdown-Vorschau folgt unter Linux wie am Mac einer appweiten, standardmäßig eingeschalteten Vorgabe. Einstellungen und Vorschauknopf verwenden dieselbe Wahl; vorhandene und neue Markdown-Tabs übernehmen sie. Inaktive Tabs erzeugen ihre Vorschau erst beim Anzeigen. Andere Dateiformate und Rich-Markdown behalten ihre eigene Ansicht.
+- Beim Wechsel von Rich-Markdown zurück zum Quelltext gilt die aktuelle Vorschauvorgabe. Das vor dem Rich-Wechsel gespeicherte Anzeigeflag überschreibt spätere globale Änderungen nicht mehr. Textsynchronisierung, Auswahl, Undo sowie bestehende Bild- und Revisionsprüfungen bleiben erhalten.
+- Die Vorgabe wird lokal atomar im Hintergrund gespeichert. Fehler erhalten die vorhandene Datei und erlauben einen erneuten Versuch.
+
+## [v1.230.0] — 2026-11-09
+
+### Geändert
+
+- Die Linux-Einstellungen bieten eine gemeinsame Leseschrift für Markdown-Vorschau und Rich-Editor. Installierte proportionale Schriften samt Varianten stehen neben der Systemschrift zur Wahl; beide Ansichten verwenden wie am Mac 14 px Grundgröße und den unabhängigen Dokument-Zoom. Bilder behalten ihre Größe.
+- Geöffnete Ansichten übernehmen die Schrift ohne Neuladen. Quelltext, Auswahl und Undo bleiben erhalten. Die Wahl wird atomar im Hintergrund gespeichert; fehlende Schriften zeigen einen vorläufigen Systemersatz, ohne die gespeicherte Wahl zu überschreiben. Lade- und Speicherfehler erlauben einen erneuten Versuch.
+
+## [v1.229.0] — 2026-11-09
+
+### Geändert
+
+- Die ersten drei Bereiche der Linux-Einstellungen folgen der gruppierten Mac-Aufteilung: Erscheinungsbild, Schrift und Größe sowie Editor. Fenstermaße, Beschriftungen, Abstände, kompakte Schriftwahl und vertikale Regler skalieren gemeinsam mit der Oberfläche; kleine Fenster scrollen. Schließen ist wie auf dem Mac über die Titelleiste und das Tastenkürzel erreichbar.
+- Die appweite Seitenlinie ist auch in den globalen Einstellungen verfügbar. Sichtbarkeit und Spalte verwenden denselben atomaren Profilspeicher wie die Editoroptionen und aktualisieren alle Quellansichten. Fehler zeigen einen erneuten Versuch; andere Formatfelder, Text und Undo bleiben erhalten.
+
+## [v1.228.0] — 2026-11-09
+
+### Geändert
+
+- Linux-Rich-Markdown zeigt normale Codeblöcke als bearbeitbaren Code mit Syntaxfarben statt als geschützten Markdown-Quelltext. Mermaid-Blöcke erscheinen wie auf dem Mac als geschützte Diagramme, auch innerhalb von Listen. Dieselben gebündelten Bibliotheken arbeiten vollständig lokal; unbekanntes HTML bleibt geschützt.
+- Geöffnete Rich-Diagramme übernehmen Hell/Dunkel ohne Dokumentwechsel. Fehlerhafte Diagramme behalten ihren Code und zeigen eine verständliche Meldung. Unveränderte Blöcke bewahren ihre Quellbytes; Code-Eingaben, Rückgängig, Wiederholen und Speichern laufen über den bestehenden Rich-Vertrag.
+
+## [v1.227.0] — 2026-11-09
+
+### Hinzugefügt
+
+- Linux bietet wie die Mac-Einstellungen die appweite Auswahl „Automatisch“, „Hell“ und „Dunkel“. Native Fenster, Quellansichten, Popover, Markdown-Vorschau und Rich-Markdown übernehmen die Wahl gemeinsam. Bereits geöffnete formatierte Ansichten und vorhandene Vorschau-Diagramme wechseln ihre Farben ohne Neuladen des Dokumenttexts; Auswahl, Dirty-Zustand und Undo-Verlauf bleiben erhalten.
+- Die Wahl wird lokal im Hintergrund atomar gespeichert. Beschädigte, fremde oder gesperrte Einstellungen bleiben erhalten; Fehler erlauben einen erneuten Versuch. „Automatisch“ kehrt zur GTK-Desktopvorgabe zurück.
+
+### Geändert
+
+- Das Zahnrad öffnet auf Startseite und Dokumenten die globalen Einstellungen wie auf dem Mac. Ctrl+, und der Menüeintrag verwenden dasselbe Fenster. Dokumentbezogene Editoroptionen bleiben über ihre eigenen Bedienelemente erreichbar.
+
+## [v1.226.0] — 2026-11-09
+
+### Geändert
+
+- Linux-Snapshots und der Code-Erklärplayer übernehmen die Mac-Aufteilung: kompakter Dateiname und Status oben, Quelltext ohne zusätzliche Zeilennummern sowie Erklärung und zwei Bedienzeilen unten. Die Quellauswahl ist über den Dateinamen erreichbar; Frage und Herkunft bleiben zugänglich. Schmale Fenster zeigen ein Schriftmenü und beschriftete Symbole mit Hilfetext, breite Fenster die Schriftregler direkt. Die native Titelleiste bietet Schließen und Fensteraktionen.
+
+### Behoben
+
+- Schriftgrößen gespeicherter Code-Erklärungen entsprechen den logischen Mac-Größen. Pango vergrößert sie unter Linux nicht mehr durch eine zusätzliche Punkt-zu-Pixel-Umrechnung. Code und Erklärung behalten ihre unabhängigen Größenregler und werden nur dargestellt, nicht verändert.
+- Schriftknöpfe pausieren die Navigation auch am Größenlimit; ein unveränderter GTK-Wert lässt keinen verspäteten Sprung mehr durch.
+- Die kompakte Player-Bedienung hält schmale Fenster nicht mehr an der Mindestbreite der breiten Beschriftungen fest. Die anfängliche Teilung wird nach stabiler Fensterzuweisung gesetzt; eine spätere Benutzerteilung bleibt erhalten. Eigene Werkzeugtitelleisten übernehmen Titelwechsel.
+
+## [v1.225.0] — 2026-11-09
+
+### Hinzugefügt
+
+- Linux bietet appweite Einstellungen für Schrift und Größe, auch ohne geöffnetes Dokument. Oberfläche und Dokumenttext lassen sich unabhängig mit den Mac-Zoomstufen vergrößern, verkleinern und auf Originalgröße zurücksetzen. Sichtbare Einstellungen, das Menü „Darstellung“ sowie Ctrl +/−/0 und Ctrl Shift +/−/0 verwenden dieselbe gespeicherte Wahl. Markdown-Vorschau und Rich-Markdown vergrößern ausschließlich Text; Bilder behalten ihre Größe.
+- Größen werden atomar im Hintergrund gespeichert. Mehrere Fenster übernehmen die Wahl gemeinsam; beschädigte oder gesperrte Einstellungsdateien bleiben erhalten und Fehler sind erneut versuchbar.
+
+### Behoben
+
+- Linux berechnet die Ausrichtung umbrochener Vergleichszeilen auch nach Änderungen der Schriftmetriken neu. Quelltextflächen kontrollierter Snapshots und des Code-Erklärplayers verwenden das gemeinsame helle oder dunkle Farbschema; die Größenbeschriftungen des Players bleiben einzeilig.
+
+## [v1.224.0] — 2026-11-09
+
+### Behoben
+
+- Linux bricht das Laden schreibgeschützter Snapshots nicht mehr ab, wenn GTK unveränderte Auswahlmarken erneut meldet. Automatische Sprünge erhalten den Quelltextfokus und übernehmen PRIMARY nicht mehr; damit löscht ein Verlust der Maus-Zwischenablage unter Wayland die Zielauswahl nicht. Strg+C bleibt verfügbar, eigene Eingaben aktivieren die normale Auswahlanbindung wieder. Echte Auswahländerungen und Fenstereingaben verhindern weiterhin verspätete Sprünge; Inhalte, Herkunft und sichtbare Zielauswahl werden vor der Übernahme unverändert geprüft.
+
+## [v1.223.0] — 2026-11-08
+
+### Behoben
+
+- macOS berechnet die Höhe umbrochener Zeilen in Git- und Dateivergleichen aus der tatsächlich verfügbaren Spaltenbreite. Nach Breitenwechseln werden zusätzliche Textzeilen nicht mehr in eine einzeilige Zelle gequetscht und abgeschnitten. Die gemeinsame Korrektur gilt auch für eingebettete Vergleichsvorschauen.
+
+## [v1.222.0] — 2026-11-08
+
+### Behoben
+
+- Befehlsknöpfe im Linux-Menü „Darstellung und Bearbeitung“ schließen nach ihrer Ausführung das Popover. „Spaltenpaste“ lässt dadurch keinen Menügriff zurück, der die nächsten Tastatureingaben vom Quelltext fernhält. Umschalter bleiben im Menü bedienbar.
+
+## [v1.221.0] — 2026-11-08
+
+### Hinzugefügt
+
+- Linux bietet in den Editoroptionen die appweite Wahl einer installierten Festbreitenschrift einschließlich ihrer Schnitte. Beide Quellausschnitte, weitere Fenster und schreibgeschützte Quelltexte übernehmen die Wahl gemeinsam, ohne Text, Auswahl, Kodierung oder Zeilenenden zu ändern.
+- Die Schriftwahl wird getrennt von Dokumentinhalten atomar im Hintergrund gespeichert. Fehlende Schriften bleiben als nicht verfügbar sichtbar; die gemerkte Wahl wird bis zu einer ausdrücklichen neuen Auswahl erhalten. Fehler lassen die vorherige Einstellung auf der Platte unverändert und erlauben einen erneuten Versuch.
+
+## [v1.220.0] — 2026-11-08
+
+### Hinzugefügt
+
+- Die freiwillige Linux-Sitzungssicherung merkt vollständige schreibgeschützte Quelltext-Tabs als getrennte Dateiverweise mit Kodierung, Reihenfolge und aktivem Tab. Nach ausdrücklicher Freigabe wird der aktuelle Dateiinhalt erneut schreibgeschützt gelesen. Der gespeicherte Verweis erteilt auch dann keine Schreibfreigabe, wenn die Datei inzwischen sicher bearbeitbar wäre.
+- Fehlende oder nicht mehr als vollständiger Text lesbare Quellen blockieren die Wiederherstellung ungesicherter Entwürfe nicht. Fastra meldet die ausgelassenen Quellen und behält die ursprünglichen Sicherungen zur erneuten Prüfung. Bestehende Editor-Sicherungen bleiben lesbar; Abschnitte, Hex- und andere reine Vorschau-Tabs bleiben ausgenommen.
+
+## [v1.219.0] — 2026-11-08
+
+### Hinzugefügt
+
+- Linux öffnet vollständig lesbare Textdateien ohne sichere Schreibgrundlage in einem eigenen schreibgeschützten Quelltext-Tab. Kopieren, Suche und Navigation bleiben verfügbar; Bearbeitung, Ersetzen und Speichern in die Quelle sind gesperrt. „Als Kopie bearbeiten“ übernimmt den sichtbaren Text samt Kodierung in eine neue, ungespeicherte Datei.
+- Lokale Markdown-Referenzsprünge können solche Quelltexte auf der zuvor geprüften Lesebasis öffnen. Der gemeinsame Sprungverlauf und die getrennten Quellausschnitte bleiben erhalten.
+- Das Darstellungsmenü schließt vor dem Öffnen der Editoroptionen und fängt keine Dialogklicks mehr ab. Beim Schließen kehren Fokus und Auswahl auch in schreibgeschützte Quelltexte zurück.
+- Ein Hintergrundhinweis meldet extern geänderte oder nicht mehr lesbare Quellen. Die angezeigte Fassung bleibt erhalten; erneutes Öffnen lädt einen neuen Tab.
+- Überschreitet der dekodierte UTF-8-Text trotz kleinerer Quelldatei die Grenze von 32 MiB, verwendet Linux die begrenzte Abschnittsansicht.
+
+## [v1.218.0] — 2026-11-08
+
+### Behoben
+
+- Linux liest Dateivergleiche, externe Vergleichsaufrufe, lokale Markdown-Verweise und Bild-/PDF-/SVG-Vorschauen unabhängig von den Voraussetzungen für sichere Schreibtransaktionen. Lesbare Hardlinks und Dateien mit nicht abfragbaren erweiterten Attributen sind in diesen Werkzeugen zulässig.
+- Die eigene Lesebasis prüft weiterhin Dateityp, Größenlimit, Abbruch, Pfadbindung und Dateiänderungen. Speichern und Ersetzen behalten ihre unveränderten Metadaten- und Hardlink-Prüfungen; aus einer Lesebasis kann keine Schreibtransaktion entstehen.
+
+## [v1.217.0] — 2026-11-08
+
+### Hinzugefügt
+
+- Linux erkennt verschachtelte Codebereiche mit denselben gepinnten Grammatik- und 4D-Regeln wie die Mac-Version. Gutter-Pfeile, Platzhalter und die drei Faltbefehle arbeiten pro Quellausschnitt; das Öffnen eines Elternbereichs erhält eingeklappte Kinder.
+- Vollständiges Kopieren und Ausschneiden berücksichtigen versteckte Quellteile. Sprünge öffnen ihre umschließenden Bereiche; Rückschritt und Entf am gefalteten Rand öffnen zuerst. Quellbytes und natives Undo bleiben erhalten.
+- Die Analyse läuft in einem eigenen, abbrechbaren Parserprozess mit begrenztem Adressraum und Zeitbudget. Sprachwechsel, neuere Textstände und geschlossene Dokumente verwerfen verspätete Ergebnisse. Linux-Pakete enthalten den gebundenen Grammatik-Katalog und sämtliche ursprünglichen Lizenztexte.
+
+### Grenzen
+
+- Die schließende Codezeile behält unter Linux ihre eigene ursprüngliche Zeile. Die Analyse ist auf 32 MiB, 10.000 Bereiche und 512 Ebenen begrenzt; ein Ressourcenfehler lässt den vollständigen Quelltext sichtbar.
+
+## [v1.216.0] — 2026-11-08
+
+### Hinzugefügt
+
+- Linux prüft lokale Markdown-Verweise im Dokument oder Projekt: Datei- und Bildziele, Referenzlinks, Markdown- und gequotete HTML-Anker. Die Befundliste unterscheidet fehlende, mehrdeutige und ungeprüfte Ziele und bietet einen Problemfilter sowie Sprünge zur geprüften Quellzeile im gemeinsamen Verlauf.
+- Die Prüfung arbeitet schreibgeschützt mit den sichtbaren offenen Fassungen und begrenzten lokalen Dateiaufnahmen. Netzadressen werden übersprungen; Netzwerk-Mounts, nicht unterstütztes HTML und Analysegrenzen bleiben ausdrücklich ungeprüft. Geänderte oder geschlossene Quellen können keine veralteten Sprünge auslösen.
+
+## [v1.215.0] — 2026-11-08
+
+### Geändert
+
+- Die Linux-Oberfläche verwendet die lokal mitgelieferte Inter 4.1 statt einer unbemerkten Ersatzschrift. Normale, halbfette und kursive Schnitte werden innerhalb der Anwendung registriert; Desktop-Schriften und Fontcache bleiben unverändert. Die Sora-Wortmarke bleibt erhalten.
+- Rich-Markdown und Markdown-Vorschau laden dieselbe Schrift über ihre abgeschlossenen lokalen Ressourcenrouten. Normale und kursive WOFF2-Dateien sind eingebettet; es gibt keine Schriftanfragen ins Netz. Die Ansicht wartet vor ihrer Bereitschaft auf das Laden der Schrift.
+- Linux-Pakete enthalten die originale OFL-Lizenz und einen Herkunftsnachweis mit Prüfsummen der unveränderten Schriftdateien. Die Quelltextschrift bleibt separat eingestellt.
+
+## [v1.214.0] — 2026-11-08
+
+### Geändert
+
+- Externe Linux-Vergleiche verwenden dieselbe Darstellung wie Vergleichs-Tabs: echte Zeilennummern, Hervorhebungen, aufklappbare gleiche Abschnitte, Differenzenliste, Übersicht und gemeinsame Scrollfläche. Der Fensterkopf zeigt die Quellen; das Schloss kennzeichnet den rein lesenden Vergleich. Die alte Bericht-Registerkarte und die breite Fußleiste entfallen.
+- Der Export verwendet die vollständige abgeschlossene Vergleichsbasis und denselben atomaren, gegen Quellen und Dateialiasse geschützten Speicherdialog. Externe Eingaben werden weiterhin keinem editierbaren Dokument zugeordnet. Das Helferprotokoll, seine Grenzen, Fokusentscheidung und Abbruchbehandlung bleiben erhalten.
+- „Fastra beenden“ ist im Fenstermenü erreichbar und verwendet weiterhin die gemeinsamen Schließentscheidungen aller Editorfenster.
+
+## [v1.213.0] — 2026-11-08
+
+### Hinzugefügt
+
+- Shift-Klick in der Linux-Tab-Leiste wählt einen zweiten Text-Tab als Vergleichspartner, ohne den aktiven Editor zu wechseln. Der aktive Tab bleibt kräftiger, der Partner schwächer grau markiert. Erneuter Shift-Klick auf einen der beiden Tabs oder ein normaler Klick hebt die Paarwahl auf. Das Kontextmenü eines markierten Tabs öffnet den Vergleich mit beiden Quellen in ihrer sichtbaren Reihenfolge.
+- „Mit gespeicherter Fassung vergleichen“ öffnet für eine geänderte Textdatei direkt den Vergleich: gespeichert links, ungespeicherter Editor rechts. Es gelten die Standard-Vergleichsregeln; gemerkte Ignore-Optionen bleiben erhalten. Eine Übernahme verlangt weiterhin die vollständige Vorschau und verändert nur den zugeordneten Editor mit nativem Undo.
+- Ctrl+Alt+Shift+D öffnet den normalen Vergleichsdialog im Haupt- und Suchfenster mit dem aktiven Dokument links. Das zusätzliche Shift lässt Ctrl+Alt+D für Desktop-Befehle frei. Die normale Dialogaktion übernimmt keine zuvor markierte Tabpaar-Auswahl.
+
+### Geändert
+
+- Aktive Befehle im Tab-Kontextmenü verwenden die normale Textfarbe statt der gedämpften Tab-Symbole.
+- Geschlossene oder nicht mehr vergleichbare Tabs verlieren ihre Paarzuordnung. Ein erneut geöffneter gleicher Pfad ersetzt keine alte Dokumentidentität. Ergebnisnamen kennzeichnen geänderte dateigebundene Editorquellen als ungespeichert. Hex-Ansichten bleiben von der Text-Tabauswahl ausgeschlossen.
+
+## [v1.212.0] — 2026-11-08
+
+### Geändert
+
+- Linux-Dateivergleiche und Übernahmevorschauen verwenden eine gemeinsame horizontal scrollbare Fläche mit mindestens 919 Pixel Inhaltsbreite und einer vertikalen Scrollleiste. Die Spaltenteilung liegt im gescrollten Inhalt. Rechts zeigt die 20 Pixel breite Übersicht höchstens 160 anklickbare Markierungen; der aktuelle Unterschied bleibt auch bei großen Vergleichen enthalten.
+- Beim Scrollen folgt der aktuelle Unterschied dem Block an der oberen Sichtkante. Explizite Sprünge behalten ihre Auswahl während der kurzen Scrollbewegung. Die Differenzenliste verwendet einen 22 Pixel hohen Kopf, 24 Pixel hohe Zeilen, getrennte farbige Symbole und eine an die verfügbare Höhe angepasste Listenfläche.
+- Gezielte Sprünge bleiben auch während späterer Layoutkorrekturen sichtbar, bis eine tatsächliche Scroll- oder Navigationseingabe das Nachführen übernimmt.
+
+## [v1.211.0] — 2026-11-08
+
+### Behoben
+
+- Der Linux-Vergleichsexport schützt Quelldateien auch nach einer Umbenennung anhand ihrer beim Vergleich erfassten Dateiidentität. Das gilt für Dateiquellen und offene Dokumente einschließlich Symlink- und Hardlink-Aliasen. Ein inzwischen entfernter Quellordner verhindert keinen Bericht an ein unabhängiges Ziel.
+
+## [v1.210.0] — 2026-11-08
+
+### Geändert
+
+- Vergleichsspalten merken ihre gemeinsame Teilung über Tabs, Vorschauen und Neustarts. Ein neun Pixel breiter Griff erlaubt Ziehen; Doppelklick oder Pos1 stellt die Halbierung wieder her. Nach F8 ändern die Pfeiltasten die Teilung um fünf Prozentpunkte. Größenwechsel erhalten das Verhältnis und beide Seiten bleiben erreichbar.
+- Alt+↑/↓ wechselt Unterschiede einschließlich Umlauf. Quellspalten und Differenzenliste folgen dem gewählten Eintrag, ohne den Tastaturfokus zu versetzen.
+- Soft Wrap besitzt für Dateivergleiche ein eigenes Formatprofil. Normale Textdokumente behalten ihre Einstellung. Ausgeschalteter Umbruch zeigt lange Zeilen innerhalb ihrer Spalte ohne zusätzliche horizontale Scrollleiste oder ein verbreitertes Fenster.
+- Die Einstellungsablage übernimmt bestehende Vergleichsoptionen und zuletzt geöffnete Dateien unverändert. Veraltete Rückmeldungen laufender Lesevorgänge setzen eine frisch gezogene Teilung nicht zurück; gleichzeitige Feldänderungen bleiben erhalten.
+
+## [v1.209.0] — 2026-11-08
+
+### Geändert
+
+- Linux-Dateivergleiche verwenden den kompakten Quelldialog mit zwei Dateifeldern, offenen Tabs, zuletzt geöffneten Dateien und vier gemerkten Vergleichsoptionen. Das Ergebnis erscheint in einem eigenen schreibgeschützten Tab mit ausgerichteten Spalten, echten Zeilennummern, Intraline-Markierung, Kontextfaltung, Differenzenliste und gemeinsamer Fußzeile.
+- Blockübernahmen in beide Richtungen verlangen ein ausdrücklich zugeordnetes offenes Dokument und eine vollständige Vorher-/Nachher-Vorschau mit exakten Unicode- und Zeilenendenmarkierungen. Geänderte oder geschlossene Quellen sperren die Übernahme. Quelltext und Rich behalten natives Undo/Redo; Dateien werden erst durch den normalen Speicherbefehl geschrieben.
+- Der Export speichert einen vollständigen lokalisierten UTF-8-Textbericht der fertigen Vergleichsbasis. Vergleichsquellen sowie ihre Symlink- und Hardlink-Aliase sind als Exportziel gesperrt. Berechnung, Vorbereitung und Bericht laufen im Hintergrund; die Darstellung wird in kleinen Schritten aufgebaut.
+
+## [v1.208.0] — 2026-11-08
+
+### Behoben
+
+- Dateidrops in der Linux-Rich-Ansicht werden ausschließlich vom eigenen Vorschauweg verarbeitet. WebKits paralleler Drop-Controller wird entfernt, damit er nach dem bereits abgeschlossenen Dateidrop keinen verspäteten Status mehr meldet.
+
+## [v1.207.0] — 2026-11-08
+
+### Behoben
+
+- Die auf der Linux-Startseite angezeigten Tastenkürzel Ctrl+T und Ctrl+Shift+O öffnen einen neuen Tab beziehungsweise die Ordnerauswahl. Der Ordnerdialog bleibt bis zur Auswahl oder zum Abbrechen geöffnet.
+- Ctrl+Shift+G springt auch im Rich-Editor zum vorigen Treffer.
+- Trefferextraktion in ein neues Dokument prüft vor dem Anlegen des Tabs die gemeinsame Editorgrenze von 64 KiB je logischer Zeile. Das Zwischenablageziel behält seine eigene Ausgabegrenze.
+- Die Suchfreigabe baut ausschließlich ihre sichtbare virtuelle Trefferliste und Vergleichsansicht auf. Unsichtbare Checkboxen und abgetrennte Vorschaupuffer werden nicht mehr gefüllt.
+- Native Prüfungen verwenden den dokumentgebundenen Rich-Schalter und die sichtbare Vergleichsansicht. Zusätzliche Tastatur- und Extraktionsgegenfälle sichern die Korrekturen ab.
+
+## [v1.206.0] — 2026-11-08
+
+### Geändert
+
+- Linux-Textbausteine folgen der Mac-Maske mit durchsuchbarer Bibliothek, Vorlage, mehrzeiligen Platzhalterfeldern und vollständiger Einfügevorschau. Die Vorschau aktualisiert sich direkt; die separate Ablaufvorschau mit zwei Dokumentspalten entfällt für Bausteine. Mindestgröße und Idealgröße sind 760 × 650 und 960 × 740 Pixel.
+- Das Ziel wird beim Öffnen festgehalten. Quelle, aktive Teilansicht, Auswahl, Revision und Dateipfad werden vor der Übernahme erneut geprüft. Bausteine verwenden die Texteditorgrenze von 32 MiB; die Ausgabeprüfung läuft im Hintergrund. Eine Einfügung verändert nur die festgehaltene Auswahl und ist ein nativer Undo-Schritt.
+- Der Rich-Editor bietet den Bausteinknopf neben Gliederung und Suche. Die tatsächliche WebKit-Auswahl wird nach sicherer Synchronisation als Lesezeichen festgehalten. Markdown und vorhandene lokale Bildverweise werden relativ zum Zieldokument gerendert; neue Bilddateien oder Dokumentdateien entstehen dabei nicht. Nach dem Schließen erhält der Rich-Inhalt seinen Tastaturfokus zurück.
+- Ungespeicherte Vorlagen bieten Speichern, Verwerfen und Zurück. Speichern erhält bereits ausgefüllte Werte. Bibliotheksfilter und neue Namen verwenden den vorhandenen ICU-Vergleich. Die Importbestätigung zeigt die vorgeschlagenen Namen; der Export liest den aktuellen gespeicherten Stand.
+
+### Behoben
+
+- Eine GTK-Rückfrage wird vollständig abgeräumt, bevor ihr Elternfenster geschlossen oder eine Folgeaktion gestartet wird. Dadurch greift ihre Bereinigung nicht auf ein bereits freigegebenes Elternfenster zu.
+
+## [v1.205.0] — 2026-11-08
+
+### Hinzugefügt
+
+- Alt-Doppelklick in der Linux-Quellansicht löst dieselben 4D- und Markdown-Ziele wie auf dem Mac auf: lokale normale Funktionen, Projektmethoden und Klassen, Markdown-Anker, lokale Dateien sowie externe Adressen im gewählten Browser. Ein sichtbarer Kontextmenü-Eintrag bietet den Sprung an der Einfügemarke auch bei vom Desktop belegten Alt-Mausgesten.
+- Lokale Sprünge und geöffnete Textziele gehören zum gemeinsamen Verlauf. Dateiöffnen behält die normale Import-/Quellenauswahl. Neue Eingaben, ein geänderter Ausgangstab oder ein geschlossenes Dokument verhindern verspätete Übernahmen. Bekannte 4D-Befehle erhalten kein erfundenes Projektziel; unbekannte Namen öffnen die literale Projekt- beziehungsweise Ordnersuche und erhalten die übrigen Suchoptionen.
+- Die Auflösung läuft begrenzt im Hintergrund. 620 tatsächlich ausgeführte Mac-Providerfälle prüfen Phrasen, Linkarten, Pfade und Ziele; die Unicode-Zuordnung berücksichtigt auch ß/SS, finales Sigma und Ligaturen.
+
+### Behoben
+
+- Gliederung, aktuelle Zeile und Sprungursprung verwenden in geteilten Linux-Quellansichten den aktiven Editor. Rücksprünge erhalten dessen Auswahl und verändern die unabhängige Auswahl der anderen Teilansicht nicht.
+- Die Zielsprungerkennung liest native Mausereignisse vor den Kindgesten mit den eingestellten GTK-Zeit- und Abstandsgrenzen. Dadurch bleibt sie unabhängig vom durch die Ziehauswahl zurückgesetzten Gestenzähler; normales Alt-Ziehen funktioniert weiter.
+
+## [v1.204.0] — 2026-11-08
+
+### Geändert
+
+- Die Linux-Rich-Gliederung verwendet dasselbe kompakte Popup und dieselben drei Verlaufsknöpfe wie die Quellansicht. Überschriften aktualisieren sich automatisch aus dem angenommenen Markdown; der aktuelle Eintrag folgt der tatsächlichen Rich-Auswahl. Filter, Seitenwechsel und separates Gliederungsfenster entfallen.
+- Quell- und Rich-Gliederung teilen den Sprungverlauf. Überschriften werden direkt im Rich-Inhalt ausgewählt und sichtbar gescrollt. Ein gespeichertes Ziel mitten im Quelltext wechselt über die reguläre, geprüfte Synchronisation zurück zur Quellansicht. Texteingaben, ein anderer Tab oder eine ersetzte Rich-Sitzung sperren veraltete Antworten; Navigation erzeugt keine Textänderung.
+
+## [v1.203.0] — 2026-11-08
+
+### Geändert
+
+- Die Linux-Quellansicht zeigt die kompakte Dokumentgliederung mit Zurück, Vorwärts und Listenknopf. Das 320 × 340 Pixel große Popup folgt dem Mac mit eingerückten Markdown-Überschriften, 4D-Funktionen, Methodeneintrag und aktueller Position. Änderungen aktualisieren die Liste automatisch; Filter, Seitenwechsel und separate Sprungknöpfe entfallen.
+- Gliederungssprünge teilen einen auf 100 Positionen begrenzten Verlauf über offene Dokumente. Unveränderte Ziele behalten ihre Auswahl, verschobene Überschriften werden nur eindeutig wiedergefunden. Geschlossene Dokumente, umbenannte oder mehrdeutige Ziele werden ausdrücklich abgewiesen. Sprünge erzeugen keine Textänderung und keinen Undo-Schritt.
+- Die begrenzte Analyse und Sprungprüfung laufen abbrechbar im Hintergrund. Auch weitere Änderungen in einem bereits ungespeicherten Dokument aktualisieren die Gliederung mit der richtigen Revision.
+
+## [v1.202.0] — 2026-11-08
+
+### Behoben
+
+- Während einer laufenden Linux-Ordner- oder Projektsuche bleiben Quellenliste, Datei-Set, Dateitypen und Ausschlüsse bedienbar. Eine neue Auswahl verwirft die alte Treffergrundlage und startet nach dem Abbruch mit aktuellen Eingaben; ein geöffnetes Quellenmenü wird vom Suchlauf nicht mehr deaktiviert.
+- Reine Suchläufe lassen sich durch Schließen ihres Fensters oder des Besitzers abbrechen. Verspätete Antworten erreichen keine neue Suchansicht. Anwenden, Rücknahme, Textabläufe und ausstehende Einstellungsänderungen behalten ihre Schließsperren.
+
+## [v1.201.0] — 2026-11-08
+
+### Geändert
+
+- Die Linux-Suche bietet die direkte Vorlagenauswahl des Macs mit Kategorien, frisch gelesenen eigenen Vorlagen, gekürztem Namen und separatem Verwaltungsknopf. Die Auswahl übernimmt einen vorhandenen Ersetzungsvorschlag und aktiviert RegEx; Bereich und übrige Optionen bleiben erhalten. Eine zwischenzeitliche Formularänderung sperrt die verzögerte Übernahme. „Keine“ löst nur die Zuordnung.
+- Suchfelder und leere Trefferlisten erklären fehlende Eingaben, kurze Ordnersuchen und abgeschlossene Suchläufe ohne Treffer. Zusätzliche Ordnerausschlüsse stehen im Dateitypmenü. Hinweise für geöffnete Dokumente sind am bereits vorhandenen Bereichsknopf erreichbar.
+
+## [v1.200.0] — 2026-11-08
+
+### Hinzugefügt
+
+- Die Linux-Ordnersuche bietet die Quellenliste der Mac-Version: mehrere Ordner hinzufügen, zum Durchsuchen ankreuzen und aus der Liste entfernen. Ab acht Einträgen scrollt die Liste in begrenzter Höhe. Ordner und Dateitypwahl bleiben über Neustarts erhalten; beide Filterzustände überspringen weiterhin Binärdateien.
+- Die Projektsuche bietet gespeicherte Datei-Sets, Anlegen/Löschen, Dateitypwahl und projektbezogene Ausschlüsse. Sets enthalten projekt-relative Dateien oder Ordner; „.“ umfasst das Projekt. Leere, absolute oder nach außen führende Bereiche werden abgewiesen. Der Scanner begrenzt den Lauf vor dem Lesen auf diese Auswahl. DerivedData bleibt immer ausgeschlossen.
+- Die private Ablage führt unabhängige Änderungen mehrerer Fenster zusammen. Lesefehler oder ungültige Daten überschreiben keinen vorhandenen Stand. Schließen wartet auch auf noch ausstehende Einstellungsänderungen.
+
+### Geändert
+
+- Suchoptionen und Projektkopf umbrechen anhand der tatsächlichen Breite vollständiger Bedienelementgruppen. Beschriftungen stehen in schmalen Projektfenstern in der Formularspalte; breite Fenster verwenden kompakte Beschriftungen. Der Datei-Set-Dialog folgt der 440-Pixel-Maske des Macs und erhält Eingaben bei ungültigen Pfaden oder fehlgeschlagenem Speichern.
+- Strg+F und der sichtbare Sucheinstieg übernehmen beim frischen Öffnen eine mehrzeilige Auswahl. Eine bereits sichtbare befüllte Suche bleibt erhalten. „Nur in Auswahl“ erscheint im Datei-Bereich, ist ohne Auswahl deaktiviert und behält den eingefrorenen Bereich beim Wechsel zu Geöffnet und zurück. Entfernen des Sterns setzt „∗ wörtlich“ zurück.
+- Ordner- und Projekttreffer nennen den Dateinamen in Kopf und Detail. Der vollständige Pfad bleibt im Tooltip und in der vollständigen Freigabeansicht erhalten; Sprünge und Übernahmen verwenden weiterhin die geprüfte Dateiidentität.
+
+## [v1.199.0] — 2026-11-07
+
+### Geändert
+
+- Die Linux-Dateisuche friert beim Einschalten von „Nur in Auswahl“ den zusammenhängenden Bereich am konkreten Dokument ein. Trefferklicks und Navigation wählen den tatsächlichen Treffer im Quelltext aus, ohne die Suchgrundlage oder Freigaben zu verschieben. Native Textmarken führen die Bereichsgrenzen bei kürzeren und längeren Ersetzungen mit; ein anderer Tab erhält diesen Bereich nicht.
+- Datei und Geöffnet zeigen unter den Eingaben dieselbe kompakte Vorschau freigegebener Zeilen wie auf dem Mac. Sichtbar sind höchstens drei geänderte Zeilen des aktiven Dokuments und die Anzahl weiterer Zeilen. Gleichnamige Tabs bleiben durch ihre Dokumentidentität getrennt. Neue Eingaben, fehlende Freigaben und wirkungslose Ersetzungen blenden die Vorschau aus; alle Änderungen stehen weiterhin in „Freigaben prüfen“.
+- Die Zeilenberechnung läuft begrenzt und abbrechbar im Hintergrund. Eine veraltete Antwort kann keinen neueren Vorschauzustand überdecken. Die kompakte Ansicht erteilt keine zusätzliche Schreibfreigabe.
+
+## [v1.198.0] — 2026-11-07
+
+### Hinzugefügt
+
+- Die Linux-Trefferzeile bietet „Gruppe definieren“ und „Gruppe löschen“. Markierter Text wird wie auf dem Mac an RegEx-Bausteingrenzen gruppiert; vorhandene Gruppen werden erkannt. Die Ersetzungsreferenzen werden gleichbedeutend umnummeriert. Rückverweise, verwendete Gruppen, Quantifizierer, riskante Alternativen und veränderliche Inline-Flag-Grenzen verhindern unsichere Änderungen.
+- Die Gruppenbearbeitung verwendet dieselbe gepinnte Tree-sitter-Runtime und Regex-Grammatik wie die Mac-Version. Syntaxinformationen bleiben an das konkrete Muster gebunden; Analyse und Umschreibung laufen mit Abbruch und Budget im Hintergrund.
+- Alle Suchbereiche bieten den RegEx-Element-Picker und den Suchverlauf am Suchfeld. Elementwahl verwendet die Einfügemarke und aktiviert den RegEx-Modus. Ein Verlaufseintrag füllt beide sichtbaren Felder und fokussiert das richtige Suchfenster.
+
+### Geändert
+
+- Capture-Pillen entstehen direkt aus dem Muster, auch ohne Treffer, und stehen in allen Suchbereichen am Ersetzungsfeld. Die horizontale Liste baut nur die sichtbaren Knöpfe auf; auch Gruppen nach Nummer 30 lassen sich anklicken und ziehen. Nummern und Gruppenbeiträge verwenden dieselbe Farbreihe wie auf dem Mac. Der Treffertext färbt verschachtelte Gruppen nach ihrer tatsächlichen Rangfolge, ohne pro Gruppe ein eigenes Darstellungsobjekt anzulegen.
+- Optionsblöcke passen nebeneinander in breite Fenster und umbrechen gemeinsam bei wenig Platz. „Nur in Auswahl“ bleibt außerhalb der Dateisuche sichtbar deaktiviert. „∗ wörtlich“ ist nur bei einem Stern außerhalb des RegEx-Modus aktivierbar. Die RegEx-Eingabe färbt ihre Bausteine.
+- Linux-Pakete binden die Syntaxquellen und deren vollständige Lizenztexte an das Laufzeitmanifest. Paketprüfung und Updateinstallation verlangen diese Angaben für neue Versionen.
+
+### Behoben
+
+- Ein nativer Pillenklick blockiert den folgenden Drag derselben Pille unter GTK nicht mehr. Die permanente Capture-Liste bleibt auch nach einer unmittelbar folgenden Suche mit kürzerer Ersetzung stabil.
+- Alt+H gehört im Datei-Bereich zum sichtbaren Suchfenster. Der Verlauf anderer Bereiche gibt den Fokus an deren sichtbares Suchfeld zurück.
+
+## [v1.197.0] — 2026-11-07
+
+### Geändert
+
+- Die Linux-Suchmaske bietet wie auf dem Mac Voriger/Nächster, „Aus Beispiel…“, Ersetzen und Freigaben prüfen. „Suchen“ erscheint im Ordner- und Projektbereich. Return navigiert in Datei/Geöffnet zum nächsten Treffer; Strg+G und Umschalt+Strg+G wechseln Treffer, Strg+Return öffnet die Freigaben.
+- „Ersetzen“ ändert ausschließlich den aktiven Treffer in Datei oder geöffneten Dokumenten, ohne eine Sammelfreigabe zu benötigen. Danach wird die Suche neu berechnet und der nächste verbleibende Treffer gewählt. Jeder wirksame Ersatz hat einen eigenen nativen Rückgängig-Schritt; wirkungslose Ersetzungen erzeugen keinen.
+- Einzelersetzungen prüfen vor der Übernahme Suchgrundlage, Dokumentidentität, Quelle, Revision, Auswahlbindung und Fensterzuordnung erneut. Geänderte Eingaben und zwischenzeitliche fremde Fenster verwerfen verspätete Antworten. Textgrenzen gelten auch für das einzelne Ergebnis.
+
+### Behoben
+
+- Strg+F erneuert eine durch einen fremden Fensterwechsel veraltete Dateisuche. Unverändert gültige Freigaben bleiben beim bloßen Fokussieren erhalten.
+
+## [v1.196.0] — 2026-11-07
+
+### Geändert
+
+- Linux-Suchmasken verwenden kompaktere Eingabefelder, Optionszeilen, Trefferlisten und Detailabstände. Die Dateisuche behält die Mac-Ausgangsgröße von 520 × 485 logischen Pixeln; offene Dokumente, Ordner und Projekte verwenden ebenfalls die schmale gemeinsame Maske. Felder und Trefferliste wachsen mit breiteren Fenstern.
+- „Suchen und Ersetzen vertauschen“ steht direkt am Ersetzungsfeld in allen Suchbereichen. Der Knopf vertauscht ausschließlich die Eingaben und lässt die Live-Suche eine neue Grundlage ermitteln.
+- Doppelte normale Trefferzahlen und interne Vorbereitungshinweise beanspruchen keine zusätzliche Statuszeile. Fehler, ausgelassene Quellen und Hinweise zu übernommenen Änderungen bleiben sichtbar.
+- Capture-Pillen der Dateisuche stehen direkt am Ersetzungsfeld und lassen sich anklicken oder ziehen. Das Feld verwendet den nativen GTK-Text-Drop. Treffertexte unterscheiden den eigentlichen Treffer von seinem schwächer dargestellten Zeilenkontext.
+
+### Behoben
+
+- Nach einem Capture-Drag bleibt auch eine unmittelbare Folgesuche mit kürzerer Ersetzung stabil. Ein von GTK zurückgelassener Drop-Einfügemarker wird beim Abschluss entfernt.
+- Die erste Trefferansicht zeigt wieder den Dateikopf. Der Detailkasten behält eine einzelne kompakte Zeile; lange oder mehrzeilige Treffer bleiben vollständig enthalten und scrollbar.
+
+## [v1.195.0] — 2026-11-07
+
+### Geändert
+
+- Linux-Suchfenster aktualisieren Treffer beim Tippen und bei Optionswechseln automatisch: Datei und geöffnete Dokumente nach 120 ms, Ordner und Projekte nach 420 ms. Alte Vorschauen und Freigaben werden sofort ungültig. Ordnersuchen starten ab drei sichtbaren Zeichen; kürzere Muster lassen sich mit „Suchen“ oder Return ausführen.
+- Ctrl+F verwendet den aktiven Suchbereich und fokussiert dessen bestehendes Fenster. Ordnerpfad, Ausschlüsse und Textformatwahl bleiben beim Wiederöffnen im selben Editorfenster erhalten; Projektangaben gelten nur für das zugehörige Projekt. Schließen beendet Suchaufträge und entfernt deren Quellmarkierungen.
+
+### Behoben
+
+- Projektsprünge erhalten einen eigenen laufenden Prüfauftrag für die Projektwurzel. Die Prüfung bleibt dadurch auch nach Abschluss des vorherigen Suchauftrags vor und nach dem Dateilesen aktiv.
+
+## [v1.194.0] — 2026-11-07
+
+### Geändert
+
+- Trefferklicks, Vor-/Zurück und Pfeiltasten in der Linux-Trefferliste springen zur geprüften Quelle. Die Quelldarstellung markiert bis zu 2.000 Treffer und zusätzlich den aktiven Treffer. Treffer mit Länge null erhalten eine sichtbare Markierung an der Einfügestelle.
+- Eine Suche innerhalb der Auswahl behält ihre Grundlage: Suchsprünge scrollen die Quellansicht und ändern weder Auswahl noch Text, Änderungsstatus oder Undo. Neue Suchdaten entfernen alte Hervorhebungen.
+- Geöffnete Tabs werden über ihre Dokumentidentität zugeordnet, auch bei gleichen Namen. Ordner- und Projekttreffer öffnen die tatsächlich durchsuchten Textdaten erst bei einem bewussten Sprung. Passende offene Dateien werden wiederverwendet; abweichende oder gesperrte Puffer bleiben erhalten. Die ursprüngliche Dateibindung und der vollständige Text werden vor dem Sprung erneut geprüft. Geänderte Eingaben, Dateiquellen und Fensterzuordnungen verwerfen verspätete Antworten.
+
+### Behoben
+
+- Die Darstellungsoptionen bleiben auch außerhalb des Markdownformats rechts in der Quelltextleiste ausgerichtet.
+
+## [v1.193.0] — 2026-11-07
+
+### Geändert
+
+- Die Markdown-Quelltextleiste unter Linux bietet dieselben 15 Befehle in derselben Reihenfolge wie auf dem Mac: Inlineformatierung, harter Umbruch, drei Überschriftenstufen, normaler Absatz, drei Listenarten, Zitat, Link und Tabelle. Die Leiste scrollt bei wenig Platz horizontal. Die vorhandene Gliederung steht direkt links davon.
+- Zeilenbefehle erhalten Einrückungen, bestehende Aufgabenhäkchen und Dokument-Zeilenenden. Berechnung und Ausgabeprüfung laufen im Hintergrund; geänderte Quelle, Auswahl oder Fensterzuordnung verwirft die Antwort. Jeder übernommene Befehl ist ein einzelner nativer Undo-Schritt.
+- Quelltext-Tabellen erhalten eine wählbare Spaltenzahl von 1 bis 50 und eine optionale beschriftete Kopfzeile. Ohne Eingabe gelten drei Spalten und Kopfzeile wie auf dem Mac. Im Rich-Editor verwendet derselbe Dialog die dortige Mac-Tabellenstruktur.
+- Die Rich-Leiste ordnet Link und Tabelle direkt nach dem Zitat an. Rückgängig, Wiederholen, Zwischenablage, Bilder, Tabellenbearbeitung und Verwerfen bleiben im Mehr-Menü erreichbar.
+
+## [v1.192.0] — 2026-11-07
+
+### Geändert
+
+- Linux-Suchen in Dateien, offenen Tabs, Ordnern und Projekten beginnen wie auf dem Mac ohne freigegebene Treffer. Einzelne Checkboxen oder „Alle“ wählen die gewünschten Ersetzungen; ohne Auswahl bleiben Freigabevorschau und Anwenden gesperrt. Neue Suchen übernehmen keine früheren Freigaben. Textabläufe behalten ihre getrennte Vorschau.
+- Die sichtbare Titelleiste und der Fenstertitel für Fenstermanager und Bedienungshilfen stimmen auch in den Suchbereichen überein.
+
+### Behoben
+
+- Das wiederholte Setzen einer unveränderten Trefferfreigabe baut die vollständige Vorschau nicht erneut auf.
+
+## [v1.191.0] — 2026-11-07
+
+### Geändert
+
+- Linux-Suchfenster trennen die gruppierte Trefferliste mit einzelnen Freigaben, Trefferwechsel und Detailbereich von der vollständigen Freigabevorschau. Die Vorschau zeigt ausgerichtete Vorher-/Nachher-Zeilen mit farbigen Änderungen und Navigation zwischen Unterschieden. Unsichtbare Unicode- oder Zeilenendänderungen erhalten automatisch eine exakte Escape-Darstellung. Überschreitet nur die Zeilenzuordnung ihr Rechenbudget, bleiben beide vollständigen Texte mit sichtbarem Hinweis prüfbar. Berechnung und Darstellung sind abbrechbar; eine unvollständige Vorschau bleibt gesperrt.
+- Treffer lassen sich wie auf dem Mac mit wählbarem Trennzeichen, Quoting, kanonischer Duplikatentfernung und optionaler Ersetzung in ein neues ungesichertes Dokument oder die Zwischenablage extrahieren. Die Ausgabe ist auf 16 MiB begrenzt.
+- Rich-Markdown verwendet eine kompakte Symbolleiste. Die Fußzeile zählt den synchronisierten vollständigen Markdown-Quelltext; eine alte Quelltextauswahl beeinflusst sie nicht. Ctrl+F sucht im formatierten Text, Ctrl+G wechselt Treffer. Die vollständige Quelltextsuche bleibt über die Suchleiste erreichbar.
+- Home und Projektwechsel prüfen alle bisherigen Tabs über den gemeinsamen Speichern-/Verwerfen-/Abbrechen-Ablauf. Abbrechen erhält sämtliche Dokumente und das Projekt; ein abgeschlossener Wechsel beginnt mit einem fokussierten leeren Tab und entwertet alte Projektaufträge.
+- Suchvorlagen verwenden eine zweispaltige Bibliothek; die Beispieltransformation zeigt die kompakte Quell-/Zielmaske. Werkzeugfenster besitzen gemeinsame kompakte Titelleisten und Bedienelemente. Weitere optische Angleichung bleibt in der Roadmap erfasst.
+
+### Behoben
+
+- Verschachtelte Such-/Freigabefenster werden dem richtigen Editor zugeordnet. Ein Wechsel zu einem unabhängigen Fenster entwertet die ursprüngliche Übernahmefreigabe. Die GTK-Elternfenster bleiben bis zum vollständigen Aufräumen ihrer Kindfenster erhalten.
+- Werkzeugbefehle schließen ihre übergeordneten Menüs; der erste Klick in einem neu geöffneten Dialog wird nicht mehr von einem alten Menü abgefangen.
+
+## [v1.190.0] — 2026-11-07
+
+### Geändert
+
+- Das Linux-Hauptfenster folgt der Mac-Aufteilung mit kompakter Titelleiste und Tabs, integriertem Projektbaum, freier Editorfläche und unterer Statusleiste. Große Schaltflächenreihen und die dauerhaft eingebaute Suchfläche entfallen. Das Fastra-Menü, Editoroptionen und Sitzungssicherung bleiben erreichbar.
+- Der leere Starttab zeigt die Wortmarke mit derselben gebündelten Sora-Schrift wie die Mac-Version, Datei-/Ordneraktionen und zuletzt benutzte Projekte. Beim Öffnen einer Datei wird ausschließlich ein unberührter leerer Tab wiederverwendet.
+- Suche und Ersetzung öffnen sich in einem eigenen Fenster. Datei-, Tab-, Ordner- und Projektbereiche verwenden denselben kompakten Formularkopf; vollständige Vorschau, einzelne Freigaben und die bestehende Übernahmeprüfung bleiben erhalten.
+- Die Statuszahlen verwenden sichtbare Unicode-Zeichen, Wörter und logische Zeilen wie die Mac-Version; bei markiertem Text gelten sie der Auswahl. Große Texte werden ohne blockierende Zählung auf dem UI-Thread verarbeitet.
+- Helle und dunkle Editorfarben, Symbole und Abstände orientieren sich an der Mac-Version. Gespeicherte Dateien lassen sich weiterhin am Tab-Dateigriff ziehen. Die Hex-Aktion öffnet gespeicherte Bytes in einem eigenen Tab, damit ungesicherter Quelltext erhalten bleibt.
+
+### Behoben
+
+- Beim Wiederöffnen einer Suchvorschau wird deren Darstellung wieder aufgebaut. Die Fokusprüfung erkennt das tatsächlich aktive App-Fenster auch beim Wechsel ins eigene Suchfenster. Bestehende Bindungen an Quelltab, Revision, Editorbereich und Trefferfreigaben bleiben unverändert.
+
+## [v1.189.0] — 2026-11-07
+
+### Hinzugefügt
+
+- Linux-Benutzerinstallationen können täglich automatisch oder über „Updates …“ nach stabilen GitHub-Releases suchen. Eine neue Linux-Fassung wird erst nach sichtbarer Freigabe heruntergeladen und installiert. GitHubs SHA256, Paketversion und das vollständige Laufzeitmanifest werden vor dem atomaren Versionswechsel geprüft; die vorherige Version bleibt erhalten.
+- Die laufende Sitzung wird beim Update nicht neu gestartet. Ungesicherte Dokumente bleiben geöffnet; die neue Fassung gilt nach regulärem Beenden und erneutem Start. Automatische Prüfungen lassen sich im Updatefenster abschalten. Quellbuilds, Systempakete und der optionale Toolkitkanal behalten ihren eigenen Installationsweg.
+
+## [v1.188.1] — 2026-11-07
+
+### Behoben
+
+- Die zweite Linux-Quellansicht registriert den Klickhandler zur Markdown-Vorschau nur einmal.
+- Beim Ziehen gespeicherter Dateien entfällt eine doppelte Pfadprüfung.
+
+## [v1.188.0] — 2026-11-06
+
+### Hinzugefügt
+
+- Gespeicherte Linux-Tabs bieten einen eigenen Dateigriff zum Ziehen in andere Anwendungen. Übergeben wird die vorhandene Datei mit ihrem letzten gespeicherten Stand; ungesicherte Puffer werden nicht exportiert. Das gilt auch für Bild-, PDF-, Hex- und Abschnittsansichten.
+- Im Linux-Markdown-Quellmodus stehen Fett, Kursiv, Markierung und Inlinecode für die aktive Teilansicht bereit. Die Befehle entfernen vorhandene Marker oder ergänzen ein Paar; Unicode, Nachbartext und die unabhängige Auswahl der anderen Ansicht bleiben erhalten.
+- Der passende optionale Laufzeitkandidat prüft die angebundenen nativen Delete-, Backspace-, SmartBackspace- und Join-Pläne vor History und Auswahländerung. Gewöhnlicher linearer Return mit eingebauter automatischer Einrückung wird ebenfalls vollständig vorgeprüft und als ein Rücknahmeschritt ausgeführt. Allgemeine IME-Komposition, eigene Indenter und weitere native Mehrschrittaktionen bleiben eigene offene Grenzen.
+
+### Behoben
+
+- Die private GTK-Laufzeit aktualisiert Zeilenmetadaten vor ihrer Byteberechnung. Dadurch bleibt die native Größenprüfung auch nach Auswahlersatz und Undo korrekt.
+- Linux-Quellansichten verwenden auch unter Desktopthemes ohne Monospace-Regel eine gleich breite Schrift. Feste Umbruchspalten, Folgezeileneinzug und Seitenlinie richten sich dadurch nach den tatsächlichen Quellzeichen.
+- Neue Markdown-Inlinebefehle bleiben nach Undo/Redo getrennte Rücknahmeschritte; eine abgewiesene Änderung erhält vorhandenes Redo. Der passende private GTK-Kandidat korrigiert zusätzlich die allgemeine After-Redo-Gruppengrenze und erhält echte Rücknahmeschritte bei begrenzter Historie.
+
+## [v1.187.0] — 2026-11-06
+
+- Ein gesonderter optionaler Linux-Laufzeitkandidat verbindet gepinnte GTK-/Pango-Bibliotheken mit getrennten Hostwerkzeugen und eigenen CLI-Zielen. Systempakete bleiben Standard.
+- Der optionale Pfad prüft finale native Textcommits vor Auswahländerung und Rücknahmehistorie; allgemeine IME-Komposition und weitere native Mehrschrittaktionen bleiben ausdrücklich offen.
+
+### Hinzugefügt
+
+- Die Linux-Vorschau und Rich-Ansicht erkennen automatische HTTP(S)-, www- und Mail-Links mit dem bereits auf dem Mac verwendeten cmark-GFM. Geprüfte Quellmetadaten erhalten die ursprünglichen Bereiche bei Entities, Escapes, Tabellen und Fußnoten. Formelsyntax innerhalb einer URL bleibt wörtlicher URL-Inhalt.
+- Linux-Formatprofile speichern Umbruchziel und Folgezeileneinzug. Feste Spalte, Seitenlinie und Einzug sind an einen ausdrücklich passenden nativen Laufzeitpfad gebunden; mit Systembibliotheken bleibt der bisherige Fensterumbruch aktiv.
+- Externe Vorschau-Links verwenden im optionalen Laufzeitpfad das Desktopportal; veraltete oder abgebrochene Aufträge öffnen kein neues Ziel. Das verhindert die Weitergabe privater Toolkit-Umgebungswerte an den Browser.
+- Rich-Markdown erlaubt Mailto-Links auch im vorhandenen Linkdialog. Externe Links werden dort weiterhin nicht geöffnet; Steuerzeichen in Linkzielen werden abgewiesen.
+
+### Behoben
+
+- Der neue GFM-Quellkartenpfad verarbeitet aufeinanderfolgende Mailadressen linear und berücksichtigt Kartenarbeit bei Budget und Abbruch. Eine abgebrochene Berechnung übernimmt keine Teilergebnisse.
+
+## [v1.186.2] — 2026-11-06
+
+### Behoben
+
+- Linux stellt für beide Quellansichten, Such- und Ersetzungsfeld sowie Vorher-/Nachher-Vorschau eindeutige zugängliche Namen in Deutsch und Englisch bereit. Suchmodus und Suchbereich ergänzen den gewählten Wert um eine zugängliche Beschreibung.
+
+## [v1.186.1] — 2026-11-06
+
+### Behoben
+
+- Linux-Quellansichten übernehmen beim Start und bei Themewechseln das tatsächliche helle oder dunkle Fensterprofil. Das gilt auch für dunkle Desktopthemen ohne gesetzte Dunkelpräferenz und für beide geteilten Ansichten; Text und Rücknahme bleiben erhalten.
+
+## [v1.186.0] — 2026-11-06
+
+### Hinzugefügt
+
+- Das Linux-Projektfenster und das Kontextmenü gespeicherter Dokumenttabs bieten „Im Dateimanager zeigen“. Der asynchrone Desktopaufruf erhält rohe Dateipfade; Fehler werden sichtbar erklärt.
+
+### Geändert
+
+- Die sichtbaren Linux-Sortierbefehle und gespeicherten Abläufe verwenden eine stabile, numerische ICU-Sortierung nach der angezeigten Textlocale. Gleiche Schlüssel behalten ihre Reihenfolge, kanonisch gleiche Schreibweisen bleiben unverändert. Die Reihenfolge ist ausdrücklich kein Finder-Paritätsversprechen; die bisherigen deterministischen Root-APIs bleiben erhalten.
+- Versionsdatum und Changelog stimmen wieder überein.
+
+## [v1.185.0] — 2026-11-06
+
+### Behoben
+
+- Groß- und Kleinschreibung im Linux-Textmenü verwenden die ausdrücklich erfasste Text-Systemlocale. Türkische, aserbaidschanische, litauische und griechische Regeln gelten für den vollständig ausgewählten Teilstring.
+- Einzel-, Mehrtab- und Dateiabläufe binden Groß-/Kleinschreibung an dieselbe sichtbare Locale in Schritt- und Endvorschau. Ein Localewechsel verhindert die Übernahme einer alten Berechnung; das bestehende JSON-Format bleibt erhalten.
+
+## [v1.184.0] — 2026-11-06
+
+### Hinzugefügt
+
+- Geteilte Linux-Quellansichten besitzen unabhängige native Auswahlen und Carets. Textbefehle, Navigation, Optionen, Paste und Vorschau verwenden die tatsächlich zuletzt benutzte Quellansicht; Änderungen und native Rücknahme bleiben dokumentweit synchron.
+
+### Behoben
+
+- Reine Caretbewegungen erhalten eine gültige Ganzdatei-Suchvorschau. Die Suche in der Auswahl bleibt streng an ihre Auswahl gebunden.
+- PRIMARY bleibt bei Fokuswechseln und fremden Anbietern unverändert. Das Aufheben einer eigenen Auswahl gibt ausschließlich deren noch aktuelles eigenes Angebot frei, wie im nativen GTK-Verhalten.
+
+## [v1.183.0] — 2026-11-06
+
+### Hinzugefügt
+
+- Die Linux-Markdown-Vorschau übernimmt die enge HTML-Positivliste der Mac-Version einschließlich lokaler Rasterbilder, Tabellen und aufklappbarer Details. Interne Quellpositionen und Codekopierziele bleiben ausschließlich an vertrauenswürdige Renderabschnitte gebunden.
+- Ausdrücklich aktivierte HTTP-, HTTPS- und Mailto-Links öffnen den jeweiligen Systemhandler. Automatische Navigation, andere Protokolle und Netzbilder bleiben gesperrt; die Vorschau selbst bleibt auf ihrer lokalen Seite.
+
+## [v1.182.0] — 2026-11-06
+
+### Hinzugefügt
+
+- Linux liefert `fastra-diff` mit dem vorhandenen externen Vergleichsvertrag. Eigene schreibgeschützte Fenster, ausdrücklicher Fokuswunsch, Labels, Fristen und wiederholbare Auftragsannahme verwenden den lokalen Sitzungsbus. Build, DEB/TAR/ZIP und Benutzerinstallation enthalten den Helfer.
+- Ein eigener Linux-Prüfeinstieg kontrolliert den realen Helfer in privaten Xvfb-/D-Bus-Sitzungen einschließlich gleichzeitiger Kaltstarts und unveränderter Eingaben.
+
+### Behoben
+
+- Lange normale Quelltextpaste scrollt den weiterhin gültigen tatsächlichen Editor zum Caret. Neuere Auswahl-, Tab- oder Fokusänderungen verhindern einen veralteten Scroll; Quelle und native Rücknahme bleiben erhalten.
+- Die Benutzerinstallation erhält ältere Pakete ohne Vergleichshelfer. Upgrade, Rückwechsel und Fehler-Rollback behandeln ausschließlich eigene Launcher.
+
+## [v1.181.0] — 2026-11-06
+
+### Hinzugefügt
+
+- Linux bietet Git-Pull mit ausdrücklichem Fetch, vollständiger Vorschau, eigener Freigabe und den nativen Strategien FF-only, Merge oder Rebase. Ein abschließender Bericht zeigt den tatsächlichen Git-Zustand auch nach Abbruch oder Fehlern; laufende Dateipublikationen und Schließen bleiben geschützt.
+- Eine native Seitenlinie mit Spalte 20 bis 500 lässt sich in den Editoroptionen für alle Fenster und beide Teilansichten einstellen. Sichtbarkeit und Spalte bleiben nach Neustarts erhalten; ausstehende Speicherungen halten Schließen sichtbar an.
+
+### Behoben
+
+- Normale Quelltextpaste über Tastatur, Kontextmenü und Mittelklick einschließlich Zeilennummernleiste prüft das vollständige Ergebnis vor der ersten Änderung. Überlange Zeilen, nicht darstellbare NUL-Daten und überschrittene Gesamtgrenzen erhalten Quelle, Auswahl und Undo statt einer Teilübernahme.
+- Fehler beim Lesen der Git-Konfiguration geben keine rohen Configwerte mehr aus. Der gemeinsame Schutz gilt für Commit, Branchwechsel und Pull und erhält die erfolgreichen Prüfbindungen.
+- Die tatsächlich eingeblendete Linux-Hilfe beschreibt auch die Zeilenendenwahl, Optionsfokus und Rich-Formeln.
+
+## [v1.180.0] — 2026-11-06
+
+### Hinzugefügt
+
+- Die Linux-Rich-Ansicht rendert Inline- und Blockformeln mit lokalem KaTeX. Der umgebende Absatz, Listen und Tabellen bleiben bearbeitbar; die geschützte Formel selbst wird im Quelltext geändert.
+- Kopieren, Ausschneiden und Einfügen zwischen Rich-Ansichten erhalten die ursprüngliche Formelsyntax über das eigene Markdown-Clipboardformat. Allgemeine HTML-Kopie enthält MathML; Klartext folgt dem sichtbaren Text.
+
+### Behoben
+
+- Geschützte verschachtelte Formelquellen behalten Tabellen-Pipes sowie ihre ursprünglichen äußeren Display-Zeilenumbrüche auch nach Änderungen des Nachbartextes. LF, CRLF und CR sowie BOM bleiben beim Speichern erhalten.
+
+## [v1.179.0] — 2026-11-06
+
+### Hinzugefügt
+
+- Linux bietet eine ausdrückliche Wahl zwischen LF, CRLF und CR. Die Wahl wird erst beim Speichern umgesetzt, bleibt bei Abbruch und Fehlern erhalten und wird in der Sitzungswiederherstellung berücksichtigt. Ohne ausdrückliche Wahl bleiben gemischte Zeilenenden unverändert.
+- Speichern unter zeigt die gewählte Zeilenendenkonvertierung vollständig in der Zielvorschau. Kodierung und BOM bleiben erhalten; beim Speichern am bisherigen Ort ist die Textkonvertierung in einem Schritt rücknehmbar.
+
+### Behoben
+
+- Die Linux-Editoroptionen erhalten die vorherige Quelltextauswahl und ihren Fokus, solange das Dokument und die Benutzerinteraktion unverändert sind. Spätere Auswahländerungen werden nicht durch alte Dialogzustände überschrieben.
+- Speichern und anschließendes Schließen binden die Zeilenendenkonvertierung an den tatsächlich gesicherten Stand. Ausstehende Formatwahlen bleiben auch nach Text-Undo ungesichert; Rich-Eingaben bleiben bis zur bestätigten Speicherung geschützt.
+
+## [v1.178.0] — 2026-11-06
+
+### Hinzugefügt
+
+- Linux-Rechtecke lassen sich als Klartext kopieren und ausschneiden sowie per Ctrl+Shift+Pfeiltasten über logische Zeilen erweitern. Normales Einfügen und profilgerechte Spaltenpaste sind getrennte Aktionen; zusätzliche Clipboardzeilen setzen sich bis hinter das Dateiende fort.
+- Linux speichert unabhängige Tab-/Einrückungsbreiten, Tabs/Leerzeichen und Fensterumbruch pro Syntaxformat. Neue Tabs und Prozessneustarts übernehmen die Profile; unvollständige Speicherungen halten normales Schließen und Beenden sichtbar an.
+- „Andere Tabs schließen“ fragt alle betroffenen ungesicherten Dokumente ab, bevor gemeinsam geschlossen wird. Spätes Abbrechen erhält den vollständigen Tabbestand; laufende und überholte Änderungen bleiben geschützt.
+- Die Linux-Markdown-Vorschau stellt Inline- und Blockformeln mit KaTeX dar. Nicht unterstützte Formeln erhalten einen sichtbaren Quellhinweis.
+
+### Behoben
+
+- Markdown-Vorschau, Rich-Quellbereiche, Codekopie und Bildreferenzen verwenden eine gemeinsame Parseransicht für LF, CRLF und CR, ohne originale Quellpositionen zu verlieren. Bildziele und globale Referenzen bleiben auch neben Formeln wörtlich erhalten.
+- Neue Rechteck-Einfügeaufträge entwerten ältere Zwischenablageantworten. Vollständige Ergebniszeilen einschließlich bestehender Zeichen und Auffüllung werden vor jeder Änderung auf die Editorgrenzen geprüft.
+
+## [v1.177.0] — 2026-11-05
+
+### Behoben
+
+- Linux-Rechteckauswahlen und Spaltenpaste verwenden die eingestellte Tabbreite statt stets vier Spalten. Eine geänderte Tabbreite beendet die alte Ziehgeste und entwertet die vorherige Rechteckbasis, ohne Text oder Rücknahme zu ändern.
+- Die Stage-/Unstage- und Branch-Erstellen-Dialoge verweisen auf die vorhandenen Commit- und Branchwechselansichten. Ein veralteter deaktivierter Commit-Platzhalter entfällt.
+
+## [v1.176.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Linux verbindet Quelltext und Markdown-Vorschau per Klick in beide Richtungen. Quellpositionen bleiben an das aktuelle Dokument und dessen Revision gebunden; verdeckte Zielbereiche werden geöffnet.
+- Codeblöcke der Linux-Markdown-Vorschau besitzen einen per Maus und Tastatur erreichbaren Kopierknopf. Er kopiert den vollständig dargestellten Code als Klartext und entfernt ältere HTML-/RTF-Clipboardformate.
+
+### Behoben
+
+- Die Linux-Fensterhöhe wächst beim Wechsel von schmaler zu breiter Darstellung nicht mehr durch die ungebundene Größenmessung der Sitzungsknöpfe.
+- Allgemeines Kopieren aus der Markdown-Vorschau entfernt interne Positions-/Codeattribute und Kopiercontrols ohne Textverlust. Druck zeigt keine Codekopierknöpfe.
+
+## [v1.175.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Linux zeigt ansonsten leere Markdown-Zeilen mit mindestens zwei normalen Leerzeichen als sichtbare Zeilen, auch in Listen und Zitaten. Bestehende Parserstruktur, Originalzeilen und unveränderte Quellblöcke bleiben erhalten.
+
+### Behoben
+
+- Rich-Markdown erhält Link- und Bildreferenzen auf Definitionen außerhalb des bearbeiteten Blocks, auch zusammen mit Textmarkierungen.
+- Kopieren sichtbarer Leerzeilen übernimmt normale Umbrüche ohne interne Quellpositionsattribute. Eingetippter Text bleibt beim Kopieren und Ausschneiden erhalten; ein Listenrundlauf erzeugt keine zusätzliche sichtbare Leerzeile.
+- Der Linux-Fenstertestrunner isoliert das Home-Verzeichnis und entfernt auch geerbte Bild-/Ordner-Quit-Prüfflags vor der ausdrücklich gewählten Prüfung.
+
+## [v1.174.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Linux bietet „Speichern unter“ mit vollständigem Textvergleich, eigener Überschreibfreigabe und geprüften Kopien tatsächlich verwendeter Markdown-Bilder. Kodierung, Sprachwahl und Dateibeobachtung folgen dem übernommenen Ziel; Ursprungsdateien bleiben erhalten.
+- „Fastra beenden“ und Ctrl+Shift+Q koordinieren alle Fenster einschließlich Rich-Abgleich, Speicherentscheidungen und dauerhafter Sitzungssicherung. Abbrechen und veraltete Freigaben halten den gemeinsamen Abschluss an.
+- Ein eigener, standardmäßig ausgeschalteter Force-Push-Modus zeigt sämtliche ausgehenden und verdrängten Commits. Er benötigt eine neue ausdrückliche Zustimmung und verwendet die exakt bestätigte Server-Lease.
+
+### Behoben
+
+- Laufende Ordneränderungen und Rücknahmen schützen ihr Hauptfenster bis zur abschließenden Ergebnis- und Journalübernahme vor appweitem Beenden.
+- Laufende Bildpublikationen und Rücknahmen schützen auch nach einem Moduswechsel bis zur letzten Zustandsprüfung vor vorzeitigem Beenden.
+- „Speichern unter“ bindet Bildpfade mit Symlinks und Elternsegmenten an dieselbe tatsächliche Datei wie die Darstellung; ausgetauschte Aliasziele verhindern die Veröffentlichung.
+
+## [v1.173.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Die Linux-Gitansicht erstellt normale Commits aus dem vollständig geprüften Index. Vorschau und Zustimmung binden Tree, sämtliche Parents, Nachricht, Identitäten und Signierung; native Hooks bleiben aktiv. Der bestehende Arbeitsindex und ungesicherte Puffer bleiben erhalten.
+
+### Behoben
+
+- Fehlende interne Hookweiterleitungen verweigern den Commit vor der Veröffentlichung, anstatt einen vorhandenen Originalhook auszulassen.
+- Rich-Bilder tragen bereits ab Anzeige und Einfügung eine feste Byteversion. Verspätete Kopiermeldungen übernehmen keine inzwischen ausgetauschten Bildbytes; reine Bildaktualisierungen verändern den ursprünglichen Markdown-Block nicht.
+
+## [v1.172.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Lokale Rasterbilder der Rich-Markdown-Ansicht werden bei externen Dateiänderungen automatisch im Hintergrund neu geprüft. Text, Auswahl, Scrollposition und Rücknahme bleiben erhalten; fehlende oder ungültige Dateien zeigen keine veralteten Bildbytes.
+- Geänderte Symlinkziele und wiederhergestellte Bilddateien werden ebenfalls erkannt. Bildadressen sind an den geprüften Inhalt gebunden; das bestehende Speicher- und Pixelbudget gilt bereits vor weiteren Decoderläufen.
+
+## [v1.171.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Rich-Markdown übernimmt Rasterbilder aus der Zwischenablage, lokale Bilddateien, private Bildpakete und eingebettete HTML-Datenbilder über eine vollständige Dateivorschau. Gemischte Drops öffnen weitere Dateien erst nach der bestätigten Bildeinfügung.
+- Eigene Bilddateien besitzen sicheres Rückgängig/Wiederholen mit erhaltenen Wiederherstellungsdaten. Gespeicherte und andere offene Dokumentverweise schützen vor einer unpassenden Bildrücknahme.
+- Reines RTF aus der Zwischenablage führt mit sichtbarer Verlustwarnung in den bestehenden lokalen Importdialog. TIFF-/HEIC-Übernahme kündigt die Konvertierung nach PNG ausdrücklich an.
+
+## [v1.170.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Normaler lokaler Branchwechsel mit vollständiger Vorschau, ausdrücklicher Bestätigung, laufender Ausgabe und anschließender Zustandsprüfung. Ungespeicherte Puffer bleiben erhalten; externes Git und native Hook-Teiländerungen werden nicht als atomar gesperrt dargestellt.
+
+### Behoben
+
+- Weitere Linux-Starts und Dateiaufrufe öffnen native Fenster in derselben Anwendung. Die lokale Steuerung sieht damit sämtliche Fenster; relative und nicht UTF-8-kodierte Pfade bleiben an den tatsächlichen Aufrufer gebunden.
+- Fehlgeschlagene Socketstarts melden einen Fehler statt eines dauerhaft gehaltenen unsichtbaren Dienstes. Optionsseparatoren bleiben auch in gemischten Dateilisten von tatsächlichen Bindestrich-Dateinamen getrennt.
+- Ein reiner Steuerungsdienst kann später normale Fenster öffnen. Abgewiesenes Schließen ungesicherter Dokumente erhält deren Registrierung; tatsächlich geschlossene Fenster geben ihren Zustand frei.
+
+## [v1.169.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Lokale Git-Branchliste und ausdrückliches Erstellen eines Branches an einer bestätigten vollständigen Commit-ID, ohne Arbeitsbaum-, Index- oder Branchwechsel.
+- Normale manuelle Git-Pushs mit vollständiger Vorschau, festem Quellcommit, unabhängigem Fast-Forward-Nachweis, exakter Server-Lease, laufender Ausgabe und Abbruch. Die geprüfte Zieladresse bleibt auch bei späteren Konfigurationsänderungen gebunden.
+- Native Gliederung direkt in Rich-Markdown mit Filter, Seiteneinteilung und sichtbaren Überschriftensprüngen. Änderungen vor Annahme sperren alte Sprünge; bereits angenommene WebKit-Navigation bleibt an ihre ursprüngliche Ansicht gebunden.
+
+### Behoben
+
+- Die isolierte 4D-Makrolaufzeit stellt die vorhandene System-Shell ausdrücklich readonly bereit. Engines können damit lokale SystemWorker-Shellaufrufe innerhalb derselben Datei-, PID- und Netzwerkisolation ausführen.
+- Linux-Paketierung weist die widersprüchliche gleichzeitige Wahl von Signierschlüssel und `--unsigned` vor jedem Build ausdrücklich ab.
+- Makroläufe sehen den tatsächlichen POSIX-Aufrufer als Systemnutzer; ein künstlicher Sandboxname kann nicht mehr unbemerkt als Methodenautor erscheinen. Das private Home und die übrige Isolation bleiben erhalten.
+- Die beiden Mac-Push-Prüfstellen erkennen direkte und eingebundene Git-URL-Umschreibregeln mit dem von Git tatsächlich verwendeten Regex- und Kleinschreibungsverhalten.
+
+## [v1.168.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Linux-Skripte für nativen Debug-/Release-Build, reproduzierbare lokale DEB-/TAR-/ZIP-Pakete, ausdrückliche OpenPGP-Signierung und geprüfte Benutzerinstallation mit atomarem Versionswechsel. Die vorhandenen Rootskripte wählen automatisch den passenden Plattformpfad.
+- Ausführbare 4D-Makros über eine ausdrücklich gewählte Tool4D-Runtime und MacroRun-Engine: begrenzte private Projektkopie, isolierter Start, vollständige Diff-Vorschau und ein Undo bei Übernahme.
+- Formatierte Linux-Zwischenablage für Rich-Markdown mit privaten Markdown-, HTML- und Klartextformaten, bearbeitbaren Textmarkern und dokumentgebundenem Ausschnitt beim Moduswechsel.
+- Lokale Steuerung über `fastra-control` und einen benutzergebundenen Unixsocket: Fähigkeiten, Dokumentinventar, schreibgeschützte Snapshots, Codefragen und statusgebundene Navigation. GUI und CLI verwenden dieselben begrenzten Readonly-Sitzungen und prüfen Dokument-, Quellen- und Auftragsgenerationen.
+
+### Behoben
+
+- Die lokale Steuerung und Codefragepakete akzeptieren exakt darstellbare JSON-Ganzzahlformen auch mit Dezimalpunkt oder Exponent. Mathematisch gebrochene Werte werden ausdrücklich abgewiesen, ohne Quellen oder Markierungen still zu runden.
+
+## [v1.167.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Nativer Git-Fetch für einen oder alle konfigurierten Remotes, ausdrückliche Prune-Auswahl, laufende Ausgabe und Abbruch. Gemeinsame Git-Verzeichnisse koordinieren Fetch und Indexübernahme; offene Git-Ansichten laden danach neu.
+
+### Behoben
+
+- Leere Absätze nach formatiertem Einfügen und Return enthalten im WYSIWYG-Modus keine isolierten Fettzeichen mehr. Vollständiges Löschen entfernt verwaiste Leerblöcke; unveränderte Quellblöcke und Referenzdefinitionen bleiben erhalten.
+- Bearbeitete und kopierte Inlineformate mit geschützten Leerzeichen verwenden Markdown, soweit die tatsächlichen Formatgrenzen dies erlauben. Notwendiges Inline-HTML bleibt erhalten; verschachtelte Fett-/Kursiv-/Textmarkerformate werden nicht pauschal in HTML umgewandelt.
+- Kopierte Textmarker erhalten ihre sichtbare Hintergrundfarbe ausdrücklich im HTML-Fragment.
+- Der Mac-WYSIWYG-Ausschnitt bleibt beim erneuten Moduswechsel an Dokumentidentität und Quellrevision gebunden erhalten; eigene Eingaben brechen eine verspätete Wiederherstellung ab.
+
+## [v1.166.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Native 4D-Vervollständigung mit Befehlen, Originalsignaturen, Konstanten sowie ausdrücklich aktualisierten Projekt- und Komponentenindizes. Maus, Pfeiltasten, Return, Tab, Escape und Ctrl+Leertaste bedienen dieselbe geprüfte Vorschlagsliste.
+- Lokale 4D-Textmakros mit XML-Katalog, vollständiger Diff-Vorschau, geschützter Übernahme und einmaligem Rückgängigmachen. Platzhalter für Auswahl, Methode, Text, Benutzer, Datum, Zeit und Cursor benötigen keine 4D-Laufzeit; ausführbare Laufzeitmakros bleiben gesondert offen.
+- Eigenes schreibgeschütztes Code-Erklärungsfenster für vorhandene lokale Snapshotpakete. Quellenhashes, UTF-16-Markierungen, sichtbare Navigation, Pause nach eigenem Erkunden, Schriftgrößen und Umbruch bleiben an den geladenen Quellenstand gebunden.
+
+### Behoben
+
+- Zweigeteilte Vorschauen warten vor der anfänglichen Aufteilung auf tatsächlich dargestellte Inhalte. Verborgene Notebookseiten können dadurch keine Seite auf Breite null festlegen.
+- Das Werkzeuge-Menü bleibt auf kleinen Bildschirmen scrollbar erreichbar.
+- PMT-Quellidentitäten bewahren zusätzliche Mitgliedspfade als Metadaten; das vorhandene Importprotokoll und der normale Werkzeugaufruf bleiben unverändert.
+
+## [v1.165.1] — 2026-11-05
+
+### Behoben
+
+- Beispieltransformationen folgen auch bei Zeilenumbrüchen mit angrenzenden kombinierenden Zeichen dem tatsächlich auf macOS ausgeführten Swift-Verhalten. Der echte Mac-Referenzlauf ersetzt hierbei abweichende Linux-Foundation-Ergebnisse.
+
+## [v1.165.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Einzelne Linux-Tabs über sichtbare Schließen-Knöpfe und Ctrl+W schließen, mit Speichern/Verwerfen/Abbrechen, Schutz laufender Speichervorgänge und Erhalt von Rich- und Hex-Entwürfen.
+- Persistenter Suchpaarverlauf mit 15 exakten Paaren, gemeinsamer Aktualisierung mehrerer Fenster, Auswahl ohne automatische Suche und sichtbarem Leeren.
+- Native Transformation per Beispiel mit Original-Swift-Inferenz, echter Wildcard-Vorschau und gesonderter Übernahme in das Suchformular.
+- PMT-Importangebote beim Öffnen von Dateien und Paketen, werkzeuggebundener Katalogcache, laufender Fortschritt und lokalisierte Diagnosen auf Grundlage des vorhandenen CLI-Vertrags.
+
+### Behoben
+
+- Veraltete Tab- und Fenster-Rückfragen dürfen zwischenzeitliche Eingaben nicht verwerfen. Der Dokumentbereich bewahrt die Mindesthöhe der vollständigen Tab-Leiste.
+- Importvorschauen bleiben an die tatsächliche Projektauswahl gebunden; ein Wechsel zurück zum gleichen Projekt macht alte Freigaben nicht wieder gültig.
+- Nicht als UTF-8 darstellbare Importpfade werden kontrolliert abgewiesen, ohne versehentlich eine ähnlich angezeigte andere Datei zu öffnen. Fortschritt und Konverter verwenden denselben aufgelösten Quellnamen.
+- Bei hartem Verlust der Linux-Oberfläche erhält der direkte Importprozess ein Beendigungssignal; der bestehende PMT-Prozesswächter bereinigt seine Konvertierungsnachkommen.
+
+## [v1.164.1] — 2026-11-05
+
+### Behoben
+
+- Regex-Zeilenfilter verwenden eine einzige kompilierte Suchregel für alle Zeilen und vermeiden wiederholte Kompilierung großer Eingaben.
+- Interaktive Textoperationen verwenden ein gemeinsames, unverändert auf 4 MiB begrenztes Ein-/Ausgabeprofil.
+
+## [v1.164.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Gespeicherte Textabläufe für eine Datei, einen Ordner oder das aktuelle Projekt mit vollständigen Zwischenstufen, Ergebnisfreigaben, atomischer Übernahme und Datei-Rücknahme.
+- Lesende Git-Historie mit Graph, ausdrücklicher Merge-Elternwahl und unveränderlichen Vorher-/Nachher-Blobpaaren; historische Lesezugriffe lösen keinen Lazy-Fetch aus.
+- Native Datei-/Ordner-Drops und gemeinsamer Desktop-Öffnungspfad mit begrenzter lokaler Auswahlprüfung, Dublettenschutz und eindeutiger Anzeige roher Dateinamen.
+
+### Behoben
+
+- Gleichzeitiges Einklappen der Suche und Vergrößern des Fensters kann die Dokumentfläche nicht mehr durch eine überlaufende Splitterposition verstecken. Der native breite Splitter erhält die Mausklicks zum Wiederöffnen der Suche.
+- Ordnerübernahmen und Rücknahmen prüfen das sichtbare Ursprungsfenster erneut und brechen beim Verbergen kontrolliert ab.
+- Betroffene schreibgeschützte Ansichten verhindern Dateiablauf-Schreibzugriffe; ihr leerer Textpuffer wird nicht als neue Dateibasis aktualisiert.
+
+## [v1.163.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Nativer Sprung zu Zeile und UTF-16-Spalte mit geprüfter Bindung an Quelltext, Cursor und Auswahl.
+- 4D-Tokenbereinigung und Befehlstokenisierung sowie Wortanfänge gemäß ausdrücklich angezeigter Text-Systemlocale; gespeicherte Abläufe unterstützen alle 39 vorhandenen Schrittarten.
+- Textabläufe über alle editierbaren Tabs mit vollständigen Zwischenstufen, einzelnen Ergebnisfreigaben und gemeinsamer Rücknahme.
+- Optionaler isolierter Adapter für eine separat bereitgestellte tool4d-Laufzeit: Dokumentdiagnosen und Parameterhilfe für ungesicherten Quelltext, ohne Änderungen oder Makroausführung.
+
+### Behoben
+
+- Mehrtab-Übernahmen berechnen den Ungesichert-Zustand gegen den zuletzt gespeicherten Text; geschlossene Hauptfenster verwerfen ausstehende Übernahmen.
+- Der vertrauenswürdige 4D-Worker lädt keine Bibliotheken aus der ausgewählten Laufzeit. Ausgetauschte Laufzeit-Einstiege werden vor dem Start fremden Codes zurückgewiesen.
+
+## [v1.162.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Gespeicherte Texte und Dokumentvorschauen lassen sich als Dateibytes in einem neuen Hex-Tab öffnen; ungespeicherter Quelltext bleibt im bisherigen Tab erhalten.
+- Sichtbare Liste der zwölf zuletzt ausdrücklich geöffneten Projekte mit bytegenauen Pfaden, frischer Zusammenführung sowie Öffnen, Entfernen und Leeren ohne Autostart.
+
+### Behoben
+
+- Der Rückabgleich nach Hex-Speichern erhält die ausdrücklich gewählte Zeichenkodierung sauberer Texttabs.
+
+## [v1.161.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Optionaler nativer Hexentwurf mit zeilenweiser Bearbeitung, eigenem Undo/Redo und vollständiger Bytevorschau vor atomischem Speichern.
+- Gebündelte 4D-Syntaxfarben, statische Definitionen, begrenzter Projektmethodenindex und Parameterhilfe am Cursor.
+- Weitere Textbefehle für Tabs und Einrückung, harten Umbruch, Anführungszeichen, Escapes, diakritische Zeichen, Emoji sowie Zeichen- und Worttausch; gespeicherte Abläufe unterstützen 36 der 39 bestehenden Schrittarten.
+
+### Behoben
+
+- Fehler nach einem bereits ausgeführten Dateischreibvorgang erhalten den Wiederherstellungspfad auch bei fehlender Zieldatei oder gescheiterter Anschlussprüfung.
+
+## [v1.160.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Native Syntaxwahl mit privater, dateibezogener Speicherung sowie gemeinsame Einrückungs- und Darstellungsoptionen für beide Ansichten eines Tabs.
+- Auf die aktuelle Textauswahl gebundene Suche und Ersetzung ohne Ganzdatei-Rückfall.
+- Lesender Ordnervergleich mit paginierten Statusfiltern und frischer Textpaaransicht.
+- Git-Vormerken und Zurücknehmen mit vollständiger Indexvorschau; weitere Git-Aktionen bleiben offen.
+- Begrenzte XPath-Quellnavigation mit Unicode-genauen Trefferbereichen, Vorschlägen und paginierten Ergebnissen.
+
+### Behoben
+
+- Eingeklappte Suche gibt ihre Fläche wieder vollständig an das Dokument zurück.
+- Nicht darstellbare Ersetzungsergebnisse werden auch unmittelbar vor der Einzeldatei-Übernahme abgewiesen.
+- Rohpfadanzeigen unterscheiden tatsächliche Backslashes von dargestellten Byte-Escapes.
+
+## [v1.159.0] — 2026-11-05
+
+### Hinzugefügt
+
+- Vollständige Mehrtab-Suchvorschau mit einzelnen Trefferfreigaben und geprüfter gemeinsamer Rücknahme; alternative Escape-Darstellung für eindeutige Unicode- und Steuerzeichenprüfung.
+- Sichtbare Wiederaufnahme und geprüfte Bereinigung von Dateitransaktionen sowie ausdrücklich aktivierbare lokale Textsitzungssicherung mit vollständiger Wiederherstellungsvorschau.
+- Nativer Projektbaum, Vorschau externer Dateiänderungen und fortgesetzte Rechteckbearbeitung mit mehreren Cursorn.
+- Isolierte Bild-, SVG- und PDF-Vorschau sowie formatierte Markdown-Bearbeitung mit synchronisiertem Speichern und Schließen.
+- Markdown-Gliederung mit an die Dokumentrevision gebundenen Quelltext- und Vorschau-Sprüngen; Linux-Pakete berücksichtigen die zusätzlichen Decoder und vollständigen Skriptlizenzen.
+- Gespeicherte mehrstufige Textabläufe und parametrisierte Textbausteine mit vollständigen Zwischenvorschauen, freigegebener Übernahme und kompatiblem Sammlungsimport/-export.
+
+- Suchvorlagenverwaltung mit 38 mitgelieferten Mustern und kompatiblem JSON-Import/-Export sowie an die Projektwurzel gebundene Suche.
+- Nativer Druck für Quelltext, Hex, Bilder und PDF-Seiten sowie WebKit-Druck für Markdown-Vorschau und Schreibmodus.
+
+## [v1.158.0] — 2026-11-04
+
+### Hinzugefügt
+
+- Erster nativer Linux-Entwicklungsstand mit Tabs, geteilter Ansicht, logischer Rechteckauswahl, Suchvorschau, Trefferfreigaben und gemeinsamem Undo.
+- Sicheres Speichern bestehender und neuer Dateien über geprüfte Snapshots und atomare Linux-Dateioperationen.
+- Gemeinsamer Rust-Suchkern mit ICU 78.3, verlustfreien Dateicodecs, Textwerkzeugen und einer typisierten Swift-Anbindung. Die bisherigen Mac-Produktpfade bleiben erhalten.
+- Native Linux-Markdown-Vorschau mit lokalen Bildern, Formeln und Diagrammen sowie eine freigabegesteuerte Ordnerersetzung mit Datei-Undo.
+- Isoliert geprüfte Linux-Paketierung; weitere Suchbereiche und vollständige Funktionsgleichheit bleiben in Arbeit.
+
+## [v1.157.2] — 2026-11-04
+
+### Behoben
+
+- Markdown-Sammlungen öffnen nach der Übernahme die vom Konverter gemeldete Übersichtsdatei, auch bei abweichendem Dateinamen, Unterordnern und belegtem Zielnamen.
+
+## [v1.157.1] — 2026-10-28
+
+### Behoben
+
+- Verspätete Markdown-Umwandlungen aus Git-Ansichten öffnen nach Projektwechsel oder Projektschließen keine Datei im verlassenen Projekt mehr.
+- Eine inzwischen wiederverwendete oder festgesteckte Diff-Vorschau bleibt nach Abschluss einer Umwandlung erhalten.
+
 ## [v1.157.0] — 2026-10-27
 
 ### Hinzugefügt

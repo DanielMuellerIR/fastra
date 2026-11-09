@@ -7,7 +7,9 @@ Ersetzung über Dateien und Ordner. Die App läuft auf macOS 14+ und Apple Silic
 Sie nutzt Swift, SwiftUI, `NSRegularExpression`, tree-sitter-regex und den
 CodeEditSourceEditor. Das Produkt bleibt lokal: keine Cloud-Verarbeitung, keine
 Konten, keine Telemetrie und keine versteckten Uploads. Die dokumentierte
-Sparkle-Updateprüfung lädt ausschließlich den signierten Appcast von GitHub Pages;
+Sparkle-Updateprüfung auf macOS lädt ausschließlich den signierten Appcast von
+GitHub Pages. Aktive Linux-Benutzerinstallationen prüfen stabile GitHub-Releases
+und installieren passende, vollständig geprüfte Pakete erst nach Freigabe.
 Hardware- und Systemprofilübermittlung ist deaktiviert.
 
 Der Produktkern ist nicht „Regex mit einer GUI“, sondern die Vorschau vor jeder
@@ -31,6 +33,11 @@ ermitteln.
 
 ## Produktinvarianten
 
+- Die Linux-Oberfläche soll der aktuellen Mac-Version optisch und im Aufbau
+  entsprechen. Farben, Typografie, Abstände, Tabs, Seitenleiste und Suchfenster
+  anhand gleicher Testdaten direkt vergleichen. Plattformunterschiede nur bei
+  konkreten technischen Grenzen oder unverhältnismäßigem Aufwand akzeptieren
+  und einzeln begründen; ein Toolkit-Standardlayout ist kein Ersatz.
 - Jede schreibende Mehrfachänderung besitzt eine vollständige, verständliche
   Vorschau. „Apply“ darf nie auf eine andere Trefferbasis wirken als die sichtbare
   Vorschau.

@@ -18,6 +18,38 @@ Sternen“. Das Sternchen (`*`) ist der Star.*
 
 ![Fastra im Light-Mode mit sichtbarem Home-Button](screenshots/editor-light.png)
 
+## Linux-Entwicklungsstand
+
+Im selben Repository entsteht eine native Linux-Anwendung mit Rust und GTK.
+Der aktuelle Stand unterstützt Dokumentbearbeitung, Suchvorschauen über Tabs,
+Ordner und Projekte, sicheres Speichern und Transaktionswiederaufnahme, optionale
+lokale Sitzungssicherungen, Markdown-Bearbeitung, Dokumentvorschauen, Textabläufe
+und Drucken. Die Mac-Funktionen sind noch nicht vollständig
+übertragen. Details stehen im [Linux-Umsetzungsstand](docs/linux-port/F07-LINUX.md)
+und in der [Build- und Paketierungsanleitung](docs/linux-port/F16-PACKAGING.md).
+
+Auch für Linux gibt es bequeme Einstiegsskripte. `./build.sh` baut die native
+GTK-Anwendung und den GTK-freien Helfer `fastra-control`; `--release` erzeugt
+einen optimierten Build, `./linux/run.sh` startet ihn. Die Entwicklungspakete der
+Distribution müssen bereits installiert sein. Das Skript lädt den offiziellen
+ICU-78.3-Quellcode, prüft den festgelegten SHA256 und baut ihn im privaten
+Benutzercache. `--icu-prefix VERZEICHNIS` verwendet einen bereits mit
+`tools/linux-package/build-icu.sh` erzeugten Präfix.
+
+`./release.sh --unsigned` baut lokale DEB-, portable tar.gz- und ZIP-Pakete im
+gepinnten Ubuntu-24.04-Dockerbuilder für x86_64. Eine lokal mit OpenPGP signierte
+Fassung entsteht mit `./release.sh --key VOLLSTÄNDIGER_SIGNIERFINGERPRINT`.
+Das Skript signiert und prüft die relativen `SHA256SUMS`; es veröffentlicht nichts.
+`./linux/sign.sh --key FINGERPRINT PAKETVERZEICHNIS` signiert vorhandene Pakete.
+
+`./install.sh --package PFAD_ZUM_PORTABLEN_ARCHIV` prüft Paket und Manifest und
+installiert unter `~/.local`; frühere Versionen bleiben erhalten. `SHA256SUMS`
+muss neben dem Archiv liegen. `--key FINGERPRINT` verlangt zusätzlich dessen
+OpenPGP-Signatur. Alle Einstiegsskripte besitzen `--help`. Details stehen in den
+[Linux-Build- und Paketierungshinweisen](docs/linux-port/F16-PACKAGING.md).
+
+Linux-Benutzerinstallationen bieten **Updates …**: Die automatische tägliche GitHub-Prüfung lässt sich dort abschalten. Neue stabile Linux-Pakete werden erst nach Freigabe geladen und vor dem atomaren Versionswechsel gegen GitHubs SHA256 und das Laufzeitmanifest geprüft. Die neue Fassung gilt nach Beenden und erneutem Start; die laufende Sitzung bleibt erhalten. Quellbuilds, Systempakete und der optionale Toolkitkanal behalten ihren bisherigen Updateweg.
+
 ## Download / Releases
 
 Fertige Builds gibt es als DMG auf der

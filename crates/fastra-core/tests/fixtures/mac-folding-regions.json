@@ -1,0 +1,7730 @@
+[
+  {
+    "language" : "bash",
+    "name" : "bash-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          40
+        ],
+        "characters" : [
+          7,
+          37
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          38
+        ]
+      }
+    ],
+    "text" : "run() {\n if true; then\n echo \"😀\"\n fi\n}\n"
+  },
+  {
+    "language" : "bash",
+    "name" : "bash-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          44
+        ],
+        "characters" : [
+          7,
+          41
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          42
+        ]
+      }
+    ],
+    "text" : "run() {\r\n if true; then\r\n echo \"😀\"\r\n fi\r\n}\r\n"
+  },
+  {
+    "language" : "bash",
+    "name" : "bash-cr",
+    "regions" : [
+
+    ],
+    "text" : "run() {\r if true; then\r echo \"😀\"\r fi\r}\r"
+  },
+  {
+    "language" : "bash",
+    "name" : "bash-nel",
+    "regions" : [
+
+    ],
+    "text" : "run() { if true; then echo \"😀\" fi}"
+  },
+  {
+    "language" : "bash",
+    "name" : "bash-ls",
+    "regions" : [
+
+    ],
+    "text" : "run() {  if true; then  echo \"😀\"  fi } "
+  },
+  {
+    "language" : "bash",
+    "name" : "bash-ps",
+    "regions" : [
+
+    ],
+    "text" : "run() {  if true; then  echo \"😀\"  fi } "
+  },
+  {
+    "language" : "bash",
+    "name" : "bash-broken",
+    "regions" : [
+
+    ],
+    "text" : "run() {\n if true; then\n echo \"😀\"\n fi\n\n"
+  },
+  {
+    "language" : "c",
+    "name" : "c-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          70
+        ],
+        "characters" : [
+          17,
+          67
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          68
+        ]
+      },
+      {
+        "bytes" : [
+          26,
+          45
+        ],
+        "characters" : [
+          26,
+          42
+        ],
+        "depth" : 2,
+        "utf16" : [
+          26,
+          43
+        ]
+      },
+      {
+        "bytes" : [
+          53,
+          68
+        ],
+        "characters" : [
+          50,
+          65
+        ],
+        "depth" : 2,
+        "utf16" : [
+          51,
+          66
+        ]
+      }
+    ],
+    "text" : "void run(int x) {\nif (x) {\nprintf(\"😀 }\");\n} else {\nprintf(\"no\");\n}\n}\n"
+  },
+  {
+    "language" : "c",
+    "name" : "c-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          76
+        ],
+        "characters" : [
+          17,
+          73
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          74
+        ]
+      },
+      {
+        "bytes" : [
+          27,
+          48
+        ],
+        "characters" : [
+          27,
+          45
+        ],
+        "depth" : 2,
+        "utf16" : [
+          27,
+          46
+        ]
+      },
+      {
+        "bytes" : [
+          56,
+          73
+        ],
+        "characters" : [
+          53,
+          70
+        ],
+        "depth" : 2,
+        "utf16" : [
+          54,
+          71
+        ]
+      }
+    ],
+    "text" : "void run(int x) {\r\nif (x) {\r\nprintf(\"😀 }\");\r\n} else {\r\nprintf(\"no\");\r\n}\r\n}\r\n"
+  },
+  {
+    "language" : "c",
+    "name" : "c-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          70
+        ],
+        "characters" : [
+          17,
+          67
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          68
+        ]
+      },
+      {
+        "bytes" : [
+          26,
+          45
+        ],
+        "characters" : [
+          26,
+          42
+        ],
+        "depth" : 2,
+        "utf16" : [
+          26,
+          43
+        ]
+      },
+      {
+        "bytes" : [
+          53,
+          68
+        ],
+        "characters" : [
+          50,
+          65
+        ],
+        "depth" : 2,
+        "utf16" : [
+          51,
+          66
+        ]
+      }
+    ],
+    "text" : "void run(int x) {\rif (x) {\rprintf(\"😀 }\");\r} else {\rprintf(\"no\");\r}\r}\r"
+  },
+  {
+    "language" : "c",
+    "name" : "c-nel",
+    "regions" : [
+
+    ],
+    "text" : "void run(int x) {if (x) {printf(\"😀 }\");} else {printf(\"no\");}}"
+  },
+  {
+    "language" : "c",
+    "name" : "c-ls",
+    "regions" : [
+
+    ],
+    "text" : "void run(int x) { if (x) { printf(\"😀 }\"); } else { printf(\"no\"); } } "
+  },
+  {
+    "language" : "c",
+    "name" : "c-ps",
+    "regions" : [
+
+    ],
+    "text" : "void run(int x) { if (x) { printf(\"😀 }\"); } else { printf(\"no\"); } } "
+  },
+  {
+    "language" : "c",
+    "name" : "c-broken",
+    "regions" : [
+
+    ],
+    "text" : "void run(int x) {\nif (x) {\nprintf(\"😀 \");\n else {\nprintf(\"no\");\n\n\n"
+  },
+  {
+    "language" : "cpp",
+    "name" : "cpp-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          10,
+          66
+        ],
+        "characters" : [
+          10,
+          63
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          64
+        ]
+      },
+      {
+        "bytes" : [
+          24,
+          64
+        ],
+        "characters" : [
+          24,
+          61
+        ],
+        "depth" : 2,
+        "utf16" : [
+          24,
+          62
+        ]
+      },
+      {
+        "bytes" : [
+          37,
+          61
+        ],
+        "characters" : [
+          37,
+          58
+        ],
+        "depth" : 3,
+        "utf16" : [
+          37,
+          59
+        ]
+      }
+    ],
+    "text" : "struct A {\n void run() {\n if (true) {\n std::cout << \"😀\";\n }\n }\n};\n"
+  },
+  {
+    "language" : "cpp",
+    "name" : "cpp-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          10,
+          72
+        ],
+        "characters" : [
+          10,
+          69
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          70
+        ]
+      },
+      {
+        "bytes" : [
+          25,
+          69
+        ],
+        "characters" : [
+          25,
+          66
+        ],
+        "depth" : 2,
+        "utf16" : [
+          25,
+          67
+        ]
+      },
+      {
+        "bytes" : [
+          39,
+          65
+        ],
+        "characters" : [
+          39,
+          62
+        ],
+        "depth" : 3,
+        "utf16" : [
+          39,
+          63
+        ]
+      }
+    ],
+    "text" : "struct A {\r\n void run() {\r\n if (true) {\r\n std::cout << \"😀\";\r\n }\r\n }\r\n};\r\n"
+  },
+  {
+    "language" : "cpp",
+    "name" : "cpp-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          10,
+          66
+        ],
+        "characters" : [
+          10,
+          63
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          64
+        ]
+      },
+      {
+        "bytes" : [
+          24,
+          64
+        ],
+        "characters" : [
+          24,
+          61
+        ],
+        "depth" : 2,
+        "utf16" : [
+          24,
+          62
+        ]
+      },
+      {
+        "bytes" : [
+          37,
+          61
+        ],
+        "characters" : [
+          37,
+          58
+        ],
+        "depth" : 3,
+        "utf16" : [
+          37,
+          59
+        ]
+      }
+    ],
+    "text" : "struct A {\r void run() {\r if (true) {\r std::cout << \"😀\";\r }\r }\r};\r"
+  },
+  {
+    "language" : "cpp",
+    "name" : "cpp-nel",
+    "regions" : [
+
+    ],
+    "text" : "struct A { void run() { if (true) { std::cout << \"😀\"; } }};"
+  },
+  {
+    "language" : "cpp",
+    "name" : "cpp-ls",
+    "regions" : [
+
+    ],
+    "text" : "struct A {  void run() {  if (true) {  std::cout << \"😀\";  }  } }; "
+  },
+  {
+    "language" : "cpp",
+    "name" : "cpp-ps",
+    "regions" : [
+
+    ],
+    "text" : "struct A {  void run() {  if (true) {  std::cout << \"😀\";  }  } }; "
+  },
+  {
+    "language" : "cpp",
+    "name" : "cpp-broken",
+    "regions" : [
+
+    ],
+    "text" : "struct A {\n void run() {\n if (true) {\n std::cout << \"😀\";\n \n \n;\n"
+  },
+  {
+    "language" : "cSharp",
+    "name" : "cSharp-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          71
+        ],
+        "characters" : [
+          9,
+          68
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          69
+        ]
+      },
+      {
+        "bytes" : [
+          23,
+          69
+        ],
+        "characters" : [
+          23,
+          66
+        ],
+        "depth" : 2,
+        "utf16" : [
+          23,
+          67
+        ]
+      },
+      {
+        "bytes" : [
+          36,
+          66
+        ],
+        "characters" : [
+          36,
+          63
+        ],
+        "depth" : 3,
+        "utf16" : [
+          36,
+          64
+        ]
+      }
+    ],
+    "text" : "class A {\n void Run() {\n if (true) {\n Console.WriteLine(\"😀\");\n }\n }\n}\n"
+  },
+  {
+    "language" : "cSharp",
+    "name" : "cSharp-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          77
+        ],
+        "characters" : [
+          9,
+          74
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          75
+        ]
+      },
+      {
+        "bytes" : [
+          24,
+          74
+        ],
+        "characters" : [
+          24,
+          71
+        ],
+        "depth" : 2,
+        "utf16" : [
+          24,
+          72
+        ]
+      },
+      {
+        "bytes" : [
+          38,
+          70
+        ],
+        "characters" : [
+          38,
+          67
+        ],
+        "depth" : 3,
+        "utf16" : [
+          38,
+          68
+        ]
+      }
+    ],
+    "text" : "class A {\r\n void Run() {\r\n if (true) {\r\n Console.WriteLine(\"😀\");\r\n }\r\n }\r\n}\r\n"
+  },
+  {
+    "language" : "cSharp",
+    "name" : "cSharp-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          71
+        ],
+        "characters" : [
+          9,
+          68
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          69
+        ]
+      },
+      {
+        "bytes" : [
+          23,
+          69
+        ],
+        "characters" : [
+          23,
+          66
+        ],
+        "depth" : 2,
+        "utf16" : [
+          23,
+          67
+        ]
+      },
+      {
+        "bytes" : [
+          36,
+          66
+        ],
+        "characters" : [
+          36,
+          63
+        ],
+        "depth" : 3,
+        "utf16" : [
+          36,
+          64
+        ]
+      }
+    ],
+    "text" : "class A {\r void Run() {\r if (true) {\r Console.WriteLine(\"😀\");\r }\r }\r}\r"
+  },
+  {
+    "language" : "cSharp",
+    "name" : "cSharp-nel",
+    "regions" : [
+
+    ],
+    "text" : "class A { void Run() { if (true) { Console.WriteLine(\"😀\"); } }}"
+  },
+  {
+    "language" : "cSharp",
+    "name" : "cSharp-ls",
+    "regions" : [
+
+    ],
+    "text" : "class A {  void Run() {  if (true) {  Console.WriteLine(\"😀\");  }  } } "
+  },
+  {
+    "language" : "cSharp",
+    "name" : "cSharp-ps",
+    "regions" : [
+
+    ],
+    "text" : "class A {  void Run() {  if (true) {  Console.WriteLine(\"😀\");  }  } } "
+  },
+  {
+    "language" : "cSharp",
+    "name" : "cSharp-broken",
+    "regions" : [
+
+    ],
+    "text" : "class A {\n void Run() {\n if (true) {\n Console.WriteLine(\"😀\");\n \n \n\n"
+  },
+  {
+    "language" : "css",
+    "name" : "css-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          6,
+          20
+        ],
+        "characters" : [
+          6,
+          20
+        ],
+        "depth" : 1,
+        "utf16" : [
+          6,
+          20
+        ]
+      }
+    ],
+    "text" : ".box {\n color: red;\n}\n"
+  },
+  {
+    "language" : "css",
+    "name" : "css-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          6,
+          22
+        ],
+        "characters" : [
+          6,
+          22
+        ],
+        "depth" : 1,
+        "utf16" : [
+          6,
+          22
+        ]
+      }
+    ],
+    "text" : ".box {\r\n color: red;\r\n}\r\n"
+  },
+  {
+    "language" : "css",
+    "name" : "css-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          6,
+          20
+        ],
+        "characters" : [
+          6,
+          20
+        ],
+        "depth" : 1,
+        "utf16" : [
+          6,
+          20
+        ]
+      }
+    ],
+    "text" : ".box {\r color: red;\r}\r"
+  },
+  {
+    "language" : "css",
+    "name" : "css-nel",
+    "regions" : [
+
+    ],
+    "text" : ".box { color: red;}"
+  },
+  {
+    "language" : "css",
+    "name" : "css-ls",
+    "regions" : [
+
+    ],
+    "text" : ".box {  color: red; } "
+  },
+  {
+    "language" : "css",
+    "name" : "css-ps",
+    "regions" : [
+
+    ],
+    "text" : ".box {  color: red; } "
+  },
+  {
+    "language" : "css",
+    "name" : "css-broken",
+    "regions" : [
+
+    ],
+    "text" : ".box {\n color: red;\n\n"
+  },
+  {
+    "language" : "dart",
+    "name" : "dart-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          18,
+          47
+        ],
+        "characters" : [
+          18,
+          44
+        ],
+        "depth" : 1,
+        "utf16" : [
+          18,
+          45
+        ]
+      },
+      {
+        "bytes" : [
+          27,
+          45
+        ],
+        "characters" : [
+          27,
+          42
+        ],
+        "depth" : 2,
+        "utf16" : [
+          27,
+          43
+        ]
+      }
+    ],
+    "text" : "void run(bool x) {\n if(x) {\n print(\"😀\");\n }\n}\n"
+  },
+  {
+    "language" : "dart",
+    "name" : "dart-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          18,
+          51
+        ],
+        "characters" : [
+          18,
+          48
+        ],
+        "depth" : 1,
+        "utf16" : [
+          18,
+          49
+        ]
+      },
+      {
+        "bytes" : [
+          28,
+          48
+        ],
+        "characters" : [
+          28,
+          45
+        ],
+        "depth" : 2,
+        "utf16" : [
+          28,
+          46
+        ]
+      }
+    ],
+    "text" : "void run(bool x) {\r\n if(x) {\r\n print(\"😀\");\r\n }\r\n}\r\n"
+  },
+  {
+    "language" : "dart",
+    "name" : "dart-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          18,
+          47
+        ],
+        "characters" : [
+          18,
+          44
+        ],
+        "depth" : 1,
+        "utf16" : [
+          18,
+          45
+        ]
+      },
+      {
+        "bytes" : [
+          27,
+          45
+        ],
+        "characters" : [
+          27,
+          42
+        ],
+        "depth" : 2,
+        "utf16" : [
+          27,
+          43
+        ]
+      }
+    ],
+    "text" : "void run(bool x) {\r if(x) {\r print(\"😀\");\r }\r}\r"
+  },
+  {
+    "language" : "dart",
+    "name" : "dart-nel",
+    "regions" : [
+
+    ],
+    "text" : "void run(bool x) { if(x) { print(\"😀\"); }}"
+  },
+  {
+    "language" : "dart",
+    "name" : "dart-ls",
+    "regions" : [
+
+    ],
+    "text" : "void run(bool x) {  if(x) {  print(\"😀\");  } } "
+  },
+  {
+    "language" : "dart",
+    "name" : "dart-ps",
+    "regions" : [
+
+    ],
+    "text" : "void run(bool x) {  if(x) {  print(\"😀\");  } } "
+  },
+  {
+    "language" : "dart",
+    "name" : "dart-broken",
+    "regions" : [
+
+    ],
+    "text" : "void run(bool x) {\n if(x) {\n print(\"😀\");\n \n\n"
+  },
+  {
+    "language" : "dockerfile",
+    "name" : "dockerfile-lf",
+    "regions" : [
+
+    ],
+    "text" : "FROM ubuntu\nRUN echo \"😀\"\n"
+  },
+  {
+    "language" : "dockerfile",
+    "name" : "dockerfile-crlf",
+    "regions" : [
+
+    ],
+    "text" : "FROM ubuntu\r\nRUN echo \"😀\"\r\n"
+  },
+  {
+    "language" : "dockerfile",
+    "name" : "dockerfile-cr",
+    "regions" : [
+
+    ],
+    "text" : "FROM ubuntu\rRUN echo \"😀\"\r"
+  },
+  {
+    "language" : "dockerfile",
+    "name" : "dockerfile-nel",
+    "regions" : [
+
+    ],
+    "text" : "FROM ubuntuRUN echo \"😀\""
+  },
+  {
+    "language" : "dockerfile",
+    "name" : "dockerfile-ls",
+    "regions" : [
+
+    ],
+    "text" : "FROM ubuntu RUN echo \"😀\" "
+  },
+  {
+    "language" : "dockerfile",
+    "name" : "dockerfile-ps",
+    "regions" : [
+
+    ],
+    "text" : "FROM ubuntu RUN echo \"😀\" "
+  },
+  {
+    "language" : "dockerfile",
+    "name" : "dockerfile-broken",
+    "regions" : [
+
+    ],
+    "text" : "FROM ubuntu\nRUN echo \"😀\"\n"
+  },
+  {
+    "language" : "go",
+    "name" : "go-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          25,
+          57
+        ],
+        "characters" : [
+          25,
+          54
+        ],
+        "depth" : 1,
+        "utf16" : [
+          25,
+          55
+        ]
+      },
+      {
+        "bytes" : [
+          36,
+          55
+        ],
+        "characters" : [
+          36,
+          52
+        ],
+        "depth" : 2,
+        "utf16" : [
+          36,
+          53
+        ]
+      }
+    ],
+    "text" : "package main\nfunc run() {\n if true {\n println(\"😀\")\n }\n}\n"
+  },
+  {
+    "language" : "go",
+    "name" : "go-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          26,
+          62
+        ],
+        "characters" : [
+          26,
+          59
+        ],
+        "depth" : 1,
+        "utf16" : [
+          26,
+          60
+        ]
+      },
+      {
+        "bytes" : [
+          38,
+          59
+        ],
+        "characters" : [
+          38,
+          56
+        ],
+        "depth" : 2,
+        "utf16" : [
+          38,
+          57
+        ]
+      }
+    ],
+    "text" : "package main\r\nfunc run() {\r\n if true {\r\n println(\"😀\")\r\n }\r\n}\r\n"
+  },
+  {
+    "language" : "go",
+    "name" : "go-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          25,
+          57
+        ],
+        "characters" : [
+          25,
+          54
+        ],
+        "depth" : 1,
+        "utf16" : [
+          25,
+          55
+        ]
+      },
+      {
+        "bytes" : [
+          36,
+          55
+        ],
+        "characters" : [
+          36,
+          52
+        ],
+        "depth" : 2,
+        "utf16" : [
+          36,
+          53
+        ]
+      }
+    ],
+    "text" : "package main\rfunc run() {\r if true {\r println(\"😀\")\r }\r}\r"
+  },
+  {
+    "language" : "go",
+    "name" : "go-nel",
+    "regions" : [
+
+    ],
+    "text" : "package mainfunc run() { if true { println(\"😀\") }}"
+  },
+  {
+    "language" : "go",
+    "name" : "go-ls",
+    "regions" : [
+
+    ],
+    "text" : "package main func run() {  if true {  println(\"😀\")  } } "
+  },
+  {
+    "language" : "go",
+    "name" : "go-ps",
+    "regions" : [
+
+    ],
+    "text" : "package main func run() {  if true {  println(\"😀\")  } } "
+  },
+  {
+    "language" : "go",
+    "name" : "go-broken",
+    "regions" : [
+
+    ],
+    "text" : "package main\nfunc run() {\n if true {\n println(\"😀\")\n \n\n"
+  },
+  {
+    "language" : "goMod",
+    "name" : "goMod-lf",
+    "regions" : [
+
+    ],
+    "text" : "module example.org/editor\n\ngo 1.20\nrequire (\n example.org/lib v1.0.0\n)\n"
+  },
+  {
+    "language" : "goMod",
+    "name" : "goMod-crlf",
+    "regions" : [
+
+    ],
+    "text" : "module example.org/editor\r\n\r\ngo 1.20\r\nrequire (\r\n example.org/lib v1.0.0\r\n)\r\n"
+  },
+  {
+    "language" : "goMod",
+    "name" : "goMod-cr",
+    "regions" : [
+
+    ],
+    "text" : "module example.org/editor\r\rgo 1.20\rrequire (\r example.org/lib v1.0.0\r)\r"
+  },
+  {
+    "language" : "goMod",
+    "name" : "goMod-nel",
+    "regions" : [
+
+    ],
+    "text" : "module example.org/editorgo 1.20require ( example.org/lib v1.0.0)"
+  },
+  {
+    "language" : "goMod",
+    "name" : "goMod-ls",
+    "regions" : [
+
+    ],
+    "text" : "module example.org/editor  go 1.20 require (  example.org/lib v1.0.0 ) "
+  },
+  {
+    "language" : "goMod",
+    "name" : "goMod-ps",
+    "regions" : [
+
+    ],
+    "text" : "module example.org/editor  go 1.20 require (  example.org/lib v1.0.0 ) "
+  },
+  {
+    "language" : "goMod",
+    "name" : "goMod-broken",
+    "regions" : [
+
+    ],
+    "text" : "module example.org/editor\n\ngo 1.20\nrequire (\n example.org/lib v1.0.0\n)\n"
+  },
+  {
+    "language" : "html",
+    "name" : "html-lf",
+    "regions" : [
+
+    ],
+    "text" : "<main>\n <div id=\"a\">😀</div>\n</main>\n"
+  },
+  {
+    "language" : "html",
+    "name" : "html-crlf",
+    "regions" : [
+
+    ],
+    "text" : "<main>\r\n <div id=\"a\">😀</div>\r\n</main>\r\n"
+  },
+  {
+    "language" : "html",
+    "name" : "html-cr",
+    "regions" : [
+
+    ],
+    "text" : "<main>\r <div id=\"a\">😀</div>\r</main>\r"
+  },
+  {
+    "language" : "html",
+    "name" : "html-nel",
+    "regions" : [
+
+    ],
+    "text" : "<main> <div id=\"a\">😀</div></main>"
+  },
+  {
+    "language" : "html",
+    "name" : "html-ls",
+    "regions" : [
+
+    ],
+    "text" : "<main>  <div id=\"a\">😀</div> </main> "
+  },
+  {
+    "language" : "html",
+    "name" : "html-ps",
+    "regions" : [
+
+    ],
+    "text" : "<main>  <div id=\"a\">😀</div> </main> "
+  },
+  {
+    "language" : "html",
+    "name" : "html-broken",
+    "regions" : [
+
+    ],
+    "text" : "<main>\n <div id=\"a\">😀</div>\n</main>\n"
+  },
+  {
+    "language" : "java",
+    "name" : "java-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          72
+        ],
+        "characters" : [
+          9,
+          69
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          70
+        ]
+      },
+      {
+        "bytes" : [
+          23,
+          70
+        ],
+        "characters" : [
+          23,
+          67
+        ],
+        "depth" : 2,
+        "utf16" : [
+          23,
+          68
+        ]
+      },
+      {
+        "bytes" : [
+          36,
+          67
+        ],
+        "characters" : [
+          36,
+          64
+        ],
+        "depth" : 3,
+        "utf16" : [
+          36,
+          65
+        ]
+      }
+    ],
+    "text" : "class A {\n void run() {\n if (true) {\n System.out.println(\"😀\");\n }\n }\n}\n"
+  },
+  {
+    "language" : "java",
+    "name" : "java-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          78
+        ],
+        "characters" : [
+          9,
+          75
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          76
+        ]
+      },
+      {
+        "bytes" : [
+          24,
+          75
+        ],
+        "characters" : [
+          24,
+          72
+        ],
+        "depth" : 2,
+        "utf16" : [
+          24,
+          73
+        ]
+      },
+      {
+        "bytes" : [
+          38,
+          71
+        ],
+        "characters" : [
+          38,
+          68
+        ],
+        "depth" : 3,
+        "utf16" : [
+          38,
+          69
+        ]
+      }
+    ],
+    "text" : "class A {\r\n void run() {\r\n if (true) {\r\n System.out.println(\"😀\");\r\n }\r\n }\r\n}\r\n"
+  },
+  {
+    "language" : "java",
+    "name" : "java-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          72
+        ],
+        "characters" : [
+          9,
+          69
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          70
+        ]
+      },
+      {
+        "bytes" : [
+          23,
+          70
+        ],
+        "characters" : [
+          23,
+          67
+        ],
+        "depth" : 2,
+        "utf16" : [
+          23,
+          68
+        ]
+      },
+      {
+        "bytes" : [
+          36,
+          67
+        ],
+        "characters" : [
+          36,
+          64
+        ],
+        "depth" : 3,
+        "utf16" : [
+          36,
+          65
+        ]
+      }
+    ],
+    "text" : "class A {\r void run() {\r if (true) {\r System.out.println(\"😀\");\r }\r }\r}\r"
+  },
+  {
+    "language" : "java",
+    "name" : "java-nel",
+    "regions" : [
+
+    ],
+    "text" : "class A { void run() { if (true) { System.out.println(\"😀\"); } }}"
+  },
+  {
+    "language" : "java",
+    "name" : "java-ls",
+    "regions" : [
+
+    ],
+    "text" : "class A {  void run() {  if (true) {  System.out.println(\"😀\");  }  } } "
+  },
+  {
+    "language" : "java",
+    "name" : "java-ps",
+    "regions" : [
+
+    ],
+    "text" : "class A {  void run() {  if (true) {  System.out.println(\"😀\");  }  } } "
+  },
+  {
+    "language" : "java",
+    "name" : "java-broken",
+    "regions" : [
+
+    ],
+    "text" : "class A {\n void run() {\n if (true) {\n System.out.println(\"😀\");\n \n \n\n"
+  },
+  {
+    "language" : "javascript",
+    "name" : "javascript-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          80
+        ],
+        "characters" : [
+          17,
+          77
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          78
+        ]
+      },
+      {
+        "bytes" : [
+          26,
+          50
+        ],
+        "characters" : [
+          26,
+          47
+        ],
+        "depth" : 2,
+        "utf16" : [
+          26,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          58,
+          78
+        ],
+        "characters" : [
+          55,
+          75
+        ],
+        "depth" : 2,
+        "utf16" : [
+          56,
+          76
+        ]
+      }
+    ],
+    "text" : "function run(x) {\nif (x) {\nconsole.log('😀 }');\n} else {\nconsole.log('no');\n}\n}\n"
+  },
+  {
+    "language" : "javascript",
+    "name" : "javascript-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          86
+        ],
+        "characters" : [
+          17,
+          83
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          84
+        ]
+      },
+      {
+        "bytes" : [
+          27,
+          53
+        ],
+        "characters" : [
+          27,
+          50
+        ],
+        "depth" : 2,
+        "utf16" : [
+          27,
+          51
+        ]
+      },
+      {
+        "bytes" : [
+          61,
+          83
+        ],
+        "characters" : [
+          58,
+          80
+        ],
+        "depth" : 2,
+        "utf16" : [
+          59,
+          81
+        ]
+      }
+    ],
+    "text" : "function run(x) {\r\nif (x) {\r\nconsole.log('😀 }');\r\n} else {\r\nconsole.log('no');\r\n}\r\n}\r\n"
+  },
+  {
+    "language" : "javascript",
+    "name" : "javascript-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          80
+        ],
+        "characters" : [
+          17,
+          77
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          78
+        ]
+      },
+      {
+        "bytes" : [
+          26,
+          50
+        ],
+        "characters" : [
+          26,
+          47
+        ],
+        "depth" : 2,
+        "utf16" : [
+          26,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          58,
+          78
+        ],
+        "characters" : [
+          55,
+          75
+        ],
+        "depth" : 2,
+        "utf16" : [
+          56,
+          76
+        ]
+      }
+    ],
+    "text" : "function run(x) {\rif (x) {\rconsole.log('😀 }');\r} else {\rconsole.log('no');\r}\r}\r"
+  },
+  {
+    "language" : "javascript",
+    "name" : "javascript-nel",
+    "regions" : [
+
+    ],
+    "text" : "function run(x) {if (x) {console.log('😀 }');} else {console.log('no');}}"
+  },
+  {
+    "language" : "javascript",
+    "name" : "javascript-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          92
+        ],
+        "characters" : [
+          17,
+          77
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          78
+        ]
+      },
+      {
+        "bytes" : [
+          28,
+          56
+        ],
+        "characters" : [
+          26,
+          47
+        ],
+        "depth" : 2,
+        "utf16" : [
+          26,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          64,
+          88
+        ],
+        "characters" : [
+          55,
+          75
+        ],
+        "depth" : 2,
+        "utf16" : [
+          56,
+          76
+        ]
+      }
+    ],
+    "text" : "function run(x) { if (x) { console.log('😀 }'); } else { console.log('no'); } } "
+  },
+  {
+    "language" : "javascript",
+    "name" : "javascript-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          92
+        ],
+        "characters" : [
+          17,
+          77
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          78
+        ]
+      },
+      {
+        "bytes" : [
+          28,
+          56
+        ],
+        "characters" : [
+          26,
+          47
+        ],
+        "depth" : 2,
+        "utf16" : [
+          26,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          64,
+          88
+        ],
+        "characters" : [
+          55,
+          75
+        ],
+        "depth" : 2,
+        "utf16" : [
+          56,
+          76
+        ]
+      }
+    ],
+    "text" : "function run(x) { if (x) { console.log('😀 }'); } else { console.log('no'); } } "
+  },
+  {
+    "language" : "javascript",
+    "name" : "javascript-broken",
+    "regions" : [
+
+    ],
+    "text" : "function run(x) {\nif (x) {\nconsole.log('😀 ');\n else {\nconsole.log('no');\n\n\n"
+  },
+  {
+    "language" : "jsdoc",
+    "name" : "jsdoc-lf",
+    "regions" : [
+
+    ],
+    "text" : "/**\n * @param {string} name 😀\n * @returns {boolean}\n */\n"
+  },
+  {
+    "language" : "jsdoc",
+    "name" : "jsdoc-crlf",
+    "regions" : [
+
+    ],
+    "text" : "/**\r\n * @param {string} name 😀\r\n * @returns {boolean}\r\n */\r\n"
+  },
+  {
+    "language" : "jsdoc",
+    "name" : "jsdoc-cr",
+    "regions" : [
+
+    ],
+    "text" : "/**\r * @param {string} name 😀\r * @returns {boolean}\r */\r"
+  },
+  {
+    "language" : "jsdoc",
+    "name" : "jsdoc-nel",
+    "regions" : [
+
+    ],
+    "text" : "/** * @param {string} name 😀 * @returns {boolean} */"
+  },
+  {
+    "language" : "jsdoc",
+    "name" : "jsdoc-ls",
+    "regions" : [
+
+    ],
+    "text" : "/**  * @param {string} name 😀  * @returns {boolean}  */ "
+  },
+  {
+    "language" : "jsdoc",
+    "name" : "jsdoc-ps",
+    "regions" : [
+
+    ],
+    "text" : "/**  * @param {string} name 😀  * @returns {boolean}  */ "
+  },
+  {
+    "language" : "jsdoc",
+    "name" : "jsdoc-broken",
+    "regions" : [
+
+    ],
+    "text" : "/**\n * @param {string name 😀\n * @returns {boolean\n */\n"
+  },
+  {
+    "language" : "json",
+    "name" : "json-lf",
+    "regions" : [
+
+    ],
+    "text" : "{\n \"array\": [\n  {\"name\":\"😀\"}\n ]\n}\n"
+  },
+  {
+    "language" : "json",
+    "name" : "json-crlf",
+    "regions" : [
+
+    ],
+    "text" : "{\r\n \"array\": [\r\n  {\"name\":\"😀\"}\r\n ]\r\n}\r\n"
+  },
+  {
+    "language" : "json",
+    "name" : "json-cr",
+    "regions" : [
+
+    ],
+    "text" : "{\r \"array\": [\r  {\"name\":\"😀\"}\r ]\r}\r"
+  },
+  {
+    "language" : "json",
+    "name" : "json-nel",
+    "regions" : [
+
+    ],
+    "text" : "{ \"array\": [  {\"name\":\"😀\"} ]}"
+  },
+  {
+    "language" : "json",
+    "name" : "json-ls",
+    "regions" : [
+
+    ],
+    "text" : "{  \"array\": [   {\"name\":\"😀\"}  ] } "
+  },
+  {
+    "language" : "json",
+    "name" : "json-ps",
+    "regions" : [
+
+    ],
+    "text" : "{  \"array\": [   {\"name\":\"😀\"}  ] } "
+  },
+  {
+    "language" : "json",
+    "name" : "json-broken",
+    "regions" : [
+
+    ],
+    "text" : "{\n \"array\": [\n  {\"name\":\"😀\"\n ]\n\n"
+  },
+  {
+    "language" : "kotlin",
+    "name" : "kotlin-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          21,
+          52
+        ],
+        "characters" : [
+          21,
+          49
+        ],
+        "depth" : 1,
+        "utf16" : [
+          21,
+          50
+        ]
+      }
+    ],
+    "text" : "fun run(x: Boolean) {\n if (x) {\n println(\"😀\")\n }\n}\n"
+  },
+  {
+    "language" : "kotlin",
+    "name" : "kotlin-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          21,
+          56
+        ],
+        "characters" : [
+          21,
+          53
+        ],
+        "depth" : 1,
+        "utf16" : [
+          21,
+          54
+        ]
+      }
+    ],
+    "text" : "fun run(x: Boolean) {\r\n if (x) {\r\n println(\"😀\")\r\n }\r\n}\r\n"
+  },
+  {
+    "language" : "kotlin",
+    "name" : "kotlin-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          21,
+          52
+        ],
+        "characters" : [
+          21,
+          49
+        ],
+        "depth" : 1,
+        "utf16" : [
+          21,
+          50
+        ]
+      }
+    ],
+    "text" : "fun run(x: Boolean) {\r if (x) {\r println(\"😀\")\r }\r}\r"
+  },
+  {
+    "language" : "kotlin",
+    "name" : "kotlin-nel",
+    "regions" : [
+
+    ],
+    "text" : "fun run(x: Boolean) { if (x) { println(\"😀\") }}"
+  },
+  {
+    "language" : "kotlin",
+    "name" : "kotlin-ls",
+    "regions" : [
+
+    ],
+    "text" : "fun run(x: Boolean) {  if (x) {  println(\"😀\")  } } "
+  },
+  {
+    "language" : "kotlin",
+    "name" : "kotlin-ps",
+    "regions" : [
+
+    ],
+    "text" : "fun run(x: Boolean) {  if (x) {  println(\"😀\")  } } "
+  },
+  {
+    "language" : "kotlin",
+    "name" : "kotlin-broken",
+    "regions" : [
+
+    ],
+    "text" : "fun run(x: Boolean) {\n if (x) {\n println(\"😀\")\n \n\n"
+  },
+  {
+    "language" : "lua",
+    "name" : "lua-lf",
+    "regions" : [
+
+    ],
+    "text" : "function run(x)\n if x then\n print(\"😀\")\n end\nend\n"
+  },
+  {
+    "language" : "lua",
+    "name" : "lua-crlf",
+    "regions" : [
+
+    ],
+    "text" : "function run(x)\r\n if x then\r\n print(\"😀\")\r\n end\r\nend\r\n"
+  },
+  {
+    "language" : "lua",
+    "name" : "lua-cr",
+    "regions" : [
+
+    ],
+    "text" : "function run(x)\r if x then\r print(\"😀\")\r end\rend\r"
+  },
+  {
+    "language" : "lua",
+    "name" : "lua-nel",
+    "regions" : [
+
+    ],
+    "text" : "function run(x) if x then print(\"😀\") endend"
+  },
+  {
+    "language" : "lua",
+    "name" : "lua-ls",
+    "regions" : [
+
+    ],
+    "text" : "function run(x)  if x then  print(\"😀\")  end end "
+  },
+  {
+    "language" : "lua",
+    "name" : "lua-ps",
+    "regions" : [
+
+    ],
+    "text" : "function run(x)  if x then  print(\"😀\")  end end "
+  },
+  {
+    "language" : "lua",
+    "name" : "lua-broken",
+    "regions" : [
+
+    ],
+    "text" : "function run(x)\n if x then\n print(\"😀\")\n \n\n"
+  },
+  {
+    "language" : "markdown",
+    "name" : "markdown-lf",
+    "regions" : [
+
+    ],
+    "text" : "# Heading\n\nText 😀\n\n```rust\nfn f() {}\n```\n"
+  },
+  {
+    "language" : "markdown",
+    "name" : "markdown-crlf",
+    "regions" : [
+
+    ],
+    "text" : "# Heading\r\n\r\nText 😀\r\n\r\n```rust\r\nfn f() {}\r\n```\r\n"
+  },
+  {
+    "language" : "markdown",
+    "name" : "markdown-cr",
+    "regions" : [
+
+    ],
+    "text" : "# Heading\r\rText 😀\r\r```rust\rfn f() {}\r```\r"
+  },
+  {
+    "language" : "markdown",
+    "name" : "markdown-nel",
+    "regions" : [
+
+    ],
+    "text" : "# HeadingText 😀```rustfn f() {}```"
+  },
+  {
+    "language" : "markdown",
+    "name" : "markdown-ls",
+    "regions" : [
+
+    ],
+    "text" : "# Heading  Text 😀  ```rust fn f() {} ``` "
+  },
+  {
+    "language" : "markdown",
+    "name" : "markdown-ps",
+    "regions" : [
+
+    ],
+    "text" : "# Heading  Text 😀  ```rust fn f() {} ``` "
+  },
+  {
+    "language" : "markdown",
+    "name" : "markdown-broken",
+    "regions" : [
+
+    ],
+    "text" : "# Heading\n\nText 😀\n\n```rust\nfn f() {\n```\n"
+  },
+  {
+    "language" : "markdownInline",
+    "name" : "markdownInline-lf",
+    "regions" : [
+
+    ],
+    "text" : "Text **bold 😀** and [link](file.md)\nsecond line\n"
+  },
+  {
+    "language" : "markdownInline",
+    "name" : "markdownInline-crlf",
+    "regions" : [
+
+    ],
+    "text" : "Text **bold 😀** and [link](file.md)\r\nsecond line\r\n"
+  },
+  {
+    "language" : "markdownInline",
+    "name" : "markdownInline-cr",
+    "regions" : [
+
+    ],
+    "text" : "Text **bold 😀** and [link](file.md)\rsecond line\r"
+  },
+  {
+    "language" : "markdownInline",
+    "name" : "markdownInline-nel",
+    "regions" : [
+
+    ],
+    "text" : "Text **bold 😀** and [link](file.md)second line"
+  },
+  {
+    "language" : "markdownInline",
+    "name" : "markdownInline-ls",
+    "regions" : [
+
+    ],
+    "text" : "Text **bold 😀** and [link](file.md) second line "
+  },
+  {
+    "language" : "markdownInline",
+    "name" : "markdownInline-ps",
+    "regions" : [
+
+    ],
+    "text" : "Text **bold 😀** and [link](file.md) second line "
+  },
+  {
+    "language" : "markdownInline",
+    "name" : "markdownInline-broken",
+    "regions" : [
+
+    ],
+    "text" : "Text **bold 😀** and [link](file.md)\nsecond line\n"
+  },
+  {
+    "language" : "objc",
+    "name" : "objc-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          31,
+          64
+        ],
+        "characters" : [
+          31,
+          61
+        ],
+        "depth" : 1,
+        "utf16" : [
+          31,
+          62
+        ]
+      },
+      {
+        "bytes" : [
+          43,
+          62
+        ],
+        "characters" : [
+          43,
+          59
+        ],
+        "depth" : 2,
+        "utf16" : [
+          43,
+          60
+        ]
+      }
+    ],
+    "text" : "@implementation A\n- (void)run {\n if (YES) {\n NSLog(@\"😀\");\n }\n}\n@end\n"
+  },
+  {
+    "language" : "objc",
+    "name" : "objc-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          32,
+          69
+        ],
+        "characters" : [
+          32,
+          66
+        ],
+        "depth" : 1,
+        "utf16" : [
+          32,
+          67
+        ]
+      },
+      {
+        "bytes" : [
+          45,
+          66
+        ],
+        "characters" : [
+          45,
+          63
+        ],
+        "depth" : 2,
+        "utf16" : [
+          45,
+          64
+        ]
+      }
+    ],
+    "text" : "@implementation A\r\n- (void)run {\r\n if (YES) {\r\n NSLog(@\"😀\");\r\n }\r\n}\r\n@end\r\n"
+  },
+  {
+    "language" : "objc",
+    "name" : "objc-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          31,
+          64
+        ],
+        "characters" : [
+          31,
+          61
+        ],
+        "depth" : 1,
+        "utf16" : [
+          31,
+          62
+        ]
+      },
+      {
+        "bytes" : [
+          43,
+          62
+        ],
+        "characters" : [
+          43,
+          59
+        ],
+        "depth" : 2,
+        "utf16" : [
+          43,
+          60
+        ]
+      }
+    ],
+    "text" : "@implementation A\r- (void)run {\r if (YES) {\r NSLog(@\"😀\");\r }\r}\r@end\r"
+  },
+  {
+    "language" : "objc",
+    "name" : "objc-nel",
+    "regions" : [
+
+    ],
+    "text" : "@implementation A- (void)run { if (YES) { NSLog(@\"😀\"); }}@end"
+  },
+  {
+    "language" : "objc",
+    "name" : "objc-ls",
+    "regions" : [
+
+    ],
+    "text" : "@implementation A - (void)run {  if (YES) {  NSLog(@\"😀\");  } } @end "
+  },
+  {
+    "language" : "objc",
+    "name" : "objc-ps",
+    "regions" : [
+
+    ],
+    "text" : "@implementation A - (void)run {  if (YES) {  NSLog(@\"😀\");  } } @end "
+  },
+  {
+    "language" : "objc",
+    "name" : "objc-broken",
+    "regions" : [
+
+    ],
+    "text" : "@implementation A\n- (void)run {\n if (YES) {\n NSLog(@\"😀\");\n \n\n@\n"
+  },
+  {
+    "language" : "perl",
+    "name" : "perl-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          38
+        ],
+        "characters" : [
+          9,
+          35
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          36
+        ]
+      },
+      {
+        "bytes" : [
+          19,
+          36
+        ],
+        "characters" : [
+          19,
+          33
+        ],
+        "depth" : 2,
+        "utf16" : [
+          19,
+          34
+        ]
+      }
+    ],
+    "text" : "sub run {\n if (1) {\n print \"😀\";\n }\n}\n"
+  },
+  {
+    "language" : "perl",
+    "name" : "perl-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          42
+        ],
+        "characters" : [
+          9,
+          39
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          40
+        ]
+      },
+      {
+        "bytes" : [
+          20,
+          39
+        ],
+        "characters" : [
+          20,
+          36
+        ],
+        "depth" : 2,
+        "utf16" : [
+          20,
+          37
+        ]
+      }
+    ],
+    "text" : "sub run {\r\n if (1) {\r\n print \"😀\";\r\n }\r\n}\r\n"
+  },
+  {
+    "language" : "perl",
+    "name" : "perl-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          38
+        ],
+        "characters" : [
+          9,
+          35
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          36
+        ]
+      },
+      {
+        "bytes" : [
+          19,
+          36
+        ],
+        "characters" : [
+          19,
+          33
+        ],
+        "depth" : 2,
+        "utf16" : [
+          19,
+          34
+        ]
+      }
+    ],
+    "text" : "sub run {\r if (1) {\r print \"😀\";\r }\r}\r"
+  },
+  {
+    "language" : "perl",
+    "name" : "perl-nel",
+    "regions" : [
+
+    ],
+    "text" : "sub run { if (1) { print \"😀\"; }}"
+  },
+  {
+    "language" : "perl",
+    "name" : "perl-ls",
+    "regions" : [
+
+    ],
+    "text" : "sub run {  if (1) {  print \"😀\";  } } "
+  },
+  {
+    "language" : "perl",
+    "name" : "perl-ps",
+    "regions" : [
+
+    ],
+    "text" : "sub run {  if (1) {  print \"😀\";  } } "
+  },
+  {
+    "language" : "perl",
+    "name" : "perl-broken",
+    "regions" : [
+
+    ],
+    "text" : "sub run {\n if (1) {\n print \"😀\";\n \n\n"
+  },
+  {
+    "language" : "php",
+    "name" : "php-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          24,
+          53
+        ],
+        "characters" : [
+          24,
+          50
+        ],
+        "depth" : 1,
+        "utf16" : [
+          24,
+          51
+        ]
+      },
+      {
+        "bytes" : [
+          35,
+          51
+        ],
+        "characters" : [
+          35,
+          48
+        ],
+        "depth" : 2,
+        "utf16" : [
+          35,
+          49
+        ]
+      }
+    ],
+    "text" : "<?php\nfunction run($x) {\n if ($x) {\n echo \"😀\";\n }\n}\n"
+  },
+  {
+    "language" : "php",
+    "name" : "php-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          25,
+          58
+        ],
+        "characters" : [
+          25,
+          55
+        ],
+        "depth" : 1,
+        "utf16" : [
+          25,
+          56
+        ]
+      },
+      {
+        "bytes" : [
+          37,
+          55
+        ],
+        "characters" : [
+          37,
+          52
+        ],
+        "depth" : 2,
+        "utf16" : [
+          37,
+          53
+        ]
+      }
+    ],
+    "text" : "<?php\r\nfunction run($x) {\r\n if ($x) {\r\n echo \"😀\";\r\n }\r\n}\r\n"
+  },
+  {
+    "language" : "php",
+    "name" : "php-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          24,
+          53
+        ],
+        "characters" : [
+          24,
+          50
+        ],
+        "depth" : 1,
+        "utf16" : [
+          24,
+          51
+        ]
+      },
+      {
+        "bytes" : [
+          35,
+          51
+        ],
+        "characters" : [
+          35,
+          48
+        ],
+        "depth" : 2,
+        "utf16" : [
+          35,
+          49
+        ]
+      }
+    ],
+    "text" : "<?php\rfunction run($x) {\r if ($x) {\r echo \"😀\";\r }\r}\r"
+  },
+  {
+    "language" : "php",
+    "name" : "php-nel",
+    "regions" : [
+
+    ],
+    "text" : "<?phpfunction run($x) { if ($x) { echo \"😀\"; }}"
+  },
+  {
+    "language" : "php",
+    "name" : "php-ls",
+    "regions" : [
+
+    ],
+    "text" : "<?php function run($x) {  if ($x) {  echo \"😀\";  } } "
+  },
+  {
+    "language" : "php",
+    "name" : "php-ps",
+    "regions" : [
+
+    ],
+    "text" : "<?php function run($x) {  if ($x) {  echo \"😀\";  } } "
+  },
+  {
+    "language" : "php",
+    "name" : "php-broken",
+    "regions" : [
+
+    ],
+    "text" : "<?php\nfunction run($x) {\n if ($x) {\n echo \"😀\";\n \n\n"
+  },
+  {
+    "language" : "python",
+    "name" : "python-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          11,
+          73
+        ],
+        "characters" : [
+          11,
+          70
+        ],
+        "depth" : 1,
+        "utf16" : [
+          11,
+          71
+        ]
+      },
+      {
+        "bytes" : [
+          21,
+          43
+        ],
+        "characters" : [
+          21,
+          40
+        ],
+        "depth" : 2,
+        "utf16" : [
+          21,
+          41
+        ]
+      },
+      {
+        "bytes" : [
+          53,
+          73
+        ],
+        "characters" : [
+          50,
+          70
+        ],
+        "depth" : 2,
+        "utf16" : [
+          51,
+          71
+        ]
+      }
+    ],
+    "text" : "def run(x):\n    if x:\n        print('😀')\n    else:\n        print('no')\n"
+  },
+  {
+    "language" : "python",
+    "name" : "python-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          11,
+          77
+        ],
+        "characters" : [
+          11,
+          74
+        ],
+        "depth" : 1,
+        "utf16" : [
+          11,
+          75
+        ]
+      },
+      {
+        "bytes" : [
+          22,
+          45
+        ],
+        "characters" : [
+          22,
+          42
+        ],
+        "depth" : 2,
+        "utf16" : [
+          22,
+          43
+        ]
+      },
+      {
+        "bytes" : [
+          56,
+          77
+        ],
+        "characters" : [
+          53,
+          74
+        ],
+        "depth" : 2,
+        "utf16" : [
+          54,
+          75
+        ]
+      }
+    ],
+    "text" : "def run(x):\r\n    if x:\r\n        print('😀')\r\n    else:\r\n        print('no')\r\n"
+  },
+  {
+    "language" : "python",
+    "name" : "python-cr",
+    "regions" : [
+
+    ],
+    "text" : "def run(x):\r    if x:\r        print('😀')\r    else:\r        print('no')\r"
+  },
+  {
+    "language" : "python",
+    "name" : "python-nel",
+    "regions" : [
+
+    ],
+    "text" : "def run(x):    if x:        print('😀')    else:        print('no')"
+  },
+  {
+    "language" : "python",
+    "name" : "python-ls",
+    "regions" : [
+
+    ],
+    "text" : "def run(x):     if x:         print('😀')     else:         print('no') "
+  },
+  {
+    "language" : "python",
+    "name" : "python-ps",
+    "regions" : [
+
+    ],
+    "text" : "def run(x):     if x:         print('😀')     else:         print('no') "
+  },
+  {
+    "language" : "python",
+    "name" : "python-broken",
+    "regions" : [
+      {
+        "bytes" : [
+          11,
+          73
+        ],
+        "characters" : [
+          11,
+          70
+        ],
+        "depth" : 1,
+        "utf16" : [
+          11,
+          71
+        ]
+      },
+      {
+        "bytes" : [
+          21,
+          43
+        ],
+        "characters" : [
+          21,
+          40
+        ],
+        "depth" : 2,
+        "utf16" : [
+          21,
+          41
+        ]
+      },
+      {
+        "bytes" : [
+          53,
+          73
+        ],
+        "characters" : [
+          50,
+          70
+        ],
+        "depth" : 2,
+        "utf16" : [
+          51,
+          71
+        ]
+      }
+    ],
+    "text" : "def run(x):\n    if x:\n        print('😀')\n    else:\n        print('no')\n"
+  },
+  {
+    "language" : "regex",
+    "name" : "regex-lf",
+    "regions" : [
+
+    ],
+    "text" : "(one|two[\\w]+)\n(?:three)\n"
+  },
+  {
+    "language" : "regex",
+    "name" : "regex-crlf",
+    "regions" : [
+
+    ],
+    "text" : "(one|two[\\w]+)\r\n(?:three)\r\n"
+  },
+  {
+    "language" : "regex",
+    "name" : "regex-cr",
+    "regions" : [
+
+    ],
+    "text" : "(one|two[\\w]+)\r(?:three)\r"
+  },
+  {
+    "language" : "regex",
+    "name" : "regex-nel",
+    "regions" : [
+
+    ],
+    "text" : "(one|two[\\w]+)(?:three)"
+  },
+  {
+    "language" : "regex",
+    "name" : "regex-ls",
+    "regions" : [
+
+    ],
+    "text" : "(one|two[\\w]+) (?:three) "
+  },
+  {
+    "language" : "regex",
+    "name" : "regex-ps",
+    "regions" : [
+
+    ],
+    "text" : "(one|two[\\w]+) (?:three) "
+  },
+  {
+    "language" : "regex",
+    "name" : "regex-broken",
+    "regions" : [
+
+    ],
+    "text" : "(one|two[\\w]+)\n(?:three)\n"
+  },
+  {
+    "language" : "ruby",
+    "name" : "ruby-lf",
+    "regions" : [
+
+    ],
+    "text" : "def run(x)\n if x\n puts \"😀\"\n else\n puts \"no\"\n end\nend\n"
+  },
+  {
+    "language" : "ruby",
+    "name" : "ruby-crlf",
+    "regions" : [
+
+    ],
+    "text" : "def run(x)\r\n if x\r\n puts \"😀\"\r\n else\r\n puts \"no\"\r\n end\r\nend\r\n"
+  },
+  {
+    "language" : "ruby",
+    "name" : "ruby-cr",
+    "regions" : [
+
+    ],
+    "text" : "def run(x)\r if x\r puts \"😀\"\r else\r puts \"no\"\r end\rend\r"
+  },
+  {
+    "language" : "ruby",
+    "name" : "ruby-nel",
+    "regions" : [
+
+    ],
+    "text" : "def run(x) if x puts \"😀\" else puts \"no\" endend"
+  },
+  {
+    "language" : "ruby",
+    "name" : "ruby-ls",
+    "regions" : [
+
+    ],
+    "text" : "def run(x)  if x  puts \"😀\"  else  puts \"no\"  end end "
+  },
+  {
+    "language" : "ruby",
+    "name" : "ruby-ps",
+    "regions" : [
+
+    ],
+    "text" : "def run(x)  if x  puts \"😀\"  else  puts \"no\"  end end "
+  },
+  {
+    "language" : "ruby",
+    "name" : "ruby-broken",
+    "regions" : [
+
+    ],
+    "text" : "def run(x)\n if x\n puts \"😀\"\n else\n puts \"no\"\n \n\n"
+  },
+  {
+    "language" : "rust",
+    "name" : "rust-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          72
+        ],
+        "characters" : [
+          17,
+          69
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          70
+        ]
+      },
+      {
+        "bytes" : [
+          24,
+          45
+        ],
+        "characters" : [
+          24,
+          42
+        ],
+        "depth" : 2,
+        "utf16" : [
+          24,
+          43
+        ]
+      },
+      {
+        "bytes" : [
+          53,
+          70
+        ],
+        "characters" : [
+          50,
+          67
+        ],
+        "depth" : 2,
+        "utf16" : [
+          51,
+          68
+        ]
+      }
+    ],
+    "text" : "fn run(x: bool) {\nif x {\nprintln!(\"😀 }\");\n} else {\nprintln!(\"no\");\n}\n}\n"
+  },
+  {
+    "language" : "rust",
+    "name" : "rust-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          78
+        ],
+        "characters" : [
+          17,
+          75
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          76
+        ]
+      },
+      {
+        "bytes" : [
+          25,
+          48
+        ],
+        "characters" : [
+          25,
+          45
+        ],
+        "depth" : 2,
+        "utf16" : [
+          25,
+          46
+        ]
+      },
+      {
+        "bytes" : [
+          56,
+          75
+        ],
+        "characters" : [
+          53,
+          72
+        ],
+        "depth" : 2,
+        "utf16" : [
+          54,
+          73
+        ]
+      }
+    ],
+    "text" : "fn run(x: bool) {\r\nif x {\r\nprintln!(\"😀 }\");\r\n} else {\r\nprintln!(\"no\");\r\n}\r\n}\r\n"
+  },
+  {
+    "language" : "rust",
+    "name" : "rust-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          72
+        ],
+        "characters" : [
+          17,
+          69
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          70
+        ]
+      },
+      {
+        "bytes" : [
+          24,
+          45
+        ],
+        "characters" : [
+          24,
+          42
+        ],
+        "depth" : 2,
+        "utf16" : [
+          24,
+          43
+        ]
+      },
+      {
+        "bytes" : [
+          53,
+          70
+        ],
+        "characters" : [
+          50,
+          67
+        ],
+        "depth" : 2,
+        "utf16" : [
+          51,
+          68
+        ]
+      }
+    ],
+    "text" : "fn run(x: bool) {\rif x {\rprintln!(\"😀 }\");\r} else {\rprintln!(\"no\");\r}\r}\r"
+  },
+  {
+    "language" : "rust",
+    "name" : "rust-nel",
+    "regions" : [
+
+    ],
+    "text" : "fn run(x: bool) {if x {println!(\"😀 }\");} else {println!(\"no\");}}"
+  },
+  {
+    "language" : "rust",
+    "name" : "rust-ls",
+    "regions" : [
+
+    ],
+    "text" : "fn run(x: bool) { if x { println!(\"😀 }\"); } else { println!(\"no\"); } } "
+  },
+  {
+    "language" : "rust",
+    "name" : "rust-ps",
+    "regions" : [
+
+    ],
+    "text" : "fn run(x: bool) { if x { println!(\"😀 }\"); } else { println!(\"no\"); } } "
+  },
+  {
+    "language" : "rust",
+    "name" : "rust-broken",
+    "regions" : [
+
+    ],
+    "text" : "fn run(x: bool) {\nif x {\nprintln!(\"😀 \");\n else {\nprintln!(\"no\");\n\n\n"
+  },
+  {
+    "language" : "sql",
+    "name" : "sql-lf",
+    "regions" : [
+
+    ],
+    "text" : "CREATE FUNCTION run() RETURNS void AS $$\nBEGIN\n SELECT 1;\nEND;\n$$ LANGUAGE plpgsql;\n"
+  },
+  {
+    "language" : "sql",
+    "name" : "sql-crlf",
+    "regions" : [
+
+    ],
+    "text" : "CREATE FUNCTION run() RETURNS void AS $$\r\nBEGIN\r\n SELECT 1;\r\nEND;\r\n$$ LANGUAGE plpgsql;\r\n"
+  },
+  {
+    "language" : "sql",
+    "name" : "sql-cr",
+    "regions" : [
+
+    ],
+    "text" : "CREATE FUNCTION run() RETURNS void AS $$\rBEGIN\r SELECT 1;\rEND;\r$$ LANGUAGE plpgsql;\r"
+  },
+  {
+    "language" : "sql",
+    "name" : "sql-nel",
+    "regions" : [
+
+    ],
+    "text" : "CREATE FUNCTION run() RETURNS void AS $$BEGIN SELECT 1;END;$$ LANGUAGE plpgsql;"
+  },
+  {
+    "language" : "sql",
+    "name" : "sql-ls",
+    "regions" : [
+
+    ],
+    "text" : "CREATE FUNCTION run() RETURNS void AS $$ BEGIN  SELECT 1; END; $$ LANGUAGE plpgsql; "
+  },
+  {
+    "language" : "sql",
+    "name" : "sql-ps",
+    "regions" : [
+
+    ],
+    "text" : "CREATE FUNCTION run() RETURNS void AS $$ BEGIN  SELECT 1; END; $$ LANGUAGE plpgsql; "
+  },
+  {
+    "language" : "sql",
+    "name" : "sql-broken",
+    "regions" : [
+
+    ],
+    "text" : "CREATE FUNCTION run() RETURNS void AS $$\nBEGIN\n SELECT 1;\nEND;\n$$ LANGUAGE plpgsql;\n"
+  },
+  {
+    "language" : "swift",
+    "name" : "swift-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          21,
+          68
+        ],
+        "characters" : [
+          21,
+          65
+        ],
+        "depth" : 1,
+        "utf16" : [
+          21,
+          66
+        ]
+      },
+      {
+        "bytes" : [
+          28,
+          45
+        ],
+        "characters" : [
+          28,
+          42
+        ],
+        "depth" : 2,
+        "utf16" : [
+          28,
+          43
+        ]
+      },
+      {
+        "bytes" : [
+          53,
+          66
+        ],
+        "characters" : [
+          50,
+          63
+        ],
+        "depth" : 2,
+        "utf16" : [
+          51,
+          64
+        ]
+      }
+    ],
+    "text" : "func run(_ x: Bool) {\nif x {\nprint(\"😀 }\")\n} else {\nprint(\"no\")\n}\n}\n"
+  },
+  {
+    "language" : "swift",
+    "name" : "swift-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          21,
+          74
+        ],
+        "characters" : [
+          21,
+          71
+        ],
+        "depth" : 1,
+        "utf16" : [
+          21,
+          72
+        ]
+      },
+      {
+        "bytes" : [
+          29,
+          48
+        ],
+        "characters" : [
+          29,
+          45
+        ],
+        "depth" : 2,
+        "utf16" : [
+          29,
+          46
+        ]
+      },
+      {
+        "bytes" : [
+          56,
+          71
+        ],
+        "characters" : [
+          53,
+          68
+        ],
+        "depth" : 2,
+        "utf16" : [
+          54,
+          69
+        ]
+      }
+    ],
+    "text" : "func run(_ x: Bool) {\r\nif x {\r\nprint(\"😀 }\")\r\n} else {\r\nprint(\"no\")\r\n}\r\n}\r\n"
+  },
+  {
+    "language" : "swift",
+    "name" : "swift-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          21,
+          68
+        ],
+        "characters" : [
+          21,
+          65
+        ],
+        "depth" : 1,
+        "utf16" : [
+          21,
+          66
+        ]
+      },
+      {
+        "bytes" : [
+          28,
+          45
+        ],
+        "characters" : [
+          28,
+          42
+        ],
+        "depth" : 2,
+        "utf16" : [
+          28,
+          43
+        ]
+      },
+      {
+        "bytes" : [
+          53,
+          66
+        ],
+        "characters" : [
+          50,
+          63
+        ],
+        "depth" : 2,
+        "utf16" : [
+          51,
+          64
+        ]
+      }
+    ],
+    "text" : "func run(_ x: Bool) {\rif x {\rprint(\"😀 }\")\r} else {\rprint(\"no\")\r}\r}\r"
+  },
+  {
+    "language" : "swift",
+    "name" : "swift-nel",
+    "regions" : [
+
+    ],
+    "text" : "func run(_ x: Bool) {if x {print(\"😀 }\")} else {print(\"no\")}}"
+  },
+  {
+    "language" : "swift",
+    "name" : "swift-ls",
+    "regions" : [
+
+    ],
+    "text" : "func run(_ x: Bool) { if x { print(\"😀 }\") } else { print(\"no\") } } "
+  },
+  {
+    "language" : "swift",
+    "name" : "swift-ps",
+    "regions" : [
+
+    ],
+    "text" : "func run(_ x: Bool) { if x { print(\"😀 }\") } else { print(\"no\") } } "
+  },
+  {
+    "language" : "swift",
+    "name" : "swift-broken",
+    "regions" : [
+
+    ],
+    "text" : "func run(_ x: Bool) {\nif x {\nprint(\"😀 \")\n else {\nprint(\"no\")\n\n\n"
+  },
+  {
+    "language" : "toml",
+    "name" : "toml-lf",
+    "regions" : [
+
+    ],
+    "text" : "[section]\narray = [\n \"😀\",\n \"two\"\n]\n"
+  },
+  {
+    "language" : "toml",
+    "name" : "toml-crlf",
+    "regions" : [
+
+    ],
+    "text" : "[section]\r\narray = [\r\n \"😀\",\r\n \"two\"\r\n]\r\n"
+  },
+  {
+    "language" : "toml",
+    "name" : "toml-cr",
+    "regions" : [
+
+    ],
+    "text" : "[section]\rarray = [\r \"😀\",\r \"two\"\r]\r"
+  },
+  {
+    "language" : "toml",
+    "name" : "toml-nel",
+    "regions" : [
+
+    ],
+    "text" : "[section]array = [ \"😀\", \"two\"]"
+  },
+  {
+    "language" : "toml",
+    "name" : "toml-ls",
+    "regions" : [
+
+    ],
+    "text" : "[section] array = [  \"😀\",  \"two\" ] "
+  },
+  {
+    "language" : "toml",
+    "name" : "toml-ps",
+    "regions" : [
+
+    ],
+    "text" : "[section] array = [  \"😀\",  \"two\" ] "
+  },
+  {
+    "language" : "toml",
+    "name" : "toml-broken",
+    "regions" : [
+
+    ],
+    "text" : "[section]\narray = [\n \"😀\",\n \"two\"\n]\n"
+  },
+  {
+    "language" : "tsx",
+    "name" : "tsx-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          26,
+          64
+        ],
+        "characters" : [
+          26,
+          61
+        ],
+        "depth" : 1,
+        "utf16" : [
+          26,
+          62
+        ]
+      },
+      {
+        "bytes" : [
+          35,
+          62
+        ],
+        "characters" : [
+          35,
+          59
+        ],
+        "depth" : 2,
+        "utf16" : [
+          35,
+          60
+        ]
+      }
+    ],
+    "text" : "function Run(x: boolean) {\n if(x) {\n return <div>😀</div>;\n }\n}\n"
+  },
+  {
+    "language" : "tsx",
+    "name" : "tsx-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          26,
+          68
+        ],
+        "characters" : [
+          26,
+          65
+        ],
+        "depth" : 1,
+        "utf16" : [
+          26,
+          66
+        ]
+      },
+      {
+        "bytes" : [
+          36,
+          65
+        ],
+        "characters" : [
+          36,
+          62
+        ],
+        "depth" : 2,
+        "utf16" : [
+          36,
+          63
+        ]
+      }
+    ],
+    "text" : "function Run(x: boolean) {\r\n if(x) {\r\n return <div>😀</div>;\r\n }\r\n}\r\n"
+  },
+  {
+    "language" : "tsx",
+    "name" : "tsx-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          26,
+          64
+        ],
+        "characters" : [
+          26,
+          61
+        ],
+        "depth" : 1,
+        "utf16" : [
+          26,
+          62
+        ]
+      },
+      {
+        "bytes" : [
+          35,
+          62
+        ],
+        "characters" : [
+          35,
+          59
+        ],
+        "depth" : 2,
+        "utf16" : [
+          35,
+          60
+        ]
+      }
+    ],
+    "text" : "function Run(x: boolean) {\r if(x) {\r return <div>😀</div>;\r }\r}\r"
+  },
+  {
+    "language" : "tsx",
+    "name" : "tsx-nel",
+    "regions" : [
+
+    ],
+    "text" : "function Run(x: boolean) { if(x) { return <div>😀</div>; }}"
+  },
+  {
+    "language" : "tsx",
+    "name" : "tsx-ls",
+    "regions" : [
+
+    ],
+    "text" : "function Run(x: boolean) {  if(x) {  return <div>😀</div>;  } } "
+  },
+  {
+    "language" : "tsx",
+    "name" : "tsx-ps",
+    "regions" : [
+
+    ],
+    "text" : "function Run(x: boolean) {  if(x) {  return <div>😀</div>;  } } "
+  },
+  {
+    "language" : "tsx",
+    "name" : "tsx-broken",
+    "regions" : [
+
+    ],
+    "text" : "function Run(x: boolean) {\n if(x) {\n return <div>😀</div>;\n \n\n"
+  },
+  {
+    "language" : "typescript",
+    "name" : "typescript-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          32,
+          67
+        ],
+        "characters" : [
+          32,
+          64
+        ],
+        "depth" : 1,
+        "utf16" : [
+          32,
+          65
+        ]
+      },
+      {
+        "bytes" : [
+          41,
+          65
+        ],
+        "characters" : [
+          41,
+          62
+        ],
+        "depth" : 2,
+        "utf16" : [
+          41,
+          63
+        ]
+      }
+    ],
+    "text" : "function run(x: boolean): void {\n if(x) {\n console.log(\"😀\");\n }\n}\n"
+  },
+  {
+    "language" : "typescript",
+    "name" : "typescript-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          32,
+          71
+        ],
+        "characters" : [
+          32,
+          68
+        ],
+        "depth" : 1,
+        "utf16" : [
+          32,
+          69
+        ]
+      },
+      {
+        "bytes" : [
+          42,
+          68
+        ],
+        "characters" : [
+          42,
+          65
+        ],
+        "depth" : 2,
+        "utf16" : [
+          42,
+          66
+        ]
+      }
+    ],
+    "text" : "function run(x: boolean): void {\r\n if(x) {\r\n console.log(\"😀\");\r\n }\r\n}\r\n"
+  },
+  {
+    "language" : "typescript",
+    "name" : "typescript-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          32,
+          67
+        ],
+        "characters" : [
+          32,
+          64
+        ],
+        "depth" : 1,
+        "utf16" : [
+          32,
+          65
+        ]
+      },
+      {
+        "bytes" : [
+          41,
+          65
+        ],
+        "characters" : [
+          41,
+          62
+        ],
+        "depth" : 2,
+        "utf16" : [
+          41,
+          63
+        ]
+      }
+    ],
+    "text" : "function run(x: boolean): void {\r if(x) {\r console.log(\"😀\");\r }\r}\r"
+  },
+  {
+    "language" : "typescript",
+    "name" : "typescript-nel",
+    "regions" : [
+
+    ],
+    "text" : "function run(x: boolean): void { if(x) { console.log(\"😀\"); }}"
+  },
+  {
+    "language" : "typescript",
+    "name" : "typescript-ls",
+    "regions" : [
+
+    ],
+    "text" : "function run(x: boolean): void {  if(x) {  console.log(\"😀\");  } } "
+  },
+  {
+    "language" : "typescript",
+    "name" : "typescript-ps",
+    "regions" : [
+
+    ],
+    "text" : "function run(x: boolean): void {  if(x) {  console.log(\"😀\");  } } "
+  },
+  {
+    "language" : "typescript",
+    "name" : "typescript-broken",
+    "regions" : [
+
+    ],
+    "text" : "function run(x: boolean): void {\n if(x) {\n console.log(\"😀\");\n \n\n"
+  },
+  {
+    "language" : "yaml",
+    "name" : "yaml-lf",
+    "regions" : [
+
+    ],
+    "text" : "section:\n  array:\n    - \"😀\"\n    - two\n"
+  },
+  {
+    "language" : "yaml",
+    "name" : "yaml-crlf",
+    "regions" : [
+
+    ],
+    "text" : "section:\r\n  array:\r\n    - \"😀\"\r\n    - two\r\n"
+  },
+  {
+    "language" : "yaml",
+    "name" : "yaml-cr",
+    "regions" : [
+
+    ],
+    "text" : "section:\r  array:\r    - \"😀\"\r    - two\r"
+  },
+  {
+    "language" : "yaml",
+    "name" : "yaml-nel",
+    "regions" : [
+
+    ],
+    "text" : "section:  array:    - \"😀\"    - two"
+  },
+  {
+    "language" : "yaml",
+    "name" : "yaml-ls",
+    "regions" : [
+
+    ],
+    "text" : "section:   array:     - \"😀\"     - two "
+  },
+  {
+    "language" : "yaml",
+    "name" : "yaml-ps",
+    "regions" : [
+
+    ],
+    "text" : "section:   array:     - \"😀\"     - two "
+  },
+  {
+    "language" : "yaml",
+    "name" : "yaml-broken",
+    "regions" : [
+
+    ],
+    "text" : "section:\n  array:\n    - \"😀\"\n    - two\n"
+  },
+  {
+    "language" : "jsx",
+    "name" : "jsx-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          80
+        ],
+        "characters" : [
+          17,
+          77
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          78
+        ]
+      },
+      {
+        "bytes" : [
+          26,
+          50
+        ],
+        "characters" : [
+          26,
+          47
+        ],
+        "depth" : 2,
+        "utf16" : [
+          26,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          58,
+          78
+        ],
+        "characters" : [
+          55,
+          75
+        ],
+        "depth" : 2,
+        "utf16" : [
+          56,
+          76
+        ]
+      }
+    ],
+    "text" : "function run(x) {\nif (x) {\nconsole.log('😀 }');\n} else {\nconsole.log('no');\n}\n}\n"
+  },
+  {
+    "language" : "jsx",
+    "name" : "jsx-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          86
+        ],
+        "characters" : [
+          17,
+          83
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          84
+        ]
+      },
+      {
+        "bytes" : [
+          27,
+          53
+        ],
+        "characters" : [
+          27,
+          50
+        ],
+        "depth" : 2,
+        "utf16" : [
+          27,
+          51
+        ]
+      },
+      {
+        "bytes" : [
+          61,
+          83
+        ],
+        "characters" : [
+          58,
+          80
+        ],
+        "depth" : 2,
+        "utf16" : [
+          59,
+          81
+        ]
+      }
+    ],
+    "text" : "function run(x) {\r\nif (x) {\r\nconsole.log('😀 }');\r\n} else {\r\nconsole.log('no');\r\n}\r\n}\r\n"
+  },
+  {
+    "language" : "jsx",
+    "name" : "jsx-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          80
+        ],
+        "characters" : [
+          17,
+          77
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          78
+        ]
+      },
+      {
+        "bytes" : [
+          26,
+          50
+        ],
+        "characters" : [
+          26,
+          47
+        ],
+        "depth" : 2,
+        "utf16" : [
+          26,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          58,
+          78
+        ],
+        "characters" : [
+          55,
+          75
+        ],
+        "depth" : 2,
+        "utf16" : [
+          56,
+          76
+        ]
+      }
+    ],
+    "text" : "function run(x) {\rif (x) {\rconsole.log('😀 }');\r} else {\rconsole.log('no');\r}\r}\r"
+  },
+  {
+    "language" : "jsx",
+    "name" : "jsx-nel",
+    "regions" : [
+
+    ],
+    "text" : "function run(x) {if (x) {console.log('😀 }');} else {console.log('no');}}"
+  },
+  {
+    "language" : "jsx",
+    "name" : "jsx-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          92
+        ],
+        "characters" : [
+          17,
+          77
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          78
+        ]
+      },
+      {
+        "bytes" : [
+          28,
+          56
+        ],
+        "characters" : [
+          26,
+          47
+        ],
+        "depth" : 2,
+        "utf16" : [
+          26,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          64,
+          88
+        ],
+        "characters" : [
+          55,
+          75
+        ],
+        "depth" : 2,
+        "utf16" : [
+          56,
+          76
+        ]
+      }
+    ],
+    "text" : "function run(x) { if (x) { console.log('😀 }'); } else { console.log('no'); } } "
+  },
+  {
+    "language" : "jsx",
+    "name" : "jsx-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          92
+        ],
+        "characters" : [
+          17,
+          77
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          78
+        ]
+      },
+      {
+        "bytes" : [
+          28,
+          56
+        ],
+        "characters" : [
+          26,
+          47
+        ],
+        "depth" : 2,
+        "utf16" : [
+          26,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          64,
+          88
+        ],
+        "characters" : [
+          55,
+          75
+        ],
+        "depth" : 2,
+        "utf16" : [
+          56,
+          76
+        ]
+      }
+    ],
+    "text" : "function run(x) { if (x) { console.log('😀 }'); } else { console.log('no'); } } "
+  },
+  {
+    "language" : "jsx",
+    "name" : "jsx-broken",
+    "regions" : [
+
+    ],
+    "text" : "function run(x) {\nif (x) {\nconsole.log('😀 ');\n else {\nconsole.log('no');\n\n\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-0-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          26,
+          102
+        ],
+        "characters" : [
+          26,
+          99
+        ],
+        "depth" : 1,
+        "utf16" : [
+          26,
+          100
+        ]
+      },
+      {
+        "bytes" : [
+          34,
+          96
+        ],
+        "characters" : [
+          34,
+          93
+        ],
+        "depth" : 2,
+        "utf16" : [
+          34,
+          94
+        ]
+      },
+      {
+        "bytes" : [
+          47,
+          69
+        ],
+        "characters" : [
+          47,
+          66
+        ],
+        "depth" : 3,
+        "utf16" : [
+          47,
+          67
+        ]
+      },
+      {
+        "bytes" : [
+          83,
+          96
+        ],
+        "characters" : [
+          80,
+          93
+        ],
+        "depth" : 3,
+        "utf16" : [
+          81,
+          94
+        ]
+      },
+      {
+        "bytes" : [
+          117,
+          131
+        ],
+        "characters" : [
+          114,
+          128
+        ],
+        "depth" : 1,
+        "utf16" : [
+          115,
+          129
+        ]
+      }
+    ],
+    "text" : "Function run($x : Boolean)\nIf ($x)\nWhile (True)\nALERT(\"😀 End if\")\nEnd while\nElse\nALERT(\"no\")\nEnd if\nFunction other\nALERT(\"done\")\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-0-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          26,
+          109
+        ],
+        "characters" : [
+          26,
+          106
+        ],
+        "depth" : 1,
+        "utf16" : [
+          26,
+          107
+        ]
+      },
+      {
+        "bytes" : [
+          35,
+          103
+        ],
+        "characters" : [
+          35,
+          100
+        ],
+        "depth" : 2,
+        "utf16" : [
+          35,
+          101
+        ]
+      },
+      {
+        "bytes" : [
+          49,
+          73
+        ],
+        "characters" : [
+          49,
+          70
+        ],
+        "depth" : 3,
+        "utf16" : [
+          49,
+          71
+        ]
+      },
+      {
+        "bytes" : [
+          88,
+          103
+        ],
+        "characters" : [
+          85,
+          100
+        ],
+        "depth" : 3,
+        "utf16" : [
+          86,
+          101
+        ]
+      },
+      {
+        "bytes" : [
+          125,
+          140
+        ],
+        "characters" : [
+          122,
+          137
+        ],
+        "depth" : 1,
+        "utf16" : [
+          123,
+          138
+        ]
+      }
+    ],
+    "text" : "Function run($x : Boolean)\r\nIf ($x)\r\nWhile (True)\r\nALERT(\"😀 End if\")\r\nEnd while\r\nElse\r\nALERT(\"no\")\r\nEnd if\r\nFunction other\r\nALERT(\"done\")\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-0-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          26,
+          102
+        ],
+        "characters" : [
+          26,
+          99
+        ],
+        "depth" : 1,
+        "utf16" : [
+          26,
+          100
+        ]
+      },
+      {
+        "bytes" : [
+          34,
+          96
+        ],
+        "characters" : [
+          34,
+          93
+        ],
+        "depth" : 2,
+        "utf16" : [
+          34,
+          94
+        ]
+      },
+      {
+        "bytes" : [
+          47,
+          69
+        ],
+        "characters" : [
+          47,
+          66
+        ],
+        "depth" : 3,
+        "utf16" : [
+          47,
+          67
+        ]
+      },
+      {
+        "bytes" : [
+          83,
+          96
+        ],
+        "characters" : [
+          80,
+          93
+        ],
+        "depth" : 3,
+        "utf16" : [
+          81,
+          94
+        ]
+      },
+      {
+        "bytes" : [
+          117,
+          131
+        ],
+        "characters" : [
+          114,
+          128
+        ],
+        "depth" : 1,
+        "utf16" : [
+          115,
+          129
+        ]
+      }
+    ],
+    "text" : "Function run($x : Boolean)\rIf ($x)\rWhile (True)\rALERT(\"😀 End if\")\rEnd while\rElse\rALERT(\"no\")\rEnd if\rFunction other\rALERT(\"done\")\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-0-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          26,
+          111
+        ],
+        "characters" : [
+          26,
+          100
+        ],
+        "depth" : 1,
+        "utf16" : [
+          26,
+          101
+        ]
+      },
+      {
+        "bytes" : [
+          35,
+          103
+        ],
+        "characters" : [
+          34,
+          93
+        ],
+        "depth" : 2,
+        "utf16" : [
+          34,
+          94
+        ]
+      },
+      {
+        "bytes" : [
+          49,
+          73
+        ],
+        "characters" : [
+          47,
+          66
+        ],
+        "depth" : 3,
+        "utf16" : [
+          47,
+          67
+        ]
+      },
+      {
+        "bytes" : [
+          88,
+          103
+        ],
+        "characters" : [
+          80,
+          93
+        ],
+        "depth" : 3,
+        "utf16" : [
+          81,
+          94
+        ]
+      },
+      {
+        "bytes" : [
+          125,
+          142
+        ],
+        "characters" : [
+          114,
+          129
+        ],
+        "depth" : 1,
+        "utf16" : [
+          115,
+          130
+        ]
+      }
+    ],
+    "text" : "Function run($x : Boolean)If ($x)While (True)ALERT(\"😀 End if\")End whileElseALERT(\"no\")End ifFunction otherALERT(\"done\")"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-0-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          26,
+          119
+        ],
+        "characters" : [
+          26,
+          100
+        ],
+        "depth" : 1,
+        "utf16" : [
+          26,
+          101
+        ]
+      },
+      {
+        "bytes" : [
+          36,
+          110
+        ],
+        "characters" : [
+          34,
+          93
+        ],
+        "depth" : 2,
+        "utf16" : [
+          34,
+          94
+        ]
+      },
+      {
+        "bytes" : [
+          51,
+          77
+        ],
+        "characters" : [
+          47,
+          66
+        ],
+        "depth" : 3,
+        "utf16" : [
+          47,
+          67
+        ]
+      },
+      {
+        "bytes" : [
+          93,
+          110
+        ],
+        "characters" : [
+          80,
+          93
+        ],
+        "depth" : 3,
+        "utf16" : [
+          81,
+          94
+        ]
+      },
+      {
+        "bytes" : [
+          133,
+          152
+        ],
+        "characters" : [
+          114,
+          129
+        ],
+        "depth" : 1,
+        "utf16" : [
+          115,
+          130
+        ]
+      }
+    ],
+    "text" : "Function run($x : Boolean) If ($x) While (True) ALERT(\"😀 End if\") End while Else ALERT(\"no\") End if Function other ALERT(\"done\") "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-0-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          26,
+          119
+        ],
+        "characters" : [
+          26,
+          100
+        ],
+        "depth" : 1,
+        "utf16" : [
+          26,
+          101
+        ]
+      },
+      {
+        "bytes" : [
+          36,
+          110
+        ],
+        "characters" : [
+          34,
+          93
+        ],
+        "depth" : 2,
+        "utf16" : [
+          34,
+          94
+        ]
+      },
+      {
+        "bytes" : [
+          51,
+          77
+        ],
+        "characters" : [
+          47,
+          66
+        ],
+        "depth" : 3,
+        "utf16" : [
+          47,
+          67
+        ]
+      },
+      {
+        "bytes" : [
+          93,
+          110
+        ],
+        "characters" : [
+          80,
+          93
+        ],
+        "depth" : 3,
+        "utf16" : [
+          81,
+          94
+        ]
+      },
+      {
+        "bytes" : [
+          133,
+          152
+        ],
+        "characters" : [
+          114,
+          129
+        ],
+        "depth" : 1,
+        "utf16" : [
+          115,
+          130
+        ]
+      }
+    ],
+    "text" : "Function run($x : Boolean) If ($x) While (True) ALERT(\"😀 End if\") End while Else ALERT(\"no\") End if Function other ALERT(\"done\") "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-0-vt",
+    "regions" : [
+
+    ],
+    "text" : "Function run($x : Boolean)\u000bIf ($x)\u000bWhile (True)\u000bALERT(\"😀 End if\")\u000bEnd while\u000bElse\u000bALERT(\"no\")\u000bEnd if\u000bFunction other\u000bALERT(\"done\")\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-0-ff",
+    "regions" : [
+
+    ],
+    "text" : "Function run($x : Boolean)\fIf ($x)\fWhile (True)\fALERT(\"😀 End if\")\fEnd while\fElse\fALERT(\"no\")\fEnd if\fFunction other\fALERT(\"done\")\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-1-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          37,
+          55
+        ],
+        "characters" : [
+          37,
+          55
+        ],
+        "depth" : 1,
+        "utf16" : [
+          37,
+          55
+        ]
+      }
+    ],
+    "text" : "/*\nIf (True)\nEnd if\n*/\n\"If\"\nBegin SQL\nIf x then\nEnd if\nEnd SQL\nIf (True)\nFor ($i;1;2)\nEnd if\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-1-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          42,
+          63
+        ],
+        "characters" : [
+          42,
+          63
+        ],
+        "depth" : 1,
+        "utf16" : [
+          42,
+          63
+        ]
+      }
+    ],
+    "text" : "/*\r\nIf (True)\r\nEnd if\r\n*/\r\n\"If\"\r\nBegin SQL\r\nIf x then\r\nEnd if\r\nEnd SQL\r\nIf (True)\r\nFor ($i;1;2)\r\nEnd if\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-1-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          37,
+          55
+        ],
+        "characters" : [
+          37,
+          55
+        ],
+        "depth" : 1,
+        "utf16" : [
+          37,
+          55
+        ]
+      }
+    ],
+    "text" : "/*\rIf (True)\rEnd if\r*/\r\"If\"\rBegin SQL\rIf x then\rEnd if\rEnd SQL\rIf (True)\rFor ($i;1;2)\rEnd if\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-1-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          42,
+          63
+        ],
+        "characters" : [
+          37,
+          55
+        ],
+        "depth" : 1,
+        "utf16" : [
+          37,
+          55
+        ]
+      }
+    ],
+    "text" : "/*If (True)End if*/\"If\"Begin SQLIf x thenEnd ifEnd SQLIf (True)For ($i;1;2)End if"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-1-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          47,
+          71
+        ],
+        "characters" : [
+          37,
+          55
+        ],
+        "depth" : 1,
+        "utf16" : [
+          37,
+          55
+        ]
+      }
+    ],
+    "text" : "/* If (True) End if */ \"If\" Begin SQL If x then End if End SQL If (True) For ($i;1;2) End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-1-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          47,
+          71
+        ],
+        "characters" : [
+          37,
+          55
+        ],
+        "depth" : 1,
+        "utf16" : [
+          37,
+          55
+        ]
+      }
+    ],
+    "text" : "/* If (True) End if */ \"If\" Begin SQL If x then End if End SQL If (True) For ($i;1;2) End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-1-vt",
+    "regions" : [
+
+    ],
+    "text" : "/*\u000bIf (True)\u000bEnd if\u000b*/\u000b\"If\"\u000bBegin SQL\u000bIf x then\u000bEnd if\u000bEnd SQL\u000bIf (True)\u000bFor ($i;1;2)\u000bEnd if\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-1-ff",
+    "regions" : [
+
+    ],
+    "text" : "/*\fIf (True)\fEnd if\f*/\f\"If\"\fBegin SQL\fIf x then\fEnd if\fEnd SQL\fIf (True)\fFor ($i;1;2)\fEnd if\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-2-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          64
+        ],
+        "characters" : [
+          7,
+          64
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          64
+        ]
+      },
+      {
+        "bytes" : [
+          16,
+          28
+        ],
+        "characters" : [
+          16,
+          28
+        ],
+        "depth" : 2,
+        "utf16" : [
+          16,
+          28
+        ]
+      },
+      {
+        "bytes" : [
+          36,
+          48
+        ],
+        "characters" : [
+          36,
+          48
+        ],
+        "depth" : 2,
+        "utf16" : [
+          36,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          52,
+          64
+        ],
+        "characters" : [
+          52,
+          64
+        ],
+        "depth" : 2,
+        "utf16" : [
+          52,
+          64
+        ]
+      }
+    ],
+    "text" : "Case of\n: ($x=1)\nALERT(\"a\")\n: ($x=2)\nALERT(\"b\")\nElse\nALERT(\"c\")\nEnd case"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-2-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          71
+        ],
+        "characters" : [
+          7,
+          71
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          71
+        ]
+      },
+      {
+        "bytes" : [
+          17,
+          31
+        ],
+        "characters" : [
+          17,
+          31
+        ],
+        "depth" : 2,
+        "utf16" : [
+          17,
+          31
+        ]
+      },
+      {
+        "bytes" : [
+          39,
+          53
+        ],
+        "characters" : [
+          39,
+          53
+        ],
+        "depth" : 2,
+        "utf16" : [
+          39,
+          53
+        ]
+      },
+      {
+        "bytes" : [
+          57,
+          71
+        ],
+        "characters" : [
+          57,
+          71
+        ],
+        "depth" : 2,
+        "utf16" : [
+          57,
+          71
+        ]
+      }
+    ],
+    "text" : "Case of\r\n: ($x=1)\r\nALERT(\"a\")\r\n: ($x=2)\r\nALERT(\"b\")\r\nElse\r\nALERT(\"c\")\r\nEnd case"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-2-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          64
+        ],
+        "characters" : [
+          7,
+          64
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          64
+        ]
+      },
+      {
+        "bytes" : [
+          16,
+          28
+        ],
+        "characters" : [
+          16,
+          28
+        ],
+        "depth" : 2,
+        "utf16" : [
+          16,
+          28
+        ]
+      },
+      {
+        "bytes" : [
+          36,
+          48
+        ],
+        "characters" : [
+          36,
+          48
+        ],
+        "depth" : 2,
+        "utf16" : [
+          36,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          52,
+          64
+        ],
+        "characters" : [
+          52,
+          64
+        ],
+        "depth" : 2,
+        "utf16" : [
+          52,
+          64
+        ]
+      }
+    ],
+    "text" : "Case of\r: ($x=1)\rALERT(\"a\")\r: ($x=2)\rALERT(\"b\")\rElse\rALERT(\"c\")\rEnd case"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-2-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          71
+        ],
+        "characters" : [
+          7,
+          64
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          64
+        ]
+      },
+      {
+        "bytes" : [
+          17,
+          31
+        ],
+        "characters" : [
+          16,
+          28
+        ],
+        "depth" : 2,
+        "utf16" : [
+          16,
+          28
+        ]
+      },
+      {
+        "bytes" : [
+          39,
+          53
+        ],
+        "characters" : [
+          36,
+          48
+        ],
+        "depth" : 2,
+        "utf16" : [
+          36,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          57,
+          71
+        ],
+        "characters" : [
+          52,
+          64
+        ],
+        "depth" : 2,
+        "utf16" : [
+          52,
+          64
+        ]
+      }
+    ],
+    "text" : "Case of: ($x=1)ALERT(\"a\"): ($x=2)ALERT(\"b\")ElseALERT(\"c\")End case"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-2-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          78
+        ],
+        "characters" : [
+          7,
+          64
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          64
+        ]
+      },
+      {
+        "bytes" : [
+          18,
+          34
+        ],
+        "characters" : [
+          16,
+          28
+        ],
+        "depth" : 2,
+        "utf16" : [
+          16,
+          28
+        ]
+      },
+      {
+        "bytes" : [
+          42,
+          58
+        ],
+        "characters" : [
+          36,
+          48
+        ],
+        "depth" : 2,
+        "utf16" : [
+          36,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          62,
+          78
+        ],
+        "characters" : [
+          52,
+          64
+        ],
+        "depth" : 2,
+        "utf16" : [
+          52,
+          64
+        ]
+      }
+    ],
+    "text" : "Case of : ($x=1) ALERT(\"a\") : ($x=2) ALERT(\"b\") Else ALERT(\"c\") End case"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-2-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          78
+        ],
+        "characters" : [
+          7,
+          64
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          64
+        ]
+      },
+      {
+        "bytes" : [
+          18,
+          34
+        ],
+        "characters" : [
+          16,
+          28
+        ],
+        "depth" : 2,
+        "utf16" : [
+          16,
+          28
+        ]
+      },
+      {
+        "bytes" : [
+          42,
+          58
+        ],
+        "characters" : [
+          36,
+          48
+        ],
+        "depth" : 2,
+        "utf16" : [
+          36,
+          48
+        ]
+      },
+      {
+        "bytes" : [
+          62,
+          78
+        ],
+        "characters" : [
+          52,
+          64
+        ],
+        "depth" : 2,
+        "utf16" : [
+          52,
+          64
+        ]
+      }
+    ],
+    "text" : "Case of : ($x=1) ALERT(\"a\") : ($x=2) ALERT(\"b\") Else ALERT(\"c\") End case"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-2-vt",
+    "regions" : [
+
+    ],
+    "text" : "Case of\u000b: ($x=1)\u000bALERT(\"a\")\u000b: ($x=2)\u000bALERT(\"b\")\u000bElse\u000bALERT(\"c\")\u000bEnd case"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-2-ff",
+    "regions" : [
+
+    ],
+    "text" : "Case of\f: ($x=1)\fALERT(\"a\")\f: ($x=2)\fALERT(\"b\")\fElse\fALERT(\"c\")\fEnd case"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-3-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          32
+        ],
+        "characters" : [
+          3,
+          32
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          32
+        ]
+      },
+      {
+        "bytes" : [
+          20,
+          32
+        ],
+        "characters" : [
+          20,
+          32
+        ],
+        "depth" : 2,
+        "utf16" : [
+          20,
+          32
+        ]
+      }
+    ],
+    "text" : "Try\nALERT(\"a\")\nCatch\nALERT(\"b\")\nEnd try"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-3-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          36
+        ],
+        "characters" : [
+          3,
+          36
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          36
+        ]
+      },
+      {
+        "bytes" : [
+          22,
+          36
+        ],
+        "characters" : [
+          22,
+          36
+        ],
+        "depth" : 2,
+        "utf16" : [
+          22,
+          36
+        ]
+      }
+    ],
+    "text" : "Try\r\nALERT(\"a\")\r\nCatch\r\nALERT(\"b\")\r\nEnd try"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-3-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          32
+        ],
+        "characters" : [
+          3,
+          32
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          32
+        ]
+      },
+      {
+        "bytes" : [
+          20,
+          32
+        ],
+        "characters" : [
+          20,
+          32
+        ],
+        "depth" : 2,
+        "utf16" : [
+          20,
+          32
+        ]
+      }
+    ],
+    "text" : "Try\rALERT(\"a\")\rCatch\rALERT(\"b\")\rEnd try"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-3-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          36
+        ],
+        "characters" : [
+          3,
+          32
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          32
+        ]
+      },
+      {
+        "bytes" : [
+          22,
+          36
+        ],
+        "characters" : [
+          20,
+          32
+        ],
+        "depth" : 2,
+        "utf16" : [
+          20,
+          32
+        ]
+      }
+    ],
+    "text" : "TryALERT(\"a\")CatchALERT(\"b\")End try"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-3-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          40
+        ],
+        "characters" : [
+          3,
+          32
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          32
+        ]
+      },
+      {
+        "bytes" : [
+          24,
+          40
+        ],
+        "characters" : [
+          20,
+          32
+        ],
+        "depth" : 2,
+        "utf16" : [
+          20,
+          32
+        ]
+      }
+    ],
+    "text" : "Try ALERT(\"a\") Catch ALERT(\"b\") End try"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-3-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          40
+        ],
+        "characters" : [
+          3,
+          32
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          32
+        ]
+      },
+      {
+        "bytes" : [
+          24,
+          40
+        ],
+        "characters" : [
+          20,
+          32
+        ],
+        "depth" : 2,
+        "utf16" : [
+          20,
+          32
+        ]
+      }
+    ],
+    "text" : "Try ALERT(\"a\") Catch ALERT(\"b\") End try"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-3-vt",
+    "regions" : [
+
+    ],
+    "text" : "Try\u000bALERT(\"a\")\u000bCatch\u000bALERT(\"b\")\u000bEnd try"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-3-ff",
+    "regions" : [
+
+    ],
+    "text" : "Try\fALERT(\"a\")\fCatch\fALERT(\"b\")\fEnd try"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-4-lf",
+    "regions" : [
+
+    ],
+    "text" : "If (True)\nALERT(\"x\")"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-4-crlf",
+    "regions" : [
+
+    ],
+    "text" : "If (True)\r\nALERT(\"x\")"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-4-cr",
+    "regions" : [
+
+    ],
+    "text" : "If (True)\rALERT(\"x\")"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-4-nel",
+    "regions" : [
+
+    ],
+    "text" : "If (True)ALERT(\"x\")"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-4-ls",
+    "regions" : [
+
+    ],
+    "text" : "If (True) ALERT(\"x\")"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-4-ps",
+    "regions" : [
+
+    ],
+    "text" : "If (True) ALERT(\"x\")"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-4-vt",
+    "regions" : [
+
+    ],
+    "text" : "If (True)\u000bALERT(\"x\")"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-4-ff",
+    "regions" : [
+
+    ],
+    "text" : "If (True)\fALERT(\"x\")"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-5-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          11,
+          12
+        ],
+        "characters" : [
+          10,
+          11
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          11
+        ]
+      }
+    ],
+    "text" : "If́ (True)\nEnd if\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-5-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          11,
+          13
+        ],
+        "characters" : [
+          10,
+          12
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          12
+        ]
+      }
+    ],
+    "text" : "If́ (True)\r\nEnd if\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-5-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          11,
+          12
+        ],
+        "characters" : [
+          10,
+          11
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          11
+        ]
+      }
+    ],
+    "text" : "If́ (True)\rEnd if\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-5-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          11,
+          13
+        ],
+        "characters" : [
+          10,
+          11
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          11
+        ]
+      }
+    ],
+    "text" : "If́ (True)End if"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-5-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          11,
+          14
+        ],
+        "characters" : [
+          10,
+          11
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          11
+        ]
+      }
+    ],
+    "text" : "If́ (True) End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-5-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          11,
+          14
+        ],
+        "characters" : [
+          10,
+          11
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          11
+        ]
+      }
+    ],
+    "text" : "If́ (True) End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-5-vt",
+    "regions" : [
+
+    ],
+    "text" : "If́ (True)\u000bEnd if\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-5-ff",
+    "regions" : [
+
+    ],
+    "text" : "If́ (True)\fEnd if\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-6-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          10,
+          11
+        ],
+        "characters" : [
+          10,
+          11
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          11
+        ]
+      }
+    ],
+    "text" : "If foo bar\nEnd if\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-6-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          10,
+          12
+        ],
+        "characters" : [
+          10,
+          12
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          12
+        ]
+      }
+    ],
+    "text" : "If foo bar\r\nEnd if\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-6-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          10,
+          11
+        ],
+        "characters" : [
+          10,
+          11
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          11
+        ]
+      }
+    ],
+    "text" : "If foo bar\rEnd if\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-6-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          10,
+          12
+        ],
+        "characters" : [
+          10,
+          11
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          11
+        ]
+      }
+    ],
+    "text" : "If foo barEnd if"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-6-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          10,
+          13
+        ],
+        "characters" : [
+          10,
+          11
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          11
+        ]
+      }
+    ],
+    "text" : "If foo bar End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-6-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          10,
+          13
+        ],
+        "characters" : [
+          10,
+          11
+        ],
+        "depth" : 1,
+        "utf16" : [
+          10,
+          11
+        ]
+      }
+    ],
+    "text" : "If foo bar End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-6-vt",
+    "regions" : [
+
+    ],
+    "text" : "If foo bar\u000bEnd if\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-6-ff",
+    "regions" : [
+
+    ],
+    "text" : "If foo bar\fEnd if\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-7-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          36
+        ],
+        "characters" : [
+          17,
+          36
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          36
+        ]
+      },
+      {
+        "bytes" : [
+          51,
+          59
+        ],
+        "characters" : [
+          51,
+          59
+        ],
+        "depth" : 1,
+        "utf16" : [
+          51,
+          59
+        ]
+      }
+    ],
+    "text" : "Class constructor\n// text\nALERT(\"x\")\nFunction other\n// tail\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-7-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          38
+        ],
+        "characters" : [
+          17,
+          38
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          38
+        ]
+      },
+      {
+        "bytes" : [
+          54,
+          63
+        ],
+        "characters" : [
+          54,
+          63
+        ],
+        "depth" : 1,
+        "utf16" : [
+          54,
+          63
+        ]
+      }
+    ],
+    "text" : "Class constructor\r\n// text\r\nALERT(\"x\")\r\nFunction other\r\n// tail\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-7-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          36
+        ],
+        "characters" : [
+          17,
+          36
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          36
+        ]
+      },
+      {
+        "bytes" : [
+          51,
+          59
+        ],
+        "characters" : [
+          51,
+          59
+        ],
+        "depth" : 1,
+        "utf16" : [
+          51,
+          59
+        ]
+      }
+    ],
+    "text" : "Class constructor\r// text\rALERT(\"x\")\rFunction other\r// tail\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-7-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          65
+        ],
+        "characters" : [
+          17,
+          60
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          60
+        ]
+      }
+    ],
+    "text" : "Class constructor// textALERT(\"x\")Function other// tail"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-7-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          70
+        ],
+        "characters" : [
+          17,
+          60
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          60
+        ]
+      }
+    ],
+    "text" : "Class constructor // text ALERT(\"x\") Function other // tail "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-7-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          70
+        ],
+        "characters" : [
+          17,
+          60
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          60
+        ]
+      }
+    ],
+    "text" : "Class constructor // text ALERT(\"x\") Function other // tail "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-7-vt",
+    "regions" : [
+
+    ],
+    "text" : "Class constructor\u000b// text\u000bALERT(\"x\")\u000bFunction other\u000b// tail\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-7-ff",
+    "regions" : [
+
+    ],
+    "text" : "Class constructor\f// text\fALERT(\"x\")\fFunction other\f// tail\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-8-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          36
+        ],
+        "characters" : [
+          12,
+          36
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          36
+        ]
+      },
+      {
+        "bytes" : [
+          49,
+          62
+        ],
+        "characters" : [
+          49,
+          62
+        ],
+        "depth" : 1,
+        "utf16" : [
+          49,
+          62
+        ]
+      }
+    ],
+    "text" : "Function one\n// Comment\nALERT(\"one\")\nFunction two\nALERT(\"two\")\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-8-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          38
+        ],
+        "characters" : [
+          12,
+          38
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          38
+        ]
+      },
+      {
+        "bytes" : [
+          52,
+          66
+        ],
+        "characters" : [
+          52,
+          66
+        ],
+        "depth" : 1,
+        "utf16" : [
+          52,
+          66
+        ]
+      }
+    ],
+    "text" : "Function one\r\n// Comment\r\nALERT(\"one\")\r\nFunction two\r\nALERT(\"two\")\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-8-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          36
+        ],
+        "characters" : [
+          12,
+          36
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          36
+        ]
+      },
+      {
+        "bytes" : [
+          49,
+          62
+        ],
+        "characters" : [
+          49,
+          62
+        ],
+        "depth" : 1,
+        "utf16" : [
+          49,
+          62
+        ]
+      }
+    ],
+    "text" : "Function one\r// Comment\rALERT(\"one\")\rFunction two\rALERT(\"two\")\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-8-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          68
+        ],
+        "characters" : [
+          12,
+          63
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          63
+        ]
+      }
+    ],
+    "text" : "Function one// CommentALERT(\"one\")Function twoALERT(\"two\")"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-8-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          73
+        ],
+        "characters" : [
+          12,
+          63
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          63
+        ]
+      }
+    ],
+    "text" : "Function one // Comment ALERT(\"one\") Function two ALERT(\"two\") "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-8-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          73
+        ],
+        "characters" : [
+          12,
+          63
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          63
+        ]
+      }
+    ],
+    "text" : "Function one // Comment ALERT(\"one\") Function two ALERT(\"two\") "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-8-vt",
+    "regions" : [
+
+    ],
+    "text" : "Function one\u000b// Comment\u000bALERT(\"one\")\u000bFunction two\u000bALERT(\"two\")\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-8-ff",
+    "regions" : [
+
+    ],
+    "text" : "Function one\f// Comment\fALERT(\"one\")\fFunction two\fALERT(\"two\")\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-9-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          49
+        ],
+        "characters" : [
+          7,
+          46
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          47
+        ]
+      },
+      {
+        "bytes" : [
+          34,
+          49
+        ],
+        "characters" : [
+          34,
+          46
+        ],
+        "depth" : 2,
+        "utf16" : [
+          34,
+          47
+        ]
+      }
+    ],
+    "text" : "Case of\n/*\n: fake branch\n*/\n: real\nALERT(\"😀\")\nEnd case\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-9-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          55
+        ],
+        "characters" : [
+          7,
+          52
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          53
+        ]
+      },
+      {
+        "bytes" : [
+          38,
+          55
+        ],
+        "characters" : [
+          38,
+          52
+        ],
+        "depth" : 2,
+        "utf16" : [
+          38,
+          53
+        ]
+      }
+    ],
+    "text" : "Case of\r\n/*\r\n: fake branch\r\n*/\r\n: real\r\nALERT(\"😀\")\r\nEnd case\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-9-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          49
+        ],
+        "characters" : [
+          7,
+          46
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          47
+        ]
+      },
+      {
+        "bytes" : [
+          34,
+          49
+        ],
+        "characters" : [
+          34,
+          46
+        ],
+        "depth" : 2,
+        "utf16" : [
+          34,
+          47
+        ]
+      }
+    ],
+    "text" : "Case of\r/*\r: fake branch\r*/\r: real\rALERT(\"😀\")\rEnd case\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-9-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          55
+        ],
+        "characters" : [
+          7,
+          46
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          47
+        ]
+      },
+      {
+        "bytes" : [
+          38,
+          55
+        ],
+        "characters" : [
+          34,
+          46
+        ],
+        "depth" : 2,
+        "utf16" : [
+          34,
+          47
+        ]
+      }
+    ],
+    "text" : "Case of/*: fake branch*/: realALERT(\"😀\")End case"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-9-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          61
+        ],
+        "characters" : [
+          7,
+          46
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          47
+        ]
+      },
+      {
+        "bytes" : [
+          42,
+          61
+        ],
+        "characters" : [
+          34,
+          46
+        ],
+        "depth" : 2,
+        "utf16" : [
+          34,
+          47
+        ]
+      }
+    ],
+    "text" : "Case of /* : fake branch */ : real ALERT(\"😀\") End case "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-9-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          61
+        ],
+        "characters" : [
+          7,
+          46
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          47
+        ]
+      },
+      {
+        "bytes" : [
+          42,
+          61
+        ],
+        "characters" : [
+          34,
+          46
+        ],
+        "depth" : 2,
+        "utf16" : [
+          34,
+          47
+        ]
+      }
+    ],
+    "text" : "Case of /* : fake branch */ : real ALERT(\"😀\") End case "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-9-vt",
+    "regions" : [
+
+    ],
+    "text" : "Case of\u000b/*\u000b: fake branch\u000b*/\u000b: real\u000bALERT(\"😀\")\u000bEnd case\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-9-ff",
+    "regions" : [
+
+    ],
+    "text" : "Case of\f/*\f: fake branch\f*/\f: real\fALERT(\"😀\")\fEnd case\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-10-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          40
+        ],
+        "characters" : [
+          9,
+          40
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          40
+        ]
+      },
+      {
+        "bytes" : [
+          28,
+          40
+        ],
+        "characters" : [
+          28,
+          40
+        ],
+        "depth" : 2,
+        "utf16" : [
+          28,
+          40
+        ]
+      }
+    ],
+    "text" : "If (True)\n\"unterminated\nElse\nALERT(\"x\")\nEnd if\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-10-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          44
+        ],
+        "characters" : [
+          9,
+          44
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          44
+        ]
+      },
+      {
+        "bytes" : [
+          30,
+          44
+        ],
+        "characters" : [
+          30,
+          44
+        ],
+        "depth" : 2,
+        "utf16" : [
+          30,
+          44
+        ]
+      }
+    ],
+    "text" : "If (True)\r\n\"unterminated\r\nElse\r\nALERT(\"x\")\r\nEnd if\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-10-cr",
+    "regions" : [
+
+    ],
+    "text" : "If (True)\r\"unterminated\rElse\rALERT(\"x\")\rEnd if\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-10-nel",
+    "regions" : [
+
+    ],
+    "text" : "If (True)\"unterminatedElseALERT(\"x\")End if"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-10-ls",
+    "regions" : [
+
+    ],
+    "text" : "If (True) \"unterminated Else ALERT(\"x\") End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-10-ps",
+    "regions" : [
+
+    ],
+    "text" : "If (True) \"unterminated Else ALERT(\"x\") End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-10-vt",
+    "regions" : [
+
+    ],
+    "text" : "If (True)\u000b\"unterminated\u000bElse\u000bALERT(\"x\")\u000bEnd if\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-10-ff",
+    "regions" : [
+
+    ],
+    "text" : "If (True)\f\"unterminated\fElse\fALERT(\"x\")\fEnd if\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-11-lf",
+    "regions" : [
+
+    ],
+    "text" : "If:C265 (True)\nALERT(\"x\")\nEnd if\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-11-crlf",
+    "regions" : [
+
+    ],
+    "text" : "If:C265 (True)\r\nALERT(\"x\")\r\nEnd if\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-11-cr",
+    "regions" : [
+
+    ],
+    "text" : "If:C265 (True)\rALERT(\"x\")\rEnd if\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-11-nel",
+    "regions" : [
+
+    ],
+    "text" : "If:C265 (True)ALERT(\"x\")End if"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-11-ls",
+    "regions" : [
+
+    ],
+    "text" : "If:C265 (True) ALERT(\"x\") End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-11-ps",
+    "regions" : [
+
+    ],
+    "text" : "If:C265 (True) ALERT(\"x\") End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-11-vt",
+    "regions" : [
+
+    ],
+    "text" : "If:C265 (True)\u000bALERT(\"x\")\u000bEnd if\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-11-ff",
+    "regions" : [
+
+    ],
+    "text" : "If:C265 (True)\fALERT(\"x\")\fEnd if\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-12-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          33
+        ],
+        "characters" : [
+          12,
+          33
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          33
+        ]
+      },
+      {
+        "bytes" : [
+          46,
+          53
+        ],
+        "characters" : [
+          46,
+          53
+        ],
+        "depth" : 1,
+        "utf16" : [
+          46,
+          53
+        ]
+      }
+    ],
+    "text" : "Function one\nIf (True)\nALERT(\"x\")\nFunction two\nEnd if\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-12-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          35
+        ],
+        "characters" : [
+          12,
+          35
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          35
+        ]
+      },
+      {
+        "bytes" : [
+          49,
+          57
+        ],
+        "characters" : [
+          49,
+          57
+        ],
+        "depth" : 1,
+        "utf16" : [
+          49,
+          57
+        ]
+      }
+    ],
+    "text" : "Function one\r\nIf (True)\r\nALERT(\"x\")\r\nFunction two\r\nEnd if\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-12-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          33
+        ],
+        "characters" : [
+          12,
+          33
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          33
+        ]
+      },
+      {
+        "bytes" : [
+          46,
+          53
+        ],
+        "characters" : [
+          46,
+          53
+        ],
+        "depth" : 1,
+        "utf16" : [
+          46,
+          53
+        ]
+      }
+    ],
+    "text" : "Function one\rIf (True)\rALERT(\"x\")\rFunction two\rEnd if\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-12-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          37
+        ],
+        "characters" : [
+          12,
+          34
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          34
+        ]
+      },
+      {
+        "bytes" : [
+          49,
+          59
+        ],
+        "characters" : [
+          46,
+          54
+        ],
+        "depth" : 1,
+        "utf16" : [
+          46,
+          54
+        ]
+      }
+    ],
+    "text" : "Function oneIf (True)ALERT(\"x\")Function twoEnd if"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-12-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          40
+        ],
+        "characters" : [
+          12,
+          34
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          34
+        ]
+      },
+      {
+        "bytes" : [
+          52,
+          64
+        ],
+        "characters" : [
+          46,
+          54
+        ],
+        "depth" : 1,
+        "utf16" : [
+          46,
+          54
+        ]
+      }
+    ],
+    "text" : "Function one If (True) ALERT(\"x\") Function two End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-12-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          40
+        ],
+        "characters" : [
+          12,
+          34
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          34
+        ]
+      },
+      {
+        "bytes" : [
+          52,
+          64
+        ],
+        "characters" : [
+          46,
+          54
+        ],
+        "depth" : 1,
+        "utf16" : [
+          46,
+          54
+        ]
+      }
+    ],
+    "text" : "Function one If (True) ALERT(\"x\") Function two End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-12-vt",
+    "regions" : [
+
+    ],
+    "text" : "Function one\u000bIf (True)\u000bALERT(\"x\")\u000bFunction two\u000bEnd if\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-12-ff",
+    "regions" : [
+
+    ],
+    "text" : "Function one\fIf (True)\fALERT(\"x\")\fFunction two\fEnd if\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-13-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          24
+        ],
+        "characters" : [
+          9,
+          24
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          24
+        ]
+      }
+    ],
+    "text" : "If (True)\n\"multi\\\nElse\"\nEnd if\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-13-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          27
+        ],
+        "characters" : [
+          9,
+          27
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          27
+        ]
+      },
+      {
+        "bytes" : [
+          25,
+          27
+        ],
+        "characters" : [
+          25,
+          27
+        ],
+        "depth" : 2,
+        "utf16" : [
+          25,
+          27
+        ]
+      }
+    ],
+    "text" : "If (True)\r\n\"multi\\\r\nElse\"\r\nEnd if\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-13-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          24
+        ],
+        "characters" : [
+          9,
+          24
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          24
+        ]
+      }
+    ],
+    "text" : "If (True)\r\"multi\\\rElse\"\rEnd if\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-13-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          27
+        ],
+        "characters" : [
+          9,
+          24
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          24
+        ]
+      }
+    ],
+    "text" : "If (True)\"multi\\Else\"End if"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-13-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          30
+        ],
+        "characters" : [
+          9,
+          24
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          24
+        ]
+      }
+    ],
+    "text" : "If (True) \"multi\\ Else\" End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-13-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          9,
+          30
+        ],
+        "characters" : [
+          9,
+          24
+        ],
+        "depth" : 1,
+        "utf16" : [
+          9,
+          24
+        ]
+      }
+    ],
+    "text" : "If (True) \"multi\\ Else\" End if "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-13-vt",
+    "regions" : [
+
+    ],
+    "text" : "If (True)\u000b\"multi\\\u000bElse\"\u000bEnd if\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-13-ff",
+    "regions" : [
+
+    ],
+    "text" : "If (True)\f\"multi\\\fElse\"\fEnd if\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-14-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          29
+        ],
+        "characters" : [
+          17,
+          29
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          29
+        ]
+      }
+    ],
+    "text" : "For each ($x;$xs)\nALERT(\"x\")\nEnd for each\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-14-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          31
+        ],
+        "characters" : [
+          17,
+          31
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          31
+        ]
+      }
+    ],
+    "text" : "For each ($x;$xs)\r\nALERT(\"x\")\r\nEnd for each\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-14-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          29
+        ],
+        "characters" : [
+          17,
+          29
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          29
+        ]
+      }
+    ],
+    "text" : "For each ($x;$xs)\rALERT(\"x\")\rEnd for each\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-14-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          31
+        ],
+        "characters" : [
+          17,
+          29
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          29
+        ]
+      }
+    ],
+    "text" : "For each ($x;$xs)ALERT(\"x\")End for each"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-14-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          33
+        ],
+        "characters" : [
+          17,
+          29
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          29
+        ]
+      }
+    ],
+    "text" : "For each ($x;$xs) ALERT(\"x\") End for each "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-14-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          17,
+          33
+        ],
+        "characters" : [
+          17,
+          29
+        ],
+        "depth" : 1,
+        "utf16" : [
+          17,
+          29
+        ]
+      }
+    ],
+    "text" : "For each ($x;$xs) ALERT(\"x\") End for each "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-14-vt",
+    "regions" : [
+
+    ],
+    "text" : "For each ($x;$xs)\u000bALERT(\"x\")\u000bEnd for each\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-14-ff",
+    "regions" : [
+
+    ],
+    "text" : "For each ($x;$xs)\fALERT(\"x\")\fEnd for each\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-15-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          24
+        ],
+        "characters" : [
+          12,
+          24
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          24
+        ]
+      }
+    ],
+    "text" : "For ($i;1;2)\nALERT(\"x\")\nEnd for\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-15-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          26
+        ],
+        "characters" : [
+          12,
+          26
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          26
+        ]
+      }
+    ],
+    "text" : "For ($i;1;2)\r\nALERT(\"x\")\r\nEnd for\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-15-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          24
+        ],
+        "characters" : [
+          12,
+          24
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          24
+        ]
+      }
+    ],
+    "text" : "For ($i;1;2)\rALERT(\"x\")\rEnd for\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-15-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          26
+        ],
+        "characters" : [
+          12,
+          24
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          24
+        ]
+      }
+    ],
+    "text" : "For ($i;1;2)ALERT(\"x\")End for"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-15-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          28
+        ],
+        "characters" : [
+          12,
+          24
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          24
+        ]
+      }
+    ],
+    "text" : "For ($i;1;2) ALERT(\"x\") End for "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-15-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          12,
+          28
+        ],
+        "characters" : [
+          12,
+          24
+        ],
+        "depth" : 1,
+        "utf16" : [
+          12,
+          24
+        ]
+      }
+    ],
+    "text" : "For ($i;1;2) ALERT(\"x\") End for "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-15-vt",
+    "regions" : [
+
+    ],
+    "text" : "For ($i;1;2)\u000bALERT(\"x\")\u000bEnd for\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-15-ff",
+    "regions" : [
+
+    ],
+    "text" : "For ($i;1;2)\fALERT(\"x\")\fEnd for\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-16-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          6,
+          18
+        ],
+        "characters" : [
+          6,
+          18
+        ],
+        "depth" : 1,
+        "utf16" : [
+          6,
+          18
+        ]
+      }
+    ],
+    "text" : "Repeat\nALERT(\"x\")\nUntil (True)\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-16-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          6,
+          20
+        ],
+        "characters" : [
+          6,
+          20
+        ],
+        "depth" : 1,
+        "utf16" : [
+          6,
+          20
+        ]
+      }
+    ],
+    "text" : "Repeat\r\nALERT(\"x\")\r\nUntil (True)\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-16-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          6,
+          18
+        ],
+        "characters" : [
+          6,
+          18
+        ],
+        "depth" : 1,
+        "utf16" : [
+          6,
+          18
+        ]
+      }
+    ],
+    "text" : "Repeat\rALERT(\"x\")\rUntil (True)\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-16-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          6,
+          20
+        ],
+        "characters" : [
+          6,
+          18
+        ],
+        "depth" : 1,
+        "utf16" : [
+          6,
+          18
+        ]
+      }
+    ],
+    "text" : "RepeatALERT(\"x\")Until (True)"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-16-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          6,
+          22
+        ],
+        "characters" : [
+          6,
+          18
+        ],
+        "depth" : 1,
+        "utf16" : [
+          6,
+          18
+        ]
+      }
+    ],
+    "text" : "Repeat ALERT(\"x\") Until (True) "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-16-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          6,
+          22
+        ],
+        "characters" : [
+          6,
+          18
+        ],
+        "depth" : 1,
+        "utf16" : [
+          6,
+          18
+        ]
+      }
+    ],
+    "text" : "Repeat ALERT(\"x\") Until (True) "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-16-vt",
+    "regions" : [
+
+    ],
+    "text" : "Repeat\u000bALERT(\"x\")\u000bUntil (True)\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-16-ff",
+    "regions" : [
+
+    ],
+    "text" : "Repeat\fALERT(\"x\")\fUntil (True)\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-17-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          8,
+          20
+        ],
+        "characters" : [
+          8,
+          20
+        ],
+        "depth" : 1,
+        "utf16" : [
+          8,
+          20
+        ]
+      }
+    ],
+    "text" : "Use ($x)\nALERT(\"x\")\nEnd use\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-17-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          8,
+          22
+        ],
+        "characters" : [
+          8,
+          22
+        ],
+        "depth" : 1,
+        "utf16" : [
+          8,
+          22
+        ]
+      }
+    ],
+    "text" : "Use ($x)\r\nALERT(\"x\")\r\nEnd use\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-17-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          8,
+          20
+        ],
+        "characters" : [
+          8,
+          20
+        ],
+        "depth" : 1,
+        "utf16" : [
+          8,
+          20
+        ]
+      }
+    ],
+    "text" : "Use ($x)\rALERT(\"x\")\rEnd use\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-17-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          8,
+          22
+        ],
+        "characters" : [
+          8,
+          20
+        ],
+        "depth" : 1,
+        "utf16" : [
+          8,
+          20
+        ]
+      }
+    ],
+    "text" : "Use ($x)ALERT(\"x\")End use"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-17-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          8,
+          24
+        ],
+        "characters" : [
+          8,
+          20
+        ],
+        "depth" : 1,
+        "utf16" : [
+          8,
+          20
+        ]
+      }
+    ],
+    "text" : "Use ($x) ALERT(\"x\") End use "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-17-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          8,
+          24
+        ],
+        "characters" : [
+          8,
+          20
+        ],
+        "depth" : 1,
+        "utf16" : [
+          8,
+          20
+        ]
+      }
+    ],
+    "text" : "Use ($x) ALERT(\"x\") End use "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-17-vt",
+    "regions" : [
+
+    ],
+    "text" : "Use ($x)\u000bALERT(\"x\")\u000bEnd use\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-17-ff",
+    "regions" : [
+
+    ],
+    "text" : "Use ($x)\fALERT(\"x\")\fEnd use\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-18-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          15
+        ],
+        "characters" : [
+          3,
+          15
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          15
+        ]
+      }
+    ],
+    "text" : "Try\nALERT(\"x\")\nEnd try\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-18-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          17
+        ],
+        "characters" : [
+          3,
+          17
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          17
+        ]
+      }
+    ],
+    "text" : "Try\r\nALERT(\"x\")\r\nEnd try\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-18-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          15
+        ],
+        "characters" : [
+          3,
+          15
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          15
+        ]
+      }
+    ],
+    "text" : "Try\rALERT(\"x\")\rEnd try\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-18-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          17
+        ],
+        "characters" : [
+          3,
+          15
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          15
+        ]
+      }
+    ],
+    "text" : "TryALERT(\"x\")End try"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-18-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          19
+        ],
+        "characters" : [
+          3,
+          15
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          15
+        ]
+      }
+    ],
+    "text" : "Try ALERT(\"x\") End try "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-18-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          3,
+          19
+        ],
+        "characters" : [
+          3,
+          15
+        ],
+        "depth" : 1,
+        "utf16" : [
+          3,
+          15
+        ]
+      }
+    ],
+    "text" : "Try ALERT(\"x\") End try "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-18-vt",
+    "regions" : [
+
+    ],
+    "text" : "Try\u000bALERT(\"x\")\u000bEnd try\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-18-ff",
+    "regions" : [
+
+    ],
+    "text" : "Try\fALERT(\"x\")\fEnd try\f"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-19-lf",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          19
+        ],
+        "characters" : [
+          7,
+          19
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          19
+        ]
+      }
+    ],
+    "text" : "Case of\nALERT(\"x\")\nEnd case\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-19-crlf",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          21
+        ],
+        "characters" : [
+          7,
+          21
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          21
+        ]
+      }
+    ],
+    "text" : "Case of\r\nALERT(\"x\")\r\nEnd case\r\n"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-19-cr",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          19
+        ],
+        "characters" : [
+          7,
+          19
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          19
+        ]
+      }
+    ],
+    "text" : "Case of\rALERT(\"x\")\rEnd case\r"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-19-nel",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          21
+        ],
+        "characters" : [
+          7,
+          19
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          19
+        ]
+      }
+    ],
+    "text" : "Case ofALERT(\"x\")End case"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-19-ls",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          23
+        ],
+        "characters" : [
+          7,
+          19
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          19
+        ]
+      }
+    ],
+    "text" : "Case of ALERT(\"x\") End case "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-19-ps",
+    "regions" : [
+      {
+        "bytes" : [
+          7,
+          23
+        ],
+        "characters" : [
+          7,
+          19
+        ],
+        "depth" : 1,
+        "utf16" : [
+          7,
+          19
+        ]
+      }
+    ],
+    "text" : "Case of ALERT(\"x\") End case "
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-19-vt",
+    "regions" : [
+
+    ],
+    "text" : "Case of\u000bALERT(\"x\")\u000bEnd case\u000b"
+  },
+  {
+    "language" : "fourD",
+    "name" : "fourD-19-ff",
+    "regions" : [
+
+    ],
+    "text" : "Case of\fALERT(\"x\")\fEnd case\f"
+  },
+  {
+    "language" : "agda",
+    "name" : "agda-no-provider",
+    "regions" : [
+
+    ],
+    "text" : "fn f() {\n text\n}\n"
+  },
+  {
+    "language" : "elixir",
+    "name" : "elixir-no-provider",
+    "regions" : [
+
+    ],
+    "text" : "fn f() {\n text\n}\n"
+  },
+  {
+    "language" : "haskell",
+    "name" : "haskell-no-provider",
+    "regions" : [
+
+    ],
+    "text" : "fn f() {\n text\n}\n"
+  },
+  {
+    "language" : "julia",
+    "name" : "julia-no-provider",
+    "regions" : [
+
+    ],
+    "text" : "fn f() {\n text\n}\n"
+  },
+  {
+    "language" : "ocaml",
+    "name" : "ocaml-no-provider",
+    "regions" : [
+
+    ],
+    "text" : "fn f() {\n text\n}\n"
+  },
+  {
+    "language" : "ocamlInterface",
+    "name" : "ocamlInterface-no-provider",
+    "regions" : [
+
+    ],
+    "text" : "fn f() {\n text\n}\n"
+  },
+  {
+    "language" : "scala",
+    "name" : "scala-no-provider",
+    "regions" : [
+
+    ],
+    "text" : "fn f() {\n text\n}\n"
+  },
+  {
+    "language" : "verilog",
+    "name" : "verilog-no-provider",
+    "regions" : [
+
+    ],
+    "text" : "fn f() {\n text\n}\n"
+  },
+  {
+    "language" : "zig",
+    "name" : "zig-no-provider",
+    "regions" : [
+
+    ],
+    "text" : "fn f() {\n text\n}\n"
+  },
+  {
+    "language" : "plainText",
+    "name" : "plainText-no-provider",
+    "regions" : [
+
+    ],
+    "text" : "fn f() {\n text\n}\n"
+  }
+]

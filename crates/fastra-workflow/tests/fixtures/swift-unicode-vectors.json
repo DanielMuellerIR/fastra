@@ -1,0 +1,23 @@
+[
+  {
+    "names" : [
+      "Name"
+    ],
+    "source" : "{{ Name }}",
+    "valid" : true
+  },
+  {
+    "names" : [
+
+    ],
+    "source" : "{{N‍ame}}",
+    "valid" : false
+  },
+  {
+    "names" : [
+      "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+    ],
+    "source" : "{{éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé}}",
+    "valid" : true
+  }
+]

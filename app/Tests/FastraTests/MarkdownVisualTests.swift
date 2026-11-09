@@ -19,6 +19,16 @@ private final class MarkdownVisualFixtureWindow: NSWindow {
     }
 }
 
+private final class MarkdownVisualMessageTap: NSObject, WKScriptMessageHandler {
+    let coordinator: MarkdownVisualCoordinator
+    var observe: ((WKScriptMessage) -> Void)?
+    init(_ coordinator: MarkdownVisualCoordinator) { self.coordinator = coordinator }
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        observe?(message)
+        coordinator.userContentController(controller, didReceive: message)
+    }
+}
+
 @Suite("Markdown-WYSIWYG", .serialized)
 struct MarkdownVisualTests {
 
@@ -1039,6 +1049,205 @@ struct MarkdownVisualTests {
         _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == changed })
         withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Kopierter Fettdruck mit Return/Delete erzeugt keine Format- oder Leerzeilenreste", arguments: ["<strong>Bold</strong>", "**Bold&nbsp;**"])
+    @MainActor
+    func reportBoldReturnDelete(_ fragment: String) async throws {
+        let (workspace, coordinator, web, window) = try await editor("")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let rendered = MarkdownVisualDocument.render(fragment, documentURL: nil)
+        let inserted = try await web.callAsyncJavaScript("""
+            const root=document.querySelector('#fastra-visual'),r=document.createRange();r.selectNodeContents(root);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            return fastraVisual.insertBookmarked(fastraVisual.bookmark(),html,atoms,null,[],true);
+            """, arguments: ["html": rendered.blocks.map(\.html).joined(), "atoms": rendered.opaqueSources], in: nil, contentWorld: .page) as? Bool
+        try #require(inserted == true)
+        let expected = fragment.contains("&nbsp;") ? "Bold\u{00a0}" : "Bold"
+        #expect(try await web.evaluateJavaScript("document.querySelector('#fastra-visual').textContent") as? String == expected)
+        _ = try await web.evaluateJavaScript("""
+            {const p=document.querySelector('#fastra-visual strong'),r=document.createRange();r.selectNodeContents(p);r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('insertParagraph');fastraVisual.flush();}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("\n") == true })
+        let source = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
+        #expect(!source.contains("**  "))
+        #expect(!source.contains("<strong>"))
+        for round in 0..<4 {
+            coordinator.load(source, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "report-\(round)")
+            try #require(await waitUntil(timeout: 12) { coordinator.ready })
+            #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        }
+        _ = try await web.evaluateJavaScript("""
+            {const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual'));
+            getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('delete');fastraVisual.flush();}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content == "" })
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "")
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+    }
+
+    @Test("Verschachtelte Inlineformate bleiben darstellbares Markdown", arguments: [
+        ["<strong><mark>Marked</mark></strong>", "**==Marked==**", "strong mark"],
+        ["a<strong><em>Bold</em></strong>b", "a***Bold***b", "strong em,em strong"],
+        ["<strong>outer<strong>inner</strong>end</strong>", "**outerinnerend**", "strong"],
+        ["<em>outer<em>inner</em>end</em>", "*outerinnerend*", "em"]
+    ])
+    @MainActor
+    func reportNestedMarkdownNotation(_ sample: [String]) async throws {
+        let (_, coordinator, web, window) = try await editor("")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.callAsyncJavaScript("""
+            const root=document.querySelector('#fastra-visual'),r=document.createRange();r.selectNodeContents(root);
+            getSelection().removeAllRanges();getSelection().addRange(r);
+            fastraVisual.insertBookmarked(fastraVisual.bookmark(),'<p>'+html+'</p>',{},null,[],true);
+            """, arguments: ["html": sample[0]], in: nil, contentWorld: .page)
+        let source = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
+        #expect(source.trimmingCharacters(in: .newlines) == sample[1])
+        coordinator.load(source, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "report-nested")
+        try #require(await waitUntil(timeout: 12) { coordinator.ready })
+        #expect(try await web.callAsyncJavaScript("return !!document.querySelector(selector);", arguments: ["selector": sample[2]], in: nil, contentWorld: .page) as? Bool == true)
+    }
+
+    @Test("Clipboard exportiert Textmarkerfarbe und keine fremden Blockkennungen")
+    @MainActor
+    func reportHighlightClipboardMetadata() async throws {
+        let source = "==Marked== und **Bold&nbsp;**\n"
+        let (_, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("""
+            {const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual'));
+            getSelection().removeAllRanges();getSelection().addRange(r);document.querySelector('#fastra-visual').dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));}
+            """)
+        try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        let html = try #require(coordinator.pasteboard.string(forType: .html))
+        #expect(!html.contains("data-md-"))
+        #expect(html.contains("background-color"))
+        let rtf = try #require(coordinator.pasteboard.data(forType: .rtf))
+        let rich = try NSAttributedString(data: rtf, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil)
+        let marked = (rich.string as NSString).range(of: "Marked").location
+        try #require(marked != NSNotFound)
+        #expect(rich.attribute(.backgroundColor, at: marked, effectiveRange: nil) != nil)
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-report-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("receiver.md")
+        try "Other\n".write(to: file, atomically: true, encoding: .utf8)
+        let (receiverWorkspace, receiver, receiverWeb, receiverWindow) = try await editor("Other\n", documentURL: file)
+        receiverWorkspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
+        defer { receiverWeb.configuration.userContentController.removeAllScriptMessageHandlers(); receiverWindow.close(); withExtendedLifetime(receiver) {} }
+        receiver.pasteboard = coordinator.pasteboard
+        _ = try await receiverWeb.evaluateJavaScript("{const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual'));getSelection().removeAllRanges();getSelection().addRange(r);}")
+        #expect(receiver.pasteImages())
+        try #require(await waitUntil { receiverWorkspace.activeTab?.content.contains("Marked") == true })
+        let copied = try #require(receiverWorkspace.activeTab?.content)
+        #expect(!copied.contains("Other"))
+        #expect(try await receiverWeb.evaluateJavaScript("document.querySelector('mark').textContent") as? String == "Marked")
+        #expect(try await receiverWeb.evaluateJavaScript("document.querySelector('strong').textContent") as? String == "Bold\u{00a0}")
+        receiverWorkspace.saveActiveTab()
+        try #require(await waitUntil { receiverWorkspace.activeTab?.isDirty == false && (try? String(contentsOf: file, encoding: .utf8)) == copied })
+        let saved = try String(contentsOf: file, encoding: .utf8)
+        let (_, reopened, reopenedWeb, reopenedWindow) = try await editor(saved, documentURL: file)
+        defer { reopenedWeb.configuration.userContentController.removeAllScriptMessageHandlers(); reopenedWindow.close(); withExtendedLifetime(reopened) {} }
+        #expect(try await reopenedWeb.evaluateJavaScript("document.querySelector('mark').textContent") as? String == "Marked")
+        #expect(try await reopenedWeb.evaluateJavaScript("document.querySelector('strong').textContent") as? String == "Bold\u{00a0}")
+    }
+
+    @Test("WYSIWYG-Ausschnitt bleibt dokumentbezogen und verwirft veraltete Revisionen")
+    @MainActor
+    func reportViewportOwnership() async throws {
+        let source = (0..<180).map { "Line \($0)\n\n" }.joined()
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("window.scrollTo(0,1500)")
+        let observedScroll = try await web.evaluateJavaScript("window.scrollY") as? Double ?? 0
+        try #require(observedScroll > 1400)
+        let synchronized: Bool = await withCheckedContinuation { done in coordinator.synchronize { done.resume(returning: $0) } }
+        try #require(synchronized)
+        let saved = try #require(workspace.activeTab?.markdownVisualViewport)
+        #expect(saved.offset.y > 1400)
+        coordinator.load(source, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "report-restore")
+        try #require(await waitUntil(timeout: 12) { coordinator.ready })
+        #expect(abs((try await web.evaluateJavaScript("window.scrollY") as? Double ?? 0) - Double(saved.offset.y)) < 1)
+        workspace.activeTabContent.wrappedValue += "Changed\n"
+        let changed = try #require(workspace.activeTab?.content)
+        coordinator.load(changed, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "report-changed")
+        try #require(await waitUntil(timeout: 12) { coordinator.ready })
+        #expect(try await web.evaluateJavaScript("window.scrollY") as? Double == 0)
+        let (_, other, otherWeb, otherWindow) = try await editor(source)
+        defer { otherWeb.configuration.userContentController.removeAllScriptMessageHandlers(); otherWindow.close(); withExtendedLifetime(other) {} }
+        #expect(try await otherWeb.evaluateJavaScript("window.scrollY") as? Double == 0)
+    }
+
+    @Test("Echter Strong-Clipboard-Rundweg in ein leeres Dokument ergänzt keinen Blank")
+    @MainActor
+    func reportSimpleStrongNativeClipboard() async throws {
+        let (_, coordinator, web, window) = try await editor("<strong>Strong</strong>\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        _ = try await web.evaluateJavaScript("""
+            {const range=document.createRange();range.selectNodeContents(document.querySelector('#fastra-visual strong'));
+            getSelection().removeAllRanges();getSelection().addRange(range);
+            document.querySelector('#fastra-visual').dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));}
+            """)
+        try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
+        #expect(coordinator.pasteboard.string(forType: .string) == "Strong")
+        let (target, receiver, targetWeb, targetWindow) = try await editor("")
+        defer { targetWeb.configuration.userContentController.removeAllScriptMessageHandlers(); targetWindow.close(); withExtendedLifetime(receiver) {} }
+        receiver.pasteboard = coordinator.pasteboard
+        _ = try await targetWeb.evaluateJavaScript("""
+            {const range=document.createRange();range.selectNodeContents(document.querySelector('#fastra-visual'));
+            getSelection().removeAllRanges();getSelection().addRange(range);}
+            """)
+        try #require(receiver.pasteImages())
+        try #require(await waitUntil { target.activeTab?.content.contains("Strong") == true })
+        #expect(try await targetWeb.evaluateJavaScript("document.querySelector('#fastra-visual').textContent") as? String == "Strong")
+        let copied = try #require(target.activeTab?.content)
+        #expect(!copied.contains("&nbsp;"))
+        #expect(!copied.contains("\u{00a0}"))
+    }
+
+    @Test("Altes WYSIWYG-Scrollereignis erhält nach externer Änderung keine neue Quellrevision")
+    @MainActor
+    func reportViewportRejectsStaleSourceEvent() async throws {
+        let source = (0..<180).map { "Line \($0)\n\n" }.joined()
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let tap = MarkdownVisualMessageTap(coordinator)
+        var copiedSession: String?
+        var receivedViewport = false
+        tap.observe = { message in
+            guard let body = message.body as? [String: Any] else { return }
+            if message.name == "markdownCopy" { copiedSession = body["session"] as? String }
+            if body["kind"] as? String == "viewport", (body["viewport"] as? [String: Any])?["y"] as? Double == 1700 {
+                receivedViewport = true
+            }
+        }
+        for name in ["markdownCopy", "visualMarkdown"] {
+            web.configuration.userContentController.removeScriptMessageHandler(forName: name)
+            web.configuration.userContentController.add(tap, name: name)
+        }
+        _ = try await web.evaluateJavaScript("window.scrollTo(0,1200)")
+        let synchronized: Bool = await withCheckedContinuation { done in coordinator.synchronize { done.resume(returning: $0) } }
+        try #require(synchronized)
+        let before = try #require(workspace.activeTab?.markdownVisualViewport)
+        _ = try await web.evaluateJavaScript("""
+            {const range=document.createRange();range.selectNodeContents(document.querySelector('#fastra-visual p'));
+            getSelection().removeAllRanges();getSelection().addRange(range);
+            document.querySelector('#fastra-visual').dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));}
+            """)
+        try #require(await waitUntil { copiedSession != nil })
+        let session = try #require(copiedSession)
+        let revision = try await web.callAsyncJavaScript("const state=fastraVisual.prepareAction();fastraVisual.completeAction(session);return state.revision;", arguments: ["session": session], in: nil, contentWorld: .page) as? Int
+        let acceptedRevision = try #require(revision)
+        workspace.activeTabContent.wrappedValue += "External source change\n"
+        try #require(workspace.activeTab?.contentRevision != before.revision)
+        // Eine bereits versandte Nachricht darf erst nach der Quelländerung
+        // eintreffen; dafür braucht der Test keinen Animationsframe im verdeckten Fenster.
+        _ = try await web.callAsyncJavaScript("window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'viewport',session,revision,viewport:{x:0,y:1700}});return true;", arguments: ["session": session, "revision": acceptedRevision], in: nil, contentWorld: .page)
+        try #require(await waitUntil { receivedViewport })
+        #expect(workspace.activeTab?.markdownVisualViewport == before)
+        #expect(workspace.activeTab?.markdownVisualViewport?.revision != workspace.activeTab?.contentRevision)
     }
 
     @MainActor
@@ -2518,7 +2727,7 @@ struct MarkdownVisualTests {
     @Test("Leere Listenpunkte bleiben beim Kopieren und Einfügen im selben Dokument erhalten")
     @MainActor
     func copyEmptyLists() async throws {
-        let source = "# A\n\n- \n\n# B\n\n1. \n\n# C\n\n- [ ] \n"
+        let source = "# A\n\n- \n\n# B\n\n1. \n\n# C\n\n- [ ] \n\nEinfügepunkt\n"
         let (workspace, coordinator, web, window) = try await editor(source)
         defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
         _ = try await web.evaluateJavaScript("""
@@ -2530,10 +2739,32 @@ struct MarkdownVisualTests {
         let package = try #require(try JSONSerialization.jsonObject(with: data) as? [String: String])
         let copied = try #require(package["markdown"])
         #expect(MarkdownRichText.htmlFragment(markdown: copied).components(separatedBy: "<li").count == 4, Comment(rawValue: copied))
-        _ = try await web.evaluateJavaScript("{const r=document.createRange();r.selectNodeContents(document.getElementById('fastra-visual'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);}")
+        // Der Clipboard-Inhalt wird vor der WebKit-Bestätigung veröffentlicht.
+        // Wie bei einer echten Eingabe erst die Kopiersperre abwarten.
+        let copyCompleted = try await web.callAsyncJavaScript("""
+            for(let i=0;i<200;i++) {
+                if(document.getElementById('fastra-visual').isContentEditable)return true;
+                await new Promise(resolve=>setTimeout(resolve,10));
+            }
+            return false;
+            """, arguments: [:], in: nil, contentWorld: .page)
+        try #require(copyCompleted as? Bool == true)
+        // Ein tatsächlicher Absatz hält das Ziel außerhalb des letzten leeren
+        // Listenpunkts; ein Range am Wurzelende ist keine solche Einfügestelle.
+        _ = try await web.evaluateJavaScript("""
+            {const root=document.getElementById('fastra-visual'),p=Array.from(root.querySelectorAll('p')).find(p=>p.textContent==='Einfügepunkt' && !p.closest('li'));
+            if(!p)throw new Error('Einfügeabsatz fehlt');root.focus();
+            const r=document.createRange();r.selectNodeContents(p);r.collapse(false);
+            getSelection().removeAllRanges();getSelection().addRange(r);}
+            """)
         #expect(coordinator.pasteImages())
-        try #require(await waitUntil { workspace.activeTab?.content != source })
-        #expect(MarkdownRichText.htmlFragment(markdown: workspace.activeTab!.content).components(separatedBy: "<li").count == 7)
+        // Die erste Normalisierung kann den Quelltext bereits vor dem
+        // asynchronen Paste ändern. Erst alle sechs Listenpunkte belegen ihn.
+        let inserted = await waitUntil {
+            guard let content = workspace.activeTab?.content else { return false }
+            return MarkdownRichText.htmlFragment(markdown: content).components(separatedBy: "<li").count == 7
+        }
+        #expect(inserted, Comment(rawValue: workspace.activeTab?.content ?? "Kein Dokument"))
     }
 
     @Test("Aufgabenliste lässt sich erstellen, ankreuzen und mit Undo wiederherstellen")

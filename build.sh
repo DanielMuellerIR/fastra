@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Bequemlichkeits-Wrapper: reicht an das echte Build-Skript in app/ durch.
-# (Die Skripte selbst bleiben in app/, weil sie dort mit relativen Pfaden
-# arbeiten und überall so dokumentiert sind.)
-exec "$(dirname "$0")/app/build.sh" "$@"
+# Plattformspezifische Abläufe bleiben in den jeweiligen Unterverzeichnissen.
+case $(uname -s) in
+  Linux) exec "$(dirname "$0")/linux/build.sh" "$@" ;;
+  Darwin) exec "$(dirname "$0")/app/build.sh" "$@" ;;
+  *) echo 'Fastra supports macOS and Linux.' >&2; exit 2 ;;
+esac

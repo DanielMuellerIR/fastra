@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<style-scheme id="fastra-dark" _name="Fastra Dark" version="1.0">
+  <author>Fastra contributors</author>
+  <style name="text" foreground="#f2f2f2" background="#171717"/>
+  <style name="selection" background="#486580"/>
+  <style name="cursor" foreground="#f2f2f2"/>
+  <style name="current-line" background="#2b3d50"/>
+  <style name="line-numbers" foreground="#777777" background="#171717"/>
+  <style name="current-line-number" foreground="#a8a8a8" background="#2b3d50"/>
+  <style name="def:keyword" foreground="#e88d7c" bold="true"/>
+  <style name="def:type" foreground="#7fb0ee" bold="true"/>
+  <style name="def:identifier" foreground="#f2f2f2"/>
+  <style name="def:function" foreground="#f2f2f2"/>
+  <style name="def:constant" foreground="#e88d7c" bold="true"/>
+  <style name="def:number" foreground="#dfa25a"/>
+  <style name="def:string" foreground="#94ce9f"/>
+  <style name="def:character" foreground="#f2f2f2"/>
+  <style name="def:comment" foreground="#9a9a9a" italic="true"/>
+  <style name="def:tag" foreground="#e88d7c" bold="true"/>
+  <style name="def:attribute" foreground="#dfa25a"/>
+  <style name="xml:element-name" foreground="#e88d7c" bold="true"/>
+  <style name="xml:attribute-name" foreground="#dfa25a"/>
+  <style name="xml:attribute-value" foreground="#94ce9f"/>
+  <style name="xml:doctype" foreground="#f2f2f2"/>
+</style-scheme>

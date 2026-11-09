@@ -4,6 +4,54 @@ Hier stehen nur offene Produktarbeit und bewusst zurückgestellte Grenzen.
 Erledigte Arbeit und historische Entscheidungen stehen in
 [CHANGELOG.md](CHANGELOG.md).
 
+## Linux-Portierung
+
+Vorrang hat die optische Gleichheit mit der aktuellen Mac-Version. Die
+Mac-Aufteilung von Hauptfenster und Suchfenster ist die Grundlage. Noch offen
+sind die übrigen Werkzeugfenster und die abschließende Schriftangleichung.
+Die [getrennten Größen für Oberfläche und Dokumenttext](docs/linux-port/F07-SOURCE-APPEARANCE.md#getrennte-größen-ab-12250) sind angebunden.
+Die [appweite Wahl installierter Quellschriften](docs/linux-port/F07-SOURCE-APPEARANCE.md#appweite-quellschrift-ab-12210) ist angebunden.
+Die [appweite Wahl von Automatisch, Hell und Dunkel](docs/linux-port/F07-SOURCE-APPEARANCE.md) erfasst auch bereits geöffnete Markdown- und Rich-Ansichten.
+Die getrennten Lesewege für Vergleiche, Referenzprüfungen und visuelle Vorschauen
+sowie vollständige schreibgeschützte Quelltext-Tabs sind im [Dokumentvertrag](docs/linux-port/F07-DOCUMENTS.md#reine-lesegrundlage-ab-12180) beschrieben.
+Die freiwillige [Sitzungssicherung solcher Tabs](docs/linux-port/F07-DOCUMENTS.md#sitzungsreferenzen-ab-12200)
+liest bei der Wiederherstellung den aktuellen Plattenstand erneut schreibgeschützt.
+Die automatische [Wiederherstellung gespeicherter Dateipfade und Fenster](docs/linux-port/F07-DOCUMENTS.md#automatischer-startzustand-ab-12340) ist angebunden; ungesicherte Inhalte bleiben der getrennten freiwilligen Entwurfssicherung vorbehalten. Projektbezogene Wiederverwendung vorhandener Fenster bei zusätzlichen Öffnungsaufträgen bleibt offen.
+Die übrigen offenen Unterschiede sind keine akzeptierten Plattformausnahmen.
+Referenz und Linux mit gleichen Daten in Deutsch/Englisch, hell/dunkel sowie
+bei Mindestbreite und breit vergleichen; Funktionsprüfungen ersetzen die
+visuelle Abnahme nicht. Native Systemschriften, Dateiauswahl und vom
+Fenstermanager bestimmte Fensteraktionen bleiben einzeln zu bewerten.
+
+Die Linux-Version entsteht im bestehenden Repository mit eigenständiger
+Oberfläche und schrittweise gemeinsamem Rust-Kern; die native Mac-Oberfläche
+bleibt erhalten. Entscheidungstests, Arbeitspakete und Abnahmekriterien stehen im
+[Linux-Umsetzungsplan](docs/LINUX-PORT.md). Die Zusammenarbeit mit Poor Man's Text
+läuft über dessen lokale CLI. Die isolierte Entscheidungsphase ist im [Entscheidungsbericht](docs/LINUX-DECISION.md)
+festgehalten. Offen sind insbesondere vollständige Markdown-Parität,
+die Verträglichkeit externer
+4D-Enginekomponenten, vollständige Mehrdatei-Parität über die dokumentierten
+Linux-Limits hinaus sowie Desktop-/IME-Abnahme. Der jeweils implementierte Umfang und
+seine konkreten Grenzen stehen in der [Linux-Abnahmematrix](docs/linux-port/F00-MATRIX.md).
+
+Die [mehrsprachige Syntaxfaltung](docs/linux-port/F07-FOLDING-FOUNDATION.md)
+ist ab 1.217.0 im Linux-Editor angebunden, mit unabhängigen Ausschnitten und
+gebundenen Hintergrundplänen. Die konkrete Absatz-/Platzhaltergrenze des nativen
+Renderers ist dort beschrieben; die abschließende optische Gesamtabnahme bleibt
+offen.
+
+Die [gemeinsamen Druckvorgaben und hellen Syntaxfarben](docs/linux-port/F14-PRINTING.md#gemeinsame-druckvorgaben-ab-12350) sind angebunden. Vollständige Druckdekoration, Papierformat-Menü, Vektor-PDF-Druck und die dort belegte Unicode-Zuordnung des WebKit-/Skia-PDF-Backends bleiben offen.
+
+Allgemeine native IME-Transaktionen einschließlich Preedit, Surrounding-Delete
+und Cancel sowie Custom-Indenter, Tab-/Snippet- und AT-SPI-Folgen sind weiter
+offen. Die nachgewiesenen einzelnen [nativen Editverträge](docs/linux-port/F01-NATIVE-EDIT-PLANS.md)
+ersetzen diese Garantie nicht. Systempakete bleiben ohne feste Umbruchspalten
+und ohne den privaten Vorprüfungsvertrag; der zusätzliche eigene Toolkitpfad
+ist eine bewusste optionale Produktvariante. Kandidatenfenster-IME, vollständige
+Screenreader-, Wayland- und weitere Treiber-/Distributionsabnahme fehlen noch.
+
+
+
 ## Editor-Erweiterungen
 
 
@@ -26,8 +74,8 @@ Erledigte Arbeit und historische Entscheidungen stehen in
   ergänzen; schreibende Automatisierung bleibt eine gesonderte Etappe mit
   vollständiger Vorschau und den bestehenden Apply-Prüfungen.
 
-Der aktuelle Schnittstellenvertrag steht in
-[Lokale Snapshot-Steuerung](docs/LOCAL-CONTROL.md).
+Ziele, Schnittstellen-Etappen und Abnahmekriterien stehen in
+[Code-Erklärungen und Automatisierung](docs/CODE-EXPLANATIONS.md).
 Der gespeicherte Codefrage-Player mit lokalen UTF-8-Snapshots ist ab 1.129.0
 vorhanden. Ab 1.129.1 bestehen die installierte deutsche AppleScript- und
 englische JXA-/CLI-Abnahme, echte Prozessneustarts und die Sichtprüfung bei
@@ -43,6 +91,17 @@ Timeout-Ursache wird getrennt weiter diagnostiziert.
   besitzen Hilfetexte; der Auslöser für zeitweise ausbleibende Tooltips im
   WYSIWYG-Modus ist noch nicht reproduzierbar belegt.
 
+- **Build-Reproduzierbarkeit: `Package.resolved` auf Drift prüfen.** Ein älterer
+  Prüfstand meldete, dass `app/build.sh` den nicht eingecheckten
+  SwiftLintPlugin-Pin 0.65.0 ergänzt. Ob das beim aktuellen Stand noch geschieht,
+  ist offen; die heutigen Checkout-Patches entfernen die Plugin-Abhängigkeit.
+  Nächster Schritt: in einer sauberen, isolierten Arbeitskopie den Ausgangsstand
+  von `app/Package.resolved` sichern, den regulären `app/build.sh`-Weg ausführen
+  und danach den Dateidiff samt Build-Ergebnis prüfen. Bleibt die Datei gleich,
+  den alten Befund mit diesem Gegenbeleg schließen. Entsteht ein Diff, zuerst
+  dessen tatsächliche Auflösungskette klären und anschließend den notwendigen
+  Pin einchecken oder die bewusste lokale Abweichung begründen. Keine
+  Abhängigkeitsänderung allein aufgrund des historischen Verdachts.
 - **4D-Parameterhilfe/Typeahead: verbliebene Komponenten-/Plugin-Grenzen**
   (verbleibende Grenze nach der Komponentenmethoden-Unterstützung; diese ist mit
   v1.50.0 umgesetzt — Typeahead + Signaturhilfe aus `.4dbase`, `.4DZ` und
@@ -210,7 +269,7 @@ und sie sind noch offen.
 
 ## Offene Beobachtungen (nicht reproduziert)
 
-- **⌘⇧+Pfeiltasten ohne Wirkung auf einem anderen Mac** (Betriebsmeldung
+- **⌘⇧+Pfeiltasten ohne Wirkung auf einem anderen Mac** (Nutzermeldung
   2026-07-29; auf dem Entwicklungs-Mac funktioniert es). Befund: Fastras eigenes
   Key-Routing (`KeyRouting.route`) fasst ⌘- und ⌘⇧-Pfeilkombinationen nicht
   an — sie gehen unverändert an den Editor durch; es gibt also keinen
@@ -222,7 +281,7 @@ und sie sind noch offen.
   funktioniert (falls nein, ist es kein Fastra-Thema).
 
 - **Fenster ganz ohne Tabs mit tippbarer Editorfläche nach App-Start**
-  (Betriebsmeldung 2026-07-29, einmalig, kein Repro). Analyse: `tabs` kann
+  (Nutzermeldung 2026-07-29, einmalig, kein Repro). Analyse: `tabs` kann
   nur über den Fensterschließen-Pfad (`prepareToCloseWindow`) dauerhaft leer
   werden; SwiftUI hält Szene samt Workspace am Leben und kann das Fenster
   später wieder anzeigen (Dock-Klick wirkt wie App-Start) — dann stand ein
@@ -236,7 +295,7 @@ und sie sind noch offen.
 ## Ältere offene Beobachtungen (2026-07-24/25, nicht reproduziert)
 
 - **Editor-Befunde 2026-07-24/25:** Der Return-/Tipp-Scroll-Befund ist mit
-  v1.50.1 GELÖST (State-Reconcile-Race, F.23; im Arbeitsbetrieb verifiziert am
+  v1.50.1 GELÖST (State-Reconcile-Race, F.23; verifiziert am
   Live-Repro), ebenso der dabei entdeckte ⌘V+⌘Z-Crash (F.24). Offen
   bleiben zwei Beobachtungen aus der Sitzung VOR dem cfprefsd-Neustart
   vom 2026-07-24, seither nicht wieder aufgetreten: Palette-Emoji erschien
@@ -247,13 +306,13 @@ und sie sind noch offen.
   behebt, und `FASTRA_TYPESCROLL_FIXTURE=<Dateikopie> ./selftest.sh
   typescroll` auf dem betroffenen Stand fahren.
 
-- **Emoji „in zwei Zeichen zerplatzt“** (Betriebsmeldung, wahrscheinlich noch
+- **Emoji „in zwei Zeichen zerplatzt“** (Nutzermeldung, wahrscheinlich noch
   v1.46.8): Mit v1.48.0 nicht reproduzierbar — Dateibytes intakt,
   Attributläufe/Fragmente/Glyphen über 121 Umbruchbreiten sauber, Fenster-
   Screenshot einwandfrei. Wächter `emojisplit` läuft im Standardlauf.
-  Gegenprüfung mit v1.49.0 vorgesehen; bei erneutem Auftreten Fensterbreite oder
+  Eine Gegenprüfung mit v1.49.0 ist offen; bei erneutem Auftreten Fensterbreite oder
   Screenshot zur Meldung geben.
-- **„Tab-Wechsel repariert die Emoji-Darstellung“** (Betriebsmeldung
+- **„Tab-Wechsel repariert die Emoji-Darstellung“** (Nutzermeldung
   2026-07-27). Die beiden greifbaren Teile des Befunds sind geklärt und in
   v1.52.1/v1.52.2 abgearbeitet: Der Editor legte attributierten Text (RTF)
   aufs Clipboard, dessen RTF-nach-HTML-Weg U+FE0F verlor, und in der
@@ -267,9 +326,9 @@ und sie sind noch offen.
   notieren: Editor-Text oder Vorschau, Fensterbreite, ob ein App-Neustart
   genügt, und welche Codepoints die Datei an der Stelle wirklich enthält.
 
-  **Zwischenstand 2026-07-28:** Die notarisierte v1.53.1 wurde im echten
-  Einsatz benutzt und meldet die Emoji-Darstellung auf beiden Seiten — Editor
-  und Vorschau — als korrekt. Das ist der erste positive Gegenbefund seit der
+  **Zwischenstand 2026-07-28:** Im echten Einsatz der notarisierten v1.53.1
+  wurde die Emoji-Darstellung auf beiden Seiten — Editor und Vorschau — als
+  korrekt gemeldet. Das ist der erste positive Gegenbefund seit der
   Meldung; die Beobachtung bleibt aber notiert, weil ein einzelner guter Lauf
   eine sporadische Zeichenfrage nicht ausschließt. Die Wächter `emojipaste`,
   `emojipreview` und `emojisplit` laufen weiter im Standardlauf.
@@ -282,8 +341,8 @@ und sie sind noch offen.
 
 ## Später – nur auf ausdrückliche Anfrage
 
-- **Cross-Platform-Portabilität (Windows/Linux):** Weder Machbarkeit noch
-  Implementierung werden ohne ausdrücklichen Auftrag untersucht.
+- **Windows-Portierung:** Weder Machbarkeit noch Implementierung werden ohne
+  ausdrücklichen Auftrag untersucht. Die beauftragte Linux-Portierung steht oben.
 - **Monetarisierung:** Entschieden 2026-07-18 — Fastra ist Open Source;
   keine Lizenz-, Trial- oder Bezahlfunktionen. Höchstens ein
   Donation-Button kommt eventuell später, aber vorerst nicht und nur auf

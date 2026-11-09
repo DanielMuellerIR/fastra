@@ -129,3 +129,51 @@ LaunchServices cold starts (one and four simultaneous callers), silent acceptanc
 capabilities without a startable app, codes 2–6 and a missing-endpoint timeout.
 The runner briefly opens test windows; run it in an available desktop session.
 It never installs a test bundle into `/Applications`.
+
+## Linux
+
+Linux 1.182.0 provides the same command-line options, exit codes and capability
+JSON through `fastra-diff`. The system package installs `/usr/bin/fastra-diff`;
+portable archives and user installations provide `bin/fastra-diff`. The helper
+resolves its sibling `libexec/fastra-linux`, including installations with spaces
+or percent signs. A capability query works without a startable sibling app.
+Paths and labels must be valid UTF-8; unrepresentable arguments are rejected.
+
+Linux uses the existing application's local Unix session D-Bus instead of a Mach
+port. TCP and other nonlocal bus transports are rejected. Requests retain the
+64 KiB JSON limit, ten-second deadline, strict field set and UUID identity;
+letter case does not create another UUID. Confirmation follows creation of the
+separate read-only window. No input becomes an editable document tab, project or
+session entry. File reading and comparison run in bounded background workers.
+Binary, unsupported or excessive inputs receive a visible explanation; acceptance
+is not a promise that the file can be rendered. The helper limits remain four MiB combined text, 5,000 lines per side and two MiB for the complete report.
+
+From Linux 1.214.0, external windows use the same comparison renderer as document
+comparison tabs: actual source line numbers, intraline highlights, expandable
+unchanged sections, difference navigation, a position overview and shared
+scrolling. Copying omits line numbers, fold controls and alignment gaps. External
+windows retain soft wrapping independently of the document status bar. The lock
+banner and source title identify a read-only comparison; transfer controls and
+editable document associations are absent. The export action saves the complete,
+localized comparison report using an atomic write. Both original and current
+source paths, symlink aliases and captured file identities are protected against
+being selected as report output, including sources renamed after the comparison.
+
+Closing the last comparison leaves the accepted service available. “Quit Fastra” in the window's menu uses normal app-wide close decisions, including
+any unsaved editor windows. A cold service start without an accepted request expires after
+eleven seconds. At most four file validators and four comparison readers run;
+64 live comparison windows and 4,096 retained request identities bound resources.
+Closing a window cancels its reader and frees window capacity. A blocked reader
+retains its worker slot until it actually ends.
+
+After `./build.sh`, run the matching native contract check on a development
+system with Python, `gdbus`, Xvfb, `xdotool`, ImageMagick and the existing C/GLib development tools:
+
+```sh
+./linux/external-diff-test.sh /path/to/debug /path/to/new-test-output
+```
+
+The binary directory must contain both `fastra-linux` and `fastra-diff`.
+The runner creates a private display, D-Bus, profile and synthetic input files;
+it never uses the user's desktop. Private Xvfb checks do not establish actual
+compositor focus policy, IME or accessibility acceptance.

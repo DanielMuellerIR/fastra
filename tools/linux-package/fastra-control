@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+# /opt/fastra und das entpackte Archiv verwenden denselben relativen Aufbau.
+launcher=$(readlink -f -- "$0")
+root=$(CDPATH= cd -- "$(dirname -- "$launcher")/.." && pwd)
+export LD_LIBRARY_PATH="$root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$root/libexec/fastra-control" "$@"

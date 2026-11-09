@@ -1,0 +1,108 @@
+--- a/gtk/gtktexthistory.c
++++ b/gtk/gtktexthistory.c
+@@ -555,16 +555,48 @@
+     }
+ }
+ 
++static gboolean
++action_is_undo_step (const Action *action)
++{
++  return action->kind != ACTION_KIND_BARRIER &&
++         (action->kind != ACTION_KIND_GROUP || !action_group_is_empty (action));
++}
++
+ static void
+ gtk_text_history_truncate (GtkTextHistory *self)
+ {
++  guint levels = 0;
++  const GQueue *queues[] = { &self->undo_queue, &self->redo_queue };
++
+   g_assert (GTK_IS_TEXT_HISTORY (self));
+ 
+   if (self->max_undo_levels == 0)
+     return;
+ 
+-  while (self->undo_queue.length + self->redo_queue.length > self->max_undo_levels)
+-    gtk_text_history_truncate_one (self);
++  /* Bound actual undo steps, not their barriers or an empty pending group. */
++  for (guint i = 0; i < G_N_ELEMENTS (queues); i++)
++    for (const GList *iter = queues[i]->head; iter != NULL; iter = iter->next)
++      levels += action_is_undo_step (iter->data);
++
++  while (levels > self->max_undo_levels)
++    {
++      Action *oldest = self->undo_queue.head != NULL
++                         ? self->undo_queue.head->data
++                         : self->redo_queue.tail->data;
++      gboolean step = action_is_undo_step (oldest);
++      gtk_text_history_truncate_one (self);
++      levels -= step;
++    }
++
++  /* A boundary cannot precede the first retained undo action. */
++  while (self->undo_queue.head != NULL)
++    {
++      Action *head = self->undo_queue.head->data;
++      if (head->kind != ACTION_KIND_BARRIER)
++        break;
++      g_queue_unlink (&self->undo_queue, &head->link);
++      action_free (head);
++    }
+ }
+ 
+ static void
+@@ -645,12 +677,17 @@
+ {
+   Action *peek;
+   gboolean in_user_action;
++  gboolean is_group;
+ 
+   g_assert (GTK_IS_TEXT_HISTORY (self));
+   g_assert (self->enabled);
+   g_assert (action != NULL);
+ 
+-  while (self->redo_queue.length > 0)
++  is_group = action->kind == ACTION_KIND_GROUP;
++
++  while (action->kind != ACTION_KIND_GROUP &&
++         action->kind != ACTION_KIND_BARRIER &&
++         self->redo_queue.length > 0)
+     {
+       peek = g_queue_peek_head (&self->redo_queue);
+       g_queue_unlink (&self->redo_queue, &peek->link);
+@@ -663,7 +700,8 @@
+   if (peek == NULL || !action_chain (peek, action, in_user_action))
+     g_queue_push_tail_link (&self->undo_queue, &action->link);
+ 
+-  gtk_text_history_truncate (self);
++  if (!is_group)
++    gtk_text_history_truncate (self);
+   gtk_text_history_update_state (self);
+ }
+ 
+@@ -908,6 +946,16 @@
+       peek = g_queue_peek_head (&self->redo_queue);
+ 
+       gtk_text_history_apply (self, action, peek);
++
++      /* Restore the boundary without discarding any following redo actions. */
++      if (peek != NULL && peek->kind == ACTION_KIND_BARRIER)
++        move_barrier (&self->redo_queue, peek, &self->undo_queue, FALSE);
++      else
++        {
++          Action *barrier = action_new (ACTION_KIND_BARRIER);
++          g_queue_push_tail_link (&self->undo_queue, &barrier->link);
++        }
++
+       gtk_text_history_update_state (self);
+ 
+       self->applying = FALSE;
+@@ -950,8 +998,6 @@
+   return_if_not_enabled (self);
+   return_if_applying (self);
+   return_if_irreversible (self);
+-
+-  clear_action_queue (&self->redo_queue);
+ 
+   peek = g_queue_peek_tail (&self->undo_queue);
+ 

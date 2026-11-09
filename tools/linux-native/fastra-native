@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+launcher=$(readlink -f -- "$0")
+root=$(CDPATH= cd -- "$(dirname -- "$launcher")/.." && pwd -P)
+unset FASTRA_INTERNAL_NATIVE_SERVICE
+# Vor diesem exec werden bewusst keine GTK-/GIO-/ICU-/Loader-Variablen gesetzt.
+exec "$root/app/libexec/fastra-runtime-host" -- "$root/libexec/fastra-native-entry" "$root/app/libexec/fastra-linux" "$@"

@@ -1,0 +1,1 @@
+{"date":"2026-11-05","inputBytes":[65,0,66],"explicitLength":3,"results":[{"operation":"set_text","charCount":0,"textCStringBytes":0,"sliceCStringBytes":0,"diagnostics":1},{"operation":"insert","charCount":0,"textCStringBytes":0,"sliceCStringBytes":0,"diagnostics":2}],"diagnostic":"gtk_text_buffer_emit_insert: assertion 'g_utf8_validate (text, len, NULL)' failed"}

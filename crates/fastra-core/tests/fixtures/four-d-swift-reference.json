@@ -1,0 +1,275 @@
+[
+  {
+    "call" : null,
+    "definitions" : [
+      {
+        "kind" : "function",
+        "length" : 14,
+        "line" : 2,
+        "location" : 20,
+        "name" : "Grüße"
+      },
+      {
+        "kind" : "constructor",
+        "length" : 24,
+        "line" : 3,
+        "location" : 50,
+        "name" : "Class constructor"
+      }
+    ],
+    "header" : "// Function fake()",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "// Function fake()\r\nFunction Grüße($name : Text)\r\nshared Class constructor()"
+  },
+  {
+    "call" : null,
+    "definitions" : [
+      {
+        "kind" : "getter",
+        "length" : 18,
+        "line" : 4,
+        "location" : 27,
+        "name" : "value"
+      },
+      {
+        "kind" : "setter",
+        "length" : 18,
+        "line" : 5,
+        "location" : 49,
+        "name" : "value"
+      }
+    ],
+    "header" : "/*\nFunction hidden()\n*/",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "/*\r\nFunction hidden()\r\n*/\r\nFunction get value()\r\nFunction set value($v)"
+  },
+  {
+    "call" : null,
+    "definitions" : [
+      {
+        "kind" : "query",
+        "length" : 33,
+        "line" : 4,
+        "location" : 39,
+        "name" : "find"
+      },
+      {
+        "kind" : "orderBy",
+        "length" : 21,
+        "line" : 5,
+        "location" : 76,
+        "name" : "sort"
+      }
+    ],
+    "header" : "",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "Begin SQL\r\nFunction hidden()\r\nEnd SQL\r\nexposed local Function query find()\r\nFunction orderBy sort()"
+  },
+  {
+    "call" : null,
+    "definitions" : [
+      {
+        "kind" : "constructor",
+        "length" : 25,
+        "line" : 3,
+        "location" : 54,
+        "name" : "Class constructor"
+      }
+    ],
+    "header" : "",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "singleton Function fake()\nexposed Class constructor()\nsession Class constructor()"
+  },
+  {
+    "call" : null,
+    "definitions" : [
+
+    ],
+    "header" : "// Header",
+    "parameters" : [
+      {
+        "name" : "$name",
+        "type" : "Text"
+      },
+      {
+        "name" : "$count",
+        "type" : "Integer"
+      }
+    ],
+    "returns" : {
+      "name" : "$result",
+      "type" : "Boolean"
+    },
+    "source" : "﻿//%attributes = {}\r// Header\r#DECLARE($name : Text; $count : Integer)->$result : Boolean"
+  },
+  {
+    "call" : null,
+    "definitions" : [
+
+    ],
+    "header" : "",
+    "parameters" : [
+      {
+        "name" : "$1",
+        "type" : "Boolean"
+      },
+      {
+        "name" : "$2",
+        "type" : "Text"
+      },
+      {
+        "name" : "$3",
+        "type" : null
+      },
+      {
+        "name" : "$4",
+        "type" : "Text"
+      },
+      {
+        "name" : "${5}…",
+        "type" : "Text"
+      }
+    ],
+    "returns" : {
+      "name" : "$0",
+      "type" : "Longint"
+    },
+    "source" : "C_BOOLEAN:C305($1)\nC_TEXT:C284($2;$4;$other;process;<>process)\nC_LONGINT:C283($0)\nC_TEXT(${5})"
+  },
+  {
+    "call" : {
+      "method" : "Méthode longue",
+      "open" : 14,
+      "parameter" : 2
+    },
+    "definitions" : [
+
+    ],
+    "header" : "",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "Méthode longue(\"a;b\"; Inner(1;2); "
+  },
+  {
+    "call" : {
+      "method" : "Méthode",
+      "open" : 7,
+      "parameter" : 1
+    },
+    "definitions" : [
+
+    ],
+    "header" : "",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "Méthode( /* ; ) */ $1; \"inside"
+  },
+  {
+    "call" : null,
+    "definitions" : [
+
+    ],
+    "header" : "",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "Méthode(1; // prose"
+  },
+  {
+    "call" : null,
+    "definitions" : [
+
+    ],
+    "header" : "",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "$object.member(1; "
+  },
+  {
+    "call" : null,
+    "definitions" : [
+
+    ],
+    "header" : "",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "$method(1; "
+  },
+  {
+    "call" : null,
+    "definitions" : [
+
+    ],
+    "header" : "",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "If (1; "
+  },
+  {
+    "call" : {
+      "method" : "Method",
+      "open" : 7,
+      "parameter" : 1
+    },
+    "definitions" : [
+
+    ],
+    "header" : "",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "Method (1; "
+  },
+  {
+    "call" : null,
+    "definitions" : [
+
+    ],
+    "header" : "",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "Method\t(1; "
+  },
+  {
+    "call" : {
+      "method" : "name",
+      "open" : 12,
+      "parameter" : 1
+    },
+    "definitions" : [
+
+    ],
+    "header" : "",
+    "parameters" : [
+
+    ],
+    "returns" : null,
+    "source" : "Method  name(1; "
+  }
+]

@@ -1,0 +1,350 @@
+--- a/gtk/gtktextbuffer.c
++++ b/gtk/gtktextbuffer.c
+@@ -69,6 +69,7 @@
+   GtkTextHistory *history;
+ 
+   guint user_action_count;
++  guint fastra_preflight_line_bytes;
+ 
+   /* Whether the buffer has been modified since last save */
+   guint modified : 1;
+@@ -103,6 +104,7 @@
+   PASTE_DONE,
+   UNDO,
+   REDO,
++  PREFLIGHT_EDITS,
+   LAST_SIGNAL
+ };
+ 
+@@ -119,6 +121,7 @@
+   PROP_CAN_UNDO,
+   PROP_CAN_REDO,
+   PROP_ENABLE_UNDO,
++  PROP_FASTRA_PREFLIGHT_LINE_BYTES,
+   LAST_PROP
+ };
+ 
+@@ -533,6 +536,10 @@
+ 			0, G_MAXINT,
+                         0,
+                         GTK_PARAM_READABLE);
++
++  text_buffer_props[PROP_FASTRA_PREFLIGHT_LINE_BYTES] =
++    g_param_spec_uint ("fastra-preflight-line-bytes-v1", NULL, NULL,
++                       0, G_MAXUINT, 0, GTK_PARAM_READWRITE);
+ 
+   g_object_class_install_properties (object_class, LAST_PROP, text_buffer_props);
+ 
+@@ -674,6 +681,14 @@
+    *
+    * Emitted when the content of a `GtkTextBuffer` has changed.
+    */
++  /* Privater Prototyp: Originalpositionen und UTF-8-Ersatz aller Teiländerungen.
++   * TRUE verweigert den Plan, bevor UserAction oder Marken angelegt werden. */
++  signals[PREFLIGHT_EDITS] =
++    g_signal_new (I_("fastra-preflight-edits-v1"),
++                  G_OBJECT_CLASS_TYPE (object_class), G_SIGNAL_RUN_LAST, 0,
++                  _gtk_boolean_handled_accumulator, NULL, NULL,
++                  G_TYPE_BOOLEAN, 1, G_TYPE_VARIANT);
++
+   signals[CHANGED] =
+     g_signal_new (I_("changed"),
+                   G_OBJECT_CLASS_TYPE (object_class),
+@@ -975,6 +990,10 @@
+ 
+   switch (prop_id)
+     {
++    case PROP_FASTRA_PREFLIGHT_LINE_BYTES:
++      text_buffer->priv->fastra_preflight_line_bytes = g_value_get_uint (value);
++      break;
++
+     case PROP_ENABLE_UNDO:
+       gtk_text_buffer_set_enable_undo (text_buffer, g_value_get_boolean (value));
+       break;
+@@ -1007,6 +1026,10 @@
+ 
+   switch (prop_id)
+     {
++    case PROP_FASTRA_PREFLIGHT_LINE_BYTES:
++      g_value_set_uint (value, text_buffer->priv->fastra_preflight_line_bytes);
++      break;
++
+     case PROP_ENABLE_UNDO:
+       g_value_set_boolean (value, gtk_text_buffer_get_enable_undo (text_buffer));
+       break;
+@@ -2038,12 +2061,77 @@
+  *
+  * Returns: whether some text was actually deleted
+  */
++/* Der interaktive Plan unterstützt hier vollständig editierbare Bereiche.
++ * Geteilte Readonly-Bereiche werden im aktivierten Prototyp vor History abgewiesen. */
++static gboolean
++fastra_preflight_replace (GtkTextBuffer     *buffer,
++                          const GtkTextIter *first,
++                          const GtkTextIter *last,
++                          const char        *replacement,
++                          gboolean           default_editable)
++{
++  GtkTextIter start = *first, end = *last, at;
++  GVariantBuilder builder;
++  GVariant *plan;
++  gboolean veto = FALSE;
++  guint stamp;
++
++  if (!g_signal_has_handler_pending (buffer, signals[PREFLIGHT_EDITS], 0, TRUE))
++    return FALSE;
++  gtk_text_iter_order (&start, &end);
++  at = start;
++  while (gtk_text_iter_compare (&at, &end) < 0)
++    {
++      if (!gtk_text_iter_editable (&at, default_editable))
++        return TRUE;
++      if (!gtk_text_iter_forward_to_tag_toggle (&at, NULL))
++        break;
++    }
++  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a(iis)"));
++  g_variant_builder_add (&builder, "(iis)", gtk_text_iter_get_offset (&start),
++                         gtk_text_iter_get_offset (&end), replacement);
++  plan = g_variant_ref_sink (g_variant_builder_end (&builder));
++  stamp = _gtk_text_btree_get_chars_changed_stamp (get_btree (buffer));
++  g_signal_emit (buffer, signals[PREFLIGHT_EDITS], 0, plan, &veto);
++  g_variant_unref (plan);
++  return veto || stamp != _gtk_text_btree_get_chars_changed_stamp (get_btree (buffer));
++}
++
++static gboolean
++delete_interactive_full (GtkTextBuffer *buffer,
++                         GtkTextIter   *start_iter,
++                         GtkTextIter   *end_iter,
++                         gboolean       default_editable,
++                         gboolean       preflight);
++
+ gboolean
+ gtk_text_buffer_delete_interactive (GtkTextBuffer *buffer,
+                                     GtkTextIter   *start_iter,
+                                     GtkTextIter   *end_iter,
+                                     gboolean       default_editable)
+ {
++  return delete_interactive_full (buffer, start_iter, end_iter, default_editable, TRUE);
++}
++
++static gboolean delete_selection_full (GtkTextBuffer *buffer, gboolean interactive,
++                                      gboolean default_editable, gboolean preflight);
++
++gboolean
++_gtk_text_buffer_delete_interactive_preflighted (GtkTextBuffer *buffer,
++                                                GtkTextIter *start_iter,
++                                                GtkTextIter *end_iter,
++                                                gboolean default_editable)
++{
++  return delete_interactive_full (buffer, start_iter, end_iter, default_editable, FALSE);
++}
++
++static gboolean
++delete_interactive_full (GtkTextBuffer *buffer,
++                                    GtkTextIter   *start_iter,
++                                    GtkTextIter   *end_iter,
++                                    gboolean       default_editable,
++                                    gboolean       preflight)
++{
+   GtkTextMark *end_mark;
+   GtkTextMark *start_mark;
+   GtkTextIter iter;
+@@ -2058,6 +2146,9 @@
+   g_return_val_if_fail (gtk_text_iter_get_buffer (start_iter) == buffer, FALSE);
+   g_return_val_if_fail (gtk_text_iter_get_buffer (end_iter) == buffer, FALSE);
+ 
++
++  if (preflight && fastra_preflight_replace (buffer, start_iter, end_iter, "", default_editable))
++    return FALSE;
+ 
+   gtk_text_buffer_begin_user_action (buffer);
+ 
+@@ -3994,6 +4085,21 @@
+                                   gboolean interactive,
+                                   gboolean default_editable)
+ {
++  return delete_selection_full (buffer, interactive, default_editable, TRUE);
++}
++
++gboolean
++_gtk_text_buffer_delete_selection_preflighted (GtkTextBuffer *buffer,
++                                              gboolean interactive,
++                                              gboolean default_editable)
++{
++  return delete_selection_full (buffer, interactive, default_editable, FALSE);
++}
++
++static gboolean
++delete_selection_full (GtkTextBuffer *buffer, gboolean interactive,
++                       gboolean default_editable, gboolean preflight)
++{
+   GtkTextIter start;
+   GtkTextIter end;
+ 
+@@ -4004,7 +4110,7 @@
+   else
+     {
+       if (interactive)
+-        gtk_text_buffer_delete_interactive (buffer, &start, &end, default_editable);
++        delete_interactive_full (buffer, &start, &end, default_editable, preflight);
+       else
+         gtk_text_buffer_delete (buffer, &start, &end);
+ 
+@@ -4040,6 +4146,7 @@
+ 			   gboolean       default_editable)
+ {
+   char *cluster_text;
++  char *replacement = NULL;
+   GtkTextIter start;
+   GtkTextIter end;
+   gboolean retval = FALSE;
+@@ -4064,29 +4171,32 @@
+ 
+   cluster_text = gtk_text_iter_get_text (&start, &end);
+ 
++  if (backspace_deletes_character && strcmp ("\r\n", cluster_text))
++    {
++      glong len;
++      replacement = g_utf8_normalize (cluster_text, -1, G_NORMALIZE_NFD);
++      len = g_utf8_strlen (replacement, -1);
++      if (len > 0)
++        *g_utf8_offset_to_pointer (replacement, len - 1) = '\0';
++    }
++
++  if (fastra_preflight_replace (buffer, &start, &end,
++                                               replacement ? replacement : "",
++                                               default_editable))
++    {
++      g_free (replacement);
++      g_free (cluster_text);
++      return FALSE;
++    }
++
+   if (interactive)
+     gtk_text_buffer_begin_user_action (buffer);
+ 
+-  if (gtk_text_buffer_delete_interactive (buffer, &start, &end,
+-					  default_editable))
+-    {
+-      /* special case \r\n, since we never want to reinsert \r */
+-      if (backspace_deletes_character && strcmp ("\r\n", cluster_text))
+-	{
+-	  char *normalized_text = g_utf8_normalize (cluster_text,
+-						     strlen (cluster_text),
+-						     G_NORMALIZE_NFD);
+-	  glong len = g_utf8_strlen (normalized_text, -1);
+-
+-	  if (len > 1)
+-	    gtk_text_buffer_insert_interactive (buffer,
+-						&start,
+-						normalized_text,
+-						g_utf8_offset_to_pointer (normalized_text, len - 1) - normalized_text,
+-						default_editable);
+-
+-	  g_free (normalized_text);
+-	}
++  if (delete_interactive_full (buffer, &start, &end, default_editable, FALSE))
++    {
++      if (replacement && *replacement)
++        gtk_text_buffer_insert_interactive (buffer, &start, replacement, -1,
++                                            default_editable);
+ 
+       retval = TRUE;
+     }
+@@ -4094,6 +4204,7 @@
+   if (interactive)
+     gtk_text_buffer_end_user_action (buffer);
+ 
++  g_free (replacement);
+   g_free (cluster_text);
+ 
+   /* Revalidate the users iter */
+--- a/gtk/gtktextview.c
++++ b/gtk/gtktextview.c
+@@ -6930,9 +6930,18 @@
+ }
+ 
+ static void
+-gtk_text_view_delete_from_cursor (GtkTextView   *text_view,
+-                                  GtkDeleteType  type,
+-                                  int            count)
++gtk_text_view_delete_from_cursor_full (GtkTextView *text_view, GtkDeleteType type,
++                                      int count, gboolean preflight);
++
++static void
++gtk_text_view_delete_from_cursor (GtkTextView *text_view, GtkDeleteType type, int count)
++{
++  gtk_text_view_delete_from_cursor_full (text_view, type, count, TRUE);
++}
++
++static void
++gtk_text_view_delete_from_cursor_full (GtkTextView *text_view, GtkDeleteType type,
++                                      int count, gboolean preflight)
+ {
+   GtkTextViewPrivate *priv;
+   GtkTextIter insert;
+@@ -6943,7 +6952,8 @@
+   priv = text_view->priv;
+ 
+   /* If a selection exists, we operate on it first */
+-  if (gtk_text_buffer_delete_selection (get_buffer (text_view), TRUE,
++  if ((preflight ? gtk_text_buffer_delete_selection :
++                    _gtk_text_buffer_delete_selection_preflighted) (get_buffer (text_view), TRUE,
+                                         priv->editable))
+     {
+       priv->need_im_reset = TRUE;
+@@ -7052,9 +7062,8 @@
+ 
+   if (!gtk_text_iter_equal (&start, &end))
+     {
+-      gtk_text_buffer_begin_user_action (get_buffer (text_view));
+-
+-      if (gtk_text_buffer_delete_interactive (get_buffer (text_view), &start, &end,
++      if ((preflight ? gtk_text_buffer_delete_interactive :
++                      _gtk_text_buffer_delete_interactive_preflighted) (get_buffer (text_view), &start, &end,
+                                               priv->editable))
+         {
+           if (leave_one)
+@@ -7067,7 +7076,6 @@
+           gtk_widget_error_bell (GTK_WIDGET (text_view));
+         }
+ 
+-      gtk_text_buffer_end_user_action (get_buffer (text_view));
+       gtk_text_view_set_virtual_cursor_pos (text_view, -1, -1);
+ 
+       DV(g_print (G_STRLOC": scrolling onscreen\n"));
+@@ -8667,7 +8675,7 @@
+   gtk_text_iter_order (&begin, &end);
+   length = gtk_text_iter_get_offset (&end) - gtk_text_iter_get_offset (&begin);
+ 
+-  if (gtk_text_buffer_delete_selection (get_buffer (text_view), TRUE, priv->editable))
++  if (_gtk_text_buffer_delete_selection_preflighted (get_buffer (text_view), TRUE, priv->editable))
+     {
+       /* If something was deleted, create a second group for the insert. This
+        * ensures that there are two undo operations. One for the deletion, and
+@@ -8700,7 +8708,7 @@
+ 					    &insert,
+ 					    gtk_text_buffer_get_insert (get_buffer (text_view)));
+ 	  if (!gtk_text_iter_ends_line (&insert))
+-	    gtk_text_view_delete_from_cursor (text_view, GTK_DELETE_CHARS, 1);
++	    gtk_text_view_delete_from_cursor_full (text_view, GTK_DELETE_CHARS, 1, FALSE);
+ 	}
+ 
+       if (!gtk_text_buffer_insert_interactive_at_cursor (get_buffer (text_view), str, -1,
+--- a/gtk/gtktextbufferprivate.h
++++ b/gtk/gtktextbufferprivate.h
+@@ -44,4 +44,13 @@
+                                          int             *start_offset,
+                                          int             *end_offset);
+ 
++/* Ausschließlich nach einer vollständigen äußeren Commit-Prüfung verwenden. */
++gboolean _gtk_text_buffer_delete_interactive_preflighted (GtkTextBuffer *buffer,
++                                                         GtkTextIter *start,
++                                                         GtkTextIter *end,
++                                                         gboolean default_editable);
++gboolean _gtk_text_buffer_delete_selection_preflighted (GtkTextBuffer *buffer,
++                                                       gboolean interactive,
++                                                       gboolean default_editable);
++
+ G_END_DECLS

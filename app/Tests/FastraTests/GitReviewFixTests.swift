@@ -358,6 +358,31 @@ struct GitReviewFixPushArgumentTests {
 
 @Suite("Push gegen die geprüfte Adresse (echtes Git)", .serialized)
 struct GitIntegrationReviewFixPushTargetTests {
+    @Test("Push erkennt echte direkte und eingebundene URL-Umschreibregeln",
+          arguments: ["insteadOf", "pushInsteadOf"], [false, true])
+    func actualRewriteRulesAreRejected(rule: String, included: Bool) async throws {
+        guard GitRunner.isAvailable else { return }
+        let root = try reviewFixTempDirectory("push-rewrite")
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect((await reviewFixGit(["init", "-q", root.path], in: root)).ok)
+        let empty = await reviewFixGit(GitPushCommand.rewriteRuleArguments, in: root)
+        #expect(GitPushCommand.rewriteRulesAreAbsent(empty))
+        let key = "url.https://example.test/Replacement/.\(rule)"
+        if included {
+            let config = root.appendingPathComponent("included.cfg")
+            #expect((await reviewFixGit(["config", "--file", config.path,
+                                        key, "https://example.test/original/"], in: root)).ok)
+            #expect((await reviewFixGit(["config", "include.path", config.path], in: root)).ok)
+        } else {
+            #expect((await reviewFixGit(["config", key,
+                                        "https://example.test/original/"], in: root)).ok)
+        }
+        let result = await reviewFixGit(GitPushCommand.rewriteRuleArguments, in: root)
+        #expect(result.ok)
+        #expect(!result.stdout.isEmpty)
+        #expect(!GitPushCommand.rewriteRulesAreAbsent(result))
+    }
+
     @Test("Die festgenagelte Adresse gewinnt gegen eine geänderte Remote-URL")
     func pinnedAddressWinsAndKeepsTracking() async throws {
         guard GitRunner.isAvailable else { return }

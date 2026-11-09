@@ -1,0 +1,10 @@
+[package]
+name = "fastra-uniffi-decision-probe"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+uniffi = { version = "=0.31.2", features = ["cli"] }

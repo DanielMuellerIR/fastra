@@ -1,0 +1,295 @@
+--- a/gtksourceview/gtksourcebuffer.c
++++ b/gtksourceview/gtksourcebuffer.c
+@@ -136,6 +136,7 @@
+ 	PROP_LANGUAGE,
+ 	PROP_LOADING,
+ 	PROP_STYLE_SCHEME,
++	PROP_FASTRA_EDIT_PLAN_ABI_V1,
+ 	N_PROPERTIES
+ };
+ 
+@@ -163,6 +164,7 @@
+ 	GtkTextTag *invalid_char_tag;
+ 
+ 	gint64 insertion_count;
++	guint64 fastra_mutation_epoch;
+ 
+ 	guint cursor_moved_block_count;
+ 
+@@ -385,6 +387,10 @@
+ 				      G_PARAM_CONSTRUCT |
+ 				      G_PARAM_STATIC_STRINGS);
+ 
++	buffer_properties[PROP_FASTRA_EDIT_PLAN_ABI_V1] =
++		g_param_spec_uint ("fastra-edit-plan-abi-v1", NULL, NULL,
++		                   0, G_MAXUINT, 0x46454431u,
++		                   G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+ 	g_object_class_install_properties (object_class, N_PROPERTIES, buffer_properties);
+ 
+ 	/**
+@@ -601,6 +607,10 @@
+ 
+ 	switch (prop_id)
+ 	{
++		case PROP_FASTRA_EDIT_PLAN_ABI_V1:
++			g_value_set_uint (value, 0x46454431u);
++			break;
++
+ 		case PROP_HIGHLIGHT_SYNTAX:
+ 			g_value_set_boolean (value, priv->highlight_syntax);
+ 			break;
+@@ -1101,6 +1111,13 @@
+ }
+ 
+ static void
++fastra_note_mutation (GtkTextBuffer *buffer)
++{
++  GtkSourceBufferPrivate *priv = gtk_source_buffer_get_instance_private (GTK_SOURCE_BUFFER (buffer));
++  priv->fastra_mutation_epoch++;
++}
++
++static void
+ gtk_source_buffer_real_insert_text (GtkTextBuffer *buffer,
+ 				    GtkTextIter   *iter,
+ 				    const gchar   *text,
+@@ -1122,6 +1139,7 @@
+ 	 * default signal handler revalidates it to point to the end of the
+ 	 * inserted text.
+ 	 */
++	fastra_note_mutation (buffer);
+ 	GTK_TEXT_BUFFER_CLASS (gtk_source_buffer_parent_class)->insert_text (buffer, iter, text, len);
+ 
+ 	priv->insertion_count++;
+@@ -1153,6 +1171,7 @@
+ 	 * default signal handler revalidates it to point to the end of the
+ 	 * inserted text.
+ 	 */
++	fastra_note_mutation (buffer);
+ 	GTK_TEXT_BUFFER_CLASS (gtk_source_buffer_parent_class)->insert_paintable (buffer, iter, paintable);
+ 
+ 	gtk_source_buffer_content_inserted (buffer,
+@@ -1177,6 +1196,7 @@
+ 	 * contents change), but the default signal handler revalidates it to
+ 	 * point to the end of the inserted text.
+ 	 */
++	fastra_note_mutation (buffer);
+ 	GTK_TEXT_BUFFER_CLASS (gtk_source_buffer_parent_class)->insert_child_anchor (buffer, iter, anchor);
+ 
+ 	gtk_source_buffer_content_inserted (buffer,
+@@ -1203,6 +1223,7 @@
+ 	offset = gtk_text_iter_get_offset (start);
+ 	length = gtk_text_iter_get_offset (end) - offset;
+ 
++	fastra_note_mutation (buffer);
+ 	GTK_TEXT_BUFFER_CLASS (gtk_source_buffer_parent_class)->delete_range (buffer, start, end);
+ 
+ 	cursor_moved (source_buffer);
+@@ -2618,6 +2639,116 @@
+  *
+  * Joins the lines of text between the specified iterators.
+  */
++typedef struct {
++  gint start, end;
++  gboolean space;
++} FastraJoinEdit;
++
++/* Der vorhandene Join-Algorithmus wird zuerst mit unveränderten Iteratoren
++ * geplant. Die Ausführung verwendet genau diese ursprünglichen Bereiche. */
++static gboolean
++fastra_join_planned (GtkSourceBuffer *buffer, GtkTextIter *start, GtkTextIter *end)
++{
++  GtkTextBuffer *text = GTK_TEXT_BUFFER (buffer);
++  guint signal = g_signal_lookup ("fastra-preflight-edits-v1", GTK_TYPE_TEXT_BUFFER);
++  GtkTextIter cursor = *start, limit = *end, original_end;
++  GtkSourceBufferPrivate *priv = gtk_source_buffer_get_instance_private (buffer);
++  guint64 epoch;
++  GtkTextMark *end_mark;
++  GArray *edits;
++  GVariantBuilder builder;
++  GVariant *plan;
++  gboolean veto = FALSE, proven_oversize = FALSE;
++  guint line_bytes = 0, permanent_spaces = 0;
++  gint delta = 0, final_cursor, final_shift = 0;
++  guint i;
++
++  if (!signal || !g_signal_has_handler_pending (text, signal, 0, TRUE))
++    return FALSE;
++  if (g_object_class_find_property (G_OBJECT_GET_CLASS (text), "fastra-preflight-line-bytes-v1"))
++    g_object_get (text, "fastra-preflight-line-bytes-v1", &line_bytes, NULL);
++  gtk_text_iter_order (&cursor, &limit);
++  original_end = limit;
++  move_to_line_text_end (&cursor);
++  if (!gtk_text_iter_ends_line (&limit))
++    gtk_text_iter_forward_to_line_end (&limit);
++  edits = g_array_new (FALSE, FALSE, sizeof (FastraJoinEdit));
++  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a(iis)"));
++  while (gtk_text_iter_compare (&cursor, &limit) < 0)
++    {
++      GtkTextIter scan = cursor;
++      FastraJoinEdit edit;
++      do {
++        if (!g_unichar_isspace (gtk_text_iter_get_char (&scan)))
++          break;
++      } while (gtk_text_iter_forward_char (&scan) &&
++               gtk_text_iter_compare (&scan, &limit) < 0);
++      if (gtk_text_iter_is_end (&scan))
++        break;
++      edit.start = gtk_text_iter_get_offset (&cursor);
++      edit.end = gtk_text_iter_get_offset (&scan);
++      edit.space = !gtk_text_iter_ends_line (&scan);
++      /* Nach Entfernen des CR ist dessen bisheriges LF selbst das Zeilenende.
++       * gtk_text_iter_ends_line beschreibt davor noch das unveränderte CRLF. */
++      if (gtk_text_iter_get_char (&scan) == '\n' && edit.end > edit.start)
++        edit.space = FALSE;
++      g_array_append_val (edits, edit);
++      g_variant_builder_add (&builder, "(iis)", edit.start, edit.end, edit.space ? " " : "");
++      /* Alle eingefügten Spaces bleiben zwischen Nutztext bestehen. Ohne Space
++       * endet der Plan; zusammenhängende Leerzeilen bilden nur einen Bereich.
++       * Deshalb ist die Liste auf Zeilenbytebudget + zwei Einträge begrenzt. */
++      if (edit.space && line_bytes && ++permanent_spaces > line_bytes)
++        { proven_oversize = TRUE; break; }
++      if (gtk_text_iter_get_char (&scan) != '\n' || gtk_text_iter_ends_line (&scan))
++        {
++          cursor = scan;
++          move_to_line_text_end (&cursor);
++        }
++      if (!edit.space || gtk_text_iter_get_offset (&original_end) <= edit.end)
++        break;
++      limit = original_end;
++    }
++  plan = g_variant_ref_sink (g_variant_builder_end (&builder));
++  epoch = priv->fastra_mutation_epoch;
++  g_signal_emit (text, signal, 0, plan, &veto);
++  g_variant_unref (plan);
++  if (veto || proven_oversize || epoch != priv->fastra_mutation_epoch || edits->len == 0)
++    { g_array_unref (edits); return TRUE; }
++
++  end_mark = gtk_text_buffer_create_mark (text, NULL, &original_end, FALSE);
++  _gtk_source_buffer_save_and_clear_selection (buffer);
++  gtk_text_buffer_begin_user_action (text);
++  final_cursor = gtk_text_iter_get_offset (&cursor);
++  for (i = 0; i < edits->len; i++)
++    {
++      FastraJoinEdit edit = g_array_index (edits, FastraJoinEdit, i);
++      if (final_cursor <= edit.start)
++        break;
++      if (final_cursor < edit.end)
++        { final_cursor = edit.start; break; }
++      final_shift += (edit.space ? 1 : 0) - (edit.end - edit.start);
++    }
++  final_cursor += final_shift;
++  for (i = 0; i < edits->len; i++)
++    {
++      FastraJoinEdit edit = g_array_index (edits, FastraJoinEdit, i);
++      GtkTextIter first, last;
++      gtk_text_buffer_get_iter_at_offset (text, &first, edit.start + delta);
++      gtk_text_buffer_get_iter_at_offset (text, &last, edit.end + delta);
++      gtk_text_buffer_delete (text, &first, &last);
++      if (edit.space)
++        gtk_text_buffer_insert (text, &first, " ", 1);
++      delta += (edit.space ? 1 : 0) - (edit.end - edit.start);
++    }
++  gtk_text_buffer_get_iter_at_offset (text, start, final_cursor);
++  gtk_text_buffer_get_iter_at_mark (text, end, end_mark);
++  gtk_text_buffer_end_user_action (text);
++  _gtk_source_buffer_restore_selection (buffer);
++  gtk_text_buffer_delete_mark (text, end_mark);
++  g_array_unref (edits);
++  return TRUE;
++}
++
+ void
+ gtk_source_buffer_join_lines (GtkSourceBuffer *buffer,
+                               GtkTextIter     *start,
+@@ -2629,6 +2760,9 @@
+ 	g_return_if_fail (GTK_SOURCE_IS_BUFFER (buffer));
+ 	g_return_if_fail (start != NULL);
+ 	g_return_if_fail (end != NULL);
++
++  if (fastra_join_planned (buffer, start, end))
++    return;
+ 
+ 	gtk_text_iter_order (start, end);
+ 
+@@ -3175,3 +3309,10 @@
+ 
+ 	return priv->loading_count > 0;
+ }
++
++guint64
++_gtk_source_buffer_fastra_mutation_epoch (GtkSourceBuffer *buffer)
++{
++  GtkSourceBufferPrivate *priv = gtk_source_buffer_get_instance_private (buffer);
++  return priv->fastra_mutation_epoch;
++}
+--- a/gtksourceview/gtksourceview.c
++++ b/gtksourceview/gtksourceview.c
+@@ -4112,6 +4112,48 @@
+ }
+ 
+ static gboolean
++fastra_smart_backspace (GtkSourceView *view, GtkTextIter *first, GtkTextIter *last,
++                        guint target_column, gboolean default_editable)
++{
++  GtkTextBuffer *buffer = gtk_text_iter_get_buffer (first);
++  guint signal = g_signal_lookup ("fastra-preflight-edits-v1", GTK_TYPE_TEXT_BUFFER);
++  GtkTextIter at = *first;
++  GVariantBuilder builder;
++  GVariant *plan;
++  gchar *spaces;
++  guint64 epoch;
++  gboolean veto = FALSE;
++
++  if (!signal || !g_signal_has_handler_pending (buffer, signal, 0, TRUE))
++    return FALSE;
++  while (gtk_text_iter_compare (&at, last) < 0)
++    {
++      if (!gtk_text_iter_editable (&at, default_editable))
++        return TRUE;
++      if (!gtk_text_iter_forward_to_tag_toggle (&at, NULL))
++        break;
++    }
++  spaces = g_strnfill (target_column - gtk_source_view_get_visual_column (view, first), ' ');
++  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a(iis)"));
++  g_variant_builder_add (&builder, "(iis)", gtk_text_iter_get_offset (first),
++                         gtk_text_iter_get_offset (last), spaces);
++  plan = g_variant_ref_sink (g_variant_builder_end (&builder));
++  epoch = _gtk_source_buffer_fastra_mutation_epoch (GTK_SOURCE_BUFFER (buffer));
++  g_signal_emit (buffer, signal, 0, plan, &veto);
++  g_variant_unref (plan);
++  if (!veto && epoch == _gtk_source_buffer_fastra_mutation_epoch (GTK_SOURCE_BUFFER (buffer)))
++    {
++      /* Editierbarkeit und vollständiger Ersatz wurden vor der einzigen UserAction geprüft. */
++      gtk_text_buffer_begin_user_action (buffer);
++      gtk_text_buffer_delete (buffer, first, last);
++      gtk_text_buffer_insert (buffer, first, spaces, -1);
++      gtk_text_buffer_end_user_action (buffer);
++    }
++  g_free (spaces);
++  return TRUE;
++}
++
++static gboolean
+ do_smart_backspace (GtkSourceView *view)
+ {
+ 	GtkSourceViewPrivate *priv = gtk_source_view_get_instance_private (view);
+@@ -4166,6 +4208,9 @@
+ 		{
+ 			gtk_text_iter_backward_cursor_position (&insert);
+ 		}
++
++		if (fastra_smart_backspace (view, &insert, &end, target_column, default_editable))
++			return TRUE;
+ 
+ 		gtk_text_buffer_begin_user_action (buffer);
+ 		gtk_text_buffer_delete_interactive (buffer, &insert, &end, default_editable);
+--- a/gtksourceview/gtksourcebuffer-private.h
++++ b/gtksourceview/gtksourcebuffer-private.h
+@@ -84,4 +84,7 @@
+ GTK_SOURCE_INTERNAL
+ void                      _gtk_source_buffer_end_loading                 (GtkSourceBuffer        *buffer);
+ 
++GTK_SOURCE_INTERNAL
++guint64 _gtk_source_buffer_fastra_mutation_epoch (GtkSourceBuffer *buffer);
++
+ G_END_DECLS

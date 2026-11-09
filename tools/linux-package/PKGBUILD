@@ -1,0 +1,26 @@
+# Lokales Paket aus dem mit package.sh geprüften Laufzeitarchiv; keine Downloads.
+pkgname=fastra
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Native search and replacement editor with previews'
+arch=('x86_64')
+license=('MIT' 'Apache-2.0' 'Unicode-3.0' 'custom:third-party')
+depends=('glibc>=2.39' 'gcc-libs' 'gtk4>=4.12' 'gtksourceview5>=5.6' 'webkitgtk-6.0>=2.40' 'bubblewrap' 'util-linux' 'imagemagick' 'librsvg' 'poppler')
+options=('!strip' '!debug')
+source=("fastra-${pkgver}-linux-x86_64.tar.gz")
+# Vor makepkg durch die SHA256SUMS des geprüften Artefakts ersetzen.
+sha256sums=('REPLACE_WITH_VERIFIED_ARTIFACT_SHA256')
+
+package() {
+  install -d "$pkgdir/opt/fastra" "$pkgdir/usr/bin" "$pkgdir/usr/share/applications" "$pkgdir/usr/share/icons/hicolor/256x256/apps" "$pkgdir/usr/share/licenses/fastra"
+  # stage.py erzeugt genau ein Verzeichnis; der Paketname wird beim Staging gewählt.
+  local runtimes=("$srcdir"/*/manifest.json)
+  [[ ${#runtimes[@]} == 1 ]] || return 1
+  local runtime=${runtimes[0]%/manifest.json}
+  cp -R --preserve=mode,timestamps "$runtime/." "$pkgdir/opt/fastra/"
+  ln -s /opt/fastra/bin/fastra "$pkgdir/usr/bin/fastra"
+  ln -s /opt/fastra/bin/fastra-control "$pkgdir/usr/bin/fastra-control"
+  install -m644 "$runtime/share/applications/fastra.desktop" "$pkgdir/usr/share/applications/"
+  install -m644 "$runtime/share/icons/hicolor/256x256/apps/fastra.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/"
+  cp -R --preserve=mode,timestamps "$runtime/share/licenses/fastra/." "$pkgdir/usr/share/licenses/fastra/"
+}

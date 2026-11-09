@@ -1,0 +1,377 @@
+[
+  {
+    "affectedLength" : 10,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 3,
+    "location" : 0,
+    "operation" : "sort",
+    "output" : "a1\na2\na10\n",
+    "text" : "a10\na2\na1\n"
+  },
+  {
+    "affectedLength" : 11,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 3,
+    "location" : 0,
+    "operation" : "descending",
+    "output" : "a10\r\na2\r\na1\r\n",
+    "text" : "a2\na10\na1\r\n"
+  },
+  {
+    "affectedLength" : 9,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "dedup",
+    "output" : "é\nx\n",
+    "text" : "é\né\nx\né\n"
+  },
+  {
+    "affectedLength" : 9,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "duplicates",
+    "output" : "a\nb",
+    "text" : "a\nb\na\nc\nb"
+  },
+  {
+    "affectedLength" : 9,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "unique",
+    "output" : "b\r\nc\r\n",
+    "text" : "a\nb\na\nc\r\n"
+  },
+  {
+    "argument" : "",
+    "length" : 0,
+    "location" : 0,
+    "operation" : "unique",
+    "text" : "a\na"
+  },
+  {
+    "affectedLength" : 6,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 1,
+    "location" : 0,
+    "operation" : "duplicates",
+    "output" : "\n",
+    "text" : "a\n\nb\n\n"
+  },
+  {
+    "argument" : "",
+    "length" : 0,
+    "location" : 0,
+    "operation" : "duplicates",
+    "text" : "a\n\nb\n"
+  },
+  {
+    "argument" : "",
+    "length" : 0,
+    "location" : 0,
+    "operation" : "reverse",
+    "text" : ""
+  },
+  {
+    "argument" : "",
+    "length" : 0,
+    "location" : 0,
+    "operation" : "reverse",
+    "text" : "x"
+  },
+  {
+    "affectedLength" : 6,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "reverse",
+    "output" : "b\r\na\r\n",
+    "text" : "a\r\nb\r\n"
+  },
+  {
+    "affectedLength" : 4,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "reverse",
+    "output" : "b\ra\r",
+    "text" : "a\rb\r"
+  },
+  {
+    "affectedLength" : 3,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "reverse",
+    "output" : "b\na",
+    "text" : "a\nb"
+  },
+  {
+    "affectedLength" : 7,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 3,
+    "location" : 0,
+    "operation" : "reverse",
+    "output" : "c\r\nb\r\na\r\n",
+    "text" : "a\r\nb\nc\r"
+  },
+  {
+    "affectedLength" : 10,
+    "affectedLocation" : 7,
+    "argument" : "",
+    "length" : 7,
+    "lineCount" : 2,
+    "location" : 9,
+    "operation" : "reverse",
+    "output" : "😀head\nright\nleft\ntail",
+    "text" : "😀head\nleft\nright\ntail"
+  },
+  {
+    "affectedLength" : 2,
+    "affectedLocation" : 0,
+    "argument" : ">",
+    "length" : 3,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "prefix",
+    "output" : ">a\n>\nb",
+    "text" : "a\n\nb"
+  },
+  {
+    "affectedLength" : 2,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 3,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "number",
+    "output" : "1 a\n2 \nb",
+    "text" : "a\n\nb"
+  },
+  {
+    "affectedLength" : 22,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 11,
+    "location" : 0,
+    "operation" : "number",
+    "output" : " 1 a\n 2 b\n 3 c\n 4 d\n 5 e\n 6 f\n 7 g\n 8 h\n 9 i\n10 j\n11 k\n",
+    "text" : "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\n"
+  },
+  {
+    "affectedLength" : 24,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 5,
+    "location" : 0,
+    "operation" : "unnumber",
+    "output" : "a\nb\nthree\n d\n９x\n",
+    "text" : "  1 a\n2b\nthree\n 4  d\n９x\n"
+  },
+  {
+    "affectedLength" : 11,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "blank",
+    "output" : "a\nb\n",
+    "text" : "a\n \t\n \n \nb\n"
+  },
+  {
+    "affectedLength" : 4,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 0,
+    "location" : 0,
+    "operation" : "blank",
+    "output" : "",
+    "text" : "\n \n\n"
+  },
+  {
+    "affectedLength" : 10,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "trim",
+    "output" : "😀\r\nx \r\n",
+    "text" : "😀 \t\r\nx \r\n"
+  },
+  {
+    "affectedLength" : 6,
+    "affectedLocation" : 0,
+    "argument" : "前",
+    "length" : 0,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "prefix",
+    "output" : "前a\r\n前b\r\n",
+    "text" : "a\r\nb\r\n"
+  },
+  {
+    "affectedLength" : 3,
+    "affectedLocation" : 0,
+    "argument" : "😀",
+    "length" : 0,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "suffix",
+    "output" : "a😀\nb😀",
+    "text" : "a\nb"
+  },
+  {
+    "affectedLength" : 6,
+    "affectedLocation" : 0,
+    "argument" : " ",
+    "length" : 0,
+    "lineCount" : 1,
+    "location" : 0,
+    "operation" : "join",
+    "output" : "a b",
+    "text" : "a\r\nb\r\n"
+  },
+  {
+    "affectedLength" : 3,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 3,
+    "lineCount" : 1,
+    "location" : 0,
+    "operation" : "join",
+    "output" : "ab\nc",
+    "text" : "a\nb\nc"
+  },
+  {
+    "affectedLength" : 15,
+    "affectedLocation" : 0,
+    "argument" : "^él",
+    "length" : 0,
+    "lineCount" : 2,
+    "location" : 0,
+    "operation" : "keep",
+    "output" : "Élan\r\nélan\r\n",
+    "text" : "Élan\r\nx\r\nélan\r\n"
+  },
+  {
+    "affectedLength" : 5,
+    "affectedLocation" : 0,
+    "argument" : "[ac]",
+    "length" : 0,
+    "lineCount" : 1,
+    "location" : 0,
+    "operation" : "delete",
+    "output" : "b",
+    "text" : "a\nb\nc"
+  },
+  {
+    "argument" : "a",
+    "length" : 0,
+    "location" : 0,
+    "operation" : "delete",
+    "text" : "a\na\n"
+  },
+  {
+    "argument" : "a",
+    "length" : 3,
+    "location" : 0,
+    "operation" : "keep",
+    "text" : "a\n\nb"
+  },
+  {
+    "affectedLength" : 2,
+    "affectedLocation" : 2,
+    "argument" : "",
+    "length" : 1,
+    "lineCount" : 0,
+    "location" : 2,
+    "operation" : "nfc",
+    "output" : "x é 😀",
+    "text" : "x é 😀"
+  },
+  {
+    "affectedLength" : 1,
+    "affectedLocation" : 2,
+    "argument" : "",
+    "length" : 1,
+    "lineCount" : 0,
+    "location" : 2,
+    "operation" : "nfd",
+    "output" : "x é 😀",
+    "text" : "x é 😀"
+  },
+  {
+    "argument" : "",
+    "length" : 0,
+    "location" : 0,
+    "operation" : "nfc",
+    "text" : "é"
+  },
+  {
+    "affectedLength" : 9,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 0,
+    "location" : 0,
+    "operation" : "spaces",
+    "output" : "a b c \t\r\n",
+    "text" : "a b c　\t\r\n"
+  },
+  {
+    "affectedLength" : 1,
+    "affectedLocation" : 2,
+    "argument" : "",
+    "length" : 1,
+    "lineCount" : 0,
+    "location" : 2,
+    "operation" : "spaces",
+    "output" : "😀 x",
+    "text" : "😀 x"
+  },
+  {
+    "affectedLength" : 10,
+    "affectedLocation" : 0,
+    "argument" : "",
+    "length" : 0,
+    "lineCount" : 0,
+    "location" : 0,
+    "operation" : "zap",
+    "output" : "a😀\t\r\nx",
+    "text" : "a\u0000\u000b😀\t\r\nx"
+  },
+  {
+    "argument" : "",
+    "length" : 2,
+    "location" : 2,
+    "operation" : "reverse",
+    "text" : "a\nb\n"
+  }
+]

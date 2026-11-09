@@ -1,0 +1,228 @@
+[
+  {
+    "blocks" : [
+      {
+        "end" : 1,
+        "kind" : "changed",
+        "start" : 0
+      },
+      {
+        "end" : 1001,
+        "kind" : "changed",
+        "start" : 1000
+      },
+      {
+        "end" : 2001,
+        "kind" : "changed",
+        "start" : 2000
+      },
+      {
+        "end" : 3001,
+        "kind" : "changed",
+        "start" : 3000
+      },
+      {
+        "end" : 4001,
+        "kind" : "changed",
+        "start" : 4000
+      },
+      {
+        "end" : 5001,
+        "kind" : "changed",
+        "start" : 5000
+      },
+      {
+        "end" : 6001,
+        "kind" : "changed",
+        "start" : 6000
+      },
+      {
+        "end" : 7001,
+        "kind" : "changed",
+        "start" : 7000
+      },
+      {
+        "end" : 8001,
+        "kind" : "changed",
+        "start" : 8000
+      },
+      {
+        "end" : 9001,
+        "kind" : "changed",
+        "start" : 9000
+      },
+      {
+        "end" : 10001,
+        "kind" : "changed",
+        "start" : 10000
+      },
+      {
+        "end" : 11001,
+        "kind" : "changed",
+        "start" : 11000
+      },
+      {
+        "end" : 12001,
+        "kind" : "changed",
+        "start" : 12000
+      },
+      {
+        "end" : 13001,
+        "kind" : "changed",
+        "start" : 13000
+      },
+      {
+        "end" : 14001,
+        "kind" : "changed",
+        "start" : 14000
+      },
+      {
+        "end" : 15001,
+        "kind" : "changed",
+        "start" : 15000
+      },
+      {
+        "end" : 16001,
+        "kind" : "changed",
+        "start" : 16000
+      },
+      {
+        "end" : 17001,
+        "kind" : "changed",
+        "start" : 17000
+      },
+      {
+        "end" : 18001,
+        "kind" : "changed",
+        "start" : 18000
+      },
+      {
+        "end" : 19001,
+        "kind" : "changed",
+        "start" : 19000
+      },
+      {
+        "end" : 20001,
+        "kind" : "changed",
+        "start" : 20000
+      },
+      {
+        "end" : 21001,
+        "kind" : "changed",
+        "start" : 21000
+      },
+      {
+        "end" : 22001,
+        "kind" : "changed",
+        "start" : 22000
+      },
+      {
+        "end" : 23001,
+        "kind" : "changed",
+        "start" : 23000
+      },
+      {
+        "end" : 24001,
+        "kind" : "changed",
+        "start" : 24000
+      },
+      {
+        "end" : 25001,
+        "kind" : "changed",
+        "start" : 25000
+      },
+      {
+        "end" : 26001,
+        "kind" : "changed",
+        "start" : 26000
+      },
+      {
+        "end" : 27001,
+        "kind" : "changed",
+        "start" : 27000
+      },
+      {
+        "end" : 28001,
+        "kind" : "changed",
+        "start" : 28000
+      },
+      {
+        "end" : 29001,
+        "kind" : "changed",
+        "start" : 29000
+      },
+      {
+        "end" : 30001,
+        "kind" : "changed",
+        "start" : 30000
+      },
+      {
+        "end" : 31001,
+        "kind" : "changed",
+        "start" : 31000
+      },
+      {
+        "end" : 32001,
+        "kind" : "changed",
+        "start" : 32000
+      },
+      {
+        "end" : 33001,
+        "kind" : "changed",
+        "start" : 33000
+      },
+      {
+        "end" : 34001,
+        "kind" : "changed",
+        "start" : 34000
+      },
+      {
+        "end" : 35001,
+        "kind" : "changed",
+        "start" : 35000
+      },
+      {
+        "end" : 36001,
+        "kind" : "changed",
+        "start" : 36000
+      },
+      {
+        "end" : 37001,
+        "kind" : "changed",
+        "start" : 37000
+      },
+      {
+        "end" : 38001,
+        "kind" : "changed",
+        "start" : 38000
+      },
+      {
+        "end" : 39001,
+        "kind" : "changed",
+        "start" : 39000
+      }
+    ],
+    "leftCount" : 40001,
+    "mode" : "spread",
+    "rightCount" : 40001,
+    "rowCount" : 40001
+  },
+  {
+    "blocks" : [
+      {
+        "end" : 20000,
+        "kind" : "onlyLeft",
+        "start" : 0
+      },
+      {
+        "end" : 60000,
+        "kind" : "onlyRight",
+        "start" : 40000
+      }
+    ],
+    "leftCount" : 40001,
+    "mode" : "rotation",
+    "rightCount" : 40001,
+    "rowCount" : 60001
+  }
+]

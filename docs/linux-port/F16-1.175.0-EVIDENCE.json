@@ -1,0 +1,73 @@
+{
+  "version": "1.175.0",
+  "build": 385,
+  "product_commit": "35cfe66f2ee29eeac3dc78a0a7c22e6dc37fa7b2",
+  "source_identity": "0ecc70b4e57ac87fdc921cd835ecf1a628e210ff43ada7b2d28968212444aee7",
+  "verified_product_inputs": 412,
+  "artifacts": {
+    "fastra_1.175.0_amd64.deb": "8878e42e49c9d396b656988d549fb556eb26f585b1573b957ea24b0d3cf3a683",
+    "fastra-1.175.0-linux-x86_64.tar.gz": "829efcbb569c25b408b55868c17d4ed7973b6425ee698228f3e71bd9b6d8fee4",
+    "fastra-1.175.0-linux-x86_64.zip": "18ea650e15f9ecb9e0683b6a5e1078ce7507a719e2dcf5a37afec5fd217b6747"
+  },
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.175.0/packages",
+  "workspace": {
+    "programs": 49,
+    "passed": 570,
+    "failed": 0,
+    "ignored": 6,
+    "native_commit_cases": 26,
+    "current_linux_crate_regular_cases": 139,
+    "clippy": "workspace all targets -D warnings",
+    "optimized_build": "PASS",
+    "unchanged_ignored_native_image_cases_reference": "F16-1.174.0-EVIDENCE.json"
+  },
+  "native": {
+    "merged_visible_blank_typing_undo_save_reopen_de_en_minimum_wide": 4,
+    "dark_wide_reopen_capture_repeated_with_visible_window_origin": 1,
+    "clipboard_five_roundtrips_and_static_copy_de_en_minimum_wide": 4,
+    "typed_blank_copy_paste_cut_two_undo_de_en_minimum_wide": 4,
+    "existing_rich_roundtrip_de_en": 2,
+    "complete_image_asset_regression": 1,
+    "external_image_watch_regression": 1,
+    "actual_gdk_html_and_private_markdown_checked": true,
+    "original_source_and_disk_bytes_preserved": true,
+    "visual_review": "valid DE/EN minimum and wide private-Xvfb captures"
+  },
+  "package": {
+    "installed_deb": "PASS",
+    "relocated_tar": "PASS",
+    "runtime_manifest_and_private_icu": "PASS",
+    "actual_packaged_commit_helper_cases": 26,
+    "helper_prefix_space_and_percent": true,
+    "source_free_release_rich_visible_blank_lines_and_red_to_blue_pixels": "PASS",
+    "webkit_sandbox": {
+      "no_new_privileges": 1,
+      "seccomp": 2,
+      "private_pid_namespace": true
+    }
+  },
+  "review": {
+    "global_reference_resolution_without_mark": "CLOSED",
+    "existing_mark_reference_resolution_bug": "CLOSED",
+    "copy_html_internal_blank_metadata": "CLOSED",
+    "typed_blank_html_copy_text_loss": "CLOSED",
+    "structural_list_separator_creates_extra_blank": "CLOSED",
+    "shared_js_sha256": "506321e90ab37c7f114b5841b7ed4741fce6020cdf29496207d2dc598aeb7971",
+    "normalized_image_cache_guard_unchanged": true
+  },
+  "test_boundaries": [
+    "Initial full-suite Git fixture failed at executable launch with ETXTBSY before its mutation assertions; the affected program and all remaining programs passed on the supported fixture filesystem. Completed programs were not repeated.",
+    "One dark wide first capture was blank/clipped despite successful DOM checks. It was rejected as visual evidence; an unchanged-product rerun with a visibly positioned native window produced the valid inspected capture.",
+    "Node CLI was unavailable; JavaScript behavior was executed by the real WebKit native tests, rather than claiming a separate Node syntax check."
+  ],
+  "limits": [
+    "Current Mac window acceptance of the shared JavaScript still requires the approved graphical session.",
+    "The existing formula with internal blank lines still needs the separate mapped Math port.",
+    "Source/preview click navigation and plain code-copy buttons are separate pending integrations.",
+    "Pure parser limits remain 500000 events and 128 nested tags; Rich retains 2 MiB and 10000 blocks.",
+    "New pasted blocks use the existing Markdown canonicalization; unchanged source blocks preserve their original bytes.",
+    "Container CJK font fallback is not a claim of pixel or font parity.",
+    "Pull policy, external component signing and full physical desktop/IME/accessibility acceptance remain open."
+  ]
+}

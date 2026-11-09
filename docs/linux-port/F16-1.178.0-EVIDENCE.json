@@ -1,0 +1,76 @@
+{
+  "version": "1.178.0",
+  "build": 388,
+  "product_commit": "cfbea5c957af98f71b1e01f7b8aae0b6c6345034",
+  "source_identity": "5f3bd826b9cf859661eeb325a05a31602c0ee0eb8e17c8f6ec624c2c185743a8",
+  "verified_product_inputs": 434,
+  "artifacts": {
+    "fastra_1.178.0_amd64.deb": "92d29762d3789604f9f3ec4ff3ba10adb82b8cd115f595c97786597a7ec3b90a",
+    "fastra-1.178.0-linux-x86_64.tar.gz": "eace7e03c901d606e37ce4f33062f55a04d964d2e40e98c5f58f5da16530d311",
+    "fastra-1.178.0-linux-x86_64.zip": "62d64cabdee563f067678a87c243da19b715a97f170bbebce3ed36afb474f184"
+  },
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.178.0/packages",
+  "tests": {
+    "workspace_programs": 49,
+    "regular_passed": 617,
+    "native_git_helper_cases": 26,
+    "failed": 0,
+    "ignored": 6,
+    "linux_regular_subset": 186,
+    "strict_debug_and_release_clippy": "PASS",
+    "optimized_package_build": "PASS",
+    "native_rectangle_commands_de_en_760_1100": 4,
+    "native_editor_rectangle_menu_final_flows": 6,
+    "native_static_math_review_flows": 4,
+    "native_static_to_rich_edit_undo_save_reopen_flows": 4,
+    "native_format_profiles_readiness_options_restart_flows": 8,
+    "native_profile_queue_close_flows": 4,
+    "native_close_others_combined_profile_flows": 8,
+    "native_print_de_en": 2,
+    "print_table_values_once_per_language": 70,
+    "print_formula_rendered_and_final_sentinel": true
+  },
+  "review": {
+    "rectangle_new_request_invalidates_older_read": "CLOSED",
+    "rectangle_complete_result_line_budget": "CLOSED",
+    "profile_write_lifetime_through_main_receipt": "CLOSED",
+    "math_literal_destination_provenance": "CLOSED",
+    "math_global_reference_identity": "CLOSED",
+    "math_partial_literal_boundary_overlap": "CLOSED",
+    "original_collapsed_link_rewrite_range": "CLOSED",
+    "close_others_safety_review": "CLOSED; no blocking finding"
+  },
+  "package": {
+    "installed_deb": "PASS",
+    "relocated_tar": "PASS",
+    "runtime_manifest_private_icu": "PASS",
+    "source_free_katex_mermaid_table_preview": "PASS",
+    "packaged_commit_helper_cases": 26,
+    "helper_prefix_space_and_percent": true,
+    "webkit_no_new_privileges": 1,
+    "webkit_seccomp": 2,
+    "webkit_private_pid_namespace": true
+  },
+  "visual": {
+    "rectangle_menu_de_min_en_wide": "inspected",
+    "profiles_options_de_min_en_wide_and_loading": "inspected",
+    "math_de_min_and_en_wide_boundary": "inspected",
+    "close_others_de_decision_en_context": "inspected",
+    "packaged_preview_installed_relocated": "inspected; both captures have identical SHA256"
+  },
+  "test_boundaries": [
+    "The older padded paste request was reproduced natively winning over the newer normal paste request, then corrected and independently closed.",
+    "The clipboard line-limit finding was statically confirmed; native final tests reject ASCII, Unicode, row, total and NUL limit violations without revision or Undo changes and accept exactly 64 KiB with one Undo.",
+    "Two older native fixtures assumed space padding without setting the active tabs/spaces option. They now explicitly select spaces; a separate native case verifies tab padding.",
+    "Popup snapshots include the private X11 root because the menu is a separate native window.",
+    "The pre-existing options-focus issue remains separately open; successful profile application does not claim to fix it."
+  ],
+  "limits": [
+    "Independent split selections and command targeting, explicit EOL choice and extended wrapping profiles remain pending.",
+    "Rich math atom rendering and the pre-existing options dialog focus issue remain separate ongoing work.",
+    "Mac window acceptance and component signing require an available authorized graphical session.",
+    "The requested Pull policy decision remains pending.",
+    "Physical desktop, Wayland, IME and accessibility acceptance remains open."
+  ]
+}

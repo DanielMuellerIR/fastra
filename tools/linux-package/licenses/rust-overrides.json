@@ -1,0 +1,26 @@
+{
+  "javascriptcore6-0.6.0": {
+    "commit": "33ddd822d2665546ee9d69ae006b5ad7541ef8a1",
+    "file": "rust-webkit6/LICENSE",
+    "sha256": "44dad7b2e199b0d355adf4437df5c9bb18633d47804242f24dab5a633faba5f7",
+    "source": "https://gitlab.gnome.org/World/Rust/webkit6-rs/-/raw/33ddd822d2665546ee9d69ae006b5ad7541ef8a1/LICENSE"
+  },
+  "javascriptcore6-sys-0.6.0": {
+    "commit": "33ddd822d2665546ee9d69ae006b5ad7541ef8a1",
+    "file": "rust-webkit6/LICENSE",
+    "sha256": "44dad7b2e199b0d355adf4437df5c9bb18633d47804242f24dab5a633faba5f7",
+    "source": "https://gitlab.gnome.org/World/Rust/webkit6-rs/-/raw/33ddd822d2665546ee9d69ae006b5ad7541ef8a1/LICENSE"
+  },
+  "webkit6-0.6.1": {
+    "commit": "16c6035a19f747322b1814b02ca482e12e23f5fd",
+    "file": "rust-webkit6/LICENSE",
+    "sha256": "44dad7b2e199b0d355adf4437df5c9bb18633d47804242f24dab5a633faba5f7",
+    "source": "https://gitlab.gnome.org/World/Rust/webkit6-rs/-/raw/16c6035a19f747322b1814b02ca482e12e23f5fd/LICENSE"
+  },
+  "webkit6-sys-0.6.0": {
+    "commit": "33ddd822d2665546ee9d69ae006b5ad7541ef8a1",
+    "file": "rust-webkit6/LICENSE",
+    "sha256": "44dad7b2e199b0d355adf4437df5c9bb18633d47804242f24dab5a633faba5f7",
+    "source": "https://gitlab.gnome.org/World/Rust/webkit6-rs/-/raw/33ddd822d2665546ee9d69ae006b5ad7541ef8a1/LICENSE"
+  }
+}

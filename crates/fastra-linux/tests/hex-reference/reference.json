@@ -1,0 +1,2168 @@
+{
+  "applying": {
+    "empty": [],
+    "maximum_offset_rejected": true,
+    "out_of_bounds_rejected": true,
+    "valid": [255,2,0]
+  },
+  "metadata": {
+    "image": "swift:6.2.1-noble",
+    "image_id": "sha256:675d824f661891504d6957578068a7a28e588fb75fe7fd73e041f2f1ab72a359",
+    "original_source": "app/Sources/Fastra/HexEditing.swift",
+    "source_sha256": "8ff839ba7983fb02a52828b52d7806cb39f00ba9f33a1d8496002104e554d5de",
+    "swift": "6.2.1"
+  },
+  "parse": [
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "00",
+      "values": [0]
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "0f",
+      "values": [15]
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "ff",
+      "values": [255]
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "FF",
+      "values": [255]
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "+0",
+      "values": [0]
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "+1",
+      "values": [1]
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "+9",
+      "values": [9]
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "+a",
+      "values": [10]
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "+F",
+      "values": [15]
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "-0",
+      "values": [0]
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "-1",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "-F",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "--",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "++",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "0+",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "0x",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "0X",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "0",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "000",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "FF00",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "\uff26\uff26",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "\uff0b1",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "\u22120",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "\u0660\u0660",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "\ud835\udfd80",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "F\u0301",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "\u0000F",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "token",
+      "text": "F\u0000",
+      "values": null
+    },
+    {
+      "expected": 0,
+      "name": "empty",
+      "text": "",
+      "values": []
+    },
+    {
+      "expected": 0,
+      "name": "spaces",
+      "text": " \t\r\n",
+      "values": []
+    },
+    {
+      "expected": 1,
+      "name": "empty",
+      "text": "",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "spaces",
+      "text": " \t\r\n",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "empty",
+      "text": "",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "spaces",
+      "text": " \t\r\n",
+      "values": null
+    },
+    {
+      "expected": 16,
+      "name": "empty",
+      "text": "",
+      "values": null
+    },
+    {
+      "expected": 16,
+      "name": "spaces",
+      "text": " \t\r\n",
+      "values": null
+    },
+    {
+      "expected": 17,
+      "name": "empty",
+      "text": "",
+      "values": null
+    },
+    {
+      "expected": 17,
+      "name": "spaces",
+      "text": " \t\r\n",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\tFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\t\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\nFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\n\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u000bFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u000b\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\fFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\f\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\rFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\r\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00 FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00 \u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u0085FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u0085\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u00a0FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u00a0\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u1680FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u1680\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2000FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2000\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2001FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2001\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2002FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2002\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2003FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2003\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2004FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2004\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2005FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2005\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2006FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2006\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2007FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2007\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2008FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2008\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2009FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2009\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u200aFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u200a\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2028FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2028\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u2029FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u2029\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u202fFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u202f\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u205fFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u205f\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u3000FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u3000\u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u180eFF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u180e\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u200bFF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u200b\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\ufeffFF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\ufeff\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u001cFF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u001c\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "scalar separator",
+      "text": "00\u0000FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "separator combining",
+      "text": "00\u0000\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00 \u0301FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00 \ufe0fFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00 \u200dFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00 \u0903FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00 \ud83c\udffbFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00 \udb40\udc20\udb40\udc7fFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00 \u0301\ufe0f\u200dFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00\u0600 FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00 \u0600FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00 \u200d\ud83d\ude00FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00 \u094d\u0915FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00 \u0300 \u200d\u0903FF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00\r\nFF",
+      "values": [0,255]
+    },
+    {
+      "expected": 2,
+      "name": "cluster separator",
+      "text": "00\r\n\u0301FF",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "extra",
+      "text": "00 FF",
+      "values": null
+    },
+    {
+      "expected": 2,
+      "name": "missing",
+      "text": "00",
+      "values": null
+    },
+    {
+      "expected": 1,
+      "name": "last partial",
+      "text": "+F",
+      "values": [15]
+    },
+    {
+      "expected": 17,
+      "name": "seventeen",
+      "text": "FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF",
+      "values": [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255]
+    },
+    {
+      "expected": 16,
+      "name": "row",
+      "text": "+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1\u00a0+1",
+      "values": [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    }
+  ],
+  "saveLineage": {
+    "begin_changes_lineage": true,
+    "blocked_while_saving": true,
+    "duplicate_success_rejected": true,
+    "failed_keeps_changes_and_history": true,
+    "foreign_failure_ignored": true,
+    "foreign_success_rejected": true,
+    "same_id_wrong_changes_rejected": true,
+    "success_changes_lineage": true,
+    "success_clears_changes_and_history": true
+  },
+  "sessions": [
+    {
+      "initial": {
+        "canRedo": false,
+        "canUndo": false,
+        "changes": [],
+        "dirty": false,
+        "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+        "page": [8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+        "pageOffset": 8,
+        "revision": 0,
+        "rows": [
+          "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+          "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+          "20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F"
+        ]
+      },
+      "name": "overlap undo redo fork",
+      "source": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+      "steps": [
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 0,
+            "text": "FF 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 00"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 255,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 0,
+                "offset": 15,
+                "old": 15
+              }
+            ],
+            "dirty": true,
+            "output": [255,1,2,3,4,5,6,7,8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+            "page": [8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+            "pageOffset": 8,
+            "revision": 1,
+            "rows": [
+              "FF 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 00",
+              "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+              "20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 0,
+            "text": "FE FF 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 00"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 254,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 255,
+                "offset": 1,
+                "old": 1
+              },
+              {
+                "new": 0,
+                "offset": 15,
+                "old": 15
+              }
+            ],
+            "dirty": true,
+            "output": [254,255,2,3,4,5,6,7,8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+            "page": [8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+            "pageOffset": 8,
+            "revision": 2,
+            "rows": [
+              "FE FF 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 00",
+              "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+              "20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 16,
+            "text": "AA 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E BB"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 254,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 255,
+                "offset": 1,
+                "old": 1
+              },
+              {
+                "new": 0,
+                "offset": 15,
+                "old": 15
+              },
+              {
+                "new": 170,
+                "offset": 16,
+                "old": 16
+              },
+              {
+                "new": 187,
+                "offset": 31,
+                "old": 31
+              }
+            ],
+            "dirty": true,
+            "output": [254,255,2,3,4,5,6,7,8,9,10,11,12,13,14,0,170,17,18,19,20,21,22,23,24,25,26,27,28,29,30,187,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+            "page": [8,9,10,11,12,13,14,0,170,17,18,19,20,21,22,23,24,25,26,27,28,29,30,187],
+            "pageOffset": 8,
+            "revision": 3,
+            "rows": [
+              "FE FF 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 00",
+              "AA 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E BB",
+              "20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "undo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": true,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 254,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 255,
+                "offset": 1,
+                "old": 1
+              },
+              {
+                "new": 0,
+                "offset": 15,
+                "old": 15
+              }
+            ],
+            "dirty": true,
+            "output": [254,255,2,3,4,5,6,7,8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+            "page": [8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+            "pageOffset": 8,
+            "revision": 4,
+            "rows": [
+              "FE FF 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 00",
+              "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+              "20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "undo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": true,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 255,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 0,
+                "offset": 15,
+                "old": 15
+              }
+            ],
+            "dirty": true,
+            "output": [255,1,2,3,4,5,6,7,8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+            "page": [8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+            "pageOffset": 8,
+            "revision": 5,
+            "rows": [
+              "FF 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 00",
+              "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+              "20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "redo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": true,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 254,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 255,
+                "offset": 1,
+                "old": 1
+              },
+              {
+                "new": 0,
+                "offset": 15,
+                "old": 15
+              }
+            ],
+            "dirty": true,
+            "output": [254,255,2,3,4,5,6,7,8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+            "page": [8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+            "pageOffset": 8,
+            "revision": 6,
+            "rows": [
+              "FE FF 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 00",
+              "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+              "20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 0,
+            "text": "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [],
+            "dirty": false,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+            "page": [8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+            "pageOffset": 8,
+            "revision": 7,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+              "20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "redo"
+          },
+          "changed": false,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [],
+            "dirty": false,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+            "page": [8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+            "pageOffset": 8,
+            "revision": 7,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+              "20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "undo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": true,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 254,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 255,
+                "offset": 1,
+                "old": 1
+              },
+              {
+                "new": 0,
+                "offset": 15,
+                "old": 15
+              }
+            ],
+            "dirty": true,
+            "output": [254,255,2,3,4,5,6,7,8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+            "page": [8,9,10,11,12,13,14,0,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+            "pageOffset": 8,
+            "revision": 8,
+            "rows": [
+              "FE FF 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 00",
+              "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+              "20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "redo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [],
+            "dirty": false,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+            "page": [8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31],
+            "pageOffset": 8,
+            "revision": 9,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F",
+              "20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "initial": {
+        "canRedo": false,
+        "canUndo": false,
+        "changes": [],
+        "dirty": false,
+        "output": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        "page": [0,0,0,0,0,0,0,0],
+        "pageOffset": 8,
+        "revision": 0,
+        "rows": [
+          "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+        ]
+      },
+      "name": "invalid and noops preserve redo",
+      "source": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      "steps": [
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 0,
+            "text": "01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 1,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 1,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 2,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 3,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 4,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 5,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 6,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 7,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 8,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 9,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 10,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 11,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 12,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 13,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 14,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 15,
+                "old": 0
+              }
+            ],
+            "dirty": true,
+            "output": [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            "page": [1,1,1,1,1,1,1,1],
+            "pageOffset": 8,
+            "revision": 1,
+            "rows": [
+              "01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "undo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": true,
+            "canUndo": false,
+            "changes": [],
+            "dirty": false,
+            "output": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "page": [0,0,0,0,0,0,0,0],
+            "pageOffset": 8,
+            "revision": 2,
+            "rows": [
+              "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 0,
+            "text": "00"
+          },
+          "changed": false,
+          "invalid": true,
+          "state": {
+            "canRedo": true,
+            "canUndo": false,
+            "changes": [],
+            "dirty": false,
+            "output": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "page": [0,0,0,0,0,0,0,0],
+            "pageOffset": 8,
+            "revision": 2,
+            "rows": [
+              "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 0,
+            "text": "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+          },
+          "changed": false,
+          "invalid": false,
+          "state": {
+            "canRedo": true,
+            "canUndo": false,
+            "changes": [],
+            "dirty": false,
+            "output": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "page": [0,0,0,0,0,0,0,0],
+            "pageOffset": 8,
+            "revision": 2,
+            "rows": [
+              "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "redo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 1,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 1,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 2,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 3,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 4,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 5,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 6,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 7,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 8,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 9,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 10,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 11,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 12,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 13,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 14,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 15,
+                "old": 0
+              }
+            ],
+            "dirty": true,
+            "output": [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            "page": [1,1,1,1,1,1,1,1],
+            "pageOffset": 8,
+            "revision": 3,
+            "rows": [
+              "01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 0,
+            "text": "+1 +1 +1 +1 +1 +1 +1 +1 +1 +1 +1 +1 +1 +1 +1 +1"
+          },
+          "changed": false,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 1,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 1,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 2,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 3,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 4,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 5,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 6,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 7,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 8,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 9,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 10,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 11,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 12,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 13,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 14,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 15,
+                "old": 0
+              }
+            ],
+            "dirty": true,
+            "output": [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            "page": [1,1,1,1,1,1,1,1],
+            "pageOffset": 8,
+            "revision": 3,
+            "rows": [
+              "01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "undo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": true,
+            "canUndo": false,
+            "changes": [],
+            "dirty": false,
+            "output": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "page": [0,0,0,0,0,0,0,0],
+            "pageOffset": 8,
+            "revision": 4,
+            "rows": [
+              "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "undo"
+          },
+          "changed": false,
+          "invalid": false,
+          "state": {
+            "canRedo": true,
+            "canUndo": false,
+            "changes": [],
+            "dirty": false,
+            "output": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            "page": [0,0,0,0,0,0,0,0],
+            "pageOffset": 8,
+            "revision": 4,
+            "rows": [
+              "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "redo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 1,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 1,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 2,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 3,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 4,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 5,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 6,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 7,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 8,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 9,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 10,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 11,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 12,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 13,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 14,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 15,
+                "old": 0
+              }
+            ],
+            "dirty": true,
+            "output": [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            "page": [1,1,1,1,1,1,1,1],
+            "pageOffset": 8,
+            "revision": 5,
+            "rows": [
+              "01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "redo"
+          },
+          "changed": false,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 1,
+                "offset": 0,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 1,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 2,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 3,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 4,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 5,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 6,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 7,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 8,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 9,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 10,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 11,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 12,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 13,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 14,
+                "old": 0
+              },
+              {
+                "new": 1,
+                "offset": 15,
+                "old": 0
+              }
+            ],
+            "dirty": true,
+            "output": [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            "page": [1,1,1,1,1,1,1,1],
+            "pageOffset": 8,
+            "revision": 5,
+            "rows": [
+              "01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "initial": {
+        "canRedo": false,
+        "canUndo": false,
+        "changes": [],
+        "dirty": false,
+        "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
+        "page": [8,9,10,11,12,13,14,15,16],
+        "pageOffset": 8,
+        "revision": 0,
+        "rows": [
+          "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+          "10"
+        ]
+      },
+      "name": "last partial and signs",
+      "source": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
+      "steps": [
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 16,
+            "text": "+F"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 15,
+                "offset": 16,
+                "old": 16
+              }
+            ],
+            "dirty": true,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,15],
+            "page": [8,9,10,11,12,13,14,15,15],
+            "pageOffset": 8,
+            "revision": 1,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "0F"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 16,
+            "text": "-0"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 0,
+                "offset": 16,
+                "old": 16
+              }
+            ],
+            "dirty": true,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,0],
+            "page": [8,9,10,11,12,13,14,15,0],
+            "pageOffset": 8,
+            "revision": 2,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "00"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 16,
+            "text": "-1"
+          },
+          "changed": false,
+          "invalid": true,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 0,
+                "offset": 16,
+                "old": 16
+              }
+            ],
+            "dirty": true,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,0],
+            "page": [8,9,10,11,12,13,14,15,0],
+            "pageOffset": 8,
+            "revision": 2,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "00"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "undo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": true,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 15,
+                "offset": 16,
+                "old": 16
+              }
+            ],
+            "dirty": true,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,15],
+            "page": [8,9,10,11,12,13,14,15,15],
+            "pageOffset": 8,
+            "revision": 3,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "0F"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "redo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 0,
+                "offset": 16,
+                "old": 16
+              }
+            ],
+            "dirty": true,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,0],
+            "page": [8,9,10,11,12,13,14,15,0],
+            "pageOffset": 8,
+            "revision": 4,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "00"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 16,
+            "text": "10"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [],
+            "dirty": false,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
+            "page": [8,9,10,11,12,13,14,15,16],
+            "pageOffset": 8,
+            "revision": 5,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "10"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "undo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": true,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 0,
+                "offset": 16,
+                "old": 16
+              }
+            ],
+            "dirty": true,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,0],
+            "page": [8,9,10,11,12,13,14,15,0],
+            "pageOffset": 8,
+            "revision": 6,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "00"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "redo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [],
+            "dirty": false,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
+            "page": [8,9,10,11,12,13,14,15,16],
+            "pageOffset": 8,
+            "revision": 7,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "10"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 32,
+            "text": "00"
+          },
+          "changed": false,
+          "invalid": true,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [],
+            "dirty": false,
+            "output": [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
+            "page": [8,9,10,11,12,13,14,15,16],
+            "pageOffset": 8,
+            "revision": 7,
+            "rows": [
+              "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+              "10"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "initial": {
+        "canRedo": false,
+        "canUndo": false,
+        "changes": [],
+        "dirty": false,
+        "output": [],
+        "page": [],
+        "pageOffset": 0,
+        "revision": 0,
+        "rows": []
+      },
+      "name": "empty",
+      "source": [],
+      "steps": [
+        {
+          "action": {
+            "kind": "undo"
+          },
+          "changed": false,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": false,
+            "changes": [],
+            "dirty": false,
+            "output": [],
+            "page": [],
+            "pageOffset": 0,
+            "revision": 0,
+            "rows": []
+          }
+        },
+        {
+          "action": {
+            "kind": "redo"
+          },
+          "changed": false,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": false,
+            "changes": [],
+            "dirty": false,
+            "output": [],
+            "page": [],
+            "pageOffset": 0,
+            "revision": 0,
+            "rows": []
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 0,
+            "text": ""
+          },
+          "changed": false,
+          "invalid": true,
+          "state": {
+            "canRedo": false,
+            "canUndo": false,
+            "changes": [],
+            "dirty": false,
+            "output": [],
+            "page": [],
+            "pageOffset": 0,
+            "revision": 0,
+            "rows": []
+          }
+        }
+      ]
+    },
+    {
+      "initial": {
+        "canRedo": false,
+        "canUndo": false,
+        "changes": [],
+        "dirty": false,
+        "output": [0,255,254,239,187,191,128,129,9,10,13,0,65,66,67,255],
+        "page": [9,10,13,0,65,66,67,255],
+        "pageOffset": 8,
+        "revision": 0,
+        "rows": [
+          "00 FF FE EF BB BF 80 81 09 0A 0D 00 41 42 43 FF"
+        ]
+      },
+      "name": "opaque bytes and unicode whitespace",
+      "source": [0,255,254,239,187,191,128,129,9,10,13,0,65,66,67,255],
+      "steps": [
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 0,
+            "text": "00 FF FE EF BB BF 80 81 09 0A 0D 00 41 42 43 FF"
+          },
+          "changed": false,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": false,
+            "changes": [],
+            "dirty": false,
+            "output": [0,255,254,239,187,191,128,129,9,10,13,0,65,66,67,255],
+            "page": [9,10,13,0,65,66,67,255],
+            "pageOffset": 8,
+            "revision": 0,
+            "rows": [
+              "00 FF FE EF BB BF 80 81 09 0A 0D 00 41 42 43 FF"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "edit",
+            "offset": 0,
+            "text": "+1 \u0301FF FE EF BB BF 80 81 09 0A 0D -0 41 42 43 FF"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 1,
+                "offset": 0,
+                "old": 0
+              }
+            ],
+            "dirty": true,
+            "output": [1,255,254,239,187,191,128,129,9,10,13,0,65,66,67,255],
+            "page": [9,10,13,0,65,66,67,255],
+            "pageOffset": 8,
+            "revision": 1,
+            "rows": [
+              "01 FF FE EF BB BF 80 81 09 0A 0D 00 41 42 43 FF"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "undo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": true,
+            "canUndo": false,
+            "changes": [],
+            "dirty": false,
+            "output": [0,255,254,239,187,191,128,129,9,10,13,0,65,66,67,255],
+            "page": [9,10,13,0,65,66,67,255],
+            "pageOffset": 8,
+            "revision": 2,
+            "rows": [
+              "00 FF FE EF BB BF 80 81 09 0A 0D 00 41 42 43 FF"
+            ]
+          }
+        },
+        {
+          "action": {
+            "kind": "redo"
+          },
+          "changed": true,
+          "invalid": false,
+          "state": {
+            "canRedo": false,
+            "canUndo": true,
+            "changes": [
+              {
+                "new": 1,
+                "offset": 0,
+                "old": 0
+              }
+            ],
+            "dirty": true,
+            "output": [1,255,254,239,187,191,128,129,9,10,13,0,65,66,67,255],
+            "page": [9,10,13,0,65,66,67,255],
+            "pageOffset": 8,
+            "revision": 3,
+            "rows": [
+              "01 FF FE EF BB BF 80 81 09 0A 0D 00 41 42 43 FF"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

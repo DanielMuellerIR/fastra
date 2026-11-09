@@ -559,6 +559,7 @@ enum SelfTest {
         case "findbar":   waitForMainWindow { runFindBarTest() }
         case "newwindow": waitForMainWindow { runNewWindowTest() }
         case "finderreopen": waitForMainWindow { runFinderReopenTest() }
+        case "windowchrome": waitForMainWindow { runWindowChromeTest() }
         case "welcomenew": waitForMainWindow { runWelcomeNewTabTest() }
         case "sessionrestore": DispatchQueue.main.async { runSessionRestoreTest() }
         case "coldopen": DispatchQueue.main.async { runColdOpenTest(restoreEnabled: true) }
@@ -755,6 +756,8 @@ enum SelfTest {
             // und Kollisionsschutz an echten Dateien. Der Katalogabruf wartet
             // selbst auf den schon gestarteten Hintergrundprozess.
             DispatchQueue.main.async { runMarkdownImportTest() }
+        case "markdowncollections":
+            waitForMainWindow { runMarkdownCollectionsTest() }
         case "markdownimportui":
             waitForMainWindow { runMarkdownImportUITest() }
         case "localization":
@@ -892,7 +895,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchapproval, searchapprovalclose, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdoutline, codeoutline, sourcesplit, snippets, snippetfiles, mdvisualfind, mdtable, mdtableinteraction, mdtableinput, mdcomfort, mdblocks, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, saveexisting, textworkflow, textworkflowmulti, textworkflowonesided, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, filedifftransfer, foldercompare, mdreferences, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, windowchrome, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchapproval, searchapprovalclose, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdoutline, codeoutline, sourcesplit, snippets, snippetfiles, mdvisualfind, mdtable, mdtableinteraction, mdtableinput, mdcomfort, mdblocks, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, saveexisting, textworkflow, textworkflowmulti, textworkflowonesided, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, filedifftransfer, foldercompare, mdreferences, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdowncollections, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -1329,11 +1332,120 @@ enum SelfTest {
 
     /// `odoc`: Finder-Doppelklick auf eine Datei.
     private static func deliverOpenDocumentsEvent(for fileURL: URL) {
+        deliverOpenDocumentsEvent(for: [fileURL])
+    }
+
+    private static func deliverOpenDocumentsEvent(for fileURLs: [URL]) {
         let delegate = externalEventDelegate()
         guard delegate.responds(to: #selector(NSApplicationDelegate.application(_:open:))) else {
             finish(false, "App-Delegate beantwortet application(_:open:) nicht")
         }
-        delegate.application?(NSApp, open: [fileURL])
+        delegate.application?(NSApp, open: fileURLs)
+    }
+
+    /// Misst neben dem Property auch AppKits tatsächlich sichtbares Titelfeld.
+    /// Ein grünes `titleVisibility` allein übersieht einen hängen gebliebenen Titel.
+    private static func runWindowChromeTest() {
+        Task { @MainActor in
+            let directory = selfTestTemporaryDirectory().appendingPathComponent("window-chrome-\(UUID().uuidString)")
+            windowRoutingFixtureDirectory = directory
+            var failures: [String] = []
+            func inspect(_ window: NSWindow, _ phase: String) {
+                var nativeTitles: [String] = []
+                func visit(_ view: NSView) {
+                    guard view !== window.contentView else { return }
+                    if let field = view as? NSTextField,
+                       !field.isHiddenOrHasHiddenAncestor, field.alphaValue > 0,
+                       field.stringValue == window.title {
+                        nativeTitles.append(field.stringValue)
+                    }
+                    view.subviews.forEach(visit)
+                }
+                if let frameView = window.contentView?.superview { visit(frameView) }
+                FileHandle.standardError.write(Data("WINDOW_CHROME \(phase) hidden=\(window.titleVisibility == .hidden) nativeTitles=\(nativeTitles.count) title=\(window.title)\n".utf8))
+                if window.titleVisibility != .hidden || !nativeTitles.isEmpty {
+                    failures.append("\(phase): native Titel sichtbar (\(nativeTitles.count)), hidden=\(window.titleVisibility == .hidden)")
+                }
+                if !window.styleMask.contains(.fullSizeContentView) || !window.titlebarAppearsTransparent {
+                    failures.append("\(phase): eigener Fenster-Chrome fehlt")
+                }
+            }
+            func settle() async { try? await Task.sleep(for: .milliseconds(300)) }
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let paths = ["Erste lange gemeinsam geöffnete Textdatei.txt", "Zweite lange gemeinsam geöffnete Textdatei.txt"].map { directory.appendingPathComponent($0) }
+                for file in paths { try "Eigener Prüfinhalt\n".write(to: file, atomically: true, encoding: .utf8) }
+                let files = paths.map(\.canonicalFileURL)
+                guard let original = Workspace.shared,
+                      let main = CommandTargeting.documentWindow(for: original) else {
+                    finish(false, "Ausgangsfenster fehlt")
+                }
+                // Ein belegtes Fenster erzwingt den zusätzlichen AppKit-Fensterpfad.
+                original.openNewTab()
+                if let index = original.tabs.firstIndex(where: { $0.id == original.activeTabID }) {
+                    original.tabs[index].content = "Ausgangsfenster bleibt belegt"
+                    original.tabs[index].isDirty = true
+                }
+                await settle()
+                inspect(main, "main")
+                deliverOpenDocumentsEvent(for: files)
+                var target: NSWindow?
+                for _ in 0..<100 {
+                    target = DocumentWindowController.visibleDocumentWindows().first { window in
+                        guard let ws = WorkspaceWindowRegistry.workspace(for: window) else { return false }
+                        return files.allSatisfy { file in ws.tabs.contains { $0.url?.canonicalFileURL == file } }
+                    }
+                    if target != nil { break }
+                    try? await Task.sleep(for: .milliseconds(50))
+                }
+                guard let target, target !== main,
+                      let workspace = WorkspaceWindowRegistry.workspace(for: target) else {
+                    let actual = DocumentWindowController.visibleDocumentWindows().map { window in
+                        "\(window.identifier?.rawValue ?? "main") visible=\(window.isVisible): \(WorkspaceWindowRegistry.workspace(for: window)?.tabs.compactMap { $0.url?.path } ?? [])"
+                    }
+                    finish(false, "Gemeinsam geöffnete Dateien fehlen im zusätzlichen Fenster; erwartet=\(files.map(\.path)), tatsächlich=\(actual)")
+                }
+                await settle()
+                inspect(target, "multi-open")
+                for file in files + files.reversed() {
+                    deliverOpenDocumentsEvent(for: file)
+                    await settle()
+                    inspect(target, "reopen-\(file.lastPathComponent)")
+                }
+                target.setContentSize(NSSize(width: MainWindowSizing.minimumWidth, height: MainWindowSizing.minimumHeight))
+                await settle()
+                inspect(target, "resize")
+                guard workspace.tabs.filter({ $0.url != nil }).count == 2 else {
+                    finish(false, "Wiederholtes Öffnen dupliziert Tabs")
+                }
+                let restored = DocumentWindowController.openRestoredDocument(RestorableWindowState(
+                    projectPath: directory.path, documentPaths: files.map(\.path),
+                    activeDocumentPath: files[1].path, frame: nil))
+                for _ in 0..<100 {
+                    if restored.tabs.filter({ $0.url != nil }).count == 2 { break }
+                    try? await Task.sleep(for: .milliseconds(50))
+                }
+                await settle()
+                guard let restoredWindow = CommandTargeting.documentWindow(for: restored) else {
+                    finish(false, "Wiederhergestelltes Fenster fehlt")
+                }
+                inspect(restoredWindow, "restore")
+                if let output = ProcessInfo.processInfo.environment["FASTRA_WINDOWCHROME_DIR"] {
+                    let folder = URL(fileURLWithPath: output)
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    for (name, window) in [("main", main), ("additional", target), ("restored", restoredWindow)] {
+                        let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { done in
+                            typeScrollCapture(window: window) { done.resume(returning: $0) }
+                        }
+                        if let snapshot {
+                            try snapshot.data.write(to: folder.appendingPathComponent(name + ".png"))
+                            print("WINDOW_CHROME_CAPTURE \(name) \(snapshot.source)")
+                        }
+                    }
+                }
+                finish(failures.isEmpty, failures.isEmpty ? "Haupt-, Mehrdatei- und Restorefenster ohne nativen Titel; Wiederöffnen, Tabwechsel und Resize geprüft" : failures.joined(separator: "; "))
+            } catch { finish(false, error.localizedDescription) }
+        }
     }
 
     /// `rapp`: Dock-Klick ohne sichtbares Fenster.
@@ -23959,9 +24071,12 @@ enum SelfTest {
         func selectionEndX(in view: DiffSelectionTextView) -> CGFloat {
             guard let manager = view.layoutManager, let container = view.textContainer else { return 1 }
             manager.ensureLayout(for: container)
-            // Im schmalen Fenster liegt die rechte Spaltenkante außerhalb
-            // des Ausschnitts. Der kurze Fixture-Text endet dagegen sichtbar.
-            return min(view.bounds.width - 1, manager.usedRect(for: container).maxX + 1)
+            // Bei CJK kann usedRect die ganze Containerbreite enthalten.
+            // Der Klick gehört hinter die tatsächlichen Glyphen; die rechte
+            // Spaltenkante liegt im schmalen Fenster außerhalb des Ausschnitts.
+            let glyphs = manager.glyphRange(for: container)
+            return min(view.bounds.width - 1,
+                       manager.boundingRect(forGlyphRange: glyphs, in: container).maxX + 1)
         }
         func startPoint(of view: DiffSelectionTextView, atEnd: Bool) -> NSPoint {
             view.convert(NSPoint(x: atEnd ? selectionEndX(in: view) : 1,
@@ -29062,6 +29177,55 @@ enum SelfTest {
                 && $0.lineFragment != nil
                 && !$0.frame.intersection(visibleRect).isNull
                 && !$0.frame.intersection(visibleRect).isEmpty
+        }
+    }
+
+    /// Zwei Prozessstarts teilen nur ausdrücklich übergebene Fixtures. Phase 2
+    /// öffnet die übernommenen Dateien, ohne den Konverter erneut zu starten.
+    private static func runMarkdownCollectionsTest() {
+        testLabel = "markdowncollections"
+        Task { @MainActor in
+            do {
+                guard let path = ProcessInfo.processInfo.environment["FASTRA_COLLECTION_REVIEW_DIR"],
+                      let ws = Workspace.shared else {
+                    finish(.environment, "Sammlungsfixture oder Workspace fehlt")
+                }
+                let root = URL(fileURLWithPath: path)
+                let reopen = FileManager.default.fileExists(atPath: root.appendingPathComponent("reopen").path)
+                for name in ["mail.mbox", "notes.enex"] {
+                    let source = root.appendingPathComponent(name)
+                    let stem = source.deletingPathExtension().lastPathComponent
+                    let index = root.appendingPathComponent(stem + "-2/index.md")
+                    if !reopen {
+                        let result: URL? = await withCheckedContinuation { continuation in
+                            MarkdownImportService.shared.convert(source, owner: ws) {
+                                continuation.resume(returning: $0)
+                            }
+                        }
+                        guard result?.standardizedFileURL == index.standardizedFileURL else {
+                            finish(false, "Falscher Sammlungspfad: \(String(describing: result)); \(markdownImportFailureText())")
+                        }
+                    }
+                    let files = try FileManager.default.subpathsOfDirectory(
+                        atPath: index.deletingLastPathComponent().path).filter { $0.hasSuffix(".md") }
+                    guard files.count == 3 else { finish(false, "Sammlung unvollständig: \(files)") }
+                    for relative in files {
+                        let file = index.deletingLastPathComponent().appendingPathComponent(relative)
+                        let expected = try String(contentsOf: file, encoding: .utf8)
+                        let loaded: Bool = await withCheckedContinuation { continuation in
+                            ws.loadFile(at: file) { continuation.resume(returning: $0) }
+                        }
+                        guard loaded, ws.activeTab?.content == expected else {
+                            finish(false, "Sammlungsdatei nicht im Editor geöffnet: \(relative)")
+                        }
+                    }
+                    let loaded: Bool = await withCheckedContinuation { continuation in
+                        ws.loadFile(at: index) { continuation.resume(returning: $0) }
+                    }
+                    guard loaded else { finish(false, "Übersicht nicht erneut geöffnet") }
+                }
+                finish(true, reopen ? "MBOX/ENEX nach Prozessende im Editor erneut geöffnet" : "MBOX/ENEX mit Kollision vollständig übernommen und im Editor geöffnet")
+            } catch { finish(false, error.localizedDescription) }
         }
     }
 

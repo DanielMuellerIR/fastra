@@ -1,0 +1,100 @@
+{
+  "status": "FEASIBILITY_ONLY_NOT_PRODUCT",
+  "date": "2026-11-06",
+  "tree_sitter_runtime": {
+    "version": "0.25.10",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406"
+  },
+  "code_edit_languages_revision": "331d5dbc5fc8513be5848fce8a2a312908f36a11",
+  "grammars": [
+    {
+      "language": "tree-sitter-markdown",
+      "source_url": "https://github.com/tree-sitter-grammars/tree-sitter-markdown",
+      "revision": "5cdc549ab8f461aff876c5be9741027189299cec",
+      "archive_sha256": "365fb89d2911ac68d929bed30fe27f31f7738588dae6dda9c6b10800d5842932",
+      "archive_bytes": 420429
+    },
+    {
+      "language": "tree-sitter-python",
+      "source_url": "https://github.com/tree-sitter/tree-sitter-python.git",
+      "revision": "4bfdd9033a2225cc95032ce77066b7aeca9e2efc",
+      "archive_sha256": "d815b5ecbe3a098ac62127922d617c46ba400347a711d26396fba58e728380b6",
+      "archive_bytes": 252108
+    },
+    {
+      "language": "tree-sitter-rust",
+      "source_url": "https://github.com/tree-sitter/tree-sitter-rust.git",
+      "revision": "79456e6080f50fc1ca7c21845794308fa5d35a51",
+      "archive_sha256": "af065b09ae5ff7a062a9859d6e21c14679445344c1272c9c0a8aeed21c71bbe5",
+      "archive_bytes": 400974
+    }
+  ],
+  "probe_sha256": "ce40d06c74e7fe7c6c37aeb69277b6b03cbc70a5864ce74593d97f725c34d767",
+  "mac_actual_grammar_archive_sha256": "e26fea68ed13a4f36009988c8d30ab4406585cc465ac62201a192a2e201fdfd4",
+  "mac_linux_result_sha256": "c033be5876aafd1c98ba8e678d0ed6b8fb61e15c73cda1cfd741849badc58fca",
+  "mac_linux_byte_equal": true,
+  "fixtures": [
+    {
+      "language": "rust",
+      "grammar_abi": 14,
+      "ranges": [
+        [
+          17,
+          78,
+          1
+        ],
+        [
+          25,
+          48,
+          2
+        ],
+        [
+          56,
+          75,
+          2
+        ]
+      ],
+      "source_unchanged": true
+    },
+    {
+      "language": "python",
+      "grammar_abi": 14,
+      "ranges": [
+        [
+          11,
+          77,
+          1
+        ],
+        [
+          22,
+          45,
+          2
+        ],
+        [
+          56,
+          77,
+          2
+        ]
+      ],
+      "source_unchanged": true
+    },
+    {
+      "language": "markdown",
+      "grammar_abi": 14,
+      "ranges": [],
+      "source_unchanged": true
+    },
+    {
+      "language": "rust-broken",
+      "grammar_abi": 14,
+      "ranges": [],
+      "source_unchanged": true
+    }
+  ],
+  "limitations": [
+    "Four fixtures and three grammar pins only; no full language coverage",
+    "No GTK fold UI or packaged parser integration",
+    "No license/source/ABI audit for all grammar dependencies",
+    "No incremental, cancellation, stale-revision, UTF16 adapter or performance acceptance"
+  ]
+}

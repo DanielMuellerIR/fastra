@@ -1,0 +1,19 @@
+{
+  "base_native_lock_sha256": "ff90ac4952e216753357ce9e750a0332cc844a28e1b5db31e1df16974715fca6",
+  "baseline_files": {
+    "gtk/gtktextbuffer.c": "bd7edbc0dcd6f82fffe34608e8cb5a1ed5c26dbd55c36ff82fb5f6ab828b2312",
+    "gtk/gtktextiter.c": "464834d8ff8191b032fbc810a8104c80828a65852ec82d43d32f86287c600b00"
+  },
+  "builder_image": "sha256:befa617d33d98b0d07f8e1a8fd6f85f07582e1ed71b6698ea01bf0e9b1b2d554",
+  "format": 1,
+  "metadata_magic": 1230262833,
+  "own_patch": {
+    "filename": "gtk-iter-metadata-v1.patch",
+    "sha256": "013a9a864b06df0dc37d9140cb350ee0a562b3b35f587e7ebf7e97a5a1322e6c"
+  },
+  "patched_files": {
+    "gtk/gtktextbuffer.c": "05f92931ef4cb0537f22868148d5f550f3911981cef5422741b416d0fcd156c5",
+    "gtk/gtktextiter.c": "18ecb3385d2523e61765bc6a8f1a2bbe35ea1af7eabc9180ba567e346a6594c8"
+  },
+  "version": "4.14.5+ds-0ubuntu0.10"
+}

@@ -1,0 +1,70 @@
+{
+  "version": "1.171.0",
+  "build": 381,
+  "source_identity": "ec198b5a27072457067f811bc17a2c7df50eeed1f9875730b32ffc7c67b53557",
+  "verified_product_inputs": 387,
+  "artifacts": {
+    "fastra_1.171.0_amd64.deb": "8d09a86985314bfbced437763f16216e14e023cf900e3540d8948e6e481abfb8",
+    "fastra-1.171.0-linux-x86_64.tar.gz": "5805cb5d911566d9944a490d2753cee9e5cd4d92c5eed11d049a20fb8445a13f",
+    "fastra-1.171.0-linux-x86_64.zip": "4f4333e30766be22445088bcb989733db49baa0b8cf24b98b1208ff1c58c1030"
+  },
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.171.0/packages",
+  "workspace": {
+    "programs": 48,
+    "passed": 529,
+    "failed": 0,
+    "ignored": 5,
+    "separately_executed_current_native_tests_passed": 5,
+    "clippy": "workspace all targets, -D warnings"
+  },
+  "native": {
+    "assets": 4,
+    "legacy_clipboard": 4,
+    "rich_outline": 4,
+    "real_rtf_consumer": 4,
+    "real_mbox_consumer": 2,
+    "languages": [
+      "de",
+      "en"
+    ],
+    "display": "isolated Xvfb",
+    "visual_review": true
+  },
+  "pmt_pair": {
+    "version": "0.41.19",
+    "producer_commit": "e2f0b8866aa3acc9b9dd8bf474ffd11d031f4adb",
+    "launcher_sha256": "385d2389430500df83d54bee3a364d198f4ef057936e64ca48df67f0b0573029",
+    "cli_sha256": "f2be32db3964282bbce75e4a03ff320f88833081e0abfd808a3fcea95446fe9b",
+    "verified_runtime_files": 48,
+    "handoff_manifest_sha256": "3105dfd514d3c23e3524acebb33d1069ff5eaa02c3ae1c303dadcad393ba5910",
+    "source_manifest_sha256": "ca9abeb64bc33b6e7ad7ce8631352e050d286a58468633dc9ad5d87a3377fd91"
+  },
+  "reviews": {
+    "io_basis_sha256": "e1ee026a33486de5ba5ef06d4ad776263ae5aa20b5c90a985bf4074da8d72a47",
+    "closed": [
+      "batch budget before read and decoder plus bounded converted output",
+      "cancel after completed apply before insertion",
+      "hidden saved Markdown neighbors protect references",
+      "cancel compensation preserves open stamps and checks post-undo reference drift"
+    ],
+    "c2_manifest_sha256": "249e83e4a5504da66c1b78a21f0f3f0dd635c5ef1a9c39a3a67a7785daa824b9",
+    "c3_manifest_sha256": "a96ce47cbef23981745f95755f23173eba616dc72f47f1a4c298b3e56f177cb9",
+    "new_native_cancel_stamp_race_test": false
+  },
+  "package_checks": {
+    "installed_deb": true,
+    "moved_tar": true,
+    "zip_user_install": true,
+    "gio_percent_space_prefix_exact_file_argument": true,
+    "source_free_release_cli_sibling_autolaunch_snapshot_ready_close_replay": true,
+    "webkit_no_new_privs": 1,
+    "webkit_seccomp": 2
+  },
+  "limits": {
+    "shared_javascript_mac_native_acceptance": "pending graphical test session",
+    "known_webkit_drop_status_diagnostic": "observed with WebKitGTK 2.52.6; no incorrect COPY/Cancel/Apply/Undo/Redo state observed; upstream comparison is inference only",
+    "regular_notarized_mac_app_mode_acceptance": false
+  },
+  "product_commit": "70d19ac534859fb908c4e8694fe1cd7bcfa34207"
+}

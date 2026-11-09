@@ -1,0 +1,11 @@
+{
+  "schemaVersion" : 1,
+  "snippets" : [
+    {
+      "id" : "EB699E77-FAB0-4AAC-A519-A816EA4CA761",
+      "name" : "Wiederholung",
+      "revision" : "0A4E5B67-488C-4A04-A363-47725FF6F119",
+      "template" : "{{ Name }} \/ {{Ort}} \/ {{Name}}"
+    }
+  ]
+}

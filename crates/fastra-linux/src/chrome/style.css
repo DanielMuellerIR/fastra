@@ -1,0 +1,364 @@
+.fastra-shell, .fastra-search { background: @fastra_surface; color: @fastra_text; font-family: "Inter Variable", "Noto Sans", sans-serif; font-size: 12px; border: 0; padding: 0; margin: 0; box-shadow: none; }
+.fastra-shell decoration, .fastra-shell.csd { border: 0; padding: 0; margin: 0; box-shadow: none; }
+.window-chrome { background: @fastra_surface; padding: 0 6px 0 0; min-height: 36px; }
+.chrome-leading { background: @fastra_base; padding: 0 6px; padding-left: 0; }
+.chrome-icon, .window-chrome menubutton > button { min-width: 24px; min-height: 22px; padding: 0 2px; margin: 0 1px; border: 0; box-shadow: none; border-radius: 8px; background: transparent; color: @fastra_muted; }
+.chrome-icon:hover, .window-chrome menubutton > button:hover { background: @fastra_control; }
+.chrome-icon image { -gtk-icon-size: 13px; }
+.chrome-tabs { padding: 4px 10px; }
+.tab-pill { background: transparent; border: 1px solid transparent; border-radius: 9px; padding: 0 7px; min-height: 26px; }
+.tab-pill.active { background: @fastra_control; border-color: @fastra_line; }
+.tab-pill label { font-size: 12px; }
+.tab-pill button { min-height: 18px; min-width: 16px; padding: 0; border: 0; background: transparent; box-shadow: none; color: @fastra_muted; }
+.tab-pill image { min-height: 14px; min-width: 14px; -gtk-icon-size: 12px; }
+.tab-count { margin: 0 8px; color: @fastra_text; }
+.project-sidebar { background: @fastra_base; border-right: 1px solid @fastra_line; }
+.project-sidebar list, .project-sidebar row { background: transparent; }
+.project-sidebar row { padding: 0; }
+.project-sidebar row button { min-height: 20px; padding: 0 10px; margin: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; color: @fastra_muted; font-size: 11px; }
+.project-sidebar row button:hover { background: @fastra_control; }
+.sidebar-brand { padding: 5px 12px 8px; min-height: 40px; padding-top: 4px; padding-bottom: 5px; }
+.sidebar-wordmark { font-size: 19px; font-weight: 700; color: @fastra_text; }
+.sidebar-version { font-size: 9.5px; color: @fastra_muted; }
+.sidebar-project-name { font-size: 15px; font-weight: 600; color: @fastra_text; }
+.sidebar-path { font-size: 10px; color: @fastra_muted; }
+.sidebar-filter { min-height: 18px; padding: 0 6px; margin: 0 10px 8px; border-radius: 6px; background: transparent; border: 1px solid @fastra_line; box-shadow: none; font-size: 11px; margin-bottom: 6px; }
+.sidebar-open { border: 0; border-top: 1px solid @fastra_line; border-radius: 0; min-height: 28px; background: transparent; box-shadow: none; color: @fastra_muted; }
+.document-stack, .document-stack > stack { background: @fastra_surface; border: 0; }
+.editor-tools { min-height: 24px; padding: 0 8px; border-bottom: 1px solid @fastra_line; }
+.import-banner { background: @fastra_base; min-height: 24px; padding: 0 8px; color: @fastra_muted; }
+.import-banner button { border: 0; box-shadow: none; background: transparent; color: @fastra_accent; font-size: 11px; font-weight: 600; padding: 0 4px; min-height: 22px; }
+.project-menu > button { background: transparent; padding: 0; border: 0; box-shadow: none; }
+.project-sidebar row button.project-selected { background: @fastra_surface; color: @fastra_text; }
+.window-chrome windowcontrols { padding: 0 3px; }
+.window-chrome windowcontrols button { min-width: 12px; min-height: 12px; padding: 0; margin: 0 4px; border: 1px solid alpha(black,.12); border-radius: 50%; box-shadow: none; }
+.window-chrome windowcontrols button image { opacity: 0; -gtk-icon-size: 8px; }
+.window-chrome windowcontrols:hover button image { opacity: .6; }
+.window-chrome windowcontrols button.close { background: #ff5f57; }
+.window-chrome windowcontrols button.minimize { background: #febc2e; }
+.window-chrome windowcontrols button.maximize { background: #28c840; }
+.window-chrome windowcontrols:backdrop button { background: #e1e1e1; }
+.editor-tools button, .editor-tools checkbutton { font-size: 11px; min-height: 21px; padding: 0 3px; color: @fastra_muted; background: transparent; border: 0; box-shadow: none; }
+.editor-tools checkbutton check { min-width: 12px; min-height: 10px; border-radius: 2px; }
+.window-status { background: @fastra_base; border-top: 1px solid @fastra_line; min-height: 25px; }
+.document-status { min-height: 25px; padding: 0 10px; }
+.document-status label { color: @fastra_muted; font-size: 11px; }
+.document-status button, .document-status menubutton > button, .document-status dropdown > button { padding: 0 3px; min-height: 19px; border: 0; background: transparent; box-shadow: none; color: @fastra_muted; font-size: 11px; }
+.document-status checkbutton { min-height: 19px; padding: 0 3px; font-size: 11px; color: @fastra_accent; }
+.document-status checkbutton check { min-width: 11px; min-height: 11px; }
+.welcome-wordmark { font-size: 34px; font-weight: 700; color: @fastra_text; }
+.welcome-version { font-size: 11px; color: @fastra_muted; margin-top: 5px; margin-bottom: 25px; }
+.welcome-action { border: 0; box-shadow: none; background: transparent; min-height: 26px; padding: 0; color: @fastra_text; }
+.welcome-action label { font-size: 12px; }
+.welcome-recent-title { font-size: 10px; font-weight: 600; color: @fastra_muted; margin-top: 28px; margin-bottom: 8px; }
+.welcome-description { font-size: 11px; color: @fastra_muted; }
+.command-menu { padding: 5px; min-width: 220px; }
+.command-menu button { color: @fastra_text; padding: 4px 8px; min-height: 24px; border: 0; box-shadow: none; background: transparent; }
+.command-menu button:disabled { color: @fastra_muted; opacity: .55; }
+.command-menu button:hover { background: @fastra_control; }
+.tab-context-menu button { min-height: 24px; padding: 0 8px; }
+.fastra-source { font-family: "Menlo", "DejaVu Sans Mono", monospace; font-size: 13px; }
+.fastra-source border { background: @fastra_surface; }
+.fastra-search.fastra-tool entry, .fastra-search.fastra-tool dropdown > button { min-height: 22px; padding: 0 7px; border-radius: 6px; }
+.fastra-search .search-status { color: @fastra_muted; font-size: 11px; }
+.fastra-shell paned > separator { min-width: 1px; min-height: 1px; background: @fastra_line; }
+.document-status .soft-wrap check, .document-status .soft-wrap check:checked { min-width: 13px; min-height: 13px; border: 0; background: transparent; box-shadow: none; -gtk-icon-source: -gtk-icontheme("fastra-wrap-symbolic"); color: @fastra_accent; }
+.document-status .view-mode check { opacity: 0; min-width: 0; min-height: 0; padding: 0; margin: 0; border: 0; -gtk-icon-size: 0; }
+.project-sidebar .sidebar-open { padding-left: 12px; }
+.fastra-shell .titlebar:not(headerbar) { padding: 0; margin: 0; border: 0; min-height: 36px; box-shadow: none; }
+.document-message { background: @fastra_base; color: @fastra_text; border: 1px solid @fastra_line; border-radius: 8px; padding: 10px 12px; }
+.editor-tools .split-source check, .editor-tools .split-source check:checked { min-width: 13px; min-height: 13px; border: 0; background: transparent; box-shadow: none; -gtk-icon-source: -gtk-icontheme("fastra-split-symbolic"); }
+.view-segments { border: 1px solid @fastra_line; border-radius: 6px; background: @fastra_control; }
+.view-segments .selected { background: @fastra_surface; border: 1px solid @fastra_line; border-radius: 5px; padding: 0 5px; margin: 1px; }
+.document-status .view-segments button { padding: 0 6px; }
+.fastra-search .titlebar { padding: 0; margin: 0; border-bottom: 1px solid @fastra_line; min-height: 28px; }
+.search-titlebar { min-height: 28px; background: @fastra_surface; }
+.search-titlebar > label { font-size: 13px; font-weight: 600; }
+.search-titlebar windowcontrols { padding: 0 4px; }
+.search-titlebar windowcontrols button { min-width: 12px; min-height: 12px; padding: 0; margin: 0 4px; border: 1px solid alpha(black,.12); border-radius: 50%; box-shadow: none; }
+.search-titlebar windowcontrols button image { opacity: 0; -gtk-icon-size: 8px; }
+.search-titlebar windowcontrols:hover button image { opacity: .6; }
+.search-titlebar windowcontrols button.close { background: #ff5f57; }
+.search-titlebar windowcontrols button.minimize { background: #febc2e; }
+.search-titlebar windowcontrols button.maximize { background: #28c840; }
+.search-content { padding: 16px; }
+.search-scopes { padding-bottom: 4px; }
+.fastra-search.fastra-tool .scope-tab { border: 0; box-shadow: none; background: transparent; padding: 0 10px; border-radius: 7px; min-height: 24px; font-size: 12px; }
+.fastra-search .scope-tab:checked { background: @fastra_control; }
+.search-field-label { color: @fastra_muted; }
+.fastra-search entry { border: 1px solid @fastra_line; background: @fastra_surface; color: @fastra_text; box-shadow: none; font-family: monospace; }
+.fastra-search entry:focus-within { border-color: @fastra_accent; }
+.fastra-search.fastra-tool button { font-size: 11px; min-height: 20px; padding: 0 6px; }
+.fastra-search checkbutton { min-height: 18px; padding: 0; font-size: 12px; }
+.fastra-search checkbutton check { min-width: 12px; min-height: 12px; border-radius: 3px; }
+.fastra-search.fastra-tool .search-template { border: 0; background: transparent; box-shadow: none; padding: 0; }
+.fastra-search.fastra-tool .chrome-icon { padding: 0; min-width: 20px; }
+.fastra-search separator { background: @fastra_line; min-height: 1px; }
+.search-approvals textview, .search-approvals textview text { background: @fastra_base; color: @fastra_text; font-size: 12px; }
+.search-approvals textview { border: 1px solid @fastra_line; border-radius: 6px; padding: 6px; }
+.search-approvals checkbutton { font-size: 11px; min-height: 21px; }
+.tab-pill .tab-select { color: @fastra_text; min-height: 22px; padding: 0; }
+.tab-pill .tab-select:hover { background: transparent; }
+.sidebar-wordmark, .welcome-wordmark { font-family: "Sora"; font-weight: 600; }
+.markdown-source-tools { min-height: 26px; border-bottom: 1px solid @fastra_line; padding: 0 6px; }
+.markdown-source-tools > flowboxchild { padding: 0; }
+.markdown-source-tools button { min-height: 22px; min-width: 26px; padding: 0; border: 0; background: transparent; box-shadow: none; color: @fastra_muted; }
+.document-status .view-segments .selected, .document-status .view-mode:checked { background: @fastra_surface; border: 1px solid @fastra_line; border-radius: 5px; padding: 0 5px; margin: 1px; color: @fastra_text; }
+.document-status .view-mode { color: @fastra_muted; }
+.document-status .selection-statistics { font-size: 9px; border: 1px solid @fastra_line; background: @fastra_control; border-radius: 3px; padding: 0 3px; }
+.editor-tools .markdown-source-tools { border: 0; padding: 0; min-height: 22px; }
+
+.search-hit-list { background: @fastra_base; border-radius: 6px; }
+.search-hit-list row { padding: 0 4px; background: transparent; }
+.search-hit-list row > box { min-height: 24px; padding: 1px 4px; border-radius: 5px; }
+.search-hit-list button { border: 0; background: transparent; box-shadow: none; min-height: 22px; padding: 0 4px; }
+.search-hit-list button label { font-family: monospace; font-size: 12px; }
+.search-hit-list .hit-file button label { font-family: inherit; font-size: 11px; font-weight: 600; color: @fastra_muted; }
+.search-hit-list .hit-file { border-bottom: 1px solid @fastra_line; }
+.search-hit-list .hit-selected { background: alpha(@fastra_accent,.18); }
+.search-detail-title { font-size: 11px; font-weight: 600; color: @fastra_muted; margin-top: 0; }
+.fastra-search .search-detail { min-height: 0; padding: 4px 9px; border-radius: 6px; border: 1px solid @fastra_line; }
+.fastra-search .search-detail, .fastra-search .search-detail text { font-size: 13px; background: @fastra_base; }
+.fastra-search .muted, .approval-explanation { color: @fastra_muted; font-size: 11px; }
+
+.rich-toolbar { padding: 0 6px; background: @fastra_surface; }
+.rich-toolbar > flowboxchild { padding: 0; }
+.rich-toolbar button, .rich-toolbar menubutton > button { background: transparent; border: 0; box-shadow: none; padding: 0 3px; min-width: 24px; min-height: 24px; color: @fastra_muted; }
+.rich-toolbar image { -gtk-icon-size: 13px; }
+.rich-editor > label { color: @fastra_muted; font-size: 10px; padding: 2px 8px; }
+
+.fastra-tool { background: @fastra_surface; color: @fastra_text; font-family: "Inter Variable", "Noto Sans", sans-serif; font-size: 12px; border: 0; box-shadow: none; }
+.fastra-tool .titlebar { padding: 0; margin: 0; min-height: 28px; background: @fastra_surface; border-bottom: 1px solid @fastra_line; }
+.dialog-titlebar { min-height: 28px; background: @fastra_surface; }
+.dialog-titlebar > label { font-size: 13px; font-weight: 600; }
+.fastra-tool .traffic-controls { padding: 0 4px; }
+.fastra-tool .traffic-controls button { min-width: 12px; min-height: 12px; padding: 0; margin: 0 4px; border: 1px solid alpha(black,.12); border-radius: 50%; box-shadow: none; }
+.traffic-controls image { opacity: 0; -gtk-icon-size: 8px; }
+.traffic-controls:hover image { opacity: .6; }
+.traffic-controls button.close { background: #ff5f57; }
+.traffic-controls button.minimize { background: #febc2e; }
+.traffic-controls button.maximize { background: #28c840; }
+.fastra-tool button { background: @fastra_surface; color: @fastra_text; border: 1px solid @fastra_line; border-radius: 6px; box-shadow: 0 1px 1px alpha(black,.05); min-height: 22px; padding: 0 8px; font-size: 12px; }
+.fastra-tool button:disabled { color: @fastra_muted; opacity: .55; }
+.fastra-tool button.suggested-action { background: #0780ff; color: white; border-color: #0780ff; }
+.fastra-tool button:hover { background: @fastra_control; }
+.fastra-tool entry, .fastra-tool dropdown > button, .fastra-tool spinbutton { background: @fastra_surface; color: @fastra_text; border: 1px solid @fastra_line; border-radius: 6px; box-shadow: none; min-height: 25px; }
+.fastra-tool entry:focus-within { border-color: @fastra_accent; }
+.fastra-tool textview, .fastra-tool textview text { color: @fastra_text; background: @fastra_surface; }
+.fastra-tool notebook > header { background: @fastra_base; border-color: @fastra_line; }
+.fastra-tool separator { background: @fastra_line; min-width: 1px; min-height: 1px; }
+.fastra-tool paned > separator { min-width: 1px; min-height: 1px; background: @fastra_line; }
+.fastra-tool .search-hit-list button, .fastra-tool .chrome-icon { background: transparent; border: 0; box-shadow: none; }
+.fastra-tool .search-detail, .fastra-tool .search-approvals textview { background: @fastra_base; }
+
+.tool-sidebar { background: @fastra_base; color: @fastra_text; }
+.tool-sidebar row:selected { background: @fastra_control; color: @fastra_text; }
+.pattern-library textview { padding: 2px 5px; border: 1px solid @fastra_line; border-radius: 4px; }
+.pattern-library scrolledwindow { border-color: @fastra_line; }
+.example-dialog textview { border: 1px solid @fastra_line; border-radius: 4px; padding: 2px 5px; }
+.example-patterns { background: @fastra_base; border-radius: 6px; padding: 8px; }
+.example-dialog > label { color: @fastra_muted; }
+.settings-group { background: @fastra_base; border: 1px solid @fastra_line; border-radius: 6px; padding: 0 10px; }
+.settings-row { min-height: 38px; border-bottom: 1px solid @fastra_line; }
+.settings-row:last-child { border-bottom: 0; }
+.settings-row dropdown > button { background: transparent; border: 0; box-shadow: none; }
+
+.rich-find-bar { background: @fastra_base; border-top: 1px solid @fastra_line; border-bottom: 1px solid @fastra_line; padding: 4px 6px; }
+.rich-find-bar entry { border: 1px solid @fastra_line; border-radius: 5px; font-size: 12px; min-height: 24px; }
+.rich-find-bar button, .rich-find-bar checkbutton, .rich-find-bar label { font-size: 11px; color: @fastra_muted; }
+
+.review-diff textview { border: 0; border-radius: 0; padding: 2px 0; }
+.review-diff > box { padding: 4px 0; }
+.diff-column-title { color: @fastra_muted; font-size: 11px; padding: 4px 8px; }
+.fastra-search.fastra-tool .capture-pill { background: alpha(@fastra_accent,.18); border: 1px solid @fastra_line; border-radius: 12px; padding: 0 8px; color: @fastra_text; }
+
+.search-footer { padding: 0; }
+.search-footer > flowboxchild { padding: 0; margin: 0; }
+
+.fastra-search.fastra-tool .capture-0 { background: rgba(122,179,245,.35); }
+.fastra-search.fastra-tool .capture-1 { background: rgba(89,199,199,.35); }
+.fastra-search.fastra-tool .capture-2 { background: rgba(166,102,217,.35); }
+
+.search-options-wrap { padding: 0; }
+.search-options-wrap > flowboxchild { padding: 0; margin: 0; }
+.regex-category { font-size: 11px; font-weight: 600; color: @fastra_muted; }
+.regex-element { border: 0; box-shadow: none; background: transparent; }
+.regex-element:hover { background: @fastra_control; }
+.regex-symbol { color: @fastra_accent; font-family: monospace; }
+
+.fastra-search.fastra-tool menubutton.chrome-icon > button { border: 0; box-shadow: none; background: transparent; min-width: 20px; min-height: 20px; padding: 0; }
+
+.capture-list { background: transparent; }
+.capture-list > row { padding: 0 3px; margin: 0; min-height: 0; background: transparent; }
+
+.capture-pill label { font-family: monospace; }
+
+.fastra-search .search-inline-preview { background: alpha(@fastra_control, .5); border-radius: 4px; padding: 6px 8px; margin-bottom: 4px; }
+.fastra-search .search-inline-preview label { font-family: monospace; font-size: 11px; }
+.fastra-search .search-inline-preview .search-inline-title { font-family: sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .8px; }
+.fastra-search .search-inline-before { color: @fastra_removed; }
+.fastra-search .search-inline-after { color: @fastra_added; }
+.fastra-search .search-inline-preview .search-inline-remaining { font-family: sans-serif; font-size: 10px; }
+
+.search-folder-sources { background: alpha(@fastra_control,.5); border-radius: 6px; padding: 8px; }
+.search-folder-list, .search-folder-list > row { background: transparent; }
+.search-folder-list > row { min-height: 24px; padding: 0 4px; }
+.search-folder-path { font-family: monospace; font-size: 11px; }
+
+.fastra-tool .tool-heading { font-size: 14px; font-weight: 600; }
+.file-set-paths { border: 1px solid @fastra_line; border-radius: 5px; }
+
+.fastra-search button.search-folder-add { padding-left: 5px; padding-right: 5px; }
+.document-outline-controls button, .document-outline-controls menubutton > button { min-width: 24px; min-height: 24px; padding: 0; border: 0; box-shadow: none; background: transparent; color: @fastra_muted; }
+.document-outline-popup > contents { padding: 0; }
+.document-outline-title { font-size: 14px; font-weight: 600; color: @fastra_text; }
+.document-outline-list, .document-outline-list > row { background: transparent; padding: 0; }
+.document-outline-row { padding: 6px; border-radius: 3px; color: @fastra_text; }
+.document-outline-row.current { background: alpha(@fastra_accent,.12); }
+.outline-level { font-family: monospace; font-size: 10px; color: @fastra_muted; }
+
+.document-outline-controls .chrome-icon { margin: 0; }
+.document-outline-controls menubutton > button { min-width: 26px; }
+
+.document-outline-popup { font-size: 13px; }
+.document-outline-row > label.muted { font-size: 11px; }
+
+.fastra-snippets { background: @fastra_surface; color: @fastra_text; font-family: "Inter Variable", "Noto Sans", sans-serif; font-size: 12px; }
+.fastra-snippets .fastra-secondary { color: @fastra_muted; }
+.fastra-snippets .fastra-small { font-size: 11px; }
+.fastra-snippets button, .fastra-snippets entry, .fastra-snippets searchentry { min-height: 22px; padding: 0 6px; font-size: 12px; }
+.fastra-snippets textview { padding: 4px 6px; font-family: monospace; font-size: 12px; }
+.fastra-snippets paned > separator { min-width: 1px; background: @fastra_line; }
+
+.fastra-tool button.snippet-library-item { border: 0; box-shadow: none; background: transparent; border-radius: 4px; padding: 6px; }
+.fastra-tool button.snippet-library-item.snippet-selected { background: alpha(@fastra_accent,.15); color: @fastra_text; }
+
+.fastra-tool.fastra-snippet-window, .fastra-snippets { border-radius: 12px; }
+
+.fastra-snippets .heading { font-weight: 600; }
+
+.fastra-tool.fastra-compare-picker { border-radius: 12px; }
+.fastra-compare-picker .heading { font-size: 15px; font-weight: 600; }
+.fastra-compare-picker .compare-source { border: 1px dashed @fastra_line; border-radius: 6px; background: @fastra_base; padding: 0 6px; }
+.fastra-compare-picker .compare-source .dim-label { font-size: 10px; }
+.fastra-compare-picker checkbutton { min-height: 14px; padding: 0; }
+.file-comparison { background: @fastra_surface; color: @fastra_text; }
+.file-comparison button { background: @fastra_surface; color: @fastra_text; border: 1px solid @fastra_line; border-radius: 5px; min-height: 20px; padding: 0 7px; font-size: 11px; box-shadow: 0 1px 1px alpha(black,.05); }
+.file-comparison button.chrome-icon { border: 0; box-shadow: none; background: transparent; padding: 0; }
+.file-comparison .dim-label { font-size: 11px; color: @fastra_muted; }
+.file-comparison textview { font-size: 11px; }
+.file-comparison listview row { padding: 0; min-height: 24px; }
+
+.fastra-compare-picker button { min-height: 18px; font-size: 13px; }
+.fastra-compare-picker .dim-label { font-size: 10px; opacity: 1; }
+.fastra-compare-picker menubutton > button { border: 0; box-shadow: none; background: transparent; padding: 0; }
+.file-comparison .dim-label { opacity: 1; }
+.file-comparison .diff-left-name { color: @fastra_removed; }
+.file-comparison .diff-right-name { color: @fastra_added; }
+.file-comparison listview row:selected { background: alpha(@fastra_accent,.15); color: @fastra_text; }
+.file-comparison listview row:selected label { color: @fastra_text; }
+.file-comparison .diff-line-number { font-size: 9px; color: @fastra_muted; }
+.file-comparison button.diff-fold { color: @fastra_muted; font-size: 10px; min-height: 20px; border: 0; box-shadow: none; background: @fastra_surface; }
+.fastra-compare-picker .compare-source.drop-active { border-color: @fastra_accent; background: alpha(@fastra_accent,.08); }
+.fastra-compare-picker .compare-arrow { color: @fastra_muted; }
+
+.file-comparison .diff-ruler { background: @fastra_base; }
+.file-comparison button.diff-ruler-mark { min-width: 0; min-height: 0; padding: 0; margin: 0; border: 0; border-radius: 1px; box-shadow: none; background: @fastra_modified; }
+.file-comparison button.diff-ruler-mark.current { background: @fastra_accent; }
+.file-comparison button.diff-ruler-mark:focus-visible { outline: 1px solid @fastra_accent; outline-offset: 1px; }
+.file-comparison .diff-list-header { background: @fastra_base; color: @fastra_muted; font-size: 10px; }
+.file-comparison .diff-list-entry { color: @fastra_muted; font-size: 11px; }
+.file-comparison .diff-list row:selected { background: alpha(@fastra_accent_fill,.18); }
+.file-comparison .diff-list row:selected label { color: @fastra_text; }
+.file-comparison .diff-modified { color: @fastra_modified; }
+.file-comparison .diff-added { color: @fastra_added; }
+.file-comparison .diff-removed { color: @fastra_removed; }
+.file-comparison .diff-list { background: @fastra_surface; }
+.file-comparison .diff-list row { background: transparent; }
+
+.tab-pill.comparison { background: @fastra_base; border-color: @fastra_line; }
+
+.diff-readonly-banner { padding: 10px; background: @fastra_base; color: @fastra_text; font-size: 11px; }
+
+.fastra-references .title { font-size: 15px; font-weight: 600; }
+.fastra-references .heading { font-weight: 600; }
+.fastra-references .muted { color: @fastra_muted; }
+.fastra-references .caption { font-size: 11px; }
+.fastra-references .warning { color: @fastra_warning; }
+.fastra-references listview, .fastra-references row { background: @fastra_sheet; color: @fastra_text; }
+.fastra-references row:selected { background: @fastra_control; }
+.fastra-references .frame { border: 0; }
+.fastra-references .linked button { min-width: 100px; }
+
+.fastra-references .linked button:checked { background: @fastra_sheet_selected; font-weight: 400; }
+.fastra-references button.suggested-action:hover { background: #0780ff; color: white; }
+
+.fastra-references { background: @fastra_sheet; font-size: 13px; border-radius: 12px; }
+.fastra-references button { font-size: 13px; }
+
+
+.fastra-references row + row { border-top: 1px solid @fastra_line; }
+
+.fastra-references .linked button { background: @fastra_sheet_control; border-radius: 0; box-shadow: none; min-height: 20px; }
+.fastra-references .linked button:first-child { border-radius: 4px 0 0 4px; }
+.fastra-references .linked button:last-child { border-radius: 0 4px 4px 0; }
+.fastra-references .sheet-footer button { background: @fastra_sheet_button; min-height: 20px; }
+
+.fastra-snapshot .snapshot-header { padding: 8px 12px; }
+.fastra-snapshot .snapshot-filename { font-size: 12px; font-weight: 700; }
+.fastra-snapshot .snapshot-filename > button { padding: 0; background: transparent; border: 0; box-shadow: none; }
+.fastra-snapshot .snapshot-status { font-size: 12px; color: @fastra_muted; }
+.fastra-snapshot .snapshot-provenance textview { font-size: 11px; }
+.fastra-snapshot .explanation-panel { padding: 12px 12px 8px; }
+.fastra-snapshot .explanation-title { font-size: 14px; font-weight: 700; }
+.fastra-snapshot .explanation-footer { padding: 6px 10px 8px; font-size: 11px; }
+.fastra-snapshot .explanation-footer button, .fastra-snapshot .explanation-footer checkbutton { font-size: 11px; min-height: 20px; padding: 0 5px; }
+.fastra-snapshot .explanation-footer .explanation-font-step { min-width: 14px; padding: 0 3px; }
+.fastra-snapshot .explanation-footer image { -gtk-icon-size: 12px; }
+
+.fastra-snapshot .snapshot-information { font-weight: 400; font-size: 12px; }
+.fastra-snapshot .explanation-steps > button { font-size: 13px; }
+.appearance-choice { background: @fastra_sheet_control; border-radius: 7px; padding: 2px; }
+.fastra-tool .appearance-choice button { background: transparent; border: 0; border-radius: 5px; padding: 0 10px; min-height: 24px; box-shadow: none; }
+.fastra-tool .appearance-choice button:checked { background: @fastra_sheet_selected; box-shadow: 0 1px 2px alpha(black,.12); }
+.fastra-shell popover > contents, .fastra-tool popover > contents, .fastra-search popover > contents { background: @fastra_surface; color: @fastra_text; }
+.fastra-shell popover listview, .fastra-tool popover listview, .fastra-search popover listview { background: @fastra_surface; color: @fastra_text; }
+
+.fastra-settings, .fastra-settings .dialog-titlebar { background: @fastra_base; }
+.fastra-settings .dialog-titlebar { border-bottom: 0; }
+.fastra-settings .settings-form { padding: 20px; }
+.fastra-settings .settings-section { margin-top: 28px; }
+.fastra-settings .settings-section:first-child { margin-top: 0; }
+.fastra-settings .settings-heading { font-size: 13px; font-weight: 700; padding: 0 10px 8px; }
+.fastra-settings .settings-group { background: @fastra_base; border-radius: 6px; padding: 0 10px; }
+.fastra-settings .settings-row { min-height: 38px; border-bottom: 0; }
+.fastra-settings .settings-divider { border-top: 1px solid @fastra_line; }
+.fastra-settings .settings-row > label { padding: 8px 0; }
+.fastra-settings .settings-note label { font-size: 11px; color: @fastra_muted; }
+.fastra-settings switch:disabled { opacity: .45; }
+.fastra-settings .settings-feedback { font-size: 12px; color: @fastra_muted; margin: 8px 0; }
+
+.fastra-settings .settings-font-choice { min-width: 190px; }
+.fastra-settings spinbutton.settings-stepper { background: @fastra_control; border: 0; border-radius: 4px; min-width: 16px; min-height: 22px; padding: 0; }
+.fastra-settings spinbutton.settings-stepper > button { background: transparent; border: 0; border-radius: 0; min-width: 12px; min-height: 10px; padding: 0 2px; margin: 0; box-shadow: none; }
+.fastra-settings spinbutton.settings-stepper > button image { -gtk-icon-size: 9px; }
+.fastra-settings switch { min-width: 36px; min-height: 20px; border-radius: 12px; background: @fastra_control; border: 1px solid @fastra_line; }
+.fastra-settings switch:checked { background: #0a84ff; border-color: #0a84ff; }
+.fastra-settings switch slider { min-width: 18px; min-height: 18px; border: 0; border-radius: 10px; background: #dddddd; box-shadow: none; }
+
+.fastra-settings { font-size: 13px; }
+.fastra-settings .settings-stepper-value { color: transparent; caret-color: transparent; background: transparent; font-size: 1px; min-width: 1px; min-height: 1px; padding: 0; margin: 0; border: 0; }
+.fastra-settings spinbutton.settings-stepper:focus-within { outline: 1px solid @fastra_accent; outline-offset: 2px; }
+
+.fastra-settings .settings-font-choice arrow { -gtk-icon-source: -gtk-icontheme("fastra-chevron-up-down-symbolic"); -gtk-icon-size: 14px; }
+
+.markdown-mode-choice { font-family: "Inter Variable", "Noto Sans", sans-serif; font-size: 13px; background: shade(@fastra_base, 1.035); color: @fastra_text; border-radius: 12px; }
+.markdown-mode-choice label { font-size: 13px; }
+.markdown-mode-choice .mode-choice-title { font-size: 17px; font-weight: 600; }
+.markdown-mode-choice .mode-choice-hint { color: @fastra_muted; }
+.markdown-mode-choice .mode-choice-feedback { color: @fastra_warning; }
+
+.markdown-mode-choice button.suggested-action { background: linear-gradient(to bottom, #2992ff, #007aff); color: white; border: 0; box-shadow: none; border-radius: 6px; min-height: 20px; padding: 0; }
+.markdown-mode-choice button label { font-weight: 600; }
+.markdown-mode-choice button.suggested-action:hover { background: #007aff; }
+.markdown-mode-choice button.suggested-action:disabled { opacity: .45; }

@@ -1,0 +1,722 @@
+[
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "en_US_POSIX",
+    "output" : "istanbul i i̇ ı i",
+    "uppercase" : false
+  },
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "en_US_POSIX",
+    "output" : "ISTANBUL I İ I I",
+    "uppercase" : true
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "en_US_POSIX",
+    "output" : "i̇ i̇́ j́",
+    "uppercase" : false
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "en_US_POSIX",
+    "output" : "İ İ́ J́",
+    "uppercase" : true
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "en_US_POSIX",
+    "output" : "ος οσα ος. σ σ́",
+    "uppercase" : false
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "en_US_POSIX",
+    "output" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "uppercase" : true
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "en_US_POSIX",
+    "output" : "straße ß ﬃ",
+    "uppercase" : false
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "en_US_POSIX",
+    "output" : "STRASSE SS FFI",
+    "uppercase" : true
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "en_US_POSIX",
+    "output" : "café café",
+    "uppercase" : false
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "en_US_POSIX",
+    "output" : "CAFÉ CAFÉ",
+    "uppercase" : true
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "en_US_POSIX",
+    "output" : "😀 𐐨 𐐨 中文",
+    "uppercase" : false
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "en_US_POSIX",
+    "output" : "😀 𐐀 𐐀 中文",
+    "uppercase" : true
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "en_US_POSIX",
+    "output" : "a\r\nb\rc\n",
+    "uppercase" : false
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "en_US_POSIX",
+    "output" : "A\r\nB\rC\n",
+    "uppercase" : true
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "en_US_POSIX",
+    "output" : "í j̀ į́ i̇́",
+    "uppercase" : false
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "en_US_POSIX",
+    "output" : "Í J̀ Į́ İ́",
+    "uppercase" : true
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "en_US_POSIX",
+    "output" : "ά έ ή ί ό ύ ώ ΐ ΰ ας",
+    "uppercase" : false
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "en_US_POSIX",
+    "output" : "Ά Έ Ή Ί Ό Ύ Ώ Ϊ́ Ϋ́ ΑΣ",
+    "uppercase" : true
+  },
+  {
+    "input" : "",
+    "locale" : "en_US_POSIX",
+    "output" : "",
+    "uppercase" : false
+  },
+  {
+    "input" : "",
+    "locale" : "en_US_POSIX",
+    "output" : "",
+    "uppercase" : true
+  },
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "de_DE",
+    "output" : "istanbul i i̇ ı i",
+    "uppercase" : false
+  },
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "de_DE",
+    "output" : "ISTANBUL I İ I I",
+    "uppercase" : true
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "de_DE",
+    "output" : "i̇ i̇́ j́",
+    "uppercase" : false
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "de_DE",
+    "output" : "İ İ́ J́",
+    "uppercase" : true
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "de_DE",
+    "output" : "ος οσα ος. σ σ́",
+    "uppercase" : false
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "de_DE",
+    "output" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "uppercase" : true
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "de_DE",
+    "output" : "straße ß ﬃ",
+    "uppercase" : false
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "de_DE",
+    "output" : "STRASSE SS FFI",
+    "uppercase" : true
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "de_DE",
+    "output" : "café café",
+    "uppercase" : false
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "de_DE",
+    "output" : "CAFÉ CAFÉ",
+    "uppercase" : true
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "de_DE",
+    "output" : "😀 𐐨 𐐨 中文",
+    "uppercase" : false
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "de_DE",
+    "output" : "😀 𐐀 𐐀 中文",
+    "uppercase" : true
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "de_DE",
+    "output" : "a\r\nb\rc\n",
+    "uppercase" : false
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "de_DE",
+    "output" : "A\r\nB\rC\n",
+    "uppercase" : true
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "de_DE",
+    "output" : "í j̀ į́ i̇́",
+    "uppercase" : false
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "de_DE",
+    "output" : "Í J̀ Į́ İ́",
+    "uppercase" : true
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "de_DE",
+    "output" : "ά έ ή ί ό ύ ώ ΐ ΰ ας",
+    "uppercase" : false
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "de_DE",
+    "output" : "Ά Έ Ή Ί Ό Ύ Ώ Ϊ́ Ϋ́ ΑΣ",
+    "uppercase" : true
+  },
+  {
+    "input" : "",
+    "locale" : "de_DE",
+    "output" : "",
+    "uppercase" : false
+  },
+  {
+    "input" : "",
+    "locale" : "de_DE",
+    "output" : "",
+    "uppercase" : true
+  },
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "tr_TR",
+    "output" : "istanbul ı i ı i",
+    "uppercase" : false
+  },
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "tr_TR",
+    "output" : "İSTANBUL I İ I İ",
+    "uppercase" : true
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "tr_TR",
+    "output" : "i i̇́ j́",
+    "uppercase" : false
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "tr_TR",
+    "output" : "İ İ̇́ J́",
+    "uppercase" : true
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "tr_TR",
+    "output" : "ος οσα ος. σ σ́",
+    "uppercase" : false
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "tr_TR",
+    "output" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "uppercase" : true
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "tr_TR",
+    "output" : "straße ß ﬃ",
+    "uppercase" : false
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "tr_TR",
+    "output" : "STRASSE SS FFI",
+    "uppercase" : true
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "tr_TR",
+    "output" : "café café",
+    "uppercase" : false
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "tr_TR",
+    "output" : "CAFÉ CAFÉ",
+    "uppercase" : true
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "tr_TR",
+    "output" : "😀 𐐨 𐐨 中文",
+    "uppercase" : false
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "tr_TR",
+    "output" : "😀 𐐀 𐐀 中文",
+    "uppercase" : true
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "tr_TR",
+    "output" : "a\r\nb\rc\n",
+    "uppercase" : false
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "tr_TR",
+    "output" : "A\r\nB\rC\n",
+    "uppercase" : true
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "tr_TR",
+    "output" : "ı́ j̀ į́ i̇́",
+    "uppercase" : false
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "tr_TR",
+    "output" : "Í J̀ Į́ İ̇́",
+    "uppercase" : true
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "tr_TR",
+    "output" : "ά έ ή ί ό ύ ώ ΐ ΰ ας",
+    "uppercase" : false
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "tr_TR",
+    "output" : "Ά Έ Ή Ί Ό Ύ Ώ Ϊ́ Ϋ́ ΑΣ",
+    "uppercase" : true
+  },
+  {
+    "input" : "",
+    "locale" : "tr_TR",
+    "output" : "",
+    "uppercase" : false
+  },
+  {
+    "input" : "",
+    "locale" : "tr_TR",
+    "output" : "",
+    "uppercase" : true
+  },
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "az_AZ",
+    "output" : "istanbul ı i ı i",
+    "uppercase" : false
+  },
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "az_AZ",
+    "output" : "İSTANBUL I İ I İ",
+    "uppercase" : true
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "az_AZ",
+    "output" : "i i̇́ j́",
+    "uppercase" : false
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "az_AZ",
+    "output" : "İ İ̇́ J́",
+    "uppercase" : true
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "az_AZ",
+    "output" : "ος οσα ος. σ σ́",
+    "uppercase" : false
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "az_AZ",
+    "output" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "uppercase" : true
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "az_AZ",
+    "output" : "straße ß ﬃ",
+    "uppercase" : false
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "az_AZ",
+    "output" : "STRASSE SS FFI",
+    "uppercase" : true
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "az_AZ",
+    "output" : "café café",
+    "uppercase" : false
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "az_AZ",
+    "output" : "CAFÉ CAFÉ",
+    "uppercase" : true
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "az_AZ",
+    "output" : "😀 𐐨 𐐨 中文",
+    "uppercase" : false
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "az_AZ",
+    "output" : "😀 𐐀 𐐀 中文",
+    "uppercase" : true
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "az_AZ",
+    "output" : "a\r\nb\rc\n",
+    "uppercase" : false
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "az_AZ",
+    "output" : "A\r\nB\rC\n",
+    "uppercase" : true
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "az_AZ",
+    "output" : "ı́ j̀ į́ i̇́",
+    "uppercase" : false
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "az_AZ",
+    "output" : "Í J̀ Į́ İ̇́",
+    "uppercase" : true
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "az_AZ",
+    "output" : "ά έ ή ί ό ύ ώ ΐ ΰ ας",
+    "uppercase" : false
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "az_AZ",
+    "output" : "Ά Έ Ή Ί Ό Ύ Ώ Ϊ́ Ϋ́ ΑΣ",
+    "uppercase" : true
+  },
+  {
+    "input" : "",
+    "locale" : "az_AZ",
+    "output" : "",
+    "uppercase" : false
+  },
+  {
+    "input" : "",
+    "locale" : "az_AZ",
+    "output" : "",
+    "uppercase" : true
+  },
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "lt_LT",
+    "output" : "istanbul i i̇ ı i",
+    "uppercase" : false
+  },
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "lt_LT",
+    "output" : "ISTANBUL I İ I I",
+    "uppercase" : true
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "lt_LT",
+    "output" : "i̇̇ i̇́ j̇́",
+    "uppercase" : false
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "lt_LT",
+    "output" : "İ Í J́",
+    "uppercase" : true
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "lt_LT",
+    "output" : "ος οσα ος. σ σ́",
+    "uppercase" : false
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "lt_LT",
+    "output" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "uppercase" : true
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "lt_LT",
+    "output" : "straße ß ﬃ",
+    "uppercase" : false
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "lt_LT",
+    "output" : "STRASSE SS FFI",
+    "uppercase" : true
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "lt_LT",
+    "output" : "café café",
+    "uppercase" : false
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "lt_LT",
+    "output" : "CAFÉ CAFÉ",
+    "uppercase" : true
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "lt_LT",
+    "output" : "😀 𐐨 𐐨 中文",
+    "uppercase" : false
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "lt_LT",
+    "output" : "😀 𐐀 𐐀 中文",
+    "uppercase" : true
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "lt_LT",
+    "output" : "a\r\nb\rc\n",
+    "uppercase" : false
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "lt_LT",
+    "output" : "A\r\nB\rC\n",
+    "uppercase" : true
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "lt_LT",
+    "output" : "i̇́ j̇̀ į̇́ i̇́",
+    "uppercase" : false
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "lt_LT",
+    "output" : "Í J̀ Į́ Í",
+    "uppercase" : true
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "lt_LT",
+    "output" : "ά έ ή ί ό ύ ώ ΐ ΰ ας",
+    "uppercase" : false
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "lt_LT",
+    "output" : "Ά Έ Ή Ί Ό Ύ Ώ Ϊ́ Ϋ́ ΑΣ",
+    "uppercase" : true
+  },
+  {
+    "input" : "",
+    "locale" : "lt_LT",
+    "output" : "",
+    "uppercase" : false
+  },
+  {
+    "input" : "",
+    "locale" : "lt_LT",
+    "output" : "",
+    "uppercase" : true
+  },
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "el_GR",
+    "output" : "istanbul i i̇ ı i",
+    "uppercase" : false
+  },
+  {
+    "input" : "istanbul I İ ı i",
+    "locale" : "el_GR",
+    "output" : "ISTANBUL I İ I I",
+    "uppercase" : true
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "el_GR",
+    "output" : "i̇ i̇́ j́",
+    "uppercase" : false
+  },
+  {
+    "input" : "İ i̇́ J́",
+    "locale" : "el_GR",
+    "output" : "İ İ́ J́",
+    "uppercase" : true
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "el_GR",
+    "output" : "ος οσα ος. σ σ́",
+    "uppercase" : false
+  },
+  {
+    "input" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ́",
+    "locale" : "el_GR",
+    "output" : "ΟΣ ΟΣΑ ΟΣ. Σ Σ",
+    "uppercase" : true
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "el_GR",
+    "output" : "straße ß ﬃ",
+    "uppercase" : false
+  },
+  {
+    "input" : "Straße ß ﬃ",
+    "locale" : "el_GR",
+    "output" : "STRASSE SS FFI",
+    "uppercase" : true
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "el_GR",
+    "output" : "café café",
+    "uppercase" : false
+  },
+  {
+    "input" : "CAFÉ café",
+    "locale" : "el_GR",
+    "output" : "CAFÉ CAFÉ",
+    "uppercase" : true
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "el_GR",
+    "output" : "😀 𐐨 𐐨 中文",
+    "uppercase" : false
+  },
+  {
+    "input" : "😀 𐐀 𐐨 中文",
+    "locale" : "el_GR",
+    "output" : "😀 𐐀 𐐀 中文",
+    "uppercase" : true
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "el_GR",
+    "output" : "a\r\nb\rc\n",
+    "uppercase" : false
+  },
+  {
+    "input" : "a\r\nb\rc\n",
+    "locale" : "el_GR",
+    "output" : "A\r\nB\rC\n",
+    "uppercase" : true
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "el_GR",
+    "output" : "í j̀ į́ i̇́",
+    "uppercase" : false
+  },
+  {
+    "input" : "Í J̀ Į́ i̇́",
+    "locale" : "el_GR",
+    "output" : "Í J̀ Į́ İ́",
+    "uppercase" : true
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "el_GR",
+    "output" : "ά έ ή ί ό ύ ώ ΐ ΰ ας",
+    "uppercase" : false
+  },
+  {
+    "input" : "ά έ ή ί ό ύ ώ ΐ ΰ ΑΣ",
+    "locale" : "el_GR",
+    "output" : "Α Ε Ή Ι Ο Υ Ω Ϊ Ϋ ΑΣ",
+    "uppercase" : true
+  },
+  {
+    "input" : "",
+    "locale" : "el_GR",
+    "output" : "",
+    "uppercase" : false
+  },
+  {
+    "input" : "",
+    "locale" : "el_GR",
+    "output" : "",
+    "uppercase" : true
+  }
+]

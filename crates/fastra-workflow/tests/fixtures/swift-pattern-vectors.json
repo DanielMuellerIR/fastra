@@ -1,0 +1,424 @@
+[
+  {
+    "groups" : 0,
+    "id" : "email",
+    "output" : "max.muster@example.com",
+    "ranges" : [
+      [
+        0,
+        22
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "url",
+    "output" : "https:\/\/example.com\/path?q=1",
+    "ranges" : [
+      [
+        0,
+        28
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "iban",
+    "output" : "DE89370400440532013000",
+    "ranges" : [
+      [
+        0,
+        22
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "ipv4",
+    "output" : "192.168.1.1",
+    "ranges" : [
+      [
+        0,
+        11
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "uuid",
+    "output" : "550e8400-e29b-41d4-a716-446655440000",
+    "ranges" : [
+      [
+        0,
+        36
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "hex_color",
+    "output" : "#FF9900",
+    "ranges" : [
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "semver",
+    "output" : "v1.2.3",
+    "ranges" : [
+      [
+        0,
+        6
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "file_name",
+    "output" : "notiz.md",
+    "ranges" : [
+      [
+        0,
+        8
+      ]
+    ]
+  },
+  {
+    "groups" : 3,
+    "id" : "iso_date",
+    "output" : "26.05.2026",
+    "ranges" : [
+      [
+        0,
+        10
+      ]
+    ]
+  },
+  {
+    "groups" : 3,
+    "id" : "german_date",
+    "output" : "2026-05-26",
+    "ranges" : [
+      [
+        0,
+        10
+      ]
+    ]
+  },
+  {
+    "groups" : 3,
+    "id" : "time",
+    "output" : "14:30:45",
+    "ranges" : [
+      [
+        0,
+        8
+      ]
+    ]
+  },
+  {
+    "groups" : 6,
+    "id" : "iso_timestamp",
+    "output" : "2026-07-10 15:30:00",
+    "ranges" : [
+      [
+        0,
+        19
+      ]
+    ]
+  },
+  {
+    "groups" : 2,
+    "id" : "md_link",
+    "output" : "OpenAI",
+    "ranges" : [
+      [
+        0,
+        28
+      ]
+    ]
+  },
+  {
+    "groups" : 2,
+    "id" : "md_heading",
+    "output" : "## Überschrift",
+    "ranges" : [
+      [
+        0,
+        14
+      ]
+    ]
+  },
+  {
+    "groups" : 3,
+    "id" : "html_tag",
+    "output" : "<a href=\"https:\/\/example.com\">",
+    "ranges" : [
+      [
+        0,
+        30
+      ]
+    ]
+  },
+  {
+    "groups" : 2,
+    "id" : "code_block",
+    "output" : "```swift\nlet x = 1\n```",
+    "ranges" : [
+      [
+        0,
+        22
+      ]
+    ]
+  },
+  {
+    "groups" : 2,
+    "id" : "file_path",
+    "output" : "notiz.md",
+    "ranges" : [
+      [
+        0,
+        17
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "html_comment",
+    "output" : "<!-- TODO: prüfen -->",
+    "ranges" : [
+      [
+        0,
+        21
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "integer",
+    "output" : "-42",
+    "ranges" : [
+      [
+        0,
+        3
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "german_decimal",
+    "output" : "1.234,56",
+    "ranges" : [
+      [
+        0,
+        8
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "phone_de",
+    "output" : "+49 30 12345678",
+    "ranges" : [
+      [
+        0,
+        15
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "english_decimal",
+    "output" : "1,234.56",
+    "ranges" : [
+      [
+        0,
+        8
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "percentage",
+    "output" : "42,5 %",
+    "ranges" : [
+      [
+        0,
+        6
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "euro_amount",
+    "output" : "1.234,56 €",
+    "ranges" : [
+      [
+        0,
+        10
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "one_word",
+    "output" : "Hallo",
+    "ranges" : [
+      [
+        0,
+        5
+      ]
+    ]
+  },
+  {
+    "groups" : 2,
+    "id" : "two_words",
+    "output" : "Mustermann Michael",
+    "ranges" : [
+      [
+        0,
+        18
+      ]
+    ]
+  },
+  {
+    "groups" : 2,
+    "id" : "last_first_name",
+    "output" : "Michael Mustermann",
+    "ranges" : [
+      [
+        0,
+        19
+      ]
+    ]
+  },
+  {
+    "groups" : 1,
+    "id" : "doubled_word",
+    "output" : "der",
+    "ranges" : [
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "capitalized_word",
+    "output" : "Berlin",
+    "ranges" : [
+      [
+        0,
+        6
+      ]
+    ]
+  },
+  {
+    "groups" : 1,
+    "id" : "quoted_text",
+    "output" : "Zitat",
+    "ranges" : [
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  {
+    "groups" : 1,
+    "id" : "german_quoted_text",
+    "output" : "Zitat",
+    "ranges" : [
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  {
+    "groups" : 1,
+    "id" : "parenthesized_text",
+    "output" : "Hinweis",
+    "ranges" : [
+      [
+        0,
+        9
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "whole_line",
+    "output" : "eine ganze Zeile",
+    "ranges" : [
+      [
+        0,
+        16
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "multiple_spaces",
+    "output" : "zu viel Raum",
+    "ranges" : [
+      [
+        2,
+        2
+      ],
+      [
+        8,
+        2
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "trailing_whitespace",
+    "output" : "Zeile mit Rest",
+    "ranges" : [
+      [
+        14,
+        3
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "leading_whitespace",
+    "output" : "eingerückt",
+    "ranges" : [
+      [
+        0,
+        4
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "tabs",
+    "output" : "\tEinzug",
+    "ranges" : [
+      [
+        0,
+        1
+      ]
+    ]
+  },
+  {
+    "groups" : 0,
+    "id" : "empty_lines",
+    "output" : "",
+    "ranges" : [
+      [
+        0,
+        1
+      ]
+    ]
+  }
+]

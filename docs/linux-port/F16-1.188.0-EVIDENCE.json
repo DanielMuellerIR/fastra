@@ -1,0 +1,90 @@
+{
+  "version": "1.188.0",
+  "build": 400,
+  "product_commit": "752353aa4a11b5b04f6d6add60a11e8ee1a6c7c4",
+  "source_identity": "684d82e2203b8492e039c9564dca315a3baa588597ab17b4a34b98a499b11e50",
+  "verified_product_inputs": 610,
+  "linux_artifacts_unsigned": true,
+  "unpublished": true,
+  "artifacts": {
+    "PKGBUILD": "f79df607a1aa423e9eabca8c2709aefed0e00f012cb577d5600c632e5d5f3d80",
+    "SHA256SUMS": "b9c12d6d83903d5403bd35dfae4115e400df55459de8e5ff7e86087789143aba",
+    "fastra-1.188.0-linux-x86_64.tar.gz": "fba98d3c96ccb962a14f05ef44073e3421c95df51477cf580db6776d692cf2b6",
+    "fastra-1.188.0-linux-x86_64.zip": "7aeb36fdec6b216c215c6f88404d23d82b58018fdef89b031a1799b269283c5d",
+    "fastra_1.188.0_amd64.deb": "a81475681c71c2fd8f49da2ca644dd84af1460e11eac969f5010d72b6317a39e"
+  },
+  "native_archive_sha256": "20e34de4eee9b4fb9f04fc18c1337142ea46ac5a8d796462049d25fd9793b87c",
+  "native_package_manifest_sha256": "b2c5f3c36d63dc529349804361581900a403a804fc1633a2e983088649906e95",
+  "runtime_manifest_sha256": "73af96ea231ec2c04da94fb1e4368ce96800c7f53a6cf425fc051a7cbda4853c",
+  "tests": {
+    "selected_regular_suite": {
+      "passed": 509,
+      "failed": 0,
+      "ignored": 8,
+      "scope": "maintained runner before final Return/metadata ABI integration; unchanged shared suites"
+    },
+    "final_changed_linux_subset": {
+      "passed": 228,
+      "failed": 0,
+      "ignored": 8
+    },
+    "linux_all_targets_clippy": "PASS",
+    "native_final_commit_cases": 10,
+    "native_delete_join_cases": 34,
+    "linear_return_cases": 18,
+    "legacy_grid_return_observations": 2,
+    "native_markdown_inline_panes": 2,
+    "native_rich_crlf": "PASS: actual WebKit source/edit/Undo/Redo/save/mode roundtrip",
+    "startup_fail_closed": [
+      "missing-host",
+      "invalid-host",
+      "missing-hook",
+      "missing-sourceview",
+      "missing-return",
+      "missing-iter"
+    ],
+    "package_relocation_control": "PASS: archive extracted to prefix with spaces, strict verification, actual release GUI coldstart, native/system distinct bus/runtime IDs/GTK stacks",
+    "diff_aliases": "PASS delivery of native and system alias; completed comparison not claimed",
+    "mac_current": "1.188.0/400 notarized and installed; portable resources, help and localization PASS",
+    "mac_help_unit_passed": 13,
+    "mac_version_unit_passed": 5,
+    "mac_functional_basis": "eight window tests on 1.186.0; Swift sources, patches, Package.swift and build.sh byte-unchanged through product commit",
+    "physical": "Cinnamon X11 scale2; fixed24/reverse, equal W/i widths and leading tabs both panes, actual Bold button one Undo/Redo, default Return/autoindent one Undo/Redo, Compose plus Save/Undo/Redo exact CRLF, six accessible text names and both source texts, actual cross-process file URI/disk bytes despite dirty buffer, source restored and visible Quit"
+  },
+  "evidence_sha256": {
+    "build-binding-1188.json": "fcee60d9b0bbb2158bc11eed24ea39fe511e5f0dee460812ae970ca36a8f67e1",
+    "combined-1188-commit-iter.log": "5d86366a3b85d7051ec56c837682ee34e78fef74090d611749fe010107b75c64",
+    "combined-1188-native-iter.log": "fef0bab2d699eb8f0c6ecacedf2d76b350768597e507423b93881a31a2cf101f",
+    "combined-1188-return-iter.log": "fb8c9e82b8a2fe3b5b7e97c66351f0f534fd52745bb773f44510dd1c3a81d150",
+    "combined-1188-rich-actual.log": "a17a1b4b5b5cce59a2961765c47be128bbaa3fe20113b7ae981b4732762e187b",
+    "combined-1188-system-runner.log": "e5fe8954d51975d6415179039b3f5af37f47dc37344cdf8ba32837430fe5588c",
+    "final-iter-abi-app-build-clippy.log": "0d580a828c0671bc30e9ddf6e6046fc178f486487594a034b55fb9dd7e9d33a7",
+    "final-linux-unit-1188-btrfs.log": "7715e9551f350f732cf90c574d14cf250fe99d83827b336167086695837db1d8",
+    "help-audit-1188.log": "ca79840614c46c14a4b7db704cf53f9b003039d11eab54dc32a28b79b662acbc",
+    "mac-build-1188.log": "3fbd24a9c7971525807c521eeb469922dea12ac4aef649a21ffd0aa5030283f3",
+    "mac-help-tests-1188.log": "260f6cdff7efe01f49fca795e0fa8097b7bc5ee6b4e69f87e2aac8d787f5e243",
+    "mac-install-1188.log": "3e5c68a8b7a21f4f448e2f62eb947fa47aa037cba8797937e4c73c3fe42292be",
+    "mac-installed-help-localization-1188.log": "b7ee249fb51fcaca8f01be93ede9271219566f7f33ed90a7bb4eb35b90ff4f70",
+    "mac-localization-audit-1188.log": "3d940fd90901b9bc042fb94c45ebbfafbed9350297febbbec158411d001670c1",
+    "mac-version-tests-1188.log": "d79324072f6cde2df1c724fecb5ab6dde939122bdbe42d3b800b79e796c3b408",
+    "native-final-1188-stage.log": "e1f5acd073a5ae268a4d21424d4c87c45a85b836fdd99e98b86eec1ca288184b",
+    "native-relocated-1188-control.log": "71f40423fee85f197c0213ced0ed3663446ea98207264d3b4750bc16f7f3a5a9",
+    "native-relocated-1188-verify.log": "48dcffa77248aa103688a2c791be9584aecff46ecbfc2cf0808762ab9da2b6dd",
+    "physical/ax-final.json": "fdcd378a4a7ecd9b256f3dbb3b8d54714489359f9e3c7ef8ed900692dc3fcda1",
+    "physical/drag.log": "307c33ccf611f8dbfd0b0a26310d181ef3f6e35d9435398d5c0f0301b4088a8d",
+    "physical/finish.log": "1e561270b87180b307c0a8fcdee86dbbbeb65d994881152c7887a3b8ed957417",
+    "physical/input-v2.log": "26987bb821ba1f630376f8209b166d657caeecd30b7a18d82206aeeef8649089",
+    "physical/split-wrap-v2.png": "5814828ce56bfdfcce320bc2aa7f7f87df7dd2d017929c6f1d46591d91bbd1c2",
+    "release-1188-final-v2.log": "ff3e762e166bfcd3da74f7ad6a99f09ae93ef98380785a91f0aab3d4f9ae612a",
+    "source-identity.json": "44dfe3c63f841c3982d4463c9cab7e23bd506d3ab112a39b3332f6d64a392a41",
+    "startup-gates-1188-iter.log": "ca9e47f026a811218d4f1093fcf7918157a4a3b3854bd12120acfe6200707041"
+  },
+  "open_limits": [
+    "general IME preedit/surrounding deletion/commit/cancel; keys consumed or changed by IM filtering",
+    "custom indenters, Tab/snippet, clipboard and AT-SPI transaction contract",
+    "automatic nested multilingual folding not integrated in Linux UI; bounded foundation proof exists",
+    "full Markdown assistance and dialect parity",
+    "candidate-window IME, full screenreader, Wayland and additional distribution/driver acceptance",
+    "new Linux signed-ZIP acceptance not run; current ZIP checked by hash only"
+  ]
+}

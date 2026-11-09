@@ -1,0 +1,141 @@
+{
+  "version": "1.185.0",
+  "build": 395,
+  "product_commit": "35176c467025a3807b73c20869721794088b7439",
+  "source_identity": "49f244eb9c562e89613b182061caf87d357e7661b854696c3b0c659fbe09be34",
+  "verified_product_inputs": 475,
+  "unsigned": true,
+  "unpublished": true,
+  "local_artifacts": "dist/linux-1.185.0/packages",
+  "artifacts": {
+    "fastra_1.185.0_amd64.deb": "1119bf265285c924480b127309ab5d8445f44adc64241caa1ccc238da30631b5",
+    "fastra-1.185.0-linux-x86_64.tar.gz": "5b5bce7fd4e1b3923ee427ce4ddc58ed8264705e8ba8db455ca93e2dfc6333d6",
+    "fastra-1.185.0-linux-x86_64.zip": "1a17fcf9423da6d3e8d08ef376429842ba6e8873872faae0f1c96fbe464b306f"
+  },
+  "tests": {
+    "workspace_programs": 55,
+    "regular_passed": 680,
+    "native_git_helper_cases": 26,
+    "ignored": 6,
+    "failed_final": 0,
+    "foundation_explicit_locale_vectors": 120,
+    "independently_executed_rust_countertests": 9,
+    "private_author_native_case_flows": 6,
+    "strict_debug_workspace_and_linux_release_clippy": "PASS",
+    "optimized_installed_and_relocated_package": "PASS: secondary clipboard paste, atomic Save and one Undo restore exact bytes; local HTML/math/Mermaid/table and actual Rich formula; inner sandbox intact",
+    "actual_optimized_release_source_b_case_menu": "PASS: visible Turkish Upper/Lower native menu, regular Save, exact UTF8 output; no debug flags or rebuilt ELF",
+    "actual_release_repeated_session": {
+      "cycles": 36,
+      "one_process": true,
+      "checked_save_phases": 180,
+      "a_cycles": 18,
+      "b_cycles": 18,
+      "caret_insertions": 24,
+      "three_character_replacements": 12,
+      "toolbar_undo": 21,
+      "toolbar_redo": 14,
+      "original_restored_each_cycle": true,
+      "seconds": 99.796,
+      "limit": "Small Unicode/CRLF document; native history depth1\u20132, not hours or200-level load."
+    },
+    "actual_packaged_external_diff": "PASS including four concurrent cold calls and actual hanging-peer deadline",
+    "packaged_git_helper_cases": 26,
+    "headless_wayland": {
+      "viewer": "PASS native GTK image/SVG/PDF and preservation",
+      "rich": "PASS actual WebKit roundtrip and synchronized Save",
+      "rich_eol_math": "PASS rebased CRLF and exact saved source",
+      "webkit_sandbox": "NoNewPrivs1,Seccomp2,privatePID",
+      "limit": "Private Weston functional checks; no physical compositor/IME acceptance. Viewer uses its native runner, not a WebKit-process requirement."
+    },
+    "integrated_native_case_flows": 8,
+    "secondary_source_upper_and_lower_included": true,
+    "inspected_views": "Six case-workflow views, six installed/relocated package views and four real PMT import/Rich views.",
+    "actual_signed_zip_installation": {
+      "status": "PASS",
+      "synthetic_isolated_one_day_key": true,
+      "real_linux_sign_and_verify": true,
+      "signed_zip_installed_in_private_space_percent_prefix": true,
+      "downgrade_to_two_launcher_1_181_then_signed_upgrade": true,
+      "wrong_signer_rejected_before_mutation": true,
+      "all_three_installed_launchers_executed": true,
+      "regular_quit_exit": 0,
+      "original_artifacts_unchanged": true,
+      "own_key_agent_prefix_copies_removed": true,
+      "report_sha256": "2b3541bfaad023b4be57c4556f3cc6eaa567b0effa111c5c8e0d277579e2dcb8",
+      "result_sha256": "0de2bba695c60d6e4cacfada046eafbecfb1dca5766345f67d0ce1911f4d9b6a"
+    }
+  },
+  "reviews": {
+    "locale_independent": {
+      "report_sha256": "a44f7cbcc77e54b37cd3e078d4669a1ec43f7be72060c081a9d57eb581cba6a9",
+      "status": "CLOSED"
+    },
+    "integration": {
+      "report_sha256": "5d037ec45e87711bf65d5b8a00f5efdbe846960f3a2b91b0487b5919bb2b998a",
+      "status": "CLOSED"
+    },
+    "actual_release_case": {
+      "report_sha256": "9252bea33efb5dd5eab0b9bf91841f1cd9e439dbb892aeb4bd2f45304a372709",
+      "status": "PASS_WITH_STATED_SCOPE"
+    },
+    "repeated_release_session": {
+      "report_sha256": "84f805f1ee74050b8508a972ca8bde874f88702803fdbe77e9458eb0000d1080",
+      "status": "PASS_WITH_STATED_SCOPE"
+    },
+    "pmt_release": {
+      "report_sha256": "2a243eb55966695c853f7c81cf1efef346341ac2dfa4902ca5a3514312f3721c",
+      "status": "PASS_WITH_STATED_SCOPE"
+    }
+  },
+  "actual_pmt_release_pair": {
+    "consumer_version": "1.185.0",
+    "consumer_build": "395",
+    "consumer_source_id": "49f244eb9c562e89613b182061caf87d357e7661b854696c3b0c659fbe09be34",
+    "consumer_binary_sha256": "e045449cd2fd44479b6106d4167427c03bce359caba7f99a34cb5bc94d8ace1e",
+    "producer_version": "0.41.19",
+    "producer_source_commit": "e2f0b8866aa3acc9b9dd8bf474ffd11d031f4adb",
+    "producer_launcher_sha256": "385d2389430500df83d54bee3a364d198f4ef057936e64ca48df67f0b0573029",
+    "producer_binary_sha256": "f2be32db3964282bbce75e4a03ff320f88833081e0abfd808a3fcea95446fe9b",
+    "verified_runtime_files": 48,
+    "all_package_files_unchanged": 396,
+    "all_producer_handoff_files_unchanged": 51,
+    "actual_product_environment": {
+      "FASTRA_POORMANS_TEXT": "/pmt/poormans-text"
+    },
+    "regular_rtf_release_flow": true,
+    "regular_mbox_release_flow": true,
+    "rtf_mime_clipboard_rich_release_flow": true,
+    "complete_ui_previews_match_producer_bytes": true,
+    "explicit_native_adoption_clicks": true,
+    "original_buffer_and_original_files_unchanged": true,
+    "rtf_markdown_utf8_hex": "506c61696e202a2a426f6c642a2a203d3d4d61726b65643d3d20c3840a",
+    "output_trees": {
+      "rtf-release": {
+        "Source.md": "68469c149d6a83ed1c1b8d27386913a18923cfcccebcf792a7bbd53a6becc620"
+      },
+      "mbox-release": {
+        "assets/documents/000001/Source.md": "d8600873d4ae557b4b1d42f4e0c236b846d65c2fe7d140eba7ba0be54639b1c8",
+        "index.md": "6550ad7b1571e4217da070f91d9ebf2a6251d9e90566c9f94f92d77a16e22179"
+      },
+      "rtf-rich-release": {
+        "Clipboard.md": "68469c149d6a83ed1c1b8d27386913a18923cfcccebcf792a7bbd53a6becc620"
+      }
+    },
+    "no_product_build_or_modification": true,
+    "runtime_repository_mount": false,
+    "regular_native_quit_exit": 0,
+    "final_hashes_rechecked_after_quit": true
+  },
+  "provenance_notes": [
+    "The old pure workflow None context remains deterministic Root; productive Linux hosts require an explicit valid locale for enabled case steps. Titlecase still refuses None.",
+    "The first release-case controller reached its hold timeout only after exact Upper/Lower file assertions; a fresh Upper replay completed Exit0. No Quit claim is derived from that controller.",
+    "The generic viewer Wayland wrapper initially required a WebKit child that this native GTK path does not create; the existing viewer-specific runner completed Exit0.",
+    "Native typing selection replacement retains documented GTK two-Undo grouping; Fastra clipboard paste retains one Undo."
+  ],
+  "limitations": [
+    "Full Markdown dialect equivalence, fixed-column/continuation wrapping, general native typing/IME size preflight, current Mac GUI and physical desktop/IME/accessibility acceptance remain open.",
+    "PMT release proof covers simple EN RTF/MBOX/RTF-MIME fixtures, not a general format/attachment/PDF/OCR matrix.",
+    "Two native histories remain allocated even when Split is off; prior measured overhead is not a fixed memory ceiling."
+  ],
+  "retention": "Retain small reports; reassess disposable fixtures after acceptance by 2026-12-06."
+}

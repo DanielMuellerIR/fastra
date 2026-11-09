@@ -1,0 +1,187 @@
+{
+  "date": "2026-11-04",
+  "mac": {
+    "targetedImportTests": 41,
+    "fastTests": 2799,
+    "serialTests": 304,
+    "nativeImport": "PASS",
+    "freshProcessReopen": "PASS",
+    "sameSignedBinariesOnBuildAndTestMachine": true,
+    "cleanup": "PASS",
+    "pmtGuiCollisionObserved": true,
+    "firstAutonomousAXAttempt": "No AX elements in service context; harness deadline. Collision observed independently in the authorized SSH context."
+  },
+  "collections": {
+    "passed": true,
+    "collections": [
+      {
+        "source": "mail.mbox",
+        "files": 4,
+        "markdown": 3,
+        "links": 3,
+        "tree": {
+          "index.md": "e88957190f4517c234dcdf25b9d8c6c71a2db78f04ed021faafc088e1c6d2b35",
+          "assets/documents/000002/mail.md": "5c15f70eed5e16928feccb214f04cde23c9187669553e8cd055b238301c8682c",
+          "assets/documents/000001/mail.md": "ae0cd52f9b028d6d03261996b221d9e832276b743d05dd2e10bb5484d3b192fe",
+          "assets/documents/000001/attachments/1-pixel.png": "4ff6ab670a58c14270e034e2090d9a432caa263a14e0a25785386b0c12f880b5"
+        }
+      },
+      {
+        "source": "notes.enex",
+        "files": 5,
+        "markdown": 3,
+        "links": 4,
+        "tree": {
+          "index.md": "cee74c389eca986dc4d3ff3f617a2452820ed81a514bf8603607fef626d1f700",
+          "assets/documents/000002/notes.md": "f3571644f81e4d6e0e5d66eec4c3f178e2ba419210282ad8b3385352f03d1922",
+          "assets/documents/000001/notes.md": "eaa78b7de2a33caa336337bff549382c2abc996d6df5b1ba49e530327585570b",
+          "assets/documents/000001/images/image01.png": "4ff6ab670a58c14270e034e2090d9a432caa263a14e0a25785386b0c12f880b5",
+          "assets/documents/000001/attachments/resource-000001.png": "4ff6ab670a58c14270e034e2090d9a432caa263a14e0a25785386b0c12f880b5"
+        }
+      }
+    ]
+  },
+  "f01": {
+    "gpuiSourceRevision": "7591a35eced761e3613c01e71ff04c10129dae1a",
+    "gpuiRun": false,
+    "gtk": "4.14.5",
+    "gtksource": "5.12.0",
+    "webkit": "2.52.6",
+    "containerImage": "sha256:962074e27d3c597f07c917dfce3bdd76b9efe1165b69dbc74d122bc0d366b324",
+    "containerPackages": {
+      "gir1.2-gtk-4.0": "4.14.5+ds-0ubuntu0.10",
+      "gir1.2-gtksource-5": "5.12.0-1build1",
+      "gir1.2-webkit-6.0": "2.52.6-0ubuntu0.24.04.1"
+    },
+    "physicalDesktopAcceptance": false,
+    "publicExtension": {
+      "checks": 12,
+      "x11Xvfb": "PASS",
+      "actualAltDrag": "PASS",
+      "logicalRowsUnderWrap": "PASS",
+      "nativeTypingAndUndo": "PASS",
+      "columnPasteAndUndo": "PASS",
+      "foldUnfoldBytes": "PASS",
+      "captureDrag": "PASS",
+      "windowVisuallyReviewed": true,
+      "nativeDesktopAccepted": false
+    }
+  },
+  "f02": {
+    "icu": "78.3",
+    "referenceCases": 37,
+    "differences": 0,
+    "macRelocatedBundle": "PASS",
+    "linuxSameRuntimeBothTargets": "PASS",
+    "timeoutError": 66322,
+    "cancelError": 66323,
+    "sourceArchiveSHA256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+    "nativeDistributionRuntimeOnOlderCPU": "SIGILL; rejected; replaced with baseline source build"
+  },
+  "f03": {
+    "recoveryInspection": {
+      "date": "2026-11-04",
+      "filesystem": "btrfs",
+      "passedCount": 17,
+      "passed": [
+        "SIGKILL after intent",
+        "SIGKILL after exchange",
+        "SIGKILL after directory-sync",
+        "foreign-target",
+        "foreign-original",
+        "same-bytes-new-inode",
+        "symlink-target",
+        "fifo-target",
+        "missing-original",
+        "truncated-intent",
+        "symlink-intent",
+        "fifo-intent",
+        "hardlinked-target",
+        "changed-mode",
+        "same-directory-relocated",
+        "copied-directory-rejected",
+        "symlink-directory-rejected"
+      ],
+      "automaticRecovery": false,
+      "powerLossTested": false,
+      "ext4Tested": true,
+      "multiFileTransactionTested": false,
+      "ext4PassedCount": 17,
+      "ext4Cleanup": {
+        "unmounted": true,
+        "ownLoopDetached": true,
+        "imageRemoved": true
+      }
+    },
+    "uniffi": "0.31.2",
+    "relocatedBundle": "PASS",
+    "activeCancellation": "PASS",
+    "exchange": {
+      "btrfs": {
+        "filesystem": "btrfs",
+        "passed": [
+          "swap retains original bytes",
+          "displaced inode retained",
+          "mode explicitly preserved",
+          "rollback retains both versions",
+          "raced target detectable after swap",
+          "foreign bytes restored",
+          "kernel swaps symlink without following it",
+          "FIFO rejected by fstat without blocking",
+          "killed owner leaves both byte versions",
+          "crash is not automatic rollback",
+          "explicit recovery possible"
+        ],
+        "limit": "No product journal, multi-file transaction, fsync/crash-durability or hostile concurrent namespace guarantee."
+      },
+      "ext4": {
+        "filesystem": "ext4",
+        "passed": [
+          "swap retains original bytes",
+          "displaced inode retained",
+          "mode explicitly preserved",
+          "rollback retains both versions",
+          "raced target detectable after swap",
+          "foreign bytes restored",
+          "kernel swaps symlink without following it",
+          "FIFO rejected by fstat without blocking",
+          "killed owner leaves both byte versions",
+          "crash is not automatic rollback",
+          "explicit recovery possible"
+        ],
+        "limit": "No product journal, multi-file transaction, fsync/crash-durability or hostile concurrent namespace guarantee."
+      }
+    },
+    "ext4Cleanup": {
+      "unmounted": true,
+      "ownLoopDetached": true,
+      "imageRemoved": true
+    },
+    "productionTransactionAccepted": false
+  },
+  "f04": {
+    "formula": true,
+    "mermaid": true,
+    "imageIdentityWidths": [
+      1,
+      2
+    ],
+    "cspNetworkBlocked": true,
+    "webKitSandboxActive": true,
+    "undo": true,
+    "saveAndNewProcess": true,
+    "fullWysiwygParity": false,
+    "localLinuxTool4DBackendAccepted": false
+  },
+  "f05": {
+    "status": "started",
+    "rust": "1.99.1",
+    "icu": "78.3",
+    "testsPassed": 21,
+    "sharedReferenceCases": 37,
+    "reference": "unchanged Swift sources on Linux Foundation 6.2.1",
+    "clippyWarningsDenied": "PASS",
+    "nativeMacIntegration": false,
+    "productPathReplaced": false
+  }
+}

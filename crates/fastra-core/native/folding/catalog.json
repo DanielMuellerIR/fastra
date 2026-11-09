@@ -1,0 +1,1925 @@
+{
+  "format": 1,
+  "runtime": "0.25.10",
+  "mac_catalog_revision": "331d5dbc5fc8513be5848fce8a2a312908f36a11",
+  "languages": [
+    {
+      "mac_id": "agda",
+      "symbol": null
+    },
+    {
+      "mac_id": "bash",
+      "symbol": "tree_sitter_bash"
+    },
+    {
+      "mac_id": "c",
+      "symbol": "tree_sitter_c"
+    },
+    {
+      "mac_id": "cpp",
+      "symbol": "tree_sitter_cpp"
+    },
+    {
+      "mac_id": "cSharp",
+      "symbol": "tree_sitter_c_sharp"
+    },
+    {
+      "mac_id": "css",
+      "symbol": "tree_sitter_css"
+    },
+    {
+      "mac_id": "dart",
+      "symbol": "tree_sitter_dart"
+    },
+    {
+      "mac_id": "dockerfile",
+      "symbol": "tree_sitter_dockerfile"
+    },
+    {
+      "mac_id": "elixir",
+      "symbol": null
+    },
+    {
+      "mac_id": "go",
+      "symbol": "tree_sitter_go"
+    },
+    {
+      "mac_id": "goMod",
+      "symbol": "tree_sitter_gomod"
+    },
+    {
+      "mac_id": "haskell",
+      "symbol": null
+    },
+    {
+      "mac_id": "html",
+      "symbol": "tree_sitter_html"
+    },
+    {
+      "mac_id": "java",
+      "symbol": "tree_sitter_java"
+    },
+    {
+      "mac_id": "javascript",
+      "symbol": "tree_sitter_javascript"
+    },
+    {
+      "mac_id": "jsdoc",
+      "symbol": "tree_sitter_jsdoc"
+    },
+    {
+      "mac_id": "json",
+      "symbol": "tree_sitter_json"
+    },
+    {
+      "mac_id": "jsx",
+      "symbol": "tree_sitter_javascript"
+    },
+    {
+      "mac_id": "julia",
+      "symbol": null
+    },
+    {
+      "mac_id": "kotlin",
+      "symbol": "tree_sitter_kotlin"
+    },
+    {
+      "mac_id": "lua",
+      "symbol": "tree_sitter_lua"
+    },
+    {
+      "mac_id": "markdown",
+      "symbol": "tree_sitter_markdown"
+    },
+    {
+      "mac_id": "markdownInline",
+      "symbol": "tree_sitter_markdown_inline"
+    },
+    {
+      "mac_id": "objc",
+      "symbol": "tree_sitter_objc"
+    },
+    {
+      "mac_id": "ocaml",
+      "symbol": null
+    },
+    {
+      "mac_id": "ocamlInterface",
+      "symbol": null
+    },
+    {
+      "mac_id": "perl",
+      "symbol": "tree_sitter_perl"
+    },
+    {
+      "mac_id": "php",
+      "symbol": "tree_sitter_php"
+    },
+    {
+      "mac_id": "python",
+      "symbol": "tree_sitter_python"
+    },
+    {
+      "mac_id": "regex",
+      "symbol": "tree_sitter_regex"
+    },
+    {
+      "mac_id": "ruby",
+      "symbol": "tree_sitter_ruby"
+    },
+    {
+      "mac_id": "rust",
+      "symbol": "tree_sitter_rust"
+    },
+    {
+      "mac_id": "scala",
+      "symbol": null
+    },
+    {
+      "mac_id": "sql",
+      "symbol": "tree_sitter_sql"
+    },
+    {
+      "mac_id": "swift",
+      "symbol": "tree_sitter_swift"
+    },
+    {
+      "mac_id": "toml",
+      "symbol": "tree_sitter_toml"
+    },
+    {
+      "mac_id": "tsx",
+      "symbol": "tree_sitter_tsx"
+    },
+    {
+      "mac_id": "typescript",
+      "symbol": "tree_sitter_typescript"
+    },
+    {
+      "mac_id": "verilog",
+      "symbol": null
+    },
+    {
+      "mac_id": "yaml",
+      "symbol": "tree_sitter_yaml"
+    },
+    {
+      "mac_id": "zig",
+      "symbol": null
+    },
+    {
+      "mac_id": "plainText",
+      "symbol": null
+    }
+  ],
+  "grammars": [
+    {
+      "repository": "tree-sitter-bash",
+      "url": "https://github.com/tree-sitter/tree-sitter-bash.git",
+      "revision": "49c31006d8307dcb12bc5770f35b6d5b9e2be68e",
+      "archive_sha256": "330364d1376a32a71464574e3598a6db251935b95c699485f51835f8b442a1f3",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_bash",
+        "tree_sitter_bash_external_scanner_create",
+        "tree_sitter_bash_external_scanner_deserialize",
+        "tree_sitter_bash_external_scanner_destroy",
+        "tree_sitter_bash_external_scanner_scan",
+        "tree_sitter_bash_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 10148130,
+          "sha256": "b9cff39a81cf3e6e06f2dc8d9610f49bb947bea08c54aaf880955e40e0e9c3d5",
+          "gzip_sha256": "bfffd41bda971dda8d9e54b56be16d18c17a39efca0881bc93b8df6cbac1d798"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 45583,
+          "sha256": "cd589544f07eed1b9a12233c1dd6406a64ae874ee7db8a5b9407297896001202",
+          "gzip_sha256": "c081f283ab42fb2e54628a3a121626b40f334449b76e5aa42d66d18743c151de"
+        },
+        {
+          "path": "src/tree_sitter/alloc.h",
+          "bytes": 985,
+          "sha256": "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea",
+          "gzip_sha256": "96a71efe64b6659d974a5848bde15e9a38c1fae53993ee402c5ce10cbeff970c"
+        },
+        {
+          "path": "src/tree_sitter/array.h",
+          "bytes": 10420,
+          "sha256": "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1",
+          "gzip_sha256": "88d4648979af249e29252704b19585a4cd1b95501cc702d6c2f77d18eab19d8f"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 7039,
+          "sha256": "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a",
+          "gzip_sha256": "463daa02c62e50d02a8bff8188b7409e0d8b41f1e84e86a9c4186ced015ba8f7"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "49bf33cf78ef5897e4e161ce1517df7de1ae5042a65b6bcfd44401e0fc606559"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_bash": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-c",
+      "url": "https://github.com/tree-sitter/tree-sitter-c.git",
+      "revision": "212a80f86452bb1316324fa0db730cf52f29e05a",
+      "archive_sha256": "b01f1f35fbac8c2f724e5ae2cdbda6b9f0f340fbc16a34c90be7b017d6b006a0",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_c"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 3956195,
+          "sha256": "71f7a097105a9754533de046f1ab3ff3dfce8274d76b0eabea2647cc6a2d155d",
+          "gzip_sha256": "4d72ad514a5e76836b55c994a1e0f9e213c89d5e69df8bf8bc6535494443ecd4"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_c": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-c-sharp",
+      "url": "https://github.com/tree-sitter/tree-sitter-c-sharp.git",
+      "revision": "dd5e59721a5f8dae34604060833902b882023aaf",
+      "archive_sha256": "e59b8d4d1dfe23fe0e7b4250dc89e6423f8882c31f77520dad835a98b2a9d7cd",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_c_sharp",
+        "tree_sitter_c_sharp_external_scanner_create",
+        "tree_sitter_c_sharp_external_scanner_deserialize",
+        "tree_sitter_c_sharp_external_scanner_destroy",
+        "tree_sitter_c_sharp_external_scanner_reset",
+        "tree_sitter_c_sharp_external_scanner_scan",
+        "tree_sitter_c_sharp_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 43838722,
+          "sha256": "213f0c6a102959bd5bd5e2a5134ce1751aa0a58e699800985c8b7abc56c6efe4",
+          "gzip_sha256": "771ff31f6b73bc0c9515c584949c2d9d397176de77534df89858d256b288c837"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 1185,
+          "sha256": "fd72bb5d73a9dbfbcdadce057f76b742472873208fd4e5ed64a87f7a52d26d6b",
+          "gzip_sha256": "b89b39672e662b8c7dcb24dd5339e539fd4ff4e32fdec8bd69e82ab5e07fb23d"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5378,
+          "sha256": "ab104936984904469572a4e868149f7a22fb2929347f837ae6a1f9b790f1b173",
+          "gzip_sha256": "4d9938794f13f85c0d604014ac30239f6c3167c0720e661430fe9c5b2a3ee97b"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "d4df07bcd39ce18e53b903c724e6f309e49e32fda391a3bdff33c666b62024fd"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_c_sharp": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-cpp",
+      "url": "https://github.com/tree-sitter/tree-sitter-cpp.git",
+      "revision": "a71474021410973b29bfe99440d57bcd750246b1",
+      "archive_sha256": "dbb423572f2ab96c868450afffa1804c6d718c69e407d2d372f94f32e477341d",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_cpp",
+        "tree_sitter_cpp_external_scanner_create",
+        "tree_sitter_cpp_external_scanner_deserialize",
+        "tree_sitter_cpp_external_scanner_destroy",
+        "tree_sitter_cpp_external_scanner_scan",
+        "tree_sitter_cpp_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 16860261,
+          "sha256": "50df4231cf5d518461590bf538e9686c4ab1b1b63da80d4ed07dde80c3efc421",
+          "gzip_sha256": "90ff48a9914e1ec4c929e9cdad707200fc3c0ced5578cef8c84459ccc50a1551"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 5511,
+          "sha256": "06276fafd0145ef201f939865e07e45b236074a50c8dc7c52af7128ea4ee402b",
+          "gzip_sha256": "8f78de6de34049d3a1489094c20b56ffb4ce5b06046c9e5efea1b4555ee2c9fb"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        },
+        {
+          "path": "src/tree_sitter/runtime.h",
+          "bytes": 3079,
+          "sha256": "51c20c6066329f0871ee68158df001e6154251bd7fa7b7e263ea93b47dca553d",
+          "gzip_sha256": "27f54e38756e58105ec3d04a24781d02a63ef0c6edf57788f5817348aa223bb5"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_cpp": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-css",
+      "url": "https://github.com/tree-sitter/tree-sitter-css.git",
+      "revision": "98c7b3dceb24f1ee17f1322f3947e55638251c37",
+      "archive_sha256": "bc19b7cf6c769b8a433d6ccb21ece482a68a3c6c93c78cd06a026f0d4ea355b6",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_css",
+        "tree_sitter_css_external_scanner_create",
+        "tree_sitter_css_external_scanner_deserialize",
+        "tree_sitter_css_external_scanner_destroy",
+        "tree_sitter_css_external_scanner_reset",
+        "tree_sitter_css_external_scanner_scan",
+        "tree_sitter_css_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 391370,
+          "sha256": "0c7069705098e6629573ced716572e02f8813ad67b6fed08ba2df34b7fcce212",
+          "gzip_sha256": "8e828d2d05066245c2d52bf05bf7e9b0b80d005ad3c710eef9009cfb267e5e88"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 2689,
+          "sha256": "912cccdbb865d0069f95ba32d0cce7f823420e83a9e763fac9f71a509001d296",
+          "gzip_sha256": "de8f2561cbb8645969afc8fab6dd1686d98bdc8791b4e4b5336f9312ea7cded6"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_css": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-dart",
+      "url": "https://github.com/UserNobody14/tree-sitter-dart.git",
+      "revision": "e81af6ab94a728ed99c30083be72d88e6d56cf9e",
+      "archive_sha256": "503f7467973cf181d41a5ba52f9078e9db01653d93c3e5a97349e1976071a07a",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_dart",
+        "tree_sitter_dart_external_scanner_create",
+        "tree_sitter_dart_external_scanner_deserialize",
+        "tree_sitter_dart_external_scanner_destroy",
+        "tree_sitter_dart_external_scanner_reset",
+        "tree_sitter_dart_external_scanner_scan",
+        "tree_sitter_dart_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 6049349,
+          "sha256": "81cfb39e373eb75129654a0582183886fe2a61690228dc1d0f9e1bb95c378aa5",
+          "gzip_sha256": "006977e7f67d02b1162c9003c756f4074763c26291fa6f91e16ea12f6d6d69fa"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 3839,
+          "sha256": "07a7b7818b175e9460523e705dd88d20f7b5141bac95c593d4426e6d52284996",
+          "gzip_sha256": "e2af5b3b60c23f57d9201f8aafc9f5fcb16011db497319728b58182f531cae44"
+        },
+        {
+          "path": "src/tree_sitter/alloc.h",
+          "bytes": 958,
+          "sha256": "253b44a7b4313a7afd0c505c2fc6e7ce4b8e78955ebf4be3ea000532ec060673",
+          "gzip_sha256": "7e91bcef599b88c447c2a5708ec159b4287a9d743496743ac3b2cc3703baae53"
+        },
+        {
+          "path": "src/tree_sitter/array.h",
+          "bytes": 10420,
+          "sha256": "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1",
+          "gzip_sha256": "88d4648979af249e29252704b19585a4cd1b95501cc702d6c2f77d18eab19d8f"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 6988,
+          "sha256": "a3eb18ef034b3f4255b965a26caa276f9cfe13a79573b402f1a12dc5018052aa",
+          "gzip_sha256": "f238dc349d8b8a9747bfacdbd7bacdcd45ae3f185a11010b3f52e6fdd9141978"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "d270cb3a4985d75033bd77d875ccebff1d66e32788a3f727891e28d76132dd46"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_dart": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-dockerfile",
+      "url": "https://github.com/camdencheek/tree-sitter-dockerfile.git",
+      "revision": "33e22c33bcdbfc33d42806ee84cfd0b1248cc392",
+      "archive_sha256": "ac5ada9d2ece1b3674c51130b783875e42b1505c63d2155186c047783edcafaa",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_dockerfile"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 260688,
+          "sha256": "54420559799241d2d5e000573c2c1f2fa13a24b805f6553be576c3c699a9ebda",
+          "gzip_sha256": "202d8fa457a4d9a2341f56b32ab66157dcbce6c61e2531a08261d6cd725d0df6"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5378,
+          "sha256": "ab104936984904469572a4e868149f7a22fb2929347f837ae6a1f9b790f1b173",
+          "gzip_sha256": "4d9938794f13f85c0d604014ac30239f6c3167c0720e661430fe9c5b2a3ee97b"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "806b8fcd19c1cdf23e178eb25942acc844a38669e36b2c896c7baf5f8bcecbb4"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_dockerfile": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-go",
+      "url": "https://github.com/tree-sitter/tree-sitter-go.git",
+      "revision": "ff86c7f1734873c8c4874ca4dd95603695686d7a",
+      "archive_sha256": "f20c1fa2e0c393e87a23ba3bc13c502f7915cbe74f125b3a0e0616549d2a2432",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_go"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 1603584,
+          "sha256": "e84f0fac3b4c3aa775929bf17472a3f37e8580943f1fb5249e987171ad395f3d",
+          "gzip_sha256": "9b484ad0b7c5a8a8a9c3fe291872bfe84f8f15923285db469c095f5771a590d2"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_go": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-go-mod",
+      "url": "https://github.com/camdencheek/tree-sitter-go-mod.git",
+      "revision": "bbe2fe3be4b87e06a613e685250f473d2267f430",
+      "archive_sha256": "e13012d9ef9463992eeebf440306e10c60e60c9d657524a54cf07308e7786f3b",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_gomod"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 98172,
+          "sha256": "185e1e507bf0d6c985252b8a3ef82b11bb1f725b3fab9752d60cfa1c46a7ef0e",
+          "gzip_sha256": "899df53e95ac6b33ab576d275776e1a47e05835cbbc423328cdf75054084ced3"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5378,
+          "sha256": "ab104936984904469572a4e868149f7a22fb2929347f837ae6a1f9b790f1b173",
+          "gzip_sha256": "4d9938794f13f85c0d604014ac30239f6c3167c0720e661430fe9c5b2a3ee97b"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "806b8fcd19c1cdf23e178eb25942acc844a38669e36b2c896c7baf5f8bcecbb4"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_gomod": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-html",
+      "url": "https://github.com/tree-sitter/tree-sitter-html.git",
+      "revision": "d742025fa2d8e6100f134a6ea990443aa1f074b3",
+      "archive_sha256": "e413710a8532fe7267a28378f638bcbc901188ccae856f074192e87f7fb35aae",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_html",
+        "tree_sitter_html_external_scanner_create",
+        "tree_sitter_html_external_scanner_deserialize",
+        "tree_sitter_html_external_scanner_destroy",
+        "tree_sitter_html_external_scanner_scan",
+        "tree_sitter_html_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 64942,
+          "sha256": "f748cbb692d62638c615dad2b27dfb8210863a79d29fab4cbbde3a792607ae04",
+          "gzip_sha256": "f890912fc780ee3e0053f7847cab35e66968f8fa010592ec74fbc9332d05bb8f"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 15960,
+          "sha256": "fb89da7627e8c0887dec37fd933256718faae5214f19b6f191a6c8fc8ecfa789",
+          "gzip_sha256": "2c83904c8de91673adb57eba30d511ece56cf4a07b6db8e53129258ff45723fa"
+        },
+        {
+          "path": "src/tag.h",
+          "bytes": 8456,
+          "sha256": "3100cb5553af305dcca05f0b0709ce623c520f661fd871553b4ff130ff8820b4",
+          "gzip_sha256": "44687c5a8e5fa2933d37790d7f4f9947f6638d5dc3472497753306f78e38b9d4"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_html": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-java",
+      "url": "https://github.com/tree-sitter/tree-sitter-java.git",
+      "revision": "2b57cd9541f9fd3a89207d054ce8fbe72657c444",
+      "archive_sha256": "a208bd4cd8586879c4179daf9e5f613b96a3fdf02dd6036af0041af315f39533",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_java"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 2620792,
+          "sha256": "8b5c24646f48e1c877b1c124a79b406efe648660f2b30fd7e0162a421ffe7e07",
+          "gzip_sha256": "418405c600c4db49f060b5f54132fd1731193bef1c176db1e89a69b7f9a56387"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "52ed137b039cd9c46409bc22e89938af911c95b157feae2d040b51e6084369a7"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_java": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-javascript",
+      "url": "https://github.com/tree-sitter/tree-sitter-javascript.git",
+      "revision": "f1e5a09b8d02f8209a68249c93f0ad647b228e6e",
+      "archive_sha256": "990407b12470c90b9704bb4f063da483076d7652bca85b44708a86ff6a20898d",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_javascript",
+        "tree_sitter_javascript_external_scanner_create",
+        "tree_sitter_javascript_external_scanner_deserialize",
+        "tree_sitter_javascript_external_scanner_destroy",
+        "tree_sitter_javascript_external_scanner_reset",
+        "tree_sitter_javascript_external_scanner_scan",
+        "tree_sitter_javascript_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 3907587,
+          "sha256": "7ac33ece4090d48098478c92d4e7a8f7e8866f29683f4d78aa1ee70da4effc2d",
+          "gzip_sha256": "c1c7c12fc730c8661c35d945f9b2c33cc74b3fe34f7c044338db01e33ba9d830"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 4795,
+          "sha256": "ab04090f5911230ee1c0dbb3e8d9cdf49ed6e73954d42c435be51a9fa11fcec9",
+          "gzip_sha256": "80d8391033d1f7cdd1713f39898dfbe715c09a64140d3d34c1c507a5b52b9f97"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_javascript": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-jsdoc",
+      "url": "https://github.com/tree-sitter/tree-sitter-jsdoc.git",
+      "revision": "d01984de49927c979b46ea5c01b78c8ddd79baf9",
+      "archive_sha256": "f489eea6f1cc4d489073e223de56641b35313afdbfdc41e84882cac49ea85a78",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_jsdoc"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 62009,
+          "sha256": "59a7e8d806974731cea695c242fcc5d1f7fdd2ad00b9271b06afdc531e0f9398",
+          "gzip_sha256": "7e8d442e033a55c73bead845aacac2e7a306da7a2868e1d7e2f1cddbfe23f704"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "ffaefecad68467134f8c701120a2410a2384ffff7a605b63638cf0b51e7d16cc"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_jsdoc": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-json",
+      "url": "https://github.com/tree-sitter/tree-sitter-json.git",
+      "revision": "3fef30de8aee74600f25ec2e319b62a1a870d51e",
+      "archive_sha256": "6b6c5f421a1518f6c51044666eb793a7540a206992cbe1a45f2d5fe9ecf31334",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_json"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 28708,
+          "sha256": "eaad4a8e905be94ae35f3182440ff250ddd3286aa5cf83066646a6215aec92f4",
+          "gzip_sha256": "c76a80ca201801ea5dae17fc84d563b44982dbc0697991907967f67a88f8f58a"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_json": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-kotlin",
+      "url": "https://github.com/fwcd/tree-sitter-kotlin",
+      "revision": "76f53c48d29e8588934fb55b0240d7bdfe00bfe5",
+      "archive_sha256": "702b5156ba0b59bb6efddfefe4e9ffd8e8a124d20f2c4657547ec0448b9928ca",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_kotlin",
+        "tree_sitter_kotlin_external_scanner_create",
+        "tree_sitter_kotlin_external_scanner_deserialize",
+        "tree_sitter_kotlin_external_scanner_destroy",
+        "tree_sitter_kotlin_external_scanner_scan",
+        "tree_sitter_kotlin_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 23904766,
+          "sha256": "46a32ae5857ac3b8834ef0dcf442790e76ad9c528957b6819869dd2cc681dfcb",
+          "gzip_sha256": "a4442b3f878b05682aab1a527e9eb580dfa689abdc71018ae319aea237fdbf7a"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 13866,
+          "sha256": "0d9c849cee60ac202a231e3905508e8449cded73bc5fd305dce6faa9a678f608",
+          "gzip_sha256": "ef2ec0f1319bcc0199d496aab03faa2c7c191b871c3bcece6d16195a585a79f4"
+        },
+        {
+          "path": "src/tree_sitter/alloc.h",
+          "bytes": 958,
+          "sha256": "253b44a7b4313a7afd0c505c2fc6e7ce4b8e78955ebf4be3ea000532ec060673",
+          "gzip_sha256": "7e91bcef599b88c447c2a5708ec159b4287a9d743496743ac3b2cc3703baae53"
+        },
+        {
+          "path": "src/tree_sitter/array.h",
+          "bytes": 10420,
+          "sha256": "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1",
+          "gzip_sha256": "88d4648979af249e29252704b19585a4cd1b95501cc702d6c2f77d18eab19d8f"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 6988,
+          "sha256": "a3eb18ef034b3f4255b965a26caa276f9cfe13a79573b402f1a12dc5018052aa",
+          "gzip_sha256": "f238dc349d8b8a9747bfacdbd7bacdcd45ae3f185a11010b3f52e6fdd9141978"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "948495f61768f7de26bcc61113d8cd95f50bbc15adb678c28c941c6c8fcd5903"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_kotlin": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-lua",
+      "url": "https://github.com/tree-sitter-grammars/tree-sitter-lua",
+      "revision": "34e60e7f45fc313463c68090d88d742a55d1bd7a",
+      "archive_sha256": "6d65b531942e901093446c411d7658d2f43c33016b7edf06b8d0dab5f3e16032",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE.md"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_lua",
+        "tree_sitter_lua_external_scanner_create",
+        "tree_sitter_lua_external_scanner_deserialize",
+        "tree_sitter_lua_external_scanner_destroy",
+        "tree_sitter_lua_external_scanner_scan",
+        "tree_sitter_lua_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 324580,
+          "sha256": "fa3a2efe5803017c536d4727fe408b9eaf3e33b86662a5b1a1d12227d0022231",
+          "gzip_sha256": "d46ccb23ce3a967e275cc608171b95246d25ef17259404c3995874701228dce7"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 4522,
+          "sha256": "a6466a46d5ecf59d38717ac582aca2e171236fe561e4773fd6032869b12fe76b",
+          "gzip_sha256": "4b7b910bf164d25e05b7e8bb4ace06963eadeca050b738a6f21b454470331ef9"
+        },
+        {
+          "path": "src/tree_sitter/alloc.h",
+          "bytes": 985,
+          "sha256": "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea",
+          "gzip_sha256": "96a71efe64b6659d974a5848bde15e9a38c1fae53993ee402c5ce10cbeff970c"
+        },
+        {
+          "path": "src/tree_sitter/array.h",
+          "bytes": 10420,
+          "sha256": "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1",
+          "gzip_sha256": "88d4648979af249e29252704b19585a4cd1b95501cc702d6c2f77d18eab19d8f"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 7039,
+          "sha256": "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a",
+          "gzip_sha256": "463daa02c62e50d02a8bff8188b7409e0d8b41f1e84e86a9c4186ced015ba8f7"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE.md": "9a32b02e4c917b1ce6b5e79d8ea81e25cefd7f27d89c7235f2afb262c06cf32e"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_lua": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-markdown",
+      "url": "https://github.com/tree-sitter-grammars/tree-sitter-markdown",
+      "revision": "5cdc549ab8f461aff876c5be9741027189299cec",
+      "archive_sha256": "365fb89d2911ac68d929bed30fe27f31f7738588dae6dda9c6b10800d5842932",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "tree-sitter-markdown/src/parser.c",
+        "tree-sitter-markdown/src/scanner.c",
+        "tree-sitter-markdown-inline/src/parser.c",
+        "tree-sitter-markdown-inline/src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_markdown",
+        "tree_sitter_markdown_external_scanner_create",
+        "tree_sitter_markdown_external_scanner_deserialize",
+        "tree_sitter_markdown_external_scanner_destroy",
+        "tree_sitter_markdown_external_scanner_scan",
+        "tree_sitter_markdown_external_scanner_serialize",
+        "tree_sitter_markdown_inline",
+        "tree_sitter_markdown_inline_external_scanner_create",
+        "tree_sitter_markdown_inline_external_scanner_deserialize",
+        "tree_sitter_markdown_inline_external_scanner_destroy",
+        "tree_sitter_markdown_inline_external_scanner_scan",
+        "tree_sitter_markdown_inline_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "tree-sitter-markdown-inline/src/parser.c",
+          "bytes": 2258336,
+          "sha256": "d7239a32717e87c1e597ba25402d198c2c4398613bc64f0d88c84dda15b2dff8",
+          "gzip_sha256": "5bb40a1b0b2929f7aa32ea2ccfe302381794a3a9785f74a5596fc09a7f755f8c"
+        },
+        {
+          "path": "tree-sitter-markdown-inline/src/scanner.c",
+          "bytes": 15898,
+          "sha256": "96f2aa2310e6e9de52f08d6e7b0ac9cd1fe70f35e0449deb726dfe687524cc55",
+          "gzip_sha256": "79bbecfa547675d320e8ea551d28bff41a61db689d84b4229bfe88eddf69dc3c"
+        },
+        {
+          "path": "tree-sitter-markdown-inline/src/tree_sitter/alloc.h",
+          "bytes": 985,
+          "sha256": "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea",
+          "gzip_sha256": "96a71efe64b6659d974a5848bde15e9a38c1fae53993ee402c5ce10cbeff970c"
+        },
+        {
+          "path": "tree-sitter-markdown-inline/src/tree_sitter/array.h",
+          "bytes": 10420,
+          "sha256": "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1",
+          "gzip_sha256": "88d4648979af249e29252704b19585a4cd1b95501cc702d6c2f77d18eab19d8f"
+        },
+        {
+          "path": "tree-sitter-markdown-inline/src/tree_sitter/parser.h",
+          "bytes": 6988,
+          "sha256": "a3eb18ef034b3f4255b965a26caa276f9cfe13a79573b402f1a12dc5018052aa",
+          "gzip_sha256": "f238dc349d8b8a9747bfacdbd7bacdcd45ae3f185a11010b3f52e6fdd9141978"
+        },
+        {
+          "path": "tree-sitter-markdown/src/parser.c",
+          "bytes": 2066623,
+          "sha256": "53428cb28f9f119850377748288d8020ea84a9a9ba21f08baed0fb1a632739ba",
+          "gzip_sha256": "283d7e5930a792062baba3565b4c3cb5e647e0e2f55f40744e42597b73c68a1f"
+        },
+        {
+          "path": "tree-sitter-markdown/src/scanner.c",
+          "bytes": 59240,
+          "sha256": "17c35f96baf853f88ffa5b142617e10bd592828820a60827b6a1ec5eb32a1500",
+          "gzip_sha256": "009b68d90b72a16949fdf6002770d506426767d4891119ae01d911694c414c85"
+        },
+        {
+          "path": "tree-sitter-markdown/src/tree_sitter/alloc.h",
+          "bytes": 985,
+          "sha256": "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea",
+          "gzip_sha256": "96a71efe64b6659d974a5848bde15e9a38c1fae53993ee402c5ce10cbeff970c"
+        },
+        {
+          "path": "tree-sitter-markdown/src/tree_sitter/array.h",
+          "bytes": 10420,
+          "sha256": "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1",
+          "gzip_sha256": "88d4648979af249e29252704b19585a4cd1b95501cc702d6c2f77d18eab19d8f"
+        },
+        {
+          "path": "tree-sitter-markdown/src/tree_sitter/parser.h",
+          "bytes": 7039,
+          "sha256": "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a",
+          "gzip_sha256": "463daa02c62e50d02a8bff8188b7409e0d8b41f1e84e86a9c4186ced015ba8f7"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "52ec8a1bf8256511e2a92613e0bb41ffefba3897f16fa958d7bb28c466dd4804"
+      },
+      "abi_by_parser": {
+        "tree-sitter-markdown-inline/src/parser.c": 14,
+        "tree-sitter-markdown/src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_markdown_inline": 14,
+        "tree_sitter_markdown": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-objc",
+      "url": "https://github.com/tree-sitter-grammars/tree-sitter-objc",
+      "revision": "62e61b6f5c0289c376d61a8c91faf6435cde9012",
+      "archive_sha256": "cb7ffe1618a09eabf70b7fbb00d1e9e278b7f37654fd6e929180c58c0d9b5d98",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_objc"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 43407441,
+          "sha256": "5e49451fb32c3b8668750762ce9a2b5ccc2c09115ebb0a1b1872ab3922a8dfb7",
+          "gzip_sha256": "38b26abaa8268572a2c236e9cef070501eece56870d4a1e93ff51561285a0ef0"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "099c44248f8cf353123211318680e93465587c005a4b3730ce8cb5334de043d6"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_objc": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-perl",
+      "url": "https://github.com/ganezdragon/tree-sitter-perl.git",
+      "revision": "15a6914b9b891974c888ba7bf6c432665b920a3f",
+      "archive_sha256": "6bcd15c1bcd79fe5e2d2d29e3331ebab067fd65b215d81021de21e078dc47f69",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.cc"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_perl",
+        "tree_sitter_perl_external_scanner_create",
+        "tree_sitter_perl_external_scanner_deserialize",
+        "tree_sitter_perl_external_scanner_destroy",
+        "tree_sitter_perl_external_scanner_scan",
+        "tree_sitter_perl_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 73079688,
+          "sha256": "dd50c4488ab7da7204f50fa00ad74d1807debe5e493ad083dda3d69aeeeab959",
+          "gzip_sha256": "cbaad7720dd09439f8180db0c65ab3a76bb0d7d3336f0e4d74237b6b64220111"
+        },
+        {
+          "path": "src/scanner.cc",
+          "bytes": 22458,
+          "sha256": "c553e071cdc2036a0067c8932610040040397e72ade0bc19d84209e219228acb",
+          "gzip_sha256": "4291b5de7a1bc640ce70d2c9e73f43b514fb8e199db46e17f267351bd7ca3935"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5378,
+          "sha256": "ab104936984904469572a4e868149f7a22fb2929347f837ae6a1f9b790f1b173",
+          "gzip_sha256": "4d9938794f13f85c0d604014ac30239f6c3167c0720e661430fe9c5b2a3ee97b"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "02c343f074753716e9c54fe12e6a27d03a041b54be545af8ecb280a7bb0ee703"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_perl": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-php",
+      "url": "https://github.com/tree-sitter/tree-sitter-php.git",
+      "revision": "b569a5f2c0d592e67430520d1a0e1f765d83ceb0",
+      "archive_sha256": "d3c38d14367746043581eacc41699f15a09f455d2a82c10eb2b1583a843fad4e",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "php/src/parser.c",
+        "php/src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_php",
+        "tree_sitter_php_external_scanner_create",
+        "tree_sitter_php_external_scanner_deserialize",
+        "tree_sitter_php_external_scanner_destroy",
+        "tree_sitter_php_external_scanner_scan",
+        "tree_sitter_php_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "common/scanner.h",
+          "bytes": 21720,
+          "sha256": "9dedcdd3f9f1ae8660546aa5028aac03e567b5eab7ea4a38728368db2548e623",
+          "gzip_sha256": "c9f755b250e897ae2e63e1ccb4f7b923d19b089d4c3d179536a666f75b723fb3"
+        },
+        {
+          "path": "php/src/parser.c",
+          "bytes": 4963002,
+          "sha256": "fb76e6c2b42d4441acea4df45ab65af11fa4cdc3b094a2e8ee7dbb86b0917e66",
+          "gzip_sha256": "8fb399bfbfea6442e2ea7ad5059c3312b9e942b5e195faf133782ac908ccbc43"
+        },
+        {
+          "path": "php/src/scanner.c",
+          "bytes": 595,
+          "sha256": "58c92cafe4ebda509c3ad3864fa6fc0e9877bbac26e17a03d23ea2101c291ad5",
+          "gzip_sha256": "941083345f77ea90c550416737364320093910328478dd4b4ad0513d36306403"
+        },
+        {
+          "path": "php/src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "0e6225de0b737b9a3c3a3d52381989cc52025fe689dd036aaeb890beb7a593e5"
+      },
+      "abi_by_parser": {
+        "php/src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_php": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-python",
+      "url": "https://github.com/tree-sitter/tree-sitter-python.git",
+      "revision": "4bfdd9033a2225cc95032ce77066b7aeca9e2efc",
+      "archive_sha256": "d815b5ecbe3a098ac62127922d617c46ba400347a711d26396fba58e728380b6",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_python",
+        "tree_sitter_python_external_scanner_create",
+        "tree_sitter_python_external_scanner_deserialize",
+        "tree_sitter_python_external_scanner_destroy",
+        "tree_sitter_python_external_scanner_scan",
+        "tree_sitter_python_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 3515431,
+          "sha256": "baa414a5ef1614dde63926fb0c2a3dc1faed94fc8c643fde8a90ead8cbf0fe59",
+          "gzip_sha256": "c9c76f407b69e06b4d5bd5d6fab008949c2112c175fd8062f30329d5ef95a1e0"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 17642,
+          "sha256": "9711f3647483a80266c45dfbd18ad98fea5e5253d3519e610edf1a69f7b5040d",
+          "gzip_sha256": "1c4d119b64bc299ae35d473f20a87107dc6dcc0c49315b3dd70df6031dcdbb74"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "d724405ce238a22c0d35769c5a36b386ad5958192efe8bbb304fb2896254575f"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_python": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-regex",
+      "url": "https://github.com/tree-sitter/tree-sitter-regex.git",
+      "revision": "4470c59041416e8a2a9fa343595ca28ed91f38b8",
+      "archive_sha256": "dd710d5e3cd08ed77349c2992e4defb6735f38caea2987c4f596200f1c9ed609",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_regex"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 154359,
+          "sha256": "2c6d7a9b7e1ec20d1f2f683966747a8196ce2d64e84a3ce434434fe5015f2472",
+          "gzip_sha256": "8c867df8077d8fc00b11ce7219a774c774ab6e1265bd8ed9f8ded83f535d7d19"
+        },
+        {
+          "path": "src/tree_sitter/alloc.h",
+          "bytes": 985,
+          "sha256": "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea",
+          "gzip_sha256": "96a71efe64b6659d974a5848bde15e9a38c1fae53993ee402c5ce10cbeff970c"
+        },
+        {
+          "path": "src/tree_sitter/array.h",
+          "bytes": 10420,
+          "sha256": "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1",
+          "gzip_sha256": "88d4648979af249e29252704b19585a4cd1b95501cc702d6c2f77d18eab19d8f"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 7039,
+          "sha256": "a1f6ef161fbaf48a0e10fca90ef5290a062462b307b3898aa562993853b9f80a",
+          "gzip_sha256": "463daa02c62e50d02a8bff8188b7409e0d8b41f1e84e86a9c4186ced015ba8f7"
+        },
+        {
+          "path": "src/tree_sitter/runtime.h",
+          "bytes": 3079,
+          "sha256": "51c20c6066329f0871ee68158df001e6154251bd7fa7b7e263ea93b47dca553d",
+          "gzip_sha256": "27f54e38756e58105ec3d04a24781d02a63ef0c6edf57788f5817348aa223bb5"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "2e0110e07abef7c2548b26ec9d6969775617ca539a0dc8dbeeb14d6452c711d1"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_regex": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-ruby",
+      "url": "https://github.com/tree-sitter/tree-sitter-ruby.git",
+      "revision": "4d9ad3f010fdc47a8433adcf9ae30c8eb8475ae7",
+      "archive_sha256": "195a16f9b9035fc1178b7a6230c16bcca6e3351c1a87a3f1a3e4e2e0ac8917b3",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.cc"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_ruby",
+        "tree_sitter_ruby_external_scanner_create",
+        "tree_sitter_ruby_external_scanner_deserialize",
+        "tree_sitter_ruby_external_scanner_destroy",
+        "tree_sitter_ruby_external_scanner_scan",
+        "tree_sitter_ruby_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 15087151,
+          "sha256": "a998df319a6b733180de6fb91c632f1f909a946f2e981d826eac148cdb59b331",
+          "gzip_sha256": "1210141748c17c724367c3e51066e5873c07ac6bec758f91a6aaa5aa8ce44ee8"
+        },
+        {
+          "path": "src/scanner.cc",
+          "bytes": 31542,
+          "sha256": "ecfe90a34d3a056cd708de7a842142bc5f20e06613cfddc63756b9b8b894387c",
+          "gzip_sha256": "40930e14b65c51ea1d8e0dc08c2acccb20fb9436a26ae45521e1b93253356814"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5378,
+          "sha256": "ab104936984904469572a4e868149f7a22fb2929347f837ae6a1f9b790f1b173",
+          "gzip_sha256": "4d9938794f13f85c0d604014ac30239f6c3167c0720e661430fe9c5b2a3ee97b"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "ee006f02a3d856df282e409be2a86e24a65bb573a98b9c28343771141351bb6b"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_ruby": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-rust",
+      "url": "https://github.com/tree-sitter/tree-sitter-rust.git",
+      "revision": "79456e6080f50fc1ca7c21845794308fa5d35a51",
+      "archive_sha256": "af065b09ae5ff7a062a9859d6e21c14679445344c1272c9c0a8aeed21c71bbe5",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_rust",
+        "tree_sitter_rust_external_scanner_create",
+        "tree_sitter_rust_external_scanner_deserialize",
+        "tree_sitter_rust_external_scanner_destroy",
+        "tree_sitter_rust_external_scanner_reset",
+        "tree_sitter_rust_external_scanner_scan",
+        "tree_sitter_rust_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 5743087,
+          "sha256": "faac055a4364fa2bf7c69c00522244d79a75f01c35803bac0c54548f405a2e79",
+          "gzip_sha256": "dcfee75ad8b047a6bd227b408a1275db46417d13cd56d3032513108c9656fb65"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 4703,
+          "sha256": "947fde6c93147e54fe2e806d3d04a8fb08ab0599ee533b748e709c6de61ba69c",
+          "gzip_sha256": "3b2f53ff0484af2b751259d4d57a9be0b280fea220f0d5e4a080d9e2e5caf656"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5410,
+          "sha256": "83a7aebb8067b898fa0975e4c627148ec2407617865b42edc91537f6bf651591",
+          "gzip_sha256": "3e0838d41382b5d2a26a0b37ea06c444a6e3f78085981c911c727746e179f104"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "31d5b6f4243d5c7c6e1c4ebbbb9f6407bd1457a08bcc4f706521710341acba36"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_rust": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-sql",
+      "url": "https://github.com/DerekStride/tree-sitter-sql.git",
+      "revision": "fd70fb358d164cd93fbe2674a9cca276dc5203f7",
+      "archive_sha256": "e4061270f466b33a99015185da3fd783bfd0acc06b21d0da907ce5929e375fdd",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_sql",
+        "tree_sitter_sql_external_scanner_create",
+        "tree_sitter_sql_external_scanner_deserialize",
+        "tree_sitter_sql_external_scanner_destroy",
+        "tree_sitter_sql_external_scanner_scan",
+        "tree_sitter_sql_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 13993908,
+          "sha256": "6f68a8412b891f3a2cc1b6bcf9cd44b748c58079821f80c500e4177c8368e1f1",
+          "gzip_sha256": "cf0787e5f2228ebd46cca690d5251c4e6a607e54e12aebf74c6d1f8188b70244"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 4825,
+          "sha256": "6fda7a65c44cd1d9793a1c4f2a8890a7886430a6c236d574dd0ad320f1e4ae1a",
+          "gzip_sha256": "4ffbec11102624d42d1b477dee374d81c95fa93718f1deff8df59baa399d01ad"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5378,
+          "sha256": "ab104936984904469572a4e868149f7a22fb2929347f837ae6a1f9b790f1b173",
+          "gzip_sha256": "4d9938794f13f85c0d604014ac30239f6c3167c0720e661430fe9c5b2a3ee97b"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "3b3e4e4252d5d7d1c18e1257005f23242bf0580ad619204fd093c99b8c56748d"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_sql": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-swift",
+      "url": "https://github.com/alex-pinkus/tree-sitter-swift.git",
+      "revision": "eda05af7ac41adb4eb19c346883c0fa32fe3bdd8",
+      "archive_sha256": "9843b13e9ae1fe45895dc9a85982b86cc569cf1ea17e0238526a1c1d81f57932",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser_abi14.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_swift",
+        "tree_sitter_swift_external_scanner_create",
+        "tree_sitter_swift_external_scanner_deserialize",
+        "tree_sitter_swift_external_scanner_destroy",
+        "tree_sitter_swift_external_scanner_reset",
+        "tree_sitter_swift_external_scanner_scan",
+        "tree_sitter_swift_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser_abi14.c",
+          "bytes": 13369634,
+          "sha256": "5100086f992d345cfc1e1ba72a105debfa358687335fed5c76c60924f307ab39",
+          "gzip_sha256": "d78e2e96b9ddc1a5f81becfcb02604afead3255767c8e79a0376eb2d8631fb1e"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 26563,
+          "sha256": "6d1465ffac18b2705497e74e4e25095d1c6f5b3cbca939fcbea05748962fa91a",
+          "gzip_sha256": "b1a977d2311b0cc73d17aba0154ec008de7c1eb1671bf38dd58cfaa58b2402dc"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5378,
+          "sha256": "ab104936984904469572a4e868149f7a22fb2929347f837ae6a1f9b790f1b173",
+          "gzip_sha256": "4d9938794f13f85c0d604014ac30239f6c3167c0720e661430fe9c5b2a3ee97b"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "3533cec129bb4bba015c0d61d86dd7c3b7e82110e4d2ff7837a01eff5bad5ccc"
+      },
+      "abi_by_parser": {
+        "src/parser_abi14.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_swift": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-toml",
+      "url": "https://github.com/cengelbart39/tree-sitter-toml.git",
+      "revision": "28db724e8e30920638b46d408c0fbac007ac6a62",
+      "archive_sha256": "21364faa750f17fd934316929bb3c48db434e78541a635d69a02306fbabd68eb",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_toml",
+        "tree_sitter_toml_external_scanner_create",
+        "tree_sitter_toml_external_scanner_deserialize",
+        "tree_sitter_toml_external_scanner_destroy",
+        "tree_sitter_toml_external_scanner_scan",
+        "tree_sitter_toml_external_scanner_scan_multiline_string_end",
+        "tree_sitter_toml_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 133249,
+          "sha256": "8e496ba42e62b629de67e2b0350e100a22e942b35511ab914e272e0474e403c5",
+          "gzip_sha256": "efc5ae65efa913e881f9f95cc45713d43d38caaa2c73fe688dc6ca29d4fd041f"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 2491,
+          "sha256": "59dcf6a51db3b53e4c33ac268221ce4e228c6855ca89d1e3f81786112120766f",
+          "gzip_sha256": "966e17ca5e7521bdab309d6788825181f0acf2bf213bf9ee86862640d81e58af"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 5326,
+          "sha256": "05729ff0c43ba3aebd8429a71e13c25a5dc7944e0eb725438bc98fda44573285",
+          "gzip_sha256": "58d4b56325a013f1ec553b49823b0cf807fcc01b1fa50ebd0b907bb7990eb996"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "b727eee929bee836e8102cecf749a795b199f291b58c885bcd81cae727ac5a46"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 13
+      },
+      "abi_by_symbol": {
+        "tree_sitter_toml": 13
+      }
+    },
+    {
+      "repository": "tree-sitter-typescript",
+      "url": "https://github.com/tree-sitter/tree-sitter-typescript.git",
+      "revision": "d847898fec3fe596798c9fda55cb8c05a799001a",
+      "archive_sha256": "c695dd926a1d7cb1258eba85fdf66dfdae8b15d7debe2f85cf3339ae2c5f0751",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "typescript/src/parser.c",
+        "typescript/src/scanner.c",
+        "tsx/src/parser.c",
+        "tsx/src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_tsx",
+        "tree_sitter_tsx_external_scanner_create",
+        "tree_sitter_tsx_external_scanner_deserialize",
+        "tree_sitter_tsx_external_scanner_destroy",
+        "tree_sitter_tsx_external_scanner_reset",
+        "tree_sitter_tsx_external_scanner_scan",
+        "tree_sitter_tsx_external_scanner_serialize",
+        "tree_sitter_typescript",
+        "tree_sitter_typescript_external_scanner_create",
+        "tree_sitter_typescript_external_scanner_deserialize",
+        "tree_sitter_typescript_external_scanner_destroy",
+        "tree_sitter_typescript_external_scanner_reset",
+        "tree_sitter_typescript_external_scanner_scan",
+        "tree_sitter_typescript_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "common/scanner.h",
+          "bytes": 5374,
+          "sha256": "144ffe9ba590622875e50ff855716f3d00ffcf4c8edb97f34ddaa9e8cd4dc71a",
+          "gzip_sha256": "4fe7e577b9165d1d8d6dbd02875a74bd9d28f2040d2ff1a7308a88f90412b9a6"
+        },
+        {
+          "path": "tsx/src/parser.c",
+          "bytes": 6827179,
+          "sha256": "05992cd47482a0bbb2203196422f7903c11a311721e1efbd1cdf07fcc9a2cedb",
+          "gzip_sha256": "90adb075963de95fb7e8652bb8f1db576ef313b6d2ce5a7a43c69d7b123474d7"
+        },
+        {
+          "path": "tsx/src/scanner.c",
+          "bytes": 561,
+          "sha256": "a7003e913f47511d3879528d3c972ebd462edb3a1999e01a4807dd9fad33d443",
+          "gzip_sha256": "a58dff3f79e2334bcaae71ce2ec80a184c029b246cb3f8baeadd1bfc263f7852"
+        },
+        {
+          "path": "tsx/src/tree_sitter/parser.h",
+          "bytes": 5378,
+          "sha256": "ab104936984904469572a4e868149f7a22fb2929347f837ae6a1f9b790f1b173",
+          "gzip_sha256": "4d9938794f13f85c0d604014ac30239f6c3167c0720e661430fe9c5b2a3ee97b"
+        },
+        {
+          "path": "typescript/src/parser.c",
+          "bytes": 6692857,
+          "sha256": "3dd9e68e9c0e05acab8812f301a2bc2238efb92912250e2b92e45db57a22b8ff",
+          "gzip_sha256": "4219c8d1c4aff07784818d6438878488f805e208a138f8518faf556e1f008c46"
+        },
+        {
+          "path": "typescript/src/scanner.c",
+          "bytes": 603,
+          "sha256": "f37019c98538bd8b74c47adcba88ffa5924d35e041823a3496f529d3a450befb",
+          "gzip_sha256": "d35486e7bf6de8df34cb05dc1c3b8d8314b4b395162988ba327ded57a78974f2"
+        },
+        {
+          "path": "typescript/src/tree_sitter/parser.h",
+          "bytes": 5378,
+          "sha256": "ab104936984904469572a4e868149f7a22fb2929347f837ae6a1f9b790f1b173",
+          "gzip_sha256": "4d9938794f13f85c0d604014ac30239f6c3167c0720e661430fe9c5b2a3ee97b"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "c873307dab492c1ea6e6d26bf43d0ef9aaac09447d25ff017b20e590f9c6ebe2"
+      },
+      "abi_by_parser": {
+        "tsx/src/parser.c": 14,
+        "typescript/src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_tsx": 14,
+        "tree_sitter_typescript": 14
+      }
+    },
+    {
+      "repository": "tree-sitter-yaml",
+      "url": "https://github.com/tree-sitter-grammars/tree-sitter-yaml.git",
+      "revision": "7b03feefd36b5f155465ca736c6304aca983b267",
+      "archive_sha256": "2dc24eb8fde0827d808a8b196e4c4e1450125df46bb37cadc2b817dff21d36b3",
+      "license": "MIT",
+      "license_files": [
+        "LICENSE"
+      ],
+      "sources": [
+        "src/parser.c",
+        "src/scanner.c"
+      ],
+      "includes": [
+        "src",
+        "common",
+        "typescript/src",
+        "tsx/src"
+      ],
+      "symbols": [
+        "tree_sitter_yaml",
+        "tree_sitter_yaml_external_scanner_create",
+        "tree_sitter_yaml_external_scanner_deserialize",
+        "tree_sitter_yaml_external_scanner_destroy",
+        "tree_sitter_yaml_external_scanner_scan",
+        "tree_sitter_yaml_external_scanner_serialize"
+      ],
+      "files": [
+        {
+          "path": "src/parser.c",
+          "bytes": 1256947,
+          "sha256": "2b5df8aad37c81ec4a6903d01ed55acebfa2489deb72f38256a194d4f17e3d7e",
+          "gzip_sha256": "59b92943fc936733aace91640b88f2283dff475425e06a709d67c716bcbdb07b"
+        },
+        {
+          "path": "src/scanner.c",
+          "bytes": 50566,
+          "sha256": "839cdec1525df4a46d3111b0ad6ae3417e8dd73ce2a3066540e0cd357fa6f7f2",
+          "gzip_sha256": "c7423c406c81edda4cb9dd7e9689a248b41c6d7df2fffc75b9d8144da5f867e0"
+        },
+        {
+          "path": "src/schema.core.c",
+          "bytes": 6584,
+          "sha256": "ad8335348a78643a0bb96cbf4ccea213fba65fd9b8c2c10eb8e4375707eb0972",
+          "gzip_sha256": "f04d940f8c3a52c8755253f9057db763dc659a91419780b515919dd5f766e0e0"
+        },
+        {
+          "path": "src/schema.json.c",
+          "bytes": 3019,
+          "sha256": "15c6fa0f9c6789b5fe7491136fe27f074805c766bcad2b5ccdedfd6919a081e4",
+          "gzip_sha256": "a000aabfb598edaef113368508b1e610d566d8ee464989b3635a34f127c558c1"
+        },
+        {
+          "path": "src/tree_sitter/alloc.h",
+          "bytes": 958,
+          "sha256": "253b44a7b4313a7afd0c505c2fc6e7ce4b8e78955ebf4be3ea000532ec060673",
+          "gzip_sha256": "7e91bcef599b88c447c2a5708ec159b4287a9d743496743ac3b2cc3703baae53"
+        },
+        {
+          "path": "src/tree_sitter/array.h",
+          "bytes": 10420,
+          "sha256": "4ff743903dc46f5db6aa54f31c6b4d160a8a9779e5b2ab1ee59ae7ebcd850ea1",
+          "gzip_sha256": "88d4648979af249e29252704b19585a4cd1b95501cc702d6c2f77d18eab19d8f"
+        },
+        {
+          "path": "src/tree_sitter/parser.h",
+          "bytes": 6988,
+          "sha256": "a3eb18ef034b3f4255b965a26caa276f9cfe13a79573b402f1a12dc5018052aa",
+          "gzip_sha256": "f238dc349d8b8a9747bfacdbd7bacdcd45ae3f185a11010b3f52e6fdd9141978"
+        }
+      ],
+      "license_sha256": {
+        "LICENSE": "2d181298822a124f6d106118dcc69c8d4d26ac668559be29682c452e712b0947"
+      },
+      "abi_by_parser": {
+        "src/parser.c": 14
+      },
+      "abi_by_symbol": {
+        "tree_sitter_yaml": 14
+      }
+    }
+  ]
+}

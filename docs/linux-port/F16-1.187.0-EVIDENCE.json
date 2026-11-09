@@ -1,0 +1,58 @@
+{
+  "version": "1.187.0",
+  "build": 399,
+  "product_commit": "aa1f4f9e60f6b0dfcf780c7908d4f45a9891f52a",
+  "source_identity": "80109a855922a8b45739f3d75f42947958b5e7f8a335542c03c59a2ce7000401",
+  "verified_product_inputs": 600,
+  "unsigned": true,
+  "unpublished": true,
+  "artifacts": {
+    "PKGBUILD": "a43676385ba060400a66ff830196bc7b0047e95949f1f2ad702e520dac9752fe",
+    "SHA256SUMS": "e56e22768e5bff8134ed798320df67b0050f07db14a1f91484ba94662d87c076",
+    "fastra-1.187.0-linux-x86_64.tar.gz": "ff08a5c4befe6f832b3eced697418f10e0e8aec9efd1cc9812f01d9f2a5d8f62",
+    "fastra-1.187.0-linux-x86_64.zip": "80d58b1491585eec3bdc187e6d19fa32b90fcd2236cacbf39a97c604b95cf963",
+    "fastra_1.187.0_amd64.deb": "730768bd4c85d92ff40072229c14ed05f3e92c224036bd9789daf14ad0148df4"
+  },
+  "native_archive_sha256": "db42fe7d8e62a98f5e7487dd1aab9128f238b2658c252578b7d8678a4267b714",
+  "native_manifest_sha256": "7eb8332bbce5d9c06a7fea30a353b59814c1063e04f09363ad9b1a46ce4c57ee",
+  "runtime_manifest_sha256": "d1ab22580c340cbe34a910fce2a29f6ef35fb489058380d965e7edc98bf9d37c",
+  "tests": {
+    "regular_passed": 733,
+    "failed": 0,
+    "ignored": 9,
+    "private_portal_regression": "PASS: public open(), source invalidated before bus callback, no OpenURI request",
+    "workspace_all_targets_clippy": "PASS",
+    "combined_source_commit_cases": 10,
+    "combined_native_rich_crlf": "PASS: autolinks, source, edit, undo, redo, save and mode roundtrip",
+    "startup_fail_closed": [
+      "missing-host",
+      "invalid-host",
+      "missing-hook"
+    ],
+    "actual_tool4d_final_helper": "PASS: system and optional runtime, diagnostics, Unicode signature and macro; actual 21.2/21.100611",
+    "package_relocation": "PASS: prefix with spaces, native/system coldstart, distinct control runtime IDs and GTK maps",
+    "external_diff": "PASS delivery only; completed comparison display not claimed",
+    "native_toolkit_components": "PASS: relocated WebKit JavaScript/inner sandbox, image decoders and private GStreamer",
+    "mac_current": "1.187.0/399 notarized and installed; portable resources verified",
+    "mac_window_basis": "1.186.0: eight tests, unchanged window source; current help acceptance pending",
+    "mac_installed_localization": "PASS"
+  },
+  "evidence_sha256": {
+    "portal-stale-regression-v2.log": "aee0b6a29a1a3ecd9062dff02aafbd4fc0fd52f8f4067acc228fe0edd5f5f456",
+    "real-tool4d-final-helper.log": "48b97a5f942b2d543cee65583f0428f5094b714473372a07a151048a7a2772ce",
+    "final-combined-1187.log": "ebbbf355ef945a22aacb8444f13a8dc20155e8e6769bf44ae2ad8b2ce6346fa1",
+    "startup-gates-v2.log": "4072f19127fcc030033e821faa6859d041a0e06d9f3d9cfc9a9c6c3b5c6ff883",
+    "source-identity-1187-v2.json": "4a3c2a3f781c234d83cf48c24ce673f9ec8ffb4dbf4a69b814b655658d92ec83",
+    "combined-native-v2.log": "b88ff29b78aa766386dfae3c9116b24104729c173950fbda0c828285c2ee8239",
+    "host-elves-1187.json": "aa3f889f99378dbe3191f80c91de65177b7695c2816d716ad4f3300cfa015361",
+    "build-binding-1187.json": "369f9671562d4281765144e0703c3a09a1e2d7f5ac942ea248c4685c7f2e66a8",
+    "mac-installed-localization-1187.log": "b800412ed44e6341581fee7c4c4975552b061bfdb449219e9e44bb9c02ea2e4d"
+  },
+  "open_limits": [
+    "general IME preedit/surrounding/delete/join/autoindent/AT-SPI transaction contract",
+    "physical optional-runtime desktop/IME/screenreader/Wayland acceptance",
+    "full Markdown dialect parity",
+    "fresh independent runtime reconstruction on another distribution",
+    "ordinary system toolkit has no fixed-column/native-preflight capability"
+  ]
+}

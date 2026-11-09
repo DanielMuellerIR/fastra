@@ -1,0 +1,45 @@
+{
+  "apt_uri": "http://archive.ubuntu.com/ubuntu",
+  "archive_sizes": {
+    "pango1.0_1.52.1+ds-1build1.debian.tar.xz": 41748,
+    "pango1.0_1.52.1+ds-1build1.dsc": 3654,
+    "pango1.0_1.52.1+ds.orig.tar.xz": 1738052
+  },
+  "archives": {
+    "pango1.0_1.52.1+ds-1build1.debian.tar.xz": "688c01a1af76bfb861805bbd66cddeac6a968123b10e401877974a8d9b8ae236",
+    "pango1.0_1.52.1+ds-1build1.dsc": "faad8d9f21cdd77fb7c930f46506dc304fd66c49c6c5f9bb5d92a8bdc55ec744",
+    "pango1.0_1.52.1+ds.orig.tar.xz": "12d67d8182cbb2ae427406df9bab5ce2ff5619102bf2a0fc6331d80a9914b139"
+  },
+  "authentication": "gpgv Ubuntu archive InRelease -> uncompressed Sources SHA256/size -> exact selected stanza -> all source archive SHA256/size; maintainer DSC signature not independently trusted",
+  "binary_version": "1.52.1+ds-1build1",
+  "builder_image": "sha256:aea7af379f99e4d0261e83f2f314ab48939db5b2e19531d1d9b5222229429118",
+  "distribution": "Ubuntu 24.04 noble",
+  "inrelease": {
+    "sha256": "cdb2f31d809f589719a53c6ad15f255b27569c4059542ada282aaa21b8e164b0",
+    "url": "https://archive.ubuntu.com/ubuntu/dists/noble/InRelease"
+  },
+  "layout_c_before_sha256": "2e9c0be374dc6780f518a227ed0273a263525e9677c163df059611af5cd73b21",
+  "own_patches": {
+    "pango-capability-v1.patch": "e57caccc9268f5d60c5c821eeae50d9299a9cfa8e979ee886bdd299e14cfb881",
+    "pango-tab-wrap-v2.patch": "f1b277d9c87f5161f1ba7e78efb75583fe46b39c81a4b813967d9c868f937e19"
+  },
+  "source": "pango1.0",
+  "source_directory": "pool/main/p/pango1.0",
+  "source_index": {
+    "filename": "archive.ubuntu.com_ubuntu_dists_noble_main_source_Sources.lz4",
+    "uncompressed_sha256": "5a8ea5a4167d9ac5395246ee2a3784601c24b0646131195c65b94af1295c8293",
+    "uncompressed_size": 5753247
+  },
+  "sources_xz": {
+    "sha256": "4f8e45d8f84dd2a6b7ce87695c70336114b9e96e6fd6db066c115f758e39308e",
+    "size": 1383940,
+    "url": "https://archive.ubuntu.com/ubuntu/dists/noble/main/source/Sources.xz"
+  },
+  "ubuntu_patch_series_sha256": "db01d019426a1a090693f8bb868ef2c76ba58424bb70388be8fd0e365ccb318f",
+  "ubuntu_patches": {
+    "debian/Work-around-1014417-in-Meson.patch": "29374a7d72735d5b597cc20be9e4076864dd6ef99ce92a9e625411f1887a0d19",
+    "debian/tests-Skip-a-test-that-fails-with-a-small-variation-on-i3.patch": "862f8418ef9d30ce30781b98a0cb8e8a09390eba712f1064fec1ad036b5023b2",
+    "debian/tests-Treat-some-more-layout-tests-as-flaky.patch": "cbe610dcac7927844ec4c4d89abc3a508bdce02d1f1a4847e5047e81435ae7fa"
+  },
+  "version": "1.52.1+ds-1build1"
+}

@@ -1,0 +1,141 @@
+[
+  {
+    "query": "/r/a[1][@id='B']",
+    "utf16": [],
+    "values": [],
+    "xml": "<r><a id='A'/><a id='B'/></r>"
+  },
+  {
+    "query": "/r/a[@id='B'][1]",
+    "utf16": [
+      [
+        15,
+        1
+      ]
+    ],
+    "values": [
+      "a"
+    ],
+    "xml": "<r><a id='A'/><a id='B'/></r>"
+  },
+  {
+    "query": "//g//a[1]/@id",
+    "utf16": [
+      [
+        9,
+        2
+      ],
+      [
+        34,
+        2
+      ]
+    ],
+    "values": [
+      "id",
+      "id"
+    ],
+    "xml": "<r><g><a id='1'/><a id='2'/><g><a id='3'/></g></g></r>"
+  },
+  {
+    "query": "/r[@raw='a\r\n\tb']",
+    "utf16": [
+      [
+        1,
+        1
+      ]
+    ],
+    "values": [
+      "r"
+    ],
+    "xml": "<r raw='a\r\n\tb'/>"
+  },
+  {
+    "query": "/r[@raw='a   b']",
+    "utf16": [],
+    "values": [],
+    "xml": "<r raw='a\r\n\tb'/>"
+  },
+  {
+    "query": "/r/text()",
+    "utf16": [
+      [
+        17,
+        5
+      ]
+    ],
+    "values": [
+      "🚀 hi"
+    ],
+    "xml": "<r> \r\n<![CDATA[  🚀 hi  ]]>suffix</r>"
+  },
+  {
+    "query": "//p:a/@p:id",
+    "utf16": [
+      [
+        22,
+        4
+      ]
+    ],
+    "values": [
+      "p:id"
+    ],
+    "xml": "<r xmlns:p='urn'><p:a p:id='雪'/></r>"
+  },
+  {
+    "query": "//*[@xmlns:p]/@xmlns:p",
+    "utf16": [
+      [
+        3,
+        7
+      ]
+    ],
+    "values": [
+      "xmlns:p"
+    ],
+    "xml": "<r xmlns:p='urn'><p:a p:id='雪'/></r>"
+  },
+  {
+    "error": "malformed(offset: 5)",
+    "query": "//é",
+    "xml": "<r><é/></r>"
+  },
+  {
+    "query": "//é",
+    "utf16": [
+      [
+        4,
+        1
+      ]
+    ],
+    "values": [
+      "é"
+    ],
+    "xml": "<r><é/></r>"
+  },
+  {
+    "query": "/r[@a='é']",
+    "utf16": [
+      [
+        1,
+        1
+      ]
+    ],
+    "values": [
+      "r"
+    ],
+    "xml": "<r a='é'/>"
+  },
+  {
+    "query": "//a/text()",
+    "utf16": [
+      [
+        31,
+        1
+      ]
+    ],
+    "values": [
+      "雪"
+    ],
+    "xml": "<?xml version='1.0'?>\r\n<r>🙂<a>雪</a></r>"
+  }
+]

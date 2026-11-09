@@ -1,0 +1,2252 @@
+{
+  "dateTime" : [
+    {
+      "format" : 0,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "11/14/23",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "11/14/23",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "Tue, Nov 14, 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "Tuesday, November 14, 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "11/14/23",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "November 14, 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "Nov 14, 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "11/14/2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "2023-11-14T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22:13:20",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22:13:20",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22:13",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22 hours, 13 minutes, 20 seconds",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22 hours, 13 minutes",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "10:13 PM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "en_US_POSIX",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "1333:20",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "14.11.23",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "14.11.23",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "Di. 14. Nov. 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "Dienstag, 14. November 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "11/14/23",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "November 14, 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "Nov 14, 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "11/14/2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "2023-11-14T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22:13:20",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22:13:20",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22:13",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22 Stunden, 13 Minuten und 20 Sekunden",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22 Stunden und 13 Minuten",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "10:13 PM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "de_DE",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "1333:20",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "14/11/2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "14/11/2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "mar. 14 nov. 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "mardi 14 novembre 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "11/14/23",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "November 14, 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "Nov 14, 2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "11/14/2023",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : false,
+      "value" : "2023-11-14T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22:13:20",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22:13:20",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22:13",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22 heures, 13 minutes et 20 secondes",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "22 heures et 13 minutes",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "10:13 PM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "fr_FR",
+      "millis" : 1700000000000,
+      "time" : true,
+      "value" : "1333:20",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "1/1/30",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "1/1/30",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "Wed, Jan 1, 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "Wednesday, January 1, 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "01/01/30",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "January 1, 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "Jan 1, 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "01/01/1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "1930-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "0 hours, 0 minutes, 0 seconds",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "0 hours, 0 minutes",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "en_US_POSIX",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "01.01.30",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "01.01.30",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "Mi. 1. Jan. 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "Mittwoch, 1. Januar 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "01/01/30",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "January 1, 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "Jan 1, 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "01/01/1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "1930-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "0 Stunden, 0 Minuten und 0 Sekunden",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "0 Stunden und 0 Minuten",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "de_DE",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "01/01/1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "01/01/1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "mer. 1 janv. 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "mercredi 1 janvier 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "01/01/30",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "January 1, 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "Jan 1, 1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "01/01/1930",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : false,
+      "value" : "1930-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "0 heure, 0 minute et 0 seconde",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "0 heure et 0 minute",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "fr_FR",
+      "millis" : -1262304000000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "1/1/31",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "1/1/31",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "Thu, Jan 1, 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "Thursday, January 1, 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "01/01/31",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "January 1, 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "Jan 1, 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "01/01/1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "1931-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "0 hours, 0 minutes, 0 seconds",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "0 hours, 0 minutes",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "en_US_POSIX",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "01.01.31",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "01.01.31",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "Do. 1. Jan. 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "Donnerstag, 1. Januar 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "01/01/31",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "January 1, 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "Jan 1, 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "01/01/1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "1931-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "0 Stunden, 0 Minuten und 0 Sekunden",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "0 Stunden und 0 Minuten",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "de_DE",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "01/01/1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "01/01/1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "jeu. 1 janv. 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "jeudi 1 janvier 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "01/01/31",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "January 1, 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "Jan 1, 1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "01/01/1931",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : false,
+      "value" : "1931-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "0 heure, 0 minute et 0 seconde",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "0 heure et 0 minute",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "fr_FR",
+      "millis" : -1230768000000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "1/1/30",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "1/1/30",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "Tue, Jan 1, 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "Tuesday, January 1, 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "01/01/2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "January 1, 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "Jan 1, 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "01/01/2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "2030-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "0 hours, 0 minutes, 0 seconds",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "0 hours, 0 minutes",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "en_US_POSIX",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "01.01.30",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "01.01.30",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "Di. 1. Jan. 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "Dienstag, 1. Januar 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "01/01/2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "January 1, 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "Jan 1, 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "01/01/2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "2030-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "0 Stunden, 0 Minuten und 0 Sekunden",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "0 Stunden und 0 Minuten",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "de_DE",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "01/01/2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "01/01/2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "mar. 1 janv. 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "mardi 1 janvier 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "01/01/2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "January 1, 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "Jan 1, 2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "01/01/2030",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : false,
+      "value" : "2030-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "0 heure, 0 minute et 0 seconde",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "0 heure et 0 minute",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "fr_FR",
+      "millis" : 1893456000000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "1/1/00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "1/1/00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "Fri, Jan 1, 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "Friday, January 1, 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "01/01/2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "January 1, 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "Jan 1, 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "01/01/2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "2100-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "0 hours, 0 minutes, 0 seconds",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "0 hours, 0 minutes",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "en_US_POSIX",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "01.01.00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "01.01.00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "Fr. 1. Jan. 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "Freitag, 1. Januar 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "01/01/2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "January 1, 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "Jan 1, 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "01/01/2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "2100-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "0 Stunden, 0 Minuten und 0 Sekunden",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "0 Stunden und 0 Minuten",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "de_DE",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "01/01/2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "01/01/2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "ven. 1 janv. 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "vendredi 1 janvier 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "01/01/2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "January 1, 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "Jan 1, 2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 7,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "01/01/2100",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 8,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : false,
+      "value" : "2100-01-01T00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 0,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 1,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "00:00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 2,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "00:00",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 3,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "0 heure, 0 minute et 0 seconde",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 4,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "0 heure et 0 minute",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 5,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "12:00 AM",
+      "zone" : "UTC"
+    },
+    {
+      "format" : 6,
+      "locale" : "fr_FR",
+      "millis" : 4102444800000,
+      "time" : true,
+      "value" : "0:00",
+      "zone" : "UTC"
+    }
+  ],
+  "encoded" : [
+    {
+      "bytes" : "//48AD8AeABtAGwAIAB2AGUAcgBzAGkAbwBuAD0AJwAxAC4AMAAnACAAZQBuAGMAbwBkAGkAbgBnAD0AJwBVAFQARgAtADEANgAnAD8APgA8AG0AYQBjAHIAbwBzAD4APABtAGEAYwByAG8AIABuAGEAbQBlAD0AJwDcACcAPgA8AHQAZQB4AHQAPgDpAD3YAN4JADwALwB0AGUAeAB0AD4APAAvAG0AYQBjAHIAbwA+ADwALwBtAGEAYwByAG8AcwA+AA==",
+      "macros" : [
+        {
+          "capability" : "nativeText",
+          "displayName" : "Ü",
+          "id" : "source:utf16#0",
+          "methodCall" : null,
+          "parts" : [
+            {
+              "literal" : "é😀\t"
+            }
+          ],
+          "separator" : false,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        }
+      ],
+      "name" : "utf16"
+    },
+    {
+      "bytes" : "PD94bWwgdmVyc2lvbj0nMS4wJyBlbmNvZGluZz0nSVNPLTg4NTktMSc/PjxtYWNyb3M+PG1hY3JvIG5hbWU9J9wnPjx0ZXh0Puk8L3RleHQ+PC9tYWNybz48L21hY3Jvcz4=",
+      "macros" : [
+        {
+          "capability" : "nativeText",
+          "displayName" : "Ü",
+          "id" : "source:latin1#0",
+          "methodCall" : null,
+          "parts" : [
+            {
+              "literal" : "é"
+            }
+          ],
+          "separator" : false,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        }
+      ],
+      "name" : "latin1"
+    }
+  ],
+  "parser" : [
+    {
+      "macros" : [
+
+      ],
+      "name" : "broken",
+      "xml" : "<macros><macro></macros>"
+    },
+    {
+      "macros" : [
+        {
+          "capability" : "nativeText",
+          "displayName" : "Default",
+          "id" : "source:defaultNamespace#0",
+          "methodCall" : null,
+          "parts" : [
+            {
+              "literal" : "a"
+            },
+            "selection",
+            {
+              "literal" : "b"
+            }
+          ],
+          "separator" : false,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        }
+      ],
+      "name" : "defaultNamespace",
+      "xml" : "<macros xmlns='urn:example'><macro name='Default'><text>a<selection/>b</text></macro></macros>"
+    },
+    {
+      "macros" : [
+        {
+          "capability" : "unsupported",
+          "displayName" : "date",
+          "id" : "source:empty#0",
+          "methodCall" : null,
+          "parts" : [
+            {
+              "date" : 9
+            }
+          ],
+          "separator" : false,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        },
+        {
+          "capability" : "unsupported",
+          "displayName" : "time",
+          "id" : "source:empty#1",
+          "methodCall" : null,
+          "parts" : [
+            {
+              "time" : -1
+            }
+          ],
+          "separator" : false,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        }
+      ],
+      "name" : "empty",
+      "xml" : "<macros><macro name=\"date\"><text><date format=\"9\"/></text></macro><macro name=\"time\"><text><time format=\"x\"/></text></macro></macros>"
+    },
+    {
+      "macros" : [
+        {
+          "capability" : "runtime:komplettieren-ohne-nv-var",
+          "displayName" : "a",
+          "id" : "source:methods#0",
+          "methodCall" : "MAO_MethodeKomplettierenNeu(<method_name/>;False;\"\";True;False)",
+          "parts" : [
+
+          ],
+          "separator" : false,
+          "shortcut" : "🇩🇪",
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        },
+        {
+          "capability" : "unsupported",
+          "displayName" : "b",
+          "id" : "source:methods#1",
+          "methodCall" : "Other(\"a;b\";Nested(1;2))",
+          "parts" : [
+
+          ],
+          "separator" : false,
+          "shortcut" : "i̇",
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        },
+        {
+          "capability" : "unsupported",
+          "displayName" : "c",
+          "id" : "source:methods#2",
+          "methodCall" : "Other()",
+          "parts" : [
+
+          ],
+          "separator" : false,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : "unknown"
+        }
+      ],
+      "name" : "methods",
+      "xml" : "<macros><macro name=\"a /🇩🇪\"><text><method>MAO_MethodeKomplettierenNeu(<method_name/>;False;\"\";True;False)</method></text></macro><macro name=\"b /İ\"><text><method>Other(\"a;b\";Nested(1;2))</method></text></macro><macro name=\"c\"><text><method>Other(<unknown/>)</method></text></macro></macros>"
+    },
+    {
+      "macros" : [
+        {
+          "capability" : "nativeText",
+          "displayName" : "If",
+          "id" : "source:mixed#0",
+          "methodCall" : null,
+          "parts" : [
+            {
+              "literal" : "If ("
+            },
+            "caret",
+            {
+              "literal" : ")\n\t"
+            },
+            "selection",
+            {
+              "literal" : "\nEnd if"
+            }
+          ],
+          "separator" : false,
+          "shortcut" : "ü",
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        },
+        {
+          "capability" : "runtime:komplettieren",
+          "displayName" : "Runtime",
+          "id" : "source:mixed#1",
+          "methodCall" : "MAO_MethodeKomplettierenNeu(\"<method_name/>\")",
+          "parts" : [
+            "caret"
+          ],
+          "separator" : false,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        }
+      ],
+      "name" : "mixed",
+      "xml" : "<!DOCTYPE macros SYSTEM \"http://www.4d.com/dtd/2007/macros.dtd\"><macros><macro name=\"If /Ü\"><text>If (<caret/>)\n\t<selection/><![CDATA[\nEnd if]]></text></macro><macro name=\"Runtime\"><text><caret/><method>MAO_MethodeKomplettierenNeu(\"&lt;method_name/&gt;\")</method></text></macro></macros>"
+    },
+    {
+      "macros" : [
+        {
+          "capability" : "nativeText",
+          "displayName" : "Header",
+          "id" : "source:placeholders#0",
+          "methodCall" : null,
+          "parts" : [
+            {
+              "literal" : "// "
+            },
+            "methodName",
+            {
+              "literal" : " "
+            },
+            "userOS",
+            {
+              "literal" : " "
+            },
+            {
+              "date" : 4
+            },
+            {
+              "literal" : " "
+            },
+            {
+              "time" : 1
+            },
+            {
+              "literal" : "\n"
+            },
+            "selection",
+            "caret",
+            {
+              "literal" : "+"
+            },
+            "caret",
+            "fullText"
+          ],
+          "separator" : false,
+          "shortcut" : "#",
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        },
+        {
+          "capability" : "unsupported",
+          "displayName" : "-",
+          "id" : "source:placeholders#1",
+          "methodCall" : null,
+          "parts" : [
+            {
+              "literal" : " "
+            }
+          ],
+          "separator" : true,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        },
+        {
+          "capability" : "unsupported",
+          "displayName" : "display",
+          "id" : "source:placeholders#2",
+          "methodCall" : null,
+          "parts" : [
+
+          ],
+          "separator" : false,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        },
+        {
+          "capability" : "unsupported",
+          "displayName" : "clipboard",
+          "id" : "source:placeholders#3",
+          "methodCall" : null,
+          "parts" : [
+            "clipboard"
+          ],
+          "separator" : false,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : null
+        },
+        {
+          "capability" : "unsupported",
+          "displayName" : "unknown",
+          "id" : "source:placeholders#4",
+          "methodCall" : null,
+          "parts" : [
+            {
+              "literal" : "beforekeptafter"
+            }
+          ],
+          "separator" : false,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : "unknown"
+        }
+      ],
+      "name" : "placeholders",
+      "xml" : "<macros><macro name=\"Header /#\"><text>// <method_name/> <user_os/> <date format=\"4\"/> <time format=\"1\"/>\n<selection/><caret/>+<caret/><text/></text></macro><macro name=\"-\"><text> </text></macro><macro name=\"display\"/><macro name=\"clipboard\"><text><clipboard/></text></macro><macro name=\"unknown\"><text>before<unknown>kept</unknown>after</text></macro></macros>"
+    },
+    {
+      "macros" : [
+        {
+          "capability" : "unsupported",
+          "displayName" : "Prefixed",
+          "id" : "source:prefixed#0",
+          "methodCall" : null,
+          "parts" : [
+            {
+              "literal" : "ab"
+            }
+          ],
+          "separator" : false,
+          "shortcut" : null,
+          "sourceLabel" : "Macros.xml",
+          "unknownPlaceholder" : "p:selection"
+        }
+      ],
+      "name" : "prefixed",
+      "xml" : "<macros xmlns:p='urn:example'><macro name='Prefixed'><text>a<p:selection/>b</text></macro><p:macro name='Hidden'><text>hidden</text></p:macro></macros>"
+    }
+  ],
+  "source" : "Original FourDMacros.swift and FourDMacroRendering from commit 217167a4d5dbb35fd314afc7f89c24cf0930d646",
+  "zone" : "UTC"
+}

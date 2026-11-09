@@ -1,0 +1,191 @@
+--- a/extensions/autolink.c
++++ b/extensions/autolink.c
+@@ -327,6 +327,8 @@
+ static void postprocess_text(cmark_parser *parser, cmark_node *text) {
+   size_t start = 0;
+   size_t offset = 0;
++  int previous_map_stage=parser->fastra_control?parser->fastra_control->in_mail_map:0;
++  if(parser->fastra_control)parser->fastra_control->in_mail_map=1;
+   // `text` is going to be split into a list of nodes containing shorter segments
+   // of text, so we detach the memory buffer from text and use `cmark_chunk_dup` to
+   // create references to it. Later, `cmark_chunk_to_cstr` is used to convert
+@@ -339,7 +341,7 @@
+   size_t remaining = text->as.literal.len;
+   fastra_map original_source = text->fastra_source;
+   memset(&text->fastra_source, 0, sizeof text->fastra_source);
+-  fastra_map_slice(parser->mem, &original_source, 0, remaining, &text->fastra_source);
++
+ 
+   while (true) {
+     size_t link_end;
+@@ -451,7 +453,7 @@
+                                        (bufsize_t)(start + offset + max_rewind + link_end),
+                                        (bufsize_t)(remaining - offset - max_rewind - link_end));
+ 
+-    fastra_map_slice(parser->mem, &original_source, start+offset+max_rewind+link_end, start+remaining, &post->fastra_source);
++
+     cmark_node_insert_after(link_node, post);
+ 
+     fastra_map_clear(parser->mem, &text->fastra_source);
+@@ -465,6 +467,11 @@
+     offset = 0;
+   }
+ 
++  // Nur der endgültige Rest benötigt eine eigene Map. Zwischenreste bleiben
++  // unkopierte Sichten; Abbruch erzeugt keine zusätzliche Restkopie.
++  if (!parser->fastra_control || !parser->fastra_control->status)
++    fastra_map_slice(parser->mem,&original_source,start,start+remaining,&text->fastra_source);
++
+   // Convert the reference to allocated memory.
+   assert(!text->as.literal.alloc);
+   cmark_chunk_to_cstr(parser->mem, &text->as.literal);
+@@ -472,6 +479,7 @@
+   // Free the detached buffer.
+   fastra_map_clear(parser->mem, &original_source);
+   cmark_chunk_free(parser->mem, &detached_chunk);
++  if(parser->fastra_control)parser->fastra_control->in_mail_map=previous_map_stage;
+ }
+ 
+ static cmark_node *postprocess(cmark_syntax_extension *ext, cmark_parser *parser, cmark_node *root) {
+--- a/extensions/table.c
++++ b/extensions/table.c
+@@ -305,6 +305,7 @@
+       // content and cell_matched, or (2) we found an empty cell followed by a
+       // pipe.
+       fastra_map fastra_cell={0};
++      fastra_cell.control=parser->fastra_control;
+       cmark_strbuf *cell_buf = unescape_pipes(parser->mem, string + offset,
+           cell_matched, &fastra_cell, offset);
+       fastra_trim_cell(parser->mem,cell_buf,&fastra_cell);
+@@ -419,6 +420,7 @@
+   paragraph = cmark_node_new_with_mem(CMARK_NODE_PARAGRAPH, parser->mem);
+ 
+   fastra_map fastra_paragraph={0};
++  fastra_paragraph.control=parser->fastra_control;
+   paragraph_content = unescape_pipes(parser->mem, parent_string, paragraph_offset, &fastra_paragraph, 0);
+   fastra_trim_cell(parser->mem,paragraph_content,&fastra_paragraph);
+   fastra_map_compose(parser->mem,&fastra_paragraph,&parent_container->fastra_source,&paragraph->fastra_source);
+@@ -633,6 +635,7 @@
+       cell->cell_data = NULL;
+       cmark_node_set_string_content(node, (char *) cell->buf->ptr);
+       fastra_map fastra_line={0};
++      fastra_line.control=parser->fastra_control;
+       size_t fastra_base=parser->fastra_line_byte+cmark_parser_get_first_nonspace(parser);
+       fastra_map_append(parser->mem,&fastra_line,len-cmark_parser_get_first_nonspace(parser),fastra_base,parser->fastra_line_byte+len,1);
+       fastra_map_compose(parser->mem,&cell->fastra_source,&fastra_line,&node->fastra_source);
+--- a/src/blocks.c
++++ b/src/blocks.c
+@@ -235,6 +235,7 @@
+ static void add_line(cmark_node *node, cmark_chunk *ch, cmark_parser *parser) {
+   int chars_to_tab;
+   int i;
++  node->fastra_source.control=parser->fastra_control;
+   assert(node->flags & CMARK_NODE__OPEN);
+   if (parser->partially_consumed_tab) {
+     parser->offset += 1; // skip over tab
+--- a/src/fastra_metadata.c
++++ b/src/fastra_metadata.c
+@@ -8,9 +8,11 @@
+   if (m->invalid || a>b || (identity && b-a!=length) || m->count>=500000) { m->invalid=1; return; }
+   if (m->count && identity) {
+     fastra_span *last=&m->spans[m->count-1];
+-    if (last->identity && last->hi==m->length && last->source_hi==a) { last->hi+=length;last->source_hi=b;m->length+=length;return; }
++    if (last->identity && last->hi==m->length && last->source_hi==a) { if(m->length/4096!=(m->length+length)/4096 && !fastra_map_work(m->control,0)){m->invalid=1;return;} last->hi+=length;last->source_hi=b;m->length+=length;return; }
+   }
++  if (!fastra_map_work(m->control,1)) {m->invalid=1;return;}
+   if (m->count==m->capacity) {
++    if (!fastra_map_work(m->control,m->count)) {m->invalid=1;return;}
+     size_t n=m->capacity?m->capacity*2:4;
+     fastra_span *p=mem->calloc(n,sizeof *p);
+     if (!p) { m->invalid=1;return; }
+@@ -31,8 +33,10 @@
+ }
+ void fastra_map_slice(cmark_mem *mem,const fastra_map *src,size_t a,size_t b,fastra_map *dst) {
+   dst->tracked=1;
++  dst->control=src->control;
+   if(!src->tracked || src->invalid || a>b || b>src->length){dst->invalid=1;return;}
+   for(size_t i=first_span(src,a);i<src->count;i++) {
++    if(!fastra_map_work(src->control,1)){dst->invalid=1;return;}
+     const fastra_span *s=&src->spans[i];if(s->hi<=a)continue;if(s->lo>=b)break;
+     size_t lo=s->lo>a?s->lo:a,hi=s->hi<b?s->hi:b,x,y;
+     if(!boundary(s,lo,&x)||!boundary(s,hi,&y)){dst->invalid=1;return;}
+@@ -40,8 +44,9 @@
+   }
+ }
+ void fastra_map_join(cmark_mem *mem,fastra_map *dst,const fastra_map *src) {
++  if(!dst->control)dst->control=src->control;
+   if(!src->tracked || src->invalid){dst->invalid=1;return;}
+-  for(size_t i=0;i<src->count;i++){const fastra_span *s=&src->spans[i];fastra_map_append(mem,dst,s->hi-s->lo,s->source_lo,s->source_hi,s->identity);}
++  for(size_t i=0;i<src->count;i++){if(!fastra_map_work(dst->control,1)){dst->invalid=1;return;}const fastra_span *s=&src->spans[i];fastra_map_append(mem,dst,s->hi-s->lo,s->source_lo,s->source_hi,s->identity);}
+ }
+ void fastra_map_trim(cmark_mem *mem,fastra_map *m,size_t a,size_t b) {
+   fastra_map out={0};fastra_map_slice(mem,m,a,b,&out);fastra_map_clear(mem,m);*m=out;
+@@ -49,7 +54,7 @@
+ int fastra_map_range(const fastra_map *m,size_t a,size_t b,size_t *x,size_t *y) {
+   if(!m->tracked||m->invalid||a>=b||b>m->length)return 0;
+   int found=0;
+-  for(size_t i=first_span(m,a);i<m->count;i++) {const fastra_span *s=&m->spans[i];if(s->hi<=a)continue;if(s->lo>=b)break;
++  for(size_t i=first_span(m,a);i<m->count;i++) {if(!fastra_map_work(m->control,1))return 0;const fastra_span *s=&m->spans[i];if(s->hi<=a)continue;if(s->lo>=b)break;
+     if(!found){if(!boundary(s,a,x))return 0;found=1;}
+     if(b<=s->hi)return boundary(s,b,y);
+   }
+@@ -66,7 +71,9 @@
+ void fastra_map_compose(cmark_mem *mem,const fastra_map *local,const fastra_map *source,fastra_map *out) {
+   if (!local->tracked || local->invalid || !source->tracked || source->invalid){out->invalid=1;return;}
+   out->tracked=1;
++  out->control=source->control?source->control:local->control;
+   for(size_t i=0;i<local->count;i++) {
++    if(!fastra_map_work(out->control,1)){out->invalid=1;return;}
+     const fastra_span *s=&local->spans[i];size_t a,b;
+     if(s->identity){fastra_map part={0};fastra_map_slice(mem,source,s->source_lo,s->source_hi,&part);fastra_map_join(mem,out,&part);fastra_map_clear(mem,&part);}
+     else if(fastra_map_range(source,s->source_lo,s->source_hi,&a,&b))fastra_map_append(mem,out,s->hi-s->lo,a,b,0);
+@@ -75,14 +82,18 @@
+ }
+ 
+ #include "parser.h"
+-int fastra_parser_check(cmark_parser *parser) {
+-  if (!parser || !parser->fastra_control) return 1;
+-  fastra_control *control=parser->fastra_control;
++static int control_work(fastra_control *control,size_t amount,int maps) {
++  if (!control) return 1;
+   if (control->status) return 0;
+-  if (control->cancelled && control->cancelled(control->context)) { control->status=1;return 0; }
+-  if (control->max_steps && ++control->steps>control->max_steps) {control->status=2;return 0;}
++  if (amount > SIZE_MAX-control->steps || (maps && amount > SIZE_MAX-control->map_steps) ||
++      (control->max_steps && amount > control->max_steps-control->steps)) {control->status=2;return 0;}
++  control->steps+=amount;
++  if(maps){control->map_steps+=amount;if(control->in_mail_map)control->mail_map_steps+=amount;}
++  if(control->cancelled && control->cancelled(control->context)){control->status=1;return 0;}
+   return 1;
+ }
++int fastra_parser_check(cmark_parser *parser) {return !parser || control_work(parser->fastra_control,1,0);}
++int fastra_map_work(fastra_control *control,size_t amount){return control_work(control,amount,1);}
+ 
+ int fastra_node_literal_metadata(cmark_node *node,const fastra_span **spans,size_t *count,size_t *length) {
+   if(!node||node->type!=CMARK_NODE_TEXT||!node->fastra_source.tracked||node->fastra_source.invalid||node->fastra_source.length!=(size_t)node->as.literal.len)return 0;
+--- a/src/include/fastra_metadata.h
++++ b/src/include/fastra_metadata.h
+@@ -3,16 +3,20 @@
+ #include "cmark-gfm.h"
+ #include <stddef.h>
+ typedef struct { size_t lo, hi, source_lo, source_hi; int identity; } fastra_span;
+-typedef struct { fastra_span *spans; size_t count, capacity, length; int tracked, invalid; } fastra_map;
+-typedef struct {
++typedef struct fastra_control fastra_control;
++typedef struct { fastra_span *spans; size_t count, capacity, length; int tracked, invalid; fastra_control *control; } fastra_map;
++struct fastra_control {
+   int (*cancelled)(void *);
+   void *context;
+   size_t steps, max_steps;
+   int status;
+   int preserve_footnote_definitions;
+-} fastra_control;
++  size_t map_steps, mail_map_steps;
++  int in_mail_map;
++};
+ struct cmark_parser;
+ int fastra_parser_check(struct cmark_parser *);
++int fastra_map_work(fastra_control *, size_t);
+ void fastra_consolidate_text_nodes(cmark_node *, struct cmark_parser *);
+ enum { FASTRA_HTTP=1, FASTRA_WWW=2, FASTRA_MAIL=3, FASTRA_ANGLE=4, FASTRA_EXPLICIT=5 };
+ void fastra_map_clear(cmark_mem *, fastra_map *);

@@ -1,0 +1,47 @@
+--- a/extensions/autolink.c
++++ b/extensions/autolink.c
+@@ -211,6 +211,7 @@
+   cmark_node *text = cmark_node_new_with_mem(CMARK_NODE_TEXT, parser->mem);
+   text->as.literal =
+       cmark_chunk_dup(chunk, (bufsize_t)max_rewind, (bufsize_t)link_end);
++  fastra_inline_text(text,inline_parser,max_rewind,max_rewind+link_end);
+   cmark_node_append_child(node, text);
+ 
+   node->start_line = text->start_line =
+@@ -270,6 +271,7 @@
+ 
+   cmark_node *text = cmark_node_new_with_mem(CMARK_NODE_TEXT, parser->mem);
+   text->as.literal = url;
++  fastra_inline_text(text,inline_parser,max_rewind-rewind,max_rewind+link_end);
+   cmark_node_append_child(node, text);
+   
+   node->start_line = text->start_line = node->end_line = text->end_line = cmark_inline_parser_get_line(inline_parser);
+@@ -439,6 +441,7 @@
+       (bufsize_t)(link_end + rewind));
+     cmark_chunk_to_cstr(parser->mem, &email);
+     link_text->as.literal = email;
++    fastra_map_slice(parser->mem,&original_source,start+offset+max_rewind-rewind,start+offset+max_rewind+link_end,&link_text->fastra_source);
+     cmark_node_append_child(link_node, link_text);
+ 
+     cmark_node_insert_after(text, link_node);
+--- a/src/fastra_metadata.c
++++ b/src/fastra_metadata.c
+@@ -83,3 +83,8 @@
+   if (control->max_steps && ++control->steps>control->max_steps) {control->status=2;return 0;}
+   return 1;
+ }
++
++int fastra_node_literal_metadata(cmark_node *node,const fastra_span **spans,size_t *count,size_t *length) {
++  if(!node||node->type!=CMARK_NODE_TEXT||!node->fastra_source.tracked||node->fastra_source.invalid||node->fastra_source.length!=(size_t)node->as.literal.len)return 0;
++  *spans=node->fastra_source.spans;*count=node->fastra_source.count;*length=node->fastra_source.length;return 1;
++}
+--- a/src/include/fastra_metadata.h
++++ b/src/include/fastra_metadata.h
+@@ -21,6 +21,7 @@
+ void fastra_map_trim(cmark_mem *, fastra_map *, size_t, size_t);
+ int fastra_map_range(const fastra_map *, size_t, size_t, size_t *, size_t *);
+ void fastra_link_range(cmark_node *, const fastra_map *, size_t, size_t, int);
++int fastra_node_literal_metadata(cmark_node *, const fastra_span **, size_t *, size_t *);
+ int fastra_node_link_metadata(cmark_node *, int *, size_t *, size_t *);
+ void fastra_inline_text(cmark_node *, void *, size_t, size_t);
+ void fastra_map_compose(cmark_mem *, const fastra_map *, const fastra_map *, fastra_map *);

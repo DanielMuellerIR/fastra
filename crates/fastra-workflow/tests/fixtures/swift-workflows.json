@@ -1,0 +1,60 @@
+{
+  "schemaVersion" : 1,
+  "workflows" : [
+    {
+      "id" : "C075C5C0-A774-4B71-8666-1DCA7F09BACC",
+      "name" : "Liste",
+      "revision" : "C9C8D21B-9F93-41E3-837F-5CA2C4BED4FD",
+      "steps" : [
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "10AD1E6A-FE09-42B5-8ADC-6DAF15C1EA9C",
+          "indentWidth" : 4,
+          "kind" : "sortAscending",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 4,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 72
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "0069D314-F402-4720-A14D-DE261FC4D61A",
+          "indentWidth" : 4,
+          "kind" : "removeDuplicateLines",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 4,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 72
+        },
+        {
+          "argument" : "> ",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "01E79D70-4160-4815-BF8B-E7F67DB57599",
+          "indentWidth" : 4,
+          "kind" : "prefixLines",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 4,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 72
+        }
+      ]
+    }
+  ]
+}

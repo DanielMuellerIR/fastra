@@ -1,0 +1,52 @@
+{
+  "version": "1.170.0",
+  "build": 380,
+  "source_identity": "ad0d66f6a7adc854d9eee7311af8f0206a9c16a2f56846abc99fe7a90054b4cd",
+  "verified_product_inputs": 374,
+  "artifacts": {
+    "fastra-1.170.0-linux-x86_64.tar.gz": "036918393b73c76188e8f9af538986114ccc8cd74bafecb1e5a13d7c141d9c26",
+    "fastra-1.170.0-linux-x86_64.zip": "2c35b07c7805176d6631ecd618befdbdda77dc4237cbbbc7adc7b011647c57aa",
+    "fastra_1.170.0_amd64.deb": "6935fd588332170c1be21558312d55da1d3f1e6f77e2aa4e22b82fc1aca61d51"
+  },
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.170.0/packages",
+  "workspace": {
+    "binaries": 48,
+    "passed": 497,
+    "failed": 0,
+    "ignored": 2,
+    "separate_native_viewer_passed": 1,
+    "separate_private_engine_copy_passed": 1,
+    "clippy": "all targets, -D warnings"
+  },
+  "native": {
+    "git_switch": 4,
+    "application_lifecycle": 2,
+    "existing_local_control_regressions": 4,
+    "languages": [
+      "de",
+      "en"
+    ],
+    "display": "isolated Xvfb",
+    "visual_review": true
+  },
+  "review": {
+    "closed": [
+      "failed socket startup must not hold invisible service",
+      "preserved option separator including mixed paths and literal double dash"
+    ],
+    "independent_completion_sha256sums": "7fd1386756c3bb196799136e4471c42c638803eec18fb65ac3ddca5299716f15",
+    "branch_switch_handoff_sha256sums": "99217d026c57b9f2ff818c06f48ab52751da1678e510ace3fdf152f925113e30"
+  },
+  "package_checks": {
+    "installed_deb": true,
+    "moved_tar": true,
+    "manifest_and_private_icu": true,
+    "webkit_no_new_privs": 1,
+    "webkit_seccomp": 2,
+    "release_cli_sibling_autolaunch_ready_close_replay": true,
+    "zip_user_install": true,
+    "gio_percent_space_prefix_exact_file_argument": true
+  },
+  "product_commit": "30c8b57e252ef1d27ef11ffff16b31d33120ddc1"
+}

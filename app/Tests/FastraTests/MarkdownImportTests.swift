@@ -122,7 +122,7 @@ struct MarkdownImportNamingTests {
             forSource: source, producesAssets: false, exists: { _ in false }
         )
         #expect(target.path == "/docs/Bericht.md")
-        #expect(MarkdownImportNaming.markdownFile(inTarget: target, sourceURL: source,
+        #expect(MarkdownImportNaming.markdownFile(inTarget: target, relativeMarkdownPath: "Bericht.md",
                                                   producesAssets: false).path
                 == "/docs/Bericht.md")
     }
@@ -133,7 +133,7 @@ struct MarkdownImportNamingTests {
             forSource: source, producesAssets: true, exists: { _ in false }
         )
         #expect(target.path == "/docs/Bericht")
-        #expect(MarkdownImportNaming.markdownFile(inTarget: target, sourceURL: source,
+        #expect(MarkdownImportNaming.markdownFile(inTarget: target, relativeMarkdownPath: "Bericht.md",
                                                   producesAssets: true).path
                 == "/docs/Bericht/Bericht.md")
     }
@@ -157,7 +157,7 @@ struct MarkdownImportNamingTests {
             exists: { $0.path == "/docs/Bericht" }
         )
         #expect(target.path == "/docs/Bericht-2")
-        #expect(MarkdownImportNaming.markdownFile(inTarget: target, sourceURL: source,
+        #expect(MarkdownImportNaming.markdownFile(inTarget: target, relativeMarkdownPath: "Bericht.md",
                                                   producesAssets: true).path
                 == "/docs/Bericht-2/Bericht.md")
     }
@@ -562,6 +562,51 @@ struct MarkdownImportServiceGuardTests {
         #expect(try String(contentsOf: source, encoding: .utf8) == "Originalinhalt")
         #expect(!FileManager.default.fileExists(
             atPath: folder.appendingPathComponent("Bericht.md").path))
+    }
+
+    @Test("Sammlung behält Übersicht, Unterdokumente und Anlagen bei Zielkollision",
+          arguments: ["index.md", "Übersicht/start.md"])
+    @MainActor
+    func collectionPreservesReportedPath(relativePath: String) throws {
+        let (folder, source) = try makeSourceFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let occupied = folder.appendingPathComponent("Bericht")
+        try FileManager.default.createDirectory(at: occupied, withIntermediateDirectories: true)
+        let sentinel = occupied.appendingPathComponent("index.md")
+        try "Behalten".write(to: sentinel, atomically: true, encoding: .utf8)
+        let indexContents = relativePath.contains("/")
+            ? "[Notiz](../assets/notiz.md)" : "[Notiz](assets/notiz.md)"
+        let service = makeService { output in
+            let files = [relativePath: indexContents,
+                         "assets/notiz.md": "![Bild](bild.png)", "assets/bild.png": "Bildbytes"]
+            for (relative, text) in files {
+                let file = output.appendingPathComponent(relative)
+                try! FileManager.default.createDirectory(at: file.deletingLastPathComponent(),
+                                                         withIntermediateDirectories: true)
+                try! text.write(to: file, atomically: true, encoding: .utf8)
+            }
+            let json: [String: Any] = ["ok": true,
+                "markdownFile": output.appendingPathComponent(relativePath).path,
+                "assets": [output.appendingPathComponent("assets/notiz.md").path,
+                           output.appendingPathComponent("assets/bild.png").path]]
+            return MarkdownImportProcessOutcome(exitCode: 0,
+                stdout: try! JSONSerialization.data(withJSONObject: json),
+                stderr: Data(), outputIsComplete: true)
+        }
+        var reported: URL?
+        service.convert(source) { reported = $0 }
+        let target = folder.appendingPathComponent("Bericht-2")
+        #expect(reported == target.appendingPathComponent(relativePath))
+        #expect(try String(contentsOf: #require(reported), encoding: .utf8)
+                == indexContents)
+        #expect(try String(contentsOf: target.appendingPathComponent("assets/notiz.md"),
+                           encoding: .utf8) == "![Bild](bild.png)")
+        #expect(try Data(contentsOf: target.appendingPathComponent("assets/bild.png"))
+                == Data("Bildbytes".utf8))
+        #expect(try String(contentsOf: sentinel, encoding: .utf8) == "Behalten")
+        #expect(try String(contentsOf: source, encoding: .utf8) == "Originalinhalt")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            .allSatisfy { !$0.hasPrefix(".fastra-markdown-") })
     }
 
     @Test("Eine saubere Antwort wird ganz normal veröffentlicht")

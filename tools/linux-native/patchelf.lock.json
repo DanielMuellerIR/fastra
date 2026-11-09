@@ -1,0 +1,12 @@
+{
+  "architecture": "amd64",
+  "authentication": "apt authenticated Ubuntu package index; InRelease signatures separately verified",
+  "banner": "patchelf 0.18.0",
+  "builder_image": "sha256:aea7af379f99e4d0261e83f2f314ab48939db5b2e19531d1d9b5222229429118",
+  "deb_sha256": "962a43e33cd56061522554898557a038ccbb8aa4e1e0f421b2d6f6adf1f80c60",
+  "executable_sha256": "35fc95654387035338a74bb8cf62fde3712ec83dd8ca30a768deb714d07f063a",
+  "filename": "pool/universe/p/patchelf/patchelf_0.18.0-1.1build1_amd64.deb",
+  "package": "patchelf",
+  "size": 106300,
+  "version": "0.18.0-1.1build1"
+}

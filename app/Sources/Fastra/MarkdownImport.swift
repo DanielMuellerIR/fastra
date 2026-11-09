@@ -227,6 +227,12 @@ enum MarkdownImportOutputGuard {
     /// verschoben würde aber der Verweis, und übrig bliebe neben der Quelle
     /// ein ins Leere zeigender Link, sobald das Zwischenverzeichnis weg ist.
     static func isPublishableFile(_ candidate: URL, in directory: URL) -> Bool {
+        relativePublishablePath(candidate, in: directory) != nil
+    }
+
+    /// Relativer Pfad am geprüften, aufgelösten Ausgabeordner. Vor dem Rename
+    /// sichern: Danach existiert der Arbeitsordner nicht mehr.
+    static func relativePublishablePath(_ candidate: URL, in directory: URL) -> String? {
         // Der Ausgabeordner selbst muss ein ECHTER Ordner sein. Fastra legt nur
         // das Zwischenverzeichnis an; `out` darin erzeugt das Werkzeug. Wäre
         // `out` ein Verweis auf einen fremden Ordner, zeigten unten beide
@@ -235,17 +241,18 @@ enum MarkdownImportOutputGuard {
         // Ursprungsort (Review 2026-08-06).
         var directoryInfo = stat()
         guard lstat(directory.path, &directoryInfo) == 0,
-              (directoryInfo.st_mode & S_IFMT) == S_IFDIR else { return false }
+              (directoryInfo.st_mode & S_IFMT) == S_IFDIR else { return nil }
 
         let allowed = directory.resolvingSymlinksInPath().standardizedFileURL.path
         let resolved = candidate.resolvingSymlinksInPath().standardizedFileURL.path
-        guard resolved.hasPrefix(allowed + "/") else { return false }
+        guard resolved.hasPrefix(allowed + "/") else { return nil }
 
         // `lstat` beschreibt den Pfad SELBST und folgt keinem Verweis —
         // genau die Auskunft, die hier gebraucht wird.
         var info = stat()
-        guard lstat(candidate.path, &info) == 0 else { return false }
-        return (info.st_mode & S_IFMT) == S_IFREG
+        guard lstat(candidate.path, &info) == 0 else { return nil }
+        guard (info.st_mode & S_IFMT) == S_IFREG else { return nil }
+        return String(resolved.dropFirst(allowed.count + 1))
     }
 }
 
@@ -283,14 +290,12 @@ enum MarkdownImportNaming {
         }
     }
 
-    /// Die Markdown-Datei, die nach der Umwandlung geöffnet wird. Im Ordnerfall
-    /// liegt sie IM Ordner und behält den Namen der Quelle — der Ordner kann
-    /// wegen einer Kollision `-2` heißen, die Datei darin nicht.
-    static func markdownFile(inTarget target: URL, sourceURL: URL, producesAssets: Bool) -> URL {
+    /// Im Ordnerfall bleibt der vom Werkzeug gemeldete, zuvor geprüfte
+    /// relative Pfad erhalten, auch wenn der Zielordner wegen einer Kollision ausweicht.
+    static func markdownFile(inTarget target: URL, relativeMarkdownPath: String,
+                             producesAssets: Bool) -> URL {
         guard producesAssets else { return target }
-        return target.appendingPathComponent(
-            sourceURL.deletingPathExtension().lastPathComponent + ".md"
-        )
+        return target.appendingPathComponent(relativeMarkdownPath)
     }
 
     private static func target(named name: String, extension fileExtension: String?,

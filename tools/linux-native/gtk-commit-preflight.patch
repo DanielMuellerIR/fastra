@@ -1,0 +1,57 @@
+--- a/gtk/gtktextview.c
++++ b/gtk/gtktextview.c
+@@ -339,6 +339,7 @@
+   PREEDIT_CHANGED,
+   EXTEND_SELECTION,
+   INSERT_EMOJI,
++  PREFLIGHT_COMMIT,
+   LAST_SIGNAL
+ };
+ 
+@@ -1279,6 +1280,18 @@
+    *
+    * This signal has no default bindings.
+    */
++  /* Prototyp: TRUE verweigert den vollständigen Commit vor History und Mutation.
++   * Offsets sind Unicode-Zeichenpositionen im unveränderten Buffer. */
++  signals[PREFLIGHT_COMMIT] =
++    g_signal_new (I_("preflight-commit"),
++                  G_OBJECT_CLASS_TYPE (gobject_class),
++                  G_SIGNAL_RUN_LAST,
++                  0,
++                  _gtk_boolean_handled_accumulator, NULL,
++                  NULL,
++                  G_TYPE_BOOLEAN, 3,
++                  G_TYPE_STRING, G_TYPE_INT, G_TYPE_INT);
++
+   signals[INSERT_AT_CURSOR] =
+     g_signal_new (I_("insert-at-cursor"),
+ 		  G_OBJECT_CLASS_TYPE (gobject_class),
+@@ -8626,9 +8639,27 @@
+   gboolean had_selection;
+   GtkTextIter begin, end;
+   guint length;
++  GtkTextIter planned_begin, planned_end;
++  gboolean veto = FALSE;
+ 
+   priv = text_view->priv;
+ 
++  /* Zuerst den nativen Ersetzungsbereich bestimmen, ohne Marken zu versetzen. */
++  had_selection = gtk_text_buffer_get_selection_bounds (get_buffer (text_view),
++                                                        &planned_begin, &planned_end);
++  gtk_text_iter_order (&planned_begin, &planned_end);
++  if (!had_selection && priv->overwrite_mode && strcmp (str, "\n") != 0 &&
++      !gtk_text_iter_ends_line (&planned_end))
++    gtk_text_iter_forward_cursor_position (&planned_end);
++
++  g_signal_emit (text_view, signals[PREFLIGHT_COMMIT], 0,
++                 str,
++                 gtk_text_iter_get_offset (&planned_begin),
++                 gtk_text_iter_get_offset (&planned_end),
++                 &veto);
++  if (veto)
++    return;
++
+   gtk_text_view_obscure_mouse_cursor (text_view);
+   gtk_text_buffer_begin_user_action (get_buffer (text_view));
+ 

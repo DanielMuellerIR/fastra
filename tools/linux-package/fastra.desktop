@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Fastra
+Comment=Preview searches and replacements before changing files
+Comment[de]=Suchen und Ersetzungen vor Dateiänderungen prüfen
+Exec=/opt/fastra/bin/fastra %F
+Icon=fastra
+Terminal=false
+Categories=Utility;TextEditor;
+MimeType=text/plain;
+StartupNotify=true
+StartupWMClass=org.fastra.Fastra.Development

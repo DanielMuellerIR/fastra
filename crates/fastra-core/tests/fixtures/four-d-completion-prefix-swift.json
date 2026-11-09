@@ -1,0 +1,1334 @@
+[
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : [
+      0,
+      2
+    ],
+    "text" : "AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "A"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "A"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : [
+      0,
+      2
+    ],
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      0,
+      3
+    ],
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      0,
+      4
+    ],
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 5,
+    "inside" : false,
+    "range" : [
+      0,
+      5
+    ],
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 6,
+    "inside" : false,
+    "range" : [
+      0,
+      6
+    ],
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 7,
+    "inside" : false,
+    "range" : [
+      0,
+      7
+    ],
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 8,
+    "inside" : false,
+    "range" : [
+      0,
+      8
+    ],
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 9,
+    "inside" : false,
+    "range" : [
+      0,
+      9
+    ],
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 10,
+    "inside" : false,
+    "range" : [
+      0,
+      10
+    ],
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 11,
+    "inside" : false,
+    "range" : [
+      0,
+      11
+    ],
+    "text" : "OBJECT SET "
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : [
+      0,
+      2
+    ],
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      0,
+      3
+    ],
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      0,
+      4
+    ],
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 5,
+    "inside" : false,
+    "range" : [
+      0,
+      5
+    ],
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 6,
+    "inside" : false,
+    "range" : [
+      0,
+      6
+    ],
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 7,
+    "inside" : false,
+    "range" : [
+      0,
+      7
+    ],
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 8,
+    "inside" : false,
+    "range" : null,
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 9,
+    "inside" : false,
+    "range" : [
+      8,
+      1
+    ],
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 10,
+    "inside" : false,
+    "range" : [
+      8,
+      2
+    ],
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 11,
+    "inside" : false,
+    "range" : [
+      8,
+      3
+    ],
+    "text" : "OBJECT  SET"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "x:=AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "x:=AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "x:=AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : null,
+    "text" : "x:=AL"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      3,
+      1
+    ],
+    "text" : "x:=AL"
+  },
+  {
+    "cursor" : 5,
+    "inside" : false,
+    "range" : [
+      3,
+      2
+    ],
+    "text" : "x:=AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "x(AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "x(AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "x(AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      2,
+      1
+    ],
+    "text" : "x(AL"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      2,
+      2
+    ],
+    "text" : "x(AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "\\AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : "\\AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : [
+      1,
+      1
+    ],
+    "text" : "\\AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      1,
+      2
+    ],
+    "text" : "\\AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "$AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : "$AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "$AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : null,
+    "text" : "$AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : ".AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : ".AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : ".AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : null,
+    "text" : ".AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "[AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : "[AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "[AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : null,
+    "text" : "[AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "<>AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : "<>AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "<>AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : null,
+    "text" : "<>AL"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : null,
+    "text" : "<>AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : ">AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : ">AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : ">AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : null,
+    "text" : ">AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "1ABC"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : "1ABC"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "1ABC"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : null,
+    "text" : "1ABC"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : null,
+    "text" : "1ABC"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "_ABC"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : "_ABC"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "_ABC"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : null,
+    "text" : "_ABC"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : null,
+    "text" : "_ABC"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : [
+      0,
+      2
+    ],
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      0,
+      3
+    ],
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      0,
+      4
+    ],
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 5,
+    "inside" : false,
+    "range" : [
+      0,
+      5
+    ],
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      2,
+      1
+    ],
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      2,
+      2
+    ],
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 5,
+    "inside" : false,
+    "range" : [
+      2,
+      3
+    ],
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 6,
+    "inside" : false,
+    "range" : [
+      2,
+      4
+    ],
+    "text" : "éMeth"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "😀AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : "😀AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "😀AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      2,
+      1
+    ],
+    "text" : "😀AL"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      2,
+      2
+    ],
+    "text" : "😀AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "𐐀Meth"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : "𐐀Meth"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "𐐀Meth"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      2,
+      1
+    ],
+    "text" : "𐐀Meth"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      2,
+      2
+    ],
+    "text" : "𐐀Meth"
+  },
+  {
+    "cursor" : 5,
+    "inside" : false,
+    "range" : [
+      2,
+      3
+    ],
+    "text" : "𐐀Meth"
+  },
+  {
+    "cursor" : 6,
+    "inside" : false,
+    "range" : [
+      2,
+      4
+    ],
+    "text" : "𐐀Meth"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "a\tAL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "a\tAL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "a\tAL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      2,
+      1
+    ],
+    "text" : "a\tAL"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      2,
+      2
+    ],
+    "text" : "a\tAL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "\/\/ ALERT"
+  },
+  {
+    "cursor" : 1,
+    "inside" : true,
+    "range" : null,
+    "text" : "\/\/ ALERT"
+  },
+  {
+    "cursor" : 2,
+    "inside" : true,
+    "range" : null,
+    "text" : "\/\/ ALERT"
+  },
+  {
+    "cursor" : 3,
+    "inside" : true,
+    "range" : null,
+    "text" : "\/\/ ALERT"
+  },
+  {
+    "cursor" : 4,
+    "inside" : true,
+    "range" : [
+      3,
+      1
+    ],
+    "text" : "\/\/ ALERT"
+  },
+  {
+    "cursor" : 5,
+    "inside" : true,
+    "range" : [
+      3,
+      2
+    ],
+    "text" : "\/\/ ALERT"
+  },
+  {
+    "cursor" : 6,
+    "inside" : true,
+    "range" : [
+      3,
+      3
+    ],
+    "text" : "\/\/ ALERT"
+  },
+  {
+    "cursor" : 7,
+    "inside" : true,
+    "range" : [
+      3,
+      4
+    ],
+    "text" : "\/\/ ALERT"
+  },
+  {
+    "cursor" : 8,
+    "inside" : true,
+    "range" : [
+      3,
+      5
+    ],
+    "text" : "\/\/ ALERT"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "\"AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : true,
+    "range" : null,
+    "text" : "\"AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : true,
+    "range" : [
+      1,
+      1
+    ],
+    "text" : "\"AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : true,
+    "range" : [
+      1,
+      2
+    ],
+    "text" : "\"AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "\/* x\nAL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : true,
+    "range" : null,
+    "text" : "\/* x\nAL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : true,
+    "range" : null,
+    "text" : "\/* x\nAL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : true,
+    "range" : null,
+    "text" : "\/* x\nAL"
+  },
+  {
+    "cursor" : 4,
+    "inside" : true,
+    "range" : [
+      3,
+      1
+    ],
+    "text" : "\/* x\nAL"
+  },
+  {
+    "cursor" : 5,
+    "inside" : true,
+    "range" : null,
+    "text" : "\/* x\nAL"
+  },
+  {
+    "cursor" : 6,
+    "inside" : true,
+    "range" : [
+      5,
+      1
+    ],
+    "text" : "\/* x\nAL"
+  },
+  {
+    "cursor" : 7,
+    "inside" : true,
+    "range" : [
+      5,
+      2
+    ],
+    "text" : "\/* x\nAL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "\/* x *\/ AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : true,
+    "range" : null,
+    "text" : "\/* x *\/ AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : true,
+    "range" : null,
+    "text" : "\/* x *\/ AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : true,
+    "range" : null,
+    "text" : "\/* x *\/ AL"
+  },
+  {
+    "cursor" : 4,
+    "inside" : true,
+    "range" : [
+      3,
+      1
+    ],
+    "text" : "\/* x *\/ AL"
+  },
+  {
+    "cursor" : 5,
+    "inside" : true,
+    "range" : [
+      3,
+      2
+    ],
+    "text" : "\/* x *\/ AL"
+  },
+  {
+    "cursor" : 6,
+    "inside" : true,
+    "range" : null,
+    "text" : "\/* x *\/ AL"
+  },
+  {
+    "cursor" : 7,
+    "inside" : false,
+    "range" : null,
+    "text" : "\/* x *\/ AL"
+  },
+  {
+    "cursor" : 8,
+    "inside" : false,
+    "range" : null,
+    "text" : "\/* x *\/ AL"
+  },
+  {
+    "cursor" : 9,
+    "inside" : false,
+    "range" : [
+      8,
+      1
+    ],
+    "text" : "\/* x *\/ AL"
+  },
+  {
+    "cursor" : 10,
+    "inside" : false,
+    "range" : [
+      8,
+      2
+    ],
+    "text" : "\/* x *\/ AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "\"open\nAL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : true,
+    "range" : null,
+    "text" : "\"open\nAL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : true,
+    "range" : [
+      1,
+      1
+    ],
+    "text" : "\"open\nAL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : true,
+    "range" : [
+      1,
+      2
+    ],
+    "text" : "\"open\nAL"
+  },
+  {
+    "cursor" : 4,
+    "inside" : true,
+    "range" : [
+      1,
+      3
+    ],
+    "text" : "\"open\nAL"
+  },
+  {
+    "cursor" : 5,
+    "inside" : true,
+    "range" : [
+      1,
+      4
+    ],
+    "text" : "\"open\nAL"
+  },
+  {
+    "cursor" : 6,
+    "inside" : false,
+    "range" : null,
+    "text" : "\"open\nAL"
+  },
+  {
+    "cursor" : 7,
+    "inside" : false,
+    "range" : [
+      6,
+      1
+    ],
+    "text" : "\"open\nAL"
+  },
+  {
+    "cursor" : 8,
+    "inside" : false,
+    "range" : [
+      6,
+      2
+    ],
+    "text" : "\"open\nAL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "AL\r\n"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "AL\r\n"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : [
+      0,
+      2
+    ],
+    "text" : "AL\r\n"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : null,
+    "text" : "AL\r\n"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : null,
+    "text" : "AL\r\n"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "ⅧABC"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "ⅧABC"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : [
+      0,
+      2
+    ],
+    "text" : "ⅧABC"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      0,
+      3
+    ],
+    "text" : "ⅧABC"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      0,
+      4
+    ],
+    "text" : "ⅧABC"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "١ABC"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : "١ABC"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "١ABC"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : null,
+    "text" : "١ABC"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : null,
+    "text" : "١ABC"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "Äb"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "Äb"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : [
+      0,
+      2
+    ],
+    "text" : "Äb"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "a(AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : [
+      0,
+      1
+    ],
+    "text" : "a(AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "a(AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      2,
+      1
+    ],
+    "text" : "a(AL"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      2,
+      2
+    ],
+    "text" : "a(AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "[X]AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : "[X]AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : null,
+    "text" : "[X]AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : null,
+    "text" : "[X]AL"
+  },
+  {
+    "cursor" : 4,
+    "inside" : false,
+    "range" : [
+      3,
+      1
+    ],
+    "text" : "[X]AL"
+  },
+  {
+    "cursor" : 5,
+    "inside" : false,
+    "range" : [
+      3,
+      2
+    ],
+    "text" : "[X]AL"
+  },
+  {
+    "cursor" : 0,
+    "inside" : false,
+    "range" : null,
+    "text" : "<AL"
+  },
+  {
+    "cursor" : 1,
+    "inside" : false,
+    "range" : null,
+    "text" : "<AL"
+  },
+  {
+    "cursor" : 2,
+    "inside" : false,
+    "range" : [
+      1,
+      1
+    ],
+    "text" : "<AL"
+  },
+  {
+    "cursor" : 3,
+    "inside" : false,
+    "range" : [
+      1,
+      2
+    ],
+    "text" : "<AL"
+  }
+]

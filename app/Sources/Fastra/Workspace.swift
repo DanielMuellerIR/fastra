@@ -166,6 +166,7 @@ struct EditorTab: Identifiable, Hashable {
     var isLoading: Bool
     /// Übersteuerung gilt nur für die Lebensdauer dieses Dokuments.
     var markdownVisualOverride: Bool? = nil
+    var markdownVisualViewport: MarkdownVisualViewport? = nil
     var editorDisplayOptions = EditorDisplayOptions()
     /// Ein Vorschau-Tab stammt aus einem einfachen Klick in der
     /// Änderungen-Liste. Der nächste einfache Klick darf genau diesen
@@ -1135,6 +1136,7 @@ final class Workspace: ObservableObject {
     /// Aktuellste Lade-Generation pro Tab-UUID. Pattern analog zu
     /// `statsGeneration` in `recomputeDocumentStats`.
     private var loadGeneration: [UUID: Int] = [:]
+    private let markdownImportService: MarkdownImportService
     /// Testnaht für das erste, nicht-flüchtige Laden einer Datei. Der
     /// Produktionspfad bleibt `FileLoader.load`; Tests können den Read
     /// kontrolliert anhalten und so zwei echte Folgeaufträge reproduzieren,
@@ -1489,6 +1491,7 @@ final class Workspace: ObservableObject {
     }
 
     init(defaults: UserDefaults = .standard,
+         markdownImportService: MarkdownImportService = .shared,
          softWrapProfiles: SoftWrapProfileStore? = nil,
          gitOperationsCoordinator: GitOperationsCoordinator = .shared,
          gitRepositoryStore: GitRepositoryStore? = nil,
@@ -1513,6 +1516,7 @@ final class Workspace: ObservableObject {
         // (isolierte Suite!) haben so ihre Temp-Ordner in die ECHTEN
         // Nutzer-Defaults gemüllt (Befund 2026-06-11, 16 Leichen).
         self.defaultsStore = defaults
+        self.markdownImportService = markdownImportService
         self.softWrapProfiles = softWrapProfiles
             ?? SoftWrapProfileStore(defaults: defaults)
         self.languageChoices = LanguageChoiceStore(defaults: defaults)
@@ -3082,7 +3086,7 @@ final class Workspace: ObservableObject {
                 openSource()
                 return
             }
-            MarkdownImportService.shared.withCatalog { [weak self] catalog in
+            markdownImportService.withCatalog { [weak self] catalog in
                 guard let self, expectedGitContext?.isCurrent(in: self) != false else { return }
                 guard let format = catalog?.format(forExtension: url.pathExtension),
                       format.supportsContainer(isDirectory: false) else {
@@ -3092,7 +3096,8 @@ final class Workspace: ObservableObject {
                 switch Workspace.askMarkdownImportFileChoice(for: url, format: format) {
                 case .convert:
                     guard expectedGitContext?.isCurrent(in: self) != false else { return }
-                    self.convertToMarkdown(url, onFileOpened: onFileOpened)
+                    self.convertToMarkdown(url, expectedGitContext: expectedGitContext,
+                                           onFileOpened: onFileOpened)
                 case .openAsText:
                     openSource()
                 case .cancel:     break
@@ -3108,8 +3113,8 @@ final class Workspace: ObservableObject {
             openProject(at: url)
             return
         }
-        MarkdownImportService.shared.withCatalog { [weak self] catalog in
-            guard let self else { return }
+        markdownImportService.withCatalog { [weak self] catalog in
+            guard let self, expectedGitContext?.isCurrent(in: self) != false else { return }
             // Bewusst auch NICHT verfügbare Formate erkennen: Fehlt nur das
             // Zusatzwerkzeug (meist pandoc), soll die Rückfrage das erklären,
             // statt das Dokumentpaket stillschweigend als Ordner zu öffnen
@@ -3120,8 +3125,12 @@ final class Workspace: ObservableObject {
                 return
             }
             switch Workspace.askMarkdownImportPackageChoice(for: url, format: format) {
-            case .convert:      self.convertToMarkdown(url)
-            case .openAsFolder: self.openProject(at: url)
+            case .convert:
+                self.convertToMarkdown(url, expectedGitContext: expectedGitContext,
+                                       onFileOpened: onFileOpened)
+            case .openAsFolder:
+                guard expectedGitContext?.isCurrent(in: self) != false else { return }
+                self.openProject(at: url)
             case .cancel:       break
             }
         }
@@ -3280,7 +3289,7 @@ final class Workspace: ObservableObject {
     /// Leiste bei fehlendem pandoc einfach unsichtbar).
     func markdownImportOffer(for url: URL?) -> MarkdownImportOffer? {
         guard let url, !dismissedMarkdownImports.contains(url),
-              let catalog = MarkdownImportService.shared.cachedCatalog,
+              let catalog = markdownImportService.cachedCatalog,
               let format = catalog.format(forExtension: url.pathExtension) else {
             return nil
         }
@@ -3291,7 +3300,7 @@ final class Workspace: ObservableObject {
     /// `markdownImportOffer` ignoriert das ein weggeklicktes Angebot — ein
     /// ausgeblendeter Hinweis darf den Befehl nicht mit verschwinden lassen.
     func canConvertToMarkdown(_ url: URL) -> Bool {
-        MarkdownImportService.shared.cachedCatalog?
+        markdownImportService.cachedCatalog?
             .availableFormat(forExtension: url.pathExtension) != nil
     }
 
@@ -3301,7 +3310,7 @@ final class Workspace: ObservableObject {
     /// Ein bekanntes, aber gerade nicht umwandelbares Paket zählt mit, damit
     /// die Rückfrage erklären kann, was fehlt (statt wortlos aufzuklappen).
     func markdownImportPackageFormat(at url: URL) -> MarkdownImportFormat? {
-        guard let format = MarkdownImportService.shared.cachedCatalog?
+        guard let format = markdownImportService.cachedCatalog?
             .format(forExtension: url.pathExtension),
               format.supportsContainer(isDirectory: true) else { return nil }
         return format
@@ -3315,14 +3324,17 @@ final class Workspace: ObservableObject {
 
     /// Wandelt um und öffnet das Ergebnis. Die Quelle bleibt unverändert und
     /// ihr Tab offen; das Markdown kommt als neuer, aktiver Tab dazu.
-    func convertToMarkdown(_ url: URL, onFileOpened: ((URL) -> Void)? = nil) {
-        MarkdownImportService.shared.convert(url, owner: self) { [weak self] markdownFile in
-            guard let self, let markdownFile else { return }
+    func convertToMarkdown(_ url: URL, expectedGitContext: GitActionContext? = nil,
+                           onFileOpened: ((URL) -> Void)? = nil) {
+        guard expectedGitContext?.isCurrent(in: self) != false else { return }
+        markdownImportService.convert(url, owner: self) { [weak self] markdownFile in
+            guard let self, let markdownFile,
+                  expectedGitContext?.isCurrent(in: self) != false else { return }
             self.dismissedMarkdownImports.insert(url)
             // Den Projektbaum aktualisiert der FSEvents-Watcher von selbst; nur
             // der Git-Status wird nicht ereignisgetrieben nachgezogen.
             self.refreshGitStatus()
-            self.loadFile(at: markdownFile) { opened in
+            self.loadFile(at: markdownFile, expectedGitContext: expectedGitContext) { opened in
                 if opened { onFileOpened?(markdownFile.canonicalFileURL) }
             }
         }
@@ -3339,7 +3351,7 @@ final class Workspace: ObservableObject {
     /// Menüpunkt aktiv ist.
     var activeMarkdownImportSource: URL? {
         guard let url = activeTab?.url,
-              let catalog = MarkdownImportService.shared.cachedCatalog,
+              let catalog = markdownImportService.cachedCatalog,
               catalog.availableFormat(forExtension: url.pathExtension) != nil else {
             return nil
         }
@@ -5795,21 +5807,22 @@ final class Workspace: ObservableObject {
         // Datei übernimmt dann den Tabplatz dieser Diff-Vorschau, statt
         // daneben aufzugehen und die Vorschau verwaist stehen zu lassen.
         // Eine Vorschau zu einer ANDEREN Datei bleibt unberührt.
-        let supersededDiffTabID = preview ? nil : tabs.first(where: {
+        let supersededDiff = preview ? nil : tabs.first(where: {
             $0.isPreview && !$0.hasUnsavedChanges
                 && $0.gitDiffRequest?.source.changeListPath == path
-        })?.id
-        let takesPreviewSlot = preview || supersededDiffTabID != nil
+        }).map { (id: $0.id, documentID: $0.documentID, request: $0.gitDiffRequest) }
+        let takesPreviewSlot = preview || supersededDiff != nil
         func removeSupersededDiff() {
-            // Der Tabplatz wurde wiederverwendet (gleiche ID, jetzt die
-            // Datei) oder die Datei war schon offen und wurde nur aktiviert —
-            // dann steht die Diff-Vorschau noch daneben und muss weg. Die
-            // Datei ist in beiden Fällen ein zweiter Tab, das Fenster bleibt.
-            if let supersededDiffTabID, tabs.count > 1,
+            // Ein Tabplatz kann während der Umwandlung schon einen anderen
+            // Diff enthalten. Nur das ursprüngliche, weiterhin flüchtige
+            // Dokument darf nach erfolgreichem Öffnen entfernt werden.
+            if let supersededDiff, tabs.count > 1,
                tabs.contains(where: {
-                   $0.id == supersededDiffTabID && $0.gitDiffRequest != nil
+                   $0.id == supersededDiff.id && $0.documentID == supersededDiff.documentID
+                       && $0.gitDiffRequest == supersededDiff.request
+                       && $0.isPreview && !$0.hasUnsavedChanges
                }) {
-                closeTab(id: supersededDiffTabID)
+                closeTab(id: supersededDiff.id)
             }
         }
         let state = staged ? change.staged : change.unstaged

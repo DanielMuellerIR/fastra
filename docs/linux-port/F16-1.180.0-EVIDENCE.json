@@ -1,0 +1,79 @@
+{
+  "version": "1.180.0",
+  "build": 390,
+  "product_commit": "8a2914e8467555897f36d658518039cb98e1b51c",
+  "source_identity": "d0227cd111abba2900bf40324c633ea437223a5e426cfc4dcb99228c0c1e2157",
+  "verified_product_inputs": 441,
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.180.0/packages",
+  "artifacts": {
+    "fastra_1.180.0_amd64.deb": "7c9dc34b88d5b09502e71ccbf0d0b08092a85e5f4cda35b00799b4436c928a99",
+    "fastra-1.180.0-linux-x86_64.tar.gz": "37d7f5c8b705f4f2309375bad26c9bfc0128bfeaf3e6eda1615e9b2e57e264f5",
+    "fastra-1.180.0-linux-x86_64.zip": "84d14ad24c22f6c1911fab3fcfeb3a28c964a46f27f024c27fc6b064d27cbf21"
+  },
+  "tests": {
+    "workspace_programs": 49,
+    "regular_passed": 630,
+    "native_git_helper_cases": 26,
+    "failed_final_serialized_run": 0,
+    "ignored": 6,
+    "linux_regular_subset": 199,
+    "harness": "RUST_TEST_THREADS=1; explicit internal concurrency tests remain enabled",
+    "strict_workspace_debug_clippy": "PASS",
+    "strict_linux_release_clippy": "PASS",
+    "optimized_package_build": "PASS",
+    "native_complete_rich_math_de_en_lf_crlf_cr_bom": 5,
+    "native_existing_static_to_rich_edit_undo_save_reopen": 4,
+    "native_rich_eol_save_guards": 2,
+    "native_rich_eol_save_as": 2,
+    "native_combined_math_and_eol_save": 2,
+    "native_combined_math_and_eol_save_as": 2,
+    "native_blank_lines": 1,
+    "native_typed_blank_clipboard": 1,
+    "native_image_refresh": 1,
+    "native_options_focus_and_guards_after_init": 4,
+    "native_unicode_rectangle_commands_after_init": 2,
+    "isolated_wayland_native_viewer": 1,
+    "isolated_wayland_rich_roundtrip": 1,
+    "isolated_wayland_rich_math_eol_save_fence": 1
+  },
+  "review": {
+    "nested_math_source_table_pipe": "CLOSED",
+    "nested_display_math_original_outer_breaks": "CLOSED",
+    "independent_v2_serializer_lf_crlf_cr_reproductions": 6,
+    "shared_js_non_linux_rules": "unchanged; five immutable payload/syntax/SharedJS hashes verified",
+    "root_rich_host_eol_and_close_additions": "retained through narrow patch hunks",
+    "sourceview_startup_initialization": "native before/after verified; resource initialization precedes views"
+  },
+  "package": {
+    "installed_deb": "PASS",
+    "relocated_tar": "PASS",
+    "private_icu_and_manifest": "PASS",
+    "source_free_static_katex_mermaid_table": "PASS",
+    "source_free_rich_math_actual_native_toggle": "PASS; inspected installed and relocated screenshots",
+    "installed_relocated_rich_capture_sha256": "31bc9df4dfb909475934fae2017b7365f432ac2088fe00653c72bbc0ade437a6",
+    "packaged_git_helper_cases": 26,
+    "helper_prefix_space_and_percent": true,
+    "webkit_no_new_privileges": 1,
+    "webkit_seccomp": 2,
+    "webkit_private_pid_namespace": true
+  },
+  "visual": {
+    "rich_formulas_de_en_minimum_and_wide": "inspected",
+    "nested_formula_source_notices_in_tables_and_display_blocks": "inspected",
+    "sourceview_native_guide_before_after_init": "inspected",
+    "installed_and_relocated_rich_math": "inspected; byte-identical captures"
+  },
+  "test_boundaries": [
+    "The first parallel workspace run stopped on two ETXTBSY launches of newly written temporary Git wrapper fixtures. The complete serialized run subsequently passed all 49 programs. No production Git retry was added.",
+    "The first Wayland viewer wrapper incorrectly required a WebKit process although the viewer uses GTK/Poppler. The viewer itself passed; the corrected fresh wrapper passed without that inapplicable assertion.",
+    "Wayland checks use an isolated headless Weston compositor and actual application processes; they do not claim physical KDE, keyboard, IME or accessibility acceptance.",
+    "Historical static-to-Rich fixtures now require three rendered formulas before and after reopen and retain the five actual protected code/nested-source atoms. This follows the new product behavior rather than dropping source checks."
+  ],
+  "limits": [
+    "Independent split selections and command targeting, fixed-column wrapping and continuation indentation remain pending.",
+    "The native Page Guide and Pull are separate ongoing integrations; they are not included in this commit.",
+    "A separately reproduced ordinary source paste limit/NUL issue is under correction and remains open for this version.",
+    "Native macOS cross-platform window acceptance and complete physical desktop, Wayland, IME and accessibility acceptance remain pending."
+  ]
+}

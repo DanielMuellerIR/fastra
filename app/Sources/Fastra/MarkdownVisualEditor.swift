@@ -154,6 +154,12 @@ final class MarkdownVisualWKWebView: WKWebView {
     }
 }
 
+struct MarkdownVisualViewport: Equatable {
+    let documentID: UUID
+    let revision: UInt64
+    let offset: CGPoint
+}
+
 /// Alle Eingaben sind an Tab, Navigationsgeneration und vorherigen Inhalt
 /// gebunden. Ein verspätetes WebKit-Ereignis darf keinen neu geöffneten Tab
 /// oder eine externe Änderung überschreiben.
@@ -429,8 +435,14 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         let data = try? JSONEncoder().encode(pending.blocks)
         guard let data,
               let blocks = try? JSONSerialization.jsonObject(with: data) else { return }
+        var configuration: [String: Any] = ["blocks": blocks, "opaqueSources": pending.opaqueSources, "markdown": markdown, "session": session, "imageTransactions": initialImageTransactions]
+        if let tab = workspace?.tabs.first(where: { $0.id == tabID }),
+           let saved = tab.markdownVisualViewport, saved.documentID == tab.documentID,
+           saved.revision == tab.contentRevision, tab.content.utf8.elementsEqual(markdown.utf8) {
+            configuration["viewport"] = ["x": saved.offset.x, "y": saved.offset.y]
+        }
         webView.callAsyncJavaScript("return await window.fastraVisual.start(configuration);",
-            arguments: ["configuration": ["blocks": blocks, "opaqueSources": pending.opaqueSources, "markdown": markdown, "session": session, "imageTransactions": initialImageTransactions]],
+            arguments: ["configuration": configuration],
             in: nil, in: .page) { [weak self] result in
                 guard let self, self.generation == request, self.documentIdentityMatches else { return }
                 if case .success(let value) = result, value as? Bool == true {
@@ -467,6 +479,9 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         guard body["session"] as? String == session,
               let workspace, let tabID else { return }
         switch body["kind"] as? String {
+        case "viewport":
+            guard body["revision"] as? Int == acceptedInputRevision else { return }
+            rememberViewport(body["viewport"])
         case "tableContext":
             guard workspace.activeTabID == tabID, workspace.visualMarkdownEditor === self,
                   body["revision"] as? Int == acceptedInputRevision else { return }
@@ -602,8 +617,10 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             reconcileImageUndo(snapshot["imageTransactions"] as? [String] ?? [], previous: markdown,
                                inputType: snapshot["inputType"] as? String ?? "", newEdit: revision > acceptedInputRevision) { [self] success in
                 let accepted = success && documentIdentityMatches && workspace.acceptVisualMarkdown(content, previous: markdown, tabID: tabID)
-                if accepted { markdown = content; acceptedInputRevision = revision }
-                else {
+                if accepted {
+                    markdown = content; acceptedInputRevision = revision
+                    rememberViewport(snapshot["viewport"])
+                } else {
                     warnUnacceptedInput()
                 }
                 completeImageAction(revision: revision)
@@ -611,6 +628,19 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 if generation == request, !holdingInput || !accepted { completeAction(session: requestSession) }
             }
         }
+    }
+
+    private func rememberViewport(_ value: Any?) {
+        guard documentIdentityMatches, let workspace, workspace.visualMarkdownEditor === self,
+              workspace.activeTabID == tabID,
+              let index = workspace.tabs.firstIndex(where: { $0.id == tabID }),
+              workspace.tabs[index].content.utf8.elementsEqual(markdown.utf8),
+              let viewport = value as? [String: Any], let x = viewport["x"] as? Double,
+              let y = viewport["y"] as? Double,
+              [x, y].allSatisfy({ $0.isFinite && $0 >= 0 && $0 <= 100_000_000 }) else { return }
+        let saved = MarkdownVisualViewport(documentID: workspace.tabs[index].documentID,
+            revision: workspace.tabs[index].contentRevision, offset: CGPoint(x: x, y: y))
+        if workspace.tabs[index].markdownVisualViewport != saved { workspace.tabs[index].markdownVisualViewport = saved }
     }
 
     private func warnUnacceptedInput() {

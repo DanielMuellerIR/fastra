@@ -1,0 +1,119 @@
+--- a/src/blocks.c
++++ b/src/blocks.c
+@@ -122,6 +122,7 @@
+ }
+ 
+ static void cmark_parser_dispose(cmark_parser *parser) {
++  if (parser->fastra_footnote_labels) cmark_map_free(parser->fastra_footnote_labels);
+   if (parser->root)
+     cmark_node_free(parser->root);
+ 
+@@ -472,6 +473,23 @@
+   cmark_node *cur;
+   cmark_event_type ev_type;
+ 
++  if (parser->fastra_control && parser->fastra_control->preserve_footnote_definitions && (options & CMARK_OPT_FOOTNOTES)) {
++    // Nur belegte Definitionen machen einen Verweis zur Fußnote. Unbekannte
++    // Verweise bleiben im vorhandenen Inlinepfad samt Entity-/Escape-Provenienz.
++    parser->fastra_footnote_labels = cmark_footnote_map_new(parser->mem);
++    while ((ev_type = cmark_iter_next(iter)) != CMARK_EVENT_DONE) {
++      if (!fastra_parser_check(parser)) break;
++      cur = cmark_iter_get_node(iter);
++      if (ev_type == CMARK_EVENT_ENTER && cur->type == CMARK_NODE_FOOTNOTE_DEFINITION) {
++        cmark_map_entry *previous = parser->fastra_footnote_labels->refs;
++        cmark_footnote_create(parser->fastra_footnote_labels, cur);
++        if (parser->fastra_footnote_labels->refs != previous)
++          ((cmark_footnote *)parser->fastra_footnote_labels->refs)->node = NULL;
++      }
++    }
++    cmark_iter_free(iter);
++    iter = cmark_iter_new(parser->root);
++  }
+   cmark_manage_extensions_special_characters(parser, true);
+ 
+   while ((ev_type = cmark_iter_next(iter)) != CMARK_EVENT_DONE) {
+@@ -553,6 +571,8 @@
+         cmark_strbuf_putc(&buf, ']');
+ 
+         text->as.literal = cmark_chunk_buf_detach(&buf);
++        fastra_map_slice(parser->mem,&cur->fastra_source,0,cur->fastra_source.length,&text->fastra_source);
++        if(text->fastra_source.length!=(size_t)text->as.literal.len)text->fastra_source.invalid=1;
+         cmark_node_insert_after(cur, text);
+         cmark_node_free(cur);
+       }
+@@ -566,6 +586,12 @@
+     for (unsigned int i = 0; i < map->size; ++i) {
+       cmark_footnote *footnote = (cmark_footnote *)map->sorted[i];
+       if (!footnote->ix) {
++        // Der Atomlieferant muss auch vom äußeren Parser erhaltene, unbenutzte
++        // Definitionen analysieren. Ihr bestehender Baumbesitzer bleibt gültig.
++        if (parser->fastra_control && parser->fastra_control->preserve_footnote_definitions) {
++          footnote->node = NULL;
++          continue;
++        }
+         cmark_node_unlink(footnote->node);
+         continue;
+       }
+@@ -574,6 +600,10 @@
+     }
+   }
+ 
++  if (parser->fastra_control && parser->fastra_control->preserve_footnote_definitions) {
++    for (cmark_map_entry *entry = map->refs; entry; entry = entry->next)
++      if (!((cmark_footnote *)entry)->ix) ((cmark_footnote *)entry)->node = NULL;
++  }
+   cmark_unlink_footnotes_map(map);
+   cmark_map_free(map);
+ }
+--- a/src/include/fastra_metadata.h
++++ b/src/include/fastra_metadata.h
+@@ -9,6 +9,7 @@
+   void *context;
+   size_t steps, max_steps;
+   int status;
++  int preserve_footnote_definitions;
+ } fastra_control;
+ struct cmark_parser;
+ int fastra_parser_check(struct cmark_parser *);
+--- a/src/include/parser.h
++++ b/src/include/parser.h
+@@ -18,6 +18,7 @@
+ struct cmark_parser {
+   size_t fastra_line_byte;
+   fastra_control *fastra_control;
++  cmark_map *fastra_footnote_labels;
+   struct cmark_mem *mem;
+   /* A hashtable of urls in the current document for cross-references */
+   struct cmark_map *refmap;
+--- a/src/inlines.c
++++ b/src/inlines.c
+@@ -1299,6 +1299,7 @@
+   int found_label;
+   cmark_node *tmp, *tmpnext;
+   bool is_image;
++  bool fastra_known_footnote;
+ 
+   advance(subj); // advance past ]
+   initial_pos = subj->pos;
+@@ -1393,7 +1394,12 @@
+ noMatch:
+   // If we fall through to here, it means we didn't match a link.
+   // What if we're a footnote link?
+-  if (parser->options & CMARK_OPT_FOOTNOTES &&
++  fastra_known_footnote = true;
++  if (parser->fastra_footnote_labels && initial_pos >= opener->position + 2) {
++    cmark_chunk label = cmark_chunk_dup(&subj->input, opener->position+1, initial_pos-opener->position-2);
++    fastra_known_footnote = cmark_map_lookup(parser->fastra_footnote_labels, &label) != NULL;
++  }
++  if (parser->options & CMARK_OPT_FOOTNOTES && fastra_known_footnote &&
+       opener->inl_text->next &&
+       opener->inl_text->next->type == CMARK_NODE_TEXT) {
+ 
+@@ -1411,6 +1417,7 @@
+       subj->pos = initial_pos;
+ 
+       cmark_node *fnref = make_simple(subj->mem, CMARK_NODE_FOOTNOTE_REFERENCE);
++      fastra_map_slice(subj->mem,&subj->fastra_owner->fastra_source,opener->position-1,subj->pos,&fnref->fastra_source);
+ 
+       // the start and end of the footnote ref is the opening and closing brace
+       // i.e. the subject's current position, and the opener's start_column

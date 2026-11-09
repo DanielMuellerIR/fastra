@@ -362,6 +362,12 @@ Helfer 390.848 Bytes; gegenüber 1.129.0 wächst das Bundle um 16.920 Bytes.
 
 ## Herkunftsgebundene Übergabe
 
+Automatische Linux-Sprungmarkierungen übernehmen PRIMARY nicht. Die native
+Textauswahl bleibt sichtbar und per Strg+C kopierbar. Eigene Fenstereingaben
+aktivieren die normale PRIMARY-Anbindung wieder und unterbrechen weiterhin
+noch ausstehende Sprünge. Unveränderte GTK-Markenmeldungen gelten nicht als
+Erkunden.
+
 Ab 1.137.0 ergänzt `sourceSnapshot` den bestehenden `snapshot`-Auftrag.
 Clients prüfen `sourceSnapshotSchemaVersion: 1` in den Fähigkeiten. Die
 Transportversion bleibt 1. Bestehende Aufträge ändern sich nicht.

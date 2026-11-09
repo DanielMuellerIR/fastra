@@ -1,0 +1,63 @@
+{
+  "commit": "f8e2bdc4933327ce2334ccb5450cb431273ef5bd",
+  "source_archive_sha256": "e57ee65a9bc72c50c4bce8a00d56503436ca6cd88e5915fa35218dc4b3037054",
+  "source_files_byte_compared": 273,
+  "archive_tar_umask": "0022",
+  "archive_commit": "f8e2bdc4933327ce2334ccb5450cb431273ef5bd",
+  "date": "2026-11-05",
+  "version": "1.164.0",
+  "bundle_build": "372",
+  "source_content_sha256": "785e1aae644f01a57063cfb2dc4c41078d85c32a76623c52b6c7b9ce6b7776a3",
+  "outputs": {
+    "fastra_1.164.0_amd64.deb": "e6d62833012d16990c5e56b1581b31fded4f3a78385c4f1443ca1abd138b9851",
+    "fastra-1.164.0-linux-x86_64.tar.gz": "bd73e46c8c2c5e673a31971a1e3ddf16e3967c44ce61e2d7ceb16e8f13e3aade",
+    "SHA256SUMS": "38b92bd03a8f2d337e65547444aa4f2d5339301b3442f8995ed9d9c6d1ceebd6",
+    "PKGBUILD": "05150c9ca46d8bba1aa2bf3f9bac2d55655ad68fb9ebc89369e63aa634ee6f34"
+  },
+  "binary_sha256": "810ed0a78a1b89042781d5dfc050bcc42ae9b0c42dcb40b3b6f068db858f6aec",
+  "icu_source_sha256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+  "rust": "1.99.1",
+  "builder_image": "sha256:ee28d59cfaf26bae6c9d0df5449fa0f5562ce657fe66c50619524741d7eba22c",
+  "runtime_image": "sha256:95bebc437d45f178312616c6607b2885dee3ec786e085c81cf279dec153a9eac",
+  "checks": {
+    "installed_deb": true,
+    "explicitly_moved_tar": true,
+    "runtime_manifest_all_hashes": true,
+    "relative_private_icu_ldd": true,
+    "markdown_katex_mermaid_table_visual_both_layouts": true,
+    "webkit_no_new_privileges": 1,
+    "webkit_seccomp_mode": 2,
+    "webkit_private_pid_namespace": true,
+    "png_svg_two_page_pdf_both_layouts_visual": true,
+    "four_d_syntax_colors_both_layouts": true,
+    "readonly_hex_bytes_both_layouts": true,
+    "five_fixture_hashes_preserved": true,
+    "additional_fresh_relocated_viewer_starts": 8,
+    "additional_formats": {
+      "SVG": 4,
+      "PDF": 4
+    },
+    "blank_at6s": 0,
+    "blank_after_resize": 0,
+    "native_click_expanded_search": 8,
+    "additional_initial_and_clicked_frames_visually_checked": true,
+    "packaging_repeat_byte_identical": [
+      "deb",
+      "tar.gz",
+      "PKGBUILD"
+    ],
+    "independent_rust_recompile": false,
+    "network": "none",
+    "host_desktop_used": false
+  },
+  "open_findings": [],
+  "historical_note": "The 1.163 intermittent pane P2 and intermediate A/B evidence remain unchanged; this final snapshot contains the finite position, nonshrinking header and native wide-handle correction. These eight release starts supplement, not replace, targeted native regression tests.",
+  "limits": [
+    "Ubuntu 24.04 private Xvfb/X11, English light UI; no desktop/IME or Wayland acceptance.",
+    "Arch PKGBUILD generated and hashed; no Arch build/install in this run.",
+    "Same stage repackaged in the same builder; no independent compiler reproducibility claim.",
+    "4D syntax resources and readonly Hex checked; external proprietary Runtime and Hex editing/save were not reaccepted by this package smoke.",
+    "No public upload or release approval."
+  ],
+  "release_approved": false
+}

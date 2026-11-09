@@ -1,0 +1,68 @@
+{
+  "version": "1.177.0",
+  "build": 387,
+  "product_commit": "d1713f478a66af22ad2b01f311703dea44889d3c",
+  "source_identity": "f687aad44ea8d1b52ae3bf0f39f70110c753167327ddcc17824120fd97aca12b",
+  "verified_product_inputs": 417,
+  "artifacts": {
+    "fastra_1.177.0_amd64.deb": "e5011a766077fffa4a369781b887e113406ffd0dc9e3bc80fb96bbed1518f204",
+    "fastra-1.177.0-linux-x86_64.tar.gz": "890d54bc2bbada7805ad09791ae11e74853bd7d7ef23a649a8123bc6630deb19",
+    "fastra-1.177.0-linux-x86_64.zip": "29fb19bd8725205801ebaf6e8dfafff76625eefa002866d68767b1397825f085"
+  },
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.177.0/packages",
+  "tests": {
+    "final_linux_programs": 1,
+    "regular_linux_passed": 146,
+    "failed": 0,
+    "ignored": 6,
+    "unchanged_workspace_reference": "F16-1.176.0-EVIDENCE.json",
+    "strict_all_linux_targets_clippy": "PASS",
+    "optimized_package_build": "PASS",
+    "native_rectangles_de_en_min_760_wide_1100": 4,
+    "real_drag_typing_undo_width_2_8": true,
+    "column_paste_short_line_padding_and_undo": true,
+    "tab_width_change_invalidates_old_geometry": true,
+    "complete_editor_de_en_min_wide": 2,
+    "integrated_git_index_branches_native_flows": 4,
+    "isolated_author_git_native_flows": 8,
+    "regular_product_print_de_en_reference_version": "1.176.0",
+    "print_table_values_exactly_once_per_language": 70,
+    "print_final_sentinel_preserved": true
+  },
+  "visual": {
+    "actual_native_rectangle_state_images_inspected": 12,
+    "integrated_git_windows_inspected": 4,
+    "clipped_first_rectangle_captures_rejected": true,
+    "test_window_origin_now_explicit": true,
+    "test_capture_uses_actual_x11_window": true,
+    "english_wide_final_origin_rerun": "PASS"
+  },
+  "review": {
+    "rectangle_tab_width_fix": "CLOSED; no new blocking findings",
+    "git_dialog_patch": "two files only; no new dispatch or backend",
+    "rectangle_product_sha256": "c701c127d78ddeca919629b65186226878d1ba0c2bb38848ef0be79d8d9f9cc7"
+  },
+  "package": {
+    "installed_deb": "PASS",
+    "relocated_tar": "PASS",
+    "runtime_manifest_private_icu": "PASS",
+    "packaged_commit_helper_cases": 26,
+    "helper_prefix_space_and_percent": true,
+    "webkit_no_new_privileges": 1,
+    "webkit_seccomp": 2,
+    "webkit_private_pid_namespace": true
+  },
+  "test_boundaries": [
+    "The original tab-width 8 native test failed with wrong selected-column bytes; the identical assertion passes after the product correction.",
+    "Some first wide captures were clipped. They were rejected as visual evidence. Only test capture changed: its private window origin is explicit and it captures the actual X11 window. The product correction stayed unchanged.",
+    "The unchanged non-Linux workspace programs and previously accepted source-free release clipboard path remain bound to the 1.176.0 evidence."
+  ],
+  "limits": [
+    "Rectangle Copy/Cut and keyboard extension remain pending.",
+    "Independent split selections, explicit EOL choice, persistent format profiles and atomic Close Others remain pending.",
+    "Math and CR parser integration is still private work outside this product commit.",
+    "Mac window acceptance, component signing and the requested Pull policy decision remain externally pending.",
+    "Physical desktop, Wayland, IME and accessibility acceptance remains open."
+  ]
+}

@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+launcher=$(readlink -f -- "$0")
+root=$(CDPATH= cd -- "$(dirname -- "$launcher")/.." && pwd -P)
+exec "$root/app/bin/fastra" "$@"

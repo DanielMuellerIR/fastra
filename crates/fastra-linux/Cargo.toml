@@ -1,0 +1,43 @@
+[package]
+name = "fastra-linux"
+version = "1.235.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fastra-four-d-runtime = { path = "../fastra-four-d-runtime" }
+fastra-diff-helper = { path = "../fastra-diff-helper" }
+fastra-workflow = { path = "../fastra-workflow" }
+fastra-core = { path = "../fastra-core", features = ["syntax-folding"] }
+fastra-io = { path = "../fastra-io" }
+fastra-document = { path = "../fastra-document" }
+fastra-search = { path = "../fastra-search" }
+gtk = { package = "gtk4", version = "=0.11.5", features = ["v4_12"] }
+sourceview5 = "=0.11.2"
+webkit6 = "=0.6.1"
+pulldown-cmark = "=0.13.1"
+serde_json.workspace = true
+serde.workspace = true
+sha2.workspace = true
+libc.workspace = true
+
+fastra-process = { path = "../fastra-process" }
+fastra-git = { path = "../fastra-git" }
+fastra-import = { path = "../fastra-import" }
+fastra-diff = { path = "../fastra-diff" }
+
+roxmltree = "=0.21.1"
+tempfile.workspace = true
+
+pangocairo = "=0.22.9"
+
+# Additive Linux-Abhängigkeiten; bestehende Paketversion unverändert lassen.
+zip = { version = "=4.6.1", default-features = false, features = ["deflate-flate2"] }
+# Explizite Featurewahl für das reine Rust-Deflatebackend von zip-rs.
+flate2 = { version = "=1.1.5", default-features = false, features = ["rust_backend"] }
+
+unicode-segmentation = "=1.13.3"
+
+[build-dependencies]
+sha2.workspace = true
+serde_json.workspace = true

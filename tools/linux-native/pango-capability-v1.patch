@@ -1,0 +1,25 @@
+--- a/pango/pango-layout.c
++++ b/pango/pango-layout.c
+@@ -8071,3 +8071,10 @@
+ 
+   pango_layout_get_extents (iter->layout, ink_rect, logical_rect);
+ }
++
++/* ABI v1: Tab-Wrap v2 und Graphem-Fortschritt, keine Versionsheuristik. */
++unsigned int
++pango_fastra_wrap_capability_v1 (void)
++{
++  return 0x46570002u;
++}
+--- a/pango/pango-layout.h
++++ b/pango/pango-layout.h
+@@ -548,6 +548,9 @@
+ G_DEFINE_AUTOPTR_CLEANUP_FUNC(PangoLayout, g_object_unref)
+ G_DEFINE_AUTOPTR_CLEANUP_FUNC(PangoLayoutIter, pango_layout_iter_free)
+ 
++PANGO_AVAILABLE_IN_ALL
++unsigned int pango_fastra_wrap_capability_v1 (void);
++
+ G_END_DECLS
+ 
+ #endif /* __PANGO_LAYOUT_H__ */

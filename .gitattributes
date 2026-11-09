@@ -1,0 +1,2 @@
+# Unveränderte Upstream-Lizenztexte behalten ihre ursprünglichen Abschlusszeilen.
+crates/fastra-core/native/folding/**/LICENSE whitespace=-blank-at-eof

@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "date": "2026-11-08",
+  "cases": 394,
+  "provider": "Actual Swift FoldingRanges, SyntaxFolding and FourDFolding extracted without changes; real CodeEditLanguages/SwiftTreeSitter build products; no AppKit or window startup",
+  "files_sha256": {
+    "app/Sources/Fastra/CodeFolding.swift": "e5c5c92dba6634e43095b894cf2ea1f6841af51738f6c0c71bd98391c196abcb",
+    "app/Sources/Fastra/FourDTokenizer.swift": "43922d1e280039e36c1272cd0b26e148bf8af7bd86a76d998ff9fbbc5a30f771",
+    "app/Sources/Fastra/FourDSymbols.swift": "48601be1a5e243469dfe555376d11295bc2efaeb1d6563992306eaf97a360226",
+    "tools/linux-probes/folding/provider-witness.swift": "8cf2351170e87a3479b3db71fd26e3e833cd2c4e55d81d20934167f44971fbab",
+    "crates/fastra-core/tests/fixtures/mac-folding-regions.json": "40e5690767be631da3b514409c1af27728db098703e26e0f682dd144caf38510"
+  },
+  "mac_grammar_archive_sha256": "e26fea68ed13a4f36009988c8d30ab4406585cc465ac62201a192a2e201fdfd4",
+  "catalog_revision": "331d5dbc5fc8513be5848fce8a2a312908f36a11",
+  "runtime": "0.25.10",
+  "scope": "32 active Mac IDs, 10 intentionally unavailable Mac providers, 4D lexical blocks/functions/branches, broken syntax, comments/strings, CR/LF/CRLF/NEL/LS/PS/VT/FF and emoji. No product UI or stale-request guarantee."
+}

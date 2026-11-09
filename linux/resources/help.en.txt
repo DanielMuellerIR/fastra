@@ -1,0 +1,381 @@
+Fastra for Linux
+
+Updates
+“Updates …” opens the update check. Active Linux user installations check the Fastra GitHub repository for stable releases once a day by default; automatic checks can be disabled there. GitHub receives the connection data needed for the request, no documents or hardware profile. Only a newer x86_64 Linux package with a GitHub SHA256 digest is offered. “Install update” downloads and verifies the complete package before switching versions atomically. The previous version is retained for rollback. The running session and unsaved documents stay open; quit Fastra normally and restart it afterwards. Unpublished Linux packages are not offered. Source builds, system packages and the optional toolkit channel use their original installation method.
+
+Documents and saving
+Source views follow the desktop window’s light or dark appearance, including theme changes and split view.
+
+Open a text file or start with “New”. Tabs hold separate documents; “Split view” displays the same text with shared Undo. Fully loaded text supports UTF-8, UTF-16, UTF-32, Windows-1252, Latin-1 and MacRoman up to 32 MiB. Saving preserves encoding, BOM and existing line endings. Unrepresentable characters are refused. “Reopen encoding” opens another tab and retains existing edits. Large files and long lines use read-only sections; binary data uses a bounded hex view. Navigate using Previous/Next or a byte offset.
+
+“Save” checks file identity and previous contents before a safe exchange. External changes are not overwritten. New documents use “Save as”; an occupied filename is refused. A dot in the tab marks unsaved changes.
+
+Search and replace
+The default “Wildcards” mode uses * within a line and ** across line breaks. “Literal text” treats input literally. “Regex” supports regular expressions. Case sensitivity and whole words can be selected separately.
+
+Calculate the preview first, inspect the complete before/after text and individual approvals. “Apply approved” changes only the editor. Only “Save” writes the file. New search input or editor changes invalidate the previous preview. Drag capture pills into the replacement field. One Undo reverses the complete Apply action.
+
+Search across documents and folders
+Choose “All editable tabs” to inspect a complete before/after preview for every loaded source document. Read-only views and active rich views are excluded and counted. Approve individual matches before applying. The complete document set, including tabs without matches, must still match the preview. Apply creates one native Undo action per changed tab. “Undo joint application” restores the complete batch only while every document still matches its resulting state. “Discard joint restoration” releases that batch binding without changing text; each tab retains its normal editor history. These actions do not save files.
+
+“Folder” opens a separate, full before/after review of on-disk files. Choose an absolute folder, optional exclusions separated by semicolons and the text-format filter. Hidden files are skipped. Skipped files and limits are displayed. Only the explicitly approved matches are written after checking every input snapshot again. Unsaved or active rich views of affected files block Apply. The transaction retains its original files for guarded Undo. Keep the displayed backup path until you deliberately finish recovery.
+
+File backups
+“File recovery …” opens a previously displayed transaction backup folder. Review the complete current/original contents and explicitly confirm restoration. Changed source files or a changed backup invalidate that approval. Large or binary contents use complete paged hex views. Restoring checks every input again; affected unsaved editors block the action. Removing the backup is a separate explicit action after successful restoration and a final source check. Source files are retained.
+
+Text operations and folding
+The “Text” menu contains line operations and Unicode transformations. No selection means the entire document. Line operations expand a selection to full lines. Sorting uses the displayed text locale: stable, numeric, case-sensitive and punctuation-sensitive. Equal sort keys retain their order. This does not promise the same order as Mac sorting. Upper/lower case and Titlecase use the system text locale shown in the menu. UI language does not change these text rules. Each text operation has one Undo action.
+
+Select lines and click “Fold selection”. “Unfold all” reveals them again. Folding affects both views and does not change file bytes. Line numbers are hidden while folded. Enable “Rectangle mode” and drag in the editor to select a rectangle across logical lines. Alternatively, hold Alt while dragging. Cursors persist for further typing, deletion and column paste. Column paste pads short lines. Each input can be undone across all cursors together. Escape, arrow keys or a new click clears the cursors.
+
+Markdown preview
+“Markdown preview” displays locally rendered GFM, raster images, $…$ / $$…$$ formulas, syntax colours and Mermaid code blocks. The search section collapses to make room; you can reopen it at any time. The refresh button reloads an externally changed image, for example.
+
+Relative image paths are based on the saved file. PNG, JPEG, GIF and WebP are supported; SVG and network images are blocked. Explicitly activated HTTP, HTTPS and mailto links open the system browser or mail application; the preview itself stays on its page. Limits are 32 MiB per image, 64 MiB total and at most 128 images. There is no cloud processing or writable Web bridge.
+
+HTML uses the same strict tag and attribute allowlist as the Mac preview, including tables and expandable details. Scripts and foreign internal position or copy attributes are not adopted. Rejected HTML is displayed as text. ==Highlights== and otherwise empty lines containing at least two ordinary spaces remain visible. Footnotes use the Linux GFM parser. Clicks connect ordinary preview blocks with source lines; unmapped raw HTML has no source jump. Complete Markdown parity remains future work.
+
+Tools
+“Tools” provides read-only Git queries, file comparison and document import. Git appears only when git is installed. Status, working diff, history and branches do not modify the repository. File comparison binds both sources and the destination revision; review the full destination text before applying a block. Applying changes the editor with one Undo; save the file separately.
+
+Import queries the local Poor Man’s Text converter for supported formats. Prepare the result and review document contents, the file list, warnings and losses. Only “Adopt” publishes the complete result tree into a new folder. Existing names receive a suffix; source files are preserved. Changes to the target document invalidate approval.
+
+Keyboard
+Screen readers receive distinct names for both source panes, Find and Replace, and the Before/After preview. Search mode and scope add a description to the selected value.
+
+Ctrl+O open · Ctrl+N new · Ctrl+S save · Ctrl+F find · Ctrl+Return calculate preview · Ctrl+Q close. The native editor provides normal Undo/Redo.
+
+Rich Markdown
+“Rich Markdown” switches the current document between source and formatted editing. Save, Close and returning to source wait for full synchronization. An error holds the action and retains the rich view. “Discard rich view …” returns to the current source buffer only after explicit confirmation; input not yet synchronized is then lost.
+
+Bold, italic, highlight, inline code, headings, lists/tasks, quotes, links and tables are available in the rich toolbar. External links are stored but never opened. “Clipboard” offers Copy, Cut, formatted Paste and “Paste plain”. Ctrl+C/X/V and Ctrl+Shift+V use the same paths; Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y undo or redo. Fastra Markdown takes priority over HTML and plain text. ==Highlights== are editable in Rich and also rendered in preview. Returning to source retains the viewport and prior preview choice per document. Table tools add/remove rows and columns and change alignment. Undo/Redo uses WebKit's editing history while in rich mode; returning to source retains the source undo history. Rebuilding rich mode starts a new WebKit undo history.
+
+This first version is limited to 2 MiB, 10,000 blocks and bounded document complexity. Code blocks, unsupported images and unknown HTML remain protected source blocks. Formulas appear as protected rendered atoms while surrounding text stays editable; change formula syntax in source mode. Non-breaking spaces and Unicode survive saving. Other tools that write source text are locked during rich editing. The view uses only bundled local scripts; Markdown executes no scripts of its own and receives no file-writing bridge.
+
+Formatted paste accepts only permitted text, list, link and table formats. Unsafe HTML, images and file packages are refused visibly, with no silent substitution. Links allow only HTTP(S) and local #anchors; Fastra does not open them. Limits: 2 MiB UTF-8 per clipboard format, 20,000 HTML elements and a 5-second read deadline; 64 KiB per source line. Tab, source or clipboard changes discard an old paste request without output.
+
+Project files and external changes
+“Project files …” displays a bounded local directory tree with a path filter and expandable folders. Symlinks and special files are not opened. A background watcher reports external changes to open text files. The new version is loaded only after a complete preview and explicit approval; existing unsaved text is retained until then.
+
+“Recent projects …” in the project window remembers up to twelve explicitly chosen folders after a successful scan. Choosing a folder or opening a list entry counts as a choice; confirm a typed path with Enter. Typing alone, filters and automatic refresh do not change the list. “Open” scans the folder again. “Remove” and “Clear all entries” change only the private list, never project files or open contents. The list is read afresh when opened; projects and files never start automatically.
+
+Markdown outline
+“Outline …” displays headings and logical source lines. Filtering only changes the list. “Source” navigates to the heading and unfolds text if necessary; “Preview” opens the local rendering at the same heading and waits for diagrams. Refresh after changing text or the active tab. Internal anchor links use lowercase titles with hyphens; duplicate titles receive a counter.
+
+In all-tab and folder previews, “Show Unicode and control characters as escapes” makes NFC/NFD, tabs, backslashes and line endings unambiguous. The complete display is prepared in the background; Apply stays disabled until it is ready. The original text is applied. The escaped display is limited to 16 MiB per side and is never truncated. In file recovery, “Show all bytes exactly as hex” also reveals BOM and exact file bytes; all ranges are accessible by byte offset.
+
+Local text backup
+Text backup is off by default. “Back up editable text tabs” enables it for the current window and also stores unsaved contents locally without encryption. “Back up now” confirms a new copy; “Restore backups …” displays earlier inactive sessions for complete review. New tabs open only after approval. Changed or missing source files are restored as unbound unsaved documents and are never silently overwritten. Limits: 32 editable text tabs, 4 MiB each and 8 MiB total payload. Section, hex and image views are excluded. Closing with backup enabled offers Cancel, Close with recovery and Discard. Errors keep the editor open. Disabling stops new backups; existing copies are deleted only explicitly. Recovery does not save source files.
+
+Saved text workflows
+Use “Tools → Saved text workflows …” to create named workflows. Add steps, arrange them with the arrows and save the definition. The private collection is separate from the document. Save or explicitly discard unsaved drafts before closing.
+
+Choose the whole active document or its current selection and calculate a preview. The stage selector shows every complete intermediate state and the complete final result. “Exact characters” shows backslashes, line endings, controls and all non-ASCII code points as escapes; calculate a fresh preview after switching. NFC/NFD workflows open this view automatically. Only “Apply preview” changes the editor, with one Undo. Changes to the source, definition or selection require a fresh preview. This does not save files. Clear rectangle selections with Escape first.
+
+“Workflow on all tabs …” opens an immutable copy of the saved definition in a separate window. Its name and complete definition remain reviewable; later edits in the definition window do not change this job. “Final results and approvals” shows the complete before/after text with individual approval for every editable tab; unchanged tabs remain accessible. “Intermediate stages” shows every complete step for each tab; approvals refer to the final result. Rich, read-only and currently saving views are counted and skipped visibly. Limits: 32 editable tabs, 4 MiB per text, 16 MiB sources/outputs, 32 MiB retained stages, 15 seconds total. Only “Apply approved tabs” changes memory, with one Undo per changed tab. No files are written. Joint Undo rechecks every original tab, including ineffective and unapproved inputs. Changes to membership, revisions, read-only/Rich/save state or saved file basis block old jobs. “Discard joint restoration” releases only that binding. Closing this tool window ends the joint binding; normal document Undo remains available.
+
+Sorting, upper/lowercase and Titlecase use the visible system text locale. All 39 existing step types are available; unsupported enabled steps and unknown semantic fields block the entire workflow. The preview names them explicitly. Ineffective line filters do not remove the entire contents.
+
+Text snippets
+“Tools → Text snippets …” stores templates with {{Name}}. Repeated placeholders share one field; values can contain multiple lines and are inserted literally. Review the full document before and after insertion. Moving the selection or insertion point invalidates approval.
+
+Import/export uses the existing Swift JSON formats. Import shows the complete resulting collection before saving, adds copies and does not overwrite saved definitions. Additional fields are preserved. U+0000 in processed text fields is explicitly rejected in this GTK subset. Export includes the saved collection loaded in this window; save unsaved drafts first. Export creates a new file and never overwrites an existing target.
+
+Limits: 50 definitions per collection, 1 MiB JSON, 32 steps, 4 MiB document text, 32 MiB retained computed text, an additional 64 MiB exact display and five seconds per workflow. Snippets allow 16 KiB per template/field value, 32 distinct placeholders and 256 KiB output. File, folder and project workflows that write to disk remain open work. A collection changed elsewhere is not overwritten; after saving or discarding the draft, use “Reload”.
+
+Results exceeding 64 KiB per logical source line are refused before adoption into the native text editor. This also applies to generated text operations and workflows. Existing large files or long lines remain readable through section and hex views; a truncated display is never used as complete approval.
+
+Printing
+“Print” or Ctrl+P opens the native print dialog for the current view. Source and Markdown preview can also be selected separately. PDF output is available through the print dialog. In the Fastra tab, source printing offers line numbers and headers/footers. Hex and large text files print only the currently visible section, identified in the title; hex lines never wrap.
+
+Images and all PDF pages print as bounded raster images up to 4,000 pixels per edge, fitted to the selected paper. PDF vectors, searchable PDF text and original paper formats are not preserved. The Markdown preview prints rendered formulas and diagrams; Rich prints its current view after complete synchronization. The current WebKit does not reliably repeat table headers across pages. Size limits and missing fonts are reported visibly; errors preserve the source file. Source printing is limited to 2 MiB.
+
+
+Search templates
+“Search templates …” next to the search scope opens 38 read-only Regex templates and your user collection. Duplicate a bundled template before editing, or choose “New from search form”. Saving, filling the form and exporting are separate actions. Save or explicitly discard unsaved drafts before closing.
+“Fill search form” sets the pattern and Regex mode. A present replacement suggestion replaces the replacement field, including an empty suggestion. Without a suggestion the existing replacement stays. Scope, case sensitivity and “Whole words only” stay unchanged. Existing approvals become invalid; calculate and review a fresh preview. A changed input prevents late form filling. No search, document edit or file write starts automatically.
+Import/export uses the existing Swift JSON array format. Import validates the entire file and shows the complete collection and number of replaced IDs before saving. Matching IDs replace existing user templates; other IDs are retained. Invalid entries are never silently skipped. Additional fields are preserved; unknown categories or fields block form filling. “Definition as JSON …” shows them completely. Capture labels are a JSON array of strings, such as ["Name", "Place"].
+Export creates a new file from the loaded saved user collection and never overwrites an existing target. Limits: 1 MiB JSON, 100 user templates, 16 KiB per pattern/replacement/example and 64 capture labels. JSON views that cannot be displayed completely remain blocked. User templates are stored privately on this device; a collection changed elsewhere is not overwritten. Save/discard the draft and use “Reload” afterward.
+
+Editor options
+“Editor options …” in a document tab opens the syntax selector and options for both editor views. “Automatic” follows the filename; “Plain text” disables syntax highlighting. Available formats come from the installed GtkSourceView language package. Manual choices for saved files are stored privately on this device, including names without extensions or valid UTF-8. “Save as” remembers the current choice at the new path. Choosing a language never changes text, encoding or line endings.
+Tab width (1–16), indentation with spaces, automatic indentation, line numbers, current-line highlighting and the margin at column 80 apply to both views of the tab. These display options last until the tab closes; only the syntax choice is remembered. Folded ranges still hide line numbers. Unfolding restores your line-number choice. Corrupt or externally locked format mappings are not overwritten; a visible error explains the failure.
+
+
+Search within a selection
+The “Current selection” scope searches only a nonempty continuous text selection in the active editor. Turn rectangle mode off for a mouse selection; clear an existing rectangle with Escape first. Without a suitable selection, search is refused and never expands to the whole document.
+The complete before/after view also includes unchanged text outside the selection. Only approved matches within the captured selection are applied; one Undo restores the entire step. Moving or collapsing the selection requires a fresh preview. In “Active file” scope, moving only the cursor or selection keeps the preview valid.
+Before every adoption into the text editor, the result and its limits are checked again. U+0000, text over 32 MiB or logical lines over 64 KiB are refused with a visible message; the source text and Undo history are retained.
+
+
+Git: Stage and Unstage
+Open “Git …” under “Tools”, then “Stage / Unstage …”. Select individual files and prepare a Stage or Unstage preview. Review the complete file list and scrollable diff. Only explicit approval enables index publication. Unsaved editor changes are not saved or staged automatically; working files are preserved. Renames may add both affected paths to the approval.
+
+A new file selection, changed files, a different branch/index or a switched document context requires a new preview. “Cancel” requests cancellation; it cannot undo an atomic publication that has already completed. Reload the current Git status when in doubt. Foreign Git lock files are never removed.
+
+“Commit …” has its own preview of the complete validated index; index actions never automatically adopt or stage additional files. Configured external clean/process filters, index hooks, submodules, unresolved conflicts and large selections also require the Git CLI. Limits: 128 selected paths, 32 MiB per file, 64 MiB total and 2 MiB complete diff output. Preparation may create loose Git objects; the actual index changes only after approval. Index actions never start a Git network operation.
+
+Compare folders
+“Tools → Compare folders …” compares two chosen folders read-only by file bytes. Status and text filters affect only the visible result list, not the read budget or scan. Each page shows at most 100 entries. Hidden entries are excluded; symlinks and special files are shown but never followed. “Unavailable” and incomplete results do not prove that a file is absent.
+“Open left”/“Open right” uses the normal file loader. “Compare text pair …” reads both files afresh and opens the left source in a new clean editor tab. The folder list is only a snapshot. Transfers in the file comparison require their own preview and initially change only the editor, never a file. Binary/section files and text pairs exceeding 4 MiB are refused there. Scan exclusions, file-type filters and folder synchronization are not available in this window.
+
+
+XML source navigation with XPath
+Tools → XPath navigation … binds the view to the current editable source tab. Validate XML, enter XPath and click a result: Fastra only selects the exact source location; text and files remain unchanged. A different tab, source revision, result basis or Rich mode blocks old navigation. Validate XML again after text changes. Suggestions complete element/attribute names; Previous/Next result and pages of 100 results remain visibly accessible.
+
+The subset contains /, //, *, [n], [@attr], [@attr='value'], @attr and text(). Relative paths search every depth like //. Positions count per parent; predicates apply in input order. Names including prefixes remain case-sensitive; canonically equivalent Unicode compares equal as in Swift. Source text is not normalized. text() selects the first nonempty direct text/CDATA section. Other XPath functions, axes and boolean predicates are not included.
+
+DTD and external entities are blocked. Limits: 4 MiB UTF-8,100,000 XML nodes and attributes,32 levels,128 attributes and8 KiB per start tag; XPath4 KiB and128 steps/predicates,up to10,000 results. Long plain text sections are allowed. The strictly bounded parser phase cannot be cooperatively cancelled; cancellation applies before/after it and during indexing/evaluation. Errors and limits display no partial results. This explicitly does not claim full XPath/XML parity.
+
+
+4D source: .4dm/.4qs use bundled syntax highlighting; “Editor options” offers the “4D” format. “Tools → 4D methods and parameters” shows static definitions in the bound source tab. “Read project methods” reads only the known Methods/Classes folders of the selected project. Click a method to show its signature and header comment; “Open selected method” verifies its source again. “Parameters at cursor” marks the current parameter of a unique project method. Refresh the index explicitly; it is not scanned per keystroke. This is not a compiler check or 4D runtime; components, macros and full language resolution are unavailable. Symlinks are refused. Limits: source tab 4 MiB/10,000 definitions; project 2000 files/16 MiB total/1 MiB per file; at most 200 visible entries. Changes to the tab, revision, Rich lock or selected project block old results.
+4D symbol facts: © 4D SAS, derived from https://github.com/4d/docs under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); command/constant names extracted and reformatted, no descriptive text.
+
+More text operations
+“Text” contains native submenus for lines, indentation/tabs, Unicode, quotes/escapes and transposition. Tabs to spaces, spaces to tabs and indent/unindent use the active editor’s profile. “Hard wrap …” asks for a column (1–10000); long individual words stay intact. Character/word transposition uses the current insertion point or continuous selection. Clear rectangle selections with Escape first. One Undo restores the entire command.
+Quotes can be straightened or changed according to explicitly English smart-quote rules. Escape sequences, diacritic folding and emoji presentation follow the existing product rules. Generated NUL characters or overly long lines visibly block adoption. An insertion point or selection moved during calculation is not edited afterwards.
+Saved text workflows contain the same additional step types and their own tab/indent width (1–16), tabs and wrap-column fields. Changed parameters require a fresh preview; complete intermediate states remain reviewable. Emoji steps initially open “Exact characters”, as NFC/NFD does. All 39 original step types are available; Titlecase uses the visible system text locale. Saving is a separate step.
+
+Hex draft
+In a hex/section view, “Edit hex …” opens an optional draft up to 32 MiB. A byte offset selects its 16-byte row; “Stage row” only transfers the field input into the draft. Invalid or unstaged input is retained. Stage or reset the input before navigation, undo or saving. Draft Undo/Redo does not change any file.
+“Review all hex changes” shows every changed byte offset with old/new values and the target path. Bytes can be saved atomically only after explicit approval. File length is preserved. External changes and unsaved other tabs of the same file block saving. Successful saving starts draft undo on a new file basis. Limits: 4096 changed bytes and 4096 undo actions.
+Closing the hex window hides the draft; the main window cannot silently discard an unsaved hex draft. “Discard / reload …” requires confirmation and reads the current on-disk basis again. Hex drafts are not saved in the optional text session. If file recovery is reported, review recovery first and then reload the file basis.
+
+Saved text disk bytes: “Tools → Disk bytes in new hex tab …” also opens the current on-disk bytes of normal text files or document previews. The previous tab and its unsaved source stay intact. An existing hex draft is reopened. Save new unsaved texts first. Hex saving remains blocked while another tab of the same file has unsaved contents; clean text tabs retain their chosen character encoding when refreshed afterwards.
+
+4D tokens in text commands and workflows
+“Text → 4D → Remove 4D token suffixes” removes recognized command and constant suffixes. “Add 4D command tokens (no constants)” adds known command numbers only; constant numbers are never invented. The workflow step is named “4D: Tokenize commands only”. Strings, comments, object members and declared type names follow the existing Swift tokenizer’s protections. Known commands without a number remain unchanged.
+Without a selection the command covers the whole document; otherwise it covers only the captured continuous selection. The selected fragment is tokenized as its own text. One Undo restores the entire command. In saved workflows, review all complete intermediate states and the final result before applying; saving files is separate. Like the original, token transformations have no SQL mode and may transform recognized 4D names inside SQL blocks. They are not compiler or SQL checks and need no 4D runtime. Limits: 4 MiB input and 100,000 normal word/phrase candidates; output limits and cancellation also apply. Errors and limits never apply a partial result.
+Symbol facts: © 4D SAS, derived from https://github.com/4d/docs under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Names and command numbers were extracted and reformatted; no third-party descriptions are included.
+
+4D ranges must not split composed Unicode characters. Affected token suffixes or selections are explicitly refused. Nothing is normalized or expanded outside the token range; text and previous Undo history are preserved.
+
+Optional 4D runtime: diagnostics and signature help
+“Tools → 4D diagnostics (tool4d) …” uses a separately provided local tool4d. Fastra does not download or install a runtime. Select the complete 4D project in the project tree and open a saved .4dm/.4qs source within it. tool4d needs its adjacent Resources directory, runtime system libraries, Bubblewrap and prlimit. It never launches without working isolation.
+Only “Check document” or “Parameters at cursor” starts a query. Current unsaved source goes exclusively through local pipes into a worker with its own loopback network namespace. Project and runtime remain read-only; no methods, macros or source changes are executed. Complete document diagnostics are not a compiler or full-project check. Older servers without pull diagnostics are visibly refused.
+Clicking a diagnostic selects only within the bound source tab. Check again after tab/source/project changes or a Rich lock; unfold source first. Signature help displays plain text. “Cancel” also terminates owned child processes. If a server does not exit after its complete response, Fastra reports controlled cleanup; incomplete responses are never reported as clean.
+Limits: 1 MiB current UTF-8 source, 200 diagnostics, 8 signatures, 25-second outer process deadline, at most two queries per app. Saved methods with a UTF-8 relative path in the selected project only; the original file basis is never silently refreshed. No execution, completion, refactoring, downloads or external network connections.
+
+Titlecase and the system text locale
+“Text → Unicode → Titlecase · system locale (ID)” and the corresponding workflow step use LC_CTYPE determined after GTK starts, independently of the interface language. For example, tr_TR produces “İstanbul” and en_US “Istanbul”. C/POSIX explicitly uses en_US_POSIX. Review the visible ID in the complete step/final preview. A changed locale requires a fresh preview. JSON definitions gain no locale field; the next calculation uses the system locale visible then. Without this explicit context, titlecase is refused completely. Saving remains a separate step. General parity with macOS localizedCapitalized is not claimed.
+
+Go to line/column
+“Tools → Go to line/column …” or Ctrl+L opens a dialog for the active source tab. Enter a positive line or line:column; Return jumps, Escape cancels. Values start at one and are clamped at line/document end. Columns count UTF-16 units; a column inside a character pair moves the cursor to its start with a notice. Text and Undo are retained. Activate the bound source tab, unfold text and finish pending saving first; Rich, hex and document previews are unavailable. Source, selection or cursor changes require a new jump. Limit: 32 MiB source text.
+
+Open files and folders
+Drop local files on the main window: each file opens in a tab; a folder opens the project tree. Desktop file-open requests use the same path. At most 32 items and one folder per operation; duplicate resolved paths open once. Remote addresses and special file types are refused. Existing unsaved text is retained.
+
+
+Git history and historical file pairs
+“Git … → Explore history …” shows the actual Git graph and up to 200 commits. Select a commit and explicitly choose the comparison parent for a merge commit. Root commits have an empty previous side. The complete change list includes renames and unambiguously displayed raw Linux paths. “Read selected file pair” shows both immutable blob versions side by side and the difference report with its commit/parent basis.
+This view is entirely read-only: no editor transfer, index/ref/file changes or network. Later working-tree changes do not alter a historical pair. “Reload history” updates the bounded commit list; missing objects or a replaced repository produce visible errors. A new selection invalidates the old pair. Cancellation or hiding the main window prevents late adoption.
+Limits: 200 commits, 2000 changed paths, 1 MiB per blob, 2 MiB CLI/report output, 15 seconds per CLI call. Binary data, invalid UTF-8, symlinks and submodules are shown by OID/mode/size rather than as text comparisons. Size/work limits produce no partial preview. Full errors remain scrollable under “Difference blocks”. Commits have their own dialog with a complete index preview.
+Missing objects in partial clones are never fetched automatically, including existing local Git read views; the actual Git error is shown instead.
+
+Saved text workflows on files, a folder and a project
+“Tools → Saved text workflows … → Workflow on files …” offers the saved active file, files from one folder and files from the selected project root. The definition is copied immutably and remains reviewable with all parameters. Save unsaved documents first. Folder exclusions and known-text filters apply only to folders/projects; hidden files are skipped.
+Review every complete intermediate state under “Complete intermediate stages” and the full before/after text under “Final results and approvals”. Approvals apply per complete file exclusively to the final result. Only “Change approved files” writes through the same atomic file transaction as folder search. “Undo file changes” uses its joint restoration; backups remain available for recovery. Clean open text tabs are refreshed from verified file receipts; unsaved text/Rich/Hex contents and running saves block affected inputs.
+An invalid selected input or an output that cannot be encoded losslessly blocks the entire job. No partial error plan can be applied. Unchanged and unapproved files remain part of every snapshot check. Changes to files, directories, project binding, definition or system text locale require a fresh preview. Initial limits: 32 files, 4 MiB per file, 16 MiB sources/outputs each, 32 MiB intermediate stages, 64 KiB per logical display line. NUL, links, special files and metadata that cannot be preserved safely are refused. Writing requires supported local ext4/Btrfs filesystems; one job does not write across filesystems. No new codec chooser, multiple-folder selection or general macOS parity is claimed.
+
+Find/replace history
+“Search history” beside the search scope or Alt+H opens the last 15 explicitly used find/replace pairs. A preview action remembers the complete pair; typing alone saves nothing. An identical pair moves to the top; the same find text with a different replacement remains a separate entry. Empty find fields are ignored.
+Select a pair with the mouse or keyboard to fill both fields. Search mode, scope and options are retained. An existing preview becomes invalid and must be recalculated before applying. Selecting a pair does not start a search.
+History is stored locally and shared between windows. Opening refreshes the list. “Clear search history” removes the shared list; search fields and documents are retained. The list contains only find and replace fields, never automatically collected document contents. Up to 64 KiB per field are stored. Access, format and write errors are shown visibly; existing damaged files are not overwritten.
+
+
+Transformation by example
+“Tools → Transformation by example …” derives a find and replacement pattern with one wildcard from Before and After. “ring, The” and “The ring” produce “*, The” and “The *”. Both examples must contain different text, cannot contain an asterisk and are limited to 512 characters (graphemes) and 4 MiB UTF-8 each. Without shared text with safe boundaries, nothing can be adopted.
+The preview shows the patterns and actual wildcard result. Backslashes, line breaks, tabs and non-ASCII characters are fully displayed as escapes; the search form receives the original characters. Display is limited to 64 KiB per value. Canonically equivalent Unicode compositions count as equal; captured text retains its original bytes.
+“Apply” or Return only fills Find/Replace and selects Wildcard. Scope and options are retained. It does not start a search or change documents or files. Then calculate and approve a fresh preview. Escape or “Cancel” closes without adoption; Shift+Return inserts a new example line. If the bound search form or document changes, reopen the tool.
+A single * does not capture line breaks. If the inferred pattern does not produce After, “Apply” stays disabled and the actual output remains visible. There is no hidden expansion to **.
+
+Close individual tabs
+The X in each tab label and Ctrl+W close that tab. Unsaved changes offer Save and close, Close without saving, and Cancel. A save in progress keeps the tab open. If content changes during a question, it is retained; request Close again. Closing another tab preserves the active tab; otherwise the most recently used open tab follows. The last tab uses the window decision. Unsaved hex drafts must first be saved or explicitly discarded in the hex window. Rich content is synchronized before the decision; an error keeps the view open.
+
+Markdown import when opening
+When opening supported files or packages, Fastra offers importing as Markdown and opening the original source or folder. Availability and missing-tool reasons come from Poor Man’s Text. Preparation shows progress and readable diagnostics; complete diagnostic JSON remains available separately. Every adoption requires the complete preview. Changing the project or target basis invalidates the preview. No tool is installed. Import paths that cannot be represented as UTF-8 are refused with an explanation.
+
+
+4D completion
+With the 4D syntax format, suggestions appear after two typed characters. Ctrl+Space or “Tools → 4D completion …” opens them after one character. The list contains at most 200 matches: commands with original signatures, then project methods, shared component methods and constants. A project method takes precedence over a component method with the same name.
+↑/↓ selects and scrolls; Return, Tab or a click applies. Escape closes an open list and otherwise opens it manually after one character. The entire unfinished multiword name, such as OBJECT SET C, is replaced and can be restored with one Undo. Suggestions cannot be applied in comments, strings, variable/member/table prefixes, selections, Rich, hex or read-only views.
+“Tools → Refresh 4D project/component index” reads the selected project sources in the background. The same button is available in the suggestions list. Typing never scans files. Refresh the index after project changes. A project, tab, source or window change blocks stale adoption.
+Components in Components/components support unpacked .4dbase sources and bare or built .4DZ archives. Only shared methods are visible; compiled components can use the method catalog and exported Markdown signatures. Without a signature, only the known name is shown. File links, encrypted or unsafe archives and exceeded limits are explained; nothing is extracted or executed. Limits: 4 MiB active source, 4000 index entries, 2000 project and 2000 component methods, 1 MiB per source/catalog/documentation file, 16 MiB component sources total and 64 MiB per archive. These suggestions do not start tool4d or a runtime and do not change files.
+
+
+4D text macros on Linux
+
+Tools → 4D macros … opens the local catalog for the active .4dm tab.
+Choose a source or name, Prepare preview, review both diff sides, then
+Apply. The edit remains unsaved and can be reverted with one undo.
+Changes to the tab, path, text, project, or selection make the preview stale.
+A macro suffix such as  /# opens the same preview with Ctrl+#; app and editor
+commands remain reserved.
+
+Refresh reads changed XML sources again. User macros … chooses a user
+folder; 4D directory … adds an existing installation. XDG defaults
+restores $XDG_DATA_HOME/fastra/4d/Macros v2, falling back to
+$HOME/.local/share/fastra/4d/Macros v2. Project and component macros are also
+discovered. Unreadable sources are reported.
+
+Text macros work without Tool4D. Supported placeholders include selection,
+full text, method name, OS user, the first caret marker, date formats 0–8 and
+time formats 0–6. Unknown or clipboard placeholders and invalid formats remain
+visibly unavailable. Runtime macros also require a MacroRun engine project
+and Tool4D integration. “Choose Tool4D …” and “Choose engine project …” store these paths. Only “Prepare preview” starts the selected engine in an isolated private copy; the original project and files remain unchanged. Review the complete diff before applying. Compiled engine components must support the Linux runtime. Large inputs
+are refused explicitly; a truncated preview can never be applied.
+
+
+Saved code questions
+Tools → Open saved code question … loads a local snapshot package in its own read-only window. Source SHA-256 hashes are checked before opening; loaded sources remain frozen. Choose a source or step, Previous or Next. “Ready” means that the correct text and complete UTF-16 selection are actually visible.
+Scrolling, selecting, changing sources, font sizes or wrap pauses guidance. “Return to explained location” explicitly resumes it. Ctrl+W or Close closes only this window; your working documents remain intact. The package generates no AI answers and runs no scripts. At most 16 windows including pending loads may exist. Invalid packages, links and exceeded limits are refused with an explanation. External local control is available through fastra-control; see below.
+
+
+Fetch Git remotes
+Git dialog → Fetch … reads the configured remotes. Choose one or All remotes, choose prune, then Fetch. Prune removes stale remote-tracking refs; working files, the index and current branch remain intact. All uses separate fetches and explicitly reports partial failures. Live output and Cancel remain visible; open Git views refresh afterward. Changes to the document, project or owner invalidate the request.
+Authentication uses no interactive password dialogs. Set up required SSH keys, known host keys or Git credentials beforehand. Supported transports are file, ssh, https, http and git. The fixed noninteractive SSH command replaces core.sshCommand. Total limits are 120 seconds and 512 KiB for each output stream; at most 64 remotes. Automatic fetch is not available. Pull has its own preview and confirmation dialog. Branch switching and commit have their own preview and confirmation dialogs.
+
+Local snapshot control
+
+fastra-control --capabilities --json reports capabilities without starting the app. --request FILE or --request - submits a bounded JSON request; --no-launch uses an existing control instance only. The app shows separate read-only snapshots or saved code questions. Ordinary documents can only be inventoried; control does not save or replace working files.
+
+Acceptance is not readiness: query status until the job is ready, failed or cancelled. After a lost response, repeat exactly the same request. Your selection, keyboard input, scrolling, newer navigation and closing cancel pending jumps. sourceSnapshot confirms an independent session copy only with ready and adopted: true.
+
+Limits: 256 KiB per snapshot, 16 sessions, 128 retained jobs, a ten-second total CLI deadline including stdin, 30 seconds per job and 300 seconds retention. Replies are complete or refused with capacity above 16 MiB. GTK cannot display actual U+0000 unchanged, so such text is explicitly refused. Details: docs/LOCAL-CONTROL.md and docs/linux-port/F17-LOCAL-CONTROL.md.
+
+
+Push local commits
+Git dialog → Push … initially reads only configured targets. Choose a remote and Load preview. Only this button contacts the target and retrieves its exact commit for inspection. Review the address, full target ref, source commit, expected remote commit and complete commit list. Execute push then explicitly sends exactly this state. A new remote branch is identified as such. Multiple push addresses or Git URL rewrite rules prevent unambiguous approval; other valid targets remain usable.
+A normal push requires a local branch and a fast-forward. Divergence is explained; force push requires its separate explicit mode. Pull and rebase are not offered. Upstream, HEAD, index and working files stay unchanged. Tags and submodules are not additionally transferred. Normal Git hooks and signing rules still apply.
+Live output and Cancel remain visible. Cancellation cannot undo a change already accepted by the server. Always reload the preview afterward. Document, tab, save or project changes invalidate old approvals; stale results are never adopted. Authentication and permitted transports match manual Fetch. Each action has a 120-second limit and bounded complete output; exceeding the output limit cannot enable a push.
+
+Rich Markdown outline
+“Outline …” in the rich toolbar reads the headings actually displayed. Filtering and Previous/Next show at most 200 entries per page. “Show” reveals a heading in this view; “Document start” returns to the top. Refresh after editing or switching tabs. An accepted WebKit navigation stays associated with its original view and never activates a different tab. Limits: 10,000 headings, 16 KiB per title and 2 MiB total title text.
+
+Local Git branches
+“Git … → Local branches …” shows local branches and complete commit IDs. Choose a name and explicit commit ID, review the preview and confirm creation. The new branch is created without checkout or tracking; working files, index and unsaved buffers remain intact. A name collision is reported and never overwritten. Executable reference-transaction hooks still require the Git CLI. Branch switching has its own dialog; deletion is not offered here.
+
+Further launches open additional windows in the same application. Local control inventories every window. After a service request the application stays available without windows; Ctrl+Q closes the current window after checking unsaved changes.
+
+Switch local Git branch
+“Git … → Switch branch …” shows source, target and complete commit/index/working diffs before a normal Git switch. Review the preview and explicitly confirm. No forced checkout, stash or automatic save. Git may already have changed files on error or cancellation; the dialog therefore reads and displays the resulting state. External Git is not locked atomically. Open text buffers are retained; reload a new disk version only after your own review. Reopen section and image views when needed.
+
+Images and RTF in Rich Markdown
+
+Save a new Markdown document first. Image → Insert images or files …, clipboard
+paste and local file drops validate image data before adoption. The preview shows
+new filenames, byte counts, SHA-256, dimensions, frame counts, insertion content
+and the existing source. Only Save images and insert creates new files in
+images/. Use Save afterwards to write the document itself. Mixed drops open
+remaining files and the normal folder after image insertion.
+
+PNG, JPEG, GIF and WebP retain their complete bytes; TIFF and HEIC become PNG after
+an announced conversion. The preview shows the first frame on white. Limits are
+32 MiB per image, 64 MiB in total and at most 32 new image files. Remote image
+addresses are never loaded. Private Markdown packages carry image bytes between
+windows; embedded HTML data images receive the same file preview. If you move the
+selection while pasting, start the operation again.
+
+Undo protects saved and other open document references. Retained image inodes
+remain under .fastra-image-undo-… for Redo or recovery; there is no automatic
+deletion. Image → Show recovery files … lists known paths. Source mode restores
+image names needed for source Undo; unreferenced files can remain. The rich view checks external image changes automatically in the background.
+Invalid or missing images never show stale bytes; text, selection and Undo remain intact.
+
+RTF-only clipboard opens the existing import dialog with an explicit loss warning.
+Review conversion, preview and diagnostics before adopting a separate imported
+document. Highlights can be lost. Undocumented RTFD clipboard packages are refused;
+open or drop a local RTFD file package. There is no silent plain-text fallback.
+
+Save as for existing documents
+“Save as …” and Ctrl+Shift+S show the complete source and target text, encoding/BOM, every new image copy and any existing target. An existing target needs separate overwrite approval. A changed basis or newer input holds the action. If the target was published but could not be adopted into the tab, newer input and the original tab path are retained; the message identifies the target to inspect.
+When changing folders, reviewed local raster images actually used by the document are copied. Original documents and images are retained. Ambiguous references are refused. Changing image origin starts a fresh Undo history after a visible explanation; old image tickets stay bound to their original locations. A plain text path change preserves text Undo. Limits: 4 MiB per complete text page, 32 images, 32 MiB per image and 64 MiB combined image data.
+
+Quit Fastra
+“Quit Fastra” or Ctrl+Shift+Q first collect save decisions for all windows. Cancel, an error or a changed basis holds the shared close. Files already explicitly saved remain saved. Rich editors are fully synchronized before approval; local closing snapshots are durably confirmed before windows disappear. Active save, image and folder file operations must finish, including their final checks. Ctrl+Q still closes the current main window.
+
+Commit the complete index
+“Git … → Commit …” previews the complete index difference, tree, every parent, message, configured identities and signing. Only its separate confirmation starts a normal native commit. Hooks remain active and their actual errors remain visible. The working index and unsaved editor buffers are neither supplemented nor written back. Changed bases require a new preview.
+
+Explicit Force Push
+“Force Push with exact lease” starts disabled in the Push dialog. Enabling it requires a new preview of all outgoing commits and commits removed from the target branch. A separate confirmation allows only the held address, source ID and exact server lease. A normal push never automatically turns into Force Push. Cancellation cannot undo a change already accepted by the server.
+
+Visible Markdown blank lines
+An otherwise empty line containing at least two ordinary spaces shows exactly one visible blank line. This also works between list items and after quote markers. Empty lines, a single space, tabs and non-breaking spaces do not activate this extension; code and HTML source blocks are retained. Original line endings are preserved. You can type directly into a visible blank line and undo it. Copy and Paste retain the spacing; internal source-position attributes are not passed to other apps.
+
+
+Click between source and Markdown preview
+Clicking source text scrolls the corresponding preview block into view. Clicking ordinary preview text places the caret in the last-used source view, expands folded target regions and focuses the editor. Links, text selection and copy buttons retain their own actions. Columns are approximate where Markdown markup has been removed; scrolling is not continuously coupled.
+
+Copy code blocks
+Each code block's copy button copies the complete displayed code as plain text, including tabs, spaces and its final newline. It supports mouse and keyboard input. Previous HTML/RTF formats are replaced; source text and Undo remain unchanged. Copies are limited to 2 MiB each; stale or oversized requests report an error without partial copying. Printing and ordinary selection copying omit copy controls and internal position attributes. LF, CRLF and CR-only sources use the same parser view while preserving original line endings.
+
+Rectangle selection and column paste use the configured tab width. Changing it ends the existing rectangle selection; text and Undo remain unchanged.
+
+Copy and cut rectangles
+“Text → Rectangle selection” offers Copy, Cut, Column paste and extension up/down. Ctrl+C/Ctrl+X copy plain text with the original line endings; multiline copies include a final newline. Ctrl+Shift+↑/↓ extends or shrinks across logical lines regardless of soft wrapping. Ctrl+V replaces without padding short lines; “Column paste” pads using the active tabs/spaces profile and also works from a single caret. Extra clipboard rows continue in following lines; missing rows clear only selected characters. Each change has one Undo. Stale requests and exceeded limits (4 MiB, 2001 rows, 64 KiB per resulting line) make no changes.
+
+Close other tabs
+Each tab header's menu offers “Close other tabs”. That tab stays open; all other unsaved tabs are asked about before any tab closes. A late Cancel retains every tab and the previous activation. Earlier explicit saves remain saved. Pending changes and stale document or tab states hold the operation.
+
+Formulas in Markdown preview
+Inline and display formulas use bundled KaTeX rendering. Incomplete, nested or unsupported formulas retain their original source with a readable explanation. Code, HTML regions and literal image/link destinations are not interpreted as formulas. Preview, code copying, image references and Save As retain original source ranges, including CR-only line endings.
+
+Format profiles on Linux
+Tab and indentation widths are independent choices from 1 to 16. Tabs/spaces and window wrapping are saved per syntax format and restored for new tabs and process restarts. Factory settings use four spaces and width four. Plain text, HTML, JSON, Markdown, XML and Diff wrap to the window by default; code formats do not. Line numbers and automatic indentation remain document settings. Profile changes are visibly disabled while the saved syntax choice loads; an explicit syntax choice takes precedence. Pending or failed profile writes visibly hold normal Close and Quit. After successful saving, request Close again; if the store is busy, explicitly retry the choice or Close.
+
+Line endings on Linux
+Choosing LF, CRLF or CR beside the encoding records a pending change. Save performs the conversion; until then, the original characters and undo history remain intact. A pending choice counts as unsaved and survives cancellation, failed saving and session restoration. Choosing the previously saved style clears the pending change. Without an explicit choice, ordinary Save preserves mixed line endings.
+
+Save As shows the complete converted target text before approval. Encoding and BOM are retained. When saving to the existing location, one Undo reverses the conversion. If you continue editing the source during saving, the newer text stays unsaved; review it and save again. Rich view waits for saving to finish before accepting further input.
+
+Closing Editor Options restores focus and selection to the previous source pane while the document and user interaction remain unchanged.
+
+Formulas in Linux Rich view
+Inline and block formulas are rendered. The formula itself is protected; edit TeX and delimiters in source mode. Surrounding paragraphs, lists and tables remain editable. Unsupported or nested formulas show a source notice. Copy and paste between Rich views retain original formula syntax through Fastra's Markdown format; ordinary HTML copy contains MathML and plain text follows the visible text. Rendering works locally without a network connection.
+
+Git Pull on Linux
+“Git Pull …” offers FF-only, Merge or Rebase. “Fetch source and prepare preview” first performs an explicit fetch, which may change refs and FETCH_HEAD. Review the complete commit patches, status, index and working diff, then approve the operation explicitly. Native Git fetches again during pull; the remote, external Git and hooks may cause additional or partial changes. The final report shows actual HEAD and file state even after cancellation or failure. There is no automatic rollback or continuation. File publication and normal Close visibly wait during pull and its post-check; explicitly retry refused actions afterwards.
+
+Application-wide page guide
+“Show page guide” and “Page guide column” apply to all windows and both source panes, independently of syntax format and line wrapping. Choose a column from 20 to 500; factory settings use 80 with the guide off. Settings survive restarts. Controls are visibly disabled during the initial load. Pending or failed writes hold Close; request Close again after success. The “Wrap target” and “Continuation lines” options are enabled by the matching optional text runtime. Choose window width, page guide or a fixed column from 20 to 500; the viewport remains the upper bound. Continuation lines stay flush left, match the first line or add one indentation level. These settings do not change file characters. With system libraries, Fastra shows the optional-runtime notice and keeps window wrapping.
+
+Source paste
+Normal paste through Ctrl+V, Shift+Insert and the context menu checks clipboard text and the complete result before the first edit: at most 32 MiB and 64 KiB per resulting line, valid UTF-8 and no NUL characters. A refused request preserves source, selection and Undo. New selections or stale replies cannot overwrite later text. Ordinary middle-click paste uses the same checks at the clicked text position, including the built-in line-number gutter, without artificially moving an existing selection. Active rectangle selection retains its separate paste path and 4-MiB limit; this does not claim verification of every other insertion path.
+
+External file comparison
+fastra-diff accepts exactly two files after “--”. --left-label and --right-label set labels; --focus-diff explicitly requests focus. The separate comparison window remains read-only even without --read-only. Save and Save As have no effect there. Close leaves the service available; “Quit Fastra” also checks ordinary unsaved windows. Complete comparison limits remain in place; unsupported inputs receive a diagnostic. Long normal paste reveals the caret only while selection, tab and editor focus still belong to the operation.
+
+Split source view
+“Split view” shows the same document with independent selections, carets and scroll positions. Text operations, navigation and paste target the last-used source view, including after opening a menu or dialog. Turning split view off makes the primary view the target. Text changes and native Undo affect both views together; folding remains document-wide. Focus changes alone do not replace PRIMARY. Collapsing an own selection releases only its still-current own PRIMARY offer. When typing over a multi-character selection, GTK separates deletion and insertion into two native Undo steps; the second restores the deleted text. Fastra paste and text operations retain one shared Undo each.
+
+System text locale
+Upper/lower case in text operations and saved workflows uses the same captured system text locale as Titlecase. Stage and final previews show its ID. A later locale change requires a new preview; an unavailable locale visibly blocks applying. Only the selected substring is transformed together; text outside remains unchanged. Limits remain 4 MiB input/output and 64 KiB per resulting line. Replacement templates retain their previous Root semantics.
+
+Stable sorting by text locale
+Lines use numeric, normalized ICU collation. Case and punctuation distinguish keys; lowercase precedes uppercase for otherwise equal words. Equal keys, including different leading-zero counts or canonically equivalent Unicode spellings, retain their original order in both directions. Document bytes are not normalized. The text menu and workflow previews show the captured locale; a locale change requires a fresh calculation. Existing workflow files need no new JSON field. The order can differ from Mac/Finder sorting.
+
+Show in file manager
+The button in the project window selects the chosen project folder in its parent folder. The same command in a saved document tab’s context menu selects the file in its folder. Unsaved documents have no active action. Fastra uses the desktop file-manager interface and visibly explains an unavailable or failing service. The action does not change documents.
+
+
+Automatic links on Linux
+
+Markdown preview and Rich Markdown recognize automatic HTTP(S), www and email addresses. Entities, backslash escapes, tables and footnotes retain their original source ranges. A link such as https://example.com/$x$ keeps the formula syntax as literal URL content. Rich Markdown also allows Mailto in its link dialog and rejects control characters in link destinations. External links stay blocked in Rich; normal preview opens allowed schemes only after explicit activation. Cancellation or a complexity limit never adopts a partial link calculation.
+
+The optional runtime candidate opens external web and mail links through the desktop portal. If that portal is unavailable, Fastra reports an error. System libraries retain the existing desktop launch behavior.
+
+Native input preflight on Linux
+
+The matching optional Linux runtime candidate checks final GTK text commits and the connected native Delete, Backspace, SmartBackspace and Join actions before mutation against 32 MiB overall and 64 KiB per logical line. A rejected action preserves the text, selection and undo state immediately preceding that action. Delete and Join checks apply without active composition. Preedit, combined surrounding deletion and commit, other indentation actions, Tab/snippet transactions and other native multi-step actions remain separate limitations; a complete IME contract is not promised.
+
+Ordinary Return with automatic indentation in a linear source view is also checked before changing the text and undone as one action. This applies to the built-in indenter and unconsumed input. Keys already handled by an input method remain outside this contract; rectangle Return keeps its previous behavior. Newly inserted Return characters remain LF internally, while existing CRLF bytes are preserved.
+
+
+Drag saved files from tabs
+
+The file handle beside a saved tab name can be dragged into the file manager or another application. It passes the existing file, not the unsaved editor buffer. When changes are unsaved, the hint explicitly identifies the last saved version. New unsaved tabs have no file handle. Hex and section views pass the whole saved file, not just the visible portion. Fastra explains when the source was removed or is no longer available as a file.
+
+Markdown formatting in source text
+
+The “Markdown source” row offers Bold, Italic, Highlight and Inline code for the active source pane. It wraps the selection or removes existing markers. Without a selection, it inserts an empty marker pair with the caret between the markers. Each command has a single undo step. The row appears only for the selected Markdown format in source mode; Rich Markdown has its own toolbar. These commands are unavailable for rectangular selections and locked sources.

@@ -1,0 +1,64 @@
+{
+  "version": "1.183.0",
+  "build": 393,
+  "product_commit": "5407fe6c1ab2421f527d3b2fbf82ef948aebf7b6",
+  "source_identity": "18f12cf5b3a34792a34252ae4740cac9420ee220fb026ba0f419d695dc915950",
+  "verified_product_inputs": 462,
+  "unsigned": true,
+  "unpublished": true,
+  "local_artifacts": "dist/linux-1.183.0/packages",
+  "artifacts": {
+    "fastra_1.183.0_amd64.deb": "af2c9d30a5e1992f6723954766296c06e0d4462e0792a9141a8530e6285ef1d9",
+    "fastra-1.183.0-linux-x86_64.tar.gz": "be820421ae364cd1c06f6c442bc4c36782e963c6e8f87257bea29f3b5af660ed",
+    "fastra-1.183.0-linux-x86_64.zip": "8e40b99de73563ad7c622ca6b653e4ccafb4700644e912856d2c0c498fe9c6d3"
+  },
+  "tests": {
+    "workspace_programs": 53,
+    "regular_passed": 676,
+    "native_git_helper_cases": 26,
+    "failed": 0,
+    "ignored": 6,
+    "linux_regular_subset": 213,
+    "harness": "RUST_TEST_THREADS=1; explicit internal concurrency remains enabled",
+    "strict_workspace_debug_and_linux_release_clippy": "PASS",
+    "root_html_native_de_en_760_1100": 4,
+    "root_links_native_de_en_760_1100": 4,
+    "all_eight_native_screenshots_visually_inspected": true,
+    "source_free_installed_deb_and_relocated_tar": "PASS: HTML details/entity text, KaTeX, Mermaid, table, actual Rich formula; all four screenshots inspected",
+    "optimized_packaged_default_uri_handler": "PASS: actual mouse HTTPS/mailto receipts, file blocked, original file SHA unchanged",
+    "optimized_packaged_external_diff_contract": "PASS: simultaneous four cold requests, strict protocol, real hanging peer deadline, no late fallback",
+    "optimized_packaged_git_helper_cases": 26,
+    "inner_webkit_sandbox": "NoNewPrivs1,Seccomp2,privatePID"
+  },
+  "reviews": {
+    "html": {
+      "status": "CLOSED_NO_CONFIRMED_REMAINING_P1_P2",
+      "report_sha256": "2dacafb545a8bc7c35464abce2eadff240961fc3a28057bc08a471218661417d"
+    },
+    "links": {
+      "status": "CLOSED_NO_CONFIRMED_REMAINING_P1_P2",
+      "report_sha256": "f3a80d51bee2fd418d4c4fc6e76d53d147ffd0441329371f500560cd57aa9339"
+    }
+  },
+  "closed_findings": [
+    {
+      "id": "HTML_ATTRIBUTE_NUMERIC_ENTITY_8",
+      "priority": "P2",
+      "status": "CLOSED",
+      "fix": "Separate eight-digit attribute references from unchanged CommonMark text limits; actual PNG independently red-to-green."
+    },
+    {
+      "id": "LINK_DEBUG_ENTRY_RELEASE_CFG",
+      "priority": "compile",
+      "status": "CLOSED",
+      "fix": "Each debug test entry retains its own cfg; independent release check binds exact final Main."
+    }
+  ],
+  "limitations": [
+    "Full Markdown dialect equivalence, current Mac window acceptance and physical desktop/IME/accessibility acceptance remain open.",
+    "Split selections/targets remain in separate independent review; current PRIMARY-collapse P2 is not part of this product.",
+    "Fixed-column/continuation wrapping and general native typing/IME size preflight remain open.",
+    "The source-free package image lacks an emoji glyph used only by the synthetic fixture; entity text and resources render, source bytes unchanged."
+  ],
+  "retention": "Small evidence retained; disposable fixtures reassess after acceptance by 2026-12-06."
+}

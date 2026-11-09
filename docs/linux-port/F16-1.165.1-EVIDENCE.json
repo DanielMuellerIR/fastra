@@ -1,0 +1,41 @@
+{
+  "version": "1.165.1",
+  "build": 375,
+  "product_commit": "fbd3fa26efd6eeaabd4e1668290ccfe909fb1923",
+  "previous_feature_commit": "23b4bd0bb0493853348dabb5a397024209301235",
+  "source_archive_sha256": "9858aaa4119c3511becb1bfe4cbf7b739c3643f13946576d84f5ca44e17374e0",
+  "built_sources_byte_compared": 289,
+  "build_source_sha256": "dd679ff91e07b73bda1fed399292bc9c99e00339525c0f4ec93462aab2817257",
+  "packaged_release_sha256": "7c8b0378b4b963a1f0898c49d7189033e5c6d508b401ddfaa2c61bc6c0dfba67",
+  "packages": {
+    "fastra_1.165.1_amd64.deb": "88ce4d6038978bb89b18455af7e0ce605af07278d9c5bcaa8c25539fa9bb093e",
+    "fastra-1.165.1-linux-x86_64.tar.gz": "e8b600b210a9a7adc6aae460c9c37669716ea923c65c1e65fb655bea0a8a9c2a",
+    "SHA256SUMS": "6b6f4440fbef3a833b085f69641c9ae08d78358da8fe6c1ad331ecaeae31606a",
+    "PKGBUILD": "a01d6388a87ca22b0e56fefec8d09af16c9cf5bd4e7447188cd447389b10d791"
+  },
+  "checks": {
+    "feature_11650_backend": 286,
+    "feature_11650_host": 67,
+    "feature_11650_host_ignored": 1,
+    "native_mac_example_pairs": 122,
+    "native_mac_corelibs_differences_fixed": 18,
+    "patch_core_tests": 96,
+    "patch_native_example_languages": [
+      "de",
+      "en"
+    ],
+    "package_install_and_real_relocation": true,
+    "sandbox": {
+      "network": "none",
+      "NoNewPrivs": 1,
+      "Seccomp": 2,
+      "private_pid_namespace": true
+    }
+  },
+  "limits": [
+    "Ubuntu 24.04 with private Xvfb/X11; no full Wayland/IME approval",
+    "No independent new Mac app build or GUI approval",
+    "No release or public upload",
+    "Native patch UI logs have no separately captured debug-binary hash; packaged release identity is verified"
+  ]
+}

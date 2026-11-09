@@ -1,0 +1,24 @@
+[
+  {
+    "category" : "Text-Strukturen",
+    "defaultReplacement" : "$2$1",
+    "exampleMatch" : "cat🙂",
+    "groupLabels" : [
+      "Tier",
+      "Emoji"
+    ],
+    "id" : "user-6793398e-0389-4ade-97b2-24f44b932101",
+    "name" : "Tier und Emoji",
+    "regex" : "(cat)(🙂?)"
+  },
+  {
+    "category" : "Wörter & Zeilen",
+    "exampleMatch" : "é",
+    "groupLabels" : [
+
+    ],
+    "id" : "user-6793398e-0389-4ade-97b2-24f44b932102",
+    "name" : "Akzent",
+    "regex" : "é"
+  }
+]

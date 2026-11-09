@@ -1,0 +1,59 @@
+{
+  "commit": "7aea37ab9c6422e711675fa5ae34447ed96c8390",
+  "source_archive_sha256": "eb1ed78aacac41311d8e4f236a04ef22cc03a94608ae5454c7cd0acae1918d09",
+  "source_files_byte_compared": 263,
+  "archive_tar_umask": "0022",
+  "archive_commit": "7aea37ab9c6422e711675fa5ae34447ed96c8390",
+  "date": "2026-11-05",
+  "version": "1.163.0",
+  "bundle_build": "371",
+  "source_content_sha256": "112a9d8b707ec11f51f73ed488d67627f2356dfd813b7e49fbe88b830df8def3",
+  "outputs": {
+    "fastra_1.163.0_amd64.deb": "42f412bb08e2578dd47f403ae74b8d5dd16e6adeaf334fa7e80e331d57013f3c",
+    "fastra-1.163.0-linux-x86_64.tar.gz": "99d2f8d0f6feb73797e284a6b4b2fa02a9fbec5ae91fc3cf93ef62f3e3d33c7d",
+    "SHA256SUMS": "9d0787f2c9f71af0ca57505e4fc023b61c4d736ff65cf554920c680f39b38678",
+    "PKGBUILD": "6e307260ead34f607526240d0715e80d614243ff179d84c16b27520141b112f6"
+  },
+  "binary_sha256": "6907e292c6eac964b75e63842636fdaf8e7c00b647b5e47bafb6e0d67dff7089",
+  "icu_source_sha256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+  "rust": "1.99.1",
+  "builder_image": "sha256:ee28d59cfaf26bae6c9d0df5449fa0f5562ce657fe66c50619524741d7eba22c",
+  "runtime_image": "sha256:95bebc437d45f178312616c6607b2885dee3ec786e085c81cf279dec153a9eac",
+  "checks": {
+    "installed_deb": true,
+    "explicitly_moved_tar": true,
+    "runtime_manifest_all_hashes": true,
+    "relative_private_icu_ldd": true,
+    "markdown_katex_mermaid_table_visual_both_layouts": true,
+    "webkit_no_new_privileges": 1,
+    "webkit_seccomp_mode": 2,
+    "webkit_private_pid_namespace": true,
+    "png_svg_two_page_pdf_observed": true,
+    "four_d_syntax_colors_both_layouts": true,
+    "readonly_hex_bytes_both_layouts": true,
+    "five_fixture_hashes_preserved": true,
+    "packaging_repeat_byte_identical": [
+      "deb",
+      "tar.gz",
+      "PKGBUILD"
+    ],
+    "independent_rust_recompile": false,
+    "network": "none",
+    "host_desktop_used": false
+  },
+  "open_findings": [
+    {
+      "severity": "P2",
+      "area": "intermittent viewer layout",
+      "detail": "One relocated SVG and PDF sequence displayed a blank document pane after 6 seconds. A fresh unchanged relocated rerun showed SVG and PDF at 6 and 14 seconds and PDF page 2 after Next. Cause remains open in this exact snapshot; no full Viewer release acceptance."
+    }
+  ],
+  "limits": [
+    "Ubuntu 24.04 Xvfb/X11, English light UI; no real desktop, IME or Wayland acceptance.",
+    "Arch PKGBUILD generated and hashed; no Arch build/install in this run.",
+    "Repackaged verified stage in the same builder; no independent compiler reproducibility claim.",
+    "4D syntax resources checked; external proprietary Runtime and Hex editing/save were not reaccepted by this package smoke.",
+    "No public upload or release approval."
+  ],
+  "release_approved": false
+}

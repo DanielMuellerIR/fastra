@@ -1,0 +1,99 @@
+{
+  "version": "1.182.0",
+  "build": 392,
+  "product_commit": "8c07943081d5bda7b3933c7205e917ecf140c2ce",
+  "source_identity": "2090d9c67b599f2a208d4769d631eec93cd19bb222aa291c3e4e1918b8bf491c",
+  "verified_product_inputs": 457,
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.182.0/packages",
+  "artifacts": {
+    "fastra_1.182.0_amd64.deb": "b56fa16a3210e8a0acfb8a1305af761dc728db42180ca37c87d18b49abe2957c",
+    "fastra-1.182.0-linux-x86_64.tar.gz": "9f07ab964cefcc68cd44cafb7f5de42b4993312d612cde0e6c2dc61b01d353a0",
+    "fastra-1.182.0-linux-x86_64.zip": "43198b6229daaf699e491168ccdcc0424bf204fb2172049859058d2a62325f42"
+  },
+  "tests": {
+    "workspace_programs": 53,
+    "regular_passed": 665,
+    "native_git_helper_cases": 26,
+    "failed_final_full_run": 0,
+    "ignored": 6,
+    "linux_regular_subset": 202,
+    "harness": "RUST_TEST_THREADS=1; explicit internal concurrency tests remain enabled",
+    "strict_workspace_debug_clippy": "PASS",
+    "strict_linux_and_helper_release_clippy": "PASS; final helper checked after deadline fix",
+    "optimized_package_build": "PASS",
+    "root_native_external_contract_de_en_640_1100": 4,
+    "root_final_extended_external_contract_with_hanging_peer": 1,
+    "root_optimized_packaged_extended_external_contract": 1,
+    "root_native_final_caret_and_stale_selection_pane_cases": 8,
+    "independent_caret_followup_native_cases": 6,
+    "author_caret_native_cases": 39,
+    "real_install_upgrade_downgrade_foreign_alias_and_failed_publication_groups": 6
+  },
+  "reviews": {
+    "external_comparison": "CLOSED_NO_CONFIRMED_P1_P2_REMAINING",
+    "external_report_sha256": "142b7039d198f29f658b101735ee1429c1f111bf445d46d376d7e704b48b0b3a",
+    "external_findings": [
+      {
+        "id": "UUID_CASE_IDEMPOTENCE",
+        "severity": "P2",
+        "status": "CLOSED",
+        "fix": "Normalize decoded UUID ASCII case; server body comparison/accepted-map identity now semantic for case."
+      },
+      {
+        "id": "APP_LAUNCH_AFTER_DEADLINE",
+        "severity": "P2",
+        "status": "CLOSED",
+        "fix": "Fallback additionally requires absent owner and current Instant before deadline. Final source20c3176c9ecb0729fb68145b6bded0715282ae7dc0b77050bb6a85aada5347cb."
+      }
+    ],
+    "caret": "CLOSED",
+    "caret_report_sha256": "ff04a4acfa4513275a2bb105313d61d9098e7b7d5a5708de267991426a8be9ac",
+    "caret_product_sha256": "25f4c35dc1e9e34581c7bda72fe2cb72a59746aa11a26f128b393a02fe2176f2"
+  },
+  "package": {
+    "installed_deb": "PASS",
+    "relocated_tar": "PASS",
+    "private_icu_and_manifest": "PASS",
+    "source_free_static_katex_mermaid_table": "PASS",
+    "source_free_rich_math_native_toggle": "PASS",
+    "rich_capture_sha256": {
+      "installed-rich-math.png": "3c499fa3aec20f9b541e0537447b7d1cc5ca0850c5b337ef4dbc5f0b590e1978",
+      "relocated-rich-math.png": "7d952210bae808ef529b4e423f3c99305f0c573ce28ac4c351e496495fe6fddf"
+    },
+    "packaged_git_helper_cases": 26,
+    "optimized_external_helper_actual_contract": "PASS including true cold and four parallel cold calls, UUID case, readonly, strict wire and hanging peer; prefix contains space and percent",
+    "all_three_executables": true,
+    "old_two_executable_runtime_still_verifies_and_installs": true,
+    "actual_installation_groups": [
+      "actual old two-executable package upgrades to all three owned launchers",
+      "actual downgrade removes only owned optional diff launcher",
+      "real denied desktop publication rolls back upgrade and removes newly created optional link",
+      "real denied desktop publication rolls back downgrade and restores removed owned link",
+      "foreign optional launcher survives refused upgrade and old-version reinstall",
+      "explicit later upgrade succeeds; both historical versions retained"
+    ],
+    "webkit_no_new_privileges": 1,
+    "webkit_seccomp": 2,
+    "webkit_private_pid_namespace": true
+  },
+  "visual": {
+    "comparison_de_en_minimum_and_wide": "inspected; balanced panes, visible readonly notice and Close/Quit controls",
+    "installed_and_relocated_markdown_and_rich": "inspected"
+  },
+  "test_boundaries": [
+    "The first helper visual wrapper lacked UTF-8 locale and failed to match the Unicode window title. A simplified native window inventory identified the fixture error; a corrected true cold run and four final cohorts passed.",
+    "The first broad helper runner used a smaller runtime image without gdbus; it failed as an environment setup. The final runner checks tools before launch, and all four fresh cohorts passed in the existing full test image.",
+    "One helper-only repeat exposed a one-ULP JSON roundtrip in a newly added random fractional deadline assertion. Schema/UUID fixtures now use exactly representable seconds; native fractional deadline and actual timeout checks remain unchanged. All eight helper tests subsequently passed.",
+    "The first install failure probe expected the Python exception class name, but the CLI intentionally prints one concise error line. Exact active-version, launcher and desktop state checks already passed; the corrected actual Permission denied check and all six groups passed.",
+    "An initial local package candidate preceded the final timeout fix. Only the newly built fixed artifacts bound here are copied to dist.",
+    "Private Xvfb has no compositor focus policy and does not establish physical desktop, IME or accessibility acceptance."
+  ],
+  "limits": [
+    "Independent split selections and command targeting, fixed-column wrapping and continuation indentation remain pending.",
+    "The raw HTML whitelist integration is a separate ongoing port and is not included.",
+    "Load, programmatic transformation, Clipboard and Save limits do not claim a complete native keyboard/IME preflight. A prior-baseline typing size overflow retains source and native Undo while Save refuses publication; the general input boundary remains open.",
+    "Current macOS window acceptance and full physical desktop/Wayland/IME/accessibility acceptance remain pending."
+  ],
+  "retention": "Small review/test evidence retained; disposable fixtures are due for reassessment by 2026-12-06 after acceptance."
+}

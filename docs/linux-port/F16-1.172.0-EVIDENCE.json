@@ -1,0 +1,43 @@
+{
+  "version": "1.172.0",
+  "build": 382,
+  "source_identity": "8e49f616ef2a2e713f0a295d821ff6863f398f26f6fdd0ae7d284de867edccb0",
+  "verified_product_inputs": 389,
+  "artifacts": {
+    "fastra_1.172.0_amd64.deb": "5ba920e06e02aacae061ee5b4bbcc12a2163174a6006e0abc381208bb68cb7b3",
+    "fastra-1.172.0-linux-x86_64.tar.gz": "7dfe09ad1c0d64d4e5d3d7968544298354485dffb56943280ec7c55cef2d9284",
+    "fastra-1.172.0-linux-x86_64.zip": "6ef6e4c9616f3ec790e93831ea991de0fb8ca50eccb156ca00bc546ac035623f"
+  },
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.172.0/packages",
+  "checks": {
+    "strict_workspace_clippy": "PASS",
+    "linux_unit_passed": 113,
+    "linux_unit_failed": 0,
+    "registered_native_ignored": 5,
+    "relevant_native_ignored_explicitly_passed": 4,
+    "unchanged_external_engine_probe_rerun": false,
+    "native_image_refresh_cases": 4,
+    "native_final_asset_clipboard_suites": 2,
+    "languages": [
+      "de",
+      "en"
+    ],
+    "display": "isolated Xvfb",
+    "visual_review": true,
+    "installed_deb": "PASS",
+    "relocated_tar": "PASS",
+    "source_free_release_rich_red_to_blue_pixels": "PASS",
+    "markdown_source_preserved": true,
+    "webkit_no_new_privileges": true,
+    "webkit_seccomp": 2,
+    "webkit_private_pid_namespace": true
+  },
+  "limits": [
+    "Background metadata poll approximately every 1.5 seconds; active clipboard/image operations defer refresh.",
+    "Only supported local raster image references are refreshed.",
+    "No personal signing key used; no publication.",
+    "Save As, coordinated Quit and remaining Git port work are separate."
+  ],
+  "product_commit": "4352f50f50eb74bfcad22867e4255f9d301bd7de"
+}

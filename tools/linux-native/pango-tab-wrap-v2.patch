@@ -1,0 +1,32 @@
+--- a/pango/pango-layout.c
++++ b/pango/pango-layout.c
+@@ -4007,6 +4007,7 @@
+               gboolean         is_last_item)
+ {
+   PangoItem *item = state->items->data;
++  LastTabState previous_tab = state->last_tab;
+   gboolean shape_set = FALSE;
+   int width;
+   int extra_width;
+@@ -4084,6 +4085,21 @@
+ 
+   if (layout->text[item->offset] == '\t')
+     {
++      /* Ein bestehendes Fragment darf vor einem weiteren Tab umbrechen.
++       * Das erste Graphem bleibt auch bei Ueberbreite auf seiner Zeile. */
++      if (line->runs && !no_break_at_end &&
++          layout->wrap != PANGO_WRAP_WORD &&
++          state->last_tab.align == PANGO_TAB_LEFT &&
++          width > state->remaining_width &&
++          can_break_at (layout, state->start_offset, PANGO_WRAP_CHAR))
++        {
++          g_clear_pointer (&state->glyphs, pango_glyph_string_free);
++          state->last_tab = previous_tab;
++          if (layout->wrap == PANGO_WRAP_WORD_CHAR && !force_fit &&
++              !can_break_at (layout, state->start_offset, PANGO_WRAP_WORD_CHAR))
++            return BREAK_NONE_FIT;
++          return BREAK_EMPTY_FIT;
++        }
+       insert_run (line, state, item, NULL, TRUE);
+       state->remaining_width -= width;
+       state->remaining_width = MAX (state->remaining_width, 0);

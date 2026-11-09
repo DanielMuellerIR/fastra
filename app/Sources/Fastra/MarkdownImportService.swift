@@ -259,8 +259,9 @@ final class MarkdownImportService: ObservableObject {
         // eine gewöhnliche Datei im eigenen Ausgabeordner sein — sonst würde
         // eine fehlerhafte Werkzeugantwort die Quelldatei oder irgendeine
         // andere erreichbare Datei bewegen (Review 2026-08-02).
-        guard MarkdownImportOutputGuard.isPublishableFile(produced.markdownFile,
-                                                          in: output) else {
+        guard let relativeMarkdownPath = MarkdownImportOutputGuard.relativePublishablePath(
+            produced.markdownFile, in: output
+        ) else {
             fail(L10n.string("Die Umwandlung hat eine Datei außerhalb ihres Arbeitsordners gemeldet. Es wurde nichts verschoben."),
                  completion)
             return
@@ -287,7 +288,7 @@ final class MarkdownImportService: ObservableObject {
         try? FileManager.default.removeItem(at: staging)
 
         let markdownFile = MarkdownImportNaming.markdownFile(inTarget: target,
-                                                             sourceURL: sourceURL,
+                                                             relativeMarkdownPath: relativeMarkdownPath,
                                                              producesAssets: producesAssets)
         state = .finished(markdownFile: markdownFile, warnings: produced.warnings)
         completion?(markdownFile)

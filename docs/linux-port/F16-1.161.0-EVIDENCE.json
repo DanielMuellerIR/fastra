@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-05",
+  "version": "1.161.0",
+  "bundle_build": "369",
+  "commit": "1abe4508a320509571815f00a0542fc7acc00a81",
+  "source_content_sha256": "c6cd5cb4d272e9f54e82cbebd8dfc1fe5907e5b1364cee02fd183ca171c428a6",
+  "source_files_compared_to_commit": 222,
+  "outputs": {
+    "fastra_1.161.0_amd64.deb": "c584aa01f95937a917d3332e3a35dc23fc7c5ae42294d979788d5869ee5a06a4",
+    "fastra-1.161.0-linux-x86_64.tar.gz": "e4164e94d92a7eb85c6c9c691d50beff802128b0c2327150a6baa8d7b336f401",
+    "SHA256SUMS": "0e12af703f4e28edbafb7048b1c4ed504ecb53aa541a4d0ee43ecf09cb057ee5",
+    "PKGBUILD": "81010d4d0c7d6bebe39154b78af33e00702cdef4d7d7cd9664bba496dbe38057"
+  },
+  "binary_sha256": "bac7a4473aedcc29e319cf186a5bf7f3e06b88a79f943157bff7a53130050127",
+  "builder_image": "sha256:ee28d59cfaf26bae6c9d0df5449fa0f5562ce657fe66c50619524741d7eba22c",
+  "runtime_image": "sha256:95bebc437d45f178312616c6607b2885dee3ec786e085c81cf279dec153a9eac",
+  "checks": {
+    "installed_deb": true,
+    "relocated_tar": true,
+    "runtime_manifest_all_hashes": true,
+    "relative_private_icu_ldd": true,
+    "markdown_katex_mermaid_table_visual": true,
+    "webkit_no_new_privileges": 1,
+    "webkit_seccomp_mode": 2,
+    "webkit_private_pid_namespace": true,
+    "png_svg_visual_both_layouts": true,
+    "pdf_pages_visual_both_layouts": true,
+    "packaged_4d_grammar_colors_both_layouts": true,
+    "hex_readonly_both_layouts": true,
+    "viewer_source_hashes_preserved": true,
+    "network": "none",
+    "host_desktop_used": false,
+    "independent_rust_recompile": false
+  },
+  "limits": [
+    "Ubuntu 24.04 private Xvfb/X11, English light UI; no desktop/IME or Wayland acceptance.",
+    "PDF captures await six seconds before first interaction; two-second captures did not yet show loaded content.",
+    "No Arch install, public upload or release approval."
+  ],
+  "release_approved": false
+}

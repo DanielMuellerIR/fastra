@@ -1,0 +1,42 @@
+{
+  "version": "1.186.2",
+  "build": 398,
+  "date": "2026-11-06",
+  "product_commit": "36346b1b6dc6a49e7c259cd3daeee93af9803b4f",
+  "source_identity": "a117a5ce3af724186e7e58e5c961a39902cfcff763f1e201841173f1b91d29a4",
+  "verified_product_inputs": 481,
+  "optimized_elf_sha256": "fc526e08a82f385cb92991719b8c255da0b5221f54305f66493b7e13f833a02f",
+  "unsigned": true,
+  "unpublished": true,
+  "local_artifacts": "dist/linux-1.186.2/packages",
+  "artifacts": {
+    "fastra_1.186.2_amd64.deb": "c32796268a66f73364fbbad70a608b574aaca4ec23433d920aa0ee0f6c2b7373",
+    "fastra-1.186.2-linux-x86_64.tar.gz": "1be50580f1438718da639cd23d8db494ec8aa33690fd481b4aa347bedaacf096",
+    "fastra-1.186.2-linux-x86_64.zip": "ea638ebb476896f6347ff3292179ede5a9ac4a0a9107279126a72a9b2f6b3b5d"
+  },
+  "tests": {
+    "linux_release_build": "PASS",
+    "strict_linux_clippy_all_targets": "PASS",
+    "physical_cinnamon_x11_scale_2_languages": [
+      "de",
+      "en"
+    ],
+    "named_text_fields_per_language": 6,
+    "dropdown_descriptions_per_language": 2,
+    "both_source_unicode_text": "PASS",
+    "ctrl_f_find_focus": "PASS",
+    "visible_quit": "PASS both languages",
+    "atspi_actions_focus_geometry": "Not fully available in this GTK environment; no full accessibility acceptance",
+    "mac_build": "PASS",
+    "mac_version_title_tests_passed": 5,
+    "mac_notarized_install": "PASS ticket, Gatekeeper, signature, portability; installed 1.186.2/398",
+    "mac_installed_localization": "PASS",
+    "mac_source_equivalence": "No app/Sources, app/Patches, app/Package.swift or app/build.sh changes since 1.186.0; previous eight window tests not repeated"
+  },
+  "open": [
+    "Fixed wrap columns and continuation profiles",
+    "General native input and IME transaction preflight",
+    "Full Markdown parity",
+    "Physical candidate-window IME and complete screenreader/Wayland acceptance"
+  ]
+}

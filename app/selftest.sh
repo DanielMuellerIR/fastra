@@ -89,7 +89,7 @@ case "${FASTRA_SELFTEST_LANGUAGE:-}" in
     *) echo "Selbsttest-Sprache muss de oder en sein." >&2; exit 2 ;;
 esac
 
-ALL_TESTS=(newwindow finderreopen welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions searchlayout searchapproval searchapprovalclose searchfocus dialoglayout projectinput tabswitch tabcommitfocus tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapindent softwrapindentcore softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge searchundo dirtyundo emojisplit emojipaste emojipreview tabscroll tabsearchmemory typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdvisual mdoutline codeoutline sourcesplit snippets mdvisualfind mdtable mdtableinteraction mdcomfort mdblocks mdsearchnavigation mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop saveexisting textworkflow textworkflowmulti textworkflowonesided joinundo colsel colselwrap colpaste gutterdim codefolding gitremotedialogs sidebarheader editoroptions footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff filedifftransfer foldercompare mdreferences externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist mdimagequit search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit diffselection markdownimport markdownimportui filemodes selsearch wildcard openscope loadperf contrast cmdw)
+ALL_TESTS=(newwindow finderreopen windowchrome welcomenew sessionrestore coldopen coldopenoff multisearch bgscroll findbar fields searchoptions searchlayout searchapproval searchapprovalclose searchfocus dialoglayout projectinput tabswitch tabcommitfocus tabclosehit tabvisibility tabcompare softwrapprofiles softwrapmodes softwrapindent softwrapindentcore softwrapanchor selectionscroll selshort dragscroll dragnoscroll rightedge searchundo dirtyundo emojisplit emojipaste emojipreview tabscroll tabsearchmemory typescroll comment4d sighelp4d highlight highlight4d completion4d previewrender print xpath markdown markdownblanklines markdownjump markdownappearance mdvisual mdoutline codeoutline sourcesplit snippets mdvisualfind mdtable mdtableinteraction mdcomfort mdblocks mdsearchnavigation mdimagewatch mdindent mddropcursor pasteindent jump ghosttext wordclick hscroll replaceall pilldrop navmatch textop saveexisting textworkflow textworkflowmulti textworkflowonesided joinundo colsel colselwrap colpaste gutterdim codefolding gitremotedialogs sidebarheader editoroptions footerfit windowheight mdformat sidebarfilter sidebarstate sidebartoggle tabflood githistory filediff filedifftransfer foldercompare mdreferences externaldiff macro4d macro4dengine tool4dhint tool4dlsp gototarget gototargetwin searchmark help mdassist mdimagequit search project localization updates git gitactions gitstagefolder gitpushbutton gitmultidiscard gitstickyheader diffwide diffnowrap diffsplit diffselection markdownimport markdownimportui filemodes selsearch wildcard openscope loadperf contrast cmdw)
 # `windows` bleibt als gezielter Diagnosemodus verfügbar, prüft aber keine
 # Produktfunktion und startet deshalb nicht mehr in jedem Standardlauf.
 # Fensterlose Tests — laufen auch bei gesperrtem Bildschirm aussagekräftig.
@@ -101,7 +101,7 @@ FOCUS_REQUIRED_TESTS=(saveexisting mdtableinteraction sidebarheader snippetfiles
 # Diese Fensterläufe sind so gebaut, dass sie ihre AppKit-Objekte direkt
 # bedienen. Der Runner sperrt für sie auch produktive Aktivierungshelfer,
 # damit sie die gerade benutzte App nicht verdrängen.
-BACKGROUND_ACTIVATION_BLOCKED_TESTS=(diffselectionbackground tabsearchmemory externaldiff controlhost tabcommitfocus newwindow finderreopen welcomenew projectinput help aboutshot)
+BACKGROUND_ACTIVATION_BLOCKED_TESTS=(diffselectionbackground tabsearchmemory externaldiff controlhost tabcommitfocus newwindow finderreopen windowchrome welcomenew projectinput help aboutshot)
 # Weitere Namen ohne App-Aktivierung kann der Aufrufer per Umgebungsvariable
 # nachreichen, etwa für einen Lauf neben einem arbeitenden Nutzer:
 #   FASTRA_SELFTEST_NO_ACTIVATION="tabflood sessionrestore" ./selftest.sh tabflood
@@ -1609,7 +1609,7 @@ for t in "${TESTS[@]}"; do
         # Ein leeres Aufnahmeziel muss fehlen: Die App interpretiert schon
         # die Anwesenheit der Variable als Auftrag, PNGs dort zu speichern.
         review_environment=()
-        for review_key in FASTRA_SAVEEXISTING_DIR FASTRA_MD_VISUAL_DIR FASTRA_MD_OUTLINE_DIR FASTRA_MD_VISUAL_FIND_DIR \
+        for review_key in FASTRA_COLLECTION_REVIEW_DIR FASTRA_POORMANS_TEXT FASTRA_SAVEEXISTING_DIR FASTRA_MD_VISUAL_DIR FASTRA_MD_OUTLINE_DIR FASTRA_MD_VISUAL_FIND_DIR \
             FASTRA_MD_TABLE_DIR FASTRA_MD_TABLE_REPRO_FILE FASTRA_MD_COMFORT_DIR FASTRA_TEXT_WORKFLOW_DIR \
             FASTRA_DIFFSELECTION_DIR FASTRA_REMOTE_DIALOG_DIR \
             FASTRA_EDITOR_OPTIONS_DIR FASTRA_SOFTWRAPINDENT_DIR \

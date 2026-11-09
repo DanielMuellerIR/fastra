@@ -1,0 +1,62 @@
+{
+  "format": 1,
+  "checked_at_utc": "2026-11-05T04:06:35Z",
+  "source_commit": "f6115b1a3246cf2d2888359871a6ed5558c0f2a0",
+  "version": "1.159.0",
+  "bundle_build": "367",
+  "source_archive": {
+    "sha256": "e639dc8450dfbe6d5db37ccf8a715930418689786a25219570da07e31e3aa79b",
+    "git_tar_umask": "0022"
+  },
+  "packaging_source_sha256": "901ddeecda26ea8cf3b2451b2123010a87397d596535e457fecefb5001d8f740",
+  "source_date_epoch": 1793847562,
+  "builder_image": "sha256:ee28d59cfaf26bae6c9d0df5449fa0f5562ce657fe66c50619524741d7eba22c",
+  "rust_toolchain": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "artifacts": {
+    "fastra_1.159.0_amd64.deb": {
+      "sha256": "01420ab282ffad4c7698f7f3c72cb7276639544186b44412be99fab5bf5ab2cf",
+      "bytes": 14320812
+    },
+    "fastra-1.159.0-linux-x86_64.tar.gz": {
+      "sha256": "bbdfde26170a73e3b94e390ae57fdeae9345964831b48590ece750b514a36479",
+      "bytes": 19254014
+    },
+    "PKGBUILD": {
+      "sha256": "a854e429d6403f20c45c6cedd6677c4725ae475ed8ed665bac97b00f35d97a44",
+      "bytes": 1489
+    },
+    "fastra-1.159.0-1-x86_64.pkg.tar.zst": {
+      "sha256": "874ff369971056d3e76a7807d84820eb6cb99a72e0e4b420c74387b49c1db5fc",
+      "bytes": 16279825
+    }
+  },
+  "application_binary_sha256": "179709caf49b29a09331b79e68e2fc3b9cbe5635ccdd3023e47bcbaf79dce253",
+  "icu_source_sha256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+  "javascript_license_packages": 145,
+  "checks": {
+    "source_mounted_read_only": true,
+    "version_cargo_info_manifest": true,
+    "repeat_package_bytes_identical": true,
+    "forced_application_recompile_bytes_identical": true,
+    "debian_installed_in_disposable_ubuntu_24_04": true,
+    "portable_relocated_without_build_tree": true,
+    "private_icu_loader_and_runtime_manifest": true,
+    "installed_and_relocated_markdown_math_mermaid": true,
+    "webkit_inner_no_new_privs": 1,
+    "webkit_inner_seccomp": 2,
+    "webkit_inner_pid_namespace": true,
+    "installed_and_relocated_png_svg_two_page_pdf": true,
+    "pdf_page_two_native_button": true,
+    "viewer_ctrl_s_preserved_source_bytes": true,
+    "arch_makepkg_nodeps_built": true,
+    "arch_installed": false,
+    "physical_desktop_ime_acceptance": false
+  },
+  "release_approved": false,
+  "limits": [
+    "Historical f6115b1 snapshot; later source changes and Git Stage/Unstage are excluded.",
+    "The 1.159 document/search splitter retains a small document area after search collapse. Markdown resource inspection used the existing splitter drag; a separate later layout fix is required.",
+    "Ubuntu GUI checks used private Xvfb and D-Bus; no host installation or desktop focus.",
+    "Arch package was built and inspected, not installed or run on an Arch desktop."
+  ]
+}

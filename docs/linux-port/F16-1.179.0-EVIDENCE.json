@@ -1,0 +1,67 @@
+{
+  "version": "1.179.0",
+  "build": 389,
+  "product_commit": "9ef5c1d6ea1aaa2492ffa7443b628040c06f5bd0",
+  "source_identity": "e5b130fb9810b00845126a73235cf0581116b0b21bdfb40e6c9312198a6d0c49",
+  "verified_product_inputs": 438,
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.179.0/packages",
+  "artifacts": {
+    "fastra_1.179.0_amd64.deb": "7163db47952012ee6f846d537c9e520b878520c89cdf1a912e2d6434019af8a5",
+    "fastra-1.179.0-linux-x86_64.tar.gz": "1a98ea4a7d5230203a0216b46cf24c2389b22222edf3c8db1badcbb450347ae9",
+    "fastra-1.179.0-linux-x86_64.zip": "06e56d0493a599e96a0daa679600bcb1c0ad75d76041a5e87fb9e7cce7b3d480"
+  },
+  "tests": {
+    "workspace_programs": 49,
+    "regular_passed": 621,
+    "native_git_helper_cases": 26,
+    "failed": 0,
+    "ignored": 6,
+    "linux_regular_subset": 190,
+    "strict_workspace_debug_clippy": "PASS",
+    "strict_linux_release_clippy": "PASS",
+    "optimized_package_build": "PASS",
+    "native_eol_source_and_rich_de_en_min_wide": 6,
+    "native_eol_save_as_source_and_rich_de_en": 4,
+    "native_eol_real_crash_and_restore": 2,
+    "native_eol_no_op_close_fence": 1,
+    "native_eol_source_and_rich_single_and_other_tabs_close": 4,
+    "native_eol_source_and_rich_window_and_quit_shutdown_callbacks": 4,
+    "native_options_focus_and_exclusion_flows": 4
+  },
+  "review": {
+    "eol_pending_choice_survives_native_text_undo": "CLOSED",
+    "rich_save_holds_unreported_composition": "CLOSED",
+    "no_op_save_preserves_close_ticket_fence": "CLOSED",
+    "repeated_save_retains_own_fence": "CLOSED",
+    "options_source_focus_and_selection": "CLOSED",
+    "window_quit_callback_evidence_gap": "CLOSED"
+  },
+  "package": {
+    "installed_deb": "PASS",
+    "relocated_tar": "PASS",
+    "private_icu_and_manifest": "PASS",
+    "source_free_katex_mermaid_table_preview": "PASS",
+    "packaged_git_helper_cases": 26,
+    "helper_prefix_space_and_percent": true,
+    "webkit_no_new_privileges": 1,
+    "webkit_seccomp": 2,
+    "webkit_private_pid_namespace": true
+  },
+  "visual": {
+    "eol_header_de_en_760_1100": "inspected",
+    "installed_and_relocated_preview": "inspected"
+  },
+  "test_boundaries": [
+    "The older source selection fixture did not focus the editor before selecting. The corrected native focus precondition retains both mapped selection endpoints.",
+    "The new Save As fixture now performs the actual existing-target confirmation and waits for the recreated Rich editor before switching modes.",
+    "The composition regression uses actual WebKit composition state and a visible draft; it does not claim physical IME acceptance.",
+    "A final trailing whitespace correction changed the source identity; final packages are rebuilt and rechecked against all committed product blobs."
+  ],
+  "limits": [
+    "Independent split selections and command targeting, fixed-column wrapping, Page Guide and continuation indentation remain pending.",
+    "Rich math rendering and Pull are independently prepared or under review but are not included in this product commit.",
+    "Current Mac window acceptance requires an available authorized test session; the queue currently reports locked or unknown and a stale worker.",
+    "Physical desktop, Wayland, IME and accessibility acceptance remains open."
+  ]
+}

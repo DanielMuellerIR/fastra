@@ -1,0 +1,317 @@
+[
+  {
+    "id": "greedy",
+    "pattern": "*, the",
+    "text": "Hello, There, The",
+    "template": "*",
+    "wildcard": true,
+    "flags": 2
+  },
+  {
+    "id": "stars-1",
+    "pattern": "a*b",
+    "text": "aZ\nb",
+    "template": "[*]",
+    "wildcard": true,
+    "flags": 0
+  },
+  {
+    "id": "stars-2",
+    "pattern": "a**b",
+    "text": "aZ\nb",
+    "template": "[**]",
+    "wildcard": true,
+    "flags": 0
+  },
+  {
+    "id": "stars-3",
+    "pattern": "a***b",
+    "text": "aZ\nb",
+    "template": "[***]",
+    "wildcard": true,
+    "flags": 0
+  },
+  {
+    "id": "stars-4",
+    "pattern": "a****b",
+    "text": "aZ\nb",
+    "template": "[****]",
+    "wildcard": true,
+    "flags": 0
+  },
+  {
+    "id": "literal",
+    "pattern": "\\*\\*",
+    "text": "**",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "multiple-captures",
+    "pattern": "*-*",
+    "text": "ab-cd",
+    "template": "*/*",
+    "wildcard": true,
+    "flags": 0
+  },
+  {
+    "id": "empty",
+    "pattern": "(?=a)",
+    "text": "aa",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "lookbehind",
+    "pattern": "(?<=a)b",
+    "text": "ab ab",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "backreference",
+    "pattern": "(ab)\\1",
+    "text": "abab ab",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "named",
+    "pattern": "(?<word>ab)",
+    "text": "ab",
+    "template": "$1",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "optional",
+    "pattern": "(a)?b",
+    "text": "b ab",
+    "template": "$1!",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "escape-template",
+    "pattern": "(x)",
+    "text": "x",
+    "template": "\\$1-$1-\\\\",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "numeric-template",
+    "pattern": "(a)(b)",
+    "text": "ab",
+    "template": "$12",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "nfc-nfd",
+    "pattern": "é",
+    "text": "é é",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "unicode-word",
+    "pattern": "\\b\\w+\\b",
+    "text": "é é 😀 Straße ไทย",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "surrogate",
+    "pattern": "(😀)(.)",
+    "text": "😀a",
+    "template": "$2$1",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "combining",
+    "pattern": ".",
+    "text": "é",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "case-fold",
+    "pattern": "straße",
+    "text": "STRASSE Straße",
+    "template": "X",
+    "wildcard": false,
+    "flags": 2
+  },
+  {
+    "id": "line-lf",
+    "pattern": ".",
+    "text": "a\nb",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "line-cr",
+    "pattern": ".",
+    "text": "a\rb",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "line-crlf",
+    "pattern": ".",
+    "text": "a\r\nb",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "line-nel",
+    "pattern": ".",
+    "text": "ab",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "line-ls",
+    "pattern": ".",
+    "text": "a b",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "line-ps",
+    "pattern": ".",
+    "text": "a b",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "invalid",
+    "pattern": "(",
+    "text": "x",
+    "template": "X",
+    "wildcard": false,
+    "flags": 0
+  },
+  {
+    "id": "case-upper",
+    "pattern": "(straße)",
+    "text": "straße",
+    "template": "\\U$1\\E",
+    "wildcard": false,
+    "flags": 0,
+    "caseTemplate": true
+  },
+  {
+    "id": "case-lower",
+    "pattern": "(ÄBC)",
+    "text": "ÄBC",
+    "template": "\\L$1\\E",
+    "wildcard": false,
+    "flags": 0,
+    "caseTemplate": true
+  },
+  {
+    "id": "case-next",
+    "pattern": "(ßa)",
+    "text": "ßa",
+    "template": "\\u$1",
+    "wildcard": false,
+    "flags": 0,
+    "caseTemplate": true
+  },
+  {
+    "id": "case-grapheme",
+    "pattern": "(éß)",
+    "text": "éß",
+    "template": "\\u$1",
+    "wildcard": false,
+    "flags": 0,
+    "caseTemplate": true
+  },
+  {
+    "id": "case-empty-shot",
+    "pattern": "(a)?(b)",
+    "text": "b",
+    "template": "\\u$1$2",
+    "wildcard": false,
+    "flags": 0,
+    "caseTemplate": true
+  },
+  {
+    "id": "case-escaped-case",
+    "pattern": "(x)",
+    "text": "x",
+    "template": "\\\\U$1",
+    "wildcard": false,
+    "flags": 0,
+    "caseTemplate": true
+  },
+  {
+    "id": "case-combined",
+    "pattern": "(AbC)",
+    "text": "AbC",
+    "template": "\\L\\u$1\\E",
+    "wildcard": false,
+    "flags": 0,
+    "caseTemplate": true
+  },
+  {
+    "id": "selection",
+    "pattern": "(b)",
+    "text": "xabcy",
+    "template": "X",
+    "flags": 0,
+    "range": [
+      2,
+      1
+    ]
+  },
+  {
+    "id": "opaque-lookbehind",
+    "pattern": "(?<=a)b",
+    "text": "ab",
+    "template": "X",
+    "flags": 0,
+    "range": [
+      1,
+      1
+    ]
+  },
+  {
+    "id": "region-anchor",
+    "pattern": "^b$",
+    "text": "abc",
+    "template": "X",
+    "flags": 0,
+    "range": [
+      1,
+      1
+    ]
+  },
+  {
+    "id": "empty-region",
+    "pattern": "(?:)",
+    "text": "abc",
+    "template": "X",
+    "flags": 0,
+    "range": [
+      1,
+      0
+    ]
+  }
+]

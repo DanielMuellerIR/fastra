@@ -4,6 +4,12 @@ Diese Datei beschreibt den reproduzierbaren Build-, Paketierungs- und Testweg.
 Projektfakten, Produktinvarianten und Konventionen stehen in
 [AGENTS.md](../AGENTS.md).
 
+Build, Installation und Unitlauf derselben Arbeitskopie nacheinander ausführen.
+Sie verwenden dieselbe SwiftPM-Build-Datenbank; ein durch parallele Zugriffe
+gestörter Lauf zählt nicht als Abschlussprüfung. Getrennte Arbeitskopien
+benötigen getrennte Build-Verzeichnisse.
+
+
 ## Syntax-Folding prüfen
 
 Patch 4z20 (`app/Patches/CodeEditSourceEditor/code-folding.py`) verbindet den
@@ -589,6 +595,16 @@ annehmen kann. Copy läuft über dessen eigenen First Responder; dieser Lauf
 prüft die Diff-Bedienung neben einer aktiven Benutzeroberfläche, nicht den
 globalen Menü-Responderpfad. Zusätzlich muss ein einfacher Git-Diff mit
 20.000 kurzen Zusatzzeilen weniger als 200 Textansichten montieren.
+`./test.sh --fast-only --filter DiffWrapLayoutTests` prüft Git- und Dateivergleiche
+im vollständigen Dokumentfenster nach dem Laden, wiederholten Breitenwechseln,
+Soft-Wrap-Umschaltungen und vergrößerter Schrift. Entscheidend sind die tatsächlich
+gezeichneten Textbereiche innerhalb der umgebenden Zellen; allein eine ausreichend
+hohe `NSTextView` erkennt abgeschnittene Zeilen nicht. `FASTRA_DIFF_WRAP_DIR=<ordner>`
+sichert die umbrochenen Zustände als PNG. Der Lauf übernimmt keinen Vordergrundfokus.
+Die Linux-Prüfung `linux/test.sh diff-interaction` kontrolliert zusätzlich die
+nativen Umbruchfragmente, ihren Platz in der logischen Zeile, die nächste Zeile und
+die gleiche vollständige Zeilenhöhe beider Seiten nach Ziehen und Verkleinern.
+
 `FASTRA_GITHISTORY_REVIEW_DIR=<ordner>` hält die eigene Git-History-Fixture
 nach den normalen Prüfungen bis zu 300 s für eine Menüabnahme offen
 (Runner-Frist 420 s). `ready` meldet die Bereitschaft. Vor `continue` muss
@@ -1026,6 +1042,11 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    `-selftest sessionrestore` legt vor dem ersten Workspace eine isolierte
    gespeicherte Sitzung an und prüft den echten Kaltstart mit zwei Fenstern,
    drei dateibasierten Tabs, Projekt, aktivem Tab und ohne unbenannten Tab.
+   `-selftest windowchrome` öffnet zwei gespeicherte Textdateien gemeinsam über
+   den externen Öffnen-Delegate. Es prüft Haupt-, Zusatz- und Restorefenster,
+   wiederholtes Öffnen, Tabwechsel und Resize auf ausgeblendeten nativen Titel
+   und tatsächlich unsichtbares AppKit-Titelfeld. `FASTRA_WINDOWCHROME_DIR`
+   speichert ergänzende Fensteraufnahmen. Der Test läuft ohne App-Aktivierung.
    `-selftest coldopen` startet das Debug-Bundle dagegen über LaunchServices
    mit einer ausdrücklich geöffneten Datei und einer abweichenden gespeicherten
    Sitzung aus zwei Projektfenstern. Es prüft, dass beide Projektfenster
@@ -1114,6 +1135,28 @@ alle Aufnahmen ansehen. `markdownimport` bleibt daneben der echte Importpfad
 mit dem installierten Poor Man's Text. Die Unit-Prüfung
 `MarkdownImportProgressTests` belegt zusätzlich den Gruppenabbruch samt
 Kindprozess und die Kompatibilität älterer CLI-Stände ohne `--progress`.
+
+### MBOX- und ENEX-Sammlungen prüfen
+
+`markdowncollections` ist ein gezielter Integrationstest außerhalb des
+Standardlaufs. `tools/linux-probes/make-collections.py` erzeugt in einem neuen
+Ordner zwei Nachrichten, zwei Notizen, ein PNG und belegte Zielnamen.
+`FASTRA_COLLECTION_REVIEW_DIR` zeigt auf diese Fixtures, `FASTRA_POORMANS_TEXT`
+auf die nachweislich zugeordnete echte CLI. Gegen das notarisiert installierte
+Bundle ausführen. Der Test übernimmt `index.md`, öffnet sämtliche Unterdokumente
+und kehrt zur Übersicht zurück. Anschließend die Datei `reopen` im Fixtureordner
+anlegen und denselben Test in einem **neuen App-Prozess** ausführen.
+
+`tools/linux-probes/native-collections.py` ergänzt die echte PMT-Oberfläche und
+vergleicht beide vollständigen Bäume mit `verify-collections.py`: Quellbytes,
+Anlagen, relative Verweise, Kollisionsschutz und Persistenz. PMT- und Fastra-Builds
+vorher über `build-identity.py` zuordnen; eine Versionsnummer allein genügt nicht.
+Der externe native Beobachter braucht im **ausführenden Kontext** bestehende
+Bedienungshilfenrechte. Ein berechtigter SSH-Prozess belegt keine Rechte eines
+autonomen Testdienstes. `--fastra-only` setzt einen bereits gesicherten echten
+PMT-Referenzbaum voraus und wiederholt dessen Konvertierung nicht.
+Der äußere Testlauf besitzt den eigenen Prozess und stellt gesicherte PMT-
+Einstellungen wieder her; die Fastra-Runner verwenden ihre reguläre Sandbox.
 
 ### Lokale Laufzeit-Baselines je Mac
 
@@ -1731,3 +1774,731 @@ Erfolg oder Fehler frei. Aufnahmen zeigen alle Zustände hell/dunkel, bei
 Mindestbreite und breit. Unit-Regressionen prüfen cmark-Referenzlinks, HTML/Anker,
 Encoding/BOM, codierte Pfade, Symlinks, Projekt-Ausschlüsse, Ressourcenlimits und
 Dokumentidentitäten. Es werden ausschließlich temporäre Fixtures verwendet.
+
+Linux verwendet `linux/test.sh references`, `references-project`, `references-rich`
+sowie `references-guards`, `references-disk-guards` und `references-unverified`.
+`references-mac` verwendet dieselbe CRLF-Datei wie der Mac-Test `mdreferences`.
+Die echten GTK-Menü-/Listen-/Filter-/Sprungpfade werden
+mit X11-Eingaben geprüft; `FASTRA_REFERENCE_WIDTH=640` prüft die Mindestbreite.
+Projektbefunde springen erst nach erneuter Snapshot- und Ladeprüfung in neue
+Quell-Tabs. Der Abbruchtest hält nur seinen eigenen Debug-Worker kurz zurück;
+Generation, Dokumentidentität und identische neu publizierte Quellbytes bleiben
+getrennt geprüft. Die Unit-Suite enthält zusätzlich Linux-Mountgrenzen,
+Symlink-Elternpfade, Unicode-Anker und begrenzte schreibgeschützte Berichte.
+
+## WYSIWYG: Clipboard, Leerraum und Ausschnitt
+
+`MarkdownVisualTests/reportBoldReturnDelete` prüft Einfügen von HTML-Fettdruck
+und Markdown mit NBSP, Return, mehrere echte Render-Rundreisen, vollständiges
+Löschen und Undo. `reportHighlightClipboardMetadata` verwendet zwei unabhängige
+Editoren mit isoliertem nativem Clipboard, kontrolliert exportierte Farbe und
+fehlende interne Blockkennungen und prüft eine echte Speichern-/Öffnen-Rundreise.
+`reportViewportOwnership` prüft tatsächliches Scrollen, den synchronisierten
+Ausschnitt, Wiederaufbau sowie abgewiesene alte Revisionen und fremde Fenster.
+Nach Build die drei Gruppen zusätzlich zu den bestehenden Format-, Clipboard-,
+Leerzeilen- und Blockerhaltungstests ausführen; die nativen Fenstertests bleiben
+für den sichtbaren Moduswechsel erforderlich.
+
+Unter Linux führt `python3 tools/linux-probes/wysiwyg-report/run.py <repo>` die
+gemeinsamen Originalskripte mit GTK4/WebKit6 in einer isolierten Anzeige aus.
+Die Probe benötigt PyGObject und die installierten GI-Bindungen. Jede Eingabe
+lädt ein frisches Webdokument; Text, Metadaten und Quellen sind synthetisch.
+`FASTRA_WYSIWYG_VENDOR` kann für den Gegenbeweis auf einen privaten Ordner mit
+den drei unveränderten Ausgangsskripten zeigen. Der vorhandene native Rich-
+Fenstertest ergänzt Formatierung, Undo/Redo, Tabellen, Unicode, BOM, sichere
+Speichersynchronisierung und veraltete Modusantworten. DE/EN bei Mindestbreite
+und breit sowie hell/dunkel prüfen und die tatsächlichen Aufnahmen ansehen.
+
+## Linux: Build, lokale Pakete, Signatur und Installation
+
+Die Linux-Oberflächenschrift Inter 4.1 liegt unverändert unter `crates/fastra-linux/resources/fonts/inter-4.1`. `SOURCE.json` enthält Archiv- und Dateiprüfsummen. Die Paketierung prüft alle Datei-Hashes und kopiert Lizenz und Herkunftsnachweis. Die Registrierung gilt nur im laufenden Prozess; GTKs Fontmap wird nach der Ergänzung neu eingelesen. WebKit erhält eigene normale/kursive WOFF2-Dateien über exakt erlaubte lokale Dokumentadressen und `font-src` derselben privaten Route. Es gibt keinen Webfont-Dienst. `linux/test.sh fonts` liest die tatsächlich verwendeten Pango-Textläufe sichtbarer Tabs und halbfetter Suchtitel sowie die geladenen WebKit-Fonts in Vorschau und Rich. Die alte unsichtbare Notebook-Beschriftung ist keine Fontreferenz. Die nativen Prüfungen verwenden minimale/breite Ansichten in beiden Sprachen und Farbschemata; Quelltextschrift und Textbytes müssen erhalten bleiben.
+
+Die Rootskripte wählen unter macOS weiterhin `app/`, unter Linux `linux/`.
+Die Linuxversion und die native Buildnummer werden aus Cargo und `Info.plist`
+ermittelt und auf Konsistenz geprüft; kein Skript erhöht selbst die Version.
+
+```bash
+./build.sh                    # nativer Debugbuild, drei ELF
+./build.sh --release          # nativer optimierter Build
+./linux/run.sh                # verwendet dieselbe private ICU
+./linux/run.sh --release
+./release.sh --unsigned       # lokale DEB-, tar.gz- und ZIP-Pakete
+./release.sh --key FULL_SIGNING_FINGERPRINT --output dist/local-release
+./install.sh --package dist/local-release/packages/fastra-VERSION-linux-x86_64.tar.gz
+```
+
+`build.sh` braucht Rust gemäß `rust-toolchain.toml`, C/C++, Make, pkg-config und
+GTK4 >=4.12, GtkSourceView >=5.6 sowie WebKitGTK 6 >=2.40 einschließlich ihrer
+Entwicklungspakete. Fehlende Voraussetzungen werden benannt; die Skripte
+installieren keine Systempakete. Zusätzliche Cargoargumente folgen nach `--`,
+etwa `./build.sh -- --offline`. `--release` wird an Cargo korrekt als Option
+weitergereicht. Der nativen App stehen die externen Vorschauwerkzeuge weiterhin
+nur zur Verfügung, wenn die Distribution sie installiert hat; siehe F16.
+
+Fehlt `--icu-prefix` beziehungsweise `FASTRA_ICU_PREFIX`, lädt der Build
+`https://github.com/unicode-org/icu/releases/download/release-78.3/icu4c-78.3-sources.tgz`,
+prüft SHA256 `3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0`
+und baut ICU78.3 ohne Rootpräfix. Der geprüfte Präfix enthält `ICU-LICENSE`
+und `ICU-SOURCE-SHA256`. Native ICU-Builds landen unter
+`${FASTRA_LINUX_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/fastra-linux}`.
+
+`release.sh` beziehungsweise `linux/package.sh` braucht zusätzlich Docker.
+Der vorhandene Ubuntu-24.04-Builder ist per Basisimage-Digest gepinnt. Beim
+Standardweg baut er ICU innerhalb dieser glibc-2.39-Untergrenze; ein manuell
+übergebener ICU-Präfix muss dieselbe ELF-Prüfung bestehen. Der Builder läuft
+mit der aufrufenden UID/GID, damit Ergebnisse anschließend signierbar sind.
+`FASTRA_PACKAGE_CACHE` bestimmt den separaten Cargo-/Target-/ICU-Cache.
+`--skip-image-build` verwendet das bestehende `FASTRA_PACKAGE_BUILDER`-Image.
+Das Image muss aus dem mitgelieferten Dockerfile stammen. Der tatsächliche
+Imagehash, Rustversion und die Distributionspakete werden am Ergebnis gesichert.
+Aus Quellarchiven ohne Gitmetadaten muss `SOURCE_DATE_EPOCH` vorgegeben werden.
+
+Paketierung baut `fastra-linux`, `fastra-control` und `fastra-diff` gemeinsam. Alle drei ELF
+werden auf x86_64, GLIBC-Symbole oberhalb 2.39 und RPATH/RUNPATH geprüft.
+Die GTK-freien Helfer liegen unter `libexec/` neben der GUI; ihre festen
+`bin/`-Launcher setzen ausschließlich für den Kindprozess die private ICU.
+Alle Formate enthalten Lizenzen und `manifest.json` mit Quellidentität,
+Buildnummer, Runtime-Dateihashes und relativen Symlinkzielen. TAR/DEB/ZIP
+verwenden feste Metadaten aus `SOURCE_DATE_EPOCH`. `SHA256SUMS` enthält nur
+relative Paketnamen. Ein vorhandener Ergebnisordner wird nie ersetzt; erst
+der vollständige Erfolg macht den neuen Ordner sichtbar. Bitgleichheit über
+später neu gebaute Dockerimages hinweg ist dadurch nicht behauptet.
+
+`release.sh` verlangt entweder `--key FINGERPRINT`/`FASTRA_SIGNING_KEY` oder
+bewusst `--unsigned`. Der Fingerprint muss vollständig sein und einen
+vorhandenen Signierschlüssel bezeichnen. Signierung erfolgt ausschließlich
+lokal außerhalb Docker; `gpg --verify` prüft die erzeugte detached Signatur
+`SHA256SUMS.asc` tatsächlich. Bestehende Signaturen werden nie überschrieben.
+Es gibt keine automatische Schlüsselauswahl oder -erzeugung, keinen Pass-Store,
+keinen Gitpush, Tag oder Upload. Bereits erzeugte Pakete signiert
+`./linux/sign.sh --key FINGERPRINT PAKETVERZEICHNIS`.
+
+Der Benutzerinstaller akzeptiert tar.gz oder ZIP samt benachbarten
+`SHA256SUMS`. `--key FINGERPRINT` verlangt zusätzlich eine gültige Signatur
+von diesem Fingerprint. Er entpackt ohne ausführbaren Paketcode, prüft sämtliche
+Manifestdateien/Links und installiert unter `~/.local/share/fastra/versions/`.
+Ein atomarer `current`-Link wählt die Fassung; `~/.local/bin/fastra`,
+`fastra-control`, `fastra-diff` und der Desktopeintrag verweisen darauf. `--prefix` unterstützt
+auch Pfade mit Leerzeichen. Fehler/Signale beim Austausch stellen den alten
+Link und den bisherigen Desktopeintrag wieder her. Altversionen bleiben für
+eine Rücknahme erhalten. Fremde Launcher, Desktopeinträge, aktuelle Links oder
+nichtleere unmarkierte Runtimeverzeichnisse werden nicht überschrieben.
+Ohne `--package` wird das zuletzt erzeugte tar.gz unter `dist/*/packages/`
+verwendet. `--system-deb PAKET` ist eine ausdrückliche Alternative: sie prüft
+Paket und Runtimemanifest und ruft nur bei bereits als Root gestarteter
+Aufruf `dpkg --install` auf. Sie startet niemals selbst sudo.
+
+
+### Linux-Updates aus GitHub
+
+Aktive Benutzerinstallationen bieten „Updates …“ und eine abschaltbare tägliche
+Prüfung des stabilen Releases aus `DanielMuellerIR/fastra`. Quellbuilds starten
+keine automatische Netzwerkprüfung. Systeminstallationen und der optionale
+Toolkitkanal werden weiter über ihren ursprünglichen Installationsweg gepflegt.
+Nur ein neueres `fastra-VERSION-linux-x86_64.tar.gz` mit vollständigem
+GitHub-SHA256-Digest, erwarteter Adresse und begrenzter Größe wird angeboten.
+Die Vertrauensquelle ist GitHubs HTTPS-Release-API; das ist keine zusätzliche
+unabhängige OpenPGP-Signatur. Der manuelle Installer behält `--key` bei.
+
+Die Installation bindet sich erneut an freigegebene Version und SHA256, prüft
+Download, Manifest und Paketversion, führt keinen Paketcode aus und verwendet
+den vorhandenen atomaren Installer. Dessen Sperre prüft den erwarteten aktuellen
+Versionspfad nochmals unmittelbar vor dem Wechsel. Ein paralleles Update kann
+so keinen inzwischen neueren Stand zurücksetzen. Frühere Versionen bleiben
+liegen; die laufende Sitzung wird nicht neu gestartet. Der Helfer nutzt `-B`,
+damit Python keine zusätzlichen Dateien im streng verifizierten Paket erzeugt.
+Updater, Installer und Verifier sind Teil des gebundenen Quellsnapshots und des
+Laufzeitmanifests. Einstellungen liegen unter `XDG_CONFIG_HOME/fastra/updates.json`.
+
+Gezielt prüfen: `python3 -B -m unittest discover -s tools/linux-package/tests -v`.
+Die Tests prüfen unter anderem beschädigte Downloads, Paket-/Releaseabweichung,
+HTTPS-Downgrade, echte Installation mit alten Versionen und abgewiesenen
+Versionswechsel nach einer parallelen Installation. Die Oberfläche in DE/EN
+und Hell/Dunkel am gepackten Stand prüfen. Ein echtes GitHub-Update setzt ein
+entsprechend veröffentlichtes neueres Linux-Paket voraus.
+
+### Linux-cmark und optionale Umbruchprofile
+
+Der Linux-Build verwendet für GFM-Autolinks den offline vendorten Mac-Pin unter
+`crates/fastra-linux/native/`. `build/native_cmark.rs` prüft vollständigen
+Dateisatz und SHA-256 vor dem statischen C-Build; eine System-cmark-Bibliothek
+oder ein Netzdownload ist kein Ersatz. Die vier Quellpatches und ihre
+Vorher-/Nachhermanifeste gehören zur reproduzierbaren Eingabe. Lizenztexte
+müssen auch im fertigen Paket enthalten sein. Native Gegenfälle prüfen echte
+DOM-Links, Originalbereiche, LF/CRLF/CR, Rich-Bearbeitung, Undo/Redo und Save;
+reine Parserprüfungen ersetzen diese Wege nicht. Details: [F12-AUTOLINKS](linux-port/F12-AUTOLINKS.md).
+
+Die erweiterten Umbruchprofile prüfen eine eigene Pango-Capability statt einer
+Versionsnummer. Der System-Gegenlauf muss null Umbruch-Tags behalten. Der
+positive Lauf muss beide Teilansichten, Größenwechsel, native Controlbedienung,
+Tabs/Unicode sowie Quelle, gerichtete Auswahl und Historie prüfen. Ein neuer
+Toolkit-, Font- oder Namespacepfad verlangt einen gezielten Kombinationslauf;
+ein unveränderter früherer Prototyp reicht nicht. Details: [F07-WRAP-PROFILES](linux-port/F07-WRAP-PROFILES.md).
+
+### Linux-Rich: native Clipboard- und Markergrenzen
+
+`FASTRA_ISOLATED_DISPLAY=1 FASTRA_RICH_SELFTEST=1
+FASTRA_RICH_CLIPBOARD_SELFTEST=1` aktiviert den zusätzlichen nativen Ablauf
+(jeweils als Umgebungsvariablen setzen). Nur auf einer eigenen X11-Testanzeige
+mit `FASTRA_RICH_TEST_ROOT` und `FASTRA_RICH_SCREENSHOTS` ausführen. Er nutzt
+zwei eigene Fenster und synthetische Dateien: echter Highlight-/Undo-Button,
+MIME-Union mit bytegenau nachgewiesenem Vorrang des Fastra-Markdownformats,
+Copy/Paste zwischen Dokumenten, geschützte HTML-Originale, NBSP, Return,
+vollständiges Delete/Undo, Plain-Paste/Cut per Tastatur, Speichern, Schließen
+und erneutes Dateiöffnen. Er kontrolliert tatsächliches Scrollen und die
+vorherige Vorschauwahl beim Moduswechsel. Unsicheres HTML, fremde interne
+Metadaten, Tab-ABA, Clipboardwechsel und eine absichtlich langsame Leseanfrage
+prüfen die Ablehnung ohne Ausgabe. DE/EN, Mindestbreite/breit und hell/dunkel
+mit Sichtprüfung der Aufnahmen abnehmen.
+
+Der Clipboard-Reader liest höchstens 2 MiB UTF-8 in 64-KiB-Stücken und besitzt
+eine 5-Sekunden-Frist. Der HTML-Import akzeptiert höchstens 20.000 Elemente,
+keine Bilder oder Dateipakete und keine relativen oder ausführbaren URLs.
+Der gemeinsame Markerhelfer bleibt begrenzt. Die statische Vorschau prüft rohes HTML
+gegen die enge Mac-Positivliste; fremde interne Positions-/Kopierattribute gelangen
+nicht in die vertrauenswürdigen Register. Abgewiesene Fragmente bleiben escaped.
+Überschriftsprünge behalten die Offsets der unveränderten Quelle.
+`FASTRA_CODE_COPY_SELFTEST=1 FASTRA_HTML_WHITELIST_SELFTEST=1` prüft lokal
+Bild/Details, abgewiesene Skripte, unveränderte Quelle und die Codekopiergrenze.
+`FASTRA_PREVIEW_LINKS_SELFTEST=1` benötigt zusätzlich einen privaten URI-Testhandler
+(`FASTRA_LINK_TEST_RECEIPT`): echte Tastaturaktivierung muss HTTP(S)/Mailto
+übergeben, automatische Klicks und Dateiprotokolle müssen ohne Ausgabe bleiben.
+Beide Debugprüfungen ausschließlich auf privaten Displays ausführen.
+
+### Linux: Hauptfenster und Suchlayout
+
+Die visuelle Referenz ist die aktuelle native Mac-Version mit denselben
+synthetischen Dateien. `./linux/test.sh chrome` prüft echte Maus-/Tastaturaktionen
+für Tabs, Ctrl+T, Ctrl+Shift+O, Ctrl+F, Suchfelder, Groß-/Kleinschreibung, Moduswahl, einzelne
+Trefferfreigaben, Wiederöffnen, Übernahme, Ctrl+Z, Seitenleiste sowie
+Datei-/Ordner-/Projektwechsel. Ordner und Projekt werden bei 520 und 720
+logischen Pixeln aufgenommen; beide vollständigen Textvorschauen müssen
+sichtbare, lesbare Flächen behalten. Ein verborgenes Suchfenster darf den
+Prozess nach dem Schließen des letzten Editors nicht weiter offen halten.
+
+Die Suchprüfungen lesen die tatsächlich dargestellte Vergleichsansicht. Die
+abgetrennten früheren Textpuffer und Checkboxen bleiben leer. Native Eingaben
+warten auf den abgeschlossenen Zustandswechsel und die Fenstergeometrie;
+Mauspunkte beziehen sich auf das Zielfenster, nicht den Bildschirmursprung.
+Mit Fenstermanager erfolgt die Aktivierung über dessen regulären Weg. Für
+Alt-Mausgesten muss das private Testdisplay die Geste dem Editor überlassen.
+
+`FASTRA_POORMANS_TEXT=/pfad/zur/echten/poormans-text ./linux/test.sh rich-rtf-import`
+prüft den RTF-Verbraucher unabhängig vom Bild- und Dateidrop: echten
+RTF-Clipboardinhalt im Rich-Editor einfügen, sichtbaren Verlusthinweis prüfen,
+über die echte lokale PMT-CLI konvertieren, vollständige Vorschau und native
+Übernahme prüfen, anschließend Fettung, Textmarker und Unicode im gerenderten
+Rich-Tab nachweisen. Ausgangspuffer, Ausgangsdatei und materialisierte RTF-Bytes
+müssen unverändert bleiben. Die separate Bild-/Dateidrop-Prüfung bleibt erforderlich.
+Der eigene Dateidrop besitzt die Ablage ausschließlich: Interne Drop-Controller
+der WebView werden entfernt. Leere Formate und eine deaktivierte Ereignisphase
+reichen beim getesteten WebKitGTK 2.52.6 nicht aus; sein eigener
+[Accept-Handler](https://github.com/WebKit/WebKit/blob/webkitgtk-2.52.6/Source/WebKit/UIProcess/API/gtk/DropTargetGtk4.cpp)
+kann dennoch einen späteren Status auf dem bereits abgeschlossenen Drop setzen.
+Die native Bild-/Dateiprüfung läuft daher mit `G_DEBUG=fatal-criticals`, echten
+GDK-Dateilisten und einem angebotenen widersprüchlichen String. Abbrechen darf
+keine Dateien erzeugen; Übernehmen erhält die Quelldatei und meldet COPY genau
+einmal. Normale Dateien und Ordner behalten den regulären Öffnungsweg.
+
+
+`FASTRA_TOOL_SCREENSHOTS` wählt den Belegordner. Den Ablauf mit `LANGUAGE=de`
+und `en` sowie `GTK_THEME=Adwaita` und `Adwaita:dark` wiederholen. Für das
+Hauptfenster 760 und 1100 logische Pixel prüfen, einschließlich leerem Tab,
+Projekt, Quelltext und Markdown. Dateisuche zusätzlich bei 520 Pixeln prüfen.
+Die native Dateizugprüfung bleibt `./linux/test.sh tab-file-drag`; sie muss den
+sichtbaren Griff der kompakten Tab-Leiste und echte externe Empfänger verwenden.
+Dateigriffe dürfen keinen `GtkWindowHandle` als Vorfahren besitzen: Dessen
+Fensterziehgeste konkurriert mit dem nativen Dateidrag. Nur freie Titelleistenflächen
+sind Fenstergriffe. Verborgene Suchfenster werden aus der `GtkApplication`
+entfernt und beim Anzeigen wieder angemeldet. Die Vorschauprüfung bestimmt das
+tatsächlich aktive App-Fenster; `active_window()` allein kann noch das zuletzt
+fokussierte, bereits inaktive Fenster liefern.
+
+Die Statuszählung verwendet den vorhandenen ICU-Graphemiterator. Die Beispiele
+in `text_statistics` sind mit der Mac-Zeicheniteration gegengeprüft; CRLF,
+zusammengesetzte Emoji und kombinierte Zeichen dürfen nicht als mehrere
+Zeichen erscheinen. GTK-Puffer werden abschnittsweise kopiert, die Zählung
+läuft mit Abbruch und Generationsprüfung im Worker. Markierungen sowie der
+Wechsel zwischen den unabhängigen Quellansichten aktualisieren den Bezug.
+
+`./linux/test.sh search-live` prüft echtes Tippen in Datei-, Tab- und Ordnersuche,
+sofortige Entwertung, Bereichserhalt, kurze Muster per Return, Vertauschen sowie
+Capture-Klick und tatsächlichen Drag. Danach folgt im selben Prozess eine Suche
+mit kürzerer Ersetzung und einem langen Detailtreffer; `G_DEBUG=fatal-criticals`
+muss dabei aktiv bleiben. GTK 4.14 beendet den Text-Drop ohne `leave` und kann
+sonst einen alten Drop-Caret zeichnen. Die Suchfelder räumen ihn bei
+`notify::current-drop` auf. Grundlage sind der beobachtete Snapshot-Stack und
+[GtkText](https://github.com/GNOME/gtk/blob/4.14.5/gtk/gtktext.c) sowie
+[GtkDropTarget](https://github.com/GNOME/gtk/blob/4.14.5/gtk/gtkdroptarget.c).
+`./linux/test.sh search-detail` prüft denselben 28-Pixel-Detailkasten separat:
+600 Zeichen bleiben vollständig vorhanden, echtes Ctrl+End scrollt horizontal,
+Quelle und Undo bleiben unverändert. `FASTRA_SEARCH_LAYOUT_WIDTH=520` beziehungsweise
+`900` setzt für die Sichtprüfung schmale und breite Suchfenster. Screenshots erst
+nach einem tatsächlich gezeichneten Frame aufnehmen.
+
+`./linux/test.sh search-groups`, `search-groups-open`, `search-groups-folder`
+und `search-groups-project` prüfen native Detailauswahl, Gruppenbildung mit
+Referenzverschiebung, Capture-Klick, Auflösen und sichtbare Verweigerung,
+Gruppen ohne Treffer, Element-Picker, Verlauf und den Fokus des sichtbaren
+Suchfelds. Die echte horizontale Liste scrollt anschließend zu Gruppe 31 und
+zieht deren `$31` ins Ersetzungsfeld. `FASTRA_CAPTURE_STRESS=1000` erweitert
+denselben Ablauf auf 1.000 Gruppen und prüft, dass weniger als 500 Knöpfe
+aufgebaut sind. Aktueller Referenzlauf: drei gleichzeitig gemappte Knöpfe.
+Die drei Darstellungs-Tags folgen einem im Worker berechneten Plan nicht
+überlappender Farbabschnitte; UTF-16, Emoji und die Rangfolge verschachtelter
+Gruppen besitzen eigene reine Tests. Alle geänderten Ansichten in Datei,
+Geöffnet, Ordner und Projekt bei 520 und 900 Pixeln selbst ansehen.
+
+Die Regex-Syntaxquellen unter `crates/fastra-core/native/regex-syntax` sind
+unveränderte Auszüge der Mac-Pins. `SOURCES.json` bindet Revisionen und
+Dateihashes. Paketierung und Updateprüfung verlangen Runtime-, Grammatik-
+und Unicode-Lizenzen. Der kleine C-Adapter begrenzt Parserzeit, Knoten und
+Baumtiefe und übergibt ausschließlich geprüfte Bytepositionen an Rust.
+
+`./linux/test.sh single-replace` und `single-replace-secondary` prüfen echte
+Einzelersetzungen ohne Sammelfreigabe in beiden Quellansichten: Unicode/CRLF,
+Auswahlbereich, Folgetreffer, native getrennte Rückgängig-Schritte und wirkungslose
+Ersetzungen. `single-replace-open` prüft Dokumentidentitäten bei gleichen Namen und
+unabhängiges Undo. `single-replace-guards` und `single-replace-guards-open` verzögern
+die Antwort, ändern die Suchanfrage beziehungsweise wechseln tatsächlich zu einem
+fremden Fenster und zurück. Die verspätete Ersetzung muss ausbleiben; eine neue
+Anfrage muss anschließend wieder funktionieren. `search-footer` und
+`search-footer-open` verwenden echte Return-/Strg+G-/Umschalt+Strg+G-/Strg+Return-
+Tasten und die sichtbaren Voriger/Nächster-/Beispielknöpfe. Alle diese Läufe
+verwenden `G_DEBUG=fatal-criticals`.
+
+`./linux/test.sh search-parity` prüft die native Extraktion in einen neuen dirty
+Tab, Abbrechen, die Zwischenablage als Ziel, veraltete Eingaben ohne Ausgabe, All/None, das getrennte Freigabefenster, die Ablehnung nach Fremdfensterwechsel
+und frisches Apply/Undo. `./linux/test.sh home` prüft spätes Abbrechen ohne
+Teilabschluss, Verwerfen, leeren fokussierten Start und die Entwertung alter
+Projektbindungen. `./linux/test.sh rich-find` prüft Ctrl+F, echte Tastatureingaben,
+Return/Escape/Wiederöffnen, Groß-/Kleinschreibung, Treffer über Formatgrenzen,
+Ctrl+G mit tatsächlichem Scrollen und den Wechsel zur Quelltextsuche. Die
+Rich-Zahlen gelten dem vollständigen synchronisierten Quelltext. Rich-Aufnahmen
+müssen das echte X11-Fenster einschließlich WebKit erfassen; GTK-Widget-Snapshots
+allein können eine noch nicht gezeichnete WebKit-Fläche auslassen. Ein zusätzlicher
+Lauf mit `G_DEBUG=fatal-criticals` prüft das Aufräumen verschachtelter GTK-Fenster.
+
+Die weiterhin offenen Layoutangleichungen stehen in der [Roadmap](../ROADMAP.md).
+
+### Linux: Dateivergleich und dokumentgebundene Übernahme
+
+`./linux/test.sh diff` prüft den nativen Quelldialog, Ergebnis-Tab, Kopieren
+ohne Nummern oder Ausrichtungszeilen, vollständige Vorschau, Übernahme und
+ein natives Undo. Derselbe Lauf prüft lange Unicode-Zeilen, schmale und breite
+Spalten, Soft Wrap sowie tatsächliches Auf- und Zuklappen mit sichtbarer Kopierausgabe.
+`diff-interaction` prüft den echten neun Pixel breiten Trennleistengriff,
+proportionalen Größenwechsel, gemeinsame Vorschau- und Tabteilung, Doppelklick,
+F8/Pfeiltasten/Pos1 sowie Alt-Navigation bis zu einem vorher unsichtbaren
+Unterschied und dessen tatsächlich sichtbaren virtuellen Listeneintrag.
+Ein langer nativer Quelltext bleibt ohne Umbruch innerhalb der Spalte und
+ohne zusätzliche horizontale Leiste. Das eigene Vergleichsprofil darf das
+normale Textprofil nicht ändern. Eine zusätzliche Wiederaufnahmeprobe startet
+einen frischen Prozess mit derselben privaten Konfiguration und prüft Teilung
+und Umbruch erneut; Geometrie verborgener Tabs wird erst nach deren echter
+Aktivierung bewertet.
+
+`diff-states` bedient Optionen und Dateiquellen einschließlich fehlender, binärer
+und BOM-kodierter Dateien; dateibasierte Quellen bleiben auch bei offenem
+Dokument schreibgeschützt. `diff-guards` prüft echte Übernahmeversuche nach
+Dokumentänderung und externem Austausch mit gleicher Größe und restaurierter
+mtime, Abbrechen der Vorbereitung, Quellschließen und Wiederöffnung desselben Pfads.
+
+`diff-rich` prüft exakte Übernahme im unveränderten Rich-Modus mit
+nativem Undo/Redo/Undo. `FASTRA_DIFF_RICH_VARIANT` wählt zusätzlich `empty`,
+`definitions`, `math` oder `image`; gerenderte Formeln und Bilder müssen
+vor und nach Undo tatsächlich vorhanden sein. `diff-export` bedient
+den nativen Speicherdialog, Abbrechen und die echte Überschreibbestätigung
+für eine geschützte Vergleichsquelle. Der Bericht muss vollständig und
+sprachrichtig sein; beide Quellen bleiben bytegleich.
+
+`diff-drop` baut einen unabhängigen GTK-Prozess als Dragquelle und bietet
+mehrere Dateien samt widersprüchlichem String an. Der native Drop muss COPY
+melden und den ersten Dateipfad einschließlich Leerzeichen, Raute und ZWJ-Emoji
+erhalten. `diff-large` verwendet standardmäßig 40.000 Zeilen;
+`FASTRA_DIFF_LARGE_ROWS=200000` prüft die nominelle Zeilengrenze. Der Lauf
+bricht zunächst einen pausierten Worker nativ ab und berechnet danach ohne
+Pause neu. Während vollständigem Aufbau und echter Navigation zum letzten
+Unterschied misst ein Main-Loop-Heartbeat die längste Bedienpause. Die Prüfung
+liest unabhängig die wirklich sichtbare Quellzeile; eine geänderte Auswahl
+allein belegt keinen erfolgreichen Sprung. Große Leistungsläufe ohne parallelen
+Build ausführen. `diff-budget` prüft zusätzlich die erklärte Rechengrenze
+bei langen 200.000-Zeilen-Quellen, ohne Teilergebnis oder Schreibzugriff.
+Diese Tests benötigen ein isoliertes Display und ersetzen
+keine physische IME- oder Screenreader-Abnahme.
+
+### Linux: Speichern unter und gemeinsames Beenden
+
+`./linux/test.sh save-as` prüft den nativen Dateidialog, beide Seiten der
+vollständigen Zielvorschau, tatsächliche Bildkopien, Herkunft/Rücknahme,
+Überschreibfreigabe und spätere Speicherung ausschließlich am übernommenen Ziel.
+`./linux/test.sh git-force-push` prüft den eigenen Force-Modus einschließlich
+Abbruch der Zusatzbestätigung, Serverdrift und veraltetem Fensterbesitz gegen
+temporäre lokale Repositories. Der normale `git-push`-Fall bleibt getrennt.
+
+`./linux/test.sh application-quit` verwendet den bestehenden Prozess-/
+Steuerungsprobe für Mehrfensterentscheidungen, native Speicherauswahl,
+veraltete Freigaben und den tatsächlichen Service-/Socketabschluss.
+`./linux/test.sh application-quit-asset-io` hält echte Bildrücknahme und deren
+letzten Main-Rückruf gezielt an: Beenden muss bis zum vollständigen Abschluss
+blockiert bleiben und danach bei erneutem Versuch funktionieren.
+
+Diese Tests verwenden ausschließlich ihre privaten Homes, Dateisystem-Fixtures
+und Xvfb-Anzeigen. Dateitransaktionen brauchen das vom normalen Runner vorbereitete
+unterstützte Dateisystem; ein gewöhnliches Container-Overlay oder TMPFS ist kein
+Ersatz. Nach einer im Test absichtlich geänderten Projektwahl wartet der nächste
+unabhängige Speicherfall auf deren frischen gebundenen Baum. Eine korrekt
+abgewiesene veraltete Vorschau darf nicht als fehlgeschlagene Speicherung mit
+unverändert gültiger Basis ausgegeben werden.
+
+`./linux/test.sh application-quit-folder` prüft denselben Schließschutz bei echter
+Ordner-Dateiübernahme und Rücknahme bis zur abschließenden Journalbestätigung.
+
+### Linux: sichtbare Markdown-Leerzeilen und Zwischenablage
+
+`./linux/test.sh rich-blank-lines` prüft die generierten sichtbaren Zeilen mit
+echter Eingabe, Undo, Formatierung, Save, Tab-Close und Wiederöffnung.
+`./linux/test.sh rich-blank-clipboard` führt fünf tatsächliche native
+Copy-/Paste-Rundläufe aus: sichtbare Leerzeilen, verschachtelte und lose Listen,
+Literalcode sowie NBSP und harte Umbrüche. Zusätzlich liest es das HTML aus der
+statischen Vorschau über GDK. `rich-blank-typed-copy` prüft echte Eingabe in einen
+solchen Platzhalter, Copy, Paste, Cut und die beiden Rücknahmen bis zu den exakten
+Originalbytes. Ein DOM-Stringtest allein ersetzt diese Zwischenablagebelege nicht.
+
+Sprachen und schmale/breite Ansichten gezielt ausführen und die Aufnahmen ansehen.
+Ein unlesbares Erstbild gilt nicht als Sichtbeleg; das Testfenster muss sichtbar
+positioniert sein. Der Runner setzt ein privates HOME und XDG-Verzeichnisse und
+entfernt fremde Prüfflags vor dem ausdrücklich gewählten Fall.
+
+
+Der [externe Linux-Vergleichshelfer](EXTERNAL-DIFF.md#linux) besitzt einen eigenen
+isolierten Prüfeinstieg `linux/external-diff-test.sh BINARY_DIRECTORY NEW_OUTPUT`.
+Ältere Laufzeitmanifeste mit zwei Executables bleiben zulässig. Neue Pakete ab
+1.182.0 müssen auch den Diff-Helfer enthalten; ein Rückwechsel entfernt nur dessen
+eigenen Launcher und stellt ihn bei einem Fehler wieder her.
+
+
+### Linux: unabhängige Split-Auswahlen
+
+`FASTRA_SPLIT_GATE_SELFTEST=1` aktiviert ausschließlich im Debugbuild den
+nativen Komponenten-/Befehlszieltest. Dazu private X11-Anzeige, privaten D-Bus,
+frische XDG-Verzeichnisse, `FASTRA_ISOLATED_DISPLAY=1` und
+`FASTRA_TOOL_SCREENSHOTS` verwenden. `FASTRA_SPLIT_TARGET_CASE` prüft gebundene
+Operationen; `FASTRA_SPLIT_PASTE_CASE` begrenzte tatsächliche B-Paste.
+Die Auswahlprüfung mit `FASTRA_SPLIT_REVIEW_SCOPE0=1` schützt Ganzdateivorschauen.
+PRIMARY-, Auswahl- und Historyfälle zusätzlich unter `G_DEBUG=fatal-criticals`
+ausführen; Focus-only, tatsächliches Collapse und fremde Anbieter getrennt prüfen.
+Die [Komponentenbeschreibung](linux-port/F07-SELECTION.md) hält Ressourcen- und
+allgemeine Eingabegrenzen ausdrücklich fest.
+
+### Linux: eingefrorener Suchbereich und kompakte Freigabevorschau
+
+`linux/test.sh search-navigation`, `selection`, `single-replace`,
+`single-replace-secondary` und `single-replace-longer` prüfen echte Trefferwahl,
+Quellscrollen, unveränderte Vorschauidentität, Unicode/CRLF, mitwandernde Grenzen
+und eigenständige Undo-Schritte. `single-replace-guards` und
+`single-replace-guards-open` behalten die verspäteten Antworten nach Such- und
+Fensterwechseln als separate Wächter.
+
+`inline-preview` und `inline-preview-open` prüfen mit nativen Freigabeklicks
+Einzel-/Sammelfreigaben, drei Zeilen mit ehrlichem Restzähler, aktive Dokumente
+mit identischen Namen, sofortige Invalidierung und wirkungslose Ersetzungen.
+Die Ansichten in beiden Sprachen, hell/dunkel und bei 520/900 Pixeln ansehen.
+Der reine Zeilenvertrag wird mit Unicode, CRLF, mehrzeiligen Treffern,
+Nulltreffern, ungültigen Freigaben, Abbruch und 200.000-Zeilen-Grenze geprüft.
+Die kompakte Ansicht ersetzt niemals die vollständige Freigabeansicht.
+
+### Linux: Ordnerquellen und Projekt-Datei-Sets
+
+`linux/test.sh search-sources` und `search-sources-project` prüfen native
+Auswahlhäkchen, Entfernen, die Dateitypwahl sowie Anlegen, Validierung und Löschen
+von Datei-Sets. Reale Trefferzahlen belegen die Auswahl; Quelldateien bleiben
+unverändert. Projekt-Ausschlüsse werden vor dem Schließen gespeichert und nach
+Wiederöffnen frisch gelesen. `selection-entry` prüft echtes Strg+F, automatische
+mehrzeilige Auswahlbindung, den Geöffnet/Datei-Rundweg und das Zurücksetzen der
+wörtlichen Sternsuche.
+
+Ordner-/Projektmasken mit langen Setnamen und mindestens acht Ordnern bei
+520/900 Pixeln, in beiden Sprachen und hell/dunkel ansehen. Tatsächliche
+X11-Fensteraufnahmen über den gemeinsamen Debug-Helfer verwenden; ein
+`GtkWidgetPaintable` kann nach dynamischen Layoutwechseln Teile alter Frames
+liefern. Mausklicks nach dem Einblenden der kompakten Vorschau erst nach deren
+Montage und Größenvergabe ausführen.
+
+Die Ablageprüfungen erfassen rohe Unix-Pfade, unabhängige Schreiber, Wiederöffnen,
+ungültige Datei-Sets, beschädigte Daten und Symlinks. Der echte Datenträgertest
+belegt ausgewählte Dateien/Unterordner, Ausschlüsse, unveränderte übrige Dateien
+sowie Apply/Undo. Die relative Auswahl ist auf eine Projektwurzel gebunden und
+wird vor dem Öffnen der Dateien geprüft. Die Release-Konfiguration zusätzlich
+mit `cargo check --release --locked -p fastra-linux` prüfen: Debug-Prüfeinstiege
+müssen vollständig aus diesem Build verschwinden.
+
+`linux/test.sh template-menu` prüft die echte Popup-Auswahl per Maus und
+Tastatur, frisch gelesene eigene Vorlagen, optionalen Ersetzungstext, erhaltene
+Flags und Bereich, Namenskürzung nach sichtbaren Zeichen, „Keine“, eine
+zwischenzeitliche Formularänderung und Wiederöffnen. Die eigentliche Quelle
+bleibt unverändert. Leere Trefferlisten und das Dateitypmenü gehören zur
+Sichtprüfung der Suchmasken in beiden Sprachen bei 520 Pixeln und breit.
+
+### Linux: Bedienen und Schließen während lesender Ordnersuche
+
+`linux/test.sh folder-readonly` hält eine bereits berechnete Worker-Antwort
+gezielt zurück. Ein echter Mausklick öffnet währenddessen das Dateitypmenü;
+dieses bleibt sichtbar und bedienbar. Die Auswahl „Alle Dateien“ beendet den
+alten Lauf und liefert drei statt zwei Treffer. Tatsächliche Find-Eingabe und
+Schließen während eines weiteren Laufs dürfen keine alten Ergebnisse in das
+wieder geöffnete Fenster übertragen. Quellen und Editor bleiben unverändert.
+`linux/test.sh folder` prüft weiterhin selektives Anwenden, Codec/BOM, schmutzige
+Editoren und Rücknahme; während der schreibenden Phase sind Quellen und beide
+Schließwege gesperrt. Die Antwortverzögerung existiert ausschließlich im
+Debug-Selbsttest.
+
+### Linux: native Quelltext-Gliederung und Verlauf
+
+`linux/test.sh navigation` bedient das echte Gliederungspopup mit der Maus,
+prüft Markdown und 4D, Rück-/Vorwärtssprünge nach wiederholten Änderungen,
+Dokumentwechsel, geschlossene Ziele und mehrdeutige Überschriften. Die beiden
+Textänderungen müssen über natives Undo vollständig zurückgehen; Navigation
+legt keine eigenen Textschritte an. `outline-fallback` prüft einen 4D-Methodeneintrag
+ohne Funktionen, einen Sprung auf dieselbe Position und die verborgenen
+Verlaufsknöpfe im anschließenden Klartextdokument. `source-sync` bleibt ein
+separater Wächter für gekoppelte Quellansichten.
+
+Beide Sprachen, hell/dunkel und 760/1100 Pixel breit ansehen, einschließlich des
+nativen Popup-Fensters. Unter Openbox müssen verwaltete Hauptfenster über die
+Fenstermanager-Aktivierung fokussiert werden; direkte X11-Fokuszuweisung allein
+kann danach reale Mausklicks verlieren. Unverwaltete Popups behalten ihren
+eigenen nativen Fokusweg.
+
+Der reine Ankervertrag wird gegen 1.130 tatsächlich ausgeführte Swift-Foundation-
+Referenzfälle geprüft. Der Generator bewahrt zusätzlich das unveränderte
+Swift-Ergebnis: Dessen doppelte Prüfung einer letzten Zeile ohne Abschluss
+verweigert 80 sonst eindeutige Ziele. Linux wiederholt diese unbeabsichtigte
+Doppelzählung nicht. Unicode, verschiedene Zeilentrenner, Mehrdeutigkeit, lange
+Zeilen, Abbruch sowie Quell-/Zeilen-/Treffergrenzen werden getrennt geprüft.
+
+### Linux: gemeinsame Rich-/Quelltext-Gliederung
+
+`linux/test.sh rich-outline` prüft das native Popup mit 207 tatsächlichen
+DOM-Überschriften, ausgeblendeten HTML-/Code-Überschriften, echtem Klick,
+Rich-Auswahl und Scrollen. Rückwärts/Vorwärts muss in Rich bleiben. Echte
+Tastatureingabe aktualisiert die Liste ohne manuelles Neuladen. Eine Antwort
+vor einem Tabwechsel und Rückwechsel wird verworfen. Ein gespeicherter
+Quelltext-Cursor wird über den normalen synchronisierten Moduswechsel
+wiederhergestellt; natives Undo erreicht anschließend die Originalbytes und
+die Datei bleibt unverändert. Die 760/1100-Pixel-Matrix in beiden Sprachen
+und hell/dunkel verwendet tatsächliche X11-Popup-Aufnahmen.
+
+Bei virtualisierten Listen reicht `is_mapped` nicht für einen Mausklick: Die
+Zeile braucht eine tatsächliche Größenvergabe und einen fertigen Frame. Nach
+asynchronem Moduswechsel ebenfalls vor der Aufnahme auf einen fertigen Frame
+warten. Ein fehlendes `GtkWidgetPaintable`-Bild ersetzt keinen Sichtbeleg.
+
+### Linux: direkte Zielsprünge, geteilte Ansichten und verspätete Antworten
+
+`linux/test.sh target` bedient tatsächlichen Alt-Doppelklick und den nativen
+Kontextmenü-Eintrag, lokale 4D-Funktionen, Dateiöffnen und den gemeinsamen
+Verlauf ohne doppelte Tabs. Beide Suchfallbacks behalten Ersetzung und übrige
+Optionen, wählen den richtigen Ordner-/Projektbereich und wechseln nur das
+Muster in den Literalmodus. Die Prüfung bildet die vorhandene enge Whitelist
+ab: zunächst kein `.4dm`-Treffer, dann ein tatsächlicher Treffer mit „Alle Dateien“.
+
+`target-markdown` prüft Unicode/CRLF, die vollständige Ankerauswahl, eine lokale
+Datei mit `%23` im Namen, Rück-/Vorwärts und die tatsächliche sichtbare Meldung
+für einen fehlenden Anker. Ein privater XDG-Standardhandler empfängt die von
+`GtkUriLauncher` gestartete kanonische Adresse. Das ist ein echter Desktop-
+Dispatch im isolierten Lauf; der Test öffnet keinen Netzbrowser und verwendet
+keine globale MIME-Konfiguration. Die URI-Schreibweise wird zusätzlich gegen
+die unveränderte Foundation-Referenz geprüft.
+
+`target-guards` hält bereits berechnete Antworten gezielt zurück. Ein Tabwechsel
+mit Rückkehr, Textänderung mit Undo auf dieselben Bytes und das Schließen des
+Ausgangstabs dürfen keine alte Auswahl oder Dateiöffnung übernehmen. Ein neuer
+Sprung gewinnt. Die zweite Quellansicht behält die erste Auswahl unangetastet;
+Gliederungsmarkierung und Rücksprung folgen der aktiven Teilansicht. Tatsächliches
+Alt-Einzelziehen bleibt eine Rechteckauswahl und erhält vorhandenes Redo.
+Verzögerung und Zähler existieren ausschließlich im Debugbuild.
+
+Für diesen Gestentest darf der private Fenstermanager keine eigene Alt-Maus-
+Belegung besitzen. Es werden keine Hosteinstellungen verändert. Im normalen
+Desktop bleibt der Kontextmenü-Eintrag verfügbar, wenn dessen Fenstermanager
+Alt-Mausgesten abfängt. Der Test wartet auf das Ende seines XTest-Prozesses,
+einschließlich Modifier-Freigabe, bevor eine folgende Texteingabe beginnt.
+Native GTK-Kindgesten setzen ihre Klickzähler zurück; die Anwendung liest den
+Doppelklick deshalb vor ihnen am tatsächlich geklickten Fenster mit den
+GTK-Zeit-/Abstandsgrenzen.
+
+`crates/fastra-core/tests/fixtures/go-to-target-reference.py` führt die originalen
+Foundation-Provider mit originalem 4D-Tokenizer und Symbolbestand aus. Der
+620-Fälle-Beleg enthält auch kanonische URI und Linkliteral sowie vollständige
+Ablehnungsgründe. Der Kern prüft das Literal, die native Grenze die URI. Einfache
+Kleinschreibung reicht für `caseInsensitiveCompare` nicht: ß/SS, finales Sigma,
+Ligaturen und die ausdrücklich verschiedenen I-Varianten bleiben geprüft.
+
+### Linux-Textbausteine in Quelle und Rich
+
+`linux/test.sh snippet-source` prüft die tatsächlich sichtbare Bausteinmaske,
+beim Öffnen festgehaltene Auswahl, mehrzeilige und wiederholte Werte, direkte
+Einfügevorschau, Werterhalt beim Speichern, native Einfügung/Undo, Filter,
+Verweigerung veralteter Auswahl und Revision, Speichern/Verwerfen/Zurück sowie
+JSON-Export/-Import mit neuen IDs und Namenszusätzen. Eine U+0000-Definition wird
+vor der Einfügung abgewiesen; native GTK-Textpuffer bekommen keine Nullzeichen.
+
+`linux/test.sh snippet-rich` betätigt den wirklichen Rich-Bausteinknopf, hält eine
+DOM-Auswahl fest und prüft formatierten Markdown, tatsächlichen DOM- und GTK-Fokus,
+natives Strg+Z/Strg+Umschalt+Z, unveränderte Quellbytes nach Undo und Verweigerung
+nach Tabwechsel. Ein lokales Bild wird relativ zum gespeicherten Ziel geladen;
+Bild und Dokument bleiben auf Platte unverändert. Eine Rücknahme entfernt Bild
+und Text gemeinsam. WebKit kann beim Bearbeiten sichtbare Abstände als NBSP
+serialisieren; die Darstellung prüft deshalb NBSP als Abstand und die Rücknahme
+zusätzlich gegen die ursprünglichen Bytes.
+
+`linux/test.sh snippet-big` verwendet 600.000 zusätzliche kurze Zeilen mit mehr als 4 MiB,
+prüft die eingefrorene Auswahl, vollständige Ausgabeprüfung auf einem Worker,
+native Einfügung, ein Undo und die unveränderte Datei. Es prüft den tatsächlich
+vollständig geladenen Editor, nicht die schreibgeschützte Abschnittsansicht.
+Textabläufe behalten ihren eigenen 4-MiB-Vertrag.
+
+Die Sichtprüfung verwendet Source/Rich jeweils bei 760 × 650 und 960 × 740,
+in Deutsch und Englisch sowie hell/dunkel. `FASTRA_TOOL_WIDTH` stellt die Breite
+ein; `FASTRA_TOOL_SCREENSHOTS` sammelt native X11-Aufnahmen. Ein privater
+Fenstermanager ist nötig, damit Dialogfokus und Rückgabe realistisch bleiben.
+Bei nativen Undo-Prüfungen wird ein noch offenes nicht modales Ablaufwerkzeug
+vorübergehend ausgeblendet, damit es den Quelleditor nicht verdeckt. Rückfragen
+werden vollständig geschlossen, bevor der Test die Folgeaktion startet.
+
+`linux/test.sh snippet-secondary` wiederholt den Bausteinlauf in der zweiten
+Quellansicht. Die Teilung und Fokuswahl erfolgen über echte Klicks. Einfügung und
+native Rücknahme erhalten die unabhängige Emoji-Auswahl der ersten Ansicht;
+spätere Auswahl- und Revisionsprüfungen bleiben an die zweite Ansicht gebunden.
+
+
+### Linux: schreibgeschützte Sitzungsreferenzen
+
+`linux/test.sh session-readonly`, `session-readonly-only`,
+`session-readonly-missing` und `session-readonly-optout` prüfen jeweils zwei echte App-Prozesse auf einem
+privaten Xvfb-Display mit getrennten XDG-Pfaden. Der erste Prozess wird erst nach
+bestätigter lokaler Sicherung per SIGKILL beendet. Vor dem Neustart entfällt der
+Hardlink und der UTF-16-Dateiinhalt ändert sich. Native Freigabe und
+Wiederherstellung müssen den aktuellen schreibgeschützten Text, die gemischte
+Tab-Reihenfolge, den aktiven Tab und den ungesicherten Entwurf erhalten.
+Der Fehlpfad entfernt eine Quelle und prüft die weiter vorhandene ursprüngliche
+Sicherung. Der Nur-Lese-Fall schützt Archive ohne bearbeitbare Dokumente vor
+versehentlichem Verwerfen. `FASTRA_TOOL_SCREENSHOTS` erfasst Freigabedialog,
+Teilfehlermeldung und wiederhergestelltes Fenster. Der Opt-out-Fall stellt ausdrücklich wieder her, ohne eine neue Sicherung
+anzulegen oder die ursprünglichen Archive zu verbrauchen. Die Sicherung bleibt ohne
+Opt-in aus; V1-, Zeilenenden-, Eigentümer- und Journalregressionen gehören zum
+bestehenden gezielten Sitzungsblock.
+
+
+### Linux: appweite Quellschrift
+
+`linux/test.sh source-font` und `source-font-readonly` prüfen die tatsächliche
+native Wahl eines fett-kursiven Festbreitenschnitts, beide Quellausschnitte und
+ein zweites Fenster. Ein frischer Prozess liest dieselbe Wahl und weist die
+wirklich verwendeten Pango-Glyphenschriften nach. Text, gerichtete Auswahl,
+Revision, Dirty, Undo und Quelldatei bleiben unverändert. Unter der gewählten
+Schrift folgen echte Ctrl-Umschalt-Abwärts-/Copy-Eingaben in Ansicht B und die
+exakte Prüfung der kopierten zwei Rechteckzeilen. `source-font-missing`
+bietet einen unbekannten gespeicherten Namen als fehlend an und wählt erst
+über native Eingabe auf System-Monospace zurück. `source-font-busy` hält die echte Konfigurationssperre: Der Fehler erhält die
+vorige Plattenwahl, lässt die Darstellung und unveränderte Dokumente benutzbar
+und wird nach Freigabe über einen nativen Retry-Klick behoben. Die privaten XDG-Pfade bleiben
+vom Benutzerprofil getrennt. `FASTRA_TOOL_SCREENSHOTS` erfasst Optionen,
+fehlende Schrift und Quellansichten; die Fenster werden bei Mindestbreite und
+breit in beiden Sprachen geprüft. Die regulären Options-/Umbruch-, Quell- und
+Rechtecktests sichern die angrenzende Geometrie ab.
+
+### Linux: gemeinsame Markdown-Leseschrift
+
+`linux/test.sh reading-font` wählt über die echte Schriftliste proportionale
+Normalschrift, die gebündelten Inter- und Sora-Schriften sowie einen fett-kursiven
+Schnitt. Vorschau und Rich-Editor müssen dieselbe Schrift mit 14 px Grundgröße
+verwenden; WebKit muss die gebündelten Schriften tatsächlich laden. Abweichende
+Glyphenbreiten sichern die Verwendung installierter Schriften ab. Ein echter
+Rich-Tippeingriff mit Auswahl und Undo bleibt über alle Schriftwechsel erhalten,
+ebenso Quellbytes, Revision, Dirty, Vorschau-Token und die 120 px breite Bilddatei.
+Ein frischer Prozess prüft die gespeicherte Wahl in einer neu erzeugten Vorschau.
+
+`reading-font-busy` hält die echte Konfigurationssperre und prüft den sichtbaren
+Speicherfehler samt nativem Wiederholungsversuch. `reading-font-corrupt` und
+`reading-font-missing` erhalten die vorhandene Datei und zeigen Fehler bzw.
+fehlende Schrift ausdrücklich an. Die Store-Tests schützen zusätzlich fremde
+Versionen und Felder, überlange Daten, Symlinks und die getrennte Quellschriftwahl.
+Alle Varianten benötigen das vorhandene isolierte Display und private XDG-Pfade;
+`FASTRA_TOOL_SCREENSHOTS` erfasst Einstellungen und beide Markdown-Ansichten.
+
+### Linux: appweite Markdown-Vorschau
+
+`linux/test.sh markdown-preview` prüft die standardmäßig eingeschaltete Vorgabe,
+vorhandene und neue Tabs in zwei Fenstern, verzögertes Laden inaktiver Tabs und
+Formatwechsel. Der native Schalter in den Einstellungen und der Vorschauknopf
+verwenden denselben atomaren Speicher. Ein echter Rich-Tippeingriff mit markiertem
+Text behält Auswahl und Undo über die globale Änderung. Nach nativem Undo wechselt
+der bestehende Synchronisationspfad zum Quelltext; dort muss die aktuelle Vorgabe
+gelten, obwohl vor dem Rich-Wechsel die gegenteilige Einstellung aktiv war.
+Ein frischer Prozess prüft die ausgeschaltete Vorgabe ohne versteckte WebView.
+
+`markdown-preview-busy` hält die Konfigurationssperre und prüft sichtbaren Fehler
+und nativen Retry. `markdown-preview-corrupt` schützt die ursprünglichen Bytes
+auch vor dem Vorschauknopf. Erst die Fixture repariert die Datei ausdrücklich;
+der anschließende Retry muss die neue Vorgabe laden. Die Store-Tests schützen
+zusätzlich unbekannte Versionen/Felder, ungültige Typen, Übergröße und Symlinks.
+Die Fälle verwenden die reguläre isolierte Display-/XDG-Sandbox;
+`FASTRA_TOOL_SCREENSHOTS` erfasst Schalter, Fehler und Vorschauzustände.
+
+### Linux: Markdown-Standard und Dokumentwahl
+
+`linux/test.sh markdown-mode` prüft echte Moduswechsel in drei Fenstern, bereits
+geöffnete, neue und inaktive Dokumente sowie ausdrücklich gewählte Quelltext-
+und Rich-Ausnahmen. Rich-Eingabe, Auswahl, Undo und Quellen müssen erhalten bleiben.
+Eine echte Tab-Schließung nach der Vorbereitung blockiert den gesamten Wechsel;
+kein früherer Eintrag darf bereits verschwinden. Eine neuere Synchronisation
+behält ihre Eingabesperre, wenn eine ältere Vorbereitung endet. Eine tatsächlich
+laufende WebKit-Synchronisation hält den nativen globalen Schalter an; der
+Wiederholungsversuch muss die ursprüngliche Nutzerwahl übernehmen. Native
+Quelltext-Undo-Schritte stellen anschließend die ursprünglichen Bytes wieder her.
+Zwischenstände des gemeinsamen Serializers können sichtbare Leerzeichen als
+`&nbsp;` bewahren; der Test prüft deren Textbedeutung und die exakte Endfassung.
+
+`markdown-mode-busy` hält zusätzlich die echte Konfigurationssperre und prüft den
+Speicher-Retry. `markdown-mode-corrupt` erhält die vorhandene Datei auch beim
+fehlgeschlagenen Laden. Erst die Fixture repariert sie ausdrücklich und prüft
+den anschließenden nativen Lade-Retry. Ein frischer Prozess belegt die
+wiederhergestellte Vorgabe ohne Dokument-Override. Die Store-Tests unterscheiden
+„noch nicht gewählt“ von der gespeicherten Quelltextwahl und schützen fremde
+Versionen/Felder, ungültige Typen, Übergröße und Symlinks.
+
+`markdown-mode-choice-source` und `markdown-mode-choice-visual` prüfen den ersten
+Modusdialog, genau einen Besitzer für mehrere Fenster, Escape-Schutz und echte
+Alt+Return-/Return-Eingaben. Die neue Dokumentwahl per Ctrl+Shift+Alt+M darf weder
+den Standard noch andere Dokumente ändern. Dialog und Glyphen müssen bei
+normaler, maximaler und minimaler Oberflächengröße innerhalb ihrer Grenzen bleiben.
+`markdown-mode-choice-quit` belegt reguläres Beenden per Ctrl+Shift+Q aus dem
+Dialog, ohne eine Moduswahl zu speichern. Andere isolierte Debug-Selbsttests überspringen diesen Erstkontakt wie der
+Mac-Runner; Release-Builds durchlaufen immer den normalen Produktpfad.
+Alle Fälle verwenden private XDG-Pfade und das vorhandene isolierte Display;
+`FASTRA_TOOL_SCREENSHOTS` erfasst Dialog, Einstellungen, Fehler und Quellansicht.
+
+
+### Linux: Diff-Übernahme und Farbwechsel
+
+`linux/test.sh diff-palette` schaltet über die echten Einstellungen Hell/Dunkel/Hell,
+auch mit `GTK_THEME=Adwaita:dark`. Ein bereits geöffneter Vergleich und seine
+Übernahmevorschau müssen alle vier bestehenden TextTag-Gruppen einfärben, ohne
+TextTag-Objekte, Bereiche, Auswahl, Rendergeneration oder Datenbasis zu ersetzen.
+Die native Prüfung kontrolliert außerdem das SourceView-Farbschema, die vollständigen
+Höhen langer umbrochener Zeilen und unveränderte Dateien. `diff-guards` schützt weiterhin Revision, geschlossene Tabs, Dateiaustausch,
+ctime bei wiederhergestelltem mtime (auch nach abgeschlossener Worker-Prüfung),
+weiterlaufenden GTK-Callbacks während eines gehaltenen Workers und Abbruch.
+Vollständige Byteprüfungen besitzen
+zusätzlich eine Debug-Assertion gegen den GTK-Mainloop; vor dem Speichercommit
+bleibt die begrenzte Metadaten-/Pfadprüfung erhalten.
+
+`diff-rich-image` prüft echte Übernahme mit Bilddarstellung und Undo/Redo/Undo sowie
+die unveränderte Cache-Anzahl. Unit-Regressionen prüfen gemeinsame Anzahl-/Byte-/
+Pixelgrenzen einschließlich alter Undo-Versionen, 300 wiederholte identische
+Bildversionen und getrennt erhaltene geänderte Bytes. Quell- und Leseschrift
+verwenden denselben internen Speicherzustand; beide nativen Schriftmatrizen
+(normal/busy/missing und die jeweils unterstützten readonly/corrupt-Zustände)
+prüfen Filter, angewendete Glyphen, Wiederholungsversuch und frischen Prozess.

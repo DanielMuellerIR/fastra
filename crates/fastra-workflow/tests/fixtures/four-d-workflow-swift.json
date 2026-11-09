@@ -1,0 +1,44 @@
+{
+  "schemaVersion" : 1,
+  "workflows" : [
+    {
+      "id" : "6F6A4182-D469-45CD-9D12-F3983CD612CE",
+      "name" : "4D canonical command tokens",
+      "revision" : "65FD7593-EA36-4929-B37D-108A825DAC80",
+      "steps" : [
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "F27A26BB-4E73-4BB0-BF02-3F0FC05870C1",
+          "indentWidth" : 4,
+          "kind" : "fourDDetokenize",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 4,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 72
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "DA988867-CC20-4BA1-9DDC-DD75A1DF5680",
+          "indentWidth" : 4,
+          "kind" : "fourDTokenizeCommands",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 4,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 72
+        }
+      ]
+    }
+  ]
+}

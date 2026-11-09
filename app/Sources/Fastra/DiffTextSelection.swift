@@ -271,6 +271,9 @@ struct DiffSelectableText: NSViewRepresentable {
         view.drawsBackground = false
         view.textContainerInset = .zero
         view.textContainer?.lineFragmentPadding = 0
+        // SwiftUI misst verschiedene Breiten, bevor es den endgültigen Frame
+        // setzt. Die Textbreite darf dabei nicht auf den alten Frame zurückfallen.
+        view.textContainer?.widthTracksTextView = false
         view.isVerticallyResizable = true
         view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         return view
@@ -297,9 +300,6 @@ struct DiffSelectableText: NSViewRepresentable {
         view.selection = selection
         view.rowID = rowID
         view.before = before
-        view.textContainer?.widthTracksTextView = wraps
-        view.textContainer?.containerSize = NSSize(width: wraps ? max(1, view.bounds.width) : .greatestFiniteMagnitude,
-                                                  height: .greatestFiniteMagnitude)
         selection.register(view)
         view.delegate = selection
     }

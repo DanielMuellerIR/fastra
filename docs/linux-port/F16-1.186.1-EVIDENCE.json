@@ -1,0 +1,33 @@
+{
+  "version": "1.186.1",
+  "build": 397,
+  "date": "2026-11-06",
+  "product_commit": "3e7232d36a450c5d2748cd447216fabf994f5d64",
+  "source_identity": "617ad5dcd87ea1d84ee2b1ad384758f5967f59f581ce029e37819f1eec51ff8f",
+  "verified_product_inputs": 481,
+  "optimized_elf_sha256": "c20c31bab9be2fcb5ae0ed324abf928c6d9a0c6c5fdcf1fd150f06d1a3ee6505",
+  "unsigned": true,
+  "unpublished": true,
+  "local_artifacts": "dist/linux-1.186.1/packages",
+  "artifacts": {
+    "fastra_1.186.1_amd64.deb": "1fad1618ca2805b880e8573cb130acadb9ca5c8c6b725a9f9a7ca402716b7d76",
+    "fastra-1.186.1-linux-x86_64.tar.gz": "2d3399bafe600113752e4ea1fab4c958a2bd4dbcc319de28c2f661c1ee2b3dcd",
+    "fastra-1.186.1-linux-x86_64.zip": "294cbbb5e026a2a5eed8fbe401d99637d7cd735c0aa0dcd75135c18286d5e789"
+  },
+  "tests": {
+    "native_build": "PASS",
+    "strict_linux_clippy_all_targets": "PASS",
+    "integrated_tested_source_hashes_match": true,
+    "native_appearance_flows": 2,
+    "old_heuristic_negative_control": "Expected FAIL: Adwaita instead of Adwaita-dark",
+    "physical_optimized_dark_split_source_b_save_undo": "PASS exact Unicode/CRLF bytes",
+    "physical_visible_quit": "PASS",
+    "dark_and_light_views_inspected": true,
+    "mac_build": "PASS",
+    "mac_version_title_tests_passed": 5,
+    "mac_portable_bundle": "PASS",
+    "mac_localization_and_notarized_install": "Deferred: installed app running; no user work terminated",
+    "baseline": "F16-1.186.0-EVIDENCE.json; broad suite not repeated without a new reason"
+  },
+  "open": ["General native input and IME transaction preflight", "Fixed wrap columns and continuation profiles", "Full Markdown dialect parity", "Physical candidate-window IME, screenreader and Wayland acceptance"]
+}

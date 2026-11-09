@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-04",
+  "sourceHashDefinition": "SHA-256 over sorted build-input lines: file SHA-256, two spaces, repository-relative path, then LF (U+000A); see tools/linux-probes/build-identity.py",
+  "builds": [
+    {
+      "product": "fastra",
+      "sourceBase": "55ca70579861954a21cfbd22d96e12059fec68db",
+      "sourceInputCount": 330,
+      "sourceInputsSHA256": "35955799541c7f06a813444f12b696026b8118010f32f183385c25cd66fcf9d3",
+      "version": "1.157.2",
+      "build": "365",
+      "executableSHA256": "7ce0c836d453a2bb8c242d63d3d5b09dbae042afff5c5acf4796e3db6d753b16",
+      "architectures": [
+        "arm64"
+      ],
+      "signature": true,
+      "ticket": true,
+      "gatekeeper": true,
+      "sourceCommit": "4999717c12556c80ae69f2dd3aaf75ba6a94f108"
+    },
+    {
+      "product": "pmt",
+      "sourceBase": "5293eb6ce013512e791d9b7c7a5b89dd438c92ac",
+      "sourceInputCount": 152,
+      "sourceInputsSHA256": "eef0704b88b37b8bbcf7a2bb0cae7aebe8b79f08f8fbce6c274fafb49c1578c3",
+      "version": "0.41.7",
+      "build": "92",
+      "executableSHA256": "905ed9958aa421404259c0377417adf9470ba3241ce3e3c55cfa218a67a6a764",
+      "architectures": [
+        "x86_64",
+        "arm64"
+      ],
+      "embeddedCLISHA256": "a0bd72a510a38b02b6305c04d5dc6fdc4cd09492f1b3b40ae5892234abc23ab3",
+      "signature": true,
+      "ticket": true,
+      "gatekeeper": true,
+      "sourceCommit": "5293eb6ce013512e791d9b7c7a5b89dd438c92ac"
+    }
+  ]
+}

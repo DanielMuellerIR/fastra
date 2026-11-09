@@ -82,4 +82,42 @@ struct WindowWorkspaceBindingTests {
         #expect(!WorkspaceWindowRegistry.registeredWindows().contains { $0 === window })
         #expect(workspace.closeWindowHandler == nil)
     }
+
+    @Test("Titelkorrektur folgt der montierten Brücke und lässt alte Fenster unverändert")
+    func titleCorrectionDoesNotOutliveWindowBinding() async throws {
+        let suite = "fastra-tests-window-title-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let workspace = Workspace(defaults: defaults)
+        let (first, teardown) = makeBridgedWindow(workspace: workspace)
+        defer { teardown() }
+        let bridge = try #require(first.contentView)
+        let second = NSWindow(contentRect: first.frame, styleMask: [.titled],
+                              backing: .buffered, defer: false)
+        second.isReleasedWhenClosed = false
+        defer {
+            WorkspaceWindowRegistry.unregister(second)
+            second.contentView = nil
+            second.close()
+        }
+
+        first.titleVisibility = .visible
+        // Die alte Korrektur ist bereits eingereiht. Vor ihrer Ausführung
+        // wandert dieselbe View in ein anderes Fenster.
+        first.contentView = nil
+        second.contentView = bridge
+        second.titleVisibility = .visible
+        let corrected = await waitUntil { second.titleVisibility == .hidden }
+        #expect(corrected)
+        #expect(first.titleVisibility == .visible)
+
+        second.contentView = nil
+        second.titleVisibility = .visible
+        // Eine weitere Main-Queue-Runde lässt auch versehentlich verbliebene
+        // Observer reagieren; nach dem Abhängen gehört das Fenster uns nicht.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        #expect(second.titleVisibility == .visible)
+    }
 }

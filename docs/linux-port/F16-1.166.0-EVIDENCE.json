@@ -1,0 +1,121 @@
+{
+  "version": "1.166.0",
+  "build": 376,
+  "backend_and_host": {
+    "binaries": 39,
+    "passed": 388,
+    "failed": 0,
+    "ignored": 1,
+    "ignored_reason": "Native parser/user-namespace integration requires its separate isolated run."
+  },
+  "native": [
+    {
+      "case": "explanation-de-1100",
+      "pass_marker": "FASTRA_EXPLANATION_SELFTEST=PASS actual-tools-filechooser frozen-hashes utf16-ready source-switch native-navigation own-exploration stale-layout readonly wrap-fonts isolated-dirty ctrl-w fresh-ids"
+    },
+    {
+      "case": "explanation-de-400",
+      "pass_marker": "FASTRA_EXPLANATION_SELFTEST=PASS actual-tools-filechooser frozen-hashes utf16-ready source-switch native-navigation own-exploration stale-layout readonly wrap-fonts isolated-dirty ctrl-w fresh-ids"
+    },
+    {
+      "case": "explanation-en-1100",
+      "pass_marker": "FASTRA_EXPLANATION_SELFTEST=PASS actual-tools-filechooser frozen-hashes utf16-ready source-switch native-navigation own-exploration stale-layout readonly wrap-fonts isolated-dirty ctrl-w fresh-ids"
+    },
+    {
+      "case": "explanation-en-400",
+      "pass_marker": "FASTRA_EXPLANATION_SELFTEST=PASS actual-tools-filechooser frozen-hashes utf16-ready source-switch native-navigation own-exploration stale-layout readonly wrap-fonts isolated-dirty ctrl-w fresh-ids"
+    },
+    {
+      "case": "completion-de-1280",
+      "pass_marker": "FASTRA_TOOL_SELFTEST_OK four-d-completion"
+    },
+    {
+      "case": "completion-de-760",
+      "pass_marker": "FASTRA_TOOL_SELFTEST_OK four-d-completion"
+    },
+    {
+      "case": "completion-en-1280",
+      "pass_marker": "FASTRA_TOOL_SELFTEST_OK four-d-completion"
+    },
+    {
+      "case": "completion-en-760",
+      "pass_marker": "FASTRA_TOOL_SELFTEST_OK four-d-completion"
+    },
+    {
+      "case": "tab-close-de-760",
+      "pass_marker": "FASTRA_TAB_CLOSE_SELFTEST=PASS inactive-x keyboard-mru cancel stale-tab save failure discard last-cancel stale-window rich-sync-cancel-discard saving-guard"
+    },
+    {
+      "case": "tab-close-en-1100",
+      "pass_marker": "FASTRA_TAB_CLOSE_SELFTEST=PASS inactive-x keyboard-mru cancel stale-tab save failure discard last-cancel stale-window rich-sync-cancel-discard saving-guard"
+    },
+    {
+      "case": "search-history-de-760",
+      "pass_marker": "SEARCH_HISTORY_SELFTEST_OK native mouse open/clear, keyboard pair, flags/scope, invalidation, discrete record, two windows, MRU15, fresh reload, clear, visible retained errors"
+    },
+    {
+      "case": "search-history-en-1100",
+      "pass_marker": "SEARCH_HISTORY_SELFTEST_OK native mouse open/clear, keyboard pair, flags/scope, invalidation, discrete record, two windows, MRU15, fresh reload, clear, visible retained errors"
+    },
+    {
+      "case": "example-de-760",
+      "pass_marker": "FASTRA_TOOL_SELFTEST_OK example"
+    },
+    {
+      "case": "example-en-1100",
+      "pass_marker": "FASTRA_TOOL_SELFTEST_OK example"
+    },
+    {
+      "case": "macros-final-de-1100",
+      "pass_marker": "FASTRA_TOOL_SELFTEST_OK four-d-macros"
+    },
+    {
+      "case": "macros-final-de-680",
+      "pass_marker": "FASTRA_TOOL_SELFTEST_OK four-d-macros"
+    },
+    {
+      "case": "macros-final-en-1100",
+      "pass_marker": "FASTRA_TOOL_SELFTEST_OK four-d-macros"
+    },
+    {
+      "case": "macros-final-en-680",
+      "pass_marker": "FASTRA_TOOL_SELFTEST_OK four-d-macros"
+    }
+  ],
+  "separate_native_parser_test_passed": true,
+  "product_commit": "a35cafa43a9be4c4daedbe9fa59b18b702d278f4",
+  "built_sources_byte_compared": 316,
+  "source_archive_sha256": "38d26f68c4e1d8208f3e7d3a2a9470ae4a70033cdc45dd55eaa90e45dd49d820",
+  "source_identity": {
+    "version": "1.166.0",
+    "bundle_build": "376",
+    "sha256": "d29ab81e0c6e94b7b1afd702f893cf4d591fccc944a55db33c4a9fea352330ab"
+  },
+  "release_sha256": "42e93b4a46d4542f7ac0e291fe59cadfa6b22bf88f1e2f9237f251343b06379c",
+  "packages": {
+    "fastra_1.166.0_amd64.deb": "4564761787336914f62751a66e3aecc0742ad45b9037fc27220e28b501ffb605",
+    "fastra-1.166.0-linux-x86_64.tar.gz": "9f0bbffbc1e62406e0bfa4dcd076825b1083af1427f99c1868700f2e4e884bce",
+    "SHA256SUMS": "c9f4719eea6113a00478e0d4932c4970b7b0439b85ff79756ff190b1ffdc3c55",
+    "PKGBUILD": "87fff40070868995b356873ed5220b1378ef85cbc1989caaf2efaf5e674cc14c"
+  },
+  "checks": {
+    "strict_workspace_clippy": true,
+    "native_x11_cases": 18,
+    "final_completion_recheck_cases": 4,
+    "final_completion_debug_sha256": "3acf74a1c3e26c8e6553c24dd0db51b79c2be37a971584d53563d5b8899691de",
+    "installed_and_relocated_markdown": true,
+    "installed_and_relocated_viewers": true,
+    "preserved_viewer_source_bytes": true,
+    "webkit_sandbox": {
+      "NoNewPrivs": 1,
+      "Seccomp": 2,
+      "private_pid_namespace": true
+    }
+  },
+  "limits": [
+    "Isolated Ubuntu/Xvfb/X11; no complete desktop/Wayland/IME approval.",
+    "No new full Mac application build or GUI acceptance.",
+    "Initial UI batch precedes lossless empty TSV column removal; all completion reference cases and four native completion flows rerun afterward.",
+    "No public upload or release."
+  ]
+}

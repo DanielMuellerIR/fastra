@@ -1,0 +1,394 @@
+[
+  {
+    "expected" : "head😀\r\n\ta\r  b\n\tc\r\nend",
+    "selection" : [
+      8,
+      15
+    ],
+    "source" : "head😀\r\n\ta\r  b\n   c\r\nend",
+    "stages" : [
+      "   a\r  b\n   c\r\nen",
+      "\ta\r  b\n\tc\r\nen",
+      "  \ta\r    b\n  \tc\r\n  en",
+      "\ta\r  b\n\tc\r\nen"
+    ],
+    "workflow" : {
+      "id" : "8727FD0D-6AB3-4E67-8214-52B729B4DF27",
+      "name" : "Tabs and indentation",
+      "revision" : "BC17523D-5F7A-4CCD-BFA5-D3EDB48A0C05",
+      "steps" : [
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "53507063-6418-4493-96CA-2F3CE25343F1",
+          "indentWidth" : 2,
+          "kind" : "detab",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "0E6F31CB-A216-4FCD-BF5D-E6038B6A879F",
+          "indentWidth" : 2,
+          "kind" : "entab",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "CE061723-8BC0-4941-A9C9-E6D5F2EACEB9",
+          "indentWidth" : 2,
+          "kind" : "shiftRight",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "E3A9B7AD-9B2D-454D-BAD8-93526DB1DBDC",
+          "indentWidth" : 2,
+          "kind" : "shiftLeft",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        }
+      ]
+    }
+  },
+  {
+    "expected" : "e \\”a\\” ⏸",
+    "source" : "\\u00E9 \\\"a\\\" ⏸",
+    "stages" : [
+      "é \\\"a\\\" ⏸",
+      "é \\\"a\\\" ⏸",
+      "é \\”a\\” ⏸",
+      "e \\”a\\” ⏸",
+      "e \\”a\\” ⏸️",
+      "e \\”a\\” ⏸"
+    ],
+    "workflow" : {
+      "id" : "47723002-B8B8-49E8-927F-46CA959F894C",
+      "name" : "Quotes and Unicode",
+      "revision" : "092C8D63-9D75-4D24-A022-0DB7CFE64657",
+      "steps" : [
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "44C319F6-0A56-429F-BADA-DB83D66A5C56",
+          "indentWidth" : 2,
+          "kind" : "convertEscapeSequences",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "EE700078-49EF-4511-8EF8-BA79B4A7A098",
+          "indentWidth" : 2,
+          "kind" : "straightenQuotes",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "1CB32F84-6000-4B0C-806F-8E2D1EE825F0",
+          "indentWidth" : 2,
+          "kind" : "educateQuotes",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "5E56ECD8-EDD6-4BB6-A59D-1FD9D82F3BAF",
+          "indentWidth" : 2,
+          "kind" : "stripDiacriticals",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "DEB64D5E-6532-4067-97D1-83B7906E7CA7",
+          "indentWidth" : 2,
+          "kind" : "addEmojiPresentation",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "2DB3DF30-7485-4C3C-A246-041BED72541D",
+          "indentWidth" : 2,
+          "kind" : "removeEmojiPresentation",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        }
+      ]
+    }
+  },
+  {
+    "expected" : "cd ba ef\ngh ij",
+    "source" : "ab cd ef gh ij",
+    "stages" : [
+      "ba cd ef gh ij",
+      "cd ba ef gh ij",
+      "cd ba ef\ngh ij"
+    ],
+    "workflow" : {
+      "id" : "73EB3AF6-B6C6-49C7-9256-2746D38D5308",
+      "name" : "Transpose and wrap",
+      "revision" : "BAE208FC-B35A-4E66-955F-BDD06EC2C60F",
+      "steps" : [
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "79AC407E-0AEE-419A-A8D4-CFF38C14D1BF",
+          "indentWidth" : 2,
+          "kind" : "exchangeCharacters",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "928F0A08-DF1E-4F88-853F-0BC03C4DF92C",
+          "indentWidth" : 2,
+          "kind" : "exchangeWords",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "34E20990-7CC9-4A3D-8BFB-DC74AE8CFA2D",
+          "indentWidth" : 2,
+          "kind" : "hardWrap",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        }
+      ]
+    }
+  },
+  {
+    "expected" : "⏸ X",
+    "source" : "⏸ X",
+    "stages" : [
+      "⏸️ X",
+      "⏸ X"
+    ],
+    "workflow" : {
+      "id" : "7D60D414-9161-43D3-94E9-D62272EAA985",
+      "name" : "Presentation round trip",
+      "revision" : "F99C5F4F-3EE9-42E4-AD7A-8AA4524AE179",
+      "steps" : [
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "34B094FC-95CB-49FA-9701-002E900EFB46",
+          "indentWidth" : 2,
+          "kind" : "addEmojiPresentation",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "8338824C-54B7-4167-BCFB-9F2F0DAE6850",
+          "indentWidth" : 2,
+          "kind" : "removeEmojiPresentation",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        }
+      ]
+    }
+  },
+  {
+    "expected" : "a  b\rc  d\ne  f\r\n",
+    "source" : "a\tb\rc\td\ne\tf\r\n",
+    "stages" : [
+      "a  b\rc  d\ne  f\r\n",
+      "  a  b\r  c  d\n  e  f\r\n",
+      "  a  b\r  c  d\n  e  f\r\n",
+      "a  b\rc  d\ne  f\r\n"
+    ],
+    "workflow" : {
+      "id" : "A5FD3B4D-C86C-4118-9814-A068E197A588",
+      "name" : "Mixed line endings",
+      "revision" : "3A3FB2C4-5E83-4A82-9D19-2212DD87266A",
+      "steps" : [
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "663ED742-B9CA-446A-8871-F04EEE88A8E7",
+          "indentWidth" : 2,
+          "kind" : "detab",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "8A134288-5C6B-4738-ACB7-2F8DCC8EB8D2",
+          "indentWidth" : 2,
+          "kind" : "shiftRight",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "F6F37586-CBF9-4C2A-ABDD-13FE4D2BC8BF",
+          "indentWidth" : 2,
+          "kind" : "entab",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        },
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "33EA9975-EABA-4D86-B85E-ABB2859C98BE",
+          "indentWidth" : 2,
+          "kind" : "shiftLeft",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 3,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 8
+        }
+      ]
+    }
+  }
+]

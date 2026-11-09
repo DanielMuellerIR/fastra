@@ -1,0 +1,415 @@
+[
+  {
+    "category" : "Identifikatoren",
+    "exampleMatch" : "max.muster@example.com",
+    "groupLabels" : [
+
+    ],
+    "id" : "email",
+    "name" : "E-Mail-Adresse",
+    "regex" : "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+  },
+  {
+    "category" : "Identifikatoren",
+    "exampleMatch" : "https:\/\/example.com\/path?q=1",
+    "groupLabels" : [
+
+    ],
+    "id" : "url",
+    "name" : "URL",
+    "regex" : "https?:\/\/[\\w.-]+(?:\/[\\w.\/?=&%#-]*)?"
+  },
+  {
+    "category" : "Identifikatoren",
+    "exampleMatch" : "DE89370400440532013000",
+    "groupLabels" : [
+
+    ],
+    "id" : "iban",
+    "name" : "IBAN",
+    "regex" : "[A-Z]{2}\\d{2}[A-Z0-9]{1,30}"
+  },
+  {
+    "category" : "Identifikatoren",
+    "exampleMatch" : "192.168.1.1",
+    "groupLabels" : [
+
+    ],
+    "id" : "ipv4",
+    "name" : "IPv4-Adresse",
+    "regex" : "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b"
+  },
+  {
+    "category" : "Identifikatoren",
+    "exampleMatch" : "550e8400-e29b-41d4-a716-446655440000",
+    "groupLabels" : [
+
+    ],
+    "id" : "uuid",
+    "name" : "UUID",
+    "regex" : "\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b"
+  },
+  {
+    "category" : "Identifikatoren",
+    "exampleMatch" : "#FF9900",
+    "groupLabels" : [
+
+    ],
+    "id" : "hex_color",
+    "name" : "Hex-Farbe (#RRGGBB)",
+    "regex" : "#(?:[0-9a-fA-F]{3}){1,2}\\b"
+  },
+  {
+    "category" : "Identifikatoren",
+    "exampleMatch" : "v1.2.3",
+    "groupLabels" : [
+
+    ],
+    "id" : "semver",
+    "name" : "Versionsnummer (v1.2.3)",
+    "regex" : "\\bv?\\d+\\.\\d+\\.\\d+\\b"
+  },
+  {
+    "category" : "Identifikatoren",
+    "exampleMatch" : "notiz.md",
+    "groupLabels" : [
+
+    ],
+    "id" : "file_name",
+    "name" : "Dateiname mit Endung",
+    "regex" : "[\\w.-]+\\.[A-Za-z][A-Za-z0-9]{0,4}\\b"
+  },
+  {
+    "category" : "Datum & Zeit",
+    "defaultReplacement" : "$3.$2.$1",
+    "exampleMatch" : "2026-05-26",
+    "groupLabels" : [
+      "Jahr",
+      "Monat",
+      "Tag"
+    ],
+    "id" : "iso_date",
+    "name" : "ISO-Datum (YYYY-MM-DD)",
+    "regex" : "\\b(\\d{4})-(\\d{2})-(\\d{2})\\b"
+  },
+  {
+    "category" : "Datum & Zeit",
+    "defaultReplacement" : "$3-$2-$1",
+    "exampleMatch" : "26.05.2026",
+    "groupLabels" : [
+      "Tag",
+      "Monat",
+      "Jahr"
+    ],
+    "id" : "german_date",
+    "name" : "Deutsches Datum (DD.MM.YYYY)",
+    "regex" : "\\b(\\d{2})\\.(\\d{2})\\.(\\d{4})\\b"
+  },
+  {
+    "category" : "Datum & Zeit",
+    "exampleMatch" : "14:30:45",
+    "groupLabels" : [
+      "Stunden",
+      "Minuten",
+      "Sekunden"
+    ],
+    "id" : "time",
+    "name" : "Uhrzeit",
+    "regex" : "\\b(\\d{1,2}):(\\d{2})(?::(\\d{2}))?\\b"
+  },
+  {
+    "category" : "Datum & Zeit",
+    "exampleMatch" : "2026-07-10 15:30:00",
+    "groupLabels" : [
+      "Jahr",
+      "Monat",
+      "Tag",
+      "Stunden",
+      "Minuten",
+      "Sekunden"
+    ],
+    "id" : "iso_timestamp",
+    "name" : "ISO-Zeitstempel",
+    "regex" : "\\b(\\d{4})-(\\d{2})-(\\d{2})[T ](\\d{2}):(\\d{2})(?::(\\d{2}))?\\b"
+  },
+  {
+    "category" : "Text-Strukturen",
+    "defaultReplacement" : "$1",
+    "exampleMatch" : "[OpenAI](https:\/\/openai.com)",
+    "groupLabels" : [
+      "Linktext",
+      "URL"
+    ],
+    "id" : "md_link",
+    "name" : "Markdown-Link",
+    "regex" : "\\[([^\\]]+)\\]\\(([^)]+)\\)"
+  },
+  {
+    "category" : "Text-Strukturen",
+    "exampleMatch" : "## Überschrift",
+    "groupLabels" : [
+      "Level (#-Zeichen)",
+      "Titel"
+    ],
+    "id" : "md_heading",
+    "name" : "Markdown-Überschrift",
+    "regex" : "(?:\\A|(?<=\\n)|(?<=\\r)(?!\\n))(#{1,6})[ \\t]+([^\\r\\n]+)(?=\\r\\n|\\r|\\n|\\z)"
+  },
+  {
+    "category" : "Text-Strukturen",
+    "exampleMatch" : "<a href=\"https:\/\/example.com\">",
+    "groupLabels" : [
+      "Schließend? (\/)",
+      "Tag-Name",
+      "Attribute"
+    ],
+    "id" : "html_tag",
+    "name" : "HTML-Tag",
+    "regex" : "<(\/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>"
+  },
+  {
+    "category" : "Text-Strukturen",
+    "exampleMatch" : "```swift\nlet x = 1\n```",
+    "groupLabels" : [
+      "Sprache",
+      "Inhalt"
+    ],
+    "id" : "code_block",
+    "name" : "Code-Block (Markdown)",
+    "regex" : "```(\\w*)(?:\\r\\n|\\r|\\n)([\\s\\S]*?)```"
+  },
+  {
+    "category" : "Text-Strukturen",
+    "defaultReplacement" : "$2",
+    "exampleMatch" : "\/pfad\/zu\/notiz.md",
+    "groupLabels" : [
+      "Ordnerpfad",
+      "Dateiname"
+    ],
+    "id" : "file_path",
+    "name" : "Dateipfad",
+    "regex" : "(.+\/)([^\/\\r\\n]+)(?=\\r\\n|\\r|\\n|\\z)"
+  },
+  {
+    "category" : "Text-Strukturen",
+    "exampleMatch" : "<!-- TODO: prüfen -->",
+    "groupLabels" : [
+
+    ],
+    "id" : "html_comment",
+    "name" : "HTML-Kommentar",
+    "regex" : "<!--[\\s\\S]*?-->"
+  },
+  {
+    "category" : "Zahlen",
+    "exampleMatch" : "-42",
+    "groupLabels" : [
+
+    ],
+    "id" : "integer",
+    "name" : "Ganzzahl",
+    "regex" : "-?\\d+"
+  },
+  {
+    "category" : "Zahlen",
+    "exampleMatch" : "1.234,56",
+    "groupLabels" : [
+
+    ],
+    "id" : "german_decimal",
+    "name" : "Dezimalzahl (deutsch)",
+    "regex" : "-?\\d+(?:\\.\\d{3})*,\\d+"
+  },
+  {
+    "category" : "Zahlen",
+    "exampleMatch" : "+49 30 12345678",
+    "groupLabels" : [
+
+    ],
+    "id" : "phone_de",
+    "name" : "Telefonnummer (DE)",
+    "regex" : "(?:\\+49|0)[\\s\/-]?\\d{2,5}[\\s\/-]?\\d{4,8}"
+  },
+  {
+    "category" : "Zahlen",
+    "exampleMatch" : "1,234.56",
+    "groupLabels" : [
+
+    ],
+    "id" : "english_decimal",
+    "name" : "Dezimalzahl (englisch)",
+    "regex" : "-?\\d+(?:,\\d{3})*\\.\\d+"
+  },
+  {
+    "category" : "Zahlen",
+    "exampleMatch" : "42,5 %",
+    "groupLabels" : [
+
+    ],
+    "id" : "percentage",
+    "name" : "Prozentangabe",
+    "regex" : "-?\\d+(?:[.,]\\d+)?\\s?%"
+  },
+  {
+    "category" : "Zahlen",
+    "exampleMatch" : "1.234,56 €",
+    "groupLabels" : [
+
+    ],
+    "id" : "euro_amount",
+    "name" : "Geldbetrag (€)",
+    "regex" : "-?\\d{1,3}(?:\\.\\d{3})*(?:,\\d{2})?\\s?€"
+  },
+  {
+    "category" : "Wörter & Zeilen",
+    "exampleMatch" : "Hallo",
+    "groupLabels" : [
+
+    ],
+    "id" : "one_word",
+    "name" : "Ein Wort",
+    "regex" : "\\w+"
+  },
+  {
+    "category" : "Wörter & Zeilen",
+    "defaultReplacement" : "$2 $1",
+    "exampleMatch" : "Michael Mustermann",
+    "groupLabels" : [
+      "Erstes Wort",
+      "Zweites Wort"
+    ],
+    "id" : "two_words",
+    "name" : "Zwei Wörter (tauschen)",
+    "regex" : "(\\w+)\\s+(\\w+)"
+  },
+  {
+    "category" : "Wörter & Zeilen",
+    "defaultReplacement" : "$2 $1",
+    "exampleMatch" : "Mustermann, Michael",
+    "groupLabels" : [
+      "Nachname",
+      "Vorname"
+    ],
+    "id" : "last_first_name",
+    "name" : "Nachname, Vorname → Vorname Nachname",
+    "regex" : "(\\w+),\\s*(\\w+)"
+  },
+  {
+    "category" : "Wörter & Zeilen",
+    "defaultReplacement" : "$1",
+    "exampleMatch" : "der der",
+    "groupLabels" : [
+      "Wort"
+    ],
+    "id" : "doubled_word",
+    "name" : "Doppeltes Wort (der der)",
+    "regex" : "\\b(\\w+)\\s+\\1\\b"
+  },
+  {
+    "category" : "Wörter & Zeilen",
+    "exampleMatch" : "Berlin",
+    "groupLabels" : [
+
+    ],
+    "id" : "capitalized_word",
+    "name" : "Großgeschriebenes Wort",
+    "regex" : "\\b[A-ZÄÖÜ][a-zäöüß]+\\b"
+  },
+  {
+    "category" : "Wörter & Zeilen",
+    "defaultReplacement" : "$1",
+    "exampleMatch" : "\"Zitat\"",
+    "groupLabels" : [
+      "Inhalt"
+    ],
+    "id" : "quoted_text",
+    "name" : "Text in \"Anführungszeichen\"",
+    "regex" : "\"([^\"]*)\""
+  },
+  {
+    "category" : "Wörter & Zeilen",
+    "defaultReplacement" : "$1",
+    "exampleMatch" : "„Zitat“",
+    "groupLabels" : [
+      "Inhalt"
+    ],
+    "id" : "german_quoted_text",
+    "name" : "Text in „Anführungszeichen“",
+    "regex" : "„([^“]*)“"
+  },
+  {
+    "category" : "Wörter & Zeilen",
+    "defaultReplacement" : "$1",
+    "exampleMatch" : "(Hinweis)",
+    "groupLabels" : [
+      "Inhalt"
+    ],
+    "id" : "parenthesized_text",
+    "name" : "Text in (Klammern)",
+    "regex" : "\\(([^)]*)\\)"
+  },
+  {
+    "category" : "Wörter & Zeilen",
+    "exampleMatch" : "eine ganze Zeile",
+    "groupLabels" : [
+
+    ],
+    "id" : "whole_line",
+    "name" : "Ganze Zeile",
+    "regex" : "^.*$"
+  },
+  {
+    "category" : "Leerraum & Aufräumen",
+    "defaultReplacement" : " ",
+    "exampleMatch" : "zu  viel  Raum",
+    "groupLabels" : [
+
+    ],
+    "id" : "multiple_spaces",
+    "name" : "Mehrfache Leerzeichen",
+    "regex" : " {2,}"
+  },
+  {
+    "category" : "Leerraum & Aufräumen",
+    "defaultReplacement" : "",
+    "exampleMatch" : "Zeile mit Rest   ",
+    "groupLabels" : [
+
+    ],
+    "id" : "trailing_whitespace",
+    "name" : "Leerraum am Zeilenende",
+    "regex" : "[ \\t]+(?=\\r\\n|\\r|\\n|$)"
+  },
+  {
+    "category" : "Leerraum & Aufräumen",
+    "defaultReplacement" : "",
+    "exampleMatch" : "    eingerückt",
+    "groupLabels" : [
+
+    ],
+    "id" : "leading_whitespace",
+    "name" : "Einrückung (Zeilenanfang)",
+    "regex" : "(?:\\A|(?<=\\n)|(?<=\\r)(?!\\n))[ \\t]+"
+  },
+  {
+    "category" : "Leerraum & Aufräumen",
+    "exampleMatch" : "\tEinzug",
+    "groupLabels" : [
+
+    ],
+    "id" : "tabs",
+    "name" : "Tabulatoren",
+    "regex" : "\\t+"
+  },
+  {
+    "category" : "Leerraum & Aufräumen",
+    "defaultReplacement" : "",
+    "exampleMatch" : "\n",
+    "groupLabels" : [
+
+    ],
+    "id" : "empty_lines",
+    "name" : "Leerzeilen",
+    "regex" : "(?:\\A|(?<=\\n)|(?<=\\r)(?!\\n))[ \\t]*(?:\\r\\n|\\r|\\n)"
+  }
+]

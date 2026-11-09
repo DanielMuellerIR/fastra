@@ -1,6 +1,7 @@
 # Build-Artefakte (Swift Package Manager)
 .swiftpm/
 .build/
+/target/
 *.o
 *.d
 
@@ -40,3 +41,6 @@ app/dist/
 
 # Private Testprotokolle und ihre Begleitdateien
 /Testprotokolle/
+
+# Lokale Linux-Pakete
+/dist/

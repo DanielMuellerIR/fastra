@@ -1,0 +1,12 @@
+{
+  "expected" : "Head ALERT:C123\r\nALERT:C41(\"ALERT:C88\")\r\nvar $d : Date\r\nRECEIVE PACKET:C104($v;Into variable)\r\n\/\/ ALERT:C88\r\nTail ALERT:C777",
+  "selection" : [
+    17,
+    99
+  ],
+  "source" : "Head ALERT:C123\r\nALERT:C9999(\"ALERT:C88\")\r\nvar $d : Date\r\nRECEIVE PACKET:C104($v;Into variable:K79:31)\r\n\/\/ ALERT:C88\r\nTail ALERT:C777",
+  "stages" : [
+    "ALERT(\"ALERT:C88\")\r\nvar $d : Date\r\nRECEIVE PACKET($v;Into variable)\r\n\/\/ ALERT:C88",
+    "ALERT:C41(\"ALERT:C88\")\r\nvar $d : Date\r\nRECEIVE PACKET:C104($v;Into variable)\r\n\/\/ ALERT:C88"
+  ]
+}

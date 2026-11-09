@@ -1032,3 +1032,30 @@ Derselbe literale Vergleich verhindert dort erneut den vollständigen
 UTF-8-Durchlauf beim SwiftUI-Neuaufbau.
 `DocumentTextStorageTests` schützt Speicheridentität, Undo-Verlauf und diese Unterschiede;
 `loadperf` bleibt die native Hauptthread-Abnahme mit unveränderter Grenze.
+
+## Metadatenübernahme und Statuszeit beim sicheren Speichern
+
+Beim nativen Speichern kann allein die Statuszeit (`ctime`) der verdrängten
+Datei während der Metadatenübernahme wechseln. `AtomicFileCommit` prüft dann
+den gebundenen Inhalt erneut und übernimmt die aktuellen Metadaten genau
+einmal vollständig. Inhaltsänderungen, eine andere Identität oder ein erneut
+instabiler Stand bleiben ein Konflikt mit Rücktausch. Die reine ctime-Abweichung
+darf weder pauschal ignoriert noch ohne Inhaltsprüfung als Fremdänderung gelten.
+Bestätigter Produktpfad: `AtomicFileCommit.swift`, Metadaten-Schleife; Stand
+2026-10-28.
+
+## Diff-Umbruch: Textbreite gehört zur SwiftUI-Messung
+
+SwiftUI kann eine native Diff-Zeile mit mehreren Breiten messen, bevor ihr
+endgültiger Rahmen feststeht. `widthTracksTextView` und eine zusätzliche
+Breitenzuweisung aus `updateNSView` banden den Textcontainer währenddessen an
+den alten Rahmen. Nach einem Fensterwechsel blieb die äußere Zelle 22 pt hoch,
+während der Text darin mehrere Zeilen brauchte und abgeschnitten wurde.
+`DiffSelectableText.sizeThatFits` besitzt deshalb allein die Containerbreite;
+die automatische AppKit-Breitenverfolgung bleibt aus. Das betrifft den
+geteilten Renderer für Git-, Datei- und eingebettete Übernahmevergleiche.
+
+`DiffWrapLayoutTests` prüft nach Laden, Breiten- und Umbruchwechseln den realen
+Textbereich gegen den Zellrahmen im vollständigen Dokumentfenster. Die bisherige
+Messung nur an `NSTextView.bounds` bestand trotz des Fehlers: Eine hohe native
+Textansicht kann in einer zu niedrigen SwiftUI-Zelle liegen.

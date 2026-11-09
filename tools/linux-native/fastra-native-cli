@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+if [ "${FASTRA_NATIVE_RUNTIME+x}" = x ] || [ "${FASTRA_NATIVE_SHADOW_MANIFEST+x}" = x ] || [ "${FASTRA_INTERNAL_HOST_FD+x}" = x ]; then
+ printf 'Fastra service launchers require the original host environment. Native GUI runtime markers are not accepted.\n' >&2
+ exit 2
+fi
+launcher=$(readlink -f -- "$0")
+root=$(CDPATH= cd -- "$(dirname -- "$launcher")/.." && pwd -P)
+case ${launcher##*/} in
+ fastra-control-native) executable=fastra-control ;;
+ fastra-diff-native) executable=fastra-diff ;;
+ *) printf 'Unknown native service launcher.\n' >&2; exit 2 ;;
+esac
+target=$(readlink -f -- "$root/app/libexec/$executable")
+[ "$target" = "$root/app/libexec/$executable" ] && [ -x "$target" ] || { printf 'Native service CLI is missing.\n' >&2; exit 2; }
+loader=$(readlink -f -- /lib64/ld-linux-x86-64.so.2)
+# Nur Serviceziel und argv[0]; der Host-CLI erhält keine private GTK-/GIO-Laufzeit.
+FASTRA_INTERNAL_NATIVE_SERVICE=1 exec "$loader" --argv0 "$target" --library-path "$root/app/lib" "$target" "$@"

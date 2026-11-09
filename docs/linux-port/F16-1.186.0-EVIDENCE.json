@@ -1,0 +1,49 @@
+{
+  "version": "1.186.0",
+  "build": 396,
+  "date": "2026-11-06",
+  "product_commit": "1de74c938e2a77b4cbe04a3149b95d46bd987bb4",
+  "source_identity": "6e416eef6bf7dab4d592d4b9f7f9991bda5624909956768bb8681a313cc45505",
+  "verified_product_inputs": 479,
+  "optimized_elf_sha256": "45e17d77f318ed239f613f68862ff9032a6c4604a6a6138d4e8cd8b55c0c8b86",
+  "unsigned": true,
+  "unpublished": true,
+  "local_artifacts": "dist/linux-1.186.0/packages",
+  "artifacts": {
+    "fastra_1.186.0_amd64.deb": "8b78a3bd2be93a4adc52247d59db65069571b4e109762c468bb12a8744027a1a",
+    "fastra-1.186.0-linux-x86_64.tar.gz": "9aa3c63a8941300dc2f6b44a9e5645cde5e5d89c126edd1b4b7daa8235c51a9f",
+    "fastra-1.186.0-linux-x86_64.zip": "f75c50d96a166c5570307ca8b0459e311764e93fff874ac36173b4b852f5e1bf"
+  },
+  "tests": {
+    "workspace_programs": 56,
+    "regular_passed": 688,
+    "ignored": 7,
+    "explicit_private_dbus_test": "PASS",
+    "strict_core_workflow_linux_clippy": "PASS",
+    "integrated_native_sort_flows": 9,
+    "native_file_manager_flows": 4,
+    "actual_release_source_b_sort_flows": 2,
+    "actual_release_sort_save_phases": 8,
+    "actual_release_sort_regular_quit_exit": [0, 0],
+    "optimized_installed_and_relocated_package": "PASS: exact clipboard/Save/Undo; local HTML/math/Mermaid/table/Rich; source-free; inner WebKit sandbox active",
+    "packaged_git_helper_cases": 26,
+    "actual_packaged_external_diff": "PASS: four concurrent cold calls and hanging-peer deadline; same optimized ELF hash",
+    "mac_notarized_installed_window_tests_passed": ["sourcesplit", "softwrapmodes", "softwrapindent", "colselwrap", "colpaste", "textop", "textworkflowmulti", "searchlayout"],
+    "mac_softwrapindent_combinations": 36,
+    "mac_search_base_views_inspected": 6,
+    "mac_optional_softwrap_screenshot": "ENV: missing capture permission; functional rerun without optional capture PASS",
+    "mac_localization_audit_portability_bundle_localization": "PASS",
+    "physical_linux": {
+      "desktop": "Cinnamon X11, scale 2",
+      "keyboard_compose_save_undo_redo_crlf": "PASS",
+      "split_unicode_text": "PASS",
+      "atspi_editor_text_and_caret": "PASS both panes",
+      "accessible_nodes": 230,
+      "visible_quit_process_ended": true,
+      "dark_editor_startup": "FAIL: source scheme stays light; separate fix pending",
+      "candidate_window_ime": "NOT TESTED",
+      "audible_screenreader": "NOT TESTED"
+    }
+  },
+  "open": ["Dark source scheme startup", "Fixed wrap columns and continuation profiles", "General native input and IME transaction preflight", "Full Markdown dialect parity", "Physical candidate-window IME and full accessibility acceptance", "Physical Wayland and sustained workload acceptance"]
+}

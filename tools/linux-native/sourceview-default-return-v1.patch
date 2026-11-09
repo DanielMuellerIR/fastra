@@ -1,0 +1,184 @@
+--- a/gtksourceview/gtksourceview.c
++++ b/gtksourceview/gtksourceview.c
+@@ -166,6 +166,7 @@
+ 	PROP_SMART_HOME_END,
+ 	PROP_SPACE_DRAWER,
+ 	PROP_TAB_WIDTH,
++	PROP_FASTRA_RETURN_PLAN_ABI_V1,
+ 	N_PROPS
+ };
+ 
+@@ -834,6 +835,10 @@
+ 		                     (G_PARAM_READABLE |
+ 		                      G_PARAM_STATIC_STRINGS));
+ 
++	properties[PROP_FASTRA_RETURN_PLAN_ABI_V1] =
++		g_param_spec_uint ("fastra-return-plan-abi-v1", NULL, NULL,
++		                   0, G_MAXUINT, 0x52544e31u,
++		                   G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+ 	g_object_class_install_properties (object_class, N_PROPS, properties);
+ 
+ 	/**
+@@ -1373,6 +1378,10 @@
+ 			g_value_set_object (value, gtk_source_view_get_completion (view));
+ 			break;
+ 
++		case PROP_FASTRA_RETURN_PLAN_ABI_V1:
++			g_value_set_uint (value, 0x52544e31u);
++			break;
++
+ 		case PROP_SHOW_LINE_NUMBERS:
+ 			g_value_set_boolean (value, gtk_source_view_get_show_line_numbers (view));
+ 			break;
+@@ -4273,6 +4282,123 @@
+ 	return FALSE;
+ }
+ 
++/* Nur der unverbrauchte Return mit unverändertem Buffer wird hier übernommen.
++ * Die Auswahlbedingung des eingebauten Indenters bleibt bestehen. */
++static gboolean
++fastra_default_return (GtkSourceView *view, guint key, guint state)
++{
++  GtkSourceViewPrivate *priv = gtk_source_view_get_instance_private (view);
++  GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
++  guint signal = g_signal_lookup ("fastra-preflight-edits-v1", GTK_TYPE_TEXT_BUFFER);
++  GtkTextIter first, last, prefix, prefix_end, at;
++  gboolean indent, veto = FALSE, linear = FALSE;
++  GParamSpec *linear_policy;
++  gchar *whitespace, *replacement;
++  GVariantBuilder builder;
++  GVariant *plan;
++  guint64 epoch;
++  gint insert_offset, bound_offset;
++  g_autoptr(GtkSourceIndenter) chosen = NULL;
++  g_autoptr(GtkTextBuffer) held_buffer = NULL;
++
++  if (!signal || !g_signal_has_handler_pending (buffer, signal, 0, TRUE) ||
++      !priv->auto_indent || !priv->indenter ||
++      !g_str_equal (G_OBJECT_TYPE_NAME (priv->indenter), "GtkSourceIndenterInternal") ||
++      (key != GDK_KEY_Return && key != GDK_KEY_KP_Enter) ||
++      (state & (GDK_SHIFT_MASK | GDK_CONTROL_MASK | GDK_SUPER_MASK)) != 0)
++    return FALSE;
++
++  linear_policy = g_object_class_find_property (G_OBJECT_GET_CLASS (view), "fastra-linear-return-v1");
++  if (!linear_policy || G_PARAM_SPEC_VALUE_TYPE (linear_policy) != G_TYPE_BOOLEAN ||
++      !(linear_policy->flags & G_PARAM_READABLE) || (linear_policy->flags & G_PARAM_WRITABLE))
++    return FALSE;
++  g_object_get (view, "fastra-linear-return-v1", &linear, NULL);
++  if (!linear)
++    return FALSE;
++  chosen = g_object_ref (priv->indenter);
++  held_buffer = g_object_ref (buffer);
++  gtk_text_buffer_get_iter_at_mark (buffer, &at, gtk_text_buffer_get_insert (buffer));
++  insert_offset = gtk_text_iter_get_offset (&at);
++  gtk_text_buffer_get_iter_at_mark (buffer, &at, gtk_text_buffer_get_selection_bound (buffer));
++  bound_offset = gtk_text_iter_get_offset (&at);
++  gtk_text_buffer_get_selection_bounds (buffer, &first, &last);
++  gtk_text_iter_order (&first, &last);
++  indent = gtk_source_indenter_is_trigger (priv->indenter, view, &first, state, key);
++  prefix = first;
++  gtk_text_iter_set_line_offset (&prefix, 0);
++  prefix_end = prefix;
++  if (indent)
++    {
++      while (gtk_text_iter_compare (&prefix_end, &first) < 0 &&
++             !gtk_text_iter_ends_line (&prefix_end))
++        {
++          gunichar ch = gtk_text_iter_get_char (&prefix_end);
++          if (ch == '\r' || ch == '\n' || !g_unichar_isspace (ch))
++            break;
++          gtk_text_iter_forward_char (&prefix_end);
++        }
++      while (!gtk_text_iter_ends_line (&last))
++        {
++          gunichar ch = gtk_text_iter_get_char (&last);
++          if (ch == '\r' || ch == '\n' || !g_unichar_isspace (ch))
++            break;
++          if (!gtk_text_iter_forward_char (&last))
++            break;
++        }
++    }
++  whitespace = gtk_text_iter_get_slice (&prefix, &prefix_end);
++  replacement = g_strconcat ("\n", whitespace, NULL);
++  g_free (whitespace);
++
++  at = first;
++  while (gtk_text_iter_compare (&at, &last) < 0)
++    {
++      if (!gtk_text_iter_editable (&at, TRUE))
++        { g_free (replacement); return TRUE; }
++      if (!gtk_text_iter_forward_to_tag_toggle (&at, NULL))
++        break;
++    }
++  if (!gtk_text_iter_can_insert (&first, TRUE))
++    { g_free (replacement); return TRUE; }
++  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a(iis)"));
++  g_variant_builder_add (&builder, "(iis)", gtk_text_iter_get_offset (&first),
++                         gtk_text_iter_get_offset (&last), replacement);
++  plan = g_variant_ref_sink (g_variant_builder_end (&builder));
++  epoch = _gtk_source_buffer_fastra_mutation_epoch (GTK_SOURCE_BUFFER (buffer));
++  g_signal_emit (buffer, signal, 0, plan, &veto);
++  g_variant_unref (plan);
++  gtk_text_buffer_get_iter_at_mark (buffer, &at, gtk_text_buffer_get_insert (buffer));
++  if (gtk_text_iter_get_offset (&at) != insert_offset)
++    veto = TRUE;
++  gtk_text_buffer_get_iter_at_mark (buffer, &at, gtk_text_buffer_get_selection_bound (buffer));
++  if (gtk_text_iter_get_offset (&at) != bound_offset)
++    veto = TRUE;
++  g_object_get (view, "fastra-linear-return-v1", &linear, NULL);
++  if (!veto && linear && priv->auto_indent && priv->indenter == chosen &&
++      gtk_text_view_get_editable (GTK_TEXT_VIEW (view)) &&
++      gtk_text_view_get_buffer (GTK_TEXT_VIEW (view)) == buffer &&
++      epoch == _gtk_source_buffer_fastra_mutation_epoch (GTK_SOURCE_BUFFER (buffer)))
++    {
++      gtk_text_buffer_begin_user_action (buffer);
++      if (indent)
++        {
++          /* Nach der vollständigen Prüfung unverändert den eingebauten Ablauf anwenden. */
++          gtk_text_buffer_get_iter_at_mark (buffer, &first, gtk_text_buffer_get_insert (buffer));
++          gtk_text_buffer_insert (buffer, &first, "\n", 1);
++          gtk_source_indenter_indent (chosen, view, &first);
++        }
++      else
++        {
++          gtk_text_buffer_delete (buffer, &first, &last);
++          gtk_text_buffer_insert (buffer, &first, "\n", 1);
++        }
++      gtk_text_buffer_end_user_action (buffer);
++      gtk_text_view_scroll_mark_onscreen (GTK_TEXT_VIEW (view), gtk_text_buffer_get_insert (buffer));
++    }
++  g_free (replacement);
++  return TRUE;
++}
++
+ static gboolean
+ gtk_source_view_key_pressed (GtkSourceView         *view,
+                              guint                  key,
+@@ -4288,12 +4414,14 @@
+ 	gint64 insertion_count;
+ 	guint modifiers;
+ 	gboolean editable;
++	guint64 fastra_epoch;
+ 
+ 	g_assert (GTK_SOURCE_IS_VIEW (view));
+ 	g_assert (GTK_IS_EVENT_CONTROLLER (controller));
+ 
+ 	buf = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+ 	insertion_count = _gtk_source_buffer_get_insertion_count (priv->source_buffer);
++	fastra_epoch = _gtk_source_buffer_fastra_mutation_epoch (priv->source_buffer);
+ 	editable = gtk_text_view_get_editable (GTK_TEXT_VIEW (view));
+ 
+ 	/* Be careful when testing for modifier state equality:
+@@ -4336,6 +4464,12 @@
+ 		priv->im_commit_text[0] = 0;
+ 		priv->im_commit_len = 0;
+ 	}
++
++	if (editable && retval == GDK_EVENT_PROPAGATE &&
++	    buf == gtk_text_view_get_buffer (GTK_TEXT_VIEW (view)) &&
++	    fastra_epoch == _gtk_source_buffer_fastra_mutation_epoch (priv->source_buffer) &&
++	    fastra_default_return (view, key, state))
++		return GDK_EVENT_STOP;
+ 
+ 	if (editable &&
+ 	    priv->auto_indent &&

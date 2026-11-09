@@ -5,6 +5,71 @@ and replace across files and folders. The core idea: **before any bulk
 change you see a complete preview** — Fastra never writes to files
 without you having seen the effect first.
 
+## Linux: Folding Code Regions
+
+The arrows beside line numbers collapse and expand recognized code regions.
+**View and editing** offers **Collapse/expand region**, **Collapse all regions**
+and **Expand all regions** for the active source pane. Expanding a parent keeps
+its collapsed children; Alt-clicking its arrow includes the children. The two
+panes of a split view keep independent folding states.
+
+Double-clicking a placeholder expands and selects its complete body. Jumping
+inside expands its ancestors. Backspace or Delete at a collapsed boundary first
+expands it; the next keypress edits the text. Copy and Cut include hidden parts
+of the selection. Folding changes neither source text nor Undo. The closing
+code line remains separate, with its original line number.
+
+Detection uses the same grammar revisions and region rules as the Mac,
+including its dedicated 4D provider. Markdown headings remain available in the
+outline. Analysis limits: 32 MiB of source, 10,000 regions and 512 nesting levels.
+Time, memory or analysis limits leave all source visible and produce a notice.
+
+## Linux: Source Outline
+
+The source view offers Back, Forward and the list button for Markdown and 4D.
+The popup follows the caret and refreshes automatically after edits. Markdown
+lists headings; 4D lists class functions or the method name. Clicking an entry
+navigates and closes the popup. The arrows revisit up to 100 outline jumps across
+still-open documents. After edits, a heading is found again only when its title,
+kind and level are unique; closed documents and ambiguous destinations are
+refused. Limits: 10 MiB, 200,000 lines and 10,000 entries. Rich uses the same popup
+and history: headings stay in Rich; stored source positions switch to source
+after checked synchronization. The current entry follows the visible Rich
+selection. Alt-double-click in source mode jumps to ordinary 4D functions,
+project methods and classes or to Markdown link targets. Local files open in
+the editor; external addresses open in the configured browser. A fragment after
+a file path opens that file at its beginning. The context-menu entry “Go to
+target at caret” provides the same entry point if the desktop reserves Alt-mouse
+gestures. Local jumps and text files use the shared history. Unknown 4D names
+open a literal project or folder search while retaining the other options;
+choose “All files” there for 4D source files. The read-only Markdown reference check is available under **Tools → Check local Markdown references …**; document/project scope, the problem filter and source jumps use the same rules.
+
+## Linux: Visible Markdown Blank Lines
+
+An otherwise empty line containing at least two ordinary spaces remains visible,
+including in lists and quotes. Tabs and non-breaking spaces do not activate this
+extension. Code and unchanged source blocks retain their original bytes.
+Typing into such a line supports Undo; Copy and Paste retain the spacing and
+typed text without internal source-position attributes.
+
+## Linux: Saving and Quitting
+
+“Save as …” (Ctrl+Shift+S) shows the complete source and target text, every new
+image copy and any existing target before approval. When changing folders,
+reviewed local raster images used by the document are copied with it; original
+files are retained. Changing the image origin starts a fresh Undo history after
+a visible explanation. Ambiguous references and preview limits are explicitly
+reported.
+
+“Quit Fastra” (Ctrl+Shift+Q) collects the save decisions for all windows.
+Cancel or a changed document basis keeps the windows open. Active save and
+image file operations must finish, including their final checks. Ctrl+Q closes
+the current main window.
+
+The separate Force Push mode starts disabled. Its new preview lists outgoing
+commits and commits removed from the target branch; a separate confirmation
+allows only the exact server lease held by that preview.
+
 ## Documents and Saving
 
 ⌘T opens a new tab. On its first save, Fastra suggests the folder of the file
@@ -212,7 +277,9 @@ pre-fills the left side.
 - **Soft wrap:** the footer switch works here too and keeps a separate
   setting for the comparison view, independent of the language of the files
   being compared. Switched on, long text wraps inside its column (the
-  factory default). Switched off, every real line stays on one line; whatever
+  factory default). Wrapped lines receive their full required height, including
+  after window or column widths change. Switched off, every real line stays
+  on one line; whatever
   does not fit is cut off at the column edge and never reaches into the other
   side. Together with the divider that lets you read more of one side.
 - **Compare Against Saved Version** compares the unsaved editor content
@@ -416,6 +483,8 @@ discarded.
 Markdown also offers the button in the formatted editor. Snippets complement
 the existing 4D macros and do not execute scripts.
 
+On Linux, text snippets are also available under **Tools → Text snippets …**. The library and insertion preview use the source or Rich selection captured when opening. Rich image references require a saved target document.
+
 Choose **New**, enter a name and template, then save it. **Duplicate** creates an
 independent copy. You can edit, delete and search templates by name. Switching or
 closing asks about unsaved template changes. **Reload** reads collection changes
@@ -505,7 +574,6 @@ then refreshed through the normal workspace loading paths.
 Long conflict lists can be scrolled in full within the error area while the
 dialog actions remain visible.
 
-
 The original encoding and BOM are retained; characters that cannot be represented
 produce an error. The exact preview result bytes are written, with no additional
 line ending normalization when saving. Line operations that keep the same number
@@ -549,7 +617,7 @@ superseded calculations never enable Apply.
 
 ### Check Local Markdown References
 
-**Markdown → Check Local References…** opens the findings list. Choose **Document**
+**Markdown → Check Local References…** opens the findings list (Linux: **Tools → Check local Markdown references …**). Choose **Document**
 or, with an open project, **Project**, then **Check**. **Show Problems Only** hides
 existing targets. Select a finding and **Go to Source** to reveal its source line;
 WYSIWYG switches to source view. Changed or closed sources need another check.
@@ -572,7 +640,7 @@ anchors in other file formats remain visibly unchecked.
 
 Project scope includes only files under the checked root; an active document
 outside that root is excluded. Open files explicitly set to Markdown are also
-included. Changing scope discards the old report. The list names its checked root.
+included. Changing scope discards the old report. The list names its checked root. On Linux, unknown filesystem types and network mounts remain unchecked; symlinks are resolved one component at a time before further access.
 
 Project exclusions apply; hidden files, package contents and symbolic-link sources
 are excluded. Local symbolic-link targets are allowed. Limits: 200 Markdown files,
@@ -581,7 +649,6 @@ references and anchors each in total. Read errors, undecodable sources, limits a
 cancellation produce an incomplete list. Open project files in this window use
 their current contents. Reports are dated snapshots; **Check Again** reads external
 changes anew.
-
 
 
 Preview and WYSIWYG show prose in a centered reading column. Wide tables may extend beyond it and get their own horizontal scrollbar when needed; the rest of the page stays in place.
@@ -779,6 +846,8 @@ its appearance.
 Protected HTML and math content cannot be formatted in WYSIWYG mode. Fastra
 explains this before making changes; edit these parts in the Markdown source.
 
+On Linux, ordinary code blocks can also be edited with syntax colors in WYSIWYG mode. Mermaid remains protected and appears as a diagram. Invalid diagrams retain their code and show a message; edit their source in source mode.
+
 **Return** starts a new paragraph with a small gap. **Shift-Return (⇧↩)** starts
 a new line within the same paragraph, without extra paragraph spacing.
 The **↵ button** beside the Bold and Italic formatting buttons inserts the same
@@ -838,7 +907,6 @@ actually used by this document into the destination's `images` folder. Other
 images, unused reference definitions and code examples are left out. A missing
 required image cancels the save with an explanation. Existing destination images
 are never overwritten.
-
 
 For Markdown tabs, a **format toolbar** appears above the editor; the
 same commands live in the “Markdown” menu and the right-click menu. They
@@ -968,6 +1036,10 @@ containing `Name.md` and an `images` subfolder. If that name is already taken �
 for example because `Report.rtf` and `Report.docx` sit side by side — Fastra
 falls back to `Report-2`. Existing files are never overwritten, and the original
 document stays unchanged.
+
+Collections such as MBOX and ENEX keep their complete output folder, including
+the index, individual documents and attachments. Fastra opens the index reported
+by the tool (such as `index.md`), preserving its relative links.
 
 The conversion is deliberately lossy: Markdown can keep structure, links, simple
 emphasis, lists, and images, but not every font and no layout. When the tool
@@ -1606,6 +1678,8 @@ from zero and must fall on complete character boundaries. Normal work windows
 and unsaved contents remain intact. Snapshots support selection, copying and
 search, but cannot be edited or saved; they are not restored on the next launch.
 
+On Linux, automatic navigation selections do not take over the PRIMARY mouse selection. Ctrl+C still copies the visible selection; your own input in the snapshot window restores normal selection handling.
+
 A successful invocation initially confirms job acceptance. Only its `ready`
 status confirms content, the applied selection and a visible target location.
 Exploring, cancellation or closing the window prevents late jumps.
@@ -1673,3 +1747,224 @@ Indentation is not required. Incomplete blocks without matching ends are not fol
 The shared project header beside the brand shows the name and path. Its icon
 distinguishes Git repositories from ordinary folders. The graph reports all
 commits reachable through Git refs; the displayed list remains limited to 2,000.
+
+When copying or editing formatting, WYSIWYG uses Markdown notation wherever
+the surrounding characters allow it. Nonbreaking spaces are preserved.
+Return after bold or highlighted text creates an empty paragraph without visible
+formatting characters; deleting all content leaves one empty editor line.
+Unchanged source blocks retain their original notation. The visual viewport is
+remembered per document when returning to that editing mode. Copied highlights
+also provide their color to HTML and RTF destinations.
+
+Local raster images in Linux Rich view refresh automatically in the background after external file changes. Text, selection and Undo are retained. Missing or invalid images retain their source references without displaying stale image bytes. Refresh waits during image and clipboard actions.
+
+In Linux Git tools, “Create commit …” opens the complete index preview. Review the tree, parent commits, author/committer, message and diff, then approve that state. Fastra uses a normal Git commit with active hooks and native signing. Later staging and unsaved editor buffers are retained. Hook changes, signing failures or a stale basis stop the commit; actual output and the resulting Git state remain visible. Git 2.43 or newer with files refs is required.
+
+## Linux: Markdown
+
+Upper/lower case and system text locale
+Text-menu commands and saved single-, multi-tab and file workflows use the captured system text locale. Its ID appears in the menu and stage/final previews; UI language does not control these text rules. Locale changes invalidate old previews. An unavailable locale visibly blocks the operation. The entire selected substring is transformed together, without taking context from outside the selection. Existing size/line limits and one shared Undo remain. Replacement templates retain their previous Root semantics.
+
+Split source view
+Both source views have independent selections, carets and scroll positions. Text operations, navigation, options and paste use the last-used source view even after menu/dialog focus. Turning split off makes the primary view the target. Text and native Undo remain shared. Focus alone does not change PRIMARY; collapsing an own selection releases only its corresponding current own offer. When typing over a multi-character selection, GTK separates deletion and insertion into two native Undo steps; the second restores the deleted text. Fastra paste and text operations retain one shared Undo each.
+
+HTML and external links
+The preview uses the strict Mac allowlist for HTML tags and attributes. Tables, local raster images and expandable details are rendered; scripts, network images and foreign internal position/copy attributes remain excluded. Rejected HTML appears as text. Unmapped raw HTML has no source jump or dedicated code-copy button. Explicitly activating an HTTP, HTTPS or mailto link opens the system browser or mail application. The preview itself stays local; automatic navigation and other protocols are blocked.
+
+Click between source and Markdown preview
+Clicking source text scrolls the corresponding preview block into view. Clicking ordinary preview text places the caret in the last-used source view, expands folded target regions and focuses the editor. Links, text selection and copy buttons retain their own actions. Columns are approximate where Markdown markup has been removed; scrolling is not continuously coupled.
+
+Copy code blocks
+Each code block's copy button copies the complete displayed code as plain text, including tabs, spaces and its final newline. It supports mouse and keyboard input. Previous HTML/RTF formats are replaced; source text and Undo remain unchanged. Copies are limited to 2 MiB each; stale or oversized requests report an error without partial copying. Printing and ordinary selection copying omit copy controls and internal position attributes. LF, CRLF and CR-only sources use the same parser view while preserving original line endings.
+
+Rectangle selection and column paste use the configured tab width. Changing it ends the existing rectangle selection; text and Undo remain unchanged.
+
+Copy and cut rectangles
+“Text → Rectangle selection” offers Copy, Cut, Column paste and extension up/down. Ctrl+C/Ctrl+X copy plain text with the original line endings; multiline copies include a final newline. Ctrl+Shift+↑/↓ extends or shrinks across logical lines regardless of soft wrapping. Ctrl+V replaces without padding short lines; “Column paste” pads using the active tabs/spaces profile and also works from a single caret. Extra clipboard rows continue in following lines; missing rows clear only selected characters. Each change has one Undo. Stale requests and exceeded limits (4 MiB, 2001 rows, 64 KiB per resulting line) make no changes.
+
+Close other tabs
+Each tab header's menu offers “Close other tabs”. That tab stays open; all other unsaved tabs are asked about before any tab closes. A late Cancel retains every tab and the previous activation. Earlier explicit saves remain saved. Pending changes and stale document or tab states hold the operation.
+
+Formulas in Markdown preview
+Inline and display formulas use bundled KaTeX rendering. Incomplete, nested or unsupported formulas retain their original source with a readable explanation. Code, HTML regions and literal image/link destinations are not interpreted as formulas. Preview, code copying, image references and Save As retain original source ranges, including CR-only line endings.
+
+Format profiles on Linux
+Tab and indentation widths are independent choices from 1 to 16. Tabs/spaces and window wrapping are saved per syntax format and restored for new tabs and process restarts. Factory settings use four spaces and width four. Plain text, HTML, JSON, Markdown, XML and Diff wrap to the window by default; code formats do not. Line numbers and automatic indentation remain document settings. Profile changes are visibly disabled while the saved syntax choice loads; an explicit syntax choice takes precedence. Pending or failed profile writes visibly hold normal Close and Quit. After successful saving, request Close again; if the store is busy, explicitly retry the choice or Close.
+
+Line endings on Linux
+Choosing LF, CRLF or CR beside the encoding records a pending change. Save performs the conversion; until then, the original characters and undo history remain intact. A pending choice counts as unsaved and survives cancellation, failed saving and session restoration. Choosing the previously saved style clears the pending change. Without an explicit choice, ordinary Save preserves mixed line endings.
+
+Save As shows the complete converted target text before approval. Encoding and BOM are retained. When saving to the existing location, one Undo reverses the conversion. If you continue editing the source during saving, the newer text stays unsaved; review it and save again. Rich view waits for saving to finish before accepting further input.
+
+Closing Editor Options restores focus and selection to the previous source pane while the document and user interaction remain unchanged.
+
+Formulas in Linux Rich view
+Inline and block formulas are rendered. The formula itself is protected; edit TeX and delimiters in source mode. Surrounding paragraphs, lists and tables remain editable. Unsupported or nested formulas show a source notice. Copy and paste between Rich views retain original formula syntax through Fastra's Markdown format; ordinary HTML copy contains MathML and plain text follows the visible text. Rendering works locally without a network connection.
+
+Git Pull on Linux
+“Git Pull …” offers FF-only, Merge or Rebase. “Fetch source and prepare preview” first performs an explicit fetch, which may change refs and FETCH_HEAD. Review the complete commit patches, status, index and working diff, then approve the operation explicitly. Native Git fetches again during pull; the remote, external Git and hooks may cause additional or partial changes. The final report shows actual HEAD and file state even after cancellation or failure. There is no automatic rollback or continuation. File publication and normal Close visibly wait during pull and its post-check; explicitly retry refused actions afterwards.
+
+Application-wide page guide
+“Show page guide” and “Page guide: column” apply to all windows and both source panes, independently of syntax format and line wrapping. Choose a column from 20 to 500; factory settings use 80 with the guide off. Settings survive restarts. Controls are visibly disabled during the initial load. Pending or failed writes hold Close; request Close again after success. The “Wrap target” and “Continuation lines” options are enabled by the matching optional text runtime. Choose window width, page guide or a fixed column from 20 to 500; the viewport remains the upper bound. Continuation lines stay flush left, match the first line or add one indentation level. These settings do not change file characters. With system libraries, Fastra shows the optional-runtime notice and keeps window wrapping.
+
+Source paste
+Normal paste through Ctrl+V, Shift+Insert and the context menu checks clipboard text and the complete result before the first edit: at most 32 MiB and 64 KiB per resulting line, valid UTF-8 and no NUL characters. A refused request preserves source, selection and Undo. New selections or stale replies cannot overwrite later text. Ordinary middle-click paste uses the same checks at the clicked text position, including the built-in line-number gutter, without artificially moving an existing selection. Active rectangle selection retains its separate paste path and 4-MiB limit; this does not claim verification of every other insertion path.
+
+### Linux: external comparison
+
+`fastra-diff` provides the existing read-only invocation contract on Linux. Packages include the helper; `--focus-diff` explicitly requests focus. Its separate comparison window has no editor save action. “Quit Fastra” respects ordinary unsaved windows. Long normal paste keeps the caret visible while its selection and pane remain current.
+
+The external window uses the same two-column display with line numbers, highlights, expandable unchanged sections, difference list and overview. The lock banner marks the read-only comparison. Copying omits line numbers, fold controls and alignment gaps. Export saves the complete finished comparison as a local report and protects renamed or linked source files against being overwritten. “Quit Fastra” is available in the window menu.
+
+### Linux: stable sorting and file manager
+
+Sorting uses the text locale shown in the menu and workflow previews, with numeric, normalized ICU collation. Case and punctuation matter; lowercase precedes uppercase for otherwise equal words. Equal keys retain their original order in both directions, including leading-zero variants and canonically equivalent Unicode spellings. Source bytes are not normalized. Locale changes invalidate old calculations. Saved workflows retain their JSON format. The order can differ from Mac/Finder.
+
+“Show in file manager” in the project window selects the chosen project folder in its parent folder. The same command in a saved document tab’s context menu selects the file. An unavailable desktop service is visibly explained; documents remain unchanged.
+
+### Automatic links on Linux
+
+Markdown preview and Rich Markdown recognize automatic HTTP(S), www and email addresses. Entities, backslash escapes, tables and footnotes retain their original source ranges. A link such as `https://example.com/$x$` keeps the formula syntax as literal URL content. Rich Markdown also allows Mailto in its link dialog and rejects control characters in link destinations. External links stay blocked in Rich; normal preview opens allowed schemes only after explicit activation. Cancellation or a complexity limit never adopts a partial link calculation.
+
+The optional Linux runtime candidate opens external web and mail links through the desktop portal. If that portal is unavailable, Fastra reports an error. System libraries retain the existing desktop launch behavior.
+
+### Native input preflight on Linux
+
+The matching optional Linux runtime candidate checks final GTK text commits and the connected native Delete, Backspace, SmartBackspace and Join actions before mutation against 32 MiB overall and 64 KiB per logical line. A rejected action preserves the text, selection and undo state immediately preceding that action. Delete and Join checks apply without active composition. Preedit, combined surrounding deletion and commit, other indentation actions, Tab/snippet transactions and other native multi-step actions remain separate limitations; a complete IME contract is not promised.
+
+Ordinary Return with automatic indentation in a linear source view is also checked before changing the text and undone as one action. This applies to the built-in indenter and unconsumed input. Keys already handled by an input method remain outside this contract; rectangle Return keeps its previous behavior. Newly inserted Return characters remain LF internally, while existing CRLF bytes are preserved.
+
+## Linux: interface fonts
+
+The Linux interface, Rich Markdown and Markdown preview include Inter 4.1 with regular, semibold and italic rendering. The font works offline without being installed on the desktop. Fastra does not change system fonts. The Sora wordmark and separate source-editor font are retained. Linux packages include the license and source record.
+
+## Linux: file comparison
+
+Shift-click a second text tab to mark it as a comparison partner without switching the active editor. The active tab retains its stronger grey fill; the partner has a weaker grey fill. Shift-click either selected tab again, or click normally, to clear the pair. “Compare Files…” in a selected tab’s context menu fills both sides in visible tab order. This pair action does not appear on an unrelated tab. Closed or ineligible tabs lose their association.
+
+Ctrl+Alt+Shift+D opens the ordinary comparison picker from the main or search window, with the active document on the left; it does not use a marked pair. “Compare Against Saved Version” under “Tools” is available for a text file with unsaved changes. It opens the saved version on the left and the editor content on the right directly, including Rich mode. This direct comparison uses default options and leaves remembered ignore options unchanged. Comparing or transferring still does not save any files.
+
+“Compare files …” opens the compact source picker. Each side accepts a file or an explicitly selected open tab; the active editable tab is selected on the left. The four ignore options persist across restarts. The result is a separate read-only tab. Long unchanged sections can be expanded; copying includes only text from expanded rows in the selected column, without line numbers, alignment gaps or fold labels. Soft Wrap in the status bar affects both columns. Its setting belongs to file comparisons independently of ordinary text documents. With wrapping off, long lines remain within their column without an extra horizontal scrollbar.
+
+Drag the column divider within its nine-pixel handle. The ratio is shared by comparison tabs and transfer previews and survives restarts. Double-click restores equal columns. F8 focuses the divider; arrow keys adjust the split by five percentage points, and Home resets it. Alt+↑/↓ selects the previous or next difference with wraparound. The difference list follows the selection. Both columns share one vertical scrollbar and a common horizontal scroll area. Narrow windows retain at least 919 pixels of content width. Click the overview on the right to jump to a difference; large comparisons show at most 160 markers, including the current difference. While scrolling, the selection follows the block at the top of the viewport.
+
+“To left” and “To right” transfer the selected difference exclusively into the associated open tab. A side selected by file path remains read-only even when that file is also open. The complete preview explains exact Unicode characters and line endings. Rich documents retain their mode and native Undo/Redo. Unchanged image versions are reused. Including images retained for Undo, the limits are 256 images, 64 MiB of image data and 64 million decoded pixels; exceeding a limit stops the transfer before it changes the document. Cancelling preparation retains the completed comparison. Changed or closed sources require recalculation; reopening the same path does not replace the original tab association.
+
+The export button saves a complete UTF-8 text report. Choose a separate file; comparison sources and their aliases remain protected after renaming. Comparisons are limited to 32 MiB and 200,000 logical lines per side; additional computation and memory budgets may report an earlier limit. Transfers also follow the destination editor’s limits: 64 KiB per logical source line, or 2 MiB and 10,000 Rich blocks. Comparisons are never silently truncated.
+
+## Linux: windows and controls
+
+The main window has tabs at the top, a collapsible project tree on the left and a status bar at the bottom. An empty tab shows file and folder actions and recent projects. Opening a file replaces only a completely untouched empty tab; other documents are retained.
+
+“Find” in the status bar or Ctrl+F opens a separate search window. The File, Open, Folder and Project scopes offer search, a complete preview and match approvals. Escape or Ctrl+W closes the search window. Applying changes still requires the approved, verified source state.
+
+File and open-document searches update matches 120 ms after typing or changing options; folder and project searches wait 420 ms. Previous previews and approvals become invalid immediately. Folder and project searches start automatically with at least three visible characters; use Find or Return for shorter patterns. Ctrl+F focuses the existing window for the active scope and selects the search field. Reopening in the same editor retains the folder path, exclusions and text-format choice; project settings belong to that project. Closing cancels searches and removes source highlights.
+
+Sources remain usable during a read-only folder or project search. Changing them invalidates the old preview, cancels the old scan and then calculates current matches. Closing the search or editor window cancels a read-only scan. Writes, restoration, text workflows and unsaved settings must finish or be cancelled first.
+
+The folder list contains previously added folders. Check the sources to search; removing a row changes only the list. Add folders accepts multiple sources. The list scrolls from eight entries; up to 64 folders can be searched together. File types selects known text formats or all files; binary files remain skipped. Additional folder exclusions are inside the File types menu.
+
+The template menu beside Find contains the bundled categories and user templates. It reloads the collection when opened. Selecting a template sets the search expression and RegEx, and adopts a replacement suggestion only when one is supplied. Scope and other options are retained. “— None —” clears the template association while keeping both fields. The sliders button opens the manager for saving, importing and exporting. Empty results distinguish missing input, the minimum length for automatic folder search, and completed searches with no matches. Clicking the already selected Open scope shows its coverage and limits.
+
+In Project, File set selects saved project-relative files or folders. “+” creates a set; “−” removes the active set while another remains. Separate paths by commas or line breaks; “.” includes the entire project. Absolute paths and “..” are refused. Exclusions and file types belong to each project. DerivedData remains excluded even when absent from the field. Folder and project choices survive restarts. Close waits for pending settings writes; close again afterwards.
+
+Opening a fresh search with Ctrl+F or the editor’s Find button freezes a multiline selection as its search range. A visible populated search keeps its range. Selection only appears in File and is disabled without a nonempty linear selection. Switching to Open and back to File preserves a frozen range still bound to the active document. Removing the star resets Literal ∗; adding a star later does not enable it again.
+
+The footer offers Previous/Next, From example, Replace and Review approvals. In File/Open, Return moves to the next match; Ctrl+G and Shift+Ctrl+G navigate matches, and Ctrl+Return opens approvals. In Folder/Project, Return starts the search. Replace changes only the active match in an editable open document and recalculates successor matches. It needs no batch approval. Each effective replacement has its own Undo step; a no-op changes neither history nor modified state. Stale sources, changed inputs and an intervening foreign window prevent applying a delayed calculation.
+
+The arrow button beside Replacement swaps Find and Replace. It only changes the inputs and recalculates matches.
+
+Capture pills in every search scope come directly from the pattern, including without matches. Scroll them horizontally beside Replacement. Click to insert a capture at the cursor, or drag it using the field’s native text drop. Captures beyond number 30 remain accessible. The regex element picker and history sit beside Find; the picker enables regex and inserts at the caret. History fills both fields and focuses the visible search field. Alt+H opens it in the search window.
+
+Select text in the detail box. Define group snaps to complete regex elements and inserts a capture into the pattern, renumbering existing replacement references without changing their meaning. Delete group ungroups the selected capture, or the last pattern capture when there are no matches. Referenced replacement groups, backreferences, quantifiers, risky alternatives and changed inline-flag boundaries block the action with an explanation. These commands change only search fields and invalidate old approvals. Analysis is limited to a 64 KiB pattern, 65,536 syntax nodes, 256 tree levels and 200 ms parser time; reaching a limit disables group editing with an explanation.
+
+Each new search starts without approvals. Select matches individually or with All; without a selection, review and apply remain disabled. The match list groups files, shows the active match in detail and offers individual approvals and All/None. “Review approvals” opens the complete comparison preview with colored changes; approved changes are applied there. If line alignment exceeds its comparison budget, the preview explicitly shows both complete texts without that alignment. “Extract matches” creates a new unsaved document or copies to the clipboard. Separator, quoting, duplicate removal and replacement are selectable; output is limited to 16 MiB. New documents also enforce the editor limit of 64 KiB per logical line; clipboard output can contain longer lines.
+
+Click a match or use Previous/Next to jump to its verified source; Up and Down also work in the match list. The source marks up to 2,000 matches plus the active match; zero-length matches appear as marked insertion positions. The source editor selects the actual match; text and Undo remain unchanged. Selection only freezes the range chosen when enabled, bound to that document. Match navigation preserves this range; text edits move its boundaries. Disable and re-enable the option to choose a different range. Empty or rectangle selections are refused without searching the whole document. Open tabs are identified independently of their names. Folder and project matches open files only on an explicit jump and reuse matching open sources. Changed disk data or conflicting open buffers block the jump with an explanation. A late loading reply after a search or window change creates no new document.
+
+In Rich Markdown, Ctrl+F searches the visible formatted text, including across formatting boundaries. Ctrl+G and Ctrl+Shift+G navigate matches; Escape closes the find bar. “Source …” switches to the complete source search. The Rich footer counts the entire synchronized Markdown source.
+
+Home and opening another project ask whether to save or discard unsaved tabs. Cancel retains all existing documents and the project. Only after every decision does Fastra close the old tabs and start with a focused empty tab.
+
+In source mode, the status counts show characters, words and lines. Combined emoji and combining sequences each count as one visible character; CRLF counts as one line ending. When text is selected, the counts refer to the selection and show “Sel”.
+
+Ctrl+T opens a new tab; Ctrl+Shift+O opens the folder chooser.
+
+The Fastra menu at the top right contains the existing file, tool, help and update actions and session backups. The gear on the left opens editor options. The view menu next to “Split source editor” contains further editor and Markdown commands. Formatting, Soft Wrap, line endings and search are available in the status bar. “Hex” opens saved file bytes in a separate tab; unsaved source text stays in the previous tab.
+
+## Linux: file dragging and Markdown source
+
+Drag saved files from tabs
+
+The file handle beside a saved tab name can be dragged into the file manager or another application. It passes the existing file, not the unsaved editor buffer. When changes are unsaved, the hint explicitly identifies the last saved version. New unsaved tabs have no file handle. Hex and section views pass the whole saved file, not just the visible portion. Fastra explains when the source was removed or is no longer available as a file.
+
+Markdown formatting in source text
+
+The compact Markdown source toolbar contains the same 15 commands in Mac order and scrolls horizontally when space is limited. Bold, Italic, Highlight and Inline code wrap the selection or remove existing markers. Without a selection, they insert an empty marker pair with the caret between the markers. Headings, lists, tasks, quotes and hard line breaks preserve document line endings. Link places the caret at the input position; tables offer 1 to 50 columns, initially three with a header row. Each command has a single undo step. The commands appear only for the selected Markdown format in source mode and are unavailable for rectangular selections and locked sources. The Rich editor keeps additional editing, clipboard, image and table actions in the More menu.
+File and Open show up to three approved changed lines from the active document below the inputs. Additional lines are counted; Review approvals shows all changes. The compact preview stays hidden without approvals, for an empty replacement or for no-op replacements. New search inputs remove the old display immediately.
+
+## Linux: read-only access
+
+File comparisons, including external calls and folder pairs, local Markdown reference checks and image, PDF and SVG previews can read regular hardlinked files and files whose extended attributes cannot be queried. Size and analysis limits still apply. A changed file or path invalidates the previous read basis. These tools do not modify their inputs; report export also protects renamed and linked source files.
+
+Saving and replacing retain their stricter checks. A read basis grants no write permission. Fully readable text files without a safe write basis open in a read-only source tab marked by a lock and notice. Copy, Find, Go to Line/Column, outline, preview and text printing remain available. Reference jumps recheck the read basis before opening and remain in the shared navigation history.
+
+“Edit a copy” creates a new, unsaved document from the displayed version with the same encoding and BOM. This grants no write permission to the source file. Relative references remain text; choose the appropriate destination folder when saving. External changes or missing sources produce a notice; the displayed version is retained. “Reopen file” loads the current version into a new tab. With optional session backup enabled, full read-only source tabs save only their file path, encoding and tab order. After explicit approval, recovery reads the current file contents again and keeps them read-only, even if the file could now be edited safely. Missing or unreadable sources do not block recovery of unsaved drafts; the original backups are retained for another review. Editable copies use normal content recovery. Section, hex and other preview tabs remain excluded. Decoded UTF-8 text exceeding 32 MiB uses the bounded section view.
+
+
+## Linux: document font
+
+Editor options include an app-wide choice of installed fixed-pitch fonts and their faces. Both source panes, other windows and read-only source text share the choice. Font size and existing document contents remain unchanged. “System monospace” uses the system fixed-pitch font; no additional font files are installed.
+
+The choice is saved locally in the background. If a previously selected font is missing, Fastra marks it as unavailable and temporarily uses system monospace. The saved choice is retained until an explicit new selection. A save error preserves the previous setting on disk; “Retry” repeats the save. Source files are not changed.
+
+## Linux: view and editing menu
+
+Command buttons in “View and editing”, such as “Column paste”, close the menu after running. You can then continue typing in the source. Toggles remain usable in the open menu.
+
+
+### Linux: independent interface and document sizes
+
+“Settings …” in the Fastra menu or Ctrl+, opens “Font and size”, including from the welcome page. The installed monospace font and its styles still apply to every source view. “Entire interface” and “Document text” can be changed independently: Ctrl +/−/0 for the interface, Ctrl Shift +/−/0 for documents. The −, + and “100 %” buttons provide the same commands with the mouse. Interface levels match the Mac range of −3 to +5; document levels range from −4 to +8. “View” also contains all six commands.
+
+Document text size applies to both source panes, additional windows, read-only source documents, Markdown preview and Rich Markdown. Text-only zoom in the formatted views retains image sizes. Comparisons and tool interfaces follow interface size. Text, selection, Undo, encoding and line endings are not edited.
+
+Fastra saves both sizes together locally in the background and restores them on the next launch. Loading or saving errors appear in Settings; “Retry” repeats the operation. Corrupt or linked preference files are not overwritten with new values. An active save can briefly hold quitting; a failed preference save does not permanently prevent closing a document.
+
+
+### Linux: snapshot and explanation windows
+
+Snapshot windows show the filename and status above the read-only text. Close is available in the title bar and with Ctrl+W. The code explanation player places source and explanation vertically; below them are step selection, progress and font controls, followed by Back, Next, Pause, Return, Soft Wrap and End. Narrow windows put the four font commands in “Font” and shorten navigation to icons with accessibility labels and tooltips. Wide windows show code and explanation font sizes with direct minus/plus buttons. Saved sizes match logical Mac sizes.
+
+Click the filename to open the question and source chooser. Full source details and hashes remain available in tooltips. Choosing another source, navigating manually, or changing wrap or font sizes still pauses the player. “Return” deliberately returns to the verified explained selection. Working files are neither edited nor saved.
+
+
+### Linux: settings and appearance
+
+The gear and Ctrl+, open global Settings, including from the welcome page. Under “Appearance”, use “Automatic” to follow GTK’s desktop preference, or choose “Light” or “Dark” for Fastra. Windows, source views, popovers, existing Markdown preview and Rich Markdown switch together. This also updates the text and paragraph colors of open comparisons and transfer previews without rebuilding their selection or comparison basis. Previously rendered preview diagrams are recolored for the selected mode. Text, selection, unsaved changes and Undo history are retained. Font sizes are controlled independently.
+
+Fastra saves the choice locally in the background. Errors offer “Retry”; existing preferences are not silently overwritten. Desktop settings remain unchanged. System file dialogs provided by a desktop portal continue to follow the desktop. Document-specific editor options remain available through their own controls.
+
+Linux settings group Appearance, Font and size, and Editor like the Mac version. The page guide under **Editor** applies to all source views without changing text or format-specific wrapping. Small settings windows scroll. Close the window using its title bar, Ctrl+W or Escape.
+
+Under **Markdown → Preview Font**, choose the shared reading font for Markdown preview and the Rich editor. Both start at 14 px like the Mac version and follow document zoom; images retain their size. The choice takes effect in open views without changing source text, selection or undo. If a saved font is missing, its name is retained and Fastra shows the temporary system fallback. Loading and saving errors offer a retry.
+
+**Markdown → Show on the Right for Markdown** controls the side preview throughout the app and is on by default. The preview button uses the same choice. Existing and new Markdown tabs follow it; inactive tabs load their preview when shown. Rich Markdown has no additional side preview. Returning to source follows the current global choice. Switching to another file format closes the preview without changing the preference. Loading and saving errors remain visible in Settings and offer a retry.
+
+Under **Markdown → Edit Markdown in WYSIWYG mode**, choose the app-wide default for existing and new Markdown documents. The button beside Text/Hex and **Ctrl+Shift+Alt+M** override it only for the current document. A document choice survives later changes to the default. The first editable Markdown document asks for the default: **Alt+Return** selects source and preview, **Return** WYSIWYG. The choice is saved locally. Read-only and unsupported text stays in source mode. Before a global change, Fastra synchronizes Rich views; pending actions or changed documents hold the switch. Settings explain the reason and offer a retry without discarding contents.
+
+### Linux: Startup and saved windows
+
+Under **Settings → Startup**, “Restore Previously Open Windows and Documents” is enabled by default. The next normal launch reopens saved files and project windows with their tab order, active file tab, size and maximization. Under X11, positions return as well; windows outside the current screens are brought back into view. Under Wayland, the desktop determines their positions.
+
+Fastra loads the current disk contents. Unsaved changes, untitled documents and generated comparisons are not stored here. Windows without saved files and missing sources are skipped. Optional session backup for unsaved drafts remains separate. Your input, new tabs and file or project changes take precedence over an ongoing restore. Additional open requests are delivered once after restoration.
+
+Turning the option off clears the remembered window list. An error offers “Retry” and retains existing data. If Fastra cannot save the startup state when quitting, you can cancel, retry or explicitly choose “Quit without updating”. The next launch may then reopen older windows and paths.
+
+### Linux: Print preferences
+
+**Settings → Printing** contains “Print line numbers”, “Print header and footer”, “Print syntax colors” and “Print font size”. All three options are on by default; the size starts at 10 pt and ranges from 6 to 18 pt. Source text uses the chosen monospaced face and its language's light color set, including under dark appearance. Line numbers are gray and right-aligned. Hex dumps have no additional number column and fit their font to the paper down to 6 pt when needed. Markdown and Rich use the print size. Images can carry header and footer; PDF pages receive no additional decoration.
+
+Checkboxes in the native “Fastra” print tab change the same saved preferences, including after Cancel. An already open print job retains its own dialog values. Paper size and orientation are in the print dialog. Preferences save locally in the background. An error retains the previous file and offers Retry. Preferences that are still loading or saving hold printing. Preparing a print job does not change source text, selection or undo.
+
+In Markdown/Rich PDFs, some font glyphs can yield different Unicode characters when copied despite looking correct; this is observed with Greek text. The print style preserves ASCII hyphens between capitals. When copyable PDF text is essential, **Print source …** is the verified route. The formatted output does not yet have complete Mac parity in this respect.

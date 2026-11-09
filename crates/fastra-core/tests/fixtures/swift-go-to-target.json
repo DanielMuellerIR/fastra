@@ -1,0 +1,5574 @@
+[
+  {
+    "expected" : "4d",
+    "input" : {
+      "name" : "a.4dm",
+      "op" : "format",
+      "source" : ""
+    }
+  },
+  {
+    "expected" : "md",
+    "input" : {
+      "name" : "README.md",
+      "op" : "format",
+      "source" : ""
+    }
+  },
+  {
+    "expected" : "md",
+    "input" : {
+      "name" : "A.MARKDOWN",
+      "op" : "format",
+      "source" : ""
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "name" : "x.swift",
+      "op" : "format",
+      "source" : ""
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "name" : "no-extension",
+      "op" : "format",
+      "source" : ""
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "name" : "dir.with.dot/file",
+      "op" : "format",
+      "source" : ""
+    }
+  },
+  {
+    "expected" : "md",
+    "input" : {
+      "name" : "x.MD",
+      "op" : "format",
+      "source" : ""
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 0,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 1,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 2,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 3,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 4,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 5,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 6,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 7,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 8,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 9,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 10,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 11,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 12,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 13,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 14,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      15,
+      1
+    ],
+    "input" : {
+      "location" : 15,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      15,
+      1
+    ],
+    "input" : {
+      "location" : 16,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 17,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 18,
+      "op" : "phrase",
+      "source" : "Meine Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      1
+    ],
+    "input" : {
+      "location" : 0,
+      "op" : "phrase",
+      "source" : "x:=(1)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      1
+    ],
+    "input" : {
+      "location" : 1,
+      "op" : "phrase",
+      "source" : "x:=(1)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 2,
+      "op" : "phrase",
+      "source" : "x:=(1)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 3,
+      "op" : "phrase",
+      "source" : "x:=(1)"
+    }
+  },
+  {
+    "expected" : [
+      4,
+      1
+    ],
+    "input" : {
+      "location" : 4,
+      "op" : "phrase",
+      "source" : "x:=(1)"
+    }
+  },
+  {
+    "expected" : [
+      4,
+      1
+    ],
+    "input" : {
+      "location" : 5,
+      "op" : "phrase",
+      "source" : "x:=(1)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 6,
+      "op" : "phrase",
+      "source" : "x:=(1)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 7,
+      "op" : "phrase",
+      "source" : "x:=(1)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 0,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 1,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 2,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 3,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 4,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 5,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 6,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 7,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 8,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 9,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 10,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 11,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 12,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 13,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 14,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      13
+    ],
+    "input" : {
+      "location" : 15,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 16,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      17,
+      1
+    ],
+    "input" : {
+      "location" : 17,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      17,
+      1
+    ],
+    "input" : {
+      "location" : 18,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 19,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 20,
+      "op" : "phrase",
+      "source" : "🙂Grüße Methode($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 0,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 1,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 2,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 3,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 4,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 5,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 6,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 7,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 8,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 9,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 10,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 11,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 12,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      13
+    ],
+    "input" : {
+      "location" : 13,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 14,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      15,
+      1
+    ],
+    "input" : {
+      "location" : 15,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      15,
+      1
+    ],
+    "input" : {
+      "location" : 16,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 17,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 18,
+      "op" : "phrase",
+      "source" : "Function zwei($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 0,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 1,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 2,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 3,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 4,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 5,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 6,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 7,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 8,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 9,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 10,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 11,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 12,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 13,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 14,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 15,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 16,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 17,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 18,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 19,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 20,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 21,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 22,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 23,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 24,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 25,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 26,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 27,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      28
+    ],
+    "input" : {
+      "location" : 28,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 29,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      30,
+      1
+    ],
+    "input" : {
+      "location" : 30,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      30,
+      1
+    ],
+    "input" : {
+      "location" : 31,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 32,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 33,
+      "op" : "phrase",
+      "source" : "exposed local Function Grüße($x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      1
+    ],
+    "input" : {
+      "location" : 0,
+      "op" : "phrase",
+      "source" : "a  b(x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      1
+    ],
+    "input" : {
+      "location" : 1,
+      "op" : "phrase",
+      "source" : "a  b(x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 2,
+      "op" : "phrase",
+      "source" : "a  b(x)"
+    }
+  },
+  {
+    "expected" : [
+      3,
+      1
+    ],
+    "input" : {
+      "location" : 3,
+      "op" : "phrase",
+      "source" : "a  b(x)"
+    }
+  },
+  {
+    "expected" : [
+      3,
+      1
+    ],
+    "input" : {
+      "location" : 4,
+      "op" : "phrase",
+      "source" : "a  b(x)"
+    }
+  },
+  {
+    "expected" : [
+      5,
+      1
+    ],
+    "input" : {
+      "location" : 5,
+      "op" : "phrase",
+      "source" : "a  b(x)"
+    }
+  },
+  {
+    "expected" : [
+      5,
+      1
+    ],
+    "input" : {
+      "location" : 6,
+      "op" : "phrase",
+      "source" : "a  b(x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 7,
+      "op" : "phrase",
+      "source" : "a  b(x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 8,
+      "op" : "phrase",
+      "source" : "a  b(x)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      1
+    ],
+    "input" : {
+      "location" : 0,
+      "op" : "phrase",
+      "source" : "a\tb"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      1
+    ],
+    "input" : {
+      "location" : 1,
+      "op" : "phrase",
+      "source" : "a\tb"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      1
+    ],
+    "input" : {
+      "location" : 2,
+      "op" : "phrase",
+      "source" : "a\tb"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      1
+    ],
+    "input" : {
+      "location" : 3,
+      "op" : "phrase",
+      "source" : "a\tb"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 4,
+      "op" : "phrase",
+      "source" : "a\tb"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      7
+    ],
+    "input" : {
+      "location" : 0,
+      "op" : "phrase",
+      "source" : "a_b 12x"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      7
+    ],
+    "input" : {
+      "location" : 1,
+      "op" : "phrase",
+      "source" : "a_b 12x"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      7
+    ],
+    "input" : {
+      "location" : 2,
+      "op" : "phrase",
+      "source" : "a_b 12x"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      7
+    ],
+    "input" : {
+      "location" : 3,
+      "op" : "phrase",
+      "source" : "a_b 12x"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      7
+    ],
+    "input" : {
+      "location" : 4,
+      "op" : "phrase",
+      "source" : "a_b 12x"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      7
+    ],
+    "input" : {
+      "location" : 5,
+      "op" : "phrase",
+      "source" : "a_b 12x"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      7
+    ],
+    "input" : {
+      "location" : 6,
+      "op" : "phrase",
+      "source" : "a_b 12x"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      7
+    ],
+    "input" : {
+      "location" : 7,
+      "op" : "phrase",
+      "source" : "a_b 12x"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 8,
+      "op" : "phrase",
+      "source" : "a_b 12x"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      1
+    ],
+    "input" : {
+      "location" : 0,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      1
+    ],
+    "input" : {
+      "location" : 1,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      3
+    ],
+    "input" : {
+      "location" : 2,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      3
+    ],
+    "input" : {
+      "location" : 3,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      3
+    ],
+    "input" : {
+      "location" : 4,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      3
+    ],
+    "input" : {
+      "location" : 5,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : [
+      6,
+      3
+    ],
+    "input" : {
+      "location" : 6,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : [
+      6,
+      3
+    ],
+    "input" : {
+      "location" : 7,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : [
+      6,
+      3
+    ],
+    "input" : {
+      "location" : 8,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : [
+      6,
+      3
+    ],
+    "input" : {
+      "location" : 9,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 10,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 11,
+      "op" : "phrase",
+      "source" : "écho(foo)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 0,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 1,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      4
+    ],
+    "input" : {
+      "location" : 2,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      4
+    ],
+    "input" : {
+      "location" : 3,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      4
+    ],
+    "input" : {
+      "location" : 4,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      4
+    ],
+    "input" : {
+      "location" : 5,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : [
+      2,
+      4
+    ],
+    "input" : {
+      "location" : 6,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : [
+      7,
+      4
+    ],
+    "input" : {
+      "location" : 7,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : [
+      7,
+      4
+    ],
+    "input" : {
+      "location" : 8,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : [
+      7,
+      4
+    ],
+    "input" : {
+      "location" : 9,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : [
+      7,
+      4
+    ],
+    "input" : {
+      "location" : 10,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : [
+      7,
+      4
+    ],
+    "input" : {
+      "location" : 11,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 12,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 13,
+      "op" : "phrase",
+      "source" : "𐐀name(test)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 0,
+      "op" : "phrase",
+      "source" : ""
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 1,
+      "op" : "phrase",
+      "source" : ""
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 11,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 12,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 13,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 14,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 15,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 16,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 17,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 18,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 19,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 20,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 21,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 22,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 23,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 24,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 25,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 26,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 27,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 28,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 29,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 30,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 31,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "docs/anleitung.md",
+    "input" : {
+      "location" : 32,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 33,
+      "op" : "link",
+      "source" : "[Doku](docs/anleitung.md \"Titel\")"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 11,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 12,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 13,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 14,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 15,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 16,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 17,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 18,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 19,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 20,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 21,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 22,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 23,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 24,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 25,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 26,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "bilder/foto%23x.png",
+    "input" : {
+      "location" : 27,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 28,
+      "op" : "link",
+      "source" : "![Bild](bilder/foto%23x.png)"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 11,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 12,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 13,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 14,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 15,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 16,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 17,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 18,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 19,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 20,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 21,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 22,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 23,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 24,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.org/pfad",
+    "input" : {
+      "location" : 25,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 26,
+      "op" : "link",
+      "source" : "<https://example.org/pfad>"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 11,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 12,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 13,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 14,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 15,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 16,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 17,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 18,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 19,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 20,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 21,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 22,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 23,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 24,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "https://example.com/x",
+    "input" : {
+      "location" : 25,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 26,
+      "op" : "link",
+      "source" : "https://example.com/x.,!?…"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "[leer]( )"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "[leer]( )"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "[leer]( )"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "[leer]( )"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "[leer]( )"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "[leer]( )"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "[leer]( )"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "[leer]( )"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "[leer]( )"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "[leer]( )"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "[leer](\t)"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "[leer](\t)"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "[leer](\t)"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "[leer](\t)"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "[leer](\t)"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "[leer](\t)"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "[leer](\t)"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "[leer](\t)"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "[leer](\t)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "[leer](\t)"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 11,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 12,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 13,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 14,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "",
+    "input" : {
+      "location" : 15,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 16,
+      "op" : "link",
+      "source" : "[leer]( \"title\")"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 11,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 12,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 13,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 14,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 15,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 16,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 17,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 18,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 19,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 20,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 21,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 22,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 23,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 24,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 25,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 26,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : "https://example.org/a b",
+    "input" : {
+      "location" : 27,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 28,
+      "op" : "link",
+      "source" : "[x](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 11,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 12,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 13,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 14,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 15,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 16,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 17,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 18,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 19,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 20,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 21,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 22,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 23,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 24,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 25,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 26,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "../docs/ziel.md#part",
+    "input" : {
+      "location" : 27,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 28,
+      "op" : "link",
+      "source" : "🙂 [ä](../docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 11,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 12,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 13,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "#abschnitt",
+    "input" : {
+      "location" : 14,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 15,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 16,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 17,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 18,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 19,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 20,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 21,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 22,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 23,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 24,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 25,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 26,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 27,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 28,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 29,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 30,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 31,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 32,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 33,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 34,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 35,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 36,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 37,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 38,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 39,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 40,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 41,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 42,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 43,
+      "op" : "link",
+      "source" : "[x](#abschnitt)\r\n[ref][id]\n\n[id]: target.md"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 11,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 12,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 13,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 14,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 15,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 16,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 17,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 18,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 19,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 20,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "mailto:a@example.org",
+    "input" : {
+      "location" : 21,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 22,
+      "op" : "link",
+      "source" : "<mailto:a@example.org>"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 11,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : "a(b",
+    "input" : {
+      "location" : 12,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 13,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 14,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 15,
+      "op" : "link",
+      "source" : "[nested](a(b)c)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 11,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 12,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 13,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 14,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 15,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 16,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 17,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 18,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 19,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 20,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 21,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 22,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 23,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 24,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 25,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 26,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 27,
+      "op" : "link",
+      "source" : "[multiline\ntext](target.md)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 0,
+      "op" : "link",
+      "source" : "plain text"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 1,
+      "op" : "link",
+      "source" : "plain text"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 2,
+      "op" : "link",
+      "source" : "plain text"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 3,
+      "op" : "link",
+      "source" : "plain text"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 4,
+      "op" : "link",
+      "source" : "plain text"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 5,
+      "op" : "link",
+      "source" : "plain text"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 6,
+      "op" : "link",
+      "source" : "plain text"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 7,
+      "op" : "link",
+      "source" : "plain text"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 8,
+      "op" : "link",
+      "source" : "plain text"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 9,
+      "op" : "link",
+      "source" : "plain text"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "location" : 10,
+      "op" : "link",
+      "source" : "plain text"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      12
+    ],
+    "input" : {
+      "anchor" : "einleitung",
+      "op" : "heading",
+      "source" : "# Einleitung\n\n## Zweiter Abschnitt\n"
+    }
+  },
+  {
+    "expected" : [
+      14,
+      20
+    ],
+    "input" : {
+      "anchor" : "zweiter-abschnitt",
+      "op" : "heading",
+      "source" : "# Einleitung\n\n## Zweiter Abschnitt\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "äö-æß-éx-漢字-42",
+      "op" : "heading",
+      "source" : "# Einleitung\n\n## Zweiter Abschnitt\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "bold",
+      "op" : "heading",
+      "source" : "# Einleitung\n\n## Zweiter Abschnitt\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "fenced",
+      "op" : "heading",
+      "source" : "# Einleitung\n\n## Zweiter Abschnitt\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "title",
+      "op" : "heading",
+      "source" : "# Einleitung\n\n## Zweiter Abschnitt\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "one",
+      "op" : "heading",
+      "source" : "# Einleitung\n\n## Zweiter Abschnitt\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "two",
+      "op" : "heading",
+      "source" : "# Einleitung\n\n## Zweiter Abschnitt\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "three",
+      "op" : "heading",
+      "source" : "# Einleitung\n\n## Zweiter Abschnitt\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "same",
+      "op" : "heading",
+      "source" : "# Einleitung\n\n## Zweiter Abschnitt\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "last",
+      "op" : "heading",
+      "source" : "# Einleitung\n\n## Zweiter Abschnitt\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "einleitung",
+      "op" : "heading",
+      "source" : "# ÄÖ æß & éx 漢字🙂 42\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "zweiter-abschnitt",
+      "op" : "heading",
+      "source" : "# ÄÖ æß & éx 漢字🙂 42\n"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      21
+    ],
+    "input" : {
+      "anchor" : "äö-æß-éx-漢字-42",
+      "op" : "heading",
+      "source" : "# ÄÖ æß & éx 漢字🙂 42\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "bold",
+      "op" : "heading",
+      "source" : "# ÄÖ æß & éx 漢字🙂 42\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "fenced",
+      "op" : "heading",
+      "source" : "# ÄÖ æß & éx 漢字🙂 42\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "title",
+      "op" : "heading",
+      "source" : "# ÄÖ æß & éx 漢字🙂 42\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "one",
+      "op" : "heading",
+      "source" : "# ÄÖ æß & éx 漢字🙂 42\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "two",
+      "op" : "heading",
+      "source" : "# ÄÖ æß & éx 漢字🙂 42\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "three",
+      "op" : "heading",
+      "source" : "# ÄÖ æß & éx 漢字🙂 42\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "same",
+      "op" : "heading",
+      "source" : "# ÄÖ æß & éx 漢字🙂 42\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "last",
+      "op" : "heading",
+      "source" : "# ÄÖ æß & éx 漢字🙂 42\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "einleitung",
+      "op" : "heading",
+      "source" : "# **bold** #\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "zweiter-abschnitt",
+      "op" : "heading",
+      "source" : "# **bold** #\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "äö-æß-éx-漢字-42",
+      "op" : "heading",
+      "source" : "# **bold** #\n"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      12
+    ],
+    "input" : {
+      "anchor" : "bold",
+      "op" : "heading",
+      "source" : "# **bold** #\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "fenced",
+      "op" : "heading",
+      "source" : "# **bold** #\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "title",
+      "op" : "heading",
+      "source" : "# **bold** #\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "one",
+      "op" : "heading",
+      "source" : "# **bold** #\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "two",
+      "op" : "heading",
+      "source" : "# **bold** #\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "three",
+      "op" : "heading",
+      "source" : "# **bold** #\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "same",
+      "op" : "heading",
+      "source" : "# **bold** #\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "last",
+      "op" : "heading",
+      "source" : "# **bold** #\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "einleitung",
+      "op" : "heading",
+      "source" : "```md\n# fenced\n```\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "zweiter-abschnitt",
+      "op" : "heading",
+      "source" : "```md\n# fenced\n```\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "äö-æß-éx-漢字-42",
+      "op" : "heading",
+      "source" : "```md\n# fenced\n```\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "bold",
+      "op" : "heading",
+      "source" : "```md\n# fenced\n```\n"
+    }
+  },
+  {
+    "expected" : [
+      6,
+      8
+    ],
+    "input" : {
+      "anchor" : "fenced",
+      "op" : "heading",
+      "source" : "```md\n# fenced\n```\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "title",
+      "op" : "heading",
+      "source" : "```md\n# fenced\n```\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "one",
+      "op" : "heading",
+      "source" : "```md\n# fenced\n```\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "two",
+      "op" : "heading",
+      "source" : "```md\n# fenced\n```\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "three",
+      "op" : "heading",
+      "source" : "```md\n# fenced\n```\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "same",
+      "op" : "heading",
+      "source" : "```md\n# fenced\n```\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "last",
+      "op" : "heading",
+      "source" : "```md\n# fenced\n```\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "einleitung",
+      "op" : "heading",
+      "source" : "Title\n====\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "zweiter-abschnitt",
+      "op" : "heading",
+      "source" : "Title\n====\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "äö-æß-éx-漢字-42",
+      "op" : "heading",
+      "source" : "Title\n====\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "bold",
+      "op" : "heading",
+      "source" : "Title\n====\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "fenced",
+      "op" : "heading",
+      "source" : "Title\n====\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "title",
+      "op" : "heading",
+      "source" : "Title\n====\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "one",
+      "op" : "heading",
+      "source" : "Title\n====\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "two",
+      "op" : "heading",
+      "source" : "Title\n====\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "three",
+      "op" : "heading",
+      "source" : "Title\n====\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "same",
+      "op" : "heading",
+      "source" : "Title\n====\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "last",
+      "op" : "heading",
+      "source" : "Title\n====\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "einleitung",
+      "op" : "heading",
+      "source" : "# one\r## two\r\n### three\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "zweiter-abschnitt",
+      "op" : "heading",
+      "source" : "# one\r## two\r\n### three\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "äö-æß-éx-漢字-42",
+      "op" : "heading",
+      "source" : "# one\r## two\r\n### three\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "bold",
+      "op" : "heading",
+      "source" : "# one\r## two\r\n### three\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "fenced",
+      "op" : "heading",
+      "source" : "# one\r## two\r\n### three\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "title",
+      "op" : "heading",
+      "source" : "# one\r## two\r\n### three\n"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      5
+    ],
+    "input" : {
+      "anchor" : "one",
+      "op" : "heading",
+      "source" : "# one\r## two\r\n### three\n"
+    }
+  },
+  {
+    "expected" : [
+      6,
+      6
+    ],
+    "input" : {
+      "anchor" : "two",
+      "op" : "heading",
+      "source" : "# one\r## two\r\n### three\n"
+    }
+  },
+  {
+    "expected" : [
+      14,
+      9
+    ],
+    "input" : {
+      "anchor" : "three",
+      "op" : "heading",
+      "source" : "# one\r## two\r\n### three\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "same",
+      "op" : "heading",
+      "source" : "# one\r## two\r\n### three\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "last",
+      "op" : "heading",
+      "source" : "# one\r## two\r\n### three\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "einleitung",
+      "op" : "heading",
+      "source" : "# same\n# same\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "zweiter-abschnitt",
+      "op" : "heading",
+      "source" : "# same\n# same\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "äö-æß-éx-漢字-42",
+      "op" : "heading",
+      "source" : "# same\n# same\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "bold",
+      "op" : "heading",
+      "source" : "# same\n# same\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "fenced",
+      "op" : "heading",
+      "source" : "# same\n# same\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "title",
+      "op" : "heading",
+      "source" : "# same\n# same\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "one",
+      "op" : "heading",
+      "source" : "# same\n# same\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "two",
+      "op" : "heading",
+      "source" : "# same\n# same\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "three",
+      "op" : "heading",
+      "source" : "# same\n# same\n"
+    }
+  },
+  {
+    "expected" : [
+      0,
+      6
+    ],
+    "input" : {
+      "anchor" : "same",
+      "op" : "heading",
+      "source" : "# same\n# same\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "last",
+      "op" : "heading",
+      "source" : "# same\n# same\n"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "einleitung",
+      "op" : "heading",
+      "source" : "### Text # Last"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "zweiter-abschnitt",
+      "op" : "heading",
+      "source" : "### Text # Last"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "äö-æß-éx-漢字-42",
+      "op" : "heading",
+      "source" : "### Text # Last"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "bold",
+      "op" : "heading",
+      "source" : "### Text # Last"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "fenced",
+      "op" : "heading",
+      "source" : "### Text # Last"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "title",
+      "op" : "heading",
+      "source" : "### Text # Last"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "one",
+      "op" : "heading",
+      "source" : "### Text # Last"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "two",
+      "op" : "heading",
+      "source" : "### Text # Last"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "three",
+      "op" : "heading",
+      "source" : "### Text # Last"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "anchor" : "same",
+      "op" : "heading",
+      "source" : "### Text # Last"
+    }
+  },
+  {
+    "expected" : [
+      9,
+      6
+    ],
+    "input" : {
+      "anchor" : "last",
+      "op" : "heading",
+      "source" : "### Text # Last"
+    }
+  },
+  {
+    "expected" : {
+      "file" : "$ROOT/Project/Sources/Methods/Ziel Methode.4dm"
+    },
+    "input" : {
+      "document" : "Project/Sources/Methods/Aufrufer.4dm",
+      "format" : "4d",
+      "location" : 5,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "Ziel Methode($p)"
+    }
+  },
+  {
+    "expected" : {
+      "file" : "$ROOT/Project/Sources/Classes/Kunde.4dm"
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 7,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "$k:=cs.Kunde.new()"
+    }
+  },
+  {
+    "expected" : {
+      "range" : [
+        27,
+        13
+      ]
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 36,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "Function eins()\n return 1\n\nFunction zwei($x : Integer)\n return $x"
+    }
+  },
+  {
+    "expected" : {
+      "range" : [
+        0,
+        28
+      ]
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 23,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "exposed local Function Grüße()\n return 1"
+    }
+  },
+  {
+    "expected" : {
+      "argument" : "same",
+      "issue" : "multiple-functions",
+      "message" : "Mehrere Funktionen heißen „same“. Wähle die Definition in der Gliederung."
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 9,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "Function same()\nFunction same()\nsame()"
+    }
+  },
+  {
+    "expected" : {
+      "argument" : "get title",
+      "issue" : "missing-target",
+      "message" : "Kein Ziel für „get title“ gefunden."
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 13,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "Function get title()\nFunction set title($x)\ntitle()"
+    }
+  },
+  {
+    "expected" : {
+      "search" : "hidden"
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 12,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "// Function hidden()\n/* Function hidden() */\nBegin SQL\nFunction hidden()\nEnd SQL\nhidden()"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 0,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "ALERT(\"x\")"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 0,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "If (True)"
+    }
+  },
+  {
+    "expected" : {
+      "search" : "Get text"
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 0,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "Get text($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 0,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "True"
+    }
+  },
+  {
+    "expected" : {
+      "search" : "GibtsNicht"
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 0,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "GibtsNicht($x)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 0,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "_private()"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 0,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "123test()"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 0,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "Class constructor()"
+    }
+  },
+  {
+    "expected" : {
+      "search" : "shared Class constructor"
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 0,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "shared Class constructor()"
+    }
+  },
+  {
+    "expected" : {
+      "argument" : "GibtsNicht",
+      "issue" : "missing-target",
+      "message" : "Kein Ziel für „GibtsNicht“ gefunden."
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 0,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "GibtsNicht($x)"
+    }
+  },
+  {
+    "expected" : {
+      "range" : [
+        0,
+        15
+      ]
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 29,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "Function Straße()\n return 1\n\nSTRASSE()"
+    }
+  },
+  {
+    "expected" : {
+      "range" : [
+        0,
+        10
+      ]
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 24,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "Function Σ()\n return 1\n\nς()"
+    }
+  },
+  {
+    "expected" : {
+      "argument" : "ı",
+      "issue" : "missing-target",
+      "message" : "Kein Ziel für „ı“ gefunden."
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 24,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "Function I()\n return 1\n\nı()"
+    }
+  },
+  {
+    "expected" : {
+      "argument" : "i",
+      "issue" : "missing-target",
+      "message" : "Kein Ziel für „i“ gefunden."
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 24,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "Function İ()\n return 1\n\ni()"
+    }
+  },
+  {
+    "expected" : {
+      "range" : [
+        0,
+        10
+      ]
+    },
+    "input" : {
+      "document" : null,
+      "format" : "4d",
+      "location" : 24,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "Function ﬃ()\n return 1\n\nFFI()"
+    }
+  },
+  {
+    "expected" : {
+      "file" : "$ROOT/Sources/Classes/OtherClass.4dm"
+    },
+    "input" : {
+      "document" : "Sources/Methods/Caller.4dm",
+      "format" : "4d",
+      "location" : 0,
+      "op" : "resolve",
+      "project" : true,
+      "source" : "OtherClass()"
+    }
+  },
+  {
+    "expected" : {
+      "file" : "$ROOT/docs/ziel.md"
+    },
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin](docs/ziel.md#part)"
+    }
+  },
+  {
+    "expected" : {
+      "argument" : "docs/fehlt.md",
+      "issue" : "missing-file",
+      "message" : "Datei „docs/fehlt.md“ nicht gefunden."
+    },
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin](docs/fehlt.md)"
+    }
+  },
+  {
+    "expected" : {
+      "argument" : "../docs/ziel.md",
+      "issue" : "missing-file",
+      "message" : "Datei „../docs/ziel.md“ nicht gefunden."
+    },
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin](../docs/ziel.md)"
+    }
+  },
+  {
+    "expected" : {
+      "file" : "$ROOT/docs/space#name.md"
+    },
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin](docs/space%23name.md)"
+    }
+  },
+  {
+    "expected" : {
+      "file" : "$ROOT/docs/malformed%ZZ.md"
+    },
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin](docs/malformed%ZZ.md)"
+    }
+  },
+  {
+    "expected" : {
+      "literal" : "https://example.org",
+      "url" : "https://example.org"
+    },
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin](https://example.org)"
+    }
+  },
+  {
+    "expected" : {
+      "literal" : "https://example.org/a b",
+      "url" : "https://example.org/a%20b"
+    },
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin](https://example.org/a b)"
+    }
+  },
+  {
+    "expected" : {
+      "literal" : "mailto:a@example.org",
+      "url" : "mailto:a@example.org"
+    },
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin](mailto:a@example.org)"
+    }
+  },
+  {
+    "expected" : {
+      "range" : [
+        9,
+        20
+      ]
+    },
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin](#zweiter-abschnitt)"
+    }
+  },
+  {
+    "expected" : {
+      "argument" : "#missing",
+      "issue" : "missing-heading",
+      "message" : "Keine Überschrift zu „#missing“ gefunden."
+    },
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin](#missing)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin]( )"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin](\t)"
+    }
+  },
+  {
+    "expected" : null,
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin]( \"title\")"
+    }
+  },
+  {
+    "expected" : {
+      "file" : "$ROOT/docs/ziel.md"
+    },
+    "input" : {
+      "document" : "start.md",
+      "format" : "md",
+      "location" : 32,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "# First\n\n## Zweiter Abschnitt\n\n[Hin]($ROOT/docs/ziel.md)"
+    }
+  },
+  {
+    "expected" : {
+      "argument" : null,
+      "issue" : "relative-needs-file",
+      "message" : "Relative Ziele brauchen eine gespeicherte Datei als Ausgangspunkt."
+    },
+    "input" : {
+      "document" : null,
+      "format" : "md",
+      "location" : 1,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "[x](docs/ziel.md)"
+    }
+  },
+  {
+    "expected" : {
+      "range" : [
+        12,
+        7
+      ]
+    },
+    "input" : {
+      "document" : null,
+      "format" : "md",
+      "location" : 1,
+      "op" : "resolve",
+      "project" : false,
+      "source" : "[x](#first)\n# First"
+    }
+  }
+]

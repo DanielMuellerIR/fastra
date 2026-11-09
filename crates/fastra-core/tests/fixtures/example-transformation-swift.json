@@ -1,0 +1,734 @@
+[
+  {
+    "destination": "The ring",
+    "find": "*, The",
+    "replace": "The *",
+    "source": "ring, The"
+  },
+  {
+    "destination": "XYZabc",
+    "find": "*XYZ",
+    "replace": "XYZ*",
+    "source": "abcXYZ"
+  },
+  {
+    "destination": "abcabcX",
+    "find": "*abc",
+    "replace": "abc*",
+    "source": "abcXabc"
+  },
+  {
+    "destination": "a",
+    "find": null,
+    "replace": null,
+    "source": "a"
+  },
+  {
+    "destination": "é",
+    "find": null,
+    "replace": null,
+    "source": "é"
+  },
+  {
+    "destination": "last é😀",
+    "find": "* first",
+    "replace": "last *",
+    "source": "é😀 first"
+  },
+  {
+    "destination": "é😀b",
+    "find": "*a",
+    "replace": "*b",
+    "source": "é😀a"
+  },
+  {
+    "destination": "zz--aa",
+    "find": "aa*",
+    "replace": "zz*",
+    "source": "aa--aa"
+  },
+  {
+    "destination": "cdYab",
+    "find": "*Xcd",
+    "replace": "cdY*",
+    "source": "abXcd"
+  },
+  {
+    "destination": "α\nβ after",
+    "find": "before *",
+    "replace": "* after",
+    "source": "before α\nβ"
+  },
+  {
+    "destination": "head a\\$b",
+    "find": "* tail",
+    "replace": "head *",
+    "source": "a\\$b tail"
+  },
+  {
+    "destination": "bar*",
+    "find": null,
+    "replace": null,
+    "source": "foo*"
+  },
+  {
+    "destination": "x",
+    "find": null,
+    "replace": null,
+    "source": ""
+  },
+  {
+    "destination": "",
+    "find": null,
+    "replace": null,
+    "source": "a"
+  },
+  {
+    "destination": "bbb",
+    "find": null,
+    "replace": null,
+    "source": "aaa"
+  },
+  {
+    "destination": "yxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "find": "*x",
+    "replace": "y*",
+    "source": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+    "destination": "yxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "find": null,
+    "replace": null,
+    "source": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+    "destination": "b 👩🏽‍🚀",
+    "find": "* a",
+    "replace": "b *",
+    "source": "👩🏽‍🚀 a"
+  },
+  {
+    "destination": "c\r\nb",
+    "find": "a*",
+    "replace": "c*",
+    "source": "a\r\nb"
+  },
+  {
+    "destination": "c\rb",
+    "find": "a*",
+    "replace": "c*",
+    "source": "a\rb"
+  },
+  {
+    "destination": "c b",
+    "find": "a*",
+    "replace": "c*",
+    "source": "a b"
+  },
+  {
+    "destination": "q Å y",
+    "find": "x*z",
+    "replace": "q*y",
+    "source": "x Å z"
+  },
+  {
+    "destination": "q Å y",
+    "find": "x*z",
+    "replace": "q*y",
+    "source": "x Å z"
+  },
+  {
+    "destination": "after café",
+    "find": "* before",
+    "replace": "after *",
+    "source": "café before"
+  },
+  {
+    "destination": "y e",
+    "find": "x*é",
+    "replace": "y*e",
+    "source": "x é"
+  },
+  {
+    "destination": "y é",
+    "find": "x*e",
+    "replace": "y*é",
+    "source": "x e"
+  },
+  {
+    "destination": "b ́",
+    "find": "a*",
+    "replace": "b*",
+    "source": "a ́"
+  },
+  {
+    "destination": "zz😀éww",
+    "find": "xx*yy",
+    "replace": "zz*ww",
+    "source": "xx😀éyy"
+  },
+  {
+    "destination": "yaay",
+    "find": "x*x",
+    "replace": "y*y",
+    "source": "xaax"
+  },
+  {
+    "destination": "ybay",
+    "find": "x*bx",
+    "replace": "yb*y",
+    "source": "xabx"
+  },
+  {
+    "destination": "yéay",
+    "find": "x*éx",
+    "replace": "yé*y",
+    "source": "xaéx"
+  },
+  {
+    "destination": "yéay",
+    "find": "x*éx",
+    "replace": "yé*y",
+    "source": "xaéx"
+  },
+  {
+    "destination": "y😀ay",
+    "find": "x*😀x",
+    "replace": "y😀*y",
+    "source": "xa😀x"
+  },
+  {
+    "destination": "y\r\nay",
+    "find": "x*\r\nx",
+    "replace": "y\r\n*y",
+    "source": "xa\r\nx"
+  },
+  {
+    "destination": "y👨‍👩‍👧ay",
+    "find": "x*👨‍👩‍👧x",
+    "replace": "y👨‍👩‍👧*y",
+    "source": "xa👨‍👩‍👧x"
+  },
+  {
+    "destination": "ýay",
+    "find": null,
+    "replace": null,
+    "source": "xáx"
+  },
+  {
+    "destination": "yaby",
+    "find": "x*ax",
+    "replace": "ya*y",
+    "source": "xbax"
+  },
+  {
+    "destination": "ybby",
+    "find": "x*x",
+    "replace": "y*y",
+    "source": "xbbx"
+  },
+  {
+    "destination": "yéby",
+    "find": "x*éx",
+    "replace": "yé*y",
+    "source": "xbéx"
+  },
+  {
+    "destination": "yéby",
+    "find": "x*éx",
+    "replace": "yé*y",
+    "source": "xbéx"
+  },
+  {
+    "destination": "y😀by",
+    "find": "x*😀x",
+    "replace": "y😀*y",
+    "source": "xb😀x"
+  },
+  {
+    "destination": "y\r\nby",
+    "find": "x*\r\nx",
+    "replace": "y\r\n*y",
+    "source": "xb\r\nx"
+  },
+  {
+    "destination": "y👨‍👩‍👧by",
+    "find": "x*👨‍👩‍👧x",
+    "replace": "y👨‍👩‍👧*y",
+    "source": "xb👨‍👩‍👧x"
+  },
+  {
+    "destination": "ýby",
+    "find": null,
+    "replace": null,
+    "source": "xb́x"
+  },
+  {
+    "destination": "yaéy",
+    "find": "x*ax",
+    "replace": "ya*y",
+    "source": "xéax"
+  },
+  {
+    "destination": "ybéy",
+    "find": "x*bx",
+    "replace": "yb*y",
+    "source": "xébx"
+  },
+  {
+    "destination": "yééy",
+    "find": "x*x",
+    "replace": "y*y",
+    "source": "xééx"
+  },
+  {
+    "destination": "yééy",
+    "find": "x*x",
+    "replace": "y*y",
+    "source": "xééx"
+  },
+  {
+    "destination": "y😀éy",
+    "find": "x*😀x",
+    "replace": "y😀*y",
+    "source": "xé😀x"
+  },
+  {
+    "destination": "y\r\néy",
+    "find": "x*\r\nx",
+    "replace": "y\r\n*y",
+    "source": "xé\r\nx"
+  },
+  {
+    "destination": "y👨‍👩‍👧éy",
+    "find": "x*👨‍👩‍👧x",
+    "replace": "y👨‍👩‍👧*y",
+    "source": "xé👨‍👩‍👧x"
+  },
+  {
+    "destination": "ýéy",
+    "find": null,
+    "replace": null,
+    "source": "xé́x"
+  },
+  {
+    "destination": "yaéy",
+    "find": "x*ax",
+    "replace": "ya*y",
+    "source": "xéax"
+  },
+  {
+    "destination": "ybéy",
+    "find": "x*bx",
+    "replace": "yb*y",
+    "source": "xébx"
+  },
+  {
+    "destination": "yééy",
+    "find": "x*x",
+    "replace": "y*y",
+    "source": "xééx"
+  },
+  {
+    "destination": "yééy",
+    "find": "x*x",
+    "replace": "y*y",
+    "source": "xééx"
+  },
+  {
+    "destination": "y😀éy",
+    "find": "x*😀x",
+    "replace": "y😀*y",
+    "source": "xé😀x"
+  },
+  {
+    "destination": "y\r\néy",
+    "find": "x*\r\nx",
+    "replace": "y\r\n*y",
+    "source": "xé\r\nx"
+  },
+  {
+    "destination": "y👨‍👩‍👧éy",
+    "find": "x*👨‍👩‍👧x",
+    "replace": "y👨‍👩‍👧*y",
+    "source": "xé👨‍👩‍👧x"
+  },
+  {
+    "destination": "ýéy",
+    "find": null,
+    "replace": null,
+    "source": "xé́x"
+  },
+  {
+    "destination": "ya😀y",
+    "find": "x*ax",
+    "replace": "ya*y",
+    "source": "x😀ax"
+  },
+  {
+    "destination": "yb😀y",
+    "find": "x*bx",
+    "replace": "yb*y",
+    "source": "x😀bx"
+  },
+  {
+    "destination": "yé😀y",
+    "find": "x*éx",
+    "replace": "yé*y",
+    "source": "x😀éx"
+  },
+  {
+    "destination": "yé😀y",
+    "find": "x*éx",
+    "replace": "yé*y",
+    "source": "x😀éx"
+  },
+  {
+    "destination": "y😀😀y",
+    "find": "x*x",
+    "replace": "y*y",
+    "source": "x😀😀x"
+  },
+  {
+    "destination": "y\r\n😀y",
+    "find": "x*\r\nx",
+    "replace": "y\r\n*y",
+    "source": "x😀\r\nx"
+  },
+  {
+    "destination": "y👨‍👩‍👧😀y",
+    "find": "x*👨‍👩‍👧x",
+    "replace": "y👨‍👩‍👧*y",
+    "source": "x😀👨‍👩‍👧x"
+  },
+  {
+    "destination": "ý😀y",
+    "find": null,
+    "replace": null,
+    "source": "x😀́x"
+  },
+  {
+    "destination": "ya\r\ny",
+    "find": "x*ax",
+    "replace": "ya*y",
+    "source": "x\r\nax"
+  },
+  {
+    "destination": "yb\r\ny",
+    "find": "x*bx",
+    "replace": "yb*y",
+    "source": "x\r\nbx"
+  },
+  {
+    "destination": "yé\r\ny",
+    "find": "x*éx",
+    "replace": "yé*y",
+    "source": "x\r\néx"
+  },
+  {
+    "destination": "yé\r\ny",
+    "find": "x*éx",
+    "replace": "yé*y",
+    "source": "x\r\néx"
+  },
+  {
+    "destination": "y😀\r\ny",
+    "find": "x*😀x",
+    "replace": "y😀*y",
+    "source": "x\r\n😀x"
+  },
+  {
+    "destination": "y\r\n\r\ny",
+    "find": "x*x",
+    "replace": "y*y",
+    "source": "x\r\n\r\nx"
+  },
+  {
+    "destination": "y👨‍👩‍👧\r\ny",
+    "find": "x*👨‍👩‍👧x",
+    "replace": "y👨‍👩‍👧*y",
+    "source": "x\r\n👨‍👩‍👧x"
+  },
+  {
+    "destination": "ý\r\ny",
+    "find": "x*́x",
+    "replace": "ý*y",
+    "source": "x\r\ńx"
+  },
+  {
+    "destination": "ya👨‍👩‍👧y",
+    "find": "x*ax",
+    "replace": "ya*y",
+    "source": "x👨‍👩‍👧ax"
+  },
+  {
+    "destination": "yb👨‍👩‍👧y",
+    "find": "x*bx",
+    "replace": "yb*y",
+    "source": "x👨‍👩‍👧bx"
+  },
+  {
+    "destination": "yé👨‍👩‍👧y",
+    "find": "x*éx",
+    "replace": "yé*y",
+    "source": "x👨‍👩‍👧éx"
+  },
+  {
+    "destination": "yé👨‍👩‍👧y",
+    "find": "x*éx",
+    "replace": "yé*y",
+    "source": "x👨‍👩‍👧éx"
+  },
+  {
+    "destination": "y😀👨‍👩‍👧y",
+    "find": "x*😀x",
+    "replace": "y😀*y",
+    "source": "x👨‍👩‍👧😀x"
+  },
+  {
+    "destination": "y\r\n👨‍👩‍👧y",
+    "find": "x*\r\nx",
+    "replace": "y\r\n*y",
+    "source": "x👨‍👩‍👧\r\nx"
+  },
+  {
+    "destination": "y👨‍👩‍👧👨‍👩‍👧y",
+    "find": "x*x",
+    "replace": "y*y",
+    "source": "x👨‍👩‍👧👨‍👩‍👧x"
+  },
+  {
+    "destination": "ý👨‍👩‍👧y",
+    "find": null,
+    "replace": null,
+    "source": "x👨‍👩‍👧́x"
+  },
+  {
+    "destination": "yáy",
+    "find": null,
+    "replace": null,
+    "source": "x́ax"
+  },
+  {
+    "destination": "yb́y",
+    "find": null,
+    "replace": null,
+    "source": "x́bx"
+  },
+  {
+    "destination": "yé́y",
+    "find": null,
+    "replace": null,
+    "source": "x́éx"
+  },
+  {
+    "destination": "yé́y",
+    "find": null,
+    "replace": null,
+    "source": "x́éx"
+  },
+  {
+    "destination": "y😀́y",
+    "find": null,
+    "replace": null,
+    "source": "x́😀x"
+  },
+  {
+    "destination": "y\r\ńy",
+    "find": "x́*x",
+    "replace": "y*́y",
+    "source": "x́\r\nx"
+  },
+  {
+    "destination": "y👨‍👩‍👧́y",
+    "find": null,
+    "replace": null,
+    "source": "x́👨‍👩‍👧x"
+  },
+  {
+    "destination": "ý́y",
+    "find": null,
+    "replace": null,
+    "source": "x́́x"
+  },
+  {
+    "destination": "ý\r\ny",
+    "find": "x*́x",
+    "replace": "ý*y",
+    "source": "x\r\ńx"
+  },
+  {
+    "destination": "ý\ny",
+    "find": "x*́x",
+    "replace": "ý*y",
+    "source": "x\ńx"
+  },
+  {
+    "destination": "ý\ry",
+    "find": "x*́x",
+    "replace": "ý*y",
+    "source": "x\ŕx"
+  },
+  {
+    "destination": "ý y",
+    "find": "x*́x",
+    "replace": "ý*y",
+    "source": "x ́x"
+  },
+  {
+    "destination": "ýay",
+    "find": null,
+    "replace": null,
+    "source": "xáx"
+  },
+  {
+    "destination": "y͏\r\ny",
+    "find": "x*͏x",
+    "replace": "y͏*y",
+    "source": "x\r\n͏x"
+  },
+  {
+    "destination": "y͏\ny",
+    "find": "x*͏x",
+    "replace": "y͏*y",
+    "source": "x\n͏x"
+  },
+  {
+    "destination": "y͏\ry",
+    "find": "x*͏x",
+    "replace": "y͏*y",
+    "source": "x\r͏x"
+  },
+  {
+    "destination": "y͏ y",
+    "find": "x*͏x",
+    "replace": "y͏*y",
+    "source": "x ͏x"
+  },
+  {
+    "destination": "y͏ay",
+    "find": null,
+    "replace": null,
+    "source": "xa͏x"
+  },
+  {
+    "destination": "y️\r\ny",
+    "find": "x*️x",
+    "replace": "y️*y",
+    "source": "x\r\n️x"
+  },
+  {
+    "destination": "y️\ny",
+    "find": "x*️x",
+    "replace": "y️*y",
+    "source": "x\n️x"
+  },
+  {
+    "destination": "y️\ry",
+    "find": "x*️x",
+    "replace": "y️*y",
+    "source": "x\r️x"
+  },
+  {
+    "destination": "y️ y",
+    "find": "x*️x",
+    "replace": "y️*y",
+    "source": "x ️x"
+  },
+  {
+    "destination": "y️ay",
+    "find": null,
+    "replace": null,
+    "source": "xa️x"
+  },
+  {
+    "destination": "yः\r\ny",
+    "find": "x*ःx",
+    "replace": "yः*y",
+    "source": "x\r\nःx"
+  },
+  {
+    "destination": "yः\ny",
+    "find": "x*ःx",
+    "replace": "yः*y",
+    "source": "x\nःx"
+  },
+  {
+    "destination": "yः\ry",
+    "find": "x*ःx",
+    "replace": "yः*y",
+    "source": "x\rःx"
+  },
+  {
+    "destination": "yः y",
+    "find": "x*ःx",
+    "replace": "yः*y",
+    "source": "x ःx"
+  },
+  {
+    "destination": "yःay",
+    "find": null,
+    "replace": null,
+    "source": "xaःx"
+  },
+  {
+    "destination": "y‍\r\ny",
+    "find": "x*‍x",
+    "replace": "y‍*y",
+    "source": "x\r\n‍x"
+  },
+  {
+    "destination": "y‍\ny",
+    "find": "x*‍x",
+    "replace": "y‍*y",
+    "source": "x\n‍x"
+  },
+  {
+    "destination": "y‍\ry",
+    "find": "x*‍x",
+    "replace": "y‍*y",
+    "source": "x\r‍x"
+  },
+  {
+    "destination": "y‍ y",
+    "find": "x*‍x",
+    "replace": "y‍*y",
+    "source": "x ‍x"
+  },
+  {
+    "destination": "y‍ay",
+    "find": null,
+    "replace": null,
+    "source": "xa‍x"
+  },
+  {
+    "destination": "y🏽\r\ny",
+    "find": "x*🏽x",
+    "replace": "y🏽*y",
+    "source": "x\r\n🏽x"
+  },
+  {
+    "destination": "y🏽\ny",
+    "find": "x*🏽x",
+    "replace": "y🏽*y",
+    "source": "x\n🏽x"
+  },
+  {
+    "destination": "y🏽\ry",
+    "find": "x*🏽x",
+    "replace": "y🏽*y",
+    "source": "x\r🏽x"
+  },
+  {
+    "destination": "y🏽 y",
+    "find": "x*🏽x",
+    "replace": "y🏽*y",
+    "source": "x 🏽x"
+  },
+  {
+    "destination": "y🏽ay",
+    "find": null,
+    "replace": null,
+    "source": "xa🏽x"
+  }
+]

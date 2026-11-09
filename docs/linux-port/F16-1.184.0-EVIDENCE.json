@@ -1,0 +1,66 @@
+{
+  "version": "1.184.0",
+  "build": 394,
+  "product_commit": "890cdaa71e4f6416ba4e26c55f5aeab4cbceca47",
+  "source_identity": "726113c0f37cc3eb94fc9cf4de05776568a3032e1531aed6b318e3a2d891d05c",
+  "verified_product_inputs": 471,
+  "unsigned": true,
+  "unpublished": true,
+  "local_artifacts": "dist/linux-1.184.0/packages",
+  "artifacts": {
+    "fastra_1.184.0_amd64.deb": "95d026519fc0e5d7d34bc8006d5be2504fb7ef71b167a0682fc50c4f85736233",
+    "fastra-1.184.0-linux-x86_64.tar.gz": "9bb8f08019c77ef421b8921cf2495e91f55d721a56b0c8ea64f391cb85c8abae",
+    "fastra-1.184.0-linux-x86_64.zip": "e404252fb5169ec464eaf2d01037e51abce38e792e7145d8cabab4c3889b4598"
+  },
+  "tests": {
+    "workspace_programs": 53,
+    "regular_passed": 676,
+    "native_git_helper_cases": 26,
+    "ignored": 6,
+    "final_failures": 0,
+    "strict_workspace_debug_and_linux_release_clippy": "PASS",
+    "root_native_component_runs": 13,
+    "root_actual_target_de_en_760_1280_runs": 4,
+    "root_all_four_actual_target_views_inspected": true,
+    "independent_final_fix_native_runs": 12,
+    "final_installed_and_relocated_release": "PASS: A copy to B paste, atomic Save, one native paste Undo, Save restores original file; HTML, KaTeX, Mermaid, table and Rich formula; inner WebKit sandbox",
+    "final_packaged_git_helper_cases": 26,
+    "final_packaged_external_diff": "PASS including four cold calls and actual hanging-peer deadline under fatal GTK criticals",
+    "final_six_package_split_static_rich_views_inspected": true
+  },
+  "review": {
+    "status": "CLOSED_NO_CONFIRMED_REMAINING_P1_P2",
+    "report_sha256": "57761e17e099c88b510185d3587a2e976d2a65870257c71f7b6efcf92a2e1659",
+    "closed_findings": [
+      {
+        "id": "SPLIT_SCOPE0_SELECTION_BINDING",
+        "status": "CLOSED"
+      },
+      {
+        "id": "SPLIT_PRIMARY_SELECTION_COLLAPSE",
+        "status": "CLOSED"
+      }
+    ],
+    "integration": "31 product/test files matched the closed handoff; subsequent source_panes module-comment correction has no semantic change"
+  },
+  "native_typing_undo_diagnosis": {
+    "status": "NOT_A_SPLIT_REGRESSION",
+    "independent_report_sha256": "fa889f79f4231bf3133512df9fa8b897ef193e86b77a0849544514ac44608554",
+    "actual_optimized_versions": [
+      "1.183.0",
+      "1.184.0"
+    ],
+    "result": "Typing over selection length>1 uses two native GTK Undo groups; second Undo and Save restores original bytes in both. Fastra clipboard paste retains one Undo.",
+    "reference": "GTK4.14.5 gtk_text_view_commit_text explicitly ends the selection deletion group before insertion."
+  },
+  "test_fixture_correction": {
+    "initial_failure": "Existing commit test observed loss-ready existence before Python write_text completed and parsed empty JSON. This was not a Git backend failure.",
+    "fix": "Hook publishes complete JSON with same-directory temporary file and os.replace. Final full suite and all 26 optimized helper cases pass."
+  },
+  "limitations": [
+    "Two native histories retain 200 levels even with Split off; measured first-candidate overhead about 69 MiB for 4 MiB/eight replacements, no hard memory ceiling claimed.",
+    "General native typing/IME size preflight, fixed-column/continuation wrapping, current Mac GUI and physical desktop/IME/accessibility acceptance remain open.",
+    "Localized upper/lower remains a separate private reviewed candidate, not part of this version."
+  ],
+  "retention": "Keep small evidence; reassess disposable fixtures after acceptance by 2026-12-06."
+}

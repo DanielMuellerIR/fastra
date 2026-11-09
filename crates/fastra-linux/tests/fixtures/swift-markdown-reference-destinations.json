@@ -1,0 +1,100 @@
+[
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "/tmp/a",
+    "raw": "file:///tmp/a?query"
+  },
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "/tmp/a?q",
+    "raw": "file:///tmp/a%3Fq"
+  },
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "/docs/a?b",
+    "raw": "a?b"
+  },
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "/tmp/a",
+    "raw": "file://user@localhost/tmp/a"
+  },
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "/tmp/a",
+    "raw": "file://localhost:123/tmp/a"
+  },
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "/tmp/a",
+    "raw": "file:/tmp/a"
+  },
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "relative",
+    "raw": "file:relative"
+  },
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "",
+    "raw": "file://localhost"
+  },
+  {
+    "anchor": "anchor",
+    "kind": "local",
+    "path": "/tmp/a#x",
+    "raw": "file:///tmp/a%23x#anchor"
+  },
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "/tmp/a",
+    "raw": "file://%6cocalhost/tmp/a"
+  },
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "/tmp/a",
+    "raw": "FILE:///tmp/a"
+  },
+  {
+    "kind": "remote",
+    "raw": "file://LOCALHOST/tmp/a"
+  },
+  {
+    "kind": "invalid",
+    "raw": "file://localhost/tmp/a?query%00"
+  },
+  {
+    "kind": "remote",
+    "raw": "//server/a"
+  },
+  {
+    "kind": "invalid",
+    "raw": "https://example.invalid/%bad"
+  },
+  {
+    "kind": "invalid",
+    "raw": "file:///tmp/a#%FF"
+  },
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "/tmp/a%2fb",
+    "raw": "file:///tmp/a%2fb"
+  },
+  {
+    "anchor": null,
+    "kind": "local",
+    "path": "/tmp/a%2fb",
+    "raw": "file:///tmp/a%252fb"
+  }
+]

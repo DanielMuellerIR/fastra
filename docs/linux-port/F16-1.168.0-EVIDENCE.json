@@ -1,0 +1,90 @@
+{
+  "version": "1.168.0",
+  "build": 378,
+  "source_identity": "28b07137a4fa4cbe7acdefaca09469c7b0bbd92baaedd1ceba6a783af6c8d1d2",
+  "verified_product_inputs": 355,
+  "artifacts": {
+    "fastra_1.168.0_amd64.deb": "2ec4bbbbec8dbb7c0bc223e7b4e4fa0dd353441d98caf5a75f58936c7475dd1d",
+    "fastra-1.168.0-linux-x86_64.tar.gz": "556beae311de060d4ae76f7f856f632a07eb6769ee325125957cf51b28d8ca92",
+    "fastra-1.168.0-linux-x86_64.zip": "c39e5b1feec151edf2264b3f3b436900a3a31afbe6aebd8e130ba55d968517ae"
+  },
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.168.0/packages",
+  "workspace": {
+    "binaries": 47,
+    "passed": 457,
+    "failed": 0,
+    "ignored": 1,
+    "separate_native_viewer_passed": 1,
+    "clippy": "all targets, -D warnings"
+  },
+  "native": {
+    "rich_legacy": 4,
+    "rich_clipboard": 4,
+    "local_control": 4,
+    "macro_runtime": 4,
+    "languages": [
+      "de",
+      "en"
+    ],
+    "display": "isolated Xvfb",
+    "visual_review": true
+  },
+  "shared_webkit_cases": 12,
+  "mac_webkit": {
+    "groups": 13,
+    "exit": 0,
+    "environment_errors": 0,
+    "cleanup_exit": 0,
+    "seconds": 30.179,
+    "regular_notarized_app_mode_acceptance": false
+  },
+  "package_checks": {
+    "installed_deb": true,
+    "moved_tar": true,
+    "manifest_and_private_icu": true,
+    "offline_katex_mermaid_table": true,
+    "webkit_no_new_privs": 1,
+    "webkit_seccomp": 2,
+    "release_cli_sibling_autolaunch_ready_close_replay": true,
+    "zip_user_install": true,
+    "gio_percent_space_prefix_exact_file_argument": true
+  },
+  "review_fixes": [
+    "macro output NUL and long line rejected before GTK",
+    "macro settings fresh merge, FIFO and cross-process directory flock",
+    "Desktop Exec percent escaping and native GIO launcher",
+    "controller deadline before load, first step and ready commit",
+    "clipboard caret and ABA binding"
+  ],
+  "script_sha256": {
+    "build.sh": "9c2cfb6dab5ee0c23b491cca740b474dc54775b0edb740785b453aa994177c00",
+    "install.sh": "18846bb61f01041a18600ff6cb34a0ec96a680f60bb043f10112f253006e07a1",
+    "linux/build.sh": "7981eb82a83903703f966994784b97e59d9403d5867576214808555f2919b7ad",
+    "linux/common.sh": "8173190ab4e1165d8ec8c3b16bf3511e0c88fc7cc7494c332e9008dba4f334f1",
+    "linux/install.sh": "8804d9896e9276a844ccca62bff91831948cde72a3cee93406e9c1d6f6908b1d",
+    "linux/package.sh": "d8699050f75500e8c44ab5a5ab0a512228b8295536f1ba9e4dde499d93fba7c1",
+    "linux/release.sh": "9ef472781b3ee165f18ee7cd0002b4b0639fd94f95a183486e603eefe4ad7921",
+    "linux/run.sh": "0069cf8d6019ee8bfb73b268eab77964ba1fb7aed5d4861b4c44368a42c69fe6",
+    "linux/sign.sh": "e2800a677526ff56898324f0e519311da5aa6e2193b12df677750527d2aa3c80",
+    "release.sh": "a19ef4bc2f5637b48f6cc9fcd32f6e27bebf38ebb9348283bf444c725f40bf89",
+    "tools/linux-package/PKGBUILD": "92b3d850f544f93864adc9fe024d03f040cb5f7fd29242006055c3e5dccc6482",
+    "tools/linux-package/build.sh": "3c4d1c7c85e23f9f08846bbfc0a9201cc65c75f784277f8c3ca0935090f29752",
+    "tools/linux-package/fastra-control": "f76dd5afc140ab47fb44a97ceecbf5e7194cfd9de70551fd62bb280285ac8cd4",
+    "tools/linux-package/icu-pkgconfig.py": "cc594fc2dee00cfc476650c0fa923d2886d8616d0b47da2ba03b52ea0a024281",
+    "tools/linux-package/identity.py": "3bca8771cb184338e931fc316a185f3aed0879f13d738c1266f9a722ea91c0a3",
+    "tools/linux-package/install.py": "52740a25a3f1d88cb5d9a68ce89e12f07e741ac26d85ab657585a4c2fa730d94",
+    "tools/linux-package/package.sh": "eb2e46e5794e711f7f2a3c8e8d31e450b04907426d9057c98666bd96d2ad3d27",
+    "tools/linux-package/smoke.sh": "bedca9b745986ed3d5a5e90bbe86a93ff1cf14b589a12b14fda96f4bdfaebddb",
+    "tools/linux-package/stage.py": "94938dac91f22dbbec437c245878f624708d617292cb5586c2bb76c93171da84",
+    "tools/linux-package/verify.py": "8459b9194ed1eb12dcaac04f6f474797f9ce704842dba88c70c846f963680ae1",
+    "tools/linux-package/zip.py": "bb8cd53e1d0c41caf2dc93fcd7dddccb01b4f02f3be92a91c94399fe782c151e"
+  },
+  "remaining": [
+    "Branch switch, commit, pull and push",
+    "Native image/RTF/file package clipboard parity",
+    "External MAO engine compatibility",
+    "Complete desktop/IME and notarized Mac app mode acceptance"
+  ],
+  "product_commit": "fd0f907fcb80292019efdc7bbcaf71b9649a596f"
+}

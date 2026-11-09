@@ -1,0 +1,58 @@
+{
+  "version": "1.169.0",
+  "build": 379,
+  "source_identity": "e175ff757ab716cfd6a05e9a548afd70672bc3f2ceb879b0b4415420a3642f8d",
+  "verified_product_inputs": 368,
+  "artifacts": {
+    "fastra-1.169.0-linux-x86_64.tar.gz": "eb2ce0b8abcd557155a74a8e881d058c269dbc18bd45a2917fce69e686391956",
+    "fastra-1.169.0-linux-x86_64.zip": "6c292e039d24a5733c17a5ee92d0660daaba1040f1ec1d5c6269104b590f83cc",
+    "fastra_1.169.0_amd64.deb": "966b3cd636cbfc6c80bc2a699f80ad89177a85fe63d69b08d3bef4563569c92d"
+  },
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.169.0/packages",
+  "workspace": {
+    "binaries": 47,
+    "passed": 485,
+    "failed": 0,
+    "ignored": 2,
+    "separate_native_viewer_passed": 1,
+    "separate_private_engine_copy_passed": 1,
+    "clippy": "all targets, -D warnings; caller identity narrow build rechecked"
+  },
+  "native": {
+    "rich_outline": 4,
+    "git_branches": 4,
+    "git_push": 4,
+    "real_tool4d_shell_caller_identity": 2,
+    "languages": [
+      "de",
+      "en"
+    ],
+    "display": "isolated Xvfb",
+    "visual_review": true
+  },
+  "package_checks": {
+    "installed_deb": true,
+    "moved_tar": true,
+    "manifest_and_private_icu": true,
+    "webkit_no_new_privs": 1,
+    "webkit_seccomp": 2,
+    "release_cli_sibling_autolaunch_ready_close_replay": true,
+    "zip_user_install": true,
+    "gio_percent_space_prefix_exact_file_argument": true
+  },
+  "mac": {
+    "app_and_tests_compiled": true,
+    "git_rule_behavior_counterproof": true,
+    "new_git_integration_tests": "passed: four actual direct/included rewrite-rule cases, pure headless",
+    "regular_notarized_app_mode_acceptance": false,
+    "new_git_cases": 4,
+    "new_git_environment_errors": 0,
+    "new_git_exit": 0
+  },
+  "scripts": {
+    "linux/package.sh": "ba512582c9b5accc5a37176d63b38d67b2fd878f26071df7e40c2ec734176012",
+    "linux/test.sh": "5ef3dc7fd91063995ee5d5aa5452da5890cb446029ceacbd49f3f39df3f65c32"
+  },
+  "product_commit": "3a6ef35dc78086a14fbca9c9a971668e07b19006"
+}

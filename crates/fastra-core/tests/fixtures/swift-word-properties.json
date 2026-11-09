@@ -1,0 +1,54 @@
+[
+  {
+    "scalar" : 65,
+    "word" : true
+  },
+  {
+    "scalar" : 48,
+    "word" : true
+  },
+  {
+    "scalar" : 95,
+    "word" : true
+  },
+  {
+    "scalar" : 769,
+    "word" : true
+  },
+  {
+    "scalar" : 837,
+    "word" : true
+  },
+  {
+    "scalar" : 2367,
+    "word" : true
+  },
+  {
+    "scalar" : 2381,
+    "word" : true
+  },
+  {
+    "scalar" : 8546,
+    "word" : true
+  },
+  {
+    "scalar" : 189,
+    "word" : true
+  },
+  {
+    "scalar" : 8255,
+    "word" : false
+  },
+  {
+    "scalar" : 8204,
+    "word" : false
+  },
+  {
+    "scalar" : 66560,
+    "word" : true
+  },
+  {
+    "scalar" : 65533,
+    "word" : false
+  }
+]

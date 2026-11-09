@@ -1,0 +1,608 @@
+[
+  {
+    "id" : "greedy",
+    "output" : "Hello, There",
+    "ranges" : [
+      [
+        [
+          0,
+          17
+        ],
+        [
+          0,
+          12
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "stars-1",
+    "output" : "aZ\nb",
+    "ranges" : [
+
+    ]
+  },
+  {
+    "id" : "stars-2",
+    "output" : "[Z\n]",
+    "ranges" : [
+      [
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          2
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "stars-3",
+    "output" : "[Z\n]",
+    "ranges" : [
+      [
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          2
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "stars-4",
+    "output" : "[Z\n]",
+    "ranges" : [
+      [
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          2
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "literal",
+    "output" : "X",
+    "ranges" : [
+      [
+        [
+          0,
+          2
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "multiple-captures",
+    "output" : "ab\/cd",
+    "ranges" : [
+      [
+        [
+          0,
+          5
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          3,
+          2
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "empty",
+    "output" : "XaXa",
+    "ranges" : [
+      [
+        [
+          0,
+          0
+        ]
+      ],
+      [
+        [
+          1,
+          0
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "lookbehind",
+    "output" : "aX aX",
+    "ranges" : [
+      [
+        [
+          1,
+          1
+        ]
+      ],
+      [
+        [
+          4,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "backreference",
+    "output" : "X ab",
+    "ranges" : [
+      [
+        [
+          0,
+          4
+        ],
+        [
+          0,
+          2
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "named",
+    "output" : "ab",
+    "ranges" : [
+      [
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          2
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "optional",
+    "output" : "! a!",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ],
+        [
+          -1,
+          0
+        ]
+      ],
+      [
+        [
+          2,
+          2
+        ],
+        [
+          2,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "escape-template",
+    "output" : "$1-x-\\",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "numeric-template",
+    "output" : "a2",
+    "ranges" : [
+      [
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "nfc-nfd",
+    "output" : "X é",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "unicode-word",
+    "output" : "X X 😀 X X",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ]
+      ],
+      [
+        [
+          2,
+          2
+        ]
+      ],
+      [
+        [
+          8,
+          6
+        ]
+      ],
+      [
+        [
+          15,
+          3
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "surrogate",
+    "output" : "a😀",
+    "ranges" : [
+      [
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          2,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "combining",
+    "output" : "XX",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ]
+      ],
+      [
+        [
+          1,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "case-fold",
+    "output" : "X X",
+    "ranges" : [
+      [
+        [
+          0,
+          7
+        ]
+      ],
+      [
+        [
+          8,
+          6
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "line-lf",
+    "output" : "X\nX",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ]
+      ],
+      [
+        [
+          2,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "line-cr",
+    "output" : "X\rX",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ]
+      ],
+      [
+        [
+          2,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "line-crlf",
+    "output" : "X\r\nX",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ]
+      ],
+      [
+        [
+          3,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "line-nel",
+    "output" : "XX",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ]
+      ],
+      [
+        [
+          2,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "line-ls",
+    "output" : "X X",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ]
+      ],
+      [
+        [
+          2,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "line-ps",
+    "output" : "X X",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ]
+      ],
+      [
+        [
+          2,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "error" : "compile",
+    "id" : "invalid"
+  },
+  {
+    "id" : "case-upper",
+    "output" : "STRASSE",
+    "ranges" : [
+      [
+        [
+          0,
+          6
+        ],
+        [
+          0,
+          6
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "case-lower",
+    "output" : "äbc",
+    "ranges" : [
+      [
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          3
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "case-next",
+    "output" : "SSa",
+    "ranges" : [
+      [
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          2
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "case-grapheme",
+    "output" : "Éß",
+    "ranges" : [
+      [
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          3
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "case-empty-shot",
+    "output" : "B",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ],
+        [
+          -1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "case-escaped-case",
+    "output" : "\\Ux",
+    "ranges" : [
+      [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "case-combined",
+    "output" : "Abc",
+    "ranges" : [
+      [
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          3
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "selection",
+    "output" : "xaXcy",
+    "ranges" : [
+      [
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "opaque-lookbehind",
+    "output" : "ab",
+    "ranges" : [
+
+    ]
+  },
+  {
+    "id" : "region-anchor",
+    "output" : "aXc",
+    "ranges" : [
+      [
+        [
+          1,
+          1
+        ]
+      ]
+    ]
+  },
+  {
+    "id" : "empty-region",
+    "output" : "aXbc",
+    "ranges" : [
+      [
+        [
+          1,
+          0
+        ]
+      ]
+    ]
+  }
+]

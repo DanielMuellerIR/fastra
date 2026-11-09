@@ -1,0 +1,47 @@
+{
+  "date": "2026-11-05",
+  "version": "1.160.0",
+  "bundle_build": "368",
+  "commit": "3c6325471fd4eb0272c42289019fb5a942343037",
+  "source_archive_sha256": "f65a4128725f868c8c31824737d8600e0119a2fe2142adda3747379e62502695",
+  "source_content_sha256": "83c8a225efcb9893133296640a64606624896dc9e54104fcbb335b2026d4724d",
+  "source_files_compared_to_commit": 186,
+  "outputs": {
+    "fastra_1.160.0_amd64.deb": "395f9a6ae9af799d9b64e668035a651853ef65e96672a083026107723b043d12",
+    "fastra-1.160.0-linux-x86_64.tar.gz": "5c2c3bd1b107e0be308742eda24daba50f3a1054d27e207635d0945b6966a870",
+    "SHA256SUMS": "401fb9393840ce1c46f47b9bc39c5a891a683727080eefcf1733a39f4613a623",
+    "PKGBUILD": "d5559c08ef00c353c9568e6e77780aad8d4928a5a5aefa8515895adb896d2925"
+  },
+  "binary_sha256": "7f6ea2aff2e6da95daee7509ad85df9526aa6ed0af89b863daacc58719c74b06",
+  "icu_source_sha256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0",
+  "rust": "1.99.1",
+  "builder_image": "sha256:ee28d59cfaf26bae6c9d0df5449fa0f5562ce657fe66c50619524741d7eba22c",
+  "runtime_image": "sha256:95bebc437d45f178312616c6607b2885dee3ec786e085c81cf279dec153a9eac",
+  "checks": {
+    "installed_deb": true,
+    "relocated_tar": true,
+    "runtime_manifest_all_hashes": true,
+    "relative_private_icu_ldd": true,
+    "markdown_katex_mermaid_table_visual": true,
+    "webkit_no_new_privileges": 1,
+    "webkit_seccomp_mode": 2,
+    "webkit_private_pid_namespace": true,
+    "png_svg_two_page_pdf_both_layouts_visual": true,
+    "viewer_source_hashes_preserved_after_ctrl_s": true,
+    "network": "none",
+    "host_desktop_used": false,
+    "packaging_repeat_byte_identical": [
+      "deb",
+      "tar.gz",
+      "PKGBUILD"
+    ],
+    "independent_rust_recompile": false
+  },
+  "limits": [
+    "Ubuntu 24.04 Xvfb/X11, English light UI; no desktop/IME or Wayland acceptance.",
+    "Arch PKGBUILD hashed; no Arch package build or install in this run.",
+    "Repackaged existing verified stage, no independent compiler reproducibility claim.",
+    "No public upload or release approval."
+  ],
+  "release_approved": false
+}

@@ -1,0 +1,15 @@
+[package]
+name = "fastra-control"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+fastra-core = { path = "../fastra-core" }
+fastra-io = { path = "../fastra-io" }
+serde_json.workspace = true
+libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

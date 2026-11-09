@@ -1,0 +1,3361 @@
+[
+  {
+    "indentWidth" : 2,
+    "kind" : "detab",
+    "name" : "detab-0-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      21
+    ],
+    "expected" : "a   b\r\n    é🙂é c\r\nlast     \r\n",
+    "indentWidth" : 2,
+    "kind" : "detab",
+    "lineCount" : 3,
+    "name" : "detab-1-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      43
+    ],
+    "expected" : "  alpha beta    gamma    delta\n     \nwide界é 🙂\n",
+    "indentWidth" : 2,
+    "kind" : "detab",
+    "lineCount" : 3,
+    "name" : "detab-2-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "detab",
+    "name" : "detab-3-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "detab",
+    "name" : "detab-4-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "detab",
+    "name" : "detab-5-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "detab",
+    "name" : "detab-6-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "entab",
+    "name" : "entab-7-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      21
+    ],
+    "expected" : "a\tb\r\n\té🙂é\tc\r\nlast\t \r\n",
+    "indentWidth" : 2,
+    "kind" : "entab",
+    "lineCount" : 3,
+    "name" : "entab-8-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      43
+    ],
+    "expected" : "  alpha\tbeta\tgamma\t delta\n \t \nwide界é 🙂\n",
+    "indentWidth" : 2,
+    "kind" : "entab",
+    "lineCount" : 3,
+    "name" : "entab-9-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      46
+    ],
+    "expected" : "“one” ‘two’\t\"three\"\tdon't (\"four\") ['five']\t\"\n",
+    "indentWidth" : 2,
+    "kind" : "entab",
+    "lineCount" : 1,
+    "name" : "entab-10-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      113
+    ],
+    "expected" : "\\n\\r\\t\\f\\\\ \\x41\t\\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00\t&amp; &#65;\t&#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "indentWidth" : 2,
+    "kind" : "entab",
+    "lineCount" : 1,
+    "name" : "entab-11-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      51
+    ],
+    "expected" : "é é\táÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "indentWidth" : 2,
+    "kind" : "entab",
+    "lineCount" : 1,
+    "name" : "entab-12-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      36
+    ],
+    "expected" : "word1 café under_score é ½ Ⅲ ‿ ͅ\t𐐀",
+    "indentWidth" : 2,
+    "kind" : "entab",
+    "lineCount" : 1,
+    "name" : "entab-13-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "shiftRight",
+    "name" : "shiftRight-14-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      21
+    ],
+    "expected" : "  a\tb\r\n  \té🙂é\tc\r\n  last\t \r\n",
+    "indentWidth" : 2,
+    "kind" : "shiftRight",
+    "lineCount" : 3,
+    "name" : "shiftRight-15-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      43
+    ],
+    "expected" : "    alpha beta    gamma\t delta\n   \t \n  wide界é 🙂\n",
+    "indentWidth" : 2,
+    "kind" : "shiftRight",
+    "lineCount" : 3,
+    "name" : "shiftRight-16-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      46
+    ],
+    "expected" : "  “one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "indentWidth" : 2,
+    "kind" : "shiftRight",
+    "lineCount" : 1,
+    "name" : "shiftRight-17-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      113
+    ],
+    "expected" : "  \\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "indentWidth" : 2,
+    "kind" : "shiftRight",
+    "lineCount" : 1,
+    "name" : "shiftRight-18-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      51
+    ],
+    "expected" : "  é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "indentWidth" : 2,
+    "kind" : "shiftRight",
+    "lineCount" : 1,
+    "name" : "shiftRight-19-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      36
+    ],
+    "expected" : "  word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "indentWidth" : 2,
+    "kind" : "shiftRight",
+    "lineCount" : 1,
+    "name" : "shiftRight-20-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "shiftLeft",
+    "name" : "shiftLeft-21-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      21
+    ],
+    "expected" : "a\tb\r\né🙂é\tc\r\nlast\t \r\n",
+    "indentWidth" : 2,
+    "kind" : "shiftLeft",
+    "lineCount" : 3,
+    "name" : "shiftLeft-22-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      43
+    ],
+    "expected" : "alpha beta    gamma\t delta\n\t \nwide界é 🙂\n",
+    "indentWidth" : 2,
+    "kind" : "shiftLeft",
+    "lineCount" : 3,
+    "name" : "shiftLeft-23-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "shiftLeft",
+    "name" : "shiftLeft-24-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "shiftLeft",
+    "name" : "shiftLeft-25-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "shiftLeft",
+    "name" : "shiftLeft-26-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "shiftLeft",
+    "name" : "shiftLeft-27-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "name" : "hardWrap-28-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      21
+    ],
+    "expected" : "a\tb\r\n\té🙂é\tc\r\nlast\t \r\n",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 3,
+    "name" : "hardWrap-29-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      43
+    ],
+    "expected" : "  alpha\nbeta\ngamma\ndelta\n \t \nwide界é 🙂\n",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 6,
+    "name" : "hardWrap-30-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      46
+    ],
+    "expected" : "“one”\n‘two’\n\"three\"\ndon't\n(\"four\")\n['five']\n\"\n",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 7,
+    "name" : "hardWrap-31-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      113
+    ],
+    "expected" : "\\n\\r\\t\\f\\\\\n\\x41\n\\x{1F642}\n\\u00E9\n\\u{1F642}\n\\uD83D\\uDE00\n&amp;\n&#65;\n&#x1F642;\n%C3%A4\n%FF%41\\z\n\\xZZ\n&bogus;\n%E2%82",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 14,
+    "name" : "hardWrap-32-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      51
+    ],
+    "expected" : "é é\náÉøŁæŒ\nåö 가가 ガ\nक़ कि क् ﻻ\n① 1️ ⏸️ ⏹\n♫ ©️ ™ ▶︎",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 6,
+    "name" : "hardWrap-33-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      36
+    ],
+    "expected" : "word1\ncafé\nunder_score\né ½ Ⅲ ‿ ͅ\n𐐀",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 5,
+    "name" : "hardWrap-34-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "straightenQuotes",
+    "name" : "straightenQuotes-35-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "straightenQuotes",
+    "name" : "straightenQuotes-36-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "straightenQuotes",
+    "name" : "straightenQuotes-37-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      46
+    ],
+    "expected" : "\"one\" 'two' \"three\" don't (\"four\") ['five'] \"\n",
+    "indentWidth" : 2,
+    "kind" : "straightenQuotes",
+    "lineCount" : 0,
+    "name" : "straightenQuotes-38-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "straightenQuotes",
+    "name" : "straightenQuotes-39-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "straightenQuotes",
+    "name" : "straightenQuotes-40-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "straightenQuotes",
+    "name" : "straightenQuotes-41-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "educateQuotes",
+    "name" : "educateQuotes-42-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "educateQuotes",
+    "name" : "educateQuotes-43-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "educateQuotes",
+    "name" : "educateQuotes-44-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      46
+    ],
+    "expected" : "“one” ‘two’ “three” don’t (“four”) [‘five’] “\n",
+    "indentWidth" : 2,
+    "kind" : "educateQuotes",
+    "lineCount" : 0,
+    "name" : "educateQuotes-45-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "educateQuotes",
+    "name" : "educateQuotes-46-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "educateQuotes",
+    "name" : "educateQuotes-47-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "educateQuotes",
+    "name" : "educateQuotes-48-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "name" : "convertEscapeSequences-49-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "name" : "convertEscapeSequences-50-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "name" : "convertEscapeSequences-51-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "name" : "convertEscapeSequences-52-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      113
+    ],
+    "expected" : "\n\r\t\f\\ A 🙂 é 🙂 \\uD83D\\uDE00 & A 🙂 ä %FFA\\z \\xZZ &bogus; %E2%82",
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "lineCount" : 0,
+    "name" : "convertEscapeSequences-53-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "name" : "convertEscapeSequences-54-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "name" : "convertEscapeSequences-55-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "name" : "exchangeCharacters-56-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : "\tab\n\té🙂é\tc\r\nlast\t \r",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-57-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "name" : "exchangeCharacters-58-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : "o“ne” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-59-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : "n\\\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-60-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : " éé áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-61-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : "owrd1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-62-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "name" : "exchangeWords-63-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      3
+    ],
+    "expected" : "b\ta\n\té🙂é\tc\r\nlast\t \r",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-64-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      2,
+      10
+    ],
+    "expected" : "  beta alpha    gamma\t delta\n \t \nwide界é 🙂\n",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-65-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      1,
+      9
+    ],
+    "expected" : "“two” ‘one’ \"three\" don't (\"four\") ['five'] \"\n",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-66-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      1,
+      3
+    ],
+    "expected" : "\\r\\n\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-67-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "name" : "exchangeWords-68-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      10
+    ],
+    "expected" : "café word1 under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-69-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "name" : "stripDiacriticals-70-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      21
+    ],
+    "expected" : "a\tb\n\te🙂e\tc\r\nlast\t \r",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-71-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      43
+    ],
+    "expected" : "  alpha beta    gamma\t delta\n \t \nwide界e 🙂\n",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-72-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "name" : "stripDiacriticals-73-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "name" : "stripDiacriticals-74-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      51
+    ],
+    "expected" : "e e aEøŁæŒ ao 가가 ガ क़ कि क् ﻻ ① 1 ⏸️ ⏹ ♫ © ™ ▶︎",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-75-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      36
+    ],
+    "expected" : "word1 cafe under_score e ½ Ⅲ ‿  𐐀",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-76-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-77-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-78-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-79-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-80-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-81-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      51
+    ],
+    "expected" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹️ ♫ ©️ ™ ▶︎",
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "lineCount" : 0,
+    "name" : "addEmojiPresentation-82-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-83-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "name" : "removeEmojiPresentation-84-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "name" : "removeEmojiPresentation-85-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\n\té🙂é\tc\r\nlast\t \r",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "name" : "removeEmojiPresentation-86-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  alpha beta    gamma\t delta\n \t \nwide界é 🙂\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "name" : "removeEmojiPresentation-87-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "“one” ‘two’ \"three\" don't (\"four\") ['five'] \"\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "name" : "removeEmojiPresentation-88-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\n\\r\\t\\f\\\\ \\x41 \\x{1F642} \\u00E9 \\u{1F642} \\uD83D\\uDE00 &amp; &#65; &#x1F642; %C3%A4 %FF%41\\z \\xZZ &bogus; %E2%82",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      51
+    ],
+    "expected" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸ ⏹ ♫ ©️ ™ ▶︎",
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "lineCount" : 0,
+    "name" : "removeEmojiPresentation-89-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é áÉøŁæŒ åö 가가 ガ क़ कि क् ﻻ ① 1️ ⏸️ ⏹ ♫ ©️ ™ ▶︎",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "name" : "removeEmojiPresentation-90-whole",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "word1 café under_score é ½ Ⅲ ‿ ͅ 𐐀",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "    é🙂  x     \r\n   y\r\n",
+    "indentWidth" : 3,
+    "kind" : "detab",
+    "lineCount" : 2,
+    "name" : "detab-91-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 1,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "\t\t\t\té🙂\t\tx\t\t\t\t\t\r\n\t\t\ty\r\n",
+    "indentWidth" : 3,
+    "kind" : "entab",
+    "lineCount" : 2,
+    "name" : "entab-92-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 1,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "\t \t  é🙂  x \t   \r\n\t\t  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "shiftRight",
+    "lineCount" : 2,
+    "name" : "shiftRight-93-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 1,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "\t  é🙂  x \t   \r\n  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "shiftLeft",
+    "lineCount" : 2,
+    "name" : "shiftLeft-94-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 1,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "    é🙂  x      \r\n    y\r\n",
+    "indentWidth" : 3,
+    "kind" : "detab",
+    "lineCount" : 2,
+    "name" : "detab-95-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 2,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : " \t\té🙂\tx\t\t\t \r\n\t\ty\r\n",
+    "indentWidth" : 3,
+    "kind" : "entab",
+    "lineCount" : 2,
+    "name" : "entab-96-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 2,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "\t \t  é🙂  x \t   \r\n\t\t  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "shiftRight",
+    "lineCount" : 2,
+    "name" : "shiftRight-97-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 2,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "\t  é🙂  x \t   \r\n  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "shiftLeft",
+    "lineCount" : 2,
+    "name" : "shiftLeft-98-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 2,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "      é🙂  x        \r\n      y\r\n",
+    "indentWidth" : 3,
+    "kind" : "detab",
+    "lineCount" : 2,
+    "name" : "detab-99-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : " \t  é🙂  x\t\t   \r\n\t  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "entab",
+    "lineCount" : 2,
+    "name" : "entab-100-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "\t \t  é🙂  x \t   \r\n\t\t  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "shiftRight",
+    "lineCount" : 2,
+    "name" : "shiftRight-101-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "\t  é🙂  x \t   \r\n  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "shiftLeft",
+    "lineCount" : 2,
+    "name" : "shiftLeft-102-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "          é🙂  x            \r\n          y\r\n",
+    "indentWidth" : 3,
+    "kind" : "detab",
+    "lineCount" : 2,
+    "name" : "detab-103-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 8,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : " \t  é🙂  x\t\t   \r\n\t  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "entab",
+    "lineCount" : 2,
+    "name" : "entab-104-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 8,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "\t \t  é🙂  x \t   \r\n\t\t  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "shiftRight",
+    "lineCount" : 2,
+    "name" : "shiftRight-105-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 8,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "\t  é🙂  x \t   \r\n  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "shiftLeft",
+    "lineCount" : 2,
+    "name" : "shiftLeft-106-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 8,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "                  é🙂  x            \r\n                  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "detab",
+    "lineCount" : 2,
+    "name" : "detab-107-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 16,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : " \t  é🙂  x \t   \r\n\t  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "entab",
+    "lineCount" : 2,
+    "name" : "entab-108-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 16,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "\t \t  é🙂  x \t   \r\n\t\t  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "shiftRight",
+    "lineCount" : 2,
+    "name" : "shiftRight-109-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 16,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      23
+    ],
+    "expected" : "\t  é🙂  x \t   \r\n  y\r\n",
+    "indentWidth" : 3,
+    "kind" : "shiftLeft",
+    "lineCount" : 2,
+    "name" : "shiftLeft-110-profile",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 16,
+    "text" : " \t  é🙂  x \t   \n\t  y\r\n",
+    "usesTabs" : true,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      5,
+      6
+    ],
+    "expected" : "head\n    A😀  Z\nend",
+    "indentWidth" : 2,
+    "kind" : "detab",
+    "lineCount" : 1,
+    "name" : "detab-111-",
+    "selection" : [
+      6,
+      3
+    ],
+    "tabWidth" : 4,
+    "text" : "head\n\tA😀\tZ\nend",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      3
+    ],
+    "expected" : "a   b\nc\td\n",
+    "indentWidth" : 2,
+    "kind" : "detab",
+    "lineCount" : 1,
+    "name" : "detab-112-",
+    "selection" : [
+      0,
+      4
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\nc\td\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "entab",
+    "name" : "entab-113-",
+    "selection" : [
+      6,
+      3
+    ],
+    "tabWidth" : 4,
+    "text" : "head\n\tA😀\tZ\nend",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "entab",
+    "name" : "entab-114-",
+    "selection" : [
+      0,
+      4
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\nc\td\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      5,
+      6
+    ],
+    "expected" : "head\n  \tA😀\tZ\nend",
+    "indentWidth" : 2,
+    "kind" : "shiftRight",
+    "lineCount" : 1,
+    "name" : "shiftRight-115-",
+    "selection" : [
+      6,
+      3
+    ],
+    "tabWidth" : 4,
+    "text" : "head\n\tA😀\tZ\nend",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      3
+    ],
+    "expected" : "  a\tb\nc\td\n",
+    "indentWidth" : 2,
+    "kind" : "shiftRight",
+    "lineCount" : 1,
+    "name" : "shiftRight-116-",
+    "selection" : [
+      0,
+      4
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\nc\td\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      5,
+      6
+    ],
+    "expected" : "head\nA😀\tZ\nend",
+    "indentWidth" : 2,
+    "kind" : "shiftLeft",
+    "lineCount" : 1,
+    "name" : "shiftLeft-117-",
+    "selection" : [
+      6,
+      3
+    ],
+    "tabWidth" : 4,
+    "text" : "head\n\tA😀\tZ\nend",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "shiftLeft",
+    "name" : "shiftLeft-118-",
+    "selection" : [
+      0,
+      4
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\nc\td\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "name" : "hardWrap-119-",
+    "selection" : [
+      6,
+      3
+    ],
+    "tabWidth" : 4,
+    "text" : "head\n\tA😀\tZ\nend",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "name" : "hardWrap-120-",
+    "selection" : [
+      0,
+      4
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb\nc\td\n",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      18
+    ],
+    "expected" : "one\ntwo\nthree\nfour",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 4,
+    "name" : "hardWrap-121-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "one two three four",
+    "usesTabs" : false,
+    "wrapColumn" : 5
+  },
+  {
+    "affectedRange" : [
+      0,
+      15
+    ],
+    "expected" : "  one\ntwo\nthree",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 3,
+    "name" : "hardWrap-122-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "  one two three",
+    "usesTabs" : false,
+    "wrapColumn" : 5
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "name" : "hardWrap-123-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : " \t \t ",
+    "usesTabs" : false,
+    "wrapColumn" : 5
+  },
+  {
+    "affectedRange" : [
+      0,
+      14
+    ],
+    "expected" : "abcdefghij\nx y",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 2,
+    "name" : "hardWrap-124-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "abcdefghij x y",
+    "usesTabs" : false,
+    "wrapColumn" : 5
+  },
+  {
+    "affectedRange" : [
+      0,
+      13
+    ],
+    "expected" : "one two\nthree",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 2,
+    "name" : "hardWrap-125-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "one two three",
+    "usesTabs" : false,
+    "wrapColumn" : 5
+  },
+  {
+    "affectedRange" : [
+      0,
+      7
+    ],
+    "expected" : "a b c",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 1,
+    "name" : "hardWrap-126-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\tb   c",
+    "usesTabs" : false,
+    "wrapColumn" : 5
+  },
+  {
+    "affectedRange" : [
+      0,
+      19
+    ],
+    "expected" : "é 😀 👨‍👩‍👧‍👦\nx",
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "lineCount" : 2,
+    "name" : "hardWrap-127-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é 😀 👨‍👩‍👧‍👦 x",
+    "usesTabs" : false,
+    "wrapColumn" : 5
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "hardWrap",
+    "name" : "hardWrap-128-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a b c",
+    "usesTabs" : false,
+    "wrapColumn" : 0
+  },
+  {
+    "affectedRange" : [
+      1,
+      5
+    ],
+    "expected" : "x”abc” rest",
+    "indentWidth" : 2,
+    "kind" : "educateQuotes",
+    "lineCount" : 0,
+    "name" : "educateQuotes-129-",
+    "selection" : [
+      1,
+      5
+    ],
+    "tabWidth" : 4,
+    "text" : "x\"abc\" rest",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      3,
+      3
+    ],
+    "expected" : "x (“a”) (\"b\")",
+    "indentWidth" : 2,
+    "kind" : "educateQuotes",
+    "lineCount" : 0,
+    "name" : "educateQuotes-130-",
+    "selection" : [
+      3,
+      3
+    ],
+    "tabWidth" : 4,
+    "text" : "x (\"a\") (\"b\")",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      3
+    ],
+    "expected" : "😀ab",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-131-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a😀b",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      3
+    ],
+    "expected" : "😀ab",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-132-",
+    "selection" : [
+      1,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a😀b",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "name" : "exchangeCharacters-133-",
+    "selection" : [
+      2,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a😀b",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      1,
+      3
+    ],
+    "expected" : "ab😀",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-134-",
+    "selection" : [
+      3,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a😀b",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      1,
+      3
+    ],
+    "expected" : "ab😀",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-135-",
+    "selection" : [
+      4,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a😀b",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      4
+    ],
+    "expected" : "b😀a",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-136-",
+    "selection" : [
+      0,
+      4
+    ],
+    "tabWidth" : 4,
+    "text" : "a😀b",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "name" : "exchangeCharacters-137-",
+    "selection" : [
+      1,
+      2
+    ],
+    "tabWidth" : 4,
+    "text" : "a😀b",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      1,
+      3
+    ],
+    "expected" : "a\r\nbcd",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-138-",
+    "selection" : [
+      2,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "ab\r\ncd",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "name" : "exchangeCharacters-139-",
+    "selection" : [
+      3,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "ab\r\ncd",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      4,
+      2
+    ],
+    "expected" : "ab\r\ndc",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-140-",
+    "selection" : [
+      4,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "ab\r\ncd",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      6
+    ],
+    "expected" : "db\r\nca",
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "lineCount" : 0,
+    "name" : "exchangeCharacters-141-",
+    "selection" : [
+      0,
+      6
+    ],
+    "tabWidth" : 4,
+    "text" : "ab\r\ncd",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "name" : "exchangeCharacters-142-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\nb",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "name" : "exchangeCharacters-143-",
+    "selection" : [
+      1,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\nb",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "name" : "exchangeCharacters-144-",
+    "selection" : [
+      2,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a\nb",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "name" : "exchangeCharacters-145-",
+    "selection" : [
+      0,
+      3
+    ],
+    "tabWidth" : 4,
+    "text" : "éé",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "name" : "exchangeCharacters-146-",
+    "selection" : [
+      1,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "éé",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeCharacters",
+    "name" : "exchangeCharacters-147-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\na",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "cd ab ef",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-148-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "ab cd ef",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "cd ab ef",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-149-",
+    "selection" : [
+      2,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "ab cd ef",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "cd ab ef",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-150-",
+    "selection" : [
+      3,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "ab cd ef",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      3,
+      5
+    ],
+    "expected" : "ab ef cd",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-151-",
+    "selection" : [
+      4,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "ab cd ef",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      3,
+      5
+    ],
+    "expected" : "ab ef cd",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-152-",
+    "selection" : [
+      7,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "ab cd ef",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      3,
+      5
+    ],
+    "expected" : "ab ef cd",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-153-",
+    "selection" : [
+      8,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "ab cd ef",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "name" : "exchangeWords-154-",
+    "selection" : [
+      1,
+      6
+    ],
+    "tabWidth" : 4,
+    "text" : "ab cd ef",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "cd ab ef",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-155-",
+    "selection" : [
+      0,
+      5
+    ],
+    "tabWidth" : 4,
+    "text" : "ab cd ef",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      3,
+      7
+    ],
+    "expected" : "𐐀 def abc",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-156-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "𐐀 abc def",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      3,
+      7
+    ],
+    "expected" : "𐐀 def abc",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-157-",
+    "selection" : [
+      3,
+      7
+    ],
+    "tabWidth" : 4,
+    "text" : "𐐀 abc def",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "name" : "exchangeWords-158-",
+    "selection" : [
+      0,
+      4
+    ],
+    "tabWidth" : 4,
+    "text" : "é é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "name" : "exchangeWords-159-",
+    "selection" : [
+      2,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "name" : "exchangeWords-160-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\nfoo bar",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      1,
+      7
+    ],
+    "expected" : "\nbar foo",
+    "indentWidth" : 2,
+    "kind" : "exchangeWords",
+    "lineCount" : 0,
+    "name" : "exchangeWords-161-",
+    "selection" : [
+      1,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\nfoo bar",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-162-",
+    "selection" : [
+      0,
+      1
+    ],
+    "tabWidth" : 4,
+    "text" : "⏸️ X",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-163-",
+    "selection" : [
+      1,
+      1
+    ],
+    "tabWidth" : 4,
+    "text" : "⏸️ X",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-164-",
+    "selection" : [
+      0,
+      2
+    ],
+    "tabWidth" : 4,
+    "text" : "⏸️ X",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-165-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "☀︎ X",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-166-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "©️ ™️ #️ 1️",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "name" : "addEmojiPresentation-167-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "⏸️️",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      10
+    ],
+    "expected" : "❤️‍🔥 🏳️‍🌈",
+    "indentWidth" : 2,
+    "kind" : "addEmojiPresentation",
+    "lineCount" : 0,
+    "name" : "addEmojiPresentation-168-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "❤‍🔥 🏳‍🌈",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : "⏸ X",
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "lineCount" : 0,
+    "name" : "removeEmojiPresentation-169-",
+    "selection" : [
+      0,
+      1
+    ],
+    "tabWidth" : 4,
+    "text" : "⏸️ X",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : "⏸ X",
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "lineCount" : 0,
+    "name" : "removeEmojiPresentation-170-",
+    "selection" : [
+      1,
+      1
+    ],
+    "tabWidth" : 4,
+    "text" : "⏸️ X",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : "⏸ X",
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "lineCount" : 0,
+    "name" : "removeEmojiPresentation-171-",
+    "selection" : [
+      0,
+      2
+    ],
+    "tabWidth" : 4,
+    "text" : "⏸️ X",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "name" : "removeEmojiPresentation-172-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "☀︎ X",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "name" : "removeEmojiPresentation-173-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "©️ ™️ #️ 1️",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      3
+    ],
+    "expected" : "⏸",
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "lineCount" : 0,
+    "name" : "removeEmojiPresentation-174-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "⏸️️",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "removeEmojiPresentation",
+    "name" : "removeEmojiPresentation-175-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "❤‍🔥 🏳‍🌈",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      1
+    ],
+    "expected" : "e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-176-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : "e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-177-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : "가e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-178-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "가é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      3
+    ],
+    "expected" : "가e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-179-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "가é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "name" : "stripDiacriticals-180-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "क़ कि क्",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      11
+    ],
+    "expected" : "A Ø æ ﬃ ① ａ",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-181-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "Å Ø æ ﬃ ① ａ",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "name" : "stripDiacriticals-182-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "́",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : "x",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-183-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "x⃝",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      2
+    ],
+    "expected" : "a",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-184-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "aͅ",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "name" : "stripDiacriticals-185-",
+    "selection" : [
+      0,
+      1
+    ],
+    "tabWidth" : 4,
+    "text" : "é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "name" : "stripDiacriticals-186-",
+    "selection" : [
+      1,
+      1
+    ],
+    "tabWidth" : 4,
+    "text" : "é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      1,
+      3
+    ],
+    "expected" : "ae🙂b",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-187-",
+    "selection" : [
+      1,
+      3
+    ],
+    "tabWidth" : 4,
+    "text" : "aé🙂b",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      9
+    ],
+    "expected" : "%41%FFB",
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "lineCount" : 0,
+    "name" : "convertEscapeSequences-188-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "%41%FF%42",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      12
+    ],
+    "expected" : "%C3%A4%FFA",
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "lineCount" : 0,
+    "name" : "convertEscapeSequences-189-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "%C3%A4%FF%41",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      9
+    ],
+    "expected" : "%E2%82A",
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "lineCount" : 0,
+    "name" : "convertEscapeSequences-190-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "%E2%82%41",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      12
+    ],
+    "expected" : "%ff%41%FEB",
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "lineCount" : 0,
+    "name" : "convertEscapeSequences-191-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "%ff%41%FE%42",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      86
+    ],
+    "expected" : "A A &#xD800; \\u{110000} \\uD83D\\uDE00 \u0000  ",
+    "indentWidth" : 2,
+    "kind" : "convertEscapeSequences",
+    "lineCount" : 0,
+    "name" : "convertEscapeSequences-192-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "\\x{00000000000000000000000041} &#00000065; &#xD800; \\u{110000} \\uD83D\\uDE00 %00 &nbsp;",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "中̈ e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-193-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "中́̈ é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "َّ e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-194-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "َّ́ é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      6
+    ],
+    "expected" : "️َّ e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-195-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "ّ́️َ é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "中́ e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-196-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "中̈́́ é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "中᪰́ e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-197-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "中᪰́ é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "中゙́ e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-198-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "中゙́ é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "a e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-199-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "a🏽 é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "⏸🏽 e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-200-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "⏸🏽 é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      5
+    ],
+    "expected" : "𝅘𝅥 e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-201-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "𝅘𝅥́ é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  },
+  {
+    "affectedRange" : [
+      0,
+      103
+    ],
+    "expected" : "中́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́ e",
+    "indentWidth" : 2,
+    "kind" : "stripDiacriticals",
+    "lineCount" : 0,
+    "name" : "stripDiacriticals-202-",
+    "selection" : [
+      0,
+      0
+    ],
+    "tabWidth" : 4,
+    "text" : "中́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́ é",
+    "usesTabs" : false,
+    "wrapColumn" : 8
+  }
+]

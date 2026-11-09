@@ -18,6 +18,36 @@ ease to the stars". The asterisk (`*`) is the star.*
 
 ![Fastra in light mode with the visible Home button](screenshots/editor-light.en.png)
 
+## Linux development build
+
+A native Rust/GTK Linux application is being developed in this repository.
+The current build supports document editing, previewed search across tabs,
+folders and projects, safe saving and transaction recovery, optional local
+session backups, Markdown editing, document previews, text workflows and printing. It does not yet provide all macOS features. See the
+[Linux implementation status](docs/linux-port/F07-LINUX.md) and
+[build and packaging instructions](docs/linux-port/F16-PACKAGING.md).
+
+Linux builds also have convenience scripts. `./build.sh` builds the native GTK
+application and the GTK-free `fastra-control` helper; use `--release` for an
+optimized build and `./linux/run.sh` to start it. Required distribution development
+headers must already be installed. The script downloads the official ICU 78.3
+source, verifies its pinned SHA256 and builds it in a private user cache.
+`--icu-prefix DIRECTORY` reuses a prefix created by `tools/linux-package/build-icu.sh`.
+
+`./release.sh --unsigned` builds local DEB, portable tar.gz and ZIP packages in the
+pinned Ubuntu 24.04 x86_64 Docker builder. For an OpenPGP-signed local release use
+`./release.sh --key FULL_SIGNING_FINGERPRINT`. It signs and verifies relative
+`SHA256SUMS`; it does not publish artifacts. `./linux/sign.sh --key FINGERPRINT
+PACKAGE_DIRECTORY` signs an existing package set.
+
+`./install.sh --package PATH_TO_PORTABLE_ARCHIVE` checks the package and its
+manifest and installs it under `~/.local`, retaining previous versions. Keep
+`SHA256SUMS` beside the archive; add `--key FINGERPRINT` to require its OpenPGP
+signature. All entry scripts provide `--help`. See the
+[Linux build and packaging instructions](docs/linux-port/F16-PACKAGING.md).
+
+Linux user installations include **Updates …**: automatic daily GitHub checks can be disabled there. New stable Linux packages are downloaded only after approval and verified against GitHub’s SHA256 and the runtime manifest before an atomic version switch. Quit and reopen Fastra to use the new version; the running session is preserved. Source builds, system packages and the optional toolkit channel retain their original update method.
+
 ## Download / Releases
 
 Ready-made builds are available as DMGs on the

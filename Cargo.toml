@@ -1,0 +1,17 @@
+[workspace]
+members = ["crates/fastra-four-d-runtime", "crates/fastra-diff-helper", "crates/fastra-control", "crates/fastra-workflow", "crates/fastra-core", "crates/fastra-io", "crates/fastra-ffi", "crates/fastra-linux", "crates/fastra-git", "crates/fastra-process", "crates/fastra-import", "crates/fastra-document", "crates/fastra-search", "crates/fastra-diff"]
+default-members = ["crates/fastra-core", "crates/fastra-ffi"]
+exclude = ["tools/linux-probes/regex", "tools/linux-probes/uniffi"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.145"
+libc = "=0.2.176"
+sha2 = "=0.10.9"
+tempfile = "=3.23.0"

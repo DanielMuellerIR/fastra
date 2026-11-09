@@ -1,0 +1,67 @@
+{
+  "version": "1.173.0",
+  "build": 383,
+  "source_identity": "f0a35d2e270b3aa6f8d63046c0186458f540ba512dbe25f7d71e1ed7fb3761a0",
+  "verified_product_inputs": 394,
+  "artifacts": {
+    "fastra_1.173.0_amd64.deb": "8409e7efd82bcce20f693f62f03b5c5d7fb9306d5be36eba93f4cf8d7061a948",
+    "fastra-1.173.0-linux-x86_64.tar.gz": "fd95458b4e13e146bf86b7e181f902162afe6f383e338dd7c575e93763cba1f6",
+    "fastra-1.173.0-linux-x86_64.zip": "620d40ea36ba2c6fadcd07ec2805cf0842956f8a0a6bb08204a939ea97c3f9a5"
+  },
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.173.0/packages",
+  "workspace": {
+    "programs": 49,
+    "passed": 532,
+    "failed": 0,
+    "ignored": 5,
+    "native_commit_cases": 26,
+    "relevant_native_image_cases_separately_passed": 4,
+    "unchanged_external_engine_probe_rerun": false,
+    "clippy": "workspace all targets -D warnings"
+  },
+  "native": {
+    "merged_commit_de_en_cases": 4,
+    "image_refresh_de_en_with_positive_scroll_and_exact_block_bytes": 4,
+    "complete_asset_clipboard_regression_suites": 2,
+    "visual_review": true,
+    "display": "private Xvfb"
+  },
+  "package": {
+    "actual_release_helper_native_commit_cases": 26,
+    "helper_prefix_space_and_percent": true,
+    "helper_no_source_tree_or_gtk_start": true,
+    "installed_deb": "PASS",
+    "relocated_tar": "PASS",
+    "private_icu_and_manifest": "PASS",
+    "webkit_sandbox": {
+      "no_new_privileges": 1,
+      "seccomp": 2,
+      "private_pid_namespace": true
+    },
+    "source_free_release_rich_red_to_blue_pixels": "PASS"
+  },
+  "crypto": {
+    "native_core_ssh_sign_and_verify": "PASS",
+    "personal_keys_used": false,
+    "packaged_gui_helper_on_development_host": "environment_error",
+    "missing_host_library": "libwebkitgtk-6.0.so.4",
+    "packaged_helper_crypto_not_claimed": true
+  },
+  "review": {
+    "commit_parent_loss": "CLOSED",
+    "complete_original_hook_mirror": "CLOSED",
+    "late_image_copy_uri_version": "CLOSED",
+    "normalized_image_cache_address_is_not_markdown_change": "CLOSED",
+    "git_red_head_changed_then_green_preserved": true,
+    "shared_js_review_sha256": "a2610b03cd060870cef22595eaf00c5f2efa79fb9b58a53b31bdeafae4a8eb1d"
+  },
+  "limits": [
+    "Configured original hooks remain arbitrary user programs with their own side effects.",
+    "No general guarantee for intentionally daemonizing hooks.",
+    "New shared image-normalization code still needs current Mac window acceptance.",
+    "Save As, coordinated Quit and explicit Force Push remain separate pending integrations.",
+    "Pull policy exception awaits user decision."
+  ],
+  "product_commit": "46c9ee614200067e142181bac11bf5961c721f58"
+}

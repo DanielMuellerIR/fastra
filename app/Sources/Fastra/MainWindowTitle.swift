@@ -220,6 +220,7 @@ struct MainWindowTitleBridge: NSViewRepresentable {
         }
         private weak var observedWindow: NSWindow?
         private var keyObserver: NSObjectProtocol?
+        private var titleVisibilityObservation: NSKeyValueObservation?
 
         init(metadata: MainWindowTitleMetadata, workspace: Workspace,
              chromeHeight: CGFloat) {
@@ -242,21 +243,37 @@ struct MainWindowTitleBridge: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            observeWindowActivation()
+            observeWindow()
             applyMetadataToWindow()
         }
 
         /// Merkt, welches Dokumentfenster gerade den Fokus besitzt. Globale
         /// Commands (⌘F, ⌘S, Text-Operationen …) fragen `Workspace.shared` ab
         /// und arbeiten dadurch auch bei mehreren Fenstern im richtigen Inhalt.
-        private func observeWindowActivation() {
+        private func observeWindow() {
             guard observedWindow !== window else { return }
+            titleVisibilityObservation?.invalidate()
+            titleVisibilityObservation = nil
             if let keyObserver {
                 NotificationCenter.default.removeObserver(keyObserver)
                 self.keyObserver = nil
             }
             observedWindow = window
             guard let window else { return }
+            // NSHostingController kann den Titel nach dem ersten Bridge-Update
+            // wieder einblenden (Zusatz- und Restorefenster). Nicht im KVO-
+            // Callback zurückschreiben: Das könnte SwiftUIs Layout reentrant
+            // betreten. Die Korrektur gilt nur für die noch montierte Brücke.
+            // KVO liefert für diesen AppKit-Enum kein typisiertes newValue;
+            // der Getter enthält dagegen bereits den tatsächlichen Zustand.
+            titleVisibilityObservation = window.observe(\.titleVisibility) { [weak self] window, _ in
+                guard window.titleVisibility != .hidden else { return }
+                DispatchQueue.main.async { [weak self, weak window] in
+                    guard let self, let window, self.window === window,
+                          window.titleVisibility != .hidden else { return }
+                    window.titleVisibility = .hidden
+                }
+            }
             keyObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.didBecomeKeyNotification,
                 object: window,
@@ -358,7 +375,7 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             // Schreiben desselben Werts während eines SwiftUI-Updates kann
             // AttributeGraph reentrant betreten (beim Dark-Mode-Start als
             // reproduzierbarer Crash sichtbar). Deshalb nur echte Änderungen
-            // setzen; nach dem ersten Fensteraufbau bleibt der Pfad schreibfrei.
+            // setzen; ohne eine Framework-Änderung bleibt der Pfad schreibfrei.
             if !window.styleMask.contains(.fullSizeContentView) {
                 window.styleMask.insert(.fullSizeContentView)
             }

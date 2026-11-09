@@ -1,0 +1,60 @@
+{
+  "apt_uri": "http://archive.ubuntu.com/ubuntu",
+  "archive_sizes": {
+    "gtksourceview5_5.12.0-1build1.debian.tar.xz": 19308,
+    "gtksourceview5_5.12.0-1build1.dsc": 3160,
+    "gtksourceview5_5.12.0.orig.tar.xz": 1263380
+  },
+  "archives": {
+    "gtksourceview5_5.12.0-1build1.debian.tar.xz": "bef0484b6d264eae540ed8565df07b41544a5e5533ef81c37f06ba501ebc7b17",
+    "gtksourceview5_5.12.0-1build1.dsc": "33a32219f2e92f98b98b5a74904ee9ab2cdc01fd3430abbca76fd6917f2b5b4e",
+    "gtksourceview5_5.12.0.orig.tar.xz": "daf32ff5d3150d6385917d3503a85b9e047ba158b2b03079314c9c00813fa01f"
+  },
+  "authentication": "gpgv Ubuntu archive InRelease -> uncompressed Sources SHA256/size -> exact selected stanza -> all source archive SHA256/size; maintainer DSC signature not independently trusted",
+  "baseline": {
+    "gtksourceview/gtksourcebuffer-private.h": "5931c79f54723ee26af881cb4d2e0b7d08a3f28edf94c4c1f3071239dcdfe85c",
+    "gtksourceview/gtksourcebuffer.c": "0190ac86429a6e4bfb9437bd9abb6fa01564d5ee24feef4d111651b0cfe77c02",
+    "gtksourceview/gtksourceview.c": "1982b68ba87b26ddfbd612264fd9793872a11372807884e4f36010df2ce61c88"
+  },
+  "builder_image": "sha256:befa617d33d98b0d07f8e1a8fd6f85f07582e1ed71b6698ea01bf0e9b1b2d554",
+  "distribution": "Ubuntu 24.04 noble",
+  "format": 1,
+  "inrelease": {
+    "sha256": "cdb2f31d809f589719a53c6ad15f255b27569c4059542ada282aaa21b8e164b0",
+    "url": "https://archive.ubuntu.com/ubuntu/dists/noble/InRelease"
+  },
+  "meson_options": [
+    "--buildtype=release",
+    "--prefix=/usr",
+    "--libdir=lib/x86_64-linux-gnu",
+    "-Dintrospection=disabled",
+    "-Dvapi=false",
+    "-Ddocumentation=false",
+    "-Dsysprof=false",
+    "-Dbuild-testsuite=false"
+  ],
+  "own_patch": {
+    "filename": "gtksourceview-native-edits-v1.patch",
+    "sha256": "e938b472a144f4cf2805252f61e73cccd4a594eaf877fb5b687251066ba92e02"
+  },
+  "patched_files": {
+    "gtksourceview/gtksourcebuffer-private.h": "91053a94174cdf5e52254a637768390b6d1bb596f24c9f6149763d3fa9c9f996",
+    "gtksourceview/gtksourcebuffer.c": "ef37f436b84e05e70041f4774b4f3d26047e274b0f36987d756412737f5a41cd",
+    "gtksourceview/gtksourceview.c": "2b4037ec188d9192f8787e8c6b9ea54a2fa44550d9c335b05d971c1030d0ba5a"
+  },
+  "source": "gtksourceview5",
+  "source_directory": "pool/main/g/gtksourceview5",
+  "source_index": {
+    "filename": "archive.ubuntu.com_ubuntu_dists_noble_main_source_Sources.lz4",
+    "uncompressed_sha256": "5a8ea5a4167d9ac5395246ee2a3784601c24b0646131195c65b94af1295c8293",
+    "uncompressed_size": 5753247
+  },
+  "sources_xz": {
+    "sha256": "4f8e45d8f84dd2a6b7ce87695c70336114b9e96e6fd6db066c115f758e39308e",
+    "size": 1383940,
+    "url": "https://archive.ubuntu.com/ubuntu/dists/noble/main/source/Sources.xz"
+  },
+  "ubuntu_patch_series_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "ubuntu_patches": {},
+  "version": "5.12.0-1build1"
+}

@@ -1,0 +1,8 @@
+{
+  "cases": 27849,
+  "seed": "0xFA57",
+  "swift": "6.2.1",
+  "rust": "1.99.1",
+  "model_sha256": "9b8a4ed7b0e3500bc5f29a986cf44885f30d4b73fada089fbdd3760bf4d4ff2b",
+  "matched": true
+}

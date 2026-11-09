@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Bequemlichkeits-Wrapper: Der vollständige Release-, Notarisierungs- und
-# Installationsablauf bleibt in app/, damit dort alle relativen Pfade stimmen.
-# Argumente und Umgebungsvariablen wie NOTARY_PROFILE werden unverändert
-# durchgereicht.
-exec "$(dirname "$0")/app/install.sh" "$@"
+# Plattformspezifische Abläufe bleiben in den jeweiligen Unterverzeichnissen.
+case $(uname -s) in
+  Linux) exec "$(dirname "$0")/linux/install.sh" "$@" ;;
+  Darwin) exec "$(dirname "$0")/app/install.sh" "$@" ;;
+  *) echo 'Fastra supports macOS and Linux.' >&2; exit 2 ;;
+esac

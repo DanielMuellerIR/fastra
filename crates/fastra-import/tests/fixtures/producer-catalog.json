@@ -1,0 +1,449 @@
+{
+  "formats": [
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "rtf"
+      ],
+      "format": "rtf",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "package",
+      "containers": [
+        "package"
+      ],
+      "extensions": [
+        "rtfd"
+      ],
+      "format": "rtfd",
+      "requires": [
+        "pandoc",
+        "textutil"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "docx",
+        "docm",
+        "dotx",
+        "dotm"
+      ],
+      "format": "docx",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "odt"
+      ],
+      "format": "odt",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "doc"
+      ],
+      "format": "doc",
+      "requires": [
+        "textutil",
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "ods"
+      ],
+      "format": "ods",
+      "requires": [],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "xlsx",
+        "xlsm",
+        "xltx",
+        "xltm"
+      ],
+      "format": "xlsx",
+      "requires": [],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "xls"
+      ],
+      "format": "xls",
+      "requires": [],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "odm"
+      ],
+      "format": "odm",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "png",
+        "jpg",
+        "jpeg",
+        "heic",
+        "tif",
+        "tiff",
+        "gif",
+        "bmp",
+        "webp"
+      ],
+      "format": "image",
+      "requires": [],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "pdf"
+      ],
+      "format": "pdf",
+      "requires": [],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "pptx",
+        "pptm",
+        "potx"
+      ],
+      "format": "pptx",
+      "requires": [],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "odp"
+      ],
+      "format": "odp",
+      "requires": [],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "ipynb"
+      ],
+      "format": "ipynb",
+      "requires": [],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "csv",
+        "tsv"
+      ],
+      "format": "csv",
+      "requires": [],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "html",
+        "htm",
+        "xhtml"
+      ],
+      "format": "html",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "webarchive"
+      ],
+      "format": "webarchive",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "epub"
+      ],
+      "format": "epub",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "tex",
+        "latex"
+      ],
+      "format": "latex",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "dbk",
+        "docbook"
+      ],
+      "format": "docbook",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "org"
+      ],
+      "format": "org",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "wiki",
+        "mediawiki"
+      ],
+      "format": "mediawiki",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "textile"
+      ],
+      "format": "textile",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "rst"
+      ],
+      "format": "rst",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "fb2"
+      ],
+      "format": "fb2",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "eml",
+        "emlx"
+      ],
+      "format": "eml",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file",
+        "package"
+      ],
+      "extensions": [
+        "mbox"
+      ],
+      "format": "mbox",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "enex"
+      ],
+      "format": "enex",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "available": true,
+      "container": "file",
+      "containers": [
+        "file"
+      ],
+      "extensions": [
+        "msg"
+      ],
+      "format": "msg",
+      "requires": [
+        "pandoc"
+      ],
+      "unavailableReason": null
+    }
+  ],
+  "ok": true,
+  "version": "0.41.7"
+}

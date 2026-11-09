@@ -1,0 +1,32 @@
+{
+  "base_source_lock_sha256": "b80640f7569192db68b05e604309b1ef9745191f961ca536e3d713f654d60e26",
+  "builder_image": "sha256:befa617d33d98b0d07f8e1a8fd6f85f07582e1ed71b6698ea01bf0e9b1b2d554",
+  "format": 1,
+  "history_after_sha256": "041a66732977f1a4362a6a76a62e7501a2f9ea05cd4b9499c91fd8c4406bf99a",
+  "history_before_sha256": "768008a6d2acdeaa8d4d32bc4f622b4166005e5df456de63e29aec0fb8cd1b9c",
+  "patch_series": [
+    {
+      "filename": "gtk-commit-preflight.patch",
+      "sha256": "61e79bf81be34df7a401056bae7264768e0e8a47c64922e3bba6f8e7f7bdb5d7"
+    },
+    {
+      "filename": "gtk-native-edits-v1.patch",
+      "sha256": "c4d6eaca508cbeef65ab90dd66d3399ea4f24f16d11c0dbf042c137c076db878"
+    },
+    {
+      "filename": "gtk-history-v2.patch",
+      "sha256": "7c14dcc662860f75d047d8d905f2cdfb3eaf9b26d0e0c22fef7e4f9c803eea4f"
+    }
+  ],
+  "patched_files": {
+    "gtk/gtktextbuffer.c": "bd7edbc0dcd6f82fffe34608e8cb5a1ed5c26dbd55c36ff82fb5f6ab828b2312",
+    "gtk/gtktextbufferprivate.h": "676e04ba9b7d219c78560ecd5a7abf2ac049b76336534a846a52516f2369b02c",
+    "gtk/gtktextview.c": "53acb49d4f0fd46cda21c251b09da6420364d15ae58796f7184fb0f2eb703e35"
+  },
+  "phase5_baseline": {
+    "gtk/gtktextbuffer.c": "da7efd55e8763fbe35fc3ec93e7b616be850bf62e9604285239d66c52bab0200",
+    "gtk/gtktextbufferprivate.h": "0680741e55c73fc88e8ddccaa2c9afe740e0e30669bcea93968d963c4ffddfcf",
+    "gtk/gtktextview.c": "420433a0ed3302f89971c0292a4709b6300086abc0f5e4df007753c17772a6bc"
+  },
+  "version": "4.14.5+ds-0ubuntu0.10"
+}

@@ -1,0 +1,15 @@
+[package]
+name = "fastra-workflow"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fastra-core = { path = "../fastra-core" }
+serde.workspace = true
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+unicode-segmentation = "=1.13.3"
+libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

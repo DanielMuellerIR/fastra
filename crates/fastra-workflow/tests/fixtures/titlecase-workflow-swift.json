@@ -1,0 +1,44 @@
+{
+  "schemaVersion" : 1,
+  "workflows" : [
+    {
+      "id" : "520E35EF-EF57-4D83-839C-7B34313448B2",
+      "name" : "Explicit system-locale Titlecase",
+      "revision" : "3801E6B9-D9E6-476C-92EF-ADF8B15CC5B2",
+      "steps" : [
+        {
+          "argument" : "",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "EBEF4D0F-D06F-428A-811D-B4C89262A873",
+          "indentWidth" : 4,
+          "kind" : "titlecase",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 4,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 72
+        },
+        {
+          "argument" : "!",
+          "caseSensitive" : false,
+          "enabled" : true,
+          "find" : "",
+          "id" : "9ACCF8A6-3846-4270-ABC3-9F7F61C74204",
+          "indentWidth" : 4,
+          "kind" : "suffixLines",
+          "literalWildcard" : false,
+          "regex" : false,
+          "replacement" : "",
+          "tabWidth" : 4,
+          "usesTabs" : false,
+          "wholeWord" : false,
+          "wrapColumn" : 72
+        }
+      ]
+    }
+  ]
+}

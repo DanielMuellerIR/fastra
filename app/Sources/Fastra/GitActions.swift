@@ -90,6 +90,9 @@ struct GitActionContext: Equatable {
 /// auf das Ergebnis an; selbst eine inzwischen geänderte Repository-
 /// Konfiguration kann das Ziel deshalb nicht mehr umleiten.
 enum GitPushCommand {
+    // Git verwendet erweiterte Regex und normalisiert Konfigurationsschlüssel klein.
+    static let rewriteRuleArguments = ["config", "--includes", "--get-regexp",
+                                       "^url\\..*\\.(insteadof|pushinsteadof)$"]
     struct Invocation: Equatable {
         let arguments: [String]
         let environment: [String: String]
@@ -662,8 +665,7 @@ extension Workspace {
             return
         }
         performPushRead(
-            ["config", "--includes", "--get-regexp",
-             "^url\\..*\\.\\(insteadOf\\|pushInsteadOf\\)$"],
+            GitPushCommand.rewriteRuleArguments,
             label: "Push",
             context: context,
             acceptedExitCodes: [0, 1]
@@ -1019,8 +1021,7 @@ extension Workspace {
         }
         let request = GitOperationRequest(
             repository: context.root, kind: .refresh,
-            arguments: ["config", "--includes", "--get-regexp",
-                        "^url\\..*\\.\\(insteadOf\\|pushInsteadOf\\)$"])
+            arguments: GitPushCommand.rewriteRuleArguments)
         gitOperationsCoordinator.perform(request) { [weak self] outcome in
             DispatchQueue.main.async {
                 guard let self, context.isCurrent(in: self) else { return }

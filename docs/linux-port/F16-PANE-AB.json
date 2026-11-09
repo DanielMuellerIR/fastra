@@ -1,0 +1,38 @@
+{
+  "date": "2026-11-05",
+  "baseline_commit": "7aea37ab9c6422e711675fa5ae34447ed96c8390",
+  "baseline_binary_sha256": "6907e292c6eac964b75e63842636fdaf8e7c00b647b5e47bafb6e0d67dff7089",
+  "candidate_binary_sha256": "c169c6a927367253d871492ac21255abc8a442262d308ed099265eaa3157a896",
+  "source_delta_paths": [
+    "crates/fastra-linux/src/main.rs"
+  ],
+  "source_delta_verified_against_archive": true,
+  "runtime_image": "sha256:95bebc437d45f178312616c6607b2885dee3ec786e085c81cf279dec153a9eac",
+  "network": "none",
+  "host_desktop_used": false,
+  "starts_each": 16,
+  "formats_each": {
+    "SVG": 8,
+    "PDF": 8
+  },
+  "window": "1400x1000",
+  "capture_seconds": 6,
+  "resize": "1390x990 then 1400x1000",
+  "baseline": {
+    "blank_starts": 1,
+    "blank_svg": 0,
+    "blank_pdf": 1,
+    "blank_after_resize": 1,
+    "failed_attempt": 14
+  },
+  "candidate": {
+    "blank_starts": 0,
+    "blank_svg": 0,
+    "blank_pdf": 0,
+    "blank_after_resize": 0
+  },
+  "all_initial_frames_visually_checked": true,
+  "original_fixture_hashes_preserved": true,
+  "causal_fix_proven_by_this_sample_alone": false,
+  "release_approved": false
+}

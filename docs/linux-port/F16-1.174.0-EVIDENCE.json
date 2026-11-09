@@ -1,0 +1,82 @@
+{
+  "version": "1.174.0",
+  "build": 384,
+  "product_commit": "92bdd94737e5a47c352e222c3c08b778b2fe2fc9",
+  "source_identity": "a4ba629ffdf184372e84b8ae986c77335843b2f889a6e997d5395d028ac9cad0",
+  "verified_product_inputs": 409,
+  "artifacts": {
+    "fastra_1.174.0_amd64.deb": "538f2e5c4b65aebb740d460a14aaf067986ae8395ad78e6e9c153e4c672b41ce",
+    "fastra-1.174.0-linux-x86_64.tar.gz": "678c18131976a58d18af639aa02ee09bf05498affa84ffa3911d05760c348da5",
+    "fastra-1.174.0-linux-x86_64.zip": "6c93e0f59fa834c005b99f50c0ee759eacc9ef31088a845ed36c39ea64ccfb6c"
+  },
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.174.0/packages",
+  "workspace": {
+    "programs": 49,
+    "passed": 555,
+    "failed": 0,
+    "ignored": 6,
+    "native_commit_cases": 26,
+    "relevant_ignored_native_cases_separately_passed": 5,
+    "unchanged_external_engine_probe_rerun": false,
+    "final_linux_crate_regular_cases": 124,
+    "clippy": "workspace all targets -D warnings",
+    "optimized_build": "PASS",
+    "final_linux_crate_source": "frozen package source tree, all 409 inputs bound to product commit",
+    "final_linux_crate_test_binary_sha256": "89ac22ec563defc7ef076ea76f7ef33ec342027474aa40dbdbfc1dea70e82165"
+  },
+  "native": {
+    "save_as_de_en_minimum_and_wide": 4,
+    "save_as_repeated_after_release_toggle_fix": 2,
+    "force_push_de_en_minimum_and_wide": 4,
+    "normal_push_regression": 1,
+    "commit_regression": 1,
+    "image_watch_regression": 1,
+    "complete_asset_regression": 1,
+    "global_quit_service_and_stale_save": 1,
+    "session_publication_failure_rollback": 1,
+    "rich_membership_change_during_flush": 1,
+    "asset_rollback_through_final_main_callback": 1,
+    "folder_real_apply_undo_pending_main_de_en": 2,
+    "existing_tab_close_session_rich_optout_and_roundtrip": 5,
+    "cold_readonly_target_only_reopen": "PASS",
+    "visual_review": "DE/EN minimum and wide, private Xvfb"
+  },
+  "package": {
+    "installed_deb": "PASS",
+    "relocated_tar": "PASS",
+    "manifest_and_private_icu": "PASS",
+    "actual_packaged_commit_helper_cases": 26,
+    "helper_prefix_space_and_percent": true,
+    "source_free_rich_external_red_to_blue_pixels": "PASS",
+    "actual_optimized_save_as_full_preview_raster_copy_restored_rich_and_native_quit": "PASS",
+    "webkit_sandbox": {
+      "no_new_privileges": 1,
+      "seccomp": 2,
+      "private_pid_namespace": true
+    }
+  },
+  "review": {
+    "quit_session_publish_and_rollback": "CLOSED",
+    "quit_owned_chooser_cancellation": "CLOSED",
+    "rich_membership_before_async_flush": "CLOSED",
+    "asset_io_through_final_main_callback": "CLOSED",
+    "folder_busy_parent_close_bypass": "CLOSED",
+    "save_as_symlink_parent_resolution": "CLOSED",
+    "release_mode_toggle_dependency": "CLOSED"
+  },
+  "test_corrections": [
+    "Native file mutations require the supported fixture filesystem; the initial TMPFS run correctly refused UnsupportedFilesystem.",
+    "After deliberate project ABA, the next independent Save-as case now waits for the current project binding; the previous Stale refusal was correct.",
+    "The additional source-free Release chooser uses the existing tested Ctrl+L/Ctrl+A and single Return sequence; the initial automation dismissed the chooser."
+  ],
+  "limits": [
+    "Pull policy remains pending; no Pull path is enabled.",
+    "Current Mac window acceptance and external component signing still require the approved graphical session.",
+    "Save-as complete preview: 4 MiB per text page, 32 raster images, 32 MiB per image and 64 MiB combined.",
+    "Ambiguous relative HTML or non-image dependencies are refused on folder relocation.",
+    "Native hooks retain their own side effects; cancellation cannot undo an accepted server update.",
+    "SSH/HTTP force-push transport policy is covered without a live external-network acceptance run.",
+    "Full physical desktop, IME and accessibility acceptance remains separate."
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "version": "1.181.0",
+  "build": 391,
+  "product_commit": "e6cae7e6ff8b9c57f6d63b7946c1b4e658defb58",
+  "source_identity": "7f22fdc6576d0ce79cfdf4833613c1ea805d2d9e13dec695c9d4b5763b1036c0",
+  "verified_product_inputs": 451,
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.181.0/packages",
+  "artifacts": {
+    "fastra_1.181.0_amd64.deb": "0c72fe3d3189fb849b4e59373011fda4197269f75f3b30bc3f9f6e10781d2467",
+    "fastra-1.181.0-linux-x86_64.tar.gz": "c3dba2c00a6164e29c128b4e8752692913361a347088779ea9568cb5619469b4",
+    "fastra-1.181.0-linux-x86_64.zip": "0b9899d751700da8898310ef320b940bfd08a3d10eb9bd30f1890cb7ad2896be"
+  },
+  "tests": {
+    "workspace_programs": 50,
+    "regular_passed": 657,
+    "native_git_helper_cases": 26,
+    "failed": 0,
+    "ignored": 6,
+    "linux_regular_subset": 202,
+    "harness": "RUST_TEST_THREADS=1; explicit internal concurrency tests remain enabled",
+    "strict_workspace_debug_clippy": "PASS",
+    "strict_linux_release_clippy": "PASS",
+    "optimized_package_build": "PASS",
+    "root_native_pull": 28,
+    "root_native_linear_clipboard": 32,
+    "root_native_primary_and_clipboard_regressions": 28,
+    "root_native_page_guide": 4,
+    "root_native_actual_guide_restarts": 4,
+    "root_combined_rich_eol_save_save_as_source_sync_rectangle": 6,
+    "independent_final_root_elf_guide_and_previous_profile_queue_receipt_cases": 10
+  },
+  "reviews": {
+    "confirmed_findings": "CLOSED",
+    "config_stdout_pull": "CLOSED; actual red API reproductions, then empty error stdout and unchanged successful config bindings",
+    "config_stdout_switch": "CLOSED; same class fixed through shared helper also used by Commit",
+    "primary_builtin_line_gutter": "CLOSED; native invalid NUL/line pastes rejected before mutation, exact product hash independently checked",
+    "guide_persistence_and_receipts": "CLOSED",
+    "report_sha256": {
+      "pull_root_merge": "bb9dc8b8fe2ad86f52d1ddd9568600f7ddfdecc229c305a4b09d6eefb855d14a",
+      "pull_config": "1075d7e60adacc98e5f8ecd8419e32bee06a8e3bcac38ba140aed26ed8b4e464",
+      "switch_config_class": "1cc91777b082d7c758b89c63f41176c4a4a2e6879f0512d3acc573cf5ea335c9",
+      "page_guide": "75a8b5552251c6c83ad144915d4c5922ca231943b683a87f9044a3d63254ca81",
+      "linear_clipboard": "c1db2c240a0c57aa1127f6f65b447dba1f3f41f014fe264ae4a3d418b80b9d93",
+      "primary_gutter_followup": "0786a7d1e8a86bad44c666af11ab4414748fa164ecb9f926bb618d88e83bd7f3",
+      "root_guide_queue_receipt": "5081587d15fa1bba6ae6ea0152cbadd2dc82ca062ff6d0b8808f489cab716891"
+    }
+  },
+  "package": {
+    "installed_deb": "PASS",
+    "relocated_tar": "PASS",
+    "private_icu_and_manifest": "PASS",
+    "source_free_static_katex_mermaid_table": "PASS",
+    "source_free_rich_math_actual_native_toggle": "PASS; installed and relocated captures inspected",
+    "rich_capture_sha256": {
+      "installed-rich-math.png": "fb1fc1001ee5fba2aaa936966536c2c47311dec518bfd2ac8b28ab0046378015",
+      "relocated-rich-math.png": "3d0b94229af4fcb5716f32890248586299d3829d6638a0159f293ebde9988ece"
+    },
+    "capture_difference": "Only scrollbar pixels at x1377..1379, y412..612 differ; rendered content matches.",
+    "packaged_git_helper_cases": 26,
+    "helper_prefix_space_and_percent": true,
+    "webkit_no_new_privileges": 1,
+    "webkit_seccomp": 2,
+    "webkit_private_pid_namespace": true
+  },
+  "visual": {
+    "guide_options_de_en_minimum_and_wide": "inspected; native controls and labels fit",
+    "guide_native_both_panes_resize": "inspected",
+    "installed_and_relocated_static_and_rich_math": "inspected"
+  },
+  "test_boundaries": [
+    "The final native Debug ELF precedes three final help-text wording corrections; production Rust sources are unchanged, and the optimized packaged ELF is built from all 451 committed product inputs including the corrected help.",
+    "PRIMARY scope includes the exact built-in GtkSourceGutterRendererLines belonging to the clicked view; custom gutters and active Rectangle PRIMARY remain unclaimed.",
+    "Pull retains the explicitly approved native CLI race boundary: remote advance, external Git, hooks and filters can change additional files; actual-state reporting is mandatory after attempted execution.",
+    "Private Xvfb/DBus tests and source-free packaged GUI checks do not claim complete physical KDE, keyboard, IME or accessibility acceptance."
+  ],
+  "limits": [
+    "Independent split selections and command targeting, fixed-column wrapping and continuation indentation remain pending.",
+    "Ordinary multiline paste has a separately reproduced pre-existing caret visibility issue under correction; accepted text, limits and native Undo remain verified.",
+    "Native macOS cross-platform window acceptance and complete physical desktop, Wayland, IME and accessibility acceptance remain pending."
+  ],
+  "retention": "Small review and test evidence retained; disposable working fixtures are due for reassessment by 2026-12-06 after acceptance."
+}

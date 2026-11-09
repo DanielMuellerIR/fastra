@@ -1,0 +1,84 @@
+{
+  "assets": [
+    "/fixture/pmt-p01/out5/assets/documents/000001/mail.md",
+    "/fixture/pmt-p01/out5/assets/documents/000002/mail.md"
+  ],
+  "documents": [
+    {
+      "assets": [],
+      "markdownFile": "/fixture/pmt-p01/out5/assets/documents/000001/mail.md",
+      "metadata": {
+        "author": "a@example.invalid",
+        "subject": "One",
+        "title": "One"
+      },
+      "sourceIndex": 1,
+      "title": "One"
+    },
+    {
+      "assets": [],
+      "markdownFile": "/fixture/pmt-p01/out5/assets/documents/000002/mail.md",
+      "metadata": {
+        "author": "a@example.invalid",
+        "subject": "Two",
+        "title": "Two"
+      },
+      "sourceIndex": 2,
+      "title": "Two"
+    }
+  ],
+  "input": "/fixture/pmt-p01/mail.mbox",
+  "markdownFile": "/fixture/pmt-p01/out5/index.md",
+  "metadata": {
+    "title": "mail"
+  },
+  "ok": true,
+  "outputDirectory": "/fixture/pmt-p01/out5",
+  "outputFiles": [
+    {
+      "byteCount": 248,
+      "path": "assets/documents/000001/mail.md",
+      "sha256": "394fa123edc451f843c4757cff76fbf99d21180e0478a3e9786c5e784e43ce62"
+    },
+    {
+      "byteCount": 247,
+      "path": "assets/documents/000002/mail.md",
+      "sha256": "82bdb8b77175ade29b6ee7629b8e8e687528e64f5c1857ec4a11070fe89edc4b"
+    },
+    {
+      "byteCount": 92,
+      "path": "index.md",
+      "sha256": "052d21787af9f5a3d1f9a51280c20d15e9917611f71b00a8216e17a4f6726b00"
+    }
+  ],
+  "reportFile": "/fixture/pmt-p01/out5/conversion-report.json",
+  "sourceIdentity": {
+    "byteCount": 324,
+    "name": "mail.mbox",
+    "sha256": "a50e0becddbf12ce6c84272a99b26c8ee78be29c43fcf14686e3afac401a1d48"
+  },
+  "sourceMappings": [
+    {
+      "output": {
+        "file": "assets/documents/000001/mail.md",
+        "utf8Length": 248,
+        "utf8Offset": 0
+      },
+      "source": {
+        "message": "1"
+      }
+    },
+    {
+      "output": {
+        "file": "assets/documents/000002/mail.md",
+        "utf8Length": 247,
+        "utf8Offset": 0
+      },
+      "source": {
+        "message": "2"
+      }
+    }
+  ],
+  "version": "0.41.7",
+  "warnings": []
+}

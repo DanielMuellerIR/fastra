@@ -1,0 +1,390 @@
+Fastra für Linux
+
+Updates
+„Updates …“ öffnet die Updateprüfung. Aktive Linux-Benutzerinstallationen suchen standardmäßig einmal täglich nach stabilen Veröffentlichungen im Fastra-GitHub-Repository; die automatische Prüfung lässt sich dort abschalten. GitHub erhält dabei die technisch notwendigen Verbindungsdaten, keine Dokumente und kein Hardwareprofil. Nur ein neueres x86_64-Linux-Paket mit GitHub-SHA256 wird angeboten. „Update installieren“ lädt und prüft das vollständige Paket und wechselt die Version atomar. Die vorige Fassung bleibt für eine Rücknahme erhalten. Die laufende Sitzung mit ungesicherten Dokumenten bleibt geöffnet; Fastra anschließend regulär beenden und erneut starten. Noch nicht veröffentlichte Linux-Pakete werden nicht angeboten. Quellbuilds, Systempakete und der optionale Toolkitkanal werden über ihren ursprünglichen Installationsweg aktualisiert.
+
+Dokumente und Speichern
+Die Quellansichten folgen dem hellen oder dunklen Erscheinungsbild des Desktopfensters, auch bei einem Themewechsel und in der geteilten Ansicht.
+
+Öffnen Sie eine Textdatei oder beginnen Sie mit „Neu“. Tabs halten getrennte Dokumente; „Geteilte Ansicht“ zeigt denselben Text mit gemeinsamem Undo. Vollständig geladene Texte unterstützen UTF-8, UTF-16, UTF-32, Windows-1252, Latin-1 und MacRoman bis 32 MiB. Kodierung, BOM und vorhandene Zeilenenden bleiben beim Speichern erhalten. Nicht darstellbare Zeichen werden abgewiesen. „Anders dekodieren“ öffnet einen neuen Tab; vorhandene Änderungen bleiben erhalten. Große Dateien und überlange Zeilen erscheinen in einer schreibgeschützten Abschnittsansicht, Binärdaten in einer begrenzten Hex-Ansicht. Dort navigieren Sie mit Vor/Zurück oder einem Byteoffset.
+
+„Speichern“ prüft die Dateiidentität und den vorherigen Inhalt vor dem sicheren Austausch. Fremde Änderungen werden nicht überschrieben. Neue Dokumente verwenden „Speichern unter“; ein bereits belegter Name wird abgewiesen. Ein Punkt im Tab zeigt ungesicherte Änderungen.
+
+Suchen und Ersetzen
+Der Standardmodus „Platzhalter“ verwendet * innerhalb einer Zeile und ** über Zeilengrenzen. „Wörtlicher Text“ behandelt Eingaben unverändert. „Regex“ bietet reguläre Ausdrücke. Groß-/Kleinschreibung und ganze Wörter lassen sich getrennt wählen.
+
+Berechnen Sie zuerst die Vorschau, prüfen Sie den vollständigen Vorher-/Nachher-Text und die einzelnen Freigaben. „Freigegebene übernehmen“ ändert nur den Editor. Erst „Speichern“ schreibt die Datei. Jede neue Eingabe oder Editoränderung macht die alte Vorschau ungültig. Capture-Pillen lassen sich ins Ersetzungsfeld ziehen. Ein Undo nimmt die Übernahme vollständig zurück.
+
+Ordner durchsuchen
+Stellen Sie im Hauptfenster Suchmuster, Ersetzung und Suchmodus ein. „Ordner durchsuchen …“ öffnet die Dateivorschau. Wählen Sie den Ordner und bei Bedarf Ausschlüsse, durch Semikolon getrennt. * bleibt innerhalb einer Pfadkomponente, ** reicht über Unterordner; .json bedeutet *.json. Versteckte Dateien und Verweise werden ausgelassen. Bekannte Textformate sind als sicherer Standardfilter aktiviert.
+
+Die Vorschau enthält vollständige Vorher-/Nachher-Texte und einzelne Trefferfreigaben. Übersprungene Dateien werden aufgelistet. „Freigegebene Treffer in Dateien anwenden“ schreibt die geprüften Dateistände direkt; Änderungen seit der Vorschau führen zur Abweisung. Betroffene offene Dateien mit ungesicherten Änderungen müssen zuerst gespeichert werden. „Dateiänderungen rückgängig“ stellt die Originale nach erneuter Prüfung wieder her. Der angezeigte Sicherungspfad bleibt auf der Platte erhalten. Grenzen: 4 MiB je Datei, 64 KiB je logischer Zeile, 10.000 Treffer und 128 MiB gespeicherte Vorschau. Überschrittene Gesamtgrenzen liefern keine teilweise anwendbare Vorschau.
+
+Textwerkzeuge und Faltung
+Das Menü „Text“ enthält Zeilenbefehle und Unicode-Transformationen. Ohne Auswahl gilt das ganze Dokument. Zeilenbefehle erweitern eine Auswahl auf ganze Zeilen. Sortierung verwendet die angezeigte Textlocale: stabil, numerisch, mit beachteter Groß-/Kleinschreibung und Satzzeichen. Gleiche Sortierschlüssel behalten ihre Reihenfolge. Die Reihenfolge ist keine Zusage derselben Reihenfolge wie die Mac-Sortierung. Groß-/Kleinschreibung und „Wortanfänge groß“ verwenden die im Menü angezeigte Text-Systemlocale. Eine andere Oberflächensprache ändert diese Textregeln nicht. Eine Textoperation besitzt ein gemeinsames Undo.
+
+Wählen Sie Zeilen und klicken Sie „Auswahl falten“. „Alles entfalten“ zeigt sie wieder. Faltung betrifft beide Ansichten und verändert keine Dateibytes. Zeilennummern sind während der Faltung verborgen. Aktivieren Sie „Rechteckmodus“ und ziehen Sie im Editor ein Rechteck über logische Zeilen. Alternativ halten Sie beim Ziehen Alt gedrückt. Mehrcursor bleiben für weitere Eingaben, Löschen und Spaltenpaste erhalten. Spaltenpaste füllt kurze Zeilen auf. Jede Eingabe lässt sich gemeinsam rückgängig machen. Esc, Pfeiltasten oder ein neuer Klick beenden die Mehrcursor.
+
+Markdown-Vorschau
+„Markdown-Vorschau“ zeigt lokal gerendertes GFM, Rasterbilder, Formeln mit $…$ / $$…$$, Syntaxfarben und Mermaid-Codeblöcke. Die Suchgruppe klappt dafür ein; Sie können sie jederzeit wieder öffnen. Der Aktualisieren-Knopf lädt etwa ein extern geändertes Bild neu.
+
+Relative Bildpfade beziehen sich auf die gespeicherte Datei. Unterstützt sind PNG, JPEG, GIF und WebP; SVG und Netzbilder sind gesperrt. Explizit aktivierte HTTP-, HTTPS- und Mailto-Links öffnen den Systembrowser beziehungsweise das Mailprogramm; die Vorschau selbst wechselt nicht die Seite. Pro Bild gelten 32 MiB, insgesamt 64 MiB und höchstens 128 Bilder. Es gibt keine Cloud-Verarbeitung und keine schreibende Web-Bridge.
+
+HTML verwendet dieselbe enge Tag- und Attribut-Positivliste wie die Mac-Vorschau, einschließlich Tabellen und aufklappbarer Details. Skripte und fremde interne Positions- oder Kopierattribute werden nicht übernommen. Abgewiesenes HTML wird als Text dargestellt. ==Markierungen== und ansonsten leere Zeilen mit mindestens zwei normalen Leerzeichen bleiben sichtbar. Fußnoten stammen aus dem Linux-GFM-Parser. Klicks verbinden normale Vorschauabschnitte mit Quellzeilen; nicht zugeordnete rohe HTML-Bereiche besitzen keinen Quelltextsprung. Vollständige Markdown-Gleichheit bleibt offen.
+
+Werkzeuge
+„Werkzeuge“ bietet lesende Git-Abfragen, Dateivergleich und Dokumentimport. Git erscheint nur bei installiertem git. Status, Arbeitsdiff, Verlauf und Branches verändern das Repository nicht. Der Dateivergleich bindet beide Quellen und die Zielrevision; prüfen Sie vor einer Blockübernahme den vollständigen Zieltext. Die Übernahme ändert den Editor mit einem Undo, die Datei wird separat gespeichert.
+
+Der Import fragt den lokalen Poor-Man’s-Text-Konverter nach seinen Formaten. Bereiten Sie das Ergebnis vor und prüfen Sie Dokumenttexte, Dateiliste, Warnungen und Verluste. Erst „Übernehmen“ veröffentlicht den vollständigen Ergebnisbaum in einem neuen Ordner. Belegte Namen erhalten einen Zusatz; Quelldateien bleiben erhalten. Änderungen am Zieldokument machen die Freigabe ungültig.
+
+Tastatur
+Bildschirmleser erhalten getrennte Namen für die beiden Quellansichten, Suchen und Ersetzen sowie die Vorher-/Nachher-Vorschau. Suchmodus und Suchbereich ergänzen den gewählten Wert um ihre Beschreibung.
+
+Ctrl+O öffnen · Ctrl+N neu · Ctrl+S speichern · Ctrl+F suchen · Ctrl+Return Vorschau berechnen · Ctrl+Q schließen. Normales Undo/Redo erfolgt im nativen Editor.
+
+Rich-Markdown
+Mit „Rich-Markdown“ wechseln Sie für das aktuelle Dokument zwischen Quelltext und formatierter Bearbeitung. Speichern, Schließen und der Rückwechsel warten auf die vollständige Synchronisation. Ein Fehler hält die Aktion an und erhält die Rich-Ansicht. „Rich-Ansicht verwerfen …“ wechselt erst nach ausdrücklicher Bestätigung zum aktuellen Quellpuffer; noch nicht synchronisierte Eingaben gehen dann verloren.
+
+Fett, Kursiv, Textmarker, Inline-Code, Überschriften, Listen/Aufgaben, Zitate, Links und Tabellen stehen in der Rich-Werkzeugleiste bereit. Externe Links werden gespeichert, aber nicht geöffnet. „Zwischenablage“ bietet Kopieren, Ausschneiden, formatiertes Einfügen und „Klartext einfügen“. Ctrl+C/X/V sowie Ctrl+Shift+V nutzen dieselben Wege; Ctrl+Z, Ctrl+Shift+Z und Ctrl+Y machen Änderungen rückgängig bzw. wiederholen sie. Fastra-Markdown hat Vorrang vor HTML und Klartext. ==Textmarker== sind in Rich bearbeitbar und auch in der Vorschau sichtbar. Beim Rückwechsel bleiben Ausschnitt und vorherige Vorschauwahl je Dokument erhalten. Tabellenwerkzeuge fügen Zeilen/Spalten hinzu, löschen sie und ändern die Ausrichtung. Rückgängig/Wiederholen wirkt im Rich-Modus auf WebKits Bearbeitung; beim Wechsel zurück bleibt die Quelltext-Undo-Historie erhalten. Ein erneuter Rich-Aufbau beginnt eine neue WebKit-Undo-Historie.
+
+Diese erste Fassung ist auf 2 MiB, 10.000 Blöcke und begrenzte Dokumentkomplexität beschränkt. Codeblöcke, nicht unterstützte Bilder und unbekanntes HTML bleiben als geschützte Quellblöcke erhalten. Formeln erscheinen als geschützte gerenderte Atome, deren Nachbartext bearbeitbar bleibt; bearbeiten Sie die Formelsyntax im Quelltext. Geschützte Leerzeichen und Unicode bleiben beim Speichern erhalten. Andere schreibende Quelltextwerkzeuge sind während der Rich-Bearbeitung gesperrt. Die Ansicht verwendet nur mitgelieferte lokale Skripte; Markdown führt keine eigenen Skripte aus und erhält keine Dateischreib-Brücke.
+
+Formatiertes Einfügen übernimmt nur freigegebene Text-, Listen-, Link- und Tabellenformate. Unsicheres HTML, Bilder und Dateipakete werden mit einem Hinweis abgewiesen; es gibt keinen stillen Ersatz. Links erlauben nur HTTP(S) und lokale #Anker; Fastra öffnet sie nicht. Grenzen: 2 MiB UTF-8 je Clipboard-Format, 20.000 HTML-Elemente und 5 Sekunden Lesezeit; 64 KiB je Quellzeile. Ein Tab-, Quell- oder Clipboardwechsel verwirft eine alte Einfügeanfrage ohne Ausgabe.
+
+Suche in allen Texttabs
+Im Bereich „Alle editierbaren Tabs“ werden die vollständigen Vorher-/Nachher-Texte aller geladenen Quelltextdokumente geprüft. Schreibgeschützte Ansichten und aktive Rich-Ansichten werden gezählt und ausgelassen. Einzelne Treffer können freigegeben werden. Vor Apply muss der vollständige Dokumentbestand einschließlich Tabs ohne Treffer noch zur Vorschau passen. Jeder geänderte Tab erhält eine native Undo-Aktion. Das gemeinsame Rückgängig prüft alle entstandenen Stände erneut. „Gemeinsame Rücknahme verwerfen“ löst nur diese Bindung; die Texte und die normale Editorhistorie bleiben erhalten. Dateien werden dadurch nicht gespeichert.
+
+Dateisicherungen
+„Dateisicherungen …“ öffnet einen zuvor angezeigten Transaktions-Sicherungsordner. Den vollständigen aktuellen und ursprünglichen Inhalt prüfen und die Wiederherstellung ausdrücklich freigeben. Geänderte Quellen oder Sicherungen machen die Freigabe ungültig. Große oder binäre Inhalte werden vollständig in Hex-Seiten dargestellt. Ungesicherte betroffene Editoren verhindern die Wiederherstellung. Erst nach erfolgreicher Wiederherstellung und erneuter Quellenprüfung kann die Sicherung ausdrücklich entfernt werden; Quelldateien bleiben erhalten.
+
+Projektdateien und externe Änderungen
+„Projektdateien …“ zeigt einen lokalen, begrenzten Verzeichnisbaum mit Pfadfilter und aufklappbaren Ordnern. Symlinks und Spezialdateien werden nicht geöffnet. Ein Hintergrundwächter meldet externe Änderungen geöffneter Textdateien. Erst die vollständige Vorschau und ausdrückliche Freigabe laden die neue Fassung; ungesicherter Text bleibt bis dahin erhalten.
+
+„Zuletzt benutzte Projekte …“ im Projektfenster merkt höchstens zwölf bewusst gewählte Ordner nach erfolgreichem Scan. Ordnerauswahl oder Öffnen eines Listeneintrags zählt als Wahl; einen eingegebenen Pfad mit Enter bestätigen. Bloßes Tippen, Filter und automatische Aktualisierung ändern die Liste nicht. „Öffnen“ liest den Ordner neu. „Entfernen“ und „Alle Einträge entfernen“ ändern ausschließlich die private Liste, niemals Projektdateien oder geöffnete Inhalte. Die Liste wird beim Öffnen frisch gelesen; Projekte und Dateien starten nicht automatisch.
+
+Markdown-Gliederung
+„Gliederung …“ zeigt Überschriften und logische Quellzeilen. Filtern verändert nur die Anzeige. „Quelltext“ springt zur Überschrift und hebt bei Bedarf die Faltung auf; „Vorschau“ öffnet die lokale Darstellung an derselben Überschrift und wartet auf Diagramme. Nach Text- oder Tabwechsel zuerst aktualisieren. Interne Ankerlinks verwenden kleingeschriebene Titel mit Bindestrichen, doppelte Titel erhalten einen Zähler.
+
+In Mehrtab- und Ordnervorschauen macht „Unicode und Steuerzeichen als Escapes zeigen“ auch NFC/NFD, Tabulatoren, Backslashes und Zeilenenden eindeutig sichtbar. Die Darstellung wird vollständig im Hintergrund vorbereitet; währenddessen bleibt Apply gesperrt. Die Originaltexte werden angewendet. Die Escape-Ansicht ist auf 16 MiB je Seite begrenzt und wird nie gekürzt. In der Dateiwiederherstellung zeigt „Alle Bytes exakt als Hex zeigen“ auch BOM und konkrete Dateibytes; alle Bereiche sind über den Byteoffset erreichbar.
+
+Lokale Textsicherung
+Die Textsicherung ist standardmäßig ausgeschaltet. „Editierbare Texttabs lokal sichern“ aktiviert sie für das aktuelle Fenster und speichert dabei auch ungesicherte Inhalte lokal und unverschlüsselt. „Jetzt sichern“ bestätigt die neue Kopie; „Wiederherstellung …“ zeigt frühere inaktive Sitzungen zur vollständigen Prüfung. Erst nach Freigabe werden neue Tabs geöffnet. Geänderte oder fehlende Quellen werden als ungebundene ungesicherte Dokumente restauriert und nicht still überschrieben. Grenzen: 32 editierbare Texttabs, je 4 MiB und insgesamt 8 MiB Nutzdaten. Abschnitts-, Hex- und Bildansichten werden ausgelassen. Beim Schließen mit aktivierter Sicherung lässt sich zwischen Abbrechen, Schließen mit Wiederherstellung und Verwerfen wählen. Fehler halten den Editor offen. Deaktivieren beendet neue Sicherungen; vorhandene Kopien werden nur ausdrücklich gelöscht. Die Wiederherstellung ersetzt kein Speichern der Quelldateien.
+
+Gespeicherte Textabläufe
+Unter „Werkzeuge → Gespeicherte Textabläufe …“ legen Sie benannte Abläufe an. Fügen Sie Schritte hinzu, ordnen Sie sie mit den Pfeilen und speichern Sie die Definition. Die private Sammlung ist vom Dokument getrennt. Ungesicherte Entwürfe müssen vor dem Schließen gespeichert oder ausdrücklich verworfen werden.
+
+Wählen Sie das ganze aktive Dokument oder seine aktuelle Auswahl und berechnen Sie die Vorschau. Die Stufenauswahl zeigt jeden vollständigen Zwischenstand und das vollständige Endergebnis. „Exakte Zeichen“ zeigt Backslash, Zeilenenden, Steuerzeichen und alle Nicht-ASCII-Codepunkte als Escapes; nach einem Wechsel die Vorschau neu berechnen. NFC/NFD-Abläufe öffnen diese Ansicht automatisch. Erst „Vorschau übernehmen“ ändert den Editor mit einem Undo. Eine geänderte Quelle, Definition oder Auswahl verlangt eine neue Vorschau. Dateien werden dadurch nicht gespeichert. Rechteckauswahlen zuerst mit Esc beenden.
+
+„Ablauf auf alle Tabs …“ öffnet eine unveränderliche Kopie der gespeicherten Definition in einem eigenen Fenster. Name und vollständige Definition bleiben dort prüfbar; spätere Änderungen im Definitionsfenster ändern diesen Auftrag nicht. „Endergebnisse und Freigaben“ zeigt für jeden editierbaren Tab den vollständigen Vorher-/Nachher-Text mit eigener Freigabe, auch unveränderte Tabs bleiben erreichbar. „Zwischenstufen“ zeigt jeden vollständigen Schritt je Tab; Freigaben gelten dem Endergebnis. Rich-, schreibgeschützte und gerade gespeicherte Ansichten werden sichtbar gezählt und ausgelassen. Grenzen: 32 editierbare Tabs, 4 MiB je Text, 16 MiB Eingaben/Ausgaben, 32 MiB gehaltene Zwischenstufen, 15 Sekunden insgesamt. Erst „Freigegebene Tabs übernehmen“ ändert den Speicher mit einem Undo pro geändertem Tab. Dateien werden nicht geschrieben. Das gemeinsame Rückgängig prüft alle damaligen Tabs einschließlich wirkungsloser und nicht freigegebener Eingaben erneut. Änderungen an Bestand, Revision, Schreibschutz, Rich-/Save-Zustand oder gespeicherter Dateibasis sperren alte Aufträge. „Gemeinsame Rücknahme verwerfen“ löst nur diese Bindung. Beim Schließen dieses Werkzeugfensters endet die gemeinsame Bindung; das normale Dokument-Undo bleibt erhalten.
+
+Sortierung, Groß-/Kleinschreibung und „Wortanfänge groß“ verwenden die sichtbare Text-Systemlocale. Alle 39 bisherigen Schrittarten sind vorhanden; nicht unterstützte aktivierte Schritte und unbekannte semantische Felder sperren den ganzen Ablauf. Die Vorschau nennt sie konkret. Wirkungslose Zeilenfilter löschen nicht den gesamten Inhalt.
+
+Textbausteine
+„Werkzeuge → Textbausteine …“ speichert Vorlagen mit {{Name}}. Wiederholte Platzhalter teilen ein Feld; Feldwerte dürfen mehrere Zeilen enthalten und werden wörtlich eingesetzt. Prüfen Sie den vollständigen Dokumenttext vor und nach dem Einfügen. Eine verschobene Auswahl oder Einfügestelle macht die Freigabe ungültig.
+
+Import/Export übernimmt die bestehenden Swift-JSON-Formate. Der Import zeigt den vollständigen Sammlungsstand vor dem Speichern, ergänzt Kopien und überschreibt keine gespeicherten Definitionen. Zusatzfelder bleiben erhalten. U+0000 in bearbeiteten Textfeldern wird in diesem GTK-Teilstand ausdrücklich abgewiesen. Exportiert wird die hier geladene gespeicherte Sammlung; ungesicherte Entwürfe zuerst speichern. Export legt eine neue Datei an und überschreibt kein vorhandenes Ziel.
+
+Grenzen: 50 Definitionen je Sammlung, 1 MiB JSON, 32 Schritte, 4 MiB Dokumenttext, 32 MiB gehaltene Rechentexte, zusätzlich 64 MiB exakte Darstellung und fünf Sekunden pro Ablauf. Bausteine erlauben 16 KiB Vorlage/Feldwert, 32 verschiedene Platzhalter und 256 KiB Ergebnis. Datei-, Ordner- und Projektabläufe mit Plattenschreiben bleiben offen. Bei einer fremd geänderten Sammlung wird der alte Stand nicht überschrieben; nach Sicherung oder Verwerfen des Entwurfs „Neu laden“ verwenden.
+
+Ergebnisse mit mehr als 64 KiB je logischer Quellzeile werden vor der Übernahme in den nativen Texteditor abgewiesen. Das betrifft auch erzeugte Textoperationen und Abläufe. Große oder überlange vorhandene Dateien bleiben über Abschnitts- und Hexansichten lesbar; es wird keine gekürzte Ansicht als vollständige Freigabe verwendet.
+
+Drucken
+„Drucken“ oder Ctrl+P öffnet den nativen Druckdialog für die aktuelle Ansicht. Quelltext und Markdown-Vorschau sind auch einzeln wählbar. PDF-Ausgabe erfolgt über den Druckdialog. Im Fastra-Reiter schalten Sie beim Quelltext Zeilennummern und Kopf-/Fußzeilen um. Hex und große Textdateien drucken nur den aktuell sichtbaren, im Titel genannten Abschnitt; Hexzeilen werden nicht umbrochen.
+
+Bilder und sämtliche PDF-Seiten werden als begrenzte Rasterbilder bis 4.000 Pixel Kantenlänge an das gewählte Papier angepasst. PDF-Vektoren, durchsuchbarer PDF-Text und Originalpapierformate bleiben dabei nicht erhalten. Die Markdown-Vorschau druckt Formeln und Diagramme gerendert; Rich druckt seine aktuelle, zuvor vollständig synchronisierte Ansicht. Mehrseitige Tabellenköpfe werden vom verwendeten WebKit nicht zuverlässig wiederholt. Umfangsgrenzen und fehlende Schriften werden sichtbar gemeldet; bei Fehlern bleibt die Quelldatei erhalten. Quelltextdruck ist auf 2 MiB begrenzt.
+
+
+Suchvorlagen
+„Suchvorlagen …“ neben dem Suchbereich öffnet 38 unveränderliche Regex-Vorlagen und Ihre eigene Sammlung. Für eigene Änderungen eine mitgelieferte Vorlage duplizieren oder „Neu aus Suchformular“ wählen. Speichern, Formularfüllung und Export sind getrennte Aktionen. Ungesicherte Entwürfe vor dem Schließen speichern oder ausdrücklich verwerfen.
+„Suchformular füllen“ setzt Muster und Regex-Modus. Ein vorhandener Ersetzungsvorschlag ersetzt das Ersetzungsfeld, auch wenn er leer ist. Ohne Vorschlag bleibt der bisherige Ersetzungstext erhalten. Suchbereich, Groß-/Kleinschreibung und „Nur ganze Wörter“ bleiben erhalten. Vorhandene Freigaben werden ungültig; danach eine neue Vorschau berechnen und prüfen. Eine inzwischen geänderte Eingabe verhindert eine verspätete Formularfüllung. Es wird weder automatisch gesucht noch Dokumenttext oder eine Datei geändert.
+Import/Export verwendet das bestehende Swift-JSON-Arrayformat. Import prüft die ganze Datei und zeigt vor dem Speichern die vollständige Sammlung sowie die Anzahl ersetzter IDs. Gleiche IDs ersetzen bestehende eigene Vorlagen; andere bleiben erhalten. Ungültige Einträge werden nicht still übersprungen. Zusatzfelder bleiben erhalten; unbekannte Kategorien oder Angaben sperren die Formularfüllung. „Definition als JSON …“ zeigt sie vollständig. Capture-Namen sind ein JSON-Array von Texten, etwa ["Name", "Ort"].
+Export erzeugt eine neue Datei aus der geladenen gespeicherten eigenen Sammlung und überschreibt kein bestehendes Ziel. Grenzen: 1 MiB JSON, 100 eigene Vorlagen, 16 KiB je Muster/Ersetzung/Beispiel und 64 Capture-Namen. Nicht vollständig darstellbare JSON-Ansichten bleiben gesperrt. Eigene Vorlagen werden privat lokal gespeichert; eine anderswo geänderte Sammlung wird nicht überschrieben. Danach Entwurf speichern/verwerfen und „Neu laden“ verwenden.
+
+Editoroptionen
+„Editoroptionen …“ im Dokumenttab öffnet die Syntaxwahl und Optionen für beide Editoransichten. „Automatisch“ folgt dem Dateinamen, „Reiner Text“ schaltet Syntaxfarben ab. Die verfügbaren Formate stammen aus dem installierten GtkSourceView-Sprachpaket. Die manuelle Wahl wird für gespeicherte Dateien privat lokal gespeichert, auch bei Dateinamen ohne Endung oder ohne gültiges UTF-8. Bei „Speichern unter“ wird die aktuelle Wahl am neuen Pfad gemerkt. Die Sprachwahl verändert weder Text noch Kodierung oder Zeilenenden.
+Tabulatorbreite (1–16), Einrückung mit Leerzeichen, automatische Einrückung, Zeilennummern, Hervorhebung der aktuellen Zeile und der Rand bei Spalte 80 gelten für beide Ansichten dieses Tabs. Diese Darstellungsoptionen gelten bis zum Schließen des Tabs; gemerkt wird nur die Syntaxwahl. Gefaltete Bereiche blenden die Zeilennummern weiter aus. Nach dem Entfalten gilt Ihre Nummernwahl wieder. Beschädigte oder fremd gesperrte Formatzuordnungen werden nicht überschrieben; eine Fehlermeldung bleibt sichtbar.
+
+
+Suche in der Auswahl
+Im Suchbereich „Aktuelle Auswahl“ gilt die Suche ausschließlich für eine nichtleere zusammenhängende Textauswahl im aktiven Editor. Für eine Mausauswahl den Rechteckmodus ausschalten; eine bestehende Rechteckauswahl zuerst mit Esc beenden. Ohne passende Auswahl wird die Suche verweigert und niemals auf das ganze Dokument ausgeweitet.
+Die vollständige Vorher-/Nachher-Ansicht enthält auch unveränderte Bereiche außerhalb der Auswahl. Nur freigegebene Treffer innerhalb der festgehaltenen Auswahl werden übernommen; ein Rückgängig stellt den ganzen Schritt zurück. Wird die Auswahl verschoben oder eingeklappt, ist eine neue Vorschau erforderlich. Im Bereich „Aktive Datei“ bleibt eine Vorschau bei bloßer Cursor- oder Auswahlbewegung gültig.
+Vor jeder Übernahme in den Texteditor werden das Ergebnis und seine Grenzen erneut geprüft. U+0000, mehr als 32 MiB Text oder mehr als 64 KiB je logischer Zeile werden mit einer sichtbaren Meldung verweigert; der Ausgangstext und seine Undo-Historie bleiben erhalten.
+
+
+Git: Stage und Unstage
+Öffnen Sie „Git …“ unter „Werkzeuge“ und anschließend „Stage / Unstage …“. Wählen Sie einzelne Dateien und bereiten Sie eine Stage- oder Unstage-Vorschau vor. Prüfen Sie die vollständige Dateiliste und den scrollbaren Diff. Erst die ausdrückliche Freigabe aktiviert die Indexübernahme. Ungespeicherte Editoränderungen werden nicht automatisch gespeichert oder bereitgestellt; Arbeitsdateien bleiben unverändert. Umbenennungen können beide betroffenen Pfade in die Freigabe aufnehmen.
+
+Neue Dateiauswahl, geänderte Dateien, ein anderer Branch/Index und ein gewechselter Dokumentkontext erfordern eine neue Vorschau. „Abbrechen“ fordert einen Abbruch an; nach einer bereits erfolgten atomaren Übernahme kann es diese nicht rückgängig machen. Laden Sie im Zweifel den aktuellen Git-Status neu. Fremde Git-Sperrdateien werden nicht entfernt.
+
+„Commit …“ besitzt eine eigene Vorschau des vollständig geprüften Index; die Indexaktionen übernehmen oder stagen niemals automatisch weitere Dateien. Auch konfigurierte externe Clean-/Process-Filter, Index-Hooks, Submodule, ungelöste Konflikte und umfangreiche Auswahlen benötigen das Git-CLI. Grenzen: 128 ausgewählte Pfade, 32 MiB je Datei, 64 MiB insgesamt und 2 MiB vollständige Diffausgabe. Die Vorbereitung kann lose Git-Objekte erzeugen; sie ändert den tatsächlichen Index erst nach Freigabe. Indexaktionen starten keine Git-Netzwerkaktion.
+
+Ordner vergleichen
+„Werkzeuge → Ordner vergleichen …“ vergleicht zwei gewählte Ordner ausschließlich lesend nach Dateibytes. Status- und Textfilter betreffen nur die sichtbare Ergebnisliste, nicht das Lesebudget oder den Scan. Jede Seite zeigt höchstens 100 Einträge. Versteckte Einträge bleiben ausgeschlossen; Symlinks und Sonderdateien werden angezeigt, aber nicht verfolgt. „Nicht geprüft“ und unvollständige Ergebnisse sind keine bestätigte Abwesenheit einer Datei.
+„Links öffnen“/„Rechts öffnen“ verwendet den normalen Dateilader. „Textpaar vergleichen …“ liest beide Dateien frisch und öffnet links einen neuen, sauberen Editor-Tab. Die Ordnerliste ist nur eine Momentaufnahme. Änderungen im Dateivergleich benötigen dessen eigene Vorschau und ändern zunächst nur den Editor, keine Datei. Binär-/Abschnittsdateien und Textpaare über 4 MiB werden dort abgewiesen. Scan-Ausschlüsse, Typfilter und Ordnersynchronisation sind in diesem Fenster nicht verfügbar.
+
+
+XML-Quellnavigation mit XPath
+Werkzeuge → XPath-Navigation … bindet die Ansicht an den aktuellen editierbaren Quelltab. XML prüfen, XPath eingeben und einen Treffer anklicken: Fastra markiert nur die genaue Quellstelle; Text und Dateien bleiben unverändert. Tabwechsel, neue Quellrevision, neue Trefferbasis oder Rich-Modus sperren alte Sprünge. Nach einer Textänderung XML neu prüfen. Vorschläge ergänzen Element-/Attributnamen; Voriger/Nächster Treffer und Seiten mit je 100 Treffern bleiben sichtbar erreichbar.
+
+Das Teilset umfasst /, //, *, [n], [@attr], [@attr='wert'], @attr und text(). Relative Pfade suchen wie // in jeder Tiefe. Positionen zählen je Elternknoten, mehrere Prädikate gelten in Eingabereihenfolge. Namen einschließlich Präfixen bleiben groß-/kleinschreibungssensitiv; kanonisch gleiches Unicode gilt wie in Swift als gleich. Der Quelltext wird nicht normalisiert. text() zeigt die erste nichtleere direkte Text-/CDATA-Stelle. Andere XPath-Funktionen, Achsen und boolesche Prädikate sind nicht enthalten.
+
+DTD und externe Entitäten sind gesperrt. Grenzen: 4 MiB UTF-8, 100.000 XML-Knoten und Attribute, 32 Ebenen, 128 Attribute und 8 KiB je Starttag; XPath 4 KiB und 128 Schritte/Prädikate, höchstens 10.000 Treffer. Lange reine Textstellen sind erlaubt. Die hart begrenzte Parserphase ist nicht kooperativ abbrechbar; Abbruch wirkt davor/danach und während Index-/Auswertungsarbeit. Fehler und Grenzen zeigen keine Teiltreffer. Dies ist ausdrücklich keine vollständige XPath-/XML-Parität.
+
+
+4D-Quelltext: .4dm/.4qs verwenden gebündelte Syntaxfarben; „Editoroptionen“ bietet das Format „4D“. „Werkzeuge → 4D-Methoden und Parameter“ zeigt statische Definitionen des gebundenen Quelltabs. „Projektmethoden lesen“ liest nur die bekannten Methods-/Classes-Ordner des gewählten Projekts. Eine Methode anklicken zeigt Signatur und Kommentarkopf; „Gewählte Methode öffnen“ prüft die Quelle erneut. „Parameter am Cursor“ markiert den aktuellen Parameter einer eindeutigen Projektmethode. Der Index wird ausdrücklich neu gelesen, nicht je Tastendruck. Dies ist keine Compilerprüfung oder 4D-Runtime; Komponenten, Makros und vollständige Sprachauflösung fehlen. Symlinks werden verweigert. Grenzen: Quelltab 4 MiB/10.000 Definitionen; Projekt 2000 Dateien/16 MiB gesamt/1 MiB je Datei; höchstens 200 sichtbare Einträge. Änderungen an Tab, Revision, Rich-Sperre oder Projektauswahl sperren alte Treffer.
+4D-Symbolfakten: © 4D SAS, abgeleitet aus https://github.com/4d/docs unter CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); Extraktion und Umformatierung der Befehls-/Konstantennamen, keine Beschreibungstexte.
+
+Weitere Textoperationen
+„Text“ enthält native Untermenüs für Zeilen, Einrückung/Tabs, Unicode, Anführungszeichen/Escapes und Vertauschen. Tabs in Leerzeichen, Leerzeichen in Tabs sowie Ein-/Ausrücken verwenden das Profil des aktiven Editors. „Harter Zeilenumbruch …“ fragt die Spalte ab (1–10000); lange einzelne Wörter bleiben ungeteilt. Zeichen-/Worttausch verwendet die aktuelle Einfügestelle oder zusammenhängende Auswahl. Rechteckauswahlen zuerst mit Esc beenden. Ein Undo stellt den gesamten Befehl zurück.
+Anführungszeichen können begradigt oder nach den ausdrücklich englischen Regeln typografisch gesetzt werden. Escape-Sequenzen, Diakritikfaltung und Emoji-Darstellung folgen den vorhandenen Produktregeln. Erzeugte NUL-Zeichen oder zu lange Zeilen sperren die Übernahme sichtbar. Eine während der Rechnung verschobene Auswahl oder Einfügestelle wird nicht nachträglich bearbeitet.
+Gespeicherte Textabläufe enthalten dieselben zusätzlichen Schrittarten und eigene Felder für Tabbreite/Einrückung (1–16), Tabs und Umbruchspalte. Geänderte Parameter verlangen eine neue Vorschau; alle Zwischenstände bleiben vollständig prüfbar. Emoji-Schritte öffnen wie NFC/NFD zunächst „Exakte Zeichen“. Alle 39 ursprünglichen Schrittarten sind verfügbar; „Wortanfänge groß“ verwendet die sichtbare Text-Systemlocale. Speichern bleibt ein eigener Schritt.
+
+Hexentwurf
+In einer Hex-/Abschnittsansicht öffnet „Hex bearbeiten …“ einen optionalen Entwurf bis 32 MiB. Ein Byteoffset wählt die 16-Byte-Zeile; „Zeile vormerken“ übernimmt nur die Feldeingabe in den Entwurf. Ungültige oder noch nicht vorgemerkte Eingaben bleiben erhalten. Vor Navigation, Undo oder Speichern die Eingabe vormerken oder zurücksetzen. Entwurfs-Undo/Redo ändert keine Datei.
+„Alle Hexänderungen prüfen“ zeigt jeden geänderten Byteoffset mit Alt-/Neuwert und den Zieldateipfad. Erst nach ausdrücklicher Freigabe können die Bytes atomar gespeichert werden. Die Dateilänge bleibt erhalten. Externe Änderungen und ungespeicherte andere Tabs derselben Datei sperren das Speichern. Nach Erfolg beginnt das Entwurfs-Undo auf einer neuen Dateibasis. Grenzen: 4096 geänderte Bytes und 4096 Undo-Schritte.
+Schließen des Hexfensters verbirgt den Entwurf; das Hauptfenster kann einen ungespeicherten Hexentwurf nicht still verwerfen. „Verwerfen / neu laden …“ verlangt eine Bestätigung und liest den aktuellen Plattenstand neu. Hexentwürfe werden nicht in der optionalen Textsitzung gesichert. Bei gemeldeter Dateisicherung zuerst deren Wiederaufnahme prüfen, danach die Dateibasis neu laden.
+
+Dateibytes gespeicherter Texte: „Werkzeuge → Dateibytes in neuem Hex-Tab …“ öffnet den aktuellen Plattenstand auch bei normalen Texten oder Dokumentvorschauen. Der bisherige Tab mit ungespeichertem Quelltext bleibt erhalten. Ein vorhandener Hexentwurf wird wieder geöffnet. Ungespeicherte neue Texte zuerst speichern. Hex-Speichern bleibt gesperrt, solange ein anderer Tab derselben Datei ungesicherte Inhalte enthält; saubere Texttabs behalten beim anschließenden Abgleich ihre gewählte Zeichenkodierung.
+
+4D-Token im Textmenü und in Textabläufen
+„Text → 4D → 4D-Token-Suffixe entfernen“ entfernt erkannte Befehls- und Konstantensuffixe. „4D-Befehls-Token ergänzen (keine Konstanten)“ ergänzt nur bekannte Befehlsnummern; Konstantennummern werden nicht erfunden. Im Ablaufeditor heißt dieser Schritt „4D: Nur Befehle tokenisieren“. Strings, Kommentare, Objektmember und deklarierte Typnamen bleiben gemäß dem vorhandenen Swift-Tokenizer geschützt. Bekannte Befehle ohne Nummer bleiben unverändert.
+Ohne Auswahl gilt das ganze Dokument, sonst nur die festgehaltene zusammenhängende Auswahl. Der gewählte Ausschnitt wird als eigenständiger Text tokenisiert. Ein Undo stellt den gesamten Befehl zurück. In gespeicherten Abläufen zuerst die vollständigen Zwischenstände und das Endergebnis prüfen; Übernahme und Dateispeicherung bleiben getrennt. Die Token-Transformationen besitzen wie das Original keinen SQL-Modus und können erkannte 4D-Namen auch innerhalb eines SQL-Blocks umformen. Sie sind keine Compiler- oder SQL-Prüfung und benötigen keine 4D-Laufzeit. Grenzen: 4 MiB Eingabe und 100.000 normale Wort-/Phrasenkandidaten; Ausgabegrenze und Cancel gelten zusätzlich. Keine Teilübernahme bei Fehlern oder Grenzen.
+Symbolfakten: © 4D SAS, abgeleitet aus https://github.com/4d/docs unter CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Namen und Befehlsnummern wurden extrahiert und umformatiert; keine fremden Beschreibungstexte.
+
+4D-Bereiche dürfen zusammengesetzte Unicode-Zeichen nicht teilen. Betroffene Token-Suffixe oder Auswahlen werden ausdrücklich abgewiesen. Es wird nichts normalisiert oder außerhalb des Tokenbereichs erweitert; Text und bisheriges Undo bleiben erhalten.
+
+Optionale 4D-Runtime: Diagnosen und Parameterhilfe
+„Werkzeuge → 4D-Diagnosen (tool4d) …“ nutzt ein separat bereitgestelltes lokales tool4d. Fastra lädt oder installiert keine Runtime. Im Projektbaum das vollständige 4D-Projekt wählen und eine gespeicherte .4dm/.4qs-Quelle darin öffnen. tool4d muss neben seinem Resources-Verzeichnis liegen; die nötigen Runtime-Systembibliotheken, Bubblewrap und prlimit müssen verfügbar sein. Ohne funktionierende Isolation erfolgt kein Start.
+Erst „Dokument prüfen“ oder „Parameter am Cursor“ startet die Abfrage. Aktueller ungespeicherter Quelltext läuft ausschließlich über lokale Pipes in einen Worker mit eigenem Loopback-Netzraum. Projekt und Runtime bleiben schreibgeschützt; keine Methoden, Makros oder Quelländerungen werden ausgeführt. Die vollständigen Dokumentdiagnosen sind keine Compiler-/Gesamtprojektprüfung. Ältere Server ohne Pull-Diagnostics werden sichtbar abgewiesen.
+Ein Diagnosenklick selektiert nur im gebundenen Quelltab. Nach Tab-/Text-/Projektwechsel oder Rich-Sperre neu prüfen; gefaltete Quelle vorher aufklappen. Parameterhilfe zeigt nur Text. „Abbrechen“ beendet auch eigene Kindprozesse. Falls ein Server nach einer vollständigen Antwort nicht selbst beendet, zeigt Fastra das kontrollierte Cleanup an; eine unvollständige Antwort wird niemals als fehlerfrei ausgegeben.
+Grenzen: 1 MiB aktueller UTF-8-Text, 200 Diagnosen, 8 Signaturen, 25 Sekunden äußere Prozessfrist, höchstens zwei Abfragen pro App. Nur gespeicherte Methoden mit UTF-8-relativem Pfad im ausgewählten Projekt; ursprüngliche Dateibasis wird nicht still aktualisiert. Keine Ausführung, Completion, Refactorings, Downloads oder externen Netzwerkverbindungen.
+
+Wortanfänge groß und Text-Systemlocale
+„Text → Unicode → Wortanfänge groß · Systemlocale (ID)“ und die gleichnamige Ablauf-Schrittart verwenden das nach GTK-Start bestimmte LC_CTYPE, unabhängig von der Sprache der Oberfläche. Beispielsweise ergibt tr_TR „İstanbul“, en_US „Istanbul“. C/POSIX wird ausdrücklich als en_US_POSIX verwendet. Prüfen Sie die sichtbare ID in der vollständigen Schritt-/Endvorschau. Eine geänderte Locale verlangt eine neue Vorschau. JSON-Definitionen erhalten kein neues Locale-Feld; beim nächsten Berechnen gilt die dann sichtbare Systemlocale. Fehlt dieser ausdrückliche Kontext, wird titlecase vollständig verweigert. Speichern bleibt ein eigener Schritt. Allgemeine Parität mit localizedCapitalized auf macOS ist damit nicht behauptet.
+
+Zu Zeile/Spalte springen
+„Werkzeuge → Zu Zeile/Spalte springen …“ oder Strg+L öffnet einen Dialog für den aktiven Quelltab. Eine positive Zeile oder Zeile:Spalte eingeben; Return springt, Escape bricht ab. Werte beginnen bei eins und werden am Zeilen-/Textende begrenzt. Spalten zählen UTF-16-Einheiten; liegt die Spalte innerhalb eines Zeichenpaars, landet der Cursor mit Hinweis an dessen Anfang. Text und Undo bleiben erhalten. Den gebundenen Quelltab aktivieren, gefalteten Text zuerst entfalten und laufendes Speichern abschließen; Rich-, Hex- und Dokumentvorschauen sind gesperrt. Änderungen an Quelle, Auswahl oder Cursor verlangen einen neuen Sprung. Grenze: 32 MiB Quelltext.
+
+Dateien und Ordner öffnen
+Ziehen Sie lokale Dateien auf das Hauptfenster: Jede Datei erhält einen Tab; ein Ordner öffnet den Projektbaum. Auch Desktop-Dateiöffnungen verwenden diesen Weg. Höchstens 32 Einträge und ein Ordner je Vorgang; doppelte aufgelöste Pfade werden nur einmal geöffnet. Entfernte Adressen und besondere Dateitypen werden abgewiesen. Vorhandene ungesicherte Texte bleiben erhalten.
+
+
+Git-Historie und historische Dateipaare
+„Git … → Historie erkunden …“ zeigt den echten Git-Graph und bis zu 200 Commits. Einen Commit und bei Merge-Commits ausdrücklich den Vergleichselternteil wählen. Root-Commits besitzen eine leere Vorgängerseite. Die vollständige Liste enthält auch Umbenennungen und eindeutig angezeigte rohe Linux-Pfade. „Gewähltes Dateipaar lesen“ zeigt die beiden unveränderlichen Blobstände nebeneinander und den Differenzbericht mit Commit-/Parentbasis.
+Diese Ansicht ist vollständig lesend: keine Editorübernahme, keine Index-/Ref-/Dateiänderung und kein Netzwerk. Ein später geänderter Arbeitsbaum ändert das historische Paar nicht. „Historie neu lesen“ aktualisiert die begrenzte Commitliste; fehlende Objekte oder ein ersetztes Repository führen zu sichtbaren Fehlern. Neue Auswahl entwertet das alte Paar. Abbruch oder geschlossenes Hauptfenster verhindern verspätete Übernahmen.
+Grenzen: 200 Commits, 2000 Änderungspfade, je Blob 1 MiB, 2 MiB CLI-/Berichtsausgabe, 15 Sekunden je CLI-Aufruf. Binärdaten, ungültiges UTF-8, Symlinks und Submodule werden mit OID/Modus/Umfang angezeigt, nicht als Textvergleich. Größen-/Arbeitsgrenzen zeigen keine Teilvorschau. Vollständige Fehlerausgabe steht scrollbar unter „Differenzblöcke“. Commits besitzen einen eigenen Dialog mit vollständiger Indexvorschau.
+Fehlende Objekte in Partial Clones werden auch in bestehenden lokalen Git-Leseansichten niemals automatisch nachgeladen; stattdessen erscheint der echte Git-Fehler.
+
+Gespeicherte Textabläufe auf Dateien, Ordner und Projekt
+„Werkzeuge → Gespeicherte Textabläufe … → Ablauf auf Dateien …“ bietet die gespeicherte aktive Datei, Dateien aus einem Ordner und Dateien aus der gewählten Projektwurzel. Die Definition wird unveränderlich kopiert und bleibt mit allen Parametern prüfbar. Ungesicherte Dokumente zuerst speichern. Ordnerausschlüsse und die Auswahl bekannter Textformate gelten nur für Ordner/Projekt; versteckte Dateien werden ausgelassen.
+Prüfen Sie jeden vollständigen Zwischenstand unter „Vollständige Zwischenstufen“ und den vollständigen Vorher-/Nachher-Text unter „Endergebnisse und Freigaben“. Freigaben gelten je vollständiger Datei ausschließlich dem Endergebnis. Erst „Freigegebene Dateien ändern“ schreibt über dieselbe atomare Dateitransaktion wie die Ordnersuche. „Dateiänderungen rückgängig“ verwendet deren gemeinsame Rücknahme; Sicherungen bleiben für die Wiederaufnahme erhalten. Saubere offene Texttabs werden mit bestätigten Dateiständen aktualisiert; ungesicherte Text-/Rich-/Hex-Inhalte und laufende Saves sperren betroffene Eingaben.
+Eine fehlerhafte ausgewählte Eingabe oder eine nicht verlustfrei rückkodierbare Ausgabe sperrt den ganzen Auftrag. Es gibt keine teilweise anwendbare Fehlerliste. Auch wirkungslose und abgewählte Dateien bleiben Teil aller Snapshotprüfungen. Änderungen an Dateien, Verzeichnissen, Projektbindung, Definition oder Text-Systemlocale verlangen eine neue Vorschau. Grenzen zunächst: 32 Dateien, 4 MiB je Datei, je 16 MiB Eingaben/Ausgaben, 32 MiB Zwischenstufen, 64 KiB je logischer Anzeigezeile. NUL, Verweise, besondere Dateien und nicht sicher erhaltbare Metadaten werden verweigert. Schreiben benötigt die unterstützten lokalen ext4-/Btrfs-Dateisysteme; mehrere Dateisysteme werden nicht gemeinsam beschrieben. Keine neue Codec-Auswahl, keine Mehrordnerauswahl und keine allgemeine macOS-Paritätsbehauptung.
+
+Such-/Ersetz-Verlauf
+„Suchverlauf“ neben dem Suchbereich oder Alt+H öffnet die letzten 15 ausdrücklich verwendeten Such-/Ersetz-Paare. Eine Vorschauaktion merkt das vollständige Paar; bloßes Tippen speichert nichts. Dasselbe Paar rückt nach oben, derselbe Suchtext mit anderem Ersatz bleibt ein eigener Eintrag. Leere Suchfelder werden nicht aufgenommen.
+Wählen Sie ein Paar mit Maus oder Tastatur, um beide Felder auszufüllen. Suchmodus, Bereich und Optionen bleiben erhalten. Eine vorhandene Vorschau wird ungültig und muss vor einer Übernahme neu berechnet werden. Die Auswahl allein startet keine Suche.
+Der Verlauf bleibt lokal gespeichert und wird zwischen Fenstern geteilt. Beim Öffnen wird er neu gelesen. „Suchverlauf leeren“ entfernt die gemeinsame Liste; Suchfelder und Dokumente bleiben erhalten. Die Liste enthält nur Such- und Ersetzfelder, keine automatisch übernommenen Dokumentinhalte. Höchstens 64 KiB je Feld werden gespeichert. Zugriffs-, Format- und Speicherfehler werden sichtbar gemeldet; vorhandene beschädigte Dateien werden nicht überschrieben.
+
+
+Transformation per Beispiel
+„Werkzeuge → Transformation per Beispiel …“ leitet aus Vorher und Nachher ein Such- und Ersetzungsmuster mit einem Platzhalter ab. Aus „ring, The“ und „The ring“ wird „*, The“ und „The *“. Beide Beispiele müssen gefüllt und verschieden sein, dürfen kein Sternchen enthalten und sind auf je 512 Zeichen (Grapheme) sowie 4 MiB UTF-8 begrenzt. Ohne gemeinsamen sicher abgrenzbaren Textteil gibt es keine Übernahme.
+Die Vorschau zeigt die Muster und das echte Wildcard-Ergebnis. Backslash, Umbrüche, Tabs und Nicht-ASCII-Zeichen werden vollständig als Escapes dargestellt; das Suchformular erhält die Originalzeichen. Die Darstellung ist auf 64 KiB je Wert begrenzt. Kanonisch gleiche Unicode-Zusammensetzungen gelten als gleich; der erfasste Text behält seine ursprünglichen Bytes.
+„Übernehmen“ oder Return füllt nur Suchen/Ersetzen und wählt Platzhalter. Bereich und Optionen bleiben erhalten. Es startet keine Suche und ändert keine Dokumente oder Dateien. Danach eine neue Vorschau berechnen und freigeben. Escape oder „Abbrechen“ schließt ohne Übernahme; Shift+Return fügt eine neue Beispielzeile ein. Hat sich das gebundene Suchformular oder Dokument geändert, das Werkzeug neu öffnen.
+Ein einzelner * erfasst keine Zeilenumbrüche. Erzeugt das abgeleitete Muster nicht das gewünschte Nachher, bleibt „Übernehmen“ gesperrt; die tatsächliche Ausgabe bleibt sichtbar. Es gibt keine heimliche Erweiterung auf **.
+
+Einzelne Tabs schließen
+Das X in jeder Tab-Beschriftung und Ctrl+W schließen genau diesen Tab. Ungesicherte Änderungen bieten Speichern und schließen, Ohne Speichern schließen und Abbrechen. Ein laufender Speichervorgang hält den Tab offen. Ändert sich der Inhalt während einer Rückfrage, bleibt er erhalten; Schließen erneut wählen. Der aktive Tab bleibt beim Schließen eines anderen Tabs aktiv; sonst folgt der zuletzt verwendete offene Tab. Der letzte Tab nutzt die Fensterentscheidung. Ungesicherte Hexentwürfe müssen zuerst im Hexfenster gespeichert oder ausdrücklich verworfen werden. Rich-Inhalte werden vor der Entscheidung synchronisiert; ein Fehler hält die Ansicht offen.
+
+Markdown-Import beim Öffnen
+Beim Öffnen unterstützter Dateien oder Pakete bietet Fastra den Import als Markdown und das Öffnen der Originalquelle beziehungsweise des Ordners an. Verfügbarkeit und fehlende Werkzeuge stammen aus Poor Man’s Text. Während der Vorbereitung erscheinen Fortschritt und verständliche Diagnosen; das vollständige Diagnose-JSON bleibt zusätzlich einsehbar. Jede Übernahme erfordert die vollständige Vorschau. Ein Projektwechsel oder eine geänderte Zielbasis macht die Vorschau ungültig. Es wird kein Werkzeug installiert. Nicht als UTF-8 darstellbare Importpfade werden mit Erklärung abgewiesen.
+
+
+4D-Vervollständigung
+Im Syntaxformat 4D erscheinen Vorschläge ab zwei eingegebenen Zeichen. Ctrl+Leertaste oder „Werkzeuge → 4D-Vervollständigung …“ öffnet sie bereits ab einem Zeichen. Die Liste enthält höchstens 200 Treffer: zuerst Befehle mit Originalsignaturen, danach Projektmethoden, geteilte Komponentenmethoden und Konstanten. Bei Namensgleichheit gewinnt die Projektmethode vor einer Komponentenmethode.
+↑/↓ wählt und scrollt; Return, Tab oder ein Klick übernimmt. Escape schließt eine offene Liste und öffnet sie sonst manuell ab einem Zeichen. Der gesamte angefangene Mehrwortname wird ersetzt, etwa OBJECT SET C, und lässt sich mit einem Rückgängig-Schritt wiederherstellen. In Kommentaren, Strings, Variablen-/Member-/Tabellenpräfixen sowie bei Auswahl, Rich-, Hex- oder Nur-Lese-Ansichten werden keine Vorschläge übernommen.
+„Werkzeuge → 4D-Projekt-/Komponentenindex aktualisieren“ liest die Quellen des ausgewählten Projekts im Hintergrund. Derselbe Knopf steht in der Vorschlagsliste. Es findet kein Dateiscan beim Tippen statt. Nach Projektänderungen den Index erneut aktualisieren. Ein Projekt-, Tab-, Quell- oder Fensterwechsel sperrt eine veraltete Übernahme.
+Komponenten in Components/components unterstützen entpackte .4dbase-Quellen sowie nackte oder gebaute .4DZ-Archive. Nur shared-Methoden sind sichtbar; kompilierte Komponenten können den Methodenkatalog und exportierte Markdown-Signaturen nutzen. Ohne Signatur bleibt ehrlich nur der Name. Dateilinks, verschlüsselte oder unsichere Archive und überschrittene Grenzen werden erklärt; es wird nichts entpackt oder ausgeführt. Grenzen: 4 MiB aktiver Quelltext, 4000 Indexeinträge, 2000 Projekt- und 2000 Komponentenmethoden, 1 MiB je Quell-/Katalog-/Dokudatei, 16 MiB Komponentenquellen zusammen und 64 MiB pro Archiv. Diese Vorschläge starten weder tool4d noch eine Laufzeit und ändern keine Dateien.
+
+
+4D-Textmakros unter Linux
+
+Werkzeuge → 4D-Makros … öffnet für den aktiven .4dm-Tab den lokalen
+Katalog. Quelle oder Namen wählen, Vorschau vorbereiten, beide Diff-Seiten
+prüfen und Übernehmen. Die Änderung bleibt ungespeichert und lässt sich
+mit einem Undo zurücknehmen. Änderungen an Tab, Dateipfad, Text, Projekt oder
+Auswahl machen die Vorschau ungültig. Ein Makrokürzel wie  /# öffnet mit
+Ctrl+# dieselbe Vorschau; App- und Editorbefehle bleiben reserviert.
+
+Neu laden liest geänderte XML-Quellen erneut. Eigene Makros … wählt einen
+Benutzerordner, 4D-Ordner … ergänzt eine vorhandene Installation.
+XDG-Vorgaben stellt den Standard unter
+$XDG_DATA_HOME/fastra/4d/Macros v2 beziehungsweise
+$HOME/.local/share/fastra/4d/Macros v2 wieder her. Projekt- und Komponenten-
+makros werden zusätzlich gefunden. Nicht lesbare Quellen werden gemeldet.
+
+Textmakros arbeiten ohne Tool4D. Unterstützte Platzhalter umfassen Auswahl,
+gesamten Text, Methodenname, OS-Benutzer, erste Caret-Marke sowie Datum 0–8 und
+Zeit 0–6. Unbekannte oder Clipboard-Platzhalter und ungültige Formate bleiben
+sichtbar gesperrt. Runtime-Makros benötigen zusätzlich ein MacroRun-Engine-
+projekt und dessen Tool4D-Anbindung. „Tool4D wählen …“ und „Engine-Projekt wählen …“ speichern diese Pfade. Erst „Vorschau vorbereiten“ startet die gewählte Engine in einer isolierten privaten Kopie; Originalprojekt und Dateien bleiben unverändert. Die gesamte Änderung erscheint vor der Übernahme im Diff. Kompilierte Komponenten der Engine müssen zur Linux-Runtime passen.
+Große Eingaben werden kontrolliert abgewiesen; eine abgeschnittene Vorschau
+wird niemals übernommen.
+
+
+Gespeicherte Codefragen
+Werkzeuge → Gespeicherte Codefrage öffnen … lädt ein lokales Snapshotpaket im eigenen schreibgeschützten Fenster. Die Quellen werden vor dem Öffnen anhand ihrer SHA-256-Prüfsummen geprüft und bleiben anschließend unverändert. Wähle Quelle oder Schritt, Zurück oder Weiter. „Bereit“ bedeutet, dass der richtige Text und die vollständige UTF-16-Markierung tatsächlich sichtbar sind.
+Eigenes Scrollen, Auswählen, Quellenwechsel oder Änderungen an Schriftgrößen und Umbruch pausieren die Führung. „Zur erklärten Stelle zurück“ setzt sie ausdrücklich fort. Ctrl+W oder Beenden schließt nur dieses Fenster; deine Arbeitsdokumente bleiben erhalten. Das Paket erzeugt keine KI-Antworten und führt keine Skripte aus. Höchstens 16 Fenster samt Ladevorgängen sind möglich. Ungültige Pakete, Verweise und überschrittene Grenzen werden erklärt zurückgewiesen. Die lokale Snapshot-Steuerung wird im gesonderten Abschnitt beschrieben.
+
+
+Git-Remotes abrufen
+Git-Dialog → Abrufen … liest die konfigurierten Remotes. Wähle einen oder Alle Remotes sowie Prune und starte Abrufen. Prune entfernt veraltete Remote-Tracking-Refs; Arbeitsdateien, Index und aktueller Branch bleiben erhalten. Alle verwendet getrennte Einzelabrufe und zeigt Teilfehler ausdrücklich an. Laufende Ausgabe und Abbrechen bleiben sichtbar; offene Git-Ansichten laden danach neu. Änderungen an Dokument, Projekt oder Besitzer entwerten den Auftrag.
+Authentifizierung erfolgt ohne interaktive Passwortdialoge. Richte benötigte SSH-Schlüssel, bekannte Hostschlüssel oder Git-Zugangsmittel vorher ein. Unterstützt sind file, ssh, https, http und git. Das feste nichtinteraktive SSH-Kommando ersetzt core.sshCommand. Die Gesamtgrenzen sind 120 Sekunden und je 512 KiB Ausgabe; höchstens 64 Remotes. Automatischer Fetch ist nicht vorhanden. Pull besitzt einen eigenen Vorschau- und Bestätigungsdialog. Branchwechsel und Commit besitzen eigene Vorschau- und Bestätigungsdialoge.
+
+Lokale Snapshot-Steuerung
+
+fastra-control --capabilities --json zeigt die Fähigkeiten ohne App-Start. --request DATEI oder --request - übergibt einen begrenzten JSON-Auftrag; --no-launch verwendet ausschließlich eine laufende Steuerungsinstanz. Die App zeigt eigene schreibgeschützte Snapshots oder gespeicherte Codefragen. Normale Dokumente sind nur inventarisierbar; die Steuerung speichert oder ersetzt keine Arbeitsdateien.
+
+Annahme ist keine Bereitschaft: Den Job mit status bis ready, failed oder cancelled abfragen. Nach verlorener Antwort genau denselben Auftrag wiederholen. Eigene Auswahl, Tastatur, Scrollen, neue Navigation und Schließen brechen ausstehende Sprünge ab. sourceSnapshot bestätigt eine unabhängige Sitzungskopie erst mit ready und adopted: true.
+
+Grenzen: 256 KiB je Snapshot, 16 Sitzungen, 128 aufbewahrte Jobs, zehn Sekunden CLI-Gesamtfrist einschließlich Standardinput, 30 Sekunden je Job und 300 Sekunden Aufbewahrung. Antworten sind vollständig oder werden oberhalb 16 MiB mit capacity verweigert. Echtes U+0000 kann GTK nicht unverändert anzeigen und wird ausdrücklich abgewiesen. Einzelheiten: docs/LOCAL-CONTROL.md und docs/linux-port/F17-LOCAL-CONTROL.md.
+
+
+Lokale Commits pushen
+Git-Dialog → Push … liest zunächst nur die konfigurierten Ziele. Wähle einen Remote und „Vorschau laden“. Erst dieser Knopf kontaktiert das Ziel und holt dessen exakten Commit zur Prüfung. Prüfe Adresse, vollständigen Zielref, Quell-Commit, erwarteten Remote-Commit und die vollständige Commitliste. „Push ausführen“ überträgt danach ausdrücklich genau diesen Stand. Ein neuer Remote-Branch wird als solcher bezeichnet. Mehrere Push-Adressen oder Git-URL-Umschreibregeln verhindern eine eindeutige Freigabe; andere gültige Ziele bleiben benutzbar.
+Ein normaler Push braucht einen lokalen Branch und einen Fast-Forward. Divergenzen werden erklärt; Force Push benötigt den gesonderten ausdrücklichen Modus. Pull und Rebase werden nicht angeboten. Upstream, HEAD, Index und Arbeitsdateien bleiben unverändert. Tags und Submodule werden nicht zusätzlich übertragen. Normale Git-Hooks und Signaturregeln gelten weiter.
+Laufende Ausgabe und Abbrechen bleiben sichtbar. Abbruch kann eine bereits beim Server übernommene Änderung nicht zurücknehmen. Lade danach immer eine neue Vorschau. Dokument-, Tab-, Speicher- oder Projektwechsel entwerten alte Freigaben; veraltete Ergebnisse werden nicht übernommen. Authentifizierung und erlaubte Transporte entsprechen dem manuellen Fetch. Je Aktion gelten 120 Sekunden und begrenzte vollständige Ausgaben; eine überschrittene Ausgabegrenze erlaubt keinen Push.
+
+Rich-Markdown-Gliederung
+„Gliederung …“ in der Rich-Werkzeugleiste liest die tatsächlich dargestellten Überschriften. Filtern und Zurück/Weiter zeigen höchstens 200 Einträge je Seite. „Anzeigen“ springt in dieser Ansicht zur Überschrift; „Dokumentanfang“ führt nach oben. Nach einer Bearbeitung oder einem Tabwechsel aktualisieren. Ein bereits angenommener WebKit-Sprung bleibt seiner ursprünglichen Ansicht zugeordnet und aktiviert keinen anderen Tab. Grenzen: 10.000 Überschriften, 16 KiB je Titel und 2 MiB Titeltext insgesamt.
+
+Lokale Git-Branches
+„Git … → Lokale Branches …“ zeigt lokale Branches und ihre vollständigen Commit-IDs. Name und explizite Commit-ID wählen, Vorschau prüfen und das Erstellen bestätigen. Der neue Branch entsteht ohne Checkout und ohne Tracking; Arbeitsdateien, Index und ungespeicherte Puffer bleiben erhalten. Eine Namenskollision wird gemeldet und nie überschrieben. Ausführbare reference-transaction-Hooks benötigen weiterhin die Git-CLI. Branchwechsel besitzt einen eigenen Dialog; Löschen wird hier nicht angeboten.
+
+Weitere Starts öffnen zusätzliche Fenster derselben Anwendung. Die lokale Steuerung inventarisiert alle Fenster. Nach einem Dienstaufruf bleibt die Anwendung auch ohne Fenster verfügbar; Ctrl+Q schließt das aktuelle Fenster mit Prüfung ungesicherter Änderungen.
+
+Lokalen Git-Branch wechseln
+„Git … → Branch wechseln …“ zeigt Quelle, Ziel und vollständige Commit-/Index-/Arbeitsdiffs vor einem normalen Git-Wechsel. Vorschau prüfen und ausdrücklich bestätigen. Keine erzwungene Übernahme, kein Stash oder automatisches Speichern. Git kann bei Fehler oder Abbruch bereits Dateien geändert haben; der Dialog zeigt deshalb anschließend den tatsächlich gelesenen Zustand. Externes Git wird nicht atomar gesperrt. Offene Textpuffer bleiben erhalten; einen neuen Plattenstand erst nach eigener Prüfung nachladen. Abschnitts- und Bildansichten gegebenenfalls neu öffnen.
+
+Bilder und RTF in Rich-Markdown
+
+Speichere ein neues Markdown-Dokument zuerst. Bild → Bilder oder Dateien
+einfügen …, Einfügen aus dem Clipboard und lokale Dateidrops prüfen Bilddaten
+vor jeder Übernahme. Die Vorschau enthält neue Dateinamen, Bytezahlen, SHA-256,
+Bildmaße, Framezahl, Einfügeinhalt und bisherige Quelle. Erst Bilder speichern
+und einfügen legt neue Dateien in images/ an. Das Dokument selbst schreibst du
+anschließend mit Speichern. Gemischte Drops öffnen die übrigen Dateien und den
+normalen Ordner nach der Bildeinfügung regulär.
+
+PNG, JPEG, GIF und WebP bleiben vollständig erhalten; TIFF und HEIC werden nach
+angekündigter Konvertierung als PNG übernommen. Die Vorschau zeigt den ersten
+Frame auf Weiß. Pro Bild gelten 32 MiB, insgesamt 64 MiB und höchstens 32 neue
+Bilddateien. Externe Bildadressen werden nicht geladen. Eigene Markdown-Pakete
+übertragen die Bildbytes zwischen Fenstern; eingebettete HTML-Datenbilder erhalten
+dieselbe Dateivorschau. Wenn du die Auswahl während des Einfügens bewegst, beginne
+den Vorgang neu.
+
+Rückgängig schützt gespeicherte und andere offene Dokumentverweise. Bereits
+zurückgenommene Bild-Inodes bleiben für Wiederholen und Wiederherstellung unter
+.fastra-image-undo-… erhalten; es gibt keine automatische Löschung. Bild →
+Rücknahmedaten anzeigen … nennt bekannte Pfade. Vor dem Quelltextwechsel werden
+Bildnamen für Quelltext-Undo wiederhergestellt; unreferenzierte Dateien können
+weiter vorhanden sein. Die Rich-Ansicht prüft externe Bildänderungen automatisch im Hintergrund. Ungültige oder fehlende Bilder zeigen keine veralteten Bildbytes; Text, Auswahl und Rücknahme bleiben erhalten.
+
+RTF-only-Clipboard öffnet den vorhandenen Importdialog mit einer ausdrücklichen
+Verlustwarnung. Prüfe Konvertierung, Vorschau und Diagnosen, bevor du ein
+eigenes importiertes Dokument übernimmst. Textmarker können dabei verloren gehen.
+Undokumentierte RTFD-Clipboardpakete werden abgewiesen; öffne oder droppe
+ein lokales RTFD-Dateipaket. Es gibt keinen stillen Klartextfallback.
+
+Speichern unter für bestehende Dokumente
+„Speichern unter …“ und Ctrl+Shift+S zeigen vollständigen Quell- und Zieltext, Kodierung/BOM, alle neuen Bildkopien und einen vorhandenen Zielstand. Ein vorhandenes Ziel braucht eine eigene Überschreibfreigabe. Geänderte Basis oder neuere Eingaben halten den Vorgang an. Wurde das Ziel bereits veröffentlicht, aber nicht in den Tab übernommen, bleiben die neueren Eingaben und der alte Tabpfad erhalten; die Meldung nennt das zu prüfende Ziel.
+Bei einem Ordnerwechsel werden tatsächlich verwendete lokale Rasterbilder geprüft kopiert. Originaldokumente und Originalbilder bleiben erhalten. Nicht eindeutig übertragbare Verweise werden abgewiesen. Nach einem Wechsel der Bildherkunft beginnt Rückgängig mit sichtbarem Hinweis neu; alte Bildtickets bleiben an ihrer ursprünglichen Herkunft. Ein einfacher Textpfadwechsel erhält die Textrücknahme. Grenzen: 4 MiB je vollständiger Textseite, 32 Bilder, 32 MiB je Bild und 64 MiB gemeinsame Bilddaten.
+
+Fastra beenden
+„Fastra beenden“ oder Ctrl+Shift+Q sammeln zuerst die Speicherentscheidungen aller Fenster. Abbrechen, ein Fehler oder eine geänderte Grundlage hält den gemeinsamen Abschluss an. Bereits ausdrücklich gespeicherte Dateien bleiben gespeichert. Rich-Editoren werden vor der Freigabe vollständig abgeglichen; lokale Schließsicherungen werden dauerhaft bestätigt, bevor Fenster verschwinden. Laufende Speicher-, Bild- und Ordnerdateiaktionen müssen einschließlich ihrer letzten Prüfung abgeschlossen sein. Ctrl+Q schließt weiterhin das aktuelle Hauptfenster.
+
+Vollständigen Index committen
+„Git … → Commit …“ zeigt den vollständigen Indexunterschied, Tree, sämtliche Parents, Nachricht, konfigurierte Identitäten und Signierung. Erst die eigene Bestätigung startet den normalen nativen Commit. Hooks bleiben aktiv; deren Fehlerausgabe bleibt sichtbar. Arbeitsindex und ungesicherte Editorpuffer werden weder ergänzt noch zurückgeschrieben. Geänderte Grundlagen verlangen eine neue Vorschau.
+
+Ausdrücklicher Force Push
+Im Pushdialog ist „Force Push mit exakter Lease“ zunächst ausgeschaltet. Nach Aktivierung braucht der Modus eine neue Vorschau sämtlicher ausgehender und auf dem Zielbranch verdrängter Commits. Eine eigene Zusatzbestätigung erlaubt nur die festgehaltene Adresse, Quell-ID und exakte Server-Lease. Ein normaler Push wird niemals automatisch zu Force Push. Abbrechen kann eine bereits vom Server angenommene Änderung nicht zurücknehmen.
+
+Sichtbare Markdown-Leerzeilen
+Eine ansonsten leere Zeile mit mindestens zwei normalen Leerzeichen zeigt genau eine sichtbare Leerzeile. Das gilt auch zwischen Listeneinträgen und nach Zitatmarkierungen. Leere Zeilen, ein einzelnes Leerzeichen, Tabulatoren und geschützte Leerzeichen lösen diesen Zusatz nicht aus; Code- und HTML-Quellblöcke bleiben unverändert. Die ursprünglichen Zeilenenden bleiben erhalten. Du kannst direkt in eine sichtbare Leerzeile tippen und dies wieder rückgängig machen. Kopieren und Einfügen bewahren die Abstände; interne Quellpositionsattribute werden nicht an andere Apps weitergegeben.
+
+
+Quelltext und Markdown-Vorschau per Klick
+Ein Klick im Quelltext scrollt den passenden Vorschauabschnitt sichtbar. Ein Klick auf normalen Vorschautext setzt die Einfügemarke in der zuletzt benutzten Quellansicht, öffnet gegebenenfalls eingeklappte Bereiche und fokussiert den Editor. Links, Textauswahl und Kopierknöpfe bleiben eigene Aktionen. Die Spalte ist bei entferntem Markdown-Markup eine Näherung; es gibt keine fortlaufende Scrollkopplung.
+
+Codeblöcke kopieren
+Der Kopierknopf am Codeblock übernimmt den vollständig dargestellten Code als Klartext, einschließlich Tabs, Leerzeichen und abschließendem Umbruch. Er ist mit Maus und Tastatur bedienbar. Frühere HTML-/RTF-Formate werden ersetzt; der Quelltext und seine Rücknahme bleiben erhalten. Höchstens 2 MiB je Kopie; veraltete oder zu große Aufträge melden einen Fehler ohne Teilkopie. Druck und allgemeine Auswahlkopie enthalten keine Kopiercontrols oder internen Positionsattribute. LF, CRLF und reine CR-Zeilenenden werden über dieselbe zeilenendentreue Parseransicht verarbeitet.
+
+Rechteckauswahl und Spaltenpaste berücksichtigen die aktuell eingestellte Tabbreite. Wird sie geändert, endet die bisherige Rechteckauswahl; Text und Rücknahme bleiben unverändert.
+
+Rechtecke kopieren und ausschneiden
+„Text → Rechteckauswahl“ bietet Kopieren, Ausschneiden, Spaltenpaste und Erweitern nach oben/unten. Ctrl+C/Ctrl+X kopieren das Rechteck als Klartext mit den ursprünglichen Zeilenenden; mehrzeilige Kopien besitzen einen abschließenden Umbruch. Ctrl+Shift+↑/↓ erweitert oder verkleinert über logische Zeilen, unabhängig vom sichtbaren Umbruch. Ctrl+V ersetzt ohne Auffüllen kurzer Zeilen; „Spaltenpaste“ füllt mit Tabs beziehungsweise Leerzeichen gemäß Editorprofil auf und funktioniert auch ab einer einzelnen Einfügemarke. Zusätzliche Clipboardzeilen setzen sich in folgenden Zeilen fort; fehlende Zeilen leeren nur markierte Zeichen. Jede Änderung besitzt ein gemeinsames Undo. Veraltete Aufträge und überschrittene Grenzen (4 MiB, 2001 Zeilen, 64 KiB je Ergebniszeile) ändern nichts.
+
+Andere Tabs schließen
+Das Menü an jeder Tab-Beschriftung bietet „Andere Tabs schließen“. Dieser Tab bleibt erhalten; alle übrigen ungesicherten Tabs werden vor dem gemeinsamen Schließen nacheinander abgefragt. Spätes Abbrechen erhält alle Tabs und die vorherige Aktivierung. Bereits ausdrücklich gespeicherte Dateien bleiben gespeichert. Laufende Änderungen sowie überholte Dokument- oder Tabstände halten den Vorgang an.
+
+Formeln in der Markdown-Vorschau
+Inline- und Blockformeln verwenden die mitgelieferte KaTeX-Darstellung. Unvollständige, verschachtelte oder nicht unterstützte Formeln bleiben mit verständlichem Hinweis als Originalquelle sichtbar. Code, HTMLbereiche und wörtliche Bild-/Linkziele werden nicht als Formeln umgedeutet. Vorschau, Codekopie, Bildreferenzen und Speichern unter erhalten ihre ursprünglichen Quellbereiche auch bei CR-Zeilenenden.
+
+Formatprofile auf Linux
+Tabbreite und Einrückungsbreite sind unabhängig von 1 bis 16 wählbar; Tabs/Leerzeichen und Fensterumbruch werden pro Syntaxformat gespeichert und für neue Tabs und Prozessneustarts übernommen. Ohne eigene Wahl gelten vier Leerzeichen und Breite vier. Plain Text, HTML, JSON, Markdown, XML und Diff verwenden ab Werk Fensterumbruch, Codeformate nicht. Zeilennummern und automatische Einrückung bleiben dokumentbezogen. Solange die gespeicherte Syntaxwahl geladen wird, sind Profiländerungen sichtbar gesperrt; eine ausdrückliche Syntaxwahl hat Vorrang. Noch ausstehende oder fehlgeschlagene Speicherungen halten normales Schließen und Beenden sichtbar an. Nach erfolgreichem Speichern Schließen erneut wählen; bei einer Sperre die Wahl beziehungsweise Schließen ausdrücklich erneut versuchen.
+
+Zeilenenden auf Linux
+Die Wahl LF, CRLF oder CR neben der Kodierung merkt eine Änderung vor. Erst Speichern konvertiert den Text; bis dahin bleiben die ursprünglichen Zeichen und die Rücknahme erhalten. Eine vorgemerkte Wahl zählt als ungesichert und bleibt nach Abbruch, fehlgeschlagenem Speichern und Sitzungswiederherstellung erhalten. Die bisher gespeicherte Wahl hebt die Vormerkung wieder auf. Ohne ausdrückliche Wahl erhält normales Speichern auch gemischte Zeilenenden.
+
+Speichern unter zeigt den vollständig konvertierten Zieltext vor der Bestätigung. Kodierung und BOM bleiben erhalten. Am bisherigen Speicherort lässt sich die Konvertierung mit einem Undo zurücknehmen. Wird während des Speicherns weiter im Quelltext gearbeitet, bleibt der neuere Stand ungesichert; prüfe ihn und speichere erneut. In der Rich-Ansicht wartet die weitere Eingabe bis zum Abschluss der Speicherung.
+
+Beim Schließen der Editoroptionen kehren Fokus und Auswahl in die vorherige Quellansicht zurück, sofern das Dokument und die Benutzerinteraktion unverändert geblieben sind.
+
+Formeln in der Linux-Rich-Ansicht
+Inline- und Blockformeln erscheinen gerendert. Die Formel selbst bleibt geschützt; ändere TeX und Delimiter im Quelltext. Der umgebende Absatz sowie Listen und Tabellen bleiben bearbeitbar. Nicht unterstützte oder verschachtelte Formeln zeigen einen Quellhinweis. Kopieren und Einfügen zwischen Rich-Ansichten erhalten die ursprüngliche Formelsyntax über Fastras Markdown-Format; normale HTML-Kopie enthält MathML und Klartext den sichtbaren Text. Die lokale Darstellung verwendet keine Netzverbindung.
+
+Git-Pull auf Linux
+„Git-Pull …“ bietet FF-only, Merge oder Rebase. „Quelle abrufen und Vorschau erstellen“ führt zuerst den sichtbaren Fetch aus; dabei können Refs und FETCH_HEAD geändert werden. Prüfe danach vollständige Commit-Patches, Status sowie Index- und Arbeitsdiff und bestätige den Vorgang ausdrücklich. Natives Git fetcht beim Pull erneut; Remote, fremdes Git und Hooks können zusätzliche oder teilweise Änderungen verursachen. Der abschließende Bericht zeigt den tatsächlichen HEAD und Dateistand auch nach Abbruch oder Fehlern. Es gibt keine automatische Rücknahme oder Fortsetzung. Während Pull und Nachscan warten Dateipublikationen und normales Schließen sichtbar; starte abgewiesene Aktionen danach ausdrücklich erneut.
+
+Appweite Seitenlinie
+„Seitenlinie anzeigen“ und „Seitenlinie: Spalte“ gelten für alle Fenster und beide Teilansichten, unabhängig von Syntaxformat und Zeilenumbruch. Wähle eine Spalte von 20 bis 500; ab Werk gilt 80 und die Linie ist aus. Einstellungen bleiben nach Neustarts erhalten. Während des ersten Ladens sind die Controls sichtbar gesperrt. Ausstehende oder fehlgeschlagene Speicherungen halten Schließen an; nach Erfolg Schließen erneut wählen. Die Optionen „Umbruchziel“ und „Folgezeilen“ werden in der dafür ausgelegten optionalen Textlaufzeit freigeschaltet. Wähle Fensterbreite, Seitenlinie oder eine feste Spalte von 20 bis 500; der sichtbare Bereich bleibt die Obergrenze. Folgezeilen bleiben linksbündig, folgen dem Einzug der ersten Zeile oder erhalten eine zusätzliche Einrückungsstufe. Die Einstellungen verändern keine Dateizeichen. Mit Systembibliotheken zeigt Fastra den Hinweis auf die optionale Laufzeit und verwendet weiter Fensterumbruch.
+
+Quelltextpaste
+Normales Einfügen über Ctrl+V, Shift+Insert und das Kontextmenü prüft Clipboardtext und vollständiges Ergebnis vor der ersten Änderung: höchstens 32 MiB und 64 KiB je Ergebniszeile, gültiges UTF-8, keine NUL-Zeichen. Ein abgewiesener Auftrag erhält Quelle, Auswahl und Undo. Neue Auswahlen oder überholte Antworten können keinen späteren Text überschreiben. Die normale Mittelklickpaste verwendet dieselbe Prüfung an der angeklickten Textposition, einschließlich der eingebauten Zeilennummernleiste, und verändert eine bestehende Auswahl nicht künstlich. Aktive Rechteckauswahl behält ihren eigenen Einfügepfad und ihr 4-MiB-Limit; andere Insertwege sind damit nicht pauschal geprüft.
+
+Externer Dateivergleich
+fastra-diff nimmt nach „--“ genau zwei Dateien an. --left-label und --right-label setzen Beschriftungen; --focus-diff fordert ausdrücklich Fokus an. Auch ohne --read-only bleibt das eigene Vergleichsfenster schreibgeschützt. Speichern und Speichern unter wirken dort nicht. Schließen lässt den Dienst erreichbar; „Fastra beenden“ prüft auch normale ungesicherte Fenster. Die vollständigen Vergleichsgrenzen bleiben erhalten; ungeeignete Dateien erhalten eine Diagnose. Lange normale Paste zeigt den Caret nur dann wieder an, wenn Auswahl, Tab und Editorfokus weiterhin zum Auftrag passen.
+
+Geteilte Quellansicht
+„Geteilte Ansicht“ zeigt dasselbe Dokument mit zwei unabhängigen Auswahlen, Carets und Scrollpositionen. Textwerkzeuge, Navigation und Paste wirken auf die zuletzt benutzte Quellansicht, auch nach Öffnen eines Menüs oder Dialogs. Ausschalten der geteilten Ansicht setzt die primäre Ansicht als Ziel. Textänderungen und native Rücknahme betreffen beide Ansichten gemeinsam; Faltung bleibt dokumentweit. Reiner Fokuswechsel ersetzt PRIMARY nicht. Aufheben einer eigenen Auswahl gibt nur deren weiterhin aktuelles eigenes PRIMARY-Angebot frei. Beim Überschreiben einer mehrstelligen Auswahl durch Tippen trennt GTK Löschen und Einfügen in zwei native Undo-Schritte; der zweite stellt den gelöschten Text wieder her. Fastra-Paste und Textoperationen besitzen weiterhin je ein gemeinsames Undo.
+
+Text-Systemlocale
+Groß-/Kleinschreibung in Textwerkzeugen und gespeicherten Abläufen verwendet dieselbe erfasste Text-Systemlocale wie „Wortanfänge groß“. Schritt- und Endvorschauen nennen ihre ID. Ein späterer Localewechsel verlangt eine neue Vorschau; eine nicht bestimmbare Locale blockiert die Übernahme sichtbar. Nur die Auswahl wird gemeinsam transformiert; Text außerhalb bleibt unverändert. Grenzen bleiben 4 MiB Ein-/Ausgabe und 64 KiB je Ergebniszeile. Ersetzungstemplates behalten ihre bisherige Root-Semantik.
+
+Stabile Sortierung nach Textlocale
+Zeilen werden numerisch und normalisiert nach ICU sortiert; Groß-/Kleinschreibung und Satzzeichen unterscheiden die Schlüssel, Kleinbuchstaben stehen bei sonst gleichem Wort zuerst. Gleiche Schlüssel, einschließlich verschiedener Anzahlen führender Nullen oder kanonisch gleicher Unicode-Schreibweisen, behalten in beiden Sortierrichtungen ihre ursprüngliche Reihenfolge. Die Dokumentbytes werden nicht normalisiert. Das Textmenü und Ablaufvorschauen zeigen die erfasste Locale; ein Localewechsel verlangt eine neue Berechnung. Bestehende Ablaufdateien benötigen kein neues JSON-Feld. Die Reihenfolge kann von der Mac-/Finder-Sortierung abweichen.
+
+Im Dateimanager zeigen
+Der gleichnamige Knopf im Projektfenster markiert den gewählten Projektordner in seinem übergeordneten Ordner. Im Kontextmenü eines gespeicherten Dokumenttabs markiert er die Datei in ihrem Ordner. Ungespeicherte Dokumente bieten keine aktive Aktion. Fastra verwendet die Desktop-Dateimanager-Schnittstelle und erklärt einen fehlenden oder fehlerhaften Dienst sichtbar. Die Aktion verändert keine Dokumente.
+
+
+Automatische Links auf Linux
+
+Markdown-Vorschau und Rich-Markdown erkennen automatische HTTP(S)-, www- und Mailadressen. Entities, Backslash-Escapes, Tabellen und Fußnoten erhalten ihre ursprünglichen Quellbereiche. Ein Link wie https://example.com/$x$ behält die Formelsyntax als wörtlichen URL-Inhalt. Rich-Markdown erlaubt Mailto auch im Linkdialog und weist Steuerzeichen in Linkzielen ab. Externe Links bleiben in Rich gesperrt; die normale Vorschau öffnet freigegebene Protokolle nur nach ausdrücklichem Aktivieren. Abbruch oder eine überschrittene Komplexitätsgrenze übernehmen keine teilweise berechneten Links.
+
+Externe Web- und Mail-Links öffnet der optionale Laufzeitkandidat über das Desktopportal. Fehlt dieses Portal, zeigt Fastra einen Fehler. Mit Systembibliotheken bleibt der bisherige Desktopaufruf aktiv.
+
+Native Eingabevorprüfung unter Linux
+
+Der passende optionale Linux-Laufzeitkandidat prüft finale GTK-Textcommits sowie die angebundenen nativen Delete-, Backspace-, SmartBackspace- und Join-Aktionen vor deren Änderung auf 32 MiB insgesamt und 64 KiB je logischer Zeile. Eine abgewiesene Aktion erhält den unmittelbar davor bestehenden Text-, Auswahl- und Rücknahmezustand. Die Prüfung der Lösch- und Join-Aktionen gilt ohne aktive Komposition. Preedit, zusammenhängendes Surrounding-Delete mit Commit, weitere Einrückungsaktionen, Tab-/Snippet-Transaktionen und weitere native Mehrschrittaktionen bleiben gesonderte Grenzen; ein vollständiger IME-Vertrag wird nicht zugesagt.
+
+Zusätzlich wird gewöhnlicher Return bei automatischer Einrückung in einer linearen Quellansicht vor der Änderung geprüft und gemeinsam rückgängig gemacht. Die Prüfung gilt für den eingebauten Einrücker und unverbrauchte Eingaben. Bereits von einer Eingabemethode bearbeitete Tasten bleiben außerhalb dieses Vertrags; Rechteck-Return behält seinen bisherigen Ablauf. Return fügt intern LF ein; vorhandene CRLF-Bytes bleiben erhalten.
+
+
+Gespeicherte Dateien aus Tabs ziehen
+
+Der Dateigriff neben dem Namen eines gespeicherten Tabs lässt sich in den Dateimanager oder eine andere Anwendung ziehen. Übergeben wird die vorhandene Datei, nicht der ungesicherte Editorpuffer. Bei ungespeicherten Änderungen nennt der Hinweis ausdrücklich den letzten gespeicherten Stand. Ungespeicherte neue Tabs besitzen keinen Dateigriff. Bei Hex- und Abschnittsansichten wird die ganze gespeicherte Datei übergeben, nicht nur der sichtbare Ausschnitt. Ist die Quelle entfernt oder nicht mehr als Datei verfügbar, erklärt Fastra den Fehler.
+
+Markdown-Auszeichnungen im Quelltext
+
+Die Zeile „Markdown-Quelltext“ bietet Fett, Kursiv, Markierung und Inlinecode für die aktive Quellansicht. Die Auswahl wird ausgezeichnet oder vorhandene Marker werden entfernt. Ohne Auswahl entsteht ein leeres Markerpaar mit der Einfügemarke dazwischen. Ein Befehl lässt sich gemeinsam rückgängig machen. Die Zeile erscheint nur bei gewähltem Markdownformat im Quellmodus; Rich-Markdown besitzt seine eigene Werkzeugleiste. Für Rechteckauswahlen und gesperrte Quellen sind diese Befehle nicht verfügbar.

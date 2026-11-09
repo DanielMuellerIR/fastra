@@ -1,0 +1,77 @@
+{
+  "version": "1.176.0",
+  "build": 386,
+  "product_commit": "cbc72415bd0ad5fac68f9d43e4743ea58ca3b102",
+  "source_identity": "a78e20b9b6fae3eba871d27882ef3a9dc92fd8a57687c896595b4f41fb7104dd",
+  "verified_product_inputs": 417,
+  "artifacts": {
+    "fastra_1.176.0_amd64.deb": "82ed9190cc12a0380f5d8ffd85890c7d8a649f945a60f9f4b13492a61a147953",
+    "fastra-1.176.0-linux-x86_64.tar.gz": "6d103525b5e1485bd7a2bbb35eb2d9163e8eee78ec6b0249d946c285906af826",
+    "fastra-1.176.0-linux-x86_64.zip": "a167c1ae814f682a1a73ef3d832842c5d5bd3cac57e09b1a5c14e273c23c7b10"
+  },
+  "unsigned": true,
+  "local_artifacts": "dist/linux-1.176.0/packages",
+  "workspace": {
+    "programs": 49,
+    "passed": 577,
+    "failed": 0,
+    "ignored": 6,
+    "native_commit_cases": 26,
+    "current_linux_crate_regular_cases": 146,
+    "clippy": "workspace all targets -D warnings",
+    "release_cfg_clippy": "PASS",
+    "optimized_build": "PASS"
+  },
+  "native": {
+    "source_preview_real_clicks_de_760_en_1180": 2,
+    "code_copy_de_en_760_1100_lf_crlf": 4,
+    "complete_editor_de_en_min_760_wide_1280": 2,
+    "gdk_plain_replaces_html_rtf": true,
+    "code_copy_equals_dom_code": true,
+    "tab_revision_mode_aba_and_stale_requests_checked": true,
+    "drag_selection_focus_and_pending_render_checked": true,
+    "source_and_undo_preserved": true,
+    "general_copy_removes_code_controls_and_internal_attributes": true,
+    "raw_native_print_pdf_controls_absent_visually_checked": 2,
+    "code_copy_after_actual_window_resize": true,
+    "valid_native_screens_visually_checked": true,
+    "english_wide_capture_repeated_at_visible_window_origin": true
+  },
+  "package": {
+    "installed_deb": "PASS",
+    "relocated_tar": "PASS",
+    "runtime_manifest_and_private_icu": "PASS",
+    "actual_packaged_commit_helper_cases": 26,
+    "helper_prefix_space_and_percent": true,
+    "source_free_optimized_code_copy_clipboard_paste_save_exact_bytes": "PASS",
+    "webkit_sandbox": {
+      "no_new_privileges": 1,
+      "seccomp": 2,
+      "private_pid_namespace": true
+    }
+  },
+  "review": {
+    "combined_source_positions_and_code_copy": "CLOSED; no confirmed P2",
+    "explicit_named_handlers": [
+      "markdownCodeCopy",
+      "markdownPosition"
+    ],
+    "typed_blank_copy_guard_unchanged": true,
+    "normalized_image_cache_guard_unchanged": true,
+    "shared_visual_editor_js_sha256": "506321e90ab37c7f114b5841b7ed4741fce6020cdf29496207d2dc598aeb7971",
+    "footer_unbound_gtk_height_regression": "CLOSED; actual DE/EN minimum and wide editor flows pass"
+  },
+  "test_boundaries": [
+    "The first full unit run failed at fixture creation because the new directory was root-owned. With ownership corrected to the isolated test user the unchanged full suite passed.",
+    "One English wide first capture was clipped despite passing DOM assertions. It was rejected and replaced by an inspected unchanged-product rerun with the private window positioned visibly.",
+    "Raw native PDF probes check only absence of code controls; they do not use the separate product printing preparation stylesheet or establish long-line print coverage.",
+    "The host test.sh dispatch was syntax checked; native flows were executed with the documented isolated container wrappers."
+  ],
+  "limits": [
+    "CR-only code fences remain a confirmed parser limitation; LF and CRLF fences and CR-only paragraphs/headings are covered.",
+    "Full Math parity is pending; the privately reviewed Math core is not yet part of this product commit.",
+    "Current Mac window acceptance still needs the approved graphical session.",
+    "Full physical desktop, Wayland, IME and accessibility acceptance remains open.",
+    "Component signing and the requested Pull policy decision remain externally pending."
+  ]
+}

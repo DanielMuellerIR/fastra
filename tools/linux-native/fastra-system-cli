@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+if [ "${FASTRA_NATIVE_RUNTIME+x}" = x ] || [ "${FASTRA_NATIVE_SHADOW_MANIFEST+x}" = x ] || [ "${FASTRA_INTERNAL_HOST_FD+x}" = x ]; then
+ printf 'Fastra service launchers require the original host environment. Native GUI runtime markers are not accepted.\n' >&2
+ exit 2
+fi
+launcher=$(readlink -f -- "$0")
+root=$(CDPATH= cd -- "$(dirname -- "$launcher")/.." && pwd -P)
+case ${launcher##*/} in fastra-control|fastra-diff) ;; *) printf 'Unknown system service launcher.\n' >&2; exit 2;; esac
+exec "$root/app/bin/${launcher##*/}" "$@"

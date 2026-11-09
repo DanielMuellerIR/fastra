@@ -1,0 +1,45 @@
+--- a/gtk/gtktextiter.c
++++ b/gtk/gtktextiter.c
+@@ -1785,8 +1785,9 @@
+   if (real->line_byte_offset >= 0)
+     {
+       /* We can start at the segments we've already found. */
++      /* Segmentänderungen können den Offset invalidieren; zuerst neu auflösen. */
++      seg = _gtk_text_iter_get_indexable_segment (iter);
+       count = real->line_byte_offset - real->segment_byte_offset;
+-      seg = _gtk_text_iter_get_indexable_segment (iter);
+     }
+   else
+     {
+--- a/gtk/gtktextbuffer.c
++++ b/gtk/gtktextbuffer.c
+@@ -122,6 +122,7 @@
+   PROP_CAN_REDO,
+   PROP_ENABLE_UNDO,
+   PROP_FASTRA_PREFLIGHT_LINE_BYTES,
++  PROP_FASTRA_ITER_METADATA_ABI_V1,
+   LAST_PROP
+ };
+ 
+@@ -540,6 +541,10 @@
+   text_buffer_props[PROP_FASTRA_PREFLIGHT_LINE_BYTES] =
+     g_param_spec_uint ("fastra-preflight-line-bytes-v1", NULL, NULL,
+                        0, G_MAXUINT, 0, GTK_PARAM_READWRITE);
++
++  text_buffer_props[PROP_FASTRA_ITER_METADATA_ABI_V1] =
++    g_param_spec_uint ("fastra-iter-metadata-abi-v1", NULL, NULL,
++                       0, G_MAXUINT, 0x49545231u, GTK_PARAM_READABLE);
+ 
+   g_object_class_install_properties (object_class, LAST_PROP, text_buffer_props);
+ 
+@@ -1026,6 +1031,10 @@
+ 
+   switch (prop_id)
+     {
++    case PROP_FASTRA_ITER_METADATA_ABI_V1:
++      g_value_set_uint (value, 0x49545231u);
++      break;
++
+     case PROP_FASTRA_PREFLIGHT_LINE_BYTES:
+       g_value_set_uint (value, text_buffer->priv->fastra_preflight_line_bytes);
+       break;

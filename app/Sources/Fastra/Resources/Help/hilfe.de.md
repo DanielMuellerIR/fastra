@@ -5,6 +5,77 @@ Suche und Ersetzung über Dateien und Ordner. Der Kern: **Vor jeder
 Mehrfachänderung siehst du eine vollständige Vorschau** — Fastra schreibt
 nie in Dateien, ohne dass du die Auswirkungen vorher gesehen hast.
 
+## Linux: Codebereiche falten
+
+Die Pfeile neben den Zeilennummern klappen erkannte Codebereiche ein und aus.
+**Darstellung und Bearbeitung** bietet **Bereich ein-/ausklappen**, **Alle Bereiche
+einklappen** und **Alle Bereiche ausklappen** für den aktiven Quellausschnitt.
+Ein geöffnetes Elternstück bewahrt eingeklappte Kinder; Alt-Klick auf seinen
+Pfeil bezieht die Kinder ein. Beide Ausschnitte einer geteilten Ansicht falten
+unabhängig voneinander.
+
+Ein Doppelklick auf den Platzhalter öffnet und markiert den vollständigen Body.
+Ein Sprung hinein öffnet die umschließenden Bereiche. Rückschritt oder Entf am
+gefalteten Rand öffnet zuerst; der nächste Tastendruck bearbeitet den Text.
+Kopieren und Ausschneiden einer Auswahl übernehmen auch deren versteckte Teile.
+Falten verändert weder Quelltext noch Rücknahme. Die schließende Codezeile steht
+weiterhin separat mit ihrer ursprünglichen Nummer.
+
+Die Erkennung verwendet dieselben Grammatikrevisionen und Bereichsregeln wie
+auf dem Mac, einschließlich des eigenen 4D-Providers. Für Markdown-Überschriften
+steht die Gliederung zur Verfügung. Analysegrenzen: 32 MiB Quelltext, 10.000
+Bereiche und 512 Verschachtelungsebenen. Bei Zeit-, Speicher- oder Analysegrenzen
+bleibt der Quelltext vollständig sichtbar; Fastra meldet die Grenze.
+
+## Linux: Quelltext-Gliederung
+
+Die Quellansicht bietet Zurück, Vorwärts und den Listenknopf für Markdown und
+4D. Das Popup folgt der Einfügemarke und aktualisiert sich nach Änderungen von
+selbst. Markdown zeigt Überschriften, 4D Klassenfunktionen oder den Methodennamen.
+Ein Klick springt und schließt das Popup. Die Pfeile durchlaufen höchstens 100
+Gliederungssprünge über noch geöffnete Dokumente. Nach Änderungen wird eine
+Überschrift nur bei eindeutigem Titel, Typ und Ebene wiedergefunden; geschlossene
+Dokumente und mehrdeutige Ziele werden nicht angesprungen. Grenzen: 10 MiB,
+200.000 Zeilen und 10.000 Einträge. Rich verwendet dasselbe Popup und denselben
+Verlauf: Überschriften bleiben in Rich, gespeicherte Quelltextpositionen wechseln
+nach geprüfter Synchronisation in die Quellansicht. Die Auswahl folgt dem
+sichtbaren Rich-Inhalt. Alt-Doppelklick in der Quellansicht springt zu normalen
+4D-Funktionen, Projektmethoden und Klassen oder zu Markdown-Linkzielen. Lokale
+Dateien werden im Editor geöffnet, externe Adressen im eingestellten Browser.
+Ein Anker mit Dateipfad öffnet die Datei am Anfang. Der Kontextmenü-Eintrag
+„Gehe zum Ziel an der Einfügemarke“ bietet denselben Einstieg, falls der Desktop
+Alt-Mausgesten belegt. Lokale Sprünge und Textdateien verwenden den gemeinsamen
+Verlauf. Unbekannte 4D-Namen öffnen mit erhaltenen Optionen die literale Projekt-
+oder Ordnersuche; für 4D-Quelldateien dort „Alle Dateien“ wählen. Die schreibgeschützte Markdown-Verweisprüfung ist unter **Werkzeuge → Lokale Markdown-Verweise prüfen …** erreichbar; Dokument-/Projektbereich, Problemfilter und Quellsprünge verwenden dieselben Regeln.
+
+## Linux: Sichtbare Markdown-Leerzeilen
+
+Eine ansonsten leere Zeile mit mindestens zwei normalen Leerzeichen bleibt als
+eine sichtbare Zeile erhalten, auch in Listen und Zitaten. Tabulatoren und
+geschützte Leerzeichen lösen diesen Zusatz nicht aus. Code und unveränderte
+Quellblöcke behalten ihre ursprünglichen Bytes. Eingaben in eine solche Zeile
+lassen sich rückgängig machen; Kopieren und Einfügen erhalten die Abstände und
+den eingetippten Text ohne interne Quellpositionsattribute.
+
+## Linux: Speichern und Beenden
+
+„Speichern unter …“ (Ctrl+Shift+S) zeigt für bestehende Textdokumente den
+vollständigen Quell- und Zieltext, alle neuen Bildkopien und einen vorhandenen
+Zielstand vor der Zustimmung. Beim Ordnerwechsel werden verwendete lokale
+Rasterbilder geprüft mitgenommen; Originaldateien bleiben erhalten. Bei einer
+Änderung der Bildherkunft beginnt Rückgängig nach sichtbarem Hinweis neu.
+Nicht eindeutig übertragbare Verweise und überschrittene Vorschaugrenzen werden
+ausdrücklich abgewiesen.
+
+„Fastra beenden“ (Ctrl+Shift+Q) sammelt die Speicherentscheidungen aller Fenster.
+Abbrechen oder eine inzwischen geänderte Grundlage erhält die Fenster.
+Laufende Speicher- und Bilddateiaktionen müssen einschließlich ihrer letzten
+Prüfung abgeschlossen sein. Ctrl+Q schließt das aktuelle Hauptfenster.
+
+Der eigene Force-Push-Modus ist zunächst ausgeschaltet. Seine neue Vorschau
+zeigt ausgehende und auf dem Zielbranch verdrängte Commits; eine eigene
+Bestätigung erlaubt ausschließlich die dabei festgehaltene Server-Lease.
+
 ## Dokumente und Speichern
 
 ⌘T öffnet einen neuen Tab. Beim ersten Speichern schlägt Fastra den Ordner
@@ -224,7 +295,9 @@ der aktive Tab ist links vorbelegt.
 - **Soft Wrap:** Der Schalter in der Fußzeile wirkt auch hier und hat für die
   Vergleichsansicht eine eigene Einstellung, unabhängig von der Sprache der
   verglichenen Dateien. Eingeschaltet bricht zu langer Text in seiner Spalte
-  um (Werkstandard). Ausgeschaltet steht jede echte Zeile einzeilig da; was
+  um (Werkstandard). Jede umbrochene Zeile erhält die benötigte Höhe, auch
+  nach Änderungen der Fenster- oder Spaltenbreite. Ausgeschaltet steht jede
+  echte Zeile einzeilig da; was
   nicht in die Spalte passt, wird am Spaltenrand abgeschnitten und ragt nie
   in die andere Seite. Zusammen mit dem Trenner lässt sich so mehr von einer
   Seite lesen.
@@ -436,6 +509,8 @@ Dateibaum erst nach dem Speichern oder Verwerfen in den Papierkorb legen.
 Vorlagen. In Markdown steht der Knopf auch im formatierten Editor zur Verfügung.
 Die Bausteine ergänzen die vorhandenen 4D-Makros; sie führen keine Skripte aus.
 
+Unter Linux stehen Textbausteine auch unter **Werkzeuge → Textbausteine …**. Die Bibliothek und die Einfügevorschau arbeiten ebenso mit der beim Öffnen festgehaltenen Quell- oder Rich-Auswahl. Für Bildverweise im Rich-Modus muss das Zieldokument bereits gespeichert sein.
+
 Wähle **Neu**, gib einen Namen und die Vorlage ein und speichere sie.
 **Duplizieren** erzeugt eine unabhängige Kopie. Vorlagen lassen sich bearbeiten,
 löschen und nach Namen durchsuchen. Nicht gespeicherte Vorlagenänderungen werden
@@ -535,7 +610,6 @@ Workspace-Ladewege aktualisiert.
 Lange Konfliktlisten lassen sich im Fehlerbereich vollständig scrollen; die
 Dialogaktionen bleiben dabei sichtbar.
 
-
 Die ursprüngliche Kodierung und BOM bleiben erhalten; nicht darstellbare Zeichen
 werden als Fehler gemeldet. Geschrieben werden exakt die Ergebnisbytes der Vorschau,
 ohne zusätzliche Zeilenenden-Normalisierung beim Speichern. Zeilenweise Schritte
@@ -581,7 +655,7 @@ oder durch neue Eingaben überholter Lauf gibt keinen Apply frei.
 
 ### Lokale Markdown-Verweise prüfen
 
-**Markdown → Lokale Verweise prüfen…** öffnet die Befundliste. Wähle **Dokument**
+**Markdown → Lokale Verweise prüfen…** öffnet die Befundliste (Linux: **Werkzeuge → Lokale Markdown-Verweise prüfen …**). Wähle **Dokument**
 oder bei geöffnetem Projekt **Projekt**, dann **Prüfen**. **Nur Probleme anzeigen**
 blendet vorhandene Ziele aus. Wähle einen Befund und **Zur Quelle** für den Sprung
 zur Quellzeile; WYSIWYG wechselt dabei in den Quelltext. Geänderte oder geschlossene
@@ -606,7 +680,7 @@ CSS, `srcset`, Skripte, Stile und Anker fremder Dateiformate bleiben sichtbar un
 Im Projektbereich zählen nur Dateien der geprüften Wurzel; eine äußere aktive
 Datei bleibt außen vor. Offene Dateien mit bewusst gewähltem Markdown-Format
 werden ebenfalls berücksichtigt. Ein Bereichswechsel verwirft den alten Bericht.
-Die Liste nennt ihre tatsächlich geprüfte Projektwurzel.
+Die Liste nennt ihre tatsächlich geprüfte Projektwurzel. Unter Linux bleiben unbekannte Dateisystemtypen und Netzwerk-Mounts ungeprüft; Symlinks werden vor jedem weiteren Zugriff schrittweise aufgelöst.
 
 Projekt-Ausschlüsse gelten; versteckte Dateien, Paketinhalte und Symlinkquellen
 bleiben außen vor. Lokale Symlinkziele sind zulässig. Grenzen: 200 Markdown-Dateien,
@@ -615,7 +689,6 @@ Verweise und Anker insgesamt. Lesefehler, nicht dekodierbare Quellen, Grenzen un
 Abbruch ergeben eine unvollständige Liste. Offene Projektdateien dieses Fensters
 zählen in ihrer aktuellen Fassung. Der Bericht ist eine datierte Momentaufnahme;
 **Erneut prüfen** liest externe Änderungen neu.
-
 
 
 Vorschau und WYSIWYG zeigen Fließtext in einer zentrierten Lesespalte. Breite Tabellen dürfen darüber hinausgehen und besitzen bei Bedarf einen eigenen horizontalen Rollbalken; die übrige Seite bleibt an ihrer Position.
@@ -823,6 +896,8 @@ Geschützte HTML- und Formelbereiche lassen sich im WYSIWYG-Modus nicht
 formatieren. Fastra erklärt dies vor der Änderung; bearbeite solche Bereiche
 im Markdown-Quelltext.
 
+Normale Codeblöcke lassen sich auch unter Linux im WYSIWYG-Modus mit Syntaxfarben bearbeiten. Mermaid bleibt geschützt und wird als Diagramm dargestellt. Fehlerhafte Diagramme behalten ihren Code und zeigen eine Meldung; ihre Quelle bearbeitest du im Quelltextmodus.
+
 **Return** beginnt einen neuen Absatz mit etwas Abstand. **Shift-Return (⇧↩)**
 beginnt eine neue Zeile im selben Absatz, ohne zusätzlichen Absatzabstand.
 Den gleichen Zeilenumbruch fügt der **↵-Button** neben den Formatierungsbuttons
@@ -888,7 +963,6 @@ lokalen Bilder, die dieses Dokument tatsächlich verwendet, in dessen `images`-
 Ordner. Andere Bilder, unbenutzte Referenzdefinitionen und Codebeispiele werden
 nicht mitgenommen. Fehlende benötigte Bilder brechen die Speicherung mit einer
 Meldung ab. Vorhandene Zieldateien werden nicht überschrieben.
-
 
 Bei Markdown-Tabs erscheint über dem Editor eine **Format-Toolbar**; die
 gleichen Befehle liegen im Menü „Markdown“ und im Rechtsklickmenü. Sie
@@ -1024,6 +1098,10 @@ einem Unterordner `images`. Ist der Name schon belegt — zum Beispiel weil
 `Bericht.rtf` und `Bericht.docx` nebeneinanderliegen —, weicht Fastra auf
 `Bericht-2` aus. Vorhandene Dateien werden nie überschrieben, und das
 Originaldokument bleibt unverändert.
+
+Sammlungen wie MBOX und ENEX behalten ihren vollständigen Ergebnisordner mit
+Übersicht, Einzeldokumenten und Anlagen. Fastra öffnet die vom Werkzeug gemeldete
+Übersicht (etwa `index.md`); ihre relativen Verweise bleiben erhalten.
 
 Die Umwandlung ist bewusst verlustbehaftet: Markdown kann Struktur, Links,
 einfache Auszeichnungen, Listen und Bilder erhalten, aber nicht jede Schrift und
@@ -1711,6 +1789,8 @@ Normale Arbeitsfenster und ungespeicherte Inhalte bleiben erhalten. Snapshots
 lassen sich auswählen, kopieren und durchsuchen, aber nicht bearbeiten oder
 speichern; sie werden beim nächsten Start nicht wiederhergestellt.
 
+Unter Linux übernehmen automatische Sprungmarkierungen die Maus-Zwischenablage PRIMARY nicht. Strg+C kopiert die sichtbare Auswahl weiterhin; eigene Eingaben im Snapshot-Fenster aktivieren die normale Auswahlanbindung wieder.
+
 Ein erfolgreicher Aufruf bestätigt zunächst die Annahme eines Jobs.
 Erst dessen Status `ready` bestätigt Inhalt, angewendete Auswahl und sichtbare
 Zielstelle. Eigenes Erkunden, Abbruch oder Schließen verhindert späte Sprünge.
@@ -1782,3 +1862,224 @@ Unvollständige Blöcke ohne passenden Abschluss werden nicht gefaltet.
 Der gemeinsame Projektkopf neben der Marke zeigt Name und Pfad. Das Symbol
 unterscheidet Git-Repositories und normale Ordner. Der Graph nennt die Zahl
 aller über Git-Refs erreichbaren Commits; seine Liste bleibt auf 2.000 begrenzt.
+
+Beim Kopieren und bei bearbeiteten Formatierungen verwendet WYSIWYG Markdown-
+Auszeichnung, soweit die Zeichen an den Formatgrenzen dies erlauben. Geschützte
+Leerzeichen bleiben erhalten. Return nach fettem oder markiertem Text erzeugt
+einen leeren Absatz ohne sichtbare Formatzeichen; vollständiges Löschen lässt
+eine leere Editorzeile zurück. Unveränderte Quellblöcke behalten ihre Schreibweise.
+Der visuelle Ausschnitt wird pro Dokument für einen erneuten Moduswechsel gemerkt.
+Kopierte Textmarker geben ihre Farbe auch an HTML- und RTF-Ziele weiter.
+
+Lokale Rasterbilder in der Linux-Rich-Ansicht aktualisieren sich bei externen Dateiänderungen automatisch im Hintergrund. Text, Auswahl und Rücknahme bleiben erhalten. Fehlende oder ungültige Bilder behalten ihren Quellverweis, zeigen aber keine veralteten Bildbytes. Während Bild- und Clipboardaktionen wartet die Aktualisierung.
+
+In den Linux-Gitwerkzeugen öffnet „Commit erstellen …“ die vollständige Indexvorschau. Prüfe Tree, Parent-Commits, Autor/Committer, Nachricht und Diff und bestätige anschließend diesen Stand. Fastra verwendet den normalen Git-Commit mit aktiven Hooks und nativer Signierung. Späteres Staging und ungesicherte Editorpuffer bleiben erhalten. Hookänderungen, fehlerhafte Signierung oder eine veraltete Basis halten den Commit an; die tatsächliche Ausgabe und der anschließende Git-Zustand bleiben sichtbar. Git 2.43 oder neuer mit Files-Refs ist erforderlich.
+
+## Linux: Markdown
+
+Groß-/Kleinschreibung und Text-Systemlocale
+Die Textmenübefehle und gespeicherte Einzel-, Mehrtab- und Dateiabläufe verwenden die erfasste Text-Systemlocale. Ihre ID erscheint im Menü und in Schritt-/Endvorschauen; die Oberflächensprache steuert diese Textregeln nicht. Localewechsel entwerten die alte Vorschau. Eine nicht bestimmbare Locale blockiert sichtbar. Die gesamte Auswahl wird gemeinsam transformiert, ohne Kontext außerhalb der Auswahl zu übernehmen. Vorhandene Größen-/Zeilengrenzen und ein gemeinsames Undo bleiben erhalten. Ersetzungstemplates behalten ihre bisherige Root-Semantik.
+
+Geteilte Quellansicht
+Beide Quellansichten besitzen eigene Auswahlen, Carets und Scrollpositionen. Textwerkzeuge, Navigation, Optionen und Paste verwenden die zuletzt benutzte Quellansicht auch nach Menü-/Dialogfokus. Ausschalten der Teilung setzt die primäre Ansicht als Ziel. Text und native Rücknahme bleiben gemeinsam. PRIMARY ändert sich nicht durch einen reinen Fokuswechsel; Aufheben der eigenen Auswahl gibt nur das zugehörige aktuelle eigene Angebot frei. Beim Überschreiben einer mehrstelligen Auswahl durch Tippen trennt GTK Löschen und Einfügen in zwei native Undo-Schritte; der zweite stellt den gelöschten Text wieder her. Fastra-Paste und Textoperationen besitzen weiterhin je ein gemeinsames Undo.
+
+HTML und externe Links
+Die Vorschau verwendet die enge Mac-Positivliste für HTML-Tags und Attribute. Tabellen, lokale Rasterbilder und aufklappbare Details werden dargestellt; Skripte, Netzbilder und fremde interne Positions-/Kopierattribute bleiben ausgeschlossen. Abgewiesenes HTML erscheint als Text. Rohe HTML-Bereiche ohne Quellzuordnung besitzen keinen Quelltextsprung oder eigenen Codekopierknopf. Ein ausdrücklich aktivierter HTTP-, HTTPS- oder Mailto-Link öffnet den Systembrowser beziehungsweise das Mailprogramm. Die Vorschau selbst bleibt lokal; automatische Navigation und andere Protokolle sind gesperrt.
+
+Quelltext und Markdown-Vorschau per Klick
+Ein Klick im Quelltext scrollt den passenden Vorschauabschnitt sichtbar. Ein Klick auf normalen Vorschautext setzt die Einfügemarke in der zuletzt benutzten Quellansicht, öffnet gegebenenfalls eingeklappte Bereiche und fokussiert den Editor. Links, Textauswahl und Kopierknöpfe bleiben eigene Aktionen. Die Spalte ist bei entferntem Markdown-Markup eine Näherung; es gibt keine fortlaufende Scrollkopplung.
+
+Codeblöcke kopieren
+Der Kopierknopf am Codeblock übernimmt den vollständig dargestellten Code als Klartext, einschließlich Tabs, Leerzeichen und abschließendem Umbruch. Er ist mit Maus und Tastatur bedienbar. Frühere HTML-/RTF-Formate werden ersetzt; der Quelltext und seine Rücknahme bleiben erhalten. Höchstens 2 MiB je Kopie; veraltete oder zu große Aufträge melden einen Fehler ohne Teilkopie. Druck und allgemeine Auswahlkopie enthalten keine Kopiercontrols oder internen Positionsattribute. LF, CRLF und reine CR-Zeilenenden werden über dieselbe zeilenendentreue Parseransicht verarbeitet.
+
+Rechteckauswahl und Spaltenpaste berücksichtigen die aktuell eingestellte Tabbreite. Wird sie geändert, endet die bisherige Rechteckauswahl; Text und Rücknahme bleiben unverändert.
+
+Rechtecke kopieren und ausschneiden
+„Text → Rechteckauswahl“ bietet Kopieren, Ausschneiden, Spaltenpaste und Erweitern nach oben/unten. Ctrl+C/Ctrl+X kopieren das Rechteck als Klartext mit den ursprünglichen Zeilenenden; mehrzeilige Kopien besitzen einen abschließenden Umbruch. Ctrl+Shift+↑/↓ erweitert oder verkleinert über logische Zeilen, unabhängig vom sichtbaren Umbruch. Ctrl+V ersetzt ohne Auffüllen kurzer Zeilen; „Spaltenpaste“ füllt mit Tabs beziehungsweise Leerzeichen gemäß Editorprofil auf und funktioniert auch ab einer einzelnen Einfügemarke. Zusätzliche Clipboardzeilen setzen sich in folgenden Zeilen fort; fehlende Zeilen leeren nur markierte Zeichen. Jede Änderung besitzt ein gemeinsames Undo. Veraltete Aufträge und überschrittene Grenzen (4 MiB, 2001 Zeilen, 64 KiB je Ergebniszeile) ändern nichts.
+
+Andere Tabs schließen
+Das Menü an jeder Tab-Beschriftung bietet „Andere Tabs schließen“. Dieser Tab bleibt erhalten; alle übrigen ungesicherten Tabs werden vor dem gemeinsamen Schließen nacheinander abgefragt. Spätes Abbrechen erhält alle Tabs und die vorherige Aktivierung. Bereits ausdrücklich gespeicherte Dateien bleiben gespeichert. Laufende Änderungen sowie überholte Dokument- oder Tabstände halten den Vorgang an.
+
+Formeln in der Markdown-Vorschau
+Inline- und Blockformeln verwenden die mitgelieferte KaTeX-Darstellung. Unvollständige, verschachtelte oder nicht unterstützte Formeln bleiben mit verständlichem Hinweis als Originalquelle sichtbar. Code, HTMLbereiche und wörtliche Bild-/Linkziele werden nicht als Formeln umgedeutet. Vorschau, Codekopie, Bildreferenzen und Speichern unter erhalten ihre ursprünglichen Quellbereiche auch bei CR-Zeilenenden.
+
+Formatprofile auf Linux
+Tabbreite und Einrückungsbreite sind unabhängig von 1 bis 16 wählbar; Tabs/Leerzeichen und Fensterumbruch werden pro Syntaxformat gespeichert und für neue Tabs und Prozessneustarts übernommen. Ohne eigene Wahl gelten vier Leerzeichen und Breite vier. Plain Text, HTML, JSON, Markdown, XML und Diff verwenden ab Werk Fensterumbruch, Codeformate nicht. Zeilennummern und automatische Einrückung bleiben dokumentbezogen. Solange die gespeicherte Syntaxwahl geladen wird, sind Profiländerungen sichtbar gesperrt; eine ausdrückliche Syntaxwahl hat Vorrang. Noch ausstehende oder fehlgeschlagene Speicherungen halten normales Schließen und Beenden sichtbar an. Nach erfolgreichem Speichern Schließen erneut wählen; bei einer Sperre die Wahl beziehungsweise Schließen ausdrücklich erneut versuchen.
+
+Zeilenenden auf Linux
+Die Wahl LF, CRLF oder CR neben der Kodierung merkt eine Änderung vor. Erst Speichern konvertiert den Text; bis dahin bleiben die ursprünglichen Zeichen und die Rücknahme erhalten. Eine vorgemerkte Wahl zählt als ungesichert und bleibt nach Abbruch, fehlgeschlagenem Speichern und Sitzungswiederherstellung erhalten. Die bisher gespeicherte Wahl hebt die Vormerkung wieder auf. Ohne ausdrückliche Wahl erhält normales Speichern auch gemischte Zeilenenden.
+
+Speichern unter zeigt den vollständig konvertierten Zieltext vor der Bestätigung. Kodierung und BOM bleiben erhalten. Am bisherigen Speicherort lässt sich die Konvertierung mit einem Undo zurücknehmen. Wird während des Speicherns weiter im Quelltext gearbeitet, bleibt der neuere Stand ungesichert; prüfe ihn und speichere erneut. In der Rich-Ansicht wartet die weitere Eingabe bis zum Abschluss der Speicherung.
+
+Beim Schließen der Editoroptionen kehren Fokus und Auswahl in die vorherige Quellansicht zurück, sofern das Dokument und die Benutzerinteraktion unverändert geblieben sind.
+
+Formeln in der Linux-Rich-Ansicht
+Inline- und Blockformeln erscheinen gerendert. Die Formel selbst bleibt geschützt; ändere TeX und Delimiter im Quelltext. Der umgebende Absatz sowie Listen und Tabellen bleiben bearbeitbar. Nicht unterstützte oder verschachtelte Formeln zeigen einen Quellhinweis. Kopieren und Einfügen zwischen Rich-Ansichten erhalten die ursprüngliche Formelsyntax über Fastras Markdown-Format; normale HTML-Kopie enthält MathML und Klartext den sichtbaren Text. Die lokale Darstellung verwendet keine Netzverbindung.
+
+Git-Pull auf Linux
+„Git-Pull …“ bietet FF-only, Merge oder Rebase. „Quelle abrufen und Vorschau erstellen“ führt zuerst den sichtbaren Fetch aus; dabei können Refs und FETCH_HEAD geändert werden. Prüfe danach vollständige Commit-Patches, Status sowie Index- und Arbeitsdiff und bestätige den Vorgang ausdrücklich. Natives Git fetcht beim Pull erneut; Remote, fremdes Git und Hooks können zusätzliche oder teilweise Änderungen verursachen. Der abschließende Bericht zeigt den tatsächlichen HEAD und Dateistand auch nach Abbruch oder Fehlern. Es gibt keine automatische Rücknahme oder Fortsetzung. Während Pull und Nachscan warten Dateipublikationen und normales Schließen sichtbar; starte abgewiesene Aktionen danach ausdrücklich erneut.
+
+Appweite Seitenlinie
+„Seitenlinie anzeigen“ und „Seitenlinie: Spalte“ gelten für alle Fenster und beide Teilansichten, unabhängig von Syntaxformat und Zeilenumbruch. Wähle eine Spalte von 20 bis 500; ab Werk gilt 80 und die Linie ist aus. Einstellungen bleiben nach Neustarts erhalten. Während des ersten Ladens sind die Controls sichtbar gesperrt. Ausstehende oder fehlgeschlagene Speicherungen halten Schließen an; nach Erfolg Schließen erneut wählen. Die Optionen „Umbruchziel“ und „Folgezeilen“ werden in der dafür ausgelegten optionalen Textlaufzeit freigeschaltet. Wähle Fensterbreite, Seitenlinie oder eine feste Spalte von 20 bis 500; der sichtbare Bereich bleibt die Obergrenze. Folgezeilen bleiben linksbündig, folgen dem Einzug der ersten Zeile oder erhalten eine zusätzliche Einrückungsstufe. Die Einstellungen verändern keine Dateizeichen. Mit Systembibliotheken zeigt Fastra den Hinweis auf die optionale Laufzeit und verwendet weiter Fensterumbruch.
+
+Quelltextpaste
+Normales Einfügen über Ctrl+V, Shift+Insert und das Kontextmenü prüft Clipboardtext und vollständiges Ergebnis vor der ersten Änderung: höchstens 32 MiB und 64 KiB je Ergebniszeile, gültiges UTF-8, keine NUL-Zeichen. Ein abgewiesener Auftrag erhält Quelle, Auswahl und Undo. Neue Auswahlen oder überholte Antworten können keinen späteren Text überschreiben. Die normale Mittelklickpaste verwendet dieselbe Prüfung an der angeklickten Textposition, einschließlich der eingebauten Zeilennummernleiste, und verändert eine bestehende Auswahl nicht künstlich. Aktive Rechteckauswahl behält ihren eigenen Einfügepfad und ihr 4-MiB-Limit; andere Insertwege sind damit nicht pauschal geprüft.
+
+### Linux: externer Vergleich
+
+`fastra-diff` bietet den vorhandenen schreibgeschützten Aufrufvertrag auch unter Linux. Der Helfer wird mit den Paketen installiert; `--focus-diff` fordert ausdrücklich Fokus an. Das eigene Vergleichsfenster besitzt keine Editor-Speicherung. „Fastra beenden“ berücksichtigt normale ungesicherte Fenster. Lange normale Paste erhält den Caret sichtbar, solange die zugehörige Auswahl und Teilansicht unverändert bleiben.
+
+Das externe Fenster verwendet dieselbe zweispaltige Darstellung mit Zeilennummern, Hervorhebungen, aufklappbaren gleichen Abschnitten, Differenzenliste und Übersicht. Die Schlosszeile kennzeichnet den Schreibschutz. Kopieren lässt Zeilennummern, Faltknöpfe und Ausrichtungsleerstellen weg. Der Export speichert die vollständige abgeschlossene Vergleichsbasis als lokalen Bericht und schützt auch umbenannte oder verlinkte Quelldateien vor dem Überschreiben. „Fastra beenden“ ist im Fenstermenü erreichbar.
+
+### Linux: stabile Sortierung und Dateimanager
+
+Sortieren verwendet die im Menü und in Ablaufvorschauen angezeigte Textlocale mit numerischer, normalisierter ICU-Kollation. Groß-/Kleinschreibung und Satzzeichen zählen mit; Kleinbuchstaben stehen bei sonst gleichem Wort zuerst. Gleiche Schlüssel behalten in beiden Richtungen ihre ursprüngliche Reihenfolge, auch bei führenden Nullen und kanonisch gleichen Unicode-Schreibweisen. Die Quellbytes werden nicht normalisiert. Localewechsel entwerten alte Berechnungen. Gespeicherte Abläufe behalten ihr JSON-Format. Die Reihenfolge kann von Mac/Finder abweichen.
+
+„Im Dateimanager zeigen“ im Projektfenster markiert den gewählten Projektordner in seinem Elternordner. Im Kontextmenü gespeicherter Dokumenttabs markiert die Aktion die Datei. Ein nicht verfügbarer Desktopdienst wird sichtbar erklärt; Dokumente bleiben unverändert.
+
+### Automatische Links auf Linux
+
+Markdown-Vorschau und Rich-Markdown erkennen automatische HTTP(S)-, www- und Mailadressen. Entities, Backslash-Escapes, Tabellen und Fußnoten erhalten ihre ursprünglichen Quellbereiche. Ein Link wie `https://example.com/$x$` behält die Formelsyntax als wörtlichen URL-Inhalt. Rich-Markdown erlaubt Mailto auch im Linkdialog und weist Steuerzeichen in Linkzielen ab. Externe Links bleiben in Rich gesperrt; die normale Vorschau öffnet freigegebene Protokolle nur nach ausdrücklichem Aktivieren. Abbruch oder eine überschrittene Komplexitätsgrenze übernehmen keine teilweise berechneten Links.
+
+Externe Web- und Mail-Links öffnet der optionale Linux-Laufzeitkandidat über das Desktopportal. Fehlt dieses Portal, zeigt Fastra einen Fehler. Mit Systembibliotheken bleibt der bisherige Desktopaufruf aktiv.
+
+### Native Eingabevorprüfung unter Linux
+
+Der passende optionale Linux-Laufzeitkandidat prüft finale GTK-Textcommits sowie die angebundenen nativen Delete-, Backspace-, SmartBackspace- und Join-Aktionen vor deren Änderung auf 32 MiB insgesamt und 64 KiB je logischer Zeile. Eine abgewiesene Aktion erhält den unmittelbar davor bestehenden Text-, Auswahl- und Rücknahmezustand. Die Prüfung der Lösch- und Join-Aktionen gilt ohne aktive Komposition. Preedit, zusammenhängendes Surrounding-Delete mit Commit, weitere Einrückungsaktionen, Tab-/Snippet-Transaktionen und weitere native Mehrschrittaktionen bleiben gesonderte Grenzen; ein vollständiger IME-Vertrag wird nicht zugesagt.
+
+Zusätzlich wird gewöhnlicher Return bei automatischer Einrückung in einer linearen Quellansicht vor der Änderung geprüft und gemeinsam rückgängig gemacht. Die Prüfung gilt für den eingebauten Einrücker und unverbrauchte Eingaben. Bereits von einer Eingabemethode bearbeitete Tasten bleiben außerhalb dieses Vertrags; Rechteck-Return behält seinen bisherigen Ablauf. Return fügt intern LF ein; vorhandene CRLF-Bytes bleiben erhalten.
+
+## Linux: Oberfläche und Schriften
+
+Die Linux-Oberfläche sowie Rich-Markdown und Markdown-Vorschau bringen Inter 4.1 mit, einschließlich normaler, halbfetter und kursiver Darstellung. Die Schrift funktioniert ohne Netzverbindung und ohne Installation im Desktop. Fastra verändert keine Systemschriften. Die Sora-Wortmarke und die gesonderte Quelltextschrift bleiben erhalten. Die Lizenz und der Herkunftsnachweis liegen den Linux-Paketen bei.
+
+## Linux: Dateivergleich
+
+Shift-Klick auf einen zweiten Text-Tab markiert ihn als Vergleichspartner, ohne den aktiven Editor umzuschalten. Der aktive Tab bleibt kräftiger grau, der Partner schwächer grau. Ein weiterer Shift-Klick auf den Partner oder den aktiven Tab sowie ein normaler Klick hebt die Paarwahl auf. „Dateien vergleichen…“ im Kontextmenü eines markierten Tabs füllt beide Seiten in ihrer sichtbaren Tab-Reihenfolge. Auf einem unmarkierten Nachbartab erscheint diese Paaraktion nicht. Geschlossene und nicht mehr vergleichbare Tabs verlieren ihre Zuordnung.
+
+Ctrl+Alt+Shift+D öffnet im Haupt- und Suchfenster den normalen Vergleichsdialog mit dem aktiven Dokument links; eine markierte Paarwahl wird dabei nicht übernommen. „Mit gespeicherter Fassung vergleichen“ unter „Werkzeuge“ ist für eine Textdatei mit ungespeicherten Änderungen verfügbar. Es öffnet direkt die gespeicherte Fassung links und den Editorinhalt rechts, auch im Rich-Modus. Dieser Direktvergleich verwendet Standardoptionen und lässt gemerkte Ignore-Optionen unverändert. Dateien werden durch den Vergleich oder eine Übernahme weiterhin nicht gespeichert.
+
+„Dateien vergleichen …“ öffnet die kompakte Quellenauswahl. Beide Seiten können eine Datei oder einen ausdrücklich gewählten offenen Tab verwenden; der aktive editierbare Tab ist links vorbelegt. Die vier Ignore-Optionen bleiben über Neustarts erhalten. Das Ergebnis ist ein eigener schreibgeschützter Tab. Lange gleiche Abschnitte lassen sich aufklappen; Kopieren übernimmt nur eingeblendeten Text der gewählten Spalte, keine Zeilennummern, Ausrichtungsleerstellen oder Faltbeschriftungen. Soft Wrap in der Fußzeile wirkt auf beide Spalten. Die Einstellung gilt für Dateivergleiche unabhängig von normalen Textdokumenten. Ohne Umbruch bleiben lange Zeilen innerhalb der Spalte; eine zusätzliche horizontale Scrollleiste erscheint nicht.
+
+Ziehe die Spaltenteilung am neun Pixel breiten Griff. Das Verhältnis gilt für alle Vergleichs-Tabs und Übernahmevorschauen und bleibt über Neustarts erhalten. Doppelklick setzt die Halbierung zurück. Mit F8 fokussierst du den Trenner, mit den Pfeiltasten änderst du die Teilung um fünf Prozentpunkte; Pos1 setzt sie zurück. Alt+↑/↓ wechselt zum vorigen beziehungsweise nächsten Unterschied mit Umlauf. Die Differenzenliste folgt der Auswahl. Beide Spalten teilen eine vertikale Scrollleiste und eine gemeinsame horizontale Scrollfläche. Bei schmalen Fenstern bleibt der Inhalt mindestens 919 Pixel breit. Die Übersicht rechts springt per Klick zum gewählten Unterschied; bei großen Vergleichen zeigt sie höchstens 160 Markierungen einschließlich des aktuellen Unterschieds. Beim Scrollen folgt die Auswahl dem Block an der oberen Sichtkante.
+
+„Nach links“ und „Nach rechts“ übertragen den gewählten Unterschied ausschließlich in den zugeordneten offenen Tab. Eine nur über ihren Dateipfad gewählte Seite bleibt schreibgeschützt, auch wenn dieselbe Datei zusätzlich geöffnet ist. Die vollständige Vorschau erklärt exakte Unicode-Zeichen und Zeilenenden. Rich-Dokumente behalten ihren Modus und natives Undo/Redo. Unveränderte Bildversionen werden wiederverwendet. Zusammen mit den für Undo gehaltenen Bildern gelten höchstens 256 Bilder, 64 MiB Bilddaten und 64 Millionen dekodierte Pixel; eine Überschreitung bricht vor der Übernahme ab. Abbrechen während der Vorbereitung erhält den fertigen Vergleich. Veränderte oder geschlossene Quellen verlangen eine neue Berechnung; ein neu geöffneter Tab am selben Pfad ersetzt die alte Zuordnung nicht.
+
+Der Exportknopf speichert einen vollständigen UTF-8-Textbericht. Wähle dafür eine eigene Datei; Vergleichsquellen und deren Aliase sind auch nach einer Umbenennung geschützt. Vergleiche sind auf 32 MiB und 200.000 logische Zeilen je Seite begrenzt; zusätzliche Rechen- und Speicherbudgets können vorher eine erklärte Grenze melden. Für Übernahmen gelten außerdem die Grenzen des jeweiligen Zieleditors: Quelltext 64 KiB je logischer Zeile, Rich 2 MiB und 10.000 Blöcke. Es gibt keinen still gekürzten Vergleich.
+
+## Linux: Fenster und Bedienung
+
+Das Hauptfenster enthält Tabs oben, den einblendbaren Projektbaum links und die Statusleiste unten. Ein leerer Tab zeigt Datei- und Ordneraktionen sowie zuletzt benutzte Projekte. Eine geöffnete Datei ersetzt nur einen vollständig unberührten leeren Tab; andere Dokumente bleiben erhalten.
+
+„Suchen“ in der Statusleiste oder Ctrl+F öffnet das eigene Suchfenster. Die Bereiche Datei, Geöffnet, Ordner und Projekt bieten Suche, vollständige Vorschau und Trefferfreigaben. Escape oder Ctrl+W schließt das Suchfenster. Eine Übernahme verändert weiterhin nur die freigegebene, geprüfte Grundlage.
+
+Datei und geöffnete Dokumente aktualisieren Treffer beim Tippen und bei Optionswechseln nach 120 ms, Ordner und Projekte nach 420 ms. Alte Vorschauen und Freigaben werden sofort ungültig. Ordner und Projekte beginnen ab drei sichtbaren Zeichen automatisch; kürzere Muster suchen Sie mit „Suchen“ oder Return. Ctrl+F fokussiert das bestehende Fenster des aktiven Bereichs und markiert das Suchfeld. Zusätzliche Ordnerausschlüsse bleiben beim Wiederöffnen im selben Editor erhalten; gespeicherte Ordner- und Projektwahlen sind unten beschrieben. Schließen beendet Suchaufträge und entfernt Quellmarkierungen.
+
+Quellen bleiben während einer lesenden Ordner- oder Projektsuche bedienbar. Eine Änderung verwirft die alte Vorschau, beendet den alten Lauf und berechnet danach aktuelle Treffer. Ein reiner Suchlauf lässt sich durch Schließen des Suchfensters oder Editors abbrechen. Schreiben, Rücknahme, Textabläufe und noch nicht gesicherte Einstellungen müssen zuerst abgeschlossen oder abgebrochen werden.
+
+Die Ordnerliste enthält zuletzt hinzugefügte Ordner. Kreuzen Sie die gewünschten Quellen an; Entfernen ändert nur die Liste. „Ordner hinzufügen…“ nimmt mehrere Quellen an. Ab acht Einträgen scrollt die Liste; bis zu 64 Ordner lassen sich gleichzeitig durchsuchen. „Dateitypen“ wählt bekannte Textformate oder alle Dateien, wobei Binärdateien weiterhin ausgelassen werden. Zusätzliche Ordnerausschlüsse stehen im aufgeklappten Dateitypmenü.
+
+Das Vorlagenmenü am Suchfeld enthält die mitgelieferten Kategorien und eigene Vorlagen. Es liest die Sammlung beim Öffnen neu ein. Die Auswahl setzt den Suchausdruck und RegEx; einen Ersetzungsvorschlag übernimmt sie nur, wenn die Vorlage einen enthält. Bereich und übrige Optionen bleiben erhalten. „— Keine —“ entfernt nur die Vorlagenzuordnung, ohne die Felder zu leeren. Der Reglerknopf daneben öffnet die Verwaltung zum Speichern, Importieren und Exportieren. Leere Trefferlisten unterscheiden fehlende Eingaben, die Mindestlänge für die automatische Ordnersuche und abgeschlossene Suchläufe ohne Treffer. Ein Klick auf den bereits gewählten Bereich „Geöffnet“ zeigt dessen Umfang und Grenzen.
+
+Im Projektbereich wählt „Datei-Set“ gespeicherte projekt-relative Dateien oder Ordner. „+“ legt ein Set an, „−“ entfernt das aktive Set, solange ein weiteres verbleibt. Pfade werden durch Komma oder Zeilenumbruch getrennt; „.“ erfasst das ganze Projekt. Absolute Pfade und „..“ sind nicht erlaubt. Ausschlüsse und Dateitypwahl gehören zum jeweiligen Projekt. DerivedData wird auch dann ausgeschlossen, wenn es nicht im Ausschlussfeld steht. Ordnerliste und Projektwahlen bleiben über Neustarts erhalten. Während ausstehende Änderungen gespeichert werden, wartet Schließen; danach erneut schließen.
+
+Beim frischen Öffnen über Strg+F oder „Suchen“ im Editor wird eine mehrzeilige Auswahl als Suchbereich eingefroren. Eine sichtbare befüllte Suche behält ihren Bereich. „Nur in Auswahl“ erscheint nur bei Datei und ist ohne nichtleere lineare Auswahl deaktiviert. Geöffnet und zurück zu Datei behält einen noch zum aktiven Dokument gehörenden eingefrorenen Bereich. „∗ wörtlich“ wird beim Entfernen des Sterns zurückgesetzt und schaltet sich bei einem späteren Stern nicht selbst wieder ein.
+
+Die untere Leiste bietet Voriger/Nächster, „Aus Beispiel…“, Ersetzen und Freigaben prüfen. In Datei/Geöffnet springt Return zum nächsten Treffer; Strg+G und Umschalt+Strg+G wechseln Treffer, Strg+Return öffnet die Freigaben. Im Ordner-/Projektbereich startet Return die Suche. „Ersetzen“ ändert nur den aktiven Treffer in einem editierbaren offenen Dokument und berechnet die Nachfolgetreffer neu. Dafür ist keine Sammelfreigabe nötig. Ein wirksamer Ersatz besitzt einen eigenen Rückgängig-Schritt; ein wirkungsloser Ersatz verändert weder Verlauf noch Änderungsstatus. Veraltete Quellen, geänderte Eingaben und zwischenzeitliche fremde Fenster verhindern die Übernahme einer verspäteten Berechnung.
+
+Der Pfeilknopf am Ersetzungsfeld vertauscht Suchen und Ersetzen. Er verändert nur die Eingaben und berechnet die Treffer neu.
+
+Die Capture-Pillen aller Suchbereiche entstehen direkt aus dem Suchmuster, auch ohne Treffer. Sie stehen horizontal scrollbar am Ersetzungsfeld. Ein Klick setzt die Gruppe an der Einfügemarke ein; Ziehen verwendet den nativen Text-Drop des Felds. Auch Gruppen nach Nummer 30 bleiben erreichbar. RegEx-Element-Picker und Verlauf stehen am Suchfeld; der Picker aktiviert RegEx und fügt an der Einfügemarke ein. Der Verlauf füllt beide Felder und fokussiert das sichtbare Suchfeld. Alt+H öffnet ihn im Suchfenster.
+
+Im Detailkasten markieren Sie einen Textausschnitt. „Gruppe definieren“ rundet auf ganze RegEx-Bausteine und fügt die Gruppe ins Suchmuster ein; bestehende Ersetzungsreferenzen werden gleichbedeutend umnummeriert. „Gruppe löschen“ löst die markierte Gruppe auf, ohne Treffer die letzte Gruppe des Musters. Verwendete Ersetzungsgruppen, Rückverweise, Quantifizierer, riskante Alternativen und veränderte Inline-Flag-Grenzen verhindern die Aktion mit einem Hinweis. Die Befehle ändern nur die Suchfelder und entwerten alte Freigaben. Die Analyse ist auf 64 KiB Muster, 65.536 Syntaxknoten, 256 Baumebenen und 200 ms Parserzeit begrenzt; eine Grenze deaktiviert die Gruppenbearbeitung mit einem Hinweis.
+
+Jede neue Suche beginnt ohne Freigaben. Wählen Sie Treffer einzeln oder mit „Alle“; ohne Auswahl bleiben Freigabevorschau und Anwenden gesperrt. Die Trefferliste gruppiert Dateien, zeigt den aktiven Treffer im Detail und bietet einzelne Freigaben sowie „Alle“/„Keine“. „Freigaben prüfen“ öffnet die vollständige, farbig markierte Vergleichsvorschau; erst dort werden freigegebene Änderungen angewendet. Überschreitet die Zeilenzuordnung ihr Rechenbudget, zeigt die Vorschau ausdrücklich beide vollständigen Texte ohne diese Zuordnung. „Treffer extrahieren“ erzeugt ein neues ungesichertes Dokument oder kopiert in die Zwischenablage. Trennzeichen, Quoting, Duplikatentfernung und Ersetzung sind wählbar; die Ausgabe ist auf 16 MiB begrenzt. Für ein neues Dokument gilt zusätzlich die Editorgrenze von 64 KiB je logischer Zeile; die Zwischenablage darf längere Zeilen enthalten.
+
+Trefferklicks und Vor-/Zurück springen zur geprüften Quelle; in der Trefferliste funktionieren auch Auf- und Abwärtspfeil. Die Ansicht markiert bis zu 2.000 Treffer und zusätzlich den aktiven Treffer; Treffer mit Länge null erscheinen als markierte Einfügestelle. Der Quelltext wählt den tatsächlichen Treffer aus; Text und Rückgängig bleiben erhalten. „Nur in Auswahl“ friert den beim Einschalten gewählten Bereich am Dokument ein. Trefferwechsel verändern diesen Bereich nicht; Textänderungen führen seine Grenzen mit. Zum Festlegen eines anderen Bereichs die Option aus- und wieder einschalten. Leere oder rechteckige Auswahlen werden abgewiesen, ohne im ganzen Dokument zu suchen. Geöffnete Tabs werden unabhängig vom Namen zugeordnet. Ordner- und Projekttreffer öffnen Dateien erst beim bewussten Sprung und verwenden passende offene Quellen erneut. Geänderte Plattendaten oder abweichende offene Puffer verhindern den Sprung mit einem Hinweis. Eine verspätete Ladeantwort nach Such- oder Fensterwechsel erzeugt kein neues Dokument.
+
+In Rich-Markdown sucht Ctrl+F im sichtbaren formatierten Text, auch über Formatierungsgrenzen hinweg. Ctrl+G und Ctrl+Shift+G wechseln Treffer; Escape schließt die Suchleiste. „Quelltext …“ wechselt zur vollständigen Quelltextsuche. Die Rich-Fußzeile zählt den gesamten synchronisierten Markdown-Quelltext.
+
+Home und das Öffnen eines anderen Projekts fragen bei ungesicherten Tabs nach Speichern oder Verwerfen. Abbrechen behält alle bisherigen Dokumente und das Projekt. Erst nach allen Entscheidungen schließt Fastra die alten Tabs und beginnt mit einem fokussierten leeren Tab.
+
+Im Quelltext zeigen die Statuszahlen Zeichen, Wörter und Zeilen. Zusammengesetzte Emoji und kombinierte Zeichen zählen jeweils als ein sichtbares Zeichen; CRLF zählt als ein Zeilenende. Bei markiertem Text gelten die Zahlen der Auswahl und tragen „Sel“.
+
+Ctrl+T öffnet einen neuen Tab; Ctrl+Shift+O öffnet die Ordnerauswahl.
+
+Das Fastra-Menü rechts oben enthält die bisherigen Datei-, Werkzeug-, Hilfe- und Updateaktionen sowie die Sitzungssicherung. Das Zahnrad links öffnet Editoroptionen. Das Darstellungsmenü neben „Quelltextansicht teilen“ enthält weitere Editor- und Markdown-Befehle. Formatierung, Soft Wrap, Zeilenenden und Suche stehen in der Statusleiste. „Hex“ öffnet die gespeicherten Dateibytes in einem eigenen Tab; ungesicherter Quelltext bleibt im bisherigen Tab.
+
+## Linux: Dateien ziehen und Markdown-Quelltext
+
+Gespeicherte Dateien aus Tabs ziehen
+
+Der Dateigriff neben dem Namen eines gespeicherten Tabs lässt sich in den Dateimanager oder eine andere Anwendung ziehen. Übergeben wird die vorhandene Datei, nicht der ungesicherte Editorpuffer. Bei ungespeicherten Änderungen nennt der Hinweis ausdrücklich den letzten gespeicherten Stand. Ungespeicherte neue Tabs besitzen keinen Dateigriff. Bei Hex- und Abschnittsansichten wird die ganze gespeicherte Datei übergeben, nicht nur der sichtbare Ausschnitt. Ist die Quelle entfernt oder nicht mehr als Datei verfügbar, erklärt Fastra den Fehler.
+
+Markdown-Auszeichnungen im Quelltext
+
+Die kompakte Markdown-Quelltextleiste enthält dieselben 15 Befehle in derselben Reihenfolge wie auf dem Mac und scrollt bei wenig Platz horizontal. Fett, Kursiv, Markierung und Inlinecode zeichnen die Auswahl aus oder entfernen vorhandene Marker. Ohne Auswahl entsteht ein leeres Markerpaar mit der Einfügemarke dazwischen. Überschriften, Listen, Aufgaben, Zitat und harte Umbrüche erhalten die Dokument-Zeilenenden. Link setzt die Einfügemarke an die Eingabestelle; Tabellen bieten 1 bis 50 Spalten, anfangs drei mit Kopfzeile. Ein Befehl lässt sich gemeinsam rückgängig machen. Die Befehle erscheinen nur bei gewähltem Markdownformat im Quellmodus; für Rechteckauswahlen und gesperrte Quellen sind sie nicht verfügbar. Im Rich-Editor stehen zusätzliche Bearbeitungs-, Zwischenablage-, Bild- und Tabellenaktionen im Mehr-Menü.
+Datei und Geöffnet zeigen unter den Eingaben bis zu drei bereits freigegebene geänderte Zeilen des aktiven Dokuments. Weitere Zeilen werden gezählt; „Freigaben prüfen“ zeigt alle Änderungen. Ohne Freigaben, bei leerer Ersetzung oder wirkungslosen Ersetzungen bleibt die kompakte Vorschau ausgeblendet. Neue Suchdaten entfernen den alten Stand sofort.
+
+## Linux: reine Lesezugriffe
+
+Dateivergleiche einschließlich externer Aufrufe und Ordnerpaare, lokale Markdown-Verweisprüfungen sowie Bild-, PDF- und SVG-Vorschauen lesen auch reguläre Hardlink-Dateien und Dateien, deren erweiterte Attribute nicht abgefragt werden können. Die Größen- und Analysegrenzen bleiben bestehen. Änderungen an Datei oder Pfad verwerfen die alte Lesebasis. Diese Werkzeuge ändern die Eingaben nicht; Berichtsexporte schützen auch umbenannte und verknüpfte Quellen.
+
+Speichern und Ersetzen behalten ihre strengeren Prüfungen. Eine Lesebasis erteilt keine Schreibfreigabe. Vollständig lesbare Textdateien ohne sichere Schreibgrundlage öffnen in einem schreibgeschützten Quelltext-Tab mit Schloss und Hinweiszeile. Kopieren, Finden, Zeilen-/Spaltensprung, Gliederung, Vorschau und Textdruck bleiben verfügbar. Referenzsprünge prüfen die Lesebasis vor dem Öffnen erneut und bleiben im gemeinsamen Sprungverlauf.
+
+„Als Kopie bearbeiten“ erstellt aus der sichtbaren Fassung einen neuen, ungespeicherten Text mit derselben Kodierung und BOM. Die Quelldatei wird dadurch nicht schreibbar. Relative Verweise bleiben Text; beim Speichern den passenden Zielordner wählen. Externe Änderungen oder fehlende Quellen erscheinen als Hinweis; die angezeigte Fassung bleibt erhalten. „Datei neu öffnen“ lädt den aktuellen Stand in einen neuen Tab. Bei aktivierter freiwilliger Sitzungssicherung werden für vollständige schreibgeschützte Quelltext-Tabs nur Dateipfad, Kodierung und Tab-Reihenfolge gespeichert. Nach ausdrücklicher Freigabe liest die Wiederherstellung den aktuellen Dateiinhalt erneut und hält ihn schreibgeschützt, auch wenn die Datei inzwischen sicher bearbeitbar wäre. Fehlende oder nicht lesbare Quellen blockieren ungesicherte Entwürfe nicht; die ursprünglichen Sicherungen bleiben zur erneuten Prüfung erhalten. Bearbeitbare Kopien nutzen die normale Inhaltswiederherstellung. Abschnitte, Hex- und andere Vorschau-Tabs bleiben ausgenommen. Überschreitet der dekodierte UTF-8-Text 32 MiB, verwendet Fastra die begrenzte Abschnittsansicht.
+
+
+## Linux: Dokumentschrift
+
+Die Editoroptionen enthalten eine appweite Wahl installierter Festbreitenschriften einschließlich ihrer Schnitte. Die Wahl gilt gemeinsam für beide Quellausschnitte, weitere Fenster und schreibgeschützte Quelltexte. Schriftgröße und vorhandene Dokumentinhalte bleiben unverändert. „System-Monospace“ verwendet die Festbreitenschrift des Systems; zusätzliche Schriftdateien werden nicht installiert.
+
+Die Wahl wird lokal im Hintergrund gespeichert. Fehlt eine früher gewählte Schrift, zeigt Fastra sie als nicht verfügbar an und verwendet vorläufig System-Monospace. Die gespeicherte Wahl bleibt bis zu einer ausdrücklichen neuen Auswahl erhalten. Ein Speicherfehler erhält die vorige Einstellung auf der Platte; „Erneut versuchen“ wiederholt die Sicherung. Quelldateien werden dadurch nicht geändert.
+
+## Linux: Darstellungsmenü
+
+Befehlsknöpfe im Menü „Darstellung und Bearbeitung“, etwa „Spaltenpaste“, schließen das Menü nach ihrer Ausführung. Danach können Sie im Quelltext weitertippen. Umschalter bleiben im geöffneten Menü bedienbar.
+
+
+### Linux: getrennte Größen für Oberfläche und Dokument
+
+„Einstellungen …“ im Fastra-Menü oder Ctrl+, öffnet „Schrift und Größe“, auch auf der Startseite. Die installierte Festbreitenschrift und ihre Schnitte gelten weiterhin für alle Quellansichten. „Gesamte Oberfläche“ und „Dokumentschrift“ lassen sich unabhängig ändern: Oberfläche mit Ctrl +/−/0, Dokument mit Ctrl Shift +/−/0. Die Knöpfe −, + und „100 %“ bieten dieselben Befehle mit der Maus. Die Oberfläche besitzt die Mac-Stufen −3 bis +5, der Dokumenttext −4 bis +8. „Darstellung“ enthält ebenfalls alle sechs Befehle.
+
+Die Dokumentschriftgröße gilt für beide Quellausschnitte, weitere Fenster, schreibgeschützte Quelltexte, Markdown-Vorschau und Rich-Markdown. Die reine Textvergrößerung in den formatierten Ansichten verändert keine Bildgrößen. Vergleiche und Werkzeugoberflächen folgen der Oberflächengröße. Text, Auswahl, Undo, Kodierung und Zeilenenden werden dadurch nicht bearbeitet.
+
+Fastra speichert beide Größen gemeinsam lokal im Hintergrund und stellt sie beim nächsten Start wieder her. Ein Lade- oder Speicherfehler erscheint in den Einstellungen; „Erneut versuchen“ wiederholt den Vorgang. Beschädigte oder verknüpfte Einstellungsdateien werden nicht durch neue Werte überschrieben. Ein laufender Speichervorgang kann das Beenden kurz anhalten; ein dauerhaft fehlgeschlagener Vorgang verhindert das Schließen eines Dokuments nicht.
+
+
+### Linux: Snapshot- und Erklärfenster
+
+Snapshotfenster zeigen Dateiname und Status oben und den schreibgeschützten Text darunter. Schließen ist über die Titelleiste und Ctrl+W erreichbar. Der Code-Erklärplayer ordnet Quelltext und Erklärung übereinander an; darunter stehen Schrittwahl, Fortschritt und Schriftsteuerung sowie Zurück, Weiter, Pause, „Zur Stelle“, Soft Wrap und Beenden. Schmale Fenster fassen die vier Schriftbefehle unter „Schrift“ zusammen und verkürzen die Navigation auf Symbole mit Beschriftung für Bedienungshilfen und Hilfetext. Breite Fenster zeigen Code- und Erklärschrift mit direkten Minus-/Plusknöpfen. Die gespeicherten Größen entsprechen den logischen Mac-Größen.
+
+Ein Klick auf den Dateinamen öffnet Frage und Quellauswahl. Die vollständigen Quellenangaben und Hashes bleiben im Hilfetext erreichbar. Eine andere Quelle, eigene Navigation, Umbruch- oder Schriftänderungen pausieren weiterhin den Player. „Zur Stelle“ kehrt bewusst zur geprüften erklärten Auswahl zurück. Arbeitsdateien werden dadurch weder bearbeitet noch gespeichert.
+
+
+### Linux: Einstellungen und Erscheinungsbild
+
+Das Zahnrad und Ctrl+, öffnen die globalen Einstellungen auch auf der Startseite. Unter „Erscheinungsbild“ folgt „Automatisch“ der GTK-Desktopvorgabe. Mit „Hell“ oder „Dunkel“ wählst du Fastras Darstellung selbst. Fenster, Quelltext, Popover, geöffnete Markdown-Vorschau und Rich-Markdown wechseln gemeinsam. Das gilt auch für die Text- und Absatzfarben offener Vergleiche und Übernahmevorschauen, ohne deren Auswahl oder Vergleichsbasis neu aufzubauen. Bereits dargestellte Vorschau-Diagramme werden passend neu eingefärbt. Text, Auswahl, ungesicherte Änderungen und Undo-Verlauf bleiben erhalten. Die Schriftgrößen werden unabhängig davon eingestellt.
+
+Fastra merkt sich die Wahl lokal im Hintergrund. Ein Fehler erscheint mit „Erneut versuchen“; vorhandene Einstellungen werden nicht still überschrieben. Die Desktop-Einstellungen bleiben unberührt. System-Dateidialoge eines Desktop-Portals folgen weiterhin dem Desktop. Dokumentbezogene Editoroptionen bleiben über ihre eigenen Bedienelemente erreichbar.
+
+Die Linux-Einstellungen gruppieren Erscheinungsbild, Schrift und Größe sowie Editor wie auf dem Mac. Unter **Editor** gilt die Seitenlinie für alle Quellansichten; sie verändert weder Text noch Umbruchvorgaben eines Formats. Kleine Einstellungsfenster scrollen. Die Titelleiste sowie Ctrl+W oder Escape schließen das Fenster.
+
+Unter **Markdown → Vorschau-Schrift** wählst du die gemeinsame Leseschrift für Markdown-Vorschau und Rich-Editor. Beide beginnen wie am Mac bei 14 px und folgen dem Dokument-Zoom; Bilder behalten ihre Größe. Die Wahl gilt sofort in offenen Ansichten, ohne Quelltext, Auswahl oder Undo zu ändern. Fehlt eine gespeicherte Schrift, bleibt ihr Name erhalten und Fastra zeigt den vorläufigen Systemersatz an. Fehler beim Laden oder Speichern erlauben einen erneuten Versuch.
+
+**Markdown → Bei Markdown rechts anzeigen** steuert die seitliche Vorschau appweit und ist standardmäßig eingeschaltet. Der Vorschauknopf verwendet dieselbe Wahl. Vorhandene und neue Markdown-Tabs übernehmen sie; inaktive Tabs laden ihre Vorschau erst beim Anzeigen. Rich-Markdown zeigt keine zusätzliche Seitenvorschau. Beim Zurückwechseln zum Quelltext gilt die aktuelle globale Wahl. Ein anderes Dateiformat schließt die Vorschau, ohne die Vorgabe zu ändern. Lade- und Speicherfehler bleiben in den Einstellungen sichtbar und erlauben einen erneuten Versuch.
+
+Unter **Markdown → Markdown im WYSIWYG-Modus bearbeiten** wählst du den appweiten Standard für vorhandene und neue Markdown-Dokumente. Der Knopf rechts von Text/Hex und **Ctrl+Shift+Alt+M** überschreiben ihn nur für das aktuelle Dokument. Eine solche Dokumentwahl bleibt bei späteren Änderungen des Standards erhalten. Beim ersten bearbeitbaren Markdown-Dokument fragt Fastra nach dem Standard: **Alt+Return** wählt Quelltext und Vorschau, **Return** WYSIWYG. Die Wahl wird lokal gespeichert. Schreibgeschützte und nicht unterstützte Texte bleiben im Quelltext. Vor einem globalen Wechsel synchronisiert Fastra die Rich-Ansichten; laufende Aktionen oder geänderte Dokumente halten den Wechsel an. Die Einstellungen zeigen den Grund und bieten einen erneuten Versuch, ohne Inhalte zu verwerfen.
+
+### Linux: Start und gespeicherte Fenster
+
+Unter **Einstellungen → Start** ist „Zuletzt geöffnete Fenster und Dokumente wiederherstellen“ standardmäßig eingeschaltet. Beim nächsten normalen Start erscheinen gespeicherte Dateien und Projektfenster mit ihrer Tab-Reihenfolge, dem aktiven Dateitab, Größe und Maximierung. Unter X11 kommen die Positionen zurück; Fenster außerhalb der aktuellen Bildschirme werden wieder sichtbar platziert. Unter Wayland bestimmt der Desktop ihre Position.
+
+Fastra lädt den aktuellen Plattenstand. Ungesicherte Änderungen, unbenannte Dokumente und erzeugte Vergleiche werden hier nicht gespeichert. Fenster ohne gespeicherte Dateien und fehlende Quellen entfallen. Die freiwillige Sitzungssicherung für ungesicherte Entwürfe bleibt davon getrennt. Eigene Eingaben, neue Tabs und Datei- oder Projektwechsel haben Vorrang vor einer noch laufenden Wiederherstellung. Zusätzliche Öffnungsaufträge werden danach einmal geöffnet.
+
+Ausschalten leert die gemerkte Fensterliste. Ein Fehler erscheint mit „Erneut versuchen“; vorhandene Daten bleiben erhalten. Kann Fastra den Startzustand beim Beenden nicht speichern, kannst du abbrechen, wiederholen oder ausdrücklich „Ohne Aktualisierung beenden“ wählen. Dann kann der nächste Start noch ältere Fenster und Pfade öffnen.
+
+### Linux: Druckvorgaben
+
+**Einstellungen → Drucken** enthält „Zeilennummern drucken“, „Kopf- und Fußzeile drucken“, „Syntaxfarben drucken“ und „Schriftgröße im Ausdruck“. Ab Werk sind die drei Optionen an und die Größe steht auf 10 pt; wählbar sind 6 bis 18 pt. Quelltext verwendet die gewählte Festbreitenschrift und den hellen Farbsatz seiner Sprache, auch bei dunkler Oberfläche. Zeilennummern sind rechtsbündig grau. Hex-Abzüge haben keine zusätzliche Nummernspalte und passen ihre Schrift nötigenfalls bis 6 pt auf das Papier an. Markdown und Rich übernehmen die Druckgröße. Bilder können Kopf-/Fußzeilen erhalten; PDF-Seiten erhalten keine zusätzliche Dekoration.
+
+Die Checkboxen im nativen „Fastra“-Druckreiter ändern dieselben gespeicherten Vorgaben, auch nach „Abbrechen“. Bereits geöffnete Druckaufträge behalten ihre eigenen Dialogwerte. Papiergröße und Ausrichtung stehen im Druckdialog. Die Einstellungen werden lokal im Hintergrund gespeichert. Ein Fehler erhält die bisherige Datei und zeigt „Erneut versuchen“. Noch nicht geladene oder gespeicherte Vorgaben halten den Druck an. Text, Auswahl und Undo werden durch die Druckvorbereitung nicht geändert.
+
+Bei Markdown-/Rich-PDFs können einzelne Schriftglyphen trotz richtiger Darstellung beim Kopieren andere Unicode-Zeichen liefern; belegt ist das bei griechischem Text. ASCII-Bindestriche zwischen Großbuchstaben bleiben durch den Druckstil erhalten. Falls kopierbarer PDF-Text entscheidend ist, ist **Quelltext drucken …** der hierfür geprüfte Weg. Die formatierte Ausgabe hat an dieser Stelle noch keine vollständige Mac-Parität.
