@@ -1005,6 +1005,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // normales Verhalten. CodeEditTextView erledigt Auswahl, Cursor-
             // Aktualisierung und Scrollen in seinen vorhandenen Aktionen selbst.
             switch route {
+            case .selectBracketBlockOrBold:
+                let handled = MainActor.assumeIsolated { BracketSelectionCommands.performCommandB() }
+                return handled ? nil : event
+
             case .closeHelp:
                 MainActor.assumeIsolated { HelpWindow.close() }
                 return nil

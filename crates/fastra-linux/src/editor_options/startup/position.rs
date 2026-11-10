@@ -64,7 +64,16 @@ pub(super) fn capture(window: &gtk::ApplicationWindow) -> Option<store::Position
             &mut y,
             &mut child,
         ) != 0)
-            .then_some(store::Position { x, y })
+            .then(|| {
+                logical_position(
+                    store::Position {
+                        x,
+                        y,
+                        logical: false,
+                    },
+                    window.scale_factor(),
+                )
+            })
     }
 }
 #[repr(C)]
@@ -85,6 +94,7 @@ union Event {
 }
 fn move_to(window: &gtk::ApplicationWindow, point: store::Position) {
     let Some(native) = native(window) else { return };
+    let scale = window.scale_factor().max(1);
     unsafe {
         let Some(atom): Option<
             unsafe extern "C" fn(Display, *const libc::c_char, libc::c_int) -> Xid,
@@ -119,8 +129,8 @@ fn move_to(window: &gtk::ApplicationWindow, point: store::Position) {
             format: 32,
             data: [
                 10 | (1 << 8) | (1 << 9) | (1 << 12),
-                point.x.into(),
-                point.y.into(),
+                i64::from(point.x).saturating_mul(i64::from(scale)) as libc::c_long,
+                i64::from(point.y).saturating_mul(i64::from(scale)) as libc::c_long,
                 0,
                 0,
             ],
@@ -146,7 +156,10 @@ pub(super) fn restore(window: &gtk::ApplicationWindow, record: &store::Window) {
         })
         .map(|monitor| monitor.geometry())
         .collect();
-    let point = record.position.filter(|_| native(window).is_some());
+    let point = record
+        .position
+        .filter(|_| native(window).is_some())
+        .map(|point| logical_position(point, window.scale_factor()));
     let intersecting = point.and_then(|point| {
         let rect = gtk::gdk::Rectangle::new(point.x, point.y, record.width, record.height);
         monitors
@@ -168,6 +181,7 @@ pub(super) fn restore(window: &gtk::ApplicationWindow, record: &store::Window) {
     window.set_default_size(width, height);
     if let Some(point) = point {
         let point = store::Position {
+            logical: true,
             x: if intersecting.is_none() {
                 monitor.x() + (monitor.width() - width) / 2
             } else {
@@ -193,5 +207,46 @@ pub(super) fn restore(window: &gtk::ApplicationWindow, record: &store::Window) {
                 }
             });
         }
+    }
+}
+
+fn logical_position(point: store::Position, scale: i32) -> store::Position {
+    // Alte Dateien enthalten physische X11-Pixel ohne Kennzeichnung.
+    // Erst beim Restore mit dem aktuellen X11-Maßstab umrechnen.
+    if point.logical {
+        point
+    } else {
+        let scale = scale.max(1);
+        store::Position {
+            x: point.x.div_euclid(scale),
+            y: point.y.div_euclid(scale),
+            logical: true,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn old_x11_pixels_and_new_logical_positions_share_one_space() {
+        for scale in [1, 2] {
+            let old = store::Position {
+                x: 100 * scale,
+                y: -40 * scale,
+                logical: false,
+            };
+            let point = logical_position(old, scale);
+            assert_eq!((point.x, point.y), (100, -40));
+            assert_eq!(logical_position(point, scale), point);
+        }
+        // 900 logische Pixel auf einem 960-Pixel-Monitor lassen x=50 zu.
+        let old = store::Position {
+            x: 100,
+            y: 0,
+            logical: false,
+        };
+        let point = logical_position(old, 2);
+        assert_eq!(point.x.clamp(0, 960 - 900) * 2, 100);
     }
 }

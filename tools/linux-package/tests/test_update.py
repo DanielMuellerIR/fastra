@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import multiprocessing
 import os
 from pathlib import Path
 import subprocess
@@ -21,6 +22,30 @@ def release(current="2.0.0", data=b"package"):
         "name": name, "state": "uploaded", "size": len(data),
         "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
         "browser_download_url": f"https://github.com/{update.REPOSITORY}/releases/download/v{current}/{name}"}]}
+
+
+def paused_check(connection):
+    def wait_for_parent(stage):
+        connection.send(stage)
+        if not connection.poll(10):
+            raise TimeoutError("Parent did not resume update check")
+        connection.recv()
+
+    def installed_runtime():
+        wait_for_parent("runtime")
+        return None, None, "2.0.0"
+
+    def fetch(url, limit):
+        wait_for_parent("network")
+        return json.dumps(release()).encode()
+
+    try:
+        with patch.object(update, "installed_runtime", side_effect=installed_runtime), \
+             patch.object(update, "fetch", side_effect=fetch), \
+             patch.object(sys, "argv", ["update.py", "check"]):
+            connection.send(update.main())
+    finally:
+        connection.close()
 
 
 class Updates(unittest.TestCase):
@@ -52,10 +77,61 @@ class Updates(unittest.TestCase):
             update.save_preferences({"automatic": False, "checked_at": 123})
             self.assertEqual(update.preferences(), {"automatic": False, "checked_at": 123})
 
+    def test_check_preserves_concurrent_disable_across_processes(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, XDG_CONFIG_HOME=temporary):
+            update.save_preferences({"automatic": True, "checked_at": 0, "other": "preserved"})
+            context = multiprocessing.get_context("spawn")
+            parent, child = context.Pipe()
+            process = context.Process(target=paused_check, args=(child,))
+            process.start()
+            child.close()
+
+            def receive():
+                self.assertTrue(parent.poll(10), "Update child did not reach the expected stage")
+                return parent.recv()
+
+            def set_automatic(action):
+                result = subprocess.run([sys.executable, "-B", update.__file__, action],
+                                        check=True, capture_output=True, text=True, timeout=10)
+                return json.loads(result.stdout)
+
+            try:
+                # Die alte Implementierung hatte vor der Laufzeitprüfung bereits
+                # gelesen; disable schreibt garantiert vor deren Fortsetzung.
+                self.assertEqual(receive(), "runtime")
+                self.assertFalse(set_automatic("disable")["automatic"])
+                parent.send("continue")
+                self.assertEqual(receive(), "network")
+                prefs = update.preferences()
+                self.assertFalse(prefs["automatic"])
+                self.assertGreater(prefs["checked_at"], 0)
+                # Während fetch wartet, müssen andere Prozesse weiter schreiben
+                # können und dabei den gerade gespeicherten Zeitstempel erhalten.
+                enabled = set_automatic("enable")
+                self.assertTrue(enabled["automatic"])
+                self.assertEqual(enabled["checked_at"], prefs["checked_at"])
+                disabled = set_automatic("disable")
+                self.assertFalse(disabled["automatic"])
+                self.assertEqual(disabled["checked_at"], prefs["checked_at"])
+                parent.send("continue")
+                self.assertEqual(receive(), {"status": "current"})
+                process.join(10)
+                self.assertEqual(process.exitcode, 0)
+                prefs = update.preferences()
+                self.assertFalse(prefs["automatic"])
+                self.assertEqual(prefs["other"], "preserved")
+            finally:
+                if process.is_alive():
+                    process.terminate()
+                process.join(10)
+                parent.close()
+
     def test_disabled_or_recent_automatic_check_never_contacts_network(self):
         for prefs in ({"automatic": False, "checked_at": 0},
                       {"automatic": True, "checked_at": update.time.time()}):
-            with patch.object(update, "preferences", return_value=prefs), \
+            with tempfile.TemporaryDirectory() as temporary, \
+                 patch.dict(os.environ, XDG_CONFIG_HOME=temporary), \
+                 patch.object(update, "preferences", return_value=prefs), \
                  patch.object(update, "installed_runtime", return_value=(None, None, "1.189.0")), \
                  patch.object(update, "fetch", side_effect=AssertionError("Unexpected network")), \
                  patch.object(sys, "argv", ["update.py", "check", "--automatic"]):

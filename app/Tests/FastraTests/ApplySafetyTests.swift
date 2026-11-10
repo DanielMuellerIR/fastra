@@ -424,6 +424,28 @@ func plan_wholeWordExcludesSubstring() throws {
     #expect(after == "X foobar X")
 }
 
+@Test("Ganzwort-Apply ersetzt nur vollständige Alternativen mit unveränderten Captures")
+func apply_wholeWordAlternationPreservesCaptures() throws {
+    let directory = try makeBackupRoot()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("words.txt")
+    let original = Data("foobar xbar foo bar".utf8)
+    try original.write(to: url)
+    let options = SearchOptions(find: "(foo)|(bar)", replace: "$2/$1",
+                                isRegex: true, caseSensitive: true, wholeWord: true)
+    let plan = ApplyEngine.plan(files: [url], options: options)
+    let file = try #require(plan.files.first)
+    #expect(file.matches.map(\.range) == [NSRange(location: 12, length: 3),
+                                       NSRange(location: 16, length: 3)])
+    #expect(file.matches.map(\.after) == ["/foo", "bar/"])
+    #expect(file.newBytes == Data("foobar xbar /foo bar/".utf8))
+    #expect(try Data(contentsOf: url) == original)
+
+    let transaction = try makeTransaction(files: [url], options: options)
+    _ = try transaction.execute(backupRoot: directory, cleanupOlderThan: nil)
+    #expect(try Data(contentsOf: url) == file.newBytes)
+}
+
 // MARK: 12. Capture-Group-Backrefs im Replace ($1)
 
 @Test("RegEx-Modus löst $1-Backrefs auf")
@@ -1390,4 +1412,30 @@ func transaction_refusesWhenNothingWouldChange() throws {
     #expect(try Data(contentsOf: second) == Data("foo zwei".utf8))
     #expect((try FileManager.default.contentsOfDirectory(atPath: backups.path)).isEmpty,
             "Ein abgelehnter Auftrag darf keine Sitzung hinterlassen")
+}
+
+
+@Test("Ganzwort erhält Extended-Kommentare und literales ausgeschaltetes x")
+func apply_wholeWordExtendedComments() throws {
+    for (pattern, text, expected) in [
+        ("(?x)(foo) # Kommentar", "foo foobar", "foo! foobar"),
+        ("(?x)(foo) # Kommentar\n", "foo foobar", "foo! foobar"),
+        ("(?x)(?-x:(foo)#tag)", "foo#tag foo#tags", "foo! foo#tags"),
+        ("(?x)(?-x)(foo)#tag", "foo#tag foo#tags", "foo! foo#tags"),
+        ("(foo)\n", "foo\nbar", "foo!bar"),
+    ] {
+        let options = SearchOptions(find: pattern, replace: "$1!", isRegex: true,
+                                    caseSensitive: true, wholeWord: true)
+        let regex = try ApplyEngine.buildRegex(options)
+        let range = NSRange(location: 0, length: text.utf16.count)
+        #expect(regex.numberOfCaptureGroups == 1)
+        #expect(regex.numberOfMatches(in: text, range: range) == 1)
+        #expect(regex.stringByReplacingMatches(in: text, range: range, withTemplate: "$1!") == expected)
+        let directory = try makeBackupRoot()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("words.txt")
+        try Data(text.utf8).write(to: url)
+        let plan = ApplyEngine.plan(files: [url], options: options)
+        #expect(plan.files.first?.newBytes == Data(expected.utf8))
+    }
 }

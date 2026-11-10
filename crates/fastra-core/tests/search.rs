@@ -512,6 +512,83 @@ fn whole_word_flag_matches_existing_foundation_boundary_wrapper() {
 }
 
 #[test]
+fn whole_word_alternatives_keep_boundaries_and_capture_numbers() {
+    let cancel = Cancellation::default();
+    let text = "foobar xbar foo bar";
+    for (pattern, replacement, expected, capture_count) in [
+        ("foo|bar", "X", "foobar xbar X X", 1),
+        ("(foo)|(bar)", "$2/$1", "foobar xbar /foo bar/", 3),
+    ] {
+        let prepared = fastra_core::PreparedSearch::new(
+            &request(pattern, replacement, SearchMode::Regex),
+            fastra_core::SearchFlags { whole_word: true },
+            Limits::default(),
+            &cancel,
+        )
+        .unwrap();
+        let p = prepared.preview(text, 7, 9).unwrap();
+        assert_eq!(
+            p.matches().iter().map(|m| m.range).collect::<Vec<_>>(),
+            [
+                Utf16Range {
+                    location: 12,
+                    length: 3
+                },
+                Utf16Range {
+                    location: 16,
+                    length: 3
+                },
+            ]
+        );
+        assert!(p.matches().iter().all(|m| m.captures.len() == capture_count));
+        if capture_count == 3 {
+            assert_eq!(p.matches()[0].captures[1], Some(p.matches()[0].range));
+            assert_eq!(p.matches()[0].captures[2], None);
+            assert_eq!(p.matches()[1].captures[1], None);
+            assert_eq!(p.matches()[1].captures[2], Some(p.matches()[1].range));
+        }
+        assert_eq!(p.apply(text, 7, 9, &[0, 1], &cancel).unwrap(), expected);
+        assert_eq!(p.apply(text, 8, 9, &[0, 1], &cancel), Err(Error::Stale));
+    }
+}
+
+#[test]
+fn whole_word_preserves_literal_and_wildcard_replacements() {
+    let cancel = Cancellation::default();
+    for (text, pattern, replacement, mode, expected) in [
+        (
+            "xfoo|bar foo|barx foo|bar",
+            "foo|bar",
+            "$1",
+            SearchMode::Literal,
+            "xfoo|bar foo|barx $1",
+        ),
+        (
+            "fABo\nxfABoz\nfCDo",
+            "f*o",
+            "<*>",
+            SearchMode::Wildcard,
+            "<AB>\nxfABoz\n<CD>",
+        ),
+        ("fAB\no", "f**o", "<**>", SearchMode::Wildcard, "<AB\n>"),
+    ] {
+        let prepared = fastra_core::PreparedSearch::new(
+            &request(pattern, replacement, mode),
+            fastra_core::SearchFlags { whole_word: true },
+            Limits::default(),
+            &cancel,
+        )
+        .unwrap();
+        let p = prepared.preview(text, 0, 0).unwrap();
+        assert_eq!(
+            p.apply(text, 0, 0, &(0..p.matches().len()).collect::<Vec<_>>(), &cancel)
+                .unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
 fn foundation_trailing_backslash_is_consumed_after_case_tokenization() {
     for (template, expected) in [
         ("\\", ""),
@@ -529,5 +606,29 @@ fn foundation_trailing_backslash_is_consumed_after_case_tokenization() {
     }
     for mode in [SearchMode::Literal, SearchMode::Wildcard] {
         assert_eq!(replace("x", request("x", "é😀\\", mode)), "é😀\\");
+    }
+}
+
+#[test]
+fn whole_word_extended_comments_and_disabled_extended_mode() {
+    let cancel = Cancellation::default();
+    for (pattern, text, expected) in [
+        ("(?x)(foo) # comment", "foo foobar", "foo! foobar"),
+        ("(?x)(foo) # comment\n", "foo foobar", "foo! foobar"),
+        ("(?x)(?-x:(foo)#tag)", "foo#tag foo#tags", "foo! foo#tags"),
+        ("(?x)(?-x)(foo)#tag", "foo#tag foo#tags", "foo! foo#tags"),
+        ("(foo)\n", "foo\nbar", "foo!bar"),
+    ] {
+        let prepared = fastra_core::PreparedSearch::new(
+            &request(pattern, "$1!", SearchMode::Regex),
+            fastra_core::SearchFlags { whole_word: true },
+            Limits::default(),
+            &cancel,
+        )
+        .unwrap();
+        let preview = prepared.preview(text, 0, 0).unwrap();
+        assert_eq!(preview.matches().len(), 1, "{pattern}");
+        assert_eq!(preview.matches()[0].captures.len(), 2);
+        assert_eq!(preview.apply(text, 0, 0, &[0], &cancel).unwrap(), expected);
     }
 }

@@ -1290,7 +1290,7 @@
 
 /* tool4d-LSP-Dokumentprüfung (Etappe 8 Wunschpaket 2026-07c) */
 "Der lokale Diagnosekanal für tool4d konnte nicht geöffnet werden." = "The local diagnostic channel for tool4d could not be opened.";
-"tool4d hat sich nicht mit dem lokalen Diagnosekanal verbunden." = "tool4d did not connect to the local diagnostic channel.";
+"tool4d hat die Verbindung und Initialisierung nicht rechtzeitig abgeschlossen." = "tool4d did not complete the connection and initialization in time.";
 "tool4d hat innerhalb der Wartezeit keine Diagnosen geliefert." = "tool4d did not provide diagnostics within the time limit.";
 "tool4d konnte für dieses Dokument kein Diagnoseergebnis liefern. Prüfe, ob die Methode zum geöffneten 4D-Projekt gehört." = "tool4d could not provide a diagnostic result for this document. Check whether the method belongs to the open 4D project.";
 "tool4d wurde beendet, bevor die Dokumentprüfung abgeschlossen war." = "tool4d ended before document checking was complete.";
@@ -2291,3 +2291,5 @@
 "Baustein einfügen" = "Insert Snippet";
 
 "Pfad kopieren" = "Copy Path";
+
+"Klammerblock auswählen" = "Select Enclosing Brackets";

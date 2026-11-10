@@ -16,6 +16,8 @@ pub(super) const MAX_DOCUMENTS: usize = 1024;
 pub(super) struct Position {
     pub x: i32,
     pub y: i32,
+    #[serde(default)]
+    pub logical: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -259,7 +261,11 @@ mod tests {
                 5 => window.active = Some(b"/not-in-window".to_vec()),
                 6 => window.width = 0,
                 7 => window.height = 32769,
-                _ => window.position = Some(Position { x: i32::MIN, y: 0 }),
+                _ => window.position = Some(Position {
+                    x: i32::MIN,
+                    y: 0,
+                    logical: false,
+                }),
             }
             cases.push(Preference {
                 version: 1,

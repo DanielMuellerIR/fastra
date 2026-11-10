@@ -88,6 +88,17 @@ als Rückfall.
 sichtbaren Zeile. Dies gilt im Texteditor sowie im Markdown-Quelltext und WYSIWYG. ⌥⇧←
 und ⌥⇧→ wählen weiterhin wortweise aus.
 
+**Klammerblock auswählen (macOS):** Stelle den Cursor beispielsweise direkt vor
+`}` und wähle **Bearbeiten → Klammerblock auswählen** oder drücke **⌘B**.
+Fastra markiert den kleinsten umgebenden `{…}`-, `[…]`- oder `(…)`-Block
+**einschließlich der Klammern**. Wiederholen erweitert die Auswahl auf den
+nächsten äußeren Block. Auch eine Position im Block oder unmittelbar hinter
+seiner Schlussklammer funktioniert. Strings und Kommentare werden anhand der aktiven Syntaxgrammatik
+übersprungen, damit ihre Klammern nicht mitzählen. Ohne Grammatik werden
+doppelt zitierte Zeichenketten und ihre Backslash-Escapes berücksichtigt. Text und Undo bleiben unverändert. Ohne passenden Block
+ertönt ein Hinweiston. In Markdown bleibt ⌘B für **Fett** reserviert; dort ist
+die Blockauswahl im Quelltext über das Menü erreichbar.
+
 „Speichern unter…“ ergänzt bei neuen Text- und Markdown-Dokumenten `.txt`
 beziehungsweise `.md`. Das Format-Menü bietet alle mitgelieferten
 Syntaxsprachen sowie CSV und XML und setzt beim Wechsel die passende Endung.
@@ -234,6 +245,8 @@ Importdateien sind auf 1 MB begrenzt; ungültige Einträge werden übersprungen.
 
 **Optionen:** Groß-/Kleinschreibung, „Ganzes Wort“, „Wrap-around“ und
 „Nur in Auswahl“ (sucht ausschließlich in der eingefrorenen Selektion).
+„Ganzes Wort“ begrenzt den vollständigen Ausdruck, auch jede Alternative in
+einem RegEx wie `foo|bar`. Die Nummern vorhandener Capture-Gruppen bleiben gleich.
 
 **Ersetzen und Treffer freigeben:**
 
@@ -1351,6 +1364,8 @@ Fastra weicht dann NICHT still auf eine andere gefundene Installation aus.
 4D-Projekts und tool4d vorhanden, startet **Text → Dokument prüfen** eine
 kurze lokale LSP-Prüfung. Fastra lauscht nur auf `127.0.0.1`, tool4d verbindet
 sich dorthin; nach dem Ergebnis werden Verbindung und Prozess wieder beendet.
+Auch Verbindungsaufbau und Initialisierung haben eine Wartefrist. Antwortet
+tool4d dabei nicht rechtzeitig, beendet Fastra die Prüfung mit einem Hinweis.
 Liefert tool4d einen nicht-`null`-Diagnosebericht, erscheinen Fehler mit Zeile
 und Spalte und der erste lässt sich anspringen. Ein `null`-Bericht bedeutet
 ausdrücklich „kein verwertbares Ergebnis“, niemals „fehlerfrei“. Eine sichere
@@ -1874,6 +1889,13 @@ Kopierte Textmarker geben ihre Farbe auch an HTML- und RTF-Ziele weiter.
 Lokale Rasterbilder in der Linux-Rich-Ansicht aktualisieren sich bei externen Dateiänderungen automatisch im Hintergrund. Text, Auswahl und Rücknahme bleiben erhalten. Fehlende oder ungültige Bilder behalten ihren Quellverweis, zeigen aber keine veralteten Bildbytes. Während Bild- und Clipboardaktionen wartet die Aktualisierung.
 
 In den Linux-Gitwerkzeugen öffnet „Commit erstellen …“ die vollständige Indexvorschau. Prüfe Tree, Parent-Commits, Autor/Committer, Nachricht und Diff und bestätige anschließend diesen Stand. Fastra verwendet den normalen Git-Commit mit aktiven Hooks und nativer Signierung. Späteres Staging und ungesicherte Editorpuffer bleiben erhalten. Hookänderungen, fehlerhafte Signierung oder eine veraltete Basis halten den Commit an; die tatsächliche Ausgabe und der anschließende Git-Zustand bleiben sichtbar. Git 2.43 oder neuer mit Files-Refs ist erforderlich.
+
+## Linux: Updateprüfung
+
+In aktiven Benutzerinstallationen öffnet **Updates …** die Updateeinstellungen.
+Dort kannst du die tägliche automatische Prüfung des stabilen GitHub-Releases
+ausschalten. Eine parallel laufende manuelle Prüfung ändert diese Wahl nicht.
+Quellbuilds starten keine automatische Netzwerkprüfung.
 
 ## Linux: Markdown
 

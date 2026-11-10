@@ -43,6 +43,8 @@ enum KeyRoute: Equatable {
     case moveToEndOfDocument(modifySelection: Bool)
     /// CMD+SHIFT+←/→ erweitert die Auswahl bis zur sichtbaren Zeilengrenze.
     case extendSelectionToLineBoundary(backward: Bool)
+    /// CMD+B wählt einen Klammerblock oder formatiert Markdown fett.
+    case selectBracketBlockOrBold
     /// CMD+<Kürzel> eines 4D-Makros bei aktiver `.4dm`-Datei. Kontextsensitiv
     /// gewinnt das Makro über gleichlautende Menü-Shortcuts (⌘T „Neuer Tab"),
     /// weil die Kürzelmenge nur bei aktiver 4D-Methode überhaupt gefüllt ist.
@@ -148,6 +150,12 @@ enum KeyRouting {
             }
         }
 
+        if isDocumentWindowKey,
+           charactersIgnoringModifiers?.lowercased() == "b",
+           modifierFlags.intersection([.command, .option, .control, .shift]) == .command {
+            return .selectBracketBlockOrBold
+        }
+
         if isDocumentWindowKey, isMarkdownVisual,
            charactersIgnoringModifiers?.lowercased() == "f",
            modifierFlags.intersection([.command, .option, .control, .shift]) == [.command, .option] {
@@ -196,7 +204,7 @@ enum KeyRouting {
         case .showGotoLine:       return .fastraShowGotoLine
         case .closeHelp, .closeDocument,
              .moveToBeginningOfDocument, .moveToEndOfDocument, .extendSelectionToLineBoundary,
-             .runFourDMacro:
+             .runFourDMacro, .selectBracketBlockOrBold:
             // Diese Aktionen gehen direkt an die fokussierte Editor-TextView
             // bzw. den Workspace des Key-Windows; eine globale Notification
             // würde Suchfelder oder fremde Fenster versehentlich erfassen.

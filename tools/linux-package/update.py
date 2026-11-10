@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """GitHub-Updates für die versionierte Fastra-Benutzerinstallation."""
 import argparse
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import json
 import os
@@ -85,6 +87,20 @@ def preferences():
     return value
 
 
+@contextmanager
+def preferences_lock():
+    file = preferences_path().with_suffix(".lock")
+    file.parent.mkdir(parents=True, exist_ok=True)
+    # Die JSON-Datei wird atomar ersetzt. Nur eine separate, nie entfernte
+    # Sperrdatei bindet alle Helfer auch nach diesem Inode-Wechsel zusammen.
+    with file.open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 def save_preferences(value):
     file = preferences_path()
     file.parent.mkdir(parents=True, exist_ok=True)
@@ -156,19 +172,22 @@ def main():
     parser.add_argument("--version")
     parser.add_argument("--sha256")
     args = parser.parse_args()
-    prefs = preferences()
     if args.action in ("enable", "disable"):
-        prefs["automatic"] = args.action == "enable"
-        save_preferences(prefs)
+        with preferences_lock():
+            prefs = preferences()
+            prefs["automatic"] = args.action == "enable"
+            save_preferences(prefs)
         return prefs
     if args.action == "preferences":
-        return prefs
+        return preferences()
     runtime, prefix, current = installed_runtime()
-    if args.automatic and (not prefs["automatic"] or time.time() - prefs["checked_at"] < 86400):
-        return {"status": "skipped"}
-    if args.action == "check":
-        prefs["checked_at"] = time.time()
-        save_preferences(prefs)
+    with preferences_lock():
+        prefs = preferences()
+        if args.automatic and (not prefs["automatic"] or time.time() - prefs["checked_at"] < 86400):
+            return {"status": "skipped"}
+        if args.action == "check":
+            prefs["checked_at"] = time.time()
+            save_preferences(prefs)
     try:
         release = json.loads(fetch(API, 2 * 1024 * 1024))
     except urllib.error.HTTPError as error:

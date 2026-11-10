@@ -169,6 +169,27 @@ func tool4dLSP_reportsDiagnosticsTimeout() async {
     #expect(mock.wasStopped)
 }
 
+@Test("tool4d-LSP: verbundener Server ohne initialize-Antwort läuft in Timeout und wird gestoppt")
+func tool4dLSP_reportsInitializeTimeoutAndCleansUp() async {
+    let mock = Tool4DMockProcess(mode: .ignoreInitialize)
+    let validation = Tool4DLSPValidation(process: mock)
+    // Der Wächter begrenzt auch den Regressionstest gegen die alte, endlos
+    // wartende Implementierung. Abbruch ist ausdrücklich nicht das Soll-Ergebnis.
+    let watchdog = Task {
+        do {
+            try await Task.sleep(for: .seconds(5))
+            validation.cancel()
+        } catch { }
+    }
+    defer { watchdog.cancel() }
+    let result = await runValidation(validation, timeout: 1)
+    #expect(result == .failure(.connectionTimeout))
+    #expect(mock.receivedMethods.contains("initialize"))
+    #expect(!mock.receivedMethods.contains("initialized"))
+    #expect(!mock.receivedMethods.contains("textDocument/didOpen"))
+    #expect(mock.wasStopped)
+}
+
 @Test("tool4d-LSP: Ersetzen eines abgebrochenen Laufs räumt den Prozess auf")
 func tool4dLSP_cancelSurvivesImmediateOwnerRelease() async {
     let mock = Tool4DMockProcess(mode: .noDiagnostics)
@@ -306,6 +327,7 @@ private final class Tool4DMockProcess: Tool4DLSPProcess {
         case pullDiagnostic
         case notificationDiagnostic
         case noDiagnostics
+        case ignoreInitialize
         case nullDiagnosticResult
         case ignoreShutdown
         case malformedResponse
@@ -379,6 +401,7 @@ private final class Tool4DMockProcess: Tool4DLSPProcess {
         if method == "initialize" {
             initializeParams = object["params"] as? [String: Any]
         }
+        if mode == .ignoreInitialize { return }
         if mode == .malformedResponse, method == "initialize" {
             connection?.send(content: Data("Content-Length: nope\r\n\r\n{}".utf8),
                              completion: .contentProcessed { _ in })

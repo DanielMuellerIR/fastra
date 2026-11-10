@@ -225,7 +225,7 @@ final class Tool4DLSPValidation {
             case .listenerUnavailable:
                 return L10n.string("Der lokale Diagnosekanal für tool4d konnte nicht geöffnet werden.")
             case .connectionTimeout:
-                return L10n.string("tool4d hat sich nicht mit dem lokalen Diagnosekanal verbunden.")
+                return L10n.string("tool4d hat die Verbindung und Initialisierung nicht rechtzeitig abgeschlossen.")
             case .diagnosticsTimeout:
                 return L10n.string("tool4d hat innerhalb der Wartezeit keine Diagnosen geliefert.")
             case .noDiagnosticResult:
@@ -370,19 +370,19 @@ final class Tool4DLSPValidation {
     }
 
     private func accept(_ connection: NWConnection, text: String, timeout: TimeInterval) {
-        guard self.connection == nil, !completionDelivered else {
+        guard self.connection == nil, !isFinishing, !completionDelivered else {
             connection.cancel()
             return
         }
-        connectionTimer?.cancel()
-        connectionTimer = nil
+        // Ein offener Socket genügt nicht: Die Verbindungsfrist schützt auch
+        // die TCP-Bereitschaft und die noch ausstehende initialize-Antwort.
         self.connection = connection
         // tool4d verbindet sich ein; weitere eingehende Verbindungen braucht
         // dieser kurze Einzel-Dokument-Lauf nicht mehr.
         listener?.cancel()
         connection.stateUpdateHandler = { [weak self] state in
             self?.queue.async {
-                guard let self, !self.completionDelivered else { return }
+                guard let self, !self.isFinishing, !self.completionDelivered else { return }
                 switch state {
                 case .ready:
                     self.receiveNext()
@@ -421,10 +421,13 @@ final class Tool4DLSPValidation {
                 "dependencies": ["enable": true],
             ],
         ]) { [weak self] response in
-            guard let self, response["error"] == nil else {
-                self?.finish(.failure(.protocolError("initialize")))
+            guard let self, !self.isFinishing, !self.completionDelivered else { return }
+            guard response["error"] == nil else {
+                self.finish(.failure(.protocolError("initialize")))
                 return
             }
+            self.connectionTimer?.cancel()
+            self.connectionTimer = nil
             self.sendNotification(method: "initialized", params: [:])
             self.sendNotification(method: "textDocument/didOpen", params: [
                 "textDocument": ["uri": self.documentURI, "languageId": "4d", "version": 1,

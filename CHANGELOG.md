@@ -7,6 +7,28 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.239.0] — 2026-11-10
+
+### Behoben
+
+- macOS: Klammerauswahl berücksichtigt Strings und Kommentare der aktiven Syntaxgrammatik, einschließlich einfach angeführter JavaScript-Strings.
+- Ganzwortsuche erhält gültige Regex-Ausdrücke mit abschließendem Extended-Modus-Kommentar und unveränderte Capture-Nummern.
+- Linux: X11-Fensterpositionen werden für HiDPI in logischen Koordinaten gespeichert und begrenzt; ältere physische Positionen werden beim Laden mit dem aktuellen Maßstab umgerechnet.
+
+## [v1.238.0] — 2026-11-09
+
+### Hinzugefügt
+
+- macOS: „Bearbeiten → Klammerblock auswählen“ wählt den umgebenden `{…}`-, `[…]`- oder `(…)`-Block samt Klammern. In Textdokumenten außer Markdown gilt ⌘B; in Markdown bleibt ⌘B dem Fettdruck zugeordnet. Wiederholen erweitert die Auswahl nach außen. JSON-Zeichenketten und ihre Escapes werden bei der Klammersuche übersprungen; Text, Datei und Undo bleiben unverändert.
+
+## [v1.237.0] — 2026-11-09
+
+### Behoben
+
+- „Ganzes Wort“ begrenzt bei regulären Ausdrücken alle Alternativen vollständig. Suche und Ersetzung erhalten dabei die bisherigen Capture-Nummern unter macOS und Linux.
+- Die lokale tool4d-Prüfung beendet und bereinigt auch eine bereits verbundene Sitzung, deren Initialisierungsantwort ausbleibt, nach Ablauf der Wartezeit.
+- Parallele Linux-Updateprüfungen erhalten die aktuelle Einstellung für automatische Prüfungen. Eine bestätigte Abschaltung wird nicht mehr durch einen älteren Einstellungsstand zurückgesetzt.
+
 ## [v1.236.0] — 2026-11-09
 
 ### Behoben

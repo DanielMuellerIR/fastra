@@ -565,12 +565,22 @@ enum ApplyEngine {
             // wie `.` `*` `(` literal gemeint sind.
             pattern = NSRegularExpression.escapedPattern(for: options.find)
         }
+        let unwrappedPattern = pattern
         if options.wholeWord {
-            pattern = "\\b" + pattern + "\\b"
+            pattern = "\\b(?:" + pattern + ")\\b"
         }
         var opts: NSRegularExpression.Options = []
         if !options.caseSensitive { opts.insert(.caseInsensitive) }
-        return try NSRegularExpression(pattern: pattern, options: opts)
+        do {
+            return try NSRegularExpression(pattern: pattern, options: opts)
+        } catch {
+            guard options.wholeWord, options.isRegex else { throw error }
+            // Ein abschließender x-Kommentar verschluckt die Wrapperklammer.
+            // Nur bei gültigem Original und fehlgeschlagener Einbettung einen
+            // Zeilenabschluss ergänzen; bei ausgeschaltetem x bleibt alles literal.
+            _ = try NSRegularExpression(pattern: unwrappedPattern, options: opts)
+            return try NSRegularExpression(pattern: "\\b(?:" + unwrappedPattern + "\n)\\b", options: opts)
+        }
     }
 
     /// Liefert den Template-String, der an `regex.replacementString(...)`

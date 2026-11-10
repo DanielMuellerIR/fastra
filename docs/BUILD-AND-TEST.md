@@ -10,6 +10,16 @@ gestörter Lauf zählt nicht als Abschlussprüfung. Getrennte Arbeitskopien
 benötigen getrennte Build-Verzeichnisse.
 
 
+## Klammerblock auswählen (macOS)
+
+Nach `./build.sh` prüft `./test.sh --fast-only --filter BracketSelection`
+JSON-Zeichenketten samt Escapes, UTF-16-Auswahlen, Verschachtelung und fehlende
+Klammerpartner. `FASTRA_BRACKET_SELECTION_DIR=/pfad/zur/aufnahme
+./selftest.sh bracketselection` sendet echte ⌘B-Tastenereignisse an AppKit mit
+aktivem Dokumentfokus: Objekt samt Klammern, Erweiterung zum Array, unveränderter Text,
+Undo und Plattenstand sowie anschließend weiterhin Markdown-Fettdruck.
+Die optionale Aufnahme zeigt die Objektauswahl im echten Editor.
+
 ## Syntax-Folding prüfen
 
 Patch 4z20 (`app/Patches/CodeEditSourceEditor/code-folding.py`) verbindet den
@@ -2502,3 +2512,19 @@ Bildversionen und getrennt erhaltene geänderte Bytes. Quell- und Leseschrift
 verwenden denselben internen Speicherzustand; beide nativen Schriftmatrizen
 (normal/busy/missing und die jeweils unterstützten readonly/corrupt-Zustände)
 prüfen Filter, angewendete Glyphen, Wiederholungsversuch und frischen Prozess.
+
+### Linux: X11-HiDPI-Fensterpositionen
+
+`tools/linux-probes/startup-hidpi.py APP_BINARY` verwendet dieselbe isolierte
+Umgebung wie die Startup-Probe, zusätzlich `GDK_SCALE=2` und ein privates
+Xvfb-Display mit 1920 × 1536 physischen Pixeln samt Openbox. Mit
+`FASTRA_SCALE_LEGACY=0` prüft es logische Positionen, mit `=1` alte physische
+Positionspaare ohne Kennzeichnung. Beide Varianten starten das Fenster zweimal
+in frischen Prozessen. Die unabhängige X11-Abfrage muss x=100 physisch und die
+Sitzungsdatei x=50 logisch bei einer Fensterbreite von 900 logischen Pixeln
+zeigen; Quit muss seine Lifecycle-Ressourcen freigeben.
+
+Die neue Positionskennzeichnung verhindert eine zweite Umrechnung. Alte Dateien
+enthalten keinen damaligen Maßstab; ihre physischen Koordinaten werden deshalb
+mit dem aktuellen X11-Maßstab umgerechnet. Ein zwischenzeitlicher Wechsel des
+Maßstabs lässt sich aus dem alten Dateiformat nicht rekonstruieren.

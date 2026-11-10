@@ -162,6 +162,10 @@ struct FastraApp: App {
                 }
                 .disabled(commandWorkspace == nil)
                 .keyboardShortcut(.downArrow, modifiers: [.control, .shift])
+                Divider()
+                Button("Klammerblock auswählen") { BracketSelectionCommands.selectEnclosingBlock() }
+                    .keyboardShortcut(activeTabIsMarkdown ? nil : KeyboardShortcut("b", modifiers: .command))
+                    .disabled(commandWorkspace?.activeTab == nil)
             }
 
             // Darstellungskommandos in das BESTEHENDE System-

@@ -82,6 +82,17 @@ fallback.
 line. This works in the text editor, Markdown source and WYSIWYG. ⌥⇧← and ⌥⇧→ continue
 to select by word.
 
+**Select Enclosing Brackets (macOS):** Place the cursor, for example, directly
+before `}` and choose **Edit → Select Enclosing Brackets** or press **⌘B**.
+Fastra selects the smallest enclosing `{…}`, `[…]` or `(…)` block,
+**including the brackets**. Repeat to expand to the next outer block. A cursor
+inside the block or immediately after its closing bracket also works.
+Strings and comments are skipped using the active syntax grammar so their
+brackets do not count. Without a grammar, double-quoted strings and their
+backslash escapes are recognized. Text and Undo stay unchanged. If no matching block
+exists, a beep sounds. In Markdown, ⌘B remains **Bold**; use the menu for bracket
+selection in source mode.
+
 “Save As…” adds `.txt` or `.md` to new text and Markdown documents. Its format
 menu offers every bundled syntax language plus CSV and XML and changes the
 extension when you choose one. You can still type any custom extension directly
@@ -221,6 +232,8 @@ are limited to 1 MB; invalid entries are skipped.
 
 **Options:** case sensitivity, “Whole word”, “Wrap-around”, and
 “Selection only” (searches exclusively within the frozen selection).
+“Whole word” constrains the entire expression, including each alternative in
+a regex such as `foo|bar`. Existing capture group numbers stay the same.
 
 **Replacing and approving matches:**
 
@@ -1274,7 +1287,9 @@ and tool4d is available, **Text → Check Document** starts a short local LSP
 check. Fastra listens only on `127.0.0.1`, tool4d connects to it, and both
 connection and process are closed after the result. When tool4d supplies a
 non-`null` diagnostic report, errors include line and column and you can jump
-to the first one. A `null` report is an explicit "no usable result", never a
+to the first one. Connection setup and initialization also have a timeout;
+if tool4d does not respond in time, Fastra ends the check with an explanation.
+A `null` report is an explicit "no usable result", never a
 clean check. A safe-project probe with tool4d 21.1 verified a full diagnostic
 report and shutdown; an earlier `null` was the macOS `/tmp` alias, so Fastra
 canonicalizes document and workspace URIs. Without tool4d or a matching
@@ -1759,6 +1774,13 @@ also provide their color to HTML and RTF destinations.
 Local raster images in Linux Rich view refresh automatically in the background after external file changes. Text, selection and Undo are retained. Missing or invalid images retain their source references without displaying stale image bytes. Refresh waits during image and clipboard actions.
 
 In Linux Git tools, “Create commit …” opens the complete index preview. Review the tree, parent commits, author/committer, message and diff, then approve that state. Fastra uses a normal Git commit with active hooks and native signing. Later staging and unsaved editor buffers are retained. Hook changes, signing failures or a stale basis stop the commit; actual output and the resulting Git state remain visible. Git 2.43 or newer with files refs is required.
+
+## Linux: Update checks
+
+In active user installations, **Updates …** opens the update settings.
+You can turn off the daily automatic check for stable GitHub releases there.
+A manual check running at the same time preserves this choice. Source builds
+do not start automatic network checks.
 
 ## Linux: Markdown
 

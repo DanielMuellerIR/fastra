@@ -268,7 +268,7 @@ impl PreparedSearch {
                 cancel: cancel.clone(),
             });
         }
-        let (mut pattern, replacement) = match request.mode {
+        let (pattern, replacement) = match request.mode {
             SearchMode::Regex => (request.pattern.clone(), request.replacement.clone()),
             SearchMode::Literal => (
                 wildcard::escape_pattern(&request.pattern),
@@ -288,10 +288,24 @@ impl PreparedSearch {
                 (compiled.regex_pattern, replacement)
             }
         };
-        if flags.whole_word {
-            pattern = format!(r"\b{pattern}\b");
-        }
-        let prototype = icu::Regex::new(&pattern, "", request.case_sensitive, limits, cancel)?;
+        let wrapped = if flags.whole_word {
+            format!(r"\b(?:{pattern})\b")
+        } else {
+            pattern.clone()
+        };
+        let prototype = match icu::Regex::new(&wrapped, "", request.case_sensitive, limits, cancel)
+        {
+            Ok(regex) => regex,
+            Err(error) if flags.whole_word && request.mode == SearchMode::Regex => {
+                // Nur ein gültiges Original darf den Kommentarabschluss erhalten.
+                // Ohne aktives x würde ein Zeilenumbruch den Suchtext verändern.
+                icu::Regex::new(&pattern, "", request.case_sensitive, limits, cancel)?;
+                let terminated = format!("\\b(?:{pattern}\n)\\b");
+                icu::Regex::new(&terminated, "", request.case_sensitive, limits, cancel)
+                    .map_err(|_| error)?
+            }
+            Err(error) => return Err(error),
+        };
         Ok(Self {
             prototype: Some(prototype),
             pieces: template::pieces(&replacement)?,

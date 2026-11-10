@@ -616,6 +616,7 @@ enum SelfTest {
         case "jump":      waitForMainWindow { runJumpTest() }
         case "ghosttext": waitForMainWindow { runGhostTextTest() }
         case "wordclick": waitForMainWindow { runWordDoubleClickTest() }
+        case "bracketselection": waitForMainWindow { runBracketSelectionTest() }
         case "rightedge": waitForMainWindow { runRightEdgeClickTest() }
         case "selshort": waitForMainWindow { runShortSelectionScrollTest() }
         case "dragscroll": waitForMainWindow { runDragScrollTest() }
@@ -895,7 +896,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, windowchrome, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchapproval, searchapprovalclose, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdoutline, codeoutline, sourcesplit, snippets, snippetfiles, mdvisualfind, mdtable, mdtableinteraction, mdtableinput, mdcomfort, mdblocks, mdsearchnavigation, jump, ghosttext, wordclick, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, saveexisting, textworkflow, textworkflowmulti, textworkflowonesided, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, filedifftransfer, foldercompare, mdreferences, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdowncollections, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, windowchrome, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchapproval, searchapprovalclose, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdoutline, codeoutline, sourcesplit, snippets, snippetfiles, mdvisualfind, mdtable, mdtableinteraction, mdtableinput, mdcomfort, mdblocks, mdsearchnavigation, jump, ghosttext, wordclick, bracketselection, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, saveexisting, textworkflow, textworkflowmulti, textworkflowonesided, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, filedifftransfer, foldercompare, mdreferences, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdowncollections, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -9890,6 +9891,98 @@ enum SelfTest {
             }
         }
         return nil
+    }
+
+    private static func runBracketSelectionTest() {
+        testLabel = "bracketselection"
+        guard let ws = Workspace.shared, let window = mainWindowForAXChecks() else {
+            finish(false, "Dokumentfenster fehlt")
+        }
+        let object = #"{name:'😀', text:'} \' [', /* } ] ( */ nested:{n:1}}"#
+        let source = "[\n  \(object),\n  {}\n]"
+        let file = selfTestTemporaryDirectory().appendingPathComponent("block.js")
+        do { try Data(source.utf8).write(to: file) }
+        catch { finish(false, "JavaScript-Fixture nicht schreibbar") }
+        ws.loadFile(at: file) { ok in
+            guard ok else { finish(false, "JavaScript-Fixture lädt nicht") }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(600))
+                guard let target = CommandTargeting.target(), target.workspace === ws else {
+                    finish(false, "Editorziel fehlt")
+                }
+                guard NSApp.isActive, window.isKeyWindow else {
+                    finish(.environment, "Tastaturtest benötigt den aktiven Dokumentfokus")
+                }
+                let editor = target.textView
+                guard window.makeFirstResponder(editor) else { finish(false, "Editorfokus fehlt") }
+                let expected = (source as NSString).range(of: object)
+                editor.selectionManager.setSelectedRange(NSRange(location: expected.upperBound - 1, length: 0))
+                let untouchedUndo = editor.undoManager?.canUndo
+                func pressCommandB() {
+                    postKey("b", keyCode: 11, windowNumber: window.windowNumber, modifiers: .command)
+                }
+                pressCommandB()
+                waitFor(budget: 5, pause: 0.05, condition: {
+                    editor.fastraSafeSelectedRange == expected
+                }, onTimeout: { _ in finish(false, "Objekt samt Klammern nicht ausgewählt") }) {
+                    if let directory = ProcessInfo.processInfo.environment["FASTRA_BRACKET_SELECTION_DIR"],
+                       let root = window.contentView,
+                       let bitmap = root.bitmapImageRepForCachingDisplay(in: root.bounds) {
+                        root.cacheDisplay(in: root.bounds, to: bitmap)
+                        let destination = URL(fileURLWithPath: directory)
+                        try? FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+                        try? bitmap.representation(using: .png, properties: [:])?.write(
+                            to: destination.appendingPathComponent("javascript-block.png"))
+                    }
+                    pressCommandB()
+                    waitFor(budget: 5, pause: 0.05, condition: {
+                        editor.fastraSafeSelectedRange == NSRange(location: 0, length: source.utf16.count)
+                    }, onTimeout: { _ in finish(false, "Auswahl nicht auf Array erweitert") }) {
+                        guard editor.string == source, ws.activeTab?.content == source,
+                              editor.undoManager?.canUndo == untouchedUndo,
+                              (try? String(contentsOf: file, encoding: .utf8)) == source else {
+                            finish(false, "Erweiterung, Text- oder Undo-Erhalt fehlgeschlagen")
+                        }
+                        workspaceDefaults().set(false, forKey: MarkdownEditingMode.defaultsKey)
+                        workspaceDefaults().set(false, forKey: "markdown.integratedPreview")
+                        ws.setLanguageOverride(.markdown)
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(600))
+                            guard let markdown = CommandTargeting.target(),
+                                  window.makeFirstResponder(markdown.textView) else {
+                                finish(false, "Markdown verliert den Fett-Shortcut")
+                            }
+                            markdown.textView.selectionManager.setSelectedRange((source as NSString).range(of: "name"))
+                            pressCommandB()
+                            let formatted = source.replacingOccurrences(of: "name", with: "**name**")
+                            waitFor(budget: 5, pause: 0.05, condition: {
+                                markdown.textView.string == formatted
+                            }, onTimeout: { _ in finish(false, "Command-B formatiert Markdown nicht fett") }) {
+                                ws.setLanguageOverride(.javascript)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                    guard let json = CommandTargeting.target(),
+                                          window.makeFirstResponder(json.textView) else {
+                                        finish(false, "JavaScript-Fokus nach Markdown fehlt")
+                                    }
+                                    let expectedObject = (formatted as NSString).range(of:
+                                        object.replacingOccurrences(of: "name", with: "**name**"))
+                                    json.textView.selectionManager.setSelectedRange(
+                                        NSRange(location: expectedObject.upperBound - 1, length: 0))
+                                    // Ohne erneutes Öffnen des Bearbeiten-Menüs:
+                                    // auch alte Menü-Kürzel müssen aktuell routen.
+                                    pressCommandB()
+                                    waitFor(budget: 5, pause: 0.05, condition: {
+                                        json.textView.fastraSafeSelectedRange == expectedObject
+                                    }, onTimeout: { _ in finish(false, "Command-B bleibt nach Formatwechsel bei Markdown hängen") }) {
+                                        finish(true, "Command-B: JavaScript-Objekt samt Klammern und Array; Text/Undo/Datei erhalten; Markdown fett und Rückwechsel zu JavaScript korrekt")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - -selftest wordclick
