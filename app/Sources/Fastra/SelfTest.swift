@@ -9959,7 +9959,10 @@ enum SelfTest {
                                 markdown.textView.string == formatted
                             }, onTimeout: { _ in finish(false, "Command-B formatiert Markdown nicht fett") }) {
                                 ws.setLanguageOverride(.javascript)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                waitFor(budget: 5, pause: 0.05, condition: {
+                                    !ws.activeTabIsMarkdown
+                                        && CommandTargeting.target()?.textView.string == formatted
+                                }, onTimeout: { _ in finish(false, "JavaScript-Editor nach Formatwechsel fehlt") }) {
                                     guard let json = CommandTargeting.target(),
                                           window.makeFirstResponder(json.textView) else {
                                         finish(false, "JavaScript-Fokus nach Markdown fehlt")
