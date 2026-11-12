@@ -100,4 +100,19 @@ struct BracketSelectionTests {
             #expect(BracketSelection.range(in: "{}", selection: selection) == nil)
         }
     }
+
+    @Test("Template-Interpolation erweitert Objekt, Aufruf und Interpolation einzeln")
+    func javascriptInterpolation() {
+        let source = "function f() { return `literal } ${JSON.stringify({n: 1})} (`; }"
+        let text = source as NSString
+        let object = text.range(of: "{n: 1}")
+        let call = text.range(of: "({n: 1})")
+        let interpolation = text.range(of: "{JSON.stringify({n: 1})}")
+        #expect(BracketSelection.range(in: source,
+            selection: NSRange(location: text.range(of: "n: 1").location, length: 0), language: .javascript) == object)
+        #expect(BracketSelection.range(in: source, selection: object, language: .javascript) == call)
+        #expect(BracketSelection.range(in: source, selection: call, language: .javascript) == interpolation)
+        #expect(BracketSelection.range(in: source, selection: interpolation, language: .javascript)
+            == NSRange(location: 13, length: source.utf16.count - 13))
+    }
 }

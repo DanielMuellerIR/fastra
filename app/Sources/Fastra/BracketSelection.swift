@@ -79,6 +79,32 @@ enum BracketSelection {
             // sprachspezifische Kommentare; deren Klammern sind kein Code.
             if type.contains("string") || type.contains("comment")
                 || ["character_literal", "char_literal", "regex", "regex_literal"].contains(type) {
+                var interpolations: [Node] = []
+                if type.contains("string") {
+                    for index in 0..<node.namedChildCount {
+                        if let child = node.namedChild(at: index),
+                           let childType = child.nodeType,
+                           childType.contains("interpolation") || childType == "template_substitution" {
+                            interpolations.append(child)
+                        }
+                    }
+                }
+                if !interpolations.isEmpty {
+                    // Literale Stringstücke ausblenden, eingebetteten Code
+                    // einschließlich seiner Klammern regulär weiter durchsuchen.
+                    var start = node.range.location
+                    for child in interpolations.sorted(by: { $0.range.location < $1.range.location }) {
+                        if child.range.location > start {
+                            ranges.append(NSRange(location: start, length: child.range.location - start))
+                        }
+                        start = child.range.upperBound
+                        pending.append(child)
+                    }
+                    if start < node.range.upperBound {
+                        ranges.append(NSRange(location: start, length: node.range.upperBound - start))
+                    }
+                    continue
+                }
                 if node.range.length > 0 { ranges.append(node.range) }
                 continue
             }

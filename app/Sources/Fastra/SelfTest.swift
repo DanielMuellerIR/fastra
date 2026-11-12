@@ -9977,7 +9977,35 @@ enum SelfTest {
                                     waitFor(budget: 5, pause: 0.05, condition: {
                                         json.textView.fastraSafeSelectedRange == expectedObject
                                     }, onTimeout: { _ in finish(false, "Command-B bleibt nach Formatwechsel bei Markdown hängen") }) {
-                                        finish(true, "Command-B: JavaScript-Objekt samt Klammern und Array; Text/Undo/Datei erhalten; Markdown fett und Rückwechsel zu JavaScript korrekt")
+                                        let template = "function f() { return `literal } ${JSON.stringify({n: 1})} (`; }"
+                                        let templateFile = selfTestTemporaryDirectory().appendingPathComponent("interpolation.js")
+                                        do { try Data(template.utf8).write(to: templateFile) }
+                                        catch { finish(false, "Template-Fixture nicht schreibbar") }
+                                        ws.loadFile(at: templateFile) { loaded in
+                                            guard loaded else { finish(false, "Template-Fixture lädt nicht") }
+                                            Task { @MainActor in
+                                                try? await Task.sleep(for: .milliseconds(600))
+                                                guard let target = CommandTargeting.target(),
+                                                      window.makeFirstResponder(target.textView) else {
+                                                    finish(false, "Template-Editorfokus fehlt")
+                                                }
+                                                let object = (template as NSString).range(of: "{n: 1}")
+                                                let call = (template as NSString).range(of: "({n: 1})")
+                                                target.textView.selectionManager.setSelectedRange(
+                                                    NSRange(location: object.location + 1, length: 0))
+                                                pressCommandB()
+                                                waitFor(budget: 5, pause: 0.05, condition: {
+                                                    target.textView.fastraSafeSelectedRange == object
+                                                }, onTimeout: { _ in finish(false, "Template-Objekt nicht ausgewählt") }) {
+                                                    pressCommandB()
+                                                    waitFor(budget: 5, pause: 0.05, condition: {
+                                                        target.textView.fastraSafeSelectedRange == call
+                                                    }, onTimeout: { _ in finish(false, "Template-Auswahl nicht auf Aufruf erweitert") }) {
+                                                        finish(true, "Command-B: JavaScript-Objekt, Array und Template-Interpolation; Text/Undo erhalten; Markdown und Formatwechsel korrekt")
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

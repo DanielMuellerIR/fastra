@@ -7,6 +7,12 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.240.0] — 2026-11-12
+
+### Behoben
+
+- macOS: Klammerauswahl erkennt ausführbaren Code innerhalb von JavaScript-Template-Interpolationen und erweitert die Auswahl wieder schrittweise.
+
 ## [v1.239.0] — 2026-11-10
 
 ### Behoben

@@ -88,7 +88,8 @@ Fastra selects the smallest enclosing `{…}`, `[…]` or `(…)` block,
 **including the brackets**. Repeat to expand to the next outer block. A cursor
 inside the block or immediately after its closing bracket also works.
 Strings and comments are skipped using the active syntax grammar so their
-brackets do not count. Without a grammar, double-quoted strings and their
+brackets do not count. Executable code inside JavaScript template interpolations
+remains selectable. Without a grammar, double-quoted strings and their
 backslash escapes are recognized. Text and Undo stay unchanged. If no matching block
 exists, a beep sounds. In Markdown, ⌘B remains **Bold**; use the menu for bracket
 selection in source mode.

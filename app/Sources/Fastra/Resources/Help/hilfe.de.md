@@ -94,7 +94,8 @@ Fastra markiert den kleinsten umgebenden `{…}`-, `[…]`- oder `(…)`-Block
 **einschließlich der Klammern**. Wiederholen erweitert die Auswahl auf den
 nächsten äußeren Block. Auch eine Position im Block oder unmittelbar hinter
 seiner Schlussklammer funktioniert. Strings und Kommentare werden anhand der aktiven Syntaxgrammatik
-übersprungen, damit ihre Klammern nicht mitzählen. Ohne Grammatik werden
+übersprungen, damit ihre Klammern nicht mitzählen. Ausführbarer Code innerhalb
+von JavaScript-Template-Interpolationen bleibt auswählbar. Ohne Grammatik werden
 doppelt zitierte Zeichenketten und ihre Backslash-Escapes berücksichtigt. Text und Undo bleiben unverändert. Ohne passenden Block
 ertönt ein Hinweiston. In Markdown bleibt ⌘B für **Fett** reserviert; dort ist
 die Blockauswahl im Quelltext über das Menü erreichbar.
