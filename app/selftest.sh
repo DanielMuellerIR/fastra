@@ -161,6 +161,7 @@ timeout_for_test() {
     fi
     case "$1" in
         print) echo 240 ;;
+        jsonstress) echo 360 ;;
         softwrapindent) echo 180 ;;
         cmdw)  echo 120 ;;
         mdblocks) echo 180 ;;
@@ -1609,7 +1610,7 @@ for t in "${TESTS[@]}"; do
         # Ein leeres Aufnahmeziel muss fehlen: Die App interpretiert schon
         # die Anwesenheit der Variable als Auftrag, PNGs dort zu speichern.
         review_environment=()
-        for review_key in FASTRA_BRACKET_SELECTION_DIR FASTRA_COLLECTION_REVIEW_DIR FASTRA_POORMANS_TEXT FASTRA_SAVEEXISTING_DIR FASTRA_MD_VISUAL_DIR FASTRA_MD_OUTLINE_DIR FASTRA_MD_VISUAL_FIND_DIR \
+        for review_key in FASTRA_JSONSTRESS_DIR FASTRA_BRACKET_SELECTION_DIR FASTRA_COLLECTION_REVIEW_DIR FASTRA_POORMANS_TEXT FASTRA_SAVEEXISTING_DIR FASTRA_MD_VISUAL_DIR FASTRA_MD_OUTLINE_DIR FASTRA_MD_VISUAL_FIND_DIR \
             FASTRA_MD_TABLE_DIR FASTRA_MD_TABLE_REPRO_FILE FASTRA_MD_COMFORT_DIR FASTRA_TEXT_WORKFLOW_DIR \
             FASTRA_DIFFSELECTION_DIR FASTRA_REMOTE_DIALOG_DIR \
             FASTRA_EDITOR_OPTIONS_DIR FASTRA_SOFTWRAPINDENT_DIR \

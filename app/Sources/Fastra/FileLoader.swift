@@ -90,6 +90,9 @@ enum FileLoader {
     /// - Returns: `LoadedFile` mit Inhalt, Encoding und Line-Ending.
     /// - Throws: `LoadError.unreadable`, wenn keine Dekodierung gelang.
     static let largeFileThreshold: UInt64 = 32 * 1024 * 1024
+    /// Der vollständige Editor hat ein eigenes Budget; Such-/Apply- und
+    /// Vergleichsgrenzen bleiben unabhängig davon begrenzt.
+    static let editableFileThreshold: UInt64 = 128 * 1024 * 1024
     static let binaryProbeSize = 8 * 1024
     /// Größe eines Leseabschnitts der begrenzten Großdatei-Klassifikation.
     /// Die Gesamtgrenze steht getrennt in `largeFileClassificationByteLimit`.

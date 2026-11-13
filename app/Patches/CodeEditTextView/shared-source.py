@@ -28,9 +28,16 @@ patch('Utils/MultiStorageDelegate.swift',
     // Nur Ansichten desselben Speichers teilen Text; Auswahl und Layout bleiben lokal.
     let fastraTextViews = NSHashTable<TextView>.weakObjects()''')
 patch('TextView/TextView.swift',
-      '    // MARK: - Configuration',
-      '''    public static func fastraMakeTextStorage(_ string: String) -> NSTextStorage {
+      ['''    public static func fastraMakeTextStorage(_ string: String) -> NSTextStorage {
         ImmediateAttributeTextStorage(string: string, attributes: defaultTypingAttributes)
+    }
+
+    // MARK: - Configuration''', '    // MARK: - Configuration'],
+      '''    public static func fastraMakeTextStorage(
+        _ string: String,
+        attributes: [NSAttributedString.Key: Any]? = nil
+    ) -> NSTextStorage {
+        ImmediateAttributeTextStorage(string: string, attributes: attributes ?? defaultTypingAttributes)
     }
 
     // MARK: - Configuration''')

@@ -147,6 +147,37 @@ func minifyUsesTheAsynchronousEditorTransformation() async throws {
     #expect(textView.string == expected)
 }
 
+@Test("Geschlossene Dokumente verwerfen verspätete Transformationen und Fehler", arguments: [false, true])
+@MainActor
+func closedDocumentDiscardsTransformationCompletion(minifying: Bool) async throws {
+    for source in ["{\"b\":2,\"a\":1}", "{invalid"] {
+        let suiteName = "fastra-closed-transform-\(UUID().uuidString)"
+        let defaults = testSuiteDefaults(named: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let workspace = Workspace(defaults: defaults)
+        let tab = EditorTab(title: "closed.json", path: "—", content: source)
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        let textView = TextView(string: source)
+        let controller = NSViewController()
+        controller.view = textView
+        let window = NSWindow(contentViewController: controller)
+        WorkspaceWindowRegistry.register(workspace, for: window)
+        let menu = EditorContextMenu()
+        if minifying { menu.minify(on: textView) }
+        else { menu.format(on: textView) }
+        #expect(workspace.documentTransformationActivity != nil)
+        WorkspaceWindowRegistry.unregister(window)
+        window.close()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while workspace.documentTransformationActivity != nil && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(workspace.documentTransformationActivity == nil)
+        #expect(textView.string == source)
+    }
+}
+
 @Test("TXT öffnet eine Megazeile standardmäßig mit Soft Wrap am Fensterrand")
 @MainActor
 func workspaceKeepsSoftWrapAvailableForLongLine() {

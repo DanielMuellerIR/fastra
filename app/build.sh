@@ -4132,6 +4132,8 @@ if ! grep -q 'Fastra-Patch: Auch der Wechsel von unendlicher Startbreite' \
     "$CETV_TEXTLINE" 2>/dev/null \
    || ! grep -q 'Fastra-Patch: Bei Soft Wrap liefern die Fragment-Ranges' \
     "$CETV_TEXT_VIEW_LAYOUT" 2>/dev/null \
+   || ! grep -q 'cachedWidth == layoutManager.maxLineLayoutWidth' \
+    "$CETV_TEXT_VIEW_LAYOUT" 2>/dev/null \
    || ! grep -q 'Range ist NICHT sichtbar' \
     "$CETV_TEXT_VIEW_LAYOUT" 2>/dev/null \
    || ! grep -q 'private func installScrollObserversIfNeeded' \
@@ -4239,6 +4241,14 @@ if "Fastra-Patch: Bei Soft Wrap liefern die Fragment-Ranges" not in view:
         view, old_range_query, new_range_query, view_path,
         "sichtbare Soft-Wrap-Range"
     )
+
+old_cached_width = '               line.data.maxWidth?.isFinite == true,'
+new_cached_width = '''               let cachedWidth = line.data.maxWidth,
+               cachedWidth.isFinite, cachedWidth < .greatestFiniteMagnitude,
+               cachedWidth == layoutManager.maxLineLayoutWidth,'''
+if new_cached_width not in view:
+    view = replace_once(view, old_cached_width, new_cached_width, view_path,
+                        "sichtbare Bereiche nach Umbruchwechsel")
 
 if "private func installScrollObserversIfNeeded" not in provider:
     old_properties = '''    private weak var textView: TextView?
@@ -4374,6 +4384,8 @@ fi
 if ! grep -q 'Fastra-Patch: Auch der Wechsel von unendlicher Startbreite' \
     "$CETV_TEXTLINE" \
    || ! grep -q 'Fastra-Patch: Bei Soft Wrap liefern die Fragment-Ranges' \
+    "$CETV_TEXT_VIEW_LAYOUT" \
+   || ! grep -q 'cachedWidth == layoutManager.maxLineLayoutWidth' \
     "$CETV_TEXT_VIEW_LAYOUT" \
    || ! grep -q 'Range ist NICHT sichtbar' \
     "$CETV_TEXT_VIEW_LAYOUT" \
@@ -5376,7 +5388,9 @@ fi
 # obwohl CodeEditSourceEditor jedem Zeichen bereits Schrift und Farbe gegeben
 # hat. Ein kleiner regulaerer NSTextStorage-Untertyp mit eigenem
 # NSMutableAttributedString-Backing meldet diese vollstaendigen Attribute als
-# sofort gueltig. CoreText uebernimmt weiterhin Glyphen-Fallback und Umbruch;
+# sofort gueltig. Auch das unmittelbare AppKit-Fixing muss ausbleiben: Bei
+# Syntaxfarben auf Megazeilen sucht es sonst je Lauf erneut die Absatzgrenzen.
+# CoreText uebernimmt weiterhin Glyphen-Fallback und Umbruch;
 # externe, vom Aufrufer uebergebene NSTextStorage-Instanzen bleiben unveraendert.
 # Regression: `./selftest.sh loadperf` misst den realen Fensterpfad; der
 # prozedurale schwierige Dokumentkorpus prueft Bearbeitung und Unicode-Layout.
@@ -5388,6 +5402,8 @@ CETV_SET_TEXT="$CHECKOUTS/CodeEditTextView/Sources/CodeEditTextView/TextView/Tex
 IMMEDIATE_ATTRIBUTE_STORAGE_PATCH_CHANGED=0
 if [ -e "$CETV_IMMEDIATE_STORAGE_SWIFT" ] \
    || ! grep -q 'Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit-Fixing' \
+    "$CETV_IMMEDIATE_STORAGE_IMPL" 2>/dev/null \
+   || ! grep -q 'Fastra-Patch: Editorattribute brauchen keine Absatzkorrektur' \
     "$CETV_IMMEDIATE_STORAGE_IMPL" 2>/dev/null \
    || ! grep -q '@interface ImmediateAttributeTextStorage : NSTextStorage' \
     "$CETV_IMMEDIATE_STORAGE_HEADER" 2>/dev/null \
@@ -5478,6 +5494,12 @@ implementation = '''// Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit
 
 - (BOOL)fixesAttributesLazily {
     return NO;
+}
+
+- (void)fixAttributesInRange:(NSRange)range {
+    // Fastra-Patch: Editorattribute brauchen keine Absatzkorrektur.
+    // Schrift, Farbe und Absatzdaten gehoeren dem Editor; CoreText formt
+    // Glyphen samt Schriftfallback. Editing- und Delegate-Meldungen bleiben.
 }
 
 - (NSDictionary<NSAttributedStringKey, id> *)attributesAtIndex:(NSUInteger)location
@@ -5609,6 +5631,10 @@ if [ -e "$CETV_IMMEDIATE_STORAGE_SWIFT" ] \
    || ! grep -q 'Fastra-Patch: vollstaendige Attribute ohne spaetes AppKit-Fixing' \
     "$CETV_IMMEDIATE_STORAGE_IMPL" \
    || ! grep -q -- '- (BOOL)fixesAttributesLazily' \
+    "$CETV_IMMEDIATE_STORAGE_IMPL" \
+   || ! grep -q -- '- (void)fixAttributesInRange:(NSRange)range' \
+    "$CETV_IMMEDIATE_STORAGE_IMPL" \
+   || ! grep -q 'Fastra-Patch: Editorattribute brauchen keine Absatzkorrektur' \
     "$CETV_IMMEDIATE_STORAGE_IMPL" \
    || ! grep -q '@interface ImmediateAttributeTextStorage : NSTextStorage' \
     "$CETV_IMMEDIATE_STORAGE_HEADER" \
@@ -6425,6 +6451,62 @@ fi
 # 4z28. Theme-Wechsel dürfen die Farben des anderen Ausschnitts nicht löschen.
 SHARED_APPEARANCE_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/shared-source-appearance.py "$CHECKOUTS/CodeEditSourceEditor")
 if [ "$SHARED_APPEARANCE_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditSourceEditor.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z29. Programmatische Einzelauswahl zeichnet die Auswahlfläche sofort neu.
+SELECTION_REDRAW_PATCH=$(/usr/bin/python3 Patches/CodeEditTextView/selection-redraw.py "$CHECKOUTS/CodeEditTextView")
+if [ "$SELECTION_REDRAW_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditTextView.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditTextView.swiftmodule
+fi
+
+# 4z30. Asynchrone Parser-Edits ändern Highlight-Zustand ausschließlich auf Main.
+HIGHLIGHT_EDIT_THREAD_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/highlight-edit-main-thread.py "$CHECKOUTS/CodeEditSourceEditor")
+if [ "$HIGHLIGHT_EDIT_THREAD_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditSourceEditor.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z31. Große Festbreitenzeilen erzeugen Glyphen nur für benötigte Ausschnitte.
+LAZY_ASCII_LAYOUT_PATCH=$(/usr/bin/python3 Patches/CodeEditTextView/lazy-ascii-layout.py "$CHECKOUTS/CodeEditTextView")
+if [ "$LAZY_ASCII_LAYOUT_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditTextView.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditTextView.swiftmodule
+fi
+
+# 4z32. Minimap-Layout und Zeichnung bleiben auf benötigte Ausschnitte begrenzt.
+LAZY_MINIMAP_LAYOUT_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/lazy-minimap-layout.py "$CHECKOUTS/CodeEditSourceEditor")
+if [ "$LAZY_MINIMAP_LAYOUT_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditSourceEditor.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z33. Auch die Minimap meldet nur tatsächlich sichtbare Syntaxbereiche.
+MINIMAP_VISIBLE_RANGES_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/minimap-visible-ranges.py "$CHECKOUTS/CodeEditSourceEditor")
+if [ "$MINIMAP_VISIBLE_RANGES_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditSourceEditor.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z34. Minimap-Scrollbeobachter erst nach Anschluss an die ScrollView aufbauen.
+MINIMAP_SCROLL_OBSERVERS_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/minimap-scroll-observers.py "$CHECKOUTS/CodeEditSourceEditor")
+if [ "$MINIMAP_SCROLL_OBSERVERS_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditSourceEditor.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditSourceEditor.swiftmodule
+fi
+
+# 4z35. Minimap-Hoehen im vorhandenen Zeilenbaum statt in einem zweiten abgleichen.
+BATCH_LINE_HEIGHTS_PATCH=$(/usr/bin/python3 Patches/CodeEditTextView/batch-line-heights.py "$CHECKOUTS/CodeEditTextView")
+if [ "$BATCH_LINE_HEIGHTS_PATCH" = "changed" ]; then
+  rm -rf .build/*/{debug,release}/CodeEditTextView.build
+  rm -f .build/*/{debug,release}/Modules/CodeEditTextView.swiftmodule
+fi
+
+# 4z36. Dekorative Klammermarkierung bleibt auch vor dem Scrollen cursornahe.
+BRACKET_EMPHASIS_WINDOW_PATCH=$(/usr/bin/python3 Patches/CodeEditSourceEditor/bracket-emphasis-window.py "$CHECKOUTS/CodeEditSourceEditor")
+if [ "$BRACKET_EMPHASIS_WINDOW_PATCH" = "changed" ]; then
   rm -rf .build/*/{debug,release}/CodeEditSourceEditor.build
   rm -f .build/*/{debug,release}/Modules/CodeEditSourceEditor.swiftmodule
 fi

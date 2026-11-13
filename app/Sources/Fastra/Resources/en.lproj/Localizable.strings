@@ -2293,3 +2293,6 @@
 "Pfad kopieren" = "Copy Path";
 
 "Klammerblock auswählen" = "Select Enclosing Brackets";
+
+"Dokument wird formatiert…" = "Formatting document…";
+"Dokument wird minifiziert…" = "Minifying document…";

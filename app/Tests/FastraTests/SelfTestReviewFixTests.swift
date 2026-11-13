@@ -288,7 +288,17 @@ func everyDeferInSelfTestIsAccountedFor() throws {
     // Der getrackte Menühilfsaufruf beendet sich regulär oder wirft; der äußere
     // Selbsttest ruft erst danach finish auf. Seine Observer müssen immer weg.
     let trackedMenuCleanup = "defer { // trackedHistoryFromEditMenu kehrt vor dem äußeren finish regulär zurück oder wirft."
-    let allowed = [screenshotCleanup, defaultsDomainCleanup, focusMonitorCleanup, trackedMenuCleanup]
+    // exercise() räumt vor seinem regulären Ergebnis bzw. Fehler auf; erst
+    // die äußere Task ruft finish auf. Die Fixture ist zusätzlich registriert.
+    let jsonFixtureCleanup = "defer { try? FileManager.default.removeItem(at: base) }"
+    // Der Datei-Worker liefert seine fertige Fixture vor dem äußeren finish.
+    let jsonFileHandleCleanup = "defer { try? handle.close() }"
+    // delayedIndicator() kehrt vor exercise()/finish regulär zurück oder
+    // wirft. Aktivität und ursprünglicher Fensterrahmen werden dabei immer
+    // zurückgesetzt; der Helfer beendet den Prozess selbst nicht.
+    let indicatorCleanup = "defer { ws.documentTransformationActivity = nil; window.setFrame(originalFrame, display: true) }"
+    let allowed = [screenshotCleanup, defaultsDomainCleanup, focusMonitorCleanup,
+                   trackedMenuCleanup, jsonFixtureCleanup, jsonFileHandleCleanup, indicatorCleanup]
 
     // Nur echte Anweisungen zählen, keine Kommentare über `defer`.
     let statements = source

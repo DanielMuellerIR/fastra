@@ -7,6 +7,37 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.242.1] — 2026-11-14
+
+### Behoben
+
+- Nach dem Schließen oder Wechseln eines Dokuments erscheinen keine verspäteten Formatier- oder Minifizierungswarnungen mehr. Beide Befehle teilen denselben Lebenszyklusschutz.
+- Die Minimap-Patches stellen frische Abhängigkeiten direkt auf den bestehenden Höhenabgleich um; der frühere öffentliche Hilfsinitializer entfällt.
+
+## [v1.242.0] — 2026-11-13
+
+### Behoben
+
+- macOS: Der gemeinsame Quelltextspeicher erhält beim Anlegen die konfigurierte Schrift und Zeichenmetrik. Dadurch nutzen auch neu geöffnete große JSON-Dokumente und wiederholte Einfügungen den bedarfsgesteuerten Glyphenaufbau.
+- macOS: Die Minimap gleicht ihre Zeilenhöhen im vorhandenen Baum ab und vermeidet einen zweiten vollständigen Aufbau derselben Zeilenstruktur.
+- macOS: Syntaxfarben in großen JSON-Zeilen lösen keine wiederholte automatische Absatzkorrektur mehr aus. Der Editor verwaltet seine vollständigen Attribute selbst; CoreText übernimmt weiterhin Umbruch und Schriftfallback.
+- macOS: Ein Umbruchwechsel meldet alte ungebrochene Fragmente nicht mehr als vollständig sichtbar. So entstehen für eine Megazeile keine zehntausenden unnötigen Syntaxaufträge.
+- macOS: Dokumenttransformationen melden ausschließlich ihre endgültige Auswahl. Die dekorative Klammermarkierung bleibt bei Cursorsprüngen in der Nähe des Cursors, statt vor dem Scrollen ein riesiges Dokument zu durchsuchen.
+- macOS: Der verzögerte Aktivitätshinweis besitzt von Anfang an eine feste Ansicht und erscheint bei längerer Formatierung zuverlässig.
+
+## [v1.241.0] — 2026-11-13
+
+### Behoben
+
+- macOS: Programmatische Blockauswahlen zeichnen ihre Markierung sofort neu.
+- macOS: Asynchrone Syntaxänderungen kehren vor dem Ändern von Highlight-Bereichen auf den UI-Thread zurück; große wiederholte Einfügungen verändern diesen Zustand nicht mehr nebenläufig.
+- macOS: Dokumente bis 128 MiB werden vollständig im Texteditor geladen. Die getrennten Grenzen für Suche, Ersetzung und Vergleiche bleiben erhalten.
+- macOS: Große Festbreitenzeilen berechnen Glyphen bei Bedarf. Minimap und Syntaxfarben berücksichtigen sichtbare Ausschnitte; Umbruchwechsel verwenden dieselbe aktuelle Layoutbreite.
+
+### Verbessert
+
+- macOS: Formatieren ist zusätzlich über ⌥⇧F erreichbar. Formatieren und Minifizieren zeigen bei längerer Berechnung einen Aktivitätshinweis im betroffenen Dokument.
+
 ## [v1.240.0] — 2026-11-12
 
 ### Behoben

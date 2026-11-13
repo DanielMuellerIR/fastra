@@ -267,6 +267,15 @@ und sie sind noch offen.
   keine gerissene Frist. Bei einem neuen lastabhängigen Befund trotzdem
   zuerst prüfen, ob eine Frist beteiligt war.
 
+- **Native GUI-Testbefunde (2026-11-13):** `navmatch` wählt den ersten
+  Suchtreffer korrekt, schaltet danach per Pfeiltaste aber nicht zum nächsten
+  aktiven Treffer. `textworkflow` besteht Anwenden, Undo und Redo, erreicht
+  später beim Schließen eines erneut geöffneten Ablaufs jedoch den erwarteten
+  Fensterzustand nicht. Beide Testfehler traten im Gesamtlauf und in der
+  gezielten Wiederholung auf. Ursache und Auswirkung im normalen Betrieb
+  sind noch ungeklärt; tatsächlichen Listenfokus, Fensteraktivierung und
+  Sheet-Abschluss vor einer Produktänderung getrennt prüfen.
+
 ## Offene Beobachtungen (nicht reproduziert)
 
 - **⌘⇧+Pfeiltasten ohne Wirkung auf einem anderen Mac** (Nutzermeldung

@@ -1044,6 +1044,75 @@ darf weder pauschal ignoriert noch ohne Inhaltsprüfung als Fremdänderung gelte
 Bestätigter Produktpfad: `AtomicFileCommit.swift`, Metadaten-Schleife; Stand
 2026-10-28.
 
+## Asynchrone Parserantworten und sehr lange JSON-Zeilen (2026-11-13)
+
+`TreeSitterClient.applyEdit` muss auch erfolgreiche asynchrone Antworten auf
+Main zustellen. Der Parser darf im Hintergrund arbeiten; sein Callback verändert
+jedoch `HighlightProviderState.validSet` und `pendingSet`. Ein direkter Aufruf
+auf dem Parser-Executor konkurriert mit dem UI-Thread. Im Absturzbericht nach
+wiederholtem Einfügen großer JSON-Objekte wurde eine Heap-Beschädigung in genau
+diesem `IndexSet`-Pfad entdeckt. Patch 4z30 und `AsyncHighlightEditTests` schützen
+die Thread-Grenze unabhängig vom zufälligen Auftreten einer Speicherbeschädigung.
+
+View-Virtualisierung allein begrenzt große Einzelzeilen nicht: Ein vollständiger
+Umbruch kann weiterhin Millionen CoreText-Objekte erzeugen. Patch 4z31 behält bei
+geprüfter Festbreitengeometrie nur Bereichs- und Höhenangaben; Glyphen entstehen
+für benötigte Ausschnitte. Farbänderungen erhalten die Geometrie, Metrikänderungen
+bauen sie neu auf. Nach Änderungen vor einer wiederverwendeten logischen Zeile
+muss die Quelle ihren neuen Dokumentanfang übernehmen. Komplexes Unicode und
+andere Metriken bleiben beim regulären CoreText-Pfad.
+
+Der gemeinsame Dokument-Speicher benötigt bereits beim Anlegen die konfigurierte
+Editor-Schrift. `fastraMakeTextStorage` ohne Attribute verwendete proportionale
+Systemschrift 12; der sichtbare Highlighter ergänzte später Monospace 13 nur in
+Teilbereichen. Die gemischte Metrik umging den Festzellenpfad. Ein direkt mit Text
+erzeugter Controller bestand die Langzeilentests trotzdem, weil dessen Initializer
+bereits die richtige Schrift verwendete. `SharedSourceLayoutTests` prüft daher den
+tatsächlichen Anschluss eines persistenten Speichers an einen leeren Controller.
+
+`fixesAttributesLazily = false` verhindert AppKits Attributkorrektur nicht,
+sondern führt sie sofort aus. Nach einer Syntaxrückmeldung durchsuchte
+`NSTextStorage.endEditing` deshalb immer wieder eine vollständige JSON-Megazeile
+nach Absatzgrenzen. Der interne `ImmediateAttributeTextStorage` überschreibt
+`fixAttributesInRange` ohne erneute Korrektur; seine vollständigen Attribute
+gehören dem Editor. Editing- und Delegate-Benachrichtigungen bleiben erhalten.
+`ImmediateAttributeStorageTests` beobachtet die tatsächlichen Absatzaufrufe und
+Edit-Meldungen, statt nur das Lazy-Flag abzufragen. Unicode-Fallback und Umbruch
+werden zusätzlich von den realen CoreText-Layouttests geprüft.
+
+Beim Einschalten von Soft Wrap bleiben die alten ungebrochenen Fragmente bis
+zum nächsten Layout kurz erhalten. `.greatestFiniteMagnitude` ist endlich;
+`isFinite` allein erkennt diesen alten Zustand deshalb nicht. Eine sichtbare
+Fragment-Range setzt die aktuell passende Layoutbreite voraus. Die Minimap
+begrenzt verifizierte Festzellen immer anhand ihrer tatsächlichen Geometrie,
+auch wenn der Umbruchschalter bereits umgestellt wurde. Andernfalls entstanden
+bei 100 MB rund 24.400 Highlight-Aufträge, deren wartende Tasks den Hintergrund
+mit wiederholter Queue-Abfrage belasteten. Die Regression liest die Bereiche
+bewusst vor dem nächsten Layout nach einem echten Umbruchwechsel.
+
+Eine Dokumenttransformation darf keine vorübergehende EOF-Auswahl melden,
+bevor sie ihre stabile Auswahl setzt. Der Auswahl-Observer startete dort die
+dekorative Klammerhervorhebung gegen den noch oben stehenden Viewport und
+durchsuchte die gesamte Megazeile über Graphem-Substrings. Die Transformation
+setzt ihre Auswahl nun gebündelt. Patch 4z36 schützt zusätzlich echte
+Cursorsprünge vor dieser veralteten Suchspanne, ohne die Grenzen innerhalb
+des sichtbaren Viewports zu verändern. Der verzögerte Aktivitätshinweis besitzt
+einen dauerhaften Host; die native Prüfung wartet auf seinen sichtbaren Marker
+statt nur auf Zeit seit dem Beginn der Berechnung.
+
+Die Minimap ist ein eigener Verbraucher. Ihre Darstellung und Syntaxbereiche
+dürfen keine vollständige Megazeile zurück in den sichtbaren Bereich ziehen.
+Horizontale Bereichssuche per binärer Suche ist nur bei geprüften monotonen
+Festzellen gültig; bei bidirektionalem Text können logische Zeichenindizes in
+umgekehrter visueller Reihenfolge liegen. Die Regressionen prüfen deshalb auch
+Hebräisch, Emoji und kombinierte Zeichen. Die Minimap wird zudem vor dem Anschluss
+des Textfelds an seine ScrollView erzeugt: Scroll-Beobachter brauchen einen
+erneuten, idempotenten Aufbau nach diesem Anschluss.
+
+`setSelectedRange` muss neben den Cursor-Views auch die Textfläche invalidieren.
+Andernfalls ist die Auswahl korrekt gespeichert, erscheint aber erst nach einem
+Fensterwechsel. Patch 4z29 und `BracketSelectionTests` prüfen diesen Unterschied.
+
 ## Diff-Umbruch: Textbreite gehört zur SwiftUI-Messung
 
 SwiftUI kann eine native Diff-Zeile mit mehreren Breiten messen, bevor ihr

@@ -9,12 +9,13 @@ final class DocumentUndoHistory: Hashable {
     private var content: String?
     private var sourceStorage: NSTextStorage?
 
-    @MainActor func textStorage(for text: String) -> NSTextStorage {
+    @MainActor func textStorage(for text: String,
+                                initialAttributes: [NSAttributedString.Key: Any]? = nil) -> NSTextStorage {
         // UTF8Sequence iteriert den NSString-Speicher zeichenweise. Der
         // literale UTF-16-Vergleich bleibt auch bei kanonisch gleichen,
         // verschieden codierten Zeichen exakt und vermeidet diese Kosten.
         if sourceStorage == nil || (sourceStorage!.string as NSString).compare(text, options: .literal) != .orderedSame {
-            sourceStorage = TextView.fastraMakeTextStorage(text)
+            sourceStorage = TextView.fastraMakeTextStorage(text, attributes: initialAttributes)
         }
         return sourceStorage!
     }

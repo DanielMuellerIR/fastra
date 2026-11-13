@@ -617,6 +617,7 @@ enum SelfTest {
         case "ghosttext": waitForMainWindow { runGhostTextTest() }
         case "wordclick": waitForMainWindow { runWordDoubleClickTest() }
         case "bracketselection": waitForMainWindow { runBracketSelectionTest() }
+        case "jsonstress": waitForMainWindow { runStructuredJSONTest() }
         case "rightedge": waitForMainWindow { runRightEdgeClickTest() }
         case "selshort": waitForMainWindow { runShortSelectionScrollTest() }
         case "dragscroll": waitForMainWindow { runDragScrollTest() }
@@ -896,7 +897,7 @@ enum SelfTest {
             // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
             // vergleicht beide Seiten und schlägt bei Abweichung fehl.
             finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, windowchrome, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchapproval, searchapprovalclose, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdoutline, codeoutline, sourcesplit, snippets, snippetfiles, mdvisualfind, mdtable, mdtableinteraction, mdtableinput, mdcomfort, mdblocks, mdsearchnavigation, jump, ghosttext, wordclick, bracketselection, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, saveexisting, textworkflow, textworkflowmulti, textworkflowonesided, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, filedifftransfer, foldercompare, mdreferences, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdowncollections, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
+                + "(bekannt: findbar, newwindow, finderreopen, windowchrome, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchapproval, searchapprovalclose, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdoutline, codeoutline, sourcesplit, snippets, snippetfiles, mdvisualfind, mdtable, mdtableinteraction, mdtableinput, mdcomfort, mdblocks, mdsearchnavigation, jump, ghosttext, wordclick, bracketselection, jsonstress, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, saveexisting, textworkflow, textworkflowmulti, textworkflowonesided, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, filedifftransfer, foldercompare, mdreferences, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdowncollections, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
         }
     }
 
@@ -9893,6 +9894,322 @@ enum SelfTest {
         return nil
     }
 
+    private static func runStructuredJSONTest() {
+        testLabel = "jsonstress"
+        Task { @MainActor in
+            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else {
+                finish(false, "Dokumentfenster fehlt")
+            }
+            activateApplication(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            let focusDeadline = ProcessInfo.processInfo.systemUptime + 2
+            while (!NSApp.isActive || !window.isKeyWindow),
+                  ProcessInfo.processInfo.systemUptime < focusDeadline {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            guard NSApp.isActive, window.isKeyWindow else {
+                finish(.environment, "JSON-Tastaturtest benötigt aktiven Dokumentfokus")
+            }
+            workspaceDefaults().set(true, forKey: "editor.showMinimap")
+            var stage = "Vorbereitung", lastBeat = ProcessInfo.processInfo.systemUptime, maxGap = 0.0
+            let heartbeat = Timer(timeInterval: 0.05, repeats: true) { _ in
+                MainActor.assumeIsolated {
+                    let now = ProcessInfo.processInfo.systemUptime
+                    maxGap = max(maxGap, now - lastBeat); lastBeat = now
+                }
+            }
+            RunLoop.main.add(heartbeat, forMode: .common)
+            func require(_ condition: Bool, _ message: String) throws {
+                if !condition { throw NSError(domain: "JSONStress", code: 1, userInfo: [NSLocalizedDescriptionKey: stage + ": " + message]) }
+            }
+            func metric(_ detail: String) {
+                FileHandle.standardError.write(Data(("JSONSTRESS phase=\(stage) \(detail) footprint=\(physicalFootprint()) max_main_gap_ms=\(Int(maxGap * 1000))\n").utf8))
+            }
+            @MainActor func wait(_ seconds: Double = 10, _ condition: @MainActor () -> Bool) async throws {
+                let deadline = ProcessInfo.processInfo.systemUptime + seconds
+                while !condition() {
+                    try require(ProcessInfo.processInfo.systemUptime < deadline, "Zeitgrenze \(seconds)s überschritten")
+                    try await Task.sleep(for: .milliseconds(25))
+                }
+            }
+            @MainActor func geometry(minimap: Bool, wrap: Bool) -> Bool {
+                func find(_ view: NSView) -> MinimapView? {
+                    if let mini = view as? MinimapView { return mini }
+                    return view.subviews.lazy.compactMap { find($0) }.first
+                }
+                guard let root = window.contentView, let mini = find(root),
+                      let editor = CommandTargeting.editorTextView(for: ws),
+                      editor.wrapLines == wrap, mini.isHidden == !minimap,
+                      let scroll = editor.enclosingScrollView,
+                      scroll.hasHorizontalScroller == !wrap,
+                      editor.visibleRect.width > 100, editor.visibleRect.height > 100 else { return false }
+                let visible = editor.subviews.compactMap { $0 as? LineFragmentView }
+                    .filter { $0.frame.intersects(editor.visibleRect) && $0.lineFragment != nil }
+                guard !visible.isEmpty else { return false }
+                if minimap {
+                    let frame = mini.convert(mini.bounds, to: editor)
+                    guard frame.width > 30, frame.minX > editor.visibleRect.minX,
+                          frame.maxX <= editor.visibleRect.maxX + 2,
+                          mini.contentView.subviews.contains(where: { $0 is LineFragmentView }) else { return false }
+                    if wrap {
+                        let right = editor.layoutManager.edgeInsets.left + editor.layoutManager.wrapLinesWidth
+                        guard right <= frame.minX + 2,
+                              visible.allSatisfy({ $0.frame.maxX <= frame.minX + 2 }) else { return false }
+                    }
+                }
+                return !wrap || (editor.layoutManager.lineStorage.first?.data.lineFragments.count ?? 0) > 1
+            }
+            @MainActor func load(_ url: URL) async throws -> TextView {
+                var loaded: Bool?
+                ws.loadFile(at: url) { loaded = $0 }
+                try await wait { loaded != nil }
+                try require(loaded == true, "Datei nicht geöffnet")
+                ws.setLanguageOverride(.json); ws.setSoftWrapEnabled(true)
+                try await wait {
+                    guard let editor = CommandTargeting.editorTextView(for: ws) else { return false }
+                    return editor.length > 0 && geometry(minimap: true, wrap: true)
+                        && ((editor.layoutManager.lineStorage.first?.data.lineFragments.count ?? 0) > 1)
+                        && ws.activeDocumentFormattingID == .grammar(.json)
+                }
+                guard let editor = CommandTargeting.editorTextView(for: ws) else { throw NSError(domain: "JSONStress", code: 2) }
+                try require(window.makeFirstResponder(editor), "Editorfokus fehlt")
+                return editor
+            }
+            @MainActor func capture(_ name: String) async throws {
+                guard let directory = ProcessInfo.processInfo.environment["FASTRA_JSONSTRESS_DIR"] else { return }
+                let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { continuation in
+                    typeScrollCapture(window: window) { continuation.resume(returning: $0) }
+                }
+                try require(snapshot?.source == "screen", "Echte Fensteraufnahme fehlt")
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try snapshot?.data.write(to: url)
+            }
+            @MainActor func delayedIndicator() async throws {
+                guard let documentID = ws.activeDocumentID else {
+                    throw NSError(domain: "JSONStress", code: 5)
+                }
+                let originalFrame = window.frame
+                defer { ws.documentTransformationActivity = nil; window.setFrame(originalFrame, display: true) }
+                @MainActor func marker(_ id: String) -> Bool {
+                    window.contentView.map { markerView(id: id, in: $0) != nil } ?? false
+                }
+                for (name, width) in [("minimum", MainWindowSizing.minimumWidth), ("wide", 1100)] {
+                    window.setContentSize(NSSize(width: width, height: 600))
+                    let started = ProcessInfo.processInfo.systemUptime
+                    ws.documentTransformationActivity = DocumentTransformationActivity(documentID: documentID,
+                        label: L10n.string("Dokument wird formatiert…"))
+                    try await wait(2) { marker("documentTransformationPending") }
+                    try await Task.sleep(for: .milliseconds(250))
+                    try require(!marker("documentTransformationVisible"), "Aktivitätshinweis erscheint ohne Verzögerung")
+                    try await wait(5) { marker("documentTransformationVisible") }
+                    metric("indicator=\(name) visible_ms=\(Int((ProcessInfo.processInfo.systemUptime - started) * 1000))")
+                    try await capture("00-delayed-indicator-" + name)
+                    ws.documentTransformationActivity = nil
+                    try await wait(2) { !marker("documentTransformationVisible") && !marker("documentTransformationPending") }
+                }
+            }
+            @MainActor func menu(_ title: String) async throws {
+                guard let main = NSApp.mainMenu,
+                      let root = main.items.first(where: { $0.title == L10n.string("Text") }),
+                      let textMenu = root.submenu else {
+                    throw NSError(domain: "JSONStress", code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: "Text-Menü fehlt"])
+                }
+                // SwiftUI validiert die Einträge erst beim echten Öffnen.
+                // Der Timer muss auch in AppKits Menü-Tracking laufen.
+                let failure: String? = await withCheckedContinuation { continuation in
+                    var timer: Timer?, ticks = 0, opened = false, pressed = false, finished = false
+                    var activeMenu = textMenu
+                    var navigationPending = false, previousHighlight: String?
+                    var began: NSObjectProtocol?, ended: NSObjectProtocol?
+                    func finishMenu(_ error: String?) {
+                        guard !finished else { return }
+                        finished = true
+                        timer?.invalidate(); timer = nil
+                        if let began { NotificationCenter.default.removeObserver(began) }
+                        if let ended { NotificationCenter.default.removeObserver(ended) }
+                        if error != nil { activeMenu.cancelTracking(); main.cancelTracking() }
+                        RunLoop.main.perform(inModes: [.default]) {
+                            continuation.resume(returning: error)
+                        }
+                    }
+                    began = NotificationCenter.default.addObserver(
+                        forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
+                    ) { notification in
+                        let current = main.items.first(where: { $0.title == L10n.string("Text") })?.submenu
+                        if let menu = notification.object as? NSMenu, menu === main || menu === current {
+                            activeMenu = current ?? activeMenu
+                            opened = true
+                        }
+                    }
+                    ended = NotificationCenter.default.addObserver(
+                        forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main
+                    ) { notification in
+                        if opened, let menu = notification.object as? NSMenu, menu === main || menu === activeMenu {
+                            finishMenu(pressed ? nil : "Text-Menü ohne Auswahl geschlossen: " + title)
+                        }
+                    }
+                    timer = Timer(timeInterval: 0.05, repeats: true) { _ in
+                        ticks += 1
+                        // SwiftUI kann das Untermenue nach einer Dokumentaenderung ersetzen.
+                        activeMenu = main.items.first(where: { $0.title == L10n.string("Text") })?.submenu ?? activeMenu
+                        if opened, !pressed, let item = findMenuItem(titled: L10n.string(title), in: activeMenu),
+                           item.isEnabled {
+                            if activeMenu.highlightedItem?.title == item.title {
+                                pressed = true
+                                postKey("\r", keyCode: 36, windowNumber: window.windowNumber)
+                            } else {
+                                let highlightedTitle = activeMenu.highlightedItem?.title
+                                if navigationPending, highlightedTitle != previousHighlight {
+                                    navigationPending = false
+                                }
+                                // postEvent stellt nur zu: erst nach sichtbarer Bewegung
+                                // weitergehen, sonst überspringen gepufferte Pfeile das Ziel.
+                                if !navigationPending {
+                                    previousHighlight = highlightedTitle
+                                    navigationPending = true
+                                    postKey("\u{F701}", keyCode: 125, windowNumber: window.windowNumber)
+                                }
+                            }
+                        }
+                        if ticks >= 100 {
+                            finishMenu("Text-Menü nicht bedienbar: " + title + "; geöffnet=\(opened); gesendet=\(pressed); markiert=\(activeMenu.highlightedItem?.title ?? "nil"); "
+                                + activeMenu.items.map { "\($0.title):\($0.isEnabled)" }.joined(separator: ", "))
+                        }
+                    }
+                    if let timer {
+                        RunLoop.main.add(timer, forMode: .common)
+                        RunLoop.main.add(timer, forMode: .eventTracking)
+                    }
+                    DispatchQueue.main.async { _ = root.accessibilityPerformPress() }
+                }
+                try require(failure == nil, failure ?? "Text-Menü nicht bedienbar")
+            }
+            @MainActor func transformed(pretty: Bool, progressCapture: String) async throws {
+                @MainActor func hasResult() -> Bool {
+                    ws.activeTab?.content.prefix(128).contains("\n") == pretty
+                }
+                try await wait(2) { ws.documentTransformationActivity != nil || hasResult() }
+                metric("menu_started=true activity=\(ws.documentTransformationActivity != nil)")
+                try await wait(5) {
+                    ws.documentTransformationActivity == nil || window.contentView.map {
+                        markerView(id: "documentTransformationVisible", in: $0) != nil
+                    } == true
+                }
+                if ws.documentTransformationActivity != nil { try await capture(progressCapture) }
+                try await wait(120) { ws.documentTransformationActivity == nil && hasResult() }
+            }
+            @MainActor func exercise() async throws -> String {
+                // Registriert zusätzlich für finish(): auch Helfer mit eigenem
+                // Fehlerabschluss räumen diese ausschließlich künstlichen Dateien ab.
+                let base = makeScreenshotFixtureDirectory()
+                defer { try? FileManager.default.removeItem(at: base) }
+                let fixtures = try await Task.detached(priority: .userInitiated) { () throws -> (String, URL, URL, Int) in
+                    let blob = String(repeating: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+=", count: 1720)
+                    let object: [String: Any] = ["alpha": ["blob": blob, "items": [["id": 1, "tags": ["one", "two"]]]],
+                                               "beta": ["blob": blob, "items": [["id": 2, "values": [1, 2, 3]]]]]
+                    let payload = String(decoding: try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]), as: UTF8.self)
+                    let small = base.appendingPathComponent("manual-json.txt"), large = base.appendingPathComponent("large-array.txt")
+                    try ("[" + Array(repeating: payload, count: 5).joined(separator: ",") + "]").write(to: small, atomically: true, encoding: .utf8)
+                    let count = (100_000_000 + payload.utf8.count) / (payload.utf8.count + 1)
+                    FileManager.default.createFile(atPath: large.path, contents: nil)
+                    let handle = try FileHandle(forWritingTo: large)
+                    // Dieser Worker kehrt vor dem äußeren finish zurück oder wirft.
+                    defer { try? handle.close() }
+                    try handle.write(contentsOf: Data("[".utf8))
+                    for index in 0..<count { try handle.write(contentsOf: Data(((index == 0 ? "" : ",") + payload).utf8)) }
+                    try handle.write(contentsOf: Data("]".utf8))
+                    return (payload, small, large, count * (payload.utf8.count + 1) + 1)
+                }.value
+                try require(fixtures.3 >= 100_000_000, "Große Fixture liegt unter 100 MB")
+                stage = "1MB öffnen"
+                let editor = try await load(fixtures.1)
+                stage = "Verzögerter Aktivitätshinweis"
+                try await delayedIndicator()
+                stage = "Klammerauswahl ohne Fensterwechsel"
+                let blockSource = editor.string as NSString
+                let arrayRange = blockSource.range(of: "[\"one\",\"two\"]")
+                let objectRange = blockSource.range(of: "{\"id\":1,\"tags\":[\"one\",\"two\"]}")
+                try require(arrayRange.location != NSNotFound && objectRange.location != NSNotFound,
+                            "Klammer-Fixture fehlt")
+                editor.selectionManager.setSelectedRange(NSRange(location: arrayRange.location + 3, length: 0))
+                editor.scrollSelectionToVisible()
+                try await wait {
+                    editor.layoutManager.rectForOffset(arrayRange.location + 3)?.intersects(editor.visibleRect) == true
+                }
+                postKey("b", keyCode: 11, windowNumber: window.windowNumber, modifiers: .command)
+                try await wait { editor.fastraSafeSelectedRange == arrayRange }
+                try await capture("01-one-megabyte-wrapped")
+                postKey("b", keyCode: 11, windowNumber: window.windowNumber, modifiers: .command)
+                try await wait { editor.fastraSafeSelectedRange == objectRange }
+                metric("array_and_parent_selected=true")
+                var expected = ws.activeTab!.content
+                let warmFootprint = physicalFootprint()
+                writeSelfTestPasteboardString("," + fixtures.0)
+                stage = "30 echte Cmd+V"
+                for index in 1...30 {
+                    try require(NSApp.isActive && window.isKeyWindow, "Dokumentfokus verloren")
+                    editor.selectionManager.setSelectedRange(NSRange(location: editor.length - 1, length: 0))
+                    expected = String(expected.dropLast()) + "," + fixtures.0 + "]"
+                    let expectedLength = (expected as NSString).length
+                    postKey("v", keyCode: 9, windowNumber: window.windowNumber, modifiers: .command)
+                    try await wait { editor.length == expectedLength && ws.activeTab.map { ($0.content as NSString).length } == expectedLength }
+                    let editorSnapshot = editor.string, modelSnapshot = ws.activeTab!.content, wanted = expected
+                    let exact = await Task.detached { editorSnapshot == wanted && modelSnapshot == wanted }.value
+                    try require(exact, "Editor/Modell nach Paste \(index) verändert")
+                    try require(editor.fastraSafeSelectedRange == NSRange(location: expectedLength - 1, length: 0), "Cursor nach Paste \(index) falsch")
+                    metric("paste=\(index) bytes=\(expectedLength)")
+                }
+                let pasteGrowth = Int64(physicalFootprint()) - Int64(warmFootprint)
+                metric("paste_growth_bytes=\(pasteGrowth)")
+                try require(maxGap < 1, "Einfügen pausierte den Main-Thread \(Int(maxGap * 1000))ms (Grenze <1000ms)")
+                stage = "100MB öffnen"
+                let openedAt = ProcessInfo.processInfo.systemUptime
+                let largeEditor = try await load(fixtures.2)
+                let openSeconds = ProcessInfo.processInfo.systemUptime - openedAt
+                try require(openSeconds < 10 && largeEditor.length >= 100_000_000, "100 MB nicht binnen 10s sichtbar und vollständig")
+                let compact = ws.activeTab!.content
+                metric("bytes=\(largeEditor.length) visible_ms=\(Int(openSeconds * 1000))")
+                try await capture("02-hundred-megabytes-wrapped")
+                for enabled in [false, true] {
+                    stage = enabled ? "100MB Minimap an" : "100MB Minimap aus"
+                    workspaceDefaults().set(enabled, forKey: "editor.showMinimap")
+                    try await wait { geometry(minimap: enabled, wrap: true) }
+                    metric("minimap=\(enabled) wrap_width=\(CommandTargeting.editorTextView(for: ws)?.layoutManager.wrapLinesWidth ?? 0)")
+                }
+                try await capture("03-hundred-megabytes-minimap-restored")
+                for enabled in [false, true] {
+                    stage = enabled ? "100MB Umbruch an" : "100MB Umbruch aus"
+                    ws.toggleSoftWrap()
+                    try await wait { geometry(minimap: true, wrap: enabled) }
+                    metric("wrap=\(enabled)")
+                }
+                CommandTargeting.editorTextView(for: ws)?.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+                stage = "100MB Textmenü formatieren"
+                let formatStarted = ProcessInfo.processInfo.systemUptime
+                try await menu("Dokument formatieren")
+                try await transformed(pretty: true, progressCapture: "04-formatting-progress")
+                metric("elapsed_ms=\(Int((ProcessInfo.processInfo.systemUptime - formatStarted) * 1000))")
+                stage = "100MB Textmenü minifizieren"
+                let minifyStarted = ProcessInfo.processInfo.systemUptime
+                CommandTargeting.editorTextView(for: ws)?.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+                try await menu("Dokument minifizieren")
+                try await transformed(pretty: false, progressCapture: "05-minifying-progress")
+                let roundtrip = ws.activeTab!.content, drawn = CommandTargeting.editorTextView(for: ws)?.string
+                try require(await Task.detached { roundtrip == compact && drawn == compact }.value, "Formatieren/Minifizieren verändert JSON")
+                metric("elapsed_ms=\(Int((ProcessInfo.processInfo.systemUptime - minifyStarted) * 1000))")
+                try await Task.sleep(for: .milliseconds(100))
+                // Der volle 100-MB-Reflow hat ein eigenes Budget; interaktive
+                // Einfuegungen werden oben weiterhin strenger begrenzt.
+                try require(maxGap < 3, "Main-Thread pausierte maximal \(Int(maxGap * 1000))ms (Grenze <3000ms)")
+                return "30 Cmd+V unverändert; 100 MB binnen \(Int(openSeconds * 1000))ms sichtbar, Umbruch und echtes Textmenü geprüft; Main maximal \(Int(maxGap * 1000))ms, Paste-Speicherwachstum \(pasteGrowth) Bytes"
+            }
+            do { let result = try await exercise(); heartbeat.invalidate(); finish(true, result) }
+            catch { heartbeat.invalidate(); metric("failed=true"); finish(NSApp.isActive ? .fail : .environment, error.localizedDescription) }
+        }
+    }
+
     private static func runBracketSelectionTest() {
         testLabel = "bracketselection"
         guard let ws = Workspace.shared, let window = mainWindowForAXChecks() else {
@@ -16639,7 +16956,7 @@ enum SelfTest {
             _ = FileManager.default.createFile(atPath: large.path, contents: nil)
             let handle = try FileHandle(forWritingTo: large)
             let chunk = Data(repeating: 0x41, count: 1024 * 1024)
-            var remaining = FileLoader.largeFileThreshold + 101
+            var remaining = FileLoader.editableFileThreshold + 101
             while remaining > 0 {
                 let count = min(UInt64(chunk.count), remaining)
                 try handle.write(contentsOf: chunk.prefix(Int(count)))
@@ -16661,11 +16978,11 @@ enum SelfTest {
                 let tab = ws.activeTab
                 let ok = largeOK && tab?.displayMode == .chunkedText
                     && tab?.content.isEmpty == true
-                    && (tab?.fileSize ?? 0) > FileLoader.largeFileThreshold
+                    && (tab?.fileSize ?? 0) > FileLoader.editableFileThreshold
                 try? fm.removeItem(at: base)
                 finish(ok, ok
-                       ? "Null-Byte → Hex; >32 MiB Text → Abschnittsansicht ohne Voll-Buffer"
-                       : "Großdatei wurde nicht abschnittsweise geroutet: \(String(describing: tab))")
+                       ? "Null-Byte → Hex; >128 MiB Text → Abschnittsansicht ohne Voll-Buffer"
+                       : "Großdatei falsch geroutet: Modus=\(String(describing: tab?.displayMode)), Dateibytes=\(tab?.fileSize ?? 0), Pufferzeichen=\(tab?.content.utf16.count ?? 0)")
             }
         }
     }

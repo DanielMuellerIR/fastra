@@ -202,8 +202,9 @@ is always excluded from project searches at any depth; the tooltip of the
 exclusions field says so. When you change the search term, file type, or
 exclusions, Fastra removes the old results immediately; navigation and approvals become available again only for the new result.
 
-Folder and project searches skip files larger than 32 MiB because Fastra can
-open them only in sections rather than as a fully navigable text editor. If a
+Folder and project searches skip files larger than 32 MiB to bound the shared
+search and change preview. Individual files up to 128 MiB can open fully in the
+editor. If a
 result file changed after the search, Fastra does not activate it: the old
 result list is discarded and a notice asks you to search again. If the result
 file is open with unsaved edits instead, the result list stays — a notice
@@ -402,7 +403,7 @@ the textual signs `©`, `®`, `™`, `‼`, and `⁉`, plus `#`, `*`, and digits
 those would turn into symbols. Applying it twice changes nothing further;
 **Undo emoji presentation** is the way back.
 
-The visible **Format** control in the footer, **Format Document** in the
+The visible **Format** control in the footer, **Format Document** (⌥⇧F) in the
 **Text** menu, and the editor's right-click menu pretty-print JSON/XML. The
 footer control remains visible in text mode and explains that JSON or XML must
 be selected first. Also in the menu: **Validate Document** (syntax check with
@@ -411,7 +412,9 @@ error position), and **Minify Document**. Formatting and minifying follow the
 `xsl`, `xslt`, and `plist`; after manually choosing **JSON** or **XML** in the
 language chip, the commands also work in a `.txt` file or an unsaved tab.
 Large formatting and minification jobs run in the background and are applied
-only while the document and selection remain unchanged. **Validate Document**
+only while the document and selection remain unchanged. After two seconds,
+the document shows an activity indicator. Text files up to 128 MiB open fully
+for editing; larger files use the section view. **Validate Document**
 also follows the effective format: **JSON** enables validation in a `.txt`
 file, while **Plain Text** disables it even in a `.json` file. XML detected
 in a document without an extension and SVG are checked as XML. Read-only

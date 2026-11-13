@@ -5,18 +5,47 @@ import sys
 root = pathlib.Path(sys.argv[1]) / 'Sources/CodeEditSourceEditor'
 changed = False
 
+def accepted_variants(relative, new):
+    variants = [new]
+    if relative == 'Minimap/MinimapLineRenderer.swift':
+        if ('fragmentPosition.data.xOffset *= fastraHorizontalScale' in new
+                and 'fragmentPosition.data.width *= fastraHorizontalScale' in new):
+            variants.append(new.replace('*= fastraHorizontalScale', '*= scale'))
+            variants.append(new.replace('fragmentPosition.data', 'fragment').replace('*= fastraHorizontalScale', '*= scale'))
+        if new == '        MinimapLineFragmentView(textView: textView)':
+            variants.append('        MinimapLineFragmentView(textView: textView, minimapView: minimapView)')
+    if relative == 'Minimap/MinimapLineFragmentView.swift':
+        if new == """    init(textView: TextView?) {
+        self.textView = textView
+        self.textStorage = textView?.textStorage""":
+            variants.append("""    init(textView: TextView?, minimapView: MinimapView? = nil) {
+        self.textView = textView
+        self.minimapView = minimapView
+        self.textStorage = textView?.textStorage""")
+        prefix = """        let space = NSAttributedString(string: " ", attributes: textView.typingAttributes)
+        let cell = CGFloat(CTLineGetTypographicBounds(CTLineCreateWithAttributedString(space), nil, nil, nil))
+        let scale = 1.5 / max(cell, 1)
+"""
+        if new.startswith('    func fastraRunRect(') and prefix in new:
+            variants.append(new.replace(prefix, '        let scale = fastraHorizontalScale\n', 1))
+    return variants
+
+
 def replace(relative, old, new):
     global changed
     path = root / relative
     source = path.read_text()
-    if new not in source:
+    variants = accepted_variants(relative, new)
+    # Der Folgepatch darf seine vollstaendige neue Variante behalten. Seine
+    # Signaturen werden konkret geprueft; ein Marker allein ueberspringt nichts.
+    if not any(variant in source for variant in variants):
         if source.count(old) != 1:
             raise SystemExit(f'{relative}: Einrückungsintegration passt nicht zur Quelle')
         path.chmod(path.stat().st_mode | 0o200)
         source = source.replace(old, new, 1)
         path.write_text(source)
         changed = True
-    if source.count(new) != 1:
+    if not any(source.count(variant) == 1 for variant in variants):
         raise SystemExit(f'{relative}: Einrückungsintegration unvollständig')
 
 behavior = 'SourceEditorConfiguration/SourceEditorConfiguration+Behavior.swift'

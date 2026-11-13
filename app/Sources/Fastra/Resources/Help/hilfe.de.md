@@ -214,8 +214,9 @@ verbindlich ausgeschlossen; der Tooltip des Ausschlussfelds nennt das.
 die alte Trefferliste sofort; Navigation und Freigaben werden
 erst mit dem Ergebnis des neuen Laufs wieder aktiv.
 
-Ordner- und Projekt-Suchen überspringen Dateien über 32 MiB, weil Fastra sie
-nur abschnittsweise statt als vollständig navigierbaren Texteditor öffnet. Hat
+Ordner- und Projekt-Suchen überspringen Dateien über 32 MiB, um die gemeinsame
+Suche und Änderungsvorschau zu begrenzen. Einzelne Dateien können bis 128 MiB
+vollständig im Editor geöffnet werden. Hat
 sich eine Funddatei seit dem Suchlauf geändert, aktiviert Fastra sie nicht:
 Die alte Trefferliste wird verworfen und ein Hinweis fordert zum erneuten
 Suchen auf. Ist die Funddatei dagegen mit ungesicherten Änderungen geöffnet,
@@ -424,7 +425,7 @@ Zeichen, die schon farbig sind (🎶), die Schriftzeichen `©`, `®`, `™`, `�
 anwenden ändert nichts mehr; **Emoji-Darstellung aufheben** ist der Rückweg.
 
 Der sichtbare Schalter **Formatieren** in der Fußzeile sowie der Befehl
-**Dokument formatieren** im Menü **Text** und im Rechtsklickmenü rücken
+**Dokument formatieren** (⌥⇧F) im Menü **Text** und im Rechtsklickmenü rücken
 JSON/XML hübsch ein. Der Schalter bleibt im Textmodus sichtbar und erklärt
 dort, dass zuerst JSON oder XML gewählt werden muss. Ebenfalls im Menü:
 **Dokument prüfen**
@@ -434,7 +435,10 @@ und Minifizieren folgen dem **effektiven Dokumentformat**: Automatisch werden
 manuellen Wahl von **JSON** oder **XML** im Sprach-Chip funktionieren die
 Befehle auch in einer `.txt`-Datei oder einem ungespeicherten Tab. Große
 Formatierungen und Minifizierungen laufen im Hintergrund und werden nur
-übernommen, solange Dokument und Auswahl unverändert sind. Auch **Dokument
+übernommen, solange Dokument und Auswahl unverändert sind. Nach zwei Sekunden
+zeigt das Dokument einen Aktivitätshinweis. Textdateien bis 128 MiB werden
+vollständig zum Bearbeiten geöffnet; größere Dateien verwenden die
+Abschnittsansicht. Auch **Dokument
 prüfen** folgt der effektiven Formatwahl: **JSON** aktiviert die Prüfung in
 einer `.txt`-Datei, **Reiner Text** deaktiviert sie auch in einer `.json`-Datei.
 Endungslos erkanntes XML und SVG werden als XML geprüft. Schreibgeschützte

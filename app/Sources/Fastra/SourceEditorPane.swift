@@ -39,10 +39,25 @@ struct SourceEditorPane: View {
     /// 4D-Sprache.
     @StateObject private var fourDSignatureHelp = FourDSignatureHelpController()
 
+    @MainActor static func initialTextAttributes(for configuration: SourceEditorConfiguration) -> [NSAttributedString.Key: Any] {
+        let appearance = configuration.appearance
+        var font = appearance.font
+        if appearance.theme.text.bold { font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) }
+        if appearance.theme.text.italic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
+        let cellWidth = (" " as NSString).size(withAttributes: [.font: font]).width
+        return [.font: font, .foregroundColor: appearance.theme.text.color,
+                .kern: cellWidth * (appearance.letterSpacing - 1)]
+    }
+
     /// Der eigentliche CodeEditSourceEditor — nur gezeigt, wenn isLoading = false.
     var body: some View {
         SourceEditor(
-            workspace.activeTab.map { $0.undoHistory.textStorage(for: $0.content) } ?? TextView.fastraMakeTextStorage(""),
+            // Der langlebige Speicher muss bereits vor dem ersten Layout die
+            // Editor-Metrik tragen; spätere Syntaxfarben ändern nur Ausschnitte.
+            workspace.activeTab.map {
+                $0.undoHistory.textStorage(for: $0.content,
+                    initialAttributes: Self.initialTextAttributes(for: editorConfiguration))
+            } ?? TextView.fastraMakeTextStorage("", attributes: Self.initialTextAttributes(for: editorConfiguration)),
             language: detectedLanguage,
             configuration: editorConfiguration,
             // Hinweis Scroll-Verhalten: CESEs State-Reconcile drehte mit der

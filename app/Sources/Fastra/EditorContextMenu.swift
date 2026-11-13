@@ -150,7 +150,9 @@ extension TextView {
         if startsUndoGroup {
             undoManager?.beginUndoGrouping()
         }
-        replaceCharacters(in: range, with: replacement)
+        // Nur die vorgesehene Auswahl publizieren. Ein zwischenzeitlicher
+        // EOF-Cursor wuerde noch vor dem Scrollen die Klammermarkierung anwerfen.
+        replaceCharacters(in: range, with: replacement, skipUpdateSelection: true)
         selectionManager.setSelectedRange(selectionAfter)
         undoManager?.fastraSetSelectionSnapshotsForLatestUndo(
             before: [stableSelectionBefore],
@@ -321,6 +323,7 @@ final class EditorContextMenu: NSObject {
         let selection: NSRange
         let formatID: DocumentFormatID
         private let tabID: UUID
+        let documentID: UUID
         private let contentRevision: UInt64
 
         init?(editor: TextView, workspace: Workspace, formatID: DocumentFormatID) {
@@ -334,7 +337,16 @@ final class EditorContextMenu: NSObject {
             self.selection = editor.fastraSafeSelectedRange
             self.formatID = formatID
             self.tabID = tab.id
+            self.documentID = tab.documentID
             self.contentRevision = tab.contentRevision
+        }
+
+        func hasDocumentContext(in workspace: Workspace) -> Bool {
+            guard self.workspace === workspace, let window, let editor else { return false }
+            return editor.window === window
+                && WorkspaceWindowRegistry.workspace(for: window) === workspace
+                && workspace.activeTabID == tabID
+                && workspace.activeTab?.documentID == documentID
         }
 
         func applyIfUnchanged(_ result: DocumentFormatResult) -> Bool {
@@ -342,7 +354,9 @@ final class EditorContextMenu: NSObject {
                   editor.window === window,
                   WorkspaceWindowRegistry.workspace(for: window) === workspace,
                   workspace.activeTabID == tabID,
+                  workspace.activeTab?.documentID == documentID,
                   workspace.activeTab?.contentRevision == contentRevision,
+                  workspace.activeDocumentFormat.id == formatID,
                   editor.fastraSafeSelectedRange == selection else { return false }
             editor.fastraApplyTextOperation(
                 replacing: result.affectedRange,
@@ -626,7 +640,11 @@ final class EditorContextMenu: NSObject {
         minify(on: textView)
     }
 
-    private func format(on textView: TextView) {
+    func format(on textView: TextView) {
+        transformDocument(on: textView, minifying: false)
+    }
+
+    private func transformDocument(on textView: TextView, minifying: Bool) {
         guard textView.fastraColumnSelectionSnapshot == nil else {
             warnColumnSelectionUnsupported()
             return
@@ -648,17 +666,28 @@ final class EditorContextMenu: NSObject {
         // JSONSerialization/XMLDocument und die Ausgabeerzeugung dürfen bei
         // mehreren MiB niemals die Main-Runloop anhalten. Nur Snapshot und
         // abschließende, validierte Editor-Ersetzung laufen auf dem UI-Thread.
+        guard workspace.documentTransformationActivity == nil else { NSSound.beep(); return }
+        let activity = DocumentTransformationActivity(documentID: lease.documentID,
+            label: minifying ? L10n.string("Dokument wird minifiziert…") : L10n.string("Dokument wird formatiert…"))
+        workspace.documentTransformationActivity = activity
         EditorDocumentTransformationScheduler.run(
             operation: {
                 Result {
-                    try DocumentFormatter.format(
-                        in: lease.source,
-                        selection: lease.selection,
-                        formatID: lease.formatID
+                    let transform: (String, NSRange, DocumentFormatID) throws -> DocumentFormatResult? = minifying ? DocumentFormatter.minify : DocumentFormatter.format
+                    return try transform(
+                        lease.source,
+                        lease.selection,
+                        lease.formatID
                     )
                 }
             },
-            completion: { result in
+            completion: { [weak workspace] result in
+                defer {
+                    if workspace?.documentTransformationActivity?.id == activity.id {
+                        workspace?.documentTransformationActivity = nil
+                    }
+                }
+                guard let workspace, lease.hasDocumentContext(in: workspace) else { return }
                 switch result {
                 case .success(let formatted):
                     guard let formatted else {
@@ -667,16 +696,16 @@ final class EditorContextMenu: NSObject {
                     }
                     guard lease.applyIfUnchanged(formatted) else {
                         NSAlert.runWarning(
-                            title: L10n.string("Formatierung nicht übernommen"),
-                            text: L10n.string(
-                                "Das Dokument oder die Auswahl hat sich während der Formatierung geändert. Der neue Stand blieb unverändert."
-                            )
+                            title: minifying ? L10n.string("Minifizierung nicht übernommen") : L10n.string("Formatierung nicht übernommen"),
+                            text: minifying
+                                ? L10n.string("Das Dokument oder die Auswahl hat sich während der Minifizierung geändert. Der neue Stand blieb unverändert.")
+                                : L10n.string("Das Dokument oder die Auswahl hat sich während der Formatierung geändert. Der neue Stand blieb unverändert.")
                         )
                         return
                     }
                 case .failure(let error):
                     NSAlert.runWarning(
-                        title: L10n.string("Formatieren fehlgeschlagen"),
+                        title: minifying ? L10n.string("Minifizieren fehlgeschlagen") : L10n.string("Formatieren fehlgeschlagen"),
                         text: error.localizedDescription
                     )
                 }
@@ -699,59 +728,7 @@ final class EditorContextMenu: NSObject {
     }
 
     func minify(on textView: TextView) {
-        guard textView.fastraColumnSelectionSnapshot == nil else {
-            warnColumnSelectionUnsupported()
-            return
-        }
-        // Effektives Format aus dem Workspace GENAU DIESES Editors (siehe
-        // `format`).
-        guard let workspace = workspace(forEditor: textView),
-              let formatID = workspace.activeDocumentFormattingID,
-              let lease = FormattingTargetLease(
-                editor: textView,
-                workspace: workspace,
-                formatID: formatID
-              ) else {
-            NSSound.beep()
-            return
-        }
-        // Dieselbe Größenklasse wie beim Formatieren: Parsing und Ausgabe
-        // laufen im Hintergrund, anschließend schützt die Lease gegen Tippen,
-        // Tabwechsel und Auswahländerungen während der Berechnung.
-        EditorDocumentTransformationScheduler.run(
-            operation: {
-                Result {
-                    try DocumentFormatter.minify(
-                        in: lease.source,
-                        selection: lease.selection,
-                        formatID: lease.formatID
-                    )
-                }
-            },
-            completion: { result in
-                switch result {
-                case .success(let minified):
-                    guard let minified else {
-                        NSSound.beep()   // bereits minimal → No-op
-                        return
-                    }
-                    guard lease.applyIfUnchanged(minified) else {
-                        NSAlert.runWarning(
-                            title: L10n.string("Minifizierung nicht übernommen"),
-                            text: L10n.string(
-                                "Das Dokument oder die Auswahl hat sich während der Minifizierung geändert. Der neue Stand blieb unverändert."
-                            )
-                        )
-                        return
-                    }
-                case .failure(let error):
-                    NSAlert.runWarning(
-                        title: L10n.string("Minifizieren fehlgeschlagen"),
-                        text: error.localizedDescription
-                    )
-                }
-            }
-        )
+        transformDocument(on: textView, minifying: true)
     }
 
     /// „Text → Dokument prüfen“ (Etappe 6): validiert JSON/XML nativ und

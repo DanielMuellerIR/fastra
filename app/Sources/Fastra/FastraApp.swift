@@ -486,6 +486,7 @@ struct FastraApp: App {
                     .disabled(commandWorkspace?.activeTab?.isEditableTextDocument != true || commandWorkspace?.activeViewMode != .text)
                 Divider()
                 Button("Dokument formatieren") { postDocumentFormatting() }
+                    .keyboardShortcut("f", modifiers: [.option, .shift])
                     .disabled(commandWorkspace?.activeDocumentFormattingID == nil)
                 // Etappe 6 (Wunschpaket 2026-07): native JSON-/XML-Prüfung
                 // mit Fehlerposition und konservatives Minify — bewusst keine

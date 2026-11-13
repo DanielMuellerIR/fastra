@@ -1142,7 +1142,7 @@ final class Workspace: ObservableObject {
     /// kontrolliert anhalten und so zwei echte Folgeaufträge reproduzieren,
     /// ohne auf Dateigröße oder Scheduler-Timing zu vertrauen.
     var initialFileLoader: @Sendable (URL) throws -> FileLoader.LoadedFile = {
-        try FileLoader.load(url: $0)
+        try FileLoader.load(url: $0, largeFileThreshold: FileLoader.editableFileThreshold)
     }
     /// Neuester logischer Ordner-Sprung, der auf den physischen Read dieser
     /// Datei wartet. Zwei schnelle Treffer derselben anfangs ungeöffneten
@@ -1719,6 +1719,8 @@ final class Workspace: ObservableObject {
     var activeDocumentFormat: DocumentFormat {
         DocumentFormatResolver.resolve(tab: activeTab)
     }
+
+    @Published var documentTransformationActivity: DocumentTransformationActivity?
 
     /// Kanonischer Typ für Formatieren/Minifizieren. Eine bewusste manuelle
     /// Formatwahl gewinnt vor der Endung; „Reiner Text“ auf einer `.json`
@@ -3746,6 +3748,7 @@ final class Workspace: ObservableObject {
                 if let previewCancellation {
                     return try FileLoader.load(
                         url: url,
+                        largeFileThreshold: FileLoader.editableFileThreshold,
                         isCancelled: { previewCancellation.isCancelled }
                     )
                 }
@@ -7297,10 +7300,11 @@ final class Workspace: ObservableObject {
     /// kurz auf `true` gesetzt und dann auf `false`, damit `.id(activeTab.id)`
     /// eine Neuerzeugung auslöst und der frische Inhalt wirklich sichtbar wird.
     var reloadFileLoader: @Sendable (URL) throws -> FileLoader.LoadedFile = {
-        try FileLoader.load(url: $0)
+        try FileLoader.load(url: $0, largeFileThreshold: FileLoader.editableFileThreshold)
     }
     var reopenFileLoader: @Sendable (URL, String.Encoding) throws -> FileLoader.LoadedFile = {
-        try FileLoader.load(url: $0, forcedEncoding: $1)
+        try FileLoader.load(url: $0, forcedEncoding: $1,
+                            largeFileThreshold: FileLoader.editableFileThreshold)
     }
 
     func reloadOpenTabs(for changedURLs: [URL]) {

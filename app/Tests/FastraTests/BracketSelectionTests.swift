@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CodeEditTextView
 import Testing
 @testable import Fastra
 
@@ -114,5 +115,34 @@ struct BracketSelectionTests {
         #expect(BracketSelection.range(in: source, selection: call, language: .javascript) == interpolation)
         #expect(BracketSelection.range(in: source, selection: interpolation, language: .javascript)
             == NSRange(location: 13, length: source.utf16.count - 13))
+    }
+}
+
+private final class SelectionRedrawObserver: TextSelectionManagerDelegate {
+    var visibleTextRange: NSRange? { nil }
+    var invalidations = 0
+    func setNeedsDisplay() { invalidations += 1 }
+    func estimatedLineHeight() -> CGFloat { 16 }
+}
+
+extension BracketSelectionTests {
+    @Test("Klammerauswahl invalidiert die Textfläche ohne Fensterwechsel")
+    @MainActor
+    func selectionRedrawsImmediately() throws {
+        let source = "{\n  \"items\": [\n    {\"n\": 1}\n  ]\n}"
+        let editor = TextView(string: source)
+        let observer = SelectionRedrawObserver()
+        let manager = TextSelectionManager(layoutManager: editor.layoutManager,
+            textStorage: editor.textStorage, textView: editor, delegate: observer)
+        let cursor = (source as NSString).range(of: "[").upperBound
+        var selection = NSRange(location: cursor, length: 0)
+        for _ in 0..<2 {
+            selection = try #require(BracketSelection.range(in: source, selection: selection))
+            observer.invalidations = 0
+            manager.setSelectedRange(selection)
+            #expect(manager.textSelections.first?.range == selection)
+            #expect(observer.invalidations > 0, "Auswahlfläche bleibt bis zum Fensterwechsel veraltet")
+        }
+        #expect(editor.string == source)
     }
 }

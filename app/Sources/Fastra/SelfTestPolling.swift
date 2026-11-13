@@ -228,6 +228,7 @@ enum SelfTestPolling {
         }
         switch test {
         case "print": return 240
+        case "jsonstress": return 360
         case "softwrapindent", "mdblocks", "searchapproval", "filedifftransfer", "foldercompare", "mdreferences", "codeoutline", "sourcesplit", "snippets", "snippetfiles": return 180
         case "controlhost": return 130
         case "tabfiledrag": return 60

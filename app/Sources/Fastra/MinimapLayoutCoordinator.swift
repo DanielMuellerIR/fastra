@@ -47,6 +47,8 @@ final class MinimapLayoutCoordinator: ObservableObject, @preconcurrency TextView
         guard minimap.isHidden || trailing > 0 else { return false }
 
         let current = controller.textView.textInsets
+        // Ein bereits passender Inset darf eine Megazeile nicht erneut auslegen.
+        guard current.right != trailing else { return true }
         controller.textView.textInsets = HorizontalEdgeInsets(
             left: current.left,
             right: trailing

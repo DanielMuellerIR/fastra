@@ -20,6 +20,55 @@ aktivem Dokumentfokus: Objekt samt Klammern, Erweiterung zum Array, unverändert
 Undo und Plattenstand sowie anschließend weiterhin Markdown-Fettdruck.
 Die optionale Aufnahme zeigt die Objektauswahl im echten Editor.
 
+## Große kompakte JSON-Dokumente (macOS)
+
+Nach `./build.sh` prüfen `./test.sh --filter
+'BracketSelectionTests|AsyncHighlightEditTests|StructuredJSONStressTests|LazyLongLineLayoutTests|LazyMinimapLayoutTests|MinimapVisibleRangeTests|SharedSourceLayoutTests|BatchLineHeightTests|ImmediateAttributeStorageTests|TransformationSelectionTests'`
+die unmittelbare Auswahl-Invalidierung, den Thread der asynchronen Parserantwort,
+wiederholte große Eingaben, vollständiges Laden und Formatieren von mindestens
+100 MB sowie Cursor, Zeichenfarben und sichtbare Minimap-Bereiche. Der zusätzliche
+100-MB-Editoraufbau wird mit `FASTRA_LAZY_ASCII_STRESS=1` aktiviert.
+Alle Eingaben werden künstlich erzeugt; private Beispieldateien gehören nicht
+in den Korpus.
+
+`FASTRA_JSONSTRESS_DIR=/pfad/zur/aufnahme ./selftest.sh jsonstress` prüft im
+vollständigen Bundle 30 echte ⌘V-Eingaben in ein kompaktes JSON-Array,
+100 MB als `.txt` mit manueller JSON-Wahl, eingeschaltete Minimap,
+Minimap- und Umbruchwechsel sowie Formatieren und Minifizieren über das echte
+Text-Menü. Exakter Inhalt, Modell, Cursor, sichtbare Geometrie, Speicherverbrauch
+und Main-Thread-Pausen werden geprüft bzw. gemessen. Auf dem Test-Mac das aktuelle
+notarisierte Bundle über `FASTRA_SELFTEST_APP_BIN` und
+`FASTRA_SELFTEST_APP_BUNDLE` verwenden. Die Aufnahmen beider Sprachen ansehen.
+Der verzögerte Aktivitätshinweis wird zusätzlich bei Mindestbreite und breitem
+Fenster über seinen tatsächlich eingebauten sichtbaren Zustand geprüft.
+Die Öffnungsfrist beträgt weniger als zehn Sekunden. Die Main-Thread-Grenze
+für interaktive Einfügungen beträgt eine Sekunde; der vollständige 100-MB-Reflow
+besitzt ein getrenntes Drei-Sekunden-Budget. Beide Zeiten werden mitgemessen.
+
+Patch 4z29 invalidiert auch die Textfläche bei einer programmatischen
+Einzelauswahl. 4z30 stellt asynchrone Parserantworten auf Main zu. 4z31 erzeugt
+Glyphen großer, metrisch geprüfter Festbreitenzeilen erst bei Bedarf; andere
+Schriften und Unicode-Geometrien behalten CoreText. 4z32 begrenzt die
+Minimap-Zeichnung, 4z33 ihre Syntaxbereiche auf sichtbare Fragmente. 4z34
+registriert die Scroll-Beobachter nach dem Anschluss des Editors und führt
+die Minimap nach dem Anwenden ihrer tatsächlichen Höhe nach. Jeder Patch
+prüft seine Integrationsstellen auch bei einem unveränderten erneuten Build.
+Das vollständige Editorbudget von 128 MiB ist von den weiterhin geltenden
+32-MiB-Grenzen für Mehrdateisuche, Apply und Vergleiche getrennt.
+
+Patch 4z12 unterbindet auch die unmittelbare AppKit-Attributkorrektur im
+internen Textspeicher. `fixesAttributesLazily = false` allein löst sie bei
+Syntaxfarben sofort aus; die Absatzsuche über eine Megazeile kann dabei den
+UI-Thread blockieren. Die Regression zählt echte Absatzkorrektur-Aufrufe
+und prüft zugleich die unveränderten Zeichen- und Attributmeldungen.
+
+Patch 4z36 begrenzt die dekorative Klammerhervorhebung auch dann auf den
+Cursorbereich, wenn der Viewport nach einem Sprung noch nicht nachgezogen ist.
+Im aktuellen Viewport bleiben die bisherigen Suchgrenzen erhalten.
+`TransformationSelectionTests` prüft die echten Auswahl-Observer, nahe und
+ferne Paare sowie die fehlende EOF-Zwischenmeldung bei einer Transformation
+einschließlich Undo/Redo. Die eigentliche Blockauswahl bleibt davon unabhängig.
+
 ## Syntax-Folding prüfen
 
 Patch 4z20 (`app/Patches/CodeEditSourceEditor/code-folding.py`) verbindet den
@@ -242,6 +291,20 @@ berechneten Farben des anderen Ausschnitts löschen. Die Regression prüft
 die tatsächlich gezeichneten CoreText-Farben beider Theme-Wechsel im echten
 SwiftUI-Split. Beide Patches prüfen den Anker und Erfolg unmittelbar. Nach
 Änderungen vollständigen Build-/Unit-/Selbsttestpfad ausführen.
+
+Der gemeinsame Speicher muss schon beim Anlegen dieselben Anfangsattribute wie
+der konfigurierte Editor erhalten. `SharedSourceLayoutTests` hängt deshalb einen
+über `DocumentUndoHistory` erzeugten Speicher an einen zunächst leeren Controller
+und prüft Festzellenfragmente bis zum Dateiende samt Minimap. Ein Controller mit
+direkt übergebenem Text allein prüft diesen Produktpfad nicht. Wiederverwendeter
+Speicher behält seine bereits berechneten Syntaxattribute.
+
+Patch 4z35 (`Patches/CodeEditTextView/batch-line-heights.py`) ermöglicht den
+linearen Höhenabgleich des bestehenden Minimap-Zeilenbaums. Der Renderer baut
+dafür weder einen zweiten Baum noch ein zusätzliches Fragment-Array auf.
+`BatchLineHeightTests` prüft Bereiche, Knotenidentität sowie Index-, Offset-
+und Höhensuche nach wiederholten Höhenänderungen; die Minimap-Tests schützen
+die tatsächliche Zeichnung und ihre sichtbaren Bereiche.
 
 `SplitEditorTests` prüft echte TextViews, gemeinsamen Storage, wechselseitige
 Eingaben, Dokument-Undo und Workspace-Rückgaben. Der echte SwiftUI-Host

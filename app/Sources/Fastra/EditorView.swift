@@ -832,6 +832,12 @@ struct EditorView: View {
                 }
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if let activity = workspace.documentTransformationActivity,
+               activity.documentID == workspace.activeTab?.documentID {
+                DocumentTransformationIndicator(activity: activity)
+            }
+        }
     }
 
     private var actualEditor: some View {
