@@ -276,6 +276,13 @@ und sie sind noch offen.
   sind noch ungeklärt; tatsächlichen Listenfokus, Fensteraktivierung und
   Sheet-Abschluss vor einer Produktänderung getrennt prüfen.
 
+- **Markdown-CI-Befunde (2026-11-14):** Die vollständige macOS-CI scheiterte
+  beim Schließen/Wiederöffnen nach einer Überschrift dritter Ebene im dunklen
+  Theme (`MarkdownVisualTests.swift:348`) und beim Wiederöffnen gemischter
+  Clipboard-Inhalte (`MarkdownVisualTests.swift:2224`). Beide Fälle bestanden
+  im lokalen Gesamtlauf. Ursache und Wirkung außerhalb der CI sind noch offen;
+  Speicherabschluss, Fensterzustand und Ladeabschluss getrennt nachprüfen.
+
 ## Offene Beobachtungen (nicht reproduziert)
 
 - **⌘⇧+Pfeiltasten ohne Wirkung auf einem anderen Mac** (Nutzermeldung
