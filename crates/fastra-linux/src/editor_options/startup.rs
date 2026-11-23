@@ -226,7 +226,7 @@ pub(crate) fn activate(app: &gtk::Application) {
     boot::request(&state(), app, boot::Request::Activate);
 }
 pub(crate) fn open(app: &gtk::Application, files: &[gio::File]) {
-    boot::request(&state(), app, boot::Request::Open(files.to_vec()));
+    boot::open(&state(), app, files.to_vec());
 }
 pub(crate) fn interrupt(ui: &Ui) {
     ui.startup_restore_epoch

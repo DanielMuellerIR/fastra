@@ -272,7 +272,12 @@ def scenario():
         extra_two = ROOT / "second-user-file.txt"; extra_two.write_text("Second user choice\n")
         hold = ROOT / "hold-startup-load"; hold.touch()
         start()
-        remote(extra) if MODE == "open" else remote()
+        if MODE == "open":
+            alias = ROOT / "reopen-alias"
+            alias.symlink_to(b)
+            remote(alias)
+        else:
+            remote()
         wait(lambda: (ROOT / "startup-worker-ready").exists(), "held startup worker")
         # Der Worker kann sein Signal vor dem nächsten Fenster-Snapshot schreiben.
         needed = 2 if MODE in {"open", "interrupt-peer"} else 1
@@ -300,11 +305,12 @@ def scenario():
             print("FASTRA_STARTUP_OK pending peer generation captured before file loading; user text and actual window focus retained")
             return
         if MODE == "open":
+            remote(a, extra)
             remote(extra_two)
-            wait(lambda: state()["startup"]["queued"] == 2, "cold and in-flight Open queued once")
+            wait(lambda: state()["startup"]["queued"] == 3, "cold and in-flight Open queued once")
             assert len(state()["windows"]) == 2
             hold.unlink()
-            current = wait(lambda: ready(4) if sum(len(paths(w)) for w in state()["windows"]) == 5 else None, "restore then both Open requests")
+            current = wait(lambda: ready(4) if sum(len(paths(w)) for w in state()["windows"]) == 5 else None, "reuse restored tabs and open each new file once")
             for actual, record in zip(current["windows"], saved["windows"]): assert paths(actual) == record["documents"]
             assert sum(list(os.fsencode(extra)) in paths(w) for w in current["windows"]) == 1
             assert sum(list(os.fsencode(extra_two)) in paths(w) for w in current["windows"]) == 1

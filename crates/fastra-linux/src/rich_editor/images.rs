@@ -100,8 +100,12 @@ impl Sources {
         Ok(sources)
     }
     pub fn load(&self, cancel: &crate::viewer::Cancellation) -> Cache {
+        self.load_with_retained(cancel, &Cache::default())
+    }
+    pub(super) fn load_with_retained(&self, cancel: &crate::viewer::Cancellation, retained: &Cache) -> Cache {
         let started = Instant::now();
-        let (mut cache, mut total, mut pixels) = (Cache::default(), 0usize, 0u64);
+        let (mut cache, mut total, mut pixels) =
+            (Cache::default(), retained.bytes(), retained.pixels());
         for source in self.0.values() {
             let loaded = (|| {
                 if started.elapsed() > Duration::from_secs(120) {

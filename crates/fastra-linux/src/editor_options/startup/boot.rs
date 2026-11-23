@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 
 pub(super) enum Request {
     Activate,
-    Open(Vec<gio::File>),
+    Open { files: Vec<gio::File>, during_start: bool },
 }
 #[derive(Default)]
 pub(super) struct Boot {
@@ -11,6 +11,8 @@ pub(super) struct Boot {
     loaded: Cell<bool>,
     started: Cell<bool>,
     restoring: Cell<bool>,
+    restored: Cell<bool>,
+    routing_open: Cell<bool>,
     generation: Cell<u64>,
     requests: RefCell<VecDeque<Request>>,
     windows: RefCell<VecDeque<store::Window>>,
@@ -18,6 +20,14 @@ pub(super) struct Boot {
     cancel: RefCell<Option<crate::viewer::Cancellation>>,
     active_ui: RefCell<Weak<Ui>>,
     hold: RefCell<Option<gio::ApplicationHoldGuard>>,
+}
+pub(super) fn open(state: &Rc<State>, app: &gtk::Application, files: Vec<gio::File>) {
+    request(state, app, Request::Open {
+        files,
+        during_start: !state.boot.started.get()
+            || state.boot.restoring.get()
+            || state.boot.routing_open.get(),
+    });
 }
 pub(super) fn request(state: &Rc<State>, app: &gtk::Application, request: Request) {
     crate::application_lifecycle::abort_quit();
@@ -49,7 +59,9 @@ fn create(state: &State, app: &gtk::Application) -> Rc<Ui> {
     ui
 }
 fn begin(state: &Rc<State>, app: &gtk::Application) {
-    if state.boot.restoring.get() || state.boot.requests.borrow().is_empty() {
+    if state.boot.restoring.get() || state.boot.routing_open.get()
+        || state.boot.requests.borrow().is_empty()
+    {
         return;
     }
     if !state.boot.started.replace(true) && !state.boot.windows.borrow().is_empty() {
@@ -87,11 +99,37 @@ fn begin(state: &Rc<State>, app: &gtk::Application) {
     loop {
         let request = state.boot.requests.borrow_mut().pop_front();
         let Some(request) = request else { break };
-        let ui = create(state, app);
-        if let Request::Open(files) = request {
+        if let Request::Open { files, during_start } = request {
+            if during_start && state.boot.restored.get() {
+                open_after_restore(state, app, files);
+                return;
+            }
+            let ui = create(state, app);
             crate::desktop_open::open_files(&ui, &files);
+            continue;
         }
+        create(state, app);
     }
+}
+fn open_after_restore(state: &Rc<State>, app: &gtk::Application, files: Vec<gio::File>) {
+    state.boot.routing_open.set(true);
+    let generation = state.boot.generation.get();
+    let current = state.clone();
+    let owner = state.clone();
+    let window_app = app.clone();
+    let state = state.clone();
+    let app = app.clone();
+    let hold = app.hold();
+    crate::desktop_open::open_after_restore(
+        files,
+        move || current.boot.generation.get() == generation,
+        move || create(&owner, &window_app),
+        move || {
+            state.boot.routing_open.set(false);
+            begin(&state, &app);
+            drop(hold);
+        },
+    );
 }
 pub(super) fn cancel(state: &Rc<State>) {
     state
@@ -99,6 +137,7 @@ pub(super) fn cancel(state: &Rc<State>) {
         .generation
         .set(state.boot.generation.get().wrapping_add(1));
     state.boot.restoring.set(false);
+    state.boot.routing_open.set(false);
     state.boot.started.set(true);
     state.boot.requests.borrow_mut().clear();
     state.boot.windows.borrow_mut().clear();
@@ -135,6 +174,7 @@ fn next_window(state: &Rc<State>, generation: u64) {
     }) = prepared
     else {
         state.boot.restoring.set(false);
+        state.boot.restored.set(true);
         state.boot.hold.borrow_mut().take();
         if let Some(app) = state.app.borrow().upgrade() {
             begin(state, &app);

@@ -34,6 +34,18 @@ fn inspect(paths: Vec<PathBuf>) -> Result<Items, String> {
     }
     Ok(items)
 }
+fn open_items(ui: &Rc<Ui>, items: Items, current: impl Fn() -> bool + Clone + 'static) {
+    ui.status.set_text(ui.lang.text(
+        "Geprüfte Auswahl öffnen; Dateien erhalten eigene Tabs, ein Ordner den Projektbaum.",
+        "Opening checked selection; files use separate tabs and a folder uses the project tree.",
+    ));
+    if let Some(path) = items.project {
+        super::import_view::route_open(ui, path, None, Rc::new(current.clone()), None);
+    }
+    for path in items.files {
+        ui.load_path_owned(path, Rc::new(current.clone()));
+    }
+}
 struct State {
     ui: std::rc::Weak<Ui>,
     generation: Cell<u64>,
@@ -79,20 +91,7 @@ impl State {
                     return;
                 };
                 match result {
-                Ok(items) => {
-                    ui.status.set_text(ui.lang.text(
-                        "Geprüfte Auswahl öffnen; Dateien erhalten eigene Tabs, ein Ordner den Projektbaum.",
-                        "Opening checked selection; files use separate tabs and a folder uses the project tree.",
-                    ));
-                    if let Some(path) = items.project {
-                        let state = state.clone();
-                        super::import_view::route_open(&ui, path, None, Rc::new(move || state.generation.get() == generation), None);
-                    }
-                    for path in items.files {
-                        let state = state.clone();
-                        ui.load_path_owned(path, Rc::new(move || state.generation.get() == generation));
-                    }
-                }
+                Ok(items) => open_items(&ui, items, move || state.generation.get() == generation),
                 Err(error) => ui.status.set_text(&format!("{} {error}", ui.lang.text("Öffnen abgewiesen; reguläre Dateien und höchstens ein Ordner erforderlich:", "Open refused; regular files and at most one folder required:"))),
             }
             },
@@ -117,6 +116,59 @@ fn state(ui: &Rc<Ui>) -> Rc<State> {
 }
 pub(super) fn open_files(ui: &Rc<Ui>, files: &[gio::File]) {
     state(ui).request(files);
+}
+pub(super) fn open_after_restore(
+    files: Vec<gio::File>,
+    current: impl FnOnce() -> bool + 'static,
+    create: impl FnOnce() -> Rc<Ui> + 'static,
+    done: impl FnOnce() + 'static,
+) {
+    let paths: Option<Vec<_>> = files.iter().map(gio::File::path).collect();
+    git_view::background(
+        move || inspect(paths.unwrap_or_default()),
+        move |result| {
+            if !current() {
+                return;
+            }
+            let Ok(mut items) = result else {
+                open_files(&create(), &files);
+                done();
+                return;
+            };
+            let mut target = None;
+            // Bei einer gemeinsamen Ordner-/Dateiauswahl gehören die Tabs in
+            // das neue Projektfenster.
+            if items.project.is_none() {
+                let windows = super::application_lifecycle::ordinary_windows().unwrap_or_default();
+                items.files.retain(|path| {
+                    for ui in windows.iter().filter(|ui| ui.window.is_visible()) {
+                        let doc = ui.documents.borrow().iter().find(|doc| {
+                            doc.comparison.borrow().is_none()
+                                && doc.disk_path().as_ref() == Some(path)
+                        }).cloned();
+                        if let Some(doc) = doc {
+                            target = Some((ui.clone(), doc));
+                            return false;
+                        }
+                    }
+                    true
+                });
+            }
+            if items.project.is_none() && items.files.is_empty() {
+                if let Some((ui, doc)) = target {
+                    super::tab_close::activate(&ui, &doc);
+                    ui.window.present();
+                    super::tab_close::focus(&ui, &doc);
+                }
+            } else {
+                let ui = create();
+                let owner = state(&ui);
+                let generation = owner.generation.get();
+                open_items(&ui, items, move || owner.generation.get() == generation);
+            }
+            done();
+        },
+    );
 }
 pub(super) fn install(ui: &Rc<Ui>) {
     let state = state(ui);

@@ -7,6 +7,13 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.242.84] — 2026-11-23
+
+### Behoben
+
+- Linux: Rückgängig und Wiederholen funktionieren nach dem Einfügen eines WYSIWYG-Bildes nacheinander per Tastatur. Wiederhergestellte Bilder sind sofort wieder sichtbar und kopierbar.
+- Linux: Ein beim Start ausdrücklich geöffneter Dateipfad verwendet den bereits wiederhergestellten Tab und erzeugt dafür kein zweites Fenster.
+
 ## [v1.242.83] — 2026-11-23
 
 ### Behoben

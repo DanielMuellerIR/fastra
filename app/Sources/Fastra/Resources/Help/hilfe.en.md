@@ -2105,7 +2105,7 @@ Under **Markdown → Edit Markdown in WYSIWYG mode**, choose the app-wide defaul
 
 Under **Settings → Startup**, “Restore Previously Open Windows and Documents” is enabled by default. The next normal launch reopens saved files and project windows with their tab order, active file tab, size and maximization. Under X11, positions return as well; windows outside the current screens are brought back into view. Under Wayland, the desktop determines their positions.
 
-Fastra loads the current disk contents. Unsaved changes, untitled documents and generated comparisons are not stored here. Windows without saved files and missing sources are skipped. Optional session backup for unsaved drafts remains separate. Your input, new tabs and file or project changes take precedence over an ongoing restore. Additional open requests are delivered once after restoration.
+Fastra loads the current disk contents. Unsaved changes, untitled documents and generated comparisons are not stored here. Windows without saved files and missing sources are skipped. Optional session backup for unsaved drafts remains separate. Your input, new tabs and file or project changes take precedence over an ongoing restore. If you launch Fastra with a file that startup already restores, Fastra shows the existing tab. Additional files and requests that include a project folder open in their own window after restoration.
 
 Turning the option off clears the remembered window list. An error offers “Retry” and retains existing data. If Fastra cannot save the startup state when quitting, you can cancel, retry or explicitly choose “Quit without updating”. The next launch may then reopen older windows and paths.
 

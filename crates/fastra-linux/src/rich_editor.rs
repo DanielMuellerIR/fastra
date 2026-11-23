@@ -606,8 +606,18 @@ impl RichEditor {
                 let configuration=page.configuration.clone();
                 let boot=format!(r#"const config={configuration};
                     const root=document.getElementById('fastra-visual');
+                    // WebKit braucht ein Fokusziel, während die Bildtransaktion den Editor kurz sperrt.
+                    root.tabIndex=0;
                     root.addEventListener('keydown',event=>{{
-                      if(root.isContentEditable && !event.isComposing && event.ctrlKey && !event.altKey && !event.metaKey && ['z','y'].includes(event.key.toLowerCase())){{event.preventDefault();event.stopImmediatePropagation();document.execCommand(event.shiftKey || event.key.toLowerCase()==='y'?'redo':'undo');window.fastraVisual.flush();return;}}
+                      const key=event.key.toLowerCase();
+                      if(!event.isComposing && event.ctrlKey && !event.altKey && !event.metaKey && ['z','y'].includes(key)){{
+                        event.preventDefault();event.stopImmediatePropagation();
+                        if(root.isContentEditable){{
+                          document.execCommand(event.shiftKey || key==='y'?'redo':'undo');
+                          window.fastraVisual.flush();
+                        }}
+                        return;
+                      }}
                       if(root.isContentEditable && !event.isComposing && event.ctrlKey && event.shiftKey && event.key.toLowerCase()==='v'){{event.preventDefault();event.stopImmediatePropagation();window.fastraVisual.requestClipboardPaste(true);}}
                     }},true);
                     for(const type of ['paste','drop'])root.addEventListener(type,event=>{{

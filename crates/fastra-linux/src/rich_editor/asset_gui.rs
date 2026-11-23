@@ -14,6 +14,14 @@ fn click(window: &gtk::Window, label: &str) {
     let button = gui_test::button(window.child().unwrap().upcast_ref(), label).unwrap();
     gui_test::input(&button, true, &[]);
 }
+fn history_key(key: &str) {
+    // Fokus und Auswahl zwischen den Tastendrücken gehören dem Editor.
+    assert!(std::process::Command::new("xdotool")
+        .args(["key", key])
+        .status()
+        .unwrap()
+        .success());
+}
 fn bookmark(editor: &Rc<RichEditor>, reply: &Rc<RefCell<Option<Value>>>) {
     let reply = reply.clone();
     editor.evaluate("const root=document.getElementById('fastra-visual'),range=document.createRange();range.selectNodeContents(root.lastElementChild);range.collapse(false);getSelection().removeAllRanges();getSelection().addRange(range);root.focus();await new Promise(r=>setTimeout(r,30));return JSON.stringify(fastraVisual.bookmarkClipboard());",move|value|*reply.borrow_mut()=value);
@@ -267,6 +275,38 @@ pub(super) fn run(ui: Rc<Ui>) {
                 }
                 assert!(!value.failed.get(), "{}", value.status.text());
                 assert_eq!(std::fs::read(root.join("images/1.png")).unwrap(), png);
+                gui_test::input(&value.view, true, &[]);
+                next(101);
+            }
+            101 => {
+                history_key("ctrl+z");
+                next(102);
+            }
+            102 | 104 => {
+                let value = editor.borrow().clone().unwrap();
+                if value.busy.get() || *value.expected.borrow() != source {
+                    return glib::ControlFlow::Continue;
+                }
+                assert!(!root.join("images/1.png").exists());
+                // Die zweite Rücknahme bleibt über einen Durchlauf der Bildüberwachung sichtbar.
+                if phase.get() == 104 && since.get().elapsed() < Duration::from_millis(2100) {
+                    return glib::ControlFlow::Continue;
+                }
+                history_key("ctrl+shift+z");
+                next(phase.get() + 1);
+            }
+            103 | 105 => {
+                let value = editor.borrow().clone().unwrap();
+                if value.busy.get() || *value.expected.borrow() != *saved.borrow() {
+                    return glib::ControlFlow::Continue;
+                }
+                assert!(!value.failed.get(), "{}", value.status.text());
+                assert_eq!(std::fs::read(root.join("images/1.png")).unwrap(), png);
+                if phase.get() == 103 {
+                    history_key("ctrl+z");
+                    next(104);
+                    return glib::ControlFlow::Continue;
+                }
                 crate::git_view::test_keys(&value.view, &["ctrl+s"]);
                 next(11);
             }
@@ -279,7 +319,7 @@ pub(super) fn run(ui: Rc<Ui>) {
                 }
                 assert_eq!(std::fs::read(root.join("images/1.png")).unwrap(), png);
                 println!(
-                    "PASS native asset base flow: PNG MIME, Cancel/Apply/Save, full bytes, real WebKit, Undo/Redo"
+                    "PASS native asset base flow: PNG MIME, Cancel/Apply/Save, full bytes, real WebKit, two keyboard Undo/Redo cycles without refocusing"
                 );
                 asset_gui_transfer::run(ui.clone(), editor.borrow().clone().unwrap());
                 return glib::ControlFlow::Break;

@@ -1,5 +1,9 @@
 use super::*;
-use std::{collections::BTreeMap, os::unix::fs::MetadataExt, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    os::unix::fs::MetadataExt,
+    path::PathBuf,
+};
 
 #[derive(Clone, PartialEq, Eq)]
 struct Stamp {
@@ -37,10 +41,17 @@ fn stamps(cache: &images::Cache) -> Stamps {
 fn refresh(
     mut old: images::Cache,
     before: Stamps,
+    retain: impl Fn(&images::Image) -> bool,
     cancel: &crate::viewer::Cancellation,
 ) -> (images::Cache, Stamps, bool) {
+    let (kept, watched) = std::mem::take(&mut old.images)
+        .into_iter()
+        .partition(|(_, image)| retain(image));
+    let mut retained = images::Cache { images: kept, warnings: Vec::new() };
+    old.images = watched;
     let current = stamps(&old);
     if current == before {
+        old.images.append(&mut retained.images);
         return (old, current, false);
     }
     let sources = images::Sources(
@@ -49,7 +60,7 @@ fn refresh(
             .map(|(key, image)| (key.clone(), image.source.clone()))
             .collect(),
     );
-    let mut loaded = sources.load(cancel);
+    let mut loaded = sources.load_with_retained(cancel, &retained);
     // Fehlende Quellen bleiben beobachtbar; ihre alten Bytes dürfen aber nicht weiter angezeigt oder kopiert werden.
     for (key, mut image) in std::mem::take(&mut old.images) {
         if let std::collections::btree_map::Entry::Vacant(entry) = loaded.images.entry(key) {
@@ -62,6 +73,7 @@ fn refresh(
             entry.insert(image);
         }
     }
+    loaded.images.append(&mut retained.images);
     (loaded, current, true)
 }
 
@@ -71,10 +83,16 @@ fn refresh_referenced(
     source: &str,
     path: Option<&std::path::Path>,
     session: &str,
+    held_for_redo: &BTreeSet<PathBuf>,
     cancel: &crate::viewer::Cancellation,
 ) -> (images::Cache, Stamps, bool, bool) {
     let references = images::Sources::collect(source, path, session);
-    let (cache, stamps, changed) = refresh(cache, before, cancel);
+    // Zu einer erfolgreichen Bildrücknahme gehört ein vorübergehend fehlender
+    // öffentlicher Name. Wiederholen prüft die erhaltenen Bytes vor der Freigabe.
+    let (cache, stamps, changed) = refresh(cache, before, |image| {
+        held_for_redo.contains(&image.source.path)
+            && references.as_ref().is_ok_and(|refs| !refs.0.contains_key(&image.source.raw))
+    }, cancel);
     // Undo-Versionen bleiben im Cache. Nur vollständig geprüfte Quellverweise
     // erlauben es, Meldungen für nicht mehr verwendete Bilder auszublenden.
     let warnings = cache.images.values().any(|image| {
@@ -150,6 +168,14 @@ pub(super) fn start(editor: &Rc<RichEditor>) {
         let input_revision = editor.input_revision.get();
         let operation = editor.operation.get();
         let path = editor.document.upgrade().and_then(|doc| doc.disk_path());
+        let held_for_redo = path.as_deref().and_then(std::path::Path::parent).map_or_else(
+            BTreeSet::new,
+            |parent| editor.assets.borrow().records.values()
+                .filter(|record| !record.visible && !record.receipt.is_applied())
+                .flat_map(|record| record.receipt.preview())
+                .map(|entry| parent.join(&entry.relative))
+                .collect(),
+        );
         let source_path = path.clone();
         let source = editor.expected.borrow().clone();
         let session = editor.session.clone();
@@ -164,7 +190,7 @@ pub(super) fn start(editor: &Rc<RichEditor>) {
             .collect::<BTreeMap<_, _>>();
         crate::git_view::background(
             move || {
-                Ok(refresh_referenced(cache, old, &source, source_path.as_deref(), &session, &cancel))
+                Ok(refresh_referenced(cache, old, &source, source_path.as_deref(), &session, &held_for_redo, &cancel))
             },
             move |result| {
                 busy.set(false);
@@ -237,14 +263,14 @@ mod tests {
         }
         assert!(images::Sources::collect(&source, Some(&path), "watch").is_err());
         let (mut cache, stamps, changed, warning) = refresh_referenced(
-            cache, Stamps::default(), &source, Some(&path), "watch", &cancel,
+            cache, Stamps::default(), &source, Some(&path), "watch", &BTreeSet::new(), &cancel,
         );
         assert!(changed && warning);
         assert_eq!(cache.images.len(), 1);
         assert!(cache.images.values().all(|image| image.version.is_empty()));
         cache.warnings.clear();
         let (_, _, changed, warning) = refresh_referenced(
-            cache, stamps, &source, Some(&path), "watch", &cancel,
+            cache, stamps, &source, Some(&path), "watch", &BTreeSet::new(), &cancel,
         );
         assert!(!changed && warning);
     }
