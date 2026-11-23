@@ -3,18 +3,18 @@
 // Roadmap H, v0.8 — „Markdown Smart-Paste"
 //
 // Zwei Paste-Modi in Fastra:
-//   1. Plain-Paste (CMD+V): normales Einfügen, hier NICHT implementiert.
+//   1. Plain-Paste (CMD+V): normales Einfügen, hier nicht implementiert.
 //   2. Smart-Paste (CMD+SHIFT+V): formatierter Clipboard-Inhalt (HTML/RTF
 //      aus Browser, Word, Notion…) wird als sauberes Markdown eingefügt.
 //
 // Konvertierungsstrategie: Das externe CLI-Tool `md-clip` (Daniel Müller,
 // https://github.com/DanielMuellerIR/md-clip) kapselt pandoc (GPL) und
 // übernimmt die ganze Konvertierungsarbeit. Da pandoc GPL ist, wird es
-// NICHT in Fastra eingebettet — md-clip muss separat installiert sein.
+// nicht in Fastra eingebettet — md-clip muss separat installiert sein.
 //
-// WICHTIG für den Aufrufer:
+// Wichtig für den Aufrufer:
 //   `markdownFromClipboard` ist synchron-blockierend (bis ~10 s)
-//   und darf NICHT auf dem Main-Thread aufgerufen werden.
+//   und darf nicht auf dem Main-Thread aufgerufen werden.
 //   Starte sie aus einer `Task.detached` oder `DispatchQueue.global`.
 
 import AppKit
@@ -24,14 +24,14 @@ import Foundation
 
 // MARK: - Nicht blockierende Prozessausgabe
 
-/// Gemeinsame Obergrenze für ALLE Bytes, die md-clip in einem Lauf über
+/// Gemeinsame Obergrenze für alle Bytes, die md-clip in einem Lauf über
 /// stdout und stderr zusammen liefern darf.
 ///
 /// Die Grenze im Drain (`maximumBytesPerPass`) schützt nur den seriellen
 /// Reader vor einem dauerhaft schreibenden Descriptor — nicht den Speicher:
 /// Ein defektes oder manipuliertes md-clip kann innerhalb der zehn Sekunden
 /// beliebig oft nachliefern. Dieser Zähler ist deshalb die harte Gesamtgrenze;
-/// bei Überschreitung meldet er das GENAU EINMAL, damit der Aufrufer die
+/// bei Überschreitung meldet er das genau einmal, damit der Aufrufer die
 /// Prozessgruppe sofort abbricht.
 private final class ProcessOutputBudget {
     private let lock = NSLock()
@@ -54,7 +54,7 @@ private final class ProcessOutputBudget {
         let isFirstOverflow = allowed < wanted && !exceeded
         if isFirstOverflow { exceeded = true }
         lock.unlock()
-        // Die Meldung läuft bewusst OHNE gehaltene Sperre: Sie weckt den
+        // Die Meldung läuft bewusst ohne gehaltene Sperre: Sie weckt den
         // wartenden Aufrufer, der seinerseits `isExceeded` abfragt.
         if isFirstOverflow { onExceeded() }
         return allowed
@@ -350,7 +350,7 @@ enum SmartPaste {
         for rawPath in searchPaths {
             // Tilde (~) expandieren, damit ~/bin/md-clip korrekt aufgelöst wird.
             let expanded = (rawPath as NSString).expandingTildeInPath
-            // Ausführbar = Datei existiert UND hat das x-Bit.
+            // Ausführbar = Datei existiert und hat das x-Bit.
             if fm.isExecutableFile(atPath: expanded) {
                 return URL(fileURLWithPath: expanded)
             }
@@ -379,13 +379,13 @@ enum SmartPaste {
     /// Ruft md-clip auf und gibt das erzeugte Markdown als String zurück.
     ///
     /// md-clip schreibt per Default (ohne `--replace`) auf **stdout** und
-    /// verändert das Clipboard NICHT. Das ist der von uns bevorzugte Modus,
+    /// verändert das Clipboard nicht. Das ist der von uns bevorzugte Modus,
     /// weil wir das Nutzer-Clipboard unangetastet lassen wollen.
     ///
     /// Ablauf:
     ///   1. md-clip als `Process` starten, stdout + stderr fortlaufend aus Pipes lesen.
     ///   2. Mit `DispatchSemaphore` auf Ende warten (max. 10 Sekunden).
-    ///   3. Bei Timeout ODER überschrittenem Ausgabebudget: md-clip beenden,
+    ///   3. Bei Timeout oder überschrittenem Ausgabebudget: md-clip beenden,
     ///      nötigenfalls SIGKILL an die ganze Gruppe senden und `.timeout`
     ///      bzw. `.conversionFailed` zurückgeben.
     ///   4. Bei Exit ≠ 0 (md-clip kennt drei Fehlercodes):
@@ -394,8 +394,8 @@ enum SmartPaste {
     ///      Code 3 = Pandoc-Fehler → `.conversionFailed`
     ///   5. Bei leerem Output trotz Exit 0 → `.conversionFailed`
     ///
-    /// ACHTUNG: Diese Funktion ist **synchron-blockierend** (bis ~10 s).
-    /// Sie darf NICHT auf dem Main-Thread aufgerufen werden.
+    /// Achtung: Diese Funktion ist **synchron-blockierend** (bis ~10 s).
+    /// Sie darf nicht auf dem Main-Thread aufgerufen werden.
     ///
     /// - Parameter mdClipURL: Absoluter Pfad zum md-clip-Binary.
     /// - Parameter maximumOutputBytes: Harte Gesamtgrenze für stdout und
@@ -417,7 +417,7 @@ enum SmartPaste {
         //
         // Gestartet wird über den Prozessgruppen-Launcher (derselbe
         // Mechanismus wie bei GitRunner): md-clip kann eigene Kindprozesse
-        // starten (pandoc, Helfer), und beim Fristablauf muss die GANZE
+        // starten (pandoc, Helfer), und beim Fristablauf muss die ganze
         // Gruppe enden — vorher überlebten Enkelprozesse den Abbruch
         // (Roadmap „Bekannte Fehler").
         let process = Process()
@@ -432,7 +432,7 @@ enum SmartPaste {
         }
 
         // Semaphore: wir blockieren hier auf Ende des Prozesses.
-        // Der Hauptthread darf hier NICHT stehen — der Aufrufer muss das
+        // Der Hauptthread darf hier nicht stehen — der Aufrufer muss das
         // sicherstellen (z.B. via Task.detached oder DispatchQueue.global).
         // Sie wird auch beim Überschreiten des Ausgabebudgets signalisiert,
         // damit ein Datenschwall nicht bis zum Fristablauf laufen muss.
@@ -440,7 +440,7 @@ enum SmartPaste {
 
         // stdout und stderr werden schon während des Prozesses geleert. Das
         // verhindert volle Pipe-Puffer und ein EOF-Warten auf Unterprozesse.
-        // Beide teilen sich EIN Gesamtbudget — sonst könnte ein Strom die
+        // Beide teilen sich ein Gesamtbudget — sonst könnte ein Strom die
         // Grenze des anderen ungenutzt lassen und trotzdem den Speicher füllen.
         let budget = ProcessOutputBudget(limit: maximumOutputBytes) {
             semaphore.signal()
@@ -468,7 +468,7 @@ enum SmartPaste {
             return .failure(.conversionFailed(L10n.format("Prozess konnte nicht gestartet werden: %@", error.localizedDescription)))
         }
 
-        // Die eigene Prozessgruppe entsteht im Launcher-Kind VOR dem exec;
+        // Die eigene Prozessgruppe entsteht im Launcher-Kind vor dem exec;
         // hier nur kurz beobachten, bis sie steht (wie in GitRunner). Ohne
         // Launcher bleibt `processGroupID` nil und der Abbruch trifft wie
         // bisher nur den direkten Kindprozess.
@@ -530,7 +530,7 @@ enum SmartPaste {
         let outputData = stdoutCapture.finish()
         let stderrData = stderrCapture.finish()
         // Der Prozessabschluss kann die Semaphore wecken, bevor die letzten
-        // Pipe-Bytes im Capture angekommen sind. Deshalb NACH beiden finalen
+        // Pipe-Bytes im Capture angekommen sind. Deshalb nach beiden finalen
         // Drains erneut prüfen; sonst könnte `limit + 1` als gekürzter Erfolg
         // durchgehen.
         if budget.isExceeded { return outputBudgetFailure() }

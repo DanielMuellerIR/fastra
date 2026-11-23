@@ -1,22 +1,10 @@
 // StaleSelectionPivotTests.swift
 //
-// Regressionstests für den Absturz vom 2026-08-24 (Crash-Report
-// 155AA70E-58D0-4EFE-A83C-4E5BF2A766C6): Beim Tippen brach die App mit
-// SIGTRAP in `CEUndoManager.registerMutation` ab („CFString cannot be
-// created from a negative number of bytes").
-//
-// Wurzel: `TextSelection.pivot` — der feste Anker einer Shift-Auswahl —
-// wird von `didReplaceCharacters` NICHT zurückgesetzt, wenn ein Edit die
-// Auswahl verschiebt. Ein Backspace lässt den Anker dadurch RECHTS vom
-// Cursor stehen. Das nächste Shift+→ nimmt dann in `updateSelectionRange`
-// den Schrumpf-Zweig (`length -= range.length`) und erzeugt eine Auswahl
-// mit NEGATIVER Länge, z. B. {10, -1}. Der nächste normale Tastendruck
-// reicht diesen Bereich als Mutation an den Undo-Manager weiter, dessen
-// `substring(from:)` negative Längen nicht abfängt — Absturz mit
-// Datenverlust mitten im Tippen.
-//
-// Geprüft wird das reale Nutzer-Szenario über die öffentlichen
-// Bewegungs- und Einfüge-APIs, nicht die Patch-Zeilen.
+// Ein Edit muss den festen Anker einer Shift-Auswahl (`TextSelection.pivot`)
+// aktualisieren. Nach Backspace könnte er sonst rechts vom Cursor bleiben;
+// Shift+→ erzeugt dann über den Schrumpf-Zweig eine negative Auswahl-Länge,
+// die beim nächsten Tippen den Undo-Manager abbrechen lässt.
+// Öffentliche Bewegungs- und Einfüge-APIs prüfen das reale Verhalten.
 
 import AppKit
 import Testing
@@ -45,7 +33,7 @@ func shiftSelectAfterBackspaceKeepsRangeValid() {
         direction: .forward, destination: .character, modifySelection: true)
 
     // 2. Backspace: löscht Zeichen 9, der Cursor steht auf 9 — der alte
-    //    Anker zeigt jetzt HINTER den Cursor.
+    //    Anker zeigt jetzt hinter den Cursor.
     textView.deleteBackward(nil)
     #expect(textView.selectionManager.textSelections.first?.range
             == NSRange(location: 9, length: 0))

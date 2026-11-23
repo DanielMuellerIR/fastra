@@ -392,6 +392,12 @@ impl Snapshot {
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
+    pub fn retained_bytes(&self) -> usize {
+        self.bytes.len()
+            + self.fingerprint.xattrs.iter()
+                .map(|(key, value)| key.len() + value.len())
+                .sum::<usize>()
+    }
     pub fn path(&self) -> PathBuf {
         self.parent.path.join(&self.name)
     }
@@ -728,7 +734,16 @@ impl Transaction {
     }
 
     pub fn apply(changes: Vec<Change>, cancel: &Cancellation) -> Result<Option<Self>> {
-        Self::apply_inner(changes, Purpose::Replace, cancel, &mut |_, _, _| {})
+        Self::apply_with_read_basis(changes, &[], cancel)
+    }
+
+    /// Prüfgrundlagen schützen Apply, gehören aber nicht zum späteren Undo.
+    pub fn apply_with_read_basis(
+        changes: Vec<Change>,
+        read_basis: &[Snapshot],
+        cancel: &Cancellation,
+    ) -> Result<Option<Self>> {
+        Self::apply_inner(changes, read_basis, Purpose::Replace, cancel, &mut |_, _, _| {})
     }
 
     pub fn save_document(
@@ -744,6 +759,7 @@ impl Transaction {
                 snapshot,
                 replacement: edited_bytes.to_owned(),
             }],
+            &[],
             Purpose::SaveDocument,
             cancel,
             &mut |_, _, _| {},
@@ -850,26 +866,34 @@ impl Transaction {
         cancel: &Cancellation,
         observe: &mut impl FnMut(&str, usize, &Self),
     ) -> Result<Option<Self>> {
-        Self::apply_inner(changes, Purpose::Replace, cancel, observe)
+        Self::apply_inner(changes, &[], Purpose::Replace, cancel, observe)
     }
 
     fn apply_inner(
         changes: Vec<Change>,
+        read_basis: &[Snapshot],
         purpose: Purpose,
         cancel: &Cancellation,
         observe: &mut impl FnMut(&str, usize, &Self),
     ) -> Result<Option<Self>> {
         cancel.check()?;
+        if changes.len().saturating_add(read_basis.len()) > MAX_FILES {
+            return Err(Error::Limit);
+        }
+        let mut total_bytes = 0usize;
+        for snapshot in read_basis {
+            total_bytes = total_bytes.checked_add(snapshot.retained_bytes()).ok_or(Error::Limit)?;
+            if total_bytes > MAX_TRANSACTION_BYTES {
+                return Err(Error::Limit);
+            }
+            snapshot.verify(cancel)?;
+        }
         if changes.is_empty() {
             return Ok(None);
-        }
-        if changes.len() > MAX_FILES {
-            return Err(Error::Limit);
         }
         let parent = changes[0].snapshot.parent.clone();
         parent.supported()?;
         let mut names = HashSet::new();
-        let mut total_bytes = 0usize;
         for change in &changes {
             total_bytes = total_bytes
                 .checked_add(change.snapshot.bytes.len())
@@ -927,6 +951,9 @@ impl Transaction {
         for change in &changes {
             change.snapshot.verify(cancel)?;
         }
+        for snapshot in read_basis {
+            snapshot.verify(cancel)?;
+        }
         cancel.check()?;
         transaction.manifest.phase = Phase::Applying;
         transaction.write_manifest(observe)?;
@@ -949,7 +976,8 @@ impl Transaction {
             }
             observe("exchanged", index, &transaction);
         }
-        let states = transaction.inspect(&Cancellation::default());
+        let postflight = Cancellation::default();
+        let states = transaction.inspect(&postflight);
         if !states.as_ref().is_ok_and(|states| {
             states
                 .iter()
@@ -962,7 +990,7 @@ impl Transaction {
                             FileState::Original
                         }
                 })
-        }) {
+        }) || read_basis.iter().any(|snapshot| snapshot.verify(&postflight).is_err()) {
             return Err(Error::RecoveryRequired(transaction.path().to_owned()));
         }
         transaction.manifest.phase = Phase::Applied;

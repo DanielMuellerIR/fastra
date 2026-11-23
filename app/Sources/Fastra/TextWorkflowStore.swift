@@ -34,7 +34,7 @@ enum TextWorkflowArchive {
 final class TextWorkflowStore {
     static let key = "fastra.textWorkflows.v1"
     private let defaults: UserDefaults
-    init(defaults: UserDefaults = SelfTest.workspaceDefaults()) { self.defaults = defaults }
+    init(defaults: UserDefaults = AppDefaults.store) { self.defaults = defaults }
 
     func load() throws -> [TextWorkflow] {
         guard let value = defaults.object(forKey: Self.key) else { return [] }

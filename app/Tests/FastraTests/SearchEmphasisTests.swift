@@ -1,8 +1,8 @@
 // SearchEmphasisTests.swift
 //
-// Tests für die pure Logik der Live-Trefferanzeige (Etappe 2 Wunschpaket
-// 2026-07b): Cap-Planung und Sichtbarkeitsbedingung. Die echte Zeichnung
-// (Emphasis-Layer in der TextView) prüft der Selbsttest `searchmark`.
+// Tests für die pure Logik der Live-Trefferanzeige:
+// Cap-Planung und Sichtbarkeitsbedingung. Die echte Zeichnung (Emphasis-Layer
+// in der TextView) prüft der Selbsttest `searchmark`.
 
 import Foundation
 import Testing
@@ -148,13 +148,13 @@ func bufferResultsAreCurrent_requiresMatchingOptions() {
 
     // Nach einem Edit entzieht der SearchRunner die Freigabe (`nil`) — ein
     // verzögerter Scroll-Relay darf die stehengebliebenen alten Bereiche
-    // dann nicht erneut zeichnen (Review 2026-08-29).
+    // dann nicht erneut zeichnen.
     #expect(!SearchEmphasis.bufferResultsAreCurrent(
         scope: .file, visibleBufferResultsOptions: nil, currentOptions: fresh))
     #expect(!SearchEmphasis.bufferResultsAreCurrent(
         scope: .open, visibleBufferResultsOptions: nil, currentOptions: fresh))
 
-    // Auch eine Freigabe zu ANDEREN Optionen (altes Muster) zählt nicht.
+    // Auch eine Freigabe zu anderen Optionen (altes Muster) zählt nicht.
     #expect(!SearchEmphasis.bufferResultsAreCurrent(
         scope: .file, visibleBufferResultsOptions: stale, currentOptions: fresh))
 

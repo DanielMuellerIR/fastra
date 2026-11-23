@@ -144,7 +144,7 @@ pub(super) fn find_program(name: &str) -> Option<PathBuf> {
 pub(super) fn error(error: fastra_git::Error, lang: Language) -> String {
     use fastra_git::Error::*;
     let (title, output) = match error {
-        GitFailed(out) => (
+        GitFailed(out) | NotRepository(out) => (
             lang.text("Git meldet einen Fehler", "Git reported an error"),
             Some(out),
         ),
@@ -191,26 +191,82 @@ pub(super) fn error(error: fastra_git::Error, lang: Language) -> String {
         bytes(&out.stdout)
     )
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReadAction {
+    Status,
+    Branches,
+    History,
+    StagedDiff,
+    WorkingDiff,
+}
+impl ReadAction {
+    fn needs_repository(self) -> bool {
+        matches!(self, Self::History | Self::StagedDiff | Self::WorkingDiff)
+    }
+}
+
+enum ReadView {
+    Snapshot {
+        root: PathBuf,
+        identity: (u64, u64),
+        text: String,
+    },
+    NoRepository(String),
+}
+
 pub(super) struct State {
     window: gtk::Window,
     path: gtk::Entry,
     raw_path: RefCell<Option<PathBuf>>,
     view: gtk::TextView,
     status: gtk::Label,
-    buttons: Vec<gtk::Button>,
+    buttons: [(ReadAction, gtk::Button); 5],
     #[cfg(debug_assertions)]
     manage: gtk::Button,
     index: RefCell<Option<Rc<IndexState>>>,
     cancel: RefCell<fastra_git::Cancellation>,
     generation: Cell<u64>,
-    action: Cell<usize>,
+    action: Cell<ReadAction>,
+    no_repository: Cell<bool>,
     repository_root: RefCell<Option<PathBuf>>,
     repository_identity: Cell<Option<(u64, u64)>>,
     lang: Language,
     program: PathBuf,
 }
 impl State {
-    fn run(self: &Rc<Self>, action: usize) {
+    fn update_read_buttons(&self, busy: bool) {
+        for (action, button) in &self.buttons {
+            button.set_sensitive(!busy && !(self.no_repository.get() && action.needs_repository()));
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    fn read_button(&self, action: ReadAction) -> &gtk::Button {
+        self.buttons
+            .iter()
+            .find_map(|(kind, button)| (*kind == action).then_some(button))
+            .unwrap()
+    }
+
+    fn folder_changed(&self) {
+        self.repository_root.borrow_mut().take();
+        self.repository_identity.set(None);
+        self.no_repository.set(false);
+        self.cancel.borrow().cancel();
+        self.generation.set(self.generation.get() + 1);
+        self.update_read_buttons(false);
+        self.view.buffer().set_text("");
+        self.status.set_text(self.lang.text(
+            "Ordner geändert. Ansicht neu laden.",
+            "Folder changed. Reload the view.",
+        ));
+    }
+
+    fn run(self: &Rc<Self>, action: ReadAction) {
+        if self.no_repository.get() && action.needs_repository() {
+            return;
+        }
         self.action.set(action);
         self.cancel.borrow().cancel();
         let cancel = fastra_git::Cancellation::default();
@@ -224,9 +280,7 @@ impl State {
             .unwrap_or_else(|| PathBuf::from(self.path.text().as_str()));
         let program = self.program.clone();
         let lang = self.lang;
-        for b in &self.buttons {
-            b.set_sensitive(false);
-        }
+        self.update_read_buttons(true);
         self.status
             .set_text(self.lang.text("Git wird gelesen …", "Reading Git …"));
         let weak = Rc::downgrade(self);
@@ -238,11 +292,15 @@ impl State {
                     stderr_bytes: 512 * 1024,
                     ..Default::default()
                 };
-                let repo = git
-                    .discover(&path, policy, &cancel)
-                    .map_err(|e| error(e, lang))?;
+                let repo = match git.discover(&path, policy, &cancel) {
+                    Ok(repo) => repo,
+                    Err(e @ fastra_git::Error::NotRepository(_)) => {
+                        return Ok(ReadView::NoRepository(error(e, lang)));
+                    }
+                    Err(e) => return Err(error(e, lang)),
+                };
                 let result = match action {
-                    0 => {
+                    ReadAction::Status => {
                         let result = repo.status(policy, &cancel).map_err(|e| error(e, lang))?;
                         let mut text = format!(
                             "{}\nBranch: {}\nHEAD: {}\n↑{} ↓{}\n\n",
@@ -278,7 +336,7 @@ impl State {
                         text.push_str(&bytes(&result.output.stderr));
                         text
                     }
-                    1 => {
+                    ReadAction::Branches => {
                         let result = repo.branches(policy, &cancel).map_err(|e| error(e, lang))?;
                         let mut text = String::new();
                         for branch in result.value {
@@ -295,14 +353,14 @@ impl State {
                         text.push_str(&bytes(&result.output.stderr));
                         text
                     }
-                    2 => {
+                    ReadAction::History => {
                         let out = repo.log(200, policy, &cancel).map_err(|e| error(e, lang))?;
                         bytes(&out.stdout) + &bytes(&out.stderr)
                     }
-                    _ => {
+                    ReadAction::StagedDiff | ReadAction::WorkingDiff => {
                         let out = repo
                             .diff(
-                                if action == 3 {
+                                if matches!(action, ReadAction::StagedDiff) {
                                     fastra_git::DiffTarget::Index
                                 } else {
                                     fastra_git::DiffTarget::WorkingTree
@@ -316,24 +374,36 @@ impl State {
                     }
                 };
                 let identity = repo.operation_identity().map_err(|e| error(e, lang))?;
-                Ok((repo.root().to_path_buf(), identity, result))
+                Ok(ReadView::Snapshot {
+                    root: repo.root().to_path_buf(),
+                    identity,
+                    text: result,
+                })
             },
             move |result| {
                 let Some(state) = weak.upgrade() else { return };
                 if state.generation.get() != generation {
                     return;
                 }
-                for b in &state.buttons {
-                    b.set_sensitive(true);
-                }
+                state.no_repository.set(matches!(&result, Ok(ReadView::NoRepository(_))));
+                state.update_read_buttons(false);
                 match result {
-                    Ok((root, identity, text)) => {
+                    Ok(ReadView::Snapshot { root, identity, text }) => {
                         state.repository_identity.set(Some(identity));
                         *state.repository_root.borrow_mut() = Some(root);
                         state.view.buffer().set_text(&text);
                         state.status.set_text(state.lang.text(
                             "Aktueller Lesestand. Dateien und Index bleiben unverändert.",
                             "Current read snapshot. Files and index remain unchanged.",
+                        ));
+                    }
+                    Ok(ReadView::NoRepository(diagnostic)) => {
+                        state.repository_root.borrow_mut().take();
+                        state.repository_identity.set(None);
+                        state.view.buffer().set_text(&diagnostic);
+                        state.status.set_text(state.lang.text(
+                            "Dieser Ordner liegt außerhalb eines Git-Repositorys. Für Verlauf und Diffs einen Repository-Ordner wählen.",
+                            "This folder is outside a Git repository. Choose a repository folder to view history and diffs.",
                         ));
                     }
                     Err(error) => {
@@ -379,18 +449,21 @@ pub(super) fn open(ui: &Rc<Ui>, program: PathBuf) -> Rc<State> {
     actions.set_max_children_per_line(5);
     actions.set_column_spacing(6);
     actions.set_row_spacing(6);
-    let mut buttons = Vec::new();
-    for title in [
-        lang.text("Status", "Status"),
-        lang.text("Branches", "Branches"),
-        lang.text("Verlauf", "History"),
-        lang.text("Bereitgestellter Diff", "Staged diff"),
-        lang.text("Arbeits-Diff", "Working diff"),
-    ] {
-        let b = gtk::Button::with_label(title);
-        actions.insert(&b, -1);
-        buttons.push(b);
-    }
+    let buttons = [
+        (ReadAction::Status, lang.text("Status", "Status")),
+        (ReadAction::Branches, lang.text("Branches", "Branches")),
+        (ReadAction::History, lang.text("Verlauf", "History")),
+        (
+            ReadAction::StagedDiff,
+            lang.text("Bereitgestellter Diff", "Staged diff"),
+        ),
+        (ReadAction::WorkingDiff, lang.text("Arbeits-Diff", "Working diff")),
+    ]
+    .map(|(action, title)| {
+        let button = gtk::Button::with_label(title);
+        actions.insert(&button, -1);
+        (action, button)
+    });
     root.append(&actions);
     let manage = gtk::Button::with_label(lang.text("Stage / Unstage …", "Stage / Unstage …"));
     root.append(&manage);
@@ -430,7 +503,8 @@ pub(super) fn open(ui: &Rc<Ui>, program: PathBuf) -> Rc<State> {
         index: RefCell::new(None),
         cancel: RefCell::new(Default::default()),
         generation: Cell::new(0),
-        action: Cell::new(0),
+        action: Cell::new(ReadAction::Status),
+        no_repository: Cell::new(false),
         repository_root: RefCell::new(None),
         repository_identity: Cell::new(None),
         lang,
@@ -511,11 +585,12 @@ pub(super) fn open(ui: &Rc<Ui>, program: PathBuf) -> Rc<State> {
             }
         }
     });
-    for (index, button) in state.buttons.iter().enumerate() {
+    for (action, button) in &state.buttons {
+        let action = *action;
         let weak = Rc::downgrade(&state);
         button.connect_clicked(move |_| {
             if let Some(state) = weak.upgrade() {
-                state.run(index);
+                state.run(action);
             }
         });
     }
@@ -529,18 +604,7 @@ pub(super) fn open(ui: &Rc<Ui>, program: PathBuf) -> Rc<State> {
     state.path.connect_changed(move |_| {
         if let Some(state) = weak.upgrade() {
             state.raw_path.borrow_mut().take();
-            state.repository_root.borrow_mut().take();
-            state.repository_identity.set(None);
-            state.cancel.borrow().cancel();
-            state.generation.set(state.generation.get() + 1);
-            for button in &state.buttons {
-                button.set_sensitive(true);
-            }
-            state.view.buffer().set_text("");
-            state.status.set_text(state.lang.text(
-                "Ordner geändert. Ansicht neu laden.",
-                "Folder changed. Reload the view.",
-            ));
+            state.folder_changed();
         }
     });
     let weak = Rc::downgrade(&state);
@@ -562,9 +626,12 @@ pub(super) fn open(ui: &Rc<Ui>, program: PathBuf) -> Rc<State> {
                 }
                 if let Ok(file) = result {
                     if let Some(folder) = file.path() {
-                        state
-                            .path
-                            .set_text(&display_path(folder.as_os_str().as_encoded_bytes()));
+                        let label = display_path(folder.as_os_str().as_encoded_bytes());
+                        if state.path.text() == label.as_str() {
+                            state.folder_changed();
+                        } else {
+                            state.path.set_text(&label);
+                        }
                         *state.raw_path.borrow_mut() = Some(folder);
                     }
                 }
@@ -1500,7 +1567,7 @@ fn git_test(ui: Rc<Ui>) {
     state
         .path
         .set_text(&fixture.join("repository").to_string_lossy());
-    state.buttons[0].emit_clicked();
+    state.read_button(ReadAction::Status).emit_clicked();
     let stage = Cell::new(0);
     let deadline = std::time::Instant::now();
     glib::timeout_add_local(Duration::from_millis(50), move || {
@@ -1509,7 +1576,7 @@ fn git_test(ui: Rc<Ui>) {
             "Git tool timed out: {}",
             state.status.text()
         );
-        if state.buttons.iter().any(|b| !b.is_sensitive()) {
+        if state.buttons.iter().any(|(_, button)| !button.is_sensitive()) {
             return glib::ControlFlow::Continue;
         }
         let buffer = state.view.buffer();
@@ -1517,22 +1584,22 @@ fn git_test(ui: Rc<Ui>) {
         match stage.get() {
             0 => {
                 assert!(text.contains("tracked.txt"), "{text}");
-                state.buttons[1].emit_clicked();
+                state.read_button(ReadAction::Branches).emit_clicked();
                 stage.set(1);
             }
             1 => {
                 assert!(text.contains("refs/heads/main"), "{text}");
-                state.buttons[2].emit_clicked();
+                state.read_button(ReadAction::History).emit_clicked();
                 stage.set(2);
             }
             2 => {
                 assert!(text.contains("initial"), "{text}");
-                state.buttons[4].emit_clicked();
+                state.read_button(ReadAction::WorkingDiff).emit_clicked();
                 stage.set(3);
             }
             3 => {
                 assert!(text.contains("+changed"), "{text}");
-                state.buttons[0].emit_clicked();
+                state.read_button(ReadAction::Status).emit_clicked();
                 stage.set(4);
             }
             _ => {

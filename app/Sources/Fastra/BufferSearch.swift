@@ -22,7 +22,7 @@ enum BufferSearch {
         let column: Int
         /// Original-Text des Treffers (zum Anzeigen in der Liste).
         let matchText: String
-        /// Rest der logischen Zeile NACH dem Treffer, ohne Zeilenumbruch.
+        /// Rest der logischen Zeile nach dem Treffer, ohne Zeilenumbruch.
         /// Die Trefferliste zeigt ihn direkt hinter `matchText`, damit zwei
         /// gleichlautende Funde ohne Öffnen der Datei unterscheidbar sind.
         let lineRemainder: String
@@ -46,8 +46,8 @@ enum BufferSearch {
     struct SearchResult: Equatable {
         /// Die materialisierten Treffer — höchstens `maxMatches` Stück.
         let matches: [Match]
-        /// ECHTE Gesamtzahl der Treffer im Text. Kann `matches.count`
-        /// ÜBERSTEIGEN, wenn der Cap (`maxMatches`) gegriffen hat. Die Maske
+        /// Echte Gesamtzahl der Treffer im Text. Kann `matches.count`
+        /// übersteigen, wenn der Cap (`maxMatches`) gegriffen hat. Die Maske
         /// zeigt diese Zahl an — analog zur BBEdit-Statuszeile, die immer
         /// den wahren Count nennt, auch wenn nicht alle Zeilen gelistet sind.
         let totalMatches: Int
@@ -67,8 +67,8 @@ enum BufferSearch {
     /// Zeile. Bei einer erlaubten 32-MiB-Datei ohne Zeilenumbruch (etwa ein
     /// einzeiliges JSON) sind das pro Treffer fast 32 MiB — mal 2.000
     /// materialisierter Treffer zig Gigabyte, an denen die App am
-    /// Speicherdruck stirbt (Review 2026-08-06). Die Trefferliste zeigt
-    /// ohnehin nur EINE abgeschnittene Zeile.
+    /// Speicherdruck stirbt. Die Trefferliste zeigt
+    /// ohnehin nur eine abgeschnittene Zeile.
     static let maxLineRemainderLength = 400
 
     /// Der sichtbare Zeilenrest hinter einem Treffer, auf `limit`
@@ -100,7 +100,7 @@ enum BufferSearch {
     /// Eine flache Liste mit Zehntausenden Zeilen ist kein Navigations-
     /// werkzeug (BBEdits gruppierter Results-Browser schon) — und pro
     /// Treffer fällt teure Arbeit an (Substring + Replacement-Template).
-    /// Wir materialisieren daher nur die ersten N, zählen aber ALLE.
+    /// Wir materialisieren daher nur die ersten N, zählen aber alle.
     static let defaultMaxMatches = 2000
 
     /// Hauptfunktion. Wird auf jeden Tastendruck (debounced) aufgerufen.
@@ -114,9 +114,9 @@ enum BufferSearch {
     /// veraltete Läufe ohnehin). So scannt ein vom nächsten Tastendruck
     /// überholter Lauf eine Riesendatei nicht sinnlos zu Ende.
     ///
-    /// `searchRange`: Wenn gesetzt, wird NUR innerhalb dieser NSRange gesucht
+    /// `searchRange`: Wenn gesetzt, wird nur innerhalb dieser NSRange gesucht
     /// (BBEdit „Selected Text Only" / „Nur in Auswahl"). Zeile/Spalte bleiben
-    /// trotzdem absolut zum GESAMTEN Text — sonst zeigte die Trefferliste
+    /// trotzdem absolut zum gesamten Text — sonst zeigte die Trefferliste
     /// falsche Zeilennummern. `nil` = ganzer Text (Normalfall).
     static func find(in text: String, options: SearchOptions,
                      maxMatches: Int = defaultMaxMatches,
@@ -173,10 +173,10 @@ enum BufferSearch {
         // veraltete Selektion nach einer Inhalts-Änderung nicht crasht).
         let fullRange = NSRange(location: 0, length: ns.length)
         let scanRange = searchRange.map { NSIntersectionRange($0, fullRange) } ?? fullRange
-        // `enumerateMatches` statt `matches(in:)`: erzeugt KEIN Zwischen-
+        // `enumerateMatches` statt `matches(in:)`: erzeugt kein Zwischen-
         // Array über alle Treffer (das wäre bei kurzen Pattern in großen
         // Dateien selbst schon riesig) und erlaubt Abbruch via `stop`.
-        // `.reportProgress` sorgt auch bei riesigen Texten OHNE Treffer für
+        // `.reportProgress` sorgt auch bei riesigen Texten ohne Treffer für
         // regelmäßige Callbacks. Ohne diese Option könnte nur bei gefundenen
         // Treffern abgebrochen werden und ein No-Match-Scan liefe zu Ende.
         plan.regex.enumerateMatches(in: text, options: [.reportProgress],
@@ -211,7 +211,7 @@ enum BufferSearch {
                 }
                 let column = r.location - lineStart + 1
                 let matchText = ns.substring(with: r)
-                // Kontext endet am Inhaltsende der Zeile, also VOR CR/LF.
+                // Kontext endet am Inhaltsende der Zeile, also vor CR/LF.
                 // Bei mehrzeiligen Treffern zählt die Zeile des Trefferendes:
                 // Genau dort setzt der sichtbare Rest nach dem Treffer an.
                 let afterMatch = NSMaxRange(r)
@@ -246,14 +246,14 @@ enum BufferSearch {
                             wasCapped: total > matches.count, invalidPatternMessage: nil)
     }
 
-    /// Ersetzt ALLE Treffer im Text in EINEM Durchgang — unabhängig vom
+    /// Ersetzt alle Treffer im Text in einem Durchgang — unabhängig vom
     /// Listen-Cap. Nutzt `stringByReplacingMatches`, materialisiert also
     /// keine Treffer-Objekte und bleibt auch bei sehr vielen Treffern
     /// schnell. Das ist der korrekte Pfad für „Alle ersetzen": die gekappte
     /// `bufferMatches`-Liste würde sonst nur die ersten N Treffer ersetzen.
     /// `nil` bei leerem oder ungültigem Pattern (Aufrufer ersetzt dann nichts).
     ///
-    /// `searchRange`: Wenn gesetzt, wird NUR innerhalb dieser NSRange ersetzt
+    /// `searchRange`: Wenn gesetzt, wird nur innerhalb dieser NSRange ersetzt
     /// (BBEdit „Replace All in Selection"); der Rest des Texts bleibt
     /// unverändert. `nil` = ganzer Text.
     static func replaceAll(in text: String, options: SearchOptions,
@@ -288,15 +288,15 @@ enum BufferSearch {
 
     // MARK: - Zeilen-/Spalten-Berechnung
 
-    /// Sammelt die Start-Offsets ALLER Zeilen — `[0, Start_Zeile2, …]`.
+    /// Sammelt die Start-Offsets aller Zeilen — `[0, Start_Zeile2, …]`.
     ///
-    /// WICHTIG: Nutzt die NSString-Zeilensemantik (`getLineStart:end:`), die
-    /// `\n` (LF), `\r` (CR, klassisches Mac), `\r\n` (CRLF) UND die Unicode-
+    /// Wichtig: Nutzt die NSString-Zeilensemantik (`getLineStart:end:`), die
+    /// `\n` (LF), `\r` (CR, klassisches Mac), `\r\n` (CRLF) und die Unicode-
     /// Zeilen-/Absatztrenner (U+2028/U+2029/U+0085) gleichermaßen als
     /// Zeilenende behandelt. Genau so zählt auch der Editor (CodeEditTextView
     /// baut sein Zeilen-Layout über dieselbe API — `NSTextStorage.getNextLine`).
     ///
-    /// Frühere Fassung zählte NUR LF. Bei reinen CR-Dateien (z.B. 4D-Logs)
+    /// Frühere Fassung zählte nur LF. Bei reinen CR-Dateien (z.B. 4D-Logs)
     /// liefen so tausende Editor-Zeilen in wenige „Zeilen" zusammen → falsche
     /// Zeilennummern in der Trefferliste und ein ins Leere zielender Sprung.
     static func collectLineStarts(in ns: NSString) -> [Int] {
@@ -320,7 +320,7 @@ enum BufferSearch {
     }
 
     /// Wendet eine Liste von Treffern auf einen Text an und gibt den
-    /// ersetzten String zurück. PURE Funktion — kein Workspace, kein UI.
+    /// ersetzten String zurück. Pure Funktion — kein Workspace, kein UI.
     /// Voraussetzung: `matches` ist nach Range-Offset aufsteigend sortiert
     /// und nicht überlappend (so liefert `BufferSearch.find` das auch).
     static func applyReplacements(in text: String, matches: [Match]) -> String {
@@ -359,7 +359,7 @@ enum BufferSearch {
         let safeLine = max(1, line)
         // Anfangs-Offset der gewünschten Zeile (jenseits Dok-Ende → Dok-Ende).
         let lineStart: Int = (safeLine - 1 < lineStarts.count) ? lineStarts[safeLine - 1] : length
-        // Ende der Zeile VOR dem Terminator — über dieselbe NSString-API, die
+        // Ende der Zeile vor dem Terminator — über dieselbe NSString-API, die
         // CR/LF/CRLF/Unicode-Trenner einheitlich erkennt.
         var contentsEnd = NSNotFound
         if lineStart < length {
@@ -372,7 +372,7 @@ enum BufferSearch {
         return NSRange(location: offset, length: 0)
     }
 
-    /// Berechnet Zeile/Spalte des ENDES (exklusiv) eines Treffers aus dessen
+    /// Berechnet Zeile/Spalte des Endes (exklusiv) eines Treffers aus dessen
     /// Start-Zeile/-Spalte und Treffer-Text. Spalten 1-basiert, UTF-16 —
     /// konsistent mit der Suche. Mehrzeilige Treffer (Treffer-Text enthält
     /// `\n`) werden über mehrere Zeilen korrekt aufgelöst.
@@ -407,16 +407,11 @@ enum BufferSearch {
 
 /// Ein angeforderter Editor-Sprung als konsumierbarer Zustand.
 ///
-/// Warum nicht nur die Notification? Der Sprung trifft häufig einen Editor,
-/// der gerade neu erzeugt wird (Tab-Wechsel und das Ende des asynchronen
-/// Ladens wechseln die SwiftUI-`.id` des Editors). Eine einmalige
-/// Notification kann genau in dieses Fenster fallen: Der alte Empfänger ist
-/// schon abgehängt, der neue noch nicht abonniert — der Sprung verpufft, und
-/// der Klick auf einen Suchtreffer wirkt „folgenlos" (unter Last am
-/// 2026-08-19 reproduziert, lokal 1 von 3 jump-Selbsttestläufen). Deshalb
-/// hinterlegt jeder Sprung sich zusätzlich hier; der (neu) eingehängte
-/// Editor desselben Dokuments holt ihn beim Erscheinen nach und verbraucht
-/// ihn.
+/// Tab-Wechsel und asynchroner Ladeabschluss können die SwiftUI-`.id` des
+/// Editors wechseln. Eine Notification zwischen Abhängen des alten und
+/// Abonnieren des neuen Editors ginge verloren. Der neu eingehängte Editor
+/// desselben Dokuments holt deshalb den hinterlegten Sprung nach und
+/// verbraucht ihn.
 struct PendingEditorJump {
     /// Dokument, für das der Sprung gilt — ein später eingehängter Editor
     /// eines anderen Dokuments darf ihn nicht anwenden.
@@ -429,7 +424,7 @@ struct PendingEditorJump {
     let range: NSRange?
 }
 
-/// Dokument, dem ein VERZÖGERT gepostetes Treffer-Sprung-Ziel gilt.
+/// Dokument, dem ein verzögert gepostetes Treffer-Sprung-Ziel gilt.
 /// Die Aufrufer wechseln erst den Tab beziehungsweise laden die Datei und
 /// posten den Sprung danach — einen Runloop-Tick oder eine ganze Ladezeit
 /// später. Wechselt der Nutzer in diesem Fenster erneut, ist der Sprung
@@ -507,29 +502,18 @@ extension Workspace {
 }
 
 extension NotificationCenter {
-    /// Postet einen Editor-Sprung zu einem Treffer über Zeile/Spalte
-    /// (Start UND Ende) statt nur der absoluten NSRange.
+    /// Postet einen Editor-Sprung über Zeile und Spalte von Start und Ende.
     ///
-    /// Warum nicht die Range? Die absolute Range ist die Summe ALLER
-    /// Vorzeilen-Längen. Weicht der Editor-Storage auch nur in einer
-    /// früheren Zeile in der Länge ab (Encoding-/Line-Ending-Normalisierung,
-    /// BOM, interne CESE-Aufbereitung), driftet die Range — der Cursor landet
-    /// daneben (beobachtet: „Müller" statt „Daniel"). Zeile/Spalte hängen
-    /// dagegen nur an der Zeilenumbruch-ZAHL (stabil) und der Position
-    /// INNERHALB der Zeile (stabil). CodeEditSourceEditor rechnet daraus die
-    /// Selektion gegen sein EIGENES Zeilen-Layout (`setCursorPositions` →
-    /// `textLineForIndex`), also immer konsistent mit dem, was es anzeigt.
+    /// Eine absolute NSRange summiert alle Vorzeilen-Längen. Normalisiert der
+    /// Editor etwa Encoding, Zeilenenden oder BOM, kann diese Range vom sichtbaren
+    /// Text abweichen. CodeEditSourceEditor berechnet aus Zeile und Spalte die
+    /// Selektion gegen sein eigenes Layout (`setCursorPositions` →
+    /// `textLineForIndex`). Die absolute Range bleibt als Fallback im userInfo,
+    /// etwa für „Zu Zeile springen“ ohne Treffer-Kontext.
     ///
-    /// Die absolute Range bleibt als Fallback im userInfo (z.B. für Sprünge
-    /// ohne Treffer-Kontext wie „Zu Zeile springen").
-    ///
-    /// `requiring` nennt das Dokument, dem der Sprung gilt. Ist es nicht mehr
-    /// das aktive, unterbleibt der Post ganz — siehe `MatchJumpTarget`.
-    ///
-    /// `generation` ist die von `Workspace.beginMatchJump()` gezogene Nummer
-    /// des Auftrags. Hat der Nutzer inzwischen erneut navigiert, ist sie
-    /// veraltet und der Post unterbleibt — auch dann, wenn beide Aufträge
-    /// dasselbe Dokument meinen und der `requiring`-Guard deshalb wahr bleibt.
+    /// `requiring` bindet den Sprung an das aktive Dokument (`MatchJumpTarget`).
+    /// `generation` aus `Workspace.beginMatchJump()` verwirft überholte Aufträge
+    /// auch dann, wenn ein neuer Sprung dasselbe Dokument betrifft.
     @discardableResult
     func postMatchJump(_ match: BufferSearch.Match, for workspace: Workspace,
                        requiring target: MatchJumpTarget? = nil,
@@ -548,7 +532,7 @@ extension NotificationCenter {
             startLine: match.line, startColumn: match.column,
             endLine: end.line, endColumn: end.column,
             range: match.range)
-        // `object` adressiert genau EIN Dokumentfenster. Ohne diese Zuordnung
+        // `object` adressiert genau ein Dokumentfenster. Ohne diese Zuordnung
         // würden bei mehreren offenen Workspaces alle EditorView-Instanzen
         // denselben Treffer-Sprung verarbeiten.
         post(name: .fastraJumpToRange, object: workspace, userInfo: [

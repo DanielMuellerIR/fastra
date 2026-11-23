@@ -1,12 +1,10 @@
 // FileTreeFilter.swift
 //
-// Dateinamens-Filter der Projekt-Seitenleiste (Etappe 3 Wunschpaket
-// 2026-07c). BEWUSST ein reiner DATEINAMENS-Filter: case-insensitiver
-// Teilstring, kein Fuzzy-Matching, keine zweite Volltextsuche — Inhalte
-// durchsucht weiterhin der Suchdialog mit Ordner-Scope.
-//
-// Der Scan läuft rekursiv über den Projektordner (der Baum selbst lädt
-// lazy nur aufgeklappte Ebenen) und gehört auf einen Hintergrund-Task:
+// Dateinamens-Filter der Projekt-Seitenleiste. Bewusst ein
+// reiner Dateinamens-Filter: case-insensitiver Teilstring, kein Fuzzy-Matching,
+// keine zweite Volltextsuche — Inhalte durchsucht weiterhin der Suchdialog mit
+// Ordner-Scope. Der Scan läuft rekursiv über den Projektordner (der Baum selbst
+// lädt lazy nur aufgeklappte Ebenen) und gehört auf einen Hintergrund-Task:
 // große Bäume und langsame Volumes dürfen den Main-Thread nie blockieren.
 
 import Foundation
@@ -28,11 +26,11 @@ extension Workspace {
 }
 
 /// Ergebnis eines Filter-Scans. Der gespeicherte Aufklappzustand des Baums
-/// bleibt UNBERÜHRT — während des Filterns gelten `expandedDirectories`,
+/// bleibt unberührt — während des Filterns gelten `expandedDirectories`,
 /// danach zeigt der Baum wieder seinen alten Zustand.
 struct FileTreeFilterResult: Equatable {
     let query: String
-    /// Pfade der passenden DATEIEN (nur die bleiben sichtbar).
+    /// Pfade der passenden Dateien (nur die bleiben sichtbar).
     let matchingFiles: Set<String>
     /// Ordner auf dem Weg zu Treffern — im gefilterten Baum sichtbar und
     /// zwangsweise aufgeklappt.
@@ -41,7 +39,7 @@ struct FileTreeFilterResult: Equatable {
     let matchCount: Int
     /// Anzahl aller geprüften Dateien (das „M").
     let totalFileCount: Int
-    /// `true` = Scan an der Sicherheitsgrenze gekappt — steht SICHTBAR in
+    /// `true` = Scan an der Sicherheitsgrenze gekappt — steht sichtbar in
     /// der Ansicht (keine stillen Obergrenzen, Produktregel).
     let truncated: Bool
 }
@@ -52,7 +50,7 @@ enum FileTreeFilter {
     static let maximumScannedFiles = 50_000
 
     /// Case-insensitiver Teilstring-Vergleich (deckt auch Umlaute ab:
-    /// „ä" findet „Ä"). Bewusst KEIN Fuzzy-Matching in dieser Ausbaustufe.
+    /// „ä" findet „Ä"). Bewusst kein Fuzzy-Matching in dieser Ausbaustufe.
     static func matches(name: String, query: String) -> Bool {
         guard !query.isEmpty else { return true }
         return name.range(of: query, options: .caseInsensitive) != nil
@@ -74,9 +72,9 @@ enum FileTreeFilter {
         }
     }
 
-    /// Rekursiver Scan unter `rootURL`. Läuft ABSICHTLICH über dieselbe
+    /// Rekursiver Scan unter `rootURL`. Läuft absichtlich über dieselbe
     /// `FileTree.children`-Basis wie der sichtbare Baum: gleiche Regeln
-    /// (versteckte Einträge übersprungen) und vor allem DIESELBE Pfadform.
+    /// (versteckte Einträge übersprungen) und vor allem dieselbe Pfadform.
     /// Ein `FileManager.enumerator` löst Symlinks im Pfad auf (`/var` →
     /// `/private/var`) — seine Pfade passten dann nie zu den Baumknoten,
     /// und der Filter bliebe still leer (real über Tests in einem
@@ -89,11 +87,11 @@ enum FileTreeFilter {
         var expanded: Set<String> = []
         var total = 0
         var truncated = false
-        // `contentsOfDirectory` liefert KANONISCHE Pfade (`/var` →
+        // `contentsOfDirectory` liefert kanonische Pfade (`/var` →
         // `/private/var`) — die Baumknoten tragen also diese Form. Die
         // Wurzel muss dieselbe Form haben, sonst passte die Eltern-Kette
         // der Treffer nie zu den Knoten-IDs des Baums. Achtung:
-        // `resolvingSymlinksInPath()` wäre FALSCH — es entfernt
+        // `resolvingSymlinksInPath()` wäre falsch — es entfernt
         // dokumentiertermaßen gerade das `/private`-Präfix.
         let root = rootURL.canonicalFileURL
         let rootPath = root.path

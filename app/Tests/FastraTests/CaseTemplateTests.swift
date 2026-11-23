@@ -51,8 +51,8 @@ func pieces_mixedTemplate() {
 
 @Test("\\U macht Backref-Inhalt GROSS, \\E beendet")
 func upperAll_untilEnd() {
-    let out = replaceAll("Müller, Daniel", "(\\w+), (\\w+)", "\\U$2\\E $1")
-    #expect(out == "DANIEL Müller")
+    let out = replaceAll("Müller, Markus", "(\\w+), (\\w+)", "\\U$2\\E $1")
+    #expect(out == "MARKUS Müller")
 }
 
 @Test("\\L macht alles Folgende klein — auch über mehrere Backrefs")
@@ -78,22 +78,22 @@ func modeSwitch_withoutEnd() {
 
 @Test("\\u macht nur das ERSTE Zeichen des Folgetexts groß")
 func upperNext_firstCharOnly() {
-    let out = replaceAll("daniel", "(\\w+)", "\\u$1")
-    #expect(out == "Daniel")
+    let out = replaceAll("markus", "(\\w+)", "\\u$1")
+    #expect(out == "Markus")
 }
 
 @Test("\\l macht nur das erste Zeichen klein")
 func lowerNext_firstCharOnly() {
-    let out = replaceAll("DANIEL", "(\\w+)", "\\l$1")
-    #expect(out == "dANIEL")
+    let out = replaceAll("MARKUS", "(\\w+)", "\\l$1")
+    #expect(out == "mARKUS")
 }
 
 @Test("\\u überträgt sich auf das nächste NICHT-leere Segment (leere Gruppe)")
 func upperNext_carriesOverEmptyExpansion() {
-    // Gruppe 1 matcht leer ((x?) vor „daniel" ohne x) → \u muss am
+    // Gruppe 1 matcht leer ((x?) vor „markus" ohne x) → \u muss am
     // ersten echten Ausgabezeichen (aus $2) greifen.
-    let out = replaceAll("daniel", "(x?)(\\w+)", "\\u$1$2")
-    #expect(out == "Daniel")
+    let out = replaceAll("markus", "(x?)(\\w+)", "\\u$1$2")
+    #expect(out == "Markus")
 }
 
 @Test("\\u wirkt Graphem-sicher (Umlaut bleibt EIN Zeichen)")
@@ -130,16 +130,16 @@ func wildcardMode_backslashUStaysLiteral() {
 
 @Test("Treffer-Vorschau (replacedText) zeigt die Case-Transformation")
 func find_previewShowsTransformedText() {
-    let r = BufferSearch.find(in: "Müller, Daniel",
+    let r = BufferSearch.find(in: "Müller, Markus",
                               options: regexOptions("(\\w+), (\\w+)", "\\U$2\\E $1"))
     #expect(r.matches.count == 1)
-    #expect(r.matches.first?.replacedText == "DANIEL Müller")
+    #expect(r.matches.first?.replacedText == "MARKUS Müller")
 }
 
 @Test("Alle ersetzen ohne Operatoren bleibt unverändert (Fast Path)")
 func replaceAll_fastPathUnchanged() {
-    let out = replaceAll("Müller, Daniel", "(\\w+), (\\w+)", "$2 $1")
-    #expect(out == "Daniel Müller")
+    let out = replaceAll("Müller, Markus", "(\\w+), (\\w+)", "$2 $1")
+    #expect(out == "Markus Müller")
 }
 
 @Test("Mehrere Treffer werden einzeln transformiert, Zwischentext bleibt")

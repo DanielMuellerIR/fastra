@@ -7,6 +7,7 @@ import AppKit
 /// (derselbe Pfad wie ⌘O — Encoding-Erkennung, Tab-Dedup inklusive).
 struct FileTreeSidebar: View {
     let rootURL: URL
+    private let defaults: UserDefaults
     @EnvironmentObject var workspace: Workspace
 
     /// Rekursiver FSEvents-Wächter; seine Generation macht externe Änderungen
@@ -17,31 +18,31 @@ struct FileTreeSidebar: View {
     /// Zustand ein Neuladen der Ebenen überlebt.
     @State private var expanded: Set<String>
 
-    /// Verzeichnis-Listings pro Ordner im Speicher (Performance-Befund
-    /// 2026-07-24): der Baum liest im View-Body nur noch aus diesem Cache,
-    /// nie mehr direkt von der Platte. FSEvents (`watcher.generation`)
-    /// invalidieren ihn; das frische Listing kommt aus dem Hintergrund.
+    /// Verzeichnis-Listings pro Ordner im Speicher. Der View-Body liest nur
+    /// den Cache; FSEvents (`watcher.generation`) invalidieren ihn. Frische
+    /// Listings kommen aus dem Hintergrund.
     @StateObject private var childrenCache = FileTreeChildrenCache()
 
     /// Asynchron festgestellte leere Ordner → deren Zeilen verlieren das
-    /// Aufklapp-Chevron (Etappe 1 Wunschpaket 2026-07).
+    /// Aufklapp-Chevron.
     @StateObject private var emptiness = FolderEmptinessCache()
 
-    // Das Ergebnis des Dateinamens-Filters (Etappe 3 Wunschpaket 2026-07c)
-    // liegt in `workspace.fileTreeFilterResult`, nicht als `@State` hier: Ein
-    // Wechsel auf einen anderen Seitenleisten-Tab baut diese Ansicht komplett
-    // ab. Der Suchtext überlebte das (er lag schon immer am Workspace), das
-    // Ergebnis nicht — der Baum kam ungefiltert zurück. Der gespeicherte
-    // Aufklappzustand (`expanded`) bleibt während des Filterns unberührt;
-    // Escape/X stellt so automatisch den vorigen Zustand wieder her.
+    // Das Ergebnis des Dateinamens-Filters liegt in
+    // `workspace.fileTreeFilterResult`, nicht als `@State` hier: Ein Wechsel
+    // auf einen anderen Seitenleisten-Tab baut diese Ansicht komplett ab. Der
+    // Suchtext überlebte das (er lag schon immer am Workspace), das Ergebnis
+    // nicht — der Baum kam ungefiltert zurück. Der gespeicherte Aufklappzustand
+    // (`expanded`) bleibt während des Filterns unberührt; Escape/X stellt so
+    // automatisch den vorigen Zustand wieder her.
 
     /// Laufender Scan — ein neuer Tastendruck ersetzt ihn (Debounce+Cancel).
     @State private var filterScanTask: Task<Void, Never>?
 
-    init(rootURL: URL) {
+    init(rootURL: URL, defaults: UserDefaults = AppDefaults.store) {
         self.rootURL = rootURL
+        self.defaults = defaults
         _watcher = StateObject(wrappedValue: ProjectFileWatcher(rootURL: rootURL))
-        _expanded = State(initialValue: FileTreeExpansionStore.load(for: rootURL))
+        _expanded = State(initialValue: FileTreeExpansionStore.load(for: rootURL, defaults: defaults))
     }
 
     var body: some View {
@@ -50,12 +51,9 @@ struct FileTreeSidebar: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
 
-            // Branch-Bereich (Etappe 2): nur sichtbar, wenn das Projekt ein
-            // Git-Repo ist und git verfügbar (sonst still weg). Seit
-            // 2026-09-01 zwei Zeilen (Daniel-Wunsch): oben Branch samt
-            // Remote-Vergleich, darunter die Aktions-Knöpfe mit mehr Abstand —
-            // eine Zeile war schon bei kurzen Branch-Namen voll, bei langen
-            // passte sie nie.
+            // Branch-Bereich nur für Git-Projekte mit verfügbarem git anzeigen.
+            // Branch und Remote-Vergleich stehen über den Aktionsknöpfen, damit auch
+            // lange Branch-Namen Platz haben.
             if let status = workspace.gitStatus {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 5) {
@@ -70,7 +68,7 @@ struct FileTreeSidebar: View {
                                     if candidate.isCurrent {
                                         Label(candidate.name, systemImage: "checkmark")
                                     } else if candidate.blockingWorktree != nil {
-                                        // Sichtbar VOR dem Klick: Git kann
+                                        // Sichtbar vor dem Klick: Git kann
                                         // denselben Branch nur an einer Stelle
                                         // auschecken. Der Eintrag bleibt
                                         // anklickbar — der gemerkte Stand kann
@@ -259,7 +257,7 @@ struct FileTreeSidebar: View {
             }
 
             // Dezenter, nicht-modaler Hinweis — z. B. „Seitenleiste zeigt
-            // jetzt …“ nach dem automatischen Ordnerwechsel (Etappe 1). Er
+            // jetzt …“ nach dem automatischen Ordnerwechsel. Er
             // blendet sich nach wenigen Sekunden von selbst wieder aus.
             if let notice = workspace.sidebarNotice {
                 Label(notice, systemImage: "arrow.triangle.2.circlepath")
@@ -272,10 +270,8 @@ struct FileTreeSidebar: View {
                     .accessibilityIdentifier("sidebarNotice")
             }
 
-            // Dateinamens-Filter (Etappe 3 Wunschpaket 2026-07c): Das dauerhaft
-            // sichtbare Feld sitzt seit 2026-09-01 rechts in der Kopfzeile
-            // (`filterFieldCompact` im Header-Accessory). Hier bleibt nur die
-            // Zählerzeile während einer aktiven Filterung.
+            // Der Dateinamensfilter steht dauerhaft in der Kopfzeile
+            // (`filterFieldCompact`). Hier erscheint nur der Zähler bei aktiver Filterung.
             filterStatusLine
 
             if let result = workspace.fileTreeFilterResult, result.matchCount == 0,
@@ -299,14 +295,14 @@ struct FileTreeSidebar: View {
                                             memory: workspace.sidebarScrollMemory)
                 }
                 // Das Lesen bindet die Published-Generation an diesen View.
-                // Jede Änderung baut die sichtbaren Ebenen neu. Bewusst NUR
+                // Jede Änderung baut die sichtbaren Ebenen neu. Bewusst nur
                 // am Baum (nicht an Kopf + Filterfeld): FSEvents dürfen dem
                 // Nutzer nicht das Filterfeld unter den Fingern zurücksetzen.
                 .id(watcher.generation)
             }
         }
         .onChange(of: expanded) {
-            FileTreeExpansionStore.save(expanded, for: rootURL)
+            FileTreeExpansionStore.save(expanded, for: rootURL, defaults: defaults)
         }
         .onChange(of: workspace.fileTreeFilterQuery) { _, newValue in
             scheduleFilterScan(query: newValue, debounced: true)
@@ -337,17 +333,14 @@ struct FileTreeSidebar: View {
                 scheduleFilterScan(query: workspace.fileTreeFilterQuery,
                                    debounced: false)
             }
-            // Der Befehle-Button muss laufende Vorgänge und die Herkunft der
-            // Identität auch erkennen, wenn der Nutzer nie in den Changes-Tab
-            // wechselt. Beide Reads bleiben asynchron und repositorykoordiniert.
+            // Der Befehle-Button braucht laufende Vorgänge und Herkunft der Identität
+            // auch ohne Wechsel in den Changes-Tab. Beide Reads bleiben asynchron und
+            // repositorykoordiniert.
             //
-            // WICHTIG: erst im nächsten Main-Loop-Durchlauf. Seit die
-            // Seitenleiste auch programmatisch erscheinen kann (Elternordner-
-            // Öffnen nach Einzeldatei, Etappe 1), läuft dieses onAppear sonst
-            // MITTEN im SwiftUI-Layout-Pass — und `GitRunner.isAvailable`
-            // spinnt beim allerersten Aufruf über `xcode-select` den RunLoop
-            // (`waitUntilExit`). Ein UpdateCycle-Observer feuert dann reentrant
-            // im Layout und stürzt ab (SIGSEGV, Befund Selbsttest 2026-07-17).
+            // Erst im nächsten Main-Loop-Durchlauf starten: `onAppear` kann während
+            // eines SwiftUI-Layouts laufen. Die Erstauflösung von `GitRunner.isAvailable`
+            // über `xcode-select` dreht den RunLoop und könnte Layout-Observer erneut
+            // aufrufen.
             DispatchQueue.main.async {
                 workspace.refreshGitOperationState()
                 workspace.refreshGitIdentity()
@@ -364,9 +357,9 @@ struct FileTreeSidebar: View {
         workspace.refreshGitStatus()
     }
 
-    // MARK: - Dateinamens-Filter (Etappe 3 Wunschpaket 2026-07c)
+    // MARK: - Dateinamens-Filter
 
-    /// Nur ein fertiges Ergebnis ZUM AKTUELLEN Suchtext filtert den Baum —
+    /// Nur ein fertiges Ergebnis zum aktuellen Suchtext filtert den Baum —
     /// veraltete Ergebnisse (Nutzer tippt schneller als der Scan) nie.
     private var activeFilterResult: FileTreeFilterResult? {
         guard !workspace.fileTreeFilterQuery.isEmpty,
@@ -428,7 +421,7 @@ struct FileTreeSidebar: View {
                 .accessibilityLabel(L10n.format("%ld von %ld Dateien",
                                                 result.matchCount,
                                                 result.totalFileCount))
-                // Selbsttest `sidebarfilter` liest hier den ECHT
+                // Selbsttest `sidebarfilter` liest hier den echt
                 // gerenderten Zählerstand ab.
                 .background(SelfTestMarker(
                     id: "sidebarFilterState-n\(result.matchCount)-m\(result.totalFileCount)"
@@ -446,11 +439,11 @@ struct FileTreeSidebar: View {
                 .fastraFont(.small)
                 .foregroundColor(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            // Brücke zur Volltextsuche: Der Dateibaum filtert nur NAMEN —
+            // Brücke zur Volltextsuche: Der Dateibaum filtert nur Namen —
             // wer Inhalte sucht, landet hier richtig.
             Button {
                 // Mit Projekt im Projekt-Bereich, sonst in den gemerkten
-                // Ordnern — derselbe Einstieg wie ⇧⌘F (Review-Fund 2026-09-16).
+                // Ordnern — derselbe Einstieg wie ⇧⌘F.
                 workspace.presentMultiFileContentSearch()
             } label: {
                 Label(L10n.string("Im Inhalt suchen…"), systemImage: "text.magnifyingglass")
@@ -596,7 +589,7 @@ struct FileTreeSidebar: View {
             .disabled(workspace.gitOperationsAreBusy)
             // fastraHelp statt .help: Der Knopf ist gerade dann deaktiviert,
             // wenn eine andere Git-Operation läuft — und genau dann soll der
-            // Tooltip den Fetch-Stand erklären (Review 2026-09-02).
+            // Tooltip den Fetch-Stand erklären.
             .fastraHelp(Self.fetchDescription(workspace.gitRepositorySnapshot?.fetch, now: now))
             .accessibilityLabel(workspace.gitRepositorySnapshot?.fetch.error == nil
                                 ? "Remote-Änderungen abrufen" : "Fetch erneut versuchen")
@@ -658,7 +651,7 @@ struct FileTreeSidebar: View {
     }
 }
 
-/// Die kuratierten Git-Aktionen als Menü-Einträge (Etappe 2, Schritt 4).
+/// Die kuratierten Git-Aktionen als Menü-Einträge.
 /// Einmal definiert, an zwei Stellen eingehängt: Seitenleisten-Popup und
 /// „Git"-Menü in der Menüleiste. Jeder Punkt trägt seinen dezenten Hilfe-Text
 /// als Tooltip (`.help`) — sichtbar bei Bedarf, nie aufdringlich.
@@ -764,21 +757,16 @@ struct GitActionMenu: View {
     }
 }
 
-/// Eine Ordner-Ebene: listet die Kinder eines Ordners und rendert für
-/// aufgeklappte Unterordner rekursiv die nächste Ebene. Die Kinder kommen
-/// aus dem `FileTreeChildrenCache` — der `body` liest also nur Speicher.
-/// Früher las er das Verzeichnis bei jedem Neu-Render direkt von der Platte;
-/// bei sehr großen Ordnern fraß Enumeration+Sortierung den Main-Thread
-/// praktisch komplett (sample-Befund 2026-07-24). Fehlende Einträge lädt der
-/// Cache im Hintergrund nach und publiziert das Ergebnis — `.onAppear`-
-/// Ladelogik direkt im View war dagegen unzuverlässig (der Baum blieb leer,
-/// Befund Screenshot 2026-07-12).
+/// Eine Ordner-Ebene mit rekursiv aufgeklappten Unterordnern.
+/// Der `body` liest ausschließlich den `FileTreeChildrenCache`, damit
+/// Enumeration und Sortierung großer Ordner den Main-Thread nicht blockieren.
+/// Der Cache lädt fehlende Einträge im Hintergrund und publiziert sie.
 private struct FileTreeLevel: View {
     let url: URL
     let depth: Int
     @Binding var expanded: Set<String>
-    /// Aktiver Dateinamens-Filter (Etappe 3): blendet Nicht-Treffer aus und
-    /// klappt Treffer-Pfade ZWANGSWEISE auf — ohne `expanded` anzufassen,
+    /// Aktiver Dateinamens-Filter: blendet Nicht-Treffer aus und
+    /// klappt Treffer-Pfade zwangsweise auf — ohne `expanded` anzufassen,
     /// damit Escape/X den vorigen Zustand unverändert wiederherstellt.
     let filter: FileTreeFilterResult?
     /// Gecachte Verzeichnis-Listings; Published-Updates rendern die Ebene neu,
@@ -852,7 +840,7 @@ private struct FileTreeLevel: View {
         // klappte ein Klick es nur auf — die Umwandlung war im
         // Dateibaum nur über das Rechtsklickmenü erreichbar.
         if let format = workspace.markdownImportPackageFormat(at: node.url) {
-            switch Workspace.askMarkdownImportPackageChoice(for: node.url,
+            switch workspace.markdownImportDecisions.askPackageChoice(for: node.url,
                                                             format: format) {
             case .convert:
                 workspace.selectedFileTreeFolder = nil
@@ -976,11 +964,11 @@ private struct FileTreeRow: View {
                                 onMutation: onMutation)
         }
         // Selbsttests (`sidebarfilter`) prüfen über diesen Marker, welche
-        // Zeilen WIRKLICH gerendert sind — nicht bloß den Modellzustand.
-        // Die Filterphase steckt MIT in der ID: LazyVStack hält NSViews
+        // Zeilen wirklich gerendert sind — nicht bloß den Modellzustand.
+        // Die Filterphase steckt mit in der ID: LazyVStack hält NSViews
         // entfernter Zeilen in einem Wiederverwendungs-Pool, eine bloße
         // „Marker weg?"-Prüfung wäre deshalb unzuverlässig. Gepoolte
-        // Alt-Views tragen aber nie die ID der AKTUELLEN Phase.
+        // Alt-Views tragen aber nie die ID der aktuellen Phase.
         .background(SelfTestMarker(
             id: "fileTreeRow-\(node.name)-\(filterActive ? "gefiltert" : "voll")"
         ).frame(width: 0, height: 0))
@@ -1028,7 +1016,9 @@ struct FileTreeContextMenu: View {
                 Button("In Markdown umwandeln…") { workspace.convertToMarkdown(node.url) }
             }
             Divider()
-            Button("Duplizieren") { duplicate(node) }
+            // AppKit kann die Aktion erst nach einem zwischenzeitlichen Tabwechsel zustellen.
+            let openingContext = workspace.fileTreeDuplicateContext()
+            Button("Duplizieren") { duplicate(node, openingContext: openingContext) }
             Button("Umbenennen…") { rename(node) }
             Button("In den Papierkorb legen…", role: .destructive) { trash(node) }
         }
@@ -1068,39 +1058,23 @@ struct FileTreeContextMenu: View {
         ) else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed != node.name else { return }
-        do {
-            // Quelle und Ziel werden vor dem Verschieben app-weit reserviert.
-            // So kann weder ein Ordner-Apply noch ein Hex-Save denselben Pfad
-            // während der kurzen Umbenennung parallel verändern.
-            let proposedDestination = try FileTreeOperations.destination(
-                named: trimmed, in: node.url.deletingLastPathComponent()
-            )
-            guard let operation = workspace.beginFileTreeMove(
-                from: node.url, to: proposedDestination
-            ) else { return }
-            defer { workspace.finishFileTreeMove(operation) }
-            let destination = try FileTreeOperations.rename(node.url, to: trimmed)
-            workspace.handleFileTreeMove(
-                from: node.url, to: destination, operation: operation
-            )
-            onMutation()
-        } catch {
-            showError(title: L10n.format("„%@“ konnte nicht umbenannt werden", node.name), error: error)
+        workspace.renameFileTreeItem(at: node.url, to: trimmed) { result in
+            switch result {
+            case .success:
+                onMutation()
+            case .failure(let error):
+                guard !(error is CancellationError) else { return }
+                showError(title: L10n.format("„%@“ konnte nicht umbenannt werden", node.name), error: error)
+            }
         }
     }
 
-    private func duplicate(_ node: FileTreeNode) {
-        // Kopieren kann bei großen Dateien oder Verzeichnissen dauern und
-        // blockiert deshalb nicht den Main-Thread. Erst das Aktualisieren des
-        // Dateibaums und Öffnen des neuen Tabs kehrt auf die UI zurück.
-        Task {
-            let result = await Task.detached(priority: .userInitiated) {
-                Result { try FileTreeOperations.duplicate(node.url) }
-            }.value
+    private func duplicate(_ node: FileTreeNode, openingContext: Workspace.FileTreeDuplicateContext) {
+        workspace.duplicateFileTreeItem(at: node.url, isDirectory: node.isDirectory,
+                                        openingContext: openingContext) { result in
             switch result {
-            case .success(let destination):
+            case .success:
                 onMutation()
-                if !node.isDirectory { workspace.loadFile(at: destination) }
             case .failure(let error):
                 showError(title: L10n.format("„%@“ konnte nicht dupliziert werden", node.name),
                           error: error)
@@ -1146,8 +1120,8 @@ struct FileTreeContextMenu: View {
 }
 
 /// Hält die Verzeichnis-Listings des Dateibaums pro Ordnerpfad im Speicher
-/// (Performance-Befund 2026-07-24): `FileTreeLevel.body` las die Kinder
-/// bisher bei JEDEM SwiftUI-Durchlauf synchron von der Platte und sortierte
+///: `FileTreeLevel.body` las die Kinder
+/// bisher bei jedem SwiftUI-Durchlauf synchron von der Platte und sortierte
 /// sie — bei sehr großen Ordnern (z. B. dem System-Temp-Ordner) verbrachte
 /// der Main-Thread praktisch die gesamte Zeit in Enumeration+Sortierung.
 ///
@@ -1171,7 +1145,7 @@ final class FileTreeChildrenCache: ObservableObject {
     /// Pfade mit laufendem Ladeauftrag — bündelt doppelte Anforderungen.
     private var inFlight: Set<String> = []
     /// Zählt Invalidierungen. Ein Ladeergebnis, das eine Invalidierung
-    /// ÜBERHOLT hat (Lesen begann davor), wird zwar angezeigt, aber sofort
+    /// überholt hat (Lesen begann davor), wird zwar angezeigt, aber sofort
     /// durch ein frisches Listing ersetzt.
     private var generation = 0
     /// Verzeichnis-Listing, für Tests injizierbar; Default sind die echten
@@ -1233,7 +1207,7 @@ final class FileTreeChildrenCache: ObservableObject {
                 if self.entries[path] != result {
                     self.entries[path] = result
                 }
-                // Kam WÄHREND des Lesens eine neue Invalidierung, kann das
+                // Kam während des Lesens eine neue Invalidierung, kann das
                 // Ergebnis schon wieder veraltet sein → sofort neu lesen.
                 if self.generation != expected {
                     self.load(url)
@@ -1243,17 +1217,15 @@ final class FileTreeChildrenCache: ObservableObject {
     }
 }
 
-/// Merkt sich asynchron festgestellte leere Ordner (Etappe 1 Wunschpaket
-/// 2026-07: Ordner ohne sichtbaren Inhalt zeigen kein Aufklapp-Chevron).
-///
-/// Grundsätze:
-/// - Erst Chevron zeigen, dann ggf. entfernen: bis das Ergebnis da ist, gilt
-///   der Ordner als aufklappbar. Die Prüfung läuft auf einer Hintergrund-
-///   Queue und blockiert auf langsamen Volumes niemals den Main-Thread.
-/// - Gleiche Filterregeln wie beim Aufklappen: `FileTree.children` (versteckte
-///   Einträge zählen nicht als Inhalt).
-/// - Idempotent gegenüber gebündelten FSEvents: Ergebnisse landen als
-///   Set-Insert/-Remove; doppelte Proben desselben Pfads werden gebündelt.
+/// Merkt sich asynchron festgestellte leere Ordner (der aktuellen
+/// Sprachauswahl: Ordner ohne sichtbaren Inhalt zeigen kein Aufklapp-Chevron).
+/// Grundsätze: - Erst Chevron zeigen, dann ggf. entfernen: bis das Ergebnis da
+/// ist, gilt der Ordner als aufklappbar. Die Prüfung läuft auf einer
+/// Hintergrund- Queue und blockiert auf langsamen Volumes niemals den
+/// Main-Thread. - Gleiche Filterregeln wie beim Aufklappen: `FileTree.children`
+/// (versteckte Einträge zählen nicht als Inhalt). - Idempotent gegenüber
+/// gebündelten FSEvents: Ergebnisse landen als Set-Insert/-Remove; doppelte
+/// Proben desselben Pfads werden gebündelt.
 @MainActor
 final class FolderEmptinessCache: ObservableObject {
     typealias ProbeScheduler = (@escaping @Sendable () -> Void) -> Void

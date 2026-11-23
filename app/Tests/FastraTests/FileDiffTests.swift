@@ -1,8 +1,8 @@
 // FileDiffTests.swift
 //
-// Unit-Tests für den UI-freien Datei-Diff-Kern (Etappe 1 Wunschpaket
-// 2026-07c): Zeilen-Ausrichtung, alle Vergleichsoptionen, Leerzeilen- und
-// Unicode-Fälle, Differenzen-Blöcke, Falten und die ehrlichen Grenzen.
+// Unit-Tests für den UI-freien Datei-Diff-Kern:
+// Zeilen-Ausrichtung, alle Vergleichsoptionen, Leerzeilen- und Unicode-Fälle,
+// Differenzen-Blöcke, Falten und die ehrlichen Grenzen.
 
 import Testing
 import Foundation
@@ -89,7 +89,7 @@ func pairedRuns() {
     guard let r = result(FileDiff.compare(left: left, right: right)) else { return }
     let kinds = r.rows.map(\.kind)
     #expect(kinds == [.unchanged, .changed, .changed, .added, .unchanged])
-    // Ein zusammenhängender Lauf → EIN Block, gemischt = changed.
+    // Ein zusammenhängender Lauf → ein Block, gemischt = changed.
     #expect(r.blocks.count == 1)
     #expect(r.blocks[0].kind == .changed)
     #expect(r.blocks[0].beforeLines == 2...3)
@@ -146,7 +146,7 @@ func ignoreTrailingWhitespace() {
     guard let relaxed = result(FileDiff.compare(left: left, right: right,
                                                 options: options)) else { return }
     #expect(relaxed.isIdentical)
-    // Angezeigt wird trotzdem die ORIGINALZEILE, nicht die normalisierte.
+    // Angezeigt wird trotzdem die Originalzeile, nicht die normalisierte.
     #expect(relaxed.rows[0].before == "code();   ")
 }
 
@@ -185,7 +185,7 @@ func ignoreBlankLines() {
     guard let relaxed = result(FileDiff.compare(left: left, right: right,
                                                 options: options)) else { return }
     #expect(relaxed.isIdentical)
-    // Die Leerzeile bleibt SICHTBAR (keine stille Auslassung), einseitig,
+    // Die Leerzeile bleibt sichtbar (keine stille Auslassung), einseitig,
     // aber als ignoriert markiert und nicht als Unterschied gezählt.
     let ignored = relaxed.rows.filter(\.isIgnoredBlank)
     #expect(ignored.count == 1)
@@ -242,7 +242,7 @@ func unicodeIntraline() {
     let right = "Grüße 🌍 Welt"
     guard let r = result(FileDiff.compare(left: left, right: right)) else { return }
     let changed = r.rows.first { $0.kind == .changed }
-    // Gemeinsamer Präfix „Grüße " = 6 Zeichen; das Emoji ist EIN Zeichen.
+    // Gemeinsamer Präfix „Grüße " = 6 Zeichen; das Emoji ist ein Zeichen.
     #expect(changed?.beforeHighlight == 6..<7)
     #expect(changed?.afterHighlight == 6..<7)
 }

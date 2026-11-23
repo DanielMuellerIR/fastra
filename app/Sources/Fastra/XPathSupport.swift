@@ -1,17 +1,15 @@
 // XPathSupport.swift
 //
-// XPath-Navigation für XML (Etappe 5 Wunschpaket 2026-07) — pure Logik:
-//
-// 1. `XPathIndex`: eigener SAX-artiger Ein-Pass-Scanner mit QUELL-OFFSETS.
-//    Foundations XPath (`XMLDocument.nodes(forXPath:)`) liefert keine
-//    Textpositionen und taugt nicht zum Springen; `XMLParser` meldet
-//    Zeilen/Spalten byte-orientiert (Multibyte-Falle bei Umlauten/Emoji).
-//    Der eigene Scanner arbeitet direkt auf UTF-16-Code-Units — dieselben
-//    Offsets, die Editor-Sprünge (`NSRange`) erwarten.
-// 2. `XPathQuery`: Parser + Auswertung des dokumentierten Teilsets:
-//    `/`, `//`, `*`, `[n]`, `[@attr]`, `[@attr='wert']`, `@attr`, `text()`.
-//    Alles andere ergibt eine verständliche Fehlermeldung.
-// 3. `XPathAutocomplete`: Kind-Element- und Attributnamen aus dem Index.
+// XPath-Navigation für XML — pure Logik: 1. `XPathIndex`:
+// eigener SAX-artiger Ein-Pass-Scanner mit Quell-Offsets. Foundations XPath
+// (`XMLDocument.nodes(forXPath:)`) liefert keine Textpositionen und taugt nicht
+// zum Springen; `XMLParser` meldet Zeilen/Spalten byte-orientiert
+// (Multibyte-Falle bei Umlauten/Emoji). Der eigene Scanner arbeitet direkt auf
+// UTF-16-Code-Units — dieselben Offsets, die Editor-Sprünge (`NSRange`)
+// erwarten. 2. `XPathQuery`: Parser + Auswertung des dokumentierten Teilsets:
+// `/`, `//`, `*`, `[n]`, `[@attr]`, `[@attr='wert']`, `@attr`, `text()`. Alles
+// andere ergibt eine verständliche Fehlermeldung. 3. `XPathAutocomplete`:
+// Kind-Element- und Attributnamen aus dem Index.
 
 import Foundation
 

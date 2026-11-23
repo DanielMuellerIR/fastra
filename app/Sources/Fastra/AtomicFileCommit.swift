@@ -49,7 +49,9 @@ enum AtomicFileCommit {
 
     /// Tauscht eine fertig geschriebene Nachbardatei gegen ein vorhandenes
     /// Ziel. `replacementContent` beschreibt die Bytes der Nachbardatei; ihre
-    /// Identität entsteht erst beim Öffnen im gebundenen Elternverzeichnis.
+    /// Identität wird beim Öffnen im gebundenen Elternverzeichnis geprüft,
+    /// falls der Aufrufer bereits eine exklusiv erzeugte Inode gebunden hat.
+    /// `retainPreparedFile` persistiert bei Apply den gebundenen pending-Beleg.
     /// `beforeSwap`, `afterSwap`, `beforeCleanup`, `copyDisplacedMetadata`
     /// und `preparedSnapshotReader` sind ausschließlich deterministische
     /// Testpunkte; der Produktpfad übergibt sie nie. `recoveryStore` ist nur
@@ -61,6 +63,7 @@ enum AtomicFileCommit {
         replacementContent: FileSnapshot,
         verifiedTargetStat: stat? = nil,
         recoveryStore: AtomicCommitRecovery.Store = .standard,
+        retainPreparedFile: ((Int32, FileSnapshot) throws -> Void)? = nil,
         beforeSwap: ((URL) throws -> Void)? = nil,
         afterSwap: ((URL, URL) throws -> Void)? = nil,
         beforeCleanup: ((URL, URL) throws -> Void)? = nil,
@@ -99,84 +102,39 @@ enum AtomicFileCommit {
         guard preparedFD >= 0 else { throw currentPOSIXError() }
         defer { Darwin.close(preparedFD) }
 
-        var targetBefore = stat()
-        var preparedBefore = stat()
-        guard fstat(targetFD, &targetBefore) == 0,
-              fstat(preparedFD, &preparedBefore) == 0 else {
-            throw currentPOSIXError()
-        }
-        guard isRegular(targetBefore), isRegular(preparedBefore),
-              targetBefore.st_dev == preparedBefore.st_dev,
-              !sameIdentity(targetBefore, preparedBefore) else {
-            throw POSIXError(.EINVAL)
-        }
-
-        // Der Hash entsteht am gebundenen Ziel-FD. Der Deskriptor bleibt bis
-        // nach Tausch oder Rücktausch offen; ein atomarer Fremd-Replace kann
-        // die geprüfte Inode deshalb nicht unter der Hand austauschen.
-        if let verifiedTargetStat {
-            guard sameVersion(verifiedTargetStat, targetBefore),
-                  expected.identity == FileIdentity(stat: targetBefore),
-                  expected.byteCount == Int(targetBefore.st_size) else {
-                throw conflict(.conflictUnchanged)
-            }
-        } else {
-            guard targetBefore.st_size == off_t(expected.byteCount),
-                  let current = try? FileSnapshot.readSnapshotOnly(
-                    descriptor: targetFD, fileStat: targetBefore,
-                    byteLimit: UInt64(expected.byteCount)),
-                  current == expected else {
-                throw conflict(.conflictUnchanged)
-            }
-        }
-
-        // Die neue Datei darf auch in der kurzen Zeit zwischen Tausch und
-        // Nachprüfung keine großzügigeren Umask-Rechte sichtbar machen. Rechte,
-        // ACLs und Extended Attributes deshalb schon jetzt übernehmen; nach
-        // dem Tausch werden sie vom tatsächlich verdrängten Objekt aktualisiert.
-        let preparedAccessTime = preparedBefore.st_atimespec
-        let preparedModificationTime = preparedBefore.st_mtimespec
-        guard fcopyfile(targetFD, preparedFD, nil,
-                        UInt32(COPYFILE_METADATA)) == 0 else {
-            throw currentPOSIXError()
-        }
-        let preparedTimes = [preparedAccessTime, preparedModificationTime]
-        let restoredTimes = preparedTimes.withUnsafeBufferPointer { times in
-            futimens(preparedFD, times.baseAddress)
-        }
-        guard restoredTimes == 0 else { throw currentPOSIXError() }
-        var targetAfterMetadata = stat()
-        guard fstat(targetFD, &targetAfterMetadata) == 0,
-              fstat(preparedFD, &preparedBefore) == 0,
-              sameVersion(targetBefore, targetAfterMetadata),
-              preparedBefore.st_size == off_t(replacementContent.byteCount),
-              let preparedSnapshot = try? readPreparedSnapshot(
-                preparedFD, preparedBefore,
-                UInt64(replacementContent.byteCount)),
-              preparedSnapshot.hasSameContent(as: replacementContent) else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        try synchronizeFile(preparedFD)
+        let preparation = try prepareReplacement(
+            targetURL: targetURL,
+            preparedURL: preparedURL,
+            targetFD: targetFD,
+            preparedFD: preparedFD,
+            expected: expected,
+            replacementContent: replacementContent,
+            verifiedTargetStat: verifiedTargetStat,
+            retainPreparedFile: retainPreparedFile,
+            readPreparedSnapshot: readPreparedSnapshot)
 
         // Ab diesem Punkt könnte der nächste Schritt die beiden Namen
-        // tauschen. Die Zuordnung muss deshalb VOR dem Test-Hook und vor
+        // tauschen. Die Zuordnung muss deshalb vor dem Test-Hook und vor
         // RENAME_SWAP auf einem anderen, synchronisierten Datenträgerpfad
         // stehen. Ein Journalfehler lässt das Ziel unverändert.
         let recoveryHandle = try recoveryStore.begin(
             targetURL: targetURL,
             preparedURL: preparedURL,
-            targetStat: targetBefore,
-            preparedStat: preparedBefore,
+            targetStat: preparation.targetVersion,
+            preparedStat: preparation.preparedVersion,
             expectedContent: expected,
             replacementContent: replacementContent)
-        var shouldFinishRecoveryJournal = true
-        defer {
-            if shouldFinishRecoveryJournal {
-                try? recoveryStore.finish(recoveryHandle)
-            }
-        }
+        var completion = PostSwapCompletion(
+            recoveryStore: recoveryStore, recoveryHandle: recoveryHandle)
+        defer { completion.finishJournalIfAllowed() }
 
         try beforeSwap?(targetURL)
+        if retainPreparedFile != nil || replacementContent.identity != nil {
+            let preparedAtSwap = try childStat(directoryFD, preparedName)
+            guard sameVersion(preparation.preparedVersion, preparedAtSwap) else {
+                throw conflict(.conflictUnchanged)
+            }
+        }
 
         let flags = UInt32(RENAME_SWAP)
             | UInt32(RENAME_NOFOLLOW_ANY)
@@ -188,46 +146,223 @@ enum AtomicFileCommit {
             }
             throw currentPOSIXError()
         }
-        // Der erste Tausch muss dauerhaft sein, bevor der verdrängte Name
-        // später verschwindet. Der langsame Sync liegt bewusst VOR der letzten
-        // Identitätsprüfung, damit danach kein breites Unlink-Rennfenster bleibt.
-        guard fsync(directoryFD) == 0 else {
-            shouldFinishRecoveryJournal = false
-            throw recoveryRequired(target: targetURL,
-                                           displaced: preparedURL)
+        return try completion.completeAfterSwap(
+            directoryFD: directoryFD,
+            targetFD: targetFD,
+            preparedFD: preparedFD,
+            targetName: targetName,
+            preparedName: preparedName,
+            targetURL: targetURL,
+            preparedURL: preparedURL,
+            expected: expected,
+            replacementContent: replacementContent,
+            preparation: preparation,
+            flags: flags,
+            afterSwap: afterSwap,
+            beforeCleanup: beforeCleanup,
+            copyDisplacedMetadata: copyDisplacedMetadata,
+            readPreparedSnapshot: readPreparedSnapshot)
+    }
+
+    // Der Journalabschluss bleibt auch über Throwwege beim selben Besitzer.
+    // Die FDs und die Vorbereitung werden nur synchron vom Aufrufer geliehen.
+    private struct PostSwapCompletion {
+        private let recoveryStore: AtomicCommitRecovery.Store
+        private let recoveryHandle: AtomicCommitRecovery.Handle
+        private var shouldFinishRecoveryJournal = true
+
+        init(recoveryStore: AtomicCommitRecovery.Store,
+             recoveryHandle: AtomicCommitRecovery.Handle) {
+            self.recoveryStore = recoveryStore
+            self.recoveryHandle = recoveryHandle
         }
 
-        // Nach `rename` besitzt unsere vorbereitete Inode eine neue ctime.
-        // Diesen unveränderten Stand binden wir VOR dem Test-Hook. Er ist die
-        // einzige sichere Rücktauschbasis; eine spätere Momentaufnahme könnte
-        // bereits die Version eines gleichzeitigen Fremd-Writes festhalten.
-        var preparedRollbackVersion = stat()
-        do {
-            guard fstat(preparedFD, &preparedRollbackVersion) == 0 else {
-                throw currentPOSIXError()
+        func finishJournalIfAllowed() {
+            if shouldFinishRecoveryJournal {
+                try? recoveryStore.finish(recoveryHandle)
             }
-            let preparedAtPath = try childStat(directoryFD, targetName)
-            // Den Inhalt prüft der Abschluss ohnehin nach der
-            // Metadatenübernahme. Hier wird nur die unveränderte Inode-Version
-            // als Rücktauschbasis gebunden; ein dritter Vollscan würde bei
-            // großen Ordner-Apply-Läufen jedes Ersatzbyte nochmals lesen.
-            guard sameIdentity(preparedAtPath, preparedRollbackVersion),
-                  sameVersion(preparedAtPath, preparedRollbackVersion),
-                  sameVersionAcrossRename(preparedBefore, preparedRollbackVersion) else {
+        }
+
+        mutating func completeAfterSwap(
+            directoryFD: Int32,
+            targetFD: Int32,
+            preparedFD: Int32,
+            targetName: String,
+            preparedName: String,
+            targetURL: URL,
+            preparedURL: URL,
+            expected: FileSnapshot,
+            replacementContent: FileSnapshot,
+            preparation: PreSwapPreparation,
+            flags: UInt32,
+            afterSwap: ((URL, URL) throws -> Void)?,
+            beforeCleanup: ((URL, URL) throws -> Void)?,
+            copyDisplacedMetadata: ((Int32, Int32) -> Int32)?,
+            readPreparedSnapshot: PreparedSnapshotReader
+        ) throws -> FileSnapshot {
+            // Der erste Tausch muss dauerhaft sein, bevor der verdrängte Name
+            // später verschwindet. Der langsame Sync liegt bewusst vor der letzten
+            // Identitätsprüfung, damit danach kein breites Unlink-Rennfenster bleibt.
+            guard fsync(directoryFD) == 0 else {
+                shouldFinishRecoveryJournal = false
                 throw recoveryRequired(target: targetURL,
                                                displaced: preparedURL)
             }
-        } catch {
-            shouldFinishRecoveryJournal = false
-            throw recoveryRequired(target: targetURL,
-                                           displaced: preparedURL)
+
+            // Nach `rename` besitzt unsere vorbereitete Inode eine neue ctime.
+            // Diesen unveränderten Stand binden wir vor dem Test-Hook. Er ist die
+            // einzige sichere Rücktauschbasis; eine spätere Momentaufnahme könnte
+            // bereits die Version eines gleichzeitigen Fremd-Writes festhalten.
+            var validation: PostSwapValidation
+            do {
+                var preparedRollbackVersion = stat()
+                guard fstat(preparedFD, &preparedRollbackVersion) == 0 else {
+                    throw currentPOSIXError()
+                }
+                let preparedAtPath = try childStat(directoryFD, targetName)
+                // Den Inhalt prüft der Abschluss ohnehin nach der
+                // Metadatenübernahme. Hier wird nur die unveränderte Inode-Version
+                // als Rücktauschbasis gebunden; ein dritter Vollscan würde bei
+                // großen Ordner-Apply-Läufen jedes Ersatzbyte nochmals lesen.
+                guard sameIdentity(preparedAtPath, preparedRollbackVersion),
+                      sameVersion(preparedAtPath, preparedRollbackVersion),
+                      sameVersionAcrossRename(preparation.preparedVersion,
+                                              preparedRollbackVersion) else {
+                    throw recoveryRequired(target: targetURL,
+                                                   displaced: preparedURL)
+                }
+                validation = PostSwapValidation(rollbackVersion: preparedRollbackVersion)
+            } catch {
+                shouldFinishRecoveryJournal = false
+                throw recoveryRequired(target: targetURL,
+                                               displaced: preparedURL)
+            }
+            // Ab hier enthält der Temp-Name den tatsächlich verdrängten Zielstand.
+            // Jede Validierungs- oder Metadatenpanne versucht zuerst den gebundenen
+            // Rücktausch. Nur wenn dessen Vorbedingungen nicht mehr gelten, müssen
+            // beide erreichbaren Pfade für die manuelle Klärung bestehen bleiben.
+            do {
+                try afterSwap?(targetURL, preparedURL)
+                let verifiedSwap = try validation.validate(
+                    directoryFD: directoryFD,
+                    targetFD: targetFD,
+                    preparedFD: preparedFD,
+                    targetName: targetName,
+                    preparedName: preparedName,
+                    expected: expected,
+                    replacementContent: replacementContent,
+                    preparation: preparation,
+                    copyDisplacedMetadata: copyDisplacedMetadata,
+                    readPreparedSnapshot: readPreparedSnapshot)
+
+                // Erst nach belegtem Erfolg verschwindet die alte Fassung — und
+                // auch dann nur, wenn der Temp-Name nachweislich noch auf die am
+                // Deskriptor verifizierte verdrängte Inode zeigt (siehe
+                // `unlinkVerifiedChild`). Ein im letzten Moment fremd ersetzter
+                // Stand bleibt erhalten und wird als Recovery gemeldet.
+                try beforeCleanup?(targetURL, preparedURL)
+                try unlinkVerifiedChild(
+                    directoryFD: directoryFD, name: preparedName,
+                    claimName: recoveryHandle.cleanupName,
+                    verifiedFD: targetFD,
+                    verifiedVersion: verifiedSwap.displacedVersion,
+                    targetURL: targetURL, preparedURL: preparedURL)
+                if fsync(directoryFD) == 0 {
+                    do {
+                        try recoveryStore.finish(recoveryHandle)
+                        shouldFinishRecoveryJournal = false
+                    } catch {
+                        // Der Commit ist abgeschlossen. Ein stehen gebliebenes
+                        // Journal wird beim nächsten Start als bereits bereinigter
+                        // Tausch erkannt; ein Journalfehler darf den gespeicherten
+                        // Stand nicht nachträglich als fehlgeschlagen ausgeben.
+                    }
+                } else {
+                    // Ob das Unlink nach einem Stromausfall sichtbar bleibt, ist
+                    // ohne Verzeichnis-Sync offen. Das Journal muss beide Fälle
+                    // beim nächsten Start abbilden.
+                    shouldFinishRecoveryJournal = false
+                }
+                return FileSnapshot(
+                    sha256: replacementContent.sha256,
+                    byteCount: replacementContent.byteCount,
+                    identity: FileIdentity(stat: verifiedSwap.installedVersion))
+            } catch let failure as Failure {
+                if case .recoveryRequired = failure {
+                    shouldFinishRecoveryJournal = false
+                    throw failure
+                }
+                do {
+                    try rollbackSwap(
+                        directoryFD: directoryFD,
+                        targetName: targetName,
+                        preparedName: preparedName,
+                        preparedFD: preparedFD,
+                        expectedPreparedVersion: validation.rollbackVersion,
+                        replacementContent: replacementContent,
+                        preparedSnapshotReader: readPreparedSnapshot,
+                        flags: flags,
+                        cleanupName: recoveryHandle.cleanupName,
+                        targetURL: targetURL,
+                        preparedURL: preparedURL)
+                } catch let recovery as Failure {
+                    shouldFinishRecoveryJournal = false
+                    throw recovery
+                }
+                throw failure
+            } catch {
+                do {
+                    try rollbackSwap(
+                        directoryFD: directoryFD,
+                        targetName: targetName,
+                        preparedName: preparedName,
+                        preparedFD: preparedFD,
+                        expectedPreparedVersion: validation.rollbackVersion,
+                        replacementContent: replacementContent,
+                        preparedSnapshotReader: readPreparedSnapshot,
+                        flags: flags,
+                        cleanupName: recoveryHandle.cleanupName,
+                        targetURL: targetURL,
+                        preparedURL: preparedURL)
+                } catch let recovery as Failure {
+                    shouldFinishRecoveryJournal = false
+                    throw recovery
+                }
+                throw error
+            }
         }
-        // Ab hier enthält der Temp-Name den tatsächlich verdrängten Zielstand.
-        // Jede Validierungs- oder Metadatenpanne versucht zuerst den gebundenen
-        // Rücktausch. Nur wenn dessen Vorbedingungen nicht mehr gelten, müssen
-        // beide erreichbaren Pfade für die manuelle Klärung bestehen bleiben.
-        do {
-            try afterSwap?(targetURL, preparedURL)
+    }
+
+    private struct PreSwapPreparation {
+        let targetVersion: stat
+        let preparedVersion: stat
+        let preparedAccessTime: timespec
+        let preparedModificationTime: timespec
+    }
+
+    private struct VerifiedSwap {
+        let displacedVersion: stat
+        let installedVersion: stat
+    }
+
+    // Die Rücktauschversion bleibt auch bei einem Throw nach eigenen
+    // Metadatenänderungen für beide äußeren Catch-Pfade erhalten.
+    private struct PostSwapValidation {
+        private(set) var rollbackVersion: stat
+
+        // Die FDs sind nur für diese synchrone Nachprüfung geliehen.
+        mutating func validate(
+            directoryFD: Int32,
+            targetFD: Int32,
+            preparedFD: Int32,
+            targetName: String,
+            preparedName: String,
+            expected: FileSnapshot,
+            replacementContent: FileSnapshot,
+            preparation: PreSwapPreparation,
+            copyDisplacedMetadata: ((Int32, Int32) -> Int32)?,
+            readPreparedSnapshot: PreparedSnapshotReader
+        ) throws -> VerifiedSwap {
             var preparedAfterSwap = stat()
             var displacedAfterSwap = stat()
             guard fstat(preparedFD, &preparedAfterSwap) == 0,
@@ -237,17 +372,17 @@ enum AtomicFileCommit {
             let targetAtPath = try childStat(directoryFD, targetName)
             let displacedAtPath = try childStat(directoryFD, preparedName)
 
-            let installedPrepared = sameVersion(preparedRollbackVersion,
+            let installedPrepared = sameVersion(rollbackVersion,
                                                 preparedAfterSwap)
                 && sameVersion(targetAtPath, preparedAfterSwap)
-            let displacedWasExpected = sameIdentity(displacedAtPath, targetBefore)
+            let displacedWasExpected = sameIdentity(displacedAtPath, preparation.targetVersion)
                 && sameIdentity(displacedAtPath, displacedAfterSwap)
 
             guard installedPrepared, displacedWasExpected else {
                 throw conflict(.conflictRolledBack)
             }
 
-            // Metadaten erst vom TATSÄCHLICH verdrängten Dateiobjekt
+            // Metadaten erst vom tatsächlich verdrängten Dateiobjekt
             // übernehmen. Eine ACL-/Xattr-Änderung vor dem Tausch geht damit
             // nicht aufgrund eines früheren Kopierzeitpunkts verloren.
             var metadataSourceVersion = displacedAfterSwap
@@ -257,7 +392,8 @@ enum AtomicFileCommit {
                 let metadataResult = copyDisplacedMetadata?(targetFD, preparedFD)
                     ?? fcopyfile(targetFD, preparedFD, nil, UInt32(COPYFILE_METADATA))
                 guard metadataResult == 0 else { throw currentPOSIXError() }
-                let refreshedTimes = [preparedAccessTime, preparedModificationTime]
+                let refreshedTimes = [preparation.preparedAccessTime,
+                                      preparation.preparedModificationTime]
                 let restoredTimes = refreshedTimes.withUnsafeBufferPointer { times in
                     futimens(preparedFD, times.baseAddress)
                 }
@@ -270,8 +406,8 @@ enum AtomicFileCommit {
                 }
                 // Eigene Metadaten ändern ctime. Auch ein nachfolgender
                 // Lesefehler braucht diesen belegten Stand für den Rücktausch.
-                preparedRollbackVersion = preparedAfterMetadata
-                try synchronizeFile(preparedFD)
+                rollbackVersion = preparedAfterMetadata
+                try FileDurability.synchronizeFile(preparedFD)
                 guard fstat(targetFD, &displacedAfterMetadata) == 0 else { throw currentPOSIXError() }
                 if sameVersion(metadataSourceVersion, displacedAfterMetadata) { break }
                 // Beim nativen Speichern kann sich nur die Statuszeit ändern.
@@ -316,81 +452,139 @@ enum AtomicFileCommit {
                 throw conflict(.conflictRolledBack)
             }
 
-            // Erst nach belegtem Erfolg verschwindet die alte Fassung — und
-            // auch dann nur, wenn der Temp-Name nachweislich noch auf die am
-            // Deskriptor verifizierte verdrängte Inode zeigt (siehe
-            // `unlinkVerifiedChild`). Ein im letzten Moment fremd ersetzter
-            // Stand bleibt erhalten und wird als Recovery gemeldet.
-            try beforeCleanup?(targetURL, preparedURL)
-            try unlinkVerifiedChild(
-                directoryFD: directoryFD, name: preparedName,
-                claimName: recoveryHandle.cleanupName,
-                verifiedFD: targetFD,
-                verifiedVersion: displacedFinal,
-                targetURL: targetURL, preparedURL: preparedURL)
-            if fsync(directoryFD) == 0 {
-                do {
-                    try recoveryStore.finish(recoveryHandle)
-                    shouldFinishRecoveryJournal = false
-                } catch {
-                    // Der Commit ist abgeschlossen. Ein stehen gebliebenes
-                    // Journal wird beim nächsten Start als bereits bereinigter
-                    // Tausch erkannt; ein Journalfehler darf den gespeicherten
-                    // Stand nicht nachträglich als fehlgeschlagen ausgeben.
-                }
-            } else {
-                // Ob das Unlink nach einem Stromausfall sichtbar bleibt, ist
-                // ohne Verzeichnis-Sync offen. Das Journal muss beide Fälle
-                // beim nächsten Start abbilden.
-                shouldFinishRecoveryJournal = false
-            }
-            return FileSnapshot(
-                sha256: replacementContent.sha256,
-                byteCount: replacementContent.byteCount,
-                identity: FileIdentity(stat: preparedFinal))
-        } catch let failure as Failure {
-            if case .recoveryRequired = failure {
-                shouldFinishRecoveryJournal = false
-                throw failure
-            }
-            do {
-                try rollbackSwap(
-                    directoryFD: directoryFD,
-                    targetName: targetName,
-                    preparedName: preparedName,
-                    preparedFD: preparedFD,
-                    expectedPreparedVersion: preparedRollbackVersion,
-                    replacementContent: replacementContent,
-                    preparedSnapshotReader: readPreparedSnapshot,
-                    flags: flags,
-                    cleanupName: recoveryHandle.cleanupName,
-                    targetURL: targetURL,
-                    preparedURL: preparedURL)
-            } catch let recovery as Failure {
-                shouldFinishRecoveryJournal = false
-                throw recovery
-            }
-            throw failure
-        } catch {
-            do {
-                try rollbackSwap(
-                    directoryFD: directoryFD,
-                    targetName: targetName,
-                    preparedName: preparedName,
-                    preparedFD: preparedFD,
-                    expectedPreparedVersion: preparedRollbackVersion,
-                    replacementContent: replacementContent,
-                    preparedSnapshotReader: readPreparedSnapshot,
-                    flags: flags,
-                    cleanupName: recoveryHandle.cleanupName,
-                    targetURL: targetURL,
-                    preparedURL: preparedURL)
-            } catch let recovery as Failure {
-                shouldFinishRecoveryJournal = false
-                throw recovery
-            }
-            throw error
+            return VerifiedSwap(
+                displacedVersion: displacedFinal,
+                installedVersion: preparedFinal)
         }
+    }
+
+    // Die FDs bleiben beim Aufrufer geöffnet. Erst nach vollständiger Prüfung
+    // und Retention darf dieser Beleg an den Journalbeginn weitergehen.
+    private static func prepareReplacement(
+        targetURL: URL,
+        preparedURL: URL,
+        targetFD: Int32,
+        preparedFD: Int32,
+        expected: FileSnapshot,
+        replacementContent: FileSnapshot,
+        verifiedTargetStat: stat?,
+        retainPreparedFile: ((Int32, FileSnapshot) throws -> Void)?,
+        readPreparedSnapshot: PreparedSnapshotReader
+    ) throws -> PreSwapPreparation {
+        var targetBefore = stat()
+        var preparedBefore = stat()
+        guard fstat(targetFD, &targetBefore) == 0,
+              fstat(preparedFD, &preparedBefore) == 0 else {
+            throw currentPOSIXError()
+        }
+        guard isRegular(targetBefore), isRegular(preparedBefore),
+              targetBefore.st_dev == preparedBefore.st_dev,
+              !sameIdentity(targetBefore, preparedBefore) else {
+            throw POSIXError(.EINVAL)
+        }
+
+        if let preparedIdentity = replacementContent.identity,
+           preparedIdentity != FileIdentity(stat: preparedBefore) {
+            throw conflict(.conflictUnchanged)
+        }
+
+        // Der Hash entsteht am gebundenen Ziel-FD. Der Deskriptor bleibt bis
+        // nach Tausch oder Rücktausch offen; ein atomarer Fremd-Replace kann
+        // die geprüfte Inode deshalb nicht unter der Hand austauschen.
+        if let verifiedTargetStat {
+            guard sameVersion(verifiedTargetStat, targetBefore),
+                  expected.identity == FileIdentity(stat: targetBefore),
+                  expected.byteCount == Int(targetBefore.st_size) else {
+                throw conflict(.conflictUnchanged)
+            }
+        } else {
+            guard targetBefore.st_size == off_t(expected.byteCount) else {
+                throw conflict(.conflictUnchanged)
+            }
+            let current: FileSnapshot
+            do {
+                current = try FileSnapshot.readSnapshotOnly(
+                    descriptor: targetFD, fileStat: targetBefore,
+                    byteLimit: UInt64(expected.byteCount))
+            } catch is FileSnapshotReadError {
+                throw conflict(.conflictUnchanged)
+            } catch {
+                throw readFailure(error, at: targetURL)
+            }
+            guard current == expected else {
+                throw conflict(.conflictUnchanged)
+            }
+        }
+
+        // Die neue Datei darf auch in der kurzen Zeit zwischen Tausch und
+        // Nachprüfung keine großzügigeren Umask-Rechte sichtbar machen. Rechte,
+        // ACLs und Extended Attributes deshalb schon jetzt übernehmen; nach
+        // dem Tausch werden sie vom tatsächlich verdrängten Objekt aktualisiert.
+        let preparedAccessTime = preparedBefore.st_atimespec
+        let preparedModificationTime = preparedBefore.st_mtimespec
+        guard fcopyfile(targetFD, preparedFD, nil,
+                        UInt32(COPYFILE_METADATA)) == 0 else {
+            throw currentPOSIXError()
+        }
+        let preparedTimes = [preparedAccessTime, preparedModificationTime]
+        let restoredTimes = preparedTimes.withUnsafeBufferPointer { times in
+            futimens(preparedFD, times.baseAddress)
+        }
+        guard restoredTimes == 0 else { throw currentPOSIXError() }
+        var targetAfterMetadata = stat()
+        guard fstat(targetFD, &targetAfterMetadata) == 0,
+              fstat(preparedFD, &preparedBefore) == 0,
+              sameVersion(targetBefore, targetAfterMetadata),
+              preparedBefore.st_size == off_t(replacementContent.byteCount) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        let preparedSnapshot: FileSnapshot
+        do {
+            preparedSnapshot = try readPreparedSnapshot(
+                preparedFD, preparedBefore,
+                UInt64(replacementContent.byteCount))
+        } catch is FileSnapshotReadError {
+            throw CocoaError(.fileWriteUnknown)
+        } catch {
+            throw readFailure(error, at: preparedURL)
+        }
+        guard preparedSnapshot.hasSameContent(as: replacementContent) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        try FileDurability.synchronizeFile(preparedFD)
+
+        // Apply persistiert hier pending für genau die am FD gebundene Inode.
+        // Scheitert dieser Schritt, kann noch kein Ziel getauscht worden sein.
+        if let retainPreparedFile {
+            try retainPreparedFile(preparedFD, preparedSnapshot)
+            // Ein Hardlink-Anker ändert ctime, aber weder Inhalt noch übrige
+            // Metadaten. Den erneuerten Stand am selben FD weiter binden.
+            var retainedPrepared = stat()
+            guard fstat(preparedFD, &retainedPrepared) == 0,
+                  sameVersionAcrossRename(preparedBefore, retainedPrepared) else {
+                throw conflict(.conflictUnchanged)
+            }
+            preparedBefore = retainedPrepared
+        }
+
+        return PreSwapPreparation(
+            targetVersion: targetBefore,
+            preparedVersion: preparedBefore,
+            preparedAccessTime: preparedAccessTime,
+            preparedModificationTime: preparedModificationTime)
+    }
+
+    private static func readFailure(_ error: Error, at url: URL) -> NSError {
+        let original = error as NSError
+        var context = original.userInfo
+        context[NSFilePathErrorKey] = url.path
+        context[NSUnderlyingErrorKey] = original
+        context[NSLocalizedDescriptionKey] = L10n.format("%@: %@",
+            L10n.format("„%@“ konnte nicht gelesen werden", url.lastPathComponent),
+            original.localizedDescription)
+        // Domain/Code bleiben erhalten, damit z. B. EIO weiterhin als
+        // POSIXError erkennbar ist; der Kontext ergänzt nur Datei und Ursache.
+        return NSError(domain: original.domain, code: original.code, userInfo: context)
     }
 
     private static func rollbackSwap(
@@ -450,7 +644,7 @@ enum AtomicFileCommit {
             throw recoveryRequired(target: targetURL,
                                            displaced: preparedURL)
         }
-        // Erst den Rücktausch dauerhaft machen, dann die Namen NOCHMALS
+        // Erst den Rücktausch dauerhaft machen, dann die Namen nochmals
         // prüfen. So liegt kein langsamer Sync mehr zwischen der letzten
         // Bindungsprüfung und dem Löschen unserer vorbereiteten Inode.
         guard fsync(directoryFD) == 0 else {
@@ -509,7 +703,7 @@ enum AtomicFileCommit {
     /// ließe ein Fenster, in dem ein Fremdprozess den Namen ersetzt und sein
     /// Stand mitgelöscht würde. Deshalb beansprucht zuerst ein atomares
     /// Rename den Eintrag unter dem im Recovery-Journal gebundenen privaten
-    /// Namen; DANACH wird
+    /// Namen; danach wird
     /// die Bindung geprüft: Zeigt der beanspruchte Eintrag auf die
     /// verifizierte Inode, wird der private Name gelöscht. Zeigt er auf einen
     /// Fremdstand, wird dieser unter seinem ursprünglichen Namen
@@ -519,13 +713,13 @@ enum AtomicFileCommit {
     /// Start ihn über denselben Journal-Eintrag wieder.
     ///
     /// `verifiedVersion` bindet dabei nicht nur die Identität, sondern den
-    /// zuletzt geprüften VERSIONSSTAND: Ein Fremdprozess mit offenem
+    /// zuletzt geprüften Versionsstand: Ein Fremdprozess mit offenem
     /// Deskriptor kann in-place in die verdrängte Inode schreiben — Gerät
     /// und Inode bleiben dann gleich, und eine reine Identitätsprüfung
-    /// löschte seinen Stand mit (Review 2026-08-29). Jede Abweichung von
+    /// löschte seinen Stand mit. Jede Abweichung von
     /// Größe oder mtime stellt den Namen deshalb zurück statt zu löschen.
     ///
-    /// Ehrliche Restgrenzen: Zwischen Prüfung und Löschen des PRIVATEN Namens
+    /// Ehrliche Restgrenzen: Zwischen Prüfung und Löschen des privaten Namens
     /// bleibt ein theoretisches Fenster. Es ist aber nur für einen Prozess
     /// erreichbar, der das Verzeichnis aktiv nach dem privaten Namen
     /// absucht und ihn gezielt ersetzt — kein regulär gleichzeitig
@@ -597,16 +791,6 @@ enum AtomicFileCommit {
         }
         guard result == 0 else { throw currentPOSIXError() }
         return info
-    }
-
-    private static func synchronizeFile(_ descriptor: Int32) throws {
-        if fcntl(descriptor, F_FULLFSYNC) == 0 { return }
-        let fullSyncError = errno
-        guard fullSyncError == ENOTSUP || fullSyncError == EINVAL
-                || fullSyncError == ENOTTY else {
-            throw POSIXError(POSIXErrorCode(rawValue: fullSyncError) ?? .EIO)
-        }
-        guard fsync(descriptor) == 0 else { throw currentPOSIXError() }
     }
 
     private static func sameIdentity(_ lhs: stat, _ rhs: stat) -> Bool {

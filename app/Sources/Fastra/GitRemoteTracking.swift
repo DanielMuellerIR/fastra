@@ -134,7 +134,7 @@ enum GitRemoteTrackingList {
     }
 
     /// Normalisiert das moderne Ergebnis auf dieselbe Textform wie den
-    /// Kompatibilitätspfad. Der künstliche lokale Ref trägt die VOR dem
+    /// Kompatibilitätspfad. Der künstliche lokale Ref trägt die vor dem
     /// Zählen eingefrorene HEAD-OID; ein externer Checkout während des
     /// `for-each-ref`-Prozesses kann den Batch dadurch nicht schönreden.
     static func renderedResult(headOID: String,

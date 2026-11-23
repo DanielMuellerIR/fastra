@@ -58,7 +58,7 @@ struct FourDMacroSource: Equatable {
 /// ist eine nicht überschreibbare Swift-Extension — ein Test-FileManager kann
 /// die lazy Aufzählung deshalb nicht per Override beobachten. Die Discovery
 /// meldet die geöffnete Wurzel stattdessen an jeden FileManager, der dieses
-/// Protokoll annimmt (Review 2026-08-31). Produktiv nimmt es niemand an; der
+/// Protokoll annimmt. Produktiv nimmt es niemand an; der
 /// Cast kostet dann nur einen Typvergleich.
 protocol MacroDirectoryEnumerationObserving {
     func noteDirectoryEnumeration(at url: URL)
@@ -70,7 +70,7 @@ enum FourDMacroDiscovery {
     /// haben kann: bis 4D v20 direkt, ab v21 unter `Contents`.
     private static let macroDirectoryPaths = ["Macros v2", "Contents/Macros v2"]
 
-    /// Zentrale Erzeugung ALLER Discovery-Enumeratoren — immer nicht
+    /// Zentrale Erzeugung aller Discovery-Enumeratoren — immer nicht
     /// rekursiv, ohne versteckte Dateien und fehlertolerant. Nur hier wird
     /// die Testnaht bedient; ein zusätzlicher direkter `enumerator(at:)`-
     /// Aufruf wäre für die Budget-Tests unsichtbar.
@@ -110,7 +110,7 @@ enum FourDMacroDiscovery {
     /// Variante mit geteiltem Arbeitsbudget: Der Kataloglauf gibt dasselbe
     /// Budget anschließend an `macroSources` weiter, damit schon die Suche
     /// nach der Projektwurzel in sehr großen fremden `Project`-Ordnern nicht
-    /// unbegrenzt Einträge materialisiert (Review 2026-08-31).
+    /// unbegrenzt Einträge materialisiert.
     static func projectRoot(forDocument url: URL,
                             fileManager: FileManager,
                             entryBudget: inout Int) -> URL? {
@@ -149,7 +149,7 @@ enum FourDMacroDiscovery {
 
     /// Alle Makro-Dateien in fester Reihenfolge: erst die Komponenten des
     /// Projekts, dann die benutzerweiten, zuletzt die von 4D mitgelieferten.
-    /// Doppelte Funde — etwa weil dieselbe Komponente über `Components/` UND
+    /// Doppelte Funde — etwa weil dieselbe Komponente über `Components/` und
     /// über `dependencies.json` erreichbar ist — fallen über den kanonischen
     /// Pfad heraus; der erste Fund gewinnt und behält seine Herkunft.
     static func macroSources(projectRoot: URL?,
@@ -164,7 +164,7 @@ enum FourDMacroDiscovery {
         -> [FourDMacroSource] {
         var sources: [FourDMacroSource] = []
         var seenPaths = Set<String>()
-        // Das Quellenbudget gilt schon HIER: Ein fremder Makro-Ordner mit
+        // Das Quellenbudget gilt schon hier: Ein fremder Makro-Ordner mit
         // sehr vielen Einträgen darf nicht erst beim späteren Laden gekürzt
         // werden, nachdem die Discovery bereits alles materialisiert und
         // sortiert hat.
@@ -309,7 +309,7 @@ enum FourDMacroDiscovery {
         // öffnen und nur eine reguläre Datei akzeptieren. Ein blockierendes
         // `FileHandle(forReadingFrom:)` hing vorher schon beim Öffnen einer
         // als `dependencies.json` untergeschobenen FIFO — noch vor der
-        // Größenprüfung (Review 2026-08-31).
+        // Größenprüfung.
         guard fileManager.fileExists(atPath: file.path),
               let data = BoundedFileReading.openRegularFile(
                 at: file, maximumBytes: maximumBytes, readData: true)?.data else {
@@ -337,13 +337,10 @@ enum FourDMacroDiscovery {
             return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
         }
         if path.hasPrefix("/") { return URL(fileURLWithPath: path) }
-        // Die Basis MUSS ausdrücklich als Verzeichnis gebaut werden. Endet
-        // ihr Pfad nicht auf „/", wirft `URL(fileURLWithPath:relativeTo:)`
-        // die letzte Komponente weg (RFC-3986-Auflösung): „../Extern/X"
-        // relativ zu „…/MeinProjekt" ergäbe sonst „…/Extern/X" statt
-        // „…/MeinProjekt/../Extern/X" — eine Ebene zu hoch, gemessen am
-        // 2026-08-19. `absoluteURL` löst danach den Bezug zur Basis auf,
-        // `standardizedFileURL` die „..“-Schritte.
+        // Die Basis ausdrücklich als Verzeichnis bauen. Ohne abschließendes „/“
+        // verwirft `URL(fileURLWithPath:relativeTo:)` gemäß RFC 3986 die letzte
+        // Komponente; relative Komponentenpfade würden eine Ebene zu hoch auflösen.
+        // `absoluteURL` löst den Basisbezug, `standardizedFileURL` die „..“-Schritte.
         let base = URL(fileURLWithPath: projectRoot.path, isDirectory: true)
         return URL(fileURLWithPath: path, relativeTo: base)
             .absoluteURL.standardizedFileURL

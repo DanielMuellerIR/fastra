@@ -27,10 +27,8 @@ struct GitBranchSwitchFailureTests {
 
     @Test("Ein anderer Fehlschlag bleibt ein anderer Fehlschlag")
     func otherFailuresStayVisible() {
-        // Genau der Fall aus dem Befund: Der gemerkte Stand trägt noch ein
-        // blockierendes Verzeichnis, git scheitert aber aus einem anderen
-        // Grund. Ohne diese Unterscheidung sähe der Nutzer die Worktree-
-        // Erklärung statt der echten Ursache.
+        // Der gemerkte Stand nennt einen blockierenden Worktree, aber git scheitert
+        // aus anderem Grund. Dann die echte Ursache statt der Worktree-Erklärung zeigen.
         let dirty = failure("error: Your local changes to 'a.txt' would be overwritten\n")
         let missing = failure("fatal: invalid reference: topic\n")
         #expect(!GitBranchSwitchFailure.isWorktreeBlock(dirty, worktree: "/tmp/wt"))
@@ -85,7 +83,7 @@ struct GitBranchSwitchFailureTests {
         #expect(!refused.ok)
         #expect(GitBranchSwitchFailure.isWorktreeBlock(refused, worktree: blocked))
 
-        // Und der Fall aus dem Befund: Ordner weg, git weiß noch nichts davon.
+        // Worktree-Ordner fehlt, aber git kennt die Zuordnung weiterhin.
         try FileManager.default.removeItem(at: linked)
         let stillRefused = try await git(["switch", "belegt"], expect: false)
         #expect(!stillRefused.ok)
@@ -99,7 +97,7 @@ private enum GitBranchSwitchFailureTestError: Error {
 }
 
 /// Der Dialog der Worktree-Sperre. Geprüft wird die Zusage, an der die
-/// Funktion zerbrach: Er muss AUCH dann erscheinen, wenn der Ordner des
+/// Funktion zerbrach: Er muss auch dann erscheinen, wenn der Ordner des
 /// fremden Arbeitsverzeichnisses längst gelöscht ist — genau dann trägt er
 /// nämlich den einzigen brauchbaren Rat („git worktree prune").
 @Suite("Dialog der Worktree-Sperre")
@@ -122,7 +120,7 @@ struct GitBranchWorktreeDialogTests {
         #expect(shown.count == 1)
         let alert = try? #require(shown.first)
         #expect(alert?.informativeText == block(exists: exists).informativeText)
-        // Ohne Ordner gibt es nur Abbrechen; der erste Knopf darf dann NICHT
+        // Ohne Ordner gibt es nur Abbrechen; der erste Knopf darf dann nicht
         // als „öffnen" gelten.
         #expect(alert?.buttons.count == (exists ? 2 : 1))
         #expect(opens == exists)

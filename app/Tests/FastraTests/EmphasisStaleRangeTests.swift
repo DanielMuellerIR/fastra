@@ -1,20 +1,10 @@
 // EmphasisStaleRangeTests.swift
 //
-// Regressionstests für den Absturz vom 2026-08-28 (Crash-Report
-// EFD87C70-8440-4AA9-9D92-24E87E27B802): SIGTRAP in
-// `EmphasisManager.updateLayerBackgrounds` → `TextLayoutManager.rectsFor`
-// während des Zeichnens.
-//
-// Wurzel: Die Treffer-Markierungen der Suche speichern ihre Bereiche
-// statisch. Schrumpft das Dokument danach (Rechteck-Backspace über alle
-// Zeilen), zeigt ein gespeicherter Bereich hinter das Dokumentende. Beim
-// nächsten Zeichnen lief `rectsFor(range:)` mit dem UNGEKAPPTEN Bereich in
-// `rangeOfComposedCharacterSequence` — NSRangeException, AppKit bricht die
-// App in `_crashOnException` ab. `roundedPathForRange` berechnete zwar einen
-// gekappten Bereich (`validRange`), reichte dann aber das Original weiter.
-//
-// Geprüft wird der echte Zeichenpfad mit veralteten Bereichen; ohne den
-// Clamp-Patch stürzt der Testprozess mit derselben Exception ab.
+// Statische Suchmarkierungen können nach einem verkürzenden Edit hinter das
+// Dokumentende zeigen. `EmphasisManager` muss die geklemmte Range bis an
+// `TextLayoutManager.rectsFor` weiterreichen; die ursprüngliche Range würde
+// `rangeOfComposedCharacterSequence` mit NSRangeException abbrechen lassen.
+// Der Test durchläuft den echten Zeichenpfad mit veralteten Bereichen.
 
 import AppKit
 import Testing
@@ -42,7 +32,7 @@ func layoutRectsClampStaleRanges() {
     )
     #expect(!overhang.isEmpty)
 
-    // Bereich liegt VOLLSTÄNDIG hinter dem Dokumentende: kein Rechteck.
+    // Bereich liegt vollständig hinter dem Dokumentende: kein Rechteck.
     let beyond = textView.layoutManager.rectsFor(
         range: NSRange(location: 20, length: 5)
     )

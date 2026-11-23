@@ -15,11 +15,10 @@ final class PatternLibrary: ObservableObject {
     @Published private(set) var templates: [PatternTemplate]
     private let defaults: UserDefaults
     private var defaultsObserver: NSObjectProtocol?
-    /// Zuletzt gesehene Rohbytes des Bibliotheksschlüssels. Die Defaults-
-    /// Benachrichtigung trägt keinen Schlüssel und feuert bei JEDER Änderung
-    /// der Suite, etwa pro Frame beim Ziehen des Seitenleisten-Splitters.
-    /// Ohne diesen Vergleich dekodierte jedes Suchfenster dabei die ganze
-    /// Bibliothek und kompilierte jede Vorlage neu (Review-Fund 2026-09-17).
+    /// Zuletzt gelesene Rohbytes des Bibliotheksschlüssels. Defaults-
+    /// Benachrichtigungen nennen keinen Schlüssel und kommen für jede Änderung
+    /// der Suite, etwa beim Ziehen des Splitters. Nur bei geänderten Bytes die
+    /// Bibliothek dekodieren und Vorlagen neu kompilieren.
     private var lastSeenData: Data?
     /// Zahl der Nachlade-Dekodierungen; nur Tests beobachten sie.
     private(set) var reloadDecodeCount = 0

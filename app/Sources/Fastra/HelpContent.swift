@@ -1,10 +1,9 @@
 // HelpContent.swift
 //
-// Inhalt und Anker der Fastra-Hilfe (Etappe 4 Wunschpaket 2026-07b).
-// Die Hilfe liegt als mitgelieferte Markdown-Dateien (DE + EN) im
-// Ressourcen-Bundle und wird read-only über den vorhandenen
-// Markdown-Renderer dargestellt — bewusst KEIN Apple-Help-Buch
-// (Indexer-/Caching-Ärger) und keine Bilder (ToDo „Hilfe später
+// Inhalt und Anker der Fastra-Hilfe. Die Hilfe liegt als
+// mitgelieferte Markdown-Dateien (DE + EN) im Ressourcen-Bundle und wird
+// read-only über den vorhandenen Markdown-Renderer dargestellt — bewusst kein
+// Apple-Help-Buch (Indexer-/Caching-Ärger) und keine Bilder (ToDo „Hilfe später
 // hübscher“ in ROADMAP.md).
 
 import Foundation
@@ -92,7 +91,7 @@ enum HelpContent {
 
 /// Benannte Hilfe-Abschnitte für programmatische Sprünge („Hilfe öffnen bei
 /// Anker X“, genutzt ab Etappe 5 für Erst-Nutzungs-Hinweise). Die Überschrift
-/// je Sprache steht hier bewusst NOCH EINMAL — ein Unit-Test stellt sicher,
+/// je Sprache steht hier bewusst noch einmal — ein Unit-Test stellt sicher,
 /// dass jede davon wirklich in der jeweiligen Markdown-Datei existiert
 /// (Anti-Drift zwischen Enum und Hilfetext).
 enum HelpSection: CaseIterable {

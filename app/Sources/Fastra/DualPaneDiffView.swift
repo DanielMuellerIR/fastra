@@ -1,15 +1,14 @@
 // DualPaneDiffView.swift
 //
-// Gemeinsamer Dual-Pane-Diff-Renderer (Etappe 2 Wunschpaket 2026-07c):
-// EINE Optik, EINE Tastatur-Navigation und EINE Differenzen-Liste für den
-// git-losen Datei-Vergleich UND die Git-Diff-Tabs. Beide Spalten leben in
-// derselben LazyVStack und damit in exakt derselben Scrollposition.
-//
-// Die Komponente ist bewusst „dumm": Sie rendert vorbereitete
-// `DiffDisplayItem`s und `DiffListEntry`s. Wer sie einbettet (FileDiffView,
-// GitDualPaneDiffView), besitzt den Falt- und Auswahlzustand und baut die
-// Elemente aus seinem jeweiligen Modell — die Zeilen-AUSRICHTUNG selbst
-// bleibt unangetastet in `FileDiff` bzw. `GitDiffParser`.
+// Gemeinsamer Dual-Pane-Diff-Renderer: eine Optik, eine
+// Tastatur-Navigation und eine Differenzen-Liste für den git-losen
+// Datei-Vergleich und die Git-Diff-Tabs. Beide Spalten leben in derselben
+// LazyVStack und damit in exakt derselben Scrollposition. Die Komponente ist
+// bewusst „dumm": Sie rendert vorbereitete `DiffDisplayItem`s und
+// `DiffListEntry`s. Wer sie einbettet (FileDiffView, GitDualPaneDiffView),
+// besitzt den Falt- und Auswahlzustand und baut die Elemente aus seinem
+// jeweiligen Modell — die Zeilen-Ausrichtung selbst bleibt unangetastet in
+// `FileDiff` bzw. `GitDiffParser`.
 
 import SwiftUI
 
@@ -19,7 +18,7 @@ import SwiftUI
 struct DiffDisplayRow: Hashable, Identifiable {
     /// Stabile Identität (Scroll-Ziel): Git-Row-ID bzw. „row-N" im Datei-Diff.
     let id: String
-    /// Position in der VOLLEN (ungefalteten) Zeilenfolge — Basis der
+    /// Position in der vollen (ungefalteten) Zeilenfolge — Basis der
     /// Hervorhebung des gewählten Unterschieds.
     let ordinal: Int
     let kind: FileDiff.RowKind
@@ -103,12 +102,12 @@ struct DualPaneDiffView<Leading: View>: View {
     /// hinweg. `store:` ist Pflicht — ohne ihn läse ein Selbsttest die echten
     /// Einstellungen des Nutzers (siehe AppStorageIsolationTests).
     @AppStorage(DiffColumnLayout.splitRatioDefaultsKey,
-                store: SelfTest.workspaceDefaults())
+                store: AppDefaults.store)
     private var splitRatio: Double = Double(DiffColumnLayout.defaultRatio)
 
     /// Nach einer bewussten Auswahl (Klick/Taste) darf die Scroll-Verfolgung
     /// sie nicht sofort wieder überschreiben: Das Zentrieren des Ziels lässt
-    /// den VORIGEN Eintrag „oben passieren", was die Verfolgung sonst als
+    /// den vorigen Eintrag „oben passieren", was die Verfolgung sonst als
     /// neuen aktuellen Eintrag deutete. Kurzes Zeitfenster statt Dauer-Flag —
     /// echtes Weiterscrollen von Hand übernimmt danach wieder.
     @State private var suppressFollowUntil: Date? = nil
@@ -148,7 +147,7 @@ struct DualPaneDiffView<Leading: View>: View {
                                 .frame(minWidth: content,
                                        minHeight: geometry.size.height,
                                        alignment: .topLeading)
-                                // Der Griff liegt IM gescrollten Inhalt, nicht
+                                // Der Griff liegt im gescrollten Inhalt, nicht
                                 // über dem Sichtfenster: In einem schmalen Fenster
                                 // ist die Fläche breiter als der Ausschnitt, und
                                 // ein Griff am Sichtfenster stünde dann nicht mehr
@@ -246,7 +245,7 @@ struct DualPaneDiffView<Leading: View>: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 34)
-        // Fenster-Selbsttests beobachten hier ECHT gerenderten Zustand:
+        // Fenster-Selbsttests beobachten hier echt gerenderten Zustand:
         // Anzahl der Unterschiede + aktuelle Auswahl.
         .background(SelfTestMarker(
             id: "diffState-b\(entries.count)-c\(currentEntry ?? -1)"
@@ -473,7 +472,7 @@ struct DualPaneDiffView<Leading: View>: View {
                     - DiffColumnLayout.splitterHitWidth / 2)
         .help("Trenner ziehen: verteilt die Breite zwischen linker und rechter Seite. Doppelklick stellt die Werksteilung wieder her.")
         .accessibilityLabel("Breite der Vergleichsspalten")
-        // Vorgelesen wird die SICHTBARE Teilung, nicht der gespeicherte
+        // Vorgelesen wird die sichtbare Teilung, nicht der gespeicherte
         // Rohwert: Ein Zug bis an den Anschlag merkt sich 0 beziehungsweise 1,
         // stehen bleiben aber 96 pt. „Linke Seite 0 Prozent" wäre schlicht
         // falsch, und die 5-%-Schritte unten wirkten im geklemmten Bereich
@@ -484,7 +483,7 @@ struct DualPaneDiffView<Leading: View>: View {
                                                    ratio: CGFloat(splitRatio))))
         .accessibilityAdjustableAction { direction in
             // VoiceOver-Bedienung: Der Trenner ist sonst nur mit der Maus
-            // erreichbar. Der Schritt geht vom SICHTBAREN Stand aus — vom
+            // erreichbar. Der Schritt geht vom sichtbaren Stand aus — vom
             // gespeicherten Rohwert aus verpufften die ersten Betätigungen im
             // geklemmten Bereich.
             let step: CGFloat = 0.05
@@ -549,7 +548,7 @@ struct DualPaneDiffView<Leading: View>: View {
             }
         }
         .background {
-            // Nur die jeweils ERSTE Zeile eines Unterschieds meldet ihre
+            // Nur die jeweils erste Zeile eines Unterschieds meldet ihre
             // Position — die Anzeige „Unterschied X von Y" folgt dem Scrollen.
             if let entryIndex = entryIndexByTargetID[row.id] {
                 GeometryReader { geometry in
@@ -710,7 +709,7 @@ private struct DiffSplitterHandle: NSViewRepresentable {
         private var contentWidth: CGFloat = 0
         private var ratio: Double = Double(DiffColumnLayout.defaultRatio)
         private var onRatioChange: (Double) -> Void = { _ in }
-        /// Zustand beim Anfassen. Der Zug rechnet gegen DIESE Werte, nicht
+        /// Zustand beim Anfassen. Der Zug rechnet gegen diese Werte, nicht
         /// gegen die laufend aktualisierten — sonst summierte sich die
         /// Verschiebung mit jedem Ereignis auf.
         private var dragStartRatio: Double?
@@ -737,12 +736,9 @@ private struct DiffSplitterHandle: NSViewRepresentable {
             addCursorRect(bounds, cursor: .resizeLeftRight)
         }
 
-        /// Ein Klick in ein nicht aktives Fenster aktiviert es sonst nur und
-        /// wird verworfen. Für einen Trenner ist das falsch: Wer aus einem
-        /// anderen Fenster kommt und die Spaltenbreite verschieben will, soll
-        /// das im ersten Zug tun können. Ohne diese Zusage erreicht auch der
-        /// Fenster-Selbsttest den Griff nie (Befund 2026-09-09: `hitTest`
-        /// fand ihn, `mouseDown` lief trotzdem nicht).
+        /// Der Trenner nimmt den ersten Klick auch in einem inaktiven Fenster an,
+        /// damit sich die Spaltenbreite direkt ziehen lässt. Andernfalls würde der
+        /// Klick nur das Fenster aktivieren.
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
         override func updateTrackingAreas() {

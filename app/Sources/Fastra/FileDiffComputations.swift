@@ -1,18 +1,11 @@
 // FileDiffComputations.swift
 //
-// Verwaltete Hintergrund-Berechnungen der Datei- und Ordnervergleiche eines
-// Fensters (Folgeauftrag „Diff tatsächlich abbrechen", 2026-09-05).
-//
-// Vorher lief jeder Vergleich als anonymer `Task.detached`, den niemand mehr
-// erreichen konnte: Nach Tab- oder Fensterschluss und bei einer neuen
-// Anfrage wurde nur das ERGEBNIS verworfen, die Rechnung lief zu Ende. Hier
-// hält der Workspace je Tab genau einen Task und bricht ihn ab, sobald sein
-// Ergebnis niemanden mehr interessiert. Der Kern (`FileDiff.compare` mit
-// Abbruchquelle, `FileLoader.load` mit Abbruchquelle) reagiert darauf in
-// jeder Phase.
-//
-// Gleiches Muster wie `GitPreviewLoads`: Der Workspace benutzt den Helfer
-// nur auf dem Main-Thread; die Tasks selbst laufen im Hintergrund.
+// Verwaltet Hintergrundberechnungen der Datei- und Ordnervergleiche eines
+// Fensters. Je Tab bleibt ein Task erreichbar, damit Tab-/Fensterschluss
+// oder eine neue Anfrage die überholte Berechnung abbrechen können.
+// `FileDiff.compare` und `FileLoader.load` prüfen die Abbruchquelle in jeder
+// Phase. Wie bei `GitPreviewLoads` benutzt der Workspace den Helfer nur
+// auf dem Main-Thread; die Tasks laufen im Hintergrund.
 
 import Foundation
 
@@ -32,7 +25,7 @@ final class FileDiffComputations {
     private var computations: [UUID: Computation] = [:]
 
     /// Meldet eine neue Berechnung für den Tab an. Eine noch laufende
-    /// Berechnung DESSELBEN Tabs wird dabei abgebrochen — die neue Anfrage
+    /// Berechnung desselben Tabs wird dabei abgebrochen — die neue Anfrage
     /// soll nicht neben der alten um CPU und Speicher konkurrieren.
     func begin(tabID: UUID) -> Ticket {
         cancel(tabID: tabID)

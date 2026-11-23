@@ -50,7 +50,7 @@ final class SnapshotSyntaxHighlighter {
             }
         } else {
             // Dieselben Provider wie im Editor und Ausdruck. Hier ausdrücklich
-            // KEINE Druck-Normalisierung: Positionsaufträge beziehen sich auf
+            // keine Druck-Normalisierung: Positionsaufträge beziehen sich auf
             // den unveränderten Snapshot-Text.
             PrintSyntaxHighlighting.analyze(text: text, format: format,
                                            fourDMethodIndex: .empty) { [weak self] outcome in

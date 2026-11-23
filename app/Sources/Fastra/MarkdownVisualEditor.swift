@@ -11,13 +11,18 @@ enum MarkdownEditingMode {
         let editors = Workspace.allLive.compactMap(\.visualMarkdownEditor).filter(\.ready)
         let group = DispatchGroup()
         var success = true
+        var holds: [MarkdownVisualCoordinator.ActionHold] = []
         for editor in editors {
             group.enter()
-            editor.synchronize(holdingInput: true) { succeeded in success = success && succeeded; group.leave() }
+            editor.synchronize(holdingInput: true) { succeeded, hold in
+                success = success && succeeded
+                if let hold { holds.append(hold) }
+                group.leave()
+            }
         }
         group.notify(queue: .main) {
-            if success { SelfTest.workspaceDefaults().set(visual, forKey: defaultsKey) }
-            for editor in editors { editor.completeAction() }
+            if success { AppDefaults.store.set(visual, forKey: defaultsKey) }
+            for hold in holds { hold.finish() }
         }
     }
 }
@@ -51,8 +56,8 @@ struct MarkdownEditingModeChoice: View {
 struct MarkdownVisualEditorView: View {
     @ObservedObject var workspace: Workspace
     let tab: EditorTab
-    @AppStorage(DocumentZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var zoom = 0
-    @AppStorage(PreviewFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var fontName = PreviewFonts.systemName
+    @AppStorage(DocumentZoom.defaultsKey, store: AppDefaults.store) private var zoom = 0
+    @AppStorage(PreviewFonts.defaultsKey, store: AppDefaults.store) private var fontName = PreviewFonts.systemName
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -122,7 +127,7 @@ struct MarkdownVisualWebView: NSViewRepresentable {
                          fontName: fontName, fontSize: fontSize, darkMode: darkMode, style: style)
     }
     static func dismantleNSView(_ web: MarkdownVisualWKWebView, coordinator: MarkdownVisualCoordinator) {
-        // Schließen und Ansichtswechsel synchronisieren VOR der Entscheidung.
+        // Schließen und Ansichtswechsel synchronisieren vor der Entscheidung.
         // Danach darf ein abgebauter Editor verworfene Eingaben nicht nachtragen.
         coordinator.invalidateForSourceReplacement()
         web.configuration.userContentController.removeAllScriptMessageHandlers()
@@ -175,6 +180,47 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         guard let tabID, let loadedDocumentID else { return false }
         return workspace.tabs.contains { $0.id == tabID && $0.documentID == loadedDocumentID }
     }
+    /// Die Gültigkeit für neue Arbeit und das Ende der eigenen DOM-Sperre sind
+    /// getrennt: Relocate darf die Generation ändern, ohne fremde Holds zu lösen.
+    final class ActionHold {
+        fileprivate let coordinator: MarkdownVisualCoordinator
+        fileprivate let id = UUID().uuidString
+        fileprivate let session: String
+        fileprivate let generation: UInt64
+        fileprivate let tabID: UUID?
+        fileprivate let documentID: UUID?
+        fileprivate let url: URL?
+        fileprivate var prepared = false
+        private(set) var isActive = true
+
+        fileprivate init(_ coordinator: MarkdownVisualCoordinator) {
+            precondition(Thread.isMainThread)
+            self.coordinator = coordinator
+            session = coordinator.session
+            generation = coordinator.generation
+            tabID = coordinator.tabID
+            documentID = coordinator.loadedDocumentID
+            url = coordinator.documentURL
+        }
+
+        func isCurrent(for editor: MarkdownVisualCoordinator) -> Bool {
+            precondition(Thread.isMainThread)
+            return isActive && prepared && coordinator === editor && editor.ready
+                && editor.activeActionIDs.contains(id) && editor.session == session
+                && editor.generation == generation && editor.tabID == tabID
+                && editor.loadedDocumentID == documentID && editor.documentURL == url
+                && editor.documentIdentityMatches
+        }
+
+        func finish() {
+            precondition(Thread.isMainThread)
+            guard isActive else { return }
+            isActive = false
+            coordinator.finishAction(self)
+        }
+    }
+
+    private var activeActionIDs: Set<String> = []
     let assets = MarkdownPreviewSchemeHandler()
     private var imageSources: [String: String] = [:]
     var markdown = ""
@@ -183,6 +229,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     var pasteboard: NSPasteboard = .general
     var clipboardQueue = DispatchQueue.global(qos: .userInitiated)
     var imageIOQueue = MarkdownImageUndoSideEffect.ioQueue
+    var imageRemovalHooks = MarkdownImageRemoval.Hooks()
     static let clipboardType = NSPasteboard.PasteboardType("application/x-fastra-markdown")
     var generation: UInt64 = 0
     private var session = UUID().uuidString
@@ -198,23 +245,35 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     private var imageTransactions: [String: ImageTransaction] = [:]
     private var initialImageTransactions: [String: String] = [:]
     private var reconcilingImages = false
-    private var imageReconciliationWaiters: [() -> Void] = []
+    private var imageReconciliationWaiters: [(UInt64, String, Bool) -> Void] = []
     private var imageHistoryResetPending = false
     private var currentFontName = PreviewFonts.systemName
     private var currentFontSize: CGFloat = 14
     private var currentDarkMode = false
 
+    @discardableResult
+    private static func reportImageRemovalFailures(_ result: MarkdownImageUndo.ReferenceWorkResult,
+                                                    warningHandler: ((String, String) -> Void)?) -> Bool {
+        guard let message = result.removalWarning, let warningHandler else { return false }
+        warningHandler(L10n.string("Bilddateien konnten nicht vollständig entfernt werden"), message)
+        return true
+    }
+
     private func discardImageUndo() {
         let effects = imageTransactions.values.map(\.effect)
         guard !effects.isEmpty else { initialImageTransactions.removeAll(); return }
         let url = documentURL
+        let warningHandler = workspace?.saveSafetyWarningHandler
         imageTransactions.removeAll()
         initialImageTransactions.removeAll()
         MarkdownImageUndo.performWithReferences(buffer: .shared, work: { opened, gate in
             let references = effects.first?.savedReferences(documentURL: url, opened: opened)
             for effect in effects { effect.discard(unusedBy: references, gate: gate) }
-            return true
-        }, completion: { _ in })
+            return .capture(true, effects: effects)
+        }, completion: { result in
+            defer { withExtendedLifetime(effects) {} }
+            Self.reportImageRemovalFailures(result, warningHandler: warningHandler)
+        })
     }
 
     deinit { discardImageUndo() }
@@ -222,7 +281,9 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     /// Der Browser hält Bildaktionen kurz an, bis die Dateiseite abgeschlossen
     /// ist. Text und Dateien werden dadurch in derselben Reihenfolge bestätigt.
     private func reconcileImageUndo(_ visibleIDs: [String], previous: String, inputType: String,
-                                    newEdit: Bool, completion: @escaping (Bool) -> Void) {
+                                    newEdit: Bool, attemptsRemaining: Int = 3,
+                                    accept: @escaping () -> Bool,
+                                    completion: @escaping (Bool) -> Void) {
         let visible = Set(visibleIDs)
         let changes = imageTransactions.filter { $0.value.visible != visible.contains($0.key) }
         let discardedRedo = newEdit && inputType != "historyUndo" && inputType != "historyRedo"
@@ -230,9 +291,17 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         if changes.isEmpty {
             let discarded = discardedRedo.compactMap { imageTransactions.removeValue(forKey: $0)?.effect }
             if !discarded.isEmpty {
-                MarkdownImageUndoSideEffect.perform({ discarded.forEach { $0.discard() }; return true }, completion: { _ in })
+                MarkdownImageUndoSideEffect.perform({
+                    discarded.forEach { $0.discard() }
+                    return MarkdownImageUndoSideEffect.WorkResult.capture(true, effects: discarded)
+                }, completion: { [weak workspace] result in
+                    // Dateibesitzer wie bisher bis zum Main-Reporterabschluss halten.
+                    defer { withExtendedLifetime(discarded) {} }
+                    Self.reportImageRemovalFailures(.init(outcome: .completed(result.success), files: result),
+                                                    warningHandler: workspace?.saveSafetyWarningHandler)
+                })
             }
-            completion(true)
+            completion(accept())
             return
         }
         guard !reconcilingImages else { completion(false); return }
@@ -240,6 +309,13 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         let request = generation
         let expectedSession = session
         let url = documentURL
+        let documentID = loadedDocumentID
+        let queue = imageIOQueue
+        let knownImageSources = imageSources
+        let requestIsCurrent = { [self] in
+            generation == request && session == expectedSession && loadedDocumentID == documentID
+                && documentURL == url && documentIdentityMatches
+        }
         var opened: [URL: [String]] = [:]
         for owner in Workspace.allLive {
             for tab in owner.tabs where !(owner === workspace && tab.id == tabID) {
@@ -247,16 +323,17 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             }
         }
         let referenceCheck = MarkdownImageRemovalCheck()
-        let gate = MarkdownImageUndo.removalGate(for: opened, tabID: tabID, workspace: workspace,
+        let gate = MarkdownImageUndo.detailedRemovalGate(for: opened, tabID: tabID, workspace: workspace,
             allow: { [weak self] in self?.generation == request && self?.session == expectedSession },
             onStale: { referenceCheck.markStale() })
         MarkdownImageUndoSideEffect.pendingIO.enter()
-        imageIOQueue.async { [self] in
+        queue.async { [self] in
             var restored: [MarkdownImageUndoSideEffect] = []
             var success = true
             for (id, transaction) in changes where visible.contains(id) {
-                if transaction.effect.redo() { restored.append(transaction.effect) }
-                else { success = false; break }
+                let prepared = transaction.effect.prepareRedo()
+                if prepared == .restoredFromMemory { restored.append(transaction.effect) }
+                else if prepared == .failed { success = false; break }
             }
             if success {
                 let protected = changes.first?.value.effect.savedReferences(documentURL: url, opened: opened)
@@ -271,27 +348,76 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             } else {
                 for effect in restored.reversed() { _ = effect.undo() }
             }
+            var refreshedURLs: [String: URL] = [:]
+            var refreshedSources: [String: String] = [:]
+            var refreshedAddresses: [String: String] = [:]
+            if success {
+                let targetURLs = changes.filter { visible.contains($0.key) }
+                    .reduce(into: Set<URL>()) { $0.formUnion($1.value.effect.currentURLs) }
+                for (oldToken, source) in knownImageSources {
+                    guard let imageURL = MarkdownImages.localImageURL(from: source, documentURL: url),
+                          targetURLs.contains(imageURL.canonicalFileURL) else { continue }
+                    let escaped = source.replacingOccurrences(of: "&", with: "&amp;")
+                        .replacingOccurrences(of: "\"", with: "&quot;").replacingOccurrences(of: "<", with: "&lt;")
+                    let fragment = MarkdownImages.resolve(in: "<img src=\"\(escaped)\">", relativeTo: url)
+                    guard let token = fragment.imageURLs.keys.first else { continue }
+                    refreshedURLs.merge(fragment.imageURLs) { _, new in new }
+                    refreshedSources[token] = source
+                    refreshedAddresses["fastra-preview://image/" + oldToken] = "fastra-preview://image/" + token
+                }
+            }
+            let refreshedImages = (urls: refreshedURLs, sources: refreshedSources, addresses: refreshedAddresses)
+            let result = MarkdownImageUndoSideEffect.WorkResult.capture(success, effects: changes.map { $0.value.effect })
+            let referenceRejections = changes.compactMapValues { $0.effect.referenceRejectionID }
             let invalidations = MarkdownImageUndoBuffer.shared.takeInvalidations()
-            DispatchQueue.main.async {
-                defer { MarkdownImageUndoSideEffect.pendingIO.leave() }
-                guard generation == request, session == expectedSession, documentIdentityMatches else {
+            DispatchQueue.main.async { [self] in
+                var awaitingRetirement = false
+                defer { if !awaitingRetirement { MarkdownImageUndoSideEffect.pendingIO.leave() } }
+                let finish: (Bool) -> Void = { [self] accepted in
                     reconcilingImages = false
-                    completion(false)
                     let waiters = imageReconciliationWaiters
                     imageReconciliationWaiters.removeAll()
-                    waiters.forEach { $0() }
+                    completion(accepted && requestIsCurrent())
+                    waiters.forEach { $0(request, expectedSession, accepted) }
                     invalidations.forEach { $0() }
+                }
+                guard requestIsCurrent() else {
+                    Self.reportImageRemovalFailures(.init(outcome: .completed(result.success), files: result),
+                                                    warningHandler: workspace?.saveSafetyWarningHandler)
+                    finish(false)
                     return
                 }
-                if referenceCheck.isStale {
+                if referenceCheck.isStale, attemptsRemaining > 1 {
                     reconcilingImages = false
-                    reconcileImageUndo(visibleIDs, previous: previous, inputType: inputType, newEdit: newEdit) { accepted in
+                    reconcileImageUndo(visibleIDs, previous: previous, inputType: inputType, newEdit: newEdit,
+                                       attemptsRemaining: attemptsRemaining - 1, accept: accept) { accepted in
                         completion(accepted)
                         invalidations.forEach { $0() }
                     }
                     return
                 }
-                if success {
+                if result.success {
+                    // Benötigte Zielbilder sind bereits wiederhergestellt. Bei
+                    // instabilen Referenzen nur die Restbereinigung beenden.
+                    let reported = Self.reportImageRemovalFailures(.init(outcome: referenceCheck.isStale ? .notSettled : .completed(result.success), files: result),
+                                                    warningHandler: workspace?.saveSafetyWarningHandler)
+                    // Warnungen können einen modalen RunLoop betreten. Erst danach
+                    // dürfen genau diese Sitzung und ihre Basis den Text annehmen.
+                    guard requestIsCurrent(), accept() else { finish(false); return }
+                    if !refreshedImages.addresses.isEmpty {
+                        assets.addImageURLs(refreshedImages.urls)
+                        imageSources.merge(refreshedImages.sources) { _, new in new }
+                        // History stellt alte Bild-Tokens wieder her. Nur src mit
+                        // den regulären Datei-Tokens erneuern; der Quellverweis und
+                        // der native Textverlauf bleiben am vorhandenen DOM-Knoten.
+                        web?.callAsyncJavaScript("""
+                            for (const image of document.querySelectorAll('#fastra-visual img[data-md-image-transaction]')) {
+                                if (!transactions.includes(image.dataset.mdImageTransaction)) continue;
+                                const address = addresses[image.getAttribute('src')];
+                                if (address && address !== image.getAttribute('src')) image.setAttribute('src', address);
+                            }
+                            """, arguments: ["addresses": refreshedImages.addresses, "transactions": Array(visible)], in: nil, in: .page) { _ in }
+                    }
                     for (id, _) in changes {
                         imageTransactions[id]?.visible = visible.contains(id)
                         imageTransactions[id]?.insertionUndone = !visible.contains(id) && inputType == "historyUndo"
@@ -299,8 +425,31 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                     let discarded = discardedRedo.filter { !visible.contains($0) }
                         .compactMap { imageTransactions.removeValue(forKey: $0)?.effect }
                     if !discarded.isEmpty {
-                        MarkdownImageUndoSideEffect.perform({ discarded.forEach { $0.discard() }; return true }, completion: { _ in })
+                        MarkdownImageUndoSideEffect.perform({
+                            discarded.forEach { $0.discard() }
+                            return MarkdownImageUndoSideEffect.WorkResult.capture(true, effects: discarded)
+                        }, completion: { [weak workspace] result in
+                            defer { withExtendedLifetime(discarded) {} }
+                            Self.reportImageRemovalFailures(.init(outcome: .completed(result.success), files: result),
+                                                            warningHandler: workspace?.saveSafetyWarningHandler)
+                        })
                     }
+                    if referenceCheck.isStale, reported, !referenceRejections.isEmpty {
+                        // pendingIO und die Eingabesperre gehören bis zum Mainfinale
+                        // weiter diesem Vorgang; die Phase verändert nur Speicher.
+                        awaitingRetirement = true
+                        queue.async {
+                            for (id, rejectionID) in referenceRejections {
+                                changes[id]?.effect.retireReferenceRejection(rejectionID)
+                            }
+                            DispatchQueue.main.async {
+                                defer { MarkdownImageUndoSideEffect.pendingIO.leave() }
+                                finish(true)
+                            }
+                        }
+                        return
+                    }
+                    finish(true)
                 } else {
                     web?.callAsyncJavaScript("return window.fastraVisual.rollbackImageChange(inputType, previous);",
                         arguments: ["inputType": inputType, "previous": previous], in: nil, in: .page) { [weak self] result in
@@ -309,20 +458,19 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                             load(previous, documentURL: documentURL, fontName: currentFontName,
                                  fontSize: currentFontSize, darkMode: currentDarkMode, style: style)
                         }
-                    workspace?.saveSafetyWarningHandler(L10n.string("Bild konnte nicht wiederhergestellt werden"),
-                        L10n.string("Der Bildpfad ist inzwischen belegt oder nicht beschreibbar. Der Text blieb unverändert. Gib den ursprünglichen Bildpfad frei und versuche Wiederholen erneut."))
+                    let details = result.restoreFailures
+                    let message = details.isEmpty
+                        ? L10n.string("Der Bildpfad ist inzwischen belegt oder nicht beschreibbar. Der Text blieb unverändert. Gib den ursprünglichen Bildpfad frei und versuche Wiederholen erneut.")
+                        : L10n.string("Der Text blieb unverändert. Die Wiederherstellung der Bilder wurde nicht abgeschlossen.") + "\n\n" + details.joined(separator: "\n\n")
+                    workspace?.saveSafetyWarningHandler(L10n.string("Bild konnte nicht wiederhergestellt werden"), message)
+                    finish(false)
                 }
-                reconcilingImages = false
-                completion(success)
-                let waiters = imageReconciliationWaiters
-                imageReconciliationWaiters.removeAll()
-                waiters.forEach { $0() }
-                invalidations.forEach { $0() }
             }
         }
     }
 
-    private func completeImageAction(revision: Int) {
+    private func completeImageAction(revision: Int, session: String, generation: UInt64) {
+        guard self.generation == generation, self.session == session else { return }
         web?.callAsyncJavaScript("window.fastraVisual.completeImageAction(session, revision);",
             arguments: ["session": session, "revision": revision], in: nil, in: .page) { _ in }
     }
@@ -330,11 +478,12 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     private func resetImageUndoHistory() {
         guard !imageHistoryResetPending, ready else { return }
         imageHistoryResetPending = true
-        synchronize(holdingInput: true) { [weak self] success in
+        synchronize(holdingInput: true) { [weak self] success, hold in
+            defer { hold?.finish() }
             guard let self else { return }
             imageHistoryResetPending = false
             guard success, let workspace, let tabID,
-                  let index = workspace.tabs.firstIndex(where: { $0.id == tabID }) else { completeAction(); return }
+                  let index = workspace.tabs.firstIndex(where: { $0.id == tabID }) else { return }
             let content = workspace.tabs[index].content
             workspace.tabs[index].undoHistory.reset(to: content)
             load(content, documentURL: documentURL, fontName: currentFontName,
@@ -365,14 +514,20 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         let transactions = Array(imageTransactions.values)
         guard !transactions.isEmpty else { return }
         let content = markdown
+        let warningHandler = workspace?.saveSafetyWarningHandler
         MarkdownImageUndo.performWithReferences(buffer: .shared, work: { opened, gate in
-            guard let protected = transactions.first?.effect.savedReferences(documentURL: url, opened: opened) else { return true }
+            guard let protected = transactions.first?.effect.savedReferences(documentURL: url, opened: opened) else {
+                return .capture(true, effects: transactions.map(\.effect))
+            }
             let visible = MarkdownImageCleanup.references(content, documentURL: url)
             for transaction in transactions {
                 _ = transaction.effect.documentSaved(visible: MarkdownImageCleanup.protects(transaction.effect.currentURLs, in: visible.union(protected)), gate: gate)
             }
-            return true
-        }, completion: { _ in })
+            return .capture(true, effects: transactions.map(\.effect))
+        }, completion: { result in
+            defer { withExtendedLifetime(transactions) {} }
+            Self.reportImageRemovalFailures(result, warningHandler: warningHandler)
+        })
     }
 
     func load(_ source: String, documentURL: URL?, fontName: String,
@@ -408,7 +563,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 for (url, image) in existing {
                     let id = UUID().uuidString
                     self.imageTransactions[id] = ImageTransaction(
-                        effect: MarkdownImageUndoSideEffect(images: [image], alreadySaved: true, historyLost: { [weak self] in self?.resetImageUndoHistory() }))
+                        effect: MarkdownImageUndoSideEffect(images: [image], alreadySaved: true, historyLost: { [weak self] in self?.resetImageUndoHistory() }, removalHooks: self.imageRemovalHooks))
                     for (token, imageURL) in document.fragment.imageURLs where imageURL == url {
                         self.initialImageTransactions[token] = id
                     }
@@ -500,17 +655,26 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         case "change":
             guard let base = body["base"] as? String,
                   let value = body["markdown"] as? String,
-                  workspace.tabs.contains(where: { $0.id == tabID && $0.content.utf8.elementsEqual(base.utf8) }) else { return }
+                  let tab = workspace.tabs.first(where: { $0.id == tabID && $0.content.utf8.elementsEqual(base.utf8) }) else { return }
             let revision = body["revision"] as? Int ?? acceptedInputRevision
-            reconcileImageUndo(body["imageTransactions"] as? [String] ?? [], previous: base,
-                               inputType: body["inputType"] as? String ?? "", newEdit: true) { [self] success in
-                if success, documentIdentityMatches, workspace.acceptVisualMarkdown(value, previous: base, tabID: tabID) {
-                    markdown = value
-                    acceptedInputRevision = revision
-                    reportTableContext()
-                }
-                completeImageAction(revision: revision)
+            let request = generation, capturedSession = session
+            let documentID = loadedDocumentID, url = documentURL
+            guard workspace.textEditingIsAllowed(for: tab) else {
+                completeImageAction(revision: revision, session: capturedSession, generation: request)
+                return
             }
+            reconcileImageUndo(body["imageTransactions"] as? [String] ?? [], previous: base,
+                               inputType: body["inputType"] as? String ?? "", newEdit: true, accept: { [self] in
+                guard generation == request, session == capturedSession, loadedDocumentID == documentID,
+                      documentURL == url, documentIdentityMatches,
+                      workspace.acceptVisualMarkdown(value, previous: base, tabID: tabID) else { return false }
+                markdown = value
+                acceptedInputRevision = revision
+                reportTableContext()
+                return true
+            }, completion: { [self] _ in
+                completeImageAction(revision: revision, session: capturedSession, generation: request)
+            })
         case "imageMenu":
             guard let web, let x = body["x"] as? Double, let y = body["y"] as? Double else { return }
             let menu = NSMenu()
@@ -581,52 +745,87 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
 
     /// WebKit liefert Eingaben asynchron. Speichern und Ansichtswechsel warten
     /// deshalb auf den aktuellen DOM-Stand, bevor sie den nativen Tab benutzen.
-    func synchronize(holdingInput: Bool = false, _ completion: @escaping (Bool) -> Void) {
+    func synchronize(_ completion: @escaping (Bool) -> Void) {
+        synchronize(holdingInput: false) { succeeded, _ in completion(succeeded) }
+    }
+
+    func synchronize(holdingInput: Bool, _ completion: @escaping (Bool, ActionHold?) -> Void) {
         if reconcilingImages {
-            imageReconciliationWaiters.append { [weak self] in
-                guard let self else { completion(false); return }
+            let request = generation, capturedSession = session
+            imageReconciliationWaiters.append { [weak self] originGeneration, originSession, accepted in
+                guard let self else { completion(false, nil); return }
+                guard generation == request, session == capturedSession else { completion(false, nil); return }
+                // Eine abgelehnte Übernahme darf dieselbe wartende Aktion nicht
+                // erneut an Dateien ausführen. Eine neue Sitzung hat ihren eigenen Auftrag.
+                guard accepted || request != originGeneration || capturedSession != originSession else {
+                    completion(false, nil)
+                    return
+                }
                 synchronize(holdingInput: holdingInput, completion)
             }
             return
         }
-        guard ready, let web else { completion(true); return }
-        guard documentIdentityMatches else { completion(false); return }
+        guard ready, let web else { completion(true, nil); return }
+        guard documentIdentityMatches else { completion(false, nil); return }
         let request = generation
         let requestSession = session
-        web.callAsyncJavaScript("return window.fastraVisual.prepareAction();",
-                                arguments: [:], in: nil, in: .page) { [self] result in
-            guard generation == request else { completion(false); return }
+        let documentID = loadedDocumentID, url = documentURL
+        let hold = ActionHold(self)
+        activeActionIDs.insert(hold.id)
+        var responded = false
+        func respond(_ succeeded: Bool) {
+            guard !responded else { return }
+            responded = true
+            if !succeeded { hold.finish() }
+            completion(succeeded, succeeded && holdingInput ? hold : nil)
+            if succeeded && !holdingInput { hold.finish() }
+        }
+        web.callAsyncJavaScript("return window.fastraVisual.prepareAction(session, actionID);",
+                                arguments: ["session": requestSession, "actionID": hold.id], in: nil, in: .page) { [self] result in
+            guard ready, generation == request, session == requestSession else { respond(false); return }
             if case .success(let value) = result, let snapshot = value as? [String: Any], snapshot["composing"] as? Bool == true {
                 workspace?.saveSafetyWarningHandler(L10n.string("Texteingabe noch nicht abgeschlossen"),
                     L10n.string("Bitte schließe die aktuelle Zeicheneingabe ab und führe den Befehl danach erneut aus."))
-                completion(false)
+                respond(false)
                 return
             }
             guard generation == request, documentIdentityMatches, let workspace, let tabID,
                   case .success(let value) = result, let snapshot = value as? [String: Any],
+                  snapshot["session"] as? String == requestSession, snapshot["actionID"] as? String == hold.id,
                   let content = snapshot["markdown"] as? String,
                   let revision = snapshot["revision"] as? Int, revision >= acceptedInputRevision else {
-                if generation == request { completeAction(session: requestSession) }
-                completion(false)
+                respond(false)
                 return
             }
-            guard workspace.tabs.contains(where: { $0.id == tabID && $0.content.utf8.elementsEqual(markdown.utf8) }) else {
+            guard let tab = workspace.tabs.first(where: { $0.id == tabID && $0.content.utf8.elementsEqual(markdown.utf8) }) else {
                 warnUnacceptedInput()
-                completeAction(session: requestSession); completion(false); return
+                respond(false); return
             }
-            reconcileImageUndo(snapshot["imageTransactions"] as? [String] ?? [], previous: markdown,
-                               inputType: snapshot["inputType"] as? String ?? "", newEdit: revision > acceptedInputRevision) { [self] success in
-                let accepted = success && documentIdentityMatches && workspace.acceptVisualMarkdown(content, previous: markdown, tabID: tabID)
-                if accepted {
-                    markdown = content; acceptedInputRevision = revision
-                    rememberViewport(snapshot["viewport"])
-                } else {
+            guard workspace.textEditingIsAllowed(for: tab) else {
+                warnUnacceptedInput()
+                completeImageAction(revision: revision, session: requestSession, generation: request)
+                respond(false)
+                return
+            }
+            let base = markdown
+            reconcileImageUndo(snapshot["imageTransactions"] as? [String] ?? [], previous: base,
+                               inputType: snapshot["inputType"] as? String ?? "", newEdit: revision > acceptedInputRevision, accept: { [self] in
+                guard generation == request, session == requestSession, loadedDocumentID == documentID,
+                      documentURL == url, documentIdentityMatches,
+                      workspace.acceptVisualMarkdown(content, previous: base, tabID: tabID) else { return false }
+                markdown = content; acceptedInputRevision = revision
+                rememberViewport(snapshot["viewport"])
+                return true
+            }, completion: { [self] accepted in
+                let current = ready && generation == request && session == requestSession
+                    && loadedDocumentID == documentID && documentURL == url && documentIdentityMatches
+                if !accepted, current {
                     warnUnacceptedInput()
                 }
-                completeImageAction(revision: revision)
-                completion(accepted)
-                if generation == request, !holdingInput || !accepted { completeAction(session: requestSession) }
-            }
+                completeImageAction(revision: revision, session: requestSession, generation: request)
+                hold.prepared = accepted && current
+                respond(accepted && current)
+            })
         }
     }
 
@@ -648,10 +847,13 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             L10n.string("Das Dokument wurde gleichzeitig geändert. Bitte sichere deine sichtbare Eingabe, bevor du die Ansicht schließt."))
     }
 
-    func completeAction(session expectedSession: String? = nil) {
-        guard ready else { return }
-        web?.callAsyncJavaScript("window.fastraVisual.completeAction(session);",
-            arguments: ["session": expectedSession ?? session], in: nil, in: .page) { _ in }
+    private func finishAction(_ hold: ActionHold) {
+        guard activeActionIDs.remove(hold.id) != nil else { return }
+        // ready=false lässt den alten DOM bis zum wirklichen Ersatz gesperrt.
+        // Bei Relocate derselben bereiten Session darf nur dieses Token enden.
+        guard ready, session == hold.session else { return }
+        web?.callAsyncJavaScript("window.fastraVisual.completeAction(session, actionID);",
+            arguments: ["session": hold.session, "actionID": hold.id], in: nil, in: .page) { _ in }
     }
 
     /// Nach einem neuen Speicherziel darf der alte DOM nicht wieder Eingaben
@@ -777,8 +979,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 for url in urls { images.append(try MarkdownImageStore.storeImageFile(url, documentURL: documentURL, reserveForTransaction: true)) }
                 return images
             } catch {
-                MarkdownSaveAs.Prepared(content: "", createdImages: images.filter(\.createdByInsertion)).rollback()
-                throw error
+                throw MarkdownSaveAs.Prepared(content: "", createdImages: images.filter(\.createdByInsertion)).rollback(after: error)
             }
         }
     }
@@ -805,14 +1006,14 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 && workspace.activeDocumentID == documentID && workspace.activeTab?.url == url
                 && workspace.activeMarkdownIsVisual
         }
-        synchronize(holdingInput: true) { [weak self] success in
-            guard let self else { completion(.failure(TextSnippetError.staleTarget)); return }
+        synchronize(holdingInput: true) { [weak self] success, hold in
+            guard self != nil else { hold?.finish(); completion(.failure(TextSnippetError.staleTarget)); return }
             guard success, current() else {
-                self.completeAction(session: capturedSession)
+                hold?.finish()
                 completion(.failure(TextSnippetError.staleTarget)); return
             }
             web.callAsyncJavaScript("return window.fastraVisual.bookmark();", arguments: [:], in: nil, in: .page) { result in
-                defer { self.completeAction(session: capturedSession) }
+                defer { hold?.finish() }
                 guard current(), case .success(let value) = result, let key = value as? String else {
                     completion(.failure(TextSnippetError.staleTarget)); return
                 }
@@ -871,7 +1072,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         }
     }
 
-    private func insertPrepared(bookmark: String?, actionTitle: String = L10n.string("Bild einfügen"),
+    func insertPrepared(bookmark: String?, actionTitle: String = L10n.string("Bild einfügen"),
                                 completion: @escaping (Bool) -> Void = { _ in },
                                 _ operation: @escaping (URL?) throws -> MarkdownSaveAs.Prepared) {
         guard ready, documentIdentityMatches, let workspace, workspace.activeTabID == tabID,
@@ -896,6 +1097,10 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 completion(false); return
             }
             MarkdownImageUndoSideEffect.pendingIO.enter()
+            func finish(_ success: Bool) {
+                defer { MarkdownImageUndoSideEffect.pendingIO.leave() }
+                completion(success)
+            }
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = Result { () -> (MarkdownSaveAs.Prepared, MarkdownVisualDocument) in
                     let prepared = try operation(url)
@@ -903,11 +1108,14 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 }
                 DispatchQueue.main.async {
                     guard let self, isCurrent() else {
-                        if case .success(let (prepared, _)) = result {
-                            MarkdownImageUndoSideEffect.perform({ prepared.rollback(); return true }, completion: { _ in })
+                        switch result {
+                        case .success(let (prepared, _)):
+                            prepared.rollbackReporting(warningHandler: workspace.saveSafetyWarningHandler) { finish(false) }
+                        case .failure(let error):
+                            workspace.saveSafetyWarningHandler(actionTitle, error.localizedDescription)
+                            finish(false)
                         }
-                        MarkdownImageUndoSideEffect.pendingIO.leave()
-                        completion(false); return
+                        return
                     }
                     switch result {
                     case .success(let (prepared, visual)):
@@ -919,30 +1127,30 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                         let transactionID = UUID().uuidString
                         let created = prepared.createdImages
                         if !created.isEmpty {
-                            self.imageTransactions[transactionID] = ImageTransaction(effect: MarkdownImageUndoSideEffect(images: created, historyLost: { [weak self] in self?.resetImageUndoHistory() }))
+                            self.imageTransactions[transactionID] = ImageTransaction(effect: MarkdownImageUndoSideEffect(images: created, historyLost: { [weak self] in self?.resetImageUndoHistory() }, removalHooks: self.imageRemovalHooks))
                         }
                         let createdURLs = Set(created.map(\.fileURL))
                         let imageSources = visual.fragment.imageURLs.filter { createdURLs.contains($0.value) }
                             .map { "fastra-preview://image/" + $0.key }
                         web.callAsyncJavaScript("return window.fastraVisual.insertBookmarked(bookmark, html, atoms, transaction, imageSources, singleLine);",
                             arguments: ["bookmark": bookmark, "html": html, "atoms": visual.opaqueSources, "transaction": transactionID, "imageSources": imageSources, "singleLine": !prepared.content.contains("\n") && !prepared.content.contains("\r")], in: nil, in: .page) { result in
-                                defer { MarkdownImageUndoSideEffect.pendingIO.leave() }
                                 if case .success(let inserted) = result, inserted as? Bool == true {
-                                    prepared.commit(); completion(true)
+                                    prepared.commit(); finish(true)
                                 }
                                 else {
                                     self.imageTransactions.removeValue(forKey: transactionID)?.effect.discard()
-                                    MarkdownImageUndoSideEffect.perform({ prepared.rollback(); return true }, completion: { _ in })
-                                    guard isCurrent() else { completion(false); return }
-                                    workspace.saveSafetyWarningHandler(L10n.string("Einfügen abgebrochen"),
-                                        L10n.string("Das Dokument wurde während des Einfügens bearbeitet. Die vorhandene Eingabe blieb erhalten; bitte füge erneut ein."))
-                                    completion(false)
+                                    prepared.rollbackReporting(warningHandler: workspace.saveSafetyWarningHandler) {
+                                        if isCurrent() {
+                                            workspace.saveSafetyWarningHandler(L10n.string("Einfügen abgebrochen"),
+                                                L10n.string("Das Dokument wurde während des Einfügens bearbeitet. Die vorhandene Eingabe blieb erhalten; bitte füge erneut ein."))
+                                        }
+                                        finish(false)
+                                    }
                                 }
                             }
                     case .failure(let error):
-                        MarkdownImageUndoSideEffect.pendingIO.leave()
                         workspace.saveSafetyWarningHandler(actionTitle, error.localizedDescription)
-                        completion(false)
+                        finish(false)
                     }
                 }
             }

@@ -1,4 +1,4 @@
-//! Fensteraufteilung und Designwerte folgen der nativen Mac-Oberfläche.
+//! Fensteraufteilung und Designwerte der Linux-Oberfläche.
 use super::*;
 pub(super) mod brand;
 pub(super) mod dialog;
@@ -17,6 +17,7 @@ pub(super) use document::{
 pub(super) struct Shell {
     pub(super) sidebar: gtk::Box,
     pub(super) body: gtk::Paned,
+    pub(super) window_content: gtk::Overlay,
     tabs: gtk::Box,
     footer: gtk::Box,
     leading: gtk::Box,
@@ -48,6 +49,16 @@ fn button_content(name: &str, text: &str) -> gtk::Box {
     row.append(&image);
     row.append(&gtk::Label::new(Some(text)));
     row
+}
+
+fn window_controls(lang: Language) -> gtk::WindowControls {
+    let controls = gtk::WindowControls::new(gtk::PackType::End);
+    controls.set_decoration_layout(Some(":minimize,maximize,close"));
+    controls.set_valign(gtk::Align::Center);
+    controls.update_property(&[gtk::accessible::Property::Label(
+        lang.text("Fenstersteuerung", "Window controls"),
+    )]);
+    controls
 }
 
 pub(super) fn children(widget: &impl IsA<gtk::Widget>) -> Vec<gtk::Widget> {
@@ -151,10 +162,13 @@ pub(super) fn mount(
         }
     }
     let menu = gtk::MenuButton::builder()
-        .icon_name("open-menu-symbolic")
         .tooltip_text(ui.lang.text("Fastra-Menü", "Fastra menu"))
         .build();
-    menu.add_css_class("chrome-icon");
+    menu.set_child(Some(&button_content(
+        "open-menu-symbolic",
+        ui.lang.text("Menü", "Menu"),
+    )));
+    menu.add_css_class("fastra-app-menu");
     menu.update_property(&[gtk::accessible::Property::Label(
         ui.lang.text("Fastra-Menü", "Fastra menu"),
     )]);
@@ -171,11 +185,8 @@ pub(super) fn mount(
     dismiss_command_popovers(commands.upcast_ref(), &mut std::collections::HashSet::new());
     let leading = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     leading.add_css_class("chrome-leading");
-    leading.set_size_request(208, 36);
+    leading.set_size_request(160, 36);
     leading.set_hexpand(false);
-    let controls = gtk::WindowControls::new(gtk::PackType::Start);
-    controls.set_decoration_layout(Some("close,minimize,maximize:"));
-    leading.append(&controls);
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     spacer.set_hexpand(true);
     let leading_drag = gtk::WindowHandle::new();
@@ -277,6 +288,7 @@ pub(super) fn mount(
     });
     header.append(&preview);
     header.append(&menu);
+    header.append(&window_controls(ui.lang));
     ui.window.set_titlebar(Some(&header));
     let body = gtk::Paned::new(gtk::Orientation::Horizontal);
     body.set_start_child(Some(&sidebar));
@@ -340,10 +352,13 @@ pub(super) fn mount(
     });
     root.append(&canvas);
     root.append(&footer);
-    ui.window.set_child(Some(&root));
+    let window_content = gtk::Overlay::new();
+    window_content.set_child(Some(&root));
+    ui.window.set_child(Some(&window_content));
     let shell = Rc::new(Shell {
         sidebar,
         body,
+        window_content,
         tabs: tabstrip,
         footer,
         leading,
@@ -594,6 +609,7 @@ pub(super) fn sidebar(
     root: &gtk::Box,
     path: &gtk::Entry,
     filter: &gtk::Entry,
+    filter_status: &gtk::Label,
     list: &gtk::ScrolledWindow,
 ) {
     let controls = children(root);
@@ -692,6 +708,7 @@ pub(super) fn sidebar(
     });
     filter.add_css_class("sidebar-filter");
     root.append(filter);
+    root.append(filter_status);
     root.append(list);
     let open = gtk::Button::new();
     open.set_child(Some(&button_content(

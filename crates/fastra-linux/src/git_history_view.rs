@@ -75,6 +75,7 @@ fn policy() -> fastra_git::Policy {
 fn failure(e: fastra_git::Error, lang: Language) -> String {
     match e {
         fastra_git::Error::GitFailed(o)
+        | fastra_git::Error::NotRepository(o)
         | fastra_git::Error::Cancelled(o)
         | fastra_git::Error::TimedOut(o)
         | fastra_git::Error::OutputLimit(o) => format!(

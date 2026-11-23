@@ -1,31 +1,19 @@
 // TestDefaultsPurge.swift
 //
-// Räumt die von Unit-Tests und In-App-Selbsttests angelegten
-// Preferences-Domains wieder ab. Hintergrund (Roadmap, gemeldet 2026-07-28):
-// Jeder Testlauf legte unter `~/Library/Preferences` eigene Domains mit UUID
-// im Namen an und ließ sie liegen — gefunden wurden 3713 Plists (~22 MB).
-// Das war nicht nur Unordnung: cfprefsd kam mit der Domain-Flut nicht mehr
-// klar, `defaults read` lieferte für fremde Domains NICHTS mehr, und
-// Terminal.app startete mit dem Standardprofil statt der Nutzereinstellungen.
+// Räumt Test-Preferences-Domains ab, damit abgestürzte Läufe cfprefsd nicht
+// mit dauerhaft liegengebliebenen Domains belasten.
 //
-// Zwei getrennte Wege, bewusst beide parallel-läufer-sicher:
+// 1. `purgeRegistered` entfernt genau die per `register(_:)` gemeldeten Suiten
+//    dieses Prozesses; parallele Testprozesse bleiben unberührt.
+// 2. `purgeStale` entfernt frühere Reste nur mit Testpräfix, UUID im Namen und
+//    Mindestalter einer Stunde. Das Alter schützt aktive parallele Suiten.
 //
-// 1. REGISTRY: Jede über `register(_:)` gemeldete Suite dieses Prozesses wird
-//    am Prozessende gezielt entfernt (`purgeRegistered`). Das trifft exakt
-//    die eigenen Suiten — nie die eines gleichzeitig laufenden zweiten
-//    Testprozesses (z. B. Worktree-Parallelarbeit).
-// 2. STALE: `purgeStale` entfernt Reste früherer, abgestürzter Läufe — nur
-//    Domains mit Test-Präfix UND UUID im Namen UND älter als eine Stunde.
-//    Echte Nutzer-Domains tragen nie eine UUID im Namen; das Alter schützt
-//    die noch aktiven Suiten paralleler Prozesse.
-//
-// Im Prozess wird über `removePersistentDomain` (cfprefsd-sauber) geleert.
-// Der äußere Test-Runner bekommt zusätzlich die exakt registrierten Namen und
-// entfernt eine von cfprefsd NACH Prozessende nochmals angelegte leere Plist.
-// Erst dann existiert keine lebende UserDefaults-Instanz mehr, die sie erneut
-// zurückschreiben könnte.
+// Im Prozess per `removePersistentDomain` leeren. Der äußere Runner erhält
+// die registrierten Namen und entfernt nach Prozessende nochmals angelegte
+// leere Plists; dann kann keine lebende UserDefaults-Instanz sie zurückschreiben.
 
 import Foundation
+import Darwin
 
 enum TestDefaultsPurge {
 
@@ -37,14 +25,9 @@ enum TestDefaultsPurge {
         explicit: URL? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
-        // Ausdrücklich als VERZEICHNIS normalisieren, damit der
-        // Containment-Vergleich in `purge` nicht vom Dateisystem abhängt.
-        // Gemessen am 2026-09-10: `standardizedFileURL` setzt das
-        // Verzeichnis-Merkmal, indem es nachsieht, ob der Pfad existiert. Für
-        // ein VORHANDENES Verzeichnis ging der alte URL-Vergleich deshalb auf;
-        // fehlte das Verzeichnis, schlug er fehl — dann gibt es aber ohnehin
-        // nichts zu löschen. Also kein belegter Fehler, sondern eine Zusage,
-        // die still am Dateisystemzustand hing.
+        // Als Verzeichnis normalisieren, damit der Containment-Vergleich in `purge`
+        // nicht davon abhängt, ob `standardizedFileURL` den Pfad bereits auf dem
+        // Dateisystem als Verzeichnis erkennen kann.
         if let explicit {
             return URL(fileURLWithPath: explicit.path, isDirectory: true)
                 .standardizedFileURL
@@ -80,7 +63,7 @@ enum TestDefaultsPurge {
         pattern: "^[A-Za-z0-9._-]+$"
     )
 
-    /// `true` nur für Domains, die ein Test-Präfix tragen UND eine UUID im
+    /// `true` nur für Domains, die ein Test-Präfix tragen und eine UUID im
     /// Namen haben.
     static func isTestDomain(_ name: String) -> Bool {
         guard prefixes.contains(where: { name.hasPrefix($0) }),
@@ -109,32 +92,41 @@ enum TestDefaultsPurge {
             registered.insert(name)
             guard !registeredWithRunner.contains(name),
                   let path = runnerRegistryPath, !path.isEmpty else { return true }
-            let url = URL(fileURLWithPath: path)
-            if !FileManager.default.fileExists(atPath: path) {
-                guard FileManager.default.createFile(
-                    atPath: path, contents: nil,
-                    attributes: [.posixPermissions: 0o600]
-                ) else { return false }
+            let descriptor = Darwin.open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0o600)
+            guard descriptor >= 0 else { return false }
+            var needsClose = true
+            defer {
+                if needsClose { Darwin.close(descriptor) }
             }
-            guard let handle = try? FileHandle(forWritingTo: url) else { return false }
+            // Append allein schützt keine Zeile, die writeAll in mehreren
+            // Teilschritten schreibt. Die Dateisperre schützt kooperierende Prozesse.
+            var lockResult: Int32
+            repeat {
+                lockResult = flock(descriptor, LOCK_EX)
+            } while lockResult == -1 && errno == EINTR
+            guard lockResult == 0 else { return false }
             do {
-                try handle.seekToEnd()
-                try handle.write(contentsOf: Data((name + "\n").utf8))
-                try handle.close()
+                try Data((name + "\n").utf8).withUnsafeBytes {
+                    try POSIXBufferWriter.writeAll($0, to: descriptor)
+                }
+                // close gibt zugleich die Sperre frei. Auch bei einem Fehler
+                // nicht erneut schließen: Die Nummer könnte schon neu vergeben sein.
+                let closeResult = Darwin.close(descriptor)
+                needsClose = false
+                guard closeResult == 0 else { return false }
                 registeredWithRunner.insert(name)
                 return true
             } catch {
                 // Der normale prozessinterne Purge bleibt weiterhin aktiv.
                 // Der Runner übernimmt die Datei nur als zweite Absicherung
-                // NACH dem Ende von cfprefsd-Schreibvorgängen.
-                try? handle.close()
+                // nach dem Ende von cfprefsd-Schreibvorgängen.
                 return false
             }
         }
     }
 
     /// Entfernt genau die registrierten Suiten dieses Prozesses.
-    /// Rückgabe: Domains, die sich NICHT entfernen ließen (sollte leer sein);
+    /// Rückgabe: Domains, die sich nicht entfernen ließen (sollte leer sein);
     /// der Aufrufer meldet sie sichtbar.
     @discardableResult
     static func purgeRegistered(preferencesDirectory: URL? = nil) -> [String] {
@@ -144,7 +136,7 @@ enum TestDefaultsPurge {
         return remaining
     }
 
-    /// Entfernt GENAU EINE registrierte Suite und meldet sie ab.
+    /// Entfernt genau eine registrierte Suite und meldet sie ab.
     ///
     /// Nötig für Tests, die den Registry-Weg selbst prüfen: `purgeRegistered()`
     /// räumt alle bis dahin registrierten Suiten des Prozesses ab — mitten im
@@ -187,20 +179,20 @@ enum TestDefaultsPurge {
                 remaining.append(name)
                 continue
             }
-            // Über eine EIGENE Instanz der Suite entfernen und sofort
+            // Über eine eigene Instanz der Suite entfernen und sofort
             // synchronisieren: `removePersistentDomain` über `.standard`
             // ließ beschriebene Suiten beim Prozessende stehen — die
             // Suite-Instanz der Tests hielt ihren Stand noch im Speicher.
             let defaults = UserDefaults(suiteName: name)
             defaults?.removePersistentDomain(forName: name)
             defaults?.synchronize()
-            // `removePersistentDomain` LEERT die Domain, lässt aber die dann
+            // `removePersistentDomain` leert die Domain, lässt aber die dann
             // inhaltslose Plist-Datei liegen — genau daraus entstand der
             // 3713-Dateien-Berg. Die eigene Datei deshalb mit entfernen.
             let plist = directory
                 .appendingPathComponent(name + ".plist", isDirectory: false)
                 .standardizedFileURL
-            // Über die PFADE vergleichen, nicht über die URLs: Zwei URLs auf
+            // Über die Pfade vergleichen, nicht über die URLs: Zwei URLs auf
             // dasselbe Verzeichnis gelten als verschieden, sobald eine davon
             // den Schrägstrich am Ende trägt.
             guard plist.deletingLastPathComponent().path == directory.path else {
@@ -238,7 +230,7 @@ enum TestDefaultsPurge {
     static func purgeStale(olderThan age: TimeInterval = 3600,
                            preferencesDirectory: URL? = nil) -> Int {
         let directory = resolvedPreferencesDirectory(explicit: preferencesDirectory)
-        // Zeigt das Verzeichnis woanders hin als das Preferences-Home DIESES
+        // Zeigt das Verzeichnis woanders hin als das Preferences-Home dieses
         // Prozesses, bleibt es beim reinen Dateiaufräumen. Vorher folgte der
         // Dateipfad dem Argument, `removePersistentDomain` aber immer dem
         // eigenen Home — die Funktion räumte also an einer Stelle auf und

@@ -1,7 +1,7 @@
 // BufferSearchTests.swift
 //
 // Sichert die reine Buffer-Suche ab (in-memory, ohne Datei-System).
-// Diese Tests sind das Sicherheitsnetz, BEVOR die Maske die Demo-Daten
+// Diese Tests sind das Sicherheitsnetz, bevor die Maske die Demo-Daten
 // gegen echte Suchergebnisse tauscht — sonst landet ein Off-by-one in der
 // Zeilen-/Spalten-Berechnung still in der UI.
 
@@ -60,10 +60,9 @@ func find_multilineMatchUsesLastLineRemainder() {
     #expect(r.matches.first?.lineRemainder == " danach")
 }
 
-// Befund 2026-08-06: Der Zeilenrest wurde ungekürzt kopiert. Eine zulässige
-// 32-MiB-Datei ohne Zeilenumbruch (einzeiliges JSON) erzeugte damit pro
-// materialisiertem Treffer eine fast vollständige Kopie der Zeile — bei 2.000
-// Treffern zig Gigabyte, an denen die App am Speicherdruck starb.
+// Trefferauszüge einer 32-MiB-Zeile müssen begrenzt bleiben. Eine nahezu
+// vollständige Zeilenkopie je materialisiertem Treffer würde bei 2000
+// Treffern zig Gigabyte Speicher beanspruchen.
 
 @Test("Zeilenkontext wird gekürzt und zeigt die Kürzung an")
 func find_lineRemainderIsCapped() {
@@ -145,14 +144,14 @@ func lineColumn_handlesCRLF() {
 
 @Test("Reine CR-Zeilenenden (klassisches Mac / 4D-Logs) werden als Zeilen gezählt")
 func lineColumn_handlesLoneCR() {
-    // Genau Daniels 4D-Log-Fall: nur \r als Trenner. Frühere LF-only-Logik
-    // hätte alle Treffer fälschlich in Zeile 1 gemeldet.
+    // Nur CR als Trenner; eine LF-only-Zählung würde alle Treffer in Zeile 1
+    // melden.
     let r = BufferSearch.find(in: "zeile1\rzeile2\r14 uhr\r",
                               options: SearchOptions(find: "14", replace: "",
                                                      isRegex: false, caseSensitive: true))
     #expect(r.matches.count == 1)
     let m = r.matches.first!
-    #expect(m.line == 3)        // dritte CR-Zeile, NICHT Zeile 1
+    #expect(m.line == 3)        // dritte CR-Zeile, nicht Zeile 1
     #expect(m.column == 1)
 }
 
@@ -169,7 +168,7 @@ func lineColumn_handlesMixedCRandLF() {
 
 @Test("CR-Datei: zweiter Treffer in korrekter Folge-Zeile")
 func lineColumn_loneCR_secondMatchLine() {
-    // „14" in Zeile 2 UND Zeile 4 (nur \r) → korrekte, unterschiedliche Zeilen.
+    // „14" in Zeile 2 und Zeile 4 (nur \r) → korrekte, unterschiedliche Zeilen.
     let r = BufferSearch.find(in: "kopf\r14:00 start\rmitte\r14:30 ende\r",
                               options: SearchOptions(find: "14", replace: "",
                                                      isRegex: false, caseSensitive: true))
@@ -219,7 +218,7 @@ func plain_escapesMeta() {
 
 @Test("Plain-Text-Replace setzt $N literal ein (kein Backref)")
 func plain_replaceDollarIsLiteral() {
-    // RegEx aus → der Replace-String soll WÖRTLICH stehen, auch wenn er
+    // RegEx aus → der Replace-String soll wörtlich stehen, auch wenn er
     // wie ein Backref aussieht. Früher wurde „$0" als ganzer Treffer
     // und „$5" als (leerer) Gruppe-5-Backref interpretiert.
     let r = BufferSearch.find(in: "Preis: alt",
@@ -231,7 +230,7 @@ func plain_replaceDollarIsLiteral() {
 @Test("Plain-Text-Replace setzt Backslash literal ein (keine Escape-Deutung)")
 func plain_replaceBackslashIsLiteral() {
     // „\n" im Replace-Feld bei RegEx-aus bedeutet die zwei Zeichen
-    // Backslash+n, KEINEN Zeilenumbruch.
+    // Backslash+n, keinen Zeilenumbruch.
     let r = BufferSearch.find(in: "pfad",
                               options: SearchOptions(find: "pfad", replace: "C:\\neu",
                                                      isRegex: false, caseSensitive: true))
@@ -240,7 +239,7 @@ func plain_replaceBackslashIsLiteral() {
 
 @Test("RegEx-Replace deutet $N weiterhin als Backref (Gegenprobe)")
 func regex_replaceDollarStillBackref() {
-    // Sicherstellen, dass der Fix den RegEx-Modus NICHT verändert.
+    // Sicherstellen, dass der Fix den RegEx-Modus nicht verändert.
     let r = BufferSearch.find(in: "ab",
                               options: SearchOptions(find: "(a)(b)", replace: "$2$1",
                                                      isRegex: true))
@@ -306,7 +305,7 @@ func apply_backrefsHonored() {
 }
 
 // Einzel-Ersetzen (Workspace.replaceActiveMatch) übergibt applyReplacements
-// bewusst nur EINEN Treffer aus einer Liste mit mehreren. Dieser Test sichert
+// bewusst nur einen Treffer aus einer Liste mit mehreren. Dieser Test sichert
 // die Grundlage ab: nur der ausgewählte Treffer ändert sich, die übrigen
 // bleiben unangetastet.
 @Test("applyReplacements: nur der ausgewählte Treffer wird ersetzt (Einzel-Ersetzen)")
@@ -326,7 +325,7 @@ func apply_singleOfManyMatches() {
 // über Zeile/Spalte (statt absoluter Range — robust gegen Offset-Drift).
 @Test("endLineColumn: einzeiliger Treffer → Endspalte = Start + UTF-16-Länge")
 func endLineColumn_singleLine() {
-    let end = BufferSearch.endLineColumn(startLine: 6, startColumn: 36, matchText: "Daniel")
+    let end = BufferSearch.endLineColumn(startLine: 6, startColumn: 36, matchText: "Markus")
     #expect(end.line == 6)
     #expect(end.column == 42)   // 36 + 6 (exklusives Ende)
 }

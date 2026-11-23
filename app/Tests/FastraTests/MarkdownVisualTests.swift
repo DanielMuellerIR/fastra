@@ -22,10 +22,141 @@ private final class MarkdownVisualFixtureWindow: NSWindow {
 private final class MarkdownVisualMessageTap: NSObject, WKScriptMessageHandler {
     let coordinator: MarkdownVisualCoordinator
     var observe: ((WKScriptMessage) -> Void)?
+    var forwardsChanges = true
     init(_ coordinator: MarkdownVisualCoordinator) { self.coordinator = coordinator }
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         observe?(message)
+        if !forwardsChanges, (message.body as? [String: Any])?["kind"] as? String == "change" { return }
         coordinator.userContentController(controller, didReceive: message)
+    }
+}
+
+private final class VisualImageRemovalSchedule: @unchecked Sendable {
+    private let lock = NSLock()
+    private let holds = (0..<8).map { _ in DispatchSemaphore(value: 0) }
+    private var enabled = false
+    private var arrivals = 0
+    private var claims = 0
+    private var unlinks = 0
+
+    var counts: (arrivals: Int, claims: Int, unlinks: Int) {
+        lock.withLock { (arrivals, claims, unlinks) }
+    }
+
+    func setEnabled(_ value: Bool) { lock.withLock { enabled = value } }
+    func release(_ index: Int) { holds[index].signal() }
+    func releaseAll() { holds.forEach { $0.signal() } }
+
+    var hooks: MarkdownImageRemoval.Hooks {
+        .init(afterPreparingDirectory: { [self] _ in
+            let index: Int? = lock.withLock {
+                guard enabled else { return nil }
+                arrivals += 1
+                return arrivals - 1
+            }
+            if let index, holds.indices.contains(index) { holds[index].wait() }
+        }, beforeClaim: { [self] _ in lock.withLock { claims += 1 } },
+           beforeUnlink: { [self] _ in lock.withLock { unlinks += 1 } })
+    }
+}
+
+@MainActor
+private final class VisualImageReferenceFixture {
+    let directory: URL
+    let workspace: Workspace
+    let coordinator: MarkdownVisualCoordinator
+    let web: MarkdownVisualWKWebView
+    let window: NSWindow
+    let other = Workspace()
+    let schedule = VisualImageRemovalSchedule()
+    let bytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+    var warnings: [String] = []
+    var messageTap: MarkdownVisualMessageTap?
+
+    init(directory: URL, editor: (Workspace, MarkdownVisualCoordinator, MarkdownVisualWKWebView, NSWindow)) throws {
+        self.directory = directory
+        (workspace, coordinator, web, window) = editor
+        var tab = EditorTab(title: "other.md", path: "", content: "Version 0")
+        tab.url = directory.appendingPathComponent("B/other.md")
+        other.tabs = [tab]
+        try "Version 0".write(to: tab.url!, atomically: true, encoding: .utf8)
+        coordinator.imageRemovalHooks = schedule.hooks
+        workspace.saveSafetyWarningHandler = { [weak self] _, message in self?.warnings.append(message) }
+        for name in ["a.png", "b.png"] { try bytes.write(to: directory.appendingPathComponent(name)) }
+    }
+
+    func insert(_ name: String) { coordinator.insertImages([directory.appendingPathComponent(name)]) }
+    var first: URL { directory.appendingPathComponent("A/images/1.png") }
+    var second: URL { directory.appendingPathComponent("A/images/2.png") }
+    var notSettledWarnings: [String] {
+        warnings.filter { $0.contains(L10n.string("Die Prüfung offener Dokumente wurde nicht stabil abgeschlossen. Verbliebene Bilddateien wurden nicht weiter bereinigt.")) }
+    }
+
+    func drain() async -> Bool {
+        var drained = false
+        MarkdownImageUndoSideEffect.pendingIO.notify(queue: .main) { drained = true }
+        return await waitUntil { drained }
+    }
+
+    func beginUndo(viaSynchronize: Bool, completion: @escaping (Bool) -> Void) async throws -> String {
+        _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+        insert("a.png")
+        try #require(await waitUntil { self.workspace.activeTab?.content.contains("images/1.png") == true })
+        let inserted = try #require(workspace.activeTab?.content)
+        if viaSynchronize {
+            // Nur die asynchrone change-Zustellung zurückhalten. prepareAction
+            // liefert danach den echten Browserstand an den zweiten Produktcaller.
+            let tap = MarkdownVisualMessageTap(coordinator)
+            tap.forwardsChanges = false
+            web.configuration.userContentController.removeScriptMessageHandler(forName: "visualMarkdown")
+            web.configuration.userContentController.add(tap, name: "visualMarkdown")
+            messageTap = tap
+        }
+        schedule.setEnabled(true)
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        if viaSynchronize { coordinator.synchronize(completion) }
+        try #require(await waitUntil { self.schedule.counts.arrivals == 1 })
+        if !viaSynchronize { coordinator.synchronize(completion) }
+        return inserted
+    }
+
+    // Acht mögliche Halte prüfen Endlichkeit, ohne die normale Versuchszahl
+    // zum Vertrag zu machen. Main bleibt bei jedem echten Dateigate bedienbar.
+    func keepChanging(startingAt firstHold: Int = 0, until finished: () -> Bool, onHold: (Int) -> Void = { _ in }) async throws {
+        for index in firstHold..<8 {
+            try #require(await waitUntil { self.schedule.counts.arrivals > index || finished() })
+            if finished() { return }
+            other.tabs[0].content = "Version \(index + 1)"
+            onHold(index)
+            schedule.release(index)
+        }
+        try #require(await waitUntil { finished() })
+    }
+
+    func cleanUp() async {
+        messageTap?.forwardsChanges = true
+        schedule.setEnabled(false)
+        schedule.releaseAll()
+        var synchronized = false
+        coordinator.synchronize { _ in synchronized = true }
+        guard await waitUntil({ synchronized }), await drain(),
+              web.undoManager?.isUndoing != true, web.undoManager?.isRedoing != true else {
+            Issue.record("Visuelle Bildaktion wurde nicht idle; Fixture bleibt in der Sandbox.")
+            return
+        }
+        let browserIdle = try? await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool
+        guard browserIdle == true else {
+            Issue.record("Visueller Browser blieb gesperrt; Fixture bleibt in der Sandbox.")
+            return
+        }
+        coordinator.invalidateForSourceReplacement()
+        guard await drain() else {
+            Issue.record("Visueller Bildabbau wurde nicht zugestellt; Fixture bleibt in der Sandbox.")
+            return
+        }
+        web.configuration.userContentController.removeAllScriptMessageHandlers()
+        window.close()
+        try? FileManager.default.removeItem(at: directory)
     }
 }
 
@@ -325,12 +456,15 @@ struct MarkdownVisualTests {
         workspace.saveActiveTab()
         try #require(await waitUntil { saveError != nil || workspace.activeTab?.isDirty == false })
         try #require(saveError == nil, Comment(rawValue: saveError ?? ""))
-        let saved = try String(contentsOf: file, encoding: .utf8)
-        #expect(saved == workspace.activeTab?.content)
+        let savedBytes = try Data(contentsOf: file)
+        let saved = try #require(workspace.activeTab?.content)
+        try #require(savedBytes == Data(saved.utf8))
         let id = try #require(workspace.activeTabID)
         workspace.tabs.append(EditorTab(title: "anchor.txt", path: "", content: "Anker"))
         var closeConfirmationRequested = false
         workspace.confirmCloseHandler = { _ in closeConfirmationRequested = true; return .cancel }
+        let closeProbe = await visualDiagnostic(web, script: visualPhaseProbe("prepareAction"))
+        let closeGeneration = coordinator.generation
         let closeStarted = Date()
         workspace.closeTab(id: id)
         // Die verdeckte WebView synchronisiert vor dem Schließen erneut mit
@@ -342,14 +476,19 @@ struct MarkdownVisualTests {
             + "dirty=\(String(describing: workspace.tabs.first { $0.id == id }?.isDirty)) warning=\(saveError ?? "none") "
             + "model=\(String(describing: workspace.tabs.first { $0.id == id }?.content)) "
             + "saved=\(saved.debugDescription) browser=\(coordinator.markdown.debugDescription)"
+        if !closed {
+            print("FORMAT_CLOSE_PHASE_DIAGNOSTIC installed=\(closeProbe) generationBefore=\(closeGeneration) generation=\(coordinator.generation) historyPerforming=\(workspace.tabs.first { $0.id == id }?.undoHistory.isPerformingAction == true)")
+            print("FORMAT_CLOSE_BROWSER_DIAGNOSTIC \(await visualDiagnostic(web, script: visualDiagnosticSnapshot))")
+        }
         if !closed || Date().timeIntervalSince(closeStarted) >= 5 {
             print("FORMAT_CLOSE_DIAGNOSTIC \(closeDiagnostic)")
         }
         try #require(closed && !closeConfirmationRequested, Comment(rawValue: closeDiagnostic))
         web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close()
-        let (reopenedWorkspace, reopened, fresh, freshWindow) = try await editor(try String(contentsOf: file, encoding: .utf8), documentURL: file)
+        let (reopenedWorkspace, reopened, fresh, freshWindow) = try await reopenEditor(
+            at: file, savedBytes: savedBytes, darkMode: dark
+        )
         defer { fresh.configuration.userContentController.removeAllScriptMessageHandlers(); freshWindow.close(); withExtendedLifetime((reopenedWorkspace, reopened)) {} }
-        reopened.updateStyle(fontName: PreviewFonts.systemName, fontSize: 14, darkMode: dark, style: "reopened")
         #expect(try await fresh.evaluateJavaScript(expectation) as? Bool == true, Comment(rawValue: "Gespeichert: \(saved); vorher: \(liveHTML)"))
         let after = try await renderedFormatState(fresh)
         let appearanceMatches = try renderedFormatStatesMatch(before, after)
@@ -532,6 +671,829 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { synchronized == true })
         #expect(workspace.activeTab?.content.contains("images/1.png") == false)
         #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+    }
+
+    @Test("Ein verspäteter Vorbereitungsfehler meldet Originalfehler und erhaltene Rückbaureste vor Completion")
+    @MainActor
+    func staleImagePreparationFailureKeepsDetails() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let document = directory.appendingPathComponent("note.md")
+        let (workspace, coordinator, web, window) = try await editor("Text\n", documentURL: document)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let started = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        var warnings: [String] = []
+        var warningsAtCompletion: [String] = []
+        var completed: Bool?
+        var retainedClaim: URL?
+        workspace.saveSafetyWarningHandler = { _, message in warnings.append(message) }
+        coordinator.insertPrepared(bookmark: nil, completion: {
+            warningsAtCompletion = warnings
+            completed = $0
+        }) { target in
+            let target = try #require(target)
+            let images = try (0..<2).map { index in
+                try MarkdownImageStore.storePastedData(.init(data: Data("image-\(index)".utf8), fileExtension: "png"),
+                                                       documentURL: target, reserveForTransaction: true)
+            }
+            started.signal()
+            guard release.wait(timeout: .now() + 5) == .success else { throw POSIXError(.ETIMEDOUT) }
+            let hooks = MarkdownImageRemoval.Hooks(afterClaim: { original, claim in
+                if original.lastPathComponent == "2.png" { retainedClaim = claim }
+            }, beforeUnlink: { index in
+                if index == 1 {
+                    try Data("foreign".utf8).write(to: images[1].fileURL)
+                    throw POSIXError(.EIO)
+                }
+            })
+            throw MarkdownSaveAs.Prepared(content: "unchanged", createdImages: images).rollback(after: POSIXError(.ENOSPC), hooks: hooks)
+        }
+        try #require(await waitUntil { started.wait(timeout: .now()) == .success })
+        coordinator.generation &+= 1
+        release.signal()
+        try #require(await waitUntil { completed != nil })
+        #expect(completed == false)
+        try #require(warningsAtCompletion.count == 1)
+        let claim = try #require(retainedClaim)
+        #expect(warningsAtCompletion[0].contains(POSIXError(.ENOSPC).localizedDescription))
+        #expect(warningsAtCompletion[0].contains(POSIXError(.EIO).localizedDescription))
+        #expect(warningsAtCompletion[0].contains(claim.path))
+        #expect(try Data(contentsOf: claim) == Data("image-1".utf8))
+        #expect(try Data(contentsOf: directory.appendingPathComponent("images/2.png")) == Data("foreign".utf8))
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("images/1.png").path))
+        #expect(workspace.activeTab?.content == "Text\n")
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Text\n")
+    }
+
+    @Test("Abgebrochene vorbereitete Einfügung schließt Rückbau und Warnung vor Completion ab", arguments: [false, true])
+    @MainActor
+    func imageInsertionCompletionWaitsForRollback(_ staleTarget: Bool) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let second = directory.appendingPathComponent("images/2.png")
+        defer {
+            if let empty = acl_init(0) {
+                _ = acl_set_file(second.path, ACL_TYPE_EXTENDED, empty)
+                acl_free(UnsafeMutableRawPointer(empty))
+            }
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let document = directory.appendingPathComponent("note.md")
+        let (workspace, coordinator, web, window) = try await editor("Text\n", documentURL: document)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let started = DispatchSemaphore(value: 0), releasePreparation = DispatchSemaphore(value: 0)
+        let releaseCleanup = DispatchSemaphore(value: 0)
+        defer { releasePreparation.signal(); releaseCleanup.signal() }
+        // Der reale Rückbau-Dispatcher bleibt gezielt blockiert; weder ein
+        // frühes false noch das bloße Einreihen des Rückbaus ist ein Abschluss.
+        MarkdownImageUndoSideEffect.ioQueue.async { releaseCleanup.wait() }
+        var rejectedByBrowser = false
+        let tap = MarkdownVisualMessageTap(coordinator)
+        tap.observe = { message in
+            if (message.body as? [String: String])?["kind"] == "testInsertionRejected" { rejectedByBrowser = true }
+        }
+        web.configuration.userContentController.removeScriptMessageHandler(forName: "visualMarkdown")
+        web.configuration.userContentController.add(tap, name: "visualMarkdown")
+        if !staleTarget {
+            _ = try await web.evaluateJavaScript("fastraVisual.insertBookmarked=()=>{window.webkit.messageHandlers.visualMarkdown.postMessage({kind:'testInsertionRejected'});return false;};void 0;")
+        }
+        var warnings: [String] = [], warningsAtCompletion: [String] = []
+        var completed: Bool?
+        workspace.saveSafetyWarningHandler = { _, message in warnings.append(message) }
+        coordinator.insertPrepared(bookmark: nil, completion: {
+            warningsAtCompletion = warnings
+            completed = $0
+        }) { target in
+            let target = try #require(target)
+            let images = try (0..<2).map { index in
+                try MarkdownImageStore.storePastedData(.init(data: Data("image-\(index)".utf8), fileExtension: "png"),
+                                                       documentURL: target, reserveForTransaction: true)
+            }
+            let acl = try #require(acl_from_text("!#acl 1\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:deny:delete\n"))
+            defer { acl_free(UnsafeMutableRawPointer(acl)) }
+            guard acl_set_file(images[1].fileURL.path, ACL_TYPE_EXTENDED, acl) == 0 else { throw POSIXError(.EACCES) }
+            started.signal()
+            guard releasePreparation.wait(timeout: .now() + 5) == .success else { throw POSIXError(.ETIMEDOUT) }
+            return MarkdownSaveAs.Prepared(content: images.map(\.link).joined(separator: "\n\n"), createdImages: images)
+        }
+        try #require(await waitUntil { started.wait(timeout: .now()) == .success })
+        if staleTarget { coordinator.generation &+= 1 }
+        releasePreparation.signal()
+        if !staleTarget { try #require(await waitUntil { rejectedByBrowser }) }
+        // Ein weiterer WebKit-Roundtrip lässt den bereits abgeschickten
+        // nativen Einfügecallback laufen, während die Datei-Queue gesperrt bleibt.
+        _ = try await web.evaluateJavaScript("true")
+        #expect(completed == nil)
+        #expect(warnings.isEmpty)
+        releaseCleanup.signal()
+        try #require(await waitUntil { completed != nil })
+        #expect(completed == false)
+        #expect(!warningsAtCompletion.isEmpty)
+        #expect(warningsAtCompletion.contains(where: { $0.contains("1.png") }))
+        #expect(try Data(contentsOf: directory.appendingPathComponent("images/1.png")) == Data("image-0".utf8))
+        #expect(try Data(contentsOf: second) == Data("image-1".utf8))
+        #expect(workspace.activeTab?.content == "Text\n")
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Text\n")
+        withExtendedLifetime(tap) {}
+    }
+
+    @MainActor
+    private func withVisualImageReferences(_ body: (VisualImageReferenceFixture) async throws -> Void) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-references-\(UUID().uuidString)")
+        for name in ["A", "B"] {
+            try FileManager.default.createDirectory(at: directory.appendingPathComponent(name), withIntermediateDirectories: true)
+        }
+        let document = directory.appendingPathComponent("A/note.md")
+        try "Text\n".write(to: document, atomically: true, encoding: .utf8)
+        let fixture = try await VisualImageReferenceFixture(directory: directory, editor: editor("Text\n", documentURL: document))
+        do { try await body(fixture) }
+        catch { await fixture.cleanUp(); throw error }
+        await fixture.cleanUp()
+    }
+
+    @Test("Visuelles Bild-Undo endet bei fortgesetzten Fremdänderungen mit gebundenem Text, Warnung und Redo")
+    @MainActor
+    func imageReferenceChurnCompletes() async throws {
+        try await withVisualImageReferences { fixture in
+            let web = fixture.web, coordinator = fixture.coordinator, workspace = fixture.workspace
+            _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+            fixture.insert("a.png")
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+            let inserted = try #require(workspace.activeTab?.content)
+            fixture.schedule.setEnabled(true)
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
+            #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+            var completions: [Bool] = []
+            coordinator.synchronize { completions.append($0) }
+            var idle = false
+            MarkdownImageUndoSideEffect.pendingIO.notify(queue: .main) { idle = true }
+            var invalidationTexts: [String] = []
+            try await fixture.keepChanging(until: { workspace.activeTab?.content == "Text\n" }) { _ in
+                #expect(completions.isEmpty)
+                #expect(!idle)
+                MarkdownImageUndoBuffer.shared.invalidate { invalidationTexts.append(workspace.activeTab?.content ?? "nil") }
+            }
+            try #require(await waitUntil { completions == [true] && idle })
+            #expect(fixture.notSettledWarnings.count == 1)
+            #expect(fixture.warnings.count == 1)
+            let terminalWarnings = fixture.warnings
+            #expect(invalidationTexts.count == fixture.schedule.counts.arrivals)
+            #expect(invalidationTexts.allSatisfy { $0 == "Text\n" })
+            #expect(fixture.schedule.counts.claims == 0)
+            #expect(fixture.schedule.counts.unlinks == 0)
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+            #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Text\n")
+            #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+            fixture.schedule.setEnabled(false)
+            let arrivals = fixture.schedule.counts.arrivals
+            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.content == inserted })
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+            _ = try await web.evaluateJavaScript("const end=document.createRange();end.selectNodeContents(document.getElementById('fastra-visual'));end.collapse(false);getSelection().removeAllRanges();getSelection().addRange(end);document.execCommand('insertText',false,' Ende');fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.content.contains("Ende") == true })
+            #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == workspace.activeTab?.content)
+            try #require(await fixture.drain())
+            #expect(fixture.schedule.counts.arrivals == arrivals)
+            #expect(completions == [true])
+            #expect(fixture.notSettledWarnings.count == 1)
+            #expect(fixture.warnings == terminalWarnings)
+            #expect(fixture.schedule.counts.claims == 0 && fixture.schedule.counts.unlinks == 0)
+            #expect(MarkdownImageUndoBuffer.shared.byteCount == 0)
+        }
+    }
+
+    @Test("Gemischtes visuelles Undo bestätigt bereits restauriertes Bild trotz instabiler Restbereinigung")
+    @MainActor
+    func imageReferenceMixedUndoCompletes() async throws {
+        try await withVisualImageReferences { fixture in
+            let web = fixture.web, workspace = fixture.workspace
+            _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+            fixture.insert("a.png")
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+            let firstText = try #require(workspace.activeTab?.content)
+            _ = try await web.evaluateJavaScript("const selected=document.createRange();selected.selectNode(document.querySelector('#fastra-visual img'));getSelection().removeAllRanges();getSelection().addRange(selected);")
+            fixture.insert("b.png")
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/2.png") == true && workspace.activeTab?.content.contains("images/1.png") == false })
+            let secondText = try #require(workspace.activeTab?.content)
+            #expect(!FileManager.default.fileExists(atPath: fixture.first.path))
+            #expect(try Data(contentsOf: fixture.second) == fixture.bytes)
+            fixture.schedule.setEnabled(true)
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+            try await fixture.keepChanging(until: { workspace.activeTab?.content == firstText })
+            try #require(await fixture.drain())
+            #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == firstText)
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+            #expect(try Data(contentsOf: fixture.second) == fixture.bytes)
+            #expect(fixture.notSettledWarnings.count == 1)
+            #expect(fixture.warnings.count == 1)
+            let terminalWarnings = fixture.warnings
+            #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+            fixture.schedule.setEnabled(false)
+            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.content == secondText })
+            #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == secondText)
+            #expect(!FileManager.default.fileExists(atPath: fixture.first.path))
+            #expect(try Data(contentsOf: fixture.second) == fixture.bytes)
+            #expect(fixture.notSettledWarnings.count == 1)
+            try #require(await fixture.drain())
+            #expect(fixture.warnings == terminalWarnings)
+        }
+    }
+
+    @Test("Terminalwarnung darf bei gleicher Dokumentbasis keine neue Browsersitzung übernehmen", arguments: [false, true])
+    @MainActor
+    func imageTerminalWarningRejectsReentrantSession(_ viaSynchronize: Bool) async throws {
+        try await withVisualImageReferences { fixture in
+            let coordinator = fixture.coordinator, workspace = fixture.workspace
+            let documentID = workspace.activeTab?.documentID
+            var reset = false, base = ""
+            var completions: [Bool] = []
+            workspace.saveSafetyWarningHandler = { _, message in
+                fixture.warnings.append(message)
+                guard !reset, !fixture.notSettledWarnings.isEmpty else { return }
+                reset = true
+                // Modell und Dokumentidentität bleiben gleich; nur load erneuert
+                // Generation und Sitzung innerhalb des reentranten Warnhandlers.
+                base = workspace.activeTab?.content ?? ""
+                coordinator.load(base, documentURL: workspace.activeTab?.url, fontName: PreviewFonts.systemName,
+                                 fontSize: 14, darkMode: false, style: "reentrant")
+            }
+            let inserted = try await fixture.beginUndo(viaSynchronize: viaSynchronize) { completions.append($0) }
+            try await fixture.keepChanging(until: { reset })
+            try #require(await waitUntil { coordinator.ready && !completions.isEmpty })
+            try #require(await fixture.drain())
+            #expect(completions == [false])
+            #expect(base == inserted && workspace.activeTab?.content == inserted)
+            #expect(workspace.activeTab?.documentID == documentID)
+            #expect(try await fixture.web.evaluateJavaScript("fastraVisual.markdown()") as? String == inserted)
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+            #expect(fixture.notSettledWarnings.count == 1)
+            fixture.messageTap?.forwardsChanges = true
+            _ = try await fixture.web.evaluateJavaScript("const end=document.createRange();end.selectNodeContents(document.getElementById('fastra-visual'));end.collapse(false);getSelection().removeAllRanges();getSelection().addRange(end);document.execCommand('insertText',false,' neu');fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.content.contains("neu") == true })
+        }
+    }
+
+    @Test("Terminale Textannahme lehnt neue Basis oder fehlende Schreibbarkeit ab", arguments: [false, true], [false, true])
+    @MainActor
+    func imageTerminalWarningRejectsUnacceptedText(_ viaSynchronize: Bool, _ readOnly: Bool) async throws {
+        try await withVisualImageReferences { fixture in
+            let workspace = fixture.workspace
+            var rejected = false
+            var completions: [Bool] = []
+            workspace.saveSafetyWarningHandler = { _, message in
+                fixture.warnings.append(message)
+                guard !rejected, !fixture.notSettledWarnings.isEmpty else { return }
+                rejected = true
+                if readOnly { workspace.tabs[0].isLoading = true }
+                else { workspace.tabs[0].content = "Neuere Basis\n" }
+            }
+            let inserted = try await fixture.beginUndo(viaSynchronize: viaSynchronize) { completions.append($0) }
+            try await fixture.keepChanging(until: { rejected })
+            let terminalArrivals = fixture.schedule.counts.arrivals
+            #expect(terminalArrivals <= 3)
+            try #require(await waitUntil { !completions.isEmpty })
+            try #require(await fixture.drain())
+            #expect(completions == [false])
+            #expect(fixture.schedule.counts.arrivals == terminalArrivals)
+            #expect(workspace.activeTab?.content == (readOnly ? inserted : "Neuere Basis\n"))
+            #expect(fixture.notSettledWarnings.count == 1)
+            #expect(fixture.schedule.counts.claims == 0 && fixture.schedule.counts.unlinks == 0)
+            #expect(MarkdownImageUndoBuffer.shared.byteCount == 0)
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+            // Auch eine neue, unabhängig gestartete Anfrage trifft weiterhin
+            // dieselbe Schreib-/Basisgrenze, ohne einen vierten Dateiversuch.
+            var subsequent: [Bool] = []
+            fixture.coordinator.synchronize { subsequent.append($0) }
+            try #require(await waitUntil { !subsequent.isEmpty })
+            try #require(await fixture.drain())
+            #expect(subsequent == [false] && completions == [false])
+            #expect(fixture.schedule.counts.arrivals == terminalArrivals)
+            #expect(fixture.schedule.counts.claims == 0 && fixture.schedule.counts.unlinks == 0)
+            #expect(MarkdownImageUndoBuffer.shared.byteCount == 0)
+            #expect(workspace.activeTab?.content == (readOnly ? inserted : "Neuere Basis\n"))
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+            workspace.tabs[0].isLoading = false
+        }
+    }
+
+    @Test("Schreibablehnung gibt nach reentranter Dokumentverlagerung keine neue Aktion frei")
+    @MainActor
+    func imageWriteRejectionKeepsRelocatedActionFenced() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-relocated-rejection-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = directory.appendingPathComponent("note.md")
+        let relocated = directory.appendingPathComponent("renamed.md")
+        let (workspace, coordinator, web, window) = try await editor("Text\n", documentURL: original)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        var oldCompletions: [Bool] = [], newCompletions: [Bool] = []
+        var warnings = 0
+        var newHold: MarkdownVisualCoordinator.ActionHold?
+        workspace.tabs[0].isLoading = true
+        workspace.saveSafetyWarningHandler = { _, _ in
+            warnings += 1
+            guard warnings == 1 else { return }
+            workspace.tabs[0].url = relocated
+            // relocateDocument erneuert die Generation, behält aber bewusst
+            // dieselbe WebKit-Sitzung und ready. Die neue Sperre gehört ihr.
+            coordinator.relocateDocument(from: original, to: relocated)
+            workspace.tabs[0].isLoading = false
+            coordinator.synchronize(holdingInput: true) { succeeded, hold in newCompletions.append(succeeded); newHold = hold }
+        }
+        coordinator.synchronize { oldCompletions.append($0) }
+        try #require(await waitUntil { !oldCompletions.isEmpty && !newCompletions.isEmpty })
+        #expect(oldCompletions == [false] && newCompletions == [true])
+        #expect(warnings == 1)
+        #expect(workspace.activeTab?.content == "Text\n" && workspace.activeTab?.url == relocated)
+        #expect(coordinator.documentURL == relocated)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Text\n")
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        newHold?.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(oldCompletions == [false] && newCompletions == [true])
+    }
+
+    @Test("Sitzungswechsel nach angenommener Terminaländerung gibt keine neue Aktion frei", arguments: [false, true])
+    @MainActor
+    func imageTerminalCompletionKeepsCapturedSession(_ viaSynchronize: Bool) async throws {
+        try await withVisualImageReferences { fixture in
+            let coordinator = fixture.coordinator, workspace = fixture.workspace, web = fixture.web
+            let queue = coordinator.imageIOQueue
+            let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+            defer { release.signal() }
+            var blocked = false, idle = false
+            var completions: [Bool] = [], newCompletions: [Bool] = []
+            var newHold: MarkdownVisualCoordinator.ActionHold?
+            workspace.saveSafetyWarningHandler = { _, message in
+                fixture.warnings.append(message)
+                guard !blocked, !fixture.notSettledWarnings.isEmpty else { return }
+                blocked = true
+                queue.async { entered.signal(); release.wait() }
+            }
+            _ = try await fixture.beginUndo(viaSynchronize: viaSynchronize) { completions.append($0) }
+            try await fixture.keepChanging(until: { workspace.activeTab?.content == "Text\n" })
+            try #require(await waitUntil { entered.wait(timeout: .now()) == .success })
+            MarkdownImageUndoSideEffect.pendingIO.notify(queue: .main) { idle = true }
+            #expect(completions.isEmpty && !idle)
+            #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Text\n")
+            // Das terminale Undo ist angenommen. Sein Churnplan darf den
+            // separaten Discard beim folgenden load nicht erneut anhalten.
+            fixture.schedule.setEnabled(false)
+            workspace.tabs[0].content = "Neue Sitzung\n"
+            coordinator.load("Neue Sitzung\n", documentURL: workspace.activeTab?.url, fontName: PreviewFonts.systemName,
+                             fontSize: 14, darkMode: false, style: "after-acceptance")
+            try #require(await waitUntil { coordinator.ready })
+            coordinator.synchronize(holdingInput: true) { succeeded, hold in newCompletions.append(succeeded); newHold = hold }
+            #expect(newCompletions.isEmpty && completions.isEmpty && !idle)
+            release.signal()
+            try #require(await waitUntil { !completions.isEmpty && !newCompletions.isEmpty && idle })
+            #expect(completions == [false] && newCompletions == [true])
+            #expect(workspace.activeTab?.content == "Neue Sitzung\n")
+            #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Neue Sitzung\n")
+            #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+            newHold?.finish()
+            try #require(await waitUntil { fixture.notSettledWarnings.count == 1 })
+            try #require(await fixture.drain())
+            #expect(fixture.warnings.count == 1)
+        }
+    }
+
+    @Test("Speichern wartet auch nach Textannahme auf den terminalen Bildabschluss")
+    @MainActor
+    func imageTerminalSaveWaitsForRetirement() async throws {
+        try await withVisualImageReferences { fixture in
+            let workspace = fixture.workspace, coordinator = fixture.coordinator
+            let document = try #require(workspace.activeTab?.url)
+            try "Vor dem Speichern\n".write(to: document, atomically: true, encoding: .utf8)
+            workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: document)
+            let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+            defer { release.signal() }
+            var queued = false, completions: [Bool] = []
+            workspace.saveSafetyWarningHandler = { _, message in
+                fixture.warnings.append(message)
+                guard !queued, !fixture.notSettledWarnings.isEmpty else { return }
+                queued = true
+                coordinator.imageIOQueue.async { entered.signal(); release.wait() }
+                workspace.saveActiveTab()
+            }
+            _ = try await fixture.beginUndo(viaSynchronize: false) { completions.append($0) }
+            try await fixture.keepChanging(until: { workspace.activeTab?.content == "Text\n" })
+            try #require(await waitUntil { entered.wait(timeout: .now()) == .success })
+            #expect(completions.isEmpty)
+            #expect(try String(contentsOf: document) == "Vor dem Speichern\n")
+            release.signal()
+            try #require(await waitUntil { (try? String(contentsOf: document)) == "Text\n" && workspace.activeTab?.isDirty == false })
+            try #require(await fixture.drain())
+            #expect(completions == [true])
+            #expect(fixture.warnings.count == 1 && fixture.notSettledWarnings.count == 1)
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+        }
+    }
+
+    @Test("Visueller Terminalabschluss erhält echte Teilfehler und private Reste bis zum Redo-Retry", arguments: [POSIXErrorCode.EIO, .ECANCELED])
+    @MainActor
+    func imageTerminalRetirementKeepsPartialFailure(_ code: POSIXErrorCode) async throws {
+        try await withVisualImageReferences { fixture in
+            let coordinator = fixture.coordinator, web = fixture.web, workspace = fixture.workspace
+            let lock = NSLock()
+            var preparations = 0, fail = true
+            var occupied: URL?, retained: URL?, removed: URL?
+            coordinator.imageRemovalHooks = .init(afterPreparingDirectory: { url in
+                let first = lock.withLock { preparations += 1; return preparations == 1 }
+                if !first { try fixture.schedule.hooks.afterPreparingDirectory?(url) }
+            }, afterClaim: { original, claim in
+                guard lock.withLock({ fail }) else { return }
+                if original.lastPathComponent == "2.png" || original.lastPathComponent == "4.png" {
+                    try Data("foreign".utf8).write(to: original)
+                    lock.withLock { occupied = original; retained = claim }
+                } else {
+                    lock.withLock { removed = original }
+                }
+            }, beforeUnlink: { index in
+                if index == 1, lock.withLock({ fail }) { throw POSIXError(code) }
+            })
+            _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+            let sources = [fixture.directory.appendingPathComponent("a.png"), fixture.directory.appendingPathComponent("b.png")]
+            coordinator.insertImages(sources)
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/2.png") == true })
+            coordinator.insertImages(sources)
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/4.png") == true })
+            let inserted = try #require(workspace.activeTab?.content)
+            fixture.schedule.setEnabled(true)
+            _ = try await web.evaluateJavaScript("const all=document.createRange();all.selectNodeContents(document.getElementById('fastra-visual'));getSelection().removeAllRanges();getSelection().addRange(all);document.execCommand('delete');fastraVisual.flush();")
+            let target = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
+            try await fixture.keepChanging(until: { workspace.activeTab?.content == target })
+            try #require(await fixture.drain())
+            let paths = lock.withLock { (occupied, retained, removed) }
+            let foreign = try #require(paths.0), claim = try #require(paths.1), missing = try #require(paths.2)
+            let terminalWarnings = fixture.warnings
+            try #require(terminalWarnings.count == 1)
+            #expect(fixture.notSettledWarnings.count == 1)
+            #expect(terminalWarnings[0].contains(POSIXError(code).localizedDescription))
+            #expect(terminalWarnings[0].contains(claim.path) && terminalWarnings[0].contains(missing.path))
+            #expect(try Data(contentsOf: claim) == fixture.bytes)
+            #expect(try Data(contentsOf: foreign) == Data("foreign".utf8))
+            #expect(!FileManager.default.fileExists(atPath: missing.path))
+            #expect(MarkdownImageUndoBuffer.shared.byteCount > 0)
+            lock.withLock { fail = false }
+            fixture.schedule.setEnabled(false)
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { fixture.warnings.count == 2 })
+            try #require(await fixture.drain())
+            #expect(workspace.activeTab?.content == target)
+            #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == target)
+            #expect(fixture.warnings[0] == terminalWarnings[0])
+            #expect(fixture.warnings[1].contains(POSIXError(code).localizedDescription))
+            #expect(fixture.warnings[1].contains(claim.path))
+            #expect(try Data(contentsOf: claim) == fixture.bytes)
+            #expect(try Data(contentsOf: foreign) == Data("foreign".utf8))
+            try FileManager.default.removeItem(at: foreign)
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.content == inserted })
+            try #require(await fixture.drain())
+            for number in 1...4 {
+                #expect(try Data(contentsOf: fixture.directory.appendingPathComponent("A/images/\(number).png")) == fixture.bytes)
+            }
+            #expect(!FileManager.default.fileExists(atPath: claim.path))
+            #expect(fixture.warnings.count == 2 && fixture.notSettledWarnings.count == 1)
+        }
+    }
+
+    @Test("Ein neuer visueller Referenzabbruch warnt nach erledigtem Terminalabschluss erneut")
+    @MainActor
+    func imageTerminalRetirementDoesNotSuppressNewChurn() async throws {
+        try await withVisualImageReferences { fixture in
+            var completions: [Bool] = []
+            let inserted = try await fixture.beginUndo(viaSynchronize: false) { completions.append($0) }
+            try await fixture.keepChanging(until: { !completions.isEmpty })
+            try #require(await fixture.drain())
+            #expect(completions == [true] && fixture.warnings.count == 1)
+            fixture.schedule.setEnabled(false)
+            _ = try await fixture.web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            try #require(await waitUntil { fixture.workspace.activeTab?.content == inserted })
+            try #require(await fixture.drain())
+            let first = fixture.schedule.counts.arrivals
+            fixture.schedule.setEnabled(true)
+            _ = try await fixture.web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try await fixture.keepChanging(startingAt: first, until: { fixture.workspace.activeTab?.content == "Text\n" })
+            try #require(await fixture.drain())
+            #expect(fixture.warnings.count == 2 && fixture.notSettledWarnings.count == 2)
+            #expect(fixture.schedule.counts.claims == 0 && fixture.schedule.counts.unlinks == 0)
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+        }
+    }
+
+    @Test("Visueller Referenzretry beruhigt sich oder schützt neue fremde Bildreferenzen", arguments: [0, 1, 2])
+    @MainActor
+    func imageReferenceSettlesOrProtectsForeignReferences(_ referenceKind: Int) async throws {
+        try await withVisualImageReferences { fixture in
+            let web = fixture.web, workspace = fixture.workspace
+            _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+            fixture.insert("a.png")
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+            let inserted = try #require(workspace.activeTab?.content)
+            fixture.schedule.setEnabled(true)
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
+            switch referenceKind {
+            case 1: fixture.other.tabs[0].content = "![fremd](../A/images/1.png)"
+            case 2:
+                var tab = EditorTab(title: "new.md", path: "", content: "![fremd](\(fixture.first.absoluteString))")
+                tab.url = fixture.directory.appendingPathComponent("B/new.md")
+                fixture.other.tabs.append(tab)
+            default: fixture.other.tabs[0].content = "Version 1"
+            }
+            let foreignContents = fixture.other.tabs.map(\.content)
+            fixture.schedule.setEnabled(false)
+            fixture.schedule.release(0)
+            try #require(await waitUntil { workspace.activeTab?.content == "Text\n" })
+            try #require(await fixture.drain())
+            #expect(fixture.notSettledWarnings.isEmpty)
+            #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Text\n")
+            #expect(FileManager.default.fileExists(atPath: fixture.first.path) == (referenceKind != 0))
+            if referenceKind != 0 { #expect(try Data(contentsOf: fixture.first) == fixture.bytes) }
+            #expect(fixture.other.tabs.map(\.content) == foreignContents)
+            #expect(try String(contentsOf: fixture.directory.appendingPathComponent("B/other.md"), encoding: .utf8) == "Version 0")
+            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.content == inserted })
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+            #expect(fixture.notSettledWarnings.isEmpty)
+            if !fixture.warnings.isEmpty { print("VISUAL_REFERENCE_SETTLED_WARNING kind=\(referenceKind) messages=\(fixture.warnings)") }
+        }
+    }
+
+    @Test("Visueller Abschluss bewahrt bereits entfernte Teilstücke für natives Undo und Redo")
+    @MainActor
+    func imageReferencePartialProgressCompletes() async throws {
+        try await withVisualImageReferences { fixture in
+            let web = fixture.web, workspace = fixture.workspace
+            _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+            fixture.insert("a.png")
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+            fixture.insert("b.png")
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/2.png") == true })
+            let inserted = try #require(workspace.activeTab?.content)
+            fixture.schedule.setEnabled(true)
+            _ = try await web.evaluateJavaScript("const all=document.createRange();all.selectNodeContents(document.getElementById('fastra-visual'));getSelection().removeAllRanges();getSelection().addRange(all);document.execCommand('delete');fastraVisual.flush();")
+            let target = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
+            try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
+            fixture.schedule.release(0)
+            try #require(await waitUntil { fixture.schedule.counts.arrivals == 2 })
+            let files = [fixture.first, fixture.second]
+            #expect(files.filter { FileManager.default.fileExists(atPath: $0.path) }.count == 1)
+            #expect(MarkdownImageUndoBuffer.shared.byteCount > 0)
+            try await fixture.keepChanging(startingAt: 1, until: { workspace.activeTab?.content == target })
+            try #require(await fixture.drain())
+            #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == target)
+            #expect(files.filter { FileManager.default.fileExists(atPath: $0.path) }.count == 1)
+            #expect(fixture.notSettledWarnings.count == 1)
+            fixture.schedule.setEnabled(false)
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.content == inserted })
+            for file in files { #expect(try Data(contentsOf: file) == fixture.bytes) }
+            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.content == target })
+            #expect(files.allSatisfy { !FileManager.default.fileExists(atPath: $0.path) })
+            #expect(fixture.notSettledWarnings.count == 1)
+        }
+    }
+
+    @Test("Wartender Tabwechsel und Schließen behalten die visuelle Bildaktion am Ursprung", arguments: [false, true])
+    @MainActor
+    func imageReferenceWaitsForTabAction(_ close: Bool) async throws {
+        try await withVisualImageReferences { fixture in
+            let web = fixture.web, workspace = fixture.workspace
+            let sourceID = try #require(workspace.activeTabID)
+            let sourceDocumentID = try #require(workspace.activeTab?.documentID)
+            let otherTab = EditorTab(title: "neighbour.txt", path: "", content: "Nachbar bleibt")
+            workspace.tabs.append(otherTab)
+            var confirmations = 0
+            workspace.confirmCloseHandler = { _ in confirmations += 1; return .dontSave }
+            _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+            fixture.insert("a.png")
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+            fixture.schedule.setEnabled(true)
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
+            if close { workspace.closeTab(id: sourceID) } else { workspace.selectTab(id: otherTab.id) }
+            #expect(workspace.activeTabID == sourceID)
+            #expect(confirmations == 0)
+            try await fixture.keepChanging(until: { workspace.activeTabID == otherTab.id })
+            try #require(await fixture.drain())
+            #expect(workspace.tabs.first { $0.id == otherTab.id }?.content == "Nachbar bleibt")
+            if close {
+                #expect(!workspace.tabs.contains { $0.id == sourceID })
+            } else {
+                #expect(workspace.tabs.first { $0.id == sourceID }?.content == "Text\n")
+                #expect(workspace.tabs.first { $0.id == sourceID }?.documentID == sourceDocumentID)
+                #expect(confirmations == 0)
+            }
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+            #expect(fixture.notSettledWarnings.count == 1)
+        }
+    }
+
+    @Test("Echte Quelltextersetzung und spätere Modellbytes werden von altem Bild-Undo nicht überschrieben", arguments: [false, true])
+    @MainActor
+    func imageReferenceRejectsReplacedOrNewerDocument(_ reload: Bool) async throws {
+        try await withVisualImageReferences { fixture in
+            let web = fixture.web, coordinator = fixture.coordinator, workspace = fixture.workspace
+            _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+            fixture.insert("a.png")
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+            let documentID = try #require(workspace.activeTab?.documentID)
+            fixture.schedule.setEnabled(true)
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
+            workspace.tabs[0].content = "Neuer Inhalt\n"
+            var completions: [Bool] = []
+            coordinator.synchronize { completions.append($0) }
+            if reload {
+                coordinator.invalidateForSourceReplacement()
+                coordinator.load("Neuer Inhalt\n", documentURL: workspace.tabs[0].url, fontName: PreviewFonts.systemName,
+                                 fontSize: 14, darkMode: false, style: "replacement")
+                fixture.schedule.setEnabled(false)
+                fixture.schedule.release(0)
+                try #require(await waitUntil { coordinator.ready && !completions.isEmpty })
+                #expect(fixture.schedule.counts.arrivals == 1)
+                #expect(fixture.notSettledWarnings.isEmpty)
+            } else {
+                try await fixture.keepChanging(until: { !completions.isEmpty })
+                #expect(fixture.notSettledWarnings.count == 1)
+            }
+            try #require(await fixture.drain())
+            #expect(completions.count == 1)
+            #expect(workspace.activeTab?.content == "Neuer Inhalt\n")
+            #expect(workspace.activeTab?.documentID == documentID)
+            if reload {
+                #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Neuer Inhalt\n")
+                _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+                #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Neuer Inhalt\n")
+            } else {
+                print("VISUAL_REFERENCE_NEWER_MODEL_BOUNDARY browser=\(String(describing: try await web.evaluateJavaScript("fastraVisual.markdown()"))) model=\(String(describing: workspace.activeTab?.content)) warnings=\(fixture.warnings)")
+            }
+        }
+    }
+
+    @Test("Visuelles Bild-Undo meldet Teilentfernung und erhält Text, RAM und private Reste bis Redo-Retry")
+    @MainActor
+    func partialImageUndoReportsRetainedFiles() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bytes = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+        let sources = [directory.appendingPathComponent("a.png"), directory.appendingPathComponent("b.png")]
+        for source in sources { try bytes.write(to: source) }
+        let document = directory.appendingPathComponent("note.md")
+        let (workspace, coordinator, web, window) = try await editor("Text\n", documentURL: document)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let first = directory.appendingPathComponent("images/1.png")
+        let second = directory.appendingPathComponent("images/2.png")
+        var retainedClaim: URL?
+        var foreignIdentity: MarkdownImageStore.StoredFileIdentity?
+        coordinator.imageRemovalHooks = .init(afterClaim: { original, claim in
+            if original.lastPathComponent == "2.png" { retainedClaim = claim }
+        }, beforeUnlink: { index in
+            if index == 1 {
+                try Data("foreign".utf8).write(to: second)
+                foreignIdentity = try MarkdownImageStore.captureExisting(second).identity
+                throw POSIXError(.EIO)
+            }
+        })
+        var warnings: [String] = []
+        workspace.saveSafetyWarningHandler = { _, message in warnings.append(message) }
+        _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+        coordinator.insertImages(sources)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("images/2.png") == true })
+        let inserted = try #require(workspace.activeTab?.content)
+        let secondIdentity = try MarkdownImageStore.captureExisting(second).identity
+        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == "Text\n" && warnings.count == 1 })
+        let claim = try #require(retainedClaim)
+        #expect(warnings[0].contains(first.lastPathComponent))
+        #expect(warnings[0].contains(claim.path))
+        #expect(warnings[0].contains(POSIXError(.EIO).localizedDescription))
+        #expect(!FileManager.default.fileExists(atPath: first.path))
+        #expect(try Data(contentsOf: second) == Data("foreign".utf8))
+        let retainedAttributes = try FileManager.default.attributesOfItem(atPath: claim.path)
+        #expect((retainedAttributes[.systemFileNumber] as? NSNumber)?.uint64Value == secondIdentity.inode)
+        #expect(try Data(contentsOf: claim) == bytes)
+        let retainedBytes = MarkdownImageUndoBuffer.shared.byteCount
+        #expect(retainedBytes > 0)
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { warnings.count >= 2 })
+        #expect(workspace.activeTab?.content == "Text\n")
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual img').length") as? Int == 0)
+        #expect(try MarkdownImageStore.captureExisting(second).identity == foreignIdentity)
+        #expect(try Data(contentsOf: second) == Data("foreign".utf8))
+        #expect(MarkdownImageUndoBuffer.shared.byteCount == retainedBytes)
+        #expect(warnings.last?.contains(claim.path) == true)
+        try FileManager.default.removeItem(at: second)
+        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == inserted })
+        #expect(try Data(contentsOf: first) == bytes)
+        #expect(try Data(contentsOf: second) == bytes)
+        #expect(try MarkdownImageStore.captureExisting(second).identity.inode == secondIdentity.inode)
+        #expect(!FileManager.default.fileExists(atPath: claim.path))
+        #expect(MarkdownImageUndoBuffer.shared.byteCount < retainedBytes)
+        #expect(warnings.count == 2)
+    }
+
+    @Test("Visuelles Redo erklärt fehlende Bilder und übernimmt externe Aktualisierungen am selben Pfad", arguments: [false, true])
+    @MainActor
+    func onDiskImageRedoChecksMissingAndUpdatedFile(_ updated: Bool) async throws {
+        try await withVisualImageReferences { fixture in
+            let web = fixture.web, workspace = fixture.workspace
+            _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
+            fixture.insert("a.png")
+            try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
+            let inserted = try #require(workspace.activeTab?.content)
+            let held = fixture.directory.appendingPathComponent("held.png")
+            try FileManager.default.moveItem(at: fixture.first, to: held)
+            let modificationDate = try #require(FileManager.default.attributesOfItem(atPath: held.path)[.modificationDate] as? Date)
+            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.content != inserted })
+            try #require(await fixture.drain())
+            let previous = try #require(workspace.activeTab?.content)
+            let warningCount = fixture.warnings.count
+            var expectedBytes = fixture.bytes
+            var expectedModificationDate: Date?
+            if updated {
+                let bitmap = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 2, pixelsHigh: 1,
+                    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                    colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+                bitmap.setColor(.red, atX: 0, y: 0)
+                bitmap.setColor(.blue, atX: 1, y: 0)
+                expectedBytes = try #require(bitmap.representation(using: .png, properties: [:]))
+                try expectedBytes.write(to: fixture.first, options: .atomic)
+                try FileManager.default.setAttributes([.modificationDate: modificationDate], ofItemAtPath: fixture.first.path)
+                let preservedDate = try #require(FileManager.default.attributesOfItem(atPath: fixture.first.path)[.modificationDate] as? Date)
+                #expect(abs(preservedDate.timeIntervalSince(modificationDate)) < 0.001)
+                expectedModificationDate = preservedDate
+            }
+            let before = updated ? try FileSnapshot.readSnapshotOnly(from: fixture.first) : nil
+            let counts = fixture.schedule.counts
+            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            if updated {
+                try #require(await waitUntil { workspace.activeTab?.content == inserted })
+                try #require(await fixture.drain())
+                #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == inserted)
+                #expect(try FileSnapshot.readSnapshotOnly(from: fixture.first) == before)
+            } else {
+                try #require(await waitUntil { fixture.warnings.count > warningCount })
+                try #require(await fixture.drain())
+                var synchronized = false
+                fixture.coordinator.synchronize { _ in synchronized = true }
+                try #require(await waitUntil { synchronized })
+                #expect(workspace.activeTab?.content == previous)
+                #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == previous)
+                let imagePath = fixture.first.deletingLastPathComponent().canonicalFileURL
+                    .appendingPathComponent(fixture.first.lastPathComponent).path
+                let missingMessage = L10n.format("Die benötigte Bilddatei „%@“ fehlt. Stelle sie am ursprünglichen Pfad wieder bereit und versuche Wiederholen erneut.", imagePath)
+                #expect(fixture.warnings.dropFirst(warningCount).contains { $0.contains(missingMessage) },
+                        Comment(rawValue: "Erwartet: " + missingMessage + "\n" + fixture.warnings.joined(separator: "\n")))
+                #expect(!FileManager.default.fileExists(atPath: fixture.first.path))
+                try FileManager.default.moveItem(at: held, to: fixture.first)
+                _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+                try #require(await waitUntil { workspace.activeTab?.content == inserted })
+                try #require(await fixture.drain())
+            }
+            #expect(fixture.schedule.counts.claims == counts.claims && fixture.schedule.counts.unlinks == counts.unlinks)
+            #expect(try Data(contentsOf: fixture.first) == expectedBytes)
+            #expect(MarkdownImageUndoBuffer.shared.byteCount == 0)
+            var width = 0
+            for _ in 0..<120 {
+                width = (try await web.evaluateJavaScript("document.querySelector('#fastra-visual img')?.naturalWidth || 0") as? NSNumber)?.intValue ?? 0
+                if width == (updated ? 2 : 1) { break }
+                try await Task.sleep(for: .milliseconds(25))
+            }
+            #expect(width == (updated ? 2 : 1))
+            if updated {
+                #expect(try FileManager.default.attributesOfItem(atPath: fixture.first.path)[.modificationDate] as? Date == expectedModificationDate)
+                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                try #require(await waitUntil { workspace.activeTab?.content == previous })
+                try #require(await fixture.drain())
+                #expect(try FileSnapshot.readSnapshotOnly(from: fixture.first) == before)
+                _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+                try #require(await waitUntil { workspace.activeTab?.content == inserted })
+                try #require(await fixture.drain())
+                #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == inserted)
+                for _ in 0..<120 {
+                    width = (try await web.evaluateJavaScript("document.querySelector('#fastra-visual img')?.naturalWidth || 0") as? NSNumber)?.intValue ?? 0
+                    if width == 2 { break }
+                    try await Task.sleep(for: .milliseconds(25))
+                }
+                #expect(width == 2)
+                #expect(try FileSnapshot.readSnapshotOnly(from: fixture.first) == before)
+            }
+            #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        }
     }
 
     @Test("Bild-Redo-Kollision nimmt den Browser-Link trotz Eingabesperre vollständig zurück")
@@ -967,6 +1929,9 @@ struct MarkdownVisualTests {
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
             web.find("", configuration: WKFindConfiguration()) { _ in done.resume() }
         }
+        // close() reiht zusätzlich DOM-Fokus ein. Auch ihn vor dem Reset
+        // abschließen, damit nur der danach angeforderte Rückruf gemessen wird.
+        _ = try await web.evaluateJavaScript("true")
         window.makeFirstResponder(nil)
         find.restoreEditorFocusAfterClosing(in: workspace)
         if changeDocument {
@@ -1250,6 +2215,54 @@ struct MarkdownVisualTests {
         #expect(workspace.activeTab?.markdownVisualViewport?.revision != workspace.activeTab?.contentRevision)
     }
 
+    // Diagnostik darf eine fehlende WebKit-Rückmeldung nicht selbst unbegrenzt abwarten.
+    @MainActor
+    private func visualDiagnostic(_ web: WKWebView, script: String) async -> String {
+        var reply: String?
+        web.evaluateJavaScript(script) { value, error in
+            reply = error.map { "error: \($0)" } ?? String(describing: value ?? "nil")
+        }
+        let completed = await waitUntil(timeout: 1) { reply != nil }
+        return completed ? (reply ?? "nil") : "diagnostic callback timed out"
+    }
+
+    private func visualPhaseProbe(_ method: String) -> String {
+        """
+        (() => {
+          const d=window.__fastraTestPhase={document:performance.timeOrigin,installed:Date.now(),method:'\(method)',phase:'installed'};
+          const original=window.fastraVisual?.['\(method)'];
+          if(typeof original!=='function'){d.phase='missing method';return JSON.stringify(d);}
+          const record=read=>{try{Object.assign(d,read());}catch(_){}};
+          window.fastraVisual['\(method)']=function(...args){
+            record(()=>({phase:'entered',entered:Date.now(),viewport:args[0]?.viewport ?? null}));
+            let result;
+            try { result=original.apply(this,args); }
+            catch(error){record(()=>({phase:'threw',error:String(error),finished:Date.now()}));throw error;}
+            if('\(method)'==='start'){
+              // Nur beobachten: Der Aufrufer erhält exakt das ursprüngliche Promise.
+              try{result.then(value=>record(()=>({phase:'resolved',result:value,finished:Date.now()})),
+                error=>record(()=>({phase:'rejected',error:String(error),finished:Date.now()})));}catch(_){}
+            }else{record(()=>({phase:'returned',result,finished:Date.now()}));}
+            return result;
+          };
+          return JSON.stringify(d);
+        })()
+        """
+    }
+
+    private var visualDiagnosticSnapshot: String {
+        """
+        (() => {
+          const root=document.getElementById('fastra-visual'),state={document:performance.timeOrigin,
+            readyState:document.readyState,phase:window.__fastraTestPhase ?? null,
+            enhanced:document.documentElement.hasAttribute('data-fastra-enhanced'),
+            text:root?.textContent,html:root?.innerHTML};
+          try{state.markdown=window.fastraVisual?.markdown();}catch(error){state.markdownError=String(error);}
+          return JSON.stringify(state);
+        })()
+        """
+    }
+
     @MainActor
     private func editor(_ source: String, documentURL: URL? = nil) async throws -> (Workspace, MarkdownVisualCoordinator, MarkdownVisualWKWebView, NSWindow) {
         let workspace = Workspace()
@@ -1258,6 +2271,31 @@ struct MarkdownVisualTests {
         tab.markdownVisualOverride = true
         workspace.tabs = [tab]
         workspace.activeTabID = tab.id
+        return try await editor(in: workspace, tab: tab, darkMode: false)
+    }
+
+    @MainActor
+    private func reopenEditor(
+        at file: URL, savedBytes: Data, darkMode: Bool = false
+    ) async throws -> (Workspace, MarkdownVisualCoordinator, MarkdownVisualWKWebView, NSWindow) {
+        let workspace = Workspace()
+        var loadResult: Bool?
+        workspace.loadFile(at: file) { loadResult = $0 }
+        try #require(await waitUntil { loadResult != nil })
+        try #require(loadResult == true)
+        let index = try #require(workspace.tabs.firstIndex { $0.id == workspace.activeTabID })
+        let tab = workspace.tabs[index]
+        try #require(tab.url?.canonicalFileURL == file.canonicalFileURL)
+        try #require(Data(tab.content.utf8) == savedBytes)
+        try #require(!tab.isDirty)
+        workspace.tabs[index].markdownVisualOverride = true
+        return try await editor(in: workspace, tab: workspace.tabs[index], darkMode: darkMode)
+    }
+
+    @MainActor
+    private func editor(
+        in workspace: Workspace, tab: EditorTab, darkMode: Bool
+    ) async throws -> (Workspace, MarkdownVisualCoordinator, MarkdownVisualWKWebView, NSWindow) {
         let coordinator = MarkdownVisualCoordinator()
         coordinator.pasteboard = NSPasteboard.withUniqueName()
         coordinator.workspace = workspace
@@ -1270,10 +2308,11 @@ struct MarkdownVisualTests {
         window.retainedCoordinator = coordinator
         window.isReleasedWhenClosed = false
         window.contentView = web
+        WorkspaceWindowRegistry.register(workspace, for: window)
         var error: String?
         workspace.saveSafetyWarningHandler = { title, text in error = title + text }
-        coordinator.load(source, documentURL: documentURL, fontName: PreviewFonts.systemName,
-                         fontSize: 14, darkMode: false, style: "test")
+        coordinator.load(tab.content, documentURL: tab.url, fontName: PreviewFonts.systemName,
+                         fontSize: 14, darkMode: darkMode, style: "test")
         let ready = await waitUntil(timeout: 12) { coordinator.ready || error != nil }
         if let error {
             let roundtrip = try? await web.evaluateJavaScript("window.fastraVisual.markdown()")
@@ -1995,7 +3034,7 @@ struct MarkdownVisualTests {
         #expect(other.tabs[0].content == source && !other.tabs[0].hasUnsavedChanges)
         let owner = Workspace(); owner.fileTreeMutationWorkspaceProvider = { [other] }
         let (success, held) = await owner.synchronizeTextWorkflowDiskDocuments()
-        defer { held.forEach { $0.completeAction() } }
+        defer { held.forEach { $0.finish() } }
         #expect(success && other.tabs[0].content.contains("Pending edit") && other.tabs[0].hasUnsavedChanges)
         let mutation = try owner.beginTextWorkflowDiskMutation(urls: [url])
         defer { owner.finishTextWorkflowDiskMutation(mutation, changedURLs: [], session: nil) }
@@ -2156,9 +3195,10 @@ struct MarkdownVisualTests {
         #expect(copied.contains("Schluss"))
     }
 
-    @Test("Gemischte Clipboard-Inhalte behalten alle Auszeichnungen nach Einfügen, Undo und erneutem Öffnen", arguments: [[false, false], [true, false], [false, true], [true, true]])
+    @Test("Gemischte Clipboard-Inhalte behalten alle Auszeichnungen nach Einfügen, Undo und erneutem Öffnen",
+          arguments: [[false, false], [true, false], [false, true], [true, true]], [false, true])
     @MainActor
-    func copyPasteDocumentStyles(_ scenario: [Bool]) async throws {
+    func copyPasteDocumentStyles(_ scenario: [Bool], _ documentBacked: Bool) async throws {
         let cut = scenario[0], htmlOnly = scenario[1]
         let source = """
         ## **Titel** mit *Kursiv*
@@ -2197,8 +3237,17 @@ struct MarkdownVisualTests {
             _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
             try #require(await waitUntil { workspace.activeTab?.content == source })
         }
-        let (target, receiver, targetWeb, targetWindow) = try await editor("Ziel\n")
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-paste-\(UUID().uuidString)")
+        let targetFile = documentBacked ? directory.appendingPathComponent("ziel.md") : nil
+        defer { if documentBacked { try? FileManager.default.removeItem(at: directory) } }
+        let originalBytes = Data("Ziel\n".utf8)
+        if let targetFile {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try originalBytes.write(to: targetFile)
+        }
+        let (target, receiver, targetWeb, targetWindow) = try await editor("Ziel\n", documentURL: targetFile)
         defer { targetWeb.configuration.userContentController.removeAllScriptMessageHandlers(); targetWindow.close(); withExtendedLifetime(receiver) {} }
+        if let targetFile { target.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: targetFile) }
         receiver.pasteboard = coordinator.pasteboard
         _ = try await targetWeb.evaluateJavaScript("{const r=document.createRange();r.selectNodeContents(document.getElementById('fastra-visual'));getSelection().removeAllRanges();getSelection().addRange(r);}")
         if htmlOnly {
@@ -2215,14 +3264,47 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { target.activeTab?.content == "Ziel\n" })
         _ = try await targetWeb.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
         try #require(await waitUntil { target.activeTab?.content == pasted })
-        receiver.load(pasted, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
+        var reloadError: String?
+        target.saveSafetyWarningHandler = { title, text in
+            if reloadError == nil { reloadError = title + ": " + text }
+        }
+        let previousDocument = await visualDiagnostic(targetWeb, script: visualDiagnosticSnapshot)
+        let previousGeneration = receiver.generation
+        targetWeb.configuration.userContentController.addUserScript(WKUserScript(
+            source: visualPhaseProbe("start"), injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        receiver.load(pasted, documentURL: targetFile, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
         // WebKits erneuter Start braucht dieselbe Frist wie das erste Öffnen.
         let reloaded = await waitUntil(timeout: 12) { receiver.ready }
         if !reloaded {
-            print("MARKDOWN_RELOAD_DIAGNOSTIC cut=\(cut) htmlOnly=\(htmlOnly) loading=\(targetWeb.isLoading) progress=\(targetWeb.estimatedProgress) generation=\(receiver.generation) ownerPresent=\(receiver.workspace != nil) activeTabMatches=\(receiver.tabID == target.activeTabID) sourceMatches=\(receiver.markdown == pasted)")
+            print("MARKDOWN_RELOAD_DIAGNOSTIC cut=\(cut) htmlOnly=\(htmlOnly) loading=\(targetWeb.isLoading) progress=\(targetWeb.estimatedProgress) generation=\(receiver.generation) ownerPresent=\(receiver.workspace != nil) activeTabMatches=\(receiver.tabID == target.activeTabID) sourceMatches=\(receiver.markdown == pasted) generationBefore=\(previousGeneration) historyPerforming=\(target.activeTab?.undoHistory.isPerformingAction == true) warning=\(reloadError ?? "none")")
+            print("MARKDOWN_RELOAD_PHASE_DIAGNOSTIC before=\(previousDocument) after=\(await visualDiagnostic(targetWeb, script: visualDiagnosticSnapshot))")
         }
         try #require(reloaded)
         #expect(try await targetWeb.evaluateJavaScript("JSON.stringify(" + snapshot + ")") as? String == expected, Comment(rawValue: pasted))
+
+        guard let targetFile else { return }
+        try #require(target.activeTab?.isDirty == true)
+        try #require(try Data(contentsOf: targetFile) == originalBytes)
+        var saveError: String?
+        target.saveSafetyWarningHandler = { saveError = $0 + ": " + $1 }
+        target.saveActiveTab()
+        try #require(await waitUntil { saveError != nil || target.activeTab?.isDirty == false })
+        try #require(saveError == nil, Comment(rawValue: saveError ?? ""))
+        let id = try #require(target.activeTabID)
+        target.tabs.append(EditorTab(title: "anchor.txt", path: "", content: "Anker"))
+        var closeConfirmationRequested = false
+        target.confirmCloseHandler = { _ in closeConfirmationRequested = true; return .cancel }
+        target.closeTab(id: id)
+        try #require(await waitUntil(timeout: 12) { !target.tabs.contains { $0.id == id } || closeConfirmationRequested })
+        try #require(!closeConfirmationRequested)
+
+        let saved = try Data(contentsOf: targetFile)
+        try #require(saved == Data(pasted.utf8))
+        let (freshWorkspace, freshCoordinator, freshWeb, freshWindow) = try await reopenEditor(
+            at: targetFile, savedBytes: saved
+        )
+        defer { freshWeb.configuration.userContentController.removeAllScriptMessageHandlers(); freshWindow.close(); withExtendedLifetime((freshWorkspace, freshCoordinator)) {} }
+        #expect(try await freshWeb.evaluateJavaScript("JSON.stringify(" + snapshot + ")") as? String == expected, Comment(rawValue: pasted))
     }
 
     @Test("Ordnerumzüge erhalten benachbarte Bildquellen, Rich-Text-Kopien und WebKit-Undo")
@@ -2382,7 +3464,7 @@ struct MarkdownVisualTests {
         #expect(!NotificationCenter.default.postMatchJump(match, for: workspace))
         _ = try await web.evaluateJavaScript("""
             const prepare=fastraVisual.prepareAction;
-            fastraVisual.prepareAction=()=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare());});
+            fastraVisual.prepareAction=(...args)=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare(...args));});
             void 0;
             """)
         var posted: Bool?
@@ -2414,7 +3496,7 @@ struct MarkdownVisualTests {
         let match = BufferSearch.find(in: target.content, options: SearchOptions(find: "needle", replace: "", isRegex: false)).matches[0]
         _ = try await web.evaluateJavaScript("""
             const prepare=fastraVisual.prepareAction;
-            fastraVisual.prepareAction=()=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare());});
+            fastraVisual.prepareAction=(...args)=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare(...args));});
             void 0;
             """)
         var posted: Bool?
@@ -2484,7 +3566,7 @@ struct MarkdownVisualTests {
             }, options: workspace.currentSearchOptions)
             workspace.openResults = result.perTab
             workspace.openTotalMatches = result.totalMatches
-            workspace.visibleBufferResultsOptions = workspace.currentSearchOptions
+            publishPreparedSearchResults(workspace)
         }
         refreshResults()
         workspace.activeMatchIndex = 0
@@ -2497,7 +3579,7 @@ struct MarkdownVisualTests {
         refreshResults()
         _ = try await web.evaluateJavaScript("""
             const prepare=fastraVisual.prepareAction;
-            fastraVisual.prepareAction=()=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare());});
+            fastraVisual.prepareAction=(...args)=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare(...args));});
             void 0;
             """)
         workspace.finishPendingOpenReplaceNavigation(for: workspace.currentSearchOptions)
@@ -3338,4 +4420,1417 @@ struct MarkdownVisualTests {
     }
 
 
+    @Test("Diagnose: bestehender Disk-Batchhalter überlebt globale Modusaktion", arguments: [false, true])
+    @MainActor
+    func batchHoldSurvivesModeChangeDiagnostic(_ claimed: Bool) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("batch-hold-diagnostic-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let document = directory.appendingPathComponent("note.md")
+        try "Text\n".write(to: document, atomically: true, encoding: .utf8)
+        let (workspace, coordinator, web, window) = try await editor("Text\n", documentURL: document)
+        var heldEditors: [MarkdownVisualCoordinator.ActionHold] = []
+        var mutation: Workspace.TextWorkflowDiskMutation?
+        defer {
+            if let mutation { workspace.finishTextWorkflowDiskMutation(mutation, changedURLs: [], session: nil) }
+            heldEditors.forEach { $0.finish() }
+            web.configuration.userContentController.removeAllScriptMessageHandlers()
+            window.close()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: document)
+        workspace.tabs[0].isDirty = false
+        var warnings = 0
+        workspace.saveSafetyWarningHandler = { _, _ in warnings += 1 }
+        AppDefaults.store.set(true, forKey: MarkdownEditingMode.defaultsKey)
+        let prepared = await workspace.synchronizeTextWorkflowDiskDocuments()
+        heldEditors = prepared.1
+        try #require(prepared.0 && heldEditors.count == 1 && heldEditors.first?.isCurrent(for: coordinator) == true)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        if claimed {
+            let claim = try workspace.beginTextWorkflowDiskMutation(urls: [document])
+            mutation = claim
+            let preflight = await Task.detached { Result { try claim.preflight(in: workspace) } }.value
+            try preflight.get()
+            #expect(!workspace.textEditingIsAllowed(for: workspace.tabs[0]))
+        }
+        _ = try await web.evaluateJavaScript("window.__batchActionEnds=0;window.__originalBatchActionEnd=fastraVisual.completeAction;fastraVisual.completeAction=function(...args){const result=window.__originalBatchActionEnd.apply(this,args);window.__batchActionEnds+=1;return result;};true;")
+        MarkdownEditingMode.setDefault(false)
+        let expectedEnds = 1
+        var ends = 0, reading = false
+        let completed = await waitUntil {
+            if ends >= expectedEnds { return true }
+            if !reading {
+                reading = true
+                web.evaluateJavaScript("window.__batchActionEnds") { value, _ in ends = value as? Int ?? 0; reading = false }
+            }
+            return false
+        }
+        try #require(completed)
+        let held = workspace.textWorkflowDiskEditorsAreHeld(heldEditors)
+        let editable = try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool
+        #expect(held)
+        #expect(warnings == (claimed ? 1 : 0))
+        #expect(AppDefaults.store.bool(forKey: MarkdownEditingMode.defaultsKey) == claimed)
+        #expect(workspace.activeTab?.content == "Text\n" && !workspace.tabs[0].hasUnsavedChanges)
+        #expect(try Data(contentsOf: document) == Data("Text\n".utf8))
+        if claimed { #expect(!workspace.textEditingIsAllowed(for: workspace.tabs[0])) }
+        print("BATCH_HOLD_DIAGNOSTIC claimed=\(claimed) nativeHeld=\(held) editable=\(String(describing: editable)) observedEnds=\(ends) warnings=\(warnings) fileUnchanged=true")
+        #expect(editable == false)
+        if let activeMutation = mutation {
+            workspace.finishTextWorkflowDiskMutation(activeMutation, changedURLs: [], session: nil)
+            mutation = nil
+        }
+        heldEditors.forEach { $0.finish() }
+        #expect(heldEditors.allSatisfy { !$0.isActive && !$0.isCurrent(for: coordinator) })
+        #expect(!workspace.textWorkflowDiskEditorsAreHeld(heldEditors))
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+    }
+
+
+    @MainActor
+    private func actionHold(_ coordinator: MarkdownVisualCoordinator) async throws -> MarkdownVisualCoordinator.ActionHold {
+        var response: (Bool, MarkdownVisualCoordinator.ActionHold?)?
+        coordinator.synchronize(holdingInput: true) { response = ($0, $1) }
+        try #require(await waitUntil { response != nil })
+        try #require(response?.0 == true)
+        return try #require(response?.1)
+    }
+
+    @Test("Konkrete Holds gleicher Revision schützen jeden verbleibenden Besitzer", arguments: [false, true])
+    @MainActor
+    func actionHoldsKeepEveryOwner(_ reverse: Bool) async throws {
+        let source = "Text\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let hadUndo = web.undoManager?.canUndo
+        _ = try await web.evaluateJavaScript("window.__actionSnapshots=[];window.__actionPrepare=fastraVisual.prepareAction;fastraVisual.prepareAction=function(...args){const state=window.__actionPrepare.apply(this,args);window.__actionSnapshots.push(state);return state;};true;")
+        let a = try await actionHold(coordinator), b = try await actionHold(coordinator), c = try await actionHold(coordinator)
+        #expect(try await web.evaluateJavaScript("window.__actionSnapshots.length===3 && new Set(window.__actionSnapshots.map(s=>s.actionID)).size===3 && new Set(window.__actionSnapshots.map(s=>s.revision)).size===1 && new Set(window.__actionSnapshots.map(s=>s.session)).size===1") as? Bool == true)
+        _ = try await web.evaluateJavaScript("const held=window.__actionSnapshots[0];window.__duplicatePrepare=window.__actionPrepare(held.session,held.actionID);fastraVisual.completeAction(held.session,'unknown');true;")
+        #expect(try await web.evaluateJavaScript("window.__duplicatePrepare===null") as? Bool == true)
+        defer { [a, b, c].forEach { $0.finish() } }
+        #expect([a, b, c].allSatisfy { $0.isCurrent(for: coordinator) })
+        b.finish(); b.finish()
+        _ = try await web.evaluateJavaScript("const ended=window.__actionSnapshots[1];fastraVisual.completeAction(ended.session,ended.actionID);true;")
+        #expect(!b.isActive && !b.isCurrent(for: coordinator))
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        let first = reverse ? c : a, last = reverse ? a : c
+        first.finish()
+        #expect(last.isCurrent(for: coordinator))
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        last.finish(); last.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(workspace.activeTab?.content == source && coordinator.markdown == source)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        #expect(!workspace.tabs[0].hasUnsavedChanges && web.undoManager?.canUndo == hadUndo)
+    }
+
+    @Test("Relocate entwertet Batchabdeckung, erhält aber eigene Freigabe", arguments: [false, true])
+    @MainActor
+    func actionHoldRelocation(_ younger: Bool) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-hold-relocate-\(UUID().uuidString)")
+        let original = directory.appendingPathComponent("note.md"), moved = directory.appendingPathComponent("renamed.md")
+        let (workspace, coordinator, web, window) = try await editor("Text\n", documentURL: original)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let a = try await actionHold(coordinator)
+        defer { a.finish() }
+        workspace.tabs[0].url = moved
+        coordinator.relocateDocument(from: original, to: moved)
+        #expect(!a.isCurrent(for: coordinator) && a.isActive)
+        #expect(!workspace.textWorkflowDiskEditorsAreHeld([a]))
+        let b = younger ? try await actionHold(coordinator) : nil
+        defer { b?.finish() }
+        a.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == !younger)
+        b?.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(workspace.activeTab?.content == "Text\n" && coordinator.documentURL == moved)
+    }
+
+    @Test("Invalidierte Holds enden nativ, während alter DOM bis Load gesperrt bleibt", arguments: [false, true])
+    @MainActor
+    func actionHoldInvalidation(_ reverse: Bool) async throws {
+        let (workspace, coordinator, web, window) = try await editor("Text\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let a = try await actionHold(coordinator), b = try await actionHold(coordinator)
+        defer { a.finish(); b.finish() }
+        coordinator.discardForTermination()
+        #expect(!coordinator.ready && !a.isCurrent(for: coordinator) && !b.isCurrent(for: coordinator))
+        (reverse ? b : a).finish(); (reverse ? a : b).finish()
+        a.finish(); b.finish()
+        #expect(!a.isActive && !b.isActive)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        let rendering = DispatchSemaphore(value: 0), resumeRendering = DispatchSemaphore(value: 0)
+        defer { resumeRendering.signal() }
+        MarkdownRichText.renderQueue.async { rendering.signal(); resumeRendering.wait() }
+        try #require(await waitUntil { rendering.wait(timeout: .now()) == .success })
+        coordinator.load("Text\n", documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
+        #expect(!coordinator.ready)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        resumeRendering.signal()
+        try #require(await waitUntil(timeout: 12) { coordinator.ready })
+        a.finish(); b.finish()
+        #expect(!workspace.textWorkflowDiskEditorsAreHeld([a, b]))
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(workspace.activeTab?.content == "Text\n")
+    }
+
+    @Test("Diagnose: alte Basisablehnung erhält neue Relocationsperre", arguments: [false, true])
+    @MainActor
+    func baseRejectionKeepsRelocatedActionFencedDiagnostic(_ viaWorkspace: Bool) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("base-rejection-diagnostic-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = directory.appendingPathComponent("note.md")
+        let relocated = directory.appendingPathComponent("renamed.md")
+        let (workspace, coordinator, web, window) = try await editor("Text\n", documentURL: original)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        var oldCompletions: [Bool] = [], newCompletions: [Bool] = []
+        var newHold: MarkdownVisualCoordinator.ActionHold?
+        var warnings = 0
+        let oldGeneration = coordinator.generation
+        workspace.tabs[0].content = "Andere Modellbasis\n"
+        workspace.saveSafetyWarningHandler = { _, _ in
+            warnings += 1
+            guard warnings == 1 else { return }
+            workspace.tabs[0].content = coordinator.markdown
+            workspace.tabs[0].url = relocated
+            coordinator.relocateDocument(from: original, to: relocated)
+            coordinator.synchronize(holdingInput: true) { succeeded, hold in newCompletions.append(succeeded); newHold = hold }
+        }
+        if viaWorkspace {
+            let queued = workspace.synchronizeVisualMarkdownBefore({ oldCompletions.append(true) }, onFailure: { oldCompletions.append(false) })
+            #expect(queued)
+        } else {
+            coordinator.synchronize { oldCompletions.append($0) }
+        }
+        try #require(await waitUntil { !oldCompletions.isEmpty && !newCompletions.isEmpty })
+        #expect(oldCompletions == [false] && newCompletions == [true])
+        #expect(warnings == 1 && coordinator.generation > oldGeneration)
+        #expect(workspace.activeTab?.content == "Text\n" && workspace.activeTab?.url == relocated)
+        #expect(coordinator.documentURL == relocated)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Text\n")
+        let editable = try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool
+        print("BASE_REJECTION_DIAGNOSTIC viaWorkspace=\(viaWorkspace) old=\(oldCompletions) new=\(newCompletions) warnings=\(warnings) oldGeneration=\(oldGeneration) generation=\(coordinator.generation) editable=\(String(describing: editable))")
+        #expect(editable == false)
+        newHold?.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(oldCompletions == [false] && newCompletions == [true])
+    }
+
+
+    @Test("Diagnose: Basisablehnung ohne Folgeaktion beendet die eigene Sperre", arguments: [false, true])
+    @MainActor
+    func baseRejectionWithoutNewActionDiagnostic(_ viaWorkspace: Bool) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("base-rejection-no-new-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = directory.appendingPathComponent("note.md"), relocated = directory.appendingPathComponent("renamed.md")
+        let (workspace, coordinator, web, window) = try await editor("Text\n", documentURL: original)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        var completions: [Bool] = [], warnings = 0
+        let oldGeneration = coordinator.generation
+        workspace.tabs[0].content = "Andere Modellbasis\n"
+        workspace.saveSafetyWarningHandler = { _, _ in
+            warnings += 1
+            guard warnings == 1 else { return }
+            workspace.tabs[0].content = coordinator.markdown
+            workspace.tabs[0].url = relocated
+            coordinator.relocateDocument(from: original, to: relocated)
+        }
+        if viaWorkspace {
+            let queued = workspace.synchronizeVisualMarkdownBefore({ completions.append(true) }, onFailure: { completions.append(false) })
+            #expect(queued)
+        } else {
+            coordinator.synchronize { completions.append($0) }
+        }
+        try #require(await waitUntil { !completions.isEmpty })
+        #expect(completions == [false] && warnings == 1 && coordinator.generation > oldGeneration)
+        #expect(workspace.activeTab?.content == "Text\n" && workspace.activeTab?.url == relocated)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Text\n")
+        let editable = try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool
+        print("BASE_REJECTION_NO_NEW_ACTION viaWorkspace=\(viaWorkspace) completions=\(completions) warnings=\(warnings) oldGeneration=\(oldGeneration) generation=\(coordinator.generation) editable=\(String(describing: editable))")
+        #expect(editable == true)
+    }
+
+
+    @MainActor
+    private func waitForVisualJavaScript(_ expression: String, in web: WKWebView) async -> Bool {
+        var observed = false, reading = false
+        return await waitUntil {
+            if observed { return true }
+            if !reading {
+                reading = true
+                web.evaluateJavaScript(expression) { value, _ in observed = value as? Bool == true; reading = false }
+            }
+            return false
+        }
+    }
+
+    @Test("Fehlgeschlagene Vorbereitung räumt nur ihren möglicherweise erworbenen Token auf", arguments: ["composing", "transport", "ack", "session", "revision", "workspace"], [false, true])
+    @MainActor
+    func actionHoldPreparationFailure(_ fault: String, _ overlapping: Bool) async throws {
+        let source = "Text\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let survivor = overlapping ? try await actionHold(coordinator) : nil
+        defer { survivor?.finish(); coordinator.workspace = workspace }
+        var warnings = 0, results: [Bool] = []
+        workspace.saveSafetyWarningHandler = { _, _ in warnings += 1 }
+        _ = try await web.callAsyncJavaScript("""
+            window.__prepareBeforeFault=fastraVisual.prepareAction;
+            if(fault==='composing')document.getElementById('fastra-visual').dispatchEvent(new CompositionEvent('compositionstart'));
+            else fastraVisual.prepareAction=function(...args){
+              const state=window.__prepareBeforeFault.apply(this,args);
+              if(fault==='transport')throw new Error('controlled transport failure after preparation');
+              if(fault==='ack')delete state.actionID;
+              if(fault==='session')state.session='foreign-session';
+              if(fault==='revision')state.revision=-1;
+              return state;
+            };
+            return true;
+            """, arguments: ["fault": fault], in: nil, contentWorld: .page)
+        if fault == "workspace" { coordinator.workspace = nil }
+        coordinator.synchronize(holdingInput: true) { succeeded, hold in
+            results.append(succeeded)
+            #expect(hold == nil)
+        }
+        try #require(await waitUntil { !results.isEmpty })
+        coordinator.workspace = workspace
+        _ = try await web.evaluateJavaScript("fastraVisual.prepareAction=window.__prepareBeforeFault;if(document.getElementById('fastra-visual'))document.getElementById('fastra-visual').dispatchEvent(new CompositionEvent('compositionend'));true;")
+        #expect(results == [false] && warnings == (fault == "composing" ? 1 : 0))
+        #expect((survivor?.isCurrent(for: coordinator) ?? false) == overlapping)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == !overlapping)
+        survivor?.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        let subsequent = try await actionHold(coordinator)
+        subsequent.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(results == [false] && workspace.activeTab?.content == source && coordinator.markdown == source)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+    }
+
+    @Test("JS hält einen bereits erworbenen Token vor seiner nativen Callbackzustellung")
+    @MainActor
+    func actionHoldBridgePendingResponse() async throws {
+        let (workspace, coordinator, web, window) = try await editor("Text\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let a = try await actionHold(coordinator)
+        defer { a.finish() }
+        _ = try await web.evaluateJavaScript("window.__originalPrepare=fastraVisual.prepareAction;fastraVisual.prepareAction=function(...args){const state=window.__originalPrepare.apply(this,args);window.__preparedPending=true;return new Promise(resolve=>{window.__deliverPreparation=()=>resolve(state);});};true;")
+        var b: MarkdownVisualCoordinator.ActionHold?, results: [Bool] = []
+        coordinator.synchronize(holdingInput: true) { results.append($0); b = $1 }
+        defer { b?.finish() }
+        try #require(await waitForVisualJavaScript("window.__preparedPending===true", in: web))
+        #expect(results.isEmpty)
+        a.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        _ = try await web.evaluateJavaScript("fastraVisual.prepareAction=window.__originalPrepare;window.__deliverPreparation();true;")
+        try #require(await waitUntil { !results.isEmpty })
+        #expect(results == [true] && b?.isCurrent(for: coordinator) == true)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        b?.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(workspace.activeTab?.content == "Text\n")
+    }
+
+    @Test("Bereits abgeschickte Freigabe wirkt nur auf ihren Token vor neuer Vorbereitung")
+    @MainActor
+    func actionHoldBridgeReleaseBeforePrepare() async throws {
+        let (_, coordinator, web, window) = try await editor("Text\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let a = try await actionHold(coordinator)
+        a.finish()
+        let b = try await actionHold(coordinator)
+        defer { b.finish() }
+        a.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        b.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+    }
+
+    @Test("Legacy- und native Aktionssperren enden unabhängig und Fehlformen bleiben wirkungslos", arguments: [false, true])
+    @MainActor
+    func actionHoldLegacyIsolation(_ legacyFirst: Bool) async throws {
+        let (workspace, coordinator, web, window) = try await editor("Text\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let snapshot = try #require(try await web.evaluateJavaScript("fastraVisual.prepareAction()") as? [String: Any])
+        #expect(snapshot["actionID"] == nil && snapshot["session"] == nil && snapshot["markdown"] as? String == "Text\n")
+        let session = try #require(try await web.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String)
+        let a = try await actionHold(coordinator), b = try await actionHold(coordinator)
+        defer { a.finish(); b.finish() }
+        let rejected = try await web.callAsyncJavaScript("""
+            const before=fastraVisual.markdown();
+            const rejected=[fastraVisual.prepareAction(session),fastraVisual.prepareAction(session,null),fastraVisual.prepareAction('foreign-session','foreign-token')];
+            fastraVisual.completeAction(session,null);fastraVisual.completeAction(session,'unknown');
+            fastraVisual.completeAction(session,'unknown','extra');fastraVisual.completeAction();
+            return rejected.every(value=>value===null) && fastraVisual.markdown()===before;
+            """, arguments: ["session": session], in: nil, contentWorld: .page) as? Bool
+        #expect(rejected == true)
+        if legacyFirst { _ = try await web.callAsyncJavaScript("fastraVisual.completeAction(session);", arguments: ["session": session], in: nil, contentWorld: .page) }
+        a.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        b.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == legacyFirst)
+        if !legacyFirst { _ = try await web.callAsyncJavaScript("fastraVisual.completeAction(session);", arguments: ["session": session], in: nil, contentWorld: .page) }
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(workspace.activeTab?.content == "Text\n")
+    }
+
+    @Test("Visueller Editor nimmt Eingaben erst nach der Markdown-Aufbereitung an", arguments: [false, true])
+    @MainActor
+    func inputWaitsForVisualEnhancement(_ timesOut: Bool) async throws {
+        let source = "Zweimal  leer\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        web.configuration.userContentController.addUserScript(WKUserScript(source: """
+            const originalHasAttribute=Element.prototype.hasAttribute;
+            Element.prototype.hasAttribute=function(name){
+                if(this===document.documentElement && name==='data-fastra-enhanced' && !window.releaseEnhancement)return false;
+                return originalHasAttribute.call(this,name);
+            };
+            const originalNow=Date.now;
+            Date.now=function(){return originalNow()+(window.expireEnhancement?6000:0);};
+            const originalStart=fastraVisual.start;
+            fastraVisual.start=function(configuration){
+                const result=originalStart.call(this,configuration);
+                window.waitingForEnhancement=true;
+                return result;
+            };
+            window.typeIntoVisualParagraph=function(text){
+                const root=document.getElementById('fastra-visual'),paragraph=root.querySelector('p'),range=document.createRange();
+                root.focus();range.selectNodeContents(paragraph);range.collapse(false);
+                getSelection().removeAllRanges();getSelection().addRange(range);
+                return document.execCommand('insertText',false,text);
+            };
+            """, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        var startWarnings = 0
+        workspace.saveSafetyWarningHandler = { _, _ in startWarnings += 1 }
+        coordinator.load(source, documentURL: nil, fontName: PreviewFonts.systemName,
+                         fontSize: 14, darkMode: false, style: "delayed-enhancement")
+        try #require(await waitForVisualJavaScript("window.waitingForEnhancement===true", in: web))
+        #expect(!coordinator.ready)
+        #expect(try await web.evaluateJavaScript("typeIntoVisualParagraph(' Zu früh')") as? Bool == false)
+        if timesOut {
+            _ = try await web.evaluateJavaScript("window.expireEnhancement=true;true;")
+            try #require(await waitUntil { startWarnings == 1 })
+            _ = try await web.evaluateJavaScript("window.releaseEnhancement=true;true;")
+            #expect(!coordinator.ready)
+            #expect(try await web.evaluateJavaScript("typeIntoVisualParagraph(' Zu früh')") as? Bool == false)
+            #expect(workspace.activeTab?.content == source)
+            return
+        }
+        _ = try await web.evaluateJavaScript("window.releaseEnhancement=true;true;")
+        try #require(await waitUntil { coordinator.ready })
+        #expect(try await web.evaluateJavaScript("document.querySelector('#fastra-visual p').textContent") as? String == "Zweimal  leer")
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        #expect(workspace.activeTab?.content == source)
+        #expect(try await web.evaluateJavaScript("typeIntoVisualParagraph(' Jetzt')") as? Bool == true)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("Jetzt") == true })
+    }
+
+    @Test("Same-Session-Start schützt beide Tokens vor und über frühe und späte Yields", arguments: [false, true], [false, true])
+    @MainActor
+    func actionHoldsAcrossSameSessionStart(_ reverse: Bool, _ releaseEarly: Bool) async throws {
+        let source = "Text\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let a = try await actionHold(coordinator), b = try await actionHold(coordinator)
+        defer { a.finish(); b.finish() }
+        let first = reverse ? b : a, last = reverse ? a : b
+        let session = try #require(try await web.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String)
+        let document = MarkdownVisualDocument.render(source, documentURL: nil)
+        let blocks = try JSONSerialization.jsonObject(with: JSONEncoder().encode(document.blocks))
+        let configuration: [String: Any] = ["blocks": blocks, "markdown": source, "session": session,
+            "opaqueSources": document.opaqueSources, "viewport": ["x": 0, "y": 0]]
+        let immediatelyFenced = try await web.callAsyncJavaScript("""
+            const previous=document.getElementById('fastra-visual'),replacement=previous.cloneNode(true);
+            replacement.contentEditable='true';previous.replaceWith(replacement);
+            window.__editableAssignments=[];
+            const descriptor=Object.getOwnPropertyDescriptor(HTMLElement.prototype,'contentEditable');
+            Object.defineProperty(replacement,'contentEditable',{get(){return descriptor.get.call(this);},set(value){window.__editableAssignments.push(value);descriptor.set.call(this,value);}});
+            document.documentElement.removeAttribute('data-fastra-enhanced');
+            window.__startFinished=false;window.__startValue=null;
+            window.__originalTimeout=window.setTimeout;window.__holdEarly=true;window.__holdLate=true;
+            window.setTimeout=function(callback,delay,...args){
+              if(delay===10 && window.__holdEarly){window.__earlyYield=true;window.__resumeEarly=()=>window.__originalTimeout(callback,0,...args);return 0;}
+              if(delay===16 && window.__holdLate){window.__lateYield=true;window.__resumeLate=()=>window.__originalTimeout(callback,0,...args);return 0;}
+              return window.__originalTimeout(callback,delay,...args);
+            };
+            window.__starting=fastraVisual.start(configuration).then(value=>{window.__startValue=value;window.__startFinished=true;});
+            return !replacement.isContentEditable && window.__earlyYield===true;
+            """, arguments: ["configuration": configuration], in: nil, contentWorld: .page) as? Bool
+        #expect(immediatelyFenced == true && a.isCurrent(for: coordinator) && b.isCurrent(for: coordinator))
+        if releaseEarly { first.finish() }
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        _ = try await web.evaluateJavaScript("window.__holdEarly=false;document.documentElement.setAttribute('data-fastra-enhanced','');window.__resumeEarly();true;")
+        try #require(await waitForVisualJavaScript("window.__lateYield===true", in: web))
+        if !releaseEarly { first.finish() }
+        #expect(last.isCurrent(for: coordinator))
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        _ = try await web.evaluateJavaScript("window.__holdLate=false;window.setTimeout=window.__originalTimeout;window.__resumeLate();true;")
+        try #require(await waitForVisualJavaScript("window.__startFinished===true", in: web))
+        #expect(try await web.evaluateJavaScript("window.__startValue===true && !window.__editableAssignments.includes('true')") as? Bool == true)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        first.finish(); last.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(workspace.activeTab?.content == source && !workspace.tabs[0].hasUnsavedChanges)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+    }
+
+    @Test("Neue Session übernimmt keine alten Tokens und weist alte Vorbereitungsargumente ab", arguments: [false, true])
+    @MainActor
+    func actionHoldNewSession(_ younger: Bool) async throws {
+        let source = "Text\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let a = try await actionHold(coordinator)
+        defer { a.finish() }
+        let oldSession = try #require(try await web.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String)
+        coordinator.load(source, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "new-session")
+        try #require(await waitUntil(timeout: 12) { coordinator.ready })
+        #expect(!a.isCurrent(for: coordinator) && a.isActive)
+        #expect(!workspace.textWorkflowDiskEditorsAreHeld([a]))
+        let b = younger ? try await actionHold(coordinator) : nil
+        defer { b?.finish() }
+        let rejected = try await web.callAsyncJavaScript("""
+            const before=fastraVisual.markdown(),editable=document.getElementById('fastra-visual').isContentEditable;
+            const response=fastraVisual.prepareAction(oldSession,'delayed-old-prepare');
+            fastraVisual.completeAction(oldSession,'delayed-old-prepare');
+            return response===null && fastraVisual.markdown()===before && document.getElementById('fastra-visual').isContentEditable===editable;
+            """, arguments: ["oldSession": oldSession], in: nil, contentWorld: .page) as? Bool
+        #expect(rejected == true)
+        a.finish(); a.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == !younger)
+        b?.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(workspace.activeTab?.content == source)
+    }
+
+    @Test("Workspacewrapper hält seine synchrone Aktion und gibt reentrante Halter nicht frei")
+    @MainActor
+    func actionHoldWorkspaceReentrance() async throws {
+        let (workspace, coordinator, web, window) = try await editor("Text\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        var bodyCalls = 0, failures = 0, nestedQueued: Bool?, responses: [Bool] = []
+        var b: MarkdownVisualCoordinator.ActionHold?
+        defer { b?.finish() }
+        let queued = workspace.synchronizeVisualMarkdownBefore({
+            bodyCalls += 1
+            nestedQueued = workspace.synchronizeVisualMarkdownBefore { bodyCalls += 100 }
+            coordinator.synchronize(holdingInput: true) { responses.append($0); b = $1 }
+        }, onFailure: { failures += 1 })
+        try #require(queued)
+        try #require(await waitUntil { !responses.isEmpty })
+        #expect(bodyCalls == 1 && failures == 0 && nestedQueued == false && responses == [true])
+        #expect(b?.isCurrent(for: coordinator) == true)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        b?.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+    }
+
+    @Test("Bookmark hält seinen eigenen Token bis zur zweiten echten Browserantwort", arguments: [false, true])
+    @MainActor
+    func actionHoldBookmarkCallback(_ stale: Bool) async throws {
+        let source = "Text\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("window.__originalBookmark=fastraVisual.bookmark;fastraVisual.bookmark=function(){const value=window.__originalBookmark();window.__bookmarkWaiting=true;return new Promise(resolve=>{window.__deliverBookmark=()=>resolve(value);});};true;")
+        var response: Result<MarkdownVisualCoordinator.InsertionBookmark, Error>?
+        coordinator.captureInsertionBookmark { response = $0 }
+        try #require(await waitForVisualJavaScript("window.__bookmarkWaiting===true", in: web))
+        #expect(response == nil)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        let b = try await actionHold(coordinator)
+        defer { b.finish() }
+        if stale { coordinator.generation &+= 1 }
+        _ = try await web.evaluateJavaScript("fastraVisual.bookmark=window.__originalBookmark;window.__deliverBookmark();true;")
+        try #require(await waitUntil { response != nil })
+        switch response {
+        case .success(let bookmark):
+            #expect(!stale && coordinator.ownsInsertionBookmark(bookmark))
+        case .failure:
+            #expect(stale)
+        case nil:
+            Issue.record("Bookmarkantwort fehlt")
+        }
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        b.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(workspace.activeTab?.content == source)
+    }
+
+    @Test("Batch wartet alle Antworten und behält erfolgreiche Holds auch bei Teilfehler", arguments: [false, true])
+    @MainActor
+    func actionHoldBatchPartialResponse(_ rejectMiddle: Bool) async throws {
+        let (firstWorkspace, first, firstWeb, firstWindow) = try await editor("First\n")
+        let (middleWorkspace, middle, middleWeb, middleWindow) = try await editor("Middle\n")
+        let (lastWorkspace, last, lastWeb, lastWindow) = try await editor("Last\n")
+        defer {
+            for (web, window) in [(firstWeb, firstWindow), (middleWeb, middleWindow), (lastWeb, lastWindow)] {
+                web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close()
+            }
+        }
+        let survivor = try await actionHold(first)
+        defer { survivor.finish() }
+        let owner = Workspace()
+        owner.fileTreeMutationWorkspaceProvider = { [firstWorkspace, middleWorkspace, lastWorkspace] }
+        var warnings = 0
+        middleWorkspace.saveSafetyWarningHandler = { _, _ in warnings += 1 }
+        middleWorkspace.tabs[0].isLoading = rejectMiddle
+        _ = try await lastWeb.evaluateJavaScript("window.__originalPrepare=fastraVisual.prepareAction;fastraVisual.prepareAction=function(...args){const value=window.__originalPrepare.apply(this,args);window.__batchWaiting=true;return new Promise(resolve=>{window.__deliverBatch=()=>resolve(value);});};true;")
+        var response: (Bool, [MarkdownVisualCoordinator.ActionHold])?
+        let task = Task { @MainActor in response = await owner.synchronizeTextWorkflowDiskDocuments() }
+        try #require(await waitForVisualJavaScript("window.__batchWaiting===true", in: lastWeb))
+        #expect(response == nil)
+        task.cancel()
+        #expect(try await firstWeb.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        _ = try await lastWeb.evaluateJavaScript("fastraVisual.prepareAction=window.__originalPrepare;window.__deliverBatch();true;")
+        await task.value
+        let result = try #require(response)
+        defer { result.1.forEach { $0.finish() } }
+        #expect(result.0 == !rejectMiddle && warnings == (rejectMiddle ? 1 : 0))
+        #expect(result.1.count == (rejectMiddle ? 2 : 3))
+        #expect(owner.textWorkflowDiskEditorsAreHeld(result.1) == !rejectMiddle)
+        #expect(result.1.contains { $0.isCurrent(for: first) } && result.1.contains { $0.isCurrent(for: last) })
+        result.1.forEach { $0.finish() }
+        #expect(survivor.isCurrent(for: first))
+        #expect(try await firstWeb.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        #expect(try await middleWeb.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(try await lastWeb.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        survivor.finish()
+        #expect(try await firstWeb.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        middleWorkspace.tabs[0].isLoading = false
+        #expect(firstWorkspace.activeTab?.content == "First\n" && middleWorkspace.activeTab?.content == "Middle\n" && lastWorkspace.activeTab?.content == "Last\n")
+        withExtendedLifetime(middle) {}
+    }
+
+    @Test("Textworkflow hält eigene Berechtigungen über Startfehler, Abbruch und Apply/Undo", arguments: ["cancel", "syncFailure", "launchFailure", "applyUndo"])
+    @MainActor
+    func actionHoldWorkflowLifecycle(_ outcome: String) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("workflow-visual-hold-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("note.md"), original = "text\n"
+        try Data(original.utf8).write(to: url)
+        let (workspace, coordinator, web, window) = try await editor(original, documentURL: url)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: url)
+        workspace.tabs[0].recordSavedContentBaseline()
+        workspace.fileTreeMutationWorkspaceProvider = { [] }
+        workspace.folderApplyBackupRoot = directory.appendingPathComponent("journal")
+        let domain = "fastra-test-visual-workflow-" + UUID().uuidString
+        let defaults = testSuiteDefaults(named: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let tab = try #require(workspace.activeTab)
+        let workflow = TextWorkflowSession(snapshot: .init(tabID: tab.id, documentID: tab.documentID, url: url,
+            revision: tab.contentRevision, source: original, selection: NSRange(location: 0, length: 0), windowID: ObjectIdentifier(window)),
+            workspace: workspace, store: TextWorkflowStore(defaults: defaults))
+        workflow.definition = TextWorkflow(name: "Upper", steps: [.init(kind: .uppercase)])
+        try #require(workflow.save())
+        let blocker = Workspace(defaults: defaults)
+        blocker.fileTreeMutationWorkspaceProvider = { [] }
+        var blockingMutation: Workspace.TextWorkflowDiskMutation?
+        var reservationError: Error?
+        defer {
+            workspace.fileTreeMutationWorkspaceProvider = { [] }
+            if let blockingMutation { blocker.finishTextWorkflowDiskMutation(blockingMutation, changedURLs: [], session: nil) }
+        }
+        workspace.textWorkflowSession = workflow
+        defer { workflow.close() }
+        workflow.scope = .folder; workflow.folderURLs = [url]
+        workflow.calculate()
+        try #require(await waitUntil { workflow.canApply })
+        let survivor = try await actionHold(coordinator)
+        defer { survivor.finish() }
+        _ = try await web.evaluateJavaScript("window.__originalPrepare=fastraVisual.prepareAction;fastraVisual.prepareAction=function(...args){const state=window.__originalPrepare.apply(this,args);window.__workflowWaiting=true;return new Promise(resolve=>{window.__deliverWorkflow=()=>resolve(state);});};true;")
+        try #require(workflow.apply())
+        try #require(await waitForVisualJavaScript("window.__workflowWaiting===true", in: web))
+        #expect(workflow.isBusy && workflow.isDiskOperation && workspace.textEditingIsAllowed(for: workspace.tabs[0]))
+        if outcome == "cancel" { workflow.cancel() }
+        if outcome == "launchFailure" {
+            // Die erste Editorliste ist schon eingefroren und ihre echte
+            // JS-Vorbereitung wartet. Der nächste bestehende Provideraufruf
+            // gehört zur Abdeckungsprüfung vor dem Claim. Erst dann reserviert
+            // eine andere Operation das Ziel nach der Snapshotübernahme.
+            workspace.fileTreeMutationWorkspaceProvider = {
+                if blockingMutation == nil {
+                    do { blockingMutation = try blocker.beginTextWorkflowDiskMutation(urls: [url]) }
+                    catch { reservationError = error }
+                }
+                return []
+            }
+        }
+        if outcome == "syncFailure" { workspace.tabs[0].isLoading = true; workspace.saveSafetyWarningHandler = { _, _ in } }
+        #expect(workflow.isBusy)
+        #expect(try Data(contentsOf: url) == Data(original.utf8))
+        _ = try await web.evaluateJavaScript("fastraVisual.prepareAction=window.__originalPrepare;window.__deliverWorkflow();true;")
+        try #require(await waitUntil { !workflow.isBusy })
+        workspace.tabs[0].isLoading = false
+        if outcome == "launchFailure" {
+            #expect(reservationError == nil && blockingMutation != nil && workspace.fileMutationIsInFlight(for: url))
+            #expect(workflow.error?.contains(TextWorkflowFailure.busy) == true)
+            workspace.fileTreeMutationWorkspaceProvider = { [] }
+            if let blockingMutation { blocker.finishTextWorkflowDiskMutation(blockingMutation, changedURLs: [], session: nil) }
+            blockingMutation = nil
+        }
+        #expect(!workflow.isDiskOperation && workspace.textEditingIsAllowed(for: workspace.tabs[0]))
+        #expect(survivor.isActive)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        if outcome == "applyUndo" {
+            try #require(await waitUntil { workspace.activeTab?.content == "TEXT\n" })
+            #expect(try Data(contentsOf: url) == Data("TEXT\n".utf8))
+            #expect(workflow.diskAppliedSession != nil && !workspace.tabs[0].hasUnsavedChanges)
+            coordinator.load("TEXT\n", documentURL: url, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "post-apply")
+            try #require(await waitUntil(timeout: 12) { coordinator.ready })
+            #expect(!survivor.isCurrent(for: coordinator))
+            let undoSurvivor = try await actionHold(coordinator)
+            defer { undoSurvivor.finish() }
+            workflow.restoreDisk()
+            try #require(await waitUntil { !workflow.isBusy && workspace.activeTab?.content == original })
+            #expect(workflow.diskAppliedSession == nil && workspace.lastApplySession == nil)
+            #expect(try Data(contentsOf: url) == Data(original.utf8))
+            #expect(workspace.textEditingIsAllowed(for: workspace.tabs[0]))
+            survivor.finish()
+            #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+            undoSurvivor.finish()
+        } else {
+            #expect(workflow.error != nil && workflow.diskAppliedSession == nil)
+            #expect(try Data(contentsOf: url) == Data(original.utf8))
+            #expect(workspace.activeTab?.content == original)
+        }
+        survivor.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+    }
+
+    @Test("Native Aktionsfreigabe und verspäteter Clipboardabschluss bleiben getrennt", arguments: [false, true])
+    @MainActor
+    func actionHoldClipboardIsolation(_ actionFirst: Bool) async throws {
+        let source = "Unverändert\n"
+        let (_, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            window.webkit.messageHandlers.markdownCopy.postMessage=payload=>{window.clipboardRequest=payload;};
+            const root=document.getElementById('fastra-visual'),range=document.createRange();range.selectNodeContents(root);
+            getSelection().removeAllRanges();getSelection().addRange(range);
+            root.dispatchEvent(new Event('cut',{bubbles:true,cancelable:true}));
+            """)
+        let hold = try await actionHold(coordinator)
+        defer { hold.finish() }
+        if actionFirst { hold.finish() }
+        _ = try await web.evaluateJavaScript("fastraVisual.completeClipboard(window.clipboardRequest.bookmark,true,true)")
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == actionFirst)
+        hold.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+    }
+
+    @Test("Native Freigabe erhält den unabhängigen Bildfence bis zu dessen echtem Abschluss")
+    @MainActor
+    func actionHoldImageFenceIsolation() async throws {
+        try await withVisualImageReferences { fixture in
+            fixture.insert("a.png")
+            try #require(await waitUntil { fixture.workspace.activeTab?.content.contains("images/1.png") == true })
+            let before = try #require(fixture.workspace.activeTab?.content)
+            let hold = try await actionHold(fixture.coordinator)
+            defer { hold.finish() }
+            let tap = MarkdownVisualMessageTap(fixture.coordinator)
+            tap.forwardsChanges = false
+            fixture.web.configuration.userContentController.removeScriptMessageHandler(forName: "visualMarkdown")
+            fixture.web.configuration.userContentController.add(tap, name: "visualMarkdown")
+            fixture.messageTap = tap
+            _ = try await fixture.web.evaluateJavaScript("document.querySelector('#fastra-visual img').remove();fastraVisual.flush();")
+            hold.finish()
+            #expect(try await fixture.web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+            #expect(fixture.workspace.activeTab?.content == before)
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+            _ = try await fixture.web.evaluateJavaScript("const state=fastraVisual.outlineSnapshot();fastraVisual.completeImageAction(state.session,state.revision);true;")
+            #expect(try await fixture.web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+            // Der künstlich nicht zugestellte Eingabestand bleibt beim normalen
+            // Fixtureabschluss für die echte Bild-/Dateirücknahme zuständig.
+            tap.forwardsChanges = true
+        }
+    }
+
+    @Test("Native Tokenfreigabe räumt den manuellen Source-Replacement-Fehlerfence nicht auf")
+    @MainActor
+    func actionHoldManualSourceFenceIsolation() async throws {
+        let source = "Text\n", replacement = "Replacement\n"
+        let (workspace, coordinator, web, window) = try await editor(source)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let tap = MarkdownVisualMessageTap(coordinator)
+        tap.forwardsChanges = false
+        web.configuration.userContentController.removeScriptMessageHandler(forName: "visualMarkdown")
+        web.configuration.userContentController.add(tap, name: "visualMarkdown")
+        let session = try #require(try await web.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String)
+        let document = MarkdownVisualDocument.render(source, documentURL: nil)
+        let configuration: [String: Any] = ["blocks": try JSONSerialization.jsonObject(with: JSONEncoder().encode(document.blocks)),
+            "markdown": source, "session": session, "opaqueSources": document.opaqueSources, "sourceReplacements": true]
+        let changed = MarkdownVisualDocument.render(replacement, documentURL: nil)
+        let replacementConfiguration: [String: Any] = ["blocks": try JSONSerialization.jsonObject(with: JSONEncoder().encode(changed.blocks)),
+            "markdown": replacement, "opaqueSources": changed.opaqueSources]
+        let result = try await web.callAsyncJavaScript("""
+            const unsupported=await fastraVisual.replaceSource(source,html,replacementConfiguration,'disabled');
+            await fastraVisual.start(configuration);
+            const originalCommand=document.execCommand;
+            document.execCommand=function(command,...args){
+              if(command==='insertHTML'){document.getElementById('fastra-visual').innerHTML='<p>Broken</p>';return true;}
+              if(command==='undo')return false;
+              return originalCommand.call(this,command,...args);
+            };
+            let failed;
+            try{failed=await fastraVisual.replaceSource(source,html,replacementConfiguration,'failure');}
+            finally{document.execCommand=originalCommand;}
+            const acquired=fastraVisual.prepareAction(configuration.session,'manual-fence-token');
+            fastraVisual.completeAction(configuration.session,'manual-fence-token');
+            return {unsupported,failed,ack:acquired.actionID,editable:document.getElementById('fastra-visual').isContentEditable,markdown:fastraVisual.markdown()};
+            """, arguments: ["source": source, "html": changed.fragment.html,
+                              "configuration": configuration, "replacementConfiguration": replacementConfiguration],
+            in: nil, contentWorld: .page) as? [String: Any]
+        let observed = try #require(result)
+        #expect(observed["unsupported"] as? String == "unsupported" && observed["failed"] as? String == "insert")
+        #expect(observed["ack"] as? String == "manual-fence-token" && observed["editable"] as? Bool == false)
+        #expect(observed["markdown"] as? String != source && workspace.activeTab?.content == source)
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Neue bereite Editoren und bereits beendete Holds sind keine Batchabdeckung")
+    @MainActor
+    func actionHoldBatchNewEditor() async throws {
+        let (workspace, coordinator, web, window) = try await editor("First\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        var included: [Workspace] = []
+        workspace.fileTreeMutationWorkspaceProvider = { included }
+        let (success, holds) = await workspace.synchronizeTextWorkflowDiskDocuments()
+        defer { holds.forEach { $0.finish() } }
+        try #require(success && holds.count == 1 && workspace.textWorkflowDiskEditorsAreHeld(holds))
+        let (addedWorkspace, added, addedWeb, addedWindow) = try await editor("Added\n")
+        defer { addedWeb.configuration.userContentController.removeAllScriptMessageHandlers(); addedWindow.close() }
+        included = [addedWorkspace]
+        #expect(!workspace.textWorkflowDiskEditorsAreHeld(holds))
+        included = []
+        #expect(workspace.textWorkflowDiskEditorsAreHeld(holds))
+        holds.forEach { $0.finish() }
+        #expect(!workspace.textWorkflowDiskEditorsAreHeld(holds))
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        withExtendedLifetime((coordinator, added)) {}
+    }
+
+    @Test("Echte Enginearbeit hält Claim und konkrete Handles bis zum Mainfinale", arguments: [false, true])
+    @MainActor
+    func actionHoldDiskFinalizerLifetime(_ partial: Bool) async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-hold-disk-finalizer-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = directory.appendingPathComponent("a.md"), second = directory.appendingPathComponent("b.md")
+        for url in [first, second] { try Data("text\n".utf8).write(to: url) }
+        let (workspace, coordinator, web, window) = try await editor("text\n", documentURL: first)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: first)
+        workspace.tabs[0].recordSavedContentBaseline()
+        workspace.fileTreeMutationWorkspaceProvider = { [] }
+        let tab = try #require(workspace.activeTab)
+        let domain = "fastra-test-visual-finalizer-" + UUID().uuidString
+        let defaults = testSuiteDefaults(named: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let workflow = TextWorkflowSession(snapshot: .init(tabID: tab.id, documentID: tab.documentID, url: first,
+            revision: tab.contentRevision, source: tab.content, selection: NSRange(location: 0, length: 0), windowID: ObjectIdentifier(window)),
+            workspace: workspace, store: TextWorkflowStore(defaults: defaults))
+        workspace.textWorkflowSession = workflow
+        defer { workflow.close() }
+        let definition = TextWorkflow(name: "Upper", steps: [.init(kind: .uppercase)])
+        let plan = try await Task.detached { try TextWorkflowFilePlan.build(definition, inputs: [.init(url: first), .init(url: second)]) }.value
+        let (success, holds) = await workspace.synchronizeTextWorkflowDiskDocuments()
+        defer { holds.forEach { $0.finish() } }
+        try #require(success && holds.count == 1 && workspace.textWorkflowDiskEditorsAreHeld(holds))
+        let mutation = try workspace.beginTextWorkflowDiskMutation(urls: [first, second])
+        let paused = DispatchSemaphore(value: 0), resume = DispatchSemaphore(value: 0)
+        defer { resume.signal() }
+        let firstTarget = first.canonicalFileURL, secondTarget = second.canonicalFileURL
+        let backupRoot = directory.appendingPathComponent("journal")
+        let worker = Task.detached { [holds] in
+            defer { withExtendedLifetime(holds) {} }
+            return Result<ApplySession, Error> {
+                try mutation.preflight(in: workspace)
+                return try ApplyEngine.execute(workflowPlan: plan, backupRoot: backupRoot,
+                    shouldCancel: { Task.isCancelled }, beforePreflight: {
+                        if !partial { paused.signal(); resume.wait() }
+                    }, beforeAtomicReplace: { url in
+                        if partial && url == secondTarget {
+                            paused.signal(); resume.wait()
+                            if Task.isCancelled { throw ApplyError.cancelled }
+                        }
+                    })
+            }
+        }
+        var finalized = false
+        do {
+            try #require(await waitUntil { paused.wait(timeout: .now()) == .success })
+            #expect(!workspace.textEditingIsAllowed(for: workspace.tabs[0]) && holds.allSatisfy(\.isActive))
+            #expect(try Data(contentsOf: first) == Data((partial ? "TEXT\n" : "text\n").utf8))
+            #expect(try Data(contentsOf: second) == Data("text\n".utf8))
+            worker.cancel()
+            #expect(!workspace.textEditingIsAllowed(for: workspace.tabs[0]) && holds.allSatisfy(\.isActive))
+            if partial {
+                coordinator.load("text\n", documentURL: first, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "worker-new-session")
+                try #require(await waitUntil(timeout: 12) { coordinator.ready })
+                #expect(!workspace.textWorkflowDiskEditorsAreHeld(holds))
+                #expect(holds.allSatisfy(\.isActive) && !workspace.textEditingIsAllowed(for: workspace.tabs[0]))
+                #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+            }
+            resume.signal()
+            let result = await worker.value
+            #expect(holds.allSatisfy(\.isActive) && !workspace.textEditingIsAllowed(for: workspace.tabs[0]))
+            var partialSession: ApplySession?
+            switch result {
+            case .failure(ApplyError.writeFailed(let session, _)):
+                partialSession = session
+                #expect(partial && session.entries.contains { $0.originalPath == firstTarget.path })
+            case .failure(ApplyError.cancelled):
+                #expect(!partial)
+            case .failure(let error):
+                Issue.record(Comment(rawValue: "Unerwartetes Engineergebnis: \(error)"))
+            case .success:
+                Issue.record("Abgebrochene Engine wurde als erfolgreich gemeldet")
+            }
+            workflow.finishDiskOperation(result, undo: nil, in: workspace, mutation: mutation, heldEditors: holds)
+            finalized = true
+            #expect(holds.allSatisfy { !$0.isActive } && !workspace.fileMutationIsInFlight(for: first) && !workspace.fileMutationIsInFlight(for: second))
+            #expect(workflow.error != nil && workflow.diskAppliedSession == partialSession && workspace.lastApplySession == partialSession)
+            #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+            if partial { try #require(await waitUntil { workspace.activeTab?.content == "TEXT\n" && workspace.textEditingIsAllowed(for: workspace.tabs[0]) }) }
+            else { #expect(workspace.activeTab?.content == "text\n") }
+            #expect(try Data(contentsOf: first) == Data((partial ? "TEXT\n" : "text\n").utf8))
+            #expect(try Data(contentsOf: second) == Data("text\n".utf8))
+        } catch {
+            worker.cancel(); resume.signal()
+            let result = await worker.value
+            if !finalized { workflow.finishDiskOperation(result, undo: nil, in: workspace, mutation: mutation, heldEditors: holds) }
+            throw error
+        }
+    }
+
+    @Test("Nicht bereite oder fremde Dokumente liefern keine vorgetäuschte Berechtigung")
+    @MainActor
+    func actionHoldUnavailableDocument() async throws {
+        let absent = MarkdownVisualCoordinator()
+        var noView: [(Bool, MarkdownVisualCoordinator.ActionHold?)] = []
+        absent.synchronize(holdingInput: true) { noView.append(($0, $1)) }
+        #expect(noView.count == 1 && noView[0].0 && noView[0].1 == nil)
+        let (workspace, coordinator, web, window) = try await editor("Text\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let old = try #require(workspace.activeTab)
+        workspace.tabs = [EditorTab(id: old.id, title: old.title, path: old.path, content: old.content)]
+        var denied: [(Bool, MarkdownVisualCoordinator.ActionHold?)] = []
+        coordinator.synchronize(holdingInput: true) { denied.append(($0, $1)) }
+        #expect(denied.count == 1 && !denied[0].0 && denied[0].1 == nil)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(workspace.activeTab?.content == "Text\n")
+    }
+
+    @Test("Verschwundener Workspace endet einmal und hinterlässt keinen eigenen DOMfence")
+    @MainActor
+    func actionHoldReleasedWorkspace() async throws {
+        var successes = 0, failures = 0
+        weak var released: Workspace?
+        func begin() async throws -> (MarkdownVisualCoordinator, MarkdownVisualWKWebView, NSWindow) {
+            let (workspace, coordinator, web, window) = try await editor("Text\n")
+            released = workspace
+            (window as? MarkdownVisualFixtureWindow)?.retainedWorkspace = nil
+            try #require(workspace.synchronizeVisualMarkdownBefore({ successes += 1 }, onFailure: { failures += 1 }))
+            return (coordinator, web, window)
+        }
+        let (coordinator, web, window) = try await begin()
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        try #require(await waitUntil { failures == 1 })
+        #expect(released == nil && coordinator.workspace == nil && successes == 0 && failures == 1)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Text\n")
+    }
+
+    @Test("Echter Bildverlaufsverlust beendet nur seinen Reset-Hold", arguments: [false, true])
+    @MainActor
+    func actionHoldImageHistoryReset(_ rejected: Bool) async throws {
+        try await withVisualImageReferences { fixture in
+            fixture.insert("a.png")
+            try #require(await waitUntil { fixture.workspace.activeTab?.content.contains("images/1.png") == true })
+            _ = try await fixture.web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            try #require(await waitUntil { fixture.workspace.activeTab?.content == "Text\n" })
+            try #require(await fixture.drain())
+            try #require(MarkdownImageUndoBuffer.shared.byteCount > 0)
+            let survivor = try await actionHold(fixture.coordinator)
+            defer { survivor.finish(); fixture.workspace.tabs[0].isLoading = false }
+            let generation = fixture.coordinator.generation
+            let rendering = DispatchSemaphore(value: 0), resumeRendering = DispatchSemaphore(value: 0)
+            defer { resumeRendering.signal() }
+            if !rejected {
+                MarkdownRichText.renderQueue.async { rendering.signal(); resumeRendering.wait() }
+                try #require(await waitUntil { rendering.wait(timeout: .now()) == .success })
+            }
+            fixture.workspace.tabs[0].isLoading = rejected
+            // Eine Reservierung ohne fill belegt nur Kapazität, keine großen
+            // Daten. Sie verdrängt den echten kleinen Undo-Eintrag samt Callback.
+            let reservation = try #require(MarkdownImageUndoBuffer.shared.reserve(
+                bytes: MarkdownImageUndoBuffer.shared.byteLimit, invalidated: {}))
+            let invalidations = MarkdownImageUndoBuffer.shared.takeInvalidations()
+            MarkdownImageUndoBuffer.shared.remove(reservation)
+            try #require(invalidations.count == 1)
+            invalidations.forEach { $0() }
+            if rejected {
+                try #require(await waitUntil { fixture.warnings.count == 1 })
+                #expect(fixture.coordinator.ready && fixture.coordinator.generation == generation)
+                #expect(survivor.isCurrent(for: fixture.coordinator))
+            } else {
+                try #require(await waitUntil { !fixture.coordinator.ready && fixture.coordinator.generation > generation })
+                #expect(!survivor.isCurrent(for: fixture.coordinator) && survivor.isActive)
+            }
+            #expect(try await fixture.web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+            survivor.finish()
+            #expect(try await fixture.web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == rejected)
+            if !rejected {
+                resumeRendering.signal()
+                try #require(await waitUntil(timeout: 12) { fixture.coordinator.ready })
+                #expect(fixture.warnings.isEmpty)
+            }
+            #expect(try await fixture.web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+            #expect(fixture.workspace.activeTab?.content == "Text\n")
+            #expect(!FileManager.default.fileExists(atPath: fixture.first.path))
+            #expect(MarkdownImageUndoBuffer.shared.byteCount == 0)
+            fixture.workspace.tabs[0].isLoading = false
+        }
+    }
+
+    @Test("Echter Quit-Synchronisierungsabbruch erhält einen fremden Langhalter")
+    @MainActor
+    func actionHoldQuitSynchronizationRejection() async throws {
+        let (workspace, coordinator, web, window) = try await editor("Text\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); workspace.tabs[0].isLoading = false }
+        let survivor = try await actionHold(coordinator)
+        defer { survivor.finish() }
+        workspace.tabs[0].isLoading = true
+        var warnings = 0
+        workspace.saveSafetyWarningHandler = { _, _ in warnings += 1 }
+        _ = try await web.evaluateJavaScript("window.__quitActionEnds=0;window.__quitActionEnd=fastraVisual.completeAction;fastraVisual.completeAction=function(...args){window.__quitActionEnd.apply(this,args);window.__quitActionEnds+=1;};true;")
+        let delegate = AppDelegate()
+        let closing = MarkdownImageUndo.applicationIsClosing
+        defer { MarkdownImageUndo.applicationIsClosing = closing }
+        for attempt in 1...2 {
+            #expect(delegate.applicationShouldTerminate(NSApp) == .terminateLater)
+            try #require(await waitForVisualJavaScript("window.__quitActionEnds>=\(attempt)", in: web))
+            #expect(warnings == attempt && survivor.isCurrent(for: coordinator))
+            #expect(!MarkdownImageUndo.applicationIsClosing)
+            #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        }
+        survivor.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(workspace.activeTab?.content == "Text\n")
+    }
+
+    @Test("Echte Modusgruppe hält frühe Editoren bis zur letzten Antwort", arguments: [false, true])
+    @MainActor
+    func actionHoldEditingModeGroup(_ rejectMiddle: Bool) async throws {
+        let (firstWorkspace, first, firstWeb, firstWindow) = try await editor("First\n")
+        let (middleWorkspace, middle, middleWeb, middleWindow) = try await editor("Middle\n")
+        let (lastWorkspace, last, lastWeb, lastWindow) = try await editor("Last\n")
+        defer {
+            middleWorkspace.tabs[0].isLoading = false
+            for (web, window) in [(firstWeb, firstWindow), (middleWeb, middleWindow), (lastWeb, lastWindow)] {
+                web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close()
+            }
+        }
+        AppDefaults.store.set(true, forKey: MarkdownEditingMode.defaultsKey)
+        let survivor = try await actionHold(first)
+        defer { survivor.finish() }
+        var warnings = 0
+        middleWorkspace.saveSafetyWarningHandler = { _, _ in warnings += 1 }
+        middleWorkspace.tabs[0].isLoading = rejectMiddle
+        _ = try await firstWeb.evaluateJavaScript("window.__modeEnds=0;window.__modeEnd=fastraVisual.completeAction;fastraVisual.completeAction=function(...args){window.__modeEnd.apply(this,args);window.__modeEnds+=1;};true;")
+        _ = try await lastWeb.evaluateJavaScript("window.__modePrepare=fastraVisual.prepareAction;fastraVisual.prepareAction=function(...args){const value=window.__modePrepare.apply(this,args);window.__modeWaiting=true;return new Promise(resolve=>{window.__deliverMode=()=>resolve(value);});};true;")
+        MarkdownEditingMode.setDefault(false)
+        try #require(await waitForVisualJavaScript("window.__modeWaiting===true", in: lastWeb))
+        #expect(AppDefaults.store.bool(forKey: MarkdownEditingMode.defaultsKey))
+        survivor.finish()
+        #expect(try await firstWeb.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        _ = try await lastWeb.evaluateJavaScript("fastraVisual.prepareAction=window.__modePrepare;window.__deliverMode();true;")
+        try #require(await waitForVisualJavaScript("window.__modeEnds===2", in: firstWeb))
+        #expect(AppDefaults.store.bool(forKey: MarkdownEditingMode.defaultsKey) == rejectMiddle)
+        #expect(warnings == (rejectMiddle ? 1 : 0))
+        for web in [firstWeb, middleWeb, lastWeb] {
+            #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        }
+        #expect(firstWorkspace.activeTab?.content == "First\n" && middleWorkspace.activeTab?.content == "Middle\n" && lastWorkspace.activeTab?.content == "Last\n")
+        withExtendedLifetime((middle, last)) {}
+    }
+
+    @Test("Echter Viewabbau lässt alten Hold ohne Autorität über einen neuen DOM enden")
+    @MainActor
+    func actionHoldDismantledDOM() async throws {
+        let (oldWorkspace, oldCoordinator, oldWeb, oldWindow) = try await editor("Old\n")
+        defer { oldWeb.configuration.userContentController.removeAllScriptMessageHandlers(); oldWindow.close() }
+        let a = try await actionHold(oldCoordinator)
+        defer { a.finish() }
+        MarkdownVisualWebView.dismantleNSView(oldWeb, coordinator: oldCoordinator)
+        #expect(!oldCoordinator.ready && oldWorkspace.visualMarkdownEditor == nil)
+        #expect(a.isActive && !a.isCurrent(for: oldCoordinator))
+        let (workspace, coordinator, web, window) = try await editor("New\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        let b = try await actionHold(coordinator)
+        defer { b.finish() }
+        a.finish(); a.finish()
+        #expect(!a.isActive && b.isCurrent(for: coordinator))
+        #expect(try await oldWeb.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        b.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(workspace.activeTab?.content == "New\n" && oldWorkspace.activeTab?.content == "Old\n")
+    }
+
+    @Test("Erster echter Bookmark-Capturecallback lehnt verlagertes Ziel ab und erhält B")
+    @MainActor
+    func actionHoldBookmarkFirstCallbackStale() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-first-bookmark-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = directory.appendingPathComponent("original.md"), relocated = directory.appendingPathComponent("relocated.md")
+        let source = "Text\n"
+        try Data(source.utf8).write(to: original)
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: original)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            window.__capturePrepare=fastraVisual.prepareAction;window.__captureBookmark=fastraVisual.bookmark;
+            window.__bookmarkCalls=0;
+            fastraVisual.bookmark=function(...args){window.__bookmarkCalls++;return window.__captureBookmark.apply(this,args);};
+            fastraVisual.prepareAction=function(...args){const snapshot=window.__capturePrepare.apply(this,args);window.__firstCaptureWaiting=true;
+              return new Promise(resolve=>{window.__deliverFirstCapture=()=>resolve(snapshot);});};true;
+            """)
+        var responses: [Result<MarkdownVisualCoordinator.InsertionBookmark, Error>] = []
+        coordinator.captureInsertionBookmark { responses.append($0) }
+        try #require(await waitForVisualJavaScript("window.__firstCaptureWaiting===true", in: web))
+        #expect(responses.isEmpty)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        try FileManager.default.moveItem(at: original, to: relocated)
+        workspace.tabs[0].url = relocated
+        coordinator.relocateDocument(from: original, to: relocated)
+        _ = try await web.evaluateJavaScript("fastraVisual.prepareAction=window.__capturePrepare;true;")
+        let b = try await actionHold(coordinator)
+        defer { b.finish() }
+        _ = try await web.evaluateJavaScript("window.__deliverFirstCapture();true;")
+        try #require(await waitUntil { !responses.isEmpty })
+        #expect(responses.count == 1)
+        if case .failure(TextSnippetError.staleTarget) = responses[0] {} else {
+            Issue.record("Staler erster Capturecallback lieferte keinen Zielkonflikt")
+        }
+        #expect(try await web.evaluateJavaScript("window.__bookmarkCalls") as? Int == 0)
+        #expect(b.isCurrent(for: coordinator))
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        #expect(workspace.activeTab?.content == source && workspace.activeTab?.url == relocated)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        #expect(try Data(contentsOf: relocated) == Data(source.utf8))
+        b.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+        #expect(responses.count == 1)
+    }
+
+    @Test("Same-Session-Start auf demselben Root erhält vorhandenes WebKit-Undo und Redo")
+    @MainActor
+    func actionHoldSameRootStartKeepsUndo() async throws {
+        let original = "Text\n", edited = "Text edit\n"
+        let (workspace, coordinator, web, window) = try await editor(original)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        let inserted = try await web.evaluateJavaScript("""
+            const root=document.getElementById('fastra-visual'),range=document.createRange();
+            range.selectNodeContents(root.querySelector('p'));range.collapse(false);root.focus();
+            getSelection().removeAllRanges();getSelection().addRange(range);
+            const inserted=document.execCommand('insertText',false,' edit');fastraVisual.flush();inserted;
+            """) as? Bool
+        try #require(inserted == true)
+        try #require(await waitUntil { workspace.activeTab?.content == edited })
+        try #require(try await web.evaluateJavaScript("document.queryCommandEnabled('undo')") as? Bool == true)
+        let revision = workspace.tabs[0].contentRevision
+        let a = try await actionHold(coordinator), b = try await actionHold(coordinator)
+        defer { a.finish(); b.finish() }
+        let session = try #require(try await web.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String)
+        let document = MarkdownVisualDocument.render(edited, documentURL: nil)
+        let configuration: [String: Any] = ["blocks": try JSONSerialization.jsonObject(with: JSONEncoder().encode(document.blocks)),
+            "markdown": edited, "session": session, "opaqueSources": document.opaqueSources]
+        let started = try await web.callAsyncJavaScript("""
+            window.__sameUndoRoot=document.getElementById('fastra-visual');
+            const started=await fastraVisual.start(configuration);
+            return started && window.__sameUndoRoot===document.getElementById('fastra-visual');
+            """, arguments: ["configuration": configuration], in: nil, contentWorld: .page) as? Bool
+        #expect(started == true && a.isCurrent(for: coordinator) && b.isCurrent(for: coordinator))
+        #expect(workspace.activeTab?.content == edited && workspace.tabs[0].contentRevision == revision)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == edited)
+        a.finish()
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
+        b.finish()
+        try #require(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable && document.queryCommandEnabled('undo')") as? Bool == true)
+        let undone = try await web.evaluateJavaScript("const undone=document.execCommand('undo');fastraVisual.flush();undone;") as? Bool
+        #expect(undone == true)
+        try #require(await waitUntil { workspace.activeTab?.content == original })
+        #expect(coordinator.markdown == original)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == original)
+        let redone = try await web.evaluateJavaScript("const redone=document.execCommand('redo');fastraVisual.flush();redone;") as? Bool
+        #expect(redone == true)
+        try #require(await waitUntil { workspace.activeTab?.content == edited })
+        #expect(coordinator.markdown == edited)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == edited)
+    }
+
+}
+
+
+extension MarkdownVisualTests {
+    @Test("Seitenleisten-Umbenennung wartet auf visuelles Bild-Undo", arguments: ["md", "markdown", "mkd", "mkdn", "mdwn", "mdown"])
+    @MainActor
+    func sidebarRenameDuringImageUndo(_ fileExtension: String) async throws {
+        let manager = FileManager.default
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-tree-\(UUID().uuidString)")
+        for name in ["A", "B"] {
+            try manager.createDirectory(at: directory.appendingPathComponent(name), withIntermediateDirectories: true)
+        }
+        defer { try? manager.removeItem(at: directory) }
+        let old = directory.canonicalFileURL.appendingPathComponent("A/note.\(fileExtension)")
+        let destination = old.deletingLastPathComponent().appendingPathComponent("renamed.\(fileExtension)")
+        let original = Data("Text\n".utf8)
+        try original.write(to: old)
+        let workspace = Workspace()
+        var opened: Bool?
+        workspace.loadFile(at: old) { opened = $0 }
+        try #require(await waitUntil { opened != nil } && opened == true)
+        let index = try #require(workspace.tabs.firstIndex { $0.id == workspace.activeTabID })
+        workspace.tabs[index].markdownVisualOverride = true
+        let host = NSHostingView(rootView: EditorView().environmentObject(workspace))
+        host.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        WorkspaceWindowRegistry.register(workspace, for: window)
+        defer { window.close() }
+        try #require(await waitUntil { workspace.visualMarkdownEditor?.ready == true })
+        let coordinator = try #require(workspace.visualMarkdownEditor)
+        let web = try #require(coordinator.web as? MarkdownVisualWKWebView)
+        coordinator.pasteboard = NSPasteboard.withUniqueName()
+        let fixture = try VisualImageReferenceFixture(directory: directory, editor: (workspace, coordinator, web, window))
+        defer { fixture.schedule.releaseAll() }
+        let tabID = workspace.activeTab?.id, documentID = workspace.activeTab?.documentID
+        let initialSession = try await web.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String
+        var completed: Bool?
+        let inserted = try await fixture.beginUndo(viaSynchronize: false) { completed = $0 }
+        var renamed: Result<URL, Error>?
+        workspace.renameFileTreeItem(at: old, to: "renamed.\(fileExtension)") { renamed = $0 }
+        #expect(renamed == nil)
+        #expect(workspace.activeTab?.url?.path == old.path)
+        #expect(manager.fileExists(atPath: old.path) && !manager.fileExists(atPath: destination.path))
+        await Task.yield()
+        fixture.schedule.setEnabled(false)
+        fixture.schedule.release(0)
+        try #require(await waitUntil { completed != nil && renamed != nil && workspace.visualMarkdownEditor?.ready == true })
+        try #require(await fixture.drain())
+        let moved = try #require(renamed).get()
+        #expect(completed == true)
+        let current = try #require(workspace.visualMarkdownEditor)
+        let currentWeb = try #require(current.web)
+        let browserContent = try await currentWeb.evaluateJavaScript("fastraVisual.markdown()") as? String
+        let endSession = try await currentWeb.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String
+        let editable = try await currentWeb.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool
+        let model = try #require(workspace.activeTab?.content)
+        print("R06 SIDEBAR completed=\(String(describing: completed)) path=\(String(describing: current.documentURL?.lastPathComponent)) sameSession=\(initialSession==endSession) editable=\(String(describing: editable)) DOM=\(String(describing: browserContent)) model=\(model.debugDescription) imageOnDisk=\(manager.fileExists(atPath: fixture.first.path)) warnings=\(fixture.warnings)")
+        #expect(workspace.activeTab?.id == tabID && workspace.activeTab?.documentID == documentID)
+        #expect(current.documentURL?.path == moved.path && editable == true && browserContent == model)
+        #expect(!manager.fileExists(atPath: old.path) && (try? Data(contentsOf: moved)) == original)
+        #expect(initialSession == endSession && current === coordinator)
+        #expect(model == "Text\n" && browserContent == "Text\n")
+        #expect(!manager.fileExists(atPath: fixture.first.path) && fixture.warnings.isEmpty)
+        _ = try await currentWeb.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == inserted })
+        try #require(await fixture.drain())
+        #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+        #expect(fixture.warnings.isEmpty)
+    }
+}
+
+extension MarkdownVisualTests {
+    @Test("Seitenleisten-Umbenennung synchronisiert betroffene Fenster und lässt Nachbartabs frei")
+    @MainActor
+    func sidebarRenameAcrossWindows() async throws {
+        try await withVisualImageReferences { fixture in
+            let source = try #require(fixture.workspace.activeTab?.url)
+            let destination = source.deletingLastPathComponent().appendingPathComponent("renamed.md")
+            let (second, secondEditor, secondWeb, secondWindow) = try await editor("Text\n", documentURL: source)
+            defer { secondWeb.configuration.userContentController.removeAllScriptMessageHandlers(); secondWindow.close() }
+            let (neighbor, _, neighborWeb, neighborWindow) = try await editor("Nachbar\n", documentURL: fixture.other.tabs[0].url)
+            defer { neighborWeb.configuration.userContentController.removeAllScriptMessageHandlers(); neighborWindow.close() }
+            let neighborTab = neighbor.activeTab
+            _ = try await neighborWeb.evaluateJavaScript("window.__renameNeighborPreparations=0;fastraVisual.prepareAction=function(){window.__renameNeighborPreparations++;throw new Error('unrelated editor must not be synchronized');};true;")
+            let localNeighbor = fixture.other.tabs[0]
+            fixture.workspace.tabs.append(localNeighbor)
+            let initiator = Workspace()
+            initiator.fileTreeMutationWorkspaceProvider = { [fixture.workspace, second, neighbor] }
+            let firstSession = try await fixture.web.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String
+            let secondSession = try await secondWeb.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String
+            let firstID = fixture.workspace.activeTab?.documentID, secondID = second.activeTab?.documentID
+            var undone: Bool?, renamed: Result<URL, Error>?
+            let inserted = try await fixture.beginUndo(viaSynchronize: false) { undone = $0 }
+            initiator.renameFileTreeItem(at: source, to: "renamed.md") { renamed = $0 }
+            #expect(renamed == nil && fixture.workspace.activeTab?.url == source && second.activeTab?.url == source)
+            #expect(!initiator.fileMutationIsInFlight(for: source))
+            await Task.yield()
+            fixture.schedule.setEnabled(false); fixture.schedule.release(0)
+            try #require(await waitUntil { renamed != nil && undone != nil })
+            #expect(try #require(renamed).get() == destination)
+            #expect(undone == true && fixture.warnings.isEmpty)
+            #expect(fixture.workspace.activeTab?.url?.canonicalFileURL == destination.canonicalFileURL && second.activeTab?.url?.canonicalFileURL == destination.canonicalFileURL)
+            #expect(fixture.workspace.activeTab?.documentID == firstID && second.activeTab?.documentID == secondID)
+            #expect(fixture.coordinator.documentURL?.canonicalFileURL == destination.canonicalFileURL && secondEditor.documentURL?.canonicalFileURL == destination.canonicalFileURL)
+            #expect(try await fixture.web.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String == firstSession)
+            #expect(try await secondWeb.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String == secondSession)
+            #expect(try await neighborWeb.evaluateJavaScript("window.__renameNeighborPreparations") as? Int == 0)
+            #expect(neighbor.activeTab == neighborTab)
+            #expect(fixture.workspace.tabs.first { $0.id == localNeighbor.id } == localNeighbor)
+            _ = try await fixture.web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            try #require(await waitUntil { fixture.workspace.activeTab?.content == inserted })
+            try #require(await fixture.drain())
+            #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
+            #expect(try Data(contentsOf: destination) == Data("Text\n".utf8))
+            #expect(fixture.warnings.isEmpty)
+        }
+    }
+
+    @Test("Seitenleisten-Umbenennung erhält fremde Quelle und Ziele nach dem Warten", arguments: ["source", "sourceSameBytes", "target", "danglingTarget", "targetTab", "document", "activeTab", "targetLock"])
+    @MainActor
+    func sidebarRenameConflictsDuringImageUndo(_ conflict: String) async throws {
+        try await withVisualImageReferences { fixture in
+            let workspace = fixture.workspace
+            let source = try #require(workspace.activeTab?.url)
+            let destination = source.deletingLastPathComponent().appendingPathComponent("renamed.md")
+            let displaced = source.deletingLastPathComponent().appendingPathComponent("displaced.md")
+            let original = try Data(contentsOf: source), foreign = Data("Fremde Daten\n".utf8)
+            let originalDocumentID = workspace.tabs[0].documentID
+            let originalActiveTabID = workspace.activeTabID
+            var targetLock: Workspace.FileTreeMoveOperation?
+            defer { if let targetLock { workspace.finishFileTreeMove(targetLock) } }
+            var undone: Bool?, renamed: Result<URL, Error>?
+            var renameCompletions = 0
+            _ = try await fixture.beginUndo(viaSynchronize: false) { undone = $0 }
+            if conflict == "targetLock" {
+                _ = try await fixture.web.evaluateJavaScript("window.__renamePrepared=0;window.__renameHolds=new Set();window.__renamePrepare=fastraVisual.prepareAction;window.__renameComplete=fastraVisual.completeAction;fastraVisual.prepareAction=function(...args){const result=window.__renamePrepare.apply(this,args);window.__renamePrepared++;window.__renameHolds.add(args[1]);return result;};fastraVisual.completeAction=function(...args){window.__renameComplete.apply(this,args);window.__renameHolds.delete(args[1]);};true;")
+            }
+            workspace.renameFileTreeItem(at: source, to: "renamed.md") { renameCompletions += 1; renamed = $0 }
+            #expect(renamed == nil && FileManager.default.fileExists(atPath: source.path))
+            #expect(!workspace.fileMutationIsInFlight(for: source))
+            switch conflict {
+            case "source", "sourceSameBytes":
+                try FileManager.default.moveItem(at: source, to: displaced)
+                try (conflict == "sourceSameBytes" ? original : foreign).write(to: source)
+                #expect(FileIdentity(url: source) != FileIdentity(url: displaced))
+            case "target": try foreign.write(to: destination)
+            case "danglingTarget": try FileManager.default.createSymbolicLink(atPath: destination.path, withDestinationPath: "unavailable.md")
+            case "targetTab":
+                let owner = Workspace()
+                owner.tabs = [EditorTab(title: "renamed.md", path: destination.deletingLastPathComponent().path, url: destination, content: "Fremder Tab\n")]
+                workspace.fileTreeMutationWorkspaceProvider = { [owner] }
+            case "activeTab":
+                workspace.tabs.append(fixture.other.tabs[0])
+                workspace.activeTabID = fixture.other.tabs[0].id
+            case "targetLock":
+                targetLock = try #require(workspace.beginFileTreeMove(from: destination, to: displaced))
+            default: workspace.tabs[0].documentID = UUID()
+            }
+            await Task.yield()
+            fixture.schedule.setEnabled(false); fixture.schedule.release(0)
+            if conflict == "targetLock" {
+                try #require(await waitForVisualJavaScript("window.__renamePrepared>=2 && window.__renameHolds.size===0", in: fixture.web))
+                if case .failure(let error) = renamed { #expect(error is CancellationError) }
+                else { Issue.record("Die Pfadsperre muss mit CancellationError abschließen") }
+                #expect(undone == true && fixture.warnings.isEmpty)
+            } else { try #require(await waitUntil { renamed != nil && undone != nil }) }
+            #expect(renameCompletions == 1)
+            if case .success = renamed { Issue.record("Konflikt wurde trotzdem umbenannt") }
+            #expect(workspace.tabs[0].url == source)
+            #expect(try Data(contentsOf: source) == (conflict == "source" ? foreign : original))
+            if conflict.hasPrefix("source") { #expect(try Data(contentsOf: displaced) == original) }
+            if conflict == "target" { #expect(try Data(contentsOf: destination) == foreign) }
+            else if conflict == "danglingTarget" {
+                #expect(try FileManager.default.destinationOfSymbolicLink(atPath: destination.path) == "unavailable.md")
+            } else { #expect(!FileManager.default.fileExists(atPath: destination.path)) }
+            #expect(!workspace.fileMutationIsInFlight(for: source))
+            if conflict == "document" { workspace.tabs[0].documentID = originalDocumentID }
+            workspace.activeTabID = originalActiveTabID
+        }
+    }
+
+    @Test("Unbeteiligtes visuelles Bild-Undo verzögert den direkten Umbenennungsweg nicht")
+    @MainActor
+    func sidebarRenameWithoutAffectedVisualEditor() async throws {
+        try await withVisualImageReferences { fixture in
+            let source = try #require(fixture.other.activeTab?.url ?? fixture.other.tabs.first?.url)
+            var undone: Bool?, renamed: Result<URL, Error>?
+            _ = try await fixture.beginUndo(viaSynchronize: false) { undone = $0 }
+            fixture.workspace.renameFileTreeItem(at: source, to: "renamed.md") { renamed = $0 }
+            let destination = try #require(renamed).get()
+            #expect(destination.lastPathComponent == "renamed.md" && undone == nil)
+            #expect(try Data(contentsOf: destination) == Data("Version 0".utf8))
+            #expect(fixture.workspace.activeTab?.url?.lastPathComponent == "note.md")
+            fixture.schedule.setEnabled(false); fixture.schedule.release(0)
+            try #require(await waitUntil { undone != nil })
+            #expect(undone == true && fixture.warnings.isEmpty)
+        }
+    }
+}
+
+extension MarkdownVisualTests {
+    @Test("Direkte Seitenleisten-Umbenennung schließt vorhandene Sperren genau einmal ab", arguments: ["registry", "hex"])
+    @MainActor
+    func sidebarRenameBlockedDirectCompletion(_ blocker: String) throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("sidebar-rename-blocked-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("note.bin")
+        let destination = directory.appendingPathComponent("renamed.bin")
+        let bytes = Data([0x00, 0x01, 0x02, 0x03])
+        try bytes.write(to: source)
+        let workspace = Workspace()
+        var tab = EditorTab(title: "note.bin", path: directory.path, url: source, displayMode: .hex)
+        var operation: Workspace.FileTreeMoveOperation?
+        defer { if let operation { workspace.finishFileTreeMove(operation) } }
+        if blocker == "hex" {
+            tab.hexEditSession.editRow("00 FE 02 03", data: bytes, baseOffset: 0, row: 0)
+            let pendingSave = tab.hexEditSession.beginSave()
+            _ = try #require(pendingSave)
+        } else { operation = try #require(workspace.beginFileTreeMove(from: source, to: destination)) }
+        workspace.tabs = [tab]; workspace.activeTabID = tab.id
+        var conflicts = 0
+        workspace.fileTreeMoveConflictHandler = { _ in conflicts += 1 }
+        var outcomes: [Result<URL, Error>] = []
+        workspace.renameFileTreeItem(at: source, to: "renamed.bin") { outcomes.append($0) }
+        #expect(outcomes.count == 1 && conflicts == (blocker == "hex" ? 1 : 0))
+        if case .failure(let error) = outcomes.first { #expect(error is CancellationError) }
+        else { Issue.record("Vorhandene Sperre muss als abgebrochener Abschluss gemeldet werden") }
+        #expect(try Data(contentsOf: source) == bytes)
+        #expect(!FileManager.default.fileExists(atPath: destination.path))
+        #expect(workspace.activeTab?.url == source)
+    }
+}
+
+
+extension MarkdownVisualTests {
+    @Test("Markdown-Endungswechsel bleibt beim direkten Seitenleistenweg")
+    @MainActor
+    func sidebarRenameExtensionChangeStaysDirect() async throws {
+        try await withVisualImageReferences { fixture in
+            let source = try #require(fixture.workspace.activeTab?.url)
+            _ = try await fixture.web.evaluateJavaScript("window.__renamePrepareOriginal=fastraVisual.prepareAction;window.__renamePreparations=0;fastraVisual.prepareAction=function(...args){window.__renamePreparations++;return window.__renamePrepareOriginal.apply(this,args);};true;")
+            var renamed: Result<URL, Error>?
+            fixture.workspace.renameFileTreeItem(at: source, to: "renamed.markdown") { renamed = $0 }
+            let destination = try #require(renamed).get()
+            #expect(destination.lastPathComponent == "renamed.markdown")
+            #expect(try await fixture.web.evaluateJavaScript("window.__renamePreparations") as? Int == 0)
+            #expect(try Data(contentsOf: destination) == Data("Text\n".utf8))
+            #expect(!FileManager.default.fileExists(atPath: source.path))
+            #expect(fixture.workspace.activeTab?.url?.canonicalFileURL == destination.canonicalFileURL)
+            _ = try await fixture.web.evaluateJavaScript("fastraVisual.prepareAction=window.__renamePrepareOriginal;true;")
+        }
+    }
 }

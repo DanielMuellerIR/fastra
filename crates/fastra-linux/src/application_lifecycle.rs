@@ -4,7 +4,7 @@ use glib::translate::ToGlibPtr;
 use gtk::{gio, glib, prelude::*};
 use std::{cell::RefCell, rc::Rc};
 mod quit;
-pub(super) use quit::{request as request_quit, abort as abort_quit, shortcut as quit_shortcut, ordinary_windows};
+pub(super) use quit::{request as request_quit, abort as abort_quit, shortcut as quit_shortcut, ordinary_windows, prompt_active as quit_prompt_active};
 pub(super) fn quit_button(ui:&Rc<Ui>,toolbar:&gtk::FlowBox) {
     let button=gtk::Button::with_label(ui.lang.text("Fastra beenden","Quit Fastra"));
     button.set_tooltip_text(Some(ui.lang.text("Alle Fastra-Fenster sicher schließen (Ctrl+Shift+Q)","Safely close all Fastra windows (Ctrl+Shift+Q)")));

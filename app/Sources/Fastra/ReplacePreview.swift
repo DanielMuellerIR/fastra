@@ -2,15 +2,15 @@
 //
 // Vorher/Nachher-Vorschau der Ersetzungen im aktiven Buffer (v0.10).
 //
-// REINE, voll testbare Logik (kein UI, kein Workspace) — gleiche Trennung wie
-// `BufferSearch`/`ApplyEngine`. Aus den ECHTEN Treffern (jeder `Match` trägt
+// Reine, voll testbare Logik (kein UI, kein Workspace) — gleiche Trennung wie
+// `BufferSearch`/`ApplyEngine`. Aus den echten Treffern (jeder `Match` trägt
 // `matchText` und den fertig aufgelösten `replacedText` inkl. $1-Backrefs)
 // wird pro betroffener Zeile eine Vorher- und eine Nachher-Fassung gebaut.
 //
 // Warum pro Zeile statt global Vorher-Text vs. Nachher-Text:
 //   Ein globaler Zeilen-Diff bräuchte eine Zeilen-Ausrichtung (LCS), sobald
 //   eine Ersetzung Zeilenumbrüche einfügt/entfernt. Der Per-Zeile-Ansatz ist
-//   für den häufigen Fall (Treffer bleiben in IHRER Zeile) immer korrekt und
+//   für den häufigen Fall (Treffer bleiben in ihrer Zeile) immer korrekt und
 //   ohne Alignment-Risiko: jede betroffene Zeile bildet genau ein
 //   Vorher/Nachher-Paar. Mehrzeilige RegEx-Treffer (selten) werden auf das
 //   Zeilenende geklammert — kein Crash, nur eine leicht verkürzte Nachzeile.
@@ -84,7 +84,7 @@ enum ReplacePreview {
 
     /// Eine betroffene Zeile mit Original- und Ersetzungs-Fassung.
     struct Row: Identifiable, Equatable {
-        /// 1-basierte Zeilennummer (wie in der Trefferliste). Dient ZUGLEICH als
+        /// 1-basierte Zeilennummer (wie in der Trefferliste). Dient zugleich als
         /// stabile `Identifiable`-Identität: `build` fasst pro Zeile genau ein
         /// Vorher/Nachher-Paar zusammen, eine Zeilennummer kommt also höchstens
         /// einmal vor. Eine frische `UUID()` (vorher) würde bei jedem
@@ -102,7 +102,7 @@ enum ReplacePreview {
     }
 
     /// Vorschau-Ergebnis. `rows` ist auf `maxRows` gekappt; `totalChangedLines`
-    /// nennt die WAHRE Zahl betroffener Zeilen (für „… und N weitere").
+    /// nennt die wahre Zahl betroffener Zeilen (für „… und N weitere").
     struct Result: Equatable {
         let rows: [Row]
         let totalChangedLines: Int
@@ -112,16 +112,16 @@ enum ReplacePreview {
         static let empty = Result(rows: [], totalChangedLines: 0)
     }
 
-    /// Baut die Vorschau. `maxRows` begrenzt die ANGEZEIGTEN Zeilen (Schutz
+    /// Baut die Vorschau. `maxRows` begrenzt die angezeigten Zeilen (Schutz
     /// gegen riesige Vorschau-Listen); gezählt werden alle geänderten Zeilen.
     /// Zeilen, bei denen Ersetzung und Original bytegleich sind,
-    /// erscheinen NICHT — sie sind keine echte Änderung.
+    /// erscheinen nicht — sie sind keine echte Änderung.
     static func build(text: String, matches: [BufferSearch.Match], maxRows: Int = 500) -> Result {
         guard !matches.isEmpty else { return .empty }
         let ns = text as NSString
 
-        // DEFENSIV gegen STALE Treffer: Bei einem Tab-/Datei-Wechsel (oder dem
-        // Apply-Reload) kann `matches` noch die Treffer des VORHERIGEN Inhalts
+        // Defensiv gegen stale Treffer: Bei einem Tab-/Datei-Wechsel (oder dem
+        // Apply-Reload) kann `matches` noch die Treffer des vorherigen Inhalts
         // tragen, während `text` bereits der neue — evtl. kürzere oder leere —
         // Inhalt ist, bis die debounced Suche neu durchläuft. Eine Range, die
         // über `ns.length` hinausragt, brächte `lineRange(for:)` zum Absturz
@@ -191,7 +191,7 @@ enum ReplacePreview {
         var afterByteCount = 0
         var cursor = 0
 
-        /// Prüft die Nachher-Größe VOR dem Anhängen. Dadurch erzeugt selbst
+        /// Prüft die Nachher-Größe vor dem Anhängen. Dadurch erzeugt selbst
         /// ein riesiger Ersetzen-Text keinen kurzzeitig unbegrenzten String.
         func appendWithinLimit(_ piece: String) -> Bool {
             let pieceBytes = piece.utf8.count
@@ -378,7 +378,7 @@ enum ReplacePreview {
 
     /// Zerlegt Text nach derselben logischen Zeilensemantik wie Editor und
     /// Trefferliste. `components(separatedBy: .newlines)` trennt CRLF an
-    /// BEIDEN Zeichen und erfindet dadurch zwischen echten Windows-Zeilen je
+    /// beiden Zeichen und erfindet dadurch zwischen echten Windows-Zeilen je
     /// eine Leerzeile. `getLineStart` behandelt CRLF dagegen als gemeinsamen
     /// Terminator und erhält eine abschließende leere Zeile ausdrücklich.
     private enum LogicalLinesResult {

@@ -16,7 +16,7 @@ pub(super) fn connect(surface: &Rc<Surface>) {
     surface.replace.connect_clicked(move |_| {
         let Some(surface) = weak
             .upgrade()
-            .filter(|s| s.available() && !s.single_busy.get())
+            .filter(|s| s.can_approve() && !s.single_busy.get())
         else {
             return;
         };

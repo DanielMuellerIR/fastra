@@ -29,6 +29,9 @@ type Completion = Box<dyn FnOnce(Result<Permit, Abort>)>;
 
 type ActivateTab = Rc<dyn Fn(&Rc<Document>)>;
 
+mod close_choice;
+use close_choice::{Answer, Prompt};
+
 #[derive(Clone)]
 pub(super) struct TabSelection {
     pub(super) keep: Option<Rc<Document>>,
@@ -47,10 +50,15 @@ fn prevent_hex(ui: &Rc<Ui>, tabs: Option<&TabSelection>) -> bool {
     }
 }
 
+enum OwnedDialog {
+    Async(gio::Cancellable),
+    Embedded(Prompt),
+}
+
 pub(super) struct Ticket {
     ui: Weak<Ui>,
     active: Cell<bool>,
-    dialog: RefCell<Option<gio::Cancellable>>,
+    dialog: RefCell<Option<OwnedDialog>>,
     session_owned: Cell<bool>,
     sensitive: Cell<Option<bool>>,
     fences: Rc<rich_editor::CloseFences>,
@@ -69,15 +77,21 @@ impl Ticket {
     }
     pub(crate) fn begin_dialog(&self) -> gio::Cancellable {
         let dialog = gio::Cancellable::new();
+        self.own_dialog(OwnedDialog::Async(dialog.clone()));
+        dialog
+    }
+    fn own_dialog(&self, dialog: OwnedDialog) {
         assert!(
             self.dialog.borrow().is_none(),
             "one owned close dialog at a time"
         );
-        *self.dialog.borrow_mut() = Some(dialog.clone());
-        dialog
+        *self.dialog.borrow_mut() = Some(dialog);
     }
     pub(crate) fn end_dialog(&self, dialog: &gio::Cancellable) {
-        let matches = self.dialog.borrow().as_ref() == Some(dialog);
+        let matches = matches!(
+            self.dialog.borrow().as_ref(),
+            Some(OwnedDialog::Async(active)) if active == dialog
+        );
         if matches {
             self.dialog.borrow_mut().take();
         }
@@ -90,9 +104,11 @@ impl Ticket {
             self.fences.cancel();
             return;
         }
-        let pending = self.dialog.borrow().as_ref().cloned();
-        if let Some(dialog) = pending {
-            dialog.cancel();
+        let pending = self.dialog.borrow_mut().take();
+        match pending {
+            Some(OwnedDialog::Async(dialog)) => dialog.cancel(),
+            Some(OwnedDialog::Embedded(prompt)) => drop(prompt),
+            None => {}
         }
         self.hold.borrow_mut().take();
         if let Some(ui) = self.ui.upgrade() {
@@ -193,6 +209,7 @@ struct Preparation {
     basis: RefCell<Vec<DocumentStamp>>,
     done: RefCell<Option<Completion>>,
     tabs: Option<TabSelection>,
+    app_quit: bool,
 }
 impl Preparation {
     fn end(&self, error: Abort) {
@@ -238,6 +255,31 @@ impl Preparation {
             self.end(Abort::Stale);
             return;
         }
+        self.prompt_to_save(doc, index);
+    }
+
+    fn prompt_to_save(self: &Rc<Self>, doc: Rc<Document>, index: usize) {
+        if self.app_quit {
+            let overlay = self.ui.chrome.borrow().as_ref().map(|shell| shell.window_content.clone());
+            if let Some(overlay) = overlay {
+                let this = self.clone();
+                let label = doc.label.text();
+                let prompt = Prompt::show(&self.ui, &overlay, &label, move |answer| {
+                    let embedded = matches!(
+                        this.ticket.dialog.borrow().as_ref(),
+                        Some(OwnedDialog::Embedded(_))
+                    );
+                    if embedded {
+                        let owner = this.ticket.dialog.borrow_mut().take();
+                        drop(owner);
+                        this.answer_prompt(doc.clone(), index, answer);
+                    }
+                });
+                self.ticket.own_dialog(OwnedDialog::Embedded(prompt));
+                return;
+            }
+        }
+        let this = self.clone();
         let dialog = gtk::AlertDialog::builder()
             .message(self.ui.lang.text(
                 "Änderungen in diesem Tab sichern?",
@@ -246,79 +288,86 @@ impl Preparation {
             .detail(doc.label.text())
             .buttons([
                 self.ui.lang.text("Abbrechen", "Cancel"),
-                self.ui
-                    .lang
-                    .text("Ohne Speichern schließen", "Close without saving"),
-                self.ui
-                    .lang
-                    .text("Speichern und schließen", "Save and close"),
+                self.ui.lang.text("Ohne Speichern schließen", "Close without saving"),
+                self.ui.lang.text("Speichern und schließen", "Save and close"),
             ])
             .cancel_button(0)
             .default_button(2)
             .build();
-        let this = self.clone();
         let cancellable = self.ticket.begin_dialog();
         let completed = cancellable.clone();
         dialog.choose(Some(&self.ui.window), Some(&cancellable), move |result| {
             this.ticket.end_dialog(&completed);
-            if !this.valid() {
-                this.end(Abort::Stale);
-                return;
-            }
-            match result {
-                Ok(1) => this.next(index + 1),
-                Ok(2) => {
-                    let pending = this.clone();
-                    this.ui.save_document_ready_owned(
-                        doc.clone(),
-                        Some(this.ticket.clone()),
-                        Box::new(move |outcome| {
-                            if !pending.ticket.current() {
-                                pending.end(Abort::Stale);
-                                return;
-                            }
-                            match outcome {
-                                SaveOutcome::Saved { before, after } => {
-                                    let docs = pending.ui.documents.borrow();
-                                    let basis = pending.basis.borrow();
-                                    let unchanged = docs.len() == basis.len()
-                                        && docs.iter().zip(basis.iter()).enumerate().all(
-                                            |(at, (current, prior))| {
-                                                if at == index {
-                                                    Rc::ptr_eq(current, &doc)
-                                                        && before == prior.revision
-                                                        && current.revision.get() == after
-                                                        && !current.saving.get()
-                                                        && !current.buffer.is_modified()
-                                                } else {
-                                                    prior.valid(current)
-                                                }
-                                            },
-                                        );
-                                    drop(basis);
-                                    drop(docs);
-                                    if !unchanged {
-                                        pending.end(Abort::Stale);
-                                        return;
-                                    }
-                                    let Some(stamp) = DocumentStamp::capture(&doc) else {
-                                        pending.end(Abort::Stale);
-                                        return;
-                                    };
-                                    pending.basis.borrow_mut()[index] = stamp;
-                                    pending.next(index + 1);
-                                }
-                                SaveOutcome::Cancelled => pending.end(Abort::Cancelled),
-                                SaveOutcome::Failed => pending.end(Abort::Failed),
-                                SaveOutcome::Stale => pending.end(Abort::Stale),
-                            }
-                        }),
-                    );
-                }
-                _ => this.end(Abort::Cancelled),
-            }
+            let answer = match result {
+                Ok(1) => Answer::Discard,
+                Ok(2) => Answer::Save,
+                _ => Answer::Cancel,
+            };
+            this.answer_prompt(doc, index, answer);
         });
     }
+
+    fn answer_prompt(self: &Rc<Self>, doc: Rc<Document>, index: usize, answer: Answer) {
+        if !self.valid() {
+            self.end(Abort::Stale);
+            return;
+        }
+        match answer {
+            Answer::Discard => self.next(index + 1),
+            Answer::Save => self.save_prompted_document(doc, index),
+            Answer::Cancel => self.end(Abort::Cancelled),
+        }
+    }
+
+    fn save_prompted_document(self: &Rc<Self>, doc: Rc<Document>, index: usize) {
+        let pending = self.clone();
+        self.ui.save_document_ready_owned(
+            doc.clone(),
+            Some(self.ticket.clone()),
+            Box::new(move |outcome| {
+                if !pending.ticket.current() {
+                    pending.end(Abort::Stale);
+                    return;
+                }
+                match outcome {
+                    SaveOutcome::Saved { before, after } => {
+                        let docs = pending.ui.documents.borrow();
+                        let basis = pending.basis.borrow();
+                        let unchanged = docs.len() == basis.len()
+                            && docs.iter().zip(basis.iter()).enumerate().all(
+                                |(at, (current, prior))| {
+                                    if at == index {
+                                        Rc::ptr_eq(current, &doc)
+                                            && before == prior.revision
+                                            && current.revision.get() == after
+                                            && !current.saving.get()
+                                            && !current.buffer.is_modified()
+                                    } else {
+                                        prior.valid(current)
+                                    }
+                                },
+                            );
+                        drop(basis);
+                        drop(docs);
+                        if !unchanged {
+                            pending.end(Abort::Stale);
+                            return;
+                        }
+                        let Some(stamp) = DocumentStamp::capture(&doc) else {
+                            pending.end(Abort::Stale);
+                            return;
+                        };
+                        pending.basis.borrow_mut()[index] = stamp;
+                        pending.next(index + 1);
+                    }
+                    SaveOutcome::Cancelled => pending.end(Abort::Cancelled),
+                    SaveOutcome::Failed => pending.end(Abort::Failed),
+                    SaveOutcome::Stale => pending.end(Abort::Stale),
+                }
+            }),
+        );
+    }
+
     fn ready(&self, session: Option<session::ClosePermit>) {
         if !self.valid() {
             self.end(Abort::Stale);
@@ -433,8 +482,18 @@ pub(super) fn active(ui: &Ui) -> bool {
         .and_then(Weak::upgrade)
         .is_some_and(|ticket| ticket.current())
 }
+pub(super) fn embedded_prompt_active(ui: &Ui) -> bool {
+    ui.close_ticket
+        .borrow()
+        .as_ref()
+        .and_then(Weak::upgrade)
+        .is_some_and(|ticket| matches!(ticket.dialog.borrow().as_ref(), Some(OwnedDialog::Embedded(_))))
+}
 pub(super) fn prepare(ui: &Rc<Ui>, done: Completion) -> Option<Rc<Ticket>> {
-    prepare_inner(ui, None, done)
+    prepare_inner(ui, None, false, done)
+}
+pub(super) fn prepare_app_quit(ui: &Rc<Ui>, done: Completion) -> Option<Rc<Ticket>> {
+    prepare_inner(ui, None, true, done)
 }
 pub(super) fn prepare_tabs(
     ui: &Rc<Ui>,
@@ -445,9 +504,14 @@ pub(super) fn prepare_tabs(
         done(Err(Abort::Stale));
         return None;
     }
-    prepare_inner(ui, Some(tabs), done)
+    prepare_inner(ui, Some(tabs), false, done)
 }
-fn prepare_inner(ui: &Rc<Ui>, tabs: Option<TabSelection>, done: Completion) -> Option<Rc<Ticket>> {
+fn prepare_inner(
+    ui: &Rc<Ui>,
+    tabs: Option<TabSelection>,
+    app_quit: bool,
+    done: Completion,
+) -> Option<Rc<Ticket>> {
     if !crate::editor_options::profiles_can_close(ui) || !crate::asset_io::can_close(ui) || !crate::git_pull::can_close(ui) {
         done(Err(Abort::Blocked));
         return None;
@@ -505,6 +569,7 @@ fn prepare_inner(ui: &Rc<Ui>, tabs: Option<TabSelection>, done: Completion) -> O
         basis: RefCell::new(Vec::new()),
         done: RefCell::new(Some(done)),
         tabs,
+        app_quit,
     });
     let started = state.clone();
     rich_editor::flush_close(

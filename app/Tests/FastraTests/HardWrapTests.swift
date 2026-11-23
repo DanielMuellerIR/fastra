@@ -42,9 +42,9 @@ func wrap_longSentence() {
 @Test("hardWrap: KEINE Ausgabezeile überschreitet die Spaltenbreite (Invariante)")
 func wrap_invariantEveryLineWithinColumn() throws {
     let column = 12
-    // Solange KEIN Wort (ggf. samt Einrückung) für sich breiter als column ist, MUSS jede
+    // Solange kein Wort (ggf. samt Einrückung) für sich breiter als column ist, muss jede
     // Ausgabezeile <= column bleiben — das ist die Kern-Garantie des Hard Wrap. Geprüft über
-    // mehrere Eingaben, inkl. einer EINGERÜCKTEN (stresst die reduzierte Erste-Zeilen-Budget-
+    // mehrere Eingaben, inkl. einer eingerückten (stresst die reduzierte Erste-Zeilen-Budget-
     // Rechnung `avail = column - leadingWS.count`):
     let inputs = [
         // (a) ohne Einrückung, gemischte Wortlängen.
@@ -79,7 +79,7 @@ func wrap_noWordSplit() {
 @Test("hardWrap: ein einzelnes Wort länger als column bleibt ungebrochen auf eigener Zeile")
 func wrap_singleLongWordUnbroken() {
     // "supercalifragilistic" (20 Zeichen) bei column 8: BBEdit zerschneidet keine
-    // Wörter → das Wort bleibt ganz, auf seiner eigenen Zeile. Da nur EIN Wort, das
+    // Wörter → das Wort bleibt ganz, auf seiner eigenen Zeile. Da nur ein Wort, das
     // ohnehin schon allein steht, ändert sich nichts → nil.
     #expect(TextOperations.hardWrap(in: "supercalifragilistic", selection: whole, column: 8) == nil)
 }

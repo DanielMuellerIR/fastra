@@ -1,6 +1,6 @@
 // GitRunnerTests.swift
 //
-// Tests für die git-Pfad-Auflösung (Projekt- & Git-Ausbau, Etappe 2).
+// Tests für die git-Pfad-Auflösung.
 // Der Prozess-Aufruf selbst wird end-to-end vom Selbsttest `git` abgedeckt;
 // hier die reine, dialogsichere Auswahl-Logik.
 
@@ -58,14 +58,11 @@ func gitPath_neverUsrBinStub() {
     #expect(!GitRunner.candidatePaths.contains("/usr/bin/git"))
 }
 
-// MARK: - Erstauflösung des git-Pfads (RunLoop-Crash-Regression 2026-07-17)
+// MARK: - Erstauflösung des git-Pfads
 //
-// Hintergrund: `Process.waitUntilExit` dreht den RunLoop des aufrufenden
-// Threads. Lief die allererste git-Pfad-Auflösung (xcode-select) auf dem
-// Main-Thread in einem SwiftUI-Layout-Pass, feuerten Update-Observer
-// reentrant und die App stürzte mit SIGSEGV ab. Die Tests hier sichern die
-// beiden Gegenmaßnahmen ab: Auflösung immer auf eigener Hintergrund-Queue
-// (BackgroundOnceResolver) und Prozesswarten ohne RunLoop-Drehen.
+// `Process.waitUntilExit` dreht den RunLoop und könnte Main-Thread-Layout
+// reentrant ausführen. Die Tests prüfen Auflösung auf der Hintergrund-Queue
+// (`BackgroundOnceResolver`) und Prozesswarten ohne RunLoop-Drehen.
 
 /// Thread-sicherer Recorder: zählt Aufrufe und merkt sich deren Threads.
 private final class ThreadRecorder: @unchecked Sendable {
@@ -95,7 +92,7 @@ func pathResolver_neverComputesOnCallingThread() {
     #expect(resolver.value == "/fake/git")
     #expect(recorder.count == 1)
     // Der Aufrufer steckt während der Berechnung blockiert in `value` —
-    // die Berechnung MUSS deshalb auf einem anderen Thread gelaufen sein.
+    // die Berechnung muss deshalb auf einem anderen Thread gelaufen sein.
     #expect(recorder.first !== Thread.current)
 }
 
@@ -124,7 +121,7 @@ func pathResolver_prewarmDoesNotBlock() {
     let release = DispatchSemaphore(value: 0)
     let resolver = BackgroundOnceResolver<String?>(label: "test.resolver.prewarm") {
         started.signal()
-        // Hält die Auflösung künstlich offen. `release` wird erst NACH der
+        // Hält die Auflösung künstlich offen. `release` wird erst nach der
         // Rückkehr von `prewarm()` signalisiert — würde `prewarm()` auf die
         // Berechnung warten, stünde der Test in einem Deadlock und das
         // Zeitlimit schlüge fehl.
@@ -148,10 +145,8 @@ func pathResolver_doesNotSpinMainRunLoopWhileWaiting() {
         return "/fake/git"
     }
     let reentered = ThreadRecorder()
-    // Dieser Block darf erst laufen, wenn der Main-RunLoop das nächste Mal
-    // regulär dreht. Ein RunLoop-drehendes Warten (waitUntilExit-Muster)
-    // würde ihn mitten im `value`-Zugriff ausführen — exakt die
-    // Crash-Mechanik von 2026-07-17 (reentrante RunLoop-Observer im Layout).
+    // Der Block darf erst beim nächsten regulären Main-RunLoop-Durchlauf laufen.
+    // RunLoop-drehendes Warten würde ihn schon mitten im `value`-Zugriff ausführen.
     RunLoop.main.perform { reentered.record() }
     #expect(resolver.value == "/fake/git")
     #expect(reentered.count == 0)
@@ -164,10 +159,8 @@ func serialRunnerIntegration_queryXcodeSelectDoesNotSpinMainRunLoop() {
     let reentered = ThreadRecorder()
     RunLoop.main.perform { reentered.record() }
     let dir = GitRunner.queryXcodeSelect()
-    // Mit dem alten `waitUntilExit` liefe der eingeplante RunLoop-Block
-    // während der Abfrage (RunLoop-Drehen im Default-Mode) — der Zähler wäre
-    // dann 1 und dieser Test schlüge fehl. (Verifiziert 2026-07-17: gegen die
-    // waitUntilExit-Variante schlägt genau dieser Test fehl.)
+    // Mit `waitUntilExit` würde der RunLoop-Block während der Abfrage laufen
+    // und der Zähler 1 werden; das muss dieser Test erkennen.
     #expect(reentered.count == 0)
     // Umgebungsunabhängige Plausibilität: kein Ergebnis oder absoluter Pfad.
     #expect(dir == nil || dir?.hasPrefix("/") == true)
@@ -190,7 +183,7 @@ func launcherCandidatesNativeLayout() {
 @Test("Prozesslauncher: swiftbuild-Layout sucht zusätzlich neben dem .xctest-Bundle")
 func launcherCandidatesSwiftBuildLayout() {
     // Swift 6.4 kopiert das Ressourcenbundle in das Testbundle; das
-    // Fastra-Produkt liegt aber im Produktordner daneben (2026-09-19).
+    // Fastra-Produkt liegt aber im Produktordner daneben.
     let bundle = URL(fileURLWithPath:
         "/p/.build/out/Products/Debug/FastraTests.xctest/Contents/Resources/Fastra_Fastra.bundle")
     #expect(GitRunner.launcherCandidates(resourceBundleURL: bundle).map(\.path) == [
@@ -744,7 +737,7 @@ func noKillEscalationForDeadGroup() throws {
 
     // Eine leere Gruppe bietet nichts zu eskalieren — weder vor noch nach
     // finish() wird etwas geplant, und der Aufrufer sendet dann auch keine
-    // Gruppensignale mehr (Reviewfunde 2026-08-18 und 2026-08-19).
+    // Gruppensignale mehr.
     let fresh = GitCancellationToken(terminationGracePeriod: 0.05)
     #expect(!fresh.scheduleGroupKillEscalation(deadGroup))
     _ = fresh.finish()
@@ -757,8 +750,7 @@ func noKillEscalationForDeadGroup() throws {
 /// Deterministische Attrappe der Kernel-Aufrufe: Der Test verschiebt die
 /// „Prozesswelt“ (Mitglieder und ihre Startzeiten) zwischen Registrierung und
 /// Ablauf der Frist und protokolliert jedes gesendete Signal. So lässt sich
-/// die Wiedervergabe einer Prozessgruppen-ID ohne echte Prozesse durchspielen
-/// (Reviewfund 2026-08-19).
+/// die Wiedervergabe einer Prozessgruppen-ID ohne echte Prozesse durchspielen.
 private final class FakeProcessWorld: @unchecked Sendable {
     private let lock = NSLock()
     private var members: [pid_t: [ProcessIdentity]] = [:]
@@ -878,7 +870,7 @@ func missingLeaderTokenRefusesGroupOwnership() {
     // Die Gruppe lebt — aber es gibt keinen Anker, gegen den sich ihre
     // Zugehörigkeit prüfen ließe. Dann darf gar kein Signal fallen: Nach dem
     // Ende der ursprünglichen Gruppe könnte dieselbe Nummer eine fremde
-    // bezeichnen (Reviewfund 2026-08-20).
+    // bezeichnen.
     world.setGroup(group, members: [ProcessIdentity(pid: group, startToken: 700)])
     let token = GitCancellationToken(terminationGracePeriod: 0.05,
                                      operations: world.operations)

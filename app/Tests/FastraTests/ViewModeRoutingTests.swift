@@ -1,8 +1,8 @@
 // ViewModeRoutingTests.swift
 //
-// Tests für den Ansichts-Umschalter Text/Vorschau/Hex (Etappe 2 Wunschpaket
-// 2026-07): Routing Dateityp → verfügbare Ansichten + Standardansicht, und
-// das Bild-Downsampling (nie das Vollbild dekodieren).
+// Tests für den Ansichts-Umschalter
+// Text/Vorschau/Hex: Routing Dateityp → verfügbare Ansichten + Standardansicht,
+// und das Bild-Downsampling (nie das Vollbild dekodieren).
 
 import AppKit
 import Foundation
@@ -135,7 +135,7 @@ func downsampling_capsDecodedDimensions() throws {
     // Seitenverhältnis bleibt erhalten (2:1).
     #expect(abs(unwrapped.size.width / unwrapped.size.height - 2.0) < 0.05)
 
-    // Die Metadaten liefern weiterhin die ECHTEN Pixelmaße für die Kopfzeile.
+    // Die Metadaten liefern weiterhin die echten Pixelmaße für die Kopfzeile.
     let dims = try #require(ImagePreviewLoader.pixelDimensions(url: url))
     #expect(dims.width == 2400)
     #expect(dims.height == 1200)

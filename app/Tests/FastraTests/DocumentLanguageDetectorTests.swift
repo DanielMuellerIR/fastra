@@ -337,7 +337,7 @@ struct DocumentLanguageDetectorTests {
             analyze: { probe.analyze($0) }
         )
         // Ein Basiszeichen mit vielen kombinierenden Akzenten zählt für
-        // `String.prefix` als EIN Zeichen, umfasst aber weit mehr als 64 KiB.
+        // `String.prefix` als ein Zeichen, umfasst aber weit mehr als 64 KiB.
         // Die Analysegrenze muss Bytes begrenzen, nicht Graphemcluster.
         let content = "a" + String(
             repeating: "\u{0301}",

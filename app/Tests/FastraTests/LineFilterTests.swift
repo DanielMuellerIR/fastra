@@ -95,7 +95,7 @@ func filter_preservesTrailingNewline() {
 @Test("filter wirkt nur auf die selektierten Zeilen, Rest bleibt unangetastet")
 func filter_selectionOnly() {
     let text = "drop A\nkeep\ndrop B\ntail drop"
-    // Selektion über die ersten DREI Zeilen „drop A\nkeep\ndrop B" (0..20).
+    // Selektion über die ersten drei Zeilen „drop A\nkeep\ndrop B" (0..20).
     // „tail drop" liegt außerhalb der Selektion und bleibt — obwohl es „drop"
     // enthält.
     let selLength = ("drop A\nkeep\ndrop B" as NSString).length

@@ -1,10 +1,9 @@
 // MarkdownAssist.swift
 //
-// Anwendungsschicht des assistierten Markdown-Schreibens (Etappe 5
-// Wunschpaket 2026-07b): wendet die puren Formatierungsbefehle
-// (`MarkdownFormat`) Undo-fähig auf den Editor an, fügt Bilder aus
-// Pasteboard und Drag-and-drop ein und meldet der Vorschau die
-// Einfügestelle. Die Bild-Ablage selbst (Namen, Dedup, Atomarität)
+// Anwendungsschicht des assistierten Markdown-Schreibens:
+// wendet die puren Formatierungsbefehle (`MarkdownFormat`) Undo-fähig auf den
+// Editor an, fügt Bilder aus Pasteboard und Drag-and-drop ein und meldet der
+// Vorschau die Einfügestelle. Die Bild-Ablage selbst (Namen, Dedup, Atomarität)
 // liegt in `MarkdownImageStore`.
 
 import AppKit
@@ -176,8 +175,8 @@ enum MarkdownAssist {
     /// abgelegt und relativ verlinkt. Rückgabe `true` = Event verbraucht.
     ///
     /// Reihenfolge (bewusst definiert, siehe Spez „Bilddaten haben
-    /// Vorrang“): 1. Bild-DATEIEN vom Pasteboard (Finder-Kopie) →
-    /// kopieren + verlinken; 2. rohe BILDDATEN → Datei anlegen; 3. sonst
+    /// Vorrang“): 1. Bild-Dateien vom Pasteboard (Finder-Kopie) →
+    /// kopieren + verlinken; 2. rohe Bilddaten → Datei anlegen; 3. sonst
     /// normales Einfügen (Event läuft weiter; ⌘⇧V bleibt die explizite
     /// Rich-Text-Konvertierung via SmartPaste).
     static func handlePasteCommand() -> Bool {
@@ -185,11 +184,8 @@ enum MarkdownAssist {
            workspace.activeMarkdownIsVisual {
             return workspace.visualMarkdownEditor?.pasteImages() ?? false
         }
-        // Editor UND Workspace aus DEMSELBEN Fenster. Vorher kam der Editor
-        // aus dem Tastatur-Fenster, der Workspace aber aus `Workspace.shared`:
-        // Zeigten die auf verschiedene Fenster, landete die Bilddatei neben
-        // dem einen Dokument und der Link im anderen (Fehlerbericht
-        // 2026-08-07).
+        // Editor und Workspace aus demselben Fenster bestimmen, damit Bilddatei
+        // und Markdown-Link zum selben Dokument gehören.
         guard let keyWindow = NSApp.keyWindow,
               !SearchWindow.isSearchWindow(keyWindow),
               let workspace = WorkspaceWindowRegistry.workspace(for: keyWindow),
@@ -276,7 +272,7 @@ enum MarkdownAssist {
 
     // MARK: - Bild einfügen (Drop)
 
-    /// Drop im Markdown-Editorbereich: Bilddateien werden EINGEFÜGT, alle
+    /// Drop im Markdown-Editorbereich: Bilddateien werden eingefügt, alle
     /// anderen Dateien behalten das bestehende Verhalten „öffnen“ (klare
     /// Abgrenzung; außerhalb des Markdown-Editors gilt weiter der
     /// Fenster-Drop in ContentView). Rückgabe `true`, wenn irgendetwas
@@ -312,7 +308,7 @@ enum MarkdownAssist {
                     workspace.openFileOrFolder(at: url)
                 }
             }
-            // Das Öffnen macht einen ANDEREN Tab aktiv. Seit die Bild-Ablage im
+            // Das Öffnen macht einen anderen Tab aktiv. Seit die Bild-Ablage im
             // Hintergrund läuft, muss es deshalb warten, bis der Link wirklich im
             // Markdown-Dokument steht: Sonst ist beim Abschluss der Ablage längst
             // die mitgezogene Textdatei aktiv, und `finishImageInsertion` verwirft
@@ -361,7 +357,7 @@ enum MarkdownAssist {
         // Ablegen heißt kopieren und im Kollisionsfall bis zu 9 999 Mal ganze
         // Dateien byteweise vergleichen. Das lief bisher auf dem Main-Thread:
         // Ein großes Bild oder viele gleichnamige Kandidaten froren die
-        // Oberfläche beim Ablegen sichtbar ein (Review 2026-08-06). Das
+        // Oberfläche beim Ablegen sichtbar ein. Das
         // Datei-I/O läuft deshalb im Hintergrund, das Einfügen wieder auf dem
         // Main-Thread.
         //
@@ -419,7 +415,19 @@ enum MarkdownAssist {
         guard !outcome.storedImages.isEmpty else { return }
         guard let target = lease.target() else {
             let images = outcome.storedImages.filter(\.createdByInsertion)
-            MarkdownImageUndoSideEffect.perform({ MarkdownImageUndoFiles(images: images).removePermanently() }, completion: { _ in })
+            let files = MarkdownImageUndoFiles(images: images)
+            MarkdownImageUndoSideEffect.perform({
+                let success = files.removePermanently()
+                return MarkdownImageUndoSideEffect.WorkResult(success: success,
+                    removalFailures: files.lastRemovalResult.map { [$0.localizedDescription] } ?? [], restoreFailures: [])
+            }, completion: { result in
+                // Der Dateiabbau bleibt wie bisher nach dem Main-Reporter.
+                defer { withExtendedLifetime(files) {} }
+                if !result.success, let message = result.removalFailures.first {
+                    workspace.saveSafetyWarningHandler(L10n.string("Bilddateien konnten nicht vollständig entfernt werden"),
+                                                       message)
+                }
+            })
             return
         }
         insertLinks(outcome.storedImages, into: target.textView,
@@ -498,7 +506,7 @@ enum MarkdownAssist {
         noteFirstUse(in: workspace)
     }
 
-    /// Meldet der integrierten Vorschau DIESES Workspace die 1-basierte
+    /// Meldet der integrierten Vorschau dieses Workspace die 1-basierte
     /// Quellzeile der Einfügestelle (`data-srcline`-Mechanik rückwärts).
     static func revealInPreview(textView: TextView, characterLocation: Int,
                                 workspace: Workspace) {
@@ -521,7 +529,7 @@ enum MarkdownAssist {
     /// auslösen (EditorView zeigt ihn nicht-modal an).
     static func noteFirstUse(
         in workspace: Workspace,
-        defaults: UserDefaults = SelfTest.workspaceDefaults(),
+        defaults: UserDefaults = AppDefaults.store,
         notificationCenter: NotificationCenter = .default
     ) {
         guard !defaults.bool(forKey: firstUseDefaultsKey) else { return }

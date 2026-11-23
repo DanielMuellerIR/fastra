@@ -30,6 +30,7 @@ private func documentTab(_ name: String) -> EditorTab {
 }
 
 @Test("Shift-Auswahl behält den aktiven Tab und ordnet das Paar wie die Tab-Leiste")
+@MainActor
 func comparisonSelectionKeepsCurrentTab() {
     let fixture = makeTabComparisonWorkspace()
     defer {
@@ -48,6 +49,7 @@ func comparisonSelectionKeepsCurrentTab() {
 }
 
 @Test("Shift-Auswahl ersetzt oder entfernt nur den zweiten Tab")
+@MainActor
 func comparisonSelectionReplacesAndTogglesCompanion() {
     let fixture = makeTabComparisonWorkspace()
     defer {
@@ -75,6 +77,7 @@ func comparisonSelectionReplacesAndTogglesCompanion() {
 }
 
 @Test("Nicht vergleichbarer Shift-Klick bleibt eine normale Einzelauswahl")
+@MainActor
 func ineligibleShiftSelectionFallsBackToSingleTab() {
     let fixture = makeTabComparisonWorkspace()
     defer {
@@ -100,6 +103,7 @@ func ineligibleShiftSelectionFallsBackToSingleTab() {
 }
 
 @Test("Kontextaktion akzeptiert nur einen Tab des markierten Paars")
+@MainActor
 func selectedTabContextPrefillsCompareDialog() {
     let fixture = makeTabComparisonWorkspace()
     defer {
@@ -170,6 +174,7 @@ func compareDialogRevalidatesSelectedTab() {
 }
 
 @Test("Schließen des Vergleichspartners räumt die Paarwahl auf")
+@MainActor
 func closingComparisonTabClearsSelection() {
     let fixture = makeTabComparisonWorkspace()
     defer {

@@ -28,23 +28,14 @@ if [ "$IDENTITY" != "-" ]; then
   SIGN_ARGS+=(--options runtime --timestamp)
 fi
 
-# Debug-Symbole aus der eigenen Binärdatei entfernen, BEVOR signiert wird (strip
-# macht eine vorhandene Signatur ungültig). `swift build -c release` legt eine
-# Debug-Map hinein: für jede übersetzte Quelldatei einen Eintrag mit dem vollen
-# Pfad ihrer .o-Datei auf dem Build-Mac. Die App braucht das nicht, es verrät
-# nur Benutzernamen und Projektaufbau (gefunden am 2026-08-04). `strip -S` nimmt
-# genau diese Debug-Symbole und lässt die normale Symboltabelle stehen, damit
-# Absturzberichte lesbar bleiben. Xcode tut das bei Release-Builds von sich aus
-# (STRIP_STYLE=debugging), SwiftPM nicht.
+# Eigene Release-Binärdatei vor dem Signieren mit `strip -S` von Debug-
+# Symbolen bereinigen; nachträgliches Strippen würde die Signatur ungültig
+# machen. SwiftPMs Debug-Map enthält absolute Objektpfade. Die normale
+# Symboltabelle bleibt für Absturzberichte erhalten.
+# ripgrep, PCRE2 und Sparkle bleiben als fertig gebaute Fremdbinaries unberührt.
 #
-# Nur die eigene Binärdatei: ripgrep, PCRE2 und Sparkle kommen fertig gebaut von
-# außen und tragen keinen Pfad dieses Macs.
-#
-# `--keep-debug-symbols` überspringt das Strippen. Ein Debug-Bundle soll seine
-# Debug-Map behalten — sie ist bei SwiftPM die einzige Verbindung zwischen
-# Binärdatei und Quelltext, ohne sie zeigt lldb keine Zeilennummern mehr.
-# `build.sh` setzt die Option deshalb für jeden Nicht-Release-Build
-# (Review 2026-08-06).
+# `--keep-debug-symbols` erhält die Quelltext-/Zeilenzuordnung für lldb;
+# `build.sh` setzt dies für Nicht-Release-Builds.
 if [ "$STRIP_OPTION" = "--keep-debug-symbols" ]; then
   echo "→ Debug-Bundle: Debug-Symbole bleiben erhalten"
 else

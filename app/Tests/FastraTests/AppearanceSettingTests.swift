@@ -103,7 +103,7 @@ struct AppearanceSettingTests {
             let selectedActiveLineMean = visibleMean(selection, over: activeLineMean)
             let selectedWhiteMean = visibleMean(selection, over: backgroundMean)
 
-            // Die Auswahl soll auf der aktiven Zeile klar nach HELL absetzen,
+            // Die Auswahl soll auf der aktiven Zeile klar nach hell absetzen,
             // aber auf dem weißen Dokumentgrund weiterhin als Fläche stehen.
             #expect(selectedActiveLineMean - activeLineMean >= 0.08)
             #expect(backgroundMean - selectedWhiteMean >= 0.08)
@@ -114,7 +114,7 @@ struct AppearanceSettingTests {
     func editorThemeFarbenSindRGB() {
         // CESEs MinimapView.setTheme ruft `brightnessComponent` auf den
         // Theme-Farben auf — das wirft auf Gray-Colorspace- und Provider-
-        // Farben eine NSException. Hier belegen wir für BEIDE Themes, dass
+        // Farben eine NSException. Hier belegen wir für beide Themes, dass
         // jede Farbe sich nach sRGB konvertieren lässt und Komponenten
         // liefert (genau die Operation, die die Minimap braucht).
         for theme in [EditorView.fastraTheme, EditorView.fastraThemeDark] {

@@ -1,9 +1,8 @@
 // XPathSupportTests.swift
 //
-// Tests für die XPath-Navigation (Etappe 5 Wunschpaket 2026-07):
-// Index-Aufbau mit Quell-Offsets (inkl. Umlaute/Emoji — UTF-16!),
-// Teilset-Auswertung, Fehlerfälle in Nutzersprache und
-// Autovervollständigung aus dem Index.
+// Tests für die XPath-Navigation: Index-Aufbau mit
+// Quell-Offsets (inkl. Umlaute/Emoji — UTF-16!), Teilset-Auswertung,
+// Fehlerfälle in Nutzersprache und Autovervollständigung aus dem Index.
 
 import Foundation
 import Testing
@@ -19,7 +18,7 @@ func xpath_predicateOrder() throws {
     #expect(try evaluate("/r/a[2][@id]", xml: xml) == ["a"])
 }
 
-/// Beispiel-XML mit Multibyte-Inhalten VOR den relevanten Fundstellen —
+/// Beispiel-XML mit Multibyte-Inhalten vor den relevanten Fundstellen —
 /// genau die Offset-Falle, die byteorientierte Parser reißen.
 private let sampleXML = """
 <?xml version="1.0" encoding="UTF-8"?>
@@ -65,7 +64,7 @@ func xpath_indexStructure() throws {
 @Test("Index: Offsets sind UTF-16-korrekt trotz Umlauten und Emoji")
 func xpath_offsetsSurviveMultibyte() throws {
     let index = try buildIndex()
-    // Jede nameRange muss im Quelltext EXAKT den Elementnamen treffen.
+    // Jede nameRange muss im Quelltext exakt den Elementnamen treffen.
     for element in index.elements {
         #expect(text(sampleXML, element.nameRange) == element.name)
         for attribute in element.attributes {

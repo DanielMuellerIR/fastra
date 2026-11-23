@@ -4,7 +4,7 @@ import Testing
 
 // Tests für GroupRemoval — das „Gruppe löschen" der Suchmaske.
 //
-// Die RegexTokenization wird hier VON HAND gebaut (nicht über den
+// Die RegexTokenization wird hier von Hand gebaut (nicht über den
 // Tokenizer): die Tests dokumentieren damit zugleich das erwartete
 // Token-Format und bleiben vom Tokenizer unabhängig.
 

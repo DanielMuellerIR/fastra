@@ -638,8 +638,7 @@ pub fn run_selftest(ui: Rc<super::Ui>) {
     file.write_all(&nul_bytes).unwrap();
     file.set_len(34 * 1024 * 1024).unwrap();
     let captures = RefCell::new(None);
-    let owner_checked = Rc::new(Cell::new(false));
-    let owner_allowed = Rc::new(Cell::new(true));
+    let owner_rejected = Rc::new(Cell::new(false));
     let owner_tabs = Cell::new(0);
     let stage = Cell::new(0u8);
     let index = Cell::new(0usize);
@@ -926,25 +925,38 @@ pub fn run_selftest(ui: Rc<super::Ui>) {
                 if !capture(&ui.window, "nul-safe-hex", &captures) {
                     return glib::ControlFlow::Continue;
                 }
-                let checked = owner_checked.clone();
-                let allowed = owner_allowed.clone();
-                ui.load_path_owned(
-                    cases[0].path.clone(),
-                    Rc::new(move || {
-                        checked.set(true);
-                        allowed.get()
-                    }),
-                );
-                assert!(
-                    !owner_checked.get(),
-                    "Owner guard must run at asynchronous completion, not only before loading"
-                );
-                owner_allowed.set(false);
+                use std::sync::{
+                    atomic::{AtomicBool, Ordering},
+                    Arc,
+                };
+                let rejected = owner_rejected.clone();
+                let loaded = Arc::new(AtomicBool::new(false));
+                let validated_source = loaded.clone();
                 owner_tabs.set(ui.tabs.n_pages());
+                ui.load_path_validated(
+                    cases[0].path.clone(),
+                    None,
+                    Rc::new(move || {
+                        // Erst widerrufen, nachdem der Dateilader den Inhalt dekodiert hat.
+                        let allowed = !loaded.load(Ordering::Acquire);
+                        if !allowed {
+                            rejected.set(true);
+                        }
+                        allowed
+                    }),
+                    Some(Box::new(move |result| {
+                        let is_text = matches!(
+                            result,
+                            super::viewer::Loaded::Editor(loader::Loaded::Text { .. })
+                        );
+                        validated_source.store(is_text, Ordering::Release);
+                        is_text
+                    })),
+                );
                 stage.set(16);
             }
             16 => {
-                if !owner_checked.get() {
+                if !owner_rejected.get() {
                     return glib::ControlFlow::Continue;
                 }
                 assert_eq!(ui.tabs.n_pages(), owner_tabs.get());

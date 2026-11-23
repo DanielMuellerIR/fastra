@@ -389,8 +389,7 @@ struct PagedFileTests {
         // Datei aus lauter Nullbytes: Zwei Nachbarseiten sind byteidentisch,
         // `data` ändert sich beim Wechsel also nicht. Der Drucksnapshot der
         // Hex-Ansicht hängt deshalb am Ladezähler statt an einer
-        // Datenänderung — sonst behielte er die alten Basisadressen
-        // (Reviewfund 2026-08-18).
+        // Datenänderung — sonst behielte er die alten Basisadressen.
         let url = testTemporaryDirectory()
             .appendingPathComponent("fastra-zero-page-\(UUID().uuidString)")
         try Data(repeating: 0, count: 16).write(to: url)
@@ -432,9 +431,9 @@ struct PagedFileTests {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(model.errorMessage != nil)
-        // Die alten Bytes gehören zur VORIGEN Seite. Blieben sie stehen,
+        // Die alten Bytes gehören zur vorigen Seite. Blieben sie stehen,
         // zeigte die Ansicht den Fehler, aber „Drucken" gäbe weiter den alten
-        // Abschnitt aus (Reviewfund 2026-08-18).
+        // Abschnitt aus.
         #expect(model.data.isEmpty)
     }
 
@@ -453,11 +452,11 @@ struct PagedFileTests {
         #expect(model.data == Data(repeating: 0xAA, count: 4))
 
         // Der Wechsel auf Seite 1 bleibt im blockierten Reader stehen. Das
-        // Modell zeigt ab SOFORT den neuen Offset — die alten Bytes müssen
+        // Modell zeigt ab sofort den neuen Offset — die alten Bytes müssen
         // deshalb sofort weg sein: Sonst berechnete `editableRow` Adressen
         // der neuen Seite über Bytes der alten, und eine Bearbeitung in
         // diesem Fenster plante eine Änderung am falschen Offset mit dem
-        // falschen Altwert (Reviewfund 2026-08-19).
+        // falschen Altwert.
         model.load(page: 1)
         #expect(model.pageIndex == 1)
         #expect(model.isLoading)

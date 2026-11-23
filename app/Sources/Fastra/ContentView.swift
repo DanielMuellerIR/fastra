@@ -11,8 +11,11 @@ struct ContentView: View {
     /// `@State` reicht — der Controller selbst ist keine ObservableObject,
     /// nur ein Halter für das NSPanel.
     @State private var searchPanel: SearchPanelController?
-    /// Schwebende XPath-Leiste (Etappe 5) — gleiche Lebenszeit-Logik.
+    /// Schwebende XPath-Leiste — gleiche Lebenszeit-Logik.
     @State private var xpathPanel: XPathPanelController?
+    /// SwiftUI entfernt das Sheet bereits aus seinem Zustand, während AppKit
+    /// es noch am Fenster hält. Die Sitzung lebt bis zum AppKit-Abschluss.
+    @State private var presentedTextWorkflowSession: TextWorkflowSession?
 
     /// Sichtbarkeit des dezenten Donation-Banners (Donationware-Modell).
     /// Entscheidung beim Erscheinen über die pure DonationPrompt-Logik
@@ -27,18 +30,10 @@ struct ContentView: View {
             TabBarView()
                 .frame(height: 36 * uiScale)
 
-            // Editor nimmt jetzt den ganzen Platz ein. Das untere
-            // DiffPanelView ist mit v0.5 aus dem Hauptfenster entfernt
-            // (Daniel-Entscheidung 2026-05-26): Die Sofort-Trefferliste
-            // in der Suchmaske erfüllt den primären Bedarf. Eine
-            // ausgewachsene Side-by-side-Diff-Vorschau erscheint bei Bedarf
-            // als Sheet über diesem Hauptfenster.
-            //
-            // Willkommens-Platzhalter (Umbau 2026-07-30): Der Editor ist
-            // IMMER montiert — der Willkommensinhalt liegt als Overlay über
-            // der Editorfläche, solange der aktive Tab unberührt leer ist
-            // (Bedingung pur in WelcomeLogic, getestet; Overlay in
-            // EditorView). Der Cursor steht dabei tippbereit in Zeile 1.
+            // Der Editor bleibt auch im unberührten leeren Tab montiert. Die Starthilfe
+            // liegt als Overlay darüber (`WelcomeLogic`/`EditorView`); der Cursor ist in
+            // Zeile 1 tippbereit. Treffer stehen in der Suchmaske, die ausführliche
+            // Vorher-/Nachher-Vorschau erscheint als Sheet über dem Hauptfenster.
             EditorView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -49,18 +44,18 @@ struct ContentView: View {
             // nur wenn die DonationPrompt-Regeln es erlauben.
             if showDonationBanner {
                 DonationBannerView(onDismiss: {
-                    DonationPrompt.recordDismiss(defaults: SelfTest.workspaceDefaults())
+                    DonationPrompt.recordDismiss(defaults: AppDefaults.store)
                     showDonationBanner = false
                 })
             }
 
-            // Mindest-, KEINE Festhöhe: Die Fußzeile ist mal höher als 24 pt —
+            // Mindest-, keine Festhöhe: Die Fußzeile ist mal höher als 24 pt —
             // der Ansichts-Umschalter (Text/Hex) erscheint nur bei einer
             // gespeicherten Datei und ist als Segmentregler höher als reiner
             // Text. Eine feste Höhe ließ den Inhalt über den Rahmen
             // hinauswachsen; unten schnitt ihn der Fensterrand ab, sodass die
             // Fußzeile beim Öffnen einer vorhandenen Datei nur halb zu sehen
-            // war (Daniel-Befund 2026-08-06).
+            // war.
             if workspace.activeTab?.folderComparison == nil {
                 StatusBarView()
                     .frame(minHeight: 24 * uiScale)
@@ -95,11 +90,10 @@ struct ContentView: View {
                                   chromeHeight: 36 * uiScale)
                 .frame(width: 0, height: 0)
         )
-        // „Vorschau der Änderungen" (v0.10): Sheet mit echtem Vorher/Nachher-Diff
-        // des aktiven Buffers. Wird aus der Suchmaske über `livePreview` ausgelöst
-        // und erscheint hier im Hauptfenster (wo Daniel es erwartet hat). Der frühere
-        // Button setzte das Flag nur — niemand zeigte etwas an. EnvironmentObject
-        // explizit weiterreichen (Sheets erben es nicht zuverlässig).
+        // „Vorschau der Änderungen“ zeigt den Vorher-/Nachher-Diff des aktiven
+        // Buffers als Sheet. Die Suchmaske löst es über `livePreview` aus.
+        // EnvironmentObject ausdrücklich weiterreichen: Sheets erben es nicht
+        // zuverlässig.
         .sheet(isPresented: $workspace.livePreview) {
             ReplacePreviewView()
                 .environmentObject(workspace)
@@ -113,13 +107,38 @@ struct ContentView: View {
         }
         .sheet(item: $workspace.textWorkflowSession) { session in
             TextWorkflowSheet(session: session)
+                .onAppear {
+                    if workspace.textWorkflowSession === session {
+                        presentedTextWorkflowSession = session
+                    }
+                }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEndSheetNotification)) { notification in
+            guard let session = presentedTextWorkflowSession,
+                  let window = notification.object as? NSWindow,
+                  session.finishEditorFocusAfterSheetEnd(in: window) else { return }
+            presentedTextWorkflowSession = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
+            if let window = notification.object as? NSWindow {
+                presentedTextWorkflowSession?.cancelEditorFocusIfKeyWindowChanged(to: window)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            presentedTextWorkflowSession?.cancelEditorFocusAfterApply()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { notification in
+            guard let session = presentedTextWorkflowSession,
+                  let window = notification.object as? NSWindow,
+                  ObjectIdentifier(window) == session.snapshot.windowID else { return }
+            session.cancelEditorFocusAfterApply()
+            presentedTextWorkflowSession = nil
         }
         .sheet(item: $workspace.textSnippetSession) { session in
             TextSnippetSheet(session: session)
         }
-        // „Dateien vergleichen…" (Etappe 1 Wunschpaket 2026-07c): Sheet mit
-        // Links/Rechts-Auswahl und Vergleichsoptionen; das Ergebnis öffnet
-        // als eigener Diff-Tab.
+        // „Dateien vergleichen…": Sheet mit Links/Rechts-Auswahl und
+        // Vergleichsoptionen; das Ergebnis öffnet als eigener Diff-Tab.
         .sheet(isPresented: $workspace.showCompareFilesDialog) {
             CompareFilesDialog(
                 workspace: workspace,
@@ -142,10 +161,9 @@ struct ContentView: View {
             if workspace.showSearchDialog {
                 controller.show()
             }
-            // Donation-Banner-Entscheidung (pure Logik, getestet).
-            // `isEnabled` ist der Hauptschalter (derzeit AUS, Daniel
-            // 2026-07-10) — die Regel-Logik dahinter bleibt intakt.
-            let state = DonationPrompt.currentState(defaults: SelfTest.workspaceDefaults())
+            // `isEnabled` steuert die Anzeige des Spendenbanners; die Anzeigeregel
+            // bleibt unabhängig davon prüfbar.
+            let state = DonationPrompt.currentState(defaults: AppDefaults.store)
             showDonationBanner = DonationPrompt.isEnabled
                 && DonationPrompt.shouldShow(launchCount: state.launchCount,
                                              dismissedAt: state.dismissedAt)
@@ -169,13 +187,13 @@ struct ContentView: View {
             }
             workspace.markdownVisualFind.close(in: workspace, focusEditor: false)
             // „Nur in Auswahl" (K3) automatisch einschalten, wenn beim Öffnen
-            // eine MEHRZEILIGE Selektion im Editor steht (BBEdit-Verhalten).
+            // eine mehrzeilige Selektion im Editor steht (BBEdit-Verhalten).
             workspace.presentSearch(requestedScope: .file, captureSelection: true)
             searchPanel?.show()
         }
         // ⇧⌘F: Mehrdatei-Suche. Hat das Fenster ein Projekt, ist der Bereich
         // „Projekt" (der Ordner, in dem gearbeitet wird); nur ohne Projekt
-        // die gespeicherten Ordner (Produktentscheidung 2026-09-15).
+        // die gespeicherten Ordner.
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowSearchFolder)) { note in
             guard notificationTargetsThisWorkspace(note) else { return }
             workspace.markdownVisualFind.close(in: workspace, focusEditor: false)
@@ -229,7 +247,7 @@ struct ContentView: View {
             guard notificationTargetsThisWorkspace(note) else { return }
             showGotoLineDialog()
         }
-        // ⇧⌘X — XPath-Leiste über dem Editor öffnen (Etappe 5). Nur für
+        // ⇧⌘X — XPath-Leiste über dem Editor öffnen. Nur für
         // XML-artige Dokumente; das Menü ist sonst bereits deaktiviert.
         .onReceive(NotificationCenter.default.publisher(for: .fastraShowXPathBar)) { note in
             guard notificationTargetsThisWorkspace(note),
@@ -307,12 +325,12 @@ struct ContentView: View {
     /// `.first`; Chevron, Pfeiltasten und ⌘G verwenden `.move`.
     private func navigateMatch(action: SearchMatchSelection.Action) {
         let matches = workspace.navMatches
-        // Basis ist der VORGEMERKTE Index einer noch laufenden Navigation,
+        // Basis ist der vorgemerkte Index einer noch laufenden Navigation,
         // nicht nur der bestätigte: `activeMatchIndex` wird bei Ordner-
         // Treffern erst in der asynchronen Snapshot-Completion fortgeschrieben.
         // Mehrere schnelle ⌘G-/Pfeil-Eingaben berechneten sonst alle denselben
         // Nachfolger aus dem alten Index und bewegten die Auswahl nur um
-        // EINEN Treffer (Review 2026-08-31).
+        // einen Treffer.
         let transition = SearchMatchSelection.transition(
             activeIndex: workspace.matchNavigationBaseIndex,
             matches: matches,

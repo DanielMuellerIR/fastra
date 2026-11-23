@@ -1,20 +1,17 @@
 // GoToTarget.swift
 //
-// Alt-Doppelklick „Gehe zum Ziel" (Etappe 7 Wunschpaket 2026-07c) — nach
-// dem Vorbild des 4D-Methodeneditors: Alt-Doppelklick auf einen Namen
-// springt zur Definition.
-//
-// GESTEN-ENTSCHEIDUNG (Spez verlangt kurze Begründung): Es bleibt beim
-// Alt-Doppelklick des Vorbilds. Die Alt-Drag-Spaltenauswahl kollidiert
-// nicht — sie beginnt mit einem EINZELklick und Ziehen, der Doppelklick
-// wird hier vorher abgefangen (`clickCount == 2`, `colsel`-Selbsttest
-// bleibt grün). CESEs eigenes ⌘-Hover-Springen braucht tree-sitter-
-// Identifier-Knoten und funktioniert für 4D (Plaintext-Grammatik) und
-// Markdown-Links nicht — deshalb eine eigene, generische Provider-Geste.
-//
-// Provider-Schnittstelle: bewusst GENAU zwei Provider (4D und Markdown),
-// nichts auf Vorrat. Nicht auflösbare Ziele melden sich dezent (Beep +
-// kurzes Aufblitzen + Seitenleisten-Hinweis) — kein stiller No-Op.
+// Alt-Doppelklick „Gehe zum Ziel" — nach dem Vorbild des
+// 4D-Methodeneditors: Alt-Doppelklick auf einen Namen springt zur Definition.
+// Gesten-Entscheidung (Spez verlangt kurze Begründung): Es bleibt beim
+// Alt-Doppelklick des Vorbilds. Die Alt-Drag-Spaltenauswahl kollidiert nicht —
+// sie beginnt mit einem EINZELklick und Ziehen, der Doppelklick wird hier
+// vorher abgefangen (`clickCount == 2`, `colsel`-Selbsttest bleibt grün). CESEs
+// eigenes ⌘-Hover-Springen braucht tree-sitter- Identifier-Knoten und
+// funktioniert für 4D (Plaintext-Grammatik) und Markdown-Links nicht — deshalb
+// eine eigene, generische Provider-Geste. Provider-Schnittstelle: bewusst genau
+// zwei Provider (4D und Markdown), nichts auf Vorrat. Nicht auflösbare Ziele
+// melden sich dezent (Beep + kurzes Aufblitzen + Seitenleisten-Hinweis) — kein
+// stiller No-Op.
 
 import AppKit
 import CodeEditTextView
@@ -26,7 +23,7 @@ import CodeEditSourceEditor
 enum GoToTargetAction: Equatable, Sendable {
     /// Datei im Editor öffnen (4D-Methode/Klasse, relative Markdown-Datei).
     case openFile(URL)
-    /// In der AKTUELLEN Datei springen (Function-Definition, Markdown-Anker).
+    /// In der aktuellen Datei springen (Function-Definition, Markdown-Anker).
     case jumpToRange(NSRange)
     /// Im Browser öffnen (http/https/mailto).
     case openURL(URL)
@@ -55,7 +52,7 @@ protocol GoToTargetProvider {
     static func resolve(_ context: GoToTargetContext) -> GoToTargetAction?
 }
 
-/// Wählt den Provider nach Dateityp. Andere Typen: bewusst KEIN Provider —
+/// Wählt den Provider nach Dateityp. Andere Typen: bewusst kein Provider —
 /// weitere Sprachen sind späterer Ausbau (nichts auf Vorrat bauen).
 enum GoToTarget {
     static func provider(forFileName name: String) -> GoToTargetProvider.Type? {
@@ -110,8 +107,7 @@ enum GoToTarget {
     }
 
     static func substring(_ text: String, _ range: NSRange) -> String {
-        guard let stringRange = Range(range, in: text) else { return "" }
-        return String(text[stringRange])
+        UTF16Substring.extract(text, range: range)
     }
 }
 
@@ -281,7 +277,7 @@ enum MarkdownGoToTarget: GoToTargetProvider {
     static func linkTarget(in text: String, at location: Int) -> String? {
         let ns = text as NSString
         let full = NSRange(location: 0, length: ns.length)
-        // Inline-Links und Bilder: Klick auf Beschriftung ODER Ziel zählt.
+        // Inline-Links und Bilder: Klick auf Beschriftung oder Ziel zählt.
         if let regex = try? NSRegularExpression(
             pattern: #"!?\[[^\]\n]*\]\(([^)\n]+)\)"#
         ) {
@@ -364,15 +360,10 @@ final class GoToTargetGesture: NSObject {
               let window = event.window,
               let contentView = window.contentView else { return event }
         let point = contentView.convert(event.locationInWindow, from: nil)
-        // Der Workspace muss aus dem FENSTER DES KLICKS kommen, nicht aus dem
-        // globalen `Workspace.shared`: Der Monitor sieht den Doppelklick,
-        // BEVOR ein hinteres Fenster durch ihn Key wird, und nach einer
-        // Sitzungswiederherstellung zeigt `shared` auf den zuletzt erzeugten
-        // Workspace. Beides ließ den Methodensprung im falschen Fenster
-        // landen (Befund aus dem Dauertest 2026-08-08, Selbsttest
-        // `gototargetwin`). `assumeIsolated`: Der lokale Event-Monitor läuft
-        // immer auf dem Main-Thread — dasselbe Muster wie im
-        // `EditorContextMenu`.
+        // Den Workspace aus dem angeklickten Fenster bestimmen. Der lokale
+        // Monitor sieht den Doppelklick, bevor das Fenster Key wird;
+        // `Workspace.shared` kann noch zu einem anderen Fenster gehören.
+        // `assumeIsolated`: Lokale Event-Monitore laufen auf dem Main-Thread.
         guard let hit = contentView.hitTest(point),
               let textView = textViewAncestor(of: hit),
               let workspace = MainActor.assumeIsolated({
@@ -447,10 +438,10 @@ final class GoToTargetGesture: NSObject {
             // Fallback laut Spez: Suche im Projekt — sichtbar über den
             // Suchdialog, Wort als Literal-Suchbegriff. Der Bereich kommt
             // aus `preferredMultiFileSearchScope`: mit Projekt „Projekt",
-            // sonst die gemerkten Ordner (Review-Fund 2026-09-16).
+            // sonst die gemerkten Ordner.
             workspace.presentMultiFileContentSearch(pattern: name)
         case .notFound(let message):
-            // Dezent, aber NIE still: Beep, kurzes Aufblitzen am Wort,
+            // Dezent, aber nie still: Beep, kurzes Aufblitzen am Wort,
             // Hinweis in der Seitenleiste.
             NSSound.beep()
             if let range = GoToTarget.phraseRange(in: textView.string,

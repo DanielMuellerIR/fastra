@@ -42,7 +42,7 @@ enum RegexTokenKind: Equatable {
 /// Ein einzelner, flacher Token im Suchausdruck. „Flach" heißt: Die Liste
 /// aller Tokens überlappt nicht und ist nach `range.location` sortiert —
 /// genau das Format, das Highlighting und Token-Snap brauchen. Gruppen-
-/// INHALTE sind als eigene Tokens enthalten, die Klammern selbst als
+/// Inhalte sind als eigene Tokens enthalten, die Klammern selbst als
 /// `.groupDelimiter`.
 struct RegexToken: Equatable {
     let kind: RegexTokenKind
@@ -57,9 +57,9 @@ struct RegexToken: Equatable {
 /// Maske und das Drag & Drop ins Replace-Feld (`$N`).
 struct CaptureGroupInfo: Equatable {
     /// 1-basierte Gruppen-Nummer in NSRegularExpression-Zählung:
-    /// ALLE fangenden Gruppen (anonym UND benannt) zählen in der
+    /// Alle fangenden Gruppen (anonym und benannt) zählen in der
     /// Reihenfolge ihrer öffnenden Klammer. Nicht-fangende Gruppen
-    /// (`(?:…)`, Lookarounds) zählen NICHT.
+    /// (`(?:…)`, Lookarounds) zählen nicht.
     let number: Int
     /// Gruppen-Name bei `(?<name>…)`, sonst `nil`.
     let name: String?
@@ -83,7 +83,7 @@ struct RegexTokenization: Equatable {
     static let empty = RegexTokenization(tokens: [], groups: [], hasErrors: false)
 }
 
-/// Rückverweise im SUCHMUSTER (`\1`, `\k<name>`, `(?P=name)`). Sie zeigen
+/// Rückverweise im Suchmuster (`\1`, `\k<name>`, `(?P=name)`). Sie zeigen
 /// wie `$N` im Replace-Template auf Gruppennummern — nur eben innerhalb des
 /// Suchausdrucks. Wer eine Gruppe einfügt oder auflöst, verschiebt genau
 /// diese Nummerierung; ein stehengebliebener Rückverweis trifft danach eine

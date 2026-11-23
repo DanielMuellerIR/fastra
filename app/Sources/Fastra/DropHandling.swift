@@ -34,7 +34,7 @@ enum DropHandling {
     /// - Nicht-existierende Pfade werden verworfen.
     /// - Duplikate werden entfernt, die ursprüngliche Reihenfolge bleibt.
     ///
-    /// Bewusst KEIN Textdatei-Filter: `loadFile` versucht jede Datei zu
+    /// Bewusst kein Textdatei-Filter: `loadFile` versucht jede Datei zu
     /// öffnen und gibt bei echtem Binärmüll ein akustisches Signal — der
     /// Nutzer entscheidet, was er droppt. (Eine Binär-Heuristik wie beim
     /// Ordner-Scan wäre hier eher bevormundend.)

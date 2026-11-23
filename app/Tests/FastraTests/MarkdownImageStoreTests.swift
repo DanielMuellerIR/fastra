@@ -1,7 +1,7 @@
 // MarkdownImageStoreTests.swift
 //
-// Tests für die Bild-Ablage des Markdown-Assistenten (Etappe 5 Wunschpaket
-// 2026-07b): Namensvergabe, Kollisions- und Dedup-Logik, Relativpfade
+// Tests für die Bild-Ablage des Markdown-Assistenten: Namensvergabe,
+// Kollisions- und Dedup-Logik, Relativpfade
 // (Umlaute, Leerzeichen, Unterordner) und die Drop-Abgrenzung.
 
 import Foundation
@@ -129,6 +129,56 @@ func store_pastedData() throws {
         #expect(stored.link.hasSuffix(".png)"))
         #expect(stored.createdByInsertion)
         #expect(stored.imagesDirectoryCreated)
+    }
+}
+
+@Test("Belegte Bildnamen melden die Grenze ohne neue Datei oder Markdown-Link",
+      arguments: [false, true])
+func store_exhaustedImageNamesPreserveFiles(_ reserveLastName: Bool) throws {
+    try withTempDir { dir in
+        let doc = dir.appendingPathComponent("Notizen.md")
+        let documentBytes = Data("Unveränderter Markdown-Text".utf8)
+        try documentBytes.write(to: doc)
+        let source = dir.appendingPathComponent("quelle.png")
+        let imageBytes = tinyPNG()
+        try imageBytes.write(to: source)
+        let images = dir.appendingPathComponent("images")
+        try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+        var expectedNames = Set<String>()
+        for counter in 1..<10_000 {
+            let name = MarkdownImageStore.shortImageName(counter: counter, fileExtension: "png")
+            // Hardlinks begrenzen den Platzbedarf; jede vorhandene Datei wird
+            // nach beiden fehlgeschlagenen Ablagen trotzdem byteweise geprüft.
+            try FileManager.default.linkItem(at: source, to: images.appendingPathComponent(name))
+            expectedNames.insert(name)
+        }
+        var reservedImages: [MarkdownImageStore.StoredImage] = []
+        defer { MarkdownImageStore.releaseReservations(reservedImages) }
+        if reserveLastName {
+            let name = MarkdownImageStore.shortImageName(counter: 9_999, fileExtension: "png")
+            let target = images.appendingPathComponent(name)
+            reservedImages = [try MarkdownImageStore.captureExisting(target)]
+            MarkdownImageStore.reserveForUndo(reservedImages)
+            try FileManager.default.removeItem(at: target)
+            expectedNames.remove(name)
+        }
+
+        let expectedMessage = L10n.string("Alle 9.999 Bildnamen für diese Dateiendung im Ordner „images“ sind bereits belegt oder für Rückgängig reserviert.")
+        let outcomes = [
+            MarkdownAssist.storeImageData(imageBytes, typeIdentifier: "public.png", documentURL: doc),
+            MarkdownAssist.storeImageFiles([source], documentURL: doc),
+        ]
+        for outcome in outcomes {
+            #expect(outcome.failures == [expectedMessage])
+            #expect(outcome.storedImages.isEmpty)
+            #expect(outcome.links.isEmpty)
+        }
+        #expect(try Set(FileManager.default.contentsOfDirectory(atPath: images.path)) == expectedNames)
+        for name in expectedNames {
+            #expect(try Data(contentsOf: images.appendingPathComponent(name)) == imageBytes)
+        }
+        #expect(try Data(contentsOf: source) == imageBytes)
+        #expect(try Data(contentsOf: doc) == documentBytes)
     }
 }
 
@@ -363,7 +413,7 @@ func store_imagesDirectorySwapIsRejected() throws {
                                                 withIntermediateDirectories: true)
         try Data("Bild".utf8).write(to: source)
 
-        #expect(throws: MarkdownImageStore.StoreError.self) {
+        #expect(throws: MarkdownImagePublication.Failure.self) {
             _ = try MarkdownImageStore.storeImageFile(
                 source, documentURL: doc,
                 hooks: .init(afterOpeningImagesDirectory: {
@@ -376,7 +426,8 @@ func store_imagesDirectorySwapIsRejected() throws {
         }
         #expect(try FileManager.default.contentsOfDirectory(atPath: foreign.path).isEmpty)
         #expect(try FileManager.default.contentsOfDirectory(
-            atPath: dir.appendingPathComponent("images-alt").path).isEmpty)
+            atPath: dir.appendingPathComponent("images-alt").path) == ["1.png"])
+        #expect(try Data(contentsOf: dir.appendingPathComponent("images-alt/1.png")) == Data("Bild".utf8))
     }
 }
 
@@ -415,8 +466,8 @@ func store_partialCopyIsNeverVisible() throws {
                 source, documentURL: doc,
                 hooks: .init(failCopyAfterBytes: 70_000))
         }
-        #expect(!FileManager.default.fileExists(
-            atPath: dir.appendingPathComponent("images").path))
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: dir.appendingPathComponent("images").path).isEmpty)
     }
 }
 
@@ -461,15 +512,12 @@ func store_fileElsewhereInDocumentTreeCopiesIntoImages() throws {
     }
 }
 
-@Test("storeImageFile: gescheitertes Kopieren lässt keinen leeren images-Ordner zurück")
+@Test("storeImageFile: fehlende Quelle legt keinen images-Ordner an")
 func store_failedCopyLeavesNoEmptyImagesFolder() throws {
     try withTempDir { dir in
         let doc = dir.appendingPathComponent("Seite.md")
         try "x".write(to: doc, atomically: true, encoding: .utf8)
-        // Quelle existiert nicht → `copyItem` wirft. Der Zielordner wird
-        // vorher angelegt und muss danach wieder verschwinden: Eine
-        // gescheiterte Aktion darf den Dokumentordner nicht sichtbar
-        // verändern (Review 2026-08-06).
+        // Die fehlende Quelle wird vor dem Anlegen des Zielordners abgewiesen.
         let missing = dir.appendingPathComponent("gibtsnicht.png")
 
         #expect(throws: (any Error).self) {
@@ -510,10 +558,8 @@ func storeImageFiles_collectsLinksAndFailures() throws {
         try tinyPNG().write(to: good)
         let missing = dir.appendingPathComponent("gibtsnicht.png")
 
-        // Dieser Schritt läuft im Produktivpfad auf einer Hintergrund-Queue
-        // (Review 2026-08-06). Er darf deshalb keine Oberfläche anfassen und
-        // muss alle Ergebnisse als Rückgabewert liefern — Fehlermeldungen
-        // eingeschlossen.
+        // Der Produktpfad läuft im Hintergrund. Keine Oberfläche anfassen;
+        // Ergebnisse einschließlich Fehlern als Rückgabewert liefern.
         let outcome = MarkdownAssist.storeImageFiles([missing, good], documentURL: doc)
 
         #expect(outcome.links == ["![1](images/1.png)"])
@@ -545,7 +591,7 @@ func storeImageData_returnsLinkWithoutUI() throws {
 
 @Test("Bild-Undo hält entfernte Bytes im RAM; Redo stellt sie ohne Sicherungsordner wieder her")
 @MainActor
-func imageUndoMovesCreatedFileAndRestoresOnRedo() async throws {
+func imageUndoMovesCreatedFileAndRestoresOnRedoSerialRunnerIntegration() async throws {
     try await withImageUndoDirectory { dir in
         let doc = dir.appendingPathComponent("Seite.md")
         try "".write(to: doc, atomically: true, encoding: .utf8)
@@ -784,7 +830,7 @@ func imageUndoReservesOwnershipAndStashedName() throws {
 
 @Test("Bild-Redo bewahrt Text und fremde Datei bei Kollision und bleibt wiederholbar")
 @MainActor
-func imageRedoCollisionKeepsTextAndRetry() async throws {
+func imageRedoCollisionKeepsTextAndRetrySerialRunnerIntegration() async throws {
     try await withImageUndoDirectory { dir in
         let doc = dir.appendingPathComponent("Seite.md")
         let stored = try MarkdownImageStore.storePastedData(
@@ -794,6 +840,9 @@ func imageRedoCollisionKeepsTextAndRetry() async throws {
         MarkdownImageUndo.register(textView: textView, insertion: stored.link, storedImages: [stored])
         textView.undoManager?.undo()
         try await awaitImageHistory(textView)
+        try #require(textView.string.isEmpty)
+        try #require(textView.undoManager?.canRedo == true)
+        try #require(!FileManager.default.fileExists(atPath: stored.fileURL.path))
         try FileManager.default.createDirectory(at: stored.fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("foreign".utf8).write(to: stored.fileURL)
         textView.undoManager?.redo()
@@ -843,6 +892,24 @@ func savedImageDeletionWaitsForSave() throws {
     }
 }
 
+@Test("Ein vorhandenes Redo-Bild bewahrt den ausstehenden Cleanup bis zur tatsächlichen Textannahme")
+func onDiskRedoKeepsPendingSavedCleanup() throws {
+    try withTempDir { directory in
+        let stored = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"),
+                                                          documentURL: directory.appendingPathComponent("test.md"))
+        let effect = MarkdownImageUndoSideEffect(images: [stored], alreadySaved: true)
+        #expect(effect.undo())
+        #expect(effect.prepareRedo() == .alreadyOnDisk)
+        #expect(try Data(contentsOf: stored.fileURL) == tinyPNG())
+        // Der Text-Redo wurde danach abgebrochen. Ein späteres Speichern ohne
+        // Bildverweis muss den vor dem No-op bestehenden Cleanup noch ausführen.
+        #expect(effect.documentSaved(visible: false))
+        #expect(!FileManager.default.fileExists(atPath: stored.fileURL.path))
+        #expect(effect.prepareRedo() == .restoredFromMemory)
+        #expect(try Data(contentsOf: stored.fileURL) == tinyPNG())
+    }
+}
+
 @Test("Aufräumen schützt echte Bildreferenzen, andere Dokumente und veränderte Vorschauen")
 func cleanupProtectsSharedImagesAndPreview() throws {
     try withTempDir { directory in
@@ -860,12 +927,32 @@ func cleanupProtectsSharedImagesAndPreview() throws {
         #expect(opened.candidates.isEmpty)
 
         try "![shared](images/1.png)\n![new](images/2.png)".write(to: other, atomically: true, encoding: .utf8)
-        #expect(throws: (any Error).self) { try MarkdownImageCleanup.apply(preview) }
+        #expect(throws: MarkdownImageCleanup.ApplyError.previewChanged) { try MarkdownImageCleanup.apply(preview) }
         #expect(FileManager.default.fileExists(atPath: second.fileURL.path))
         try "![shared](images/1.png)".write(to: other, atomically: true, encoding: .utf8)
         try MarkdownImageCleanup.apply(preview)
         #expect(FileManager.default.fileExists(atPath: first.fileURL.path))
         #expect(!FileManager.default.fileExists(atPath: second.fileURL.path))
+    }
+}
+
+@Test("Aufräumen meldet veraltete Vorschau bei gleichbyteigem Austausch eines Bildes")
+func cleanupReportsReplacedImageAsStale() throws {
+    try withTempDir { directory in
+        let doc = directory.appendingPathComponent("test.md")
+        try "".write(to: doc, atomically: true, encoding: .utf8)
+        let png = tinyPNG()
+        let first = try MarkdownImageStore.storePastedData(.init(data: png, fileExtension: "png"), documentURL: doc)
+        let second = try MarkdownImageStore.storePastedData(.init(data: png, fileExtension: "png"), documentURL: doc)
+        let preview = try MarkdownImageCleanup.plan(documentURL: doc, content: "", openDocuments: [:])
+
+        try png.write(to: second.fileURL, options: .atomic)
+        let replacement = try MarkdownImageStore.captureExisting(second.fileURL)
+        #expect(replacement.identity != second.identity)
+        #expect(replacement.contentSHA256 == second.contentSHA256)
+        #expect(throws: MarkdownImageCleanup.ApplyError.previewChanged) { try MarkdownImageCleanup.apply(preview) }
+        #expect(try MarkdownImageStore.captureExisting(first.fileURL).identity == first.identity)
+        #expect(try MarkdownImageStore.captureExisting(second.fileURL).identity == replacement.identity)
     }
 }
 
@@ -1041,7 +1128,8 @@ func imageMetadataCountsAgainstBudget() throws {
         #expect(!files.restoreFromMemory())
         buffer.takeInvalidations().forEach { $0() }
         #expect(invalidated)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["images"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.appendingPathComponent("images").path).isEmpty)
     }
 }
 
@@ -1054,5 +1142,41 @@ func opaqueReferencesProtectFutureImages() throws {
         let effect = MarkdownImageUndoSideEffect(images: [image])
         #expect(effect.undo(usedImages: references))
         #expect(FileManager.default.fileExists(atPath: image.fileURL.path))
+    }
+}
+
+@Test("Fremde Ordner schützen nur kanonische Bildziele, mehrdeutiges HTML schützt vorsorglich")
+func cleanupResolvesCrossFolderReferences() throws {
+    try withTempDir { root in
+        let directory = root.appendingPathComponent("A")
+        let foreignDirectory = root.appendingPathComponent("B")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: foreignDirectory, withIntermediateDirectories: true)
+        let document = directory.appendingPathComponent("note.md")
+        let foreign = foreignDirectory.appendingPathComponent("note.md")
+        try Data().write(to: document)
+        let image = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"), documentURL: document)
+        let foreignImage = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"), documentURL: foreign)
+        let foreignBytes = try Data(contentsOf: foreignImage.fileURL)
+        #expect(image.fileURL.lastPathComponent == foreignImage.fileURL.lastPathComponent)
+        let alias = root.appendingPathComponent("alias")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: directory)
+        let references = [
+            "![x](../A/images/\(image.fileURL.lastPathComponent))",
+            "![x](<\(image.fileURL.path)>)",
+            "![x](<\(image.fileURL.absoluteString)>)",
+            "![x](../alias/images/\(image.fileURL.lastPathComponent))",
+            "<img srcset=\"unknown.png 1x\">"
+        ]
+        for source in references {
+            let plan = try MarkdownImageCleanup.plan(documentURL: document, content: "",
+                openDocuments: [foreign: ["", source]])
+            #expect(plan.candidates.isEmpty)
+        }
+        let differentTarget = try MarkdownImageCleanup.plan(documentURL: document, content: "",
+            openDocuments: [foreign: [foreignImage.link]])
+        #expect(differentTarget.candidates.map(\.fileURL) == [image.fileURL.canonicalFileURL])
+        #expect(try Data(contentsOf: image.fileURL) == tinyPNG())
+        #expect(try Data(contentsOf: foreignImage.fileURL) == foreignBytes)
     }
 }

@@ -1,20 +1,10 @@
 // RegexFieldView.swift
 //
-// Reiches, einzeiliges Texteingabe-Feld für Suchen- und Ersetzen-Pattern
-// in der Suchmaske (FloatingSearchDialog). Ersetzt in Phase 3 (v0.7) die
-// beiden schlichten SwiftUI-TextFields.
-//
-// Kern-Features:
-//   - NSTextView-Basis (via NSViewRepresentable) — kein Zeilenumbruch,
-//     horizontales Scrollen, Monospace-Font, Border ähnlich .roundedBorder
-//   - Zwei-Wege-Binding: Tippen → Binding, Binding-Änderung → NSTextView
-//   - Token-Highlighting: RegexTokenization von außen → pro Token-Range
-//     farbige NSAttributedString-Attribute auf dem textStorage
-//   - Caret-Einfügung von außen über RegexFieldController
-//   - Return → onSubmit-Callback, Escape wird durchgereicht
-//   - Placeholder-Text (eigene Subklasse — kein NSTextView-Nativ-Support)
-//   - isEnabled: nicht editierbar + gedimmte Farbe
-//   - accessibilityIdentifier für Selbsttests
+// Einzeiliges NSTextView-Feld für Such- und Ersetzungsmuster. Verbindet
+// horizontales Scrollen, Zwei-Wege-Binding und Token-Highlighting mit
+// Caret-Einfügung über `RegexFieldController`. Return löst `onSubmit` aus,
+// Escape wird weitergereicht. Die Subklasse ergänzt Placeholder-Zeichnung;
+// Accessibility-Identifier machen die Felder in Selbsttests auffindbar.
 
 import SwiftUI
 import AppKit
@@ -50,11 +40,11 @@ final class RegexFieldController {
     func insertAtCaret(_ text: String) {
         guard let tv = textView else { return }
         // Zwei Fälle:
-        // - Feld HAT Fokus → an der aktuellen Selektion einfügen
+        // - Feld hat Fokus → an der aktuellen Selektion einfügen
         //   (NSRange(location: NSNotFound, …) = „aktuelle Selektion ersetzen").
-        // - Feld hat KEINEN Fokus → ans ENDE anhängen. Ohne diese
+        // - Feld hat keinen Fokus → ans Ende anhängen. Ohne diese
         //   Unterscheidung würde der Text an der letzten (unsichtbaren)
-        //   Cursor-Position landen — typisch Position 0, also VOR dem
+        //   Cursor-Position landen — typisch Position 0, also vor dem
         //   bestehenden Pattern. Genau das war der Bug-Kandidat beim
         //   Element-Picker-Klick ohne Feld-Fokus.
         let hasFocus = tv.window?.firstResponder === tv
@@ -87,7 +77,7 @@ final class RegexFieldTextView: NSTextView {
 
     // MARK: Feld-Farben (dynamisch hell/dunkel, v1.1 Dark Mode)
     //
-    // Alle früher hartkodierten Feld-Farben an EINER Stelle, je mit heller
+    // Alle früher hartkodierten Feld-Farben an einer Stelle, je mit heller
     // und dunkler Ausprägung (`Theme.dynamicNSColor` löst zur Zeichenzeit
     // über die effektive Appearance auf). Grundfarben sRGB (F.6b).
 
@@ -141,7 +131,7 @@ final class RegexFieldTextView: NSTextView {
         super.draw(dirtyRect)
 
         // Nur zeichnen, wenn kein Text vorhanden.
-        // codereview-ok: Standard-Placeholder-Idiom — draw(_:) malt NUR den Placeholder bei leerem Feld, keine übersprungene Layout-/Höhenberechnung (Höhe nur lokal zum Positionieren) (2026-07-01)
+        // codereview-ok: Standard-Placeholder-Idiom — draw(_:) malt nur den Placeholder bei leerem Feld, keine übersprungene Layout-/Höhenberechnung (Höhe nur lokal zum Positionieren)
         guard string.isEmpty, !placeholder.isEmpty else { return }
 
         // Schriftart aus dem typingAttributes übernehmen, damit Placeholder
@@ -153,10 +143,9 @@ final class RegexFieldTextView: NSTextView {
         // hell/dunkel (Grundfarben sRGB, LESSONS-LEARNED F.6b).
         let color = Self.placeholderColor
 
-        // Textposition: EXAKT dort, wo auch der echte Text beginnt — also am
-        // textContainerInset plus dem lineFragmentPadding des Containers
-        // (nicht vertikal zentriert: das saß einen Tick tiefer als der
-        // getippte Text, Daniel-Befund 2026-07-10).
+        // Placeholder am gleichen Textursprung zeichnen wie eingegebenen Text:
+        // `textContainerInset` plus `lineFragmentPadding`. Vertikales Zentrieren
+        // würde ihn gegenüber der Eingabe versetzen.
         let inset = textContainerInset
         let x = inset.width + (textContainer?.lineFragmentPadding ?? 5)
         let y = inset.height
@@ -175,7 +164,7 @@ final class RegexFieldTextView: NSTextView {
     /// NSTextView delegiert Kommandos (Return, Tab, …) über
     /// `textView(_:doCommandBy:)` im Delegate an die View; es ist aber auch
     /// möglich, den Action-Selector direkt zu überschreiben. Wir nutzen den
-    /// Delegate-Weg (`doCommandBy`) über den Coordinator — ABER als Fallback
+    /// Delegate-Weg (`doCommandBy`) über den Coordinator — aber als Fallback
     /// überschreiben wir hier zusätzlich `insertNewline:`, damit kein Newline
     /// je eingefügt wird, unabhängig davon ob ein Delegate gesetzt ist.
     ///
@@ -184,7 +173,7 @@ final class RegexFieldTextView: NSTextView {
     /// gegen echte Newline-Einfügungen.
     override func insertNewline(_ sender: Any?) {
         onSubmit?()
-        // NICHT super.insertNewline aufrufen — verhindert Zeilenumbruch.
+        // nicht super.insertNewline aufrufen — verhindert Zeilenumbruch.
     }
 
     // MARK: Drag & Drop von Capture-Group-Pillen (auch bei Fokus)
@@ -195,22 +184,22 @@ final class RegexFieldTextView: NSTextView {
     /// Feldes → Standard-Verhalten) oder gar keinen String trägt.
     fileprivate func droppedPillString(from sender: NSDraggingInfo) -> String? {
         // Selbst-Drag (markierten Text im Feld verschieben) dem Standard
-        // überlassen — wir mischen uns nur in EXTERNE String-Drops ein.
+        // überlassen — wir mischen uns nur in externe String-Drops ein.
         if let src = sender.draggingSource as? NSView, src === self { return nil }
         guard let s = sender.draggingPasteboard.string(forType: .string),
               !s.isEmpty else { return nil }
         return s
     }
 
-    /// Akzeptiert einen gedraggten String AUCH, wenn das Feld gerade den Fokus
+    /// Akzeptiert einen gedraggten String auch, wenn das Feld gerade den Fokus
     /// hat.
     ///
-    /// Hintergrund (Daniel-Befund 2026-06-24): NSTextViews eingebaute Drag-
-    /// Destination nimmt einen String-Drop nur an, wenn das Feld NICHT First
+    /// Hintergrund: NSTextViews eingebaute Drag-
+    /// Destination nimmt einen String-Drop nur an, wenn das Feld nicht First
     /// Responder ist — bei fokussiertem Feld liefert `draggingEntered`
     /// `[]` zurück, der Drop verpufft („man muss erst ein anderes Feld
     /// anklicken"). Wir überschreiben die Destination-Methoden, damit ein
-    /// externer String-Drop IMMER als Copy akzeptiert und an der Maus-Position
+    /// externer String-Drop immer als Copy akzeptiert und an der Maus-Position
     /// eingefügt wird, unabhängig vom Fokus.
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         droppedPillString(from: sender) != nil ? .copy : super.draggingEntered(sender)
@@ -429,8 +418,8 @@ struct RegexFieldView: NSViewRepresentable {
         // NSTextView vordefiniert und wird bei isEditable=true automatisch
         // aktiv. Ein gedraggter String ("$1") wird an der Maus-Position
         // eingefügt — exakt das gewünschte Verhalten für Capture-Group-Pills.
-        // KEIN eigener NSDraggingDestination nötig.
-        // Wichtig: isEditable/isSelectable NICHT vor registerForDraggedTypes
+        // kein eigener NSDraggingDestination nötig.
+        // Wichtig: isEditable/isSelectable nicht vor registerForDraggedTypes
         // setzen, da NSTextView intern beim Setzen von isEditable=true die
         // Drag-Types registriert. Deshalb isEditable hier als letztes.
         textView.isEditable = isEnabled
@@ -457,7 +446,7 @@ struct RegexFieldView: NSViewRepresentable {
     /// Synchronisiert Änderungen von SwiftUI in die NSView.
     ///
     /// Läuft bei jeder SwiftUI-Render-Runde. Wichtige Regeln:
-    /// 1. Text nur aktualisieren, wenn er sich WIRKLICH geändert hat —
+    /// 1. Text nur aktualisieren, wenn er sich wirklich geändert hat —
     ///    sonst springt der Cursor bei jedem Tastendruck an den Anfang.
     /// 2. Nach dem Text-Update die Attribute neu anwenden (Tokenisierung
     ///    kann sich geändert haben, z.B. debounced vom Dialog).
@@ -549,7 +538,7 @@ struct RegexFieldView: NSViewRepresentable {
 
         /// Tippen → Binding aktualisieren + Highlighting neu anwenden.
         ///
-        /// textDidChange wird nach JEDER Änderung des NSTextStorage gerufen
+        /// textDidChange wird nach jeder Änderung des NSTextStorage gerufen
         /// (Tippen, Einfügen, Löschen). Wir schieben den neuen String ins
         /// Binding; der Dialog kann daraufhin (debounced) den Tokenizer starten.
         func textDidChange(_ notification: Notification) {
@@ -576,11 +565,11 @@ struct RegexFieldView: NSViewRepresentable {
         func textView(_ textView: NSTextView,
                       doCommandBy commandSelector: Selector) -> Bool {
             if commandSelector == #selector(NSStandardKeyBindingResponding.insertNewline(_:)) {
-                // Return → onSubmit-Callback, KEIN Zeilenumbruch.
+                // Return → onSubmit-Callback, kein Zeilenumbruch.
                 parent.onSubmit?()
                 return true
             }
-            // Escape (cancelOperation:) NICHT abfangen — geht an die App-
+            // Escape (cancelOperation:) nicht abfangen — geht an die App-
             // Logik (AppDelegate-Monitor → Suchmaske ausblenden).
             return false
         }
@@ -596,7 +585,7 @@ struct RegexFieldView: NSViewRepresentable {
     ///    Rendering erst nach endEditing, ein atomarer Pass.
     /// 2. Attribute setzen statt `string` ersetzen: Der String bleibt identisch;
     ///    nur visuelle Eigenschaften ändern sich. NSTextView verändert deshalb
-    ///    `selectedRange` NICHT.
+    ///    `selectedRange` nicht.
     /// 3. Zuerst Basis-Farbe auf den ganzen String, dann Token-Farben obendrauf:
     ///    so bleiben Lücken zwischen Tokens korrekt eingefärbt.
     ///
@@ -656,11 +645,11 @@ struct RegexFieldView: NSViewRepresentable {
     ///   - literal:         Standard-Ink (kein visueller Akzent)
     ///   - error:           Leuchtendes Rot
     ///
-    /// Seit v1.1 DYNAMISCH (hell/dunkel): jede Kategorie hat eine helle und
+    /// Seit v1.1 dynamisch (hell/dunkel): jede Kategorie hat eine helle und
     /// eine aufgehellte dunkle Ausprägung (`Theme.dynamicNSColor`) — die
     /// NSAttributedString-Färbung löst sich beim Zeichnen über die effektive
     /// Appearance auf, das Feld bleibt im Dark Mode lesbar.
-    /// ALLE Grundfarben via sRGB — kein Gray-Colorspace (LESSONS-LEARNED F.6b).
+    /// Alle Grundfarben via sRGB — kein Gray-Colorspace (LESSONS-LEARNED F.6b).
     static func color(for kind: RegexTokenKind) -> NSColor {
         /// Kurzhelfer: sRGB-Paar hell/dunkel → dynamische NSColor.
         func pair(_ lr: Int, _ lg: Int, _ lb: Int,

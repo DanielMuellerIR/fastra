@@ -1,17 +1,9 @@
 // MiscReviewFixIndentationPasteTests.swift
 //
-// Regressionstest zu Fund G3 des Code-Reviews vom 2026-08-10.
-//
-// „Einfügen und Einrückung angleichen" rückte doppelt ein: `targetContext`
-// meldete die volle Zielspalte, `matchedText` stellte sie der ersten Zeile
-// voran — und der Editor ersetzte nur die Nullauswahl am Cursor, sodass die
-// bereits vorhandene Einrückung davor stehen blieb. Auf einer automatisch
-// eingerückten Leerzeile saß der Block dadurch eine Ebene zu tief.
-//
-// Die Tests bilden den Editor-Pfad rein rechnerisch nach (kein Fenster nötig):
-// Kontext bestimmen, Text angleichen, den von `targetContext` gemeldeten
-// Bereich ersetzen — genau so, wie es
-// `EditorContextMenu.pasteMatchingIndentationInActiveEditor` tut.
+// Beim angleichenden Einfügen vorhandene Einrückung im von `targetContext`
+// gelieferten Bereich ersetzen, statt sie ein zweites Mal voranzustellen.
+// Der Test bildet `EditorContextMenu.pasteMatchingIndentationInActiveEditor`
+// rechnerisch nach: Kontext bestimmen, Text angleichen, Bereich ersetzen.
 
 import Foundation
 import Testing

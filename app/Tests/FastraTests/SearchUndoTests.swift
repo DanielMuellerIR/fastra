@@ -15,7 +15,7 @@ struct SearchUndoTests {
 
     @Test("Quelltext-Bilder bleiben bei Verwerfen und Speichern unter korrekt zugeordnet",
           arguments: ["discard", "save-copy", "save-copy-in-place", "rename-and-save-copy", "save-original", "unsaved-save-copy", "loaded-save-copy"])
-    func savedSourceImageSurvivesUndoAndDiscard(_ finish: String) async throws {
+    func savedSourceImageSurvivesUndoAndDiscardSerialRunnerIntegration(_ finish: String) async throws {
         let directory = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -121,6 +121,7 @@ struct SearchUndoTests {
         let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
+        WorkspaceWindowRegistry.register(workspace, for: window)
         defer { window.close() }
         try #require(await waitUntil { self.editor(in: host)?.string == original })
         workspace.scope = mode.hasPrefix("open") ? .open : .file
@@ -235,6 +236,7 @@ struct SearchUndoTests {
     @Test("Geöffnet-Ersetzen sichert auch noch nie montierte Tabs", arguments: [false, true])
     func openTabs(single: Bool) async throws {
         let workspace = Workspace()
+        bindSearchResultWindowForTesting(workspace)
         let first = EditorTab(title: "a.txt", path: "", content: "Alpha erster 😀\n")
         let second = EditorTab(title: "b.txt", path: "", content: "Alpha zweiter\n")
         workspace.tabs = [first, second]
@@ -310,6 +312,7 @@ struct SearchUndoTests {
         let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
+        WorkspaceWindowRegistry.register(workspace, for: window)
         defer { window.close() }
         #expect(await waitUntil { self.editor(in: host)?.string == tab.content })
         let first = try #require(editor(in: host))

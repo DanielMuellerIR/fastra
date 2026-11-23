@@ -116,9 +116,8 @@ struct HexEditingTests {
         let data = Data([0x00, 0x11, 0x22, 0x33])
         // Byte 0 des Abschnitts bei Basisadresse 0x10 ändern.
         session.editRow("FF 11 22 33", data: data, baseOffset: 0x10, row: 0)
-        // `applied` ist die EINE Bytequelle für schreibgeschützte Anzeige und
-        // Drucksnapshot: Beide müssen dieselben effektiven Bytes zeigen
-        // (Reviewfund 2026-08-18).
+        // `applied` ist die eine Bytequelle für schreibgeschützte Anzeige und
+        // Drucksnapshot: Beide müssen dieselben effektiven Bytes zeigen.
         #expect(session.applied(to: data, baseOffset: 0x10)
                 == Data([0xFF, 0x11, 0x22, 0x33]))
         // Ein anderer Abschnitt (andere Basisadresse) bleibt unberührt.

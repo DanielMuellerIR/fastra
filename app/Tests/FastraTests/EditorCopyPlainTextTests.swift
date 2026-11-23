@@ -4,7 +4,7 @@
 // beim Kopieren einen attributierten Text aufs Clipboard; oberster Flavor ist
 // dann RTF. Programme mit Rich-Text-Vorrang übernehmen so nicht nur
 // Editorschrift und -farbe — ihr Weg über RTF/HTML verliert außerdem den
-// Emoji-Variantenselektor U+FE0F, aus ⏸️ wird ⏸ (Daniel-Befund 2026-07-27).
+// Emoji-Variantenselektor U+FE0F, aus ⏸️ wird ⏸.
 //
 // Der Test prüft das reale Verhalten, nicht die Patch-Zeile: Was landet nach
 // einem echten `copy(_:)` auf dem Pasteboard?

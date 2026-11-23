@@ -146,7 +146,7 @@ func fileLoader_utf16_bom() throws {
 
     let result = try FileLoader.load(url: url)
 
-    // Der Inhalt muss korrekt dekodiert sein — BOM darf NICHT im Inhalt auftauchen.
+    // Der Inhalt muss korrekt dekodiert sein — BOM darf nicht im Inhalt auftauchen.
     // Foundation schneidet den BOM automatisch ab, wenn der BOM erkannt wurde.
     #expect(result.content.contains("Hallo Welt"))
     // Encoding muss als irgendeine UTF-16-Variante erkannt worden sein.
@@ -309,7 +309,7 @@ func fileLoader_forcedLargeProbeFailureIsUnreadable() throws {
     }
 }
 
-// MARK: - Tests: nur reguläre Dateien (Code-Review-Befund 2026-07-24)
+// MARK: - Tests: nur reguläre Dateien
 
 /// Nimmt das Ergebnis eines Ladeversuchs von einem fremden Thread entgegen.
 private final class LoadOutcomeBox: @unchecked Sendable {
@@ -331,13 +331,9 @@ func fileLoader_fifo_isRejectedWithoutBlocking() throws {
     #expect(mkfifo(url.path, 0o600) == 0, "FIFO konnte nicht angelegt werden")
     defer { try? FileManager.default.removeItem(at: url) }
 
-    // Der Ladeversuch läuft bewusst auf einem eigenen Thread und wird mit
-    // Frist abgeholt. Fehlt der Typ-Check, blockiert `load(url:)` in `open(2)`
-    // unbegrenzt — und ein synchroner Test würde dann die GANZE Suite aufhängen
-    // statt rot zu werden. Ein Zeitlimit hilft dagegen nicht: es bricht nur
-    // Tasks ab, nicht einen im Kernel steckenden Systemaufruf. (Verifiziert
-    // 2026-07-27: gegen den Stand ohne Typ-Check lief die Suite in 600 s
-    // nicht durch.)
+    // Ladeversuch auf eigenem Thread mit Frist prüfen: Ohne Typ-Check könnte
+    // `open(2)` auf einer FIFO die ganze Testsuite blockieren. Ein Task-Zeitlimit
+    // unterbricht keinen im Kernel wartenden Systemaufruf.
     let finished = DispatchSemaphore(value: 0)
     let outcome = LoadOutcomeBox()
     Thread.detachNewThread {
@@ -394,7 +390,7 @@ func fileLoader_unreadableAttributes_doNotBecomeSizeZero() throws {
     //
     // Ehrlich zur Aussagekraft: Dieser Test hält nur die Zusage fest — er wird
     // auch gegen den alten Stand grün, weil dort das Öffnen ebenfalls
-    // scheitert. Dass die GRÖSSE nicht mehr still auf 0 fällt, belegt der
+    // scheitert. Dass die Größe nicht mehr still auf 0 fällt, belegt der
     // Symlink-Test oben (alt 107 statt 11 Bytes).
     let parent = testTemporaryDirectory()
         .appendingPathComponent("fastra-fileloader-locked-\(UUID().uuidString)")

@@ -1,11 +1,11 @@
 // CompareFilesDialog.swift
 //
-// Dialog „Dateien vergleichen…" (Etappe 1 Wunschpaket 2026-07c; BBEdit
-// „Find Differences"). Links/Rechts je: Dateiauswahl-Button, Drag-and-drop-
-// Feld und ein Popup mit offenen Tabs und zuletzt geöffneten Dateien;
-// darunter die Vergleichsoptionen. Vorbelegung: aktiver Tab links.
-// Nicht vorhandene oder binäre Dateien melden sich verständlich AM FELD —
-// die endgültige Prüfung übernimmt zusätzlich der Ladepfad des Diff-Tabs.
+// Dialog „Dateien vergleichen…" (BBEdit „Find
+// Differences"). Links/Rechts je: Dateiauswahl-Button, Drag-and-drop- Feld und
+// ein Popup mit offenen Tabs und zuletzt geöffneten Dateien; darunter die
+// Vergleichsoptionen. Vorbelegung: aktiver Tab links. Nicht vorhandene oder
+// binäre Dateien melden sich verständlich am Feld — die endgültige Prüfung
+// übernimmt zusätzlich der Ladepfad des Diff-Tabs.
 
 import SwiftUI
 import UniformTypeIdentifiers
@@ -139,13 +139,13 @@ struct CompareFilesDialog: View {
 
     // Optionen überleben App-Neustarts (BBEdit-Verhalten); Erstzustand:
     // nichts ignorieren (Produktvorgabe).
-    @AppStorage("fastra.fileDiff.ignoreTrailingWhitespace", store: SelfTest.workspaceDefaults())
+    @AppStorage("fastra.fileDiff.ignoreTrailingWhitespace", store: AppDefaults.store)
     private var ignoreTrailingWhitespace = false
-    @AppStorage("fastra.fileDiff.ignoreAllWhitespace", store: SelfTest.workspaceDefaults())
+    @AppStorage("fastra.fileDiff.ignoreAllWhitespace", store: AppDefaults.store)
     private var ignoreAllWhitespace = false
-    @AppStorage("fastra.fileDiff.ignoreBlankLines", store: SelfTest.workspaceDefaults())
+    @AppStorage("fastra.fileDiff.ignoreBlankLines", store: AppDefaults.store)
     private var ignoreBlankLines = false
-    @AppStorage("fastra.fileDiff.ignoreCase", store: SelfTest.workspaceDefaults())
+    @AppStorage("fastra.fileDiff.ignoreCase", store: AppDefaults.store)
     private var ignoreCase = false
 
     var body: some View {
@@ -368,7 +368,7 @@ struct CompareFilesDialog: View {
             guard let url else { return }
             let files = DropHandling.loadableFiles(from: [url])
             DispatchQueue.main.async {
-                // Auch eine nicht ladbare Datei WIRD gesetzt — das Feld
+                // Auch eine nicht ladbare Datei wird gesetzt — das Feld
                 // zeigt dann seine verständliche Meldung, statt den Drop
                 // still zu verschlucken.
                 selection.wrappedValue = .file(files.first ?? url)

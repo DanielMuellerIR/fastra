@@ -133,7 +133,7 @@ func baselineMovesToSavedState() throws {
     #expect(ws.write(tab: ws.tabs[0], to: url))
     #expect(!ws.tabs[0].isDirty)
 
-    // Rückgängig hinter den Speicherpunkt: alter Inhalt ist jetzt WIEDER
+    // Rückgängig hinter den Speicherpunkt: alter Inhalt ist jetzt wieder
     // eine Abweichung von der (neuen) Basis.
     ws.activeTabContent.wrappedValue = "Start\n"
     #expect(ws.tabs[0].isDirty)

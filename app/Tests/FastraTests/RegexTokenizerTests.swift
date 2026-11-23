@@ -11,7 +11,7 @@
 // Stil: Swift Testing (@Test / #expect), anfängerfreundliche Kommentare,
 // kein XCTest. Basislinie vor diesem File: 145 Tests.
 //
-// WICHTIG: `.serialized` an der Suite — tree-sitter Parser ist NICHT
+// Wichtig: `.serialized` an der Suite — tree-sitter Parser ist nicht
 // thread-safe. Swift Testing führt Tests standardmäßig parallel aus,
 // was zu "Fatal access conflict"-Abstürzen führt. Die Serialisierung
 // kostet etwas Laufzeit, verhindert aber Datenzugriffs-Konflikte.
@@ -191,7 +191,7 @@ struct RegexTokenizerTests {
 
     @Test("Lazy Quantifier +? → EIN .quantifier-Token (lazy-? inklusive)")
     func tokenizer_quantifierLazy() {
-        // +? muss als EIN Token ausgegeben werden, nicht als "+" + "?"
+        // +? muss als ein Token ausgegeben werden, nicht als "+" + "?"
         let r = RegexTokenizer.tokenize(#"\w+?"#)
         let quantifiers = r.tokens.filter { $0.kind == .quantifier }
         #expect(quantifiers.count == 1)
@@ -277,7 +277,7 @@ struct RegexTokenizerTests {
 
     @Test("Named Backreference \\k<name> → EIN .backreference-Token")
     func tokenizer_backreferenceNamedK() {
-        // Das gesamte \k<name>-Konstrukt muss als EIN Token erscheinen
+        // Das gesamte \k<name>-Konstrukt muss als ein Token erscheinen
         let r = RegexTokenizer.tokenize(#"(?<wort>\w+)\k<wort>"#)
         let refs = r.tokens.filter { $0.kind == .backreference }
         #expect(refs.count == 1)

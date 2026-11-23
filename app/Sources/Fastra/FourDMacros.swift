@@ -1,7 +1,6 @@
 // FourDMacros.swift
 //
-// Modell und Parser der 4D-Methodeneditor-Makros (Daniels Ideenliste,
-// „4D-Makros"). Diese Datei ist bewusst PUR: nur Foundation, kein AppKit,
+// Modell und Parser der 4D-Methodeneditor-Makros . Diese Datei ist bewusst pur: nur Foundation, kein AppKit,
 // kein Workspace, keine Oberfläche. Sie liest XML und beantwortet die Frage,
 // was Fastra mit einem Makro überhaupt anfangen kann.
 //
@@ -17,13 +16,13 @@
 //
 // Zwei Eigenheiten dieses Formats bestimmen den ganzen Parser:
 //
-// 1. `<text>` enthält GEMISCHTEN Inhalt — echten Text und dazwischen leere
+// 1. `<text>` enthält gemischten Inhalt — echten Text und dazwischen leere
 //    Element-Tags als Platzhalter (`<caret/>` für die spätere Einfügemarke,
 //    `<selection/>` für den markierten Text und so weiter). Der Text muss
 //    dabei zeichengenau erhalten bleiben: Die Einrückungen der Makros sind
 //    der eingefügte 4D-Quelltext, ein „aufgeräumter" Whitespace wäre ein
 //    Datenverlust.
-// 2. `<method>` steht INNERHALB von `<text>` und enthält einen 4D-Methoden-
+// 2. `<method>` steht innerhalb von `<text>` und enthält einen 4D-Methoden-
 //    aufruf als Text. Der Platzhalter `<method_name/>` kommt darin real in
 //    beiden Schreibweisen vor: als echtes Tag und als maskierter Text
 //    (`&lt;method_name/&gt;`). Beide Formen werden hier auf dieselbe
@@ -65,9 +64,9 @@ struct FourDMacro: Equatable, Identifiable {
     /// dieser Quelle. Der Name taugt dafür nicht — Trennlinien heißen alle
     /// „-", und derselbe Makroname kommt in mehreren Dateien vor.
     let id: String
-    /// Name OHNE das Kürzel-Suffix „ /x" — das gehört in die Menüanzeige.
+    /// Name ohne das Kürzel-Suffix „ /x" — das gehört in die Menüanzeige.
     let displayName: String
-    /// Kürzel aus dem Suffix „ /x" des Namens (x ist genau EIN Zeichen,
+    /// Kürzel aus dem Suffix „ /x" des Namens (x ist genau ein Zeichen,
     /// etwa `t`, `ü` oder `#`), kleingeschrieben.
     let shortcutKey: Character?
     /// Der einzufügende Text als Folge von Bausteinen.
@@ -139,7 +138,7 @@ enum FourDMacroXML {
     /// kommt eine leere Liste zurück — ein defekter Makro-Ordner darf die
     /// übrigen Fundorte nicht verhindern.
     ///
-    /// `sourceLabel` ist der ANZEIGETEXT der Herkunft (üblicherweise der
+    /// `sourceLabel` ist der Anzeigetext der Herkunft (üblicherweise der
     /// Dateiname, er steht im Tooltip). `sourceKey` ist dagegen die eindeutige
     /// Kennung der Quelle und gehört in die Makro-ID: Zwei gleichzeitig
     /// geladene Dateien heißen real beide „Macros.xml“ (mitgelieferte 4D-Makros
@@ -163,7 +162,7 @@ enum FourDMacroXML {
     }
 
     /// Zerlegt den Makronamen in Anzeigename und Kürzel. Ein Kürzel ist das
-    /// Suffix „ /x" mit genau EINEM Zeichen; „ /ab" ist keins und bleibt
+    /// Suffix „ /x" mit genau einem Zeichen; „ /ab" ist keins und bleibt
     /// deshalb vollständig im Anzeigenamen stehen.
     static func splitName(_ rawName: String) -> (displayName: String, shortcutKey: Character?) {
         let characters = Array(rawName)
@@ -357,7 +356,7 @@ enum FourDMacroXML {
     /// Bewusst eine einfache, robuste Zerlegung und kein 4D-Parser: Sie
     /// respektiert nur verschachtelte Klammern und Zeichenketten in doppelten
     /// Anführungszeichen (mit `\"` als maskiertem Anführungszeichen). Ein
-    /// Semikolon INNERHALB einer Zeichenkette trennt deshalb nicht.
+    /// Semikolon innerhalb einer Zeichenkette trennt deshalb nicht.
     /// Ohne Klammern gilt der ganze Text als Methodenname ohne Argumente;
     /// bei fehlender schließender Klammer kommt `nil` zurück. Steht hinter der
     /// schließenden Klammer noch etwas anderes als Leerraum, ist das kein
@@ -696,8 +695,8 @@ private final class FourDMacroCollector: NSObject, XMLParserDelegate {
 
     /// Bucht `units` UTF-16-Einheiten aufs gemeinsame Textbudget der Quelle.
     /// `false` heißt: Grenze überschritten, das Parsen wurde abgebrochen.
-    /// Über diese EINE Stelle laufen echter Zeichentext (`foundCharacters`)
-    /// UND normalisierter Ersatztext wie `<method_name/>`.
+    /// Über diese eine Stelle laufen echter Zeichentext (`foundCharacters`)
+    /// und normalisierter Ersatztext wie `<method_name/>`.
     private func charge(textUnits units: Int, parser: XMLParser) -> Bool {
         textUTF16Units += units
         guard textUTF16Units <= limits.textUTF16Units else {
@@ -734,7 +733,7 @@ private extension Character {
 }
 
 private extension String {
-    /// Nur den Leerraum am ENDE entfernen — führender Leerraum eines
+    /// Nur den Leerraum am Ende entfernen — führender Leerraum eines
     /// Makronamens ist Absicht des Autors (Einrückung im Menü).
     func trimmingTrailingWhitespace() -> String {
         var result = self

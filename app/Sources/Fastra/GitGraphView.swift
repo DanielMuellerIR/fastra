@@ -8,8 +8,8 @@ enum GitGraphActionAvailability {
 //
 // Kompakter Git-Graph nach dem VS-Code/Codium-Modell: Die Graphbreite richtet
 // sich pro Zeile nach den tatsächlich sichtbaren Lanes, der Autor hängt direkt
-// am Betreff und Detaildaten wandern in den Tooltip. Commits lassen sich inline
-// aufklappen; ein Doppelklick auf einen Commit beziehungsweise ein Klick auf
+// am Betreff. Aufgeklappte Commits zeigen ihre Detaildaten vor der Dateiliste;
+// ein Doppelklick auf einen Commit beziehungsweise ein Klick auf
 // eine seiner Dateien öffnet den jeweiligen Diff im Editor.
 
 struct GitGraphView: View {
@@ -99,13 +99,13 @@ struct GitGraphView: View {
                 .padding(.vertical, 4)
                 .sidebarScrollRetention(key: scrollKey,
                                         memory: workspace.sidebarScrollMemory)
-                // Selbsttests lesen hier ab, wie viele Zeilen WIRKLICH
+                // Selbsttests lesen hier ab, wie viele Zeilen wirklich
                 // gerendert sind — nicht bloß, was im Modell steht.
                 .background(SelfTestMarker(id: "gitGraphRows-\(layout.rows.count)")
                     .frame(width: 0, height: 0))
             }
             // Die Identität hängt am Schlüssel: Der Wechsel zwischen ganzer
-            // Historie und Dateiverlauf zeigt eine ANDERE Liste und darf die
+            // Historie und Dateiverlauf zeigt eine andere Liste und darf die
             // Position der vorigen nicht erben.
             .id(scrollKey)
             .clipped()
@@ -248,7 +248,8 @@ private struct GraphRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            if isExpanded, !row.commit.files.isEmpty {
+            if isExpanded {
+                commitDetails
                 ForEach(row.commit.files) { file in
                     GraphCommitFileRow(
                         file: file,
@@ -261,6 +262,33 @@ private struct GraphRowView: View {
                 }
             }
         }
+    }
+
+    private var commitDetails: some View {
+        let dates = commitDates
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("\(row.commit.author) · \(dates.relative)")
+                .foregroundColor(Theme.textSecondary)
+            Text("\(dates.exact) · \(row.commit.shortHash)")
+                .foregroundColor(Theme.textSecondary)
+            Text(row.commit.subject)
+                .foregroundColor(Theme.textPrimary)
+            Text(changeSummary)
+                .foregroundColor(Theme.textSecondary)
+        }
+        .fastraFont(.small)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, graphWidth + 6)
+        .padding(.vertical, 7)
+        .overlay(alignment: .leading) {
+            // Auch durch den variabel hohen Detailblock laufen dieselben Lanes
+            // wie durch die anschließenden Dateien dieses Commits weiter.
+            GraphContinuationLines(lanes: continuationLanes, laneWidth: laneWidth, graphWidth: graphWidth)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 8)
     }
 
     private var header: some View {
@@ -288,11 +316,7 @@ private struct GraphRowView: View {
                     case .first:
                         workspace.openGitCommit(hash: row.commit.hash)
                     case .second:
-                        if row.commit.files.isEmpty {
-                            workspace.openGitCommit(hash: row.commit.hash)
-                        } else {
-                            toggleExpanded()
-                        }
+                        toggleExpanded()
                     }
                 }
         )
@@ -327,8 +351,8 @@ private struct GraphRowView: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityValue(row.commit.files.isEmpty ? "" : (isExpanded
-                            ? L10n.string("ausgeklappt") : L10n.string("eingeklappt")))
+        .accessibilityValue(isExpanded
+                            ? L10n.string("ausgeklappt") : L10n.string("eingeklappt"))
         .accessibilityHint(GitGraphAccessibility.commitHint(
             isHEAD: row.isHEAD, hasFiles: !row.commit.files.isEmpty,
             isExpanded: isExpanded
@@ -336,9 +360,8 @@ private struct GraphRowView: View {
         .accessibilityAction(named: Text("Commit-Diff öffnen")) {
             workspace.openGitCommit(hash: row.commit.hash)
         }
-        .accessibilityAction(named: Text(isExpanded
-                                         ? "Dateien einklappen" : "Dateien ausklappen")) {
-            if !row.commit.files.isEmpty { toggleExpanded() }
+        .accessibilityAction(named: Text("Bereich ein-/ausklappen")) {
+            toggleExpanded()
         }
     }
 
@@ -438,11 +461,9 @@ private struct GraphRowView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 2)
-            if !row.commit.files.isEmpty {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .fastraFont(size: 9, weight: .semibold)
-                    .foregroundColor(Theme.textSecondary)
-            }
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .fastraFont(size: 9, weight: .semibold)
+                .foregroundColor(Theme.textSecondary)
         }
     }
 
@@ -531,7 +552,7 @@ private struct GraphRowView: View {
     }
 
     /// Lanes, die an der Unterkante der Commit-Zeile weiterlaufen. Beim
-    /// Aufklappen werden sie durch die Dateizeilen verlängert, sonst entstünde
+    /// Aufklappen werden sie durch Details und Dateizeilen verlängert, sonst entstünde
     /// mitten im Graph eine optische Lücke.
     private var continuationLanes: [(column: Int, colorIndex: Int)] {
         var seen: Set<Int> = []
@@ -542,28 +563,32 @@ private struct GraphRowView: View {
         }
     }
 
-    private var tooltip: String {
-        let exactDate: String
-        let relativeDate: String
-        if row.commit.timestamp > 0 {
-            let date = Date(timeIntervalSince1970: TimeInterval(row.commit.timestamp))
-            let exact = DateFormatter()
-            exact.dateStyle = .long
-            exact.timeStyle = .short
-            exactDate = exact.string(from: date)
-            let relative = RelativeDateTimeFormatter()
-            relative.unitsStyle = .full
-            relativeDate = relative.localizedString(for: date, relativeTo: Date())
-        } else {
-            exactDate = row.commit.date
-            relativeDate = row.commit.date
+    private var commitDates: (exact: String, relative: String) {
+        guard row.commit.timestamp > 0 else {
+            return (row.commit.date, row.commit.date)
         }
+        let date = Date(timeIntervalSince1970: TimeInterval(row.commit.timestamp))
+        let exact = DateFormatter()
+        exact.dateStyle = .long
+        exact.timeStyle = .short
+        let relative = RelativeDateTimeFormatter()
+        relative.unitsStyle = .full
+        return (exact.string(from: date),
+                relative.localizedString(for: date, relativeTo: Date()))
+    }
+
+    private var changeSummary: String {
+        L10n.format("%lld Dateien geändert, %lld Einfügungen(+), %lld Löschungen(-)",
+                    Int64(row.commit.files.count), Int64(row.commit.additions),
+                    Int64(row.commit.deletions))
+    }
+
+    private var tooltip: String {
+        let dates = commitDates
         let head = row.isHEAD ? headTooltip + "\n\n" : ""
-        return head + "\(row.commit.author) · \(relativeDate) (\(exactDate))\n"
+        return head + "\(row.commit.author) · \(dates.relative) (\(dates.exact))\n"
             + "\(row.commit.subject)\n\n"
-            + L10n.format("%lld Dateien geändert, %lld Einfügungen(+), %lld Löschungen(-)",
-                          Int64(row.commit.files.count), Int64(row.commit.additions),
-                          Int64(row.commit.deletions))
+            + changeSummary
             + "\n\(row.commit.shortHash)"
     }
 
@@ -574,6 +599,25 @@ private struct GraphRowView: View {
         return head + L10n.format("%@ %@: %@, von %@", kind,
                                   row.commit.shortHash, row.commit.subject,
                                   row.commit.author)
+    }
+}
+
+private struct GraphContinuationLines: View {
+    let lanes: [(column: Int, colorIndex: Int)]
+    let laneWidth: CGFloat
+    let graphWidth: CGFloat
+
+    var body: some View {
+        Canvas { context, size in
+            for lane in lanes {
+                let x = CGFloat(lane.column) * laneWidth + laneWidth / 2
+                var path = Path()
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: size.height))
+                context.stroke(path, with: .color(GraphRowView.color(lane.colorIndex)), lineWidth: 1.7)
+            }
+        }
+        .frame(width: graphWidth)
     }
 }
 
@@ -592,7 +636,8 @@ private struct GraphCommitFileRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            continuationGraph
+            GraphContinuationLines(lanes: continuationLanes, laneWidth: laneWidth, graphWidth: graphWidth)
+                .frame(height: height)
             Image(systemName: "doc.text")
                 .fastraFont(size: 10)
                 .foregroundColor(Theme.textSecondary)
@@ -653,19 +698,6 @@ private struct GraphCommitFileRow: View {
                 workspace.openGitCommitFile(hash: hash, file: file)
             }
         }
-    }
-
-    private var continuationGraph: some View {
-        Canvas { context, size in
-            for lane in continuationLanes {
-                let x = CGFloat(lane.column) * laneWidth + laneWidth / 2
-                var path = Path()
-                path.move(to: CGPoint(x: x, y: 0))
-                path.addLine(to: CGPoint(x: x, y: size.height))
-                context.stroke(path, with: .color(GraphRowView.color(lane.colorIndex)), lineWidth: 1.7)
-            }
-        }
-        .frame(width: graphWidth, height: height)
     }
 
     private var statusColor: Color {

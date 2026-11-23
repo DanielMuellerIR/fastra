@@ -69,6 +69,7 @@ impl State {
         let prior = self.observation.borrow().clone();
         let path = snapshot.path();
         let encoding = doc.format.borrow().encoding();
+        let generation = self.generation.get();
         let weak = Rc::downgrade(self);
         self.busy.set(true);
         support::background(
@@ -114,7 +115,8 @@ impl State {
                 let Some(doc) = state.doc.upgrade() else {
                     return;
                 };
-                if doc.saving.get()
+                if state.generation.get() != generation
+                    || doc.saving.get()
                     || doc.snapshot.borrow().as_ref().map(|s| s.file_identity()) != Some(baseline)
                 {
                     return;
@@ -279,10 +281,16 @@ impl State {
                     let (Some(ui), Some(doc)) = (state.ui.upgrade(), state.doc.upgrade()) else {
                         return;
                     };
+                    if state.generation.get() != generation {
+                        status.set_text(ui.lang.text(
+                            "Vorschau veraltet. Editor unverändert.",
+                            "Preview stale. Editor unchanged.",
+                        ));
+                        return;
+                    }
                     match result {
                         Ok(text)
                             if ui.window.is_visible()
-                                && state.generation.get() == generation
                                 && doc.revision.get() == revision
                                 && buffer_text(&doc.buffer) == old
                                 && !doc.source_edits_locked()
@@ -310,9 +318,7 @@ impl State {
                                 ));
                             doc.update_label();
                             ui.invalidate();
-                            state.baseline.set(None);
-                            state.observation.borrow_mut().take();
-                            state.root.set_visible(false);
+                            baseline_changed(&doc);
                             close.close();
                         }
                         Ok(_) => status.set_text(ui.lang.text(
@@ -338,15 +344,12 @@ impl State {
         let weak = Rc::downgrade(self);
         let candidate = candidate.clone();
         window.connect_close_request(move |_| {
-            if let Some(state) = weak.upgrade() {
-                let current = state.generation.get() == generation;
+            if let Some(state) = weak.upgrade().filter(|s| s.generation.get() == generation) {
                 state.generation.set(state.generation.get() + 1);
-                if current {
-                    if let Some(text) = candidate.borrow_mut().take() {
-                        *state.candidate.borrow_mut() = Some(text);
-                    } else {
-                        state.observation.borrow_mut().take();
-                    }
+                if let Some(text) = candidate.borrow_mut().take() {
+                    *state.candidate.borrow_mut() = Some(text);
+                } else {
+                    state.observation.borrow_mut().take();
                 }
             }
             gtk::glib::Propagation::Proceed
@@ -443,6 +446,7 @@ pub(super) fn selftest(ui: Rc<Ui>) {
     let phase = Cell::new(0);
     let deadline = std::time::Instant::now();
     let errored_at = Cell::new(None);
+    let obsolete_review = RefCell::new(None);
     gtk::glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
         assert!(
             deadline.elapsed() < std::time::Duration::from_secs(35),
@@ -466,6 +470,9 @@ pub(super) fn selftest(ui: Rc<Ui>) {
         if state.busy.get() {
             return gtk::glib::ControlFlow::Continue;
         }
+        let snapshot =
+            || fastra_io::Snapshot::read(&path, &fastra_core::Cancellation::default()).unwrap();
+        let write = |value| std::fs::write(&path, doc.format.borrow().encode(value).unwrap()).unwrap();
         match phase.get() {
             0 => {
                 assert_eq!(buffer_text(&doc.buffer), "original café\r\n");
@@ -602,7 +609,7 @@ pub(super) fn selftest(ui: Rc<Ui>) {
                 apply.emit_clicked();
                 phase.set(2);
             }
-            _ => {
+            7 => {
                 if state.candidate.borrow().is_none() {
                     state.check();
                     return gtk::glib::ControlFlow::Continue;
@@ -616,12 +623,88 @@ pub(super) fn selftest(ui: Rc<Ui>) {
                         .unwrap()
                         .as_slice()
                 );
+                ui.refresh_clean_documents(vec![snapshot()]);
+                assert_eq!(buffer_text(&doc.buffer), "original café\r\n!");
+                assert!(state.root.is_visible() && state.review.is_sensitive());
+                doc.buffer.set_modified(false);
+                ui.refresh_clean_documents(vec![snapshot()]);
+
+                let previous = doc.snapshot.borrow().as_ref().unwrap().file_identity();
+                write("confirmed file contents\r\n");
+                state.check();
+                assert!(state.busy.get());
+                let confirmed = snapshot();
+                assert_eq!(confirmed.file_identity(), previous);
+                // Der schon gestartete Watch-Read gehört noch zur Vorgängerbasis.
+                ui.refresh_clean_documents(vec![confirmed]);
+                phase.set(10);
+            }
+            10 => {
+                assert_eq!(buffer_text(&doc.buffer), "confirmed file contents\r\n");
+                assert!(!state.root.is_visible() && !state.review.is_sensitive());
+                assert!(state.candidate.borrow().is_none());
+                write("genuine external change\r\n");
+                state.check();
+                phase.set(11);
+            }
+            11 => {
+                assert!(state.root.is_visible() && state.review.is_sensitive());
+                assert_eq!(
+                    state.candidate.borrow().as_ref().unwrap().text(),
+                    "genuine external change\r\n"
+                );
+                state.review.emit_clicked();
+                let (window, consent, apply, _) = controls(&ui);
+                write("new confirmed contents\r\n");
+                consent.set_active(true);
+                apply.emit_clicked();
+                ui.refresh_clean_documents(vec![snapshot()]);
+                *obsolete_review.borrow_mut() = Some(window);
+                phase.set(12);
+            }
+            12 => {
+                let window = obsolete_review.borrow();
+                let mut descendants_of_review = Vec::new();
+                descendants(
+                    window.as_ref().unwrap().upcast_ref(),
+                    &mut descendants_of_review,
+                );
+                if !descendants_of_review
+                    .iter()
+                    .filter_map(|widget| widget.downcast_ref::<gtk::Label>())
+                    .any(|label| {
+                        label.text() == ui.lang.text(
+                            "Vorschau veraltet. Editor unverändert.",
+                            "Preview stale. Editor unchanged.",
+                        )
+                    })
+                {
+                    return gtk::glib::ControlFlow::Continue;
+                }
+                assert_eq!(buffer_text(&doc.buffer), "new confirmed contents\r\n");
+                assert!(!state.root.is_visible());
+                write("latest external change\r\n");
+                state.check();
+                phase.set(13);
+            }
+            13 => {
+                assert_eq!(
+                    state.candidate.borrow().as_ref().unwrap().text(),
+                    "latest external change\r\n"
+                );
+                assert!(state.root.is_visible() && state.review.is_sensitive());
+                let generation = state.generation.get();
+                obsolete_review.borrow_mut().take().unwrap().close();
+                assert_eq!(state.generation.get(), generation);
+                assert!(state.candidate.borrow().is_some());
                 state.review.emit_clicked();
                 let (window, _, _, _) = controls(&ui);
                 support::test_size(&window);
+                println!("FASTRA_WATCH_VERIFIED_REFRESH_OK same-inode/dirty-skip/late-check/late-reload/stale-close/new-external-write");
                 support::finish(window, ui.clone(), "watch");
                 return gtk::glib::ControlFlow::Break;
             }
+            _ => unreachable!("unknown watch test phase"),
         }
         gtk::glib::ControlFlow::Continue
     });
@@ -752,12 +835,13 @@ pub(super) fn recheck_after_git(ui: &Rc<Ui>, root: &std::path::Path) {
     }
 }
 
-pub(super) fn relocated(doc: &Document) {
+pub(super) fn baseline_changed(doc: &Document) {
     if let Some(state) = doc.watch.borrow().as_ref() {
         state.generation.set(state.generation.get().wrapping_add(1));
         state.candidate.borrow_mut().take();
         state.observation.borrow_mut().take();
         state.baseline.set(None);
+        state.review.set_sensitive(false);
         state.root.set_visible(false);
     }
 }

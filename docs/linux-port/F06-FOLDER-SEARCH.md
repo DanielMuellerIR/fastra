@@ -76,7 +76,16 @@ Die erste Umsetzung begrenzt Textdateien auf 4 MiB und logische Zeilen auf
 10.000 Verzeichnisse, 100.000 Verzeichniseinträge, Tiefe 128, 30 Sekunden sowie
 128 MiB gespeicherte Quell-, Snapshot-, Capture- und Ersetzungstexte. Ein
 überschrittenes Gesamtlimit liefert einen Fehler und keine teilweise anwendbare
-Vorschau. Der reguläre Transaktionsadapter akzeptiert ausschließlich ext4/Btrfs
+Vorschau.
+
+Bei einer unvollständigen Suche bleiben Treffer zur Navigation erhalten. Eine
+nicht lesbare, nicht dekodierbare oder zu große Eingabe sowie nicht sicher
+erhaltbare Metadaten sperren die Freigaben. Bewusst ausgeschlossene Pfade,
+Dateitypen und Dateisets bleiben außerhalb der Suche. Vollständig gelesene
+Binärdaten ohne Text-BOM werden angezeigt und bei Apply erneut auf Identität
+und Inhalt geprüft. Sie werden weder geschrieben noch Teil der Rücknahme.
+
+Der reguläre Transaktionsadapter akzeptiert ausschließlich ext4/Btrfs
 auf einem gemeinsamen Dateisystem; siehe [Dateitransaktionen](F03-TRANSACTIONS.md).
 
 Neun Backendtests prüfen selektive Ersetzung und Undo über Verzeichnisgrenzen,

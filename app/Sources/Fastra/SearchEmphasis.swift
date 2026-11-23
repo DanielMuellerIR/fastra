@@ -1,13 +1,12 @@
 // SearchEmphasis.swift
 //
-// Live-Markierung aller Suchtreffer im aktiven Dokument (Etappe 2 Wunschpaket
-// 2026-07b), BBEdit-Vorbild „Show matches“: Während die Suchmaske offen ist,
-// zeigt der Editor alle Treffer der Live-Suche als flache, helle Markierungen.
-//
-// WICHTIG (Produktinvariante): Das ist reine ANZEIGE über den öffentlichen
+// Live-Markierung aller Suchtreffer im aktiven Dokument,
+// BBEdit-Vorbild „Show matches“: Während die Suchmaske offen ist, zeigt der
+// Editor alle Treffer der Live-Suche als flache, helle Markierungen. Wichtig
+// (Produktinvariante): Das ist reine Anzeige über den öffentlichen
 // `EmphasisManager` des gepinnten CodeEditTextView. Kein Einfluss auf Undo,
-// Dirty-Zustand, Ersetzen oder die Trefferbasis der Vorschau — die Layer
-// leben ausschließlich im Darstellungs-Baum der TextView.
+// Dirty-Zustand, Ersetzen oder die Trefferbasis der Vorschau — die Layer leben
+// ausschließlich im Darstellungs-Baum der TextView.
 
 import AppKit
 import CodeEditTextView
@@ -70,7 +69,7 @@ enum SearchEmphasis {
     }
 
     /// Pure Cap-Logik (unit-testbar): höchstens `cap` Ranges werden
-    /// gezeichnet; `truncated` wird wahr, sobald die ECHTE Gesamtzahl der
+    /// gezeichnet; `truncated` wird wahr, sobald die echte Gesamtzahl der
     /// Treffer über dem Gezeichneten liegt.
     static func plan(matchRanges: [NSRange], totalMatches: Int,
                      cap: Int = SearchEmphasis.cap) -> Plan {
@@ -93,8 +92,8 @@ enum SearchEmphasis {
     /// ihnen aber sofort die Freigabe (`visibleBufferResultsOptions = nil`).
     /// Ein verzögertes Nachzeichnen — Scroll-Relay, Editor-Remount — darf
     /// solche Bereiche dann nicht erneut zeichnen: Sie gehören zum alten
-    /// Textstand und lägen im neuen Text an falschen Stellen
-    /// (Review 2026-08-29). Ordner-/Projekt-Treffer sichert `source` bereits
+    /// Textstand und lägen im neuen Text an falschen Stellen.
+    /// Ordner-/Projekt-Treffer sichert `source` bereits
     /// über Dirty-Zustand und Datei-Snapshot.
     static func bufferResultsAreCurrent(
         scope: Workspace.SearchScope,
@@ -140,14 +139,10 @@ enum SearchEmphasis {
         )
     }
 
-    /// Räumt die Live-Trefferanzeige SOFORT beim ersten Textedit. Die
-    /// Markierungen speichern ihre Bereiche statisch; nach einem Edit sind
-    /// sie veraltet und zeichnen an falschen Stellen — bei einem
-    /// geschrumpften Dokument sogar hinter dem Dokumentende (sichtbares
-    /// „Chaos“ und Absturzursache im Crash-Report vom 2026-08-28). Der
-    /// Beobachter läuft synchron auf dem Edit-Thread (Main), also garantiert
-    /// VOR dem nächsten Zeichenzyklus; die gedrosselte Live-Suche setzt die
-    /// Markierungen danach mit frischen Bereichen neu.
+    /// Live-Markierungen synchron beim ersten Textedit entfernen. Ihre
+    /// statischen Bereiche könnten nach dem Edit außerhalb des Dokuments liegen.
+    /// Der Beobachter läuft auf dem Edit-Thread (Main) vor dem nächsten Zeichnen;
+    /// die gedrosselte Live-Suche setzt später aktuelle Bereiche.
     final class EditGuard {
         private var token: NSObjectProtocol?
 

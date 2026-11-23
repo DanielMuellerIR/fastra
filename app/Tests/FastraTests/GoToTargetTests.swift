@@ -1,8 +1,8 @@
 // GoToTargetTests.swift
 //
-// Unit-Tests der „Gehe zum Ziel"-Auflösung (Etappe 7 Wunschpaket
-// 2026-07c): Phrasen-Erkennung, 4D-Methoden-/Klassen-/Function-Ziele
-// samt Projektbaum-Suche und die Markdown-Linkarten.
+// Unit-Tests der „Gehe zum Ziel"-Auflösung:
+// Phrasen-Erkennung, 4D-Methoden-/Klassen-/Function-Ziele samt
+// Projektbaum-Suche und die Markdown-Linkarten.
 
 import Testing
 import Foundation

@@ -1,11 +1,11 @@
 // TabPathMenu.swift
 //
-// Cmd-Klick auf einen Dokument-Tab zeigt das macOS-typische Pfadmenü
-// (Etappe 1 Wunschpaket 2026-07b): oberster Eintrag die Datei selbst,
-// darunter jeder Elternordner bis zur Wurzel — wie das frühere Cmd-Klick-
-// Menü am Fenstertitel (BBEdit-/macOS-Standardverhalten), das mit dem
-// titellosen Fensterchrome unerreichbar wurde. Für ungespeicherte Tabs
-// gibt es kein Menü (keine Datei, kein Pfad).
+// Cmd-Klick auf einen Dokument-Tab zeigt das macOS-typische
+// Pfadmenü: oberster Eintrag die Datei selbst, darunter jeder Elternordner bis
+// zur Wurzel — wie das frühere Cmd-Klick- Menü am Fenstertitel
+// (BBEdit-/macOS-Standardverhalten), das mit dem titellosen Fensterchrome
+// unerreichbar wurde. Für ungespeicherte Tabs gibt es kein Menü (keine Datei,
+// kein Pfad).
 
 import AppKit
 
@@ -76,7 +76,7 @@ final class TabPathMenuPresenter: NSObject {
             // macOS-Standardverhalten des Titelzeilen-Pfadmenüs.
             NSWorkspace.shared.open(url)
         } else {
-            // Oberster Eintrag (die Datei): im Finder ZEIGEN, nicht öffnen —
+            // Oberster Eintrag (die Datei): im Finder zeigen, nicht öffnen —
             // sie ist ja bereits in Fastra offen.
             NSWorkspace.shared.activateFileViewerSelecting([url])
         }

@@ -1,8 +1,8 @@
 // EmptyScratchTabTests.swift
 //
-// Sichert das BBEdit-Verhalten ab (Daniel-Befund 2026-06-22): Öffnet man eine
+// Sichert das BBEdit-Verhalten ab: Öffnet man eine
 // Datei, während das leere unbenannte Start-Dokument offen ist, wird dieses
-// abgeräumt — getippter/„dirty" Inhalt bleibt dagegen IMMER erhalten.
+// abgeräumt — getippter/„dirty" Inhalt bleibt dagegen immer erhalten.
 //
 // Zwei Ebenen: die pure Filter-Logik `tabsRemovingEmptyScratch` (deckt alle
 // Fall-Unterscheidungen ab) und ein Integrationstest über `loadFile` (belegt,

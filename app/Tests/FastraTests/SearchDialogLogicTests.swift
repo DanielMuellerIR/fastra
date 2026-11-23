@@ -127,7 +127,7 @@ func menuEntryForcesFolderScope() {
     #expect(ws.scope == .file)
 
     // Menüpunkt: Der sichtbare Text verspricht die Ordnersuche und muss sie
-    // deshalb auch herstellen (Review 2026-08-06).
+    // deshalb auch herstellen.
     ws.presentSearch(requestedScope: .folder, forceScope: true)
     #expect(ws.scope == .folder)
     #expect(ws.showSearchDialog)
@@ -149,7 +149,7 @@ func multiFileContentSearchUsesProjectScope() {
 
     // Die Maske kann offen, aber hinter dem Dokumentfenster liegen; dann
     // ändert sich `showSearchDialog` nicht. Der Einstieg muss deshalb
-    // ausdrücklich das Nach-vorn-Holen für GENAU diesen Workspace anfordern.
+    // ausdrücklich das Nach-vorn-Holen für genau diesen Workspace anfordern.
     var frontRequests: [ObjectIdentifier] = []
     let observer = NotificationCenter.default.addObserver(
         forName: .fastraBringSearchToFront, object: nil, queue: nil
@@ -307,7 +307,7 @@ func newerMatchJumpInvalidatesOlderRequest() {
     let workspace = Workspace(defaults: defaults)
     let documentID = workspace.activeDocumentID!
 
-    // Zwei Treffer DERSELBEN Datei: Der Dokument-Guard ist für beide wahr,
+    // Zwei Treffer derselben Datei: Der Dokument-Guard ist für beide wahr,
     // nur die Auftragsnummer trennt sie.
     let older = workspace.beginMatchJump()
     let newer = workspace.beginMatchJump()
@@ -337,12 +337,9 @@ func newerMatchJumpInvalidatesOlderRequest() {
     #expect(workspace.pendingEditorJump?.range == found[1].range)
 }
 
-// Befund Review 2026-08-22: `searchInputsDidChange` verwarf die
-// Ordner-Trefferbasis, ließ die Sprunggeneration aber stehen. Ablauf: Klick
-// auf einen Treffer einer noch ladenden Funddatei → Suchmuster wechselt vor
-// der Lade-Completion → die Completion passierte Generation und URL-Guard,
-// postete den Treffer der ALTEN Liste und übernahm dessen Index in die neue,
-// inzwischen leere Trefferbasis.
+// Geänderte Sucheingaben müssen auch die Sprunggeneration entwerten.
+// Die Lade-Completion einer zuvor angeklickten Datei darf keinen Treffer der
+// alten Liste mehr posten oder dessen Index in die neue Liste übernehmen.
 @MainActor
 @Test("Ein Suchmusterwechsel entwertet den Sprung einer noch ladenden Funddatei")
 func patternChangeInvalidatesPendingFolderMatchJump() async throws {
@@ -396,7 +393,7 @@ func patternChangeInvalidatesPendingFolderMatchJump() async throws {
         }
     }
 
-    // Noch VOR der Lade-Completion tippt der Nutzer ein neues Muster. Die
+    // Noch vor der Lade-Completion tippt der Nutzer ein neues Muster. Die
     // Trefferbasis ist damit weg — und mit ihr der offene Sprungauftrag.
     workspace.findPattern = "ANDERES"
     #expect(workspace.folderResults.isEmpty)
@@ -469,12 +466,9 @@ func fileViewIdentityIncludesBothInputs() {
     ))
 }
 
-// Befund Review 2026-08-31: Seit auch ein bereits aktiver Ordner-Treffer zur
-// Snapshot-Prüfung durch das asynchrone `loadFile` läuft, wird
-// `activeMatchIndex` erst in dessen Completion fortgeschrieben. Mehrere
-// schnelle ⌘G-/Pfeil-Eingaben berechneten deshalb alle denselben Nachfolger
-// aus dem alten Index und bewegten die Auswahl nur um EINEN Treffer. Die
-// Navigation merkt ihr Ziel jetzt synchron vor.
+// Bei schneller Navigation das Ziel synchron vormerken. Wartet der Index
+// auf die asynchrone `loadFile`-Completion, könnten mehrere ⌘G-/Pfeil-Eingaben
+// denselben Nachfolger aus dem alten Index berechnen.
 @MainActor
 @Test("Schnelle Folge-Navigationen rechnen vom vorgemerkten Ziel weiter")
 func matchNavigationBaseIndexUsesPendingTarget() {
@@ -505,10 +499,9 @@ func matchNavigationBaseIndexUsesPendingTarget() {
     #expect(workspace.matchNavigationBaseIndex == 0)
 }
 
-// Befund Review 2026-08-31: Jedes abgelehnte `loadFile`-Ergebnis galt als
-// veraltete Trefferbasis. Ein zweiter Sprung während des ersten Ladens
-// löschte damit korrekte Ordnerergebnisse; ein ungesicherter Tab erzwang
-// eine neue Suche, die den Pufferkonflikt nicht lösen kann.
+// Abgelehntes `loadFile` bedeutet nicht immer veraltete Treffer. Ein weiterer
+// Sprung während des Ladens darf gültige Ergebnisse nicht löschen; ein
+// Pufferkonflikt wird durch erneute Suche nicht gelöst.
 @MainActor
 @Test("Nur der Plattenstand-Konflikt entwertet die Ordner-Trefferbasis")
 func folderMatchLoadDenialDistinguishesReasons() {
@@ -546,7 +539,7 @@ struct SearchFolderEnabledIndexTests {
     @Test("Der Index liefert je Pfad das Häkchen des ersten Eintrags")
     func enabledByPathPrefersFirstEntry() {
         // Der Suchdialog bildet diesen Index einmal je Darstellung, statt in
-        // jedem Toggle das ganze Array zu durchsuchen (Review 2026-09-02).
+        // jedem Toggle das ganze Array zu durchsuchen.
         let entries = [
             SearchFolderEntry(path: "/a", enabled: true),
             SearchFolderEntry(path: "/b", enabled: false),

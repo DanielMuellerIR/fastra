@@ -1,16 +1,9 @@
 // MiscReviewFixWorkspaceLoadTests.swift
 //
-// Regressionstest zu Fund G1 des Code-Reviews vom 2026-08-10.
-//
-// `Workspace.loadFile` meldete sein Ergebnis nur, solange der Workspace noch
-// lebte: Der Main-Actor-Block stieg bei `guard let self` ohne Rückmeldung aus.
-// Wer die Fenster über diese Rückmeldungen zählt — der
-// `SessionRestorationCoordinator` tut genau das —, wartete danach ewig; die
-// gepufferten Finder-/CLI-Öffnungen wurden nie ausgeliefert.
-//
-// Der Test schließt das Fenster mitten im Ladevorgang nach: Er gibt die
-// einzige starke Referenz auf den Workspace frei, während die Datei im
-// Hintergrund gelesen wird, und verlangt trotzdem genau eine Rückmeldung.
+// `Workspace.loadFile` muss auch nach Freigabe des Workspace genau eine
+// Completion liefern. Die Sitzungswiederherstellung wartet darauf, bevor sie
+// gepufferte Finder-/CLI-Öffnungen ausliefert. Während des Hintergrund-Reads
+// die einzige starke Referenz freigeben und die Rückmeldung prüfen.
 
 import Foundation
 import Testing

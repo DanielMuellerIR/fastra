@@ -147,9 +147,9 @@ final class ReplacePreviewModel: ObservableObject {
 
 /// Vorher/Nachher-Vorschau der Ersetzungen (v0.10) — die „Vorschau der
 /// Änderungen" aus der Suchmaske. Wird als Sheet über dem Hauptfenster gezeigt
-/// (an `workspace.livePreview` gekoppelt) und liest die ECHTEN Treffer des
+/// (an `workspace.livePreview` gekoppelt) und liest die echten Treffer des
 /// aktiven Buffers über die pure `ReplacePreview`-Logik. Ersetzt den früheren
-/// No-Op-Button, dessen Flag niemand auswertete (Daniel-Befund 2026-06-23).
+/// No-Op-Button, dessen Flag niemand auswertete.
 struct ReplacePreviewView: View {
     @EnvironmentObject var workspace: Workspace
     @StateObject private var model = ReplacePreviewModel()
@@ -382,7 +382,7 @@ struct ReplacePreviewView: View {
                 // einem Tastendruck gehören die hier gezeigten Treffer noch
                 // zum vorigen Muster; der Workspace lehnt das Ersetzen dann
                 // ab, und die Vorschau verschwand bisher trotzdem — ohne dass
-                // irgendetwas ersetzt wurde (Review 2026-08-06).
+                // irgendetwas ersetzt wurde.
                 if workspace.applyAllInActiveBuffer() {
                     workspace.livePreview = false
                 }

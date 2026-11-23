@@ -1,7 +1,7 @@
 import Foundation
 
 /// Abschnitt der Änderungen-Ansicht, in dem eine Zeile steht. Eine Datei kann
-/// gleichzeitig bereitgestellt UND offen geändert sein (Porcelain „MM") und
+/// gleichzeitig bereitgestellt und offen geändert sein (Porcelain „MM") und
 /// erscheint dann in beiden Abschnitten — erst Abschnitt + Pfad identifizieren
 /// eine Zeile eindeutig.
 enum GitChangeSection: Hashable {
@@ -16,7 +16,7 @@ struct GitChangeRowID: Hashable {
     let rawPath: Data
 }
 
-/// Reine Mehrfachauswahl-Logik der Änderungen-Liste (Daniel-Wunsch 2026-07-30):
+/// Reine Mehrfachauswahl-Logik der Änderungen-Liste:
 /// Klick wählt genau eine Zeile, Cmd-Klick schaltet einzelne Zeilen um,
 /// Shift-Klick wählt den Bereich vom Anker bis zur geklickten Zeile — wie in
 /// macOS-Listen üblich. Bewusst ohne UI-Abhängigkeit, damit `swift test` das
@@ -47,7 +47,7 @@ struct GitChangesSelection: Equatable {
         anchor = row
     }
 
-    /// Shift-Klick: Bereich vom Anker bis zur Zeile wählen; er ERSETZT die
+    /// Shift-Klick: Bereich vom Anker bis zur Zeile wählen; er ersetzt die
     /// bisherige Auswahl. Der Anker bleibt stehen, damit ein weiterer
     /// Shift-Klick den Bereich vom selben Ausgangspunkt neu aufspannt.
     /// `orderedRows` ist die sichtbare Reihenfolge beider Abschnitte; ohne
@@ -88,7 +88,7 @@ struct GitDiscardPlan {
         // Konfliktdateien nimmt der Plan bewusst aus: `git checkout --`
         // scheitert auf unmerged Pfaden, und ein Löschen mitten in der
         // Konfliktauflösung wäre Datenverlust. Sie bleiben unangetastet in
-        // der Liste stehen (Review 2026-08-02).
+        // der Liste stehen.
         let actionable = changes.filter {
             $0.unstaged != nil && $0.unstaged != .conflicted && $0.isPathActionable
         }

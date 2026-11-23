@@ -18,17 +18,17 @@ extension Notification.Name {
     /// Blätter der Suchmaske. `userInfo["sheet"]` ist "extraction",
     /// "patterns", "example", "fileset" oder "close".
     static let fastraSelfTestSearchSheet = Notification.Name("fastra.selftest.search.sheet")
-    /// Menüpunkt „In Projekt oder Ordnern suchen…“ — anders als der Kurzbefehl ERZWINGT er
+    /// Menüpunkt „In Projekt oder Ordnern suchen…“ — anders als der Kurzbefehl erzwingt er
     /// den Ordner-Bereich. Ein so beschrifteter Menüpunkt muss auch wirklich
     /// die Ordnersuche zeigen; bisher blieb er bei offener, befüllter Maske im
-    /// Datei- oder Projektbereich stehen (Review 2026-08-06).
+    /// Datei- oder Projektbereich stehen.
     static let fastraShowSearchFolderForced =
         Notification.Name("fastra.show.search.folder.forced")
     /// Die Suchmaske des in `object` enthaltenen Workspace nach vorn holen und
     /// das Suchfeld fokussieren. Nötig, wenn eine Aktion die Maske bei schon
     /// gesetztem `showSearchDialog` braucht: Das Suchfenster ist kein
     /// Floating-Panel und kann hinter dem Dokumentfenster liegen, und ein
-    /// unveränderter Wert löst kein `onChange` aus (Review-Fund 2026-09-17).
+    /// unveränderter Wert löst kein `onChange` aus.
     static let fastraBringSearchToFront = Notification.Name("fastra.bring.search.to.front")
     /// ESC im Suchfenster — Suchmaske ausblenden.
     static let fastraHideSearch       = Notification.Name("fastra.hide.search")
@@ -57,9 +57,9 @@ extension Notification.Name {
     /// Menüleisten-Formatierung. Der Editor-Kontext führt sie über seine
     /// native TextView aus, damit sie mit ⌘Z rückgängig gemacht werden kann.
     static let fastraFormatDocument   = Notification.Name("fastra.format.document")
-    /// „Text → Dokument prüfen" (Etappe 6): JSON/XML validieren.
+    /// „Text → Dokument prüfen": JSON/XML validieren.
     static let fastraLintDocument     = Notification.Name("fastra.lint.document")
-    /// „Text → Dokument minifizieren" (Etappe 6): JSON kompakt, XML konservativ.
+    /// „Text → Dokument minifizieren": JSON kompakt, XML konservativ.
     static let fastraMinifyDocument   = Notification.Name("fastra.minify.document")
     /// Sichtbare Rechteck-Befehle aus Menüleiste und Selbsttests.
     static let fastraPasteColumn      = Notification.Name("fastra.column.paste")
@@ -87,31 +87,32 @@ enum SearchWindow {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
-    /// Selbsttests prüfen einen lokalen Build und dürfen weder Sparkle-
-    /// Preferences schreiben noch einen echten Appcast-Abruf auslösen.
-    static func shouldStartUpdater(isSelfTestRun: Bool) -> Bool {
-        !isSelfTestRun
+    /// Isolierte GUI-Läufe und Selbsttests dürfen weder Sparkle-Preferences
+    /// schreiben noch einen echten Appcast-Abruf auslösen.
+    static func shouldStartUpdater(isSelfTestRun: Bool, isIsolated: Bool = false) -> Bool {
+        !isSelfTestRun && !isIsolated
     }
 
     /// Schon das Erzeugen des Sparkle-Controllers aktualisiert Host-Defaults.
-    /// Selbsttests brauchen ihn deshalb ausschließlich für den gezielten
-    /// `updates`-Verdrahtungstest; alle anderen Prozesse bleiben vollständig
-    /// frei von Sparkle-Nebenwirkungen.
+    /// Isolierte Prozesse brauchen ihn ausschließlich für den gezielten
+    /// `updates`-Verdrahtungstest; die normale isolierte GUI erzeugt ihn nicht.
     static func shouldCreateUpdater(isSelfTestRun: Bool,
-                                    requestedTest: String?) -> Bool {
-        !isSelfTestRun || requestedTest == "updates"
+                                    requestedTest: String?, isIsolated: Bool = false) -> Bool {
+        (!isSelfTestRun && !isIsolated) || (isSelfTestRun && requestedTest == "updates")
     }
 
     /// Sparkle verwaltet Suche, Download, Signaturprüfung, Austausch der App
     /// und Neustart. Der Controller lebt exakt einmal für die App-Laufzeit.
     private let updaterController: SPUStandardUpdaterController? = {
         guard AppDelegate.shouldCreateUpdater(
-            isSelfTestRun: SelfTest.isSelfTestRun,
-            requestedTest: SelfTest.requestedTest
+            isSelfTestRun: AppDefaults.launch.isSelfTestRun,
+            requestedTest: AppDefaults.launch.requestedSelfTest,
+            isIsolated: AppDefaults.isIsolated
         ) else { return nil }
         return SPUStandardUpdaterController(
             startingUpdater: AppDelegate.shouldStartUpdater(
-                isSelfTestRun: SelfTest.isSelfTestRun
+                isSelfTestRun: AppDefaults.launch.isSelfTestRun,
+                isIsolated: AppDefaults.isIsolated
             ),
             updaterDelegate: nil,
             userDriverDelegate: nil
@@ -137,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Rechtsklick-Menü des Editors (Zeilen sortieren, Duplikate,
     /// Smart-Paste) — eigener Monitor, siehe EditorContextMenu.swift.
     private let editorContextMenu = EditorContextMenu()
-    /// Alt-Doppelklick „Gehe zum Ziel" (Etappe 7 Wunschpaket 2026-07c).
+    /// Alt-Doppelklick „Gehe zum Ziel".
     private let goToTargetGesture = GoToTargetGesture()
 
     /// Eingangskorb für Dateien, die per Finder-Doppelklick / `open -a`
@@ -158,7 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // helle Werte und der System-Dark-Mode erzeugte weiß-auf-weiß. Seit
         // v1.1 sind alle `Theme`-Tokens dynamisch (hell + dunkel), ein echtes
         // Dark-Theme existiert (Theme.swift, EditorView.fastraThemeDark).
-        AppearanceSetting.current().apply()
+        AppearanceSetting.current(defaults: AppDefaults.store).apply()
         NSWindow.allowsAutomaticWindowTabbing = false
         installKeyMonitor()
         installFlagsMonitor()
@@ -175,17 +176,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Donation-Logik: App-Starts zählen (nur echte Starts — Selbsttest-
         // Läufe nutzen die isolierte Defaults-Suite und verfälschen den
         // Zähler des Nutzers nicht).
-        DonationPrompt.recordLaunch(defaults: SelfTest.workspaceDefaults())
+        DonationPrompt.recordLaunch(defaults: AppDefaults.store)
         SelfTest.runIfRequested()
 
-        // Sobald der Workspace bereit ist (Notification aus `Workspace.init`),
-        // beim Kaltstart gepufferte Finder-/CLI-Open-URLs ausliefern (K1).
-        // Der Beobachter ist ein EINMALZWECK für genau diesen Kaltstart-Fall:
-        // Bliebe er dauerhaft registriert, stieße JEDES später erzeugte
-        // Fenster eine Nachlieferung aus dem Öffnen-Puffer an — so kam ein
-        // bereits geschlossenes Fenster beim Öffnen einer weiteren Datei
-        // zurück (Dauertest-Befund 2026-08-07/08, mit 1.63.3 reproduziert).
-        // Nach der ersten Auslieferung NACH Kaltstart-Ende meldet er sich ab.
+        // Beim Kaltstart gepufferte Finder-/CLI-URLs ausliefern, sobald
+        // `Workspace.init` die Bereitschaft meldet (K1). Nach der ersten Auslieferung
+        // nach Kaltstart-Ende den Beobachter entfernen: Spätere Fenster dürfen keine
+        // bereits abgearbeiteten Öffnungen erneut auslösen.
         workspaceReadyObserver = NotificationCenter.default.addObserver(
             forName: .fastraWorkspaceReady,
             object: nil,
@@ -229,8 +226,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             self?.editorContextMenu.formatActiveDocument()
         }
-        // Markdown-Formatbefehle (Etappe 5 Wunschpaket 2026-07b) aus
-        // Menüleiste und Toolbar auf den aktiven Editor anwenden.
+        // Markdown-Formatbefehle aus Menüleiste und Toolbar auf den aktiven
+        // Editor anwenden.
         NotificationCenter.default.addObserver(
             forName: .fastraMarkdownFormat,
             object: nil,
@@ -291,16 +288,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.editorContextMenu.replaceConflictText(request)
         }
 
-        // WICHTIG (Zombie-Find-Bar): CodeEditSourceEditor installiert beim
-        // Laden seines Editors einen EIGENEN lokalen keyDown-Monitor, der
+        // Wichtig (Zombie-Find-Bar): CodeEditSourceEditor installiert beim
+        // Laden seines Editors einen eigenen lokalen keyDown-Monitor, der
         // CMD+F abfängt und sein internes Find-Panel zeigt (siehe
         // TextViewController.handleCommand). Lokale Monitore werden in
         // umgekehrter Reihenfolge der Registrierung aufgerufen — der zuletzt
-        // hinzugefügte zuerst. Da der Editor SPÄTER lädt als unser Monitor
+        // hinzugefügte zuerst. Da der Editor später lädt als unser Monitor
         // aus `applicationDidFinishLaunching`, gewann bisher der Editor.
         //
         // Lösung: unseren Monitor neu installieren, sobald ein Fenster Key
-        // wird (da ist der Editor längst geladen) — dann ist UNSER Monitor
+        // wird (da ist der Editor längst geladen) — dann ist unser Monitor
         // der neueste und fängt CMD+F zuerst ab. Zusätzlich (Gürtel +
         // Hosenträger) schalten wir den NSTextView-Find-Bar aus.
         NotificationCenter.default.addObserver(
@@ -312,9 +309,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let window = note.object as? NSWindow {
                 // Dokument-, Such- und Vorschaufenster sind ihrem Workspace
                 // zentral zugeordnet. So routen alle globalen Commands nach
-                // JEDEM Fokuswechsel in das richtige Dokument.
+                // jedem Fokuswechsel in das richtige Dokument.
                 if let workspace = WorkspaceWindowRegistry.workspace(for: window) {
                     Workspace.shared = workspace
+                } else {
+                    ActiveDocumentContext.shared.commandTargetDidChange()
                 }
                 if let root = window.contentView {
                     Self.disableFindBars(in: root)
@@ -361,7 +360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Bei mehreren Dokumentfenstern jede Datei prüfen, nicht nur den
             // Workspace des vordersten Fensters.
             Workspace.allLive.forEach { $0.checkExternalChanges() }
-            // Gleicher Anlass, gleiche Geste (Etappe 2): der Git-Status kann
+            // Gleicher Anlass, gleiche Geste: der Git-Status kann
             // sich außerhalb geändert haben (Terminal-Commit, Branch-Wechsel).
             // Beim Zurückwechseln still auffrischen.
             Workspace.allLive.forEach { $0.refreshGitStatus() }
@@ -383,13 +382,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Hinweis zum Zombie-Find-Bar: Der Editor (CodeEditSourceEditor) hat
-        // einen EIGENEN CMD+F-Monitor, der bei fokussiertem Editor sein Find-
+        // einen eigenen CMD+F-Monitor, der bei fokussiertem Editor sein Find-
         // Panel öffnet. Die Reihenfolge konkurrierender NSEvent-Monitore ist
-        // NICHT zuverlässig steuerbar — deshalb verlassen wir uns NICHT aufs
+        // nicht zuverlässig steuerbar — deshalb verlassen wir uns nicht aufs
         // „Gewinnen" des Monitors, sondern schließen ein doch geöffnetes
         // Editor-Find-Panel deterministisch wieder (siehe EditorView:
         // onChange(of: editorState.findPanelVisible)). Unser Monitor hier
-        // deckt CMD+F bei NICHT fokussiertem Editor sowie CMD+SHIFT+F/ESC ab.
+        // deckt CMD+F bei nicht fokussiertem Editor sowie CMD+SHIFT+F/ESC ab.
 
         // Standard-Find-Menüpunkte aus der Edit-Menü-Hierarchie löschen.
         // SwiftUIs `CommandGroup(replacing: .textEditing)` reicht nicht,
@@ -413,18 +412,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.scheduleWindowsMenuTabsSynchronization()
         }
 
-        // Ab jetzt mitschreiben, welche Fenster der Nutzer SELBST zieht. Das
+        // Ab jetzt mitschreiben, welche Fenster der Nutzer selbst zieht. Das
         // muss vor der Wiederherstellung stehen: Sie kann lange dauern, ihre
         // Fenster sind aber schon sichtbar, und die einmalige Höhenkorrektur
         // am Ende darf ein bewusst kleiner gezogenes Fenster nicht wieder
-        // aufziehen (Review 2026-08-06).
+        // aufziehen.
         MainWindowHeightNormalization.observeUserResizes(
-            defaults: SelfTest.workspaceDefaults()
+            defaults: AppDefaults.store
         )
 
         // Eigene, inhaltlich begrenzte Wiederherstellung statt AppKits
         // undurchsichtiger Fensterarchive: nur gespeicherte Dateipfade,
-        // Projektordner und Fensterrahmen. Finder-Dateien sind ein ZUSÄTZLICHER
+        // Projektordner und Fensterrahmen. Finder-Dateien sind ein zusätzlicher
         // Öffnungswunsch: erst den Restore vollständig abschließen, danach über
         // dasselbe Projekt-/Fenster-Routing wie beim Warmstart ausliefern. Ist
         // die Wiederherstellung deaktiviert, ruft der Coordinator die Completion
@@ -432,7 +431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let primaryWorkspace = Workspace.shared {
             SessionRestorationCoordinator.restoreLastSession(
                 into: primaryWorkspace,
-                defaults: SelfTest.workspaceDefaults()
+                defaults: AppDefaults.store
             ) { [weak self] in
                 // Auch Open-Ereignisse, die AppKit erst während des asynchronen
                 // Restores zustellt, müssen bis zu dessen Ende im Puffer bleiben.
@@ -457,10 +456,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Erst nach dem Restore bereit melden: Dessen abschließendes Aktivieren
     /// des Hauptfensters darf einem bereits angenommenen Diff nicht den Fokus nehmen.
     private static func startExternalDiffService() {
-        if !SelfTest.isSelfTestRun || SelfTest.requestedTest == "controlhost" {
+        if !AppDefaults.launch.isSelfTestRun || AppDefaults.launch.requestedSelfTest == "controlhost" {
             LocalControlService.shared.start()
         }
-        if !SelfTest.isSelfTestRun || SelfTest.requestedTest?.hasPrefix("externaldiff") == true {
+        if !AppDefaults.launch.isSelfTestRun || AppDefaults.launch.requestedSelfTest?.hasPrefix("externaldiff") == true {
             externalDiffServiceRequested = true
             ExternalDiffService.shared.start()
         }
@@ -475,7 +474,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Alte Journale gehören nicht zum App-Start oder zu einer beliebigen
     /// Dokumentkopie. Nur ein belegter Tausch der geöffneten Datei wird gezeigt.
     static func inspectRecovery(forOpenedDocument url: URL) {
-        guard !SelfTest.isSelfTestRun else { return }
+        guard !AppDefaults.launch.isSelfTestRun else { return }
         DispatchQueue.global(qos: .utility).async {
             let store = AtomicCommitRecovery.Store.standard
             guard let pending = try? store.inspectPending(for: url, includeActiveProcesses: false) else { return }
@@ -566,13 +565,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Einmalige Korrektur zu flach gespeicherter Fensterhöhen.
     ///
     /// Selbsttestläufe bleiben außen vor: Sie bekommen eine frische
-    /// Defaults-Suite, würden die Korrektur also bei JEDEM Lauf ausführen —
+    /// Defaults-Suite, würden die Korrektur also bei jedem Lauf ausführen —
     /// mitten in Fenstertests, die ihre Größen selbst setzen. Der Selbsttest
     /// `windowheight` ruft sie stattdessen gezielt mit eigener Suite auf.
     @MainActor
     private static func normalizeWindowHeightsOnce() {
-        guard !SelfTest.isSelfTestRun else { return }
-        MainWindowHeightNormalization.runOnce(defaults: SelfTest.workspaceDefaults())
+        guard !AppDefaults.launch.isSelfTestRun else { return }
+        MainWindowHeightNormalization.runOnce(defaults: AppDefaults.store)
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -636,13 +635,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Zieht die Tab-Untermenü-Einträge in ein neu aufgebautes „Fenster"-Menü
-    /// um. Bis zum Review 2026-09-02 passierte das nur beim nächsten
-    /// Titel-Update der `MainWindowTitleBridge` — nach einem Menü-Neuaufbau
-    /// kommt das nicht garantiert, und die Fenster-/Tab-Navigation fehlte
-    /// bis dahin. Gebündelt wie die Nachbarn: Die Benachrichtigung kommt für
-    /// jeden eingefügten Menüpunkt einzeln, und der Umzug fügt selbst Punkte
-    /// ein — ein synchroner Aufruf liefe in sich selbst hinein.
+    /// Zieht Tab-Untermenüs in ein neu aufgebautes „Fenster“-Menü um, ohne auf
+    /// ein weiteres Titel-Update zu warten. Benachrichtigungen bündeln und den
+    /// Umzug asynchron ausführen: Er fügt selbst Menüpunkte ein und würde sich
+    /// bei synchroner Verarbeitung erneut aufrufen.
     private func scheduleWindowsMenuTabsSynchronization() {
         guard !windowsMenuTabsSyncScheduled else { return }
         windowsMenuTabsSyncScheduled = true
@@ -660,10 +656,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.softWrapMenuSyncScheduled = false
             guard let mainMenu = NSApp.mainMenu else { return }
+            let workspace = CommandTargeting.targetWorkspace()
             _ = Self.synchronizeSoftWrapMenuState(
                 in: mainMenu,
-                isOn: ActiveDocumentContext.shared.workspace?.softWrapEnabled ?? false,
-                hasDocument: ActiveDocumentContext.shared.workspace?.activeTab != nil,
+                isOn: workspace?.softWrapEnabled ?? false,
+                hasDocument: workspace?.activeTab != nil,
                 canToggle: true
             )
         }
@@ -707,7 +704,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Action-Selektoren, die eine NSTextView-Find-Leiste / das Find-Panel
-    /// auslösen. An EINER Stelle definiert, damit Menü-Purge und Tests
+    /// auslösen. An einer Stelle definiert, damit Menü-Purge und Tests
     /// dieselbe Liste nutzen.
     static let findMenuSelectors: Set<Selector> = [
         #selector(NSResponder.performTextFinderAction(_:)),
@@ -761,14 +758,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return count
     }
 
-    /// Default (Daniel 2026-07-12): Nach dem Schließen des letzten Fensters
-    /// bleibt die App AKTIV — Fenster-schließen ≠ App-beenden. Fortgeschrittene
+    /// Default: Nach dem Schließen des letzten Fensters
+    /// bleibt die App aktiv — Fenster-schließen ≠ App-beenden. Fortgeschrittene
     /// Nutzer wollen oft die letzte Datei schließen und dann eine neue öffnen,
     /// ohne die App neu zu starten. Über UserDefaults „app.quitOnLastWindowClose"
     /// umschaltbar (später als Einstellungs-Dialog-Option); unbelegt = false =
     /// aktiv bleiben.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        UserDefaults.standard.bool(forKey: "app.quitOnLastWindowClose")
+        AppDefaults.store.bool(forKey: "app.quitOnLastWindowClose")
     }
 
     /// AppKits allgemeines Saved-State-Archiv bleibt aus. Es könnte
@@ -799,7 +796,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// ⌘Q / „Beenden": Bevor die App endet, bei ungespeicherten Änderungen
     /// nachfragen (BBEdit-Stil: Sichern / Nicht sichern / Abbrechen) — sonst gingen
-    /// getippte Inhalte stillschweigend verloren (Daniel-Befund 2026-06-25). Die
+    /// getippte Inhalte stillschweigend verloren. Die
     /// eigentliche Rückfrage-Logik liegt im Workspace (geteilt mit dem Tab-Schließen).
     private var terminationRequested = false
 
@@ -822,14 +819,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }.filter { $0.ready }
                 let group = DispatchGroup()
                 var successful = true
+                var holds: [MarkdownVisualCoordinator.ActionHold] = []
                 for editor in editors {
                     group.enter()
-                    editor.synchronize(holdingInput: true) { succeeded in successful = successful && succeeded; group.leave() }
+                    editor.synchronize(holdingInput: true) { succeeded, hold in
+                        successful = successful && succeeded
+                        if let hold { holds.append(hold) }
+                        group.leave()
+                    }
                 }
                 group.notify(queue: .main) {
                     let terminate = successful && self.finishTerminationChecks() == .terminateNow
                     guard terminate else {
-                        for editor in editors { editor.completeAction() }
+                        for hold in holds { hold.finish() }
                         self.terminationRequested = false
                         sender.reply(toApplicationShouldTerminate: false)
                         return
@@ -841,6 +843,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         workspace.visualMarkdownEditor?.discardForTermination()
                         for tab in workspace.tabs { tab.undoHistory.reset(to: tab.content) }
                     }
+                    for hold in holds { hold.finish() }
                     MarkdownImageUndoSideEffect.pendingIO.notify(queue: .main) {
                         sender.reply(toApplicationShouldTerminate: true)
                     }
@@ -853,22 +856,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     private func finishTerminationChecks() -> NSApplication.TerminateReply {
         // Jedes Dokumentfenster besitzt einen eigenen Workspace. Erst beenden,
-        // wenn alle ungesicherten Tabs geklärt sind; „Abbrechen" in einem
-        // beliebigen Fenster stoppt ⌘Q für die ganze App.
+        // wenn alle ungesicherten Tabs geklärt sind; „Abbrechen“ in einem Fenster
+        // stoppt ⌘Q für die ganze App.
         //
-        // Gefragt wird NUR für Workspaces, die noch zu einem Fenster gehören,
-        // und dieses Fenster kommt vorher nach vorn. `Workspace.allLive` ist
-        // eine schwache Menge aller lebenden Workspaces — darin steckt auch,
-        // was kein Fenster mehr hat. Beim Update-Neustart erschien dadurch die
-        // Rückfrage „Wollen Sie die Datei ‚Ohne Titel' sichern?" zu einem
-        // Dokument, das der Nutzer nirgends finden konnte: kein Fenster, kein
-        // Tab, keine Möglichkeit nachzusehen, worum es geht (Fehlerbericht
-        // 2026-08-07). Eine Rückfrage ohne sichtbaren Gegenstand ist nicht
-        // beantwortbar — also entweder zeigen oder gar nicht fragen.
-        // Die Fensterliste VOR den Rückfragen einfrieren: Das Vorholen eines
-        // Fensters verändert `NSApp.orderedWindows`. Die Sitzung selbst wird
-        // erst DANACH erfasst, weil „Sichern unter…" einem unbenannten Tab erst
-        // während der Rückfragen seine Datei-URL geben kann.
+        // Nur Workspaces mit zugehörigem Fenster befragen und dieses zuvor zeigen.
+        // `Workspace.allLive` enthält auch noch lebende Workspaces ohne Fenster;
+        // deren Dokumente wären in einer Rückfrage nicht erreichbar.
+        // Die Fensterliste vor den Rückfragen einfrieren, weil das Vorholen ihre
+        // Reihenfolge verändert. Die Sitzung erst danach erfassen: „Sichern unter…“
+        // kann einem unbenannten Tab während der Rückfrage seine Datei-URL geben.
         let orderedWindows = DocumentWindowController.restorableDocumentWindows()
         for documentWindow in orderedWindows {
             guard let workspace = WorkspaceWindowRegistry.workspace(for: documentWindow) else {
@@ -885,7 +881,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard workspace.performWithSynchronizedVisualMarkdown({ workspace.confirmCloseAllDirtyForQuit() }) else { return .terminateCancel }
         }
         SessionRestorationCoordinator.captureCurrentSession(
-            defaults: SelfTest.workspaceDefaults(),
+            defaults: AppDefaults.store,
             windows: orderedWindows
         )
         LocalControlController.shared.closeAllSessions()
@@ -895,12 +891,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Datei-Öffnen von außen (Finder / `open -a Fastra <datei>`)
     //
     // AppKit ruft `application(_:open:)` für Doppelklick im Finder, das
-    // Services-Menü und `open -a` auf. Beim KALTEN Start kommt der Aufruf
-    // u.U. VOR der Workspace-Erzeugung → puffern und ausliefern, sobald
+    // Services-Menü und `open -a` auf. Beim kalten Start kommt der Aufruf
+    // u.U. vor der Workspace-Erzeugung → puffern und ausliefern, sobald
     // `Workspace.shared` steht (`Workspace.init` ruft `deliverPendingOpenFiles`).
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        // Finder, Dock und `open -a` dürfen Dateien UND Ordner liefern.
+        // Finder, Dock und `open -a` dürfen Dateien und Ordner liefern.
         // Ordner werden später über denselben Router als Projekt geladen.
         let openableURLs = DropHandling.openableItems(from: urls)
         guard !openableURLs.isEmpty else { return }
@@ -926,10 +922,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             let urls = self.openFilesInbox.drain()
             guard !urls.isEmpty else { return }
-            // Jede Datei landet im am besten passenden Fenster (dasselbe
-            // Projekt/Repo) und dieses kommt nach vorn; sonst neues Fenster
-            // (Nutzerwunsch 2026-07-20). Früher gingen alle Öffnungen ins
-            // vorderste Fenster, egal welches Projekt es zeigte.
+            // Dateien im am besten passenden Fenster desselben Projekts/Repos öffnen
+            // und dieses vorholen; falls keines passt, ein neues Fenster erzeugen.
             DocumentWindowController.openFinderItems(urls)
         }
     }
@@ -938,14 +932,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     //
     // `CodeEditSourceEditor` installiert beim Laden einen eigenen lokalen
     // keyDown-Monitor, der CMD+F abfängt und sein internes Find-Panel zeigt.
-    // Lokale Monitore feuern LIFO (neuester zuerst). Damit UNSER Monitor
+    // Lokale Monitore feuern LIFO (neuester zuerst). Damit unser Monitor
     // gewinnt, installieren wir ihn neu, sobald ein Fenster Key wird (siehe
     // applicationDidFinishLaunching) — dann ist er der neueste.
     //
     // Idempotent: ein evtl. vorhandener Monitor wird zuerst entfernt, damit
     // sich bei wiederholtem Aufruf keine Monitore stapeln.
 
-    /// Sobald die Command-Taste gedrückt wird (flagsChanged kommt VOR dem
+    /// Sobald die Command-Taste gedrückt wird (flagsChanged kommt vor dem
     /// folgenden F-keyDown), installieren wir unseren keyDown-Monitor neu.
     /// Damit ist er garantiert der neueste, wenn gleich darauf CMD+F kommt,
     /// und fängt es vor dem Editor-eigenen Monitor ab — das Editor-Find-Panel
@@ -969,7 +963,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSEvent.removeMonitor(existing)
             keyMonitor = nil
         }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             // Reine `KeyRouting`-Logik (auch in KeyRoutingTests abgedeckt).
             let keyWindow = NSApp.keyWindow
             let isSearchKey = keyWindow.map(SearchWindow.isSearchWindow) ?? false
@@ -1007,6 +1001,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch route {
             case .selectBracketBlockOrBold:
                 let handled = MainActor.assumeIsolated { BracketSelectionCommands.performCommandB() }
+                return handled ? nil : event
+
+            case .formatDocument:
+                // Das Menü zeigt das Kürzel, macOS kann ⌥⇧F aber als Text
+                // zustellen. Ohne formatierbaren Editor bleibt es Texteingabe.
+                let handled = MainActor.assumeIsolated {
+                    guard let self, let target = CommandTargeting.target(),
+                          target.workspace.activeDocumentFormattingID != nil else { return false }
+                    self.editorContextMenu.format(on: target.textView)
+                    return true
+                }
                 return handled ? nil : event
 
             case .closeHelp:
@@ -1077,10 +1082,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 break
             }
 
-            // ⌘V mit Bildinhalt in einem Markdown-Editor (Etappe 5
-            // Wunschpaket 2026-07b): Bild als Datei ablegen + verlinken.
-            // Bilddaten haben definierten VORRANG vor dem normalen
-            // Text-Einfügen; ⌘⇧V bleibt die explizite Rich-Text-
+            // ⌘V mit Bildinhalt in einem Markdown-Editor: Bild als Datei
+            // ablegen + verlinken. Bilddaten haben definierten Vorrang vor dem
+            // normalen Text-Einfügen; ⌘⇧V bleibt die explizite Rich-Text-
             // Konvertierung (SmartPaste).
             if event.modifierFlags.intersection([.command, .shift, .option, .control]) == .command,
                event.charactersIgnoringModifiers?.lowercased() == "v",

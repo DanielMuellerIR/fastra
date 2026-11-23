@@ -68,14 +68,24 @@ impl State {
     fn clear(&self) {
         self.cancel.borrow().cancel();
         self.generation.set(self.generation.get() + 1);
+        self.transaction.borrow_mut().take();
+        self.clear_preview();
+    }
+    fn clear_preview(&self) {
         self.render_generation.set(self.render_generation.get() + 1);
         self.render_ready.set(false);
         self.preview.borrow_mut().take();
-        self.transaction.borrow_mut().take();
         self.consent.set_active(false);
+        self.consent.set_sensitive(false);
         self.before.buffer().set_text("");
         self.after.buffer().set_text("");
+        let lang = self.lang();
+        self.before_label
+            .set_text(lang.text("Aktuell auf Platte", "Current on disk"));
+        self.after_label
+            .set_text(lang.text("Original nach Rücknahme", "Original after restoration"));
         self.files.set_model(None::<&gtk::StringList>);
+        self.files.set_visible(false);
         self.actions();
     }
     fn set_path(&self, path: PathBuf) {
@@ -168,6 +178,7 @@ impl State {
         self.consent.set_active(false);
         self.files.set_model(Some(&model));
         self.files.set_selected(0);
+        self.files.set_visible(true);
         self.offset.set_text("0");
         self.render();
         self.status.set_text(&format!(
@@ -309,7 +320,7 @@ impl State {
                                 state.status.set_text(lang.text("Originaldateien wiederhergestellt. Die Sicherung bleibt erhalten, bis Sie sie ausdrücklich entfernen.","Original files restored. Recovery data remains until you explicitly remove it."));
                             }
                             Err(error) => {
-                                state.preview.borrow_mut().take();
+                                state.clear_preview();
                                 state.status.set_text(&format!("{} {}",io_error_text(lang,&error),lang.text("Sicherung erhalten; vor einer weiteren Aktion neu prüfen.","Recovery data retained; inspect again before another action.")));
                             }
                         }
@@ -354,10 +365,7 @@ impl State {
                         session::forget_journal(&ui, &journal_path);
                     }
                 }
-                state.consent.set_active(false);
-                state.before.buffer().set_text("");
-                state.after.buffer().set_text("");
-                state.files.set_model(None::<&gtk::StringList>);
+                state.clear_preview();
                 state.status.set_text(match &result {
                     Ok(()) => lang.text(
                         "Geprüfte Sicherung entfernt. Originaldateien unverändert.",
@@ -491,6 +499,7 @@ fn open_inner(ui: &Rc<Ui>, initial: Option<PathBuf>) {
     ));
     root.append(&consent);
     let files = git_view::file_dropdown();
+    files.set_visible(false);
     root.append(&files);
     let nav = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let previous = gtk::Button::with_label(lang.text("Vorheriger Bereich", "Previous range"));
@@ -776,6 +785,12 @@ fn run_selftest(state: Rc<State>) {
             }
             1 => {
                 assert!(state.preview.borrow().is_none());
+                assert!(buffer_text(&state.before.buffer()).is_empty());
+                assert!(buffer_text(&state.after.buffer()).is_empty());
+                assert!(!state.files.is_visible());
+                assert!(!state.consent.is_sensitive());
+                assert!(!state.restore.is_sensitive());
+                assert!(!state.cleanup.is_sensitive());
                 assert_eq!(std::fs::read(&stale).unwrap(), b"EXTERNAL");
                 assert!(stale_journal.exists());
                 state.path.set_text(journal.to_str().unwrap());

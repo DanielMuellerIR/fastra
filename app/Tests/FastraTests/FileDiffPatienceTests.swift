@@ -47,7 +47,7 @@ struct FileDiffPatienceTests {
             verify(edits, old: old, new: new)
             #expect(try changes(old, new, limit: 10) == edits)
         }
-        // Eindeutigkeit muss auf BEIDEN Seiten gelten.
+        // Eindeutigkeit muss auf beiden Seiten gelten.
         #expect(try changes([0, 1, 1, 2, 9], [8, 1, 2, 2, 7], limit: 2) == nil)
     }
 

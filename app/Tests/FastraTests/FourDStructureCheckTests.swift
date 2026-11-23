@@ -1,9 +1,8 @@
 // FourDStructureCheckTests.swift
 //
-// Unit-Tests der 4D-Struktur-Hinweise (Etappe 5 Wunschpaket 2026-07c).
-// Leitregel des Checkers: valide 4D-Exporte dürfen KEINE Hinweise erzeugen
-// (im Zweifel keine Meldung); gezielt kaputte Fälle finden die richtige
-// Zeile.
+// Unit-Tests der 4D-Struktur-Hinweise. Leitregel
+// des Checkers: valide 4D-Exporte dürfen keine Hinweise erzeugen (im Zweifel
+// keine Meldung); gezielt kaputte Fälle finden die richtige Zeile.
 
 import Testing
 import Foundation
@@ -121,7 +120,7 @@ func mismatchedCloser() {
     let issue = FourDStructureCheck.check(code)
     #expect(issue?.line == 3)
     // Erwartung über denselben L10n-Aufruf — der Testprozess kann je nach
-    // System-Sprache Deutsch ODER Englisch auflösen.
+    // System-Sprache Deutsch oder Englisch auflösen.
     #expect(issue?.message == L10n.format(
         "„%@“ passt nicht zum offenen „%@“ aus Zeile %ld.",
         "End while", "If", 1

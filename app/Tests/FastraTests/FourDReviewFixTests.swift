@@ -1,18 +1,11 @@
 // FourDReviewFixTests.swift
 //
-// Regressionstests zu den 4D-Funden des Code-Reviews vom 2026-08-10. Geprüft
-// wird jeweils das reale Fehlverhalten, nicht die geänderte Zeile:
-//
-// - F2: Eine Zeile, die in einem mehrzeiligen Blockkommentar BEGINNT, kann
-//   hinter ihrem `*/` wieder gültigen 4D-Code enthalten. Parameterhilfe und
-//   Vervollständigung müssen dort wieder greifen.
-// - F6: Ein Projekt- oder Komponentenmethodenname darf mehr Wörter haben als
-//   der längste eingebaute 4D-Befehl und muss trotzdem vollständig erkannt
-//   werden.
-// - F7: Nur nachweislich normale Dateien gehören in den Methodenindex — ein
-//   ins Leere zeigender Symlink erzeugte sonst eine Phantommethode.
-//
-// Alle Fixtures sind selbst geschrieben (nichts aus Arbeitsprojekten).
+// Verhalten mit selbst geschriebenen Fixtures prüfen:
+// - Hinter `*/` wieder gültigen Code erkennen, auch wenn die Zeile in einem
+//   mehrzeiligen Kommentar beginnt (F2).
+// - Projekt-/Komponentenmethoden auch mit mehr Wörtern als der längste
+//   eingebaute Befehl vollständig erkennen (F6).
+// - Nur nachweislich reguläre Dateien indizieren, keine toten Symlinks (F7).
 
 import Foundation
 import Testing
@@ -43,7 +36,7 @@ func fourDReviewFix_activeParameterAfterBlockCommentEnd() {
 
 @Test("Ohne `*/` vor dem Cursor bleibt die Zeile Kommentar")
 func fourDReviewFix_contextStaysNilWithoutBlockCommentEnd() {
-    // Der Kommentar endet erst HINTER dem Cursor — dort gibt es keine Hilfe.
+    // Der Kommentar endet erst hinter dem Cursor — dort gibt es keine Hilfe.
     let text = "/* Anfang\nRechne($a */"
     let cursor = (text as NSString).range(of: "$a").max
     #expect(FourDSignatureHelpLogic.callContext(

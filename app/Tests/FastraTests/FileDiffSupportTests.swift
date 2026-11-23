@@ -1,9 +1,9 @@
 // FileDiffSupportTests.swift
 //
-// Tests der Begleitlogik des Datei-Vergleichs (Etappe 1 Wunschpaket
-// 2026-07c): Differenzen-Beschreibungen, Optionen-Zusammenfassung,
-// Dialog-Feldprüfung, Tab-Wiederverwendung und der Ladepfad mit seinen
-// ehrlichen Grenzen (binär/zu groß/nicht lesbar).
+// Tests der Begleitlogik des Datei-Vergleichs:
+// Differenzen-Beschreibungen, Optionen-Zusammenfassung, Dialog-Feldprüfung,
+// Tab-Wiederverwendung und der Ladepfad mit seinen ehrlichen Grenzen (binär/zu
+// groß/nicht lesbar).
 
 import Testing
 import Foundation
@@ -12,9 +12,9 @@ import Foundation
 // MARK: - Beschreibungen der Differenzen-Liste
 
 // Die Erwartungen entstehen über dieselben L10n-Aufrufe wie der Code —
-// geprüft wird die WAHL des richtigen Formats (Singular/Plural/asymmetrisch)
+// geprüft wird die Wahl des richtigen Formats (Singular/Plural/asymmetrisch)
 // und der Bereichs-Text, nicht die Übersetzung. Der Testprozess kann je nach
-// System-Sprache Deutsch ODER Englisch auflösen; beides muss bestehen.
+// System-Sprache Deutsch oder Englisch auflösen; beides muss bestehen.
 
 @Test("Blockbeschreibung: einzelne geänderte Zeile")
 func descriptionSingleChanged() {
@@ -92,7 +92,7 @@ func fieldProblems() throws {
     try Data("hallo\nwelt\n".utf8).write(to: text)
     #expect(CompareDialogLogic.problem(forFileAt: text) == nil)
 
-    // UTF-16 mit BOM enthält Nullbytes, ist aber KEINE Binärdatei.
+    // UTF-16 mit BOM enthält Nullbytes, ist aber keine Binärdatei.
     let utf16 = dir.appendingPathComponent("utf16.txt")
     try "hallo".data(using: .utf16)!.write(to: utf16)
     #expect(CompareDialogLogic.problem(forFileAt: utf16) == nil)

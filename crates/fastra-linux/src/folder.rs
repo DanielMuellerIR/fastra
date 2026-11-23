@@ -4,18 +4,27 @@ use fastra_search::{FolderPreview, Request};
 mod workflow;
 use std::{path::PathBuf, sync::Arc};
 
+enum WorkError {
+    ProjectUnavailable,
+    Search(fastra_search::Error),
+}
+
+impl From<fastra_search::Error> for WorkError {
+    fn from(error: fastra_search::Error) -> Self {
+        Self::Search(error)
+    }
+}
+
 fn check_project(
     project: Option<&super::project_view::WorkBinding>,
     cancel: &Cancellation,
-) -> std::result::Result<(), fastra_search::Error> {
-    cancel.check()?;
-    if let Some(project) = project {
-        project.validate().map_err(|_| match cancel.check() {
-            Err(error) => fastra_search::Error::Core(error),
-            Ok(()) => fastra_search::Error::Stale,
-        })?;
+) -> std::result::Result<(), WorkError> {
+    cancel.check().map_err(fastra_search::Error::Core)?;
+    let invalid = project.is_some_and(|binding| binding.validate().is_err());
+    cancel.check().map_err(fastra_search::Error::Core)?;
+    if invalid {
+        return Err(WorkError::ProjectUnavailable);
     }
-    cancel.check()?;
     Ok(())
 }
 #[derive(Clone)]
@@ -165,6 +174,9 @@ impl FolderWindow {
             return;
         }
         if !search_live::folder_ready(&self.host.find.text()) {
+            if self.pane.has_search_empty_notice() {
+                return;
+            }
             self.status.set_text(self.host.lang.text(
                 "Auch 1–2 Zeichen sind suchbar: Suchen klicken oder Return drücken.",
                 "Patterns of 1–2 characters are searchable: click Find or press Return.",
@@ -231,8 +243,21 @@ impl FolderWindow {
         self.project.as_ref().is_none_or(|p| p.is_current())
     }
     fn project_stale(&self) {
+        if self.transaction.borrow().is_none() {
+            self.transaction_paths.borrow_mut().clear();
+        }
         self.invalidate();
-        self.status.set_text(self.host.lang.text("Projekt geändert oder Wurzel ersetzt. Projekt erneut wählen und Vorschau neu berechnen.","Project changed or root replaced. Select the project again and recalculate the preview."));
+        let notice = self.host.lang.text(
+            "Die Projektauswahl ist ungültig. Schließe diesen Dialog, wähle den Ordner im Projektfenster erneut und erstelle eine neue Vorschau.",
+            "The project selection is no longer valid. Close this dialog, select the folder again in the project window, and create a new preview.",
+        );
+        if self.workflow.is_some() {
+            self.status.set_text(notice);
+            self.status.set_visible(true);
+        } else {
+            self.status.set_text("");
+            self.pane.show_search_empty_notice(notice);
+        }
     }
     fn work_binding(
         &self,
@@ -444,9 +469,16 @@ impl FolderWindow {
                                     preview: file.shared_preview(),
                                 })
                                 .collect();
-                            let skipped = preview
-                                .skipped()
+                            let skipped_inputs = preview.skipped();
+                            let blocking_skips = skipped_inputs
                                 .iter()
+                                .filter(|item| item.reason.blocks_approval());
+                            let other_skips = skipped_inputs
+                                .iter()
+                                .filter(|item| !item.reason.blocks_approval());
+                            let skipped = blocking_skips
+                                .clone()
+                                .chain(other_skips)
                                 .take(30)
                                 .map(|s| {
                                     format!(
@@ -491,17 +523,33 @@ impl FolderWindow {
                                     state.host.lang.text("übersprungen", "skipped")
                                 )
                             };
-                            state.status.set_text(&format!("{summary}\n{skipped}"));
+                            let complete = preview.is_complete();
+                            if complete {
+                                state.status.set_text(&format!("{summary}\n{skipped}"));
+                            } else {
+                                let lang = state.host.lang;
+                                let mut reasons = std::collections::BTreeMap::new();
+                                for item in blocking_skips {
+                                    *reasons.entry(skip_reason(lang, item.reason)).or_insert(0u32) += 1;
+                                }
+                                let reasons = reasons.into_iter().map(|(reason, count)| format!("{reason} ({count})"))
+                                    .collect::<Vec<_>>().join(" · ");
+                                state.status.set_text(&format!(
+                                    "{summary}\n{}\n{reasons}\n{skipped}",
+                                    incomplete_search(lang),
+                                ));
+                            }
                             state.status.set_visible(state.workflow.is_some() || !preview.skipped().is_empty());
                             let preview = Arc::new(preview);
                             if let Some(stages) = &state.stages {
                                 stages.set(preview.clone());
                             }
                             *state.pending.borrow_mut() = Some(preview);
-                            state.pane.set_items(items);
+                            state.pane.set_items_with_approval(items, complete);
                             state.set_busy(false);
                         }
-                        Ok(Err(error)) => state.error(&error),
+                        Ok(Err(WorkError::ProjectUnavailable)) => state.project_stale(),
+                        Ok(Err(WorkError::Search(error))) => state.error(&error),
                         Err(_) => state.status.set_text("Search worker stopped"),
                     };
                     glib::ControlFlow::Break
@@ -530,12 +578,55 @@ impl FolderWindow {
             Error::Limit=>lang.text("Die Ordnersuche überschreitet eine angezeigte Zeit-, Mengen- oder Speichergrenze. Keine teilweise anwendbare Vorschau erzeugt.","The folder search exceeds a displayed time, count or memory limit. No partially applicable preview was produced.").into(),
             Error::InvalidRoots=>lang.text("Bitte einen lesbaren absoluten Ordnerpfad wählen.","Choose a readable absolute folder path.").into(),
             Error::InvalidApproval=>lang.text("Die Freigaben passen nicht zur Vorschau. Bitte neu berechnen.","Approvals do not match the preview. Recalculate it.").into(),
+            Error::Incomplete=>incomplete_search(lang).into(),
             Error::Workflow{path,error}=>format!("{} {}: {}",lang.text("Dateiauftrag vollständig abgelehnt:","Complete file workflow refused:"),project_view::display(path),crate::workflow_view::message(error,lang)),
             Error::Encoding{path,error}=>format!("{} {}: {}{}",lang.text("Dateiauftrag vollständig abgelehnt:","Complete file workflow refused:"),project_view::display(path),lang.text("Das Ergebnis ist in der ursprünglichen Dateikodierung nicht darstellbar. Keine Datei geändert.","The result cannot be represented in the original file encoding. No file changed."),match error{fastra_core::encoding::EncodingError::Unrepresentable(c)=>format!(" (U+{:04X})",*c as u32),_=>String::new()}),
             Error::WorkflowInput{path,message}=>format!("{} {}: {}",lang.text("Dateiauftrag vollständig abgelehnt:","Complete file workflow refused:"),project_view::display(path),match message.as_str(){"DuplicateInput"=>lang.text("Dieselbe Datei wurde mehrfach ausgewählt.","The same file was selected more than once."),"NotWritable"=>lang.text("Die Datei oder ihr Ordner ist nicht schreibbar.","The file or its directory is not writable."),"Binary"=>lang.text("Binärdaten oder nicht verlustfrei dekodierbar.","Binary data or not losslessly decodable."),"TooLarge"=>lang.text("Die Datei überschreitet die Größenbegrenzung.","The file exceeds the size limit."),"LongLine"|"NUL/long line"=>lang.text("NUL-Zeichen oder eine Zeile überschreitet die Anzeigegrenze.","NUL character or a line exceeds the display limit."),"LinkOrSpecial"|"not a regular file"=>lang.text("Verweise und besondere Dateien sind nicht zugelassen.","Links and special files are not allowed."),"UnsupportedFile"=>lang.text("Die Metadaten können nicht sicher erhalten werden.","Metadata cannot be preserved safely."),"NonUnicodePath"=>lang.text("Nicht-UTF-8-Pfad bei aktiven Ausschlussregeln.","Non-UTF-8 path with active exclusion rules."),_=>message}),
             Error::Io(error)=>format!("{} {error}",lang.text("Der Ordner konnte nicht vollständig gelesen werden.","The folder could not be read completely.")),
         };
         self.status.set_text(&message);
+    }
+    fn apply_error(&self, error: &fastra_search::Error) {
+        if self.discard_stale_apply_preview(error) {
+            return;
+        }
+        let limit = matches!(error, fastra_search::Error::File(fastra_io::Error::Limit));
+        if limit
+            || matches!(
+                error,
+                fastra_search::Error::File(fastra_io::Error::RecoveryRequired(_))
+            )
+        {
+            // Nach verlorener Dateibasis oder Teiltausch gilt die alte Freigabe nicht mehr.
+            // Erst entwerten, dann den Fehler samt Wiederherstellungspfad anzeigen/registrieren.
+            self.invalidate();
+        }
+        self.error(error);
+        self.status.set_visible(true);
+        if limit {
+            self.status.set_text(&format!(
+                "{}\n{}",
+                self.status.text(),
+                self.host.lang.text(
+                    "Erstelle eine neue Vorschau und gib sie erneut frei.",
+                    "Create a new preview and approve it again.",
+                )
+            ));
+        }
+    }
+    fn discard_stale_apply_preview(&self, error: &fastra_search::Error) -> bool {
+        use fastra_search::Error;
+        if !matches!(error, Error::Stale | Error::File(fastra_io::Error::Stale)) {
+            return false;
+        }
+        self.transaction_paths.borrow_mut().clear();
+        self.invalidate();
+        self.status.set_visible(true);
+        self.status.set_text(self.host.lang.text(
+            "Die Dateibasis hat sich geändert. Erstelle eine neue Vorschau und gib sie erneut frei.",
+            "The file basis changed. Create a new preview and approve it again.",
+        ));
+        true
     }
     fn overlaps_dirty(
         &self,
@@ -577,6 +668,9 @@ impl FolderWindow {
         let Some(preview) = self.pending.borrow().clone() else {
             return;
         };
+        if !preview.is_complete() {
+            return;
+        }
         let Some(approvals) = self.pane.approvals() else {
             return;
         };
@@ -612,12 +706,12 @@ impl FolderWindow {
                     match planning.changed_paths(generation, &planning_approvals, &planning_cancel)
                     {
                         Ok(paths) => paths,
-                        Err(error) => return Ok(Err(error)),
+                        Err(error) => return Ok(Err(error.into())),
                     };
                 for (file, indices) in planning.files().iter().zip(&planning_approvals) {
                     let output = match file.after(indices, &planning_cancel) {
                         Ok(text) => text,
-                        Err(error) => return Ok(Err(error)),
+                        Err(error) => return Ok(Err(error.into())),
                     };
                     crate::text_limits::validate(&output, lang)?;
                 }
@@ -639,11 +733,23 @@ impl FolderWindow {
                     state.project_stale();
                     return;
                 }
-                if generation != state.generation.get()
-                    || state.cancel.borrow().check().is_err()
-                    || !state.visible()
-                {
+                if generation != state.generation.get() || !state.visible() {
                     state.set_busy(false);
+                    return;
+                }
+                if state.cancel.borrow().check().is_err() {
+                    state.set_busy(false);
+                    // Eine bereits als ungültig erkannte Freigabe bleibt nach Abbrechen ungültig.
+                    match &result {
+                        Ok(Err(WorkError::ProjectUnavailable)) => state.project_stale(),
+                        Ok(Err(WorkError::Search(error @ fastra_search::Error::File(
+                            fastra_io::Error::Limit | fastra_io::Error::RecoveryRequired(_)
+                        )))) => state.apply_error(error),
+                        Ok(Err(WorkError::Search(error))) => {
+                            state.discard_stale_apply_preview(error);
+                        }
+                        _ => {}
+                    }
                     return;
                 }
                 let result = match result {
@@ -679,9 +785,13 @@ impl FolderWindow {
                         *state.transaction_paths.borrow_mut() = paths;
                         state.apply_ready(preview, approvals, generation, cancel);
                     }
-                    Err(error) => {
+                    Err(WorkError::ProjectUnavailable) => {
                         state.set_busy(false);
-                        state.error(&error);
+                        state.project_stale();
+                    }
+                    Err(WorkError::Search(error)) => {
+                        state.set_busy(false);
+                        state.apply_error(&error);
                     }
                 }
             },
@@ -721,7 +831,9 @@ impl FolderWindow {
         std::thread::spawn(move || {
             let result = (|| {
                 check_project(project.as_ref(), &cancel)?;
-                preview.apply(generation, &approvals, &cancel)
+                preview
+                    .apply(generation, &approvals, &cancel)
+                    .map_err(WorkError::from)
             })()
             .map(|tx| {
                 let snapshots = match tx.as_ref() {
@@ -776,6 +888,10 @@ impl FolderWindow {
                             state
                                 .undo
                                 .set_sensitive(state.transaction.borrow().is_some());
+                            if state.workflow.is_none() {
+                                // Die verbrauchte Freigabe darf die Rücknahme nicht modal verdecken.
+                                state.pane.clear();
+                            }
                             match snapshots {
                                 Ok(snapshots) => state.refresh(snapshots),
                                 Err(error) => {
@@ -791,8 +907,9 @@ impl FolderWindow {
                             state.pending.borrow_mut().take();
                             state.set_busy(false);
                         }
-                        Ok(Err(error)) => {
-                            state.error(&error);
+                        Ok(Err(WorkError::ProjectUnavailable)) => state.project_stale(),
+                        Ok(Err(WorkError::Search(error))) => {
+                            state.apply_error(&error);
                             state.search.set_sensitive(true)
                         }
                         Err(_) => state.status.set_text("Apply worker stopped"),
@@ -911,15 +1028,24 @@ impl FolderWindow {
         });
     }
 }
+fn incomplete_search(lang: Language) -> &'static str {
+    lang.text(
+        "Suche unvollständig. Treffer bleiben sichtbar, Freigaben sind gesperrt. Behebe die Gründe oder grenze den Suchbereich ein und suche erneut.",
+        "Search incomplete. Matches remain visible, but approvals are disabled. Resolve the listed issues or narrow the scope, then search again.",
+    )
+}
 fn skip_reason(lang: Language, reason: fastra_search::SkipReason) -> &'static str {
     use fastra_search::SkipReason::*;
     match reason {
         LinkOrSpecial => lang.text("Verweis oder besondere Datei", "Link or special file"),
-        Binary => lang.text(
-            "Binärdaten oder nicht dekodierbar",
-            "Binary or undecodable data",
-        ),
+        Binary => lang.text("Binärdaten", "Binary data"),
+        Undecodable => lang.text("Text nicht verlustfrei dekodierbar", "Text could not be decoded losslessly"),
+        Unreadable => lang.text("Datei oder Ordner nicht lesbar", "Could not read file or folder"),
         TooLarge => lang.text("Dateigrenze überschritten", "File size limit exceeded"),
+        SnapshotLimit => lang.text(
+            "Datei oder Metadaten überschreiten eine Prüfgrenze",
+            "File or metadata exceeds an inspection limit",
+        ),
         LongLine => lang.text("Zeilengrenze überschritten", "Line length limit exceeded"),
         NonUnicodePath => lang.text(
             "Nicht-UTF-8-Pfad mit aktiven Ausschlussregeln; ohne diese Regeln durchsuchbar",
@@ -1315,7 +1441,7 @@ fn open_mode(
                     && state.pane.has_approvals()
                     && !state.busy.get()
                     && state.transaction.borrow().is_none()
-                    && state.pending.borrow().is_some()
+                    && state.pending.borrow().as_ref().is_some_and(|preview| preview.is_complete())
                     && state.locale_current()
                     && state.pane.root.is_mapped(),
             );
@@ -1624,6 +1750,10 @@ fn run_selftest(state: Rc<FolderWindow>) {
                     return glib::ControlFlow::Continue;
                 }
                 assert!(state.transaction.borrow().is_none());
+                assert!(state.pending.borrow().is_none());
+                assert!(!state.pane.has_approvals());
+                assert!(!state.apply.is_sensitive());
+                assert!(state.status.is_visible());
                 assert_eq!(std::fs::read(&a).unwrap(), original);
                 assert!(
                     state
@@ -1633,7 +1763,107 @@ fn run_selftest(state: Rc<FolderWindow>) {
                     "{}",
                     state.status.text()
                 );
-                eprintln!("FASTRA_FOLDER_SELFTEST_OK complete-preview/selective-apply/controls-frozen/codec-bom/open-editor-refresh/disk-undo/nonmatching-input-stale");
+                state.search.emit_clicked();
+                stage.set(6);
+            }
+            6 => {
+                if state.busy.get() || !state.pane.is_ready() {
+                    return glib::ControlFlow::Continue;
+                }
+                let preview = state.pending.borrow().clone().unwrap();
+                let generation = state.generation.get();
+                state.apply_error(&fastra_search::Error::Core(fastra_core::Error::Cancelled));
+                assert!(Arc::ptr_eq(
+                    &preview,
+                    state.pending.borrow().as_ref().unwrap()
+                ));
+                assert_eq!(state.generation.get(), generation);
+                assert!(state.pane.has_approvals());
+                state.apply_error(&fastra_search::Error::File(fastra_io::Error::Limit));
+                assert!(state.pending.borrow().is_none());
+                assert!(!state.pane.has_approvals());
+                assert!(!state.apply.is_sensitive());
+                assert!(state.status.is_visible());
+                assert!(state.status.text().contains("32 MiB"));
+                assert!(state
+                    .status
+                    .text()
+                    .contains(state.host.lang.text("neue Vorschau", "new preview")));
+                assert_eq!(std::fs::read(&a).unwrap(), original);
+                state.search.emit_clicked();
+                stage.set(7);
+            }
+            7 => {
+                if state.busy.get() || !state.pane.is_ready() {
+                    return glib::ControlFlow::Continue;
+                }
+                // Reguläre Fehlerübergabe mit echtem Journal; kein Backend-Teiltausch-Failpoint.
+                let preview = state.pending.borrow().clone().unwrap();
+                let approvals = state.pane.approvals().unwrap();
+                let cancel = Cancellation::default();
+                let mut transaction = preview
+                    .apply(state.generation.get(), &approvals, &cancel)
+                    .unwrap()
+                    .unwrap();
+                let journal = transaction.path().to_owned();
+                session::forget_journal(&state.host, &journal);
+                state.apply_error(&fastra_search::Error::File(
+                    fastra_io::Error::RecoveryRequired(journal.clone()),
+                ));
+                assert!(state.pending.borrow().is_none());
+                assert!(!state.pane.has_approvals());
+                assert!(!state.apply.is_sensitive());
+                assert!(state.status.is_visible());
+                assert!(state.status.text().contains(&format!("{journal:?}")));
+                assert!(!state.status.text().contains(
+                    state
+                        .host
+                        .lang
+                        .text("kein Apply ausgeführt", "Apply was not performed")
+                ));
+                assert_eq!(std::fs::read(&a).unwrap(), b"\xef\xbb\xbfdog dog\r\n");
+                let index = test_label_button(
+                    state.host.window.upcast_ref(),
+                    state
+                        .host
+                        .lang
+                        .text("Dateitransaktionen …", "File transactions …"),
+                )
+                .expect("Existing session recovery action");
+                assert!(index.is_sensitive());
+                index.emit_clicked();
+                let index_window = gtk::Window::list_toplevels()
+                    .into_iter()
+                    .filter_map(|widget| widget.downcast::<gtk::Window>().ok())
+                    .find(|window| {
+                        window.is_visible()
+                            && window.title().as_deref()
+                                == Some(state.host.lang.text(
+                                    "Bekannte Dateitransaktionen",
+                                    "Known file transactions",
+                                ))
+                    })
+                    .expect("Registered recovery index");
+                assert!(test_label_button(
+                    index_window.upcast_ref(),
+                    &project_view::display(&journal)
+                )
+                .is_some());
+                index_window.close();
+                transaction.undo(&cancel).unwrap();
+                transaction.discard(&cancel).unwrap();
+                session::forget_journal(&state.host, &journal);
+                assert_eq!(std::fs::read(&a).unwrap(), original);
+                state.search.emit_clicked();
+                stage.set(8);
+            }
+            8 => {
+                if state.busy.get() || !state.pane.is_ready() {
+                    return glib::ControlFlow::Continue;
+                }
+                assert!(state.pending.borrow().is_some());
+                assert!(state.apply.is_sensitive());
+                eprintln!("FASTRA_FOLDER_SELFTEST_OK complete-preview/selective-apply/controls-frozen/codec-bom/open-editor-refresh/disk-undo/nonmatching-input-stale/apply-limit-new-preview/cancel-keeps-approval/recovery-handoff-path-index-real-journal");
                 std::fs::remove_dir_all(&dir).unwrap();
                 state.host.window.application().unwrap().quit();
                 return glib::ControlFlow::Break;
@@ -1642,6 +1872,31 @@ fn run_selftest(state: Rc<FolderWindow>) {
         }
         glib::ControlFlow::Continue
     });
+}
+
+#[cfg(debug_assertions)]
+fn test_label_button(root: &gtk::Widget, text: &str) -> Option<gtk::Button> {
+    if let Some(button) = root.downcast_ref::<gtk::Button>() {
+        if button.label().as_deref() == Some(text)
+            || button
+                .child()
+                .and_downcast::<gtk::Label>()
+                .is_some_and(|label| label.text() == text)
+        {
+            return Some(button.clone());
+        }
+    }
+    // Geschlossene GtkExpander führen ihren Inhalt nicht in der Widget-Kindliste.
+    if let Some(child) = root
+        .downcast_ref::<gtk::Expander>()
+        .filter(|expander| !expander.is_expanded())
+        .and_then(gtk::Expander::child)
+    {
+        return test_label_button(&child, text);
+    }
+    chrome::children(root)
+        .iter()
+        .find_map(|child| test_label_button(child, text))
 }
 
 #[cfg(debug_assertions)]

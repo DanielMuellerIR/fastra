@@ -87,8 +87,8 @@ struct MarkdownHTMLWhitelistRejectedTests {
 
     @Test("Ereignis-Attribute sind der eigentliche Skriptvektor und fallen weg")
     func eventHandlerAttributesAreRejected() {
-        // Genau hiermit ist die QuickLook-Erweiterung 2026-07-26 durchgefallen:
-        // Ihre Tag-Blacklist kennt `<script>`, aber `onerror` ist ein Attribut.
+        // Eine reine Tag-Blacklist für `<script>` würde das Attribut `onerror`
+        // nicht erfassen.
         for markdown in [
             "<img src=\"x\" onerror=\"alert(1)\">",
             "<p onclick=\"alert(1)\">Text</p>",

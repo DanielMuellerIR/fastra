@@ -1,13 +1,13 @@
 // MarkdownImageStore.swift
 //
-// Bild-Ablage für das assistierte Markdown-Schreiben (Etappe 5 Wunschpaket
-// 2026-07b): Pasteboard-Bilddaten und gezogene Bilddateien landen als Datei
+// Bild-Ablage für assistiertes Markdown: Pasteboard-Bilddaten und gezogene
+// Bilddateien landen als Datei
 // beim Datei-Import im images-Unterordner und werden relativ verlinkt.
 //
-// Leitplanken: Dateischreibvorgänge sind atomar (bei Abbruch bleibt der
-// Ausgangszustand erhalten), beim Kopieren werden Dateiinhalte NIEMALS
-// verändert, und ohne Speicherort gibt es keine stille Ablage (der Aufrufer
-// zeigt die „erst speichern“-Meldung).
+// Leitplanken: Unvollständige Kopien werden nicht veröffentlicht; die Quelle
+// bleibt unverändert. Ein Fehler nach Publish hält nicht sicher entfernbare
+// eigene Restkopien mit Identitätsbeleg im Fehlerergebnis. Ohne Speicherort
+// gibt es keine stille Ablage (der Aufrufer zeigt die „erst speichern“-Meldung).
 
 import Foundation
 import AppKit
@@ -101,7 +101,7 @@ enum MarkdownImageStore {
         reservedPaths[image.reservationKey, default: 0] += 1
     }
 
-    /// Dateiendungen, die als Bild-DATEI eingefügt (statt geöffnet) werden.
+    /// Dateiendungen, die als Bild-Datei eingefügt (statt geöffnet) werden.
     /// Deckt sich mit den Vorschau-Formaten der WKWebView-Bildauflösung.
     static let insertableImageExtensions: Set<String> = [
         "png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "tif", "tiff",
@@ -179,6 +179,7 @@ enum MarkdownImageStore {
     enum StoreError: LocalizedError {
         case documentNotSaved
         case unreadableImage
+        case imageNamesExhausted
         case invalidImagesDirectory
 
         var errorDescription: String? {
@@ -187,6 +188,8 @@ enum MarkdownImageStore {
                 return L10n.string("Das Dokument hat noch keinen Speicherort. Bitte erst speichern (⌘S) — dann kann Fastra Bilder im Unterordner „images“ ablegen.")
             case .unreadableImage:
                 return L10n.string("Die Bilddaten konnten nicht gelesen werden.")
+            case .imageNamesExhausted:
+                return L10n.string("Alle 9.999 Bildnamen für diese Dateiendung im Ordner „images“ sind bereits belegt oder für Rückgängig reserviert.")
             case .invalidImagesDirectory:
                 return L10n.string("„images“ ist kein echter Ordner. Bitte den symbolischen Link oder die Datei umbenennen und erneut versuchen.")
             }
@@ -200,20 +203,23 @@ enum MarkdownImageStore {
         var afterOpeningImagesDirectory: (() -> Void)?
         var beforePublishing: ((URL) -> Void)?
         var failCopyAfterBytes: Int?
+        var publication = MarkdownImagePublication.Hooks()
 
         init(afterOpeningSource: (() -> Void)? = nil,
              afterOpeningImagesDirectory: (() -> Void)? = nil,
              beforePublishing: ((URL) -> Void)? = nil,
-             failCopyAfterBytes: Int? = nil) {
+             failCopyAfterBytes: Int? = nil,
+             publication: MarkdownImagePublication.Hooks = .init()) {
             self.afterOpeningSource = afterOpeningSource
             self.afterOpeningImagesDirectory = afterOpeningImagesDirectory
             self.beforePublishing = beforePublishing
             self.failCopyAfterBytes = failCopyAfterBytes
+            self.publication = publication
         }
     }
 
     private struct OpenDirectory {
-        let parentFD: Int32?
+        let parentFD: Int32
         let fd: Int32
         let url: URL
         let identity: LockIdentity
@@ -225,7 +231,7 @@ enum MarkdownImageStore {
         let inode: ino_t
     }
 
-    /// Legt ROHE Bilddaten als neue Datei im `images`-Unterordner ab.
+    /// Legt rohe Bilddaten als neue Datei im `images`-Unterordner ab.
     static func storePastedData(_ prepared: PreparedImageData,
                                 documentURL: URL,
                                 reserveForTransaction: Bool = false,
@@ -240,14 +246,10 @@ enum MarkdownImageStore {
             let opened = try openImagesDirectory(beside: documentDirectory)
             defer {
                 Darwin.close(opened.fd)
-                if let parentFD = opened.parentFD { Darwin.close(parentFD) }
+                Darwin.close(opened.parentFD)
             }
-            var stored = false
-            defer {
-                if !stored, opened.created, let parentFD = opened.parentFD {
-                    _ = unlinkat(parentFD, "images", AT_REMOVEDIR)
-                }
-            }
+            // Auch ein leerer images-Ordner bleibt erhalten. macOS bietet kein
+            // identitätsgebundenes rmdir; ein fremder Ersatz darf nicht verschwinden.
             let temporaryName = ".fastra-paste-\(UUID().uuidString).tmp"
             let temporaryFD = try createFile(named: temporaryName, in: opened.fd)
             var temporaryExists = true
@@ -256,53 +258,45 @@ enum MarkdownImageStore {
                 if temporaryExists { _ = unlinkat(opened.fd, temporaryName, 0) }
             }
             try writeAll(prepared.data, to: temporaryFD)
-            guard fsync(temporaryFD) == 0 else { throw currentPOSIXError() }
+            try MarkdownImagePublication.syncFile(temporaryFD, hooks: hooks.publication)
             let contentSHA256 = try storedFileHash(fromFD: temporaryFD)
             for counter in 1..<10_000 {
                 let name = shortImageName(counter: counter, fileExtension: prepared.fileExtension)
                 let target = directory.appendingPathComponent(name)
                 if isReserved(target) { continue }
                 hooks.beforePublishing?(target)
-                if renameatx_np(opened.fd, temporaryName, opened.fd, name,
-                                UInt32(RENAME_EXCL)) == 0 {
-                    temporaryExists = false
+                let publication = try MarkdownImagePublication(file: temporaryFD, directory: opened.fd, name: name, expectedSHA256: contentSHA256)
+                do {
+                    try publication.publish(temporaryName: temporaryName)
+                } catch let error as POSIXError where error.code == .EEXIST { continue }
+                catch { throw error }
+                temporaryExists = false
+                do {
+                    try hooks.publication.afterRenameBeforeIdentity?(publication.url)
+                    try publication.capturePublishedIdentity()
+                    try hooks.publication.afterRename?(target)
                     guard directoryStillMatches(opened),
-                          let relative = relativeLinkPath(from: linkDocumentURL,
-                                                          to: target)
-                    else {
-                        _ = unlinkat(opened.fd, name, 0)
-                        throw StoreError.invalidImagesDirectory
-                    }
-                    let identity: StoredFileIdentity
-                    do {
-                        // `rename` ändert ctime. Deshalb erst danach am
-                        // weiterhin gebundenen FD lesen; ein Pfadaustausch
-                        // kann die Identität dabei nicht umlenken.
-                        identity = try storedFileIdentity(fromFD: temporaryFD)
-                    } catch {
-                        _ = unlinkat(opened.fd, name, 0)
-                        throw error
-                    }
+                          let relative = relativeLinkPath(from: linkDocumentURL, to: target) else { throw StoreError.invalidImagesDirectory }
+                    try MarkdownImagePublication.syncDirectories(images: opened.fd, parent: opened.parentFD, hooks: hooks.publication)
+                    guard directoryStillMatches(opened) else { throw StoreError.invalidImagesDirectory }
                     let result = StoredImage(
                         link: markdownImageLink(fileName: name, relativePath: relative),
-                        fileURL: target,
-                        createdByInsertion: true,
+                        fileURL: target, createdByInsertion: true,
                         imagesDirectoryCreated: opened.created,
-                        identity: identity,
-                        contentSHA256: contentSHA256,
-                        reservationKey: reservationKey(for: target)
-                    )
+                        identity: try publication.identity(), contentSHA256: contentSHA256,
+                        reservationKey: reservationKey(for: target))
                     if reserveForTransaction { reserve(result) }
-                    stored = true
                     return result
+                } catch {
+                    throw MarkdownImagePublication.failure(error, publications: [publication],
+                        images: opened.fd, parent: opened.parentFD, hooks: hooks.publication)
                 }
-                guard errno == EEXIST else { throw currentPOSIXError() }
             }
-            throw StoreError.unreadableImage
+            throw StoreError.imageNamesExhausted
         }
     }
 
-    /// Kopiert eine Bild-DATEI unverändert in den `images`-Unterordner:
+    /// Kopiert eine Bild-Datei unverändert in den `images`-Unterordner:
     /// Jede Einfügung erhält eine eigene freie Nummer. So besitzt ihr
     /// Undo-Schritt die neue Datei auch bei bytegleichen Quellen eindeutig.
     static func storeImageFile(_ sourceURL: URL,
@@ -336,17 +330,10 @@ enum MarkdownImageStore {
             let opened = try openImagesDirectory(beside: documentDirectory)
             defer {
                 Darwin.close(opened.fd)
-                if let parentFD = opened.parentFD { Darwin.close(parentFD) }
+                Darwin.close(opened.parentFD)
             }
-            var stored = false
-            defer {
-                // `unlinkat(..., AT_REMOVEDIR)` entfernt ausschließlich den
-                // von uns erzeugten, noch leeren echten Ordner. Ein inzwischen
-                // untergeschobener Symlink wird niemals verfolgt.
-                if !stored, opened.created, let parentFD = opened.parentFD {
-                    _ = unlinkat(parentFD, "images", AT_REMOVEDIR)
-                }
-            }
+            // Auch ein leerer images-Ordner bleibt erhalten. macOS bietet kein
+            // identitätsgebundenes rmdir; ein fremder Ersatz darf nicht verschwinden.
             hooks.afterOpeningImagesDirectory?()
 
             let temporaryName = ".fastra-copy-\(UUID().uuidString).tmp"
@@ -358,7 +345,7 @@ enum MarkdownImageStore {
             }
             try copy(sourceFD: sourceFD, targetFD: temporaryFD,
                      failAfterBytes: hooks.failCopyAfterBytes)
-            guard fsync(temporaryFD) == 0 else { throw currentPOSIXError() }
+            try MarkdownImagePublication.syncFile(temporaryFD, hooks: hooks.publication)
             var sourceAfter = stat()
             guard fstat(sourceFD, &sourceAfter) == 0,
                   sameSnapshot(sourceBefore, sourceAfter) else {
@@ -372,39 +359,34 @@ enum MarkdownImageStore {
                 let candidate = directory.appendingPathComponent(candidateName)
                 if isReserved(candidate) { continue }
                 hooks.beforePublishing?(candidate)
-                if renameatx_np(opened.fd, temporaryName, opened.fd,
-                                candidateName, UInt32(RENAME_EXCL)) == 0 {
-                    temporaryExists = false
+                let publication = try MarkdownImagePublication(file: temporaryFD, directory: opened.fd, name: candidateName, expectedSHA256: contentSHA256)
+                do {
+                    try publication.publish(temporaryName: temporaryName)
+                } catch let error as POSIXError where error.code == .EEXIST { continue }
+                catch { throw error }
+                temporaryExists = false
+                do {
+                    try hooks.publication.afterRenameBeforeIdentity?(publication.url)
+                    try publication.capturePublishedIdentity()
+                    try hooks.publication.afterRename?(candidate)
                     guard directoryStillMatches(opened),
-                          let relative = relativeLinkPath(from: linkDocumentURL,
-                                                          to: candidate) else {
-                        _ = unlinkat(opened.fd, candidateName, 0)
-                        throw StoreError.invalidImagesDirectory
-                    }
-                    let copiedIdentity: StoredFileIdentity
-                    do {
-                        copiedIdentity = try storedFileIdentity(fromFD: temporaryFD)
-                    } catch {
-                        _ = unlinkat(opened.fd, candidateName, 0)
-                        throw error
-                    }
+                          let relative = relativeLinkPath(from: linkDocumentURL, to: candidate) else { throw StoreError.invalidImagesDirectory }
+                    try MarkdownImagePublication.syncDirectories(images: opened.fd, parent: opened.parentFD, hooks: hooks.publication)
+                    guard directoryStillMatches(opened) else { throw StoreError.invalidImagesDirectory }
                     let result = StoredImage(
-                        link: markdownImageLink(fileName: candidateName,
-                                                relativePath: relative),
-                        fileURL: candidate,
-                        createdByInsertion: true,
+                        link: markdownImageLink(fileName: candidateName, relativePath: relative),
+                        fileURL: candidate, createdByInsertion: true,
                         imagesDirectoryCreated: opened.created,
-                        identity: copiedIdentity,
-                        contentSHA256: contentSHA256,
-                        reservationKey: reservationKey(for: candidate)
-                    )
+                        identity: try publication.identity(), contentSHA256: contentSHA256,
+                        reservationKey: reservationKey(for: candidate))
                     if reserveForTransaction { reserve(result) }
-                    stored = true
                     return result
+                } catch {
+                    throw MarkdownImagePublication.failure(error, publications: [publication],
+                        images: opened.fd, parent: opened.parentFD, hooks: hooks.publication)
                 }
-                guard errno == EEXIST else { throw currentPOSIXError() }
             }
-            throw StoreError.unreadableImage
+            throw StoreError.imageNamesExhausted
         }
     }
 
@@ -424,7 +406,6 @@ enum MarkdownImageStore {
         let fd = openat(parentFD, "images",
                         O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
         guard fd >= 0 else {
-            if created { _ = unlinkat(parentFD, "images", AT_REMOVEDIR) }
             Darwin.close(parentFD)
             throw StoreError.invalidImagesDirectory
         }
@@ -462,17 +443,9 @@ enum MarkdownImageStore {
 
     private static func writeAll(_ data: Data, to fd: Int32) throws {
         try data.withUnsafeBytes { bytes in
-            var offset = 0
-            while offset < bytes.count {
-                let written = Darwin.write(fd, bytes.baseAddress! + offset,
-                                           bytes.count - offset)
-                if written < 0 {
-                    if errno == EINTR { continue }
-                    throw currentPOSIXError()
-                }
-                guard written > 0 else { throw StoreError.unreadableImage }
-                offset += written
-            }
+            try POSIXBufferWriter.writeAll(bytes, to: fd, makeError: {
+                NSError(domain: NSPOSIXErrorDomain, code: Int($0))
+            })
         }
     }
 
@@ -491,18 +464,11 @@ enum MarkdownImageStore {
                 throw CocoaError(.fileWriteUnknown)
             }
             try buffer.withUnsafeBytes { bytes in
-                var offset = 0
-                while offset < count {
-                    let written = Darwin.write(targetFD,
-                                               bytes.baseAddress! + offset,
-                                               count - offset)
-                    if written < 0 {
-                        if errno == EINTR { continue }
-                        throw currentPOSIXError()
-                    }
-                    guard written > 0 else { throw StoreError.unreadableImage }
-                    offset += written
-                }
+                try POSIXBufferWriter.writeAll(
+                    UnsafeRawBufferPointer(rebasing: bytes[..<count]),
+                    to: targetFD, makeError: {
+                        NSError(domain: NSPOSIXErrorDomain, code: Int($0))
+                    })
             }
             total += count
         }
@@ -575,7 +541,7 @@ enum MarkdownImageStore {
     // MARK: - Drop-Abgrenzung (Dateityp)
 
     /// Teilt gezogene Datei-URLs auf: Bilddateien werden ins Markdown
-    /// EINGEFÜGT, alles andere behält das bestehende Verhalten „öffnen“.
+    /// eingefügt, alles andere behält das bestehende Verhalten „öffnen“.
     /// Der Typ wird am symlink-aufgelösten Ziel geprüft; ein Bild-Symlink
     /// bleibt damit zulässig, ein Ordner namens `archiv.png` dagegen nicht.
     static func partitionDroppedURLs(_ urls: [URL]) -> (insert: [URL], open: [URL]) {

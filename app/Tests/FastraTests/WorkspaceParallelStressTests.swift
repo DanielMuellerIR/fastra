@@ -1,26 +1,12 @@
 // WorkspaceParallelStressTests.swift
 //
-// Regressionstest gegen den parallelen Combine-Absturz vom 2026-08-09.
-//
-// Hintergrund: Combine legt das Verlags-Objekt (PublishedSubject) hinter
-// jedem @Published-Feld erst beim ersten Zugriff an und tauscht dabei
-// UNGESCHÜTZT den internen Feldspeicher aus. `Workspace.init` erreichte die
-// Main-Queue, bevor diese Anlage abgeschlossen war — am frühesten über den
-// initialen `rerun()`-Dispatch des SearchRunner, danach über die
-// Kontextaktivierung von `Workspace.shared` (deren objectWillChange-Getter
-// ALLE @Published-Felder einzeln verdrahtet). Der Main-Thread und der
-// erzeugende Test-Thread konvertierten dann denselben Speicher
-// gleichzeitig — beobachtet als SIGSEGV (os_unfair_lock auf NULL in
-// PublishedSubject) und als Heap-Korruption mit Müll-Adressen in deinit,
-// Subject-Sends und malloc. Der Schutz: `Workspace.init` wärmt alle
-// Speicher vor (`_ = objectWillChange`), BEVOR der SearchRunner entsteht.
-//
-// Dieser Test stellt genau dieses Fenster nach: mehrere Threads erzeugen
-// gleichzeitig Workspaces und schreiben sofort in bislang unberührte
-// @Published-Felder, während der Main-Thread die aufgestauten
-// Aktivierungen und Initial-Reruns abarbeitet. Der Prüfpunkt ist das
-// Überleben des Prozesses; vor dem Fix stürzten hier rund 40 % der
-// Läufe ab.
+// Parallele Workspace-Erzeugung und Main-Queue-Reruns prüfen. Combine legt
+// PublishedSubject beim ersten Zugriff an; `Workspace.init` muss
+// `objectWillChange` vor Erzeugung des SearchRunner vorwärmen, damit kein
+// anderer Thread denselben Feldspeicher gleichzeitig initialisiert.
+// Mehrere Threads erzeugen Workspaces und verändern unberührte Published-
+// Felder, während Main Kontextaktivierungen und Initial-Reruns abarbeitet.
+// Der Prüfpunkt ist das Überleben ohne Speicherfehler.
 
 import Combine
 import Foundation
@@ -76,7 +62,7 @@ func wsParallel_creationSurvivesContextActivation() async {
                         workspace.showsConflictBase = true
                     }
                     bag.removeAll()
-                    // Der Scope-Austritt gibt den Workspace auf DIESEM
+                    // Der Scope-Austritt gibt den Workspace auf diesem
                     // Thread frei — das deckt die zweite beobachtete
                     // Absturzstelle ab (Cancellable-Abbau im deinit,
                     // PublishedSubject.disassociate).
@@ -86,7 +72,7 @@ func wsParallel_creationSurvivesContextActivation() async {
         await group.waitForAll()
     }
     // Nach dem Sturm auf dem Main-Thread einen letzten Workspace anlegen:
-    // Unser Block steht in der Main-Queue HINTER allen aufgestauten
+    // Unser Block steht in der Main-Queue hinter allen aufgestauten
     // Aktivierungen. Der Kontext muss danach auf genau diesen letzten
     // Workspace zeigen (Konvergenz-Invariante der Kontextaktivierung).
     await MainActor.run {

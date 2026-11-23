@@ -1,6 +1,6 @@
 // FourDHighlightClippingTests.swift
 //
-// CESEs StyledRangeContainer verlangt Highlight-Bereiche INNERHALB des
+// CESEs StyledRangeContainer verlangt Highlight-Bereiche innerhalb des
 // angefragten Chunks und verwirft alles, was davor beginnt. Der 4D-Provider
 // muss seine gecachten Token deshalb zuschneiden — sonst verliert z. B. ein
 // langer /* … */-Kommentar hinter einer Editposition seine Farbe.

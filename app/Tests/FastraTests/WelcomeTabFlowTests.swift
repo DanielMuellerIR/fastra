@@ -1,11 +1,8 @@
 // WelcomeTabFlowTests.swift
 //
-// Sichert das Platzhalter-Modell des Willkommensbildschirms ab (2026-07-30,
-// Firefox-Neuer-Tab-Muster; ersetzt den eigenen Willkommen-Tab vom
-// 2026-07-12): Jeder unberührte leere Tab zeigt die Starthilfe über dem
-// Editor; ⌘T legt daneben einen weiteren frischen Tab an, der sie ebenfalls
-// zeigt; das erste getippte Zeichen blendet sie aus. Neue unbenannte Tabs
-// tragen den lokalisierten Basisnamen mit Positionsnummer.
+// Jeder unberührte leere Tab zeigt die Starthilfe. ⌘T legt einen weiteren
+// frischen Tab an; Tippen blendet dessen Hilfe aus. Unbenannte Tabs erhalten
+// den lokalisierten Basisnamen mit Positionsnummer.
 
 import Foundation
 import Testing
@@ -76,10 +73,8 @@ func welcomeTab_firstCharacterDismissesPlaceholder() {
 @Test("⌘T zeigt die Starthilfe auch in einem Fenster mit geladenem Projekt")
 @MainActor
 func welcomeTab_placeholderShowsInProjectWindow() throws {
-    // Daniels Alltagsfall (Befund 2026-07-30): Fastra setzt beim Öffnen einer
-    // Einzeldatei implizit den Elternordner als Projekt. Eine Projekt-Sperre
-    // hätte die Starthilfe damit praktisch immer unterdrückt — die Vorgabe
-    // lautet aber „alle neuen Dateien".
+    // Beim Öffnen einer Einzeldatei setzt Fastra den Elternordner als Projekt.
+    // Die Starthilfe muss trotzdem für jeden neuen leeren Tab erscheinen.
     let (ws, defaults, suite) = makeWelcomeWorkspace()
     defer { defaults.removePersistentDomain(forName: suite) }
     let root = testTemporaryDirectory()
@@ -113,7 +108,7 @@ func welcomeTab_prepareToCloseWindowResetsToStartState() {
     // kann sie nach dem Schließen wieder anzeigen (Dock-Klick). Bliebe der
     // Workspace nach `prepareToCloseWindow` bei null Tabs, erschiene dann ein
     // Fenster ohne Tabs mit tippbarer, aber ins Leere schreibender
-    // Editorfläche (Daniel-Befund 2026-07-29).
+    // Editorfläche.
     let (ws, defaults, suite) = makeWelcomeWorkspace()
     defer { defaults.removePersistentDomain(forName: suite) }
 

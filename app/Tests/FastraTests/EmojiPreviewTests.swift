@@ -10,8 +10,8 @@ import Testing
 
 @Test("Preview-HTML lässt Emojis am Zeilen- und Dateiende intakt")
 func previewHTMLKeepsEmojisIntact() {
-    // Konstellation aus dem Fehlerbericht: drei Emojis in Anführungszeichen
-    // nahe dem Dateiende, letzte Zeile ohne abschließenden Zeilenumbruch.
+    // Drei Emojis in Anführungszeichen nahe dem Dateiende; kein abschließender
+    // Zeilenumbruch.
     let markdown = """
     - Erste lange Zeile mit etwas Text
     - Zweite Zeile

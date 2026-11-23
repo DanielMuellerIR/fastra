@@ -27,6 +27,7 @@ pub enum Error {
     Limit,
     InvalidRoots,
     InvalidApproval,
+    Incomplete,
     Workflow {
         path: PathBuf,
         error: fastra_workflow::Error,
@@ -63,6 +64,9 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 mod selection;
 type Result<T> = std::result::Result<T, Error>;
+const MAX_FILE_BYTES: usize = 4 * 1024 * 1024;
+const MAX_PREVIEW_BYTES: usize = 128 * 1024 * 1024;
+const MAX_FILES: usize = 10_000;
 
 #[derive(Clone)]
 pub struct Request {
@@ -93,10 +97,18 @@ struct WorkflowContext {
 pub enum SkipReason {
     LinkOrSpecial,
     Binary,
+    Undecodable,
+    Unreadable,
     TooLarge,
+    SnapshotLimit,
     LongLine,
     NonUnicodePath,
     UnsupportedFile,
+}
+impl SkipReason {
+    pub fn blocks_approval(self) -> bool {
+        !matches!(self, Self::Binary | Self::LinkOrSpecial)
+    }
 }
 #[derive(Debug)]
 pub struct Skipped {
@@ -223,6 +235,7 @@ impl Directory {
 #[derive(Debug)]
 pub struct FolderPreview {
     files: Vec<FilePreview>,
+    binaries: Vec<Snapshot>,
     directories: Vec<Directory>,
     skipped: Vec<Skipped>,
     generation: u64,
@@ -239,6 +252,9 @@ impl FolderPreview {
     pub fn skipped(&self) -> &[Skipped] {
         &self.skipped
     }
+    pub fn is_complete(&self) -> bool {
+        !self.skipped.iter().any(|skipped| skipped.reason.blocks_approval())
+    }
     pub fn matches(&self) -> usize {
         self.matches
     }
@@ -254,6 +270,9 @@ impl FolderPreview {
         cancel.check()?;
         if generation != self.generation {
             return Err(Error::Stale);
+        }
+        if !self.is_complete() {
+            return Err(Error::Incomplete);
         }
         if approved.len() != self.files.len() {
             return Err(Error::InvalidApproval);
@@ -276,6 +295,9 @@ impl FolderPreview {
         cancel.check()?;
         if generation != self.generation {
             return Err(Error::Stale);
+        }
+        if !self.is_complete() {
+            return Err(Error::Incomplete);
         }
         if approved.len() != self.files.len() {
             return Err(Error::InvalidApproval);
@@ -315,7 +337,7 @@ impl FolderPreview {
                 cancel,
             )?);
         }
-        Ok(Transaction::apply(changes, cancel)?)
+        Ok(Transaction::apply_with_read_basis(changes, &self.binaries, cancel)?)
     }
 }
 fn writable(path: &Path) -> bool {
@@ -447,6 +469,26 @@ impl Walker<'_> {
         self.result.skipped.push(Skipped { path, reason });
         Ok(())
     }
+    fn unreadable(&mut self, path: &Path, error: Error) -> Result<()> {
+        // Synthetische Pfadverbote der Laufzeit bleiben Fehler.
+        let is_system_error = match &error {
+            Error::Io(error) | Error::File(fastra_io::Error::Io(error)) => error.raw_os_error().is_some(),
+            _ => false,
+        };
+        if self.workflow.is_some() || !is_system_error {
+            return Err(error);
+        }
+        self.skip(path.to_owned(), SkipReason::Unreadable)
+    }
+    fn retain_binary(&mut self, path: PathBuf, snapshot: Snapshot) -> Result<()> {
+        self.skip(path, SkipReason::Binary)?;
+        self.bytes = self.bytes.checked_add(snapshot.retained_bytes()).ok_or(Error::Limit)?;
+        if self.bytes > MAX_PREVIEW_BYTES || self.result.files.len() + self.result.binaries.len() >= MAX_FILES {
+            return Err(Error::Limit);
+        }
+        self.result.binaries.push(snapshot);
+        Ok(())
+    }
     fn file(&mut self, child: PathBuf, size: u64) -> Result<()> {
         self.check()?;
         fastra_io::check_runtime_path(&child)?;
@@ -459,28 +501,35 @@ impl Walker<'_> {
             }
             return Ok(());
         }
-        if size > 4 * 1024 * 1024 {
-            self.skip(child, SkipReason::TooLarge)?;
-            return Ok(());
+        if size > MAX_FILE_BYTES as u64 {
+            return self.skip(child, SkipReason::TooLarge);
         }
-        let snapshot = match Snapshot::read_bounded(&child, 4 * 1024 * 1024, self.cancel) {
+        let snapshot = match Snapshot::read_bounded(&child, MAX_FILE_BYTES, self.cancel) {
             Ok(s) => s,
             Err(fastra_io::Error::UnsupportedMetadata) => {
-                self.skip(child, SkipReason::UnsupportedFile)?;
-                return Ok(());
+                return self.skip(child, SkipReason::UnsupportedFile);
             }
-            Err(e) => return Err(e.into()),
+            Err(fastra_io::Error::Limit) if self.workflow.is_none() => {
+                return self.skip(child, SkipReason::SnapshotLimit);
+            }
+            Err(error) => return self.unreadable(&child, error.into()),
         };
         let decoded = match encoding::decode(snapshot.bytes(), None) {
             Ok(d) => d,
-            Err(_) => {
-                self.skip(child, SkipReason::Binary)?;
-                return Ok(());
+            Err(_) if self.workflow.is_some() => return self.skip(child, SkipReason::Binary),
+            Err(encoding::EncodingError::Binary) if encoding::detect_bom(snapshot.bytes()).1.is_none() => {
+                return self.retain_binary(child, snapshot);
             }
+            Err(_) => return self.skip(child, SkipReason::Undecodable),
         };
         if decoded.text().contains('\0') {
-            self.skip(child, SkipReason::Binary)?;
-            return Ok(());
+            return self.skip(
+                child,
+                if self.workflow.is_some() { SkipReason::Binary } else { SkipReason::Undecodable },
+            );
+        }
+        if self.workflow.is_none() && decoded.text().len() > MAX_FILE_BYTES {
+            return self.skip(child, SkipReason::TooLarge);
         }
         if decoded
             .text()
@@ -494,7 +543,7 @@ impl Walker<'_> {
             .bytes
             .checked_add(snapshot.bytes().len() + decoded.text().len())
             .ok_or(Error::Limit)?;
-        if self.bytes > 128 * 1024 * 1024 {
+        if self.bytes > MAX_PREVIEW_BYTES {
             return Err(Error::Limit);
         }
         let (preview, workflow) = if let Some(context) = &self.workflow {
@@ -614,7 +663,7 @@ impl Walker<'_> {
                     .sum::<usize>(),
             )
             .ok_or(Error::Limit)?;
-        if self.bytes > 128 * 1024 * 1024 || self.result.files.len() >= 10_000 {
+        if self.bytes > MAX_PREVIEW_BYTES || self.result.files.len() + self.result.binaries.len() >= MAX_FILES {
             return Err(Error::Limit);
         }
         if self.workflow.is_some() && self.bytes > 32 * 1024 * 1024 {
@@ -637,13 +686,23 @@ impl Walker<'_> {
         }
         let before = stamp(&handle.metadata()?);
         let mut children = Vec::new();
-        for child in fs::read_dir(format!("/proc/self/fd/{}", handle.as_raw_fd()))? {
+        let listing = match fs::read_dir(format!("/proc/self/fd/{}", handle.as_raw_fd())) {
+            Ok(listing) => listing,
+            Err(error) => return self.unreadable(path, error.into()),
+        };
+        for child in listing {
             self.check()?;
             self.entries += 1;
             if self.entries > 100_000 {
                 return Err(Error::Limit);
             }
-            children.push(child?);
+            match child {
+                Ok(child) => children.push(child),
+                Err(error) => {
+                    self.unreadable(path, error.into())?;
+                    break;
+                }
+            }
         }
         children.sort_by_key(|entry| entry.file_name());
         for entry in children {
@@ -651,29 +710,50 @@ impl Walker<'_> {
             let name = entry.file_name();
             let child = path.join(&name);
             let relative = child.strip_prefix(root).map_err(|_| Error::InvalidRoots)?;
-            let kind = entry.file_type()?;
+            let hidden = !self.request.include_hidden && name.as_bytes().starts_with(b".");
+            if self.workflow.is_none() && hidden {
+                continue;
+            }
+            let kind = match entry.file_type() {
+                Ok(kind) => kind,
+                Err(error) => {
+                    self.unreadable(&child, error.into())?;
+                    continue;
+                }
+            };
             if !self.selection.visit(relative, kind.is_dir()) {
                 continue;
             }
             fastra_io::check_runtime_path(&child)?;
+            let excluded_type = kind.is_file() && self.request.known_text_only && !is_known_text(&child);
+            if self.workflow.is_none() && excluded_type {
+                continue;
+            }
             if relative.to_str().is_none() && !self.exclude.0.is_empty() {
-                self.skip(child, SkipReason::NonUnicodePath)?;
+                let reason = if self.workflow.is_none() && !kind.is_dir() && !kind.is_file() {
+                    SkipReason::LinkOrSpecial
+                } else {
+                    SkipReason::NonUnicodePath
+                };
+                self.skip(child, reason)?;
                 continue;
             }
-            if !self.request.include_hidden && name.as_bytes().starts_with(b".") {
-                continue;
-            }
-            if self.exclude.matches(relative)? {
+            if hidden || self.exclude.matches(relative)? {
                 continue;
             }
             if kind.is_dir() {
-                let next = open_child(&handle, &name)?;
-                self.walk(root, &child, next, depth + 1)?;
+                match open_child(&handle, &name) {
+                    Ok(next) => self.walk(root, &child, next, depth + 1)?,
+                    Err(error) => self.unreadable(&child, error)?,
+                }
             } else if kind.is_file() {
-                if self.request.known_text_only && !is_known_text(&child) {
+                if excluded_type {
                     continue;
                 }
-                self.file(child, entry.metadata()?.len())?;
+                match entry.metadata() {
+                    Ok(metadata) => self.file(child, metadata.len())?,
+                    Err(error) => self.unreadable(&child, error.into())?,
+                }
             } else {
                 self.skip(child, SkipReason::LinkOrSpecial)?
             }
@@ -708,7 +788,7 @@ pub fn preview_selected(
         request.flags,
         Limits {
             max_matches: 10_000,
-            max_text_bytes: 4 * 1024 * 1024,
+            max_text_bytes: MAX_FILE_BYTES,
             max_output_bytes: 8 * 1024 * 1024,
             ..Limits::default()
         },
@@ -786,6 +866,7 @@ fn preview_inner(
         start: Instant::now(),
         result: FolderPreview {
             files: vec![],
+            binaries: vec![],
             directories: vec![],
             skipped: vec![],
             generation,
@@ -800,14 +881,23 @@ fn preview_inner(
     let mut roots = Vec::new();
     for root in &request.roots {
         fastra_io::check_runtime_path(root)?;
-        let root = fs::canonicalize(root)?;
+        let root = match fs::canonicalize(root) {
+            Ok(root) => root,
+            Err(error) => {
+                walker.unreadable(root, error.into())?;
+                continue;
+            }
+        };
         if !roots.contains(&root) {
             roots.push(root)
         }
     }
     roots.sort();
     for root in roots {
-        walker.walk(&root, &root, open_dir(&root)?, 0)?;
+        match open_dir(&root) {
+            Ok(directory) => walker.walk(&root, &root, directory, 0)?,
+            Err(error) => walker.unreadable(&root, error)?,
+        }
     }
     for path in files {
         walker.check()?;

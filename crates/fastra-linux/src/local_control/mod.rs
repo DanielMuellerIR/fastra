@@ -12,14 +12,6 @@ use std::{
     sync::mpsc,
     time::{Duration, Instant},
 };
-fn language() -> Language {
-    Language(
-        std::env::var("LANGUAGE")
-            .or_else(|_| std::env::var("LANG"))
-            .unwrap_or_default()
-            .starts_with("de"),
-    )
-}
 thread_local! {static RUNTIME:RefCell<Option<Rc<RefCell<Runtime>>>>=const{RefCell::new(None)};}
 enum Event {
     Interrupt(UUID),
@@ -238,7 +230,7 @@ impl Runtime {
             });
         let v = view::View::new(
             &self.application,
-            language(),
+            Language::from_environment(),
             name,
             request.provenance.as_ref(),
         );
@@ -586,7 +578,7 @@ impl Runtime {
                 match code_explanation::open_package_in(
                     &self.application,
                     p,
-                    language(),
+                    Language::from_environment(),
                     Some(&s.window),
                     Some(initial_document),
                     false,
@@ -856,7 +848,7 @@ pub(super) fn service_ready() -> std::result::Result<(), String> {
     RUNTIME.with(|slot| {
         let state = slot.borrow();
         let runtime = state.as_ref().ok_or_else(|| {
-            language()
+            Language::from_environment()
                 .text(
                     "Steuerungsdienst wurde nicht gestartet.",
                     "Local-control service was not started.",
@@ -867,7 +859,7 @@ pub(super) fn service_ready() -> std::result::Result<(), String> {
         if let Some(error) = &state.startup_error {
             return Err(format!(
                 "{} {error}",
-                language().text(
+                Language::from_environment().text(
                     "Steuerungsdienst konnte nicht gestartet werden:",
                     "Could not start local-control service:",
                 )

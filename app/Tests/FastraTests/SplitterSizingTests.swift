@@ -60,7 +60,7 @@ struct SplitterSizingTests {
         #expect(SplitterSizing.width(start: 420, translation: -999, direction: -1, minimum: 260, maximum: 760) == 760)
     }
 
-    @Test("Vorschau darf bis zur Editor-Mindestbreite wachsen (Daniel-Befund 2026-07-16)")
+    @Test("Vorschau darf bis zur Editor-Mindestbreite wachsen")
     func previewMaximumFollowsWindowWidth() {
         // Breites Fenster (1600 pt), Seitenleiste 200 + Splitter 11, Editor
         // mindestens 240: Die Vorschau muss über die frühere Festbreite von

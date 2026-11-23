@@ -194,9 +194,8 @@ func serialRunnerIntegrationRipgrepEnumerationDrainsBothPipes() throws {
     """)
     defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
 
-    // Großzügige Frist: Ein echter Pipe-Deadlock hängt unbegrenzt und reißt
-    // auch 60 s. Mit 5 s riss die Shell-Schleife aus 4000 `printf` im
-    // parallelen Gesamtlauf unter Last (2026-09-17, isoliert 0,2–0,9 s).
+    // Großzügige Frist für 4000 Shell-`printf` unter paralleler Last.
+    // Ein echter Pipe-Deadlock überschreitet auch 60 s.
     let files = try RipgrepFileEnumerator.files(in: c.root,
                                                  executableURL: fixture,
                                                  timeout: 60)
@@ -292,7 +291,7 @@ func folderSearchPropagatesCancellation() throws {
 func find_skipsBinariesEvenInAllFilter() throws {
     let c = try FolderCorpus()
     // Binärdatei mit ".txt"-Endung, um den Filter zu umgehen — die
-    // Binär-Heuristik MUSS sie trotzdem fangen.
+    // Binär-Heuristik muss sie trotzdem fangen.
     try c.writeRaw("trojan.txt",
                    Data([0x66, 0x6F, 0x6F, 0x00, 0x66, 0x6F, 0x6F])) // "foo\0foo"
     try c.write("plain.txt", "foo")
@@ -384,7 +383,7 @@ func find_capsMatchesPerFile() throws {
 @Test("Gesamt-Cap löst aus wenn Treffer > cap → wasCapped == true, Anzahl ≤ cap")
 func find_totalCap_triggers() throws {
     // Corpus: eine einzige Datei mit 50 "foo"-Vorkommen, Cap auf 10 gesetzt.
-    // Der Cap MUSS greifen, da die eine Datei 50 > 10 Treffer liefert.
+    // Der Cap muss greifen, da die eine Datei 50 > 10 Treffer liefert.
     let c = try FolderCorpus()
     try c.write("many.txt", String(repeating: "foo\n", count: 50))
     let r = FolderSearch.find(in: [c.root], filter: .knownText,
@@ -394,18 +393,16 @@ func find_totalCap_triggers() throws {
                               maxTotalMatches: 10)
     // Cap muss ausgelöst haben.
     #expect(r.wasCapped == true)
-    // MATERIALISIERT wird höchstens der Cap (Speicher-/Arbeitsschutz).
+    // Materialisiert wird höchstens der Cap (Speicher-/Arbeitsschutz).
     #expect(r.perFile.reduce(0) { $0 + $1.matches.count } <= 10)
-    // ABER: totalMatches meldet seit dem Review-Fix 2026-06-23 den WAHREN
-    // Count der gescannten Datei (50), nicht die materialisierte Zahl —
-    // sonst untercountete eine Datei mit mehr Treffern als dem Cap. `wasCapped`
-    // signalisiert, dass die LISTE unvollständig ist.
+    // `totalMatches` zählt alle 50 Treffer der Datei, auch bei gekappter
+    // materialisierter Liste. `wasCapped` meldet deren Unvollständigkeit.
     #expect(r.totalMatches == 50)
     // Pattern-Fehler darf nicht gesetzt sein.
     #expect(r.invalidPatternMessage == nil)
 }
 
-@Test("Per-Datei-Cap: totalMatches meldet WAHREN Count, Liste bleibt gekappt (Review 2026-06-23)")
+@Test("Per-Datei-Cap: totalMatches zählt alle Treffer, Liste bleibt gekappt")
 func find_perFileCap_reportsTrueTotal() throws {
     // Eine Datei mit 8000 Treffern, Pro-Datei-Cap 5000, Gesamt-Cap weit darüber.
     // Vor dem Fix zeigte totalMatches die materialisierten 5000 (Undercount);
@@ -420,7 +417,7 @@ func find_perFileCap_reportsTrueTotal() throws {
     #expect(r.perFile.first?.matches.count == 5000)
     #expect(r.perFile.first?.totalMatches == 8000)
     #expect(r.totalMatches == 8000)
-    #expect(r.wasCapped == false)  // Gesamt-Cap NICHT ausgelöst
+    #expect(r.wasCapped == false)  // Gesamt-Cap nicht ausgelöst
 }
 
 @Test("Gesamt-Cap löst NICHT aus wenn Treffer ≤ cap → wasCapped == false")
@@ -460,11 +457,11 @@ func find_totalCap_breaksAcrossFiles(_ directFiles: Bool) throws {
     #expect(r.filesWithMatches.allSatisfy { $0.totalMatches == 5 })
 }
 
-@Test("Gesamt-Cap zählt den WAHREN Per-Datei-Count, nicht die gekappte Liste (Review 2026-07-03)")
+@Test("Gesamt-Cap zählt alle Per-Datei-Treffer statt der gekappten Liste")
 func find_totalCap_usesTrueCountAcrossFiles() throws {
     // Zwei Dateien mit je 6 echten Treffern, Pro-Datei-Cap 3, Gesamt-Cap 5.
-    // Die ERSTE Datei überschreitet mit ihrem wahren Count (6) bereits den
-    // Gesamt-Cap (5) → die zweite Datei darf NIE gelesen werden.
+    // Die erste Datei überschreitet mit ihrem wahren Count (6) bereits den
+    // Gesamt-Cap (5) → die zweite Datei darf nie gelesen werden.
     // Vor dem Fix zählte der Cap nur die materialisierten 3 Treffer
     // (3 < 5) und las die zweite Datei fälschlich noch mit.
     let c = try FolderCorpus()
@@ -476,7 +473,7 @@ func find_totalCap_usesTrueCountAcrossFiles() throws {
                               maxResultsPerFile: 3,
                               maxTotalMatches: 5)
     #expect(r.wasCapped == true)
-    // Nur EINE Datei im Ergebnis — egal welche die Enumeration zuerst
+    // Nur eine Datei im Ergebnis — egal welche die Enumeration zuerst
     // liefert (beide sind identisch aufgebaut, der Test ist reihenfolge-fest).
     #expect(r.perFile.count == 1)
     // Der wahre Count der einen gelesenen Datei wird gemeldet …
@@ -617,9 +614,8 @@ func folderSearch_directFileRoot() throws {
         options: SearchOptions(find: "EINZEL", replace: "", isRegex: false)
     )
     #expect(result.totalMatches == 1)
-    // Das Ergebnis trägt seit Review 2026-08-02 den KANONISCHEN Pfad
-    // (Symlinks aufgelöst, `/var` → `/private/var`): Ein späteres Apply
-    // schreibt damit garantiert auf das echte Ziel statt auf einen Link.
+    // Der kanonische Ergebnis-Pfad löst Symlinks und `/var` auf, damit Apply
+    // auf die echte Zieldatei schreibt.
     #expect(result.filesWithMatches.first?.url == file.canonicalFileURL)
 }
 
@@ -683,4 +679,69 @@ func folderSearch_explicitFileDoesNotInheritPackageExclusion() throws {
     let explicit = FolderSearch.find(in: [file], filter: .knownText, options: options)
     #expect(explicit.totalMatches == 1)
     #expect(explicit.filesWithMatches.first?.url == file.canonicalFileURL)
+}
+
+@Test("Typfilter, Projekt-Ausschluss, Pakete und neue Binärdateien bleiben bei der Freigabe ausgeschlossen")
+func folderSearchBasisRespectsExclusions() throws {
+    let corpus = try FolderCorpus()
+    try corpus.write("hit.txt", "foo")
+    let options = SearchOptions(find: "foo", replace: "bar", isRegex: false)
+    let result = FolderSearch.find(in: [corpus.root], filter: .knownText, options: options,
+                                   excludedPatterns: ["Excluded"], relativeTo: corpus.root)
+    let basis = try #require(result.sourceBasis)
+    try corpus.write("extension.bin", "foo")
+    try corpus.write("ignored.txt", "foo", in: "Excluded")
+    try corpus.write("packaged.txt", "foo", in: "Fixture.app/Contents")
+    let binary = try corpus.writeRaw("binary.txt", Data([0, 1, 2]))
+    try basis.validate(shouldCancel: { false })
+
+    try Data("foo".utf8).write(to: binary, options: .atomic)
+    #expect(throws: FolderSearch.SourceBasis.Failure.changed) {
+        try basis.validate(shouldCancel: { false })
+    }
+}
+
+@Test("Explizite Datei-Set-Links bleiben an ihr aufgelöstes Ziel gebunden")
+func folderSearchBasisRejectsChangedFileSetLink() throws {
+    let corpus = try FolderCorpus()
+    let first = try corpus.write("first.txt", "foo")
+    let second = try corpus.write("second.txt", "foo")
+    let link = corpus.root.appendingPathComponent("explicit.txt")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: first)
+    let options = SearchOptions(find: "foo", replace: "bar", isRegex: false)
+    let result = FolderSearch.find(in: [link], filter: .knownText, options: options)
+    #expect(result.filesWithMatches.first?.snapshot?.identity == FileIdentity(url: first))
+    #expect(result.totalMatches == 1)
+    let basis = try #require(result.sourceBasis)
+    try basis.validate(shouldCancel: { false })
+
+    try FileManager.default.removeItem(at: link)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: second)
+    #expect(throws: FolderSearch.SourceBasis.Failure.changed) {
+        try basis.validate(shouldCancel: { false })
+    }
+}
+
+@Test("Auch Binärdateien nutzen das Lesebudget. Frist und Abbruch stoppen die Prüfung")
+func folderSearchBasisValidationBounds() throws {
+    let corpus = try FolderCorpus()
+    try corpus.write("hit.txt", "foo")
+    let options = SearchOptions(find: "foo", replace: "bar", isRegex: false)
+    let result = FolderSearch.find(in: [corpus.root], filter: .knownText, options: options)
+    let basis = try #require(result.sourceBasis)
+    for name in ["bin-a.txt", "bin-b.txt"] {
+        let url = try corpus.writeRaw(name, Data([0]))
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        try handle.truncate(atOffset: FileLoader.largeFileThreshold / 2 + 128)
+    }
+    #expect(throws: FolderSearch.SourceBasis.Failure.limit) {
+        try basis.validate(shouldCancel: { false })
+    }
+    #expect(throws: FolderSearch.SourceBasis.Failure.timedOut) {
+        try basis.validate(deadline: 0, shouldCancel: { false })
+    }
+    #expect(throws: CancellationError.self) {
+        try basis.validate(shouldCancel: { true })
+    }
 }

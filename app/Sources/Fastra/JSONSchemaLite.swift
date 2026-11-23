@@ -1,18 +1,15 @@
 // JSONSchemaLite.swift
 //
-// Minimaler JSON-Schema-Prüfer (Etappe 6 Wunschpaket 2026-07c) für die
-// `.4DForm`-Validierung gegen das gebündelte `formsSchema.json` (MIT,
-// © Mathieu Ferry — siehe THIRD-PARTY-NOTICES.md).
-//
-// BEWUSST eine Teilmenge von JSON Schema 2020-12 — genau die Konstrukte,
-// die das Formular-Schema tatsächlich nutzt: $ref (#/…), type, enum,
-// const, minimum, pattern, properties, required, items, allOf, anyOf,
-// oneOf, not, if/then/else, additionalProperties. Alles andere wird
-// bewusst IGNORIERT (nie fehlgedeutet): lieber eine Prüfung weniger als
-// eine falsche Meldung.
-//
-// Fehlerwahl: Bei Alternativen (anyOf/oneOf) gewinnt die Verletzung mit
-// dem TIEFSTEN Pfad — die ist erfahrungsgemäß die hilfreichste Diagnose.
+// Minimaler JSON-Schema-Prüfer für die
+// `.4DForm`-Validierung gegen das gebündelte `formsSchema.json` (MIT, © Mathieu
+// Ferry — siehe THIRD-PARTY-NOTICES.md). Bewusst eine Teilmenge von JSON Schema
+// 2020-12 — genau die Konstrukte, die das Formular-Schema tatsächlich nutzt:
+// $ref (#/…), type, enum, const, minimum, pattern, properties, required, items,
+// allOf, anyOf, oneOf, not, if/then/else, additionalProperties. Alles andere
+// wird bewusst ignoriert (nie fehlgedeutet): lieber eine Prüfung weniger als
+// eine falsche Meldung. Fehlerwahl: Bei Alternativen (anyOf/oneOf) gewinnt die
+// Verletzung mit dem tiefsten Pfad — die ist erfahrungsgemäß die hilfreichste
+// Diagnose.
 
 import Foundation
 
@@ -89,7 +86,7 @@ enum JSONSchemaLite {
             return true
         }
 
-        // $ref zuerst — in 2020-12 gilt er ZUSÄTZLICH zu den Geschwistern.
+        // $ref zuerst — in 2020-12 gilt er zusätzlich zu den Geschwistern.
         if let ref = schema["$ref"] as? String {
             if let resolved = resolve(ref: ref, in: root) {
                 if record(evaluate(value: value, schema: resolved, root: root,
@@ -355,7 +352,7 @@ enum JSONSchemaLite {
 
     // MARK: - Pfad → Textposition
 
-    /// Findet die Textposition eines JSON-Pfads im ORIGINALTEXT — ein
+    /// Findet die Textposition eines JSON-Pfads im Originaltext — ein
     /// leichter JSON-Läufer (Strings mit Escapes, verschachtelte
     /// Container). Liefert (1,1), wenn der Pfad nicht auffindbar ist.
     static func position(of path: [PathSegment], in text: String)

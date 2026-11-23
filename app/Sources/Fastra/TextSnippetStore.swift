@@ -57,7 +57,7 @@ enum TextSnippetArchive {
 final class TextSnippetStore {
     static let key = "fastra.textSnippets.v1"
     private let defaults: UserDefaults
-    init(defaults: UserDefaults = SelfTest.workspaceDefaults()) { self.defaults = defaults }
+    init(defaults: UserDefaults = AppDefaults.store) { self.defaults = defaults }
 
     func load() throws -> [TextSnippetDefinition] {
         guard let object = defaults.object(forKey: Self.key) else { return [] }

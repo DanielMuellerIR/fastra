@@ -46,7 +46,7 @@ enum BracketSelection {
                        range != selection {
                         // Direkt vor einer äußeren Schlussklammer liegt der
                         // Cursor zugleich hinter dem inneren Block: Die
-                        // Klammer UNTER dem Cursor hat dann Vorrang.
+                        // Klammer unter dem Cursor hat dann Vorrang.
                         let priority = selection.length == 0
                             ? (range.location == selection.location || position == selection.location ? 0
                                : (range.upperBound == selection.location ? 1 : 2)) : 2

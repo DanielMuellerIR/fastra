@@ -1,8 +1,8 @@
 // FourDTokenizerTests.swift
 //
-// Tests für den leichten 4D-Tokenizer (Etappe 4 Wunschpaket 2026-07).
-// Alle .4dm-Fixtures sind SELBST GESCHRIEBEN (repräsentative Sprachmuster,
-// nichts aus der 4D-Doku übernommen).
+// Tests für den leichten 4D-Tokenizer. Alle
+// .4dm-Fixtures sind selbst geschrieben (repräsentative Sprachmuster, nichts
+// aus der 4D-Doku übernommen).
 
 import AppKit
 import CodeEditSourceEditor
@@ -91,7 +91,7 @@ func fourD_multiWordCommands() throws {
 @Test("Konstanten aus der generierten Liste, auch mehrwortig")
 func fourD_constants() throws {
     // Einen stabilen mehrwortigen Eintrag direkt aus der Liste nehmen, der
-    // NICHT zugleich Befehl ist — so bleibt der Test namensunabhängig.
+    // nicht zugleich Befehl ist — so bleibt der Test namensunabhängig.
     let commandSet = Set(FourDSymbols.commands.map { $0.lowercased() })
     let sample = try #require(FourDSymbols.constants.first {
         $0.contains(" ") && !commandSet.contains($0.lowercased())
@@ -142,7 +142,7 @@ func fourD_methodsAndMembers() {
     """
     let result = kinds(source)
     #expect(result.contains { $0.1 == .methodCall && $0.0 == "MeineMethode" })
-    // `.gesamtBetrag` bleibt bewusst OHNE Token (plain).
+    // `.gesamtBetrag` bleibt bewusst ohne Token (plain).
     #expect(!result.contains { $0.0 == "gesamtBetrag" })
     #expect(result.contains { $0.1 == .methodCall && $0.0 == "rechne" })
 }
@@ -391,7 +391,7 @@ func fourD_extensionMapping() {
     #expect(EditorView.grammarForSpecialExtension("4DForm") == .json)
     #expect(EditorView.grammarForSpecialExtension("4DCatalog") == .html)
     #expect(EditorView.grammarForSpecialExtension("4DSettings") == .html)
-    // .4dm läuft seit Etappe 3 Wunschpaket 2026-07b über die Registry
+    // .4dm verwendet die Registry
     // (CustomLanguageRegistry) — nicht mehr über das Grammatik-Mapping.
     #expect(EditorView.grammarForSpecialExtension("4dm") == nil)
     #expect(CustomLanguageRegistry.language(forExtension: "4dm") == CustomLanguageRegistry.fourD)

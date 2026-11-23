@@ -3,7 +3,7 @@ import AppKit
 
 /// Design-Tokens im ruhigen, neutralen Stil der Codex-Desktop-App.
 ///
-/// Seit v1.1 sind alle Farb-Tokens DYNAMISCH: jede Farbe trägt eine helle
+/// Seit v1.1 sind alle Farb-Tokens dynamisch: jede Farbe trägt eine helle
 /// und eine dunkle Ausprägung und löst sich zur Zeichenzeit über die
 /// effektive Appearance des Fensters auf (`NSColor(name:dynamicProvider:)`).
 /// Damit folgt das gesamte UI automatisch dem Erscheinungsbild — gesteuert
@@ -14,8 +14,8 @@ import AppKit
 /// Markenfarbe um Aufmerksamkeit konkurrieren. Interaktive Akzente sind blau;
 /// die frühere Cream-/Gold-Palette aus der cRegEx-Zeit ist vollständig entfernt.
 ///
-/// WICHTIG: Die CESE-Editor-Themes (`EditorView.fastraTheme[Dark]`) nutzen
-/// diese dynamischen Farben bewusst NICHT — CodeEditSourceEditors Minimap
+/// Wichtig: Die CESE-Editor-Themes (`EditorView.fastraTheme[Dark]`) nutzen
+/// diese dynamischen Farben bewusst nicht — CodeEditSourceEditors Minimap
 /// ruft `brightnessComponent` auf Theme-Farben auf, was auf Provider-Farben
 /// (kein komponentenbasierter Colorspace) crashen würde. Der Editor bekommt
 /// zwei statische sRGB-Themes und schaltet per `colorScheme` um.
@@ -78,11 +78,11 @@ enum Theme {
     static let diffAddedBG   = dynamic(light: rgb(0xE2, 0xEF, 0xE3), dark: rgb(0x1F, 0x3A, 0x26))
     static let diffAddedFG   = dynamic(light: rgb(0x2F, 0x5D, 0x3A), dark: rgb(0x94, 0xCE, 0x9F))
 
-    // MARK: Git-Status (Etappe 2)
+    // MARK: Git-Status
 
-    /// Git-Status-Farben (VS-Code-Sprache, Daniel-Wunsch 2026-07-12): geändert =
-    /// Orange, nicht versioniert = Blau, gelöscht/Konflikt = Rot, neu bereit-
-    /// gestellt = Grün. Eigene, kontraststarke Tokens statt der Diff-Palette.
+    /// Git-Status-Farben: geändert = Orange, unversioniert = Blau,
+    /// gelöscht/Konflikt = Rot, neu bereitgestellt = Grün. Eigene kontraststarke
+    /// Tokens außerhalb der Diff-Palette.
     static let gitModified  = dynamic(light: rgb(0xB5, 0x6C, 0x1A), dark: rgb(0xDF, 0xA2, 0x5A)) // orange
     static let gitUntracked = dynamic(light: rgb(0x2A, 0x66, 0xB5), dark: rgb(0x7F, 0xB0, 0xEE)) // blau
 
@@ -120,7 +120,7 @@ enum Theme {
     static let stroke       = dynamic(light: rgb(0, 0, 0, 0.08), dark: rgb(0xFF, 0xFF, 0xFF, 0.10))
     static let strokeStrong = dynamic(light: rgb(0, 0, 0, 0.14), dark: rgb(0xFF, 0xFF, 0xFF, 0.18))
 
-    // Schriftgrößen liegen absichtlich NICHT mehr als fertige `Font`-Werte
+    // Schriftgrößen liegen absichtlich nicht mehr als fertige `Font`-Werte
     // hier. Ein fertiger Font kann den Skalierungsfaktor aus dem SwiftUI-
     // Environment nicht sehen. `FastraFontModifier` weiter unten baut ihn
     // deshalb erst an der verwendenden View aus Rolle + Faktor zusammen.
@@ -255,7 +255,7 @@ private struct FastraFontModifier: ViewModifier {
 /// per Environment weiter. Die diskrete `controlSize` lässt native SwiftUI-
 /// Controls passend zur Schrift mitwachsen beziehungsweise schrumpfen.
 private struct FastraScalingRootModifier: ViewModifier {
-    @AppStorage(UIZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var zoomLevel = 0
+    @AppStorage(UIZoom.defaultsKey, store: AppDefaults.store) private var zoomLevel = 0
 
     private var scale: CGFloat { UIZoom.scale(for: zoomLevel) }
     private var controlSize: ControlSize {

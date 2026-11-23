@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Fastra
 
-@Suite("Markdown: Texttreue im Review 2026-10-09")
+@Suite("Markdown: Texttreue bei Formatierungen")
 struct MarkdownReview2026Tests {
     @Test("HTML-Attribute lösen Entities genau einmal und vor der URL-Prüfung auf")
     func entities() {

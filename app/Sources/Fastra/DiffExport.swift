@@ -162,7 +162,7 @@ struct DiffExportButton: NSViewRepresentable {
             panel.nameFieldStringValue = "Fastra-Diff.txt"
             panel.allowedContentTypes = [.plainText]
             panel.canCreateDirectories = true
-            SelfTest.configureDiffExportPanel(panel)
+            DiffExportPanelConfiguration.configure(panel)
             panel.beginSheetModal(for: window) { [weak window, weak sender] response in
                 guard response == .OK, let url = panel.url, let window, window.isVisible else {
                     self.isBusy = false; sender?.isEnabled = true

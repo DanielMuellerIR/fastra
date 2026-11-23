@@ -119,7 +119,7 @@ Auswahl. Der kanonische Dokumentpuffer bleibt Quelle für Revision, Dirty, IO un
 Snapshots. Insert-/Delete-Deltas und native Useraktionsgrenzen werden synchron
 übertragen; kein SetText pro Taste und keine eigene Undo-Engine. Sprache und
 Faltung bleiben gemeinsam, Rechteckmarkierungen lokal. Die letzte Quellansicht
-bleibt auch nach Toolbar-/Dialogfokus das Befehlsziel; Split AUS setzt Primary.
+bleibt auch nach Toolbar-/Dialogfokus das Befehlsziel; Split aus setzt Primary.
 
 Auswahlabhängige Aufträge binden Dokument, Revision, Pane/View/Buffer,
 Auswahlgeneration und ursprüngliche Fenstergruppe. Der Ganzdatei-Suchbereich
@@ -135,7 +135,7 @@ nur das noch aktuelle eigene Angebot derselben Pane ab; fremde und andere
 Pane-Angebote bleiben erhalten. Freie rohe GTK-Bufferwechsel außerhalb dieser
 Komponente sind kein Produktvertrag.
 
-Beide nativen Historien behalten 200 Levels, auch bei Split AUS. Eine isolierte
+Beide nativen Historien behalten 200 Levels, auch bei Split aus. Eine isolierte
 Messung mit 4 MiB Text und acht vollständigen Ersetzungen zeigte rund 69 MiB
 Mehrverbrauch durch die zweite History (Gesamtzuwachs etwa 1,91-mal die reine
 Kontrolle). Das ist eine Messung des ersten Kandidaten, keine feste Speicherobergrenze.

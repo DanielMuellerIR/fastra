@@ -64,7 +64,7 @@ enum SearchMatchSelection {
 
         case .select(let matchID):
             // Ein Klick kann nach einem asynchronen Suchlauf noch aus einer
-            // inzwischen ersetzten List-Zeile eintreffen. Nur die AKTUELLE
+            // inzwischen ersetzten List-Zeile eintreffen. Nur die aktuelle
             // Workspace-Liste darf dann Auswahl und Sprungziel bestimmen.
             guard let index = matches.firstIndex(where: { $0.id == matchID }) else {
                 return Transition(state: current, output: .none)

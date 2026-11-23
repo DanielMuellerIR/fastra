@@ -1,7 +1,7 @@
 // MarkdownEditingTests.swift
 //
-// Tests für die puren Markdown-Formatierungsbefehle (Etappe 5 Wunschpaket
-// 2026-07b): reine Textfunktionen — Anwendung/Undo prüft der Editor-Pfad.
+// Tests für die puren Markdown-Formatierungsbefehle:
+// reine Textfunktionen — Anwendung/Undo prüft der Editor-Pfad.
 
 import Foundation
 import Testing
@@ -124,7 +124,7 @@ func bold_wrapsSelection() {
 @Test("Fett: erneuter Befehl auf markiertem Wort entfernt die Marker (Toggle)")
 func bold_unwrapsWhenSurrounded() {
     let text = "ein **wort** hier"
-    // Auswahl NUR auf „wort“ (Marker außen).
+    // Auswahl nur auf „wort“ (Marker außen).
     let edit = MarkdownFormat.toggleInline(text, selection: range(6, 4), marker: "**")
     #expect(applied(edit, to: text) == "ein wort hier")
     #expect(edit.selection == range(4, 4))
@@ -317,7 +317,7 @@ func markdownFilename() {
     #expect(!MarkdownFormat.isMarkdownFilename("Ohne Titel"))
 }
 
-// MARK: - Tastenkürzel in Tooltips (Daniel-Wunsch 2026-07-29)
+// MARK: - Tastenkürzel in Tooltips
 
 @Test("Kürzel-Anzeige folgt der Mac-Schreibweise ⌥⇧⌘ + Großbuchstabe")
 func shortcut_displayUsesMacNotation() {

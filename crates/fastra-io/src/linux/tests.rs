@@ -68,6 +68,42 @@ fn journals(root: &Path) -> Vec<PathBuf> {
 }
 
 #[test]
+fn read_basis_conflict_is_checked_at_swap_boundaries_without_joining_undo() {
+    for boundary in ["prepared", "exchanged"] {
+        let root = fixture();
+        initial(root.path());
+        let binary = root.path().join("data.bin");
+        std::fs::write(&binary, b"data\0\n").unwrap();
+        let cancel = Cancellation::default();
+        let basis = Snapshot::read(&binary, &cancel).unwrap();
+        let result = Transaction::apply_inner(
+            changes(root.path()),
+            &[basis],
+            Purpose::Replace,
+            &cancel,
+            &mut |point, index, _| {
+                if point == boundary && index == 0 {
+                    std::fs::write(&binary, b"foreign\0\n").unwrap();
+                }
+            },
+        );
+        if boundary == "prepared" {
+            assert!(matches!(result, Err(Error::Stale)));
+        } else {
+            let Err(Error::RecoveryRequired(journal)) = result else {
+                panic!("expected recovery after the swap");
+            };
+            let mut transaction = Transaction::reopen(&journal).unwrap();
+            transaction.undo(&cancel).unwrap();
+            transaction.discard(&cancel).unwrap();
+        }
+        assert_original(root.path());
+        assert_eq!(std::fs::read(&binary).unwrap(), b"foreign\0\n");
+        assert!(journals(root.path()).is_empty());
+    }
+}
+
+#[test]
 fn real_multifile_apply_reopen_undo_and_cleanup() {
     let root = fixture();
     initial(root.path());
@@ -719,6 +755,253 @@ fn sigkill_recovers_partial_apply_and_partial_undo_in_a_fresh_process() {
         assert_original(root.path());
         transaction.discard(&Cancellation::default()).unwrap();
         assert!(journals(root.path()).is_empty());
+    }
+}
+
+#[test]
+fn sigkill_before_applied_rejects_byte_identical_foreign_inode() {
+    use std::os::unix::fs::MetadataExt;
+
+    let identity = |path: &Path| {
+        let metadata = std::fs::metadata(path).unwrap();
+        (metadata.dev(), metadata.ino())
+    };
+    let capture = |path: &Path| (std::fs::read(path).unwrap(), identity(path));
+    let names = |directory: &Path| {
+        let mut names = std::fs::read_dir(directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        names.sort();
+        names
+    };
+    let journal_names = [
+        "intent.json",
+        "original-copy-0",
+        "original-copy-1",
+        "replacement-0",
+        "replacement-1",
+    ]
+    .map(OsString::from);
+    let originals = ["old 😀\r\n".as_bytes(), "old e\u{301}\n".as_bytes()];
+    let replacements = ["new 😀\r\n".as_bytes(), "new e\u{301}\n".as_bytes()];
+
+    for (point, exchanged) in [("exchanged-0", 1), ("exchanged-1", 2)] {
+        let root = fixture();
+        initial(root.path());
+        let targets = [root.path().join("a"), root.path().join("b")];
+        let original_ids = targets.each_ref().map(|path| identity(path));
+        let executable = std::env::var_os("FASTRA_IO_TEST_COMMAND")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_exe().unwrap());
+        let output = std::process::Command::new(executable)
+            .args(["--exact", "linux::tests::crash_worker", "--nocapture"])
+            .env("FASTRA_IO_CHILD", "crash")
+            .env("FASTRA_IO_CHILD_ROOT", root.path())
+            .env("FASTRA_IO_CHILD_POINT", point)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.signal(),
+            Some(libc::SIGKILL),
+            "{point}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let locations = journals(root.path());
+        assert_eq!(locations.len(), 1, "{point}");
+        let journal = &locations[0];
+        assert_eq!(names(journal), journal_names, "{point}");
+        let intent = std::fs::read(journal.join("intent.json")).unwrap();
+        let manifest: Manifest = serde_json::from_slice(&intent).unwrap();
+        assert_eq!(manifest.phase, Phase::Applying, "{point}");
+        assert_eq!(manifest.entries.len(), 2, "{point}");
+        for (index, entry) in manifest.entries.iter().enumerate() {
+            let replacement = entry.replacement.as_ref().unwrap();
+            let copy = entry.original_copy.as_ref().unwrap();
+            let replacement_id = (replacement.device, replacement.inode);
+            assert_eq!(
+                (entry.original.device, entry.original.inode),
+                original_ids[index]
+            );
+            assert_eq!(
+                capture(&targets[index]),
+                if index < exchanged {
+                    (replacements[index].to_vec(), replacement_id)
+                } else {
+                    (originals[index].to_vec(), original_ids[index])
+                },
+                "{point}: target {index}"
+            );
+            assert_eq!(
+                capture(&journal.join(format!("replacement-{index}"))),
+                if index < exchanged {
+                    (originals[index].to_vec(), original_ids[index])
+                } else {
+                    (replacements[index].to_vec(), replacement_id)
+                },
+                "{point}: staged {index}"
+            );
+            assert_eq!(
+                capture(&journal.join(format!("original-copy-{index}"))),
+                (originals[index].to_vec(), (copy.device, copy.inode)),
+                "{point}: original copy {index}"
+            );
+        }
+
+        // Die eigene Ersatz-Inode bleibt erreichbar; die Fremddatei kann sie
+        // weder durch Wiederverwendung erben noch für den positiven Retry ersetzen.
+        let owned = root.path().join("saved-owned-a");
+        let foreign = root.path().join("foreign-a");
+        std::fs::rename(&targets[0], &owned).unwrap();
+        let owned_metadata = std::fs::metadata(&owned).unwrap();
+        std::fs::write(&foreign, replacements[0]).unwrap();
+        std::fs::set_permissions(
+            &foreign,
+            std::fs::Permissions::from_mode(owned_metadata.mode() & 0o7777),
+        )
+        .unwrap();
+        let foreign_file = File::options().write(true).open(&foreign).unwrap();
+        foreign_file
+            .set_times(std::fs::FileTimes::new().set_modified(owned_metadata.modified().unwrap()))
+            .unwrap();
+        foreign_file.sync_all().unwrap();
+        let foreign_metadata = foreign_file.metadata().unwrap();
+        assert!(owned_metadata.is_file() && foreign_metadata.is_file());
+        assert_eq!(owned_metadata.nlink(), 1);
+        assert_eq!(foreign_metadata.nlink(), 1);
+        assert_eq!(foreign_metadata.dev(), owned_metadata.dev());
+        assert_ne!(foreign_metadata.ino(), owned_metadata.ino());
+        assert_eq!(foreign_metadata.len(), owned_metadata.len());
+        assert_eq!(foreign_metadata.mode(), owned_metadata.mode());
+        assert_eq!(foreign_metadata.uid(), owned_metadata.uid());
+        assert_eq!(foreign_metadata.gid(), owned_metadata.gid());
+        assert_eq!(foreign_metadata.mtime(), owned_metadata.mtime());
+        assert_eq!(foreign_metadata.mtime_nsec(), owned_metadata.mtime_nsec());
+        assert_eq!(
+            attributes(&foreign_file).unwrap(),
+            attributes(&File::open(&owned).unwrap()).unwrap()
+        );
+        assert_eq!(
+            std::fs::read(&foreign).unwrap(),
+            std::fs::read(&owned).unwrap()
+        );
+        std::fs::rename(&foreign, &targets[0]).unwrap();
+        let foreign_state = capture(&targets[0]);
+        assert_eq!(
+            foreign_state.1,
+            (foreign_metadata.dev(), foreign_metadata.ino())
+        );
+
+        let retained_paths = targets
+            .iter()
+            .cloned()
+            .chain(std::iter::once(owned.clone()))
+            .chain(journal_names.iter().map(|name| journal.join(name)))
+            .collect::<Vec<_>>();
+        let retained = retained_paths
+            .iter()
+            .map(|path| capture(path))
+            .collect::<Vec<_>>();
+        let root_names = names(root.path());
+        let assert_retained = || {
+            assert_eq!(names(root.path()), root_names, "{point}");
+            assert_eq!(names(journal), journal_names, "{point}");
+            for (path, expected) in retained_paths.iter().zip(&retained) {
+                assert_eq!(&capture(path), expected, "{point}: {}", path.display());
+            }
+        };
+        let cancel = Cancellation::default();
+        for _ in 0..2 {
+            // Erst nach dem fremden Austausch laden: kein lebender Apply-Handle
+            // darf die persistierte Ersatzidentität für diesen Nachweis liefern.
+            let mut transaction = Transaction::reopen(journal).unwrap();
+            assert_eq!(transaction.phase(), Phase::Applying, "{point}");
+            assert_eq!(
+                transaction.inspect(&cancel).unwrap(),
+                [
+                    FileState::Conflict,
+                    if exchanged == 1 {
+                        FileState::Original
+                    } else {
+                        FileState::Replaced
+                    },
+                ],
+                "{point}"
+            );
+            assert!(matches!(
+                transaction.recovery_preview(&cancel),
+                Err(Error::RecoveryRequired(path)) if path == *journal
+            ));
+            assert_retained();
+            assert!(matches!(
+                transaction.undo(&cancel),
+                Err(Error::RecoveryRequired(path)) if path == *journal
+            ));
+            assert_eq!(transaction.phase(), Phase::Applying, "{point}");
+            assert_retained();
+            drop(transaction);
+            assert_retained();
+        }
+        assert!(matches!(
+            Transaction::reopen(journal).unwrap().discard(&cancel),
+            Err(Error::RecoveryRequired(path)) if path == *journal
+        ));
+        assert_retained();
+        assert_eq!(std::fs::read(journal.join("intent.json")).unwrap(), intent);
+
+        // Erst die ausdrückliche Rückgabe des echten eigenen Objekts löst den
+        // Konflikt. Bytegleiches Neuschreiben wäre kein zulässiger Retry.
+        let saved_foreign = root.path().join("saved-foreign-a");
+        std::fs::rename(&targets[0], &saved_foreign).unwrap();
+        std::fs::rename(&owned, &targets[0]).unwrap();
+        let mut transaction = Transaction::reopen(journal).unwrap();
+        let preview = transaction.recovery_preview(&cancel).unwrap();
+        assert_eq!(preview.phase(), Phase::Applying, "{point}");
+        assert_eq!(preview.files().len(), 2);
+        for (index, file) in preview.files().iter().enumerate() {
+            assert_eq!(file.path(), targets[index]);
+            assert_eq!(file.original_bytes(), originals[index]);
+            assert_eq!(
+                file.current_bytes(),
+                if index < exchanged {
+                    replacements[index]
+                } else {
+                    originals[index]
+                }
+            );
+        }
+        transaction.undo_approved(&preview, &cancel).unwrap();
+        assert_eq!(transaction.phase(), Phase::Undone, "{point}");
+        assert_original(root.path());
+        assert_eq!(targets.each_ref().map(|path| identity(path)), original_ids);
+        assert_eq!(names(journal), journal_names, "{point}");
+        for (index, entry) in manifest.entries.iter().enumerate() {
+            let replacement = entry.replacement.as_ref().unwrap();
+            let copy = entry.original_copy.as_ref().unwrap();
+            assert_eq!(
+                capture(&journal.join(format!("replacement-{index}"))),
+                (
+                    replacements[index].to_vec(),
+                    (replacement.device, replacement.inode)
+                )
+            );
+            assert_eq!(
+                capture(&journal.join(format!("original-copy-{index}"))),
+                (originals[index].to_vec(), (copy.device, copy.inode))
+            );
+        }
+        assert_eq!(capture(&saved_foreign), foreign_state);
+        transaction.discard(&cancel).unwrap();
+        assert!(journals(root.path()).is_empty());
+        assert!(!journal.exists());
+        assert_eq!(
+            names(root.path()),
+            ["a", "b", "saved-foreign-a"].map(OsString::from)
+        );
+        assert_original(root.path());
+        assert_eq!(targets.each_ref().map(|path| identity(path)), original_ids);
+        assert_eq!(capture(&saved_foreign), foreign_state);
     }
 }
 

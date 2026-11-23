@@ -61,6 +61,9 @@ final class TextWorkflowSession: ObservableObject, Identifiable {
     private var task: Task<Void, Never>?
     private var diffTask: Task<Void, Never>?
     private var closed = false
+    private var restoresEditorFocusAfterApply = false
+    private weak var focusReturnSheet: NSWindow?
+    private var focusReturnSessionObservation: AnyCancellable?
     private var batchFileSource: TextWorkflowBatch.FileSource?
     private var workspaceObservation: AnyCancellable?
 
@@ -301,7 +304,7 @@ final class TextWorkflowSession: ObservableObject, Identifiable {
         task = Task { [self, workspace] in
             let (succeeded, editors) = await workspace.synchronizeTextWorkflowDiskDocuments()
             guard succeeded, !Task.isCancelled else {
-                for editor in editors { editor.completeAction() }
+                for editor in editors { editor.finish() }
                 isDiskOperation = false; isBusy = false; task = nil; progressText = nil
                 error = succeeded ? TextWorkflowFailure.message(ApplyError.cancelled) : TextWorkflowFailure.stale
                 return
@@ -312,15 +315,15 @@ final class TextWorkflowSession: ObservableObject, Identifiable {
     }
 
     private func launchDiskOperation(plan: TextWorkflowFilePlan?, undo: ApplySession?, in workspace: Workspace,
-                                     heldEditors: [MarkdownVisualCoordinator]) {
-        let urls = plan?.files.map(\.url) ?? undo?.entries.filter { $0.state != .restored }.map { URL(fileURLWithPath: $0.originalPath) } ?? []
+                                     heldEditors: [MarkdownVisualCoordinator.ActionHold]) {
+        let urls = plan?.files.map(\.url) ?? undo?.undoResourceURLs(includingRestoredTargets: false) ?? []
         let mutation: Workspace.TextWorkflowDiskMutation
         do {
             guard workspace.textWorkflowDiskEditorsAreHeld(heldEditors) else { throw ApplyError.conflict(TextWorkflowFailure.stale) }
             mutation = try workspace.beginTextWorkflowDiskMutation(urls: urls)
         }
         catch {
-            for editor in heldEditors { editor.completeAction() }
+            for editor in heldEditors { editor.finish() }
             self.error = TextWorkflowFailure.message(error)
             isDiskOperation = false; isBusy = false; task = nil; progressText = nil
             return
@@ -345,33 +348,51 @@ final class TextWorkflowSession: ObservableObject, Identifiable {
                     }, beforePreflight: { try mutation.preflight(in: workspace, shouldCancel: { Task.isCancelled }) })
             }
             await MainActor.run {
-                self.task = nil; self.isDiskOperation = false; self.isBusy = false
-                let ownsLastSession = undo.map { workspace.lastApplySession?.sessionDirectory == $0.sessionDirectory } ?? true
-                var session: ApplySession?
-                switch result {
-                case .success(let value):
-                    session = value
-                    self.diskAppliedSession = undo == nil ? value : nil
-                    if undo != nil && ownsLastSession { workspace.lastApplySession = nil }
-                    self.status = undo == nil
-                        ? L10n.format("Auf der Platte geänderte Dateien: %ld. Die geschützte Rücknahme prüft vor jedem Zurückschreiben den aktuellen Stand.", value.entries.count)
-                        : L10n.string("Die Plattenänderungen wurden zurückgenommen.")
-                case .failure(let failure):
-                    if case ApplyError.writeFailed(let partial, _) = failure {
-                        session = partial
-                        if !partial.entries.isEmpty { self.diskAppliedSession = partial }
-                    }
-                    if case ApplyError.undoFailed(let partial, _) = failure { session = partial; self.diskAppliedSession = partial }
-                    self.error = TextWorkflowFailure.message(failure)
-                }
-                let changed = session?.entries.filter { undo == nil ? $0.state != .restored : $0.state == .restored }
-                    .map { URL(fileURLWithPath: $0.originalPath) } ?? []
-                workspace.finishTextWorkflowDiskMutation(mutation, changedURLs: changed,
-                    session: undo == nil ? session.flatMap { $0.entries.isEmpty ? nil : $0 } : ownsLastSession ? self.diskAppliedSession : nil)
-                for editor in heldEditors { editor.completeAction() }
-                self.invalidatePreview()
+                self.finishDiskOperation(result, undo: undo, in: workspace,
+                                         mutation: mutation, heldEditors: heldEditors)
             }
         }
+    }
+
+    func finishDiskOperation(_ result: Result<ApplySession, Error>, undo: ApplySession?,
+                             in workspace: Workspace, mutation: Workspace.TextWorkflowDiskMutation,
+                             heldEditors: [MarkdownVisualCoordinator.ActionHold]) {
+        self.task = nil; self.isDiskOperation = false; self.isBusy = false
+        let ownsLastSession = undo.map { workspace.lastApplySession?.sessionDirectory == $0.sessionDirectory } ?? true
+        var session: ApplySession?
+        var offersDiskRecovery = true
+        switch result {
+        case .success(let value):
+            session = value
+            self.diskAppliedSession = undo == nil ? value : nil
+            if undo != nil && ownsLastSession { workspace.lastApplySession = nil }
+            self.status = undo == nil
+                ? L10n.format("Auf der Platte geänderte Dateien: %ld. Die geschützte Rücknahme prüft vor jedem Zurückschreiben den aktuellen Stand.", value.entries.count)
+                : undo?.isCleanupOnly == true
+                    ? L10n.string("Die eigenen temporären Dateien wurden aufgeräumt. Die Zieldateien blieben unverändert.")
+                    : L10n.string("Die Plattenänderungen wurden zurückgenommen.")
+        case .failure(let failure):
+            if case ApplyError.recoveryUnavailable(let partial, _) = failure {
+                session = partial
+                offersDiskRecovery = false
+                self.diskAppliedSession = nil
+                workspace.lastApplySession = nil
+            }
+            if case ApplyError.writeFailed(let partial, _) = failure {
+                session = partial
+                self.diskAppliedSession = partial.hasRecoveryWork ? partial : nil
+            }
+            if case ApplyError.undoFailed(let partial, _) = failure { session = partial; self.diskAppliedSession = partial }
+            self.error = undo?.isCleanupOnly == true
+                ? L10n.format("%@\nDie eigenen temporären Dateien konnten noch nicht vollständig aufgeräumt werden. Behebe die Ursache und wiederhole „Aufräumen“.", TextWorkflowFailure.message(failure))
+                : TextWorkflowFailure.message(failure)
+        }
+        let changed = session?.entries.filter { undo == nil ? $0.state != .restored : $0.state == .restored }
+            .map { URL(fileURLWithPath: $0.originalPath) } ?? []
+        workspace.finishTextWorkflowDiskMutation(mutation, changedURLs: changed,
+            session: offersDiskRecovery ? (undo == nil ? session.flatMap { $0.hasRecoveryWork ? $0 : nil } : ownsLastSession ? self.diskAppliedSession : nil) : nil)
+        for editor in heldEditors { editor.finish() }
+        self.invalidatePreview()
     }
 
     func showPreview(_ index: Int) {
@@ -409,8 +430,58 @@ final class TextWorkflowSession: ObservableObject, Identifiable {
               editor.fastraColumnSelectionSnapshot == nil, editor.selectionManager.textSelections.count <= 1,
               !selectionOnly || editor.fastraSafeSelectedRange == snapshot.selection else { error = Self.staleMessage; return false }
         editor.fastraApplyTextOperation(replacing: preview.range, with: preview.replacement)
+        restoresEditorFocusAfterApply = true
+        focusReturnSheet = editor.window?.attachedSheet
+        // Auch eine sofort wieder geschlossene Folgesitzung entwertet die
+        // Fokusrückgabe. Das muss vor dem nächsten SwiftUI-Update greifen.
+        focusReturnSessionObservation = workspace.$textWorkflowSession.sink { [weak self] next in
+            guard let self, let next, next !== self else { return }
+            self.cancelEditorFocusAfterApply()
+        }
         close()
         return true
+    }
+
+    func editorFocusTargetAfterDismissal() -> (window: NSWindow, editor: TextView)? {
+        // Apply hat die Revision geändert. Für den Fokus zählen die weiterhin
+        // gültige Dokumentidentität und der jetzt montierte Editor.
+        guard restoresEditorFocusAfterApply, let workspace,
+              workspace.textWorkflowSession == nil,
+              let tab = workspace.activeTab, tab.id == snapshot.tabID,
+              tab.documentID == snapshot.documentID, tab.isEditableTextDocument,
+              workspace.activeViewMode == .text, !workspace.activeMarkdownIsVisual,
+              workspace.textEditingIsAllowed(for: tab),
+              let window = CommandTargeting.registeredWindow(for: workspace),
+              ObjectIdentifier(window) == snapshot.windowID,
+              window.attachedSheet == nil, window.sheets.isEmpty,
+              let editor = CommandTargeting.editorTextView(for: workspace),
+              editor.window === window, editor.isEditable else { return nil }
+        return (window, editor)
+    }
+
+    func finishEditorFocusAfterSheetEnd(in window: NSWindow) -> Bool {
+        // Die Benachrichtigung nennt das Elternfenster. Solange unser Blatt
+        // noch dazugehört, beendet sie einen anderen Vorgang im Fenster.
+        guard ObjectIdentifier(window) == snapshot.windowID,
+              workspace?.textWorkflowSession !== self,
+              !window.sheets.contains(where: { $0 === focusReturnSheet }) else { return false }
+        let target = editorFocusTargetAfterDismissal()
+        cancelEditorFocusAfterApply()
+        if NSApp.isActive, let target, target.window.isKeyWindow, NSApp.keyWindow === target.window {
+            target.window.makeFirstResponder(target.editor)
+        }
+        return true
+    }
+
+    func cancelEditorFocusIfKeyWindowChanged(to window: NSWindow) {
+        guard ObjectIdentifier(window) != snapshot.windowID, window !== focusReturnSheet else { return }
+        cancelEditorFocusAfterApply()
+    }
+
+    func cancelEditorFocusAfterApply() {
+        restoresEditorFocusAfterApply = false
+        focusReturnSheet = nil
+        focusReturnSessionObservation = nil
     }
 
     func invalidatePreview() {

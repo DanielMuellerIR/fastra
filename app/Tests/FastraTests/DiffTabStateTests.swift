@@ -1,9 +1,8 @@
 // DiffTabStateTests.swift
 //
-// Gebündelte Vergleichsfelder von `EditorTab` (Folgeauftrag 2026-09-05,
-// kleinste Etappe): Neustart eines Vergleichs-Tabs, Nur-Lese-Sichten und
-// die beim Kompilieren ausgeschlossene Kombination „Dokument ohne Auftrag"
-// (ein `EditorTab` ohne `fileDiff`/`gitDiff` hat keinen Platz dafür).
+// Neustart und Nur-Lese-Sichten gebündelter Vergleichsfelder prüfen.
+// Ohne `fileDiff`/`gitDiff` ist „Dokument ohne Auftrag“ bereits durch den
+// Typaufbau ausgeschlossen.
 
 import Foundation
 import Testing

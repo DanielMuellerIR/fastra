@@ -12,8 +12,18 @@ Suchkern unter `../../crates/fastra-core` beginnt inzwischen F05/F06.
   `FASTRA_COLLECTION_REVIEW_DIR=<ordner> FASTRA_POORMANS_TEXT=<geprüfte CLI>` mit
   dem nativen `markdowncollections`-Selbsttest ausführen. Vor einem **zweiten
   App-Prozess** die leere Markerdatei `reopen` im Fixtureordner anlegen.
-- `regex/mac.swift`: mit den originalen `WildcardPattern.swift` und
-  `ReplacementReferences.swift` und `CaseTemplate.swift` kompilieren. Argumente: `cases.json`, Ausgabe der
+- `regex/mac.swift`: vom Repo-Root mit den originalen Syntaxquellen und
+  `CaseTemplate.swift` kompilieren:
+
+  ```bash
+  swiftc -package-name Fastra \
+    app/Sources/FastraPatternSyntax/WildcardPattern.swift \
+    app/Sources/FastraPatternSyntax/ReplacementReferences.swift \
+    app/Sources/Fastra/CaseTemplate.swift \
+    tools/linux-probes/regex/mac.swift -o /tmp/fastra-regex-mac-probe
+  ```
+
+  Argumente: `cases.json`, Ausgabe der
   normalisierten Fälle, Ausgabe der Mac-Referenzen. `icu.c` mit `icu-i18n` als
   `libfastra_icu_probe.so` übersetzen; Cargo baut die gekapselte Rust-Probe mit
   diesem Bibliothekspfad. Sie liest die normalisierten Fälle von stdin. Verglichen

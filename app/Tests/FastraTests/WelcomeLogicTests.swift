@@ -1,11 +1,8 @@
 // WelcomeLogicTests.swift
 //
-// Tests für die Sichtbarkeits-Logik des Willkommens-Platzhalters
-// (Platzhalter-Modell seit 2026-07-30, Firefox-Neuer-Tab-Muster: JEDER
-// unberührte leere Tab zeigt die Starthilfe über dem Editor — auch in
-// Fenstern mit geladenem Projekt, Daniel-Befund 2026-07-30; das erste
-// Zeichen blendet sie aus). Die Bedingung lebt pur in
-// WelcomeLogic.shouldShow — die View wertet sie nur aus.
+// Jeder unberührte leere Tab zeigt die Starthilfe, auch mit Projekt.
+// Das erste Zeichen blendet sie aus. Die reine Bedingung liegt in
+// `WelcomeLogic.shouldShow`; die View wertet sie aus.
 
 import Foundation
 import Testing
@@ -51,13 +48,13 @@ func welcome_hiddenForDirtyOrLoadingTab() {
 @Test("Kein aktiver Tab (= gar kein Tab) → Willkommen statt Geister-Editor")
 func welcome_shownWithoutAnyTab() {
     // `activeTab == nil` heißt „das Fenster hat überhaupt keine Tabs" — ein
-    // kaputter Zwischenzustand (Daniel-Befund 2026-07-29). Lieber die
+    // kaputter Zwischenzustand. Lieber die
     // Starthilfe als eine tippbare Fläche, deren Eingaben in kein Dokument
     // fließen.
     #expect(WelcomeLogic.shouldShow(activeTab: nil))
 }
 
-// MARK: - ⌘N im reinen Startzustand (Wunschpaket 2026-07, Etappe 1)
+// MARK: - ⌘N im reinen Startzustand
 
 @Test("⌘N: einziges Fenster im reinen Startzustand → wirkt wie ⌘T")
 func newWindowCommand_opensTabInPureStartState() {

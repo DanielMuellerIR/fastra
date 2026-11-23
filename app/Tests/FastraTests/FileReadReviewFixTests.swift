@@ -1,14 +1,10 @@
 // FileReadReviewFixTests.swift
 //
-// Regressionstests zum Nacht-Code-Review 2026-08-10. Alle drei Funde hatten
-// dieselbe Wurzel: Geprüft wurde an einer Datei (Typ, Größe, Binärprobe),
-// gelesen aber aus einer zweiten, weil derselbe PFAD ein zweites Mal geöffnet
-// wurde. Zwischen beiden Öffnungen kann ein Symlink umgebogen oder die Datei
-// atomar ersetzt werden.
-//
-// Fensterlos und ohne App-Abhängigkeit: FileLoader, ApplyEngine-Undo und die
-// Vorschau-Bildquelle sind reine Datei-Logik. Alle Testdaten liegen in einem
-// frischen Unterordner des Test-Tempverzeichnisses.
+// Typ, Größe, Binärprobe und Lesen müssen dasselbe geöffnete Dateiobjekt
+// betreffen. Erneutes Öffnen desselben Pfads könnte nach Symlink-Wechsel oder
+// atomarem Austausch eine andere Datei lesen.
+// Fensterlose Tests für FileLoader, ApplyEngine-Undo und Vorschaubildquelle;
+// alle Fixtures liegen in frischen Test-Temp-Unterordnern.
 
 import Darwin
 import Foundation
@@ -25,12 +21,8 @@ private func makeReviewFixDirectory() throws -> URL {
     return url
 }
 
-/// Biegt einen bestehenden Symlink ATOMAR auf ein neues Ziel um.
-///
-/// `rename(2)` tauscht nur den Verzeichniseintrag und folgt dem alten Link
-/// nicht — genau der Ablauf, den die Review-Funde beschreiben. Ein Löschen
-/// plus Neuanlegen hätte dagegen eine Lücke, in der der Pfad gar nicht
-/// existiert, und würde die Tests mit unechten Fehlern verrauschen.
+/// Symlink per `rename(2)` atomar auf ein neues Ziel umbiegen. Löschen und
+/// Neuanlegen würde eine Pfadlücke erzeugen und einen anderen Fehlerfall prüfen.
 private func repointSymlink(_ link: URL, to target: URL) {
     let staging = link.deletingLastPathComponent()
         .appendingPathComponent("swap-\(UUID().uuidString)")
@@ -41,7 +33,7 @@ private func repointSymlink(_ link: URL, to target: URL) {
     }
 }
 
-/// Erzeugt eine Datei, die die gewünschte Größe MELDET, ohne sie wirklich zu
+/// Erzeugt eine Datei, die die gewünschte Größe meldet, ohne sie wirklich zu
 /// schreiben. `truncate` legt ein Loch an: Die Datei liest sich als Nullbytes,
 /// belegt aber kaum Platz. So lassen sich Größengrenzen jenseits von 32 MiB
 /// prüfen, ohne hunderte Megabyte auf die Platte zu schreiben.
@@ -84,7 +76,7 @@ private final class ThrownErrorBox: @unchecked Sendable {
 func fileReadFix_loaderSnapshotMatchesContent() throws {
     // Deterministische Grundzusage: Über einen Symlink geladen, muss alles —
     // gemeldete Größe, Bytezahl des Snapshots und der dekodierte Inhalt — zum
-    // ZIEL des Links gehören, nicht zum Link-Eintrag und nicht zu einer
+    // Ziel des Links gehören, nicht zum Link-Eintrag und nicht zu einer
     // zweiten, später geöffneten Datei.
     let directory = try makeReviewFixDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -111,13 +103,13 @@ func fileReadFix_loaderSnapshotMatchesContent() throws {
 @Test("FileLoader: umgebogener Symlink kann die Editiergrenze nicht umgehen")
 func fileReadFix_loaderSymlinkSwapCannotBypassSizeLimit() throws {
     // Der eigentliche Fund. Früher wurden Typ, Größe und Binärprobe an einem
-    // Deskriptor geprüft, der Voll-Read öffnete den Pfad danach ERNEUT. Zeigte
+    // Deskriptor geprüft, der Voll-Read öffnete den Pfad danach erneut. Zeigte
     // der Link inzwischen auf eine große Datei, meldete `LoadedFile` die
     // winzige Größe der ersten Datei und trug trotzdem den vollständigen
     // Inhalt der zweiten — die Grenze für editierbare Dateien war umgangen.
     //
     // Ehrlich zur Aussagekraft: Der Test biegt den Link nebenläufig um und ist
-    // damit auf Zufall angewiesen, um den alten Fehler zu TREFFEN. Er kann
+    // damit auf Zufall angewiesen, um den alten Fehler zu treffen. Er kann
     // aber nie falsch rot werden: Geprüft werden nur Invarianten, die für
     // jedes einzelne Ergebnis gelten müssen — egal welche der beiden Dateien
     // der Ladevorgang erwischt hat.
@@ -210,7 +202,7 @@ private func makeUndoFixture(in directory: URL) throws
 @Test("Undo: übergroßes Backup wird abgewiesen, statt in den Speicher zu laufen")
 func fileReadFix_undoRejectsOversizedBackup() throws {
     // Früher las Undo jedes Backup mit unbeschränktem `Data(contentsOf:)` —
-    // und zwar VOR der Hashprüfung. Ein ausgetauschtes Riesen-Backup war
+    // und zwar vor der Hashprüfung. Ein ausgetauschtes Riesen-Backup war
     // damit längst vollständig im Speicher, bevor der Hash es verwarf. Am
     // Fehlertyp lässt sich das genau unterscheiden: Der alte Pfad las die
     // ganze Datei und meldete danach „Backup-Hash stimmt nicht", der neue
@@ -241,7 +233,7 @@ func fileReadFix_undoRejectsFIFOBackupWithoutBlocking() throws {
     // Deskriptor-Pfad öffnet mit `O_NONBLOCK` und weist alles Nicht-Reguläre
     // sofort ab. Der Aufruf läuft deshalb auf einem eigenen Thread mit Frist:
     // Ein im Kernel steckender Systemaufruf ließe sich sonst nicht abbrechen
-    // und würde die GANZE Suite aufhängen.
+    // und würde die ganze Suite aufhängen.
     let directory = try makeReviewFixDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let fixture = try makeUndoFixture(in: directory)
@@ -334,7 +326,7 @@ func fileReadFix_previewImageSwapCannotExceedLimit() throws {
     }
 }
 
-// MARK: - Streamender Vergleichs-Snapshot (Nacht-Review-Fund 2026-08-17)
+// MARK: - Streamender Vergleichs-Snapshot
 
 @Test("readSnapshotOnly liefert denselben Snapshot wie der Voll-Read")
 func fileReadFix_streamingSnapshotMatchesFullRead() throws {

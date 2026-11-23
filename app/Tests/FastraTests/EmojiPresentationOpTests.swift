@@ -1,10 +1,8 @@
 // EmojiPresentationOpTests.swift
 //
-// Text-Transformation „Emoji-Darstellung erzwingen/aufheben": Zeichen wie ⏸
-// sind laut Unicode Textzeichen und erscheinen erst mit dem Variantenselektor
-// U+FE0F überall als farbiges Emoji (Daniel-Befund 2026-07-27, Sprechskript
-// mit 61 nackten U+23F8). Geprüft wird, WAS die Operation anfasst — und
-// besonders, was sie in Ruhe lässt.
+// „Emoji-Darstellung erzwingen/aufheben“ verändert Variantenselektoren.
+// Für Zeichen wie ⏸ fordert U+FE0F die Emoji-Präsentation an. Die Tests prüfen
+// sowohl die geänderten Zeichen als auch unveränderte Kontrollfälle.
 
 import Foundation
 import Testing
@@ -33,7 +31,7 @@ func addsVariationSelectorToBareSymbol() throws {
     #expect(scalars(result) == scalars("Pause \u{23F8}\u{FE0F} weiter"))
 }
 
-@Test("Genau Daniels Skriptzeile: mehrere Pausenzeichen in Folge")
+@Test("Mehrere Pausenzeichen in Folge")
 func addsSelectorToRepeatedSymbols() throws {
     // `⏸⏸` steht im Skript für die längere Pause — beide Zeichen zählen.
     let result = try #require(added("- `\u{23F8}\u{23F8}` deutlich absetzen"))
@@ -63,7 +61,7 @@ func leavesTextualCharactersAlone() {
     #expect(added("# Titel 1 * 2 * 3") == nil)
     // Interpunktion bleibt Interpunktion.
     #expect(added("Achtung\u{203C} wirklich\u{2049}") == nil)
-    // Und Daniels Foliensymbole: einfache Pfeile, Stern, Haken, Bullet.
+    // Textsymbole als Kontrollfälle: einfache Pfeile, Stern, Haken und Bullet.
     #expect(added("\u{2192} \u{2193} \u{2726} \u{2713} \u{2022} \u{2014}") == nil)
 }
 
@@ -117,9 +115,9 @@ func selectorRuleMatchesBothDirections() {
 @Test("Auswahlgrenze zwischen Basiszeichen und Selektor erzeugt keinen Doppel-Selektor")
 @MainActor
 func selectionBoundaryInsideClusterStaysIdempotent() throws {
-    // "⏸️" = U+23F8 U+FE0F. Die Auswahl endet GENAU zwischen beiden —
+    // "⏸️" = U+23F8 U+FE0F. Die Auswahl endet genau zwischen beiden —
     // vorher sah die Transformation nur das Basiszeichen und hängte einen
-    // ZWEITEN Selektor an (Review 2026-08-02). Die Range wird jetzt auf
+    // zweiten Selektor an. Die Range wird jetzt auf
     // zusammengesetzte Sequenzen ausgeweitet; der vorhandene Selektor wird
     // erkannt und nichts verändert.
     let text = "vor \u{23F8}\u{FE0F} nach"

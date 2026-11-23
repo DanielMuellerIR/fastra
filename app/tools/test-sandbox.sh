@@ -37,7 +37,7 @@ fastra_test_sandbox_directory_is_safe() {
 
 purge_stale_fastra_test_sandboxes() {
     local kind="$1"
-    local now modified owner_pid owner_started current_started directory
+    local now modified owner_pid owner_started current_started directory backup
     fastra_test_sandbox_kind_is_allowed "$kind" || return 2
     now=$(date +%s)
     for directory in "$FASTRA_TEST_SANDBOX_PARENT"/fastra-"$kind".*; do
@@ -53,6 +53,17 @@ purge_stale_fastra_test_sandboxes() {
             current_started=$(ps -p "$owner_pid" -o lstart= 2>/dev/null \
                 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || true)
             [ "$current_started" = "$owner_started" ] && continue
+        fi
+        if [ "$kind" = soak-run ]; then
+            # Diese Namen enthalten ursprüngliche Einstellungen/Fensterdaten.
+            # Auch ältere Runner hinterließen sie bei gescheitertem Restore
+            # ohne separaten Marker. Bis zur manuellen Klärung nicht rotieren;
+            # Links und Lesefehler belegen ebenfalls keine sichere Abwesenheit.
+            [ -r "$directory" ] && [ -x "$directory" ] || continue
+            backup=$(find "$directory" -mindepth 1 -maxdepth 1 \
+                \( -name 'product-defaults.plist' -o -name 'product-saved-state' \) \
+                -print 2>/dev/null) || continue
+            [ -z "$backup" ] || continue
         fi
         rm -rf -- "$directory"
     done
@@ -153,14 +164,19 @@ copy_fastra_test_directory_resolving_symlinks() {
     ! /usr/bin/find "$destination" -type l -print -quit | /usr/bin/grep -q .
 }
 
+FASTRA_TEST_DEFAULTS_DOMAIN_PREFIXES=(
+    "FastraTests." "Fastra-" "fastra-" "fastra.tests." "ff-"
+    "search-jump-" "smart-paste-context-"
+)
+
 fastra_test_defaults_domain_is_safe() {
-    local domain="$1"
+    local domain="$1" prefix
     [[ "$domain" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
-    case "$domain" in
-        FastraTests.*|Fastra-*|fastra-*|fastra.tests.*|ff-*|search-jump-*|smart-paste-context-*) ;;
-        *) return 1 ;;
-    esac
-    [[ "$domain" =~ [0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12} ]]
+    [[ "$domain" =~ [0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12} ]] || return 1
+    for prefix in "${FASTRA_TEST_DEFAULTS_DOMAIN_PREFIXES[@]}"; do
+        [[ "$domain" == "$prefix"* ]] && return 0
+    done
+    return 1
 }
 
 # Jeder Selbsttest-Prozess registriert dieselbe Runner-Suite erneut. Vor den
@@ -211,7 +227,7 @@ purge_fastra_registered_test_defaults() {
     # beschädigte oder nur aus Leerraum bestehende Registry bleibt ein Fehler.
     [ -s "$registry" ] || return 0
 
-    # cfprefsd kann eine bereits geleerte 42-Byte-Plist erst NACH dem Ende des
+    # cfprefsd kann eine bereits geleerte 42-Byte-Plist erst nach dem Ende des
     # App-Prozesses zurückschreiben. Drei gezielte Durchgänge mit insgesamt
     # 1,5 Sekunden Beobachtungszeit räumen auch diese letzte Schreibbewegung
     # ab. Das kostet einmal pro Runner Zeit, nicht einmal pro Test.

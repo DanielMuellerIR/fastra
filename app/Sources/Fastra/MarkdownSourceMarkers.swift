@@ -8,17 +8,17 @@
 // alle Blockarten, auch die aus Erweiterungen (Tabellenzeilen, Aufgabenlisten),
 // ohne dass wir jede einzeln behandeln müssen. Die Ausgabe ist allerdings
 // geschwätzig (`data-sourcepos="12:1-14:23"`) und bezieht sich auf den
-// VORVERARBEITETEN Text, weshalb sie hier auf ein knappes `data-srcline="12"`
+// vorverarbeiteten Text, weshalb sie hier auf ein knappes `data-srcline="12"`
 // mit Originalzeile umgeschrieben wird.
 //
-// ZEILEN INNERHALB EINES BLOCKS haben bewusst KEINE eigene Marke. Ein Absatz
+// Zeilen innerhalb eines Blocks haben bewusst keine eigene Marke. Ein Absatz
 // aus zehn Quellzeilen ist ein <p> und kennt nur seine erste Zeile — die
 // restlichen löst das Vorschau-JS auf, indem es die Zeilenumbrüche vor der
 // Klickstelle zählt. Im gerenderten HTML steht jeder Umbruch des Quelltextes
 // nämlich als echtes Newline im Text.
 //
 // Der naheliegende Weg — unsichtbare <span>-Marken in den Baum hängen —
-// funktioniert hier NICHT: Die Vorschau rendert bewusst ohne
+// funktioniert hier nicht: Die Vorschau rendert bewusst ohne
 // `CMARK_OPT_UNSAFE`, weshalb cmark jedes rohe HTML durch
 // „<!-- raw HTML omitted -->" ersetzt. Das gilt auch für selbst eingefügte
 // Marken. Diese Sicherheitseinstellung dafür aufzuweichen wäre der falsche
@@ -35,7 +35,7 @@ enum MarkdownSourceMarkers {
 
     // MARK: Codeblöcke
 
-    /// Erste INHALTSZEILE jedes Codeblocks, in Dokumentreihenfolge.
+    /// Erste Inhaltszeile jedes Codeblocks, in Dokumentreihenfolge.
     ///
     /// Nötig, weil cmark als Blockposition eines Fenced-Blocks die Zeile mit
     /// den Backticks meldet. Ein Klick auf die erste Codezeile landete damit
@@ -122,7 +122,7 @@ enum MarkdownSourceMarkers {
             in: html,
             range: NSRange(html.startIndex..., in: html)
         )
-        // Rückwärts ersetzen (stabile Bereiche), aber mit dem VORWÄRTS-Index
+        // Rückwärts ersetzen (stabile Bereiche), aber mit dem Vorwärts-Index
         // zählen — nur so passt das n-te <pre> zum n-ten Codeblock des Baums.
         for (index, match) in matches.enumerated().reversed() {
             guard index < lines.count else { continue }

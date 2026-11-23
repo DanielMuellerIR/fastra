@@ -1,6 +1,6 @@
 // WildcardWiringTests.swift
 //
-// Feature J Schritt 2 — verdrahtete Platzhalter-Suche. Testet NICHT die pure
+// Feature J Schritt 2 — verdrahtete Platzhalter-Suche. Testet nicht die pure
 // Übersetzung (das macht WildcardPatternTests), sondern die Verdrahtung in
 // SearchOptions.usesWildcard + ApplyEngine.buildRegex/replacementTemplate über
 // die echte Such-Engine (BufferSearch).
@@ -110,7 +110,7 @@ func wiring_starMatchesAnyText() {
 
 @Test("Mini-Schalter wörtlich: Stern wird buchstäblich gesucht")
 func wiring_literalStar() {
-    // Mit Schalter trifft „a*b" NUR den literalen Text „a*b", nicht „axyzb".
+    // Mit Schalter trifft „a*b" nur den literalen Text „a*b", nicht „axyzb".
     #expect(BufferSearch.replaceAll(in: "axyzb", options: wc("a*b", "X", literal: true)) == "axyzb")
     #expect(BufferSearch.replaceAll(in: "a*b", options: wc("a*b", "X", literal: true)) == "X")
 }

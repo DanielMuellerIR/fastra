@@ -89,13 +89,15 @@ func gitFileSnapshot_usesIndexOrHead() {
 
 @Test("Gelöschte Datei erscheint aus Index oder HEAD als read-only Tab")
 @MainActor
-func gitFileSnapshot_loadsDeletedFileIntoReadOnlyTab() async {
+func gitFileSnapshot_loadsDeletedFileIntoReadOnlyTab() async throws {
     let suiteName = "fastra-test-deleted-preview-\(UUID().uuidString)"
     let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let executor = GitSnapshotTestExecutor()
     let coordinator = GitOperationsCoordinator(executor: executor)
-    let ws = Workspace(defaults: defaults, gitOperationsCoordinator: coordinator)
+    let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
+    let ws = Workspace(defaults: defaults, gitOperationsCoordinator: coordinator,
+                       gitRepositoryStore: store)
     let repository = testTemporaryDirectory()
         .appendingPathComponent("fastra-deleted-preview-\(UUID().uuidString)")
     ws.projectURL = repository
@@ -103,11 +105,11 @@ func gitFileSnapshot_loadsDeletedFileIntoReadOnlyTab() async {
     let unstaged = GitChange(path: "Ordner/offen.txt", staged: nil,
                              unstaged: .deleted)
     ws.openGitChangeFile(change: unstaged, staged: false, preview: true)
-    #expect(executor.arguments == [["cat-file", "blob", ":Ordner/offen.txt"]])
+    try #require(executor.arguments == [["cat-file", "blob", ":Ordner/offen.txt"]])
     #expect(ws.activeTab?.isPreview == true)
     #expect(ws.activeTab?.readOnlyReason != nil)
     executor.complete(0, stdout: Data("Index-Fassung\n".utf8))
-    await waitUntil { ws.activeTab?.isLoading == false }
+    try #require(await waitUntil { ws.activeTab?.isLoading == false })
     #expect(ws.activeTab?.content == "Index-Fassung\n")
 
     ws.openGitChangeFile(change: unstaged, staged: false, preview: false)
@@ -116,30 +118,50 @@ func gitFileSnapshot_loadsDeletedFileIntoReadOnlyTab() async {
     let staged = GitChange(path: "Ordner/bereit.txt", staged: .deleted,
                            unstaged: nil)
     ws.openGitChangeFile(change: staged, staged: true, preview: true)
-    #expect(executor.arguments.last == ["cat-file", "blob", "HEAD:Ordner/bereit.txt"])
+    try #require(executor.arguments == [
+        ["cat-file", "blob", ":Ordner/offen.txt"],
+        ["cat-file", "blob", "HEAD:Ordner/bereit.txt"],
+    ])
     executor.complete(1, stdout: Data("HEAD-Fassung\n".utf8))
-    await waitUntil { ws.activeTab?.isLoading == false }
+    try #require(await waitUntil { ws.activeTab?.isLoading == false })
     #expect(ws.activeTab?.content == "HEAD-Fassung\n")
     #expect(ws.activeTab?.gitSnapshotRequest?.source == .head)
 
     // Index/HEAD sind symbolische Quellen. Auch ein gewöhnlicher Status-
-    // Refresh nach EXTERNEN Git-Änderungen muss den offenen Vorversions-Tab
+    // Refresh nach externen Git-Änderungen muss den offenen Vorversions-Tab
     // neu lesen; der explizite Mutationspfad allein wäre dafür zu schmal.
+    let headTabID = try #require(ws.activeTab?.id)
+    let requestsBeforeRefresh = executor.arguments.count
     ws.refreshGitStatus()
-    await waitUntil {
-        executor.arguments.filter {
-            $0.prefix(3) == ["cat-file", "blob", "HEAD:Ordner/bereit.txt"]
-        }.count == 2
-    }
-    guard let refreshedSnapshotIndex = executor.arguments.lastIndex(where: {
-        $0 == ["cat-file", "blob", "HEAD:Ordner/bereit.txt"]
-    }) else {
-        Issue.record("Der Status-Refresh hat den offenen HEAD-Snapshot nicht neu gelesen")
-        return
-    }
+
+    try #require(await waitUntil { executor.arguments.count > requestsBeforeRefresh })
+    try #require(executor.arguments[requestsBeforeRefresh] == GitStatusParser.arguments)
+    executor.complete(requestsBeforeRefresh, stdout: Data())
+
+    try #require(await waitUntil { executor.arguments.count > requestsBeforeRefresh + 1 })
+    try #require(executor.arguments[requestsBeforeRefresh + 1] == GitOperationStateDetector.arguments)
+    executor.complete(requestsBeforeRefresh + 1, stdout: Data())
+
+    // Beide offenen Tabs werden seriell erneuert. Erst der Abschluss des
+    // festgesteckten Index-Tabs gibt den frischen HEAD-Auftrag frei.
+    try #require(await waitUntil { executor.arguments.count > requestsBeforeRefresh + 2 })
+    try #require(executor.arguments[requestsBeforeRefresh + 2]
+                 == ["cat-file", "blob", ":Ordner/offen.txt"])
+    executor.complete(requestsBeforeRefresh + 2, stdout: Data("Index-Fassung\n".utf8))
+
+    try #require(await waitUntil { executor.arguments.count > requestsBeforeRefresh + 3 })
+    let refreshedSnapshotIndex = requestsBeforeRefresh + 3
+    try #require(executor.arguments[refreshedSnapshotIndex]
+                 == ["cat-file", "blob", "HEAD:Ordner/bereit.txt"])
     executor.complete(refreshedSnapshotIndex,
                       stdout: Data("HEAD-Fassung 2\n".utf8))
-    await waitUntil { ws.activeTab?.content == "HEAD-Fassung 2\n" }
+    try #require(await waitUntil {
+        ws.activeTab?.isLoading == false && ws.activeTab?.content == "HEAD-Fassung 2\n"
+    })
+    #expect(ws.activeTab?.id == headTabID)
+    #expect(ws.activeTab?.readOnlyReason != nil)
+    #expect(ws.activeTab?.gitSnapshotRequest?.source == .head)
+    #expect(ws.activeTab?.content == "HEAD-Fassung 2\n")
 }
 
 @Test("Staged MD-Datei wird trotz fehlendem Working-Tree-Pfad aus dem Index gelesen")

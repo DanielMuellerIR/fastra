@@ -1,21 +1,17 @@
 // FourDStructureCheck.swift
 //
-// 4D-Struktur-Hinweise (Etappe 5 Wunschpaket 2026-07c): heuristischer
-// Check auf Basis des vorhandenen `FourDTokenizer` — Block-Balance
-// (If/End if, For each/End for each, Case of/End case, Repeat/Until,
-// While/End while, For/End for, Function-Grenzen), Klammer-, String- und
-// Kommentar-Balance.
-//
-// EHRLICH als Hinweise benannt: kein Compiler-Ersatz. Leitregel „im
-// Zweifel KEINE Meldung statt einer falschen" — deshalb mehrere bewusste
-// Schutzmaßnahmen gegen Fehlklassifikationen:
-// - Block-Schlüsselwörter zählen nur am ZEILENANFANG (kanonische
-//   4D-Exporte schreiben sie so; `4D.Function` & Co. bleiben außen vor).
-// - Zwischen `Begin SQL` und `End SQL` wird nichts geprüft (SQL-Text
-//   könnte 4D-Wörter enthalten).
-// - Klammern werden nur über das GANZE Dokument bilanziert (keine
-//   Pro-Zeile-Annahmen); Kommentare, Strings und [Tabellen] sind
-//   ausgenommen.
+// 4D-Struktur-Hinweise: heuristischer Check auf Basis
+// des vorhandenen `FourDTokenizer` — Block-Balance (If/End if, For each/End for
+// each, Case of/End case, Repeat/Until, While/End while, For/End for,
+// Function-Grenzen), Klammer-, String- und Kommentar-Balance. Ehrlich als
+// Hinweise benannt: kein Compiler-Ersatz. Leitregel „im Zweifel keine Meldung
+// statt einer falschen" — deshalb mehrere bewusste Schutzmaßnahmen gegen
+// Fehlklassifikationen: - Block-Schlüsselwörter zählen nur am Zeilenanfang
+// (kanonische 4D-Exporte schreiben sie so; `4D.Function` & Co. bleiben außen
+// vor). - Zwischen `Begin SQL` und `End SQL` wird nichts geprüft (SQL-Text
+// könnte 4D-Wörter enthalten). - Klammern werden nur über das ganze Dokument
+// bilanziert (keine Pro-Zeile-Annahmen); Kommentare, Strings und [Tabellen]
+// sind ausgenommen.
 
 import Foundation
 
@@ -51,7 +47,7 @@ enum FourDStructureCheck {
         "end while": "End while", "until": "Until", "else": "Else",
     ]
 
-    /// Prüft den Text und liefert den ERSTEN Struktur-Hinweis (kleinste
+    /// Prüft den Text und liefert den ersten Struktur-Hinweis (kleinste
     /// Position) oder `nil`. Pure Funktion → unit-testbar.
     static func check(_ text: String) -> DocumentLinter.Issue? {
         let tokens = FourDTokenizer.tokenize(text)
@@ -287,7 +283,6 @@ enum FourDStructureCheck {
     }
 
     private static func substring(_ text: String, _ range: NSRange) -> String {
-        guard let stringRange = Range(range, in: text) else { return "" }
-        return String(text[stringRange])
+        UTF16Substring.extract(text, range: range)
     }
 }

@@ -38,6 +38,8 @@ ermitteln.
   anhand gleicher Testdaten direkt vergleichen. Plattformunterschiede nur bei
   konkreten technischen Grenzen oder unverhältnismäßigem Aufwand akzeptieren
   und einzeln begründen; ein Toolkit-Standardlayout ist kein Ersatz.
+  Die Linux-Titelleisten verwenden die üblichen Fenstersymbole rechts. Das
+  Fastra-Hauptmenü sitzt direkt links daneben.
 - Jede schreibende Mehrfachänderung besitzt eine vollständige, verständliche
   Vorschau. „Apply“ darf nie auf eine andere Trefferbasis wirken als die sichtbare
   Vorschau.
@@ -67,34 +69,17 @@ Erklärungen in `docs/BUILD-AND-TEST.md`, `app/build.sh` und
 `app/LESSONS-LEARNED.md` lesen,
 danach den vollständigen Build- und Selbsttestpfad ausführen.
 
-`app/build.sh` erzeugt das `.app`-Bundle, patcht bekannte Upstream-Probleme,
-reduziert das Sprachbundle und legt jeden erfolgreichen Build als `Fastra.app`
-im Projekt-Root ab. `/Applications` ist ausschließlich notarisierten Bundles
-vorbehalten; Debug-, Ad-hoc- und nur Developer-ID-signierte Test-Builds dürfen
-dorthin weder kopiert noch installiert werden. Sobald echtes
-Installationsverhalten, Datei-Doppelklick über LaunchServices,
-Finder-Zuordnungen oder macOS-Datei- bzw. Ordnerberechtigungen relevant sind,
-ist der vollständige notarierte `./install.sh`-Pfad nach `/Applications`
-verbindlich. Er darf auch für normale verifizierte Teststände genutzt werden;
-für schnelle rein interne Iterationen bleibt `build.sh` passend. Ein bloßes
-`swift build` aktualisiert das `.app`-Bundle dagegen nicht: Selbst- und
-GUI-Tests gegen `Fastra.app` brauchen vorher `app/build.sh`, sonst prüfen sie
-den alten Stand (2026-08-19: Selbsttest lief gegen das alte Bundle).
+`app/build.sh` patcht die Abhängigkeiten und legt `Fastra.app` im Projekt-Root
+ab. Vor Selbst- und GUI-Tests am Bundle diesen Build ausführen. Für
+Installationstests, Finder-/LaunchServices-Aufrufe und macOS-Berechtigungen
+gilt der notarisierte `./install.sh`-Pfad. `/Applications` ist notarisierten
+Bundles vorbehalten.
 
-Ressourcen müssen aus dem gepackten App-Bundle funktionieren. Ein Erfolg im
-SwiftPM-Buildverzeichnis reicht nicht: absolute `.build`-Fallbacks können lokal
-einen kaputten Bundle-Pfad verdecken. `verify-portable-app.sh` und der
-`localization`-Selbsttest sind verbindliche Wächter.
-
-Ressourcen deshalb immer über `AppResources.bundle` holen, nie direkt über
-`Bundle.module`. Im App-Bundle liegt das Ressourcenpaket unter
-`Contents/Resources`; der SwiftPM-Rückfall sucht dagegen am absoluten
-`.build`-Pfad des Build-Macs und trappt dort. Auf dem Build-Mac fällt das nie
-auf, in der installierten App stürzt es ab. Ein Portabilitätstest muss die
-lokalen Build-Ressourcen ausblenden UND den betroffenen Funktionspfad im
-gepackten Bundle wirklich ausführen — ein bloßer Start genügt nicht: Am
-2026-08-05 blieb `RipgrepFileEnumerator` beim Start unberührt und stürzte erst
-beim ersten Ordner-Suchlauf ab.
+Ressourcen über `AppResources.bundle` laden. Absolute SwiftPM-`.build`-Pfade
+können fehlende Bundle-Ressourcen auf dem Build-Mac verdecken.
+`verify-portable-app.sh` und der `localization`-Selbsttest sind Pflicht.
+Portabilität am betroffenen Funktionspfad des gepackten Bundles bei
+ausgeblendeten lokalen Build-Ressourcen prüfen.
 
 Lokale Referenz-Checkouts unter `repos/` sind gitignored. Sie dienen dem Lesen
 und Vergleichen, nicht als zweite Quelle für Produktcode. Upstream-Code nicht
@@ -140,518 +125,34 @@ direkt ändern und keine generierten Checkout-Diffs committen.
 
 ## Bauen und testen
 
-Vom Repo-Root:
+Vor Build, Installation oder Tests den passenden Abschnitt der
+[Arbeitsreferenz](docs/AGENT-REFERENCE.md#bauen-und-testen) und bei Bedarf
+[BUILD-AND-TEST.md](docs/BUILD-AND-TEST.md) lesen. Selbsttests mit Exit 2
+belegen ein Umgebungsproblem oder übersprungene Prüfungen. Für echte
+Fenstertests eine geeignete GUI-Sitzung verwenden.
 
-```bash
-cd app
-./build.sh                 # legt die gepatchten Checkouts erst an
-./test.sh                  # ruft swift test in einer Wegwerf-Sandbox auf
-./localization-audit.sh
-./selftest.sh
-```
-
-`build.sh` steht bewusst vorn: Nur es stellt den Checkout-Zustand her, gegen den
-`./test.sh` überhaupt etwas Aussagekräftiges misst. Im frisch geklonten Repo
-scheitert der enthaltene `swift test` schon am Übersetzen — SwiftLint-Build-Plugin und
-`#Preview`-Macro der Editor-Pakete (`app/LESSONS-LEARNED.md` F.2 und F.4). Der
-gefährlichere Fall ist aber der zweite: Die Patches liegen im Checkout, die
-Editor-Build-Produkte in `.build/` stammen aber noch aus der Zeit davor. Dann
-übersetzt der Lauf anstandslos und meldet trotzdem Fehler im Produktcode, die
-keine sind. Gemessen am 2026-07-28 auf diesem Stand: `swift test` ohne vorherigen
-Build ergab 5
-rote Tests (Doppelklick-Wortauswahl über Emoji, Editor-Copy aufs Clipboard —
-beides Verhalten aus gepatchtem CodeEditTextView), nach `./build.sh` waren
-dieselben 1555 Tests grün. Genau deswegen verwirft `build.sh` die betroffenen
-Build-Produkte nach dem Patchen. Ein roter Lauf ohne vorheriges `build.sh` ist
-also kein Befund.
-
-`./build.sh release` erzeugt einen Release-Build im Projekt-Root.
-`./install.sh --no-notarize` signiert lokal ohne Notarisierung und belässt das
-Ergebnis ebenfalls dort. Ausschließlich der vollständige notarierte
-Installationsweg darf nach `/Applications` schreiben; er verwendet ein zur
-Laufzeit übergebenes `NOTARY_PROFILE`. Dieser Installationsweg ist verbindlich,
-sobald reales Installationsverhalten, Datei-Doppelklick über LaunchServices,
-Finder-Zuordnungen oder macOS-Datei- bzw. Ordnerberechtigungen geprüft werden;
-auch normale verifizierte Teststände dürfen so installiert werden. Profile,
-Schlüssel und Zertifikatsdetails gehören nie in Code, Doku oder Terminalausgabe.
-
-Die Selbsttests sind maschinenlesbar:
-
-- Exit 0: alle ausgeführten Tests bestanden.
-- Exit 1: echter Funktionsfehler.
-- Exit 2: nur Umgebungsfehler oder Skips, etwa fehlender Fensterfokus.
-
-Ein gesperrter Bildschirm oder ein aktiv benutzter Desktop macht Fenstertests
-teilweise unzuverlässig. Exit 2 nie als grünen Lauf ausgeben. Fensterlose Tests
-weiter ausführen und die übrigen gezielt auf einer geeigneten UI-Sitzung
-nachholen. Selbsttests werden über `-selftest <name>` bzw. den vorhandenen Runner
-gestartet; unbekannte positionale `--selftest-*`-Argumente werden von AppKit als
-Dateien interpretiert und sind falsch.
-
-Auf einem Test-Mac laufen Fenster- und Integrationstests gegen die
-**notarisierte, nach `/Applications` installierte App**
-(`FASTRA_SELFTEST_APP_BIN`/`FASTRA_SELFTEST_APP_BUNDLE`), nicht gegen den
-ad-hoc-signierten Debug-Build. Grund: macOS merkt sich Berechtigungen (lokales
-Netzwerk, Festplattenvollzugriff, Automation …) dauerhaft nur für eine stabile
-notarisierte Code-Identität; ein ad-hoc-Build bekommt mit jedem Build eine neue
-Identität, die Dialoge kommen bei jedem Lauf wieder und Testfehler sind nicht
-von Berechtigungsproblemen unterscheidbar (Produktentscheidung 2026-08-18).
-Ablauf: einmal notarisiert installieren, Berechtigungen setzen, dann ein
-Testlauf, der belegt, dass keine Dialoge mehr erscheinen — erst danach sind
-Ergebnisse dort belastbar. `build.sh`-Debug-Bundles bleiben für schnelle rein
-interne Iterationen auf dem Entwicklungs-Mac passend.
-
-Testumfang nach Risiko:
-
-- Parser, Wildcards, Ersetzungen, Dateifilter: `./test.sh` plus passende
-  In-App-Selbsttests.
-- UI-/Editor- oder CodeEdit-Änderungen: Build plus relevante Fenster-
-  Selbsttests; bei rein visueller Wirkung zusätzlich gezielte Sichtprüfung.
-  Bei Änderungen an der Suchmaske heißt das konkret: `searchlayout` laufen
-  lassen (mit `FASTRA_SEARCHLAYOUT_DIR` für PNGs), bei anderen Dialogen
-  `dialoglayout` (mit `FASTRA_DIALOGLAYOUT_DIR`), und JEDE Bereichsvariante
-  (Datei, Ordner, Projekt) bei Mindestbreite und breit selbst ansehen —
-  nicht nur die README-Aufnahmen des Datei-Bereichs. Am 2026-09-15 war der
-  Projekt-Bereich nach dem Layout-Umbau bei 500 pt unbrauchbar, obwohl alle
-  Aufnahmen und Funktions-Selbsttests grün waren: Ein Funktionstest misst
-  keine Geometrie, und eine Aufnahme zeigt nur den einen Bereich, den sie
-  zeigt.
-- Ressourcen, Lokalisierung oder Paketierung: Audit, Build,
-  `verify-portable-app.sh` und `localization` aus dem gepackten Bundle.
-- Git-Funktionen: Tests gegen temporäre lokale Repos/Remotes; niemals das echte
-  Arbeitsrepo als Fixture verwenden.
-- Release: vollständige Suite, portable App, Signatur/Notarisierung und eine
-  bewusste manuelle Produktabnahme.
+Für ein lokales Fastra-Update oder einen vorbereiteten Fastra-Test ist keine
+erneute Rückfrage zum regulären Beenden oder zur nötigen Fokusübernahme nötig,
+wenn in keinem Fastra-Fenster ungesicherte Änderungen vorliegen. Das gilt für
+alle Tabs, auch unbenannte Dokumente und Hex-Änderungen. Bei einem
+Sichern-Dialog anhalten und den Nutzer entscheiden lassen.
+[Beenden und laufende Instanzen](docs/BUILD-AND-TEST.md#beenden-und-laufende-instanzen)
+beschreibt die Prüfung und die Installationsgrenze.
 
 ## Version und Veröffentlichung
 
-Die nutzersichtbare Version folgt dem bestehenden Schema und muss konsistent in
-`app/Info.plist`, `CHANGELOG.md`, Commit und gegebenenfalls Tag stehen.
-`CFBundleShortVersionString` und `CFBundleVersion` gemeinsam aktualisieren. Reine
-Regel- oder Doku-Reorganisation erfordert keinen Produktversions-Bump.
-
-**Jede nicht-triviale Änderung erhöht die Version — im selben Commit, nicht erst
-im Release-Lauf.** Nicht-trivial heißt: nutzersichtbares Verhalten ändert sich,
-also jedes neue Merkmal und jede Fehlerbehebung an der Oberfläche. Nur Doku,
-Kommentare, Tests und Umbauten ohne Verhaltensänderung bleiben ohne Bump. Der
-Grund ist praktisch: Die Version ist das einzige Merkmal, an dem sich ein
-installiertes Bundle von einem anderen unterscheiden lässt. Steht in
-`/Applications` dieselbe Nummer wie vor der Änderung, ist bei einer Beobachtung
-aus dem Testbetrieb nicht mehr entscheidbar, ob sie am Code liegt oder an einem
-alten Stand — genau dieser Fall trat am 2026-07-26 auf und ist die Begründung
-des damaligen Bumps auf 1.52.0.
-
-Die Regel war zwischen dem 2026-07-26 und dem 2026-07-30 faktisch außer Kraft:
-Bumps wanderten in eigene `chore(release):`-Commits und blieben dann ganz aus,
-sodass sechs nutzersichtbare Änderungen unter der unveränderten Nummer 1.53.1
-liefen. Die Version 1.60.0 gleicht diesen Rückstand bewusst mit einem größeren
-Sprung aus (Produktentscheidung 2026-07-30).
-
-Ein Build, Tag oder lokales Release ist keine Veröffentlichung. Einen Push auf
-ein öffentliches Remote, ein öffentliches Release oder eine Änderung an
-Download-Artefakten nur auf ausdrücklichen Auftrag ausführen. Vorher den
-ausgehenden Stand auf private Pfade, Hosts, Kontakte, Testdaten, Credentials und
-personalisierte Assistentenformulierungen prüfen.
-
-**Commit-Nachrichten bleiben veröffentlichungsfähig.** Sie entstehen im Moment
-der Arbeit, wo Rechnername und Testumgebung die nützliche Angabe sind — und sie
-werden erst Wochen später öffentlich. Deshalb gleich beim Schreiben ohne
-Rechner- und Personennamen, interne Hosts oder absolute Home-Pfade formulieren.
-Der Beleg bleibt dabei vollständig, nur die Herkunft wird allgemein: „belegt
-unter kontrollierter Fremdlast, loadavg 22–40" statt eines Rechnernamens, „im
-Arbeitsbetrieb beobachtet" statt eines Personennamens. Das ist keine
-Kosmetikregel: Im Dateiinhalt lässt sich so etwas vor dem Push noch
-generalisieren, in einer Commit-Nachricht nicht mehr — nach dem ersten Push
-bleibt der Text über seine SHA dauerhaft erreichbar.
-
-`app/public-history-audit.sh` prüft das mechanisch am ausgehenden Stand und ist
-im Release-Lauf ein hartes Gate. Die eigenen internen Namen stehen in der
-gitignorierten `app/public-history-patterns.local` — sie gehören nicht ins
-öffentliche Repo, sonst veröffentlicht der Wächter genau das, wovor er schützt.
-Fehlt die Datei, greifen nur die eingebauten Muster und das Skript sagt es.
+Funktionsänderungen im selben Commit in `app/Info.plist` und `CHANGELOG.md`
+versionieren. Reine Doku, Regeln, Tests und Umbauten ohne Verhaltensänderung
+brauchen keinen Produktversions-Bump. Commits veröffentlichungsfähig halten.
+Für öffentliche Pushes und Releases ist eine ausdrückliche Freigabe nötig.
+[Versions- und Veröffentlichungsregeln](docs/AGENT-REFERENCE.md#version-und-veröffentlichung)
+vor Releases und Versionsänderungen lesen.
 
 ## Bekannte technische Fallen
 
-- Ergebnis-Flags nicht per `flag = flag || funktion()` sammeln: Das `||` wertet
-  die rechte Seite nach dem ersten `true` nicht mehr aus, und die Funktion läuft
-  für die restlichen Elemente gar nicht — so fehlten in `updateSelectionViews`
-  die Positionierungsaufrufe für alle weiteren Cursor einer Rechteckauswahl
-  (behoben in 5a934ac). Erst aufrufen, dann verodern.
-- **Der `.build`-Pfad in `Contents/MacOS/Fastra` bleibt bewusst stehen.** SwiftPM
-  kompiliert in den Zugriff auf `Bundle.module` den Build-Zeit-Pfad des
-  Ressourcen-Bundles als Zeichenkette ein. Das ist kein Debug-Symbol, `strip -S`
-  in `app/sign-bundle.sh` erwischt es deshalb nicht. Folgenlos: Die Bundles
-  liegen in `Contents/Resources` und werden von dort gefunden, der Pfad ist ein
-  nie erreichter Rückfall. Wegzubekommen wäre er nur, indem `swift build` mit
-  `--scratch-path` außerhalb des Repos baut — das kostet einen zweiten
-  Build-Cache. Das wurde bewusst verworfen: Der zusätzliche Aufwand ändert das
-  Laufzeitverhalten nicht. Nicht „reparieren“; diese bekannte Designentscheidung
-  soll auch von Code-Reviews nicht erneut als Fehler gemeldet werden. Folgenlos
-  ist der Pfad allerdings nur, solange kein Code direkt auf `Bundle.module`
-  zugreift — sonst wird aus dem nie erreichten Rückfall ein echter Absturz
-  (siehe „Architektur und Abhängigkeiten“).
-- CodeEdit-Ressourcen können im Build funktionieren und im `.app` fehlen. Immer
-  den gepackten Zielstart prüfen.
-- Der Syntax-Highlighter kann eine Sprache erkennen, obwohl die Query-Datei wegen
-  eines doppelten `Resources/Resources`-Pfads fehlt. Der `highlight`-Selbsttest
-  muss echte Vordergrundfarben beobachten.
-- Umbruchfragmente dürfen Endindizes nicht als Längen behandeln. Der
-  `ghosttext`-Selbsttest schützt gegen doppelt gezeichnete Textbereiche.
-- Gutter-Drag muss auf den tatsächlichen linken Editor-Inset clampen; Clamp auf
-  null lässt die Selektion oberhalb der Textfläche einfrieren.
-- Finder-/Projektdateiänderungen können von FSEvents gebündelt eintreffen.
-  Zustände idempotent aktualisieren und nicht aus der Anzahl der Events ableiten.
-- Ein aktiver Nutzer kann Fenstertests den Fokus entziehen. Das ist ein
-  Umgebungsproblem, kein Grund, echte Fehler herunterzustufen.
-- `Process.waitUntilExit` dreht den RunLoop des aufrufenden Threads. Auf dem
-  Main-Thread feuern dadurch SwiftUI-Update-Observer reentrant mitten im
-  Layout (SIGSEGV). Kindprozesse deshalb nie auf dem Main-Thread abwarten;
-  Warten nur über Semaphore/DispatchGroup, Erstauflösungen auf eigene
-  Hintergrund-Queues legen (siehe `GitRunner`/`BackgroundOnceResolver`).
-- Dateityp und Dateigröße gehören an den symlink-aufgelösten Pfad. Weder
-  `attributesOfItem` noch `URL.isRegularFile` folgen einem Symlink: Ein Link auf
-  eine ganz normale Datei gälte sonst als nicht regulär und würde abgewiesen, und
-  die gemeldete Größe wäre die des Links statt die der Zieldatei — womit eine
-  riesige Datei die Abschnitts- und Hex-Grenze umginge (siehe `FileLoader`).
-- `NSEvent.clickCount` ist NUR für Maus-Events definiert. Wird ein Button per
-  Tastatur ausgelöst (Leertaste auf dem fokussierten Button), wirft AppKit in
-  `NSApp.currentEvent?.clickCount` eine Assertion und die App bricht mit
-  SIGABRT ab. Vor dem Zugriff daher immer den `type` prüfen und sonst von
-  einem Einzelklick ausgehen (siehe `GitChangeRow.handleRowClick`).
-- Synthetische Klicks in Fenster-Selbsttests: `window.sendEvent` setzt
-  `NSApp.currentEvent` NICHT. Liest der geklickte Code Modifier oder
-  Klickzahl daraus, muss der Test die Events mit `NSApp.postEvent` in die
-  echte Event-Queue legen (`sendMouseClick(..., viaApp: true)`). Dasselbe
-  gilt für AppKit-gestützte Knöpfe (NSButton, Checkbox): Ihr Maus-Tracking
-  wartet in einer eigenen Schleife auf das Mouse-up aus der Queue, und
-  `sendEvent(down)` kehrt erst danach zurück — der Test hängt bis zum
-  Runner-Timeout (searchoptions, 2026-09-15).
-- **SwiftUI-`List` verschluckt Pfeiltasten.** Die zugrunde liegende
-  `NSOutlineView` verarbeitet Auf-/Abwärtspfeil selbst, `onMoveCommand` feuert
-  nie. Pfeilnavigation in der Suchmaske deshalb über
-  `onKeyPress(.upArrow)`/`onKeyPress(.downArrow)` behandeln; der Selbsttest
-  muss echte Pfeiltasten senden — ein Return-Shortcut auf „Nächster" hatte den
-  Ausfall verdeckt (2026-08-31).
-- **Fenstermenü-Einträge nur über das echte Menü testen.** Ein Test, der den
-  internen Untermenü-Callback direkt aufruft, belegt nicht, dass der Eintrag im
-  macOS-Fenstermenü erscheint — genau so entstand ein falsch positiver Test.
-  Der Test öffnet das Fenstermenü und wechselt über einen Eintrag den Tab
-  (2026-09-01).
-- **`NSApp.windowsMenu` existiert beim ersten Fenster-Update noch nicht.** Ein
-  Menü-Aufbau, der nur bei Titeländerungen läuft, verpufft beim Start am
-  fehlenden Menü und kommt nie wieder. `WindowsMenuTabs.updateItem` läuft
-  deshalb idempotent erneut, bis das Menü da ist; wiederhergestellte Fenster
-  brauchen zusätzlich das Entfernen der von AppKit bereits angelegten
-  Standardeinträge (v1.117.1, 2026-09-01).
-- **Ein weggescrollter Tab behält seine NSView.** Sein Marker liegt dann
-  außerhalb der sichtbaren Tab-Leiste, und ein daraus berechneter
-  synthetischer Klick landet auf einem ganz anderen Bedienelement. Am
-  2026-08-16 traf `tabcompare` in einem schmalen Fenster so den Home-Knopf
-  der Titelleiste: `returnToWelcome()` verwarf beide Fixture-Tabs, und der
-  Test meldete „Tabs verschwunden" statt „danebengeklickt". Ein Tab-Klick
-  scrollt sein Ziel deshalb zuerst sichtbar (`scrollTabIntoView`) und prüft
-  danach, dass der Klickpunkt wirklich in der Leiste liegt. Die Fensterbreite
-  entscheidet, ob der Fall auftritt — und die erbt jeder Testprozess über das
-  gemeinsame Test-Home aus dem Rahmen (`NSWindow Frame main`), den ein
-  früherer Test im selben Lauf hinterlassen hat. Ein Fenstertest, dessen
-  Ergebnis von der Fensterbreite abhängt, muss seine Vorbedingung deshalb
-  selbst herstellen, statt sie zu erben. Zweite Hälfte derselben Falle
-  (2026-08-17): Eine tick-übergreifende „Geometrie ist zur Ruhe gekommen"-
-  Prüfung ist an SwiftUI-ScrollViews UNERFÜLLBAR — die ScrollView stellt
-  bei jedem Re-Render ihren eigenen gespeicherten Offset wieder her und
-  pendelt dauerhaft gegen den Test-Scroll. Da `window.sendEvent` synchron
-  zustellt, sind Messung, Prüfung und Klick im selben Main-Thread-
-  Durchlauf ohnehin racefrei: genau so messen und sofort klicken (siehe
-  `armSingleShiftClick`). Anders bei `NSApp.postEvent` (`viaApp: true`):
-  Dort liegt echte Zeit zwischen Messung und Zustellung, und eine
-  Ruhe-Prüfung ist nötig und angemessen (siehe markdownjump).
-- SwiftUIs `TapGesture(count: 2).exclusively(before: TapGesture(count: 1))`
-  reagierte in der Änderungen-Liste nicht auf synthetische Klicks — der
-  Einzelklick-Zweig feuerte nie, obwohl `hitTest` die richtige View traf.
-  Klickbare Zeilen deshalb als `Button` bauen und die Klickart aus dem Event
-  ableiten; das ist der auch im Test verlässliche Pfad.
-- Die AppKit-Views einer SwiftUI-Hierarchie sind GEFLIPPT: y wächst nach
-  unten, „oben" ist `minY`. Ein Fenster-Selbsttest, der eine Oberkante gegen
-  `maxY` prüft, misst dann verlässlich das Falsche. Vor der Zusage
-  `isFlipped` der Bezugs-View abfragen (siehe `gitstickyheader`).
-- Ein prozentcodiertes `%23` in einem Markdown-Bildpfad ist ein Rautezeichen im
-  DATEINAMEN, kein URL-Fragment. Erst das Fragment am echten `#` abtrennen,
-  danach prozentdecodieren. In der umgekehrten Reihenfolge endet der Pfad vor
-  dem decodierten `#`, und ein vorhandenes Bild gilt als nicht gefunden (siehe
-  `MarkdownImages.localImageURL`).
-- Eine Modelländerung darf nur dann eine neue Suche auslösen, wenn sie Eingaben
-  des AKTIVEN Suchbereichs verändert. `SearchRunner` behandelte Änderungen an
-  `tabs`, `activeTabID` und `projectURL` immer als neue Sucheingabe: Ein
-  Trefferklick ruft `loadFile`, dessen Lade-Tab verändert `tabs`/`activeTabID`
-  — und die fertigen Ordnerergebnisse wurden geleert und neu gesucht.
-  Tabwechsel und das Öffnen einer Funddatei dürfen eine laufende Ordnersuche
-  weder leeren noch neu starten (`SearchRunner.inputAffectsSearch`). Umgekehrt
-  gilt: Verändert Fastra selbst Dateien (Ordner-Apply, Rückgängig), muss die
-  Trefferbasis ausdrücklich für ungültig erklärt werden — dafür gibt es
-  `folderResultsBecameStale()`, keinen Combine-Auslöser.
-- Scrollen in Fenster-Selbsttests: Ein per `CGEvent`/`NSApp.postEvent`
-  erzeugtes Scroll-Rad-Event erreichte die SwiftUI-ScrollView nicht (die
-  Scroll-Position blieb 0). Verlässlich ist der reguläre AppKit-Weg über die
-  gefundene `NSScrollView`: `contentView.scroll(to:)` plus
-  `reflectScrolledClipView` — festgepinnte Abschnittsköpfe folgen dem
-  korrekt. Ein Scroll-Test muss zusätzlich belegen, DASS gescrollt wurde,
-  sonst besteht er auch bei stillstehender Liste.
-- Die interne Adresse eines Vorschaubildes muss die DATEIIDENTITÄT abbilden,
-  nicht seine Position im Dokument. WebKit liefert unter einer unveränderten
-  Adresse die zuvor geladene Datei aus seinem Speicher-Cache: Unter dem
-  positionsbezogenen Namen `image-0` zeigte die Vorschau nach einem
-  Bildwechsel weiter das alte Bild, obwohl im Quelltext der neue Dateiname
-  stand. Die Adresse deshalb aus aufgelöstem Pfad, Änderungsdatum und Größe
-  bilden (siehe `MarkdownRendering.imageToken`).
-- Ein persistenter Store, von dem mehrere Fenster je eine langlebige Instanz
-  halten, darf nie seinen vollständigen, beim Initialisieren geladenen Zustand
-  zurückschreiben. Sonst überschreibt das schreibende Fenster alles, was ein
-  anderes Fenster inzwischen gespeichert hat — genau so gingen gemerkte
-  Formatwahlen verloren. Entweder teilen sich alle Fenster eine Instanz, oder
-  der Store lädt vor jeder Änderung neu und führt zusammen (siehe
-  `LanguageChoiceStore`).
-- Der Apply-Preflight muss auch wirkungslose Eingaben schützen. Eine Datei ohne
-  aktuell wirksame Ersetzung darf nicht schon vor der abschließenden
-  Snapshot-Prüfung aus der Mehrdatei-Transaktion fallen: Sie kann sich zwischen
-  Vorschau und Apply so ändern, dass ein zuvor wirkungsloser Treffer wirksam
-  wird. Geprüft wird deshalb der erwartete Platten-Stand ALLER Eingaben,
-  geschrieben werden nur die tatsächlich geänderten Dateien (siehe
-  `ApplyEngine`, `expectedOnDisk`).
-- Eine Symlink-Prüfung beginnt am unvertrauenswürdigen Verzeichnis. Der
-  Vergleich zweier mit `resolvingSymlinksInPath` aufgelöster Pfade reicht
-  nicht, wenn das vom Fremdwerkzeug angelegte Ausgabeverzeichnis selbst ein
-  Verweis sein darf: Dann zeigen beide aufgelösten Pfade in den fremden Ordner
-  und der Präfixvergleich geht auf. Das Ausgabeverzeichnis zuerst per `lstat`
-  als echten Ordner innerhalb des eigenen Zwischenverzeichnisses bestätigen,
-  erst danach Kandidaten auflösen und übernehmen (siehe
-  `MarkdownImport.isPublishableFile`).
-- Combine legt das Verlags-Objekt hinter jedem `@Published`-Feld erst beim
-  ERSTEN Zugriff an und tauscht dabei ungeschützt den Feldspeicher aus. Ein
-  ObservableObject muss deshalb einmal `_ = objectWillChange` auf seinem
-  erzeugenden Thread durchlaufen, BEVOR es irgendeinen anderen Thread
-  erreicht; danach verriegelt Combine intern. `Workspace.init` erreichte die
-  Main-Queue schon über den initialen `rerun()`-Dispatch des SearchRunner —
-  noch vor `Workspace.shared` —, und in der parallelen Testsuite
-  konvertierten Main- und Erzeuger-Thread denselben Speicher gleichzeitig:
-  SIGSEGV/Heap-Korruption (2026-08-09). Zweite Falle derselben Art: `sink`
-  liefert synchron auf dem SCHREIBENDEN Thread. Ein Sink, der starke
-  Referenzen zuweist (Sofort-Invalidierung des SearchRunner), muss von
-  fremden Threads auf die Main-Queue umziehen, sonst geben zwei Threads
-  dasselbe alte Objekt doppelt frei. Wächter: Vorwärm-Aufruf in
-  `Workspace.init` VOR der SearchRunner-Erzeugung, Regressionstest
-  `WorkspaceParallelStressTests`.
-- Verwandte Falle nur der Testsuite: Workspace-Completions kommen per
-  `DispatchQueue.main.async` zurück und fassen dabei auch EINFACHE
-  (nicht-`@Published`) Instanzvariablen an, etwa
-  `gitConflictInspectionRequestIDs`. Ein Test, der denselben Workspace von
-  einem eigenen Thread treibt, liest und schreibt dann unsynchronisiert neben
-  Main — beobachtet am 2026-08-09 als SIGSEGV beim Dictionary-Lookup in der
-  Konflikt-Inspektions-Completion. Solche Tests gehören mitsamt ihren
-  Warte-Helfern auf den `@MainActor` (siehe `GitConflictAndAdvancedTests`);
-  das bildet zugleich das Produkt ab, dessen Workspace vollständig auf dem
-  Main-Thread läuft. Im Produktcode ist deshalb nichts zu „reparieren“.
-
-- **`NSApp.windows` ist NICHT nach Vordergrund sortiert.** Wer daraus „das
-  erste sichtbare Fenster" nimmt, trifft bei mehreren offenen Dokumenten ein
-  zufälliges — der Befehl wirkt dann im Hintergrundfenster, an einer nie
-  angeklickten Stelle. Mit nur einem Fenster fällt das nie auf. Sortiert ist
-  `NSApp.orderedWindows`. Produktcode fragt AppKit deshalb gar nicht mehr
-  selbst nach Fenstern, sondern ausschließlich über `CommandTargeting`;
-  `app/window-targeting-audit.sh` hält das mechanisch durch und läuft in
-  `build.sh` vor dem Kompilieren. Ebenso gefährlich ist die zweite Hälfte
-  desselben Fehlers: Wer den Inhalt aus `Workspace.shared` liest und in einen
-  getrennt gesuchten Editor schreibt, verbindet zwei verschiedene Fenster.
-  Fenster, Workspace und Editor immer gemeinsam über `CommandTargeting.target()`
-  holen.
-- **`selectedRange()` liefert `{NSNotFound, 0}`, solange der Editor keine
-  Auswahl hat.** Das ist der Normalzustand eines gerade geöffneten Fensters,
-  in das noch niemand geklickt hat. Ungeprüft an `replaceCharacters`
-  weitergereicht, bildet der Undo-Verwalter daraus die Umkehrung und bricht
-  die Anwendung mit „Range invalid for string" ab. Jeder Lesezugriff geht
-  deshalb über `TextView.fastraSafeSelectedRange` (pure Rechnung in
-  `SelectionClamping.clamp`). Dieselbe Wurzel hat der `IndexSet`-Absturz im
-  Attachment-Beobachter von CodeEditTextView: Auch dort trappt eine Auswahl
-  mit `NSNotFound`.
-- **Kurze Selbsttests finden keine Zustandsfehler.** Ein Selbsttest baut eine
-  frische Miniwelt, prüft eine Sache und räumt ab. Fehler, die erst nach
-  längerer Arbeit mit mehreren großen Dokumenten in mehreren Fenstern
-  entstehen, kommen darin bauartbedingt nicht vor — am 2026-08-07 meldete der
-  Arbeitsbetrieb vier solche Fehler, die keiner der rund achtzig Tests
-  gefunden hatte. Dafür gibt es `app/soak-test.sh`: ein langer Lauf über
-  mehrere App-Neustarts, der nach JEDER Aktion die Invarianten prüft und
-  Verstöße sammelt, statt abzubrechen. Er läuft bewusst nur von Hand.
-- **Eine Wanduhr-Frist misst im parallelen Testlauf nicht die Wartezeit,
-  sondern die Fremdlast.** swift-testing führt alle Tests im selben Prozess
-  nebenläufig aus, und sämtliche `@MainActor`-Tests teilen sich denselben
-  einen Main-Actor. Ein schwerer Nachbar — etwa der Aufbau eines
-  4,36-MB-Editors — belegt ihn sekundenlang am Stück. Gemessen am 2026-08-17
-  an `ExternalChangeTests` („Veraltete Prüfung eines wiederverwendeten
-  Tabplatzes"): Die 10-ms-Pause der Warteschleife wurde 6,98 s lang nicht
-  bedient, die gesamte 5-Sekunden-Frist verstrich also, ohne dass der Test
-  auch nur ein einziges Mal nachsehen konnte — und er meldete einen Fehler,
-  den es nicht gab. Losgelöste Hintergrundaufgaben liefen in derselben
-  Messung binnen einer Millisekunde an; der Engpass war allein der
-  Main-Actor, weder der Thread-Pool noch der geprüfte Ablauf. Prüfung,
-  Reload und Datei-Read liefen vollständig korrekt, nur später als das
-  Testfenster. `waitUntil` (`Tests/FastraTests/TestWaiting.swift`) zählt
-  deshalb nur noch Zeit, in der die Schleife wirklich an die Reihe kam: Eine
-  Pause weit über der angeforderten Länge gehört einem fremden
-  Main-Actor-Halter und verbraucht die Frist nicht. Ein echt hängendes
-  Verhalten läuft unverändert in die Frist, weil seine Durchläufe regulär
-  stattfinden. Vor jeder Fehlersuche an einem lastabhängig roten Test
-  deshalb zuerst messen, ob die Schleife überhaupt lief.
-- **`exit()` durchläuft AppKits Beenden-Hooks nicht.** In-App-Tests enden über
-  `SelfTest.finish` direkt mit `exit()`. `applicationShouldTerminate` und damit
-  dort untergebrachte Sicherungs- oder Aufräumarbeit laufen dann nicht. Braucht
-  eine folgende Testphase diesen Zustand, muss der Test ihn vor `finish`
-  ausdrücklich speichern und nötigenfalls synchronisieren (siehe
-  `runSoakRounds` und `SessionRestorationCoordinator.captureCurrentSession`).
-- **Eine Test-Sandbox umfasst mehr als ein temporäres Home-Verzeichnis.**
-  `CFFIXED_USER_HOME` isoliert benannte Core-Foundation-Preferences-Domains auf
-  macOS nicht zuverlässig. GUI- und Unit-Runner brauchen deshalb pro Lauf eine
-  zufällige Test-Domain und müssen außerdem temporäre Dateien, Zwischenablage,
-  Kindprozesse sowie eigene LaunchServices-Einträge bei Erfolg, Fehler, Timeout
-  und Signal gezielt aufräumen. Die vollständige Umsetzung und ihre Grenzen
-  stehen in `docs/BUILD-AND-TEST.md` unter der Test-Sandbox.
-- **Ein Floating-Gutter besitzt nicht automatisch die Y-Koordinaten des
-  TextView.** `NSScrollView.addFloatingSubview` hängt den geflippten,
-  dokumenthohen `GutterView` unter eine ungeflippte Ansicht; seine lokale
-  `visibleRect` läuft bei langen Dokumenten dadurch entgegengesetzt zur
-  Textansicht. Sichtbare Zeilen immer im `TextView` bestimmen und nur Zeichen-
-  sowie Mauspositionen zwischen den Views umrechnen. Ein Regressionstest muss
-  oben UND unten in einem langen mehrzeiligen Soft-Wrap-Dokument die tatsächlich
-  vom Gutter gewählte erste Zeile mit der sichtbaren Textzeile vergleichen
-  (`DifficultDocumentCorpusTests`, `softwrapanchor`).
-- **Wird ein bisher synchroner Dokumentablauf teilweise in den Hintergrund
-  verlegt, ändert sich seine Reihenfolge.** Der abschließende Teil läuft erst
-  später und muss das Dokument wiederfinden, in dem er begonnen hat. Beim
-  gemischten Drop — ein Bild zusammen mit einer anderen Datei — öffnete der
-  Drop-Pfad die mitgezogene Datei sofort als neuen Tab. War das Kopieren im
-  Hintergrund fertig, sah `finishImageInsertion` ein fremdes aktives Dokument
-  und verwarf den Bildlink; das Bild lag kopiert im `images`-Ordner, ohne dass
-  es jemand verlinkt hatte. Die Prüfung war richtig, nur zur falschen Zeit
-  gemessen. Eine nachfolgende Aktion, die das aktive Dokument wechselt, gehört
-  deshalb an den Abschluss des Hintergrundschritts: erst den Link einfügen,
-  dann die übrigen Dateien öffnen (siehe
-  `MarkdownAssist.handleDroppedFileURLs`, geprüft vom `mdassist`-Selbsttest).
-- **Ein modaler Druckauftrag meldet sich aus einem FREMDEN Thread zurück.**
-  AppKit führt `NSPrintOperation.runModal(for:…)` in einem eigenen Thread aus und
-  ruft `printOperationDidRun:success:contextInfo:` auch dort. Wer in dieser
-  Rückmeldung eine WebView abbaut oder ein Fenster schließt, greift AppKit und
-  WebKit vom falschen Thread an: Am 2026-08-17 brach die Anwendung dabei
-  siebenmal mit SIGTRAP in WebKits `WKWindowVisibilityObserver` ab. Von außen
-  sah das wie ein hängender Druckauftrag aus — es kam einfach keine
-  Rückmeldung, weil der Prozess weg war. Deshalb geht in
-  `PrintCompletionRelay` alles ausdrücklich auf die Main-Queue. Verwandte Falle
-  im gleichen Weg: Aus einer WebKit-Rückmeldung (etwa der Completion von
-  `evaluateJavaScript`) darf der Druck nicht direkt starten — WebKits
-  Druckvorgang dreht selbst den RunLoop und wartet auf den Webprozess; mitten
-  in dessen eigener Rückmeldung aufgerufen, kommt er nie zurück.
-- **`drawPageBorder(with:)` zeichnet im Papier-Koordinatensystem: Nullpunkt
-  unten links, y wächst nach OBEN.** Das gilt auch für eine geflippte View wie
-  `NSTextView`, deren Textzeilen nach unten laufen. Wer die Kopfzeile aus der
-  Flippung der View ableitet, setzt sie unten und die Fußzeile oben auf die
-  Seite (nachgemessen am 2026-08-17 an einem erzeugten PDF). Zweiter Punkt
-  derselben Stelle: Kopf- und Fußzeile brauchen je ein eigenes Rechteck für die
-  linke und die rechte Angabe. In einem gemeinsamen Rechteck lief ein langer
-  Dateipfad unter die rechts stehende Seitenzahl, statt gekürzt zu werden.
-  Beides steht in `PrintPageDecoration`.
-- **Ein Ausdruck mit fester Zeilenbreite darf nicht umbrechen.** Der Hex-Abzug
-  ist ein Raster aus Adresse, Bytes und ASCII-Spalte; bricht eine Zeile am
-  Seitenrand um, ist er unlesbar (gesehen am 2026-08-17: jede zweite Druckzeile
-  war der Rest der vorherigen). Die Druckschrift wird deshalb so weit
-  verkleinert, dass eine ganze Rasterzeile auf die Seite passt
-  (`PrintTextFit`). Für Quelltext gilt das ausdrücklich NICHT — dort ist die
-  Zeilenlänge beliebig, und Schrumpfen bis zur Unlesbarkeit wäre schlechter als
-  ein Umbruch.
-- **`components(separatedBy: .newlines)` behandelt CRLF als zwei Trennzeichen.**
-  Jede Windows-Zeile erzeugt dadurch eine erfundene Leerzeile. Logische Zeilen
-  deshalb mit einer Zerlegung bilden, die `\r\n` als eine Einheit behandelt und
-  den Endumbruch bewusst erhält (CRLF-Fixes in Diff und Suchvorschau,
-  2026-08-15).
-- **Eine Werkzeugsuche in den Programme-Ordnern darf nicht nur den exakten
-  Bundle-Namen erwarten.** Ein echtes Tool4D-Nightly heißt
-  `tool4d_v21_nightly_2026-08-05.app`, nicht `tool4d.app`. Passende
-  Namensvarianten miterkennen und bei mehreren Funden anhand der Bundle-Version
-  deterministisch die höchste wählen (siehe `Tool4DDiscovery.locate`).
-- **`NSClipView.scroll(to:)` begrenzt das Ziel nicht — der Rücklese-Wert kann
-  lügen.** Ein programmatisches Scrollziel jenseits der aktuellen Dokumenthöhe
-  wird scheinbar übernommen (`bounds.origin` zeigt das volle Ziel), und erst
-  das nächste AppKit-Layout schnappt auf den gültigen Bereich zurück — bei
-  einem frisch montierten Editor also an den Dokumentanfang. Eine
-  Erfolgsprüfung, die nur den zurückgelesenen Ursprung vergleicht, beendet
-  ihre Nachzieh-Schleife dann zu früh; unter Last verlor so der
-  Tab-Rückwechsel den gemerkten Ausschnitt (tabscroll nur im Gesamtlauf rot,
-  isoliert grün — belegt 2026-08-19: „ist=5235" bei 533 pt Dokumenthöhe,
-  danach y=0). Erfolg nur melden, wenn das Ziel im schon ausgelegten Dokument
-  liegt, und das Ziel selbst aufs Erreichbare begrenzen (siehe
-  `EditorView.restoreScrollOffset`; Diagnose per
-  `FASTRA_SCROLLRESTORE_DEBUG=1`). Die Umkehrung derselben Falle traf am
-  2026-08-24 die Seitenleiste: Dort war „das Dokument gibt gerade nicht mehr
-  her als das Erreichte" als Abbruch gedacht — und trifft direkt nach dem
-  Aufbau IMMER zu, weil eine LazyVStack noch keine Zeile ausgelegt hat.
-  Dokumenthöhe und Sichtfenster sind dann gleich groß, die Schleife bricht im
-  ersten Versuch bei Position 0 ab, und die Liste bleibt für immer oben. Eine
-  Nachzieh-Schleife darf deshalb nur bei erreichtem Ziel oder aufgebrauchten
-  Versuchen enden (siehe `SidebarScrollRestore.isSettled`; Diagnose per
-  `FASTRA_SIDEBARSCROLL_DEBUG=1`).
-
-- **`TextSelection.pivot` bleibt nach einer Textänderung stehen.** In
-  CodeEditTextView zeigt der Auswahlanker nach einem Backspace rechts neben den
-  Cursor; das nächste Shift+→ rechnet mit diesem veralteten Anker und erzeugt
-  einen Bereich negativer Länge (`{10, −1}`). Das führte am 2026-08-24 zum
-  Absturz mit Datenverlust beim Zeiteintrag. Regel: nach jeder Textänderung den
-  Auswahlanker verwerfen — und zusätzlich negative Bereiche vor der
-  Undo-Registrierung und in den Auswahl-Settern abweisen, damit ein einzelner
-  vergessener Reset nicht wieder abstürzt.
-
-- **APFS kennt kein „ersetze nur, wenn Inode und Inhalt noch X sind".**
-  `NSFileCoordinator` und Dateisperren schützen ausschließlich kooperierende
-  Schreiber; gegen einen fremden Prozess helfen sie nicht. Der Commit tauscht Ziel
-  und vorbereitete Datei deshalb per `RENAME_SWAP` atomar, prüft danach über
-  gebundene Deskriptoren, welchen Stand er tatsächlich verdrängt hat, und tauscht
-  bei Konflikt zurück. Fehlt diese Fähigkeit auf dem Zieldateisystem, muss der
-  Schreibvorgang geschlossen fehlschlagen — kein Best-Effort-Überschreiben.
-
-- **Der rote Schließen-Knopf des SwiftUI-Hauptfensters gehört SwiftUI.**
-  Das Startfenster (`Window`-Szene) hat SwiftUIs eigenen `NSWindowDelegate`
-  (`AppKitWindowController`); ein `windowShouldClose` von Fastra läuft dort
-  nie. Der Knopf schloss das Fenster deshalb ohne Rückfrage und ließ alle
-  Tabs im Workspace stehen — beim nächsten Anzeigen der Szene kamen sie
-  zurück (Befund 2026-09-04). Die Titelbrücke hängt den Knopf darum auf
-  `prepareToCloseWindow` plus `close()` um
-  (`WindowMetadataView.routeCloseButtonThroughWorkspace`). Im Handler NIE
-  `performClose(_:)` rufen: Es simuliert den Klick auf genau diesen Knopf und
-  ruft den Handler endlos erneut auf (Stapelüberlauf im Selbsttest).
-- **SwiftUIs App-Delegate bearbeitet ein Öffnen-Ereignis VOR dem eigenen.**
-  Nach `odoc` (Finder-Doppelklick) zeigt `AppWindowsController.open` erst das
-  Szenenfenster samt seiner alten Tabs wieder an und reicht dann an Fastras
-  `application(_:open:)` weiter. Ein so wieder angezeigtes Fenster durchläuft
-  `viewDidMoveToWindow` NICHT erneut; sein beim `willClose` gelöschter
-  Registry-Eintrag blieb weg, es zählte nicht als Dokumentfenster, und die
-  Datei bekam ein zweites Fenster anderer Größe. Die Brücke registriert
-  deshalb bei jedem `didBecomeKey` erneut. Für Selbsttests: Ein Apple-Event an
-  den eigenen Prozess läuft vom Main-Thread in errAETimeout (-1712) und wird
-  von einem Hintergrund-Thread direkt DORT zugestellt (AppKit-Absturz beim
-  Fensteraufbau). `odoc`/`rapp` deshalb über `NSApp.delegate` zustellen —
-  das ist SwiftUIs Delegate, derselbe Weg wie nach dem echten Ereignis
-  (`finderreopen`).
-- **Selbsttests nur über das Maschinenprotokoll bewerten.** Der Runner darf
-  Ergebnisse nicht aus frei formuliertem Text ableiten. Der alte Weg machte aus
-  einem echten `FAIL`, das das Wort „Umgebungsproblem" enthielt, ein Exit 2, aus
-  `ENV` und `SKIP` echte Fehler — und aus einem beschädigten Maschinenstatus einen
-  **grünen** Lauf, weil er auf eine ältere PASS-Zeile zurückfiel. Maßgeblich ist
-  allein das versionierte, vollständig validierte `SELFTEST-RESULT`-Protokoll;
-  beschädigte Pflichtfelder schlagen geschlossen fehl. Genau EINE Ausnahme
-  besteht: Fehlt die Maschinenzeile vollständig, greift die alte Textheuristik
-  auf die Begleitzeile — sie ist die Verständigung mit einem installierten
-  Bundle aus der Zeit vor dem Protokoll (`tools/selftest-results.sh`, Kommentar
-  im Dateikopf, gepinnt von `SelfTestPerformanceTests`). In diesem Pfad sind
-  die beiden oben genannten Fehleinstufungen weiterhin möglich; ein Lauf gegen
-  ein aktuelles Bundle erreicht ihn nie. Ob ein Ergebnis überhaupt vorliegt,
-  entscheidet dagegen seit 2026-09-10 die Pflichtzeile — vorher hing selbst das
-  am Freitext, und eine App, die nur die Maschinenzeile hinterließ, lief in den
-  Timeout-Zweig und wurde dort hart als Funktionsfehler gemeldet.
+Vor Änderungen an Editor, Suche, Dateizugriff, Fenstern oder Selbsttests die
+passenden [technischen Fallen](docs/AGENT-REFERENCE.md#bekannte-technische-fallen)
+prüfen. Für Editor-Abhängigkeiten zusätzlich `app/LESSONS-LEARNED.md` lesen.
 
 ## Verhaltensevals
 

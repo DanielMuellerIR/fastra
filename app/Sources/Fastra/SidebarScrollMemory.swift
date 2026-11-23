@@ -6,16 +6,15 @@ import AppKit
 // Merkt sich die Scrollposition der Seitenleisten-Listen über einen Wechsel
 // des Seitenleisten-Tabs hinweg.
 //
-// Warum überhaupt: SwiftUI zeigt immer nur EINEN der drei Tabs (Dateien /
+// Warum überhaupt: SwiftUI zeigt immer nur einen der drei Tabs (Dateien /
 // Änderungen / Graph). Der Wechsel baut die vorherige Ansicht vollständig ab —
 // mitsamt ihrer NSScrollView. Beim Zurückwechseln entsteht eine neue, die
 // zwangsläufig am Listenanfang steht. Wer in einem langen Dateibaum weit unten
 // arbeitet, verlor durch einen kurzen Blick in den Verlauf seine Stelle
-// (Daniel-Befund 2026-08-24).
 
 /// Speicher der zuletzt gesehenen Scrollpositionen, adressiert über einen
 /// festen Schlüssel je Liste. Bewusst eine schlichte Klasse ohne
-/// `@Published`: Der Wert ändert sich bei JEDER Scrollbewegung und dürfte
+/// `@Published`: Der Wert ändert sich bei jeder Scrollbewegung und dürfte
 /// niemals ein SwiftUI-Update auslösen.
 final class SidebarScrollMemory {
     /// Obergrenze der gemerkten Listen. Die Verlaufsansicht legt pro
@@ -39,15 +38,9 @@ final class SidebarScrollMemory {
         }
     }
 
-    /// Wirft alle gemerkten Positionen weg.
-    ///
-    /// Nötig beim Projektwechsel: Die Schlüssel sind über alle Projekte hinweg
-    /// dieselben (`fileTree`, `gitChanges`, `gitGraph` und je Datei ein
-    /// Verlaufsschlüssel). Ohne Leerung öffnete ein neues Projekt an der
-    /// Position, die im vorigen zuletzt galt — mitten im Dateibaum, in den
-    /// Änderungen oder im Commit-Verlauf (Review-Fund 2026-08-25). Vorher gab
-    /// es hier ein `forget(_:)` für einen einzelnen Schlüssel; es hatte im
-    /// Produktcode nie einen Aufrufer.
+    /// Alle Scrollpositionen beim Projektwechsel leeren. Die Schlüssel
+    /// `fileTree`, `gitChanges`, `gitGraph` und die Verlaufsschlüssel sind nicht
+    /// projektspezifisch und würden sonst Positionen des vorherigen Projekts liefern.
     func removeAll() {
         offsets.removeAll()
         order.removeAll()
@@ -58,7 +51,7 @@ final class SidebarScrollMemory {
 enum SidebarScrollRestore {
     /// Größtes tatsächlich erreichbares Scrollziel.
     ///
-    /// `NSClipView.scroll(to:)` begrenzt ein Ziel NICHT selbst: Ein Wert
+    /// `NSClipView.scroll(to:)` begrenzt ein Ziel nicht selbst: Ein Wert
     /// jenseits der Dokumenthöhe wird scheinbar übernommen, und erst das
     /// nächste AppKit-Layout schnappt zurück an den Anfang (dieselbe Falle wie
     /// bei der Editor-Wiederherstellung, AGENTS.md). Deshalb hier selbst
@@ -69,24 +62,17 @@ enum SidebarScrollRestore {
         return min(max(0, target), maximum)
     }
 
-    /// Ist die Wiederherstellung fertig?
-    ///
-    /// Fertig heißt: Ziel erreicht oder Versuche aufgebraucht — sonst nichts.
-    /// „Das Dokument gibt gerade nicht mehr her" wäre ein VERLOCKENDES, aber
-    /// falsches Abbruchkriterium: Direkt nach dem Aufbau ist die LazyVStack
-    /// noch leer, Dokumenthöhe und Sichtfenster sind gleich groß, und die
-    /// Schleife bräche schon im ersten Versuch bei Position 0 ab — genau so
-    /// blieb der Dateibaum nach dem Tab-Wechsel oben stehen (Selbsttest
-    /// `sidebarstate`, 2026-08-24). Eine wirklich kürzer gewordene Liste
-    /// kostet dafür ein paar wirkungslose Versuche; sichtbar ist davon
-    /// nichts, weil jeder Versuch aufs Erreichbare geklemmt bleibt.
+    /// Wiederherstellung endet bei erreichtem Ziel oder aufgebrauchten Versuchen.
+    /// Eine vorläufig zu kleine Dokumenthöhe reicht nicht: LazyVStack kann direkt
+    /// nach dem Aufbau noch leer sein. Jeder Versuch bleibt aufs Erreichbare
+    /// geklemmt; eine tatsächlich verkürzte Liste kostet nur zusätzliche Versuche.
     static func isSettled(target: CGFloat, achieved: CGFloat,
                           attempt: Int, maximumAttempts: Int) -> Bool {
         attempt >= maximumAttempts || abs(achieved - target) < 1
     }
 }
 
-/// Null-große Brücke in die AppKit-Welt: Sie sitzt IM Inhalt der ScrollView
+/// Null-große Brücke in die AppKit-Welt: Sie sitzt im Inhalt der ScrollView
 /// und findet darüber die echte `NSScrollView`, die auch der Nutzer bewegt.
 struct SidebarScrollKeeper: NSViewRepresentable {
     let key: String
@@ -126,12 +112,9 @@ final class SidebarScrollProbeView: NSView {
             stopObserving()
             return
         }
-        // Den Schutz VOR dem Observer setzen: Zwischen `startObserving()`
-        // und dem absichtlich verzögerten `beginRestore()` kann AppKit schon
-        // eine Bounds-Änderung für die frisch montierte ScrollView melden.
-        // Ohne diesen frühen Wächter schrieb die Meldung Position 0 in den
-        // Speicher und löschte genau das Ziel, das der nächste Main-Loop-
-        // Durchlauf wiederherstellen sollte (CodeQA 2026-08-29).
+        // Schutz vor `startObserving()` setzen. AppKit kann schon vor dem verzögerten
+        // `beginRestore()` Bounds-Änderungen melden, die sonst Position 0 speichern
+        // und das noch wiederherzustellende Ziel überschreiben.
         isRestoring = (memory?.offset(for: key) ?? 0) > 0
         startObserving()
         // Erst im nächsten Durchlauf: Direkt im Aufbau steht die Dokumenthöhe
@@ -227,7 +210,7 @@ final class SidebarScrollProbeView: NSView {
     /// Umgebungsvariable `FASTRA_SIDEBARSCROLL_DEBUG=1` aktiv; die
     /// `@autoclosure` baut den Text im Normalbetrieb gar nicht erst.
     private func scrollDebug(_ message: @autoclosure () -> String) {
-        guard ProcessInfo.processInfo.environment["FASTRA_SIDEBARSCROLL_DEBUG"] == "1"
+        guard DiagnosticsFlags.sidebarScroll
         else { return }
         FileHandle.standardError.write(Data(("SIDEBARSCROLL " + message() + "\n").utf8))
     }
@@ -235,7 +218,7 @@ final class SidebarScrollProbeView: NSView {
 
 extension View {
     /// Hängt den Positionsmerker in den Inhalt einer Seitenleisten-Liste.
-    /// Aufzurufen INNERHALB der ScrollView (etwa am inneren Stack), sonst
+    /// Aufzurufen innerhalb der ScrollView (etwa am inneren Stack), sonst
     /// findet er die ScrollView nicht.
     func sidebarScrollRetention(key: String, memory: SidebarScrollMemory) -> some View {
         background(SidebarScrollKeeper(key: key, memory: memory)

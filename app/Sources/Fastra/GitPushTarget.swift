@@ -264,7 +264,7 @@ enum GitPushTargetResolver {
         return lease
     }
 
-    /// Löst ausschließlich den ERSTEN lokal konfigurierten Remote auf. Ein
+    /// Löst ausschließlich den ersten lokal konfigurierten Remote auf. Ein
     /// Fehler dieses Ziels darf niemals dazu führen, dass ein normaler Push
     /// still auf den nächsten, noch erreichbaren Remote ausweicht.
     @discardableResult

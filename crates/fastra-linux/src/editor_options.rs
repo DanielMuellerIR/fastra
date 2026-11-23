@@ -1,6 +1,6 @@
 use super::{Document, Ui};
 use gtk::{glib, prelude::*};
-use sourceview5::prelude::*;
+use sourceview5::{SpaceLocationFlags, SpaceTypeFlags, prelude::*};
 use std::{
     cell::{Cell, RefCell},
     path::PathBuf,
@@ -52,6 +52,8 @@ pub(super) struct Options {
     choice: RefCell<Option<String>>,
     generation: Cell<u64>,
     numbers: Cell<bool>,
+    show_invisibles: Cell<bool>,
+    invisible_types: Cell<SpaceTypeFlags>,
     guide_controls: page_guide::Controls,
     soft_wrap: soft_wrap::State,
     source_pane: Cell<usize>,
@@ -104,6 +106,8 @@ pub(super) fn install(
         choice: RefCell::new(None),
         generation: Cell::new(0),
         numbers: Cell::new(true),
+        show_invisibles: Cell::new(false),
+        invisible_types: Cell::new(SpaceTypeFlags::SPACE | SpaceTypeFlags::TAB | SpaceTypeFlags::NEWLINE),
         guide_controls: page_guide::Controls::default(),
         soft_wrap: soft_wrap::State::default(),
         source_pane: Cell::new(0),
@@ -457,6 +461,60 @@ impl Options {
             },
         );
     }
+    fn update_invisibles(&self) {
+        let types = self.invisible_types.get();
+        for view in self.views.iter().filter_map(|view| view.upgrade()) {
+            let drawer = view.space_drawer();
+            drawer.set_types_for_locations(SpaceLocationFlags::ALL, types);
+            drawer.set_enable_matrix(self.show_invisibles.get() && !types.is_empty());
+        }
+    }
+
+    fn invisibles_controls(self: &Rc<Self>, ui: &Ui, root: &gtk::Box) {
+        let enabled = gtk::CheckButton::with_label(
+            ui.lang.text("Unsichtbare Zeichen anzeigen", "Show invisible characters"),
+        );
+        enabled.set_active(self.show_invisibles.get());
+        root.append(&enabled);
+
+        let choices = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        choices.set_margin_start(20);
+        let mut buttons = Vec::new();
+        for (kind, label) in [
+            (SpaceTypeFlags::SPACE, ui.lang.text("Leerzeichen", "Spaces")),
+            (SpaceTypeFlags::TAB, ui.lang.text("Tabulatoren", "Tabs")),
+            (SpaceTypeFlags::NEWLINE, ui.lang.text("Zeilenenden", "Line endings")),
+        ] {
+            let button = gtk::CheckButton::with_label(label);
+            button.set_active(self.invisible_types.get().contains(kind));
+            button.set_sensitive(enabled.is_active());
+            let weak = Rc::downgrade(self);
+            button.connect_toggled(move |button| {
+                if let Some(state) = weak.upgrade() {
+                    let mut types = state.invisible_types.get();
+                    types.set(kind, button.is_active());
+                    state.invisible_types.set(types);
+                    state.update_invisibles();
+                }
+            });
+            choices.append(&button);
+            buttons.push(button);
+        }
+        root.append(&choices);
+
+        let weak = Rc::downgrade(self);
+        enabled.connect_toggled(move |button| {
+            // AT-SPI meldet die Empfindlichkeit der einzelnen Schalter.
+            for choice in &buttons {
+                choice.set_sensitive(button.is_active());
+            }
+            if let Some(state) = weak.upgrade() {
+                state.show_invisibles.set(button.is_active());
+                state.update_invisibles();
+            }
+        });
+    }
+
     fn show(self: &Rc<Self>) {
         let Some(ui) = self.ui.upgrade() else { return };
         let Some(doc) = self.doc.upgrade() else {
@@ -644,6 +702,7 @@ impl Options {
             });
             root.append(&button);
         }
+        self.invisibles_controls(&ui, &root);
         soft_wrap::controls(self, &ui, &root);
         page_guide::controls(self, &ui, &root);
         root.append(&super::git_view::label(ui.lang.text("Diese Optionen ändern die Darstellung und künftige Eingaben. Vorhandener Text, Kodierung und Zeilenenden bleiben erhalten. Die Syntaxformate stammen aus dem installierten GtkSourceView-Sprachpaket; 4D-Unterstützung wird getrennt ergänzt.", "These options change the display and future input. Existing text, encoding and line endings are retained. Syntax formats come from the installed GtkSourceView language package; 4D support is a separate addition.")));

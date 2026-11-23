@@ -3,7 +3,7 @@ import Foundation
 struct GitBranch: Identifiable, Equatable {
     let name: String
     let isCurrent: Bool
-    /// Pfad eines ANDEREN Arbeitsverzeichnisses (`git worktree`), das diesen
+    /// Pfad eines anderen Arbeitsverzeichnisses (`git worktree`), das diesen
     /// Branch bereits ausgecheckt hat. `nil`, wenn der Branch frei ist oder im
     /// eigenen Arbeitsverzeichnis liegt. Git lässt denselben Branch nur einmal
     /// auschecken; ohne dieses Feld böte die Branch-Auswahl einen Wechsel an,
@@ -26,7 +26,7 @@ enum GitBranchList {
     /// Datensatzes auf. Das Feld gibt es seit git 2.23 (2019); die von macOS 14
     /// gelieferten git-Fassungen liegen weit darüber.
     ///
-    /// Datensätze trennt `%00` (ein Nullbyte), NICHT der Zeilenumbruch: macOS
+    /// Datensätze trennt `%00` (ein Nullbyte), nicht der Zeilenumbruch: macOS
     /// erlaubt in Verzeichnisnamen jedes Zeichen außer `/` und NUL, also auch
     /// Zeilentrenner. Ein Worktree-Pfad mit Zeilenumbruch hätte sonst einen
     /// zweiten, erfundenen „Branch" ins Menü gebracht, dessen Anklicken
@@ -42,7 +42,7 @@ enum GitBranchList {
     ]
 
     static func parse(_ output: String) -> [GitBranch] {
-        // Nur VOLLSTÄNDIG abgeschlossene Datensätze zählen. Kürzt `GitRunner`
+        // Nur vollständig abgeschlossene Datensätze zählen. Kürzt `GitRunner`
         // die Ausgabe an der Byte-Grenze, endet der letzte Datensatz ohne
         // Nullbyte — sein halber Branchname stünde sonst im Menü, und ein Klick
         // startete `git switch` damit. Ohne jedes Nullbyte gibt es nichts zu
@@ -52,7 +52,7 @@ enum GitBranchList {
         }
         return output[..<lastSeparator].split(separator: recordSeparator).compactMap { record in
             // git hängt hinter jedes formatierte Ref noch einen Zeilenumbruch.
-            // Er steht damit VOR dem nächsten Datensatz; Branchnamen dürfen
+            // Er steht damit vor dem nächsten Datensatz; Branchnamen dürfen
             // keine Steuerzeichen enthalten, das Abschneiden ist also sicher.
             let line = record.drop { $0 == "\n" || $0 == "\r" }
             let parts = line.split(separator: "\t", maxSplits: 2,
@@ -63,7 +63,7 @@ enum GitBranchList {
             let marker = parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespaces) : ""
             let isCurrent = marker == "*"
             // Der eigene Worktree steht ebenfalls in `%(worktreepath)`. Er
-            // blockiert nichts, deshalb zählt nur ein FREMDES Verzeichnis.
+            // blockiert nichts, deshalb zählt nur ein fremdes Verzeichnis.
             let worktree = parts.count > 2 ? String(parts[2]) : ""
             let blocking = (isCurrent || worktree.isEmpty) ? nil : worktree
             return GitBranch(name: name, isCurrent: isCurrent,

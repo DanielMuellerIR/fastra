@@ -1,16 +1,13 @@
 // HelpWindow.swift
 //
-// Eigenes Hilfe-Fenster (Etappe 4 Wunschpaket 2026-07b). Entscheidung
-// FENSTER statt Tab, kurz begründet: Die Hilfe soll NEBEN dem Dokument
-// lesbar bleiben (nachschlagen beim Arbeiten), ohne an der Tab-Verwaltung
-// eines Workspaces teilzunehmen (Projektwechsel, „Andere Tabs schließen“,
-// Sitzungslogik) — und Anker-Sprünge brauchen eine stabile, wiederfindbare
-// Instanz. Muster wie `AboutWindow`: ein Fenster, beim zweiten Aufruf nur
-// nach vorn holen.
-//
-// Gerendert wird read-only über den vorhandenen Markdown-Renderer
-// (`MarkdownRichText`) in einer WKWebView — gleiche lokale Bibliotheken,
-// gleiche CSP, kein Netzzugriff.
+// Eigenes Hilfe-Fenster. Entscheidung Fenster statt Tab, kurz
+// begründet: Die Hilfe soll neben dem Dokument lesbar bleiben (nachschlagen
+// beim Arbeiten), ohne an der Tab-Verwaltung eines Workspaces teilzunehmen
+// (Projektwechsel, „Andere Tabs schließen“, Sitzungslogik) — und Anker-Sprünge
+// brauchen eine stabile, wiederfindbare Instanz. Muster wie `AboutWindow`: ein
+// Fenster, beim zweiten Aufruf nur nach vorn holen. Gerendert wird read-only
+// über den vorhandenen Markdown-Renderer (`MarkdownRichText`) in einer
+// WKWebView — gleiche lokale Bibliotheken, gleiche CSP, kein Netzzugriff.
 
 import AppKit
 import WebKit
@@ -31,7 +28,7 @@ enum HelpWindow {
     static func show(anchor: String? = nil) {
         if let existing = window, let webView = currentWebView {
             existing.makeKeyAndOrderFront(nil)
-            SelfTest.activateApplication(ignoringOtherApps: false)
+            ApplicationActivation.activate(ignoringOtherApps: false)
             if let anchor { coordinator?.scroll(to: anchor, in: webView) }
             return
         }
@@ -75,7 +72,7 @@ enum HelpWindow {
         window = w
         w.center()
         w.makeKeyAndOrderFront(nil)
-        SelfTest.activateApplication(ignoringOtherApps: false)
+        ApplicationActivation.activate(ignoringOtherApps: false)
     }
 
     /// Enger Fenster-Typ-Check für das globale ⌘W-Routing. Der feste

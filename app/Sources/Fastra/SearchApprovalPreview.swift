@@ -11,7 +11,7 @@ struct SearchApprovalPreview: Sendable {
 
     enum Source: Sendable {
         case memory(TextWorkflowOpenDocumentsPlan.Source, [MemoryInput], NSRange?)
-        case files([ApplyTransaction.Input])
+        case files([ApplyTransaction.Input], FolderSearch.SourceBasis)
     }
 
     struct Request: Identifiable, Sendable {
@@ -30,12 +30,13 @@ struct SearchApprovalPreview: Sendable {
         }
 
         @MainActor static func capture(in workspace: Workspace) throws -> Self {
-            guard let ticket = workspace.searchApproval.ticket,
+            guard workspace.searchResultsAreCurrent, let ticket = workspace.searchApproval.ticket,
                   ticket.approvedIDs.isSubset(of: workspace.editableSearchMatchIDs),
                   !workspace.folderApplying,
                   let window = CommandTargeting.registeredWindow(for: workspace) else { throw Failure.stale }
             let source: Source
             if workspace.scope.isFolderLike {
+                guard let basis = workspace.currentFolderSearchSourceBasis else { throw Failure.stale }
                 let results = workspace.folderResults.filter { !$0.matches.isEmpty }
                 guard results.count <= Limits.standard.files else { throw Failure.limits }
                 let inputs = try results.map { result in
@@ -44,7 +45,7 @@ struct SearchApprovalPreview: Sendable {
                         matches: result.matches.map { PlannedMatch(range: $0.range, before: $0.matchText, after: $0.replacedText) },
                         approvedRanges: Set(result.matches.filter { ticket.approvedIDs.contains($0.id) }.map(\.range)))
                 }
-                source = .files(inputs)
+                source = .files(inputs, basis)
             } else {
                 let nav = workspace.navMatches
                 let editable = workspace.editableSearchMatchIDs
@@ -69,7 +70,7 @@ struct SearchApprovalPreview: Sendable {
         }
 
         @MainActor func isCurrent(in workspace: Workspace) -> Bool {
-            guard workspaceID == ObjectIdentifier(workspace),
+            guard workspace.searchResultsAreCurrent, workspaceID == ObjectIdentifier(workspace),
                   CommandTargeting.registeredWindow(for: workspace).map(ObjectIdentifier.init) == windowID,
                   workspace.scope == scope, workspace.currentSearchOptions == options,
                   workspace.searchApproval.ticket == ticket, !workspace.folderApplying,
@@ -205,7 +206,7 @@ struct SearchApprovalPreview: Sendable {
                 if !after.utf8.elementsEqual(document.source.utf8) { replacements[input.tabID] = after }
                 progress(index + 1, inputs.count)
             }
-        case .files(let inputs):
+        case .files(let inputs, let basis):
             guard inputs.count <= limits.files, Set(inputs.map(\.url)).count == inputs.count else { throw Failure.limits }
             let identities = inputs.compactMap { $0.snapshot.identity }
             guard Set(identities).count == identities.count else {
@@ -218,7 +219,10 @@ struct SearchApprovalPreview: Sendable {
                 guard !ranges.isEmpty else { continue }
                 guard input.snapshot.byteCount <= min(originalBytes, Int(FileLoader.largeFileThreshold)) else { throw Failure.limits }
                 guard let read = try? FileSnapshot.read(from: input.url,
-                    byteLimit: UInt64(max(0, input.snapshot.byteCount))) else { throw Failure.stale }
+                    byteLimit: UInt64(max(0, input.snapshot.byteCount)), isCancelled: cancelled) else {
+                    try check()
+                    throw Failure.stale
+                }
                 let plan: PlannedFileChange
                 do {
                     plan = try ApplyEngine.planApprovedInput(input, data: read.data, snapshot: read.snapshot,
@@ -235,14 +239,16 @@ struct SearchApprovalPreview: Sendable {
                 guard originalBytes >= 0, outputBytes >= 0 else { throw Failure.limits }
                 progress(index + 1, inputs.count)
             }
-            // Auch eine unfreigegebene Trefferdatei darf die gemeinsame
-            // Basis nicht unbemerkt verändern. Hier bleiben nur Hash-Blöcke
-            // im Speicher; Apply wiederholt seinen eigenen globalen Preflight.
-            for input in inputs {
-                try check()
-                guard let current = try? FileSnapshot.readSnapshotOnly(from: input.url,
-                    byteLimit: UInt64(max(0, input.snapshot.byteCount))),
-                    current == input.snapshot else { throw Failure.stale }
+            do {
+                try basis.validate(deadline: deadline, shouldCancel: shouldCancel)
+            } catch FolderSearch.SourceBasis.Failure.changed {
+                throw Failure.stale
+            } catch FolderSearch.SourceBasis.Failure.timedOut {
+                throw Failure.timeout
+            } catch is CancellationError {
+                throw Failure.cancelled
+            } catch {
+                throw ApplyError.conflict(error.localizedDescription)
             }
         }
         try check()
@@ -261,7 +267,7 @@ final class SearchApprovalPreviewModel: ObservableObject {
     private var completion: Task<Void, Never>?
     private var generation: UInt64 = 0
 
-    func load(_ request: SearchApprovalPreview.Request) {
+    func load(_ request: SearchApprovalPreview.Request, onFolderConflict: @escaping () -> Void) {
         cancel()
         let generation = self.generation
         isBusy = true
@@ -282,7 +288,15 @@ final class SearchApprovalPreviewModel: ObservableObject {
             self.isBusy = false; self.task = nil; self.completion = nil
             switch result {
             case .success(let preview): self.preview = preview
-            case .failure(let error): self.error = TextWorkflowFailure.message(error)
+            case .failure(let error):
+                self.error = TextWorkflowFailure.message(error)
+                if request.scope.isFolderLike {
+                    switch error {
+                    case SearchApprovalPreview.Failure.stale, ApplyError.conflict:
+                        onFolderConflict()
+                    default: break
+                    }
+                }
             }
         }
     }

@@ -1,6 +1,6 @@
 // MarkdownImportTests.swift
 //
-// Fastra darf KEIN eigenes Formatwissen führen — alles kommt aus der Antwort
+// Fastra darf kein eigenes Formatwissen führen — alles kommt aus der Antwort
 // von `poormans-text --formats --json`. Diese Tests sichern genau die
 // Übergänge: Antwort lesen, Endung zuordnen, Zielnamen bilden, Werkzeug finden.
 // Die echte Umwandlung mit echten Dateien prüft der Selbsttest `markdownimport`.
@@ -64,7 +64,7 @@ struct MarkdownImportCatalogTests {
         #expect(MarkdownImportCatalog.decode(Data("Error: Unknown option".utf8)) == nil)
         // Fehlerantwort der neuen CLI.
         #expect(MarkdownImportCatalog.decode(Data(#"{"ok":false,"error":"x"}"#.utf8)) == nil)
-        // Erfolgsantwort einer KONVERTIERUNG — enthält keine Formatliste.
+        // Erfolgsantwort einer Konvertierung — enthält keine Formatliste.
         #expect(MarkdownImportCatalog.decode(
             Data(#"{"ok":true,"version":"0.6.0","markdownFile":"/tmp/a.md"}"#.utf8)
         ) == nil)
@@ -254,10 +254,8 @@ struct MarkdownImportOutputTests {
     }
 }
 
-// Erkanntes Format, aber fehlendes Zusatzprogramm (meist pandoc): Fastra muss
-// erklären, WAS fehlt und WIE man es bekommt, statt das Angebot still
-// auszublenden (Daniel-Befund 2026-07-29 — Poor Man's Text installiert, pandoc
-// nicht, und der RTFD-Import verschwand wortlos).
+// Ein erkanntes Format mit fehlendem Zusatzprogramm muss erklären, was
+// fehlt und wie es installiert wird. Das Angebot darf nicht still verschwinden.
 @Suite("Erklärung bei fehlendem Zusatzprogramm")
 struct MarkdownImportUnavailableExplanationTests {
 
@@ -313,15 +311,9 @@ private final class StubFileManager: FileManager, @unchecked Sendable {
 
 // MARK: - Die Antwort des Werkzeugs ist eine fremde Eingabe
 
-// Zwei Befunde vom 2026-08-02, beide am selben Punkt: Fastra hat der Antwort
-// von `poormans-text` zu weit vertraut.
-//
-//   * Der gemeldete Pfad `markdownFile` wurde ungeprüft VERSCHOBEN. Eine
-//     falsche Antwort konnte damit die Quelldatei bewegen — gegen die zentrale
-//     Zusage „Die Quelle wird nie verändert".
-//   * Eine bekanntermaßen abgeschnittene Ausgabe wurde wie ein normaler
-//     Abschluss behandelt. Abgeschnittenes, aber noch lesbares JSON mit
-//     `ok: true` galt dadurch als gültiges Ergebnis.
+// Ungültige `poormans-text`-Antworten zurückweisen: Ein fremder
+// `markdownFile`-Pfad darf niemals die Quelle verschieben. Als abgeschnitten
+// markierte Ausgabe bleibt ungültig, auch bei noch lesbarem JSON mit `ok: true`.
 
 @Suite("Pfadprüfung der Werkzeugantwort")
 struct MarkdownImportOutputGuardTests {
@@ -405,9 +397,9 @@ struct MarkdownImportOutputGuardTests {
 
         // Fastra legt nur das Zwischenverzeichnis an; „out" darin erzeugt das
         // Werkzeug. Macht es daraus einen Verweis auf einen fremden Ordner,
-        // lösen sich Ordner UND gemeldete Datei in denselben fremden Ordner
+        // lösen sich Ordner und gemeldete Datei in denselben fremden Ordner
         // auf — der reine Präfixvergleich ginge auf, und Fastra verschöbe eine
-        // beliebige fremde Datei (Review 2026-08-06).
+        // beliebige fremde Datei.
         let output = staging.appendingPathComponent("out", isDirectory: true)
         try fm.createSymbolicLink(at: output, withDestinationURL: foreign)
 
@@ -442,7 +434,7 @@ struct MarkdownImportOutcomeTests {
     func stderrOnlyCaptureFailureKeepsStdoutComplete() {
         // `GitCaptureFailure` trägt beide Fehler getrennt. Zählte jeder davon
         // als unvollständige Ausgabe, würde ein technisch gelungener Import
-        // grundlos abgelehnt (Review 2026-08-06).
+        // grundlos abgelehnt.
         let outcome = MarkdownImportProcessOutcome(.captureFailed(GitCaptureFailure(
             stdoutError: nil,
             stderrError: "Fehlerausgabe konnte nicht eingesammelt werden",
@@ -541,7 +533,7 @@ struct MarkdownImportServiceGuardTests {
         let (folder, source) = try makeSourceFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
 
-        // Die Werkzeugantwort zeigt auf die QUELLE. Ohne Prüfung hätte Fastra
+        // Die Werkzeugantwort zeigt auf die Quelle. Ohne Prüfung hätte Fastra
         // sie nach „Bericht.md" verschoben — die Quelle wäre weg gewesen.
         let service = makeService { _ in
             let json = #"{"ok":true,"markdownFile":"\#(source.path)","assets":[]}"#

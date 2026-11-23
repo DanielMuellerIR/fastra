@@ -161,6 +161,72 @@ fn mode_toggle(mode: &gtk::DropDown, title: &str, selected: u32) -> gtk::CheckBu
     toggle
 }
 
+fn wildcard_notice(
+    lang: Language,
+    find: &gtk::Entry,
+    replace: &gtk::Entry,
+    mode: &gtk::DropDown,
+) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    row.add_css_class("search-input-notice");
+    let symbol = gtk::Image::from_icon_name("dialog-warning-symbolic");
+    let label = git_view::label("");
+    label.set_hexpand(true);
+    row.append(&symbol);
+    row.append(&label);
+
+    let weak_row = row.downgrade();
+    let weak_label = label.downgrade();
+    let weak_find = find.downgrade();
+    let weak_replace = replace.downgrade();
+    let weak_mode = mode.downgrade();
+    let update = Rc::new(move || {
+        let (Some(row), Some(label), Some(find), Some(replace), Some(mode)) = (
+            weak_row.upgrade(),
+            weak_label.upgrade(),
+            weak_find.upgrade(),
+            weak_replace.upgrade(),
+            weak_mode.upgrade(),
+        ) else {
+            return;
+        };
+        let extra = (|| {
+            if mode.selected() != 1 {
+                return None;
+            }
+            let find_runs = fastra_core::wildcard::star_run_count(&find.text()).ok()?;
+            if find_runs == 0 {
+                return None;
+            }
+            let replace_runs = fastra_core::wildcard::star_run_count(&replace.text()).ok()?;
+            replace_runs.checked_sub(find_runs).filter(|&n| n > 0)
+        })();
+        if let Some(extra) = extra {
+            let text = if extra == 1 {
+                lang.text(
+                    "Ersetzen hat ein ∗ mehr als Suchen — das überzählige ∗ bleibt leer.",
+                    "Replace contains one more ∗ than Find—the extra ∗ remains empty.",
+                ).to_owned()
+            } else {
+                lang.text(
+                    "Ersetzen hat {count} ∗ mehr als Suchen — die überzähligen bleiben leer.",
+                    "Replace contains {count} more ∗ than Find—the extras remain empty.",
+                ).replace("{count}", &extra.to_string())
+            };
+            label.set_text(&text);
+        }
+        row.set_visible(extra.is_some());
+    });
+    for field in [find, replace] {
+        let refresh = update.clone();
+        field.connect_changed(move |_| refresh());
+    }
+    let refresh = update.clone();
+    mode.connect_selected_notify(move |_| refresh());
+    update();
+    row
+}
+
 fn form(
     ui: &Rc<Ui>,
     form: &gtk::Grid,
@@ -182,6 +248,10 @@ fn form(
     }
     form.set_column_spacing(8);
     form.set_row_spacing(6);
+    let find_title = ui.lang.text("Suchen", "Find");
+    let replace_title = ui.lang.text("Ersetzen", "Replace");
+    find.update_property(&[gtk::accessible::Property::Label(find_title)]);
+    replace.update_property(&[gtk::accessible::Property::Label(replace_title)]);
     find.set_hexpand(true);
     find.set_placeholder_text(Some(
         ui.lang
@@ -192,7 +262,7 @@ fn form(
         "Ersetzen durch… ($1, $2 für Gruppen)",
         "Replace with… ($1, $2 for groups)",
     )));
-    form.attach(&field_label(ui.lang.text("Suchen", "Find")), 0, 0, 1, 1);
+    form.attach(&field_label(find_title), 0, 0, 1, 1);
     form.attach(find, 1, 0, 1, 1);
     form.attach(&find_extras(ui, window, selected, find), 2, 0, 2, 1);
     let flags = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -298,13 +368,7 @@ fn form(
     options_label.set_margin_top(4);
     form.attach(&options_label, 0, 1, 1, 1);
     form.attach(&flag_rows, 1, 1, 3, 1);
-    form.attach(
-        &field_label(ui.lang.text("Ersetzen", "Replace")),
-        0,
-        2,
-        1,
-        1,
-    );
+    form.attach(&field_label(replace_title), 0, 2, 1, 1);
     let replacement = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     replacement.append(replace);
     let swap = icon(
@@ -323,6 +387,7 @@ fn form(
     });
     replacement.append(&swap);
     form.attach(&replacement, 1, 2, 3, 1);
+    form.attach(&wildcard_notice(ui.lang, find, replace, mode), 0, 3, 4, 1);
 }
 
 pub(super) fn install(ui: &Rc<Ui>, form_widget: &gtk::Grid, search: &gtk::Button) -> gtk::Window {
@@ -561,7 +626,8 @@ pub(crate) fn collection(ui: &Rc<Ui>, layout: Collection<'_>) {
     let refresh = extras.downgrade();
     let update_extras = Rc::new(move || {
         if let Some(extras) = refresh.upgrade() {
-            extras.set_visible(children(&extras).iter().any(|w| w.is_visible()));
+            // Die Leiste muss sich auch aus ausgeblendetem Zustand wieder zeigen können.
+            extras.set_visible(children(&extras).iter().any(|w| w.get_visible()));
         }
     });
     for child in children(&extras) {

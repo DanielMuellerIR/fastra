@@ -78,7 +78,7 @@ struct DocumentFormatTests {
                 "Neue/entfernte Sprache braucht eine bewusste Soft-Wrap-Default-Entscheidung")
     }
 
-    /// Die Zusatzprofile (`.xml`, `.csv`, `.diff`) sind KEINE auswählbaren
+    /// Die Zusatzprofile (`.xml`, `.csv`, `.diff`) sind keine auswählbaren
     /// Sprachen — sie tragen aber dieselbe Art von Kennung wie die
     /// CodeEdit-Grammatiken. Bekäme eine künftige Grammatik dieselbe Zeichenkette,
     /// teilten sich zwei ganz verschiedene Dinge ein Profil: Der Soft-Wrap-Schalter
@@ -126,7 +126,6 @@ struct DocumentFormatTests {
     // Die Markdown-Funktionen (Vorschau, Toolbar, Bild-Drop) hingen früher am
     // Dateinamen. Ein Umstellen im Sprach-Chip der Fußzeile blieb dadurch ohne
     // Wirkung: Die Vorschau öffnete nicht und schloss auch nicht wieder
-    // (Daniel-Befund 2026-08-06).
     @Test("Markdown-Erkennung folgt dem Format der Fußzeile, nicht der Endung")
     func markdownFollowsTheChosenFormat() {
         // Datei ohne Endung, im Chip auf Markdown gestellt.

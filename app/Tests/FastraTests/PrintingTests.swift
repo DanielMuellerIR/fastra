@@ -370,8 +370,8 @@ struct PrintPreferencesTests {
         let defaults = testSuiteDefaults(named: suite)
         defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
         // Der entscheidende Fall: `bool(forKey:)` liefert für einen nie
-        // gesetzten Schlüssel `false`. Eine Voreinstellung, die AN ist, wäre
-        // damit versehentlich AUS.
+        // gesetzten Schlüssel `false`. Eine Voreinstellung, die an ist, wäre
+        // damit versehentlich aus.
         #expect(PrintPreferences.showsLineNumbers(defaults))
         #expect(PrintPreferences.showsHeaderFooter(defaults))
         #expect(PrintPreferences.fontSize(defaults) == PrintPreferences.defaultFontSize)
@@ -509,10 +509,10 @@ struct PrintPageRectTests {
     @MainActor
     @Test("Seitenrechtecke überlappen nie — die Grenzzeile gehört ganz der Folgeseite")
     func pageRectsDoNotOverlap() {
-        // Seitenhöhe absichtlich KEIN Vielfaches der Zeilenhöhe: Genau dann
+        // Seitenhöhe absichtlich kein Vielfaches der Zeilenhöhe: Genau dann
         // schneidet eine Zeile die Seitengrenze. Mit den früheren
         // Voll-Höhen-Seiten wurde diese Grenzzeile unten angeschnitten
-        // gezeichnet UND auf der Folgeseite wiederholt (Reviewfund 2026-08-18).
+        // gezeichnet und auf der Folgeseite wiederholt.
         let (view, layoutManager, container) = makeView(lineCount: 120,
                                                         pageHeight: 100)
         var range = NSRange(location: 0, length: 0)
@@ -550,7 +550,7 @@ struct PrintDecorationSpaceTests {
     @MainActor
     @Test("Der Dekorationsrand wird nur für dekorierte Ziele reserviert")
     func decorationSpaceOnlyWhenDecorated() {
-        // Frische Suite: Kopf-/Fußzeile steht dort auf ihrer Voreinstellung AN.
+        // Frische Suite: Kopf-/Fußzeile steht dort auf ihrer Voreinstellung an.
         let suiteName = "fastra-test-print-margins-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -588,7 +588,7 @@ struct PrintDialogOptionTests {
         let info = NSPrintInfo()
         let accessory = PrintOptionsAccessoryController(
             printInfo: info, defaults: defaults, offersLineNumbers: true)
-        // Startzustand aus den Voreinstellungen: beide AN.
+        // Startzustand aus den Voreinstellungen: beide an.
         #expect(accessory.headerFooterEnabled)
         #expect(accessory.lineNumbersEnabled)
 
@@ -625,17 +625,17 @@ struct PrintDialogOptionTests {
             jobTitle: "Test", headerLeft: "Test", footerLeft: ""
         )
         let view = try #require(operation.view as? PrintDocumentTextView)
-        // Wie im echten Druck: Die View fragt den LAUFENDEN Auftrag.
+        // Wie im echten Druck: Die View fragt den laufenden Auftrag.
         NSPrintOperation.current = operation
         defer { NSPrintOperation.current = nil }
 
         var range = NSRange(location: 0, length: 0)
         #expect(view.knowsPageRange(&range))
         let numbered = try #require(view.textStorage?.string)
-        // Mit Nummernspalte beginnt die erste Zeile NICHT mit dem Rohtext.
+        // Mit Nummernspalte beginnt die erste Zeile nicht mit dem Rohtext.
         #expect(!numbered.hasPrefix("Zeile 1"))
 
-        // Umschalten im Dialog = Schreiben in die PrintInfo-KOPIE des
+        // Umschalten im Dialog = Schreiben in die PrintInfo-Kopie des
         // Auftrags — NSPrintOperation kopiert das übergebene PrintInfo.
         operation.printInfo.dictionary()[PrintDialogOption.lineNumbers] = false
         #expect(view.knowsPageRange(&range))

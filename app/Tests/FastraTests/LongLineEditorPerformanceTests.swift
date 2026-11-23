@@ -174,6 +174,7 @@ func closedDocumentDiscardsTransformationCompletion(minifying: Bool) async throw
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(workspace.documentTransformationActivity == nil)
+        #expect(workspace.documentTransformationNotice == nil)
         #expect(textView.string == source)
     }
 }
@@ -336,4 +337,35 @@ func unwrappedLongLineDrawingStaysBounded() throws {
     #expect(duration < .seconds(1),
             "Zeichnen des sichtbaren Ausschnitts brauchte \(duration)")
 }
+}
+
+
+@Test("Ein Tabwechsel meldet die abgebrochene Formatierung im ursprünglichen Fenster")
+@MainActor
+func switchedDocumentReportsCancelledTransformation() async throws {
+    let workspace = Workspace(defaults: testSuiteDefaults(named: "fastra-switch-transform-\(UUID().uuidString)"))
+    let first = EditorTab(title: "erste.json", path: "—", content: "{\"b\":2,\"a\":1}")
+    let second = EditorTab(title: "zweite.json", path: "—", content: "{}")
+    workspace.tabs = [first, second]
+    workspace.activeTabID = first.id
+    let textView = TextView(string: first.content)
+    let controller = NSViewController()
+    controller.view = textView
+    let window = NSWindow(contentViewController: controller)
+    WorkspaceWindowRegistry.register(workspace, for: window)
+    defer {
+        WorkspaceWindowRegistry.unregister(window)
+        window.close()
+    }
+
+    let menu = EditorContextMenu()
+    menu.format(on: textView)
+    try #require(workspace.documentTransformationActivity != nil)
+    workspace.activeTabID = second.id
+    try #require(await waitUntil { workspace.documentTransformationActivity == nil })
+
+    #expect(workspace.documentTransformationNotice?.contains(first.title) == true)
+    #expect(workspace.activeTabID == second.id)
+    #expect(workspace.tabs.map(\.content) == [first.content, second.content])
+    #expect(textView.string == first.content)
 }

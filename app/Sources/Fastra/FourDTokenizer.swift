@@ -1,29 +1,27 @@
 // FourDTokenizer.swift
 //
-// Leichter, eigener Tokenizer für 4D-Methoden (.4dm) — Etappe 4 Wunschpaket
-// 2026-07. BEWUSST keine tree-sitter-Grammatik (Bundle-Größe, Wartung):
-// ein einzelner Scan-Durchlauf klassifiziert Kommentare, Strings, Zahlen,
-// Schlüsselwörter, Befehle, Konstanten, Variablenarten, Tabellen/Felder
-// und Methodenaufrufe. Pure Logik → direkt unit-testbar.
-//
-// Token-Klassen → CESE-Capture-Slots (Farb-Mapping siehe FourDTheme in
-// EditorView; die Slot-Umleitung macht der EditorTheme-Patch in build.sh):
-//
-// | Token                       | Capture         | 4D-Farbkategorie        |
-// |-----------------------------|-----------------|-------------------------|
-// | Kommentar (`//`, `/* */`)   | .comment        | comments                |
-// | String `"…"`                | .string         | (Fastra-Fallback)       |
-// | Zahl                        | .number         | (plain_text wie in 4D)  |
-// | Schlüsselwort (If/End if…)  | .keyword        | keywords                |
-// | Befehl (ALERT, Get text…)   | .function       | commands                |
-// | Konstante (aus Liste/`:K`)  | .variableBuiltin| constants               |
-// | $lokal / $1-Parameter       | .variable       | local_variables         |
-// | prozessVar / <>interprozess | .property       | process_variables       |
-// | [Tabelle]                   | .type           | tables                  |
-// | Feld (nach [Tabelle]…)      | .typeAlternate  | fields                  |
-// | Projektmethode name / name()| .method         | methods (eigener Slot)  |
-// | Component-Methode name()    | .componentMethod| componentMethods        |
-// | Sonstiger Aufruf / `.f()`   | .function       | commands (wie bisher)   |
+// Leichter, eigener Tokenizer für 4D-Methoden (.4dm) — der
+// aktuellen Sprachauswahl. Bewusst keine tree-sitter-Grammatik (Bundle-Größe,
+// Wartung): ein einzelner Scan-Durchlauf klassifiziert Kommentare, Strings,
+// Zahlen, Schlüsselwörter, Befehle, Konstanten, Variablenarten, Tabellen/Felder
+// und Methodenaufrufe. Pure Logik → direkt unit-testbar. Token-Klassen →
+// CESE-Capture-Slots (Farb-Mapping siehe FourDTheme in EditorView; die
+// Slot-Umleitung macht der EditorTheme-Patch in build.sh): | Token
+// | Capture         | 4D-Farbkategorie        |
+// |-----------------------------|-----------------|-------------------------| |
+// Kommentar (`//`, `/* */`)   | .comment        | comments                | |
+// String `"…"`                | .string         | (Fastra-Fallback)       | |
+// Zahl                        | .number         | (plain_text wie in 4D)  | |
+// Schlüsselwort (If/End if…)  | .keyword        | keywords                | |
+// Befehl (ALERT, Get text…)   | .function       | commands                | |
+// Konstante (aus Liste/`:K`)  | .variableBuiltin| constants               | |
+// $lokal / $1-Parameter       | .variable       | local_variables         | |
+// prozessVar / <>interprozess | .property       | process_variables       | |
+// [Tabelle]                   | .type           | tables                  | |
+// Feld (nach [Tabelle]…)      | .typeAlternate  | fields                  | |
+// Projektmethode name / name()| .method         | methods (eigener Slot)  | |
+// Component-Methode name()    | .componentMethod| componentMethods        | |
+// Sonstiger Aufruf / `.f()`   | .function       | commands (wie bisher)   |
 
 import Foundation
 
@@ -62,7 +60,7 @@ enum FourDTokenizer {
     }
 
     /// 4D-Kontrollflusswörter (öffentliches Sprachwissen, handgepflegt —
-    /// NICHT aus der Doku generiert). Mehrwortige zuerst probieren.
+    /// nicht aus der Doku generiert). Mehrwortige zuerst probieren.
     static let keywords: [String] = [
         "if", "else", "end if",
         "case of", "end case",
@@ -102,8 +100,8 @@ enum FourDTokenizer {
     private static let commandTable = SymbolTable(FourDSymbols.commands)
     private static let constantTable = SymbolTable(FourDSymbols.constants)
     private static let keywordTable = SymbolTable(keywords)
-    /// Längste Wortzahl über alle STATISCHEN Symboltabellen: Mehr Wörter als
-    /// das kann kein Tabelleneintrag treffen (Review 2026-08-02). Für die
+    /// Längste Wortzahl über alle statischen Symboltabellen: Mehr Wörter als
+    /// das kann kein Tabelleneintrag treffen. Für die
     /// Longest-Prefix-Suche in `classifyPhrase` ist das nur die Untergrenze —
     /// dynamische Methodennamen können sie anheben (siehe `tokenize`).
     private static let maximumTableWordCount = max(commandTable.maxWords,
@@ -156,13 +154,13 @@ enum FourDTokenizer {
         // überhaupt noch treffen kann. Die statischen Tabellen allein reichen
         // dafür nicht — ein Projekt- oder Komponentenmethodenname mit mehr
         // Wörtern als der längste 4D-Befehl wurde sonst nie vollständig
-        // erkannt und blieb halb eingefärbt (Review 2026-08-10). Einmal je
+        // erkannt und blieb halb eingefärbt. Einmal je
         // Tokenisierung berechnet, nicht je Phrase.
         let maximumWords = max(maximumTableWordCount,
                                max(maximumWordCount(of: projectMethodNames),
                                    maximumWordCount(of: componentMethodNames)))
         // `true`, solange direkt zuvor eine ]-Klammer einer Tabellenreferenz
-        // endete — der nächste Bezeichner ist dann ein FELD dieser Tabelle.
+        // endete — der nächste Bezeichner ist dann ein Feld dieser Tabelle.
         var expectsField = false
         // `true` direkt nach einem `.` — der folgende Bezeichner ist ein
         // Member (plain); Projektmethoden werden nur ohne führenden Punkt
@@ -346,10 +344,10 @@ enum FourDTokenizer {
 
         // Wortgrenzen der Phrase für die Longest-Prefix-Versuche. Bewusst auf
         // `maximumWords` begrenzt — die Wortzahl des längsten überhaupt
-        // möglichen Treffers (Tabellen UND Methodenindizes): Eine lange
+        // möglichen Treffers (Tabellen und Methodenindizes): Eine lange
         // Wortkette (etwa Prosa hinter einem Befehl) baute sonst pro Position
-        // Substrings über die GANZE Restphrase — quadratischer Aufwand auf
-        // pathologischen Zeilen (Review 2026-08-02).
+        // Substrings über die ganze Restphrase — quadratischer Aufwand auf
+        // pathologischen Zeilen.
         var boundaries: [Int] = []   // Endoffsets je Wortende (relativ absolut)
         var i = start
         var lastWasSpace = true
@@ -384,7 +382,7 @@ enum FourDTokenizer {
                          kind: .methodCall, isObjectMember: true)
         }
 
-        // `name:C123` → Befehl, `name:K12:34` → Konstante (nur EIN Wortende
+        // `name:C123` → Befehl, `name:K12:34` → Konstante (nur ein Wortende
         // vor dem Doppelpunkt prüfen — Suffix klebt direkt am Namen).
         if let suffixed = suffixToken(scalars: scalars, start: start,
                                       boundaries: boundaries) {
@@ -450,7 +448,7 @@ enum FourDTokenizer {
             }
         }
 
-        // Component-Methoden folgen bewusst NACH Projektmethoden: Bei einer
+        // Component-Methoden folgen bewusst nach Projektmethoden: Bei einer
         // Namenskollision bleibt die bestehende Produktentscheidung erhalten.
         for end in boundaries.reversed() {
             if isCancelled() { return nil }
@@ -508,7 +506,7 @@ enum FourDTokenizer {
         char.isLetter || char.isNumber || char == "_"
     }
 
-    /// Konsumiert eine „Phrase": Wortzeichen plus EINZELNE Leerzeichen
+    /// Konsumiert eine „Phrase": Wortzeichen plus einzelne Leerzeichen
     /// zwischen Wörtern (4D-Namen dürfen Leerzeichen enthalten; Befehle und
     /// Konstanten sind mehrwortig). Endet vor doppeltem Leerzeichen,
     /// Zeilenende oder Nicht-Wortzeichen.

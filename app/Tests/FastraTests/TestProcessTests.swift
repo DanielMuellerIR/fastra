@@ -51,14 +51,14 @@ struct SerialRunnerIntegrationTestProcessTests {
             """)
     }
 
-    /// Die Frist gilt auch, wenn die Pipe von einem Kind AUSSERHALB der
+    /// Die Frist gilt auch, wenn die Pipe von einem Kind außerhalb der
     /// eigenen Prozessgruppe offengehalten wird. `boundsInheritedPipeAfterParentExit`
     /// prüft nur ein Enkelkind derselben Gruppe — das wird beim Timeout
     /// mitsignalisiert und schließt die Pipe dadurch selbst. Ein per
     /// `setsid` abgesetztes Kind bekommt bewusst kein Signal (die
     /// Aufräumarbeit bleibt auf die eigene Gruppe begrenzt), hält die Pipe
     /// also bis zu seinem eigenen Ende offen. Der Helfer muss trotzdem
-    /// innerhalb der Frist zurückkehren (Review-Hinweis 2026-09-17).
+    /// innerhalb der Frist zurückkehren.
     @Test("Frist gilt auch bei geerbter Pipe in fremder Prozessgruppe")
     func boundsInheritedPipeFromForeignProcessGroup() throws {
         let root = testTemporaryDirectory()
@@ -204,7 +204,7 @@ enum FixtureReuseCase: Equatable, Sendable {
 /// Startzeit-Kennungen kommen aus einer Regel statt aus `sysctl`, Signale
 /// werden nur protokolliert. So lässt sich eine neu vergebene PID oder
 /// Gruppen-ID durchspielen, ohne darauf zu warten, dass macOS eine Nummer
-/// wirklich zweimal ausgibt (Review-Hinweis 2026-09-17).
+/// wirklich zweimal ausgibt.
 private final class StubProcessWorld: @unchecked Sendable {
     private let lock = NSLock()
     private let tokenRule: (pid_t, Int) -> UInt64?
@@ -214,7 +214,7 @@ private final class StubProcessWorld: @unchecked Sendable {
     private var signals: [(pid: pid_t, signal: Int32)] = []
 
     /// `tokenRule` bekommt zusätzlich die laufende Nummer der Abfrage. Damit
-    /// kann ein Test die Startzeit MITTEN im Ablauf wechseln lassen — genau
+    /// kann ein Test die Startzeit mitten im Ablauf wechseln lassen — genau
     /// der Fall, gegen den die Wächter gebaut sind.
     init(tokenRule: @escaping (pid_t, Int) -> UInt64?,
          groupRule: @escaping (pid_t) -> [ProcessIdentity]) {
@@ -270,7 +270,7 @@ struct SerialRunnerIntegrationTestProcessIdentityTests {
             tokenRule: { _, _ in 111 },
             groupRule: { group in
                 [
-                    // Ein Leiter mit ANDERER Startzeit bedeutet: Die Gruppen-ID
+                    // Ein Leiter mit anderer Startzeit bedeutet: Die Gruppen-ID
                     // gehört längst einer fremden Gruppe.
                     ProcessIdentity(pid: group, startToken: leaderWasReused ? 222 : 111),
                     // Gemerkte Startzeit 999, aktuelle 111: Diese PID wurde

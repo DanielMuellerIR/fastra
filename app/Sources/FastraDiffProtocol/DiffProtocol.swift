@@ -152,8 +152,8 @@ public final class DiffMessageServer {
             guard bytes.count <= DiffProtocol.maximumMessageSize else { return nil }
             return Unmanaged.passRetained(server.handler(bytes) as CFData)
         }, &context, &shouldFree)
-        // Ist der Name in einem ANDEREN Prozess vergeben, liefert CF `nil`.
-        // Ist er im EIGENEN Prozess schon registriert, liefert CF den
+        // Ist der Name in einem anderen Prozess vergeben, liefert CF `nil`.
+        // Ist er im eigenen Prozess schon registriert, liefert CF den
         // vorhandenen Port zurück und setzt `shouldFree` — der gehört dann
         // dem anderen Server samt dessen Handler; wir dürfen ihn weder
         // benutzen noch im `deinit` invalidieren. Beides zählt als „nicht

@@ -2,7 +2,7 @@ import Foundation
 
 // GitFileHistory.swift
 //
-// Reine, GUI-freie Logik für die auf EINE Datei eingeschränkte Verlaufsansicht
+// Reine, GUI-freie Logik für die auf eine Datei eingeschränkte Verlaufsansicht
 // (Graph-Tab der Seitenleiste). Drei Teile, alle ohne AppKit/SwiftUI und
 // deshalb voll per Swift Testing prüfbar:
 //   1. Die `git log`-Argumente für genau eine Datei.
@@ -50,7 +50,7 @@ enum GitFileHistory {
     /// gepflegten Sammeldatei.
     static let limit = 500
 
-    /// Argumente für den Verlauf EINER Datei.
+    /// Argumente für den Verlauf einer Datei.
     ///
     /// Format und Diff-Optionen sind dieselben wie bei `GitGraph.arguments` —
     /// nur so liefert derselbe Parser dieselben `GitCommit`-Werte. Zwei
@@ -58,7 +58,7 @@ enum GitFileHistory {
     /// - kein `--all`: Gefragt ist die Historie, die zum aktuellen Stand der
     ///   Datei führt, nicht jede Fassung in jedem Branch.
     /// - `--follow`: git verfolgt die Datei über Umbenennungen hinweg. Das
-    ///   funktioniert nur mit genau EINEM Pfad, deshalb nimmt diese Funktion
+    ///   funktioniert nur mit genau einem Pfad, deshalb nimmt diese Funktion
     ///   auch nur einen entgegen.
     static func arguments(relativePath: String, limit: Int = limit) -> [String] {
         [
@@ -106,7 +106,7 @@ enum GitFileHistory {
     /// verglichen sich sonst zwei Schreibweisen desselben Ordners, und jede
     /// Datei gälte als außerhalb des Projekts.
     ///
-    /// Bei der Datei wird nur ihr ORDNER aufgelöst, nicht sie selbst: Ist die
+    /// Bei der Datei wird nur ihr Ordner aufgelöst, nicht sie selbst: Ist die
     /// Datei ein Verweis, versioniert git den Verweis und nicht sein Ziel —
     /// gefragt ist also der Verlauf des Verweises, den der Nutzer angeklickt
     /// hat.
@@ -124,7 +124,7 @@ enum GitFileHistory {
     /// Layout für die gefilterte Liste: eine einzige Spalte, senkrecht
     /// durchverbunden.
     ///
-    /// Der Lane-Algorithmus aus `GitGraph.layout` ist hier ausdrücklich FALSCH.
+    /// Der Lane-Algorithmus aus `GitGraph.layout` ist hier ausdrücklich falsch.
     /// Er baut die Spalten aus den Eltern-Hashes — und genau die fehlen in
     /// einer gefilterten Historie fast immer, weil git die Commits ohne
     /// Änderung an dieser Datei weglässt. Jede Zeile gälte dann als neuer

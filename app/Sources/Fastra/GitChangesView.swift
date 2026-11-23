@@ -22,10 +22,10 @@ enum SidebarMode: String, CaseIterable {
 /// (Bereitstellen/Verwerfen/Aus-Bereitstellung-nehmen). Nur bei Git-Repo aktiv.
 struct GitChangesView: View {
     @EnvironmentObject var workspace: Workspace
-    @AppStorage("git.changesLayout", store: SelfTest.workspaceDefaults())
+    @AppStorage("git.changesLayout", store: AppDefaults.store)
     private var changesLayoutRaw = GitChangesLayoutMode.flat.rawValue
-    /// Mehrfachauswahl der Dateizeilen (Shift-/Cmd-Klick, Daniel 2026-07-30).
-    /// Die Logik selbst lebt testbar in `GitChangesSelection`.
+    /// Mehrfachauswahl per Shift-/Cmd-Klick. Die testbare Auswahllogik liegt
+    /// in `GitChangesSelection`.
     @State private var selection = GitChangesSelection()
     /// Aufklappzustand getrennt nach Index und Working Tree. Gleichnamige
     /// Ordner in beiden Abschnitten sollen unabhängig inspiziert werden.
@@ -102,7 +102,7 @@ struct GitChangesView: View {
                 ScrollView {
                     // `pinnedViews: [.sectionHeaders]` hält den jeweiligen
                     // Abschnittskopf samt Sammel-Knöpfen beim Scrollen oben
-                    // stehen (Daniel-Wunsch 2026-07-30) — bei 85 geänderten
+                    // stehen — bei 85 geänderten
                     // Dateien waren Überschrift und Knöpfe sonst weggescrollt.
                     LazyVStack(alignment: .leading, spacing: 1,
                                pinnedViews: [.sectionHeaders]) {
@@ -129,7 +129,6 @@ struct GitChangesView: View {
                                 // Drei Sammel-Aktionen wie in VS Code, nur
                                 // dauerhaft sichtbar: Gesamt-Diff, alles
                                 // verwerfen, alles bereitstellen
-                                // (Daniel-Wunsch 2026-07-30).
                                 sectionHeader("ÄNDERUNGEN",
                                               markerID: "gitSectionHeader-unstaged",
                                               actions: unstagedHeaderActions)
@@ -283,7 +282,7 @@ struct GitChangesView: View {
     }
 
     /// Ziel-Dateien einer Zeilen-Aktion: Ist die Zeile Teil einer
-    /// Mehrfachauswahl, wirkt die Aktion auf alle gewählten Zeilen DESSELBEN
+    /// Mehrfachauswahl, wirkt die Aktion auf alle gewählten Zeilen desselben
     /// Abschnitts — sonst nur auf die Zeile selbst. So lassen sich mehrere
     /// Dateien auf einen Schlag verwerfen oder bereitstellen.
     private func actionTargets(for change: GitChange,
@@ -375,11 +374,9 @@ struct GitChangesView: View {
         .padding(10)
     }
 
-    /// Die gesamte Karte ist klickbar (`contentShape` — mit `.plain`-Buttons
-    /// wäre sonst nur der gemalte Text die Trefferfläche, Daniel 2026-08-19).
-    /// Bei zwei Remotes liegen die Karten in einer normalen
-    /// Seitenleistenbreite nebeneinander; weitere Ziele brechen automatisch
-    /// in die nächste Zeile um, statt unlesbar schmal zu werden.
+    /// `contentShape` macht die gesamte Karte klickbar; bei `.plain`-Buttons
+    /// wäre sonst nur der Text die Trefferfläche. Zwei Remotes passen
+    /// nebeneinander; weitere Karten brechen in die nächste Zeile um.
     private func pushTargetButton(_ target: GitPushTarget) -> some View {
         let phase = workspace.gitPushFeedback[target.remote]
         return Button {
@@ -493,7 +490,6 @@ struct GitChangesView: View {
     /// geänderten Dateien steht seit 1.114.0 nicht mehr hier, sondern als
     /// Badge auf dem Änderungen-Tab der Seitenleiste — dort ist sie auch
     /// sichtbar, wenn gerade der Dateien- oder Graph-Tab offen ist
-    /// (Daniel-Wunsch 2026-09-01).
     /// Er bleibt beim Scrollen oben stehen und braucht deshalb einen deckenden
     /// Hintergrund — sonst schienen die durchlaufenden Dateizeilen hindurch.
     private func sectionHeader(_ title: String,
@@ -504,9 +500,9 @@ struct GitChangesView: View {
                 .fastraFont(size: 10, weight: .semibold)
                 .tracking(0.6)
                 .foregroundColor(Theme.textSecondary)
-                .lineLimit(1)                       // nie umbrechen (Daniel 2026-07-12)
+                .lineLimit(1)                       // nie umbrechen
                 // Seit dem dritten Knopf gilt: In einer schmal gezogenen
-                // Seitenleiste weicht ZUERST der Titel (gekürzt, nie
+                // Seitenleiste weicht zuerst der Titel (gekürzt, nie
                 // umgebrochen). Mit `fixedSize` bestand er auf seiner
                 // Idealbreite und schnitt stattdessen den letzten Knopf ab.
                 .truncationMode(.tail)
@@ -612,9 +608,9 @@ private struct GitChangeFolderRow: View {
 
 /// Eine Datei-Zeile in der Änderungen-Ansicht — abhängig vom Abschnitt zeigt sie
 /// beim Überfahren die passenden Aktions-Icons und im Kontextmenü dieselben
-/// Aktionen (Daniel-Wunsch 2026-07-12). Zeilen sind per Shift-/Cmd-Klick
+/// Aktionen. Zeilen sind per Shift-/Cmd-Klick
 /// mehrfach markierbar; Aktionen einer markierten Zeile wirken dann auf die
-/// ganze Auswahl (Daniel-Wunsch 2026-07-30).
+/// ganze Auswahl.
 private struct GitChangeRow: View {
     let change: GitChange
     let section: GitChangeSection
@@ -714,8 +710,8 @@ private struct GitChangeRow: View {
         .onAppear {
             // Der Fenster-Selbsttest muss den echten Hover-Knopf klicken,
             // ohne dafür den Systemzeiger des Nutzers zu bewegen.
-            if SelfTest.requestedTest == "gitstagefolder"
-                || SelfTest.requestedTest == "gitmultidiscard" { hovering = true }
+            if AppDefaults.launch.requestedSelfTest == "gitstagefolder"
+                || AppDefaults.launch.requestedSelfTest == "gitmultidiscard" { hovering = true }
         }
         .contextMenu { contextItems }
         .help(isDirectorySummary
@@ -734,19 +730,15 @@ private struct GitChangeRow: View {
             .help(state.tooltip)
     }
 
-    /// Ein Handler für alle Zeilenklicks. Modifier und Klickzahl kommen aus
-    /// dem auslösenden Event: Shift/Cmd markieren nur (wie in macOS-Listen),
-    /// der Einzelklick zeigt den Diff dieser Zeile im gemeinsamen
-    /// Vorschau-Tab, und ein Doppelklick öffnet die Datei selbst dauerhaft —
-    /// sie übernimmt dabei den Platz der Diff-Vorschau, die sein erster Klick
-    /// angelegt hat (Produktentscheidung 2026-09-02: erst der Diff, die Datei
-    /// nur auf ausdrücklichen Wunsch). Ein zusammengefasster Ordner hat keine
-    /// Datei; sein Klick markiert nur.
+    /// Gemeinsamer Handler für Zeilenklicks. Shift/Cmd markieren nur;
+    /// Einzelklick zeigt den Diff im gemeinsamen Vorschau-Tab. Doppelklick
+    /// ersetzt diese Vorschau durch die dauerhaft geöffnete Datei.
+    /// Zusammengefasste Ordner haben keine Datei und werden nur markiert.
     private func handleRowClick() {
         let event = NSApp.currentEvent
         let flags = event?.modifierFlags
             .intersection([.command, .shift, .option, .control]) ?? []
-        // `clickCount` ist NUR für Maus-Events definiert — für andere
+        // `clickCount` ist nur für Maus-Events definiert — für andere
         // Event-Typen (z.B. Space-Taste auf dem fokussierten Button) wirft
         // AppKit eine Assertion. Dann zählt der Klick als Einzelklick.
         let clickCount: Int
@@ -757,7 +749,7 @@ private struct GitChangeRow: View {
         default:
             clickCount = 1
         }
-        // Modifier-Klicks bauen nur die AUSWAHL um und öffnen keinen Tab.
+        // Modifier-Klicks bauen nur die Auswahl um und öffnen keinen Tab.
         if flags == .command {
             onSelectCommand()
             return
@@ -849,7 +841,7 @@ private struct GitChangeRow: View {
         // Tooltip erklären, was der Knopf täte. Das Overlay setzt nur den
         // AppKit-Tooltip, keinen Accessibility-Text — VoiceOver bekäme sonst
         // nur den Symbolnamen und könnte die drei Aktionen nicht
-        // unterscheiden (Review 2026-09-02). Der Tooltip-Text ist zugleich
+        // unterscheiden. Der Tooltip-Text ist zugleich
         // die Beschriftung.
         .fastraHelp(help)
         .accessibilityLabel(Text(verbatim: help))

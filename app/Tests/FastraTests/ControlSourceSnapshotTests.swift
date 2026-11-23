@@ -37,7 +37,7 @@ struct ControlSourceSnapshotTests {
             request.sha256 = FileSnapshot.sha256Hex(bytes)
             request.location = 5; request.length = 22
             #expect(try ControlRequest.decode(JSONEncoder().encode(request)) == request)
-            let snapshot = try ControlSourceSnapshot.adopt(request, temporaryRoot: root)
+            let snapshot = try ControlSourceSnapshot.adopt(validatedControlSourceSnapshot(request), temporaryRoot: root)
             defer { snapshot.remove() }
             #expect(snapshot.loaded.content.utf8.elementsEqual(text.utf8))
             #expect(snapshot.loaded.encoding == encoding)
@@ -59,7 +59,7 @@ struct ControlSourceSnapshotTests {
             var request = original; request.textEncoding = name
             request.sha256 = FileSnapshot.sha256Hex(bytes)
             request.location = 8; request.length = 13
-            let snapshot = try ControlSourceSnapshot.adopt(request, temporaryRoot: root)
+            let snapshot = try ControlSourceSnapshot.adopt(validatedControlSourceSnapshot(request), temporaryRoot: root)
             defer { snapshot.remove() }
             #expect(snapshot.loaded.content.utf8.elementsEqual(text.utf8))
             #expect(snapshot.loaded.bom == bom)
@@ -82,7 +82,7 @@ struct ControlSourceSnapshotTests {
         try bytes.write(to: leaf)
         var request = original; request.sha256 = FileSnapshot.sha256Hex(bytes)
         request.textEncoding = "utf-16-be"
-        #expect(throws: ControlFailure.source) { try ControlSourceSnapshot.adopt(request, temporaryRoot: root) }
+        #expect(throws: ControlFailure.source) { try ControlSourceSnapshot.adopt(validatedControlSourceSnapshot(request), temporaryRoot: root) }
         #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).count == 2)
         var old = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(ControlProtocol.capabilities)) as? [String: Any])
         old.removeValue(forKey: "sourceSnapshotTextEncodings")
@@ -95,7 +95,7 @@ struct ControlSourceSnapshotTests {
     func adoptionAndCleanup() throws {
         let (root, _, leaf, request) = try fixture()
         defer { try? FileManager.default.removeItem(at: root) }
-        let snapshot = try ControlSourceSnapshot.adopt(request, temporaryRoot: root)
+        let snapshot = try ControlSourceSnapshot.adopt(validatedControlSourceSnapshot(request), temporaryRoot: root)
         let ownFile = snapshot.fileURL
         #expect(ownFile != leaf)
         #expect(try FileSnapshot.read(from: ownFile).snapshot.sha256 == request.sha256)
@@ -113,14 +113,14 @@ struct ControlSourceSnapshotTests {
         let (root, outer, _, request) = try fixture()
         defer { try? FileManager.default.removeItem(at: root) }
         var wrongLeaf = request; wrongLeaf.sha256 = String(repeating: "0", count: 64)
-        #expect(throws: ControlFailure.stale) { try ControlSourceSnapshot.adopt(wrongLeaf, temporaryRoot: root) }
+        #expect(throws: ControlFailure.stale) { try ControlSourceSnapshot.adopt(validatedControlSourceSnapshot(wrongLeaf), temporaryRoot: root) }
         let source = request.provenance!
         var wrongOuter = request
         wrongOuter.provenance = ControlSourceProvenance(runID: source.runID, kind: source.kind, hitIdentity: source.hitIdentity,
             sourceGeneration: source.sourceGeneration, archiveBinding: "sha256", outerSHA256: String(repeating: "0", count: 64), positionBinding: "exactUTF16")
-        #expect(throws: ControlFailure.stale) { try ControlSourceSnapshot.adopt(wrongOuter, temporaryRoot: root) }
+        #expect(throws: ControlFailure.stale) { try ControlSourceSnapshot.adopt(validatedControlSourceSnapshot(wrongOuter), temporaryRoot: root) }
         try Data("replaced outer archive".utf8).write(to: outer, options: .atomic)
-        #expect(throws: ControlFailure.stale) { try ControlSourceSnapshot.adopt(request, temporaryRoot: root) }
+        #expect(throws: ControlFailure.stale) { try ControlSourceSnapshot.adopt(validatedControlSourceSnapshot(request), temporaryRoot: root) }
         #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).count == 2)
     }
 
@@ -184,10 +184,10 @@ struct ControlSourceSnapshotTests {
         var value = request
         value.provenance = ControlSourceProvenance(runID: source.runID, kind: source.kind, hitIdentity: source.hitIdentity,
             sourceGeneration: generation, archiveBinding: "sha256", outerSHA256: source.outerSHA256, positionBinding: "exactUTF16")
-        #expect(throws: ControlFailure.source) { try ControlSourceSnapshot.adopt(value, temporaryRoot: root) }
+        #expect(throws: ControlFailure.source) { try ControlSourceSnapshot.adopt(validatedControlSourceSnapshot(value), temporaryRoot: root) }
         value.provenance = ControlSourceProvenance(runID: source.runID, kind: source.kind, hitIdentity: source.hitIdentity,
             sourceGeneration: generation, archiveBinding: "generation", positionBinding: "exactUTF16")
-        let adopted = try ControlSourceSnapshot.adopt(value, temporaryRoot: root)
+        let adopted = try ControlSourceSnapshot.adopt(validatedControlSourceSnapshot(value), temporaryRoot: root)
         adopted.remove()
     }
 
@@ -251,12 +251,22 @@ struct ControlSourceSnapshotTests {
         #expect(FileManager.default.fileExists(atPath: leaf.path))
     }
 
+    @Test("Quellübergabe verlangt Provenienz vor jedem Dateizugriff")
+    func missingProvenance() throws {
+        let (root, _, _, request) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var invalid = request
+        invalid.provenance = nil
+        #expect(throws: ControlFailure.invalidRequest) { try validatedControlSourceSnapshot(invalid) }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).count == 2)
+    }
+
     @Test("Fehlerhafte Graphemposition räumt die bereits angelegte Kopie wieder auf")
     func invalidGraphemeCleanup() throws {
         let (root, _, _, request) = try fixture()
         defer { try? FileManager.default.removeItem(at: root) }
         var invalid = request; invalid.location = 6; invalid.length = 1
-        #expect(throws: ControlFailure.invalidRange) { try ControlSourceSnapshot.adopt(invalid, temporaryRoot: root) }
+        #expect(throws: ControlFailure.invalidRange) { try ControlSourceSnapshot.adopt(validatedControlSourceSnapshot(invalid), temporaryRoot: root) }
         #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).count == 2)
     }
 
@@ -264,10 +274,12 @@ struct ControlSourceSnapshotTests {
     func acceptedDeadline() throws {
         let (root, _, _, original) = try fixture()
         defer { try? FileManager.default.removeItem(at: root) }
-        var request = original
-        request.deadline = Date().timeIntervalSince1970 - 1
-        let snapshot = try ControlSourceSnapshot.adopt(request, temporaryRoot: root)
-        #expect(snapshot.loaded.diskSnapshot?.sha256 == request.sha256)
+        var expired = original
+        expired.deadline = Date().timeIntervalSince1970 - 1
+        #expect(throws: ControlFailure.expired) { try validatedControlSourceSnapshot(expired) }
+        let accepted = try validatedControlSourceSnapshot(expired, allowExpired: true)
+        let snapshot = try ControlSourceSnapshot.adopt(accepted, temporaryRoot: root)
+        #expect(snapshot.loaded.diskSnapshot?.sha256 == original.sha256)
         snapshot.remove()
     }
 }

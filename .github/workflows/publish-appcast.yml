@@ -29,8 +29,7 @@ jobs:
     # eines Jobs liegt in der Prozessumgebung JEDES Schritts — auch der
     # fremden `uses:`-Actions. Der Schlüssel ist der langlebige
     # Vertrauensanker für Fastra-Updates; wer ihn liest, kann beliebige
-    # Archive gültig signieren. Er hängt deshalb nur am Signierschritt
-    # (Review 2026-08-06).
+    # Archive gültig signieren. Er hängt deshalb nur am Signierschritt.
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
@@ -39,7 +38,7 @@ jobs:
       # Fremde Actions sind auf den vollständigen Commit fixiert, nicht auf
       # ein Hauptversions-Tag. Ein Tag lässt sich verschieben; ein Commit
       # nicht. Der Kommentar nennt die Version, damit ein bewusstes Update
-      # lesbar bleibt (Review 2026-08-06).
+      # lesbar bleibt.
       - name: Quelltext auschecken
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -172,38 +171,21 @@ jobs:
 
           xmllint --noout site/appcast.xml
 
-      # Der Artefaktname trägt die Versuchsnummer des Laufs. Beim Wiederholen
-      # eines Laufs („Re-run jobs") läuft dieser Schritt erneut, und ein
-      # gleichnamiges Artefakt aus dem ersten Versuch bleibt daneben bestehen:
-      # `deploy-pages` fand dann zwei Artefakte namens `github-pages` und brach
-      # ab, statt zu veröffentlichen (am 2026-08-06 beim Release 1.63.0
-      # aufgetreten). Mit der Versuchsnummer bekommt jeder Versuch seinen
-      # eigenen Namen, und der Deploy-Schritt bekommt denselben ausdrücklich
-      # genannt.
+      # Der Artefaktname enthält die Versuchsnummer, damit „Re-run jobs“ keine
+      # mehrdeutigen `github-pages`-Artefakte erzeugt. Der Deploy-Schritt verwendet
+      # denselben Namen.
       - name: Pages-Artefakt hochladen
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           name: github-pages-${{ github.run_attempt }}
           path: site
 
-      # Ein Rückstau in GitHubs Pages-Warteschlange lässt sich in diesem Lauf
-      # NICHT abfangen — das ist geprüft, nicht vermutet (2026-08-06):
-      #
-      #   • Eine längere Frist gibt es nicht. `deploy-pages` deckelt seine
-      #     `timeout`-Eingabe hart und sagt es auch: „timeout value is greater
-      #     than the allowed maximum - timeout set to the maximum of 600000
-      #     milliseconds". Zehn Minuten sind das Ende.
-      #   • Ein zweiter Anlauf im selben Lauf hilft nicht. Der Fristablauf
-      #     bricht das Deployment ab, und dessen Kennung ist die Commit-SHA;
-      #     der zweite Anlauf desselben Commits bekam den abgebrochenen Zustand
-      #     zurückgemeldet und gab nach Sekunden auf — mit einer Minute Pause
-      #     ebenso wie mit fünf.
-      #
-      # Bleibt der Lauf hier hängen, ist das kein Fehler am Feed: Er ist zu
-      # diesem Zeitpunkt fertig erzeugt und signiert. Dann später einen FRISCHEN
-      # Lauf starten (`gh workflow run publish-appcast.yml -f tag=v<version>`) —
-      # nicht denselben wiederholen. Bis dahin liefert die Seite unverändert das
-      # zuletzt erfolgreich veröffentlichte Update aus.
+      # `deploy-pages` begrenzt seine Wartezeit auf zehn Minuten. Nach einem
+      # Timeout bleibt das Deployment derselben Commit-SHA abgebrochen; ein
+      # weiterer Versuch im selben Lauf kann diesen Zustand nicht aufheben.
+      # Bei einem Rückstau in Pages später einen neuen Lauf starten:
+      # `gh workflow run publish-appcast.yml -f tag=v<version>`. Bis dahin bleibt
+      # das zuletzt erfolgreich veröffentlichte Update verfügbar.
       - name: Appcast auf GitHub Pages veröffentlichen
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

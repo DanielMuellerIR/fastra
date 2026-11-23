@@ -1,18 +1,8 @@
 // AppStorageIsolationTests.swift
 //
-// Wächter über eine Isolierungsregel, die man einer einzelnen Zeile nicht
-// ansieht: `@AppStorage("key")` OHNE `store:` liest immer
-// `UserDefaults.standard`, also die ECHTEN App-Einstellungen des Nutzers.
-// `SelfTest.workspaceDefaults()` isoliert Selbsttests zwar in einer eigenen
-// Suite — an einem `@AppStorage` ohne `store:` läuft diese Isolierung
-// aber vorbei.
-//
-// Realer Befund 2026-07-27: `editor.sidebarVisible = false` (im normalen
-// Betrieb ausgeblendete Seitenleiste) ließ den Selbsttest-Prozess die
-// gesamte Seitenleiste nicht aufbauen. `gitstagefolder` und `gitpushbutton`
-// fielen reproduzierbar aus und meldeten fehlende SwiftUI-Marker bzw. ein
-// leeres Push-Ziel — ohne jeden Produktfehler. Der Test prüft deshalb die
-// Quelle selbst, nicht bloß einen einzelnen Schlüssel.
+// `@AppStorage` ohne `store:` liest `UserDefaults.standard` und umgeht die
+// isolierte Suite aus `AppDefaults.store`. Die Quellprüfung erfasst
+// alle Deklarationen, statt die Regel nur für einzelne Schlüssel zu testen.
 
 import Foundation
 import Testing
@@ -33,17 +23,9 @@ private struct AppStorageDeclaration {
     let arguments: String
 }
 
-/// Sammelt alle echten `AppStorage(...)`-Stellen. Erfasst werden zwei
-/// Schreibweisen:
-///
-/// * die Deklaration `@AppStorage(...)`, und
-/// * der nachträgliche Neubau `_feld = AppStorage(...)` in einem `init()`.
-///
-/// Die zweite Form ist die gefährlichere: Sie ERSETZT einen korrekt
-/// deklarierten Wrapper und verlor dabei bis 2026-08-02 in `SettingsView` das
-/// `store:` — sechs Git-Einstellungen liefen dadurch trotz Isolierung gegen die
-/// echten Nutzer-Defaults (Review 2026-08-02). Erwähnungen in Kommentaren
-/// (dort steht `@AppStorage` ohne öffnende Klammer) zählen nicht.
+/// Erfasst Deklarationen `@AppStorage(...)` und nachträgliche Wrapper-Neubauten
+/// `_feld = AppStorage(...)` im Initializer. Auch ein Neubau muss den isolierten
+/// `store:` erhalten. Erwähnungen in Kommentaren zählen nicht.
 private func collectAppStorageDeclarations() throws -> [AppStorageDeclaration] {
     let files = try FileManager.default.subpathsOfDirectory(atPath: sourcesURL.path)
         .filter { $0.hasSuffix(".swift") }
@@ -56,9 +38,9 @@ private func collectAppStorageDeclarations() throws -> [AppStorageDeclaration] {
         for (index, line) in lines.enumerated() {
             let range = line.range(of: "@AppStorage(") ?? line.range(of: "= AppStorage(")
             guard let range else { continue }
-            // Argumentliste bis zur PASSENDEN schließenden Klammer. Einfach
-            // bis zur ersten `)` zu lesen wäre falsch: `store:
-            // SelfTest.workspaceDefaults()` bringt selbst ein Klammerpaar mit.
+            // Argumentliste bis zur passenden schließenden Klammer. Einfach
+            // bis zur ersten `)` zu lesen wäre falsch: Auch Argumente
+            // können ihrerseits Funktionsaufrufe mit Klammern enthalten.
             // Die Liste darf sich über mehrere Zeilen erstrecken — genau so
             // stehen die im `init()` neu gebauten Wrapper da. Bräche der
             // Scanner am Zeilenende ab, sähe er dort eine leere Argumentliste
@@ -98,14 +80,14 @@ struct AppStorageIsolationTests {
     func everyAppStorageDeclarationPassesTheIsolatableStore() throws {
         let declarations = try collectAppStorageDeclarations()
         let offenders = declarations.filter {
-            !$0.arguments.contains("store: SelfTest.workspaceDefaults()")
+            !$0.arguments.contains("store: AppDefaults.store")
         }
         let report = offenders
             .map { "\($0.file):\($0.line) → @AppStorage(\($0.arguments))" }
             .joined(separator: "\n")
         #expect(offenders.isEmpty, """
             \(offenders.count) @AppStorage-Deklaration(en) ohne \
-            `store: SelfTest.workspaceDefaults()`. Sie lesen \
+            `store: AppDefaults.store`. Sie lesen \
             UserDefaults.standard und hebeln die Selbsttest-Isolierung aus:
             \(report)
             """)
@@ -117,7 +99,7 @@ struct AppStorageIsolationTests {
     /// Ohne ausdrückliches Argument las und schrieb ein Einstellungs-
     /// Selbsttest damit die echten Nutzerdaten — und löschte beim Abschalten
     /// der Sitzungswiederherstellung sogar den echten wiederherstellbaren
-    /// Sitzungszustand (Review 2026-08-06).
+    /// Sitzungszustand.
     @Test("SettingsView reicht die isolierbare Suite auch an eigene Speicher weiter")
     func settingsViewPassesTheIsolatableStoreEverywhere() throws {
         let text = try String(
@@ -128,7 +110,7 @@ struct AppStorageIsolationTests {
             #expect(!text.contains(call), """
                 `\(call)` in SettingsView.swift greift auf UserDefaults.standard \
                 zu und hebelt die Selbsttest-Isolierung aus. Erwartet wird der \
-                Aufruf mit `SelfTest.workspaceDefaults()`.
+                Aufruf mit `AppDefaults.store`.
                 """)
         }
     }

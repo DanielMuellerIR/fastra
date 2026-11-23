@@ -14,7 +14,7 @@ struct MarkdownRenderedFragment {
 /// mindestens zwei ASCII-Leerzeichen wird als genau eine leere Textzeile in
 /// den bereits geparsten CommonMark-Baum eingesetzt.
 ///
-/// Die Ergänzung geschieht absichtlich NACH dem Parsen. Ein Texttoken vor dem
+/// Die Ergänzung geschieht absichtlich nach dem Parsen. Ein Texttoken vor dem
 /// Parser würde zum Beispiel eine zusammenhängende Liste in zwei Listen
 /// zerlegen. Der kontrollierte Custom-Block ändert dagegen keine vorhandene
 /// GFM-Struktur und wird auch ohne `CMARK_OPT_UNSAFE` gerendert. Nutzer-HTML
@@ -655,8 +655,8 @@ enum MarkdownImages {
         return MarkdownRenderedFragment(html: mutable as String, imageURLs: images, imageSources: sources)
     }
 
-    //DM 2026-10-14 WebKit ignoriert die DPI für die Layoutgröße. Metadaten ohne
-    // Pixeldekodierung lesen und nach Dateiidentität puffern, nicht bei jedem Tastendruck.
+    // WebKit ignoriert DPI-Metadaten bei der Layoutgröße. Metadaten ohne
+    // Pixeldekodierung lesen und nach Dateiidentität puffern, nicht je Tastendruck.
     private static func logicalWidth(of url: URL, token: String) -> Double? {
         if let cached = imageSizes.object(forKey: token as NSString) { return cached.width }
         var width: Double?
@@ -676,14 +676,13 @@ enum MarkdownImages {
 
     /// Interner Name, unter dem WebKit ein Bild anfordert.
     ///
-    /// Er beschreibt die IDENTITÄT der Datei (Pfad, Inode, Größe, Änderungs-
+    /// Er beschreibt die Identität der Datei (Pfad, Inode, Größe, Änderungs-
     /// und Statusänderungszeit) und nicht mehr ihre Position im Dokument. Der
     /// frühere Name „image-0" war für das erste Bild jedes Renderlaufs
     /// derselbe: Nach dem Austausch eines Bildes lieferte WebKit unter der
     /// unveränderten Adresse die zuvor geladene Datei aus seinem
     /// Speicher-Cache — im Quelltext stand der neue Dateiname, die Vorschau
     /// zeigte das alte Bild, und erst ein Neustart der App räumte den Cache
-    /// (Daniel-Befund 2026-08-06).
     ///
     /// Unverändertes Bild → unveränderter Name → WebKit lädt es beim Tippen
     /// nicht bei jedem Zeichen neu.
@@ -694,20 +693,20 @@ enum MarkdownImages {
         // Bewusst `stat(2)` statt `URL.resourceValues` oder
         // `FileManager.attributesOfItem`:
         //   • Eine URL merkt sich einmal gelesene Dateiattribute und lieferte
-        //     für dieselbe URL weiterhin die ALTE Größe, nachdem die Datei
+        //     für dieselbe URL weiterhin die alte Größe, nachdem die Datei
         //     ersetzt wurde.
         //   • `attributesOfItem` baut für jedes Bild ein Wörterbuch mit
-        //     Objective-C-Objekten auf. Das läuft bei JEDEM Renderlauf, also
+        //     Objective-C-Objekten auf. Das läuft bei jedem Renderlauf, also
         //     beim Tippen — ein einzelner Systemaufruf ist hier deutlich
         //     billiger.
         //   • Nur `stat` liefert Inode und `st_ctime`, und genau die fehlten
-        //     der Identität: Ein inhaltlich anderes Bild kann mit GLEICHER
+        //     der Identität: Ein inhaltlich anderes Bild kann mit gleicher
         //     Größe und beibehaltenem Änderungsdatum eintreffen — etwa durch
         //     ein Sync-Werkzeug, das Zeitstempel erhält, oder auf einem
         //     Dateisystem mit grober Zeitauflösung. Beim atomaren Ersetzen
         //     wechselt das Inode, und `st_ctime` lässt sich aus dem
         //     Nutzerraum nicht zurückstellen: Selbst das Zurücksetzen des
-        //     Änderungsdatums setzt es auf „jetzt" (Review 2026-08-06).
+        //     Änderungsdatums setzt es auf „jetzt".
         var info = stat()
         guard stat(path, &info) == 0 else {
             // Fehlt die Datei (oder verweigert sie Auskunft), bleibt der Pfad
@@ -738,7 +737,7 @@ enum MarkdownImages {
                               documentURL: URL?) -> URL? {
         let unescaped = rawSource
         // Ein echtes `#` trennt das URL-Fragment ab. `%23` ist dagegen ein
-        // zulässiges Rautezeichen IM Dateinamen und darf erst danach decodiert
+        // zulässiges Rautezeichen im Dateinamen und darf erst danach decodiert
         // werden. Die frühere Reihenfolge kürzte solche Pfade auf den Teil vor
         // `%23` und ließ vorhandene Bilder dadurch scheinbar verschwinden.
         let encodedPath = unescaped.split(

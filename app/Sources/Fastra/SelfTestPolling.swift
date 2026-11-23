@@ -1,43 +1,24 @@
 // SelfTestPolling.swift
 //
-// Fristbuchhaltung und Warteschleife der In-App-Selbsttests.
+// Fristbuchhaltung der In-App-Selbsttests. Nur bediente Zeit verbuchen:
+// Längere Main-Thread-Blockaden dürfen die eigentliche Prüffrist nicht
+// verbrauchen. Anders als `waitUntil` in `Tests/FastraTests/TestWaiting.swift`
+// ist der Deckel je Lücke standardmäßig die angeforderte Pause selbst.
+// Damit bleibt das Zeitverhalten der früheren Tick-Zähler erhalten.
 //
-// Bis hierher zählte jede Warteschleife der Selbsttests nur ihre Durchläufe:
-// „100 × 30 ms ≈ 3 s". Die Rechnung stimmt nur, solange jeder Durchlauf auch
-// wirklich nach 30 ms drankommt. Belegt den Main-Thread ein anderer Halter —
-// ein großer Editoraufbau, ein synchroner Dateizugriff —, dann zählt derselbe
-// Durchlauf trotzdem nur als ein Tick, und die vermeintliche 3-Sekunden-Frist
-// dehnt sich unbegrenzt. Sie endet dann nicht mit der Diagnose des Tests,
-// sondern als Runner-TIMEOUT (`app/selftest.sh`, `timeout_for_test`) ganz ohne
-// Text. Der Tick-Zähler kennt also keine Obergrenze.
+// `DispatchTime` ist monoton und unabhängig von Uhrzeitänderungen. Ein
+// zusätzlicher Wanduhrdeckel beendet die Schleife vor der Runner-Frist, damit
+// auch bei Totalblockade eine eigene Diagnose entsteht.
 //
-// Dieselbe Falle traf 2026-08-17 die Unit-Tests; `waitUntil` in
-// `Tests/FastraTests/TestWaiting.swift` löst sie dort, indem es nur BEDIENTE
-// Zeit verbucht: Eine Lücke weit über der angeforderten Pause gehört einem
-// fremden Main-Thread-Halter und verbraucht die Frist nicht. Diese Datei
-// überträgt die Rechnung auf die Selbsttests, mit zwei bewussten Abweichungen:
-//
-// 1. Der Deckel je Lücke ist standardmäßig die Pause SELBST (nicht Pause plus
-//    Zugabe). Damit ist die Frist exakt der bisherige Tick-Zähler — die
-//    Migration einer Schleife ändert ihr Zeitverhalten nicht. Mit der 50-ms-
-//    Zugabe aus `waitUntil` zählte jede 80-ms-Lücke voll, eine 3-Sekunden-
-//    Frist wäre schon nach 37 statt 100 Durchläufen aufgebraucht.
-// 2. Die Uhr ist `DispatchTime` (monoton, wie `testStartedNanoseconds`), nicht
-//    `Date`. Eine Zeitumstellung mitten im Lauf darf keine Frist verschieben.
-//
-// Neu hinzu kommt der Wanduhr-Deckel: Selbst wenn die Frist nie voll wird,
-// endet die Schleife spätestens kurz VOR der Runner-Frist und schreibt ihre
-// eigene Diagnose. Das ist eine gewollte Verkürzung unter Totalblockade.
-//
-// Eigene Datei, damit die Quelltext-Wächter über `SelfTest.swift`
-// (`SelfTestReviewFixTests`, `SelfTestPerformanceTests`) unberührt bleiben.
+// Separate Datei wegen der Quelltext-Wächter `SelfTestReviewFixTests` und
+// `SelfTestPerformanceTests`, die `SelfTest.swift` auswerten.
 
 import Foundation
 
 /// Fristbuchhaltung einer Warteschleife — reine Rechnung, ohne Uhr und ohne
 /// Queue. Genau deshalb ist sie ohne GUI und ohne echte Zeit prüfbar.
 struct SelfTestPollBudget: Equatable {
-    /// Ergebnis eines Durchlaufs, dessen Bedingung NICHT erfüllt war.
+    /// Ergebnis eines Durchlaufs, dessen Bedingung nicht erfüllt war.
     enum Verdict: Equatable {
         /// Frist ist noch da — nach der Pause erneut prüfen.
         case keepWaiting
@@ -75,7 +56,7 @@ struct SelfTestPollBudget: Equatable {
         lastPollAt = now
     }
 
-    /// Verbucht einen Durchlauf, dessen Bedingung NICHT erfüllt war.
+    /// Verbucht einen Durchlauf, dessen Bedingung nicht erfüllt war.
     mutating func recordMiss(now: TimeInterval) -> Verdict {
         polls += 1
         observed += min(max(now - lastPollAt, 0), countedGapCeiling)
@@ -90,7 +71,7 @@ struct SelfTestPollBudget: Equatable {
         return observed >= budget - pause * 0.5 ? .budgetExhausted : .keepWaiting
     }
 
-    /// Diagnosetext für den Timeout-Zweig. Nennt bewusst BEIDE Zeiten: Weicht
+    /// Diagnosetext für den Timeout-Zweig. Nennt bewusst beide Zeiten: Weicht
     /// die Wanduhr stark von der bedienten Zeit ab, lag der Fehler nicht im
     /// geprüften Verhalten, sondern an einem fremden Main-Thread-Halter.
     var summary: String {
@@ -127,7 +108,7 @@ enum SelfTestPolling {
     /// eigene Diagnose und räumt seine Fixtures ab (kein `defer` im Helfer:
     /// `SelfTest.finish` endet über `exit()` und wickelt den Stack nicht ab).
     ///
-    /// `condition` wird je Durchlauf GENAU EINMAL gerufen, auch im
+    /// `condition` wird je Durchlauf genau einmal gerufen, auch im
     /// Timeout-Zweig nie zusätzlich. Sie darf deshalb nachziehen (scrollen,
     /// klicken), ohne dass eine Aktion doppelt zugestellt wird. Der erste
     /// Durchlauf läuft sofort, nicht erst nach der ersten Pause.
@@ -150,7 +131,7 @@ enum SelfTestPolling {
     }
 
     /// Wie `waitFor`, aber die Bedingung antwortet asynchron (git-Ground-Truth,
-    /// WebKit-JavaScript). Der nächste Durchlauf wird erst NACH der Antwort
+    /// WebKit-JavaScript). Der nächste Durchlauf wird erst nach der Antwort
     /// geplant; zwei Durchläufe können sich also nie überholen.
     static func waitForAsync(
         budget: TimeInterval,
@@ -170,7 +151,7 @@ enum SelfTestPolling {
                   onTimeout: onTimeout, then: then)
     }
 
-    /// Ein Durchlauf. Die Buchhaltung wandert als WERT in den nächsten
+    /// Ein Durchlauf. Die Buchhaltung wandert als Wert in den nächsten
     /// Durchlauf — dasselbe Muster wie das bisherige `tick + 1`, nur mit mehr
     /// Inhalt. Kein geteilter veränderlicher Zustand, keine Box.
     private static func step(
@@ -217,42 +198,54 @@ enum SelfTestPolling {
         }
     }
 
-    /// Spiegel von `timeout_for_test` in `app/selftest.sh`. Ein Quelltext-
-    /// Wächtertest hält beide Tabellen gleich; ohne ihn entstünde hier ein
-    /// zweiter Wahrheitsort zur Runner-Frist.
-    static func runnerTimeoutSeconds(for test: String) -> TimeInterval {
-        let reviewKey = test == "githistory" ? "FASTRA_GITHISTORY_REVIEW_DIR" : "FASTRA_SOFTWRAPINDENT_REVIEW_DIR"
-        if let timeout = manualReviewTimeout(for: test, reviewDirectory:
-            ProcessInfo.processInfo.environment[reviewKey]) {
-            return timeout
-        }
-        switch test {
-        case "print": return 240
-        case "jsonstress": return 360
-        case "softwrapindent", "mdblocks", "searchapproval", "filedifftransfer", "foldercompare", "mdreferences", "codeoutline", "sourcesplit", "snippets", "snippetfiles": return 180
-        case "controlhost": return 130
-        case "tabfiledrag": return 60
-        case "diffexport": return 120
-        case "cmdw", "leakscenario": return 120
-        default: return 60
-        }
+    /// Spiegel der Runner-Fristen in `tools/selftest-timeouts.sh`. Lookup und
+    /// Auflistung verwenden dieselben Regeln; Tests vergleichen echte Antworten.
+    struct TimeoutRule {
+        let test: String
+        let seconds: TimeInterval?
+        var reviewKey: String? = nil
     }
 
-    static func manualReviewTimeout(for test: String, reviewDirectory: String?) -> TimeInterval? {
-        guard ["softwrapindent", "githistory"].contains(test),
-              let reviewDirectory, !reviewDirectory.isEmpty else { return nil }
-        return 420
+    static let timeoutRules: [TimeoutRule] = [
+        TimeoutRule(test: "print", seconds: 240),
+        TimeoutRule(test: "jsonstress", seconds: 360),
+        TimeoutRule(test: "softwrapindent", seconds: 180,
+                    reviewKey: "FASTRA_SOFTWRAPINDENT_REVIEW_DIR"),
+        TimeoutRule(test: "mdblocks", seconds: 180),
+        TimeoutRule(test: "searchapproval", seconds: 180),
+        TimeoutRule(test: "filedifftransfer", seconds: 180),
+        TimeoutRule(test: "foldercompare", seconds: 180),
+        TimeoutRule(test: "mdreferences", seconds: 180),
+        TimeoutRule(test: "codeoutline", seconds: 180),
+        TimeoutRule(test: "sourcesplit", seconds: 180),
+        TimeoutRule(test: "snippets", seconds: 180),
+        TimeoutRule(test: "snippetfiles", seconds: 180),
+        TimeoutRule(test: "controlhost", seconds: 130),
+        TimeoutRule(test: "tabfiledrag", seconds: 60),
+        TimeoutRule(test: "diffexport", seconds: 120),
+        TimeoutRule(test: "cmdw", seconds: 120),
+        TimeoutRule(test: "leakscenario", seconds: 120),
+        TimeoutRule(test: "githistory", seconds: nil,
+                    reviewKey: "FASTRA_GITHISTORY_REVIEW_DIR"),
+        TimeoutRule(test: "markdownimportui", seconds: nil,
+                    reviewKey: "FASTRA_MARKDOWN_IMPORT_REVIEW_DIR"),
+    ]
+
+    static func runnerTimeoutSeconds(
+        for test: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> TimeInterval {
+        let rule = timeoutRules.first { $0.test == test }
+        if let key = rule?.reviewKey, let directory = environment[key], !directory.isEmpty {
+            return 420
+        }
+        return rule?.seconds ?? 60
     }
 
-    /// Wanduhr-Deckel: Frist plus 20 s Zugabe wie in `waitUntil`, aber nie über
-    /// den Rest der Runner-Frist hinaus. Der Runner-Rest hat Vorrang vor der
-    /// Frist: Bleibt weniger Runner-Zeit als Frist, endet die Schleife trotzdem
-    /// vor dem Runner — mit eigener Diagnose. Die frühere Untergrenze
-    /// „mindestens die Frist" versprach das Gegenteil: Bei `budget = 3` und
-    /// 59 s Laufzeit lieferte sie 3 s, die Diagnose entstand erst bei 62 s, und
-    /// `selftest.sh` beendete den Prozess bei 60 s als stummen TIMEOUT
-    /// (Review-Fund 2026-09-17). Ein bereits aufgebrauchter Rest ergibt 0:
-    /// Der erste erfolglose Durchlauf endet dann sofort als `hardCapReached`.
+    /// Wanduhrdeckel: Prüffrist plus 20 s Zugabe wie bei `waitUntil`, höchstens
+    /// die restliche Runner-Zeit. Der Runner-Rest hat Vorrang, damit noch eine
+    /// eigene Diagnose vor dessen Abbruch entsteht. Aufgebrauchter Rest ergibt 0;
+    /// der erste erfolglose Durchlauf meldet `hardCapReached`.
     /// `elapsed` ist die bisherige Laufzeit des Testprozesses.
     static func hardCap(budget: TimeInterval, elapsed: TimeInterval,
                         test: String) -> TimeInterval {

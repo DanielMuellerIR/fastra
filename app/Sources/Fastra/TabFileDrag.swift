@@ -125,7 +125,7 @@ private final class TabFileDragView: NSView, NSDraggingSource {
                          sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .copy }
 
     private func diagnose(_ event: String) {
-        guard SelfTest.requestedTest == "tabfiledrag" else { return }
+        guard AppDefaults.launch.requestedSelfTest == "tabfiledrag" else { return }
         FileHandle.standardError.write(Data("TABDRAG \(event)\n".utf8))
     }
 }

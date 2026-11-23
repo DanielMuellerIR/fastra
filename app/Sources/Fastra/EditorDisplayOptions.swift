@@ -63,7 +63,7 @@ struct EditorOptionsButton: View {
 
 struct EditorOptionsPopover: View {
     @EnvironmentObject private var workspace: Workspace
-    @AppStorage("editor.showMinimap", store: SelfTest.workspaceDefaults()) private var showMinimap = false
+    @AppStorage("editor.showMinimap", store: AppDefaults.store) private var showMinimap = false
 
     private func displayBinding(_ key: WritableKeyPath<EditorDisplayOptions, Bool>) -> Binding<Bool> {
         Binding(get: { workspace.editorDisplayOptions[keyPath: key] },

@@ -1,9 +1,9 @@
 // PrintSyntaxHighlightingTests.swift
 //
-// Syntaxfarben im Quelltext-Ausdruck (Folgeauftrag 2026-09-05): der helle
+// Syntaxfarben im Quelltext-Ausdruck: der helle
 // Druck-Farbsatz ist unabhängig vom Bildschirm-Thema, die Farbbereiche
 // landen hinter der Nummernspalte an der richtigen Stelle (auch bei CRLF
-// und über Zeilengrenzen), die Analyse färbt das GANZE Dokument, und ein
+// und über Zeilengrenzen), die Analyse färbt das ganze Dokument, und ein
 // großes Dokument bleibt in messbaren Grenzen.
 
 import AppKit
@@ -32,7 +32,7 @@ private func fourDFormat(content: String = "") -> DocumentFormat {
 }
 
 /// Mehrseitiger Swift-Quelltext mit Kommentaren, Schlüsselwörtern, Strings
-/// und Zahlen in JEDER Zeile — die Farben müssen bis zur letzten Zeile reichen.
+/// und Zahlen in jeder Zeile — die Farben müssen bis zur letzten Zeile reichen.
 private func swiftSample(lines: Int) -> String {
     (1...lines).map { index in
         "let wert\(index) = \"Text \(index)\" // Kommentar \(index) mit \(index * 2)"
@@ -158,7 +158,7 @@ struct PrintSyntaxHighlightingTests {
     @Test("Ein langer Bereich mit vielen inneren Bereichen: innen gewinnt, Laufzeit bleibt linear")
     @MainActor
     func nestedRangesSweep() {
-        // Ein Markdown-Codeblock oder Doc-Kommentar: EIN Bereich über alle
+        // Ein Markdown-Codeblock oder Doc-Kommentar: ein Bereich über alle
         // Zeilen, darin pro Zeile ein kurzer Bereich. Der alte Zwei-Zeiger-
         // Durchlauf blieb am äußeren Bereich hängen und lief pro Zeile über
         // alle inneren — quadratisch.

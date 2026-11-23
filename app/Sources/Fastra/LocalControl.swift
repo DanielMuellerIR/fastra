@@ -5,18 +5,17 @@ import FastraDiffProtocol
 /// Die vollständig geladene Quelle und ihr Bytehash stammen aus demselben
 /// geöffneten Dateiobjekt. Kein zweiter Read kann eine andere Datei einmischen.
 enum ControlSnapshotLoader {
-    static func load(_ request: ControlRequest) throws -> FileLoader.LoadedFile {
-        guard let path = request.path, let expected = request.sha256 else { throw ControlFailure.invalidRequest }
+    static func load(_ request: ValidatedControlSnapshotRequest) throws -> FileLoader.LoadedFile {
         let loaded: FileLoader.LoadedFile
         do {
-            loaded = try FileLoader.load(url: URL(fileURLWithPath: path),
+            loaded = try FileLoader.load(url: URL(fileURLWithPath: request.path),
                 largeFileThreshold: UInt64(ControlProtocol.maximumSnapshotBytes),
                 isCancelled: { Task.isCancelled })
         } catch { throw Task.isCancelled ? CancellationError() : ControlFailure.source }
         guard loaded.displayMode == .text, let snapshot = loaded.diskSnapshot,
               loaded.fileSize <= ControlProtocol.maximumSnapshotBytes else { throw ControlFailure.source }
-        guard snapshot.sha256 == expected else { throw ControlFailure.stale }
-        try ControlSelection(location: request.location!, length: request.length!).validate(in: loaded.content)
+        guard snapshot.sha256 == request.sha256 else { throw ControlFailure.stale }
+        try request.selection.validate(in: loaded.content)
         return loaded
     }
 }
@@ -32,7 +31,7 @@ final class LocalControlController {
     private var jobs: [UUID: JobEntry] = [:]
     private var accepted: [UUID: (request: ControlRequest, jobID: UUID?, expires: Date)] = [:]
     private var cleanupAccepted: [UUID: (request: ControlRequest, jobID: UUID?, expires: Date)] = [:]
-    private let load: (ControlRequest) async throws -> FileLoader.LoadedFile
+    private let load: (ValidatedControlSnapshotRequest) async throws -> FileLoader.LoadedFile
     private let showWindows: Bool
     private let loadExplanation: (String) async throws -> CodeExplanationPackage
 
@@ -50,7 +49,7 @@ final class LocalControlController {
              return try await withTaskCancellationHandler(operation: { try await task.value },
                                                           onCancel: { task.cancel() })
          },
-         load: @escaping (ControlRequest) async throws -> FileLoader.LoadedFile = { request in
+         load: @escaping (ValidatedControlSnapshotRequest) async throws -> FileLoader.LoadedFile = { request in
              let task = Task.detached(priority: .userInitiated) { try ControlSnapshotLoader.load(request) }
              return try await withTaskCancellationHandler(operation: { try await task.value },
                                                           onCancel: { task.cancel() })
@@ -67,33 +66,34 @@ final class LocalControlController {
             guard old.request == request else { throw ControlFailure.invalidRequest }
             return ControlReply(runtimeID: runtimeID, job: old.jobID.flatMap { jobs[$0]?.value })
         }
-        try request.validate()
+        let operation = try ValidatedControlOperation(request)
+        // Die Annahmefrist gilt hier. Die folgenden internen Aufträge behalten
+        // ihre Pflichtwerte auch während der eigenen Ausführungsfrist eines Jobs.
         if mutates && !cleansUp, accepted.count >= ControlProtocol.maximumJobs * 2 { throw ControlFailure.capacity }
         let reply: ControlReply
-        switch request.operation {
-        case "capabilities":
+        switch operation {
+        case .capabilities:
             var capabilities = ControlProtocol.capabilities
             capabilities.runtimeID = runtimeID; capabilities.productVersion = AppInfo.version
             reply = ControlReply(runtimeID: runtimeID, capabilities: capabilities)
-        case "objects":
+        case .objects:
             reply = ControlReply(runtimeID: runtimeID, objects: objects(), jobs: jobValues)
-        case "snapshot": reply = try snapshot(request)
-        case "sourceSnapshot": reply = try sourceSnapshot(request)
-        case "explanation": reply = try explanation(request)
-        case "navigate": reply = try navigate(request)
-        case "status":
-            guard let entry = jobs[request.jobID!] else { throw ControlFailure.invalidID }
+        case .snapshot(let snapshotRequest): reply = try snapshot(snapshotRequest)
+        case .sourceSnapshot(let sourceRequest): reply = try sourceSnapshot(sourceRequest)
+        case .explanation(let requestID, let path): reply = try explanation(requestID: requestID, path: path)
+        case .navigate(let navigationRequest): reply = try navigate(navigationRequest)
+        case .status(let jobID):
+            guard let entry = jobs[jobID] else { throw ControlFailure.invalidID }
             reply = ControlReply(runtimeID: runtimeID, job: entry.value)
-        case "cancel":
-            guard let entry = jobs[request.jobID!] else { throw ControlFailure.invalidID }
+        case .cancel(let jobID):
+            guard let entry = jobs[jobID] else { throw ControlFailure.invalidID }
             cancel(entry)
             reply = ControlReply(runtimeID: runtimeID, job: entry.value)
-        case "close":
-            guard let session = sessions[request.sessionID!] else { throw ControlFailure.invalidID }
+        case .close(let sessionID):
+            guard let session = sessions[sessionID] else { throw ControlFailure.invalidID }
             session.window.close()
             remove(session.sessionID)
             reply = ControlReply(runtimeID: runtimeID)
-        default: throw ControlFailure.unsupported
         }
         if mutates {
             let record = (request, reply.job?.id, Date(timeIntervalSinceNow: ControlProtocol.retentionSeconds))
@@ -167,9 +167,9 @@ final class LocalControlController {
         return session
     }
 
-    private func snapshot(_ request: ControlRequest) throws -> ControlReply {
-        let session = try newSession(name: URL(fileURLWithPath: request.path!).lastPathComponent)
-        let entry = createJob(request, session: session)
+    private func snapshot(_ request: ValidatedControlSnapshotRequest) throws -> ControlReply {
+        let session = try newSession(name: URL(fileURLWithPath: request.path).lastPathComponent)
+        let entry = createJob(requestID: request.id, session: session)
         let generation = session.generation
         entry.task = Task { [weak self, weak session, weak entry] in
             guard let self, let session, let entry else { return }
@@ -184,7 +184,7 @@ final class LocalControlController {
                 entry.value.byteCount = loaded.diskSnapshot?.byteCount
                 entry.value.encoding = loaded.encoding.rawValue
                 entry.value.bomBytes = loaded.bom.count
-                await self.present(entry, session: session, generation: generation, request: request)
+                await self.present(entry, session: session, generation: generation, selection: request.selection)
             } catch {
                 guard self.isCurrent(entry, session: session, generation: generation) else { return }
                 self.fail(entry, error as? ControlFailure ?? (Task.isCancelled ? .interrupted : .source))
@@ -193,12 +193,12 @@ final class LocalControlController {
         return ControlReply(runtimeID: runtimeID, job: entry.value)
     }
 
-    private func sourceSnapshot(_ request: ControlRequest) throws -> ControlReply {
-        let provenance = request.provenance!
+    private func sourceSnapshot(_ request: ValidatedControlSourceSnapshotRequest) throws -> ControlReply {
+        let provenance = request.provenance
         let name = provenance.hitIdentity.archiveMembers.last
             ?? URL(fileURLWithPath: provenance.hitIdentity.filesystemPath).lastPathComponent
         let session = try newSession(name: name)
-        let entry = createJob(request, session: session)
+        let entry = createJob(requestID: request.id, session: session)
         entry.value.provenance = provenance
         entry.value.adopted = false
         let generation = session.generation
@@ -219,7 +219,7 @@ final class LocalControlController {
                 entry.value.byteCount = snapshot.loaded.diskSnapshot?.byteCount
                 entry.value.encoding = snapshot.loaded.encoding.rawValue
                 entry.value.bomBytes = snapshot.loaded.bom.count
-                await self.present(entry, session: session, generation: generation, request: request)
+                await self.present(entry, session: session, generation: generation, selection: request.selection)
                 if entry.value.state == "ready" { entry.value.adopted = true }
             } catch {
                 guard self.isCurrent(entry, session: session, generation: generation) else { return }
@@ -229,16 +229,16 @@ final class LocalControlController {
         return ControlReply(runtimeID: runtimeID, job: entry.value)
     }
 
-    private func explanation(_ request: ControlRequest) throws -> ControlReply {
-        let session = try newSession(name: URL(fileURLWithPath: request.path!).lastPathComponent)
-        let entry = createJob(request, session: session)
+    private func explanation(requestID: UUID, path: String) throws -> ControlReply {
+        let session = try newSession(name: URL(fileURLWithPath: path).lastPathComponent)
+        let entry = createJob(requestID: requestID, session: session)
         let generation = session.generation
         entry.task = Task { [weak self, weak session, weak entry] in
             guard let self, let session, let entry,
                   self.isCurrent(entry, session: session, generation: generation) else { return }
             entry.value.state = "loading"
             do {
-                let package = try await self.loadExplanation(request.path!)
+                let package = try await self.loadExplanation(path)
                 guard self.isCurrent(entry, session: session, generation: generation) else { return }
                 let first = package.manifest.steps[0]
                 guard let loaded = package.loadedSources[first.sourceID],
@@ -254,10 +254,7 @@ final class LocalControlController {
                 entry.value.byteCount = loaded.diskSnapshot?.byteCount
                 entry.value.encoding = loaded.encoding.rawValue
                 entry.value.bomBytes = loaded.bom.count
-                let target = ControlRequest(operation: "navigate", sha256: loaded.diskSnapshot?.sha256,
-                    location: first.location, length: first.length,
-                    sessionID: session.sessionID, documentID: session.documentID)
-                await self.present(entry, session: session, generation: generation, request: target)
+                await self.present(entry, session: session, generation: generation, selection: ControlSelection(location: first.location, length: first.length))
             } catch {
                 guard self.isCurrent(entry, session: session, generation: generation) else { return }
                 self.fail(entry, error as? ControlFailure ?? (Task.isCancelled ? .interrupted : .source))
@@ -266,22 +263,22 @@ final class LocalControlController {
         return ControlReply(runtimeID: runtimeID, job: entry.value)
     }
 
-    private func navigate(_ request: ControlRequest) throws -> ControlReply {
-        guard let session = sessions[request.sessionID!], session.documentID == request.documentID,
+    private func navigate(_ request: ValidatedControlNavigationRequest) throws -> ControlReply {
+        guard let session = sessions[request.sessionID], session.documentID == request.documentID,
               let loaded = session.loaded else { throw ControlFailure.invalidID }
         guard loaded.diskSnapshot?.sha256 == request.sha256 else { throw ControlFailure.stale }
-        try ControlSelection(location: request.location!, length: request.length!).validate(in: loaded.content)
+        try request.selection.validate(in: loaded.content)
         guard jobs.count < ControlProtocol.maximumJobs,
               accepted.count < ControlProtocol.maximumJobs * 2 else { throw ControlFailure.capacity }
         session.explanationPlayer?.pause()
         interruptPending(in: session)
-        let entry = createJob(request, session: session)
+        let entry = createJob(requestID: request.id, session: session)
         entry.value.sha256 = loaded.diskSnapshot?.sha256
         entry.value.textSHA256 = FileSnapshot.sha256Hex(Data(loaded.content.utf8))
         let generation = session.generation
         entry.task = Task { [weak self, weak session, weak entry] in
             guard let self, let session, let entry else { return }
-            await self.present(entry, session: session, generation: generation, request: request)
+            await self.present(entry, session: session, generation: generation, selection: request.selection)
         }
         return ControlReply(runtimeID: runtimeID, job: entry.value)
     }
@@ -295,20 +292,19 @@ final class LocalControlController {
         session.install(loaded, documentID: documentID, sourceName: sourceName)
     }
 
-    private func createJob(_ request: ControlRequest, session: ControlSnapshotWindow) -> JobEntry {
-        let entry = JobEntry(ControlJob(id: UUID(), requestID: request.id, sessionID: session.sessionID,
+    private func createJob(requestID: UUID, session: ControlSnapshotWindow) -> JobEntry {
+        let entry = JobEntry(ControlJob(id: UUID(), requestID: requestID, sessionID: session.sessionID,
                                         windowID: session.windowID, documentID: session.documentID))
         jobs[entry.value.id] = entry
         return entry
     }
 
     private func present(_ entry: JobEntry, session: ControlSnapshotWindow,
-                         generation: Int, request: ControlRequest) async {
+                         generation: Int, selection: ControlSelection) async {
         guard isCurrent(entry, session: session, generation: generation) else { return }
         guard entry.value.documentID == session.documentID,
               entry.value.sha256 == session.loaded?.diskSnapshot?.sha256 else { fail(entry, .stale); return }
         entry.value.state = "presenting"
-        let selection = ControlSelection(location: request.location!, length: request.length!)
         session.select(selection)
         // Nicht das Setzen bestätigen: Die echte Textansicht nach nachfolgenden
         // Layoutdurchläufen erneut beobachten, ohne ihre Auswahl zu korrigieren.

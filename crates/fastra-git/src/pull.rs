@@ -167,6 +167,10 @@ fn redact_error(e: Error) -> Error {
             redact(&mut out);
             Error::GitFailed(out)
         }
+        Error::NotRepository(mut out) => {
+            redact(&mut out);
+            Error::NotRepository(out)
+        }
         Error::Cancelled(mut out) => {
             redact(&mut out);
             Error::Cancelled(out)

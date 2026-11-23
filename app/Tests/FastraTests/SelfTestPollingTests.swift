@@ -9,40 +9,93 @@ import Foundation
 import Testing
 @testable import Fastra
 
-@Test("Nur die ausdrücklich angeforderte manuelle IME-Abnahme erhält die längere Runner-Frist")
-func manualIMEReviewRunnerTimeout() throws {
-    let source = try String(contentsOf: appDirectory.appendingPathComponent("selftest.sh"), encoding: .utf8)
-    let lines = source.components(separatedBy: .newlines)
-    let start = try #require(lines.firstIndex { $0.hasPrefix("timeout_for_test()") })
-    let end = try #require(lines[start...].firstIndex { $0 == "}" })
-    let function = lines[start...end].joined(separator: "\n")
-    let defaultTimeout = try #require(lines.first { $0.hasPrefix("TIMEOUT_SECS=") })
-    for (name, directory, expected) in [("softwrapindent", "", 180),
-                                       ("softwrapindent", "/tmp/review", 420),
-                                       ("githistory", "", 60),
-                                       ("githistory", "/tmp/review", 420),
-                                       ("cmdw", "/tmp/review", 120)] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-s"]
-        var environment = ProcessInfo.processInfo.environment
-        environment["FASTRA_SOFTWRAPINDENT_REVIEW_DIR"] = directory
-        environment["FASTRA_GITHISTORY_REVIEW_DIR"] = directory
-        process.environment = environment
-        let input = Pipe(), output = Pipe()
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = Pipe()
-        try process.run()
-        input.fileHandleForWriting.write(Data((defaultTimeout + "\n" + function + "\ntimeout_for_test " + name + "\n").utf8))
-        try input.fileHandleForWriting.close()
-        process.waitUntilExit()
-        let actual = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        #expect(process.terminationStatus == 0)
-        #expect(Int(actual.trimmingCharacters(in: .whitespacesAndNewlines)) == expected)
-        let review = SelfTestPolling.manualReviewTimeout(for: name, reviewDirectory: directory)
-        #expect((review ?? SelfTestPolling.runnerTimeoutSeconds(for: name)) == Double(expected))
+/// Die Library wird als Ganzes geladen; keine Quelltextform ist Teil der Test-API.
+private func timeoutShell(_ script: String, arguments: [String] = [],
+                          environment: [String: String] = [:]) throws -> String {
+    // runTestProcess führt Overrides erneut mit der geerbten Umgebung zusammen.
+    // Deshalb leere Werte setzen: Entfernte Schlüssel würden wieder geerbt.
+    let knownReviewKeys = ["FASTRA_SOFTWRAPINDENT_REVIEW_DIR", "FASTRA_GITHISTORY_REVIEW_DIR",
+                           "FASTRA_MARKDOWN_IMPORT_REVIEW_DIR"]
+    let inheritedReviewKeys = ProcessInfo.processInfo.environment.keys.filter { $0.hasSuffix("_REVIEW_DIR") }
+    var clean = Dictionary(uniqueKeysWithValues: Set(knownReviewKeys + inheritedReviewKeys).map { ($0, "") })
+    clean.merge(environment) { _, value in value }
+    let library = appDirectory.appendingPathComponent("tools/selftest-timeouts.sh")
+    let result = try runTestProcess("/bin/bash", arguments: [
+        "-c", "set -u\n. \"$1\"\nshift\n" + script, "timeout-fixture", library.path,
+    ] + arguments, environment: clean)
+    #expect(result.status == 0, "Bash-Fristen: \(result.output)")
+    return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+@Test("Die Fristenbibliothek bleibt beim Sourcing ohne Runner-Nebenwirkungen")
+func timeoutLibrarySourcingHasNoRunnerSideEffects() throws {
+    let root = testTemporaryDirectory().appendingPathComponent("timeout-source-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let library = appDirectory.appendingPathComponent("tools/selftest-timeouts.sh")
+    let result = try runTestProcess("/bin/bash", arguments: ["-c", #"""
+        set -eu
+        cd "$2"
+        PATH=/nonexistent
+        # Jede externe Aktion beim Sourcing wäre ein Vertragsbruch. Der DEBUG-
+        # Trap läuft auch in Subshells und meldet ausgeführte Befehle, keine Definitionen.
+        source_command='. "$1"'
+        set -T
+        trap 'if [[ "$BASH_COMMAND" != "$source_command" && "$BASH_COMMAND" != "TIMEOUT_SECS=60" ]]; then printf "Unerwartete Aktion: %s\n" "$BASH_COMMAND" >&2; exit 1; fi' DEBUG
+        . "$1"
+        """#, "source-fixture", library.path, root.path])
+    #expect(result.status == 0, "\(result.output)")
+    #expect(result.output.isEmpty)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
+}
+
+@Test("Runner-Fristen und Reviewzuordnungen sind in beiden Richtungen abgeglichen")
+func runnerTimeoutConfigurationMatchesBash() throws {
+    let shellNames = try timeoutShell("selftest_timeout_special_names")
+        .split(whereSeparator: \.isWhitespace).map(String.init)
+    let swiftNames = SelfTestPolling.timeoutRules.filter { $0.seconds != nil }.map(\.test)
+    #expect(Set(shellNames) == Set(swiftNames))
+    #expect(shellNames.count == Set(shellNames).count)
+    #expect(swiftNames.count == Set(swiftNames).count)
+
+    let mappingLines = try timeoutShell("selftest_timeout_review_mappings").split(separator: "\n")
+    var shellReviews: [String: String] = [:]
+    for line in mappingLines {
+        let fields = line.split(separator: " ")
+        try #require(fields.count == 2)
+        #expect(shellReviews.updateValue(String(fields[1]), forKey: String(fields[0])) == nil)
     }
+    var swiftReviews: [String: String] = [:]
+    for rule in SelfTestPolling.timeoutRules {
+        if let key = rule.reviewKey { swiftReviews[rule.test] = key }
+    }
+    #expect(swiftReviews == shellReviews)
+
+    let names = Set(shellNames).union(swiftNames).union(shellReviews.keys)
+        .union(swiftReviews.keys).union(["search", "kein-solcher-selbsttest"])
+    let keys = Set(shellReviews.values).union(swiftReviews.values)
+    var environments: [[String: String]] = [[:], Dictionary(uniqueKeysWithValues: keys.map { ($0, "") })]
+    for key in keys {
+        environments.append([key: ""])
+        environments.append([key: "/tmp/review"])
+    }
+    environments.append(Dictionary(uniqueKeysWithValues: keys.map { ($0, "/tmp/review") }))
+    for environment in environments {
+        for name in names {
+            let output = try timeoutShell("timeout_for_test \"$1\"",
+                                          arguments: [name], environment: environment)
+            let shell = try #require(Double(output))
+            let swift = SelfTestPolling.runnerTimeoutSeconds(for: name, environment: environment)
+            #expect(swift == shell, "\(name), Reviewumgebung \(environment)")
+        }
+    }
+    for name in names {
+        let output = try timeoutShell("TIMEOUT_SECS=37\ntimeout_for_test \"$1\"", arguments: [name])
+        let expected = SelfTestPolling.timeoutRules.first { $0.test == name }?.seconds ?? 37
+        #expect(Double(output) == expected, "Konfigurierter Shellstandard, \(name)")
+    }
+    #expect(SelfTestPolling.runnerTimeoutSeconds(for: "search", environment: [:]) == 60)
+    #expect(SelfTestPolling.runnerTimeoutSeconds(for: "kein-solcher-selbsttest", environment: [:]) == 60)
 }
 
 /// Quelldateien, robust aus der Testdatei-Position abgeleitet
@@ -177,12 +230,11 @@ struct SelfTestPollBudgetTests {
         // Spät im Lauf: Der Deckel darf die Runner-Frist nicht überholen,
         // sonst endet der Test ohne eigene Diagnose als Runner-TIMEOUT.
         #expect(SelfTestPolling.hardCap(budget: 3, elapsed: 50, test: "search") == 7)
-        // Der Runner-Rest hat auch dann Vorrang, wenn er KÜRZER als die
+        // Der Runner-Rest hat auch dann Vorrang, wenn er kürzer als die
         // Frist ist: 15 s Frist bei 50 s Laufzeit ergeben 7 s, nicht 15.
         #expect(SelfTestPolling.hardCap(budget: 15, elapsed: 50, test: "search") == 7)
-        // Ist der Runner-Rest schon aufgebraucht, ist der Deckel 0 — die alte
-        // Untergrenze „mindestens die Frist" ließ hier 3 s zu, und die Diagnose
-        // kam erst bei 62 s, nach der 60-s-Runner-Frist (Review-Fund 2026-09-17).
+        // Bei aufgebrauchtem Runner-Rest muss der Deckel 0 sein, damit die
+        // Diagnose nicht erst nach der äußeren Abbruchfrist entsteht.
         #expect(SelfTestPolling.hardCap(budget: 3, elapsed: 59, test: "search") == 0)
         #expect(SelfTestPolling.hardCap(budget: 3, elapsed: 90, test: "search") == 0)
         // Ein langer Test hat entsprechend mehr Rest.
@@ -282,7 +334,7 @@ struct SelfTestPollingLoopTests {
                                      check: { done in pending.append(done) },
                                      onTimeout: { _ in timeouts += 1 },
                                      then: { successes += 1 })
-        // Solange die Antwort aussteht, ist NICHTS geplant — sonst könnten
+        // Solange die Antwort aussteht, ist nichts geplant — sonst könnten
         // sich zwei Durchläufe überholen und git doppelt befragen.
         #expect(pending.count == 1)
         #expect(clock.scheduled == 0)
@@ -304,143 +356,52 @@ struct SelfTestPollingLoopTests {
 
 @Suite("Wächter über die Umstellung der Selbsttest-Warteschleifen")
 struct SelfTestPollingRatchetTests {
-    /// Regressionssperre ohne GUI-Lauf: Die Zahl der rohen `asyncAfter`-
-    /// Schleifen in `SelfTest.swift` darf nicht wieder steigen. Der Sollwert
-    /// sinkt mit jedem migrierten Stapel; eine neue Warteschleife gehört über
-    /// `waitFor`/`waitForAsync` gebaut, nicht von Hand gezählt.
-    ///
-    /// Stand 2026-09-17 nach Stapel 0 und 1: 370 (vorher 391); nach Stapel 3
-    /// (Rahmen-Helfer waitForMainWindow/-SearchWindow/-Editor/-EditorShowing/
-    /// -UpdatesMenu/waitUntilSelfTest): 364; nach Stapel 2 (benannte
-    /// Poll-Helfer der Fenstertests und die Git-UI-Familie): 323; nach
-    /// Stapel 4 (65 einschrittige Poll-Helfer): 258; nach Stapel 5a (34
-    /// mehrstufige Helfer der Fenster-, Soft-Wrap-, 4D- und Tab-Tests): 219;
-    /// nach Stapel 5b (35 weitere, darunter Markdown-DOM, Druck, Diff und
-    /// Git-Aufnahmen): 172. Bewusst NICHT migriert und damit Teil dieser Zahl:
-    /// Beobachtungsfenster ohne Zielbedingung (observeBackgroundScroll,
-    /// pollForFlash, observeSoftWrapAnchor), der Dauertest
-    /// (waitForSoakWindows, finishSoakRoundWhenViewsSettled), Messschleifen
-    /// mit eigenem Takt (runSidebarToggleCycle, pollProjectOpenPerformance,
-    /// pollLoadPerformanceEditor) sowie Einmal-Verzögerungen.
-    @Test("Rohe asyncAfter-Warteschleifen in SelfTest.swift werden nicht mehr")
+    /// Quellprüfung ohne GUI-Lauf: Rohe `asyncAfter`-Schleifen dürfen nicht
+    /// zunehmen. Neue Warteschleifen nutzen `waitFor`/`waitForAsync`.
+    /// Verbleibende Ausnahmen sind Beobachtungsfenster ohne Zielbedingung
+    /// (`observeBackgroundScroll`, `pollForFlash`, `observeSoftWrapAnchor`),
+    /// Dauerteststeuerung (`waitForSoakWindows`, `finishSoakRoundWhenViewsSettled`),
+    /// Messschleifen mit eigenem Takt (`runSidebarToggleCycle`,
+    /// `pollProjectOpenPerformance`, `pollLoadPerformanceEditor`) und einmalige
+    /// Verzögerungen.
+    @Test("Rohe asyncAfter-Warteschleifen im gesamten Harness werden nicht mehr")
     func rawAsyncAfterCountDoesNotGrow() throws {
-        let source = try String(
-            contentsOf: appDirectory
-                .appendingPathComponent("Sources/Fastra/SelfTest.swift"),
-            encoding: .utf8
-        )
-        let count = source.components(separatedBy: "DispatchQueue.main.asyncAfter").count - 1
-        #expect(count <= 172, """
-            SelfTest.swift enthält \(count) rohe `DispatchQueue.main.asyncAfter`, \
-            erlaubt sind höchstens 172. Neue Warteschleifen gehören über \
-            `waitFor`/`waitForAsync` gebaut (siehe SelfTestPolling.swift); wurde \
-            ein weiterer Stapel migriert, gehört der Sollwert hier gesenkt.
+        let sources = try selfTestHarnessSources(in: appDirectory)
+        #expect(sources.contains { $0.path == "Sources/Fastra/SelfTest.swift" })
+        #expect(sources.contains { $0.path == "Sources/Fastra/SelfTestPolling.swift" })
+        #expect(sources.contains { $0.path == "Sources/Fastra/SoakTest.swift" })
+        let counts = sources.map { ($0.path, $0.source.components(
+            separatedBy: "DispatchQueue.main.asyncAfter").count - 1) }
+        let count = counts.reduce(0) { $0 + $1.1 }
+        // Unveränderte, jetzt vollständig erfasste Basis: SelfTest 172,
+        // zentraler Polling-Timer 1 und Soak 8. Dateiumzüge senken sie nicht.
+        #expect(count <= 181, """
+            Das Harness enthält \(count) rohe `DispatchQueue.main.asyncAfter`, \
+            erlaubt sind höchstens 181: \(counts). Neue Warteschleifen gehören \
+            über `waitFor`/`waitForAsync` gebaut; nach Migration den Sollwert senken.
             """)
     }
 
-    /// `SelfTestPolling.runnerTimeoutSeconds` spiegelt `timeout_for_test` aus
-    /// `selftest.sh`. Zwei Tabellen laufen ohne Wächter auseinander — und dann
-    /// rechnet der Wanduhr-Deckel mit einer Frist, die der Runner gar nicht
-    /// gibt (Vorbild: `knownSelfTestNamesMatchDispatch`).
-    @Test("Die Runner-Fristen in Swift und in selftest.sh sind dieselben")
-    func runnerTimeoutTableMatchesTheRunner() throws {
-        let runnerSource = try String(
-            contentsOf: appDirectory.appendingPathComponent("selftest.sh"),
-            encoding: .utf8
-        )
-        let lines = runnerSource.components(separatedBy: .newlines)
-
-        // Vorgabefrist des Runners.
-        let defaultLine = try #require(
-            lines.first { $0.hasPrefix("TIMEOUT_SECS=") },
-            "TIMEOUT_SECS steht nicht mehr in selftest.sh"
-        )
-        let defaultSeconds = try #require(
-            Double(defaultLine.dropFirst("TIMEOUT_SECS=".count)
-                .trimmingCharacters(in: .whitespaces)),
-            "TIMEOUT_SECS ist keine Zahl mehr: \(defaultLine)"
-        )
-
-        // Sonderfälle aus `timeout_for_test`: `name) echo N ;;`.
-        let start = try #require(
-            lines.firstIndex { $0.hasPrefix("timeout_for_test()") },
-            "timeout_for_test steht nicht mehr in selftest.sh"
-        )
-        let end = try #require(
-            lines[start...].firstIndex { $0 == "}" },
-            "timeout_for_test endet nicht — Klammern zählen nicht auf"
-        )
-        var shellTable: [String: Double] = [:]
-        var sawDefaultCase = false
-        for line in lines[start...end] {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasSuffix(";;"), let parenthesis = trimmed.firstIndex(of: ")") else {
-                continue
-            }
-            let label = String(trimmed[trimmed.startIndex..<parenthesis])
-            let body = trimmed[trimmed.index(after: parenthesis)...]
-                .trimmingCharacters(in: .whitespaces)
-            guard body.hasPrefix("echo ") else { continue }
-            let value = body.dropFirst("echo ".count)
-                .replacingOccurrences(of: ";;", with: "")
-                .trimmingCharacters(in: .whitespaces)
-            if label == "*" {
-                #expect(value == "\"$TIMEOUT_SECS\"",
-                        "Der Standardzweig liefert nicht mehr TIMEOUT_SECS: \(trimmed)")
-                sawDefaultCase = true
-                continue
-            }
-            // `print) echo 240 ;;` — auch mehrere Namen je Zweig wären hier
-            // sichtbar, dann stünde ein `|` im Label und der Test fiele auf.
-            let seconds = try #require(Double(value),
-                                       "Unlesbare Frist in selftest.sh: \(trimmed)")
-            for name in label.components(separatedBy: "|") {
-                shellTable[name.trimmingCharacters(in: .whitespaces)] = seconds
-            }
+    @Test("Die Harness-Inventur erfasst verschobene Timer und defer rekursiv")
+    func harnessInventoryIncludesNestedStatements() throws {
+        let sandbox = testTemporaryDirectory().appendingPathComponent("harness-audit-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+        let root = sandbox.appendingPathComponent("Sources/Fastra")
+        let nested = root.appendingPathComponent("Nested")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        let source = "DispatchQueue.main.asyncAfter(deadline: .now()) {}\ndefer { cleanup() }\n"
+        for name in ["SelfTestMoved.swift", "Nested/SoakTestMoved.swift", "Document.swift", "SelfTestNotes.md"] {
+            try source.write(to: root.appendingPathComponent(name), atomically: true, encoding: .utf8)
         }
-        #expect(sawDefaultCase, "timeout_for_test hat keinen Standardzweig mehr")
-        #expect(!shellTable.isEmpty, "timeout_for_test nennt keine Sonderfristen mehr")
-
-        for (name, seconds) in shellTable {
-            #expect(SelfTestPolling.runnerTimeoutSeconds(for: name) == seconds, """
-                selftest.sh gibt „\(name)" \(seconds) s, SelfTestPolling aber \
-                \(SelfTestPolling.runnerTimeoutSeconds(for: name)) s.
-                """)
-        }
-        #expect(SelfTestPolling.runnerTimeoutSeconds(for: "kein-solcher-selbsttest")
-                == defaultSeconds)
-
-        // Gegenrichtung: Swift darf keine Sonderfrist kennen, die der Runner
-        // nicht gibt. Die Namen stehen im `switch` der Spiegeltabelle.
-        let swiftSource = try String(
-            contentsOf: appDirectory
-                .appendingPathComponent("Sources/Fastra/SelfTestPolling.swift"),
-            encoding: .utf8
-        )
-        let switchStart = try #require(
-            swiftSource.range(of: "func runnerTimeoutSeconds(for test: String)"),
-            "runnerTimeoutSeconds steht nicht mehr in SelfTestPolling.swift"
-        )
-        let switchEnd = try #require(
-            swiftSource.range(of: "default: return", range: switchStart.upperBound..<swiftSource.endIndex),
-            "runnerTimeoutSeconds hat keinen default-Zweig mehr"
-        )
-        var swiftNames: Set<String> = []
-        for line in swiftSource[switchStart.upperBound..<switchEnd.lowerBound]
-            .components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("case "), let colon = trimmed.firstIndex(of: ":") else {
-                continue
-            }
-            for raw in trimmed[trimmed.index(trimmed.startIndex, offsetBy: 5)..<colon]
-                .components(separatedBy: ",") {
-                swiftNames.insert(raw.trimmingCharacters(in: .whitespaces)
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"")))
-            }
-        }
-        #expect(swiftNames == Set(shellTable.keys), """
-            Sonderfristen in SelfTestPolling: \(swiftNames.sorted()) — \
-            in selftest.sh: \(shellTable.keys.sorted()).
-            """)
+        let sources = try selfTestHarnessSources(in: sandbox)
+        #expect(sources.map(\.path) == ["Sources/Fastra/Nested/SoakTestMoved.swift", "Sources/Fastra/SelfTestMoved.swift"])
+        #expect(sources.allSatisfy { $0.source == source })
     }
+
+    @Test("Die Harness-Inventur lehnt eine fehlende Quellwurzel ab")
+    func harnessInventoryRejectsMissingRoot() {
+        let missing = testTemporaryDirectory().appendingPathComponent("missing-harness-\(UUID())")
+        #expect(throws: (any Error).self) { try selfTestHarnessSources(in: missing) }
+    }
+
 }

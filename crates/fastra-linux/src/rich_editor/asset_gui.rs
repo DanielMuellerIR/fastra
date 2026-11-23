@@ -209,14 +209,43 @@ pub(super) fn run(ui: Rc<Ui>) {
                 assert_eq!(value["width"], 1);
                 assert_eq!(value["transactions"].as_array().unwrap().len(), 1);
                 let value = editor.borrow().clone().unwrap();
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(root.join("images"), std::fs::Permissions::from_mode(0o555)).unwrap();
                 value.command("undo");
-                next(9);
+                next(81);
             }
-            9 => {
+            81 => {
                 let value = editor.borrow().clone().unwrap();
                 if value.busy.get() || *value.expected.borrow() != source {
                     return glib::ControlFlow::Continue;
                 }
+                use std::os::unix::fs::PermissionsExt;
+                let denied = std::fs::rename(root.join("images/1.png"), root.join("images/permission-control"));
+                std::fs::set_permissions(root.join("images"), std::fs::Permissions::from_mode(0o755)).unwrap();
+                assert_eq!(denied.unwrap_err().kind(), std::io::ErrorKind::PermissionDenied);
+                assert!(!value.failed.get());
+                assert_eq!(std::fs::read(root.join("images/1.png")).unwrap(), png);
+                assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
+                assert!(value.status.text().contains(ui.lang.text("Bildrücknahme unvollständig", "Image cleanup incomplete")));
+                asset_ui::recovery(&value);
+                next(82);
+            }
+            82 => {
+                let Some(window) = gtk::Window::list_toplevels().into_iter().filter_map(|widget| widget.downcast::<gtk::Window>().ok()).find(|window| window.is_visible() && window.title().as_deref() == Some(ui.lang.text("Bild-Rücknahmedaten", "Image recovery files"))) else {
+                    return glib::ControlFlow::Continue;
+                };
+                if !gui_test::capture(&window, "asset-undo-permission-retry", &shots) {
+                    return glib::ControlFlow::Continue;
+                }
+                click(&window, ui.lang.text("Bildrücknahme erneut versuchen", "Retry image cleanup"));
+                next(9);
+            }
+            9 => {
+                let value = editor.borrow().clone().unwrap();
+                if value.busy.get() || *value.expected.borrow() != source || root.join("images/1.png").exists() {
+                    return glib::ControlFlow::Continue;
+                }
+                assert!(!value.status.text().contains(ui.lang.text("Bildrücknahme unvollständig", "Image cleanup incomplete")));
                 assert!(!root.join("images/1.png").exists());
                 let state = value.assets.borrow();
                 assert_eq!(state.records.len(), 1);

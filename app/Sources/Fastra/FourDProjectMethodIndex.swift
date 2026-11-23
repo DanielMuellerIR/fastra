@@ -42,12 +42,12 @@ enum FourDProjectMethodIndex {
             for file in files where file.pathExtension.lowercased() == "4dm" {
                 // Am symlink-aufgelösten Pfad prüfen: `isRegularFile`
                 // beschreibt sonst den Link selbst, und eine völlig legitime
-                // verlinkte Methodendatei fiele aus dem Index
-                // (Review 2026-08-02). Aufgenommen wird nur, was NACHWEISLICH
+                // verlinkte Methodendatei fiele aus dem Index.
+                // Aufgenommen wird nur, was nachweislich
                 // eine normale Datei ist: Eine fehlgeschlagene Abfrage oder
                 // ein ins Leere zeigender Symlink lieferte `nil` und wäre
                 // vorher als Phantommethode in Highlighting und
-                // Vervollständigung gelandet (Review 2026-08-10).
+                // Vervollständigung gelandet.
                 let values = try? file.resolvingSymlinksInPath()
                     .resourceValues(forKeys: [.isRegularFileKey])
                 guard values?.isRegularFile == true else { continue }

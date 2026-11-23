@@ -1,11 +1,11 @@
 // GitDiffDisplayTests.swift
 //
-// Verhaltensgleichheit der Umstellung auf den gemeinsamen Renderer
-// (Etappe 2 Wunschpaket 2026-07c): Die Abbildung „Git-Diff-Modell →
-// gemeinsames Anzeige-Modell" darf die von `GitDiffParser` gelieferte
-// Zeilen-Ausrichtung NICHT verändern — gleiche Eingabe, gleiche Zeilen in
-// gleicher Reihenfolge mit identischen Nummern, Texten und Intraline-
-// Bereichen (das zeigte der frühere Renderer `GitSideBySideDiffView` an).
+// Verhaltensgleichheit der Umstellung auf den
+// gemeinsamen Renderer: Die Abbildung „Git-Diff-Modell → gemeinsames
+// Anzeige-Modell" darf die von `GitDiffParser` gelieferte Zeilen-Ausrichtung
+// nicht verändern — gleiche Eingabe, gleiche Zeilen in gleicher Reihenfolge mit
+// identischen Nummern, Texten und Intraline- Bereichen (das zeigte der frühere
+// Renderer `GitSideBySideDiffView` an).
 
 import Testing
 import Foundation

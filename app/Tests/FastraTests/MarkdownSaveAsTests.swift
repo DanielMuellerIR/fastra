@@ -5,6 +5,89 @@ import Testing
 
 @Suite("Markdown-Speichern-unter")
 struct MarkdownSaveAsTests {
+    @Test("Abgebrochene Bildkopien melden entfernte Bilder, private Reste und den ursprünglichen Fehler")
+    @MainActor
+    func rollbackReportsPartialRemoval() async throws {
+        let (root, _, target) = try fixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let images = try (0..<2).map { index in
+            try MarkdownImageStore.storePastedData(.init(data: Data("image-\(index)".utf8), fileExtension: "png"),
+                                                   documentURL: target, reserveForTransaction: true)
+        }
+        let prepared = MarkdownSaveAs.Prepared(content: "unchanged", createdImages: images)
+        var claim: URL?
+        let hooks = MarkdownImageRemoval.Hooks(afterClaim: { original, temporary in
+            if original.lastPathComponent == images[1].fileURL.lastPathComponent { claim = temporary }
+        }, beforeUnlink: { index in
+            if index == 1 {
+                try Data("foreign".utf8).write(to: images[1].fileURL)
+                throw POSIXError(.EIO)
+            }
+        })
+        var completed = false
+        var warnings: [String] = []
+        prepared.rollbackReporting(warningHandler: { _, message in warnings.append(message) }, hooks: hooks) { completed = true }
+        try #require(await waitUntil { completed })
+        try #require(warnings.count == 1)
+        #expect(warnings[0].contains(images[0].fileURL.lastPathComponent))
+        let retained = try #require(claim)
+        #expect(warnings[0].contains(retained.path))
+        #expect(warnings[0].contains(POSIXError(.EIO).localizedDescription))
+        #expect(!FileManager.default.fileExists(atPath: images[0].fileURL.path))
+        #expect(try Data(contentsOf: images[1].fileURL) == Data("foreign".utf8))
+        #expect(try Data(contentsOf: retained) == Data("image-1".utf8))
+        #expect(prepared.content == "unchanged")
+        #expect(images.allSatisfy { !MarkdownImageStore.isReserved($0.fileURL) })
+        let original = POSIXError(.ENOSPC)
+        let combined = prepared.rollback(after: original)
+        #expect(combined.localizedDescription.contains(original.localizedDescription))
+        #expect(combined is MarkdownSaveAs.PreparationFailure)
+    }
+
+    @Test("Speichern-unter-Abbruch meldet gescheiterte Bildrücknahme über den Workspace")
+    @MainActor
+    func workspaceForwardsRollbackFailure() async throws {
+        let (root, source, target) = try fixture()
+        let protectedImage = target.deletingLastPathComponent().appendingPathComponent("images/2.png")
+        defer {
+            if let empty = acl_init(0) {
+                _ = acl_set_file(protectedImage.path, ACL_TYPE_EXTENDED, empty)
+                acl_free(UnsafeMutableRawPointer(empty))
+            }
+            try? FileManager.default.removeItem(at: root)
+        }
+        let content = "![A](images/a.png)\n\n![B](images/b.png)"
+        try Data(content.utf8).write(to: source)
+        for name in ["a", "b"] {
+            try Data(name.utf8).write(to: source.deletingLastPathComponent().appendingPathComponent("images/\(name).png"))
+        }
+        let workspace = Workspace()
+        var tab = EditorTab(title: "protocol.md", path: source.path, content: content)
+        tab.url = source
+        workspace.tabs = [tab]; workspace.activeTabID = tab.id
+        var warnings: [(String, String)] = []
+        workspace.saveSafetyWarningHandler = { warnings.append(($0, $1)) }
+        workspace.saveBeforeCoordinateHandler = { _ in
+            let acl = acl_from_text("!#acl 1\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:deny:delete\n")
+            if let acl {
+                defer { acl_free(UnsafeMutableRawPointer(acl)) }
+                #expect(acl_set_file(protectedImage.path, ACL_TYPE_EXTENDED, acl) == 0)
+            } else { Issue.record("Test-ACL fehlt") }
+            workspace.activeTabContent.wrappedValue += " changed"
+        }
+        var completed: Bool?
+        workspace.saveTabAs(id: tab.id, to: target, expectedTargetState: .absent, isMarkdown: true) { completed = $0 }
+        try #require(await waitUntil { completed != nil })
+        #expect(completed == false)
+        #expect(workspace.activeTab?.content == content + " changed")
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+        let cleanup = warnings.filter { $0.0 == L10n.string("Bilddateien konnten nicht vollständig entfernt werden") }
+        try #require(cleanup.count == 1)
+        #expect(cleanup[0].1.contains("1.png"))
+        #expect(try Data(contentsOf: protectedImage) == Data("b".utf8))
+        #expect(try Data(contentsOf: target.deletingLastPathComponent().appendingPathComponent("images/1.png")) == Data("a".utf8))
+    }
+
     @Test("Eine vorbereitete Speicherung darf keinen wiederverwendeten Tabplatz übernehmen", arguments: [false, true])
     @MainActor
     func reusedTabDuringPreparation(_ duringCommit: Bool) async throws {

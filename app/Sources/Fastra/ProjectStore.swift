@@ -5,7 +5,7 @@ import Foundation
 /// (Ordner mit `.git`), aber auch ein bewusst per „Ordner öffnen…" gewählter
 /// Ordner ohne Git zählt (Nutzer-Absicht schlägt Heuristik).
 ///
-/// `id` dient nur der SwiftUI-Identifikation und wird NICHT persistiert —
+/// `id` dient nur der SwiftUI-Identifikation und wird nicht persistiert —
 /// gleiches Muster wie `SearchFolderEntry` (UUID würde sonst pro App-Start
 /// „neu" wirken).
 struct ProjectEntry: Identifiable, Hashable, Codable {
@@ -71,10 +71,10 @@ enum ProjectStore {
 
     /// Sucht vom Startpunkt aufwärts den Wurzelordner eines Git-Repositories:
     /// den ersten Ordner, der einen `.git`-Eintrag enthält. `.git` darf Ordner
-    /// ODER Datei sein — bei `git worktree` ist `.git` eine Datei mit Verweis.
+    /// oder Datei sein — bei `git worktree` ist `.git` eine Datei mit Verweis.
     /// Liefert `nil`, wenn bis zur Wurzel nichts gefunden wird (kein Repo).
     ///
-    /// Bewusst KEINE Ausführung von `git` — reiner Dateisystem-Check, damit
+    /// Bewusst keine Ausführung von `git` — reiner Dateisystem-Check, damit
     /// die Erkennung auch ohne installiertes git funktioniert.
     static func repositoryRoot(for url: URL,
                                fileManager: FileManager = .default) -> URL? {
@@ -82,16 +82,12 @@ enum ProjectStore {
         guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
             return nil
         }
-        // Aufstieg über PFAD-STRINGS, nicht über URL.deletingLastPathComponent:
-        // Letzteres hängt je nach URL-Form an der Wurzel `/..`-Komponenten an,
-        // statt bei `/` stehen zu bleiben — der Selbsttest `search` hing damit
-        // in einer Endlosschleife (Befund 2026-07-12, per `sample` diagnostiziert).
-        // NSString.deletingLastPathComponent ist deterministisch: `/a` → `/`,
-        // `/` → `/`. Bewusst KEINE Symlink-/Standardisierungs-Magie: Der
-        // gefundene Root behält denselben Pfad-Präfix wie die Eingabe — so
-        // landet in `recentProjects` derselbe String wie bei `openProject`.
-        //
-        // Startpunkt: bei einer Datei deren Ordner, sonst der Ordner selbst.
+        // Über Pfad-Strings aufsteigen: `NSString.deletingLastPathComponent`
+        // bleibt bei `/` stehen, während die URL-Variante dort je nach URL-Form
+        // weitere `/..`-Komponenten anhängen kann. Nicht standardisieren oder
+        // Symlinks auflösen: Der Root soll denselben Pfadpräfix behalten wie die
+        // Eingabe, damit `recentProjects` und `openProject` übereinstimmen.
+        // Startpunkt ist bei einer Datei deren Ordner, sonst der Ordner selbst.
         var current = isDirectory.boolValue
             ? url.path
             : (url.path as NSString).deletingLastPathComponent

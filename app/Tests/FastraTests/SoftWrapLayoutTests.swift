@@ -88,8 +88,8 @@ struct SoftWrapLayoutTests {
         let editor = controller(text: "eins\nzwei\ndrei\nvier", wrapLines: false)
         let manager = try #require(editor.textView.selectionManager)
 
-        // Start in Zeile 3 („drei", Offsets 10...14), dann ein Rechteck NACH
-        // OBEN aufziehen. Die Kopfzeile ist danach „zwei" — die Zeilenbereiche
+        // Start in Zeile 3 („drei", Offsets 10...14), dann ein Rechteck nach
+        // oben aufziehen. Die Kopfzeile ist danach „zwei" — die Zeilenbereiche
         // stehen in der Auswahl aber immer von oben nach unten.
         manager.setSelectedRanges([NSRange(location: 10, length: 2)])
         #expect(editor.textView.fastraSelectColumn(upwards: true))
@@ -248,7 +248,7 @@ struct SoftWrapLayoutTests {
     @MainActor
     func wordWrapKeepsComposedPunctuationTogether() throws {
         // Das `#` ist ein Satzzeichen, gehoert mit Variantenselektor und
-        // Tastenkappenzeichen aber zu EINEM Graphem. Die schnelle
+        // Tastenkappenzeichen aber zu einem Graphem. Die schnelle
         // Satzzeichensuche darf deshalb nicht direkt hinter `#` umbrechen.
         let text = String(repeating: "#️⃣", count: 80)
         let editor = controller(

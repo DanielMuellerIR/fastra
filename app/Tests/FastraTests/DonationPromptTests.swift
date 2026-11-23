@@ -67,8 +67,8 @@ func shouldShow_nach91Tagen_ja() {
 @Test("shouldShow: Grenzfall exakt 90 Tage → false (Cooldown noch aktiv)")
 func shouldShow_grenzfall90Tage_nein() {
     let now = Date()
-    // Exakt 90 Tage sind noch NICHT abgelaufen — erst nach 90*24*60*60
-    // Sekunden PLUS mindestens einer weiteren Sekunde würde der Cooldown enden.
+    // Exakt 90 Tage sind noch nicht abgelaufen — erst nach 90*24*60*60
+    // Sekunden plus mindestens einer weiteren Sekunde würde der Cooldown enden.
     let dismissed = now.addingTimeInterval(-90 * 24 * 60 * 60)
     // Zeitintervall ist exakt cooldownDays Sekunden → noch nicht abgelaufen.
     #expect(
@@ -102,11 +102,11 @@ func userDefaults_roundtrip() {
     // Dismiss aufzeichnen — Zeitstempel muss ungefähr jetzt sein
     // (Toleranz nach oben: 2 s Testlaufzeit).
     //
-    // Toleranz nach UNTEN (war Flaky, ~1 von 4 Läufen): `Date` rechnet
+    // Toleranz nach unten (war Flaky, ~1 von 4 Läufen): `Date` rechnet
     // intern seit 2001; `timeIntervalSince1970` addiert die Epochen-
     // Differenz und rundet dabei auf Double-Granularität (~120 ns bei
     // dieser Größenordnung). Das gespeicherte Datum kann dadurch eine
-    // Rundungsstufe VOR `beforeDismiss` liegen (gemessen: exakt
+    // Rundungsstufe vor `beforeDismiss` liegen (gemessen: exakt
     // -1.19e-07 s in ~25 % von 50.000 Iterationen). 1 ms Schlupf fängt
     // das ab, ohne echte Fehler (falsche Einheit, 0-Wert) zu maskieren.
     let beforeDismiss = Date()

@@ -1,8 +1,8 @@
 // HelpContentTests.swift
 //
-// Tests für die Fastra-Hilfe (Etappe 4 Wunschpaket 2026-07b): Bundle-Laden
-// beider Sprachen, Anker-Slugs, Überschriften-IDs im gerenderten HTML und
-// der Anti-Drift zwischen `HelpSection` und den Markdown-Dateien.
+// Tests für die Fastra-Hilfe: Bundle-Laden beider
+// Sprachen, Anker-Slugs, Überschriften-IDs im gerenderten HTML und der
+// Anti-Drift zwischen `HelpSection` und den Markdown-Dateien.
 
 import Foundation
 import Testing

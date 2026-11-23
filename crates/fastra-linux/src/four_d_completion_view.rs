@@ -31,6 +31,17 @@ struct Pending {
     project_id: Option<String>,
     suggestions: Suggestions,
 }
+struct MenuActivation {
+    window: glib::WeakRef<gtk::ApplicationWindow>,
+    handler: Option<glib::SignalHandlerId>,
+}
+impl Drop for MenuActivation {
+    fn drop(&mut self) {
+        if let (Some(window), Some(handler)) = (self.window.upgrade(), self.handler.take()) {
+            window.disconnect(handler);
+        }
+    }
+}
 struct State {
     ui: Weak<Ui>,
     doc: Weak<Document>,
@@ -41,6 +52,7 @@ struct State {
     status: gtk::Label,
     cache: Rc<Cache>,
     job: Cell<u64>,
+    menu_activation: RefCell<Option<MenuActivation>>,
     focus: Cell<u64>,
     cancel: RefCell<Cancellation>,
     pending: RefCell<Option<Pending>>,
@@ -51,9 +63,6 @@ struct State {
 impl Drop for State {
     fn drop(&mut self) {
         self.cancel.get_mut().cancel();
-        if self.popup.parent().is_some() {
-            self.popup.unparent();
-        }
     }
 }
 fn cache(ui: &Rc<Ui>) -> Rc<Cache> {
@@ -109,6 +118,7 @@ impl State {
     }
     fn close(&self) {
         self.job.set(self.job.get().wrapping_add(1));
+        self.menu_activation.borrow_mut().take();
         self.cancel.borrow().cancel();
         self.pending.borrow_mut().take();
         self.target.borrow_mut().take();
@@ -217,6 +227,9 @@ impl State {
         );
     }
     fn request(self: &Rc<Self>, manual: bool) {
+        self.schedule(manual, false);
+    }
+    fn schedule(self: &Rc<Self>, manual: bool, from_menu: bool) {
         if self.inserting.get() {
             return;
         }
@@ -232,109 +245,154 @@ impl State {
         let Some(target)=source_panes::capture(&doc) else{return};
         let job = self.job.get();
         let weak = Rc::downgrade(self);
-        glib::timeout_add_local_once(
-            Duration::from_millis(if manual { 0 } else { 90 }),
-            move || {
-                let Some(state) = weak.upgrade().filter(|state| state.job.get() == job) else {
-                    return;
-                };
-                let Some((ui, doc, view)) = state.owner() else {
-                    return;
-                };
-                if !manual && !view.has_focus() {
-                    return;
-                }
-                if doc.buffer.char_count() as usize > fastra_core::four_d::MAX_SOURCE_BYTES {
-                    return;
-                }
-                let source = buffer_text(&doc.buffer);
-                let revision = doc.revision.get();
-                if !target.valid(&doc){return;}
-                let cursor = target.buffer.cursor_position();
-                let project_id =
-                    project_view::current_binding(&ui).map(|binding| binding.owner_id());
-                let project_generation = state.cache.generation.get();
-                let current = state.cache.current(&ui);
-                let methods = if current {
-                    state.cache.methods.borrow().clone()
-                } else {
-                    Vec::new()
-                };
-                let components = if current {
-                    state.cache.components.borrow().clone()
-                } else {
-                    Vec::new()
-                };
-                let cancel = Cancellation::default();
-                *state.cancel.borrow_mut() = cancel.clone();
-                let weak = Rc::downgrade(&state);
-                git_view::background(
-                    move || {
-                        let offset = source
-                            .chars()
-                            .take(cursor as usize)
-                            .map(char::len_utf16)
-                            .sum();
-                        let suggestions = core::suggest(
-                            &source,
-                            fastra_core::Utf16Range {
-                                location: offset,
-                                length: 0,
-                            },
-                            manual,
-                            open,
-                            &methods,
-                            &components,
-                            &cancel,
-                        )
-                        .map_err(|e| e.to_string())?;
-                        Ok(suggestions.map(|suggestions| Pending {
-                            source,
-                            revision,
-                            cursor,
-                            project_generation,
-                            project_id,
-                            suggestions,
-                        }))
-                    },
-                    move |answer| {
-                        let Some(state) = weak.upgrade().filter(|state| state.job.get() == job)
-                        else {
-                            return;
-                        };
-                        let Some((ui, doc, _)) = state.owner() else {
-                            return;
-                        };
-                        match answer {
-                            Ok(Some(pending))
-                                if doc.revision.get() == revision
-                                    && target.valid(&doc)
-                                    && target.buffer.cursor_position() == cursor
-                                    && state.cache.generation.get() == project_generation =>
-                            {
-                                let now = project_view::current_binding(&ui)
-                                    .map(|binding| binding.owner_id());
-                                if now != pending.project_id {
-                                    return;
-                                }
-                                *state.target.borrow_mut()=Some(target.clone());
-                                state.show(pending, current);
+        let run = move || {
+            let Some(state) = weak.upgrade().filter(|state| state.job.get() == job) else {
+                return;
+            };
+            let Some((ui, doc, view)) = state.owner() else {
+                return;
+            };
+            if !manual && !view.has_focus() {
+                return;
+            }
+            if doc.buffer.char_count() as usize > fastra_core::four_d::MAX_SOURCE_BYTES {
+                return;
+            }
+            let source = buffer_text(&doc.buffer);
+            let revision = doc.revision.get();
+            if !target.valid(&doc){return;}
+            let cursor = target.buffer.cursor_position();
+            let project_id =
+                project_view::current_binding(&ui).map(|binding| binding.owner_id());
+            let project_generation = state.cache.generation.get();
+            let current = state.cache.current(&ui);
+            let methods = if current {
+                state.cache.methods.borrow().clone()
+            } else {
+                Vec::new()
+            };
+            let components = if current {
+                state.cache.components.borrow().clone()
+            } else {
+                Vec::new()
+            };
+            let cancel = Cancellation::default();
+            *state.cancel.borrow_mut() = cancel.clone();
+            let weak = Rc::downgrade(&state);
+            git_view::background(
+                move || {
+                    let offset = source
+                        .chars()
+                        .take(cursor as usize)
+                        .map(char::len_utf16)
+                        .sum();
+                    let suggestions = core::suggest(
+                        &source,
+                        fastra_core::Utf16Range {
+                            location: offset,
+                            length: 0,
+                        },
+                        manual,
+                        open,
+                        &methods,
+                        &components,
+                        &cancel,
+                    )
+                    .map_err(|e| e.to_string())?;
+                    Ok(suggestions.map(|suggestions| Pending {
+                        source,
+                        revision,
+                        cursor,
+                        project_generation,
+                        project_id,
+                        suggestions,
+                    }))
+                },
+                move |answer| {
+                    let Some(state) = weak.upgrade().filter(|state| state.job.get() == job)
+                    else {
+                        return;
+                    };
+                    let Some((ui, doc, _)) = state.owner() else {
+                        return;
+                    };
+                    match answer {
+                        Ok(Some(pending))
+                            if doc.revision.get() == revision
+                                && target.valid(&doc)
+                                && target.buffer.cursor_position() == cursor
+                                && state.cache.generation.get() == project_generation =>
+                        {
+                            let now = project_view::current_binding(&ui)
+                                .map(|binding| binding.owner_id());
+                            if now != pending.project_id {
+                                return;
                             }
-                            Ok(_) => state.filtering.set(false),
-                            Err(error) if manual => ui.status.set_text(&format!(
-                                "{} {error}",
-                                ui.lang.text(
-                                    "4D-Vorschläge nicht verfügbar:",
-                                    "4D suggestions unavailable:"
-                                )
-                            )),
-                            Err(_) => {}
+                            *state.target.borrow_mut()=Some(target.clone());
+                            state.show(pending, current);
                         }
-                    },
-                );
-            },
-        );
-        let _ = (ui, doc);
+                        Ok(_) => state.filtering.set(false),
+                        Err(error) if manual => ui.status.set_text(&format!(
+                            "{} {error}",
+                            ui.lang.text(
+                                "4D-Vorschläge nicht verfügbar:",
+                                "4D suggestions unavailable:"
+                            )
+                        )),
+                        Err(_) => {}
+                    }
+                },
+            );
+        };
+        let window = ui.window.downgrade();
+        let weak = Rc::downgrade(self);
+        glib::timeout_add_local_once(Duration::from_millis(if manual { 0 } else { 90 }), move || {
+            if from_menu {
+                if let (Some(state), Some(window)) = (weak.upgrade(), window.upgrade()) {
+                    if state.job.get() == job && !window.is_active() {
+                        state.wait_for_menu_activation(&window, job, run);
+                        return;
+                    }
+                }
+            }
+            run();
+        });
+    }
+    fn wait_for_menu_activation(
+        self: &Rc<Self>,
+        window: &gtk::ApplicationWindow,
+        job: u64,
+        run: impl FnOnce() + 'static,
+    ) {
+        // GTK kann beim Schließen verschachtelter Menüs den Fensterfokus kurz
+        // verlieren. Nur der bestehende Auftrag darf nach der Aktivierung weiterlaufen.
+        let weak = Rc::downgrade(self);
+        let run = RefCell::new(Some(run));
+        let handler = window.connect_is_active_notify(move |window| {
+            if !window.is_active() {
+                return;
+            }
+            if let Some(run) = run.borrow_mut().take() {
+                let weak = weak.clone();
+                // Nach den übrigen Aktivierungssignalen das gebundene Ziel prüfen.
+                glib::idle_add_local_once(move || {
+                    if let Some(state) = weak.upgrade().filter(|state| state.job.get() == job) {
+                        state.menu_activation.borrow_mut().take();
+                        run();
+                    }
+                });
+            }
+        });
+        *self.menu_activation.borrow_mut() = Some(MenuActivation {
+            window: window.downgrade(),
+            handler: Some(handler),
+        });
+        let weak = Rc::downgrade(self);
+        glib::timeout_add_local_once(Duration::from_millis(500), move || {
+            if let Some(state) = weak.upgrade().filter(|state| state.job.get() == job) {
+                state.menu_activation.borrow_mut().take();
+            }
+        });
     }
     fn show(&self, pending: Pending, index_current: bool) {
         while let Some(child) = self.list.first_child() {
@@ -496,7 +554,7 @@ pub(super) fn install(ui: &Rc<Ui>, doc: &Rc<Document>, view: &sourceview5::View)
     popup.set_autohide(false);
     popup.set_has_arrow(false);
     popup.set_position(gtk::PositionType::Bottom);
-    popup.set_parent(view);
+    source_panes::bind_completion_popover(view, &popup);
     let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
     root.set_margin_top(8);
     root.set_margin_bottom(8);
@@ -532,6 +590,7 @@ pub(super) fn install(ui: &Rc<Ui>, doc: &Rc<Document>, view: &sourceview5::View)
         status,
         cache: cache(ui),
         job: Cell::new(0),
+        menu_activation: RefCell::new(None),
         focus: Cell::new(0),
         cancel: RefCell::new(Cancellation::default()),
         pending: RefCell::new(None),
@@ -661,7 +720,7 @@ pub(super) fn open(ui: &Rc<Ui>) {
         if let Some(view) = state.view.upgrade() {
             view.grab_focus();
         }
-        state.request(true);
+        state.schedule(true, true);
     } else {
         ui.status.set_text(ui.lang.text("4D-Quelltext ohne Auswahl aktivieren. Vorschläge sind in Rich-, Hex- und Nur-Lese-Ansichten gesperrt.","Activate 4D source without a selection. Suggestions are unavailable in Rich, hex and read-only views."));
     }

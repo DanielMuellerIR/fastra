@@ -1,4 +1,4 @@
-# F11 – Git-Indexänderungen und offene Commit-Grenze
+# F11 – Git-Indexänderungen
 
 ## Abgleich mit macOS
 
@@ -22,7 +22,11 @@ Unstage benutzt ausschließlich `restore --staged --source=<gebundene HEAD-OID>`
 
 ## Bewusste Grenzen
 
-- Commit bleibt sichtbar gesperrt. Der kleine echte Git-Versuch zeigte, dass normales `git commit` die HEAD-Sperre selbst benötigt. Fastra kann sie nicht gleichzeitig als eigene Branchbindung halten. Eine vorgelagerte Prüfung allein ist keine atomare Zusage. `commit-tree`/eigene Ref- oder Reflog-Veröffentlichung wurde deshalb nicht als Ersatz eingeführt. Hooks, Signaturen und Reflogs werden nicht still verändert; Commit erfolgt vorerst im Git-CLI.
+- Für einen Commit das Fenster „Stage / Unstage“ schließen und in „Git · Lesen“
+  dasselbe Repository wählen. „Commit erstellen …“ öffnet die eigene Vorschau
+  des vollständigen Index. Der [Commit-Dialog](F11-GIT-COMMIT.md) verwendet
+  Gits native Ref-Transaktion und prüft den bestätigten Commit vor der
+  Veröffentlichung.
 - Konfigurierte externe Clean-/Process-Filter und ausführbare `post-index-change`-Hooks werden für diesen Indexpfad ausdrücklich abgewiesen, bevor sie bei der Vorbereitung laufen könnten. Es gibt keine still abgeschalteten Ersatzpfade. Bereits vorhandene lesende APIs bleiben unverändert.
 - Die Liste erlaubt höchstens 500 Statusänderungen, die Freigabe höchstens 128 Pfade einschließlich der beiden Seiten von Umbenennungen. Verzeichnisse werden nicht rekursiv bereitgestellt. Submodule, ungelöste Indexkonflikte, Spezialdateien und Pfade durch Symlink-Verzeichnisse benötigen das Git-CLI. Einzelne Symlinks selbst bleiben echte Git-Symlinks; ihr Ziel wird nicht als Dateiinhalte übernommen.
 - Grenzen: 32 MiB je Datei und Index, 64 MiB ausgewählte Dateiinhalte insgesamt, 2 MiB vollständige Vorschauausgabe, 64 Pfadkomponenten und 256 gemeinsam gehaltene Verzeichnisvorfahren je Beobachtungsbasis. Überschreitungen sind Fehler; gekürzte Diffs lassen sich nicht freigeben. FIFOs werden vor dem Lesen abgewiesen; Dateideskriptoren folgen keinem letzten Symlink. Die enthaltenen Git-CLI-Prozesse behalten Zeitlimit und abbrechbare Prozessgruppen.

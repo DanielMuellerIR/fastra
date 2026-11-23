@@ -13,11 +13,11 @@
 // 1. **Neu erzeugen statt durchreichen.** Nichts vom Eingabetext wandert
 //    unverändert in die Ausgabe. Der Scanner zerlegt das Fragment, prüft jedes
 //    Stück und baut daraus eine kanonische Form neu auf. Damit sieht WebKit nur
-//    Text, den DIESER Code geschrieben hat — die klassische Ursache für
+//    Text, den dieser Code geschrieben hat — die klassische Ursache für
 //    Mutation-XSS (Filter und Renderer parsen dieselben Bytes verschieden)
 //    entfällt weitgehend.
 // 2. **Fail-closed auf Fragmentebene.** Sobald irgendetwas nicht in die enge
-//    Grammatik passt, wird das GANZE Fragment verworfen. Kein Reparieren,
+//    Grammatik passt, wird das ganze Fragment verworfen. Kein Reparieren,
 //    kein „das eine Tag rauswerfen und den Rest behalten" — genau daraus
 //    entstehen unbalancierte Bäume, die anders geparst werden als gedacht.
 // 3. **Keine Selbstgestaltung.** Weder `style` noch `class` noch `id` sind
@@ -39,7 +39,7 @@ enum MarkdownHTMLWhitelist {
     /// Elemente ohne Inhalt. Sie landen nie auf dem Verschachtelungsstapel.
     static let voidElements: Set<String> = ["br", "hr", "img", "col", "wbr"]
 
-    /// Bewusst NICHT enthalten und damit immer ein Verwerfungsgrund:
+    /// Bewusst nicht enthalten und damit immer ein Verwerfungsgrund:
     /// `script`, `style`, `iframe`, `object`, `embed`, `meta`, `link`, `base`,
     /// `form`, `input`, `template`, `noscript`, `textarea`, `title`, `svg`,
     /// `math`. `svg` und `math` schalten die HTML-Parsingregeln um und sind
@@ -89,7 +89,7 @@ enum MarkdownHTMLWhitelist {
 
     /// Zerlegt und prüft rohe HTML-Fragmente eines Dokuments in Lesereihenfolge.
     ///
-    /// Der Stapel läuft über das GANZE Dokument, weil `<details>` und sein
+    /// Der Stapel läuft über das ganze Dokument, weil `<details>` und sein
     /// `</details>` in getrennten cmark-Blöcken liegen können. Am Dokumentende
     /// schließt `closingTail()` alles noch Offene — ein Fragment kann die
     /// Struktur des Dokuments dadurch nicht über sein Ende hinaus verändern.
@@ -196,7 +196,7 @@ enum MarkdownHTMLWhitelist {
         let serialized: String
     }
 
-    /// `name attr="wert" attr2='wert'` — Werte MÜSSEN gequotet sein.
+    /// `name attr="wert" attr2='wert'` — Werte müssen gequotet sein.
     private static func parseStartTag(_ raw: String) -> StartTag? {
         var body = raw
         var selfClosing = false
@@ -390,8 +390,8 @@ enum MarkdownHTMLSanitizing {
     /// `CMARK_OPT_UNSAFE`, gibt also alles durch, was hier stehen bleibt.
     /// Früher gab diese Funktion bei einem cmark-Fehler stillschweigend auf
     /// und ignorierte die Rückgabewerte der Schreibzugriffe — die
-    /// Sicherheitsgrenze stand damit im Fehlerfall offen statt zu schließen
-    /// (Review 2026-08-02). `cmark_node_set_literal` und
+    /// Sicherheitsgrenze stand damit im Fehlerfall offen statt zu schließen.
+    /// `cmark_node_set_literal` und
     /// `cmark_node_set_url` melden Erfolg mit `1`.
     @discardableResult
     static func apply(to document: UnsafeMutablePointer<cmark_node>) -> Bool {
@@ -410,7 +410,7 @@ enum MarkdownHTMLSanitizing {
             switch cmark_node_get_type(node) {
             case CMARK_NODE_HTML_BLOCK, CMARK_NODE_HTML_INLINE:
                 let raw = cmark_node_get_literal(node).map { String(cString: $0) } ?? ""
-                // Schlägt das Ersetzen fehl, bleibt das ROHE HTML im Knoten
+                // Schlägt das Ersetzen fehl, bleibt das rohe HTML im Knoten
                 // stehen. Sofort abbrechen statt weiterlaufen.
                 guard cmark_node_set_literal(node, sanitizer.sanitize(raw)) == 1 else {
                     return false
@@ -428,12 +428,12 @@ enum MarkdownHTMLSanitizing {
             }
         }
 
-        // Offene Elemente am DOKUMENTENDE schließen — nicht am letzten
+        // Offene Elemente am Dokumentende schließen — nicht am letzten
         // HTML-Knoten: Der kann mitten im Dokument liegen, und ein dort
         // eingefügtes `</details>` schnitte den nachfolgenden Markdown-Inhalt
-        // aus dem Element heraus, obwohl der Autor ihn hineingeschrieben hat
-        // (Review 2026-08-02). Ein eigener HTML-Block ganz am Ende hält die
-        // Ausgabe wohlgeformt UND die Einschachtelung wie geschrieben.
+        // aus dem Element heraus, obwohl der Autor ihn hineingeschrieben hat.
+        // Ein eigener HTML-Block ganz am Ende hält die
+        // Ausgabe wohlgeformt und die Einschachtelung wie geschrieben.
         if lastHTMLNode != nil {
             let tail = sanitizer.closingTail()
             if !tail.isEmpty {

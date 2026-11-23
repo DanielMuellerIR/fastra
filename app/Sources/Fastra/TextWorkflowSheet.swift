@@ -209,7 +209,7 @@ struct TextWorkflowSheet: View {
                         .background(SelfTestMarker(id: "textWorkflowMemoryUndo").frame(width: 0, height: 0))
                 }
                 if session.scope.isDisk && session.diskAppliedSession != nil {
-                    Button("Plattenänderungen zurücknehmen") { session.restoreDisk() }.disabled(session.isBusy)
+                    Button(session.diskAppliedSession?.isCleanupOnly == true ? L10n.string("Aufräumen") : L10n.string("Plattenänderungen zurücknehmen")) { session.restoreDisk() }.disabled(session.isBusy)
                         .background(SelfTestMarker(id: "textWorkflowDiskUndo").frame(width: 0, height: 0))
                 }
                 if session.isBusy {

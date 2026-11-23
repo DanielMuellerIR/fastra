@@ -78,13 +78,20 @@ struct SearchApprovalPreviewSheet: View {
         }
         .frame(minWidth: 620, idealWidth: 900, minHeight: 440, idealHeight: 650)
         .background(SelfTestMarker(id: "searchApprovalSheet").frame(width: 0, height: 0))
-        .onAppear { model.load(request) }
+        .onAppear {
+            model.load(request) { [weak workspace, request] in
+                guard let workspace, request.isCurrent(in: workspace) else { return }
+                workspace.discardStaleFolderSearchApproval(generation: request.ticket.generation)
+            }
+        }
         .onDisappear { model.cancel() }
         .onChange(of: workspace.showSearchDialog) { _, visible in
             if !visible { model.cancel() }
         }
-        .onReceive(workspace.$searchApproval) { approval in
-            if approval.ticket != request.ticket { model.cancel(message: TextWorkflowFailure.stale) }
+        .onReceive(workspace.$searchResultState) { state in
+            if state.approval.ticket != request.ticket {
+                model.cancel(message: model.error ?? TextWorkflowFailure.stale)
+            }
         }
     }
 
@@ -94,7 +101,7 @@ struct SearchApprovalPreviewSheet: View {
             applying = true
             Task { @MainActor in
                 let (success, editors) = await workspace.synchronizeTextWorkflowDiskDocuments()
-                defer { for editor in editors { editor.completeAction() }; applying = false }
+                defer { for editor in editors { editor.finish() }; applying = false }
                 guard success, workspace.textWorkflowDiskEditorsAreHeld(editors) else {
                     applyError = TextWorkflowFailure.stale; return
                 }
@@ -116,7 +123,8 @@ struct SearchApprovalPreviewSheet: View {
     private func finishApply(_ preview: SearchApprovalPreview) {
         // Schließen entwertet auch eine noch ausstehende WebKit-Antwort.
         // Ihre Rückmeldung darf keine unsichtbare Vorschau mehr anwenden.
-        guard workspace.showSearchDialog, model.preview?.request.id == preview.request.id else { return }
+        guard workspace.showSearchDialog, model.preview?.request.id == preview.request.id,
+              preview.request.isCurrent(in: workspace) else { return }
         do {
             if try workspace.applySearchApproval(preview) { model.cancel(); dismiss() }
         } catch { applyError = TextWorkflowFailure.message(error) }

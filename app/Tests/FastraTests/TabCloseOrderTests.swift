@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import Fastra
 
-// Tests für die Reihenfolge beim Schließen von Tabs (Daniel-Befund 2026-07-29):
-// Nach ⌘W soll der ZULETZT BENUTZTE verbleibende Tab aktiv werden — nicht der
+// Tests für die Reihenfolge beim Schließen von Tabs:
+// Nach ⌘W soll der zuletzt benutzte verbleibende Tab aktiv werden — nicht der
 // erste Tab der Leiste. Vorher passierte genau das: echtes Dokument geöffnet,
 // mehrere leere Tabs per ⌘T angelegt, zweimal ⌘W gedrückt — und das echte
 // Dokument war zu, weil das erste ⌘W den Fokus auf `tabs.first` (das Dokument)
@@ -17,6 +17,7 @@ private func makeWorkspace() -> Workspace {
 }
 
 @Test("⌘T-Tabs schließen in umgekehrter Anlege-Reihenfolge, das Dokument bleibt")
+@MainActor
 func closeOrder_newTabsCloseBeforeRealDocument() {
     let ws = makeWorkspace()
     let real = EditorTab(title: "echt.txt", path: "/tmp", content: "Inhalt", isDirty: false)
@@ -35,7 +36,7 @@ func closeOrder_newTabsCloseBeforeRealDocument() {
     #expect(ws.tabs.count == 2)
     #expect(ws.tabs.contains(where: { $0.id == real.id }))   // Dokument lebt
     // Aktiv ist der verbliebene leere Tab (der als Erstes angelegte), nicht
-    // das Dokument — das dritte ⌘W darf erst IHN schließen.
+    // das Dokument — das dritte ⌘W darf erst ihn schließen.
     #expect(ws.activeTabID == ws.tabs[1].id)
     ws.closeActiveTab()
     #expect(ws.tabs.map(\.id) == [real.id])
@@ -43,6 +44,7 @@ func closeOrder_newTabsCloseBeforeRealDocument() {
 }
 
 @Test("Nach ⌘W wird der zuletzt benutzte Tab aktiv, nicht der Leisten-Nachbar")
+@MainActor
 func closeOrder_returnsToMostRecentlyUsedTab() {
     let ws = makeWorkspace()
     let a = EditorTab(title: "a.txt", path: "/tmp", content: "a", isDirty: false)
@@ -63,6 +65,7 @@ func closeOrder_returnsToMostRecentlyUsedTab() {
 }
 
 @Test("Ohne Benutzungs-Historie fällt ⌘W auf den Nachbar-Tab zurück")
+@MainActor
 func closeOrder_fallsBackToNeighbourWithoutHistory() {
     let ws = makeWorkspace()
     let a = EditorTab(title: "a.txt", path: "/tmp", content: "a", isDirty: false)
@@ -77,6 +80,7 @@ func closeOrder_fallsBackToNeighbourWithoutHistory() {
 }
 
 @Test("Geschlossene Tabs verschwinden aus der Benutzungs-Historie")
+@MainActor
 func closeOrder_closedTabsLeaveHistory() {
     let ws = makeWorkspace()
     let a = EditorTab(title: "a.txt", path: "/tmp", content: "a", isDirty: false)

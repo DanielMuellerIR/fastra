@@ -87,7 +87,7 @@ final class DocumentLanguageDetector: @unchecked Sendable {
     private struct State {
         var documentID: UUID
         var generation: UInt64
-        /// Länge der letzten ERFOLGREICH übernommenen Analyse. Sie wird erst
+        /// Länge der letzten erfolgreich übernommenen Analyse. Sie wird erst
         /// nach der Ergebnisübernahme fortgeschrieben: Würde schon der Start
         /// zählen, könnte eine abgebrochene Analyse eine kleine Folgeänderung
         /// als „zu klein" erscheinen lassen — und die Erkennung bliebe auf

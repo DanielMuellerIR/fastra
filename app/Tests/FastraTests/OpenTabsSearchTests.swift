@@ -86,16 +86,17 @@ func replaceAll_onlyChangedTabs() {
 
 @Test("replaceAll mit Backrefs über mehrere Tabs")
 func replaceAll_backrefs() {
-    let a = tab("a.txt", "Müller, Daniel")
+    let a = tab("a.txt", "Müller, Markus")
     let b = tab("b.txt", "Lang, Marie")
     let opts = SearchOptions(find: "(\\w+), (\\w+)", replace: "$2 $1")
     let changed = OpenTabsSearch.replaceAll(tabs: [a, b], options: opts)
-    #expect(changed[a.id] == "Daniel Müller")
+    #expect(changed[a.id] == "Markus Müller")
     #expect(changed[b.id] == "Marie Lang")
 }
 
 // MARK: - Workspace-Verdrahtung
 
+@MainActor
 private func makeWorkspace(tabs tabContents: [(String, String)]) -> Workspace {
     // Isolierte Defaults-Suite (recordSearchHistory darf nicht in die
     // echten Nutzer-Defaults leaken) — Muster wie TabCloseConfirmationTests.
@@ -103,6 +104,7 @@ private func makeWorkspace(tabs tabContents: [(String, String)]) -> Workspace {
     let defaults = testSuiteDefaults(named: suite)
     defaults.removePersistentDomain(forName: suite)
     let ws = Workspace(defaults: defaults)
+    bindSearchResultWindowForTesting(ws)
     ws.tabs = tabContents.map { EditorTab(title: $0.0, path: "—", content: $0.1) }
     ws.activeTabID = ws.tabs[0].id
     ws.scope = .open
@@ -110,6 +112,7 @@ private func makeWorkspace(tabs tabContents: [(String, String)]) -> Workspace {
 }
 
 @Test("navMatches trägt im Geöffnet-Scope die Ziel-Tab-ID")
+@MainActor
 func workspace_navMatchesCarryTabID() {
     let ws = makeWorkspace(tabs: [("a.txt", "foo"), ("b.txt", "foo")])
     ws.findPattern = plainFoo.find
@@ -124,7 +127,7 @@ func workspace_navMatchesCarryTabID() {
         options: plainFoo)
     ws.openResults = r.perTab
     ws.openTotalMatches = r.totalMatches
-    ws.visibleBufferResultsOptions = plainFoo
+    publishPreparedSearchResults(ws)
     let nav = ws.navMatches
     #expect(nav.count == 2)
     #expect(nav[0].tabID == ws.tabs[0].id)
@@ -133,6 +136,7 @@ func workspace_navMatchesCarryTabID() {
 }
 
 @Test("applyAllInOpenTabs ersetzt in allen Tabs und markiert sie dirty")
+@MainActor
 func workspace_applyAllInOpenTabs() {
     let ws = makeWorkspace(tabs: [("a.txt", "foo bar"), ("b.txt", "kein Treffer"),
                                   ("c.txt", "foo")])
@@ -140,7 +144,7 @@ func workspace_applyAllInOpenTabs() {
     ws.replacePattern = "X"
     ws.useRegex = false
     ws.caseSensitive = true
-    // Guard-Futter: der Apply-Pfad prüft den Treffer-Stand des Runners UND
+    // Guard-Futter: der Apply-Pfad prüft den Treffer-Stand des Runners und
     // ob dieser Stand zu den aktuellen Suchoptionen gehört.
     ws.openTotalMatches = 2
     ws.openResults = OpenTabsSearch.find(
@@ -149,7 +153,7 @@ func workspace_applyAllInOpenTabs() {
                                     content: $0.content)
         }, options: ws.currentSearchOptions
     ).perTab
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
     let changedCount = ws.applyAllInOpenTabs()
     #expect(changedCount == 2)
     #expect(ws.tabs[0].content == "X bar")
@@ -161,6 +165,7 @@ func workspace_applyAllInOpenTabs() {
 }
 
 @Test("Alle ersetzen sperrt Treffer jenseits der sichtbaren Geöffnet-Vorschau")
+@MainActor
 func workspace_applyAllInOpenTabsRejectsCappedPreview() {
     let original = Array(repeating: "foo", count: BufferSearch.defaultMaxMatches + 1)
         .joined(separator: " ")
@@ -180,7 +185,7 @@ func workspace_applyAllInOpenTabsRejectsCappedPreview() {
     ws.openResults = result.perTab
     ws.openTotalMatches = result.totalMatches
     ws.openResultsWereCapped = result.wasCapped
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
 
     #expect(!ws.canApplyAllInOpenTabs)
     #expect(ws.applyAllInOpenTabs() == 0)
@@ -189,6 +194,7 @@ func workspace_applyAllInOpenTabsRejectsCappedPreview() {
 }
 
 @Test("applyAllInOpenTabs ohne Treffer-Stand tut nichts")
+@MainActor
 func workspace_applyAllGuard() {
     let ws = makeWorkspace(tabs: [("a.txt", "foo")])
     ws.findPattern = "foo"
@@ -199,6 +205,7 @@ func workspace_applyAllGuard() {
 }
 
 @Test("Extract im Geöffnet-Scope sammelt Treffer aus allen Tabs")
+@MainActor
 func workspace_extractInOpenScope() {
     let ws = makeWorkspace(tabs: [("a.txt", "foo eins"), ("b.txt", "foo zwei")])
     ws.findPattern = "foo \\w+"
@@ -210,12 +217,13 @@ func workspace_extractInOpenScope() {
         options: ws.currentSearchOptions)
     ws.openResults = r.perTab
     ws.openTotalMatches = r.totalMatches
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
     #expect(ws.extractHitsToNewTab() == true)
     #expect(ws.tabs.last?.content == "foo eins\nfoo zwei\n")
 }
 
 @Test("Alle ersetzen im Geöffnet-Scope hält dieselbe Vorschau-Grenze")
+@MainActor
 func workspace_applyAllInOpenTabs_refusesStalePreview() {
     let ws = makeWorkspace(tabs: [("a.txt", "foo bar")])
     ws.findPattern = "foo"
@@ -231,7 +239,7 @@ func workspace_applyAllInOpenTabs_refusesStalePreview() {
     ws.openResults = result.perTab
     ws.openTotalMatches = result.totalMatches
     ws.openResultsWereCapped = result.wasCapped
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
     #expect(ws.canApplyAllInOpenTabs,
             "Der Test braucht vor der Eingabeänderung eine echte freigegebene Vorschau")
 
@@ -243,6 +251,7 @@ func workspace_applyAllInOpenTabs_refusesStalePreview() {
 }
 
 @Test("Geöffnet-Ersetzen sperrt eine teilweise schreibgeschützte Trefferbasis")
+@MainActor
 func workspace_openReplaceRejectsReadOnlyMatches() {
     let ws = makeWorkspace(tabs: [("edit.txt", "foo"), ("HEAD:gone.txt", "foo")])
     ws.tabs[1].readOnlyReason = "Git-Vorversion"
@@ -261,7 +270,7 @@ func workspace_openReplaceRejectsReadOnlyMatches() {
     )
     ws.openResults = result.perTab
     ws.openTotalMatches = result.totalMatches
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
 
     #expect(ws.openResultsContainReadOnlyTabs)
     #expect(!ws.canApplyAllInOpenTabs)
@@ -273,6 +282,7 @@ func workspace_openReplaceRejectsReadOnlyMatches() {
 }
 
 @Test("Kopieren lässt die Zwischenablage bei veralteter Trefferbasis unverändert")
+@MainActor
 func workspace_copyHitsRefusesStalePreview() {
     let ws = makeWorkspace(tabs: [("a.txt", "foo")])
     ws.findPattern = "foo"
@@ -286,7 +296,7 @@ func workspace_copyHitsRefusesStalePreview() {
     )
     ws.openResults = result.perTab
     ws.openTotalMatches = result.totalMatches
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
 
     let pasteboard = NSPasteboard(name: .init("fastra.test.copy-stale.\(UUID().uuidString)"))
     pasteboard.clearContents()
@@ -299,6 +309,7 @@ func workspace_copyHitsRefusesStalePreview() {
 }
 
 @Test("Einzel-Ersetzen im Geöffnet-Scope ändert den gewählten Ziel-Tab")
+@MainActor
 func workspace_replaceActiveOpenMatchTargetsItsTab() {
     let ws = makeWorkspace(tabs: [("a.txt", "foo eins"), ("b.txt", "foo zwei")])
     ws.findPattern = "foo"
@@ -313,7 +324,7 @@ func workspace_replaceActiveOpenMatchTargetsItsTab() {
     )
     ws.openResults = result.perTab
     ws.openTotalMatches = result.totalMatches
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
     ws.activeMatchIndex = 1
     let targetTabID = ws.tabs[1].id
     let oldReloadNonce = ws.editorReloadNonce
@@ -330,6 +341,7 @@ func workspace_replaceActiveOpenMatchTargetsItsTab() {
 }
 
 @Test("Einzel-Ersetzen im Geöffnet-Scope lehnt einen read-only Ziel-Tab ab")
+@MainActor
 func workspace_replaceActiveOpenMatchRejectsReadOnlyTarget() {
     let ws = makeWorkspace(tabs: [("edit.txt", "foo"), ("HEAD:gone.txt", "foo")])
     ws.tabs[1].readOnlyReason = "Git-Vorversion"
@@ -348,7 +360,7 @@ func workspace_replaceActiveOpenMatchRejectsReadOnlyTarget() {
     )
     ws.openResults = result.perTab
     ws.openTotalMatches = result.totalMatches
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
     ws.activeMatchIndex = 1
 
     #expect(!ws.canReplaceActiveSearchMatch)
@@ -368,13 +380,9 @@ func workspace_replaceActiveOpenMatchFindsAgain() async throws {
     ws.findPattern = "MARKER"
     ws.replacePattern = "ERSETZT"
 
-    // Die Frist ist eine Hänge-Erkennung, keine Laufzeitbehauptung: Im ruhigen
-    // Lauf liefert der Runner in Millisekunden. In der vollen parallelen Suite
-    // konkurrieren der 120-ms-Debounce (Main-Queue) und der detachte Suchtask
-    // aber mit der Arbeit aller anderen Tests; 5 Sekunden rissen dabei
-    // lastabhängig (2026-08-16 mehrfach reproduziert), obwohl der Lauf danach
-    // korrekt konvergierte. 30 Sekunden machen echtes Steckenbleiben weiter
-    // sicher rot, ohne unter Last falsch zu alarmieren.
+    // 30 s als Hänge-Erkennung für den Runner samt 120-ms-Debounce und
+    // ausgelagertem Suchtask. In der parallelen Suite kann Main-Queue-Arbeit
+    // beide verzögern; die Grenze ist kein Laufzeitversprechen.
     #expect(await waitUntil(timeout: 30) {
         ws.openTotalMatches == 2 && !ws.bufferSearching
             && ws.visibleBufferResultsOptions == ws.currentSearchOptions
@@ -396,6 +404,7 @@ func workspace_replaceActiveOpenMatchFindsAgain() async throws {
 }
 
 @Test("Datei-Ersetzen meldet in read-only Git-Vorversion keinen Erfolg")
+@MainActor
 func workspace_fileReplaceRejectsReadOnlySnapshot() {
     let ws = makeWorkspace(tabs: [("HEAD:gone.txt", "foo")])
     ws.scope = .file
@@ -410,7 +419,7 @@ func workspace_fileReplaceRejectsReadOnlySnapshot() {
     let result = BufferSearch.find(in: "foo", options: ws.currentSearchOptions)
     ws.bufferMatches = result.matches
     ws.bufferTotalMatches = result.totalMatches
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
     let oldReloadNonce = ws.editorReloadNonce
 
     #expect(!ws.canApplyAllInActiveBuffer)
@@ -422,11 +431,9 @@ func workspace_fileReplaceRejectsReadOnlySnapshot() {
     #expect(ws.editorReloadNonce == oldReloadNonce)
 }
 
-// Der Selbsttest `openscope` fiel am 2026-08-02 auf eine Lücke herein, die
-// kein Test mit von Hand gesetztem Zustand sehen konnte: Die Freigabe für
-// „Alle ersetzen" wurde zwar bei jeder Eingabeänderung entzogen, vom
-// Geöffnet-Lauf des Such-Runners aber nie wieder erteilt. Dieser Test geht
-// deshalb bewusst über den ECHTEN Runner samt Verzögerung.
+// Die Freigabe für „Alle ersetzen“ muss nach Eingabeänderung durch den
+// echten Geöffnet-Suchlauf erneut entstehen. Deshalb den Runner samt
+// Verzögerung verwenden, statt nur fertigen Zustand von Hand zu setzen.
 @Test("Der Such-Runner gibt Alle ersetzen im Geöffnet-Scope wieder frei")
 @MainActor
 func workspace_runnerRestoresOpenScopeApplyGate() async throws {
@@ -437,14 +444,14 @@ func workspace_runnerRestoresOpenScopeApplyGate() async throws {
     ws.findPattern = "MARKER"
     ws.replacePattern = "ERSETZT"
 
-    // Warten, bis der Lauf fertig ist UND seine Treffer als zu den aktuellen
+    // Warten, bis der Lauf fertig ist und seine Treffer als zu den aktuellen
     // Eingaben gehörig ausgewiesen hat. Genau dieses Ausweisen fehlte im
     // Geöffnet-Lauf: Ohne es läuft die Schleife in ihre Frist und die Prüfung
     // darunter schlägt fehl.
     //
     // Warum die Bedingung so vollständig sein muss: Jede einzelne Zuweisung
     // oben stößt einen verzögerten Lauf an. Liegen zwei Zuweisungen unter Last
-    // mehr als 120 ms auseinander, gibt es ZWEI Läufe — und die Trefferzahl des
+    // mehr als 120 ms auseinander, gibt es zwei Läufe — und die Trefferzahl des
     // ersten steht schon da, während der zweite noch aussteht.
     // 30 s Frist = Hänge-Erkennung unter voller Parallellast (siehe Test oben).
     #expect(await waitUntil(timeout: 30) {

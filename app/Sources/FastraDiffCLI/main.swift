@@ -42,7 +42,7 @@ func run() throws {
             }
             return
         }
-        // Fehlt der Endpunkt JETZT — beim ersten Blick oder weil sich die App
+        // Fehlt der Endpunkt jetzt — beim ersten Blick oder weil sich die App
         // zwischen zwei Versuchen beendet hat —, wird genau einmal gestartet.
         // Ein einmaliger Blick vor der Schleife hätte den zweiten Fall
         // verpasst und zehn Sekunden ins Leere gesendet.

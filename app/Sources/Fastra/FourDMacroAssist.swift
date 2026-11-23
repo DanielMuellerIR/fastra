@@ -1,13 +1,13 @@
 // FourDMacroAssist.swift
 //
-// Anwendung der 4D-Methodeneditor-Makros im Editor (Idee #28, 2026-08-19).
+// Anwendung der 4D-Methodeneditor-Makros im Editor .
 // Der Katalog (`FourDMacros.swift` + `FourDMacroDiscovery.swift`) liefert die
 // Makros der aktiven `.4dm`-Datei; hier leben die drei Ausführungswege:
 //
-// - Text-Makros wendet Fastra NATIV an (Platzhalter ersetzen, Cursor über
+// - Text-Makros wendet Fastra nativ an (Platzhalter ersetzen, Cursor über
 //   `<caret/>` setzen) — ein Undo-Schritt, wie die übrigen Textoperationen.
 // - Die Komplettieren-Familie läuft headless über die tool4d-Engine
-//   (`FourDMacroEngine.swift`) und zeigt ihr Ergebnis IMMER zuerst als
+//   (`FourDMacroEngine.swift`) und zeigt ihr Ergebnis immer zuerst als
 //   Diff-Vorschau (Produktinvariante: keine Schreibänderung ohne Vorschau).
 // - Alles andere braucht den echten 4D-Methodeneditor und bleibt sichtbar,
 //   aber mit erklärender Deaktivierung.
@@ -193,7 +193,7 @@ enum FourDMacroCatalogLoader {
     /// Öffnet nur reguläre Dateien und liest höchstens `sourceBytes` Bytes.
     /// Der gemeinsame Lesepfad (`BoundedFileReading`) öffnet nicht blockierend:
     /// Eine als `*.xml` gefundene FIFO hielt vorher schon das `open` und damit
-    /// den gesamten seriellen Kataloglauf fest (Review 2026-08-31).
+    /// den gesamten seriellen Kataloglauf fest.
     private static func open(_ source: FourDMacroSource, readData: Bool,
                              limits: FourDMacroXML.Limits = .catalog) -> OpenedSource? {
         guard let file = BoundedFileReading.openRegularFile(
@@ -219,7 +219,7 @@ enum FourDMacroCatalogLoader {
         var visitedMacroCount = 0
     }
 
-    /// Liefert alle drei Katalogbudgets in EINEM Durchlauf. `visitedMacroCount`
+    /// Liefert alle drei Katalogbudgets in einem Durchlauf. `visitedMacroCount`
     /// macht diese Zusage im Regressionstest messbar; die Quelle wird nicht
     /// getrennt für Text, Bausteine und Cachegewicht erneut durchlaufen.
     static func retainedMeasurements(
@@ -444,7 +444,7 @@ extension Workspace {
               url.pathExtension.lowercased() == "4dm" else {
             if !fourDMacros.isEmpty { fourDMacros = [] }
             fourDMacroScanKey = nil
-            // Die Generation MUSS mitwandern: Sonst besteht die Completion
+            // Die Generation muss mitwandern: Sonst besteht die Completion
             // eines noch laufenden Scans ihre Prüfung und füllt den gerade
             // geleerten Katalog wieder. Dessen Kürzel schluckten dann ⌘T & Co.
             // außerhalb von 4D.
@@ -458,11 +458,11 @@ extension Workspace {
         fourDMacroScanGeneration = generation
         let document = url
         Task.detached(priority: .utility) { [weak self] in
-            // EIN gemeinsames Arbeitsbudget für den gesamten Kataloglauf:
+            // Ein gemeinsames Arbeitsbudget für den gesamten Kataloglauf:
             // Schon die Suche nach der Projektwurzel verbraucht davon, die
             // anschließende Quellensuche bekommt nur den Rest. Ein riesiger
             // fremder `Project`-Ordner kann die Grenze so nicht mehr vor der
-            // eigentlichen Makrosuche umgehen (Review 2026-08-31).
+            // eigentlichen Makrosuche umgehen.
             var entryBudget = FourDMacroDiscovery.maximumDirectoryEntryCount
             let root = FourDMacroDiscovery.projectRoot(
                 forDocument: document, fileManager: .default,
@@ -525,7 +525,7 @@ extension Workspace {
 
     /// Registriert einen neuen Engine-Lauf (Preflight + tool4d-Prozess) und
     /// setzt die gemeinsame Makro-Sperre. Freigeben dürfen sie nur die
-    /// Completions GENAU dieses Laufs über `releaseFourDMacroEngineLock`.
+    /// Completions genau dieses Laufs über `releaseFourDMacroEngineLock`.
     @discardableResult
     @MainActor func beginFourDMacroEngineRun() -> UUID {
         let runID = UUID()
@@ -537,7 +537,7 @@ extension Workspace {
     /// Gibt die Makro-Sperre frei, sofern `runID` noch der aktuell
     /// registrierte Engine-Lauf ist. Eine verspätete Completion eines schon
     /// abgeräumten Laufs (Home, Fensterschluss) läuft dagegen ins Leere und
-    /// kann die Sperre eines neueren Laufs nicht löschen (Review 2026-08-29).
+    /// kann die Sperre eines neueren Laufs nicht löschen.
     @MainActor func releaseFourDMacroEngineLock(runID: UUID) {
         guard fourDMacroEngineRunID == runID else { return }
         fourDMacroEngineRunID = nil
@@ -554,7 +554,7 @@ extension Workspace {
     }
 
     /// Shortcut-Weg (⌘ + Kürzelzeichen aus dem Makronamen, z. B. ⌘# und ⌘T).
-    /// Liefert `false`, wenn kein Makro dieses Kürzel trägt ODER es hier gar
+    /// Liefert `false`, wenn kein Makro dieses Kürzel trägt oder es hier gar
     /// nicht ausführbar ist — der Aufrufer reicht die Taste dann normal
     /// weiter. Nur so behält ⌘T außerhalb einer 4D-Methode „Neuer Tab".
     @discardableResult
@@ -617,7 +617,7 @@ extension Workspace {
                                           with: insertion.text)
         if let caret = insertion.caretUTF16Offset {
             // Cursor an die `<caret/>`-Marke des Makros setzen. Die Änderung
-            // selbst bleibt EIN Undo-Schritt; die Auswahl ist kein Undo-Inhalt.
+            // selbst bleibt ein Undo-Schritt; die Auswahl ist kein Undo-Inhalt.
             textView.selectionManager.setSelectedRange(
                 NSRange(location: selection.location + caret, length: 0))
         }
@@ -639,7 +639,7 @@ extension Workspace {
         ) else { return false }
         let methodName = FourDMacroXML.normalizedMethodName(
             forFileName: documentURL.lastPathComponent)
-        // Daniels Ausnahmen fürs Komplettieren: warnen statt ausführen.
+        // Nicht unterstützte Komplettieren-Varianten: warnen statt ausführen.
         if methodName == "00_DM_Info" || methodName.hasPrefix("Compiler_") {
             NSAlert.runWarning(
                 title: L10n.string("Methode ist vom Komplettieren-Makro ausgenommen"),
@@ -668,9 +668,8 @@ extension Workspace {
                 ? Tool4DAssist.installedTool(rememberedPath: rememberedPath)
                 : nil
             let learned = FourDTokenTransform.learnedSuffixes(from: originalText)
-            // MacroRun erwartet untokenisierten Code (gemessen am 2026-08-19,
-            // siehe FourDMacroEngine.swift); nach dem Lauf stellt `retokenize`
-            // die Suffixe aus dem Original wieder her.
+            // MacroRun erwartet untokenisierten Code (siehe `FourDMacroEngine.swift`).
+            // Nach dem Lauf stellt `retokenize` die Suffixe des Originals wieder her.
             let detokenized = FourDTokenTransform.detokenize(originalText)
             await MainActor.run { [weak self] in
                 guard let self else { return }
@@ -759,7 +758,7 @@ extension Workspace {
             // Nur die Completion des noch registrierten Laufs darf die
             // gemeinsame Sperre anfassen; eine verspätete Completion eines
             // abgeräumten Laufs würde sonst die Sperre eines Nachfolgers
-            // löschen (Review 2026-08-29).
+            // löschen.
             guard self.fourDMacroEngineRunID == engineRunID else { return }
             guard lease.isCurrent(in: self) else {
                 self.releaseFourDMacroEngineLock(runID: engineRunID)
@@ -884,7 +883,7 @@ extension Workspace {
         }
     }
 
-    /// Wendet das Vorschau-Ergebnis als EINEN Undo-Schritt an. Gültig nur,
+    /// Wendet das Vorschau-Ergebnis als einen Undo-Schritt an. Gültig nur,
     /// solange Dokument-, Pfad-, Projekt- und Inhaltsidentität exakt der
     /// Vorschau entsprechen.
     @discardableResult

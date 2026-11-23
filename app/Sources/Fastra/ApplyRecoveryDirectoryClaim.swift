@@ -1,0 +1,156 @@
+import Darwin
+import Foundation
+
+/// Koordiniert bestätigte Wiederherstellung und Altersbereinigung über die
+/// vorhandene Verzeichnisdatei. Der Anspruch beweist keine Journalherkunft.
+/// Ein Caller besitzt die Instanz exklusiv und beendet seinen Scope mit finish().
+final class ApplyRecoveryDirectoryClaim {
+    enum Rejection: Error, Equatable {
+        case invalidPath
+        case unprotectedDirectory
+        case changedDirectory
+        case closed
+    }
+
+    struct CloseFailure: Error {
+        let primary: Error?
+        let closeErrors: [Error]
+    }
+
+    let rootURL: URL
+    let sessionName: String
+    let rootIdentity: FileIdentity
+    let sessionIdentity: FileIdentity
+
+    private var rootDescriptor: Int32?
+    private var sessionDescriptor: Int32?
+
+    /// Der Root wird wie beim Erzeuger vorher bewusst aliasaufgelöst. Weder
+    /// hier noch bei späterer Bestätigung werden Verknüpfungen verfolgt.
+    init(root: URL, sessionName: String,
+         expectedRootIdentity: FileIdentity? = nil,
+         expectedSessionIdentity: FileIdentity? = nil) throws {
+        guard root.isFileURL, root.path.hasPrefix("/"), !root.path.utf8.contains(0),
+              sessionName.hasPrefix("session-"), sessionName != "session-",
+              !sessionName.contains("/"), !sessionName.utf8.contains(0) else {
+            throw Rejection.invalidPath
+        }
+        // standardizedFileURL würde /private/var und /private/tmp wieder auf
+        // die Symlinknamen /var und /tmp verkürzen und No-follow verletzen.
+        rootURL = root
+        self.sessionName = sessionName
+        let rootFD = open(rootURL.path, Self.openFlags | O_NOFOLLOW_ANY)
+        guard rootFD >= 0 else { throw Self.posixError() }
+        var sessionFD: Int32?
+        do {
+            let rootInfo = try Self.protectedDirectory(rootFD)
+            let actualRootIdentity = FileIdentity(stat: rootInfo)
+            if let expectedRootIdentity, expectedRootIdentity != actualRootIdentity {
+                throw Rejection.changedDirectory
+            }
+            let descriptor = openat(rootFD, sessionName, Self.openFlags | O_NOFOLLOW)
+            guard descriptor >= 0 else { throw Self.posixError() }
+            sessionFD = descriptor
+            let sessionInfo = try Self.protectedDirectory(descriptor)
+            let actualSessionIdentity = FileIdentity(stat: sessionInfo)
+            if let expectedSessionIdentity, expectedSessionIdentity != actualSessionIdentity {
+                throw Rejection.changedDirectory
+            }
+            // Kein Warten und kein eigenes Lockfile: getrennte FDs und Prozesse
+            // konkurrieren um genau diese geöffnete Verzeichnisdatei.
+            guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else { throw Self.posixError() }
+            rootIdentity = actualRootIdentity
+            sessionIdentity = actualSessionIdentity
+        } catch {
+            let errors = Self.closeDescriptors(sessionFD.map { [$0, rootFD] } ?? [rootFD])
+            if !errors.isEmpty { throw CloseFailure(primary: error, closeErrors: errors) }
+            throw error
+        }
+        rootDescriptor = rootFD
+        sessionDescriptor = sessionFD
+        do { try validateBinding() }
+        catch { try finish(after: error) }
+    }
+
+    deinit { try? finish() }
+
+    /// Nach jeder Unterbrechung erneut aufrufen. Ein neuer gleichnamiger
+    /// Ordner wird nie Teil des bereits bestehenden Anspruchs.
+    func validateBinding() throws {
+        guard let rootDescriptor, let sessionDescriptor else { throw Rejection.closed }
+        let openedRoot = try Self.protectedDirectory(rootDescriptor)
+        let openedSession = try Self.protectedDirectory(sessionDescriptor)
+        guard FileIdentity(stat: openedRoot) == rootIdentity,
+              FileIdentity(stat: openedSession) == sessionIdentity else {
+            throw Rejection.changedDirectory
+        }
+        // Erneutes No-follow-Öffnen erkennt auch einen nachträglich eingefügten
+        // Elternsymlink. lstat allein würde solche Zwischenkomponenten folgen.
+        let namedRoot = open(rootURL.path, Self.openFlags | O_NOFOLLOW_ANY)
+        guard namedRoot >= 0 else { throw Self.posixError() }
+        var failure: Error?
+        do {
+            let info = try Self.protectedDirectory(namedRoot)
+            var namedSession = stat()
+            guard fstatat(rootDescriptor, sessionName, &namedSession, AT_SYMLINK_NOFOLLOW) == 0 else {
+                throw Self.posixError()
+            }
+            try Self.requireProtectedDirectory(namedSession)
+            guard FileIdentity(stat: info) == rootIdentity,
+                  FileIdentity(stat: namedSession) == sessionIdentity else {
+                throw Rejection.changedDirectory
+            }
+        } catch { failure = error }
+        let errors = Self.closeDescriptors([namedRoot])
+        if !errors.isEmpty { throw CloseFailure(primary: failure, closeErrors: errors) }
+        if let failure { throw failure }
+    }
+
+    /// Close gibt flock frei. Nummern vor dem Schließen abgeben, damit weder
+    /// Fehlerpfad noch deinit einen inzwischen neu vergebenen FD schließen.
+    func finish() throws {
+        let descriptors = [sessionDescriptor, rootDescriptor].compactMap { $0 }
+        sessionDescriptor = nil
+        rootDescriptor = nil
+        let errors = Self.closeDescriptors(descriptors)
+        if !errors.isEmpty { throw CloseFailure(primary: nil, closeErrors: errors) }
+    }
+
+    func finish(after primary: Error) throws -> Never {
+        do { try finish() }
+        catch let failure as CloseFailure {
+            throw CloseFailure(primary: primary, closeErrors: failure.closeErrors)
+        }
+        throw primary
+    }
+
+    // Darwin weist die Kombination O_NOFOLLOW_ANY | O_NOFOLLOW mit EINVAL ab.
+    private static let openFlags = O_RDONLY | O_DIRECTORY | O_NONBLOCK | O_CLOEXEC
+
+    private static func protectedDirectory(_ descriptor: Int32) throws -> stat {
+        var info = stat()
+        guard fstat(descriptor, &info) == 0 else { throw posixError() }
+        try requireProtectedDirectory(info)
+        return info
+    }
+
+    private static func requireProtectedDirectory(_ info: stat) throws {
+        // Foundation legte ältere Root-/Session-Ordner regulär mit 0755 an.
+        // Fremde Leserechte allein machen diese bestehenden Journale nicht ungültig.
+        guard (info.st_mode & S_IFMT) == S_IFDIR,
+              info.st_uid == getuid(), info.st_mode & 0o700 == 0o700,
+              info.st_mode & 0o022 == 0 else { throw Rejection.unprotectedDirectory }
+    }
+
+    private static func closeDescriptors(_ descriptors: [Int32]) -> [Error] {
+        var errors: [Error] = []
+        for descriptor in descriptors {
+            if close(descriptor) != 0 { errors.append(posixError()) }
+        }
+        return errors
+    }
+
+    private static func posixError() -> POSIXError {
+        POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+}

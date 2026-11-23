@@ -35,11 +35,11 @@ func content_emptyMatches() {
 
 @Test("Case-Operatoren wirken auch bei der Extraktion")
 func content_caseOperators() {
-    let r = BufferSearch.find(in: "Müller, Daniel",
+    let r = BufferSearch.find(in: "Müller, Markus",
                               options: SearchOptions(find: "(\\w+), (\\w+)",
                                                      replace: "\\U$2\\E $1"))
     let out = HitExtraction.content(matches: r.matches, useReplacement: true)
-    #expect(out == "DANIEL Müller\n")
+    #expect(out == "MARKUS Müller\n")
 }
 
 // MARK: - Workspace-Verdrahtung

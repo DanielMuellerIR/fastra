@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 
+from native_clipboard import clipboard_text
+
 assert os.environ.get("FASTRA_ISOLATED_DISPLAY") == "1"
 APP = sys.argv[1]
 ROOT = Path(os.environ["FASTRA_UI_TEST_ROOT"])
@@ -154,28 +156,10 @@ def choose_path(picker, path):
     key(xid, "BackSpace")
     wait(lambda: entry() and entry()["text"] == "", "location cleared")
     # Ein Einfügevorgang vermeidet Autovervollständigung zwischen einzelnen Tasten.
-    owner = subprocess.Popen([sys.executable, "-c", """
-import ctypes, os, sys
-from pathlib import Path
-gtk = ctypes.CDLL("libgtk-4.so.1")
-glib = ctypes.CDLL("libglib-2.0.so.0")
-gtk.gtk_init()
-gtk.gdk_display_get_default.restype = ctypes.c_void_p
-gtk.gdk_display_get_clipboard.argtypes = [ctypes.c_void_p]
-gtk.gdk_display_get_clipboard.restype = ctypes.c_void_p
-gtk.gdk_clipboard_set_text.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-gtk.gdk_clipboard_set_text(gtk.gdk_display_get_clipboard(gtk.gdk_display_get_default()), os.fsencode(sys.argv[1]))
-Path(sys.argv[2]).touch()
-glib.g_main_context_iteration.argtypes = [ctypes.c_void_p, ctypes.c_int]
-while True: glib.g_main_context_iteration(None, True)
-""", str(path), str(OBSERVE / "clipboard-ready")], env=ENV)
-    try:
+    with clipboard_text(str(path), OBSERVE / "clipboard-ready", ENV):
         wait(lambda: (OBSERVE / "clipboard-ready").exists(), "native clipboard owner")
         key(xid, "ctrl+v")
         wait(lambda: entry() and entry()["text"].rstrip("/") == str(path).rstrip("/"), "pasted location")
-    finally:
-        owner.terminate(); owner.wait(3)
-        (OBSERVE / "clipboard-ready").unlink(missing_ok=True)
     try:
         wait(lambda: entry() and entry()["text"].rstrip("/") == str(path).rstrip("/"), "native location text")
     except AssertionError:
@@ -290,9 +274,21 @@ def scenario():
         start()
         remote(extra) if MODE == "open" else remote()
         wait(lambda: (ROOT / "startup-worker-ready").exists(), "held startup worker")
-        first_now = state()["windows"][0]
+        # Der Worker kann sein Signal vor dem nächsten Fenster-Snapshot schreiben.
+        needed = 2 if MODE in {"open", "interrupt-peer"} else 1
+
+        def pending_windows():
+            current = state()
+            windows = current["windows"]
+            if not current["startup"]["restoring"] or len(windows) < needed:
+                return None
+            mapped = {window["xid"] for window in current["native"]}
+            return windows if all(window["xid"] and window["xid"] in mapped for window in windows[:needed]) else None
+
+        observed = wait(pending_windows, "pending startup windows are mapped")
+        first_now = observed[0]
         if MODE == "interrupt-peer":
-            peer = state()["windows"][1]
+            peer = observed[1]
             key(peer["xid"], "ctrl+t"); xdo("type", "--clearmodifiers", "--delay", 2, "USER_PEER_SCRATCH")
             wait(lambda: any("USER_PEER_SCRATCH" in d["text"] for w in state()["windows"] if w["xid"] == peer["xid"] for d in w["documents"]), "typing in pending peer")
             assert state()["startup"]["restoring"] and not paths(state()["windows"][1])

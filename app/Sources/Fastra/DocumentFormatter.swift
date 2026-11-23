@@ -118,7 +118,7 @@ enum DocumentFormatter {
         return restoringLineEnding(from: text, in: formatted)
     }
 
-    // MARK: - Minify (Etappe 6 Wunschpaket 2026-07)
+    // MARK: - Minify
 
     /// Minifiziert die Auswahl bzw. das ganze Dokument. Gleiche Infrastruktur
     /// und Rückgabe-Semantik wie `format` (nil = No-op).
@@ -183,8 +183,8 @@ enum DocumentFormatter {
         return minified
     }
 
-    /// BEWUSST konservatives XML-Minify: entfernt ausschließlich
-    /// Whitespace-Läufe MIT Zeilenumbruch zwischen zwei Tags (typische
+    /// Bewusst konservatives XML-Minify: entfernt ausschließlich
+    /// Whitespace-Läufe mit Zeilenumbruch zwischen zwei Tags (typische
     /// Einrückung). Einzelne Leerzeichen zwischen Inline-Elementen bleiben
     /// stehen (können bedeutungstragend sein), ebenso alles innerhalb von
     /// CDATA und Kommentaren. Dokumente mit geschütztem Whitespace oder DTD

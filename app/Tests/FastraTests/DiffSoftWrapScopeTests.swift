@@ -57,7 +57,7 @@ struct DiffSoftWrapScopeTests {
         #expect(ws.softWrapProfiles.target(for: .diff) == .window)
     }
 
-    /// `activeTabShowsDiff` hat ZWEI Zweige. Ein Git-Diff-Tab, der versehentlich
+    /// `activeTabShowsDiff` hat zwei Zweige. Ein Git-Diff-Tab, der versehentlich
     /// auf das Sprachprofil statt auf `.diff` abbildete, fiele sonst keinem
     /// Unit-Test auf — nur einem Fenster-Selbsttest mit laufender UI-Sitzung.
     @Test("Auch ein Git-Diff-Tab nutzt das Vergleichsprofil")
@@ -95,7 +95,7 @@ struct DiffSoftWrapScopeTests {
         #expect(ws.softWrapScopeFormatID == .plainText)
         ws.setSoftWrapEnabled(false)
         #expect(ws.softWrapProfiles.isEnabled(for: .plainText) == false)
-        // Der Vergleich hört NICHT mit: Sein Profil steht weiter auf Umbruch.
+        // Der Vergleich hört nicht mit: Sein Profil steht weiter auf Umbruch.
         #expect(ws.softWrapProfiles.isEnabled(for: .diff))
     }
 

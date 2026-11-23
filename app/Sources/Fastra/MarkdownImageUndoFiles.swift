@@ -1,9 +1,9 @@
 import Darwin
 import Foundation
 
-/// Der gebundene Dokumentordner überlebt Finder-Umbenennungen. Die einzigen
-/// Nachbardateien sind kurzlebige Claims für sicheres Entfernen/Veröffentlichen;
-/// Bildbytes für Undo liegen ausschließlich im begrenzten Speicherpuffer.
+/// Der gebundene Dokumentordner überlebt Finder-Umbenennungen. Die Entnahme
+/// verwendet private Arbeitsordner; Bildbytes für Undo liegen ausschließlich
+/// im begrenzten Speicherpuffer.
 final class MarkdownImageUndoFiles: @unchecked Sendable {
     private let images: [MarkdownImageStore.StoredImage]
     private let documentFD: Int32
@@ -11,6 +11,91 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
     private let invalidated: () -> Void
     private var identities: [MarkdownImageStore.StoredFileIdentity]
     private var ticket: UUID?
+    private var pendingPublications: [MarkdownImagePublication] = []
+    private var removal: MarkdownImageRemoval?
+    private var permanentlyRemoved: Set<String> = []
+    private(set) var lastRemovalResult: MarkdownImageRemoval.Result?
+    private var retainedRemovalFailure: MarkdownImageRemoval.Result?
+    private var metadataProbeCreationError: Error?
+    private(set) var lastRestoreFailure: MarkdownImagePublication.Failure?
+    private(set) var lastPresenceFailure: Error?
+
+    private struct ImagePresenceFailure: LocalizedError {
+        let url: URL
+        let cause: POSIXError?
+
+        var errorDescription: String? {
+            guard let cause else {
+                return L10n.format("Der benötigte Bildpfad „%@“ ist keine reguläre Datei.", url.path)
+            }
+            if cause.code == .ENOENT {
+                return L10n.format("Die benötigte Bilddatei „%@“ fehlt. Stelle sie am ursprünglichen Pfad wieder bereit und versuche Wiederholen erneut.", url.path)
+            }
+            return L10n.format("Die benötigte Bilddatei „%@“ konnte nicht geprüft werden: %@", url.path, cause.localizedDescription)
+        }
+    }
+
+    var removalFailureDescription: String? {
+        var previous = retainedRemovalFailure
+        let latest = lastRemovalResult?.unresolvedForReporting
+        if let latest, latest.isReportableFailure {
+            previous?.remainingEntries.removeAll { entry in latest.remainingEntries.contains { $0.url == entry.url } }
+        }
+        var lines = previous?.reportLines(previous: true) ?? []
+        if let latest, latest.isReportableFailure { lines += latest.reportLines() }
+        if let metadataProbeCreationError { lines.append(metadataProbeCreationError.localizedDescription) }
+        var seen: Set<String> = []
+        lines = lines.flatMap { $0.split(separator: "\n").map(String.init) }
+            .filter { seen.insert($0).inserted }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    func captureRemovalFailureDescription() -> String? {
+        // Die fehlgeschlagene Anlage betrifft nur das Ergebnis dieses Versuchs.
+        defer { metadataProbeCreationError = nil }
+        return removalFailureDescription
+    }
+
+    /// Nur ein später belegter Referenzschutz erledigt die jüngste reine
+    /// Gateablehnung. Echte Befunde und sämtliche Dateizustände bleiben erhalten.
+    func forgetProtectedReferenceRejection() {
+        if lastRemovalResult?.isPureReferenceRejection == true { lastRemovalResult = nil }
+    }
+
+    private func replaceRemovalResult(_ result: MarkdownImageRemoval.Result?) {
+        if let previous = lastRemovalResult, previous.isReportableFailure, !previous.isPureReferenceRejection {
+            let previous = previous.unresolvedForReporting
+            var retained = retainedRemovalFailure ?? .init()
+            var causes = Set(retained.causes.map(\.localizedDescription))
+            retained.causes += previous.causes.filter { causes.insert($0.localizedDescription).inserted }
+            var removed = Set(retained.removed)
+            retained.removed += previous.removed.filter { removed.insert($0).inserted }
+            var restored = Set(retained.restored)
+            retained.restored += previous.restored.filter { restored.insert($0).inserted }
+            for entry in previous.remainingEntries where !retained.remainingEntries.contains(where: {
+                $0.url == entry.url && $0.operationID == entry.operationID
+            }) { retained.remainingEntries.append(entry) }
+            retainedRemovalFailure = retained
+        }
+        lastRemovalResult = result
+        if let result, !result.resolvedOperations.isEmpty {
+            retainedRemovalFailure?.remainingEntries.removeAll { entry in
+                entry.operationID.map { result.resolvedOperations.contains($0) } ?? false
+            }
+        }
+    }
+
+    private func beginRemovalAttempt() {
+        // Eine fehlgeschlagene Anlage der Metadatenprobe hinterlässt keine Datei.
+        metadataProbeCreationError = nil
+        // Ohne neues Dateiergebnis ist der Versuchsbeginn kein positiver Schutz.
+        if lastRemovalResult?.isPureReferenceRejection != true { replaceRemovalResult(nil) }
+    }
+
+    private func acknowledgeResolvedRemovalFailure() {
+        // Erfolg an den aktuellen Bildern belegt keinen alten abgetrennten Pfad.
+        if retainedRemovalFailure?.remainingEntries.isEmpty == true { retainedRemovalFailure = nil }
+    }
 
     init(images: [MarkdownImageStore.StoredImage],
          buffer: MarkdownImageUndoBuffer = .shared,
@@ -43,8 +128,57 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
         return Set(images.map { directory.appendingPathComponent($0.fileURL.lastPathComponent).canonicalFileURL })
     }
 
-    func removeForUndo(gate: (() -> Bool) -> Bool = { $0() }) -> Bool {
-        guard ticket == nil, let fd = openImages() else { return false }
+    func checkOnDiskImages() -> Bool {
+        lastPresenceFailure = nil
+        let directory = documentDirectoryURL?.appendingPathComponent("images")
+        let fd = openat(documentFD, "images", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard fd >= 0 else {
+            let cause = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            if let image = images.first {
+                let url = directory?.appendingPathComponent(image.fileURL.lastPathComponent) ?? image.fileURL
+                lastPresenceFailure = ImagePresenceFailure(url: url, cause: cause)
+            }
+            return false
+        }
+        defer { Darwin.close(fd) }
+        for image in images {
+            let name = image.fileURL.lastPathComponent
+            let url = directory?.appendingPathComponent(name) ?? image.fileURL
+            var info = stat()
+            guard fstatat(fd, name, &info, 0) == 0 else {
+                lastPresenceFailure = ImagePresenceFailure(url: url,
+                    cause: POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO))
+                return false
+            }
+            guard info.st_mode & S_IFMT == S_IFREG else {
+                lastPresenceFailure = ImagePresenceFailure(url: url, cause: nil)
+                return false
+            }
+            guard imagesStillMatches(fd) else {
+                lastPresenceFailure = ImagePresenceFailure(url: url, cause: POSIXError(.ESTALE))
+                return false
+            }
+        }
+        // Externe Bildaktualisierungen am selben Pfad bleiben zulässig.
+        // Die früher gespeicherte Identität und der Inhalt sind hier kein Veto.
+        return true
+    }
+
+    func removeForUndo(gate: (() -> Bool) -> Bool = { $0() },
+                       hooks: MarkdownImageRemoval.Hooks = .init()) -> Bool {
+        withoutActuallyEscaping(gate) { gate in
+            removeForUndo(gate: MarkdownImageRemoval.legacyGate(gate), hooks: hooks)
+        }
+    }
+
+    func removeForUndo(gate: MarkdownImageRemoval.DetailedGate,
+                       hooks: MarkdownImageRemoval.Hooks = .init()) -> Bool {
+        guard ticket == nil else { return false }
+        beginRemovalAttempt()
+        guard let fd = openImages() else {
+            replaceRemovalResult(.init(causes: [POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)]))
+            return false
+        }
         defer { Darwin.close(fd) }
         var total = 0
         for image in images {
@@ -54,13 +188,18 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
         var metadataBudget = 1024 * 1024
         var metadata: [Data] = []
         var snapshots: [MarkdownImageStore.StoredFileIdentity] = []
-        for (index, image) in images.enumerated() {
-            guard let captured = captureMetadata(image, expected: identities[index], in: fd, byteLimit: metadataBudget),
-                  captured.data.count <= metadataBudget, captured.data.count <= Int.max - total else { return false }
-            metadataBudget -= captured.data.count
-            metadata.append(captured.data)
-            snapshots.append(captured.identity)
-            total += captured.data.count
+        do {
+            for (index, image) in images.enumerated() {
+                guard let captured = try captureMetadata(image, expected: identities[index], in: fd, byteLimit: metadataBudget),
+                      captured.data.count <= metadataBudget, captured.data.count <= Int.max - total else { return false }
+                metadataBudget -= captured.data.count
+                metadata.append(captured.data)
+                snapshots.append(captured.identity)
+                total += captured.data.count
+            }
+        } catch {
+            metadataProbeCreationError = error
+            return false
         }
         let reservation = buffer.reserve(bytes: total, invalidated: invalidated)
         var data: [Data] = []
@@ -78,68 +217,157 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
             buffer.remove(reservation)
             return false
         }
-        guard removeVerifiedFiles(in: fd, requireComplete: false, metadataSnapshots: snapshots, gate: gate) else {
+        let result = removeVerifiedFiles(in: fd, metadataSnapshots: snapshots, hooks: hooks, gate: gate)
+        replaceRemovalResult(result)
+        // Auch bei Teilfortschritt müssen entfernte Bytes und nicht rückgestellte
+        // Claims für Redo erhalten bleiben. Ein bloßes false darf sie nicht vergessen.
+        guard !result.removed.isEmpty || !result.remainingEntries.isEmpty else {
             if let reservation { buffer.remove(reservation) }
             return false
         }
         ticket = reservation
         if reservation == nil { buffer.invalidate(invalidated) }
-        if images.contains(where: \.imagesDirectoryCreated) {
-            _ = unlinkat(documentFD, "images", AT_REMOVEDIR)
-        }
+        // Leere Ordner bleiben bestehen: rmdir könnte einen fremden Ersatz
+        // treffen. Die Löschoperationen selbst bleiben ohne Durability-Zusage.
         return true
     }
 
-    func restoreFromMemory() -> Bool {
+    func restoreFromMemory(hooks: MarkdownImagePublication.Hooks = .init()) -> Bool {
+        lastPresenceFailure = nil
         guard let ticket else { return false }
+        if let removal, removal.hasClaims {
+            let result = removal.restoreClaims()
+            replaceRemovalResult(result)
+            guard result.complete else { return false }
+            self.removal = nil
+        }
         let restored = buffer.withData(ticket) { data -> Bool in
-            guard mkdirat(documentFD, "images", mode_t(0o755)) == 0 || errno == EEXIST,
-                  let fd = openImages() else { return false }
+            let created = mkdirat(documentFD, "images", mode_t(0o755)) == 0
+            guard created || errno == EEXIST, let fd = openImages() else { return false }
             defer { Darwin.close(fd) }
-            var published: [(String, MarkdownImageStore.StoredFileIdentity)] = []
-            for (index, image) in images.enumerated() {
-                let name = image.fileURL.lastPathComponent
-                if let existing = identity(named: name, in: fd), sameFile(identities[index], existing),
-                   verifiedContent(image, expected: existing, in: fd, collect: false) != nil { continue }
-                guard let metadata = try? PropertyListDecoder().decode(Metadata.self, from: data[index * 2 + 1]) else {
-                    removePublished(published, in: fd)
-                    return false
+            var published = pendingPublications
+            var restoredIdentities = identities
+            do {
+                // Barrieren zuerst am jeweils damaligen Ordner abschließen.
+                if !pendingPublications.isEmpty {
+                    try MarkdownImagePublication.completePendingBarriers(pendingPublications, parent: documentFD, hooks: hooks)
                 }
-                let temporary = ".fastra-image-restore-\(UUID().uuidString).tmp"
-                let output = openat(fd, temporary, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, mode_t(0o600))
-                guard output >= 0 else { removePublished(published, in: fd); return false }
-                let modificationTime = timespec(tv_sec: Int(identities[index].modificationSeconds),
-                                                tv_nsec: Int(identities[index].modificationNanoseconds))
-                let wrote = write(data[index * 2], to: output)
-                    && metadata.restore(to: output, modificationTime: modificationTime)
-                    && fsync(output) == 0
-                Darwin.close(output)
-                guard wrote, renameatx_np(fd, temporary, fd, name, UInt32(RENAME_EXCL)) == 0,
-                      let identity = identity(named: name, in: fd) else {
-                    _ = unlinkat(fd, temporary, 0)
-                    removePublished(published, in: fd)
-                    return false
+                for (index, image) in images.enumerated() {
+                    let name = image.fileURL.lastPathComponent
+                    if let retained = pendingPublications.first(where: { $0.name == name && $0.belongsToDirectory(fd) && (try? $0.identity()) != nil }) {
+                        // Fehler dürfen eine vollständige eigene Kopie erhalten.
+                        // Nur ihre exakte Version samt Bytes darf der Retry übernehmen.
+                        try retained.synchronizeRetainedFile(hooks: hooks)
+                        restoredIdentities[index] = try retained.identity()
+                        continue
+                    }
+                    if let existing = identity(named: name, in: fd), sameFile(identities[index], existing),
+                       verifiedContent(image, expected: existing, in: fd, collect: false) != nil {
+                        restoredIdentities[index] = existing
+                        continue
+                    }
+                    let metadata = try PropertyListDecoder().decode(Metadata.self, from: data[index * 2 + 1])
+                    let temporary = ".fastra-image-restore-\(UUID().uuidString).tmp"
+                    let output = openat(fd, temporary, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, mode_t(0o600))
+                    guard output >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                    var temporaryExists = true
+                    defer {
+                        Darwin.close(output)
+                        if temporaryExists { _ = unlinkat(fd, temporary, 0) }
+                    }
+                    let modificationTime = timespec(tv_sec: Int(identities[index].modificationSeconds),
+                                                    tv_nsec: Int(identities[index].modificationNanoseconds))
+                    guard write(data[index * 2], to: output),
+                          metadata.restore(to: output, modificationTime: modificationTime) else { throw POSIXError(.EIO) }
+                    try MarkdownImagePublication.syncFile(output, hooks: hooks)
+                    let publication = try MarkdownImagePublication(file: output, directory: fd, name: name, expectedSHA256: image.contentSHA256)
+                    try publication.publish(temporaryName: temporary)
+                    temporaryExists = false
+                    // Vor jedem neuen Fehler nach Rename muss das Eigentum bekannt sein.
+                    published.append(publication)
+                    try hooks.afterRenameBeforeIdentity?(publication.url)
+                    try publication.capturePublishedIdentity()
+                    try hooks.afterRename?(publication.url)
+                    restoredIdentities[index] = try publication.identity()
                 }
-                identities[index] = identity
-                published.append((name, identity))
+                guard imagesStillMatches(fd) else { throw POSIXError(.ESTALE) }
+                try MarkdownImagePublication.syncDirectories(images: fd, parent: documentFD, hooks: hooks)
+                guard imagesStillMatches(fd) else { throw POSIXError(.ESTALE) }
+                // Nach dem Sync darf keine inzwischen fremde Datei bestätigt werden.
+                for (index, image) in images.enumerated() {
+                    guard identity(named: image.fileURL.lastPathComponent, in: fd) == restoredIdentities[index] else {
+                        throw POSIXError(.ESTALE)
+                    }
+                }
+                identities = restoredIdentities
+                pendingPublications = []
+                lastRestoreFailure = nil
+                return true
+            } catch {
+                let failure = MarkdownImagePublication.failure(error, publications: published,
+                    images: fd, parent: documentFD, hooks: hooks)
+                pendingPublications = published
+                lastRestoreFailure = failure
+                // Eigene vollständige Kopien bleiben sichtbar erhalten. RAM-Ticket,
+                // Reservierungen und Text-Redo bleiben unverändert für den Retry.
+                return false
             }
-            return true
         } ?? false
-        if restored { buffer.remove(ticket); self.ticket = nil }
+        if restored {
+            buffer.remove(ticket)
+            self.ticket = nil
+            replaceRemovalResult(nil)
+            acknowledgeResolvedRemovalFailure()
+        }
         return restored
+    }
+
+    private func imagesStillMatches(_ fd: Int32) -> Bool {
+        var opened = stat()
+        var named = stat()
+        return fstat(fd, &opened) == 0
+            && fstatat(documentFD, "images", &named, AT_SYMLINK_NOFOLLOW) == 0
+            && named.st_mode & S_IFMT == S_IFDIR
+            && opened.st_dev == named.st_dev && opened.st_ino == named.st_ino
     }
 
     func discardMemory() {
         if let ticket { buffer.remove(ticket); self.ticket = nil }
+        // Verwerfen löscht keine nach einem Fehler erhaltene Datei.
+        pendingPublications = []
+        lastRestoreFailure = nil
+        lastPresenceFailure = nil
     }
 
     /// Aufräumen und abgebrochene Einfügungen benötigen keine Undo-Kopie.
-    func removePermanently(gate: (() -> Bool) -> Bool = { $0() }) -> Bool {
-        guard let fd = openImages() else { return false }
+    func removePermanently(gate: (() -> Bool) -> Bool = { $0() },
+                           hooks: MarkdownImageRemoval.Hooks = .init()) -> Bool {
+        withoutActuallyEscaping(gate) { gate in
+            removePermanently(gate: MarkdownImageRemoval.legacyGate(gate), hooks: hooks)
+        }
+    }
+
+    func removePermanently(gate: MarkdownImageRemoval.DetailedGate,
+                           hooks: MarkdownImageRemoval.Hooks = .init()) -> Bool {
+        beginRemovalAttempt()
+        guard let fd = openImages() else {
+            replaceRemovalResult(.init(causes: [POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)]))
+            return false
+        }
         defer { Darwin.close(fd) }
-        guard removeVerifiedFiles(in: fd, requireComplete: true, gate: gate) else { return false }
-        if images.contains(where: \.imagesDirectoryCreated) { _ = unlinkat(documentFD, "images", AT_REMOVEDIR) }
-        return true
+        if let removal, removal.hasClaims {
+            let result = removal.restoreClaims()
+            replaceRemovalResult(result)
+            guard result.complete else { return false }
+            self.removal = nil
+        }
+        let result = removeVerifiedFiles(in: fd, hooks: hooks, gate: gate)
+        replaceRemovalResult(result)
+        permanentlyRemoved.formUnion(result.removed.map(\.lastPathComponent))
+        if result.complete, images.allSatisfy({ permanentlyRemoved.contains($0.fileURL.lastPathComponent) }) {
+            acknowledgeResolvedRemovalFailure()
+        }
+        return result.complete
     }
 
     private struct Metadata: Codable {
@@ -170,10 +398,10 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
             return info.st_uid == owner && info.st_gid == group && info.st_mode & 0o7777 == mode
         }
 
-        func canRestore(in directory: Int32, modificationTime: timespec) -> Bool {
+        func canRestore(in directory: Int32, modificationTime: timespec) throws -> Bool {
             let name = ".fastra-image-metadata-\(UUID().uuidString).tmp"
             let fd = openat(directory, name, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, mode_t(0o600))
-            guard fd >= 0 else { return false }
+            guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             defer { Darwin.close(fd) }
             // Vor der Rechteprobe vom Verzeichnis trennen: Selbst eine ACL mit
             // Löschsperre hinterlässt so keine unzugängliche Nachbardatei.
@@ -184,7 +412,7 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
 
     private func captureMetadata(_ image: MarkdownImageStore.StoredImage,
                                  expected: MarkdownImageStore.StoredFileIdentity,
-                                 in directory: Int32, byteLimit: Int) -> (data: Data, identity: MarkdownImageStore.StoredFileIdentity)? {
+                                 in directory: Int32, byteLimit: Int) throws -> (data: Data, identity: MarkdownImageStore.StoredFileIdentity)? {
         let name = image.fileURL.lastPathComponent
         let fd = openat(directory, name, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)
         guard fd >= 0 else { return nil }
@@ -225,7 +453,7 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
         guard fstat(fd, &after) == 0, FileSnapshot.describesSameOpenedVersion(before, after),
               identity(named: name, in: directory) == snapshot,
               let data = try? PropertyListEncoder().encode(metadata), data.count <= byteLimit,
-              metadata.canRestore(in: directory, modificationTime: before.st_mtimespec) else { return nil }
+              try metadata.canRestore(in: directory, modificationTime: before.st_mtimespec) else { return nil }
         return (data, snapshot)
     }
 
@@ -271,50 +499,29 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
         return Data()
     }
 
-    private func removeVerifiedFiles(in directory: Int32, requireComplete: Bool,
-                                     metadataSnapshots: [MarkdownImageStore.StoredFileIdentity]? = nil, gate: (() -> Bool) -> Bool) -> Bool {
-        var verified: [MarkdownImageStore.StoredFileIdentity] = []
+    private func removeVerifiedFiles(in directory: Int32,
+                                     metadataSnapshots: [MarkdownImageStore.StoredFileIdentity]? = nil,
+                                     hooks: MarkdownImageRemoval.Hooks, gate: MarkdownImageRemoval.DetailedGate) -> MarkdownImageRemoval.Result {
+        var verified: [(MarkdownImageStore.StoredImage, MarkdownImageStore.StoredFileIdentity)] = []
         for (index, image) in images.enumerated() {
             let name = image.fileURL.lastPathComponent
+            if permanentlyRemoved.contains(name) { continue }
             guard let observed = identity(named: name, in: directory), sameFile(identities[index], observed),
                   metadataSnapshots.map({ $0[index] == observed }) ?? true,
                   verifiedContent(image, expected: observed, in: directory, collect: false) != nil,
-                  identity(named: name, in: directory) == observed else { return false }
-            verified.append(observed)
-        }
-        // Nur die kurzen Metadatenoperationen laufen unter der Dokumentbarriere.
-        // Lesen und Hashen bleiben davor auf der I/O-Queue.
-        return gate {
-            var claims: [(String, String)] = []
-            func rollback() {
-                for (name, claim) in claims.reversed() { _ = renameatx_np(directory, claim, directory, name, UInt32(RENAME_EXCL)) }
+                  identity(named: name, in: directory) == observed else {
+                return .init(causes: [POSIXError(.ESTALE)])
             }
-            for (index, image) in images.enumerated() {
-                let name = image.fileURL.lastPathComponent
-                let observed = verified[index]
-                guard identity(named: name, in: directory) == observed else { rollback(); return false }
-                let claim = ".fastra-image-delete-\(UUID().uuidString).tmp"
-                guard renameatx_np(directory, name, directory, claim, UInt32(RENAME_EXCL)) == 0 else { rollback(); return false }
-                claims.append((name, claim))
-                guard let claimed = identity(named: claim, in: directory), sameFile(observed, claimed) else { rollback(); return false }
-            }
-            var removed = 0
-            for (_, claim) in claims {
-                if unlinkat(directory, claim, 0) == 0 { removed += 1 }
-            }
-            if removed != claims.count { rollback() }
-            return requireComplete ? removed == claims.count : removed > 0
+            verified.append((image, observed))
         }
-    }
-
-    private func removePublished(_ published: [(String, MarkdownImageStore.StoredFileIdentity)], in directory: Int32) {
-        for (name, expected) in published {
-            guard identity(named: name, in: directory) == expected else { continue }
-            let claim = ".fastra-image-delete-\(UUID().uuidString).tmp"
-            guard renameatx_np(directory, name, directory, claim, UInt32(RENAME_EXCL)) == 0 else { continue }
-            if let moved = identity(named: claim, in: directory), sameFile(expected, moved) { _ = unlinkat(directory, claim, 0) }
-            else { _ = renameatx_np(directory, claim, directory, name, UInt32(RENAME_EXCL)) }
-        }
+        do {
+            let operation = try MarkdownImageRemoval(images: directory)
+            removal = operation
+            let result = operation.remove(verified, hooks: hooks, gate: gate)
+            if !operation.hasClaims { removal = nil }
+            return result
+        } catch let result as MarkdownImageRemoval.Result { return result }
+        catch { return .init(causes: [error]) }
     }
 
     private func sameFile(_ a: MarkdownImageStore.StoredFileIdentity, _ b: MarkdownImageStore.StoredFileIdentity) -> Bool {
@@ -331,15 +538,21 @@ final class MarkdownImageUndoFiles: @unchecked Sendable {
     }
 
     private func write(_ data: Data, to fd: Int32) -> Bool {
-        data.withUnsafeBytes { bytes in
-            var offset = 0
-            while offset < bytes.count {
-                let count = Darwin.write(fd, bytes.baseAddress!.advanced(by: offset), bytes.count - offset)
-                if count < 0 && errno == EINTR { continue }
-                guard count > 0 else { return false }
-                offset += count
+        do {
+            try data.withUnsafeBytes { bytes in
+                try POSIXBufferWriter.writeAll(bytes, to: fd)
             }
             return true
+        } catch {
+            return false
         }
+    }
+
+    var referenceRejectionID: UUID? { lastRemovalResult?.referenceRejectionID }
+
+    /// Der angenommene visuelle Terminalabschluss ersetzt nur seinen eigenen
+    /// reinen Gatebefund. Ein inzwischen neuerer Befund bleibt unverändert.
+    func retireReferenceRejection(_ id: UUID) {
+        if lastRemovalResult?.referenceRejectionID == id { lastRemovalResult = nil }
     }
 }

@@ -5,7 +5,9 @@
 // (Abschnitt B „Vorlagen-Liste").
 //
 // Anpassungen an dieser Liste sind okay — aber bitte die Tests in
-// Tests/FastraTests/PatternTests.swift laufen lassen, damit jede Vorlage
+// Tests/FastraTests/PatternTests.swift
+//
+// laufen lassen, damit jede Vorlage
 // ihren Beispiel-Treffer weiterhin findet und die Group-Labels zur
 // Group-Anzahl passen.
 
@@ -296,9 +298,8 @@ public enum BuiltInPatterns {
 
     // MARK: - Wörter & Zeilen (v1.1)
     //
-    // Die „simplen" Vorlagen für Nicht-RegEx-Profis — genau die Fälle aus
-    // Daniels Tests (Namen tauschen). Bewusst mit `\w`: ICU-\w ist Unicode-
-    // fähig und matcht auch Umlaute/ß.
+    // Vorlagen für einfache Aufgaben wie das Tauschen von Namen. ICU-`\w`
+    // verarbeitet auch Umlaute und ß.
 
     /// Ein einzelnes Wort.
     public static let oneWord = PatternTemplate(
@@ -333,7 +334,7 @@ public enum BuiltInPatterns {
     )
 
     /// Versehentlich doppelt getipptes Wort („der der") — die Standard-
-    /// Ersetzung behält es einmal. `\1` referenziert im SUCH-Muster die
+    /// Ersetzung behält es einmal. `\1` referenziert im Such-Muster die
     /// erste Gruppe (Backreference), `$1` in der Ersetzung.
     public static let doubledWord = PatternTemplate(
         id: "doubled_word",
@@ -453,10 +454,8 @@ public enum BuiltInPatterns {
 
     // MARK: - Gesamtliste
 
-    /// Alle mitgelieferten Vorlagen, in der Reihenfolge, in der sie im
-    /// Picker erscheinen sollen (gruppiert nach Kategorie). Die v1.0-
-    /// Vorlagen stehen in ihrer Kategorie bewusst VOR den v1.1-Ergänzungen
-    /// (Daniel: „die bestehenden gehören zu den wichtigsten").
+    /// Mitgelieferte Vorlagen in Picker-Reihenfolge, nach Kategorie gruppiert.
+    /// Die häufig benötigten v1.0-Vorlagen stehen vor den v1.1-Ergänzungen.
     public static let all: [PatternTemplate] = [
         // Identifikatoren
         email, url, iban, ipv4, uuid,

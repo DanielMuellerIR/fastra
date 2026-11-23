@@ -1,3 +1,4 @@
+import FastraPatternSyntax
 import SwiftUI
 import AppKit
 
@@ -45,7 +46,7 @@ struct FloatingSearchDialog: View {
     // Dieselbe Defaults-Suite wie der Workspace: Im Normalbetrieb `.standard`,
     // im Selbsttest die isolierte Suite — sonst schrieben Selbsttests eigene
     // Vorlagen in die echte Bibliothek des Nutzers.
-    @StateObject private var patternLibrary = PatternLibrary(defaults: SelfTest.workspaceDefaults())
+    @StateObject private var patternLibrary = PatternLibrary(defaults: AppDefaults.store)
     @State private var showPatternEditor = false
     @State private var showExampleTransformation = false
     @State private var approvalRequest: SearchApprovalPreview.Request?
@@ -55,7 +56,7 @@ struct FloatingSearchDialog: View {
     @FocusState private var hitListFocused: Bool
     /// Zähler statt Bool: Jeder Klick auf eine Treffer-Zeile zählt hoch und
     /// löst über `.onChange` das Zentrieren der Liste aus — auch wenn derselbe
-    /// Treffer erneut angeklickt wird (Etappe 2 Wunschpaket 2026-07b).
+    /// Treffer erneut angeklickt wird.
     @State private var matchTapScrollToken = 0
 
     var body: some View {
@@ -67,7 +68,7 @@ struct FloatingSearchDialog: View {
             scopeRow
 
             // Wachsender Ordner-Block — nur bei Scope „Ordner" sichtbar,
-            // animiert. Konzept-Frage 1 (Daniel, 2026-05-26): „Maske
+            // animiert. Konzept-Frage 1: „Maske
             // wächst dynamisch statt zwei separate Fenster".
             if workspace.scope.isFolderLike {
                 Group {
@@ -82,7 +83,7 @@ struct FloatingSearchDialog: View {
 
             Divider().opacity(0.4)
 
-            // Kompaktes Formular (Layout-Umbau 2026-09-15): Die Vorlage sitzt
+            // Kompaktes Formular: Die Vorlage sitzt
             // am Ende der Suchen-Zeile, die Gruppen-/Platzhalter-Pillen am
             // Ende der Ersetzen-Zeile. Jede eingesparte Zeile geht unten an
             // die Trefferliste — sie ist der einzige Bereich, der mit dem
@@ -91,31 +92,19 @@ struct FloatingSearchDialog: View {
             optionsRow
             replaceRow
 
-            // Wildcard-Überzahl-Hinweis (Review-Befund 2026-06-23, Daniel-Entscheid:
-            // dezenter Hinweis statt Block): Wenn im Platzhalter-Modus das Ersetzen-
-            // Feld MEHR `*` enthält als das Suchen-Feld, haben die überzähligen
-            // Sterne keine Capture-Gruppe und werden zu leerem Text. Transparent
-            // machen (App-Linie „keine stille Trunkierung").
+            // Im Platzhalter-Modus haben überzählige Sterne im Ersetzen-Feld keine
+            // Capture-Gruppe und ergeben leeren Text. Ein dezenter Hinweis erklärt das,
+            // ohne die Ersetzung zu sperren.
             if let warn = wildcardReplaceWarning {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
+                searchNotice {
                     Text(warn)
                         .fastraFont(size: 11)
-                        .foregroundColor(.orange)
                         .lineLimit(2)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color.orange.opacity(0.08))
-                )
             }
 
             // Inline Live-Vorschau Vorher→Nachher direkt unter den Feldern
-            // (Feature J, todo 3) — leer, wenn nicht anwendbar.
+            // — leer, wenn nicht anwendbar.
             livePreviewStrip
 
             Divider().opacity(0.4)
@@ -131,11 +120,10 @@ struct FloatingSearchDialog: View {
             actionRow
         }
         .padding(16 * uiScale)
-        // 520 pt: Die WIRKSAME Mindestbreite des Fensters kommt von hier, nicht
-        // aus `SearchPanelController.minWidth` — NSHostingController schreibt
-        // die SwiftUI-Mindestgröße in `contentMinSize`. Bei 500 pt fehlten der
-        // Projekt-Zeile „Datei-Set … Dateitypen …" wenige Punkte, und sie
-        // brach in zwei Zeilen (Sichtprüfung 2026-09-15).
+        // 520 pt bestimmen die wirksame Mindestbreite: NSHostingController
+        // übernimmt die SwiftUI-Grenze in `contentMinSize`, unabhängig von
+        // `SearchPanelController.minWidth`. So passt die Projekt-Zeile mit
+        // Datei-Set und Dateitypen ohne unbeabsichtigten Umbruch.
         .frame(minWidth: 520 * uiScale, maxWidth: .infinity, alignment: .topLeading)
         .background(Theme.surfaceRaised.ignoresSafeArea())
         .animation(.easeOut(duration: 0.22), value: workspace.scope)
@@ -146,11 +134,10 @@ struct FloatingSearchDialog: View {
             retokenize()
             focusFindField()
         }
-        // Fokus ins Suchfeld bei jedem Öffnen und Nach-vorn-Holen (Befund
-        // 2026-09-15): Das Fenster wird beim Schließen nur ausgeblendet
-        // (`orderOut`), und AppKit vergibt beim Wiederanzeigen den Fokus an
-        // das erste Feld der Tab-Reihenfolge — im Projekt-Bereich ist das
-        // „Ausschlüsse", nicht „Suchen". Deshalb ausdrücklich setzen.
+        // Suchfeld bei jedem Öffnen und Vorholen fokussieren. Das Fenster bleibt
+        // beim Schließen per `orderOut` erhalten; AppKit würde beim Wiederanzeigen
+        // sonst das erste Feld der Tab-Reihenfolge wählen, im Projekt-Bereich
+        // „Ausschlüsse“ statt „Suchen“.
         .onChange(of: workspace.showSearchDialog) { _, visible in
             if visible { focusFindField() }
         }
@@ -191,6 +178,9 @@ struct FloatingSearchDialog: View {
             ExtractionDialog(defaultUseReplacement: !workspace.replacePattern.isEmpty) { options in
                 _ = workspace.extractHits(options: options)
             }
+        }
+        .sheet(item: $workspace.fileRecoverySession) { session in
+            ApplyRecoverySheet(workspace: workspace, session: session)
         }
         .sheet(item: $approvalRequest) { request in
             SearchApprovalPreviewSheet(workspace: workspace, request: request)
@@ -258,7 +248,7 @@ struct FloatingSearchDialog: View {
     // MARK: - Suchbereich-Zeile (Datei / Geöffnet / Ordner)
 
     private var scopeRow: some View {
-        // Drei Umbruchstufen (Befunde 2026-09-15): (1) alles in einer Zeile;
+        // Drei Umbruchstufen: (1) alles in einer Zeile;
         // (2) Datei-Set und Dateitypen in einer eigenen Zeile, deren
         // Beschriftung „Datei-Set" in der linken Beschriftungsspalte steht;
         // (3) Datei-Set und Dateitypen je in einer eigenen beschrifteten
@@ -306,23 +296,12 @@ struct FloatingSearchDialog: View {
     /// umbrechen; der Umbruch passiert nur zwischen Tabs und Projekt-Elementen.
     private var scopeTabs: some View {
             HStack(spacing: 4) {
-                // `.open` („Geöffnet") ist noch NICHT wirklich implementiert:
-                // die Such-Engine durchsucht in diesem Scope faktisch nur den
-                // aktiven Tab, nicht alle geöffneten Tabs (siehe SearchRunner /
-                // runBufferSearch). Deshalb blenden wir den Button aus, bis die
-                // echte Mehr-Tab-Suche existiert — sonst verspräche das UI etwas,
-                // das die App nicht tut. Der Enum-Fall bleibt bestehen (Engine-
-                // Verhalten + Tests unverändert), nur die Auswahl ist gefiltert.
                 ForEach(Workspace.SearchScope.allCases) { s in
                     Button {
                         workspace.scope = s
                     } label: {
-                        // Kein Zahlen-Badge mehr: war ein hartcodierter
-                        // Prototyp-Überrest (8/51/51, an nichts gekoppelt) und
-                        // wurde regelmäßig mit der Treffer-Zahl verwechselt
-                        // (Daniel-Befund 2026-06-22). Die echte Treffer-Zahl
-                        // steht unten bei „Treffer (N)". Die Scope-Auswahl bleibt
-                        // über die Sand-Füllung markiert.
+                        // Die Trefferzahl steht im Ergebnisbereich. Die Füllung
+                        // dieser Taste kennzeichnet den gewählten Suchbereich.
                         Text(verbatim: L10n.string(s.rawValue))
                             .fastraFont(.small)
                             .fixedSize()
@@ -340,7 +319,7 @@ struct FloatingSearchDialog: View {
                     // Button bekäme beim Öffnen den Fokus und zeigte einen
                     // amber Ring (App-Tint = Gold) um „Datei" — irreführend, da
                     // der gewählte Scope bereits über die Sand-Füllung markiert
-                    // ist (Daniel-Befund 2026-06-13). Auswahl ≠ Fokus.
+                    // ist. Auswahl ≠ Fokus.
                     .focusEffectDisabled()
                     .disabled(s == .project && workspace.projectURL == nil)
                     .help(tooltip(for: s))
@@ -371,11 +350,11 @@ struct FloatingSearchDialog: View {
             .labelsHidden()
             .controlSize(.small)
             // fixedSize statt maxWidth: Ein Picker ohne Mindestbreite wird
-            // von SwiftUI bei Platzmangel auf null gedrückt (Befund 2026-09-15).
+            // von SwiftUI bei Platzmangel auf null gedrückt.
             .fixedSize()
             // Der volle Name steht mit im Tooltip: Zwei Sets, die sich nur in
             // der gekürzten Mitte unterscheiden, sähen in der Liste sonst
-            // gleich aus (Review-Fund 2026-09-17).
+            // gleich aus.
             .help(L10n.format("Datei-Set „%@“ — Pfade: %@",
                               L10n.string(workspace.projectSearchConfiguration.activeSet?.name ?? "—"),
                               workspace.projectSearchConfiguration.activeSet?.paths.joined(separator: ", ") ?? "—"))
@@ -431,10 +410,6 @@ struct FloatingSearchDialog: View {
     }
 
     // MARK: - Ordner-Quellen (sichtbar nur bei Scope „Ordner")
-    //
-    // Stub für die Recent-Folders-Liste + Dateityp-Filter. Persistenz
-    // und „Auswählen…"-Dialog folgen in v0.6, sobald die echte Folder-
-    // Suche kommt.
 
     private var folderSourcesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -450,7 +425,7 @@ struct FloatingSearchDialog: View {
             }
 
             // Gleiche Fehlerklasse wie die entfernte „GEÖFFNET"-Liste
-            // (Befund 2026-09-01): Diese Liste wächst mit jedem hinzugefügten
+            //: Diese Liste wächst mit jedem hinzugefügten
             // Ordner unbegrenzt und würde den fest bemessenen Suchdialog
             // irgendwann sprengen. Ab acht Einträgen scrollt sie deshalb in
             // fester Höhe; darunter bleibt sie wie bisher kompakt ohne
@@ -460,7 +435,7 @@ struct FloatingSearchDialog: View {
                 if workspace.recentSearchFolders.count > 7 {
                     ScrollView(.vertical) {
                         // Lazy: Nur sichtbare Zeilen werden gebaut — die
-                        // Liste ist unbegrenzt (Review 2026-09-02).
+                        // Liste ist unbegrenzt.
                         LazyVStack(spacing: 2) { folderEntryRows }
                     }
                     .frame(height: 168 * uiScale)
@@ -502,7 +477,7 @@ struct FloatingSearchDialog: View {
     private var folderEntryRows: some View {
         // Einmal pro Darstellung ein Index Pfad → Häkchen, statt in jedem
         // Toggle-Getter das ganze Array zu durchsuchen (n² Vergleiche bei
-        // n Einträgen, Review 2026-09-02).
+        // n Einträgen).
         let enabledByPath = SearchFolderEntry.enabledByPath(workspace.recentSearchFolders)
         return ForEach(workspace.recentSearchFolders) { entry in
             HStack(spacing: 6) {
@@ -536,11 +511,9 @@ struct FloatingSearchDialog: View {
         }
     }
 
-    /// Nur noch die Ausschlüsse-Zeile: Datei-Set und Dateitypen stehen in
-    /// der Suchbereich-Zeile (`fileSetControls`/`fileTypeControls`). Die frühere
-    /// „Pfade"-Anzeige und der Hinweis „DerivedData wird immer
-    /// ausgeschlossen" sind entfallen — die Pfade zeigt der Picker-Tooltip,
-    /// DerivedData steht ohnehin im Ausschlussfeld (Layout-Umbau 2026-09-15).
+    /// Ausschlüsse-Zeile; Datei-Set und Dateitypen stehen in `fileSetControls`
+    /// bzw. `fileTypeControls` der Suchbereich-Zeile. Die Pfade zeigt der
+    /// Picker-Tooltip, DerivedData steht im Ausschlussfeld.
     private var projectSourcesSection: some View {
         HStack(spacing: 8) {
             Text("Ausschlüsse")
@@ -571,9 +544,8 @@ struct FloatingSearchDialog: View {
 
     // MARK: - Vorlagen-Dropdown
 
-    /// Vorlagen-Picker am Ende der Suchen-Zeile (seit dem Layout-Umbau
-    /// 2026-09-15 ohne eigene Zeile). Auswahl füllt das Find-Feld und ggf.
-    /// das Replace-Feld bei `defaultReplacement`.
+    /// Vorlagen-Picker am Ende der Suchen-Zeile. Die Auswahl füllt das
+    /// Suchen-Feld und bei `defaultReplacement` auch das Ersetzen-Feld.
     private var templateMenu: some View {
         HStack(spacing: 4) {
             // Vorlage-Dropdown ist **immer** aktiv. Alle Vorlagen sind
@@ -639,7 +611,7 @@ struct FloatingSearchDialog: View {
     /// Beschriftung des Vorlagenmenüs. Eigene Vorlagen dürfen beliebig lange
     /// Namen tragen; das Menü steht aber mit `.fixedSize()` in der Suchen-
     /// Zeile und würde das Suchen-Feld sonst zusammenschieben. Deshalb auf
-    /// eine feste Zeichenzahl mittig gekürzt (Review-Fund 2026-09-16).
+    /// eine feste Zeichenzahl mittig gekürzt.
     private var currentTemplateLabel: String {
         guard
             let id = workspace.selectedTemplateID,
@@ -671,7 +643,7 @@ struct FloatingSearchDialog: View {
                 .foregroundColor(Theme.textSecondary)
                 .frame(width: 80 * uiScale, alignment: .leading)
 
-            // Editierbares Feld MIT Inline-Token-Highlighting (v0.7):
+            // Editierbares Feld mit Inline-Token-Highlighting (v0.7):
             // NSTextView-basiert (RegexFieldView), Farben pro Token-Typ
             // aus der tree-sitter-Tokenisierung. Bei RegEx=aus keine
             // Färbung (tokenization == nil). Return = Weitersuchen bzw.
@@ -697,23 +669,12 @@ struct FloatingSearchDialog: View {
                 },
                 accessibilityID: "fastra.findField"
             )
-            // Mindestbreite: Vorlagenmenü und Knöpfe rechts sind `fixedSize`;
-            // ohne Untergrenze bekäme das Feld bei Platzmangel null Breite.
-            .frame(minWidth: 120 * uiScale, maxWidth: .infinity)
-            .frame(height: 24 * uiScale)
-            .padding(.horizontal, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Theme.surfaceRaised)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            // accentReadable statt accent: Goldgelb (~1,4:1) war
-                            // als Stroke auf weißem Grund kaum sichtbar; Bernstein
-                            // (#A07800) erreicht ~4,0:1 auf Weiß.
-                            .stroke(workspace.useRegex ? Theme.accentReadable.opacity(0.8) : Theme.stroke,
-                                    lineWidth: 1.5)
-                    )
-            )
+            // Der RegEx-Modus soll auch ohne Fokus am Rahmen erkennbar sein.
+            .modifier(SearchPatternFieldStyle(
+                scale: uiScale,
+                stroke: workspace.useRegex ? Theme.accentReadable.opacity(0.8) : Theme.stroke,
+                lineWidth: 1.5
+            ))
 
             // Element-Picker [+]: öffnet ein Popover mit RegEx-Bausteinen,
             // kategorisiert (Anker / Zeichenklassen / Quantifizierer /
@@ -747,7 +708,7 @@ struct FloatingSearchDialog: View {
             // Paaren. Auswahl füllt beide Felder (BBEdit „Search History").
             searchHistoryMenu
 
-            // Vorlagen-Picker (Layout-Umbau 2026-09-15: statt eigener Zeile).
+            // Vorlagen-Picker innerhalb der Suchen-Zeile.
             templateMenu
         }
     }
@@ -807,11 +768,9 @@ struct FloatingSearchDialog: View {
 
     // MARK: - Such-Optionen-Toggle-Zeile (BBEdit-Stil)
     //
-    // Seit dem Layout-Umbau 2026-09-15 EINE Zeile: Alle Schalter stehen
-    // nebeneinander, solange die Fensterbreite reicht. Erst wenn sie nicht
-    // mehr passen, rückt der zweite Block („Nur in Auswahl", „∗ wörtlich")
-    // in eine zweite Zeile unter RegEx. `ViewThatFits` entscheidet das
-    // anhand der tatsächlichen Breite — kein festes Umbruchmaß.
+    // Alle Schalter stehen nebeneinander, solange die Fensterbreite reicht.
+    // `ViewThatFits` verschiebt bei Platzmangel „Nur in Auswahl“ und „∗ wörtlich“
+    // in eine zweite Zeile unter RegEx.
 
     private var optionsRow: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -850,7 +809,7 @@ struct FloatingSearchDialog: View {
             }
 
         // „Groß = klein" ist die Kompaktform. Achtung: Semantik ist
-        // gegenüber `caseSensitive` invertiert (Toggle AN heißt:
+        // gegenüber `caseSensitive` invertiert (Toggle an heißt:
         // groß und klein als gleich behandeln, also case-insensitiv).
         Toggle("Groß = klein", isOn: Binding(
             get: { !workspace.caseSensitive },
@@ -911,16 +870,14 @@ struct FloatingSearchDialog: View {
 
     // MARK: - Replace-Feld
 
-    /// Hinweistext, wenn im Platzhalter-Modus das Ersetzen-Feld MEHR `*` enthält
-    /// als das Suchen-Feld. Die überzähligen Sterne haben keine Capture-Gruppe
-    /// (`compileReplace` macht aus dem N-ten `*` ein `$N`, aber `compileFind`
-    /// erzeugt nur so viele Gruppen wie Sterne im Suchen) → sie werden zu leerem
-    /// Text. `nil` = kein Hinweis. Spiegelt `SearchOptions.usesWildcard`.
+    /// Hinweistext, wenn im Platzhalter-Modus das Ersetzen-Feld mehr `*` enthält
+    /// als das Suchen-Feld. Sternläufe ohne Capture-Gruppe bleiben bei der
+    /// Ersetzung leer. `nil` = kein Hinweis. Spiegelt `SearchOptions.usesWildcard`.
     private var wildcardReplaceWarning: String? {
         guard !workspace.useRegex,
               !workspace.treatWildcardLiterally,
               WildcardPattern.containsWildcard(workspace.findPattern) else { return nil }
-        // Lauf-Zählung, nicht Roh-Zählung: `**` ist EIN Platzhalter (eine
+        // Lauf-Zählung, nicht Roh-Zählung: `**` ist ein Platzhalter (eine
         // mehrzeilige Gruppe bzw. ein Verweis), siehe WildcardPattern #6.
         let findStars = WildcardPattern.starRunCount(workspace.findPattern)
         let replaceStars = WildcardPattern.starRunCount(workspace.replacePattern)
@@ -951,18 +908,7 @@ struct FloatingSearchDialog: View {
                 controller: replaceFieldController,
                 accessibilityID: "fastra.replaceField"
             )
-            // Mindestbreite gegen die Pillenreihe rechts (siehe `PillTray`).
-            .frame(minWidth: 120 * uiScale, maxWidth: .infinity)
-            .frame(height: 24 * uiScale)
-            .padding(.horizontal, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Theme.surfaceRaised)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Theme.stroke, lineWidth: 1)
-                    )
-            )
+            .modifier(SearchPatternFieldStyle(scale: uiScale))
 
             // Swap-Button (K9, BBEdit „Swap"): vertauscht Suchen- und
             // Ersetzen-Feld. Sitzt am Ende der Ersetzen-Zeile, dort wo bei
@@ -977,14 +923,13 @@ struct FloatingSearchDialog: View {
             .buttonStyle(.plain)
             .help("Suchen und Ersetzen vertauschen")
 
-            // Gruppen- bzw. Platzhalter-Pillen direkt am Ersetzen-Feld
-            // (Layout-Umbau 2026-09-15: statt eigener Zeile). Klick oder
-            // Drag fügt `$N` ins Feld ein.
+            // Gruppen- bzw. Platzhalter-Pillen direkt am Ersetzen-Feld.
+            // Klick oder Drag fügt `$N` ins Feld ein.
             if workspace.useRegex {
                 groupsRow
             } else if usesWildcard {
                 // Plain-Modus-Pendant zum Gruppen-Tray: nummerierte Pillen
-                // pro `*` (Feature J, todo 1+2).
+                // pro `*`.
                 wildcardGroupsRow
             }
         }
@@ -992,8 +937,8 @@ struct FloatingSearchDialog: View {
 
     // MARK: - Gruppen-Tray (nur bei RegEx=an)
 
-    /// Pills LIVE aus der Tokenisierung (v0.7) — eine pro fangender Gruppe
-    /// im Find-Pattern. Drag ins Replace-Feld ODER Klick fügt dort `$N` ein
+    /// Pills live aus der Tokenisierung (v0.7) — eine pro fangender Gruppe
+    /// im Find-Pattern. Drag ins Replace-Feld oder Klick fügt dort `$N` ein
     /// (Low-Friction-Leitplanke: beides geht). Ohne Gruppen bleibt die Stelle
     /// leer; wie Gruppen entstehen, erklärt der Tooltip von „Gruppe
     /// definieren" im Detailbereich.
@@ -1001,60 +946,65 @@ struct FloatingSearchDialog: View {
     private var groupsRow: some View {
         if let groups = findTokenization?.groups, !groups.isEmpty {
             PillTray(maxWidth: PillTrayLayout.maxWidth * uiScale) {
-                HStack(spacing: 6) {
-                    ForEach(groups, id: \.number) { group in
-                        GroupPill(group: group,
-                                  patternText: workspace.findPattern) {
-                            replaceFieldController.insertAtCaret("$\(group.number)")
-                        }
+                ForEach(groups, id: \.number) { group in
+                    SearchCapturePill(
+                        number: group.number,
+                        detail: Text(groupLabel(group, in: workspace.findPattern)),
+                        hint: L10n.format(
+                            "Gruppe %ld ins Ersetzen-Feld übernehmen — Pille dorthin ziehen oder einfach klicken (fügt $%ld ein).",
+                            group.number, group.number
+                        )
+                    ) {
+                        replaceFieldController.insertAtCaret("$\(group.number)")
                     }
                 }
             }
         }
     }
 
-    // MARK: - Platzhalter-Tray (nur bei RegEx=aus + aktivem `*`)
-    //
-    // Das Plain-Modus-Pendant zum Gruppen-Tray (Feature J): jeder `*` im
-    // Suchausdruck ist eine gierige Fanggruppe und bekommt eine nummerierte
-    // Pille `$1`, `$2`, … — dieselbe Low-Friction-Mechanik wie die Capture-
-    // Group-Pillen (Drag aufs Ersetzen-Feld ODER Klick fügt dort `$N` ein).
-    // Sichtbar nur, wenn `usesWildcard` true ist (Plain + Schalter aus + `*`
-    // vorhanden) → `wildcardStarCount` ist dann ≥ 1.
+    private func groupLabel(_ group: CaptureGroupInfo, in pattern: String) -> String {
+        if let name = group.name, !name.isEmpty { return name }
+        let text = pattern as NSString
+        guard group.innerRange.location + group.innerRange.length <= text.length else {
+            return L10n.format("Gruppe %ld", group.number)
+        }
+        let label = text.substring(with: group.innerRange)
+        return label.count > 14 ? String(label.prefix(13)) + "…" : label
+    }
+
+    // MARK: - Platzhalter-Tray
+
     private var wildcardGroupsRow: some View {
         PillTray(maxWidth: PillTrayLayout.maxWidth * uiScale) {
-            // Eine Pille pro Stern. `max(1, …)` ist nur eine defensive Klammer:
-            // die Zeile rendert ohnehin nur bei `usesWildcard` (≥ 1 Stern), aber
-            // falls sich das Muster zwischen Bedingung und Body-Aufbau ändert,
-            // bleibt `1...n` gültig (ForEach-Range darf nicht leer/absteigend sein).
-            //
-            // BEWUSST nur die Pillen, kein erklärender Fließtext — exakt wie das
-            // `groupsRow`-Pendant im RegEx-Modus (Konsistenz + „chirurgisch").
-            // Die Bedeutung tragen der Pillen-Tooltip und der Ersetzen-Feld-
-            // Platzhalter („$1, $2 für Gruppen").
-            HStack(spacing: 6) {
-                ForEach(1...max(1, wildcardStarCount), id: \.self) { n in
-                    WildcardPill(number: n) {
-                        replaceFieldController.insertAtCaret("$\(n)")
-                    }
+            // Der Bereich bleibt gültig, falls sich das Suchmuster während des Ansichtsaufbaus ändert.
+            ForEach(1...max(1, wildcardStarCount), id: \.self) { number in
+                SearchCapturePill(
+                    number: number,
+                    detail: Text("∗"),
+                    hint: L10n.format(
+                        "Platzhalter %ld (der %ld. Stern ∗) ins Ersetzen-Feld übernehmen — Pille dorthin ziehen oder einfach klicken (fügt $%ld ein).",
+                        number, number, number
+                    )
+                ) {
+                    replaceFieldController.insertAtCaret("$\(number)")
                 }
             }
         }
     }
 
-    // MARK: - Inline Live-Vorschau Vorher→Nachher (Feature J, todo 3)
+    // MARK: - Inline Live-Vorschau Vorher→Nachher
 
-    /// Zeilen-Obergrenze der INLINE-Vorschau. Bewusst klein — das große
+    /// Zeilen-Obergrenze der Inline-Vorschau. Bewusst klein — das große
     /// Freigabe-Sheet zeigt alle Änderungen; hier erscheinen nur die ersten
     /// bereits freigegebenen Zeilen des aktiven Dokuments.
     private var livePreviewMaxRows: Int { 3 }
 
-    /// Kompakte, LIVE mittippende Vorher→Nachher-Vorschau direkt unter den
+    /// Kompakte, live mittippende Vorher→Nachher-Vorschau direkt unter den
     /// Feldern. Reuse der getesteten `ReplacePreview.build`-Logik (gleiche
     /// Quelle wie das große Sheet) — hier nur die ersten Zeilen als Sofort-
     /// Feedback (Produktprinzip „Vorschau ist das Produkt"). Nur in den Buffer-
     /// Scopes (Datei/Geöffnet — der Ordner-Scope hat keinen einzelnen aktiven
-    /// Buffer), nur wenn ein Ersetzen-Text getippt ist UND es Treffer gibt;
+    /// Buffer), nur wenn ein Ersetzen-Text getippt ist und es Treffer gibt;
     /// sonst leer → im Normalfall kein Layout-Sprung. Die Quelle bindet Treffer
     /// an die aktuellen Suchoptionen und im „Geöffnet"-Scope an den aktiven Tab;
     /// der alte Debounce-Stand darf dadurch nie als neue Vorschau erscheinen.
@@ -1109,6 +1059,26 @@ struct FloatingSearchDialog: View {
         }
     }
 
+    private func searchNotice<Label: View>(
+        symbolName: String = "exclamationmark.triangle.fill",
+        tint: Color = .orange,
+        @ViewBuilder label: () -> Label
+    ) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbolName)
+                .foregroundColor(tint)
+            label()
+                .foregroundStyle(Theme.textPrimary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(tint.opacity(0.08))
+        )
+    }
+
     // MARK: - Trefferliste in der Maske (Sofort-Treffer)
 
     private var hitsSection: some View {
@@ -1120,7 +1090,7 @@ struct FloatingSearchDialog: View {
                 Text(verbatim: L10n.format("Treffer (%ld)", scopeTotalMatches))
                     .fastraFont(.small)
                     .foregroundColor(Theme.textPrimary)
-                // Spinner, solange im Hintergrund gesucht wird — Folder- ODER
+                // Spinner, solange im Hintergrund gesucht wird — Folder- oder
                 // Buffer-Scope (beide laufen async). „Suche noch läuft"-Signal,
                 // damit der ehrliche Count nicht als „fertig" missverstanden wird.
                 if workspace.folderSearching || workspace.bufferSearching {
@@ -1150,54 +1120,30 @@ struct FloatingSearchDialog: View {
             // nur markieren). Verschwindet, sobald das Pattern wieder
             // gültig ist.
             if let msg = workspace.searchError {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.red)
+                searchNotice(tint: .red) {
                     Text(msg)
                         .fastraFont(size: 11)
-                        .foregroundColor(.red)
                         .lineLimit(2)
                         .help(msg)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color.red.opacity(0.08))
-                )
             }
 
             if !incompleteFiles.isEmpty && !workspace.folderSearching && !workspace.folderNeedsSearch
                 && workspace.searchError == nil {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+                searchNotice {
                     Text(verbatim: incompleteFilesNotice(incompleteFiles))
-                        .fastraFont(size: 11).foregroundColor(.orange).lineLimit(3)
+                        .fastraFont(size: 11).lineLimit(3)
                         .help(incompleteFilesHelp(incompleteFiles))
                 }
-                .padding(.horizontal, 8).padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Color.orange.opacity(0.08)))
                 .background(SelfTestMarker(id: "searchIncompleteFiles").frame(width: 0, height: 0))
             }
 
             if let notice = workspace.folderNavigationNotice {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise.circle.fill")
-                        .foregroundColor(.orange)
+                searchNotice(symbolName: "arrow.clockwise.circle.fill") {
                     Text(notice)
                         .fastraFont(size: 11)
-                        .foregroundColor(.orange)
                         .lineLimit(2)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color.orange.opacity(0.08))
-                )
             }
 
             // Cap-Hinweis für die gekappte Ordner-/Projekt- oder Geöffnet-Suche.
@@ -1206,9 +1152,7 @@ struct FloatingSearchDialog: View {
             // da es kein Fehler ist, sondern ein informativer Hinweis.
             if (workspace.scope.isFolderLike && (workspace.folderResultsWereCapped || workspace.folderResultsContainCappedFiles))
                 || (workspace.scope == .open && workspace.openResultsWereCapped) {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
+                searchNotice {
                     let message = workspace.scope.isFolderLike
                         ? L10n.format("Trefferliste gekappt: %ld sichtbar, mindestens %ld gezählt. Verfeinere die Suche; Freigaben bleiben gesperrt.",
                                       workspace.navMatches.count, scopeTotalMatches)
@@ -1216,37 +1160,19 @@ struct FloatingSearchDialog: View {
                                       workspace.navMatches.count, scopeTotalMatches)
                     Text(verbatim: message)
                         .fastraFont(size: 11)
-                        .foregroundColor(.orange)
                         .lineLimit(3)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color.orange.opacity(0.08))
-                )
                 .background(SelfTestMarker(id: "searchCappedResults").frame(width: 0, height: 0))
             }
 
             // Schreibgeschützte Treffer bleiben navigierbar; freigegeben
             // werden können nur die editierbaren Dokumente.
             if workspace.scope == .open && workspace.openResultsContainReadOnlyTabs {
-                HStack(spacing: 6) {
-                    Image(systemName: "lock.fill")
-                        .foregroundColor(.orange)
+                searchNotice(symbolName: "lock.fill") {
                     Text("Treffer in schreibgeschützten Tabs können nicht freigegeben werden.")
                         .fastraFont(size: 11)
-                        .foregroundColor(.orange)
                         .lineLimit(2)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color.orange.opacity(0.08))
-                )
             }
 
             // Cap-Hinweis im Buffer-Scope: nur die ersten N von vielen Treffern
@@ -1255,34 +1181,17 @@ struct FloatingSearchDialog: View {
             // Die Freigabe bleibt bis zu einer vollständigen sichtbaren
             // Trefferbasis gesperrt (Produktinvariante Vorschau vor Apply).
             if !workspace.scope.isFolderLike && workspace.bufferResultsWereCapped {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
+                searchNotice {
                     Text(verbatim: bufferCapHint)
                         .fastraFont(size: 11)
-                        .foregroundColor(.orange)
                         .lineLimit(3)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color.orange.opacity(0.08))
-                )
             }
 
-            // Trefferliste über SwiftUI `List` (NSTableView-backed) =
-            // VIRTUALISIERT: rendert nur die SICHTBAREN Zeilen, nicht alle bis
-            // zu 2000 Treffer. Das war der Performance-Killer (Daniel-Befund
-            // 2026-06-22): der frühere nicht-lazy VStack baute bei JEDEM Render
-            // alle Zeilen neu auf — und weil der geteilte Workspace den offenen
-            // Dialog bei jeder Cursor-Bewegung mit-rendert, blockierte das den
-            // Main-Thread → Beachball beim Treffer-Klick, träges CMD+W, träge
-            // Klicks im Hauptfenster. `List` aktualisiert sichtbare Zeilen
-            // zuverlässig bei Zustandswechsel (die `isActive`-Markierung stimmt
-            // — anders als bei LazyVStack, das genau daran scheiterte — und es
-            // gibt keinen AttributeGraph-Crash bei vielen Treffern).
+            // Die SwiftUI-`List` rendert nur sichtbare Trefferzeilen. Ein nicht-lazy
+            // VStack würde bei jeder Workspace-Änderung bis zu 2000 Zeilen neu aufbauen
+            // und den Main-Thread blockieren. `List` aktualisiert auch die aktive
+            // Markierung bei Zustandswechseln zuverlässig.
             Group {
                 if scopeTotalMatches == 0 && workspace.searchError == nil
                     && !workspace.folderSearching && !workspace.bufferSearching {
@@ -1321,8 +1230,7 @@ struct FloatingSearchDialog: View {
                                         .listRowInsets(EdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 4))
                                         .listRowSeparator(.hidden)
                                         .listRowBackground(Color.clear)
-                                        // Ziel-Anker für scrollTo (Etappe 2
-                                        // Wunschpaket 2026-07b).
+                                        // Ziel-Anker für scrollTo.
                                         .id(match.id)
                                     }
                                 } header: {
@@ -1335,10 +1243,10 @@ struct FloatingSearchDialog: View {
                         // darunter sichtbar bleibt (macOS 13+).
                         .scrollContentBackground(.hidden)
                         .environment(\.defaultMinListRowHeight, 20)
-                        // Die Liste folgt dem aktiven Treffer bei NAVIGATION
+                        // Die Liste folgt dem aktiven Treffer bei Navigation
                         // (Return, Pfeile, Voriger/Nächster, Klick). Beim
                         // bloßen Neu-Suchen (Muster getippt) springt sie
-                        // bewusst nicht (Etappe 2 Wunschpaket 2026-07b).
+                        // bewusst nicht.
                         .onReceive(NotificationCenter.default.publisher(
                             for: .fastraGotoFirstMatch)) { note in
                             guard notificationTargetsThisWorkspace(note) else { return }
@@ -1381,13 +1289,9 @@ struct FloatingSearchDialog: View {
                     break
                 }
             }
-            // Zusätzlich zu `onMoveCommand`: Der Listenfokus landet in AppKit
-            // auf der NSOutlineView der `List`, und die verarbeitet
-            // Pfeiltasten selbst, ohne den Move-Command des Containers zu
-            // erreichen — die Pfeilnavigation war damit wirkungslos, verdeckt
-            // vom fensterweiten Return-Shortcut des „Nächster"-Buttons
-            // (Review 2026-08-31, navmatch-Selbsttest). `onKeyPress` greift
-            // in der SwiftUI-Ereigniskette vor der AppKit-Zustellung.
+            // AppKits NSOutlineView hinter der `List` verarbeitet Pfeiltasten selbst;
+            // `onMoveCommand` erreicht sie nicht. `onKeyPress` greift davor in der
+            // SwiftUI-Ereigniskette ein. Der `navmatch`-Selbsttest sendet echte Pfeiltasten.
             .onKeyPress(.downArrow) {
                 postNavigation(.fastraGotoNextMatch)
                 return .handled
@@ -1550,10 +1454,9 @@ struct FloatingSearchDialog: View {
     }
 
     /// Cap-Hinweis im Buffer-Scope. Im Datei-Scope hängt zusätzlich der
-    /// Emphasis-Hinweis an (Etappe 2 Wunschpaket 2026-07b): Die Live-
-    /// Markierung im Editor zeichnet höchstens die materialisierten Treffer —
-    /// kein stilles Abschneiden (Leitplanke), der Nutzer liest hier, dass nur
-    /// die ersten N markiert sind.
+    /// Emphasis-Hinweis an: Die Live- Markierung im Editor zeichnet höchstens
+    /// die materialisierten Treffer — kein stilles Abschneiden (Leitplanke),
+    /// der Nutzer liest hier, dass nur die ersten N markiert sind.
     private var bufferCapHint: String {
         var text = L10n.format(
             "Erste %ld von %ld Treffern gelistet — Suchbegriff verfeinern. Anwenden bleibt gesperrt, bis alle Treffer sichtbar sind.",
@@ -1638,8 +1541,8 @@ struct FloatingSearchDialog: View {
             guard let documentID = workspace.tabs.first(where: { $0.id == tabID })?.documentID
             else { return }
             // Ziel synchron vormerken: Ein direkt folgendes ⌘G rechnet vom
-            // geklickten Treffer weiter, nicht vom noch nicht bestätigten
-            // alten Index (Review 2026-08-31, wie navigateMatch).
+            // geklickten Treffer weiter, nicht vom noch unbestätigten alten Index
+            // (wie `navigateMatch`).
             workspace.noteMatchNavigationTarget(index: nextIndex,
                                                 generation: jumpGeneration)
             workspace.navigateToMatch(target.match, tabID: tabID,
@@ -1667,7 +1570,7 @@ struct FloatingSearchDialog: View {
                     workspace.resolveMatchNavigationTarget(generation: jumpGeneration)
                     // Nur ein echter Plattenstand-Konflikt entwertet die
                     // Trefferbasis; laufende Ladevorgänge und ungesicherte
-                    // Tabs werden getrennt behandelt (Review 2026-08-31).
+                    // Tabs werden getrennt behandelt.
                     workspace.handleFolderMatchLoadDenial(outcome,
                                                           jumpGeneration: jumpGeneration)
                     return
@@ -1712,7 +1615,7 @@ struct FloatingSearchDialog: View {
     private var hitNavigator: some View {
         HStack(spacing: 10) {
             // Textbutton statt Icon — das Feature ist zu praktisch, um
-            // hinter einem kleinen Symbol zu verstecken (Daniel, 2026-05-26).
+            // hinter einem kleinen Symbol zu verstecken.
             Button("Treffer kopieren") {
                 workspace.copyHitsToClipboard()
             }
@@ -1768,7 +1671,7 @@ struct FloatingSearchDialog: View {
     /// Seit v0.7 echt: Der Nutzer markiert im Match-Text eine Teil-
     /// Selektion; „Gruppe definieren" snappt sie auf Token-Grenzen
     /// (GroupBuilder) und setzt die `(...)`-Gruppe im Suchausdruck.
-    /// Beiträge BESTEHENDER Gruppen sind farbig hinterlegt (gleiche
+    /// Beiträge bestehender Gruppen sind farbig hinterlegt (gleiche
     /// Farbreihe wie die Pills).
     private var detailSection: some View {
         let fileLabel = Self.detailFileLabel(for: activeNavMatch,
@@ -1777,11 +1680,9 @@ struct FloatingSearchDialog: View {
         let lineText = activeMatch.map {
             L10n.format("Zeile %ld · Spalte %ld", $0.line, $0.column)
         } ?? L10n.string("kein Treffer")
-        // Feste Höhe (Layout-Umbau 2026-09-15): Kopfzeile mit den Gruppen-
-        // Knöpfen, darunter genau eine Textzeile. Vorher hatte der Textkasten
-        // keine feste Höhe, und SwiftUI gab ihm die Hälfte jeder zusätzlichen
-        // Fensterhöhe — die Trefferliste bekam nur die andere Hälfte. Längere
-        // oder mehrzeilige Treffer scrollen innerhalb der Zeile.
+        // Feste Höhe für Gruppenkopf und eine Textzeile, damit zusätzliche
+        // Fensterhöhe vollständig der Trefferliste zugutekommt. Längere oder
+        // mehrzeilige Treffer scrollen innerhalb der Zeile.
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Text(verbatim: L10n.format("Detail · %@ · %@", fileLabel, lineText))
@@ -1843,7 +1744,7 @@ struct FloatingSearchDialog: View {
     /// Zeilenabstand), skaliert mit dem UI-Zoom.
     private var detailTextHeight: CGFloat { 18 * uiScale }
 
-    /// Ermittelt den Dateinamen für den Detailkopf aus DEMSELBEN
+    /// Ermittelt den Dateinamen für den Detailkopf aus demselben
     /// Navigationsziel wie den angezeigten Treffertext. Diese kleine pure
     /// Funktion ist separat testbar, weil ein falscher Name im „Geöffnet"-
     /// Scope visuell plausibel aussah und deshalb durch reine Suchtests nicht
@@ -1967,24 +1868,23 @@ struct FloatingSearchDialog: View {
     // MARK: - Action-Zeile
 
     /// `true`, wenn die sichtbaren Buffer-/Geöffnet-Treffer wirklich zum
-    /// AKTUELL eingegebenen Muster gehören.
+    /// aktuell eingegebenen Muster gehören.
     ///
     /// Direkt nach einem Tastendruck stimmt das für rund 120 ms nicht: Die
     /// alte Trefferzahl bleibt absichtlich stehen (sonst blinkte sie bei jedem
     /// Zeichen auf 0), die Ersetzen-Pfade im Workspace lehnen den Aufruf aber
     /// still ab. Ohne diese Bedingung sähen Vorschau, „Ersetzen" und „Alle
-    /// ersetzen" in diesem Fenster aktiv aus und täten nichts
-    /// (Review 2026-08-06). Im Ordner-/Projekt-Bereich gilt sie nicht — dort
+    /// ersetzen" in diesem Fenster aktiv aus und täten nichts.
+    /// Im Ordner-/Projekt-Bereich gilt sie nicht — dort
     /// sperren `folderSearching`/`folderNeedsSearch` bereits.
     private var visibleResultsMatchCurrentSearch: Bool {
         workspace.scope.isFolderLike
             || workspace.visibleBufferResultsOptions == workspace.currentSearchOptions
     }
 
-    // Zweizeilig (Daniel-Feedback 2026-06-04): die sechs Buttons passten
-    // bei minimaler Fensterbreite nicht sauber in eine Zeile. Aufteilung
-    // nach Absicht — Zeile 1 navigiert nur durch die Treffer, Zeile 2
-    // schließt die Maske bzw. ersetzt.
+    // Zweizeilige Aufteilung nach Absicht: Die erste Zeile navigiert durch
+    // Treffer, die zweite schließt die Maske bzw. ersetzt. So passen die sechs
+    // Buttons auch bei minimaler Fensterbreite.
     private var actionRow: some View {
         VStack(spacing: 8) {
             if workspace.waitingForShortFolderSearch {
@@ -1998,33 +1898,32 @@ struct FloatingSearchDialog: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // Eine Knopfzeile (Layout-Umbau 2026-09-15): links das Suchen-
-            // Cluster, rechts das Ersetzen-Cluster. Reicht die Breite nicht,
-            // teilt `ViewThatFits` die Zeile in zwei, bei Mindestbreite in
-            // drei, damit auch lange Aktionsbeschriftungen sichtbar bleiben. Der
-            // frühere Knopf „Abbrechen" ist entfallen — Escape und der rote
-            // Punkt schließen die Maske.
+            // Links Suchaktionen, rechts Ersetzungsaktionen. Bei Platzmangel teilt
+            // `ViewThatFits` die Knopfzeile in zwei oder drei Zeilen, damit lange
+            // Beschriftungen sichtbar bleiben. Escape und der rote Fensterschließknopf
+            // schließen die Maske.
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
                     searchCluster
                     Spacer()
                     transformCluster
+                    recoveryCluster
                     applyCluster
                 }
                 VStack(spacing: 8) {
                     HStack(spacing: 8) { searchCluster; Spacer() }
-                    HStack(spacing: 8) { Spacer(); transformCluster; applyCluster }
+                    HStack(spacing: 8) { Spacer(); transformCluster; recoveryCluster; applyCluster }
                 }
                 VStack(spacing: 8) {
                     HStack(spacing: 8) { searchCluster; Spacer() }
-                    HStack(spacing: 8) { Spacer(); transformCluster }
+                    HStack(spacing: 8) { Spacer(); transformCluster; recoveryCluster }
                     HStack(spacing: 8) { Spacer(); applyCluster }
                 }
             }
         }
     }
 
-    /// Reines Navigieren durch die Treffer, OHNE zu ersetzen. Wiederverwendet
+    /// Reines Navigieren durch die Treffer, ohne zu ersetzen. Wiederverwendet
     /// die bestehende Sprung-Logik (navigateMatch in ContentView, via
     /// Notification).
     @ViewBuilder
@@ -2067,7 +1966,7 @@ struct FloatingSearchDialog: View {
         }
     }
 
-    /// Beispiel-Ableitung und Vorschau — Schritte VOR dem Ersetzen.
+    /// Beispiel-Ableitung und Vorschau — Schritte vor dem Ersetzen.
     @ViewBuilder
     private var transformCluster: some View {
         Group {
@@ -2075,6 +1974,19 @@ struct FloatingSearchDialog: View {
                     .help("Leitet aus einem Vorher/Nachher-Beispiel ein Platzhalter-Muster ab.")
 
         }
+    }
+
+    @ViewBuilder
+    private var recoveryCluster: some View {
+                if workspace.scope.isFolderLike {
+                    Button("Dateiwiederherstellung…") {
+                        workspace.fileRecoverySession = ApplyRecoverySession(workspace: workspace)
+                    }
+                    .disabled(workspace.diskMutationIsActive || workspace.activeMultiFileSearchURLs.isEmpty)
+                    .help("Prüft eine frühere vollständige Sitzung mit Vorschau, bevor Dateien wiederhergestellt oder temporäre Reste entfernt werden.")
+                    .background(SelfTestMarker(id: "fileRecoveryOpen").frame(width: 0, height: 0))
+                }
+
     }
 
     /// Einzel- und Gesamtersetzung sowie Rückgängig nach einem Ordner-Apply.
@@ -2091,9 +2003,11 @@ struct FloatingSearchDialog: View {
                 // Im Folder-Scope und nach einem erfolgreichen Apply gibt es
                 // eine Rückgängig-Möglichkeit aus dem Backup-Ordner.
                 if workspace.scope.isFolderLike, workspace.lastApplySession != nil {
-                    Button("Rückgängig") { workspace.undoLastFolderApply() }
-                        .disabled(workspace.folderApplying)
-                        .help("Spielt die letzte Ordner-Apply-Session bit-exakt aus dem Backup-Ordner zurück.")
+                    Button(workspace.lastApplySession?.isCleanupOnly == true ? L10n.string("Aufräumen") : L10n.string("Rückgängig")) { workspace.undoLastFolderApply() }
+                        .disabled(workspace.diskMutationIsActive)
+                        .help(workspace.lastApplySession?.isCleanupOnly == true
+                            ? L10n.string("Entfernt Fastras verbliebene temporäre Dateien. Die Zieldateien bleiben unverändert.")
+                            : L10n.string("Spielt die letzte Ordner-Apply-Session bit-exakt aus dem Backup-Ordner zurück."))
                         .background(SelfTestMarker(id: "searchApprovalDiskUndo").frame(width: 0, height: 0))
                 }
                 if !workspace.scope.isFolderLike, let change = workspace.lastSearchApprovalMemoryChange {
@@ -2201,7 +2115,7 @@ private struct HitRow: View {
 /// Die Pillen sind so breit wie ihr Inhalt, aber höchstens `maxWidth`; ab
 /// dort scrollt die Reihe seitlich (ohne Balken, per Trackpad). Ohne diese
 /// Grenze drückte ein Muster mit vielen Gruppen das Ersetzen-Feld auf
-/// Mindestbreite oder schob Pillen aus dem Fenster (Review-Fund 2026-09-16).
+/// Mindestbreite oder schob Pillen aus dem Fenster.
 /// Die natürliche Breite kommt per PreferenceKey aus dem Inhalt; die
 /// ScrollView selbst würde sonst gierig jede angebotene Breite nehmen.
 private struct PillTray<Content: View>: View {
@@ -2211,7 +2125,7 @@ private struct PillTray<Content: View>: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            content()
+            HStack(spacing: 6, content: content)
                 .fixedSize()
                 .background(GeometryReader { geometry in
                     Color.clear.preference(key: PillTrayWidthKey.self,
@@ -2226,11 +2140,29 @@ private struct PillTray<Content: View>: View {
     }
 }
 
+private struct SearchPatternFieldStyle: ViewModifier {
+    let scale: CGFloat
+    var stroke: Color = Theme.stroke
+    var lineWidth: CGFloat = 1
+
+    func body(content: Content) -> some View {
+        let outline = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        content
+            // Vorlagenmenü und Capture-Pillen dürfen das Feld nicht verdrängen.
+            .frame(minWidth: 120 * scale, maxWidth: .infinity)
+            .frame(height: 24 * scale)
+            .padding(.horizontal, 4)
+            .background(
+                outline.fill(Theme.surfaceRaised)
+                    .overlay(outline.stroke(stroke, lineWidth: lineWidth))
+            )
+    }
+}
+
 /// Obergrenze der Pillenreihe in Punkt bei `uiScale` 1 — reicht für etwa
 /// vier Pillen. Eigener Typ, weil ein generischer View keine ohne Typargument
 /// erreichbare Konstante haben kann. Bewusst nicht `private`: Der Selbsttest
-/// `searchlayout` misst gegen genau diese Zahl, statt sie abzuschreiben
-/// (Review-Fund 2026-09-17).
+/// `searchlayout` misst gegen genau diese Zahl, statt sie abzuschreiben.
 enum PillTrayLayout {
     static let maxWidth: CGFloat = 220
 }
@@ -2242,44 +2174,25 @@ private struct PillTrayWidthKey: PreferenceKey {
     }
 }
 
-/// Pille im Gruppen-Tray — seit v0.7 LIVE aus der Tokenisierung.
-///
-/// Zwei Wege ins Replace-Feld (Low Friction, Konzept B):
-///   - DRAG der Pille aufs Replace-Feld: NSTextView nimmt den String
-///     (`$N`) nativ an der Maus-Position an.
-///   - KLICK auf die Pille: fügt `$N` an der Replace-Caret-Position ein.
-private struct GroupPill: View {
-    /// Die fangende Gruppe aus der Tokenisierung (Nummer, Name, Ranges).
-    let group: CaptureGroupInfo
-    /// Das aktuelle Find-Pattern — für das Label (Gruppen-Inhalt).
-    let patternText: String
-    /// Klick-Aktion: `$N` ins Replace-Feld einfügen.
+/// Fanggruppe oder Platzhalter mit derselben Maus- und Drag-Bedienung.
+private struct SearchCapturePill: View {
+    let number: Int
+    let detail: Text
+    let hint: String
     let onInsert: () -> Void
-
-    /// Anzeige-Label: Gruppen-Name (bei `(?<name>…)`) oder der
-    /// Gruppen-Inhalt aus dem Pattern, auf Pillen-Breite gekürzt.
-    private var label: String {
-        if let name = group.name, !name.isEmpty { return name }
-        let ns = patternText as NSString
-        guard group.innerRange.location + group.innerRange.length <= ns.length else {
-            return L10n.format("Gruppe %ld", group.number)
-        }
-        let inner = ns.substring(with: group.innerRange)
-        return inner.count > 14 ? String(inner.prefix(13)) + "…" : inner
-    }
 
     private var pillColor: Color {
         // abs(): defensive Klammer gegen negativen Swift-Modulo (Gruppen
         // sind 1-basiert, number 0 sollte nie vorkommen).
-        Theme.groupColors[abs(group.number - 1) % Theme.groupColors.count]
+        Theme.groupColors[abs(number - 1) % Theme.groupColors.count]
     }
 
     var body: some View {
         HStack(spacing: 4) {
-            Text(verbatim: "$\(group.number)")
+            Text(verbatim: "$\(number)")
                 .fastraFont(size: 11, weight: .bold, design: .monospaced)
                 .foregroundColor(Theme.textPrimary)
-            Text(label)
+            detail
                 .fastraFont(size: 11, design: .monospaced)
                 .foregroundColor(Theme.textPrimary.opacity(0.8))
         }
@@ -2290,59 +2203,14 @@ private struct GroupPill: View {
         // Weiß war fast unsichtbar (~1,3:1). textSecondary gibt einen
         // neutralen, lesbaren Rahmen ohne Farb-Clash.
         .overlay(Capsule().stroke(Theme.textSecondary.opacity(0.4), lineWidth: 1))
-        // Drag-Source: liefert `$N` als Plain-String — das Replace-Feld
-        // (NSTextView) nimmt ihn nativ an der Maus-Position an.
-        .onDrag { NSItemProvider(object: "$\(group.number)" as NSString) }
-        .onTapGesture(perform: onInsert)
-        .help(L10n.format("Gruppe %ld ins Ersetzen-Feld übernehmen — Pille dorthin ziehen oder einfach klicken (fügt $%ld ein).", group.number, group.number))
-    }
-}
-
-/// Pille im Platzhalter-Tray (Feature J) — eine pro `*` im Suchausdruck.
-///
-/// Wie `GroupPill`, aber ohne Capture-Group-Inhalt: der `*` SELBST ist die
-/// (gierige) Fanggruppe, es gibt keinen Klammer-Inhalt zum Anzeigen. Zwei Wege
-/// ins Ersetzen-Feld (Low-Friction-Leitplanke, identisch zu GroupPill):
-///   - DRAG der Pille aufs Ersetzen-Feld → NSTextView nimmt den String (`$N`)
-///     nativ an der Maus-Position an (RegexFieldTextView akzeptiert den Drop
-///     auch bei Fokus).
-///   - KLICK auf die Pille → `$N` an der Replace-Caret-Position (über onInsert).
-private struct WildcardPill: View {
-    /// 1-basierte Platzhalter-Nummer: der N-te `*` (von links) → `$N`.
-    let number: Int
-    /// Klick-Aktion: `$N` ins Ersetzen-Feld einfügen.
-    let onInsert: () -> Void
-
-    private var pillColor: Color {
-        // Gleiche Farbreihe wie die Capture-Group-Pillen → visuelle Kontinuität;
-        // abs(): defensive Klammer gegen negativen Swift-Modulo.
-        Theme.groupColors[abs(number - 1) % Theme.groupColors.count]
-    }
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(verbatim: "$\(number)")
-                .fastraFont(size: 11, weight: .bold, design: .monospaced)
-                .foregroundColor(Theme.textPrimary)
-            // Der Stern als Inhalts-Hinweis (statt eines Gruppen-Texts) — macht
-            // sichtbar, dass diese Pille zum N-ten `*` gehört.
-            Text("∗")
-                .fastraFont(size: 11, design: .monospaced)
-                .foregroundColor(Theme.textPrimary.opacity(0.8))
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(Capsule().fill(pillColor.opacity(0.35)))
-        .overlay(Capsule().stroke(Theme.textSecondary.opacity(0.4), lineWidth: 1))
-        // Drag-Source: liefert `$N` als Plain-String — das Ersetzen-Feld nimmt
-        // ihn nativ an (exakt dieselbe Mechanik wie GroupPill).
+        // Das Ersetzen-Feld übernimmt beim Drag den Klartext an der Mausposition.
         .onDrag { NSItemProvider(object: "$\(number)" as NSString) }
         .onTapGesture(perform: onInsert)
-        .help(L10n.format("Platzhalter %ld (der %ld. Stern ∗) ins Ersetzen-Feld übernehmen — Pille dorthin ziehen oder einfach klicken (fügt $%ld ein).", number, number, number))
+        .help(hint)
     }
 }
 
-/// Eine kompakte Inline-Vorschau-Zeile (Feature J, todo 3): Zeilennummer ·
+/// Eine kompakte Inline-Vorschau-Zeile: Zeilennummer ·
 /// Vorher (getönt entfernt) → Nachher (getönt hinzugefügt). Schmaler und
 /// einzeilig (Truncation in der Mitte) — die ausführliche, mehrzeilige
 /// Freigabevorschau zeigt dagegen den vollständigen mehrzeiligen Diff.

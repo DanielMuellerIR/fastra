@@ -162,7 +162,7 @@ fastra_test_discard_pending_session() {
         fi
     fi
     # Die Prozess-PID gehört ab jetzt entweder bereits der Buchhaltung des
-    # Aufrufers oder wurde im Cleanup vollständig beendet. Globals VOR dem
+    # Aufrufers oder wurde im Cleanup vollständig beendet. Globals vor dem
     # externen `rm` leeren: Trifft dort ein Signal, ist ein zweiter Discard
     # ein harmloser No-op statt eines falschen Cleanup-Blockers.
     FASTRA_TEST_PENDING_PID=""
@@ -219,7 +219,7 @@ fastra_test_tree_collect() {
     local parent="$1"
     local runner_group="$2"
     local child
-    # Der Runner darf sich nicht selbst signalisieren. Nur die EIGENE PID wird
+    # Der Runner darf sich nicht selbst signalisieren. Nur die eigene PID wird
     # ausgeschlossen, nicht die ganze Runner-Prozessgruppe: Helfer der Tests
     # laufen teils bewusst in derselben Gruppe (belegt am Regressionstest
     # „Signal beendet den noch wartenden System-Events-Helfer"), ein
@@ -292,24 +292,13 @@ fastra_test_group_is_live() {
         | awk -v wanted="$group" '$1 == wanted && $2 !~ /^Z/ { found=1 } END { exit !found }'
 }
 
-# Reapt die eigenen Hintergrundjobs, denen `terminate_fastra_test_process_trees`
-# ein KILL zugestellt hat — aber erst, wenn `ps` ihr Ende bestätigt.
-#
-# Bash meldet den Signaltod eines EIGENEN Hintergrundjobs von sich aus auf
-# stderr: „Killed: 9" samt vollständigem Befehlstext — hier rund ein Kilobyte
-# Python-Quelltext je Job. Die Meldung erscheint beim nächsten externen
-# Befehl, also am `sleep` der Schleife. Ein `wait` mit umgeleitetem stderr
-# verschluckt genau diese Statuszeile — aber nur ein `wait`, das nicht
-# blockiert. Ein zugestelltes KILL beweist bloß die Annahme des Signals: Ein
-# Kind im ununterbrechbaren Kernel-Warten (Zustand U) stirbt erst später, und
-# ein sofortiges `wait` hätte den ganzen Runner ohne Frist blockiert
-# (Review-Fund 2026-09-17). Deshalb wartet diese Funktion nur auf Kandidaten,
-# die `ps` als verschwunden oder Zombie meldet — dann hat bash den Tod schon
-# intern verbucht, und `wait` liefert nur noch den gespeicherten Status.
-# Bleibt ein Kandidat lebendig, bleibt er vorgemerkt; die begrenzte Schleife
-# läuft weiter und meldet ihn am Ende als nicht beendet. Die Statuszeile ist
-# in diesem Ausnahmefall das kleinere Übel. Fremde PIDs (gesammelte Enkel)
-# sind keine Jobs dieser Shell; `wait` kehrt für sie sofort zurück.
+# Eigene Hintergrundjobs nach KILL erst reapen, wenn `ps` sie als beendet
+# oder Zombie bestätigt. Ein angenommenes Signal garantiert kein Prozessende;
+# sofortiges `wait` könnte bei Kernel-Warten unbegrenzt blockieren.
+# Ein nichtblockierendes `wait` mit umgeleitetem stderr unterdrückt Bashs
+# „Killed: 9“-Statuszeile samt vollständigem Befehlstext. Lebende Kandidaten
+# vorgemerkt lassen und nach der begrenzten Schleife als nicht beendet melden.
+# Fremde PIDs sind keine Jobs dieser Shell; `wait` kehrt für sie sofort zurück.
 FASTRA_TEST_REAP_PENDING=""
 fastra_test_reap_killed_jobs() {
     local pid remaining=""
@@ -341,7 +330,7 @@ terminate_fastra_test_process_trees() {
     for root in "$@"; do
         [[ "$root" =~ ^[0-9]+$ ]] || continue
         # Eine gespeicherte Root-PID kann nach schnellem Prozessende bereits
-        # neu vergeben sein. Erst die beim START gemerkte Startzeit prüfen;
+        # neu vergeben sein. Erst die beim Start gemerkte Startzeit prüfen;
         # ein fremder neuer Prozess darf weder gesammelt noch signalisiert
         # werden. Eine noch lebende alte Prozessgruppe bleibt separat sicher
         # über ihren gespeicherten Leiter gebunden.

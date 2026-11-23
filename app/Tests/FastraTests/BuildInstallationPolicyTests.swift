@@ -119,7 +119,7 @@ struct BuildInstallationPolicyTests {
         // Nur der Finder-Layout-Schritt hängt am Standardort unter /Volumes
         // (macOS 26.6 registriert private Mountpunkte nicht mehr als
         // Finder-Disk). Der echte Mountpunkt wird dabei aus der
-        // hdiutil-plist-Ausgabe GELESEN statt angenommen, und bei einem
+        // hdiutil-plist-Ausgabe gelesen statt angenommen, und bei einem
         // unerwarteten Pfad (fremdes gleichnamiges Volume kam dazwischen)
         // wird das Layout übersprungen — kopiert wird nie in ein fremdes
         // Volume.
@@ -143,7 +143,7 @@ struct BuildInstallationPolicyTests {
         #expect(script.contains("hdiutil detach \"$ATTACHED_DEV\""))
         #expect(script.contains("hdiutil info -plist"))
 
-        // Funktionale Prüfung mit kontrolliertem hdiutil-Ersatz: Der ECHTE
+        // Funktionale Prüfung mit kontrolliertem hdiutil-Ersatz: Der echte
         // Trap-Code aus release.sh läuft gegen ein protokollierendes
         // Fake-hdiutil, einmal mit gemerkter Geräteidentität und einmal ohne
         // (Zustand nach erfolgreichem eigenem Detach).
@@ -165,7 +165,7 @@ struct BuildInstallationPolicyTests {
 
     @Test("Release unterscheidet Gerätewechsel und fehlgeschlagenes Aushängen")
     func releaseDetachReportsConcreteFailureReason() throws {
-        // Fake-hdiutil: `info` bestätigt das eigene Image, aber BEIDE
+        // Fake-hdiutil: `info` bestätigt das eigene Image, aber beide
         // Detach-Versuche (normal und -force) schlagen fehl. Vor der Korrektur
         // lieferte die Funktion trotzdem Status 0 und leerte ATTACHED_DEV —
         // der Release-Lauf konvertierte dann ein noch eingehängtes RW-Image,
@@ -199,7 +199,7 @@ struct BuildInstallationPolicyTests {
 
     @Test("Release behält die Gerätekennung, wenn die Mount-Prüfung selbst scheitert")
     func releaseDetachKeepsDeviceWhenOwnershipCheckFails() throws {
-        // Vor der Korrektur (Review 2026-09-02) lieferte die Zugehörigkeits-
+        // Vor der Korrektur lieferte die Zugehörigkeits-
         // prüfung bei einem hdiutil-Fehler oder einer unlesbaren Plist
         // denselben Status wie bei einem nachweislich fremden Gerät. Der
         // Aufrufer vergaß dann ATTACHED_DEV, und der EXIT-Trap konnte das
@@ -301,9 +301,8 @@ struct BuildInstallationPolicyTests {
         let errorPipe = Pipe()
         process.standardError = errorPipe
         try process.run()
-        // Review 2026-09-17: Erst leeren, dann warten. Andersherum blockiert
-        // das Skript im write(), sobald seine Ausgabe die Pipe füllt, und
-        // `waitUntilExit` kehrt nie zurück.
+        // Erst die Pipe leeren, dann auf Prozessende warten. Andernfalls kann eine
+        // volle Pipe den Schreiber und damit `waitUntilExit` dauerhaft blockieren.
         let error = String(
             data: errorPipe.fileHandleForReading.readDataToEndOfFile(),
             encoding: .utf8
@@ -356,7 +355,7 @@ struct BuildInstallationPolicyTests {
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o755], ofItemAtPath: fakeHdiutil.path)
 
-        // Der Harness lädt NUR die Trap-Funktion aus dem echten Skript und
+        // Der Harness lädt nur die Trap-Funktion aus dem echten Skript und
         // ruft sie mit dem Zustand des Release-Laufs auf (Finder-Layout-Fall:
         // MOUNT_DIR zeigt auf /Volumes/Fastra).
         let harness = sandbox.appendingPathComponent("harness.sh")

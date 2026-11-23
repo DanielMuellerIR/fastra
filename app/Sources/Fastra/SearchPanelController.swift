@@ -1,7 +1,7 @@
 // SearchPanelController.swift
 //
 // Hostet den `FloatingSearchDialog` in einem **normalen NSWindow**
-// (kein Floating-Panel). Begründung (Daniel, 2026-05-26):
+// (kein Floating-Panel). Begründung:
 // Ein dauerhaft schwebendes Suchfenster nervt, wenn man zu einer
 // anderen App wechselt — es bleibt dann auch dort vorn. Ein normales
 // Fenster verschwindet sauber in den Hintergrund. CMD+F holt es
@@ -36,7 +36,7 @@ final class SearchPanelController {
     private let compactMinHeight: CGFloat = 450
     private let folderMinHeight: CGFloat = 650
 
-    /// Untergrenze für ein degeneriertes gespeichertes Frame. Die WIRKSAME
+    /// Untergrenze für ein degeneriertes gespeichertes Frame. Die wirksame
     /// Mindestbreite des Fensters setzt NSHostingController aus der
     /// SwiftUI-Mindestgröße (`FloatingSearchDialog`, `.frame(minWidth:)`);
     /// dieser Wert greift nur beim Reparieren eines kaputten Autosave-Frames.
@@ -59,7 +59,7 @@ final class SearchPanelController {
         guard let win = window else { return }
         ensureOnScreen(win)
         win.makeKeyAndOrderFront(nil)
-        SelfTest.activateApplication(ignoringOtherApps: false)
+        ApplicationActivation.activate(ignoringOtherApps: false)
     }
 
     /// Sicherheits-Netz gegen ein autogespeichertes Frame, das vollständig
@@ -96,10 +96,8 @@ final class SearchPanelController {
             backing: .buffered,
             defer: false
         )
-        // Fenstertitel ist sichtbar (der interne Header ist weg, also
-        // ist hier keine Doppelung mehr). Daniel: „Bitte den Fenstertitel
-        // wieder setzen" — gibt dem Fenster eine eindeutige Beschriftung
-        // in Window-Listen und Mission Control.
+        // Der sichtbare Fenstertitel beschriftet die Suchmaske auch in
+        // Fensterlisten und Mission Control.
         w.title = L10n.string("Suchen & Ersetzen")
         w.identifier = SearchWindow.identifier
         w.titlebarAppearsTransparent = false

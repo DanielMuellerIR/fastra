@@ -199,7 +199,7 @@ struct MarkdownRichTextTests {
         #expect(fragment.contains("<mark>sicher</mark>"))
         // Seit der HTML-Positivliste (v1.52) steht hier nicht mehr
         // „raw HTML omitted": Die verworfenen Tags verschwinden ersatzlos.
-        // Der Inhalt DAZWISCHEN bleibt als gewöhnlicher Text stehen — cmark
+        // Der Inhalt dazwischen bleibt als gewöhnlicher Text stehen — cmark
         // gibt ihn als eigenen Textknoten aus. Entscheidend ist, dass kein
         // `script`-Element entsteht; sichtbarer Text führt nichts aus.
         #expect(!fragment.contains("<script"))
@@ -247,11 +247,9 @@ struct MarkdownRichTextTests {
                 "/tmp/Testprotokoll/images/1__#$!@%!#__Pasted Graphic 5.png")
     }
 
-    // Regression zum Daniel-Befund 2026-08-06: Nach dem Austausch eines
-    // Bildes zeigte die Vorschau das vorherige. Die Vorschau-Adresse hieß für
-    // das erste Bild jedes Laufs „image-0"; WebKit lieferte darunter seine
-    // zwischengespeicherte Fassung. Zwei verschiedene Dateien dürfen deshalb
-    // nie dieselbe Adresse bekommen.
+    // Nach Bildaustausch muss die Vorschau-Adresse eine neue Dateiidentität
+    // abbilden. Positionsnamen wie „image-0“ könnten WebKits alten Cache-Inhalt
+    // für eine andere Datei wiederverwenden.
     @Test("Ausgetauschtes Bild bekommt eine andere Vorschau-Adresse")
     func replacedImageGetsFreshPreviewURL() throws {
         let directory = testTemporaryDirectory()
@@ -314,11 +312,10 @@ struct MarkdownRichTextTests {
         #expect(stat(image.path, &original) == 0)
         let before = MarkdownImages.imageToken(for: image)
 
-        // Anderer Inhalt, GLEICHE Größe, Änderungsdatum exakt
+        // Anderer Inhalt, gleiche Größe, Änderungsdatum exakt
         // wiederhergestellt — so hinterlässt ein Sync-Werkzeug eine Datei,
         // das Zeitstempel erhält. Vorher bekam sie dieselbe interne Adresse,
         // und WebKit lieferte das alte Bild aus seinem Cache
-        // (Review 2026-08-06).
         try Data(repeating: 0xB0, count: 512).write(to: image)
         // `utimensat` statt `setAttributes`: nur so ist der Zeitstempel bis
         // auf die Nanosekunde derselbe — ein Date-Umweg rundet.
@@ -532,7 +529,6 @@ struct MarkdownRichTextTests {
         // Ein nie geschlossenes <details> soll den nachfolgenden Absatz
         // einschachteln — das erzwungene </details> kommt deshalb ganz ans
         // Dokumentende, nicht an den letzten HTML-Knoten mitten im Text
-        // (Review 2026-08-02).
         let fragment = MarkdownRichText.htmlFragment(
             markdown: "<details>\n\nAbsatz im Element.\n"
         )

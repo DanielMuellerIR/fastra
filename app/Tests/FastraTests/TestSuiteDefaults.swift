@@ -1,23 +1,16 @@
 // TestSuiteDefaults.swift
 //
-// Zentrale Anlage von Test-Preferences-Suiten. Jede über diesen Helfer
-// angelegte Suite ist beim Start garantiert leer, und am Prozessende räumt
-// ein einmalig registrierter atexit-Hook ALLE Test-Domains wieder ab —
-// einschließlich der Reste früherer (auch abgestürzter) Läufe. Übrig
-// bleibende Test-Domains werden als Warnung gemeldet (Roadmap 2026-07-28:
-// 3713 liegengebliebene Test-Plists brachten cfprefsd aus dem Tritt).
+// Zentrale Anlage leerer Test-Preferences-Suiten. Ein einmaliger atexit-Hook
+// entfernt eigene Test-Domains sowie ausreichend alte Reste abgestürzter
+// Läufe. Verbleibende Domains werden als Warnung gemeldet.
 
 import Foundation
 import Testing
 @testable import Fastra
 
-/// Der Rumpf des atexit-Hooks als gewöhnlich aufrufbare Funktion. Ein
-/// atexit-Handler läuft ausschließlich beim echten Prozessende und ließ sich
-/// im laufenden Testprozess deshalb überhaupt nicht prüfen. Die drei
-/// Abhängigkeiten sind darum austauschbar: Der Test übergibt eine
-/// Attrappen-Registry und fängt die Warnung ab, statt das echte
-/// `purgeRegistered()` mitten im parallelen Lauf alle Suiten abräumen zu
-/// lassen (Review-Hinweis 2026-09-17).
+/// Aufrufbarer Rumpf des atexit-Hooks mit austauschbaren Abhängigkeiten.
+/// Der Test verwendet eine Attrappen-Registry und erfasst Warnungen, ohne
+/// Suiten parallel laufender Tests aus der echten Registry zu entfernen.
 func runTestDefaultsExitCleanup(
     purgeRegistered: () -> [String] = { TestDefaultsPurge.purgeRegistered() },
     purgeStale: () -> Void = { _ = TestDefaultsPurge.purgeStale() },
@@ -35,7 +28,7 @@ func runTestDefaultsExitCleanup(
 }
 
 /// Einmalige atexit-Registrierung; ausgelöst beim ersten Suite-Aufbau.
-/// Entfernt wird REGISTRY-genau (nur die eigenen Suiten dieses Prozesses) —
+/// Entfernt wird Registry-genau (nur die eigenen Suiten dieses Prozesses) —
 /// ein parallel laufender zweiter Testprozess behält seine aktiven Suiten.
 private let installTestDefaultsPurge: Void = {
     atexit { runTestDefaultsExitCleanup() }
@@ -49,7 +42,7 @@ func testSuiteDefaults(named name: String) -> UserDefaults {
     _ = installTestDefaultsPurge
     if !TestDefaultsPurge.isTestDomain(name) {
         // Ganz anderer Fehler als ein misslungener Registry-Schreibvorgang:
-        // Die Suite ist dann ÜBERHAUPT nicht angemeldet, auch nicht
+        // Die Suite ist dann überhaupt nicht angemeldet, auch nicht
         // prozessintern, und ihre Plist überlebt den Lauf. Die alte, für beide
         // Fälle gleiche Meldung schickte die Diagnose zum äußeren Runner, wo
         // nichts kaputt ist.

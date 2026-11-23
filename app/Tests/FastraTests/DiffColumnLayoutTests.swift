@@ -1,11 +1,9 @@
 import XCTest
 @testable import Fastra
 
-/// Spaltenbreite der zweispaltigen Diff-Ansicht (Daniel-Befund 2026-07-30:
-/// die Spalten liefen ineinander). Beide Seiten teilen sich die sichtbare
-/// Fläche und wachsen nie mit dem Inhalt mit. Seit dem Splitter (2026-09-09)
-/// bestimmt zusätzlich ein gezogenes Verhältnis, wie die Fläche aufgeteilt
-/// wird — die Summe beider Spalten plus Trenner bleibt dabei konstant.
+/// Spalten teilen die sichtbare Diff-Fläche nach dem gezogenen Verhältnis.
+/// Ihre Summe einschließlich Trenner bleibt konstant; der Inhalt darf sie
+/// nicht vergrößern.
 final class DiffColumnLayoutTests: XCTestCase {
 
     private func content(_ available: CGFloat) -> CGFloat {
@@ -68,10 +66,8 @@ final class DiffColumnLayoutTests: XCTestCase {
     }
 
     func testColumnWidthIgnoresContentLength() {
-        // Kern des behobenen Fehlers von 2026-07-30: Die Spaltenbreite hängt
-        // allein an der Fensterbreite und am gezogenen Verhältnis. Wüchse sie
-        // mit dem Inhalt, schöbe eine lange Zeile die zweite Spalte aus dem
-        // Bild.
+        // Breite hängt nur von Fensterbreite und Teilungsverhältnis ab.
+        // Langer Inhalt darf die zweite Spalte nicht aus dem sichtbaren Bereich schieben.
         XCTAssertEqual(
             DiffColumnLayout.leadingWidth(contentWidth: content(2000), ratio: 0.5),
             (2000 - DiffColumnLayout.dividerWidth) / 2
@@ -119,7 +115,7 @@ final class DiffColumnLayoutTests: XCTestCase {
     }
 
     func testAccessibilityPercentReportsTheVisibleSplit() {
-        // Der Vorlesewert muss die SICHTBARE Spalte beschreiben. `ratio` ist
+        // Der Vorlesewert muss die sichtbare Spalte beschreiben. `ratio` ist
         // nur auf 0…1 geklemmt; die Mindestbreite setzt erst `leadingWidth`
         // durch, ein Zug bis an den Anschlag speichert also 0.
         let width = content(1601)

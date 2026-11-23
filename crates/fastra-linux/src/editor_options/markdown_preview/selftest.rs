@@ -124,14 +124,14 @@ async fn scenario(ui: Rc<Ui>) {
         let window = settings(&app).unwrap();
         let switch: gtk::Switch = named(&window, "fastra-markdown-preview-default");
         assert!(!switch.is_sensitive());
-        reveal(&switch);
+        reveal(&switch).await;
         capture(&window, "markdown-preview-corrupt").await;
         // Die Fixture simuliert eine ausdrückliche externe Reparatur. Der
         // Produktfehlerpfad musste die ursprünglichen Bytes zuvor erhalten.
         std::fs::write(root.join("corrupt-preserved"), &original).unwrap();
         std::fs::write(&path, br#"{"version":1,"shown":false}"#).unwrap();
         let retry: gtk::Button = named(&window, "fastra-markdown-preview-retry");
-        reveal(&retry);
+        reveal(&retry).await;
         glib::timeout_future(Duration::from_millis(150)).await;
         input(&retry, &[], true).await;
         wait("explicit load retry", || {
@@ -212,7 +212,7 @@ async fn scenario(ui: Rc<Ui>) {
     wait("settings", || settings(&app).is_some()).await;
     let window = settings(&app).unwrap();
     let switch: gtk::Switch = named(&window, "fastra-markdown-preview-default");
-    reveal(&switch);
+    reveal(&switch).await;
     glib::timeout_future(Duration::from_millis(200)).await;
     assert!(switch.is_active());
     let lock = if mode == "busy" {
@@ -242,7 +242,7 @@ async fn scenario(ui: Rc<Ui>) {
         capture(&window, "markdown-preview-save-error").await;
         drop(lock);
         let retry: gtk::Button = named(&window, "fastra-markdown-preview-retry");
-        reveal(&retry);
+        reveal(&retry).await;
         glib::timeout_future(Duration::from_millis(150)).await;
         input(&retry, &[], true).await;
         saved(&state).await;

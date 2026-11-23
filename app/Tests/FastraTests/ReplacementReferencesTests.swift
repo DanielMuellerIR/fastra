@@ -1,11 +1,12 @@
 import Foundation
 import Testing
 @testable import Fastra
+@testable import FastraPatternSyntax
 
 // Tests für ReplacementReferences — die gemeinsame `$N`-Erkennung von
 // „Gruppe definieren" (GroupBuilder) und „Gruppe löschen" (GroupRemoval).
 //
-// Maßstab ist hier NICHT eine Annahme darüber, wie Replace-Templates
+// Maßstab ist hier nicht eine Annahme darüber, wie Replace-Templates
 // aussehen sollten, sondern was NSRegularExpression mit ihnen wirklich
 // macht. Jede Zusage wird deshalb gegen eine echte Ersetzung geprüft:
 // Vorher-Ergebnis und Nachher-Ergebnis müssen gleich sein, sonst hat eine
@@ -76,7 +77,7 @@ func references_leadingZeros() throws {
 
 @Test("Nur ASCII-Ziffern und Skalare vor dem Akzent zählen zur Nummer")
 func references_unicodeScalars() throws {
-    // Jede Zusage hier gilt einer Foundation-Regel, die sich ändern KÖNNTE —
+    // Jede Zusage hier gilt einer Foundation-Regel, die sich ändern könnte —
     // die ASCII-Beschränkung lief ICU-seitig historisch über die
     // Unicode-Kategorie Nd. Der Scanner allein bewiese das nicht; deshalb
     // steht neben jeder Scanner-Zeile eine echte Ersetzung.

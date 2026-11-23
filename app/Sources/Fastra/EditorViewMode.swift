@@ -1,14 +1,14 @@
 // EditorViewMode.swift
 //
-// Ansichts-Umschalter Text/Vorschau/Hex (Etappe 2 Wunschpaket 2026-07).
-// Reine, UI-unabhängige Routing-Logik: Welche Ansichten bietet eine Datei
-// an, und welche gilt standardmäßig? Die Views werten das nur aus.
+// Ansichts-Umschalter Text/Vorschau/Hex. Reine,
+// UI-unabhängige Routing-Logik: Welche Ansichten bietet eine Datei an, und
+// welche gilt standardmäßig? Die Views werten das nur aus.
 
 import Foundation
 
 /// Vom Nutzer wählbare Ansicht eines Tabs. Unabhängig vom Lade-Ergebnis
-/// (`EditorDisplayMode`): Der Loader entscheidet, WIE die Datei gelesen
-/// wurde; der ViewMode entscheidet, WIE sie gerade angezeigt wird.
+/// (`EditorDisplayMode`): Der Loader entscheidet, wie die Datei gelesen
+/// wurde; der ViewMode entscheidet, wie sie gerade angezeigt wird.
 enum EditorViewMode: String, CaseIterable, Equatable, Hashable {
     case text
     case preview

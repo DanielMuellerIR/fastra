@@ -1,8 +1,8 @@
 // SearchRunnerTests.swift
 //
 // Sichert die pure Entscheidungs-Logik des `SearchRunner` ab — die Teile,
-// die OHNE Combine/Async testbar sind. Hintergrund: Der Ordner-Scope darf
-// NICHT live mit jedem Tastendruck suchen (Suchmasken-Konzept Abschnitt C),
+// die ohne Combine/Async testbar sind. Hintergrund: Der Ordner-Scope darf
+// nicht live mit jedem Tastendruck suchen (Suchmasken-Konzept Abschnitt C),
 // sonst friert die App bei großen Ordnern ein. Diese Regel lebt in der
 // statischen `runsLive(for:)`-Funktion und wird hier festgenagelt, damit
 // ein versehentliches „Ordner doch wieder live" als roter Test auffällt.
@@ -16,11 +16,11 @@ import Foundation
 ///
 /// Der `SearchRunner` arbeitet über Combine mit 120-ms-Debounce auf der Main
 /// Queue, deren Latenz unter voller paralleler Testlast stark schwankt — eine
-/// Wanduhrfrist wäre hier nur lastabhängig rot. `objectWillChange` feuert VOR
+/// Wanduhrfrist wäre hier nur lastabhängig rot. `objectWillChange` feuert vor
 /// der Zuweisung, deshalb wird die Prüfung über die Main Queue einen Zug
 /// später nachgeholt.
 ///
-/// Die 20 Sekunden sind ausdrücklich KEIN Erwartungswert, sondern eine
+/// Die 20 Sekunden sind ausdrücklich kein Erwartungswert, sondern eine
 /// Hänge-Erkennung: Tritt die Bedingung nie ein, kehrt die Funktion trotzdem
 /// zurück und der aufrufende Test wird an seiner Erwartung rot. Ohne diesen
 /// Ausgang bliebe der Test in `withCheckedContinuation` stecken — eine
@@ -37,18 +37,12 @@ private func waitForWorkspace(_ workspace: Workspace,
             .filter { _ in condition() }
             .first()
             .timeout(.seconds(20), scheduler: DispatchQueue.main)
-            // Nur der Abschluss löst aus — er kommt in BEIDEN Fällen genau
+            // Nur der Abschluss löst aus — er kommt in beiden Fällen genau
             // einmal (Bedingung eingetreten oder Frist abgelaufen).
             .sink(receiveCompletion: { _ in continuation.resume() },
                   receiveValue: { _ in })
     }
     cancellable?.cancel()
-}
-
-@Test("Nur die aktuelle Buffer-Laufgeneration darf Ergebnisse publizieren")
-func bufferCompletionRequiresCurrentGeneration() {
-    #expect(SearchRunner.completionBelongsToCurrentRun(8, currentRunID: 8))
-    #expect(!SearchRunner.completionBelongsToCurrentRun(7, currentRunID: 8))
 }
 
 @Test("Suchauslöser wirken nur in den Scopes, deren Trefferbasis sie ändern")
@@ -80,6 +74,7 @@ func tabPresentationChangesPreserveSearchNavigation() async throws {
     let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let workspace = Workspace(defaults: defaults)
+    bindSearchResultWindowForTesting(workspace)
     workspace.activeTabContent.wrappedValue = "needle"
     workspace.scope = .file
     workspace.findPattern = "needle"
@@ -104,6 +99,7 @@ func unicodeNormalizationInvalidatesSearchRanges(scope: Workspace.SearchScope) a
     let defaults = testSuiteDefaults(named: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     let workspace = Workspace(defaults: defaults)
+    bindSearchResultWindowForTesting(workspace)
     let tab = EditorTab(title: "unicode.txt", path: "", content: "\u{00E9} needle")
     workspace.tabs = [tab]
     workspace.activeTabID = tab.id
@@ -146,6 +142,7 @@ func projectFilterChangeInvalidatesVisiblePreviewImmediately() async throws {
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let workspace = Workspace(defaults: defaults)
+    bindSearchResultWindowForTesting(workspace)
     workspace.showSearchDialog = true
     workspace.openProject(at: root)
     workspace.scope = .project
@@ -202,6 +199,8 @@ func bufferInputChangeInvalidatesNavigationImmediately() throws {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let workspace = Workspace(defaults: defaults)
+        bindSearchResultWindowForTesting(workspace)
+        workspace.activeTabContent.wrappedValue = "vor ALT nach"
         workspace.scope = scope
         workspace.findPattern = "ALT"
         workspace.showSearchDialog = true
@@ -221,7 +220,7 @@ func bufferInputChangeInvalidatesNavigationImmediately() throws {
             workspace.bufferMatches = [match]
             workspace.bufferTotalMatches = 1
         }
-        workspace.visibleBufferResultsOptions = options
+        publishPreparedSearchResults(workspace)
         #expect(workspace.navMatches.count == 1)
 
         // Der Combine-Sicherheitspfad läuft synchron beim Tastendruck und
@@ -254,6 +253,7 @@ func folderPreviewSurvivesOpeningMatchedFile() async throws {
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let workspace = Workspace(defaults: defaults)
+    bindSearchResultWindowForTesting(workspace)
     workspace.showSearchDialog = true
     workspace.recentSearchFolders = [
         SearchFolderEntry(path: root.path, enabled: true)
@@ -289,7 +289,7 @@ func folderPreviewSurvivesOpeningMatchedFile() async throws {
     #expect(!workspace.folderSearching)
 }
 
-// MARK: - Spinner-Zustand nach Abbruch (Code-Review-Befund 2026-07-24)
+// MARK: - Spinner-Zustand nach Abbruch
 
 @Test("Verworfener Ordner-Lauf schaltet den Buffer-Spinner ab",
       .timeLimit(.minutes(1)))
@@ -300,6 +300,7 @@ func discardedFolderRunClearsBufferSpinner() async throws {
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let workspace = Workspace(defaults: defaults)
+    bindSearchResultWindowForTesting(workspace)
     workspace.showSearchDialog = true
     workspace.scope = .folder
     // Zwei Zeichen liegen unter `minFolderLiveChars` — der Ordner-Lauf wird
@@ -307,12 +308,14 @@ func discardedFolderRunClearsBufferSpinner() async throws {
     workspace.findPattern = "ab"
     await waitForWorkspace(workspace) { workspace.folderNeedsSearch }
 
-    // Zustand nachstellen, den eine gerade abgebrochene Buffer-Suche
-    // hinterlässt: `cancelPendingWork()` bricht den Task ab, der abgebrochene
-    // Task kehrt vor seinem Main-Actor-Update zurück und lässt den Spinner an.
-    workspace.bufferSearching = true
-    workspace.bufferTotalMatches = 7
-    workspace.bufferResultsWereCapped = true
+    // Einen echten Buffer-Auftrag beginnen, dann vor seiner Antwort zum
+    // Ordner wechseln. Sein verspäteter Abschluss darf den Spinner des
+    // neuen Scopes nicht verändern.
+    workspace.scope = .file
+    let oldRun = try #require(workspace.beginSearchResultRun())
+    #expect(workspace.bufferSearching)
+    workspace.scope = .folder
+    #expect(!SearchRunner.publish(.buffer(.empty), for: oldRun, in: workspace))
 
     // Beliebige Such-Eingabe ändern → derselbe verworfene Ordner-Lauf.
     // Gewartet wird direkt auf das Ausschalten des Spinners; bleibt es aus,
@@ -320,7 +323,7 @@ func discardedFolderRunClearsBufferSpinner() async throws {
     // taugt nicht: das setzt schon die sofortige Invalidierung vor dem
     // 120-ms-Debounce, also bevor der geprüfte `rerun()` überhaupt läuft.)
     workspace.caseSensitive.toggle()
-    await waitForWorkspace(workspace) { !workspace.bufferSearching }
+    await waitForWorkspace(workspace) { workspace.folderNeedsSearch && !workspace.bufferSearching }
 
     #expect(!workspace.bufferSearching,
             "Der Buffer-Spinner muss aus sein — es läuft keine Buffer-Suche mehr")
@@ -339,6 +342,7 @@ func hiddenSearchDoesNotScanLoadedBuffer() async throws {
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let workspace = Workspace(defaults: defaults)
+    bindSearchResultWindowForTesting(workspace)
     workspace.scope = .file
     workspace.useRegex = false
     workspace.findPattern = "NADEL"
@@ -370,6 +374,7 @@ func closingSearchInvalidatesNavigationWithoutHiddenRescan() async throws {
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
     let workspace = Workspace(defaults: defaults)
+    bindSearchResultWindowForTesting(workspace)
     workspace.scope = .file
     workspace.useRegex = false
     workspace.tabs[0].content = "vorher NADEL nachher"
@@ -425,7 +430,7 @@ func folderLive_shortPatternNotLive() {
 @Test("Ordner-Live: ab 3 Zeichen sucht live")
 func folderLive_atThresholdIsLive() {
     #expect(SearchRunner.shouldRunFolderLive(for: "abc") == true)
-    #expect(SearchRunner.shouldRunFolderLive(for: "Daniel") == true)
+    #expect(SearchRunner.shouldRunFolderLive(for: "Markus") == true)
 }
 
 @Test("Ordner-Live: führender/abschließender Whitespace zählt nicht zur Länge")
@@ -470,6 +475,7 @@ func manualShortFolderSearchSurvivesDebounce() async throws {
     defer { try? FileManager.default.removeItem(at: root) }
     try "abc".write(to: root.appendingPathComponent("sample.txt"), atomically: true, encoding: .utf8)
     let ws = Workspace(defaults: testSuiteDefaults(named: "fastra-short-search-\(UUID().uuidString)"))
+    bindSearchResultWindowForTesting(ws)
     ws.showSearchDialog = true
     ws.scope = .folder
     ws.recentSearchFolders = [SearchFolderEntry(path: root.path, enabled: true)]

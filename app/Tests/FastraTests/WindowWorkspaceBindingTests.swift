@@ -18,9 +18,8 @@ struct WindowWorkspaceBindingTests {
     ) -> (window: NSWindow, teardown: () -> Void) {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
                               styleMask: [.titled], backing: .buffered, defer: false)
-        // Ein programmatisch erzeugtes NSWindow gibt sich bei `close()` selbst
-        // frei; ARC hält es dann noch einmal, und der Autorelease-Pool stürzt
-        // beim Abbau mit SIGSEGV ab (gesehen 2026-09-05 im Filterlauf).
+        // Programmatisch erzeugte NSWindows nicht beim Schließen selbst freigeben
+        // lassen: Die zusätzliche ARC-Freigabe könnte den Autorelease-Abbau abstürzen lassen.
         window.isReleasedWhenClosed = false
         let metadataView = MainWindowTitleBridge.WindowMetadataView(
             metadata: .from(workspace.activeTab, welcomeActive: workspace.isWelcomeScreen),
@@ -35,11 +34,9 @@ struct WindowWorkspaceBindingTests {
         })
     }
 
-    /// Der produktive Rückfall ist der ÖFFENTLICHE Registry-Zugriff: Wer
-    /// `workspace(for:)` fragt, bekommt die Zuordnung repariert, sofern das
-    /// Fenster sichtbar ist. Der Test geht deshalb genau diesen Weg und ruft
-    /// `restoreWindowBinding` nicht selbst auf — sonst bliebe er grün, obwohl
-    /// der Rückfall in `workspace(for:)` defekt wäre (Review-Fund 2026-09-05).
+    /// Reparatur über den öffentlichen `workspace(for:)`-Zugriff prüfen.
+    /// Ein direkter Aufruf von `restoreWindowBinding` würde nicht belegen, dass
+    /// der produktive Registry-Rückfall für sichtbare Fenster funktioniert.
     @Test("Sichtbares Fenster: der Registry-Zugriff repariert eine verlorene Bindung")
     func registryAccessRepairsMissingRegistrationForVisibleWindow() {
         let suite = "fastra-tests-window-binding-repair-\(UUID().uuidString)"

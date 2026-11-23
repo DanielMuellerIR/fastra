@@ -3,8 +3,8 @@ import Testing
 @testable import Fastra
 
 // Tests für LineOperations „Process Duplicate Lines" (BBEdit Kap. 5):
-//   - keepDuplicateLines        — behält NUR die mehrfach vorkommenden Zeilen (je einmal).
-//   - removeAllDuplicatedLines  — entfernt JEDE mehrfach vorkommende Zeile (auch das Original).
+//   - keepDuplicateLines        — behält nur die mehrfach vorkommenden Zeilen (je einmal).
+//   - removeAllDuplicatedLines  — entfernt jede mehrfach vorkommende Zeile (auch das Original).
 // Beide unterscheiden sich vom älteren removeDuplicateLines (das das erste Vorkommen behält).
 // Pur, UI-frei: (Text, Selektion) rein → kompletter neuer Text raus, oder nil = nichts zu tun.
 
@@ -28,7 +28,7 @@ func keepDup_noDuplicates() {
 
 @Test("keepDuplicateLines zählt eine dreifach vorkommende Zeile trotzdem nur einmal")
 func keepDup_triplicateOnce() {
-    // „x" kommt dreimal vor → genau EINMAL im Ergebnis; „y" einmal → raus.
+    // „x" kommt dreimal vor → genau einmal im Ergebnis; „y" einmal → raus.
     let result = LineOperations.keepDuplicateLines(in: "x\ny\nx\nx",
                                                    selection: whole)
     #expect(result?.newText == "x")
@@ -48,7 +48,7 @@ func keepDup_selectionOnly() {
     let result = LineOperations.keepDuplicateLines(in: text,
                                                    selection: NSRange(location: 0, length: 7))
     // Innerhalb der Selektion: a(×2), b(×1), c(×1) → nur „a" ist Dublette,
-    // b und c werden entfernt. Die 5. Zeile „b" liegt AUSSERHALB der Selektion
+    // b und c werden entfernt. Die 5. Zeile „b" liegt außerhalb der Selektion
     // und bleibt unangetastet → „a" (selektierter Block) + „\nb" (Rest) = „a\nb".
     #expect(result?.newText == "a\nb")
 }
@@ -75,14 +75,14 @@ func keepDup_blankLinesAreContent() {
     // Zwei echte Leerzeilen (zwischen Inhalt) sind eine Dublette der leeren Zeile;
     // „a" ist einmalig. Kein abschließendes \n → keine Phantom-Leerzeile.
     let text = "a\n\nb\n"   // Zeilen: "a", "", "b", "" (Phantom)
-    // Hier ist nur EINE echte Leerzeile + Phantom → keine Dublette unter den echten.
+    // Hier ist nur eine echte Leerzeile + Phantom → keine Dublette unter den echten.
     #expect(LineOperations.keepDuplicateLines(in: text, selection: whole) == nil)
 }
 
 @Test("keepDuplicateLines: doppelte echte Leerzeile gilt als Dublette, Phantom zählt nicht mit")
 func keepDup_blankDuplicateVsPhantom() {
-    // Echte Zeilen: "a", "", "b", "" → die leere Zeile kommt ZWEIMAL echt vor (Dublette),
-    // PLUS die Phantom-Leerzeile vom Datei-End-Newline (zählt nicht).
+    // Echte Zeilen: "a", "", "b", "" → die leere Zeile kommt zweimal echt vor (Dublette),
+    // plus die Phantom-Leerzeile vom Datei-End-Newline (zählt nicht).
     let text = "a\n\nb\n\n"   // splitLines → ["a", "", "b", "", ""]; letztes "" = Phantom.
     let result = LineOperations.keepDuplicateLines(in: text, selection: whole)
     // Übrig: nur die leere Zeile (Dublette), einmal — plus erhaltene Phantom-Leerzeile.
@@ -121,7 +121,7 @@ func removeAll_singleLine() {
 
 @Test("removeAllDuplicatedLines wirkt nur im selektierten Bereich")
 func removeAll_selectionOnly() {
-    // „a" doppelt INNERHALB der Selektion; ein weiteres „a" außerhalb bleibt unangetastet.
+    // „a" doppelt innerhalb der Selektion; ein weiteres „a" außerhalb bleibt unangetastet.
     let text = "a\nb\na\nc\na"
     // Selektion über die ersten vier Zeilen „a\nb\na\nc" = {0,7}.
     let result = LineOperations.removeAllDuplicatedLines(in: text,

@@ -254,7 +254,7 @@ private final class GitRemoteTrackingFallbackCounter: GitCancelling {
             }
             if activeCount < Self.maximumConcurrentCount,
                nextIndex < refs.count {
-                // Immer nur EINEN unmittelbar folgenden Start reservieren.
+                // Immer nur einen unmittelbar folgenden Start reservieren.
                 // So liegen bei einem Abbruch nie bis zu vier noch gar nicht
                 // gestartete Prozesse als vermeintlich „aktiv" im Scheduler.
                 let ref = refs[nextIndex]
@@ -380,7 +380,7 @@ final class GitOperationsCoordinator {
     /// untätigen) Operations-Zustand. Ohne diese Meldung bliebe ein zuletzt
     /// als „beschäftigt" publizierter Snapshot eingefroren — die Push- und
     /// Git-Knöpfe der Seitenleiste blieben dann deaktiviert, bis irgendein
-    /// späterer Refresh zufällig neu publiziert (Daniel, 2026-08-19).
+    /// späterer Refresh zufällig neu publiziert.
     private var queueDrainObserver: ((URL) -> Void)?
 
     init(executor: GitCommandExecuting) {
@@ -594,7 +594,7 @@ final class GitOperationsCoordinator {
 
         completions.forEach { $0(outcome) }
         if let next { start(next, repositoryKey: repositoryKey) }
-        // Drain erst NACH den Completions prüfen: Eine Completion darf
+        // Drain erst nach den Completions prüfen: Eine Completion darf
         // synchron Folgearbeit einreihen (z. B. den Full-Refresh nach einem
         // Push). Die Warteschlange ist dann gar nicht leergelaufen, und eine
         // vorschnelle Meldung publizierte ein Zwischenbild mit veraltetem
@@ -744,7 +744,7 @@ final class GitRepositoryStore {
 
     func publishOperations(for repository: URL) {
         let path = GitOperationRequest.canonicalRepositoryPath(repository)
-        // Zustand VOR dem Store-Lock lesen: `state(for:)` nimmt den
+        // Zustand vor dem Store-Lock lesen: `state(for:)` nimmt den
         // Coordinator-Lock, und eine feste Lock-Reihenfolge (erst Coordinator,
         // dann Store) vermeidet jede Verschränkung mit dem Drain-Callback.
         let operations = coordinator.state(for: repository)

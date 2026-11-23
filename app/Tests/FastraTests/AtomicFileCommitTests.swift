@@ -5,6 +5,333 @@ import Testing
 
 @Suite("Atomarer Datei-Commit")
 struct AtomicFileCommitTests {
+    @Test("Geerbte Allow-ACLs geben keinen Zugriff auf den privaten Cleanup-Bereich")
+    func pendingCleanupRemovesInheritedAllowACLAndRejectsLaterACL() throws {
+        let directory = try makeDirectory("pending-inherited-acl")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // Bestehende ACL-Fixturemechanik: nur dieses eigene Tempverzeichnis
+        // bekommt eine an neue Ordner vererbbare Everyone-Allow-ACL.
+        func everyoneAllow(inheritable: Bool) throws -> acl_t {
+            let flags = inheritable ? "allow,only_inherit,directory_inherit" : "allow"
+            let acl = try #require(acl_from_text("!#acl 1\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:\(flags):write\n"))
+            do {
+                var entry: acl_entry_t?
+                try #require(acl_get_entry(acl, Int32(ACL_FIRST_ENTRY.rawValue), &entry) == 0)
+                var permissions: acl_permset_t?
+                try #require(acl_get_permset(try #require(entry), &permissions) == 0)
+                let actualPermissions = try #require(permissions)
+                for permission in [ACL_SEARCH, ACL_ADD_FILE, ACL_DELETE_CHILD] {
+                    try #require(acl_add_perm(actualPermissions, permission) == 0)
+                }
+                return acl
+            } catch {
+                acl_free(UnsafeMutableRawPointer(acl))
+                throw error
+            }
+        }
+        let inherited = try everyoneAllow(inheritable: true)
+        defer { acl_free(UnsafeMutableRawPointer(inherited)) }
+        try #require(acl_set_file(directory.path, ACL_TYPE_EXTENDED, inherited) == 0)
+        let control = directory.appendingPathComponent("inherited-control", isDirectory: true)
+        try #require(mkdir(control.path, mode_t(0o700)) == 0)
+        let controlACL = try #require(acl_get_file(control.path, ACL_TYPE_EXTENDED))
+        defer { acl_free(UnsafeMutableRawPointer(controlACL)) }
+        var allowedEntry: acl_entry_t?
+        try #require(acl_get_entry(controlACL, Int32(ACL_FIRST_ENTRY.rawValue), &allowedEntry) == 0)
+        let actualEntry = try #require(allowedEntry)
+        var kind = ACL_UNDEFINED_TAG
+        try #require(acl_get_tag_type(actualEntry, &kind) == 0)
+        #expect(kind == ACL_EXTENDED_ALLOW)
+        var permissions: acl_permset_t?
+        try #require(acl_get_permset(actualEntry, &permissions) == 0)
+        let actualPermissions = try #require(permissions)
+        #expect(acl_get_perm_np(actualPermissions, ACL_SEARCH) == 1)
+        #expect(acl_get_perm_np(actualPermissions, ACL_ADD_FILE) == 1)
+        #expect(acl_get_perm_np(actualPermissions, ACL_DELETE_CHILD) == 1)
+        var flags: acl_flagset_t?
+        try #require(acl_get_flagset_np(UnsafeMutableRawPointer(actualEntry), &flags) == 0)
+        #expect(acl_get_flag_np(try #require(flags), ACL_ENTRY_ONLY_INHERIT) == 0,
+                "Die Kontroll-ACL muss anderen UIDs tatsächlich effektive Rechte geben")
+        let source = directory.appendingPathComponent("prepared.tmp")
+        let own = try ApplyPendingFile.prepare(Data("own".utf8), at: source)
+        let work = try #require(own.cleanupDirectory)
+        let descriptor = try work.openBound()
+        defer { close(descriptor) }
+        var info = stat()
+        try #require(fstat(descriptor, &info) == 0)
+        #expect(info.st_uid == getuid())
+        #expect(info.st_mode & 0o777 == 0o700)
+        if let actualACL = acl_get_fd_np(descriptor, ACL_TYPE_EXTENDED) {
+            defer { acl_free(UnsafeMutableRawPointer(actualACL)) }
+            var entry: acl_entry_t?
+            #expect(acl_get_entry(actualACL, Int32(ACL_FIRST_ENTRY.rawValue), &entry) == -1)
+            #expect(errno == EINVAL)
+        } else { #expect(errno == ENOENT) }
+        // Bei Wiederaufnahme reicht 0700 nicht: Eine nachträglich eingetragene
+        // Allow-ACL muss noch vor jedem Verschieben die Besitzgrenze schließen.
+        let effective = try everyoneAllow(inheritable: false)
+        defer { acl_free(UnsafeMutableRawPointer(effective)) }
+        try #require(acl_set_fd_np(descriptor, effective, ACL_TYPE_EXTENDED) == 0)
+        let before = try FileSnapshot.readSnapshotOnly(from: source)
+        #expect(throws: AtomicFileCommit.Failure.self) { try own.remove() }
+        #expect(try FileSnapshot.readSnapshotOnly(from: source) == before)
+        #expect(!FileManager.default.fileExists(atPath: own.cleanupClaimURL!.path))
+        let empty = try #require(acl_init(0))
+        defer { acl_free(UnsafeMutableRawPointer(empty)) }
+        try #require(acl_set_fd_np(descriptor, empty, ACL_TYPE_EXTENDED) == 0)
+        try own.remove()
+        #expect(!FileManager.default.fileExists(atPath: source.path))
+        #expect(!FileManager.default.fileExists(atPath: work.url.path))
+        // Der Nutzordner und seine geerbte Kontroll-ACL werden nicht bereinigt.
+        let stillInherited = try #require(acl_get_file(control.path, ACL_TYPE_EXTENDED))
+        defer { acl_free(UnsafeMutableRawPointer(stillInherited)) }
+        var stillAllowed: acl_entry_t?
+        #expect(acl_get_entry(stillInherited, Int32(ACL_FIRST_ENTRY.rawValue), &stillAllowed) == 0)
+    }
+
+    @Test("Cleanup meldet Namens-/IO-Fehler statt einen vorhandenen Claim anzunehmen")
+    func pendingCleanupReportsFailedSourceLookup() throws {
+        let directory = try makeDirectory("pending-lookup-error")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("prepared.tmp")
+        let own = try ApplyPendingFile.prepare(Data("own".utf8), at: source)
+        let invalid = ApplyPendingFile(url: directory.appendingPathComponent(String(repeating: "x", count: 256)),
+            snapshot: own.snapshot, cleanupDirectory: own.cleanupDirectory)
+        #expect(invalid.cleanupClaimURL?.lastPathComponent == "prepared.claim")
+        do {
+            try invalid.remove()
+            Issue.record("ENAMETOOLONG darf keinen vorhandenen Claim vortäuschen")
+        } catch let error as POSIXError { #expect(error.code == .ENAMETOOLONG) }
+        #expect(try FileSnapshot.readSnapshotOnly(from: source) == own.snapshot)
+        #expect(!FileManager.default.fileExists(atPath: own.cleanupClaimURL!.path))
+        try own.remove()
+    }
+
+    @Test("Anker-Cleanup erhält einen unterbrochenen eigenen Temp-Claim für dessen Retry")
+    func pendingCleanupResumesSeparateOwnClaimsInEitherOrder() throws {
+        let directory = try makeDirectory("pending-private-claim-order")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent(".prepared.tmp")
+        let file = try ApplyPendingFile.prepare(Data("own".utf8), at: source)
+        let opened = try FileSnapshot.openRegularFile(at: source)
+        defer { close(opened.descriptor) }
+        let anchor = try ApplyPendingFile.retain(preparedURL: source,
+            descriptor: opened.descriptor, snapshot: file.snapshot,
+            cleanupDirectory: file.cleanupDirectory)
+        let claim = try #require(file.cleanupClaimURL)
+        try FileManager.default.moveItem(at: source, to: claim)
+        try anchor.remove()
+        #expect(try FileSnapshot.readSnapshotOnly(from: claim) == file.snapshot)
+        try file.remove()
+        #expect(!FileManager.default.fileExists(atPath: claim.path))
+        #expect(!FileManager.default.fileExists(atPath: anchor.url.path))
+        #expect(!FileManager.default.fileExists(atPath: file.cleanupDirectory!.url.path))
+    }
+
+    @Test("Cleanup bleibt am privaten FD, wenn dessen öffentlicher Ordnername ersetzt wird")
+    func pendingCleanupIgnoresForeignReplacementOfWorkspaceName() throws {
+        let directory = try makeDirectory("pending-private-directory")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent(".prepared.tmp")
+        let file = try ApplyPendingFile.prepare(Data("own".utf8), at: source)
+        let work = try #require(file.cleanupDirectory)
+        let claim = try #require(file.cleanupClaimURL)
+        let moved = directory.appendingPathComponent("moved-own-workspace", isDirectory: true)
+        var foreign: FileSnapshot?
+        do {
+            try file.remove(afterClaim: { privateClaim in
+                #expect(privateClaim == claim)
+                #expect(privateClaim.deletingLastPathComponent() == work.url)
+                try FileManager.default.moveItem(at: work.url, to: moved)
+                try FileManager.default.createDirectory(at: work.url,
+                    withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+                try Data("foreign".utf8).write(to: claim)
+                foreign = try FileSnapshot.readSnapshotOnly(from: claim)
+            })
+            Issue.record("Der ersetzte Arbeitsordner muss beim Abschluss sichtbar bleiben")
+        } catch AtomicFileCommit.Failure.recoveryRequired {}
+        let expectedForeign = try #require(foreign)
+        #expect(try FileSnapshot.readSnapshotOnly(from: claim) == expectedForeign)
+        #expect(!FileManager.default.fileExists(atPath: moved.appendingPathComponent(claim.lastPathComponent).path),
+                "Nur der über den eigenen dirFD gebundene Claim darf gelöscht werden")
+        #expect(throws: AtomicFileCommit.Failure.self) { try file.remove() }
+        #expect(try FileSnapshot.readSnapshotOnly(from: claim) == expectedForeign)
+        #expect(FileManager.default.fileExists(atPath: moved.path))
+    }
+
+    @Test("Unbekannte Kinder im eigenen Cleanup-Bereich bleiben erhalten")
+    func pendingCleanupPreservesUnknownPrivateChildren() throws {
+        let directory = try makeDirectory("pending-private-unknown")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent(".prepared.tmp")
+        let file = try ApplyPendingFile.prepare(Data("own".utf8), at: source)
+        let work = try #require(file.cleanupDirectory)
+        let unknown = work.url.appendingPathComponent("unknown")
+        try Data("foreign".utf8).write(to: unknown)
+        let before = try FileSnapshot.readSnapshotOnly(from: unknown)
+        #expect(throws: AtomicFileCommit.Failure.self) { try file.remove() }
+        #expect(try FileSnapshot.readSnapshotOnly(from: unknown) == before)
+        #expect(FileManager.default.fileExists(atPath: work.url.path))
+        #expect(!FileManager.default.fileExists(atPath: source.path))
+    }
+
+    @Test("Unterbrochener pending-Cleanup findet seinen privaten Claim wieder",
+          arguments: [false, true])
+    func pendingCleanupResumesClaimWithoutDeletingForeignObject(foreignClaim: Bool) throws {
+        let directory = try makeDirectory("pending-cleanup-claim")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent(".own-pending.tmp")
+        let owned = try ApplyPendingFile.prepare(Data("new".utf8), at: url)
+        let claim = try #require(owned.cleanupClaimURL)
+        try FileManager.default.moveItem(at: url, to: claim)
+        if foreignClaim {
+            try Data("new".utf8).write(to: claim, options: .atomic)
+            let foreign = try FileSnapshot.readSnapshotOnly(from: claim)
+            #expect(foreign.identity != owned.snapshot.identity)
+            #expect(throws: AtomicFileCommit.Failure.self) { try owned.remove() }
+            #expect(try FileSnapshot.readSnapshotOnly(from: claim) == foreign)
+        } else {
+            try owned.remove()
+            #expect(!FileManager.default.fileExists(atPath: claim.path))
+            try owned.remove()
+        }
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
+    @Test("Vorbereitungsfehler erreichen weder Retention noch Journal oder Tausch",
+          arguments: [false, true])
+    func preparationFailureStopsBeforeRetention(replacedPreparedFile: Bool) throws {
+        let directory = try makeDirectory("preparation-failure")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent("prepared.tmp")
+        try Data("old".utf8).write(to: target)
+        try Data("new".utf8).write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        let replacement = try FileSnapshot.readSnapshotOnly(from: prepared)
+        if replacedPreparedFile {
+            try FileManager.default.moveItem(
+                at: prepared, to: directory.appendingPathComponent("original-prepared"))
+            try Data("new".utf8).write(to: prepared)
+        }
+        let preparedBefore = try FileSnapshot.readSnapshotOnly(from: prepared)
+        if replacedPreparedFile { #expect(preparedBefore.identity != replacement.identity) }
+        let store = testRecoveryStore(in: directory)
+        var retentionCalls = 0
+        var beforeSwapCalls = 0
+        var preparedReads = 0
+        do {
+            _ = try AtomicFileCommit.replaceExisting(
+                at: target, withPreparedFile: prepared, expecting: expected,
+                replacementContent: replacement, recoveryStore: store,
+                retainPreparedFile: { _, _ in retentionCalls += 1 },
+                beforeSwap: { _ in beforeSwapCalls += 1 },
+                preparedSnapshotReader: { _, _, _ in
+                    preparedReads += 1
+                    throw POSIXError(.EIO)
+                })
+            Issue.record("Die fehlgeschlagene Vorbereitung darf keinen Commit ausführen")
+        } catch AtomicFileCommit.Failure.conflictUnchanged {
+            #expect(replacedPreparedFile)
+        } catch let error as POSIXError {
+            #expect(!replacedPreparedFile)
+            #expect(error.code == .EIO)
+            let context = error as NSError
+            #expect(context.userInfo[NSFilePathErrorKey] as? String == prepared.path)
+            #expect((context.userInfo[NSUnderlyingErrorKey] as? NSError)?.code == Int(EIO))
+            #expect(error.localizedDescription.contains(prepared.lastPathComponent))
+            #expect(error.localizedDescription.contains(POSIXError(.EIO).localizedDescription))
+        }
+        #expect(preparedReads == (replacedPreparedFile ? 0 : 1))
+        #expect(retentionCalls == 0)
+        #expect(beforeSwapCalls == 0)
+        #expect(try FileSnapshot.readSnapshotOnly(from: target) == expected)
+        #expect(try FileSnapshot.readSnapshotOnly(from: prepared) == preparedBefore)
+        #expect(try store.inspectPending().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: store.directoryURL.path),
+                "Vor vollständiger Vorbereitung darf auch kein vorzeitig beendetes Journal entstehen")
+    }
+
+    @Test("Apply bindet pending vor dem Atomic-Journal an das geöffnete Ersatzobjekt")
+    func pendingProofUsesBoundPreparedObject() throws {
+        let directory = try makeDirectory("pending-bound-object")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent("prepared.tmp")
+        try Data("old".utf8).write(to: target)
+        try Data("new".utf8).write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        let store = testRecoveryStore(in: directory)
+        var retained: ApplyPendingFile?
+        var retainedDescriptor: Int32?
+        let installed = try AtomicFileCommit.replaceExisting(
+            at: target, withPreparedFile: prepared, expecting: expected,
+            replacementContent: FileSnapshot(data: Data("new".utf8), identity: nil),
+            recoveryStore: store,
+            retainPreparedFile: { descriptor, snapshot in
+                #expect(try store.inspectPending().isEmpty)
+                #expect(!FileManager.default.fileExists(atPath: store.directoryURL.path))
+                #expect(try FileSnapshot.readSnapshotOnly(from: target) == expected)
+                retainedDescriptor = descriptor
+                retained = try ApplyPendingFile.retain(preparedURL: prepared,
+                    descriptor: descriptor, snapshot: snapshot)
+                try retained?.synchronize()
+            }, beforeSwap: { _ throws in
+                #expect(retained?.isValid == true)
+                #expect(retained?.snapshot == (try FileSnapshot.readSnapshotOnly(from: prepared)))
+                #expect(try FileSnapshot.readSnapshotOnly(from: target) == expected)
+                var info = stat()
+                try #require(fstat(try #require(retainedDescriptor), &info) == 0)
+                #expect(FileIdentity(stat: info) == retained?.snapshot.identity)
+                let pending = try store.inspectPending()
+                #expect(pending.count == 1)
+                let journal = try #require(pending.first)
+                #expect(journal.state == .beforeExchange)
+                #expect(journal.targetURL == target)
+                #expect(journal.preparedURL == prepared)
+            })
+        let anchor = try #require(retained)
+        #expect(installed == anchor.snapshot)
+        #expect(anchor.isValid)
+        #expect(try FileSnapshot.readSnapshotOnly(from: target) == installed)
+        #expect(try store.inspectPending().isEmpty)
+        try anchor.remove()
+        #expect(!FileManager.default.fileExists(atPath: anchor.url.path))
+        #expect(try Data(contentsOf: target) == Data("new".utf8))
+    }
+
+    @Test("Bytegleicher Austausch der vorbereiteten Datei widerlegt die gebundene pending-Identität")
+    func pendingProofRejectsChangedPreparedPath() throws {
+        let directory = try makeDirectory("pending-prepared-replace")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent("prepared.tmp")
+        let saved = directory.appendingPathComponent("saved-prepared")
+        try Data("old".utf8).write(to: target)
+        try Data("new".utf8).write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        var retained: ApplyPendingFile?
+        do {
+            _ = try AtomicFileCommit.replaceExisting(
+                at: target, withPreparedFile: prepared, expecting: expected,
+                replacementContent: FileSnapshot(data: Data("new".utf8), identity: nil),
+                recoveryStore: testRecoveryStore(in: directory),
+                retainPreparedFile: { descriptor, snapshot in
+                    retained = try ApplyPendingFile.retain(preparedURL: prepared,
+                        descriptor: descriptor, snapshot: snapshot)
+                    try FileManager.default.moveItem(at: prepared, to: saved)
+                    try Data("new".utf8).write(to: prepared)
+                })
+            Issue.record("Ein fremdes Ersatzobjekt darf den gebundenen pending-Beleg nicht übernehmen")
+        } catch AtomicFileCommit.Failure.conflictUnchanged {}
+        let anchor = try #require(retained)
+        #expect(anchor.isValid)
+        #expect(try FileSnapshot.readSnapshotOnly(from: saved) == anchor.snapshot)
+        #expect(try FileSnapshot.readSnapshotOnly(from: prepared).identity != anchor.snapshot.identity)
+        #expect(try FileSnapshot.readSnapshotOnly(from: target) == expected)
+        try anchor.remove()
+    }
+
     @Test("Dokument-Recovery liest und bereinigt keine Nutzdateien anderer Journale")
     func documentInspectionDoesNotTouchOtherTargets() throws {
         let directory = try makeDirectory("target-filter")
@@ -458,6 +785,114 @@ struct AtomicFileCommitTests {
         #expect(try Data(contentsOf: prepared) == replacement)
     }
 
+    @Test("Fehlende erste Rücktauschbindung erhält beide Stände und das Journal")
+    func initialRollbackBindingFailurePreservesJournal() throws {
+        let directory = try makeDirectory("initial-rollback-binding")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        let tampered = Data("changed replacement with another size\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        let originalIdentity = try #require(FileIdentity(url: target))
+        let preparedIdentity = try #require(FileIdentity(url: prepared))
+        let store = testRecoveryStore(in: directory)
+        var afterSwapCalls = 0
+
+        do {
+            _ = try AtomicFileCommit.replaceExisting(
+                at: target,
+                withPreparedFile: prepared,
+                expecting: expected,
+                replacementContent: FileSnapshot(data: replacement, identity: nil),
+                recoveryStore: store,
+                beforeSwap: { _ in
+                    // Ohne Retention und bekannte Ersatzidentität erreicht die
+                    // Größenänderung erst die erste Bindung nach dem Swap.
+                    try writeInPlace(tampered, to: prepared)
+                    #expect(FileIdentity(url: prepared) == preparedIdentity)
+                },
+                afterSwap: { _, _ in afterSwapCalls += 1 })
+            Issue.record("Die veränderte Ersatzgröße muss vor afterSwap Recovery verlangen")
+        } catch let failure as AtomicFileCommit.Failure {
+            guard case .recoveryRequired(let reportedTarget,
+                                         let reportedDisplaced) = failure else {
+                Issue.record("Erwartet war recoveryRequired, erhalten: \(failure)")
+                return
+            }
+            #expect(reportedTarget == target)
+            #expect(reportedDisplaced == prepared)
+        }
+
+        #expect(afterSwapCalls == 0)
+        #expect(try Data(contentsOf: target) == tampered)
+        #expect(FileIdentity(url: target) == preparedIdentity)
+        #expect(try Data(contentsOf: prepared) == original)
+        #expect(FileIdentity(url: prepared) == originalIdentity)
+        #expect(try store.inspectPending().count == 1)
+    }
+
+    @Test("Journalfehler nach dem Cleanup lässt den erfolgreichen Commit bestehen")
+    func journalFinishFailureAfterCleanupKeepsSuccessfulCommit() throws {
+        let directory = try makeDirectory("journal-finish-failure")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let movedJournalDirectory = directory.appendingPathComponent(
+            "moved-recovery", isDirectory: true)
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        let blockedDirectory = Data("not a directory\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        let preparedIdentity = try #require(FileIdentity(url: prepared))
+        let store = testRecoveryStore(in: directory)
+        let blockedJournalPath = URL(fileURLWithPath: store.directoryURL.path,
+                                     isDirectory: false)
+        var journalName: String?
+        var journalBefore: FileSnapshot?
+
+        let written = try AtomicFileCommit.replaceExisting(
+            at: target,
+            withPreparedFile: prepared,
+            expecting: expected,
+            replacementContent: FileSnapshot(data: replacement, identity: nil),
+            recoveryStore: store,
+            beforeCleanup: { _, displaced in
+                #expect(try Data(contentsOf: displaced) == original)
+                #expect(FileIdentity(url: displaced) == expected.identity)
+                let names = try FileManager.default.contentsOfDirectory(
+                    atPath: store.directoryURL.path)
+                try #require(names.count == 1)
+                let name = try #require(names.first)
+                try #require(name.hasSuffix(".json"))
+                journalName = name
+                journalBefore = try FileSnapshot.readSnapshotOnly(
+                    from: store.directoryURL.appendingPathComponent(name))
+                // Beide Finishversuche treffen deterministisch eine Datei
+                // statt des eigenen Journalordners, unabhängig von chmod/UID.
+                try FileManager.default.moveItem(
+                    at: store.directoryURL, to: movedJournalDirectory)
+                try blockedDirectory.write(to: blockedJournalPath)
+            })
+
+        #expect(try Data(contentsOf: target) == replacement)
+        #expect(FileIdentity(url: target) == preparedIdentity)
+        #expect(written == FileSnapshot(data: replacement, at: target))
+        #expect(!FileManager.default.fileExists(atPath: prepared.path))
+        #expect(try Data(contentsOf: blockedJournalPath) == blockedDirectory)
+        let name = try #require(journalName)
+        let before = try #require(journalBefore)
+        #expect(try FileSnapshot.readSnapshotOnly(
+            from: movedJournalDirectory.appendingPathComponent(name)) == before)
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: movedJournalDirectory.path) == [name])
+    }
+
     @Test("Erfolgreicher Tausch erhält Metadaten und entfernt den Altstand")
     func successfulSwapPreservesMetadataAndCleansUp() throws {
         let directory = try makeDirectory("success")
@@ -588,6 +1023,49 @@ struct AtomicFileCommitTests {
         #expect(!FileManager.default.fileExists(atPath: prepared.path))
         if change == 0 { #expect(try extendedAttribute(named: attribute, at: target) == Data("Stand 1".utf8)) }
         if change == 1 { #expect(try extendedAttribute(named: attribute, at: target) == Data("Stand 2".utf8)) }
+    }
+
+    @Test("Fehler vor der Nachprüfung tauscht mit der ersten gebundenen Version zurück")
+    func afterSwapFailureUsesInitialRollbackVersion() throws {
+        let directory = try makeDirectory("after-swap-failure")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let target = directory.appendingPathComponent("target.txt")
+        let prepared = directory.appendingPathComponent(".prepared.tmp")
+        let original = Data("original\n".utf8)
+        let replacement = Data("replacement\n".utf8)
+        try original.write(to: target)
+        try replacement.write(to: prepared)
+        let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        let originalIdentity = try #require(FileIdentity(url: target))
+        let store = testRecoveryStore(in: directory)
+        var metadataCopies = 0
+
+        do {
+            _ = try AtomicFileCommit.replaceExisting(
+                at: target,
+                withPreparedFile: prepared,
+                expecting: expected,
+                replacementContent: FileSnapshot(data: replacement, identity: nil),
+                recoveryStore: store,
+                afterSwap: { installed, displaced in
+                    #expect(try Data(contentsOf: installed) == replacement)
+                    #expect(try Data(contentsOf: displaced) == original)
+                    throw POSIXError(.EIO)
+                },
+                copyDisplacedMetadata: { source, destination in
+                    metadataCopies += 1
+                    return fcopyfile(source, destination, nil, UInt32(COPYFILE_METADATA))
+                })
+            Issue.record("Der Fehler vor der Nachprüfung muss gemeldet werden")
+        } catch let error as POSIXError {
+            #expect(error.code == .EIO)
+        }
+
+        #expect(metadataCopies == 0)
+        #expect(try Data(contentsOf: target) == original)
+        #expect(FileIdentity(url: target) == originalIdentity)
+        #expect(!FileManager.default.fileExists(atPath: prepared.path))
+        #expect(try store.inspectPending().isEmpty)
     }
 
     @Test("Lesefehler nach eigener Metadatenänderung schützt beide Inhaltsstände", arguments: [false, true])
@@ -828,6 +1306,7 @@ struct AtomicFileCommitTests {
         try original.write(to: target)
         try replacement.write(to: prepared)
         let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        let store = testRecoveryStore(in: directory)
 
         do {
             _ = try AtomicFileCommit.replaceExisting(
@@ -835,9 +1314,9 @@ struct AtomicFileCommitTests {
                 withPreparedFile: prepared,
                 expecting: expected,
                 replacementContent: FileSnapshot(data: replacement, identity: nil),
-                recoveryStore: testRecoveryStore(in: directory),
+                recoveryStore: store,
                 beforeCleanup: { _, displaced in
-                    // Simulierter Fremdprozess: ersetzt den Temp-Namen GENAU
+                    // Simulierter Fremdprozess: ersetzt den Temp-Namen genau
                     // zwischen der letzten Prüfung und dem Löschen durch einen
                     // eigenen neuen Stand. Vorher löschte `unlinkat` diesen
                     // Namen bedingungslos — der Fremdstand war weg.
@@ -856,6 +1335,7 @@ struct AtomicFileCommitTests {
                 "Der bereits verifizierte Tausch selbst bleibt bestehen")
         #expect(try Data(contentsOf: prepared) == foreign,
                 "Der fremde Stand darf beim Aufräumen nicht gelöscht werden")
+        #expect(try store.inspectPending().count == 1)
     }
 
     @Test("In-place-Fremdwrite in die verdrängte Inode im Aufräumfenster bleibt erhalten")
@@ -870,6 +1350,7 @@ struct AtomicFileCommitTests {
         try original.write(to: target)
         try replacement.write(to: prepared)
         let expected = try FileSnapshot.readSnapshotOnly(from: target)
+        let store = testRecoveryStore(in: directory)
         var displacedIdentityInHook: FileIdentity?
 
         do {
@@ -878,13 +1359,13 @@ struct AtomicFileCommitTests {
                 withPreparedFile: prepared,
                 expecting: expected,
                 replacementContent: FileSnapshot(data: replacement, identity: nil),
-                recoveryStore: testRecoveryStore(in: directory),
+                recoveryStore: store,
                 beforeCleanup: { _, displaced in
                     // Simulierter Fremdprozess mit offenem Deskriptor:
-                    // schreibt in DIESELBE verdrängte Inode, ohne den Namen
+                    // schreibt in dieselbe verdrängte Inode, ohne den Namen
                     // zu ersetzen. Gerät und Inode bleiben gleich — die
                     // reine Identitätsprüfung sah darin keinen Konflikt und
-                    // löschte den frischen Fremdstand mit (Review 2026-08-29).
+                    // löschte den frischen Fremdstand mit.
                     displacedIdentityInHook = FileIdentity(url: displaced)
                     try writeInPlace(foreign, to: displaced)
                 })
@@ -902,6 +1383,7 @@ struct AtomicFileCommitTests {
                 "Der bereits verifizierte Tausch selbst bleibt bestehen")
         #expect(try Data(contentsOf: prepared) == foreign,
                 "Der In-place-Fremdstand darf beim Aufräumen nicht gelöscht werden")
+        #expect(try store.inspectPending().count == 1)
     }
 
     @Test("Ziel und Nachbardatei dürfen nicht dieselbe Inode sein")

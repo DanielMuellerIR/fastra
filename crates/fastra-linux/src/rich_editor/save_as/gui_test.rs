@@ -20,6 +20,33 @@ fn click(window: &gtk::Window, label: &str) -> bool {
     super::super::gui_test::input(&button, true, &[]);
     true
 }
+type MenuClick = (gtk::Popover, &'static str);
+
+fn open_command_menu(ui: &Ui, label: &'static str) -> MenuClick {
+    let root = super::super::gui_test::menu(
+        ui.window.upcast_ref(),
+        ui.lang.text("Fastra-Menü", "Fastra menu"),
+    )
+    .expect("Fastra command menu");
+    let popover = root.popover().expect("Fastra command popover");
+    git_view::test_click(&root, &[]);
+    (popover, label)
+}
+
+fn dispatch_menu_click(pending: &mut Option<MenuClick>) -> bool {
+    let Some((popover, label)) = pending else {
+        return false;
+    };
+    if let Some(button) = super::super::gui_test::button(popover.upcast_ref(), label)
+        .filter(|button| {
+            button.is_mapped() && button.width() > 0 && button.height() > 0 && button.is_sensitive()
+        })
+    {
+        git_view::test_click(&button, &[]);
+        pending.take();
+    }
+    true
+}
 fn find<T: IsA<gtk::Widget> + glib::object::IsClass + glib::types::StaticType>(
     widget: &gtk::Widget,
 ) -> Option<T> {
@@ -164,6 +191,7 @@ pub(super) fn run(ui: Rc<Ui>) {
     let chooser_retry = Cell::new(false);
     let files_phase = Cell::new(0u8);
     let plain_saved = RefCell::new(String::new());
+    let mut pending_menu = None;
     glib::timeout_add_local(Duration::from_millis(40), move || {
         assert!(
             started.elapsed() < Duration::from_secs(180),
@@ -181,6 +209,9 @@ pub(super) fn run(ui: Rc<Ui>) {
             chooser_retry.set(false);
         };
         let review = || window(ui.lang.text("Speichern unter prüfen", "Review Save as"));
+        if dispatch_menu_click(&mut pending_menu) {
+            return glib::ControlFlow::Continue;
+        }
         let chooser = || window(ui.lang.text("Speichern unter …", "Save as …"));
         match phase.get() {
             0 => {
@@ -274,12 +305,10 @@ pub(super) fn run(ui: Rc<Ui>) {
                 );
                 assert!(has_assets(&document));
                 *old_files.borrow_mut() = Some(original_files(&old));
-                if !click(
-                    ui.window.upcast_ref(),
+                pending_menu = Some(open_command_menu(
+                    &ui,
                     ui.lang.text("Speichern unter …", "Save as …"),
-                ) {
-                    return glib::ControlFlow::Continue;
-                }
+                ));
                 next(10);
             }
             10 | 20 | 30 | 40 | 50 | 60 | 70 => {
@@ -505,12 +534,10 @@ pub(super) fn run(ui: Rc<Ui>) {
                         .is_active(),
                     "source preview preference survives Save as and Rich rebuild"
                 );
-                if !click(
-                    ui.window.upcast_ref(),
+                pending_menu = Some(open_command_menu(
+                    &ui,
                     ui.lang.text("Speichern unter …", "Save as …"),
-                ) {
-                    return glib::ControlFlow::Continue;
-                }
+                ));
                 next(30);
             }
             32 => {
@@ -568,12 +595,10 @@ pub(super) fn run(ui: Rc<Ui>) {
                 if !super::super::gui_test::capture(&ui.window, "save-as-fresh-reopen", &shots) {
                     return glib::ControlFlow::Continue;
                 }
-                if !click(
-                    ui.window.upcast_ref(),
+                pending_menu = Some(open_command_menu(
+                    &ui,
                     ui.lang.text("Speichern unter …", "Save as …"),
-                ) {
-                    return glib::ControlFlow::Continue;
-                }
+                ));
                 next(40);
             }
             42 => {
@@ -585,12 +610,10 @@ pub(super) fn run(ui: Rc<Ui>) {
                 verify_originals(same_files.borrow().as_ref().unwrap());
                 assert!(buffer_text(&doc.borrow().as_ref().unwrap().buffer)
                     .contains("Newer input retained"));
-                if !click(
-                    ui.window.upcast_ref(),
+                pending_menu = Some(open_command_menu(
+                    &ui,
                     ui.lang.text("Speichern unter …", "Save as …"),
-                ) {
-                    return glib::ControlFlow::Continue;
-                }
+                ));
                 next(50);
             }
             52 => {
@@ -629,12 +652,10 @@ pub(super) fn run(ui: Rc<Ui>) {
                 document.buffer.insert(&mut end, "Added");
                 document.buffer.end_user_action();
                 assert!(document.buffer.can_undo());
-                if !click(
-                    ui.window.upcast_ref(),
+                pending_menu = Some(open_command_menu(
+                    &ui,
                     ui.lang.text("Speichern unter …", "Save as …"),
-                ) {
-                    return glib::ControlFlow::Continue;
-                }
+                ));
                 next(60);
             }
             62 => {
@@ -662,9 +683,7 @@ pub(super) fn run(ui: Rc<Ui>) {
                         .encode("Café\r\nBefore\rAfter\nAdded")
                         .unwrap()
                 );
-                if !click(ui.window.upcast_ref(), ui.lang.text("Rückgängig", "Undo")) {
-                    return glib::ControlFlow::Continue;
-                }
+                pending_menu = Some(open_command_menu(&ui, ui.lang.text("Rückgängig", "Undo")));
                 next(63);
             }
             63 => {
@@ -673,9 +692,7 @@ pub(super) fn run(ui: Rc<Ui>) {
                     return glib::ControlFlow::Continue;
                 }
                 assert!(document.buffer.is_modified());
-                if !click(ui.window.upcast_ref(), ui.lang.text("Speichern", "Save")) {
-                    return glib::ControlFlow::Continue;
-                }
+                pending_menu = Some(open_command_menu(&ui, ui.lang.text("Speichern", "Save")));
                 next(64);
             }
             64 => {
@@ -691,12 +708,10 @@ pub(super) fn run(ui: Rc<Ui>) {
                 let mut end = document.buffer.end_iter();
                 document.buffer.insert(&mut end, "Before commit\n");
                 document.buffer.end_user_action();
-                if !click(
-                    ui.window.upcast_ref(),
+                pending_menu = Some(open_command_menu(
+                    &ui,
                     ui.lang.text("Speichern unter …", "Save as …"),
-                ) {
-                    return glib::ControlFlow::Continue;
-                }
+                ));
                 next(70);
             }
             65 => {
@@ -768,9 +783,7 @@ pub(super) fn run(ui: Rc<Ui>) {
                     document.snapshot.borrow().as_ref().unwrap().bytes(),
                     document.format.borrow().encode(&approved.borrow()).unwrap()
                 );
-                if !click(ui.window.upcast_ref(), ui.lang.text("Speichern", "Save")) {
-                    return glib::ControlFlow::Continue;
-                }
+                pending_menu = Some(open_command_menu(&ui, ui.lang.text("Speichern", "Save")));
                 next(73);
             }
             73 => {
@@ -889,6 +902,7 @@ fn run_eol(ui: Rc<Ui>) {
     let since = Cell::new(start);
     let retried = Cell::new(false);
     let reply = Rc::new(RefCell::new(None::<Value>));
+    let mut pending_menu = None;
     glib::timeout_add_local(Duration::from_millis(80), move || {
         assert!(
             start.elapsed() < Duration::from_secs(80),
@@ -896,6 +910,9 @@ fn run_eol(ui: Rc<Ui>) {
             phase.get(),
             ui.status.text()
         );
+        if dispatch_menu_click(&mut pending_menu) {
+            return glib::ControlFlow::Continue;
+        }
         let chooser = || window(ui.lang.text("Speichern unter …", "Save as …"));
         let review = || window(ui.lang.text("Speichern unter prüfen", "Review Save as"));
         match phase.get() {
@@ -909,12 +926,10 @@ fn run_eol(ui: Rc<Ui>) {
                 {
                     return glib::ControlFlow::Continue;
                 }
-                if !click(
-                    ui.window.upcast_ref(),
+                pending_menu = Some(open_command_menu(
+                    &ui,
                     ui.lang.text("Speichern unter …", "Save as …"),
-                ) {
-                    return glib::ControlFlow::Continue;
-                }
+                ));
             }
             1 | 4 | 9 => {
                 let Some(dialog) = chooser().filter(|w| w.is_mapped() && w.width() > 0) else {
@@ -1004,12 +1019,10 @@ fn run_eol(ui: Rc<Ui>) {
                 assert!(!cancelled.exists());
                 assert_eq!(buffer_text(&doc.buffer), source);
                 assert_eq!(doc.line_endings.pending(), Some(LineEnding::Lf));
-                if !click(
-                    ui.window.upcast_ref(),
+                pending_menu = Some(open_command_menu(
+                    &ui,
                     ui.lang.text("Speichern unter …", "Save as …"),
-                ) {
-                    return glib::ControlFlow::Continue;
-                }
+                ));
             }
             6 => {
                 if doc.saving.get() || doc.disk_path().as_ref() != Some(&target) {

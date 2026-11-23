@@ -63,7 +63,7 @@ final class TestCorpus {
                     content: "Grüße aus München - Café\n",
                     encoding: .isoLatin1)
         // 5. UTF-16 LE mit BOM (enthält Null-Bytes → fordert die
-        //    Encoding-Erkennung VOR der Binär-Heuristik)
+        //    Encoding-Erkennung vor der Binär-Heuristik)
         try addText("utf16le.txt",
                     content: "Hallo Welt\nasdf\n",
                     encoding: .utf16LittleEndian, prependBOM: [0xFF, 0xFE])

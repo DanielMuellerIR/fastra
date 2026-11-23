@@ -20,6 +20,18 @@ struct UpdateMenuTests {
         ))
     }
 
+    @Test("Normale GUI mit isoliertem Store erzeugt keinen Sparkle-Controller")
+    func updaterDoesNotTouchHostDefaultsDuringIsolatedGUI() {
+        #expect(!AppDelegate.shouldStartUpdater(isSelfTestRun: false, isIsolated: true))
+        #expect(!AppDelegate.shouldCreateUpdater(
+            isSelfTestRun: false, requestedTest: nil, isIsolated: true
+        ))
+        #expect(AppDelegate.shouldCreateUpdater(
+            isSelfTestRun: true, requestedTest: "updates", isIsolated: true
+        ))
+        #expect(!AppDelegate.shouldStartUpdater(isSelfTestRun: true, isIsolated: true))
+    }
+
     @Test("Menüpunkt behält Sparkle als Target und Action")
     func nativeMenuItemWiring() {
         let target = SPUStandardUpdaterController(

@@ -1,21 +1,16 @@
 // FourDMacroEngine.swift
 //
-// Headless-Ausführung der Komplettieren-Makros über tool4d (Idee #28,
-// 2026-08-19). Fastra schreibt den Puffer in eine Temp-Datei, startet tool4d
-// mit der Startup-Methode `MacroRun` des konfigurierten Engine-Projekts
-// (Daniels MAO_Makros) und liest Ergebnis- und Statusdatei zurück.
+// Headless-Ausführung der Komplettieren-Makros über tool4d. Fastra schreibt
+// den Puffer in eine temporäre Datei, startet `MacroRun` des konfigurierten
+// Engine-Projekts und liest Ergebnis- und Statusdatei zurück.
 //
-// Wichtige Eigenheiten des Wegs (am 2026-08-19 real gemessen):
-// - Exit-Code und stdout von tool4d sind NICHT verlässlich — ausschließlich
-//   die Statusdatei (`<Ausgabe>.status`, eine Zeile: OK/UNVERAENDERT/FEHLER…)
-//   zählt als Ergebnis.
-// - `MacroRun` erwartet UNTOKENISIERTEN Code (wie ihn `METHOD GET CODE`
-//   liefert); tokenisierte `.4dm`-Zeilen wie `C_TEXT:C284(...)` zerlegt das
-//   Makro in Müll. Der Aufrufer detokenisiert deshalb vorher und stellt die
-//   Token nach dem Lauf über `FourDTokenTransform.retokenize` wieder her.
-// - Eine `debuggerWatches.json` in den `userPreferences.<Nutzer>`-Ordnern des
-//   Engine-Projekts kann tool4d mit Exit 139 abstürzen lassen; die
-//   Fehlermeldung nennt diesen bekannten Auslöser.
+// - Exit-Code und stdout sind nicht verlässlich. Ausschließlich die
+//   Statusdatei (`<Ausgabe>.status`: OK/UNVERAENDERT/FEHLER…) zählt.
+// - `MacroRun` erwartet untokenisierten Code wie aus `METHOD GET CODE`.
+//   Der Aufrufer detokenisiert `.4dm`-Zeilen und stellt die Token danach mit
+//   `FourDTokenTransform.retokenize` wieder her.
+// - `debuggerWatches.json` unter `userPreferences.<Nutzer>` des Engine-Projekts
+//   kann tool4d mit Exit 139 abbrechen lassen; die Fehlermeldung nennt den Auslöser.
 
 import Darwin
 import Foundation
@@ -28,7 +23,7 @@ enum FourDMacroEngineSettings {
     /// der `MacroRun`-Methode enthält). Leer/unkonfiguriert = `nil`; die
     /// Aufrufer zeigen dann eine klare Anleitung statt eines stillen Fallbacks.
     static var projectRootPath: String? {
-        let raw = SelfTest.workspaceDefaults().string(forKey: projectPathKey)
+        let raw = AppDefaults.store.string(forKey: projectPathKey)
         let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !trimmed.isEmpty else { return nil }
         return (trimmed as NSString).expandingTildeInPath
@@ -86,9 +81,8 @@ enum FourDMacroEngine {
 
     // MARK: - Pure, unit-getestete Bausteine
 
-    /// Baut die tool4d-Argumente für einen MacroRun-Aufruf. Die Form
-    /// `--option wert` (getrennte argv-Einträge) ist am 2026-08-19 gegen
-    /// tool4d v21 verifiziert.
+    /// Baut die tool4d-Argumente für MacroRun. Die Form `--option wert`
+    /// (getrennte argv-Einträge) ist gegen tool4d v21 verifiziert.
     static func arguments(projectFile: URL, inputFile: URL, outputFile: URL,
                           variant: String, methodName: String) -> [String] {
         ["--project", projectFile.path,
@@ -147,7 +141,7 @@ enum FourDMacroEngine {
     private static let runQueue = DispatchQueue(label: "fastra.fourd.macroengine")
 
     /// Führt genau einen MacroRun-Lauf asynchron aus. `code` ist der bereits
-    /// DETOKENISIERTE Methodencode (LF-Zeilenenden sind in Ordnung, MacroRun
+    /// detokenisierte Methodencode (LF-Zeilenenden sind in Ordnung, MacroRun
     /// normalisiert selbst). Die Completion kommt auf der Main-Queue.
     static func run(tool4d: URL, engineProjectRoot: URL,
                     engineProjectFile: URL, code: String,
@@ -356,7 +350,7 @@ enum FourDMacroEngine {
             defer {
                 if !descriptorTransferred { Darwin.close(directoryFD) }
             }
-            // Rest eines abgebrochenen früheren Laufs zuerst RETTEN, nicht
+            // Rest eines abgebrochenen früheren Laufs zuerst retten, nicht
             // wegwerfen: Er kann die einzige verbliebene Fassung sein.
             recoverLeftoverWatchesBackups(directoryFD: directoryFD)
             var watchesInfo = stat()

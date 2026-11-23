@@ -1,8 +1,8 @@
 // LanguageMenuSupport.swift
 //
-// Manueller Sprachumschalter im Footer (Etappe 3 Wunschpaket 2026-07) —
-// das Sicherheitsventil gegen Fehlerkennung: Die manuelle Wahl gewinnt
-// immer und beendet die Automatik für den Tab.
+// Manueller Sprachumschalter im Footer — das
+// Sicherheitsventil gegen Fehlerkennung: Die manuelle Wahl gewinnt immer und
+// beendet die Automatik für den Tab.
 
 import Foundation
 import CodeEditLanguages
@@ -18,8 +18,8 @@ enum LanguageMenuSupport {
     ]
 
     /// Ein Eintrag im Sprachmenü: entweder eine CodeEditLanguages-Grammatik
-    /// oder eine Eigen-Sprache aus der `CustomLanguageRegistry` (Etappe 3
-    /// Wunschpaket 2026-07b — 4D ist damit manuell wählbar).
+    /// oder eine Eigen-Sprache aus der `CustomLanguageRegistry` (der aktuellen
+    /// Sprachauswahl — 4D ist damit manuell wählbar).
     enum Entry: Identifiable, Equatable {
         case grammar(CodeLanguage)
         case custom(CustomLanguage)
@@ -42,7 +42,7 @@ enum LanguageMenuSupport {
     /// Wählbare Sprachen: Plaintext zuerst, danach alle Sprachen, deren
     /// Grammatik wirklich im Bundle steckt (build.sh schneidet exotische
     /// Grammatiken aus — die zeigen nur Plaintext und wären im Menü
-    /// irreführend), PLUS alle Eigen-Sprachen der Registry, gemeinsam
+    /// irreführend), plus alle Eigen-Sprachen der Registry, gemeinsam
     /// alphabetisch nach Anzeigename.
     static var selectableEntries: [Entry] {
         let withGrammar = CodeLanguage.allLanguages

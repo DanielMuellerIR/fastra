@@ -18,9 +18,8 @@ enum AppInfo {
             as? String ?? ""
     }
 
-    /// Fenstertitel im Willkommens-/Leerzustand: „Fastra v1.6.2 2026-07-12"
-    /// (Daniel-Wunsch 2026-07-12: Version + zugehöriges Datum statt des
-    /// bisherigen „Fastra – Texteditor"). Fehlt das Datum, nur die Version.
+    /// Fenstertitel im leeren/Willkommens-Zustand: Produktname, Version und
+    /// zugehöriges Datum. Fehlt das Datum, nur die Version anzeigen.
     static var welcomeWindowTitle: String {
         let date = versionDate
         return date.isEmpty ? "Fastra v\(version)" : "Fastra v\(version) \(date)"
@@ -72,7 +71,19 @@ enum WorkspaceWindowRegistry {
     /// Fenster bereits unsichtbar geschaltet haben, ein zuvor vom Nutzer
     /// geschlossenes Fenster darf dagegen niemals wieder auftauchen.
     static func unregister(_ window: NSWindow) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { unregister(window) }
+            return
+        }
+        let workspace = workspaces.object(forKey: window)
         workspaces.removeObject(forKey: window)
+        MainActor.assumeIsolated {
+            // Such- und Hilfefenster teilen teils den Workspace, schließen
+            // aber niemals dessen Dokument-Sitzung (auch beim Startfenster).
+            if !SearchWindow.isSearchWindow(window), !HelpWindow.isHelpWindow(window) {
+                workspace?.closeDocumentSearchResults()
+            }
+        }
         // Den Tab-Untermenü-Eintrag des Fensters mit abbauen. Register/
         // Unregister laufen bereits auf dem Main-Thread (SwiftUI-Update bzw.
         // Notification-Queue .main); der Dispatch deckt nur den Fall ab, dass
@@ -120,9 +131,9 @@ struct MainWindowTitleMetadata: Equatable {
 
     /// - Parameter welcomeActive: `true`, solange das Fenster den
     ///   Willkommensbildschirm zeigt (noch keine echte Datei offen). Dann
-    ///   soll die Titelzeile NICHT „Ohne Titel" anzeigen (das leere Start-
+    ///   soll die Titelzeile nicht „Ohne Titel" anzeigen (das leere Start-
     ///   Dokument ist noch keine Datei), sondern Version + Datum der App —
-    ///   und kein Datei-Icon/Pfadmenü (Daniel-Wunsch 2026-07-12).
+    ///   und kein Datei-Icon/Pfadmenü.
     /// - Parameter welcomeTitle: der im Willkommens-Zustand angezeigte Titel.
     ///   Default = `AppInfo.welcomeWindowTitle` (aus dem Bundle); als Parameter
     ///   injizierbar, damit die pure Umwandlung ohne echtes Bundle testbar bleibt.
@@ -285,13 +296,13 @@ struct MainWindowTitleBridge: NSViewRepresentable {
                 // Ein per rotem Knopf geschlossenes SwiftUI-Hauptfenster hat
                 // seinen Registry-Eintrag beim `willClose` verloren. Zeigt
                 // SwiftUI dieselbe Szene später wieder an (Finder-Doppelklick,
-                // Dock-Klick), wandert die Brücke NICHT erneut ins Fenster —
+                // Dock-Klick), wandert die Brücke nicht erneut ins Fenster —
                 // `viewDidMoveToWindow` bleibt aus. Der Schlüsselfenster-
                 // Wechsel ist dann der verlässliche Moment, den Eintrag samt
                 // Schließen-Handler neu zu setzen. Ohne ihn zählte das wieder
                 // sichtbare Fenster in v1.117.2 nicht als Dokumentfenster, und
-                // eine per Finder geöffnete Datei bekam ein zweites Fenster
-                // (Befund 2026-09-04). Der Aufruf ist idempotent.
+                // eine per Finder geöffnete Datei bekam ein zweites Fenster.
+                // Der Aufruf ist idempotent.
                 self?.applyMetadataToWindow()
                 // Ein Schlüsselfenster-Wechsel ist zugleich der erste sichere
                 // Zeitpunkt, an dem SwiftUIs endgültiges Startfenster sichtbar
@@ -321,7 +332,7 @@ struct MainWindowTitleBridge: NSViewRepresentable {
                     workspace,
                     window: window
                 )
-                // Workspace entscheidet, WANN geschlossen werden darf; AppKit
+                // Workspace entscheidet, wann geschlossen werden darf; AppKit
                 // führt danach nur noch das tatsächliche Fensterschließen aus.
                 workspace.closeWindowHandler = { [weak window] in
                     window?.close()
@@ -337,26 +348,17 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             window.representedURL = metadata.representedURL
             window.title = metadata.title
             window.isDocumentEdited = metadata.isDocumentEdited
-            // Der Fenster-Eintrag eines Dokumentfensters ist seit v1.117.1
-            // ausschließlich unser eigener Tab-Untermenü-Eintrag
-            // (`WindowsMenuTabs`). AppKits automatischer Eintrag bleibt per
-            // `isExcludedFromWindowsMenu` draußen — vorher standen beide mit
-            // demselben Titel im Menü (Daniel-Befund 2026-09-01). Das frühere
-            // `NSApp.changeWindowsItem` (Befund 2026-07-20: SwiftUI-Fenster
-            // fehlte ganz) ist damit ersetzt.
+            // `WindowsMenuTabs` pflegt den einzigen Fenster-Eintrag als Tab-Untermenü.
+            // `isExcludedFromWindowsMenu` unterdrückt den doppelten AppKit-Eintrag.
             //
-            // `updateItem` läuft bewusst bei JEDEM Apply, nicht nur bei
-            // Titeländerung: Beim Sitzungsstart existiert das „Fenster"-Menü
-            // noch nicht (`NSApp.windowsMenu == nil`) — ein nur an
-            // Titeländerungen gebundener Aufbau kam danach nie wieder zum
-            // Zug, und die wiederhergestellte Sitzung zeigte gar keinen
-            // Untermenü-Eintrag (zweite Hälfte desselben Befunds). Der Aufruf
-            // ist idempotent und billig.
+            // `updateItem` bei jedem Apply idempotent aufrufen: Beim Sitzungsstart kann
+            // `NSApp.windowsMenu` noch fehlen. Eine Bindung allein an Titeländerungen
+            // würde den später nötigen Menüaufbau verpassen.
             if !SearchWindow.isSearchWindow(window), let workspace {
                 if !window.isExcludedFromWindowsMenu {
                     window.isExcludedFromWindowsMenu = true
                 }
-                // AppKit kann seinen eigenen Eintrag schon VOR dem Setzen der
+                // AppKit kann seinen eigenen Eintrag schon vor dem Setzen der
                 // Ausnahme angelegt haben (wiederhergestellte Fenster beim
                 // Start) — die Ausnahme verhindert nur künftige Einträge,
                 // entfernt aber keine bestehenden. Deshalb bei jedem Apply
@@ -398,16 +400,11 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             }
         }
 
-        /// Der rote Schließen-Knopf des SwiftUI-Hauptfensters läuft an
-        /// Fastra vorbei: SwiftUI stellt den Fenster-Delegate selbst, und sein
-        /// `windowShouldClose` kennt weder ungesicherte Tabs noch
-        /// `prepareToCloseWindow`. Das Fenster verschwand deshalb mit ALLEN
-        /// Tabs im Workspace — ungefragt auch bei ungesicherten Änderungen —
-        /// und brachte dieselben Tabs zurück, sobald SwiftUI die Szene wieder
-        /// anzeigte: Eine danach per Finder geöffnete Datei stand doppelt da
-        /// (Befund 2026-09-04, v1.117.2). Zusätzliche Fenster haben mit
-        /// `DocumentWindowController` einen eigenen Delegate und brauchen die
-        /// Umleitung nicht; das Suchfenster ist kein Dokumentfenster.
+        /// SwiftUI verwaltet den Delegate des Hauptfensters selbst; dessen
+        /// Schließpfad kennt weder ungesicherte Tabs noch `prepareToCloseWindow`.
+        /// Den roten Schließen-Knopf deshalb auf Fastras Tab-Auflösung umleiten.
+        /// Zusatzfenster haben über `DocumentWindowController` einen eigenen Delegate;
+        /// das Suchfenster ist kein Dokumentfenster.
         private func routeCloseButtonThroughWorkspace(_ window: NSWindow) {
             guard !SearchWindow.isSearchWindow(window),
                   !(window.delegate is DocumentWindowController),
@@ -419,12 +416,9 @@ struct MainWindowTitleBridge: NSViewRepresentable {
             button.action = #selector(closeButtonPressed(_:))
         }
 
-        /// Roter Knopf: erst dieselbe Tab-Auflösung wie ⌘W (Rückfrage bei
-        /// ungesicherten Änderungen, danach Willkommens-Zustand), dann
-        /// `close()` — derselbe Weg wie `closeWindowHandler` bei ⌘W. NICHT
-        /// `performClose(_:)`: Das simuliert den Klick auf den Schließen-Knopf
-        /// und riefe diese Methode endlos erneut auf (Stapelüberlauf,
-        /// gesehen 2026-09-04 im `finderreopen`-Selbsttest).
+        /// Roter Knopf: dieselbe Tab-Auflösung wie ⌘W ausführen, dann `close()`.
+        /// `performClose(_:)` würde den Knopfklick erneut auslösen und diese Methode
+        /// rekursiv aufrufen.
         @objc private func closeButtonPressed(_ sender: Any?) {
             guard let window else { return }
             if let workspace {

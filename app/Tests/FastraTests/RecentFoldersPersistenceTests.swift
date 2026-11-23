@@ -2,7 +2,7 @@
 //
 // Sichert ab, dass die Recent-Folders-Liste sich sauber in UserDefaults
 // schreibt und beim Neustart wiederkommt. Jeder Test nutzt seinen
-// EIGENEN UserDefaults-Suite-Namen, damit die globalen Defaults nicht
+// eigenen UserDefaults-Suite-Namen, damit die globalen Defaults nicht
 // gemüllt werden und Tests parallel sicher sind.
 
 import Testing

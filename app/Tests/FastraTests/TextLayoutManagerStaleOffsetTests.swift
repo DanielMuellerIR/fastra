@@ -1,17 +1,10 @@
 // TextLayoutManagerStaleOffsetTests.swift
 //
-// Regressionstest für den build.sh-Patch 4w: Während Undo/Redo schrumpft der
-// Text, der Zeilen-Storage des Layout-Managers hinkt einen Moment hinterher.
-// Fragt ein zwischengeschobener Scroll in diesem Fenster `rectForOffset` mit
-// einer veralteten Cursorposition (hinter dem neuen Textende), warf
-// `rangeOfComposedCharacterSequence(at:)` eine NSRangeException und riss die
-// App ab (Daniel-Befund 2026-07-24: Crash nach ⌘V + ⌘Z).
-//
-// Der Test stellt GENAU dieses Fenster nach: Der Storage schrumpft OHNE die
-// Delegate-Benachrichtigung (wie im Rennen zwischen Undo-Mutation und
-// Zeilen-Storage-Update), danach wird die Geometrie der alten Cursorposition
-// abgefragt. Ohne Patch stürzt der Testprozess mit NSRangeException ab; mit
-// Patch kommt ein ehrliches 0-breites Rechteck (oder nil) zurück.
+// Regression für build.sh-Patch 4w: Nach Undo/Redo kann der Zeilen-Storage
+// noch länger sein als der Text. Eine Scrollabfrage alter Cursorpositionen
+// darf `rangeOfComposedCharacterSequence` nicht außerhalb der Grenzen aufrufen.
+// Den Text ohne Delegate-Benachrichtigung verkürzen und die Geometrie der
+// alten Position abfragen. Erwartet ist ein nullbreites Rechteck oder nil.
 
 import AppKit
 import Testing

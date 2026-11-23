@@ -72,7 +72,7 @@ struct DifficultDocumentCorpusTests {
             )
 
             // Echtes Zeichnen anstoßen: cacheDisplay durchläuft draw(_:) und
-            // damit die Zeilenauswahl UND die Y-Umrechnung wirklich. Der Hook
+            // damit die Zeilenauswahl und die Y-Umrechnung wirklich. Der Hook
             // oben ist nur eine Vorberechnung derselben Auswahl und würde
             // eine falsche Zeichenposition nicht bemerken.
             let gutterVisible = gutter.visibleRect

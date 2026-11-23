@@ -17,7 +17,7 @@ enum GitPushFeedbackPhase: Equatable {
     case succeeded
 }
 
-/// Begleitet genau EINEN Push-Ablauf von der angeklickten Karte bis zu seinem
+/// Begleitet genau einen Push-Ablauf von der angeklickten Karte bis zu seinem
 /// Ende. Jede asynchrone Fortsetzung der Push-Kette hält diesen Token fest.
 /// Erfolg meldet die Kette ausdrücklich über `succeed()`; endet der Ablauf
 /// irgendwo anders (Fehlerdialog, verworfene Vorschau, veralteter Kontext,
@@ -85,7 +85,7 @@ struct GitActionContext: Equatable {
 }
 
 /// Baut einen Push, dessen geprüfte Adresse nur in der Prozessumgebung liegt.
-/// Eine einmalige Zufallsadresse wird im SELBEN Git-Prozess genau einmal auf
+/// Eine einmalige Zufallsadresse wird im selben Git-Prozess genau einmal auf
 /// das bestätigte Ziel abgebildet. Git wendet URL-Umschreibungen nicht erneut
 /// auf das Ergebnis an; selbst eine inzwischen geänderte Repository-
 /// Konfiguration kann das Ziel deshalb nicht mehr umleiten.
@@ -122,7 +122,7 @@ enum GitPushCommand {
             // unabhängig von der Sprache des angemeldeten Nutzers stabil.
             // GIT_CONFIG_COUNT liegt auf Command-Scope. Der echte Zielwert
             // bleibt in der Umgebung; argv enthält weder Zugangsdaten noch
-            // die Adresse. `url` UND `pushurl` tragen denselben einmaligen
+            // die Adresse. `url` und `pushurl` tragen denselben einmaligen
             // Sentinel; damit kann auch eine breite `pushInsteadOf`-Regel den
             // Push nicht vor der exakten Abbildung auf das bestätigte Ziel
             // abfangen.
@@ -167,7 +167,7 @@ enum GitPushCommand {
     }
 }
 
-/// Kuratierte Git-Aktionen (Projekt- & Git-Ausbau, Etappe 2, Schritt 4).
+/// Kuratierte Git-Aktionen.
 /// Philosophie: **Git liefert Logik, Fastra macht die häufigen — und ein paar
 /// pfiffige — Aufrufe per Knopf zugänglich**, für Leute, die Git verstehen,
 /// sich aber Syntax/Parameter nicht merken wollen.
@@ -175,15 +175,14 @@ enum GitPushCommand {
 /// Alle Aktionen laufen asynchron über den zentral koordinierten `GitRunner`
 /// (nie Main-Thread-Block).
 /// Erfolg → still den Status auffrischen (der Branch-Zähler / Dateibaum
-/// aktualisiert sich sichtbar). Fehler → die ECHTE git-Ausgabe zeigen
+/// aktualisiert sich sichtbar). Fehler → die echte git-Ausgabe zeigen
 /// (UX-Regel), nicht schlucken.
 extension Workspace {
 
     // MARK: Häufige Aktionen
 
-    /// Alle Änderungen committen (`git add -A` + `git commit -m`). Für Daniels
-    /// Zielgruppe der 80-%-Fall — kein manuelles Stagen nötig. Fragt die
-    /// Commit-Botschaft in einem kleinen Dialog ab.
+    /// Alle Änderungen über `git add -A` und `git commit -m` committen.
+    /// Die Commit-Nachricht wird in einem Dialog abgefragt.
     func gitCommitAll() {
         guard projectURL != nil, !gitOperationsAreBusy else { return }
         guard let message = Self.promptForText(
@@ -210,7 +209,7 @@ extension Workspace {
         guard projectURL != nil, !gitOperationsAreBusy else { return }
         guard let context = currentGitActionContext else { return }
         // Amend ersetzt die Spitze des Verlaufs durch einen neuen Commit und
-        // nimmt vorher ALLE offenen Änderungen auf. Das ist deutlich
+        // nimmt vorher alle offenen Änderungen auf. Das ist deutlich
         // überraschender als ein normaler Commit und braucht deshalb dieselbe
         // sichtbare Bestätigung wie andere verlaufsändernde Git-Aktionen.
         guard gitMutationConfirmationHandler(GitMutationConfirmation(
@@ -237,8 +236,7 @@ extension Workspace {
         gitStage(paths: [path])
     }
 
-    /// Mehrere Dateien in EINEM `git add` bereitstellen (Mehrfachauswahl in
-    /// der Änderungen-Ansicht, Daniel-Wunsch 2026-07-30).
+    /// Mehrfachauswahl der Änderungen-Ansicht in einem `git add` bereitstellen.
     func gitStage(paths: [String]) {
         guard !paths.isEmpty else { return }
         runGitAction(["add", "--"] + paths, label: "Bereitstellen")
@@ -255,7 +253,7 @@ extension Workspace {
         gitUnstage(paths: [path])
     }
 
-    /// Mehrere Dateien in EINEM `git reset` aus dem Index nehmen
+    /// Mehrere Dateien in einem `git reset` aus dem Index nehmen
     /// (Mehrfachauswahl in der Änderungen-Ansicht).
     func gitUnstage(paths: [String]) {
         guard !paths.isEmpty else { return }
@@ -268,28 +266,28 @@ extension Workspace {
         runGitAction(["reset", "-q", "HEAD", "--"], label: "Bereitstellung aufheben")
     }
 
-    /// Ungespeicherte Änderungen an einer Datei VERWERFEN (destruktiv!). Erst
+    /// Ungespeicherte Änderungen an einer Datei verwerfen (destruktiv!). Erst
     /// Rückfrage. Untracked → Datei löschen (git kennt sie nicht); getrackt →
     /// Working-Tree auf den Index-/HEAD-Stand zurücksetzen (`git checkout --`).
     /// Nur in der Unstaged-Sektion angeboten (VS-Code-Platzierung).
     func gitDiscard(change: GitChange) {
-        // Repository UND Aktionskontext vor der Rückfrage gemeinsam einfrieren.
+        // Repository und Aktionskontext vor der Rückfrage gemeinsam einfrieren.
         guard let context = currentGitActionContext, change.isPathActionable
         else { return }
         let isUntracked = change.unstaged == .untracked
-        guard Self.confirmDiscard(name: change.name, untracked: isUntracked) else { return }
+        guard self.gitInteraction.confirmDiscard(name: change.name, untracked: isUntracked) else { return }
         gitDiscard(change: change, context: context)
     }
 
-    /// Führt das Verwerfen mit dem VOR der Rückfrage eingefrorenen Kontext aus.
+    /// Führt das Verwerfen mit dem vor der Rückfrage eingefrorenen Kontext aus.
     /// Der modale Dialog dreht eine eigene Ereignisschleife, in der das Fenster
     /// längst ein anderes Projekt öffnen kann. Ohne die Aktualitätsprüfung würde
     /// eine Bestätigung für Repository A eine gleichnamige Datei im inzwischen
-    /// geöffneten Repository B verwerfen (Review 2026-08-10).
+    /// geöffneten Repository B verwerfen.
     func gitDiscard(change: GitChange, context: GitActionContext) {
         guard let path = change.actionPath else { return }
         guard context.isCurrent(in: self) else {
-            Self.presentStaleGitContext(label: "Verwerfen")
+            self.gitInteraction.presentStaleGitContext(label: "Verwerfen")
             return
         }
         let root = context.root
@@ -298,11 +296,11 @@ extension Workspace {
             // Untracked: Datei physisch entfernen (VS-Code-Verhalten „Discard").
             // Ein Fehlschlag (Rechte, bereits gesperrt) wird sichtbar gemeldet —
             // die Datei stünde sonst weiter in der Liste, ohne dass klar wäre,
-            // warum das Verwerfen „nichts getan" hat (Review 2026-08-02).
+            // warum das Verwerfen „nichts getan" hat.
             do {
                 try Self.removeUntrackedFile(at: root.appendingPathComponent(path))
             } catch {
-                Self.presentGitErrorText(
+                self.gitInteraction.presentGitErrorText(
                     label: "Verwerfen",
                     text: L10n.format("„%@“ konnte nicht gelöscht werden: %@",
                                       change.name, error.localizedDescription))
@@ -315,10 +313,9 @@ extension Workspace {
         }
     }
 
-    /// Mehrere Dateien auf einen Schlag verwerfen (Mehrfachauswahl in der
-    /// Änderungen-Ansicht, Daniel-Wunsch 2026-07-30). EINE Rückfrage für die
-    /// ganze Auswahl; danach werden unversionierte Dateien gelöscht und alle
-    /// getrackten in einem gemeinsamen `git checkout --` zurückgesetzt.
+    /// Mehrere Dateien nach einer gemeinsamen Rückfrage verwerfen.
+    /// Unversionierte Dateien werden gelöscht, versionierte gemeinsam über
+    /// `git checkout --` zurückgesetzt.
     func gitDiscard(changes: [GitChange]) {
         // Wie im Einzelfall: Repository und Aktionskontext werden gemeinsam vor
         // der Rückfrage eingefroren und danach auf Aktualität geprüft.
@@ -330,7 +327,7 @@ extension Workspace {
             gitDiscard(change: only)
             return
         }
-        guard Self.confirmDiscard(count: plan.totalCount,
+        guard self.gitInteraction.confirmDiscard(count: plan.totalCount,
                                   untrackedCount: plan.untrackedPaths.count) else { return }
         gitDiscard(changes: changes, context: context)
     }
@@ -341,13 +338,13 @@ extension Workspace {
         let plan = GitDiscardPlan(changes: changes)
         guard !plan.isEmpty else { return }
         guard context.isCurrent(in: self) else {
-            Self.presentStaleGitContext(label: "Verwerfen")
+            self.gitInteraction.presentStaleGitContext(label: "Verwerfen")
             return
         }
         let root = context.root
         // Teil-Löschfehler nicht verschlucken: Was sich nicht löschen ließ,
-        // wird gesammelt und EINMAL sichtbar gemeldet — sonst blieben Dateien
-        // kommentarlos in der Liste stehen (Review 2026-08-02).
+        // wird gesammelt und einmal sichtbar gemeldet — sonst blieben Dateien
+        // kommentarlos in der Liste stehen.
         var deleteFailures: [String] = []
         for path in plan.untrackedPaths {
             do {
@@ -357,7 +354,7 @@ extension Workspace {
             }
         }
         if !deleteFailures.isEmpty {
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: "Verwerfen",
                 text: L10n.format("%ld Datei(en) konnten nicht gelöscht werden: %@",
                                   deleteFailures.count,
@@ -372,14 +369,6 @@ extension Workspace {
         }
     }
 
-    /// Einheitliche Meldung, wenn ein eingefrorener Kontext nach der Rückfrage
-    /// nicht mehr das aktuelle Projekt beschreibt. Bewusst derselbe Text wie in
-    /// den übrigen Sicherheitsabbrüchen (siehe `GitConflictActions`).
-    static func presentStaleGitContext(label: String) {
-        presentGitErrorText(
-            label: label,
-            text: L10n.string("Repository, Branch oder Arbeitsbaum haben sich während der Sicherheitsprüfung geändert. Prüfe den neuen Stand und starte die Aktion erneut."))
-    }
 
     /// Bereitgestellte Änderungen committen. Nichts bereitgestellt → erst alles
     /// bereitstellen, dann committen (VS-Code-Verhalten). Leere Botschaft = Beep.
@@ -409,42 +398,7 @@ extension Workspace {
         }
     }
 
-    /// Destruktive Verwerfen-Rückfrage (in Selbsttests via `presentGitDialogs`
-    /// unterdrückt → dort implizit „ja").
-    static func confirmDiscard(name: String, untracked: Bool) -> Bool {
-        guard presentGitDialogs else { return true }
-        let alert = NSAlert()
-        // codereview-ok: „…“ (U+201E/U+201C) IST das korrekte deutsche Anführungszeichen-Paar (2026-07-12)
-        alert.messageText = L10n.format("Änderungen an „%@“ verwerfen?", name)
-        alert.informativeText = untracked
-            ? L10n.string("Die nicht versionierte Datei wird gelöscht. Das lässt sich nicht rückgängig machen.")
-            : L10n.string("Die Änderungen an dieser Datei gehen verloren. Das lässt sich nicht rückgängig machen.")
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: L10n.string("Verwerfen"))
-        alert.addButton(withTitle: L10n.string("Abbrechen"))
-        return alert.runModal() == .alertFirstButtonReturn
-    }
 
-    /// Verwerfen-Rückfrage für eine Mehrfachauswahl (immer ≥ 2 Dateien — der
-    /// Einzelfall läuft über den Dialog mit Dateinamen). Weist gesondert aus,
-    /// wie viele unversionierte Dateien dabei GELÖSCHT würden.
-    static func confirmDiscard(count: Int, untrackedCount: Int) -> Bool {
-        guard presentGitDialogs else { return true }
-        let alert = NSAlert()
-        alert.messageText = L10n.format("Änderungen an %ld Dateien verwerfen?", count)
-        var info = L10n.string("Die Änderungen an diesen Dateien gehen verloren. Das lässt sich nicht rückgängig machen.")
-        if untrackedCount == 1 {
-            info += "\n" + L10n.string("Eine nicht versionierte Datei wird dabei gelöscht.")
-        } else if untrackedCount > 1 {
-            info += "\n" + L10n.format("%ld nicht versionierte Dateien werden dabei gelöscht.",
-                                       untrackedCount)
-        }
-        alert.informativeText = info
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: L10n.string("Verwerfen"))
-        alert.addButton(withTitle: L10n.string("Abbrechen"))
-        return alert.runModal() == .alertFirstButtonReturn
-    }
 
     /// Entfernt ausschließlich einen einzelnen Verzeichniseintrag. `unlink`
     /// verweigert echte Ordner; dadurch kann eine kompakt als unversioniert
@@ -565,7 +519,7 @@ extension Workspace {
                 return
             }
             guard currentTarget == expectedTarget else {
-                Self.presentGitErrorText(
+                self.gitInteraction.presentGitErrorText(
                     label: "Push",
                     text: L10n.string(
                         "Das Push-Ziel hat sich seit der Anzeige geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen."
@@ -582,9 +536,9 @@ extension Workspace {
                                 context: GitActionContext,
                                 feedback: GitPushFlowToken?) {
         // Zuerst den aktuellen Branch bestimmen: Der Push nennt sein Ziel
-        // unten als EXPLIZITEN Refspec. `git push <remote> HEAD` überließe
+        // unten als expliziten Refspec. `git push <remote> HEAD` überließe
         // die Zielwahl der HEAD-Auflösung — ein Detached HEAD soll aber
-        // sichtbar scheitern, statt dass Git rät (Review 2026-08-02).
+        // sichtbar scheitern, statt dass Git rät.
         let branchRequest = GitOperationRequest(
             repository: context.root, kind: .refresh,
             arguments: ["symbolic-ref", "--short", "--quiet", "HEAD"])
@@ -592,13 +546,13 @@ extension Workspace {
             DispatchQueue.main.async {
                 guard let self, context.isCurrent(in: self) else { return }
                 guard case .completed(let branchResult) = branchOutcome else {
-                    Self.presentGitExecutionFailure(label: "Push", outcome: branchOutcome)
+                    self.gitInteraction.presentGitExecutionFailure(label: "Push", outcome: branchOutcome)
                     return
                 }
                 let branch = branchResult.stdout
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 guard branchResult.ok, !branch.isEmpty else {
-                    Self.presentGitErrorText(label: "Push", text: L10n.string(
+                    self.gitInteraction.presentGitErrorText(label: "Push", text: L10n.string(
                         "Kein aktiver Branch (Detached HEAD) — es ist unklar, wohin der Push gehen soll. Erst einen Branch auschecken."))
                     return
                 }
@@ -618,7 +572,7 @@ extension Workspace {
                              context: context) { [weak self] current, _ in
             guard let self else { return }
             guard let current, current == target else {
-                Self.presentGitErrorText(
+                self.gitInteraction.presentGitErrorText(
                     label: "Push",
                     text: L10n.string(
                         "Das Push-Ziel hat sich seit der Anzeige geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen."))
@@ -659,7 +613,7 @@ extension Workspace {
         completion: @escaping () -> Void
     ) {
         guard GitPushCommand.verifiedAddress(of: target) != nil else {
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: "Push",
                 text: L10n.string("Das Remote hat mehrere Push-Adressen. Fastra überträgt erst, wenn genau ein sichtbares Ziel konfiguriert ist."))
             return
@@ -669,9 +623,9 @@ extension Workspace {
             label: "Push",
             context: context,
             acceptedExitCodes: [0, 1]
-        ) { result in
+        ) { [interaction = self.gitInteraction] result in
             guard GitPushCommand.rewriteRulesAreAbsent(result) else {
-                Self.presentGitErrorText(
+                interaction.presentGitErrorText(
                     label: "Push",
                     text: L10n.string("Git-URL-Umschreibregeln machen das Push-Ziel mehrdeutig. Entferne insteadOf/pushInsteadOf oder pushe bewusst im Terminal."))
                 return
@@ -698,7 +652,7 @@ extension Workspace {
             let currentBranch = branchResult.stdout
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard branchResult.ok, currentBranch == expectedBranch else {
-                Self.presentGitErrorText(
+                self.gitInteraction.presentGitErrorText(
                     label: "Push",
                     text: L10n.string(
                         "Der aktive Branch hat sich während der Push-Prüfung geändert. Öffne die Vorschau erneut."
@@ -711,10 +665,10 @@ extension Workspace {
             ) { [weak self] tracksTarget in
                 guard let self else { return }
                 self.performPushRead(["rev-parse", "HEAD"], label: "Push",
-                                     context: context) { [weak self] sourceResult in
+                                     context: context) { [weak self, interaction = self.gitInteraction] sourceResult in
                     guard let self,
                           let sourceOID = GitPushPlanParsing.oid(sourceResult) else {
-                        Self.presentGitError(label: "Push", result: sourceResult)
+                        interaction.presentGitError(label: "Push", result: sourceResult)
                         return
                     }
                     self.resolvePushRemoteState(
@@ -730,7 +684,7 @@ extension Workspace {
         }
     }
 
-    /// Liest die Upstream-KONFIGURATION statt nur die lokale Tracking-Ref.
+    /// Liest die Upstream-Konfiguration statt nur die lokale Tracking-Ref.
     /// `@{u}` kann trotz vorhandenem Upstream scheitern, wenn die Remote-Ref
     /// noch nicht gefetcht oder lokal gelöscht wurde. Das darf einen Push zu
     /// einem zweiten Remote niemals zum stillen Upstream-Wechsel machen.
@@ -800,7 +754,7 @@ extension Workspace {
             guard let remoteOID = GitPushPlanParsing.remoteOID(
                 remoteResult, expectedRef: remoteRef
             ) else {
-                Self.presentGitErrorText(
+                self.gitInteraction.presentGitErrorText(
                     label: "Push",
                     text: L10n.string("Das Push-Ziel lieferte keinen eindeutigen Branch-Stand. Es wurde nichts übertragen."))
                 return
@@ -827,9 +781,9 @@ extension Workspace {
                      "\(sourceOID)...\(remoteOID)"],
                     label: "Push",
                     context: context
-                ) { countResult in
+                ) { [interaction = self.gitInteraction] countResult in
                     guard let counts = GitPushPlanParsing.counts(countResult) else {
-                        Self.presentGitError(label: "Push", result: countResult)
+                        interaction.presentGitError(label: "Push", result: countResult)
                         return
                     }
                     completion(GitPushPlan(
@@ -865,11 +819,11 @@ extension Workspace {
             DispatchQueue.main.async {
                 guard let self, context.isCurrent(in: self) else { return }
                 guard case .completed(let result) = outcome else {
-                    Self.presentGitExecutionFailure(label: label, outcome: outcome)
+                    self.gitInteraction.presentGitExecutionFailure(label: label, outcome: outcome)
                     return
                 }
                 guard acceptedExitCodes.contains(result.exitCode) else {
-                    Self.presentGitError(label: label, result: result)
+                    self.gitInteraction.presentGitError(label: label, result: result)
                     return
                 }
                 completion(result)
@@ -881,7 +835,7 @@ extension Workspace {
                                  context: GitActionContext,
                                  feedback: GitPushFlowToken?) {
         guard plan.hasChangesToPush else {
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: "Push",
                 text: L10n.string("Für dieses Remote gibt es keine lokalen Commits zu pushen.")
             )
@@ -889,7 +843,7 @@ extension Workspace {
         }
         if !plan.canFastForward {
             guard plan.tracksTarget else {
-                Self.presentGitErrorText(
+                self.gitInteraction.presentGitErrorText(
                     label: "Push",
                     text: plan.confirmation.explanation + "\n\n" + L10n.string(
                         "Das gewählte Remote ist nicht der Upstream dieses Branches. Ein Force Push wird deshalb nicht automatisch angeboten."
@@ -915,7 +869,7 @@ extension Workspace {
                              context: context) { [weak self] current, _ in
             guard let self else { return }
             guard let current, current == plan.target else {
-                Self.presentGitErrorText(
+                self.gitInteraction.presentGitErrorText(
                     label: "Push",
                     text: L10n.string(
                         "Das Push-Ziel hat sich seit der Vorschau geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen."
@@ -932,7 +886,7 @@ extension Workspace {
                 ) { [weak self] currentPlan in
                     guard let self else { return }
                     guard currentPlan == plan else {
-                        Self.presentGitErrorText(
+                        self.gitInteraction.presentGitErrorText(
                             label: "Push",
                             text: L10n.string(
                                 "Commits oder Remote-Stand haben sich seit der Vorschau geändert. Öffne die Push-Vorschau erneut; es wurde nichts übertragen."
@@ -957,7 +911,7 @@ extension Workspace {
                              context: context) { [weak self] current, _ in
             guard let self else { return }
             guard let current, current == previousPlan.target else {
-                Self.presentGitErrorText(
+                self.gitInteraction.presentGitErrorText(
                     label: "Push",
                     text: L10n.string("Das Push-Ziel hat sich seit der Anzeige geändert. Prüfe Remote und Adresse erneut; es wurde nichts übertragen."))
                 return
@@ -971,7 +925,7 @@ extension Workspace {
                 ) { [weak self] plan in
                     guard let self else { return }
                     guard let remoteOID = plan.remoteOID else {
-                        Self.presentGitErrorText(
+                        self.gitInteraction.presentGitErrorText(
                             label: "Push",
                             text: L10n.string("Der Remote-Branch existiert nicht mehr. Öffne die normale Push-Vorschau erneut."))
                         return
@@ -1014,7 +968,7 @@ extension Workspace {
                                    feedback: GitPushFlowToken?) {
         let target = plan.target
         guard let address = GitPushCommand.verifiedAddress(of: target) else {
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: "Push",
                 text: L10n.string("Das Remote hat mehrere Push-Adressen. Fastra überträgt erst, wenn genau ein sichtbares Ziel konfiguriert ist."))
             return
@@ -1026,11 +980,11 @@ extension Workspace {
             DispatchQueue.main.async {
                 guard let self, context.isCurrent(in: self) else { return }
                 guard case .completed(let result) = outcome else {
-                    Self.presentGitExecutionFailure(label: "Push", outcome: outcome)
+                    self.gitInteraction.presentGitExecutionFailure(label: "Push", outcome: outcome)
                     return
                 }
                 guard GitPushCommand.rewriteRulesAreAbsent(result) else {
-                    Self.presentGitErrorText(
+                    self.gitInteraction.presentGitErrorText(
                         label: "Push",
                         text: L10n.string("Git-URL-Umschreibregeln machen das Push-Ziel mehrdeutig. Entferne insteadOf/pushInsteadOf oder pushe bewusst im Terminal."))
                     return
@@ -1100,7 +1054,7 @@ extension Workspace {
             explanation += "\n\n" + L10n.string("Git-Ausgabe:") + "\n" + raw
         }
         guard plan.tracksTarget, !alreadyForced else {
-            Self.presentGitErrorText(label: "Push", text: explanation)
+            self.gitInteraction.presentGitErrorText(label: "Push", text: explanation)
             return true
         }
         let confirmation = GitMutationConfirmation(
@@ -1159,13 +1113,13 @@ extension Workspace {
         if let failure {
             let label = failure.remote.map { "Push-Ziel \($0)" } ?? "Push-Ziel"
             if case .completed(let result) = failure.outcome {
-                Self.presentGitError(label: label, result: result)
+                self.gitInteraction.presentGitError(label: label, result: result)
             } else {
-                Self.presentGitExecutionFailure(label: label,
+                self.gitInteraction.presentGitExecutionFailure(label: label,
                                                 outcome: failure.outcome)
             }
         } else {
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: "Push",
                 text: L10n.string(
                     "Kein Git-Remote ist in diesem Repository konfiguriert. Es wurde nichts übertragen."
@@ -1199,7 +1153,7 @@ extension Workspace {
     }
 
     /// Fast-Forward-only Pull (`git pull --ff-only`) — die pfiffige Variante:
-    /// übernimmt entfernte Commits NUR, wenn nichts kollidiert, nie ein
+    /// übernimmt entfernte Commits nur, wenn nichts kollidiert, nie ein
     /// Merge-Commit. Hält die Historie linear.
     func gitPullFastForward() {
         chooseGitRemoteForPull(strategyOverride: .ffOnly)
@@ -1211,11 +1165,11 @@ extension Workspace {
               let context = currentGitActionContext else { return }
         resolveGitActionRemotes { [weak self] remotes in
             guard let self else { return }
-            let choice = Self.presentGitDialogs
+            let choice = self.gitInteraction.presentsDialogs
                 ? GitRemoteActionDialog.choose(remotes: remotes, status: self.gitStatus, isPull: false)
                 : nil
             guard context.isCurrent(in: self) else { return }
-            if !Self.presentGitDialogs {
+            if !self.gitInteraction.presentsDialogs {
                 self.fetchGitRemotes(remotes, selection: .configured)
             } else if let choice {
                 let selection: GitFetchSelection
@@ -1245,16 +1199,16 @@ extension Workspace {
                 guard let remotes else {
                     if let failure {
                         if case .completed(let result) = failure {
-                            Self.presentGitError(label: "Fetch-Ziel", result: result)
+                            self.gitInteraction.presentGitError(label: "Fetch-Ziel", result: result)
                         } else {
-                            Self.presentGitExecutionFailure(label: "Fetch-Ziel",
+                            self.gitInteraction.presentGitExecutionFailure(label: "Fetch-Ziel",
                                                             outcome: failure)
                         }
                     }
                     return
                 }
                 guard !remotes.isEmpty else {
-                    Self.presentGitErrorText(label: "Remote", text: L10n.string("Kein Remote konfiguriert."))
+                    self.gitInteraction.presentGitErrorText(label: "Remote", text: L10n.string("Kein Remote konfiguriert."))
                     return
                 }
                 completion(remotes)
@@ -1279,9 +1233,9 @@ extension Workspace {
                     completion?(true)
                 } else {
                     if case .completed(let result) = outcome {
-                        Self.presentGitError(label: "Fetch", result: result)
+                        self.gitInteraction.presentGitError(label: "Fetch", result: result)
                     } else {
-                        Self.presentGitExecutionFailure(label: "Fetch", outcome: outcome)
+                        self.gitInteraction.presentGitExecutionFailure(label: "Fetch", outcome: outcome)
                     }
                     completion?(false)
                 }
@@ -1293,8 +1247,8 @@ extension Workspace {
     private func chooseGitRemoteForPull(strategyOverride: GitPullStrategy?) {
         guard !gitOperationsAreBusy, gitFetchRemoteInspectionRequestID == nil else { return }
         guard let context = currentGitActionContext, let status = gitStatus else { return }
-        guard !status.isDetached else { Self.presentPullBlock(.detached); return }
-        if !Self.presentGitDialogs {
+        guard !status.isDetached else { self.gitInteraction.presentPullBlock(.detached); return }
+        if !self.gitInteraction.presentsDialogs {
             startSafePull(strategyOverride: strategyOverride)
             return
         }
@@ -1333,7 +1287,7 @@ extension Workspace {
         if let strategyOverride {
             strategy = strategyOverride
         } else if preferences.pullStrategy == .unselected {
-            guard let selected = Self.promptForPullStrategy() else { return }
+            guard let selected = self.gitInteraction.promptForPullStrategy() else { return }
             preferences.pullStrategy = selected
             gitPreferencesStore.save(preferences)
             strategy = selected
@@ -1346,7 +1300,7 @@ extension Workspace {
         ) { [weak self] preflight, proceed in
             guard let self, context.isCurrent(in: self) else { proceed(false); return }
             if case .ready(let dirty) = preflight, dirty {
-                proceed(Self.confirmPullWithLocalChanges())
+                proceed(self.gitInteraction.confirmPullWithLocalChanges())
             } else {
                 proceed(true)
             }
@@ -1369,9 +1323,9 @@ extension Workspace {
                     self.refreshGitRepositoryFully()
                     self.refreshOpenGitViews()
                     if case .completed(let result) = failure {
-                        Self.presentGitError(label: "Pull", result: result)
+                        self.gitInteraction.presentGitError(label: "Pull", result: result)
                     } else {
-                        Self.presentGitExecutionFailure(label: "Pull-Prüfung",
+                        self.gitInteraction.presentGitExecutionFailure(label: "Pull-Prüfung",
                                                         outcome: failure)
                     }
                 case .blocked(let reason):
@@ -1381,10 +1335,10 @@ extension Workspace {
                         }
                         return
                     }
-                    Self.presentPullBlock(reason)
+                    self.gitInteraction.presentPullBlock(reason)
                     self.refreshGitRepositoryFully()
                 case .repositoryChanged:
-                    Self.presentGitErrorText(
+                    self.gitInteraction.presentGitErrorText(
                         label: "Pull",
                         text: L10n.string("Repository oder lokale Änderungen haben sich während der Pull-Prüfung geändert. Prüfe den neuen Stand und starte Pull erneut.")
                     )
@@ -1397,37 +1351,6 @@ extension Workspace {
         if lease != nil { gitRepositoryStore.publishOperations(for: context.root) }
     }
 
-    private static func presentPullBlock(_ preflight: GitPullPreflightResult) {
-        switch preflight {
-        case .detached:
-            presentGitErrorText(
-                label: "Pull",
-                text: L10n.string("Der aktuelle Stand ist keinem lokalen Branch zugeordnet. Wechsle vor Pull zu einem lokalen Branch.")
-            )
-        case .noUpstream:
-            presentGitErrorText(
-                label: "Pull",
-                text: L10n.string("Der aktuelle Branch hat keinen Upstream. Lege zuerst einen Upstream fest oder pushe den Branch mit Upstream.")
-            )
-        case .unmerged:
-            presentGitErrorText(
-                label: "Pull",
-                text: L10n.string("Es gibt noch ungelöste Konflikte. Löse sie und schließe den laufenden Git-Vorgang ab, bevor du erneut pullst.")
-            )
-        case .operationInProgress(let operation):
-            presentGitErrorText(
-                label: "Pull",
-                text: L10n.format("Ein Git-Vorgang läuft bereits (%@). Schließe ihn ab oder brich ihn bewusst ab, bevor du pullst.", operation.localizedName)
-            )
-        case .missingIdentity:
-            presentGitErrorText(
-                label: "Pull",
-                text: L10n.string("Git benötigt für Pull mit Merge oder Rebase eine gültige Commit-Identität. Konfiguriere Name und E-Mail und starte Pull erneut.")
-            )
-        case .ready:
-            break
-        }
-    }
 
     // MARK: Pfiffige Extras
 
@@ -1456,7 +1379,7 @@ extension Workspace {
                      refreshOnFailure: true,
                      failureHandler: { [weak self] result in
                          // Der gemerkte Stand allein reicht als Begründung
-                         // NICHT: Er kann veraltet sein (fremdes Verzeichnis
+                         // nicht: Er kann veraltet sein (fremdes Verzeichnis
                          // inzwischen entfernt), und dann wäre jeder andere
                          // Fehlschlag — lokale Änderungen, Hook-Abbruch,
                          // ungültige Referenz — als Worktree-Sperre erklärt
@@ -1479,7 +1402,7 @@ extension Workspace {
     }
 
     /// Erklärt die einzige Absage, die git beim Branch-Wechsel strukturell
-    /// erzwingt: Derselbe Branch darf nur in EINEM Arbeitsverzeichnis
+    /// erzwingt: Derselbe Branch darf nur in einem Arbeitsverzeichnis
     /// ausgecheckt sein. Statt der git-Rohmeldung („Schwerwiegend: ‘x’ wird
     /// bereits von Arbeitsverzeichnis in ‘…’ verwendet“) nennt Fastra den Weg
     /// nach vorn: Das andere Arbeitsverzeichnis enthält den gesuchten Stand
@@ -1503,7 +1426,7 @@ extension Workspace {
         openProject(at: URL(fileURLWithPath: worktree))
     }
 
-    /// `fileExists(atPath:)` allein meldet auch eine DATEI als vorhanden. Ein
+    /// `fileExists(atPath:)` allein meldet auch eine Datei als vorhanden. Ein
     /// Projekt lässt sich daraus nicht öffnen; es bliebe leer.
     static func isExistingDirectory(_ path: String) -> Bool {
         var isDirectory: ObjCBool = false
@@ -1512,16 +1435,9 @@ extension Workspace {
         return exists && isDirectory.boolValue
     }
 
-    /// Produktpfad der Absage. Rückgabe `true`: Der Nutzer will das andere
-    /// Arbeitsverzeichnis als Projekt öffnen.
-    static func defaultGitBranchWorktreeBlock(_ block: GitBranchWorktreeBlock) -> Bool {
-        gitBranchWorktreeBlockDecision(block, dialogsEnabled: presentGitDialogs) {
-            $0.runModal()
-        }
-    }
 
     /// Dieselbe Entscheidung, aber mit ausdrücklich übergebenem Anzeigeschritt.
-    /// Nur so ist die eigentliche Zusage prüfbar: Der Dialog muss AUCH dann
+    /// Nur so ist die eigentliche Zusage prüfbar: Der Dialog muss auch dann
     /// erscheinen, wenn der Ordner fehlt.
     ///
     /// Genau daran scheiterte die frühere Fassung. Sie schrieb
@@ -1624,7 +1540,7 @@ extension Workspace {
                         self.refreshGitRepositoryFully()
                         self.refreshOpenGitViews()
                     }
-                    Self.presentGitExecutionFailure(label: label, outcome: outcome)
+                    self.gitInteraction.presentGitExecutionFailure(label: label, outcome: outcome)
                     return
                 }
                 guard result.ok else {
@@ -1633,7 +1549,7 @@ extension Workspace {
                         self.refreshOpenGitViews()
                     }
                     if failureHandler?(result) == true { return }
-                    Self.presentGitError(label: label, result: result)
+                    self.gitInteraction.presentGitError(label: label, result: result)
                     return
                 }
                 if let then {
@@ -1731,33 +1647,8 @@ extension Workspace {
         return field.currentEditor()?.selectedRange
     }
 
-    /// Steuert, ob Git-Fehler als modaler Dialog erscheinen. In Selbsttests auf
-    /// `false` gesetzt, damit ein unerwarteter Fehler den Lauf nicht an einem
-    /// modalen NSAlert aufhängt (der Fehler geht dann nach stderr, der Test
-    /// läuft in seinen Timeout).
-    static var presentGitDialogs = true
 
-    /// Zeigt einen Git-Fehler mit der wörtlichen git-Ausgabe (stderr, sonst
-    /// stdout). Kein Schönreden — der Nutzer soll den echten Grund sehen.
-    static func presentGitError(label: String, result: GitResult?) {
-        let raw = [result?.stderrForDisplay, result?.stdoutForDisplay]
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first(where: { !$0.isEmpty })
-        let text = raw ?? L10n.format("git lieferte keine Meldung (Exit-Code %ld).",
-                                      Int(result?.exitCode ?? -1))
-        guard presentGitDialogs else {
-            FileHandle.standardError.write(Data("GIT-ERROR [\(label)]: \(text)\n".utf8))
-            return
-        }
-        NSAlert.runWarning(title: L10n.format("%@ fehlgeschlagen", L10n.string(label)),
-                           text: text)
-    }
 
-    static func presentGitExecutionFailure(label: String,
-                                           outcome: GitExecutionOutcome) {
-        guard let text = gitExecutionFailureText(outcome) else { return }
-        presentGitErrorText(label: label, text: text)
-    }
 
     /// Textform für Tabs und Dialoge. Ein Nutzerabbruch bleibt bewusst still.
     static func gitExecutionFailureText(_ outcome: GitExecutionOutcome) -> String? {
@@ -1782,59 +1673,9 @@ extension Workspace {
         }
     }
 
-    static func presentGitErrorText(label: String, text: String) {
-        guard presentGitDialogs else {
-            FileHandle.standardError.write(Data("GIT-ERROR [\(label)]: \(text)\n".utf8))
-            return
-        }
-        NSAlert.runWarning(title: L10n.format("%@ fehlgeschlagen", L10n.string(label)),
-                           text: text)
-    }
 
-    static func promptForAutomaticFetch(
-        completion: @escaping (GitFetchPromptChoice) -> Void
-    ) {
-        guard presentGitDialogs else { completion(.later); return }
-        let alert = NSAlert()
-        alert.messageText = L10n.string("Remote-Änderungen automatisch abrufen?")
-        alert.informativeText = L10n.string("Fastra kann im Hintergrund regelmäßig git fetch ausführen. Das holt nur den Remote-Stand ab. Deine Projektdateien und der aktuelle Branch bleiben unverändert.")
-        alert.addButton(withTitle: L10n.string("Automatisch (empfohlen)"))
-        alert.addButton(withTitle: L10n.string("Nein"))
-        alert.addButton(withTitle: L10n.string("Später"))
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: completion(.automatic)
-        case .alertSecondButtonReturn: completion(.disabled)
-        default: completion(.later)
-        }
-    }
 
-    private static func promptForPullStrategy() -> GitPullStrategy? {
-        guard presentGitDialogs else { return .rebase }
-        let alert = NSAlert()
-        alert.messageText = L10n.string("Wie soll Pull entfernte Commits einbinden?")
-        alert.informativeText = L10n.string("Die Auswahl gilt global und kann in den Einstellungen geändert werden. Fastra verwendet immer die entsprechende explizite Git-Option.")
-        alert.addButton(withTitle: L10n.string("Rebase (empfohlen)"))
-        alert.addButton(withTitle: L10n.string("Merge"))
-        alert.addButton(withTitle: L10n.string("Nur Fast-Forward"))
-        alert.addButton(withTitle: L10n.string("Abbrechen"))
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: return .rebase
-        case .alertSecondButtonReturn: return .merge
-        case .alertThirdButtonReturn: return .ffOnly
-        default: return nil
-        }
-    }
 
-    private static func confirmPullWithLocalChanges() -> Bool {
-        guard presentGitDialogs else { return true }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = L10n.string("Pull mit lokalen Änderungen fortsetzen?")
-        alert.informativeText = L10n.string("Fastra legt keinen automatischen Stash an. Git bricht ab, bevor lokale Arbeit überschrieben würde; eine echte Git-Fehlermeldung bleibt sichtbar.")
-        alert.addButton(withTitle: L10n.string("Pull fortsetzen"))
-        alert.addButton(withTitle: L10n.string("Abbrechen"))
-        return alert.runModal() == .alertFirstButtonReturn
-    }
 }
 
 extension GitOperationState {

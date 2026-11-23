@@ -242,10 +242,18 @@ fn missing_git_and_real_git_errors_remain_distinct() {
         Policy::default(),
         &Cancellation::default(),
     ) {
-        Err(Error::GitFailed(output)) => {
-            assert_ne!(output.exit_code, Some(0));
+        Err(Error::NotRepository(output)) => {
+            assert_eq!(output.exit_code, Some(128));
             assert!(!output.stderr.is_empty());
             assert!(!output.stderr_truncated);
+        }
+        other => panic!("{other:?}"),
+    }
+    cli(directory.path(), &["init", "-q", "--bare"]);
+    match adapter().discover(directory.path(), Policy::default(), &Cancellation::default()) {
+        Err(Error::GitFailed(output)) => {
+            assert_eq!(output.exit_code, Some(128));
+            assert!(!output.stderr.is_empty());
         }
         other => panic!("{other:?}"),
     }

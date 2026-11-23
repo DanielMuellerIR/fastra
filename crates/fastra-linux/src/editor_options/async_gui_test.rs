@@ -58,13 +58,23 @@ pub(crate) fn widgets(root: &impl IsA<gtk::Widget>) -> Vec<gtk::Widget> {
     all
 }
 
-pub(crate) fn reveal(widget: &impl IsA<gtk::Widget>) {
+pub(crate) async fn reveal(widget: &impl IsA<gtk::Widget>) {
     let widget = widget.as_ref();
     let mut parent = widget.parent();
     while let Some(current) = parent {
         if let Some(scroll) = current.downcast_ref::<gtk::ScrolledWindow>() {
+            let adjustment = scroll.vadjustment();
+            // GTK markiert das Widget schon vor dem ersten Layout als gemappt.
+            // Ohne Scrollgeometrie begrenzt GTK set_value() auf null.
+            wait("allocated scroll target", || {
+                widget.is_mapped()
+                    && widget.width() > 0
+                    && widget.height() > 0
+                    && adjustment.page_size() > 0.
+            })
+            .await;
             let bounds = widget.compute_bounds(&scroll.child().unwrap()).unwrap();
-            scroll.vadjustment().set_value(f64::from(bounds.y()) - 70.);
+            adjustment.set_value(f64::from(bounds.y()) - 70.);
             return;
         }
         parent = current.parent();

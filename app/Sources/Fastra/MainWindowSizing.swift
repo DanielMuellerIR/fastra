@@ -9,10 +9,10 @@ enum MainWindowSizing {
     static let defaultWidth: CGFloat = 1100
     static let defaultHeight: CGFloat = 720
 
-    /// Anteil der nutzbaren Bildschirmhöhe, den ein NEUES Fenster mindestens
+    /// Anteil der nutzbaren Bildschirmhöhe, den ein neues Fenster mindestens
     /// einnimmt. Die feste Starthöhe von 720 Punkten war auf einem aktuellen
     /// 15-Zoll-Notebook deutlich zu flach; gearbeitet wird im Editor fast
-    /// immer in der Höhe (Daniel-Wunsch 2026-08-06). Kleiner ziehen darf der
+    /// immer in der Höhe. Kleiner ziehen darf der
     /// Nutzer das Fenster weiterhin bis `minimumHeight` — diese Größe gilt
     /// nur für Fenster, die ohne Vorbild neu entstehen.
     static let newWindowHeightShare: CGFloat = 0.8
@@ -45,7 +45,7 @@ enum MainWindowSizing {
     /// seine Oberkante und bleibt vollständig im nutzbaren Bereich. Ist es
     /// schon hoch genug, bleibt der Rahmen unverändert.
     ///
-    /// AppKit-Koordinaten: y wächst nach OBEN, `maxY` ist die Oberkante.
+    /// AppKit-Koordinaten: y wächst nach oben, `maxY` ist die Oberkante.
     static func heightNormalizedFrame(_ frame: CGRect,
                                       inVisibleScreen visible: CGRect) -> CGRect {
         let target = newWindowSize(inVisibleScreen: visible.size).height

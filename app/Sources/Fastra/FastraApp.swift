@@ -29,22 +29,20 @@ enum FastraProcessGroupLauncher {
 @main
 struct FastraApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    // Selbsttest-Läufe bekommen eine isolierte, frisch geleerte
-    // UserDefaults-Suite (immer „erster Start" → Demo-Tab vorhanden,
-    // echtes Erststart-Flag bleibt unangetastet). Normalbetrieb: .standard.
+    // Alle Fenster und AppStorage-Wrapper verwenden denselben Prozess-Store.
     @StateObject private var workspace: Workspace
     /// Beobachtbarer Fokuskontext für den formatspezifischen Soft-Wrap-
     /// Menüpunkt, auch bei zusätzlichen Dokumentfenstern.
     @StateObject private var activeDocumentContext = ActiveDocumentContext.shared
     // Rechter Vorschau-Streifen (Minimap) an/aus — geteilt mit EditorView über
-    // denselben AppStorage-Schlüssel. Default AUS (siehe EditorView-Kommentar).
-    @AppStorage("editor.showMinimap", store: SelfTest.workspaceDefaults()) private var showMinimap = false
+    // denselben AppStorage-Schlüssel. Default aus (siehe EditorView-Kommentar).
+    @AppStorage("editor.showMinimap", store: AppDefaults.store) private var showMinimap = false
     // Globale, persistente UI-Zoomstufe. Die eigentliche Weitergabe an alle
     // SwiftUI-/AppKit-Unteransichten erledigt `fastraScalingRoot()`.
-    @AppStorage(UIZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var uiZoomLevel = 0
-    @AppStorage(DocumentZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var documentZoomLevel = 0
-    @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showMarkdownPreview = true
-    @AppStorage("editor.sidebarVisible", store: SelfTest.workspaceDefaults()) private var showSidebar = true
+    @AppStorage(UIZoom.defaultsKey, store: AppDefaults.store) private var uiZoomLevel = 0
+    @AppStorage(DocumentZoom.defaultsKey, store: AppDefaults.store) private var documentZoomLevel = 0
+    @AppStorage("markdown.integratedPreview", store: AppDefaults.store) private var showMarkdownPreview = true
+    @AppStorage("editor.sidebarVisible", store: AppDefaults.store) private var showSidebar = true
 
     init() {
         FastraProcessGroupLauncher.runIfRequested()
@@ -52,16 +50,15 @@ struct FastraApp: App {
         // erst in `runIfRequested` käme nach dem SwiftUI-Fensteraufbau zu spät.
         SelfTest.prepareLaunchEnvironment()
         _workspace = StateObject(wrappedValue: Workspace(
-            defaults: SelfTest.workspaceDefaults()
+            defaults: AppDefaults.store
         ))
     }
 
     var body: some Scene {
-        // Das Startfenster bleibt eine einzelne `Window`-Scene. So kann SwiftUI
-        // nicht unkontrolliert zwei Fenster mit DEMSELBEN Workspace erzeugen
-        // (Fehlerbefund 2026-06-23). Gewollte zusätzliche oder aus der
-        // sicheren Fastra-Sitzung restaurierte Fenster entstehen kontrolliert
-        // über `DocumentWindowController`; jedes erhält einen EIGENEN Workspace.
+        // Eine einzelne `Window`-Scene verhindert, dass SwiftUI zwei Fenster
+        // mit demselben Workspace erzeugt. Zusätzliche und wiederhergestellte
+        // Fenster entstehen über `DocumentWindowController`, jeweils mit eigenem
+        // Workspace.
         Window("Fastra", id: "main") {
             ContentView()
                 .environmentObject(workspace)
@@ -88,569 +85,21 @@ struct FastraApp: App {
 
             // Gruppierung: Der Commands-Builder erlaubt höchstens zehn
             // Einträge — thematisch verwandte Gruppen deshalb bündeln.
-            Group {
-                // Eigener „Über Fastra"-Dialog statt des Standard-About-Panels.
-                CommandGroup(replacing: .appInfo) {
-                    Button("Über Fastra") { AboutWindow.show() }
-                }
+            applicationHelpCommands
 
-                // Hilfe-Menü (Etappe 4 Wunschpaket 2026-07b): ersetzt den
-                // Standard-Eintrag durch die mitgelieferte Markdown-Hilfe im
-                // eigenen Fenster. ⌘? ist der macOS-Standard-Shortcut.
-                CommandGroup(replacing: .help) {
-                    Button("Fastra-Hilfe") { HelpWindow.show() }
-                    // tool4d-Einrichtungshilfe (Etappe 4 Wunschpaket
-                    // 2026-07c): sucht ein installiertes tool4d an den
-                    // bekannten Orten — lädt nichts herunter, führt nichts aus.
-                    Button("tool4d finden…") { Tool4DAssist.runFinder() }
-                        .keyboardShortcut("?", modifiers: .command)
-                }
-            }
+            pasteboardCommands
 
-            // Smart-Paste (Alleinstellung, ROADMAP H): formatierter
-            // Clipboard-Inhalt wird via md-clip als Markdown eingefügt.
-            // Das Ziel wird auf dem Main-Thread eingefroren; nur die langsame
-            // Konvertierung dispatcht SmartPaste selbst in den Hintergrund.
-            CommandGroup(after: .pasteboard) {
-                Button("Formatiert als Markdown einfügen") {
-                    if let target = commandWorkspace {
-                        SmartPaste.performSmartPaste(into: target)
-                    }
-                }
-                .disabled(commandWorkspace == nil)
-                .keyboardShortcut("v", modifiers: [.command, .shift])
+            viewCommands
 
-                // Etappe 4 (BBEdit „Paste and Match Indentation"): setzt den
-                // Clipboard-Block auf die Einrückung der Zielzeile, relative
-                // Verschachtelung bleibt erhalten, Ausdruck in Tabs/
-                // Leerzeichen des Formatprofils.
-                Button("Einfügen und Einrückung angleichen") {
-                    guard commandWorkspace != nil else { return }
-                    NotificationCenter.default.post(
-                        name: .fastraPasteMatchingIndentation,
-                        object: nil
-                    )
-                }
-                .disabled(commandWorkspace == nil)
-                .keyboardShortcut("v", modifiers: [.command, .shift, .option])
+            documentCommands
+            documentOutputCommands
+            searchCommands
 
-                Divider()
-                Button("Spalte einfügen") {
-                    guard commandWorkspace != nil else { return }
-                    NotificationCenter.default.post(
-                        name: .fastraPasteColumn,
-                        object: nil
-                    )
-                }
-                .disabled(commandWorkspace == nil)
-                .keyboardShortcut("v", modifiers: [.command, .control])
-                Button("Rechteckauswahl nach oben") {
-                    guard commandWorkspace != nil else { return }
-                    NotificationCenter.default.post(
-                        name: .fastraSelectColumnUp,
-                        object: nil
-                    )
-                }
-                .disabled(commandWorkspace == nil)
-                .keyboardShortcut(.upArrow, modifiers: [.control, .shift])
-                Button("Rechteckauswahl nach unten") {
-                    guard commandWorkspace != nil else { return }
-                    NotificationCenter.default.post(
-                        name: .fastraSelectColumnDown,
-                        object: nil
-                    )
-                }
-                .disabled(commandWorkspace == nil)
-                .keyboardShortcut(.downArrow, modifiers: [.control, .shift])
-                Divider()
-                Button("Klammerblock auswählen") { BracketSelectionCommands.selectEnclosingBlock() }
-                    .keyboardShortcut(activeTabIsMarkdown ? nil : KeyboardShortcut("b", modifiers: .command))
-                    .disabled(commandWorkspace?.activeTab == nil)
-            }
+            textCommands
 
-            // Darstellungskommandos in das BESTEHENDE System-
-            // „Darstellung"-Menü einhängen (CommandGroup after .sidebar),
-            // NICHT als CommandMenu("Darstellung") — das legt ein ZWEITES
-            // Menü gleichen Namens daneben (Befund Screenshot 2026-06-11).
-            CommandGroup(after: .sidebar) {
-                Divider()
-                Button("Darstellung vergrößern") {
-                    uiZoomLevel = UIZoom.clamped(uiZoomLevel + 1)
-                }
-                .keyboardShortcut("+", modifiers: .command)
-                .disabled(uiZoomLevel >= UIZoom.maximumLevel)
-                Button("Darstellung verkleinern") {
-                    uiZoomLevel = UIZoom.clamped(uiZoomLevel - 1)
-                }
-                .keyboardShortcut("-", modifiers: .command)
-                .disabled(uiZoomLevel <= UIZoom.minimumLevel)
-                Button("Originalgröße") { uiZoomLevel = 0 }
-                    .keyboardShortcut("0", modifiers: .command)
-                    .disabled(uiZoomLevel == 0)
-                Divider()
-                Button("Dokumentschrift vergrößern") { documentZoomLevel = DocumentZoom.clamped(documentZoomLevel + 1) }
-                    .keyboardShortcut("+", modifiers: [.command, .shift])
-                Button("Dokumentschrift verkleinern") { documentZoomLevel = DocumentZoom.clamped(documentZoomLevel - 1) }
-                    .keyboardShortcut("-", modifiers: [.command, .shift])
-                Button("Dokumentschrift: Originalgröße") { documentZoomLevel = 0 }
-                    .keyboardShortcut("0", modifiers: [.command, .shift])
-                Divider()
-                // Ansichts-Umschalter (Etappe 2 Wunschpaket 2026-07): dieselben
-                // drei Ansichten wie der Umschalter im Editorbereich, hier mit
-                // Shortcuts. ⌃⌘1–3 kollidiert weder mit ⌘1-Tabwechseln noch mit
-                // den CodeEdit-Tastatur-Monitoren (die fangen nur ⌘]/⌘[/⌘F ab).
-                Button("Ansicht: Text") { commandWorkspace?.setViewMode(.text) }
-                    .keyboardShortcut("1", modifiers: [.command, .control])
-                Button("Ansicht: Vorschau") { commandWorkspace?.setViewMode(.preview) }
-                    .keyboardShortcut("2", modifiers: [.command, .control])
-                Button("Ansicht: Hex") { commandWorkspace?.setViewMode(.hex) }
-                    .keyboardShortcut("3", modifiers: [.command, .control])
-                Divider()
-                // Hauptmenü und Fußzeile schalten denselben Wert des aktuell
-                // effektiven Formats. Ohne Dokument bleibt der Zustand stabil
-                // und der Eintrag ist nicht bedienbar.
-                Button("Soft Wrap") {
-                    activeDocumentContext.workspace?.toggleSoftWrap()
-                }
-                    .keyboardShortcut("l", modifiers: [.command, .shift])
-                    .disabled(activeDocumentContext.workspace?.activeTab == nil)
-                Toggle("Seitenlinie anzeigen", isOn: Binding(
-                    get: { commandWorkspace?.showPageGuide ?? false },
-                    set: { commandWorkspace?.setShowPageGuide($0) }
-                ))
-                Toggle("Unsichtbare Zeichen anzeigen", isOn: Binding(
-                    get: { commandWorkspace?.editorDisplayOptions.showInvisibles ?? false },
-                    set: { commandWorkspace?.setEditorDisplayOption(\.showInvisibles, $0) }
-                ))
-                .disabled(commandWorkspace?.canConfigureTextDisplay != true)
-                // Rechter Vorschau-Streifen (Minimap). Default AUS — verdeckte
-                // rechts Text und stand im Freeze-Verdacht (Daniel 2026-07-12).
-                Toggle("Minimap anzeigen", isOn: $showMinimap)
-                Divider()
-                Button("Bereich ein-/ausklappen") { CodeFoldingCommands.toggleCurrent() }
-                    .disabled(activeDocumentContext.workspace?.activeTab == nil)
-                Button("Alle Bereiche einklappen") { CodeFoldingCommands.collapseAll() }
-                    .disabled(activeDocumentContext.workspace?.activeTab == nil)
-                Button("Alle Bereiche ausklappen") { CodeFoldingCommands.expandAll() }
-                    .disabled(activeDocumentContext.workspace?.activeTab == nil)
-                Toggle("Seitenleiste anzeigen", isOn: $showSidebar)
-                    .disabled(activeDocumentContext.workspace == nil)
-                Toggle("Markdown-Vorschau rechts anzeigen", isOn: $showMarkdownPreview)
-                .keyboardShortcut("m", modifiers: [.command, .shift])
-                if let workspace = commandWorkspace {
-                    SourceSplitMenuItem(workspace: workspace)
-                    DocumentNavigationCommands(workspace: workspace, outline: workspace.documentOutline)
-                }
-            }
+            markdownCommands
 
-            CommandGroup(replacing: .newItem) {
-                Button("Neues Dokumentfenster") {
-                    // Reiner Startzustand (ein Fenster, nur ein unberührter
-                    // leerer Tab, kein Projekt): ⌘N legt wie ⌘T einen Tab im
-                    // selben Fenster an, statt ein zweites Fenster zu stapeln
-                    // (Wunschpaket 2026-07, Etappe 1). Sonst wie gehabt.
-                    guard let target = commandWorkspace else {
-                        DocumentWindowController.openNewDocument()
-                        return
-                    }
-                    if WelcomeLogic.newWindowCommandOpensTab(
-                        tabs: target.tabs,
-                        hasProject: target.projectURL != nil,
-                        visibleDocumentWindows:
-                            DocumentWindowController.visibleDocumentWindowCount()
-                    ) {
-                        target.openNewTab()
-                    } else {
-                        DocumentWindowController.openNewDocument()
-                    }
-                }
-                .keyboardShortcut("n", modifiers: .command)
-                Button("Neuer Tab") {
-                    if let commandWorkspace {
-                        commandWorkspace.openNewTab()
-                    } else {
-                        DocumentWindowController.openNewDocument()
-                    }
-                }
-                    .keyboardShortcut("t", modifiers: .command)
-                Button("Datei öffnen…") {
-                    DocumentWindowController.workspaceForOpening().openFile()
-                }
-                    .keyboardShortcut("o", modifiers: .command)
-                Button("Code-Erklärung öffnen…") { CodeExplanationPlayer.openPackage() }
-                // Ordner als Projekt öffnen (Projekt- & Git-Ausbau, Etappe 1):
-                // lädt den Dateibaum in die Seitenleiste und merkt den Ordner
-                // in „Zuletzt benutzte Projekte" (Willkommensbildschirm).
-                Button("Ordner öffnen…") {
-                    DocumentWindowController.workspaceForOpening().openFolderAsProject()
-                }
-                    .keyboardShortcut("o", modifiers: [.command, .shift])
-                Button("Terminal im aktuellen Ordner …") {
-                    commandWorkspace?.openTerminal()
-                }
-                .disabled(commandWorkspace?.terminalDirectory == nil)
-                .help(commandWorkspace?.terminalDirectory == nil
-                      ? (commandWorkspace?.terminalUnavailableReason
-                         ?? L10n.string("Kein Dokumentfenster ist aktiv."))
-                      : L10n.string("Öffnet Terminal.app nativ im aktuellen Projektordner; ohne Projekt im Ordner der aktiven Datei."))
-                // Zuletzt benutzte Dateien (K2). Eigene View mit
-                // @ObservedObject, damit das Untermenü auf Änderungen der
-                // recentFiles-Liste reagiert.
-                RecentFilesMenu(workspace: workspace)
-                Divider()
-                // BBEdit „Reload from Disk" (Kap. 3 S. 59): aktiven Tab frisch
-                // von der Platte laden; bei ungespeicherten Änderungen fragt
-                // dieselbe Rückfrage wie die automatische Erkennung.
-                Button("Von Festplatte neu laden") { commandWorkspace?.reloadActiveTabFromDisk() }
-                // Umwandlung eines erkannten Fremdformats (RTF, DOCX, …) nach
-                // Markdown. Eigene View, damit der Punkt der Verfügbarkeit des
-                // aktiven Tabs folgt; ohne installiertes „Poor Man's Text"
-                // bleibt er still deaktiviert.
-                MarkdownImportMenuItem(workspace: workspace)
-                Divider()
-                Button("Schließen") {
-                    // Das Menü bleibt global sichtbar. Ist die Hilfe vorn,
-                    // gehört ⌘W aber ihr und darf keinen Hintergrund-Tab
-                    // schließen (gleiches Verhalten wie der Event-Monitor).
-                    if HelpWindow.isHelpWindow(NSApp.keyWindow) {
-                        HelpWindow.close()
-                    } else if ExternalDiffWindow.isExternalDiffWindow(NSApp.keyWindow) {
-                        NSApp.keyWindow?.performClose(nil)
-                    } else if ControlSnapshotWindow.isSnapshotWindow(NSApp.keyWindow) {
-                        NSApp.keyWindow?.performClose(nil)
-                    } else if AboutWindow.isAboutWindow(NSApp.keyWindow) {
-                        NSApp.keyWindow?.performClose(nil)
-                    } else if SettingsWindowConfiguration.isSettingsWindow(
-                        NSApp.keyWindow
-                    ) {
-                        NSApp.keyWindow?.performClose(nil)
-                    } else if let searchWindow = NSApp.keyWindow,
-                              SearchWindow.isSearchWindow(searchWindow),
-                              let searchWorkspace = WorkspaceWindowRegistry.workspace(
-                                  for: searchWindow
-                              ) {
-                        searchWorkspace.showSearchDialog = false
-                    } else if let target = CommandTargeting.targetWorkspace() {
-                        // Beim Schließen gibt es bewusst KEINEN Rückfall auf
-                        // den Start-Workspace: Ist das Vorderfenster nicht
-                        // eindeutig gebunden, ist ein No-op sicherer als ein
-                        // geschlossenes Dokumentfenster dahinter.
-                        target.closeActiveTab()
-                    } else {
-                        NSSound.beep()
-                    }
-                }
-                    .keyboardShortcut("w", modifiers: .command)
-            }
-            // Speichern und Drucken zusammen in EINER Gruppe: Der
-            // Commands-Builder nimmt höchstens zehn Einträge, und die sind
-            // bereits vergeben (siehe Kommentar bei „Über Fastra").
-            Group {
-                CommandGroup(replacing: .saveItem) {
-                    // Ohne eindeutiges Zieldokument darf ⌘S nicht lautlos
-                    // verpuffen: Der Nutzer sieht den Änderungspunkt, drückt
-                    // ⌘S, und nichts passiert — so blieb am 2026-09-04 eine
-                    // Datei ungespeichert, ohne dass irgendetwas darauf
-                    // hinwies. Der Systemton sagt wenigstens „nicht
-                    // angekommen", wie bei ⌘W.
-                    Button("Speichern") {
-                        guard let commandWorkspace else { NSSound.beep(); return }
-                        commandWorkspace.saveActiveTab()
-                    }
-                        .keyboardShortcut("s", modifiers: .command)
-                        .disabled(activeDocumentContext.workspace == nil)
-                    Button("Speichern unter…") {
-                        guard let commandWorkspace else { NSSound.beep(); return }
-                        commandWorkspace.saveActiveTabAs()
-                    }
-                        .keyboardShortcut("s", modifiers: [.command, .shift])
-                        .disabled(activeDocumentContext.workspace == nil)
-                }
-                // Drucken (mit Papierformat). Eigene View, damit die Punkte
-                // dem aktiven Tab folgen: Ob ein Dokument druckbar ist und
-                // welche Fassung ⌘P nimmt, hängt an der sichtbaren Ansicht.
-                CommandGroup(replacing: .printItem) {
-                    PrintMenuItems(workspace: workspace)
-                }
-            }
-            CommandMenu("Suchen") {
-                // CMD+F: formatierten Text oder den Quelltext der Datei suchen.
-                Button {
-                    guard let commandWorkspace else { return }
-                    NotificationCenter.default.post(name: .fastraShowSearchFile,
-                                                    object: commandWorkspace)
-                } label: {
-                    Text(verbatim: commandWorkspace?.activeMarkdownIsVisual == true && commandWorkspace?.showSearchDialog != true
-                         ? L10n.string("Im formatierten Text suchen…") : L10n.string("Suchen & Ersetzen…"))
-                }
-                .disabled(commandWorkspace == nil)
-                .keyboardShortcut("f", modifiers: .command)
-                if commandWorkspace?.activeMarkdownIsVisual == true {
-                    Button("Markdown-Quelltext suchen und ersetzen…") {
-                        guard let commandWorkspace else { return }
-                        NotificationCenter.default.post(name: .fastraShowSearchFile, object: commandWorkspace,
-                                                        userInfo: ["source": true])
-                    }.keyboardShortcut("f", modifiers: [.command, .option])
-                }
-
-                // CMD+SHIFT+F: Mehrdatei-Suche (erweiterter Modus). Beim
-                // Öffnen wird der Scope auf „Projekt" gesetzt, wenn das
-                // Fenster ein Projekt hat, sonst auf „Ordner" — das Fenster
-                // wächst automatisch, falls noch zu klein.
-                //
-                // Der Menüklick nutzt bewusst die ERZWINGENDE Notification:
-                // Der Kurzbefehl ⇧⌘F holt eine bereits befüllte Maske nur nach
-                // vorn und behält ihren Bereich, ein ausdrücklich mit „In
-                // Projekt oder Ordnern suchen…" beschrifteter Menüpunkt muss
-                // dagegen immer die Mehrdatei-Suche zeigen (Review 2026-08-06).
-                Button("In Projekt oder Ordnern suchen…") {
-                    guard let commandWorkspace else { return }
-                    NotificationCenter.default.post(name: .fastraShowSearchFolderForced,
-                                                    object: commandWorkspace)
-                }
-                .disabled(commandWorkspace == nil)
-                .keyboardShortcut("f", modifiers: [.command, .shift])
-
-                Divider()
-
-                // „Auswahl als Suchbegriff" (⌘E, BBEdit „Use Selection for
-                // Find", K5): selektierten Editor-Text als Suchbegriff
-                // übernehmen und die Maske öffnen (sucht NICHT von selbst).
-                Button("Auswahl als Suchbegriff") {
-                    guard let commandWorkspace else { return }
-                    commandWorkspace.useSelectionForFind()
-                    commandWorkspace.scope = .file
-                    // Der selektierte Text wird zum Suchbegriff → global
-                    // danach suchen, nicht innerhalb der Selektion (sonst
-                    // fände er nur sich selbst). „Nur in Auswahl" daher aus.
-                    commandWorkspace.setSearchInSelectionOnly(false)
-                    commandWorkspace.showSearchDialog = true
-                    // Eine offene, aber verdeckte Maske sonst unsichtbar befüllt.
-                    commandWorkspace.requestSearchPanelToFront()
-                }
-                .keyboardShortcut("e", modifiers: .command)
-
-                Button("Suchen & Ersetzen ausblenden") {
-                    commandWorkspace?.showSearchDialog = false
-                    if let commandWorkspace { commandWorkspace.markdownVisualFind.close(in: commandWorkspace) }
-                }
-                    .keyboardShortcut(.escape, modifiers: [])
-
-                Divider()
-
-                // XPath-Navigation (Etappe 5 Wunschpaket 2026-07): schwebende
-                // Leiste für XML-artige Dokumente. Teilset: /, //, *, [n],
-                // [@attr], [@attr='wert'], @attr, text().
-                Button("XPath-Navigation…") {
-                    guard let commandWorkspace else { return }
-                    NotificationCenter.default.post(name: .fastraShowXPathBar,
-                                                    object: commandWorkspace)
-                }
-                .keyboardShortcut("x", modifiers: [.command, .shift])
-                .disabled(commandWorkspace?.activeTabSupportsXPath != true)
-
-                Divider()
-
-                // Datei-Vergleich ohne Git (Etappe 1 Wunschpaket 2026-07c;
-                // BBEdit „Find Differences"). ⌃⌘D ist frei — ⌘D wäre mit
-                // macOS-Konventionen (Lesezeichen/Duplizieren) belegt.
-                Button("Dateien vergleichen…") {
-                    commandWorkspace?.presentCompareFilesDialog()
-                }
-                .keyboardShortcut("d", modifiers: [.command, .control])
-
-                Button("Ordner vergleichen…") {
-                    commandWorkspace?.presentFolderComparisonDialog()
-                }.disabled(commandWorkspace == nil)
-
-                // BBEdit „Compare Against Disk File": ungespeicherten
-                // Editor-Inhalt gegen den Plattenstand derselben Datei —
-                // ohne Dialog, direkt ins Differenzfenster.
-                Button("Mit gespeicherter Fassung vergleichen") {
-                    commandWorkspace?.compareActiveTabAgainstDisk()
-                }
-                .disabled(commandWorkspace?.canCompareActiveTabAgainstDisk != true)
-                .help(commandWorkspace?.canCompareActiveTabAgainstDisk == true
-                      ? L10n.string("Vergleicht den ungespeicherten Editor-Inhalt mit dem gespeicherten Stand der Datei.")
-                      : L10n.string("Nur aktiv, wenn der aktive Tab ungespeicherte Änderungen an einer Datei hat."))
-            }
-
-            // „Text"-Menü (BBEdit-Basics, TextOperations). Die Buttons posten
-            // `.fastraTextOp` mit der TextOpKind; der AppDelegate wendet sie auf
-            // den aktiven Editor an (gleiche Logik wie das Rechtsklick-Submenü).
-            // Operieren auf der Selektion bzw. — ohne Selektion — der ganzen Datei.
-            CommandMenu("Text") {
-                Button("Textbausteine…") { commandWorkspace?.openTextSnippets() }
-                    .disabled(commandWorkspace?.canUseTextSnippets != true)
-                Button("Gespeicherte Textabläufe…") { commandWorkspace?.presentTextWorkflows() }
-                    .disabled(commandWorkspace?.activeTab?.isEditableTextDocument != true || commandWorkspace?.activeViewMode != .text)
-                Divider()
-                Button("Dokument formatieren") { postDocumentFormatting() }
-                    .keyboardShortcut("f", modifiers: [.option, .shift])
-                    .disabled(commandWorkspace?.activeDocumentFormattingID == nil)
-                // Etappe 6 (Wunschpaket 2026-07): native JSON-/XML-Prüfung
-                // mit Fehlerposition und konservatives Minify — bewusst keine
-                // gebündelten Fremd-Linter (JS/CSS/HTML bleiben außen vor).
-                Button("Dokument prüfen") {
-                    guard commandWorkspace != nil else { return }
-                    NotificationCenter.default.post(name: .fastraLintDocument,
-                                                    object: nil)
-                }
-                .disabled(commandWorkspace?.activeDocumentLintMode == nil)
-                Button("Dokument minifizieren") {
-                    guard commandWorkspace != nil else { return }
-                    NotificationCenter.default.post(name: .fastraMinifyDocument,
-                                                    object: nil)
-                }
-                .disabled(commandWorkspace?.activeDocumentFormattingID == nil)
-                Divider()
-                Button(TextOpKind.uppercase.title)  { postTextOp(.uppercase) }
-                Button(TextOpKind.lowercase.title)  { postTextOp(.lowercase) }
-                Button(TextOpKind.titlecase.title)  { postTextOp(.titlecase) }
-                Divider()
-                Button(TextOpKind.trimTrailing.title) { postTextOp(.trimTrailing) }
-                Button(TextOpKind.detab.title)        { postTextOp(.detab) }
-                Button(TextOpKind.entab.title)        { postTextOp(.entab) }
-                Divider()
-                // Texthygiene (BBEdit „Zap Gremlins" / „Straighten Quotes") —
-                // Steuerzeichen und geschwungene Anführungszeichen aus Logs/
-                // Exporten bereinigen, bevor man sucht/ersetzt.
-                Button(TextOpKind.zapGremlins.title)      { postTextOp(.zapGremlins) }
-                Button(TextOpKind.straightenQuotes.title) { postTextOp(.straightenQuotes) }
-                Button(TextOpKind.educateQuotes.title)    { postTextOp(.educateQuotes) }
-                // BBEdit „Convert Escape Sequences": \n/\xNN/\uNNNN/HTML-Entities/
-                // %NN in echte Zeichen auflösen — Texthygiene für Logs/Exporte.
-                Button(TextOpKind.convertEscapeSequences.title) { postTextOp(.convertEscapeSequences) }
-                Divider()
-                // Kein ⌘]/⌘[ als Kürzel: CodeEditTextView installiert einen
-                // eigenen keyDown-Monitor (wie bei CMD+F), der diese Kombis
-                // abfängt, bevor das SwiftUI-Command greift — der Shortcut wäre
-                // also tot/irreführend. Auslösung daher nur per Menü-Klick.
-                Button(TextOpKind.shiftRight.title) { postTextOp(.shiftRight) }
-                Button(TextOpKind.shiftLeft.title)  { postTextOp(.shiftLeft) }
-                Divider()
-                Button(TextOpKind.reverseLines.title)     { postTextOp(.reverseLines) }
-                Button(TextOpKind.removeBlankLines.title) { postTextOp(.removeBlankLines) }
-                Button(LineOperations.SortDirection.ascending.title) {
-                    postLineSort(.ascending)
-                }
-                Button(LineOperations.SortDirection.descending.title) {
-                    postLineSort(.descending)
-                }
-                Button(TextOpKind.joinLines.title)        { postTextOp(.joinLines) }
-                Button(TextOpKind.joinLinesTight.title)   { postTextOp(.joinLinesTight) }
-                Button(TextOpKind.prefixLines.title)      { postTextOp(.prefixLines) }
-                Button(TextOpKind.suffixLines.title)      { postTextOp(.suffixLines) }
-                // Zeilennummern (BBEdit „Add/Remove Line Numbers") — rechtsbündig,
-                // ein Trenner-Leerzeichen; Entfernen strippt die führende Nummer.
-                Button(TextOpKind.addLineNumbers.title)    { postTextOp(.addLineNumbers) }
-                Button(TextOpKind.removeLineNumbers.title) { postTextOp(.removeLineNumbers) }
-                Divider()
-                // Zeichen-/Wörter-Tauschen (BBEdit „Exchange Characters/Words") —
-                // wirkt am Cursor bzw. an den Selektions-Enden.
-                Button(TextOpKind.exchangeCharacters.title) { postTextOp(.exchangeCharacters) }
-                Button(TextOpKind.exchangeWords.title)      { postTextOp(.exchangeWords) }
-                Divider()
-                // Zeilen-Verarbeitung (BBEdit „Process Lines Containing" / „Process
-                // Duplicate Lines"): nach RegEx-Muster filtern bzw. Dubletten
-                // finden/entfernen — die RegEx-nahen Werkzeuge im „Text"-Menü.
-                Button(TextOpKind.keepLinesMatching.title)        { postTextOp(.keepLinesMatching) }
-                Button(TextOpKind.deleteLinesMatching.title)      { postTextOp(.deleteLinesMatching) }
-                Button(TextOpKind.keepDuplicateLines.title)       { postTextOp(.keepDuplicateLines) }
-                Button(TextOpKind.removeAllDuplicatedLines.title) { postTextOp(.removeAllDuplicatedLines) }
-                Divider()
-                // BBEdit „Hard Wrap": jede Zeile an Wortgrenzen auf eine feste
-                // Spaltenbreite umbrechen (Gegenstück zu „Zeilen verbinden").
-                Button(TextOpKind.hardWrap.title) { postTextOp(.hardWrap) }
-                Divider()
-                // Unicode-Gruppe (BBEdit Kap. 5 S. 156): Leerzeichen-Varianten
-                // vereinheitlichen, Diakritika entfernen, NFC/NFD-Normalisierung.
-                Button(TextOpKind.normalizeSpaces.title)   { postTextOp(.normalizeSpaces) }
-                Button(TextOpKind.stripDiacriticals.title) { postTextOp(.stripDiacriticals) }
-                Button(TextOpKind.precomposeUnicode.title) { postTextOp(.precomposeUnicode) }
-                Button(TextOpKind.decomposeUnicode.title)  { postTextOp(.decomposeUnicode) }
-                // Emoji-Darstellung (Daniel-Befund 2026-07-27): Zeichen wie ⏸
-                // sind laut Unicode Textzeichen und werden erst mit dem
-                // Variantenselektor U+FE0F überall farbig gezeigt.
-                Button(TextOpKind.addEmojiPresentation.title) {
-                    postTextOp(.addEmojiPresentation)
-                }
-                Button(TextOpKind.removeEmojiPresentation.title) {
-                    postTextOp(.removeEmojiPresentation)
-                }
-                Divider()
-                // 4D-Export-Transformation (Etappe 6 Wunschpaket 2026-07c):
-                // Token-Suffixe kanonischer Exporte strippen bzw. Befehls-
-                // Token ergänzen (Konstanten-Nummern kennt keine öffentliche
-                // Quelle — der Titel sagt ehrlich „Befehls-Token").
-                Button(TextOpKind.fourDDetokenize.title)       { postTextOp(.fourDDetokenize) }
-                Button(TextOpKind.fourDTokenizeCommands.title) { postTextOp(.fourDTokenizeCommands) }
-            }
-
-            // „Markdown"-Menü (Etappe 5 Wunschpaket 2026-07b):
-            // Formatierungsbefehle auf den QUELLTEXT, nur für Markdown-Tabs
-            // aktiv. Dieselben Befehle liegen in der Editor-Toolbar und im
-            // Rechtsklickmenü; hier tragen sie die Tastenkürzel.
-            CommandMenu("Markdown") {
-                Group {
-                    markdownFormatButton(.bold)
-                    markdownFormatButton(.italic)
-                    markdownFormatButton(.highlight)
-                    markdownFormatButton(.code)
-                    markdownFormatButton(.hardBreak)
-                    Divider()
-                    markdownFormatButton(.heading1)
-                    markdownFormatButton(.heading2)
-                    markdownFormatButton(.heading3)
-                    markdownFormatButton(.plainParagraph)
-                }
-                .disabled(!activeTabIsMarkdown)
-                Group {
-                    Divider()
-                    markdownFormatButton(.bulletList)
-                    markdownFormatButton(.orderedList)
-                    markdownFormatButton(.taskList)
-                    markdownFormatButton(.quote)
-                    Divider()
-                    markdownFormatButton(.link)
-                    markdownFormatButton(.insertTable)
-                    Divider()
-                    Button("Images-Ordner aufräumen…") { MarkdownImageCleanup.present() }
-                    Button("Lokale Verweise prüfen…") {
-                        if let workspace = commandWorkspace { workspace.markdownReferences.present(in: workspace) }
-                    }
-                }
-                .disabled(!activeTabIsMarkdown)
-            }
-
-            // Gemeinsame Gruppe (Builder-Limit von zehn Einträgen, siehe oben):
-            // „Makros" (4D-Methodeneditor-Makros, Idee #28) und „Git".
-            Group {
-                // „Makros"-Menü: die 4D-Makros der aktiven `.4dm`-Datei.
-                // Ohne 4D-Dokument bleibt das Menü sichtbar, aber erklärt sich.
-                CommandMenu("Makros") {
-                    if let commandWorkspace {
-                        FourDMacroMenuItems(workspace: commandWorkspace)
-                    } else {
-                        Button("Kein Dokumentfenster aktiv") { }.disabled(true)
-                    }
-                }
-
-                // „Git"-Menü (Projekt- & Git-Ausbau, Etappe 2). Dieselben kuratierten
-                // Aktionen wie das Popup in der Branch-Zeile (GitActionMenu), plus
-                // Verlauf/Diff öffnen. Nur aktiv, wenn ein Git-Projekt offen ist —
-                // ohne Projekt/git bleibt das Menü sichtbar, aber gedimmt.
-                CommandMenu("Git") {
-                    Button("Verlauf anzeigen") { commandWorkspace?.openGitLog() }
-                    Button("Änderungen anzeigen (Diff)") { commandWorkspace?.openGitDiff() }
-                    Divider()
-                    if let commandWorkspace {
-                        GitActionMenu(workspace: commandWorkspace)
-                    } else {
-                        Button("Kein Dokumentfenster aktiv") { }.disabled(true)
-                    }
-                }
-            }
+            projectCommands
         }
 
         // Einstellungs-Dialog (⌘,). SwiftUI bindet die Settings-Scene automatisch
@@ -682,7 +131,7 @@ struct FastraApp: App {
                                         object: direction.rawValue)
     }
 
-    /// Markdown-Formatbefehl an den AppDelegate (Etappe 5 Wunschpaket 2026-07b).
+    /// Markdown-Formatbefehl an den AppDelegate.
     private func postMarkdownFormat(_ command: MarkdownFormatCommand) {
         guard commandWorkspace != nil else { return }
         NotificationCenter.default.post(name: .fastraMarkdownFormat,
@@ -716,6 +165,606 @@ struct FastraApp: App {
     private func postDocumentFormatting() {
         guard commandWorkspace != nil else { return }
         NotificationCenter.default.post(name: .fastraFormatDocument, object: nil)
+    }
+
+    @CommandsBuilder
+    private var applicationHelpCommands: some Commands {
+        Group {
+            // Eigener „Über Fastra"-Dialog statt des Standard-About-Panels.
+            CommandGroup(replacing: .appInfo) {
+                Button("Über Fastra") { AboutWindow.show() }
+            }
+
+            // Hilfe-Menü: ersetzt den Standard-Eintrag durch die
+            // mitgelieferte Markdown-Hilfe im eigenen Fenster. ⌘? ist der
+            // macOS-Standard-Shortcut.
+            CommandGroup(replacing: .help) {
+                Button("Fastra-Hilfe") { HelpWindow.show() }
+                // tool4d-Einrichtungshilfe: sucht ein installiertes tool4d
+                // an den bekannten Orten — lädt nichts herunter, führt
+                // nichts aus.
+                Button("tool4d finden…") { Tool4DAssist.runFinder() }
+                    .keyboardShortcut("?", modifiers: .command)
+            }
+        }
+    }
+
+    @CommandsBuilder
+    private var pasteboardCommands: some Commands {
+        // Smart-Paste (Alleinstellung, ROADMAP H): formatierter
+        // Clipboard-Inhalt wird via md-clip als Markdown eingefügt.
+        // Das Ziel wird auf dem Main-Thread eingefroren; nur die langsame
+        // Konvertierung dispatcht SmartPaste selbst in den Hintergrund.
+        CommandGroup(after: .pasteboard) {
+            Button("Formatiert als Markdown einfügen") {
+                if let target = commandWorkspace {
+                    SmartPaste.performSmartPaste(into: target)
+                }
+            }
+            .disabled(commandWorkspace == nil)
+            .keyboardShortcut("v", modifiers: [.command, .shift])
+
+            // Etappe 4 (BBEdit „Paste and Match Indentation"): setzt den
+            // Clipboard-Block auf die Einrückung der Zielzeile, relative
+            // Verschachtelung bleibt erhalten, Ausdruck in Tabs/
+            // Leerzeichen des Formatprofils.
+            Button("Einfügen und Einrückung angleichen") {
+                guard commandWorkspace != nil else { return }
+                NotificationCenter.default.post(
+                    name: .fastraPasteMatchingIndentation,
+                    object: nil
+                )
+            }
+            .disabled(commandWorkspace == nil)
+            .keyboardShortcut("v", modifiers: [.command, .shift, .option])
+
+            Divider()
+            Button("Spalte einfügen") {
+                guard commandWorkspace != nil else { return }
+                NotificationCenter.default.post(
+                    name: .fastraPasteColumn,
+                    object: nil
+                )
+            }
+            .disabled(commandWorkspace == nil)
+            .keyboardShortcut("v", modifiers: [.command, .control])
+            Button("Rechteckauswahl nach oben") {
+                guard commandWorkspace != nil else { return }
+                NotificationCenter.default.post(
+                    name: .fastraSelectColumnUp,
+                    object: nil
+                )
+            }
+            .disabled(commandWorkspace == nil)
+            .keyboardShortcut(.upArrow, modifiers: [.control, .shift])
+            Button("Rechteckauswahl nach unten") {
+                guard commandWorkspace != nil else { return }
+                NotificationCenter.default.post(
+                    name: .fastraSelectColumnDown,
+                    object: nil
+                )
+            }
+            .disabled(commandWorkspace == nil)
+            .keyboardShortcut(.downArrow, modifiers: [.control, .shift])
+            Divider()
+            Button("Klammerblock auswählen") { BracketSelectionCommands.selectEnclosingBlock() }
+                .keyboardShortcut(activeTabIsMarkdown ? nil : KeyboardShortcut("b", modifiers: .command))
+                .disabled(commandWorkspace?.activeTab == nil)
+        }
+    }
+
+    @CommandsBuilder
+    private var viewCommands: some Commands {
+        // Darstellungskommandos über `CommandGroup after .sidebar` ins bestehende
+        // Systemmenü einhängen. `CommandMenu("Darstellung")` würde ein zweites
+        // Menü gleichen Namens anlegen.
+        CommandGroup(after: .sidebar) {
+            Divider()
+            Button("Darstellung vergrößern") {
+                uiZoomLevel = UIZoom.clamped(uiZoomLevel + 1)
+            }
+            .keyboardShortcut("+", modifiers: .command)
+            .disabled(uiZoomLevel >= UIZoom.maximumLevel)
+            Button("Darstellung verkleinern") {
+                uiZoomLevel = UIZoom.clamped(uiZoomLevel - 1)
+            }
+            .keyboardShortcut("-", modifiers: .command)
+            .disabled(uiZoomLevel <= UIZoom.minimumLevel)
+            Button("Originalgröße") { uiZoomLevel = 0 }
+                .keyboardShortcut("0", modifiers: .command)
+                .disabled(uiZoomLevel == 0)
+            Divider()
+            Button("Dokumentschrift vergrößern") { documentZoomLevel = DocumentZoom.clamped(documentZoomLevel + 1) }
+                .keyboardShortcut("+", modifiers: [.command, .shift])
+            Button("Dokumentschrift verkleinern") { documentZoomLevel = DocumentZoom.clamped(documentZoomLevel - 1) }
+                .keyboardShortcut("-", modifiers: [.command, .shift])
+            Button("Dokumentschrift: Originalgröße") { documentZoomLevel = 0 }
+                .keyboardShortcut("0", modifiers: [.command, .shift])
+            Divider()
+            // Ansichts-Umschalter: dieselben drei Ansichten wie der
+            // Umschalter im Editorbereich, hier mit Shortcuts. ⌃⌘1–3
+            // kollidiert weder mit ⌘1-Tabwechseln noch mit den
+            // CodeEdit-Tastatur-Monitoren (die fangen nur ⌘]/⌘[/⌘F ab).
+            Button("Ansicht: Text") { commandWorkspace?.setViewMode(.text) }
+                .keyboardShortcut("1", modifiers: [.command, .control])
+            Button("Ansicht: Vorschau") { commandWorkspace?.setViewMode(.preview) }
+                .keyboardShortcut("2", modifiers: [.command, .control])
+            Button("Ansicht: Hex") { commandWorkspace?.setViewMode(.hex) }
+                .keyboardShortcut("3", modifiers: [.command, .control])
+            Divider()
+            // Hauptmenü und Fußzeile schalten denselben Wert des aktuell
+            // effektiven Formats. Ohne Dokument bleibt der Zustand stabil
+            // und der Eintrag ist nicht bedienbar.
+            Button("Soft Wrap") {
+                commandWorkspace?.toggleSoftWrap()
+            }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .disabled(commandWorkspace?.activeTab == nil)
+            Toggle("Seitenlinie anzeigen", isOn: Binding(
+                get: { commandWorkspace?.showPageGuide ?? false },
+                set: { commandWorkspace?.setShowPageGuide($0) }
+            ))
+            Toggle("Unsichtbare Zeichen anzeigen", isOn: Binding(
+                get: { commandWorkspace?.editorDisplayOptions.showInvisibles ?? false },
+                set: { commandWorkspace?.setEditorDisplayOption(\.showInvisibles, $0) }
+            ))
+            .disabled(commandWorkspace?.canConfigureTextDisplay != true)
+            // Rechter Vorschau-Streifen (Minimap). Default aus — verdeckte
+            // rechts Text und stand im Freeze-Verdacht.
+            Toggle("Minimap anzeigen", isOn: $showMinimap)
+            Divider()
+            Button("Bereich ein-/ausklappen") { CodeFoldingCommands.toggleCurrent() }
+                .disabled(activeDocumentContext.workspace?.activeTab == nil)
+            Button("Alle Bereiche einklappen") { CodeFoldingCommands.collapseAll() }
+                .disabled(activeDocumentContext.workspace?.activeTab == nil)
+            Button("Alle Bereiche ausklappen") { CodeFoldingCommands.expandAll() }
+                .disabled(activeDocumentContext.workspace?.activeTab == nil)
+            Toggle("Seitenleiste anzeigen", isOn: $showSidebar)
+                .disabled(activeDocumentContext.workspace == nil)
+            Toggle("Markdown-Vorschau rechts anzeigen", isOn: $showMarkdownPreview)
+            .keyboardShortcut("m", modifiers: [.command, .shift])
+            if let workspace = commandWorkspace {
+                SourceSplitMenuItem(workspace: workspace)
+                DocumentNavigationCommands(workspace: workspace, outline: workspace.documentOutline)
+            }
+        }
+    }
+
+    @CommandsBuilder
+    private var documentCommands: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("Neues Dokumentfenster") {
+                // Reiner Startzustand (ein Fenster, nur ein unberührter
+                // leerer Tab, kein Projekt): ⌘N legt wie ⌘T einen Tab im
+                // selben Fenster an, statt ein zweites Fenster zu stapeln.
+                // Sonst wie gehabt.
+                guard let target = commandWorkspace else {
+                    DocumentWindowController.openNewDocument()
+                    return
+                }
+                if WelcomeLogic.newWindowCommandOpensTab(
+                    tabs: target.tabs,
+                    hasProject: target.projectURL != nil,
+                    visibleDocumentWindows:
+                        DocumentWindowController.visibleDocumentWindowCount()
+                ) {
+                    target.openNewTab()
+                } else {
+                    DocumentWindowController.openNewDocument()
+                }
+            }
+            .keyboardShortcut("n", modifiers: .command)
+            Button("Neuer Tab") {
+                if let commandWorkspace {
+                    commandWorkspace.openNewTab()
+                } else {
+                    DocumentWindowController.openNewDocument()
+                }
+            }
+                .keyboardShortcut("t", modifiers: .command)
+            Button("Datei öffnen…") {
+                DocumentWindowController.workspaceForOpening().openFile()
+            }
+                .keyboardShortcut("o", modifiers: .command)
+            Button("Code-Erklärung öffnen…") { CodeExplanationPlayer.openPackage() }
+            // Ordner als Projekt öffnen:
+            // lädt den Dateibaum in die Seitenleiste und merkt den Ordner
+            // in „Zuletzt benutzte Projekte" (Willkommensbildschirm).
+            Button("Ordner öffnen…") {
+                DocumentWindowController.workspaceForOpening().openFolderAsProject()
+            }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+            Button("Terminal im aktuellen Ordner …") {
+                commandWorkspace?.openTerminal()
+            }
+            .disabled(commandWorkspace?.terminalDirectory == nil)
+            .help(commandWorkspace?.terminalDirectory == nil
+                  ? (commandWorkspace?.terminalUnavailableReason
+                     ?? L10n.string("Kein Dokumentfenster ist aktiv."))
+                  : L10n.string("Öffnet Terminal.app nativ im aktuellen Projektordner; ohne Projekt im Ordner der aktiven Datei."))
+            // Zuletzt benutzte Dateien (K2). Eigene View mit
+            // @ObservedObject, damit das Untermenü auf Änderungen der
+            // recentFiles-Liste reagiert.
+            RecentFilesMenu(workspace: workspace)
+            Divider()
+            // BBEdit „Reload from Disk" (Kap. 3 S. 59): aktiven Tab frisch
+            // von der Platte laden; bei ungespeicherten Änderungen fragt
+            // dieselbe Rückfrage wie die automatische Erkennung.
+            Button("Von Festplatte neu laden") { commandWorkspace?.reloadActiveTabFromDisk() }
+            // Umwandlung eines erkannten Fremdformats (RTF, DOCX, …) nach
+            // Markdown. Eigene View, damit der Punkt der Verfügbarkeit des
+            // aktiven Tabs folgt; ohne installiertes „Poor Man's Text"
+            // bleibt er still deaktiviert.
+            MarkdownImportMenuItem(workspace: workspace)
+            Divider()
+            Button("Schließen") {
+                // Das Menü bleibt global sichtbar. Ist die Hilfe vorn,
+                // gehört ⌘W aber ihr und darf keinen Hintergrund-Tab
+                // schließen (gleiches Verhalten wie der Event-Monitor).
+                if HelpWindow.isHelpWindow(NSApp.keyWindow) {
+                    HelpWindow.close()
+                } else if ExternalDiffWindow.isExternalDiffWindow(NSApp.keyWindow) {
+                    NSApp.keyWindow?.performClose(nil)
+                } else if ControlSnapshotWindow.isSnapshotWindow(NSApp.keyWindow) {
+                    NSApp.keyWindow?.performClose(nil)
+                } else if AboutWindow.isAboutWindow(NSApp.keyWindow) {
+                    NSApp.keyWindow?.performClose(nil)
+                } else if SettingsWindowConfiguration.isSettingsWindow(
+                    NSApp.keyWindow
+                ) {
+                    NSApp.keyWindow?.performClose(nil)
+                } else if let searchWindow = NSApp.keyWindow,
+                          SearchWindow.isSearchWindow(searchWindow),
+                          let searchWorkspace = WorkspaceWindowRegistry.workspace(
+                              for: searchWindow
+                          ) {
+                    searchWorkspace.showSearchDialog = false
+                } else if let target = CommandTargeting.targetWorkspace() {
+                    // Beim Schließen gibt es bewusst keinen Rückfall auf
+                    // den Start-Workspace: Ist das Vorderfenster nicht
+                    // eindeutig gebunden, ist ein No-op sicherer als ein
+                    // geschlossenes Dokumentfenster dahinter.
+                    target.closeActiveTab()
+                } else {
+                    NSSound.beep()
+                }
+            }
+                .keyboardShortcut("w", modifiers: .command)
+        }
+    }
+
+    @CommandsBuilder
+    private var documentOutputCommands: some Commands {
+        // Speichern und Drucken zusammen in einer Gruppe: Der
+        // Commands-Builder nimmt höchstens zehn Einträge, und die sind
+        // bereits vergeben (siehe Kommentar bei „Über Fastra").
+        Group {
+            CommandGroup(replacing: .saveItem) {
+                // Ohne eindeutiges Zieldokument mit dem Systemton rückmelden,
+                // dass ⌘S nicht ausgeführt wurde, wie bei ⌘W.
+                Button("Speichern") {
+                    guard let commandWorkspace else { NSSound.beep(); return }
+                    commandWorkspace.saveActiveTab()
+                }
+                    .keyboardShortcut("s", modifiers: .command)
+                    .disabled(activeDocumentContext.workspace == nil)
+                Button("Speichern unter…") {
+                    guard let commandWorkspace else { NSSound.beep(); return }
+                    commandWorkspace.saveActiveTabAs()
+                }
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                    .disabled(activeDocumentContext.workspace == nil)
+            }
+            // Drucken (mit Papierformat). Eigene View, damit die Punkte
+            // dem aktiven Tab folgen: Ob ein Dokument druckbar ist und
+            // welche Fassung ⌘P nimmt, hängt an der sichtbaren Ansicht.
+            CommandGroup(replacing: .printItem) {
+                PrintMenuItems(workspace: workspace)
+            }
+        }
+    }
+
+    @CommandsBuilder
+    private var searchCommands: some Commands {
+        CommandMenu("Suchen") {
+            // CMD+F: formatierten Text oder den Quelltext der Datei suchen.
+            Button {
+                guard let commandWorkspace else { return }
+                NotificationCenter.default.post(name: .fastraShowSearchFile,
+                                                object: commandWorkspace)
+            } label: {
+                Text(verbatim: commandWorkspace?.activeMarkdownIsVisual == true && commandWorkspace?.showSearchDialog != true
+                     ? L10n.string("Im formatierten Text suchen…") : L10n.string("Suchen & Ersetzen…"))
+            }
+            .disabled(commandWorkspace == nil)
+            .keyboardShortcut("f", modifiers: .command)
+            if commandWorkspace?.activeMarkdownIsVisual == true {
+                Button("Markdown-Quelltext suchen und ersetzen…") {
+                    guard let commandWorkspace else { return }
+                    NotificationCenter.default.post(name: .fastraShowSearchFile, object: commandWorkspace,
+                                                    userInfo: ["source": true])
+                }.keyboardShortcut("f", modifiers: [.command, .option])
+            }
+
+            // CMD+SHIFT+F: Mehrdatei-Suche (erweiterter Modus). Beim
+            // Öffnen wird der Scope auf „Projekt" gesetzt, wenn das
+            // Fenster ein Projekt hat, sonst auf „Ordner" — das Fenster
+            // wächst automatisch, falls noch zu klein.
+            //
+            // Der Menüklick nutzt bewusst die erzwingende Notification:
+            // Der Kurzbefehl ⇧⌘F holt eine bereits befüllte Maske nur nach
+            // vorn und behält ihren Bereich, ein ausdrücklich mit „In
+            // Projekt oder Ordnern suchen…" beschrifteter Menüpunkt muss
+            // dagegen immer die Mehrdatei-Suche zeigen.
+            Button("In Projekt oder Ordnern suchen…") {
+                guard let commandWorkspace else { return }
+                NotificationCenter.default.post(name: .fastraShowSearchFolderForced,
+                                                object: commandWorkspace)
+            }
+            .disabled(commandWorkspace == nil)
+            .keyboardShortcut("f", modifiers: [.command, .shift])
+
+            Divider()
+
+            // „Auswahl als Suchbegriff" (⌘E, BBEdit „Use Selection for
+            // Find", K5): selektierten Editor-Text als Suchbegriff
+            // übernehmen und die Maske öffnen (sucht nicht von selbst).
+            Button("Auswahl als Suchbegriff") {
+                guard let commandWorkspace else { return }
+                commandWorkspace.useSelectionForFind()
+                commandWorkspace.scope = .file
+                // Der selektierte Text wird zum Suchbegriff → global
+                // danach suchen, nicht innerhalb der Selektion (sonst
+                // fände er nur sich selbst). „Nur in Auswahl" daher aus.
+                commandWorkspace.setSearchInSelectionOnly(false)
+                commandWorkspace.showSearchDialog = true
+                // Eine offene, aber verdeckte Maske sonst unsichtbar befüllt.
+                commandWorkspace.requestSearchPanelToFront()
+            }
+            .keyboardShortcut("e", modifiers: .command)
+
+            Button("Suchen & Ersetzen ausblenden") {
+                commandWorkspace?.showSearchDialog = false
+                if let commandWorkspace { commandWorkspace.markdownVisualFind.close(in: commandWorkspace) }
+            }
+                .keyboardShortcut(.escape, modifiers: [])
+
+            Divider()
+
+            // XPath-Navigation: schwebende Leiste für XML-artige Dokumente.
+            // Teilset: /, //, *, [n], [@attr], [@attr='wert'], @attr,
+            // text().
+            Button("XPath-Navigation…") {
+                guard let commandWorkspace else { return }
+                NotificationCenter.default.post(name: .fastraShowXPathBar,
+                                                object: commandWorkspace)
+            }
+            .keyboardShortcut("x", modifiers: [.command, .shift])
+            .disabled(commandWorkspace?.activeTabSupportsXPath != true)
+
+            Divider()
+
+            // Datei-Vergleich ohne Git (BBEdit „Find Differences"). ⌃⌘D ist
+            // frei — ⌘D wäre mit macOS-Konventionen
+            // (Lesezeichen/Duplizieren) belegt.
+            Button("Dateien vergleichen…") {
+                commandWorkspace?.presentCompareFilesDialog()
+            }
+            .keyboardShortcut("d", modifiers: [.command, .control])
+
+            Button("Ordner vergleichen…") {
+                commandWorkspace?.presentFolderComparisonDialog()
+            }.disabled(commandWorkspace == nil)
+
+            // BBEdit „Compare Against Disk File": ungespeicherten
+            // Editor-Inhalt gegen den Plattenstand derselben Datei —
+            // ohne Dialog, direkt ins Differenzfenster.
+            Button("Mit gespeicherter Fassung vergleichen") {
+                commandWorkspace?.compareActiveTabAgainstDisk()
+            }
+            .disabled(commandWorkspace?.canCompareActiveTabAgainstDisk != true)
+            .help(commandWorkspace?.canCompareActiveTabAgainstDisk == true
+                  ? L10n.string("Vergleicht den ungespeicherten Editor-Inhalt mit dem gespeicherten Stand der Datei.")
+                  : L10n.string("Nur aktiv, wenn der aktive Tab ungespeicherte Änderungen an einer Datei hat."))
+        }
+    }
+
+    @CommandsBuilder
+    private var textCommands: some Commands {
+        // „Text"-Menü (BBEdit-Basics, TextOperations). Die Buttons posten
+        // `.fastraTextOp` mit der TextOpKind; der AppDelegate wendet sie auf
+        // den aktiven Editor an (gleiche Logik wie das Rechtsklick-Submenü).
+        // Operieren auf der Selektion bzw. — ohne Selektion — der ganzen Datei.
+        CommandMenu("Text") {
+            Button("Textbausteine…") { commandWorkspace?.openTextSnippets() }
+                .disabled(commandWorkspace?.canUseTextSnippets != true)
+            Button("Gespeicherte Textabläufe…") { commandWorkspace?.presentTextWorkflows() }
+                .disabled(commandWorkspace?.activeTab?.isEditableTextDocument != true || commandWorkspace?.activeViewMode != .text)
+            Divider()
+            Button("Dokument formatieren") { postDocumentFormatting() }
+                .keyboardShortcut("f", modifiers: [.option, .shift])
+                .disabled(commandWorkspace?.activeDocumentFormattingID == nil)
+            // Etappe 6: native JSON-/XML-Prüfung mit Fehlerposition und
+            // konservatives Minify — bewusst keine gebündelten Fremd-Linter
+            // (JS/CSS/HTML bleiben außen vor).
+            Button("Dokument prüfen") {
+                guard commandWorkspace != nil else { return }
+                NotificationCenter.default.post(name: .fastraLintDocument,
+                                                object: nil)
+            }
+            .disabled(commandWorkspace?.activeDocumentLintMode == nil)
+            Button("Dokument minifizieren") {
+                guard commandWorkspace != nil else { return }
+                NotificationCenter.default.post(name: .fastraMinifyDocument,
+                                                object: nil)
+            }
+            .disabled(commandWorkspace?.activeDocumentFormattingID == nil)
+            Divider()
+            Button(TextOpKind.uppercase.title)  { postTextOp(.uppercase) }
+            Button(TextOpKind.lowercase.title)  { postTextOp(.lowercase) }
+            Button(TextOpKind.titlecase.title)  { postTextOp(.titlecase) }
+            Divider()
+            Button(TextOpKind.trimTrailing.title) { postTextOp(.trimTrailing) }
+            Button(TextOpKind.detab.title)        { postTextOp(.detab) }
+            Button(TextOpKind.entab.title)        { postTextOp(.entab) }
+            Divider()
+            // Texthygiene (BBEdit „Zap Gremlins" / „Straighten Quotes") —
+            // Steuerzeichen und geschwungene Anführungszeichen aus Logs/
+            // Exporten bereinigen, bevor man sucht/ersetzt.
+            Button(TextOpKind.zapGremlins.title)      { postTextOp(.zapGremlins) }
+            Button(TextOpKind.straightenQuotes.title) { postTextOp(.straightenQuotes) }
+            Button(TextOpKind.educateQuotes.title)    { postTextOp(.educateQuotes) }
+            // BBEdit „Convert Escape Sequences": \n/\xNN/\uNNNN/HTML-Entities/
+            // %NN in echte Zeichen auflösen — Texthygiene für Logs/Exporte.
+            Button(TextOpKind.convertEscapeSequences.title) { postTextOp(.convertEscapeSequences) }
+            Divider()
+            // Kein ⌘]/⌘[ als Kürzel: CodeEditTextView installiert einen
+            // eigenen keyDown-Monitor (wie bei CMD+F), der diese Kombis
+            // abfängt, bevor das SwiftUI-Command greift — der Shortcut wäre
+            // also tot/irreführend. Auslösung daher nur per Menü-Klick.
+            Button(TextOpKind.shiftRight.title) { postTextOp(.shiftRight) }
+            Button(TextOpKind.shiftLeft.title)  { postTextOp(.shiftLeft) }
+            Divider()
+            Button(TextOpKind.reverseLines.title)     { postTextOp(.reverseLines) }
+            Button(TextOpKind.removeBlankLines.title) { postTextOp(.removeBlankLines) }
+            Button(LineOperations.SortDirection.ascending.title) {
+                postLineSort(.ascending)
+            }
+            Button(LineOperations.SortDirection.descending.title) {
+                postLineSort(.descending)
+            }
+            Button(TextOpKind.joinLines.title)        { postTextOp(.joinLines) }
+            Button(TextOpKind.joinLinesTight.title)   { postTextOp(.joinLinesTight) }
+            Button(TextOpKind.prefixLines.title)      { postTextOp(.prefixLines) }
+            Button(TextOpKind.suffixLines.title)      { postTextOp(.suffixLines) }
+            // Zeilennummern (BBEdit „Add/Remove Line Numbers") — rechtsbündig,
+            // ein Trenner-Leerzeichen; Entfernen strippt die führende Nummer.
+            Button(TextOpKind.addLineNumbers.title)    { postTextOp(.addLineNumbers) }
+            Button(TextOpKind.removeLineNumbers.title) { postTextOp(.removeLineNumbers) }
+            Divider()
+            // Zeichen-/Wörter-Tauschen (BBEdit „Exchange Characters/Words") —
+            // wirkt am Cursor bzw. an den Selektions-Enden.
+            Button(TextOpKind.exchangeCharacters.title) { postTextOp(.exchangeCharacters) }
+            Button(TextOpKind.exchangeWords.title)      { postTextOp(.exchangeWords) }
+            Divider()
+            // Zeilen-Verarbeitung (BBEdit „Process Lines Containing" / „Process
+            // Duplicate Lines"): nach RegEx-Muster filtern bzw. Dubletten
+            // finden/entfernen — die RegEx-nahen Werkzeuge im „Text"-Menü.
+            Button(TextOpKind.keepLinesMatching.title)        { postTextOp(.keepLinesMatching) }
+            Button(TextOpKind.deleteLinesMatching.title)      { postTextOp(.deleteLinesMatching) }
+            Button(TextOpKind.keepDuplicateLines.title)       { postTextOp(.keepDuplicateLines) }
+            Button(TextOpKind.removeAllDuplicatedLines.title) { postTextOp(.removeAllDuplicatedLines) }
+            Divider()
+            // BBEdit „Hard Wrap": jede Zeile an Wortgrenzen auf eine feste
+            // Spaltenbreite umbrechen (Gegenstück zu „Zeilen verbinden").
+            Button(TextOpKind.hardWrap.title) { postTextOp(.hardWrap) }
+            Divider()
+            // Unicode-Gruppe (BBEdit Kap. 5 S. 156): Leerzeichen-Varianten
+            // vereinheitlichen, Diakritika entfernen, NFC/NFD-Normalisierung.
+            Button(TextOpKind.normalizeSpaces.title)   { postTextOp(.normalizeSpaces) }
+            Button(TextOpKind.stripDiacriticals.title) { postTextOp(.stripDiacriticals) }
+            Button(TextOpKind.precomposeUnicode.title) { postTextOp(.precomposeUnicode) }
+            Button(TextOpKind.decomposeUnicode.title)  { postTextOp(.decomposeUnicode) }
+            // Emoji-Darstellung: Zeichen wie ⏸
+            // sind laut Unicode Textzeichen und werden erst mit dem
+            // Variantenselektor U+FE0F überall farbig gezeigt.
+            Button(TextOpKind.addEmojiPresentation.title) {
+                postTextOp(.addEmojiPresentation)
+            }
+            Button(TextOpKind.removeEmojiPresentation.title) {
+                postTextOp(.removeEmojiPresentation)
+            }
+            Divider()
+            // 4D-Export-Transformation: Token-Suffixe kanonischer Exporte
+            // strippen bzw. Befehls- Token ergänzen (Konstanten-Nummern
+            // kennt keine öffentliche Quelle — der Titel sagt ehrlich
+            // „Befehls-Token").
+            Button(TextOpKind.fourDDetokenize.title)       { postTextOp(.fourDDetokenize) }
+            Button(TextOpKind.fourDTokenizeCommands.title) { postTextOp(.fourDTokenizeCommands) }
+        }
+    }
+
+    @CommandsBuilder
+    private var markdownCommands: some Commands {
+        // „Markdown"-Menü: Formatierungsbefehle auf den Quelltext, nur für
+        // Markdown-Tabs aktiv. Dieselben Befehle liegen in der
+        // Editor-Toolbar und im Rechtsklickmenü; hier tragen sie die
+        // Tastenkürzel.
+        CommandMenu("Markdown") {
+            Group {
+                markdownFormatButton(.bold)
+                markdownFormatButton(.italic)
+                markdownFormatButton(.highlight)
+                markdownFormatButton(.code)
+                markdownFormatButton(.hardBreak)
+                Divider()
+                markdownFormatButton(.heading1)
+                markdownFormatButton(.heading2)
+                markdownFormatButton(.heading3)
+                markdownFormatButton(.plainParagraph)
+            }
+            .disabled(!activeTabIsMarkdown)
+            Group {
+                Divider()
+                markdownFormatButton(.bulletList)
+                markdownFormatButton(.orderedList)
+                markdownFormatButton(.taskList)
+                markdownFormatButton(.quote)
+                Divider()
+                markdownFormatButton(.link)
+                markdownFormatButton(.insertTable)
+                Divider()
+                Button("Images-Ordner aufräumen…") { MarkdownImageCleanup.present() }
+                Button("Lokale Verweise prüfen…") {
+                    if let workspace = commandWorkspace { workspace.markdownReferences.present(in: workspace) }
+                }
+            }
+            .disabled(!activeTabIsMarkdown)
+        }
+    }
+
+    @CommandsBuilder
+    private var projectCommands: some Commands {
+        // Gemeinsame Gruppe (Builder-Limit von zehn Einträgen, siehe oben):
+        // „Makros" (4D-Methodeneditor-Makros, Idee #28) und „Git".
+        Group {
+            // „Makros"-Menü: die 4D-Makros der aktiven `.4dm`-Datei.
+            // Ohne 4D-Dokument bleibt das Menü sichtbar, aber erklärt sich.
+            CommandMenu("Makros") {
+                if let commandWorkspace {
+                    FourDMacroMenuItems(workspace: commandWorkspace)
+                } else {
+                    Button("Kein Dokumentfenster aktiv") { }.disabled(true)
+                }
+            }
+
+            CommandMenu("Git") {
+                if let commandWorkspace {
+                    GitProjectMenu(workspace: commandWorkspace)
+                } else {
+                    Button("Kein Dokumentfenster aktiv") { }.disabled(true)
+                }
+            }
+        }
+    }
+}
+
+private struct GitProjectMenu: View {
+    @ObservedObject var workspace: Workspace
+
+    var body: some View {
+        Group {
+            Button("Verlauf anzeigen") { workspace.openGitLog() }
+            Button("Änderungen anzeigen (Diff)") { workspace.openGitDiff() }
+        }
+        .disabled(workspace.gitStatus == nil)
+        if workspace.gitStatus == nil,
+           workspace.projectURL == nil || workspace.gitRepositorySnapshot != nil {
+            Button("Verlauf und Diff benötigen ein geöffnetes Git-Repository.") { }
+                .disabled(true)
+        }
+        Divider()
+        GitActionMenu(workspace: workspace)
     }
 }
 

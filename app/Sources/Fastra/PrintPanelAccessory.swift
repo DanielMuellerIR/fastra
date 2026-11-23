@@ -1,23 +1,14 @@
 // PrintPanelAccessory.swift
 //
-// Zubehörfeld im System-Druckdialog: Kopf-/Fußzeile und Zeilennummern lassen
-// sich direkt im Dialog umschalten (beauftragt 2026-08-18 nach der manuellen
-// Druckabnahme). Eine Änderung wirkt dreifach:
-//   1. Sie steht sofort im `NSPrintInfo`-Dictionary des laufenden Auftrags —
-//      `PrintDocumentTextView` liest seine Optionen bei JEDER Seitenaufteilung
-//      frisch von dort (siehe `refreshDialogOptions`), die Dialog-Vorschau
-//      paginiert also live neu.
-//   2. Sie wird in den Einstellungen gespeichert (`PrintPreferences`) — Dialog
-//      und Einstellungsfenster bleiben dieselbe eine Quelle, der nächste
-//      Ausdruck startet mit der zuletzt getroffenen Wahl.
-//   3. Die Vorschau des Systemdialogs beobachtet die unten deklarierten
-//      Preview-Schlüsselpfade und zeichnet nach jedem Umschalten neu.
+// Zubehörfeld für Kopf-/Fußzeile und Zeilennummern im System-Druckdialog.
+// Eine Änderung aktualisiert das `NSPrintInfo`-Dictionary des Auftrags und
+// `PrintPreferences`. `PrintDocumentTextView.refreshDialogOptions` liest
+// vor jeder Seitenaufteilung neu; die Preview-Schlüsselpfade stoßen auch
+// das Neuzeichnen an. Der nächste Ausdruck übernimmt die letzte Wahl.
 //
-// Die Seitenränder bleiben während eines laufenden Auftrags bewusst fest auf
-// dem Stand beim Öffnen des Dialogs: Ein Umschalten der Kopf-/Fußzeile
-// verschiebt also keine Ränder mitten in der Vorschau. Die Eckangaben passen
-// auch in den Mindestrand von 40 Punkt — eingeschaltet ohne reservierten
-// Zusatzrand stehen sie nur etwas dichter am Text.
+// Seitenränder bleiben während des Auftrags auf dem Stand beim Dialogstart.
+// Die Eckangaben passen auch in den Mindestrand von 40 Punkt; ohne reservierten
+// Zusatzrand stehen sie dichter am Text.
 
 import AppKit
 

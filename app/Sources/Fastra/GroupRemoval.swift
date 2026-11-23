@@ -1,36 +1,21 @@
 // GroupRemoval.swift
 //
-// Gegenstück zu „Gruppe definieren" (GroupBuilder): löst eine bestehende
-// Capture Group wieder auf — die Klammern verschwinden, der Inhalt bleibt.
-// Pure Logik, voll testbar (GroupRemovalTests).
-//
-// Sicherheits-Philosophie wie überall in Fastra: Lieber eine Aktion
-// VERWEIGERN (nil + Beep/Hinweis in der UI) als ein Pattern erzeugen,
-// das still etwas anderes matcht. Fünf Verweigerungs-Gründe:
-//
-//   1. Das Replace-Template referenziert die Gruppe (`$k`) — nach dem
-//      Löschen wäre die Referenz kaputt. Erst Replace anpassen.
-//   2. Direkt hinter der Gruppe steht ein Quantifier: `(abc)+` ohne
-//      Klammern wäre `abc+` — der Quantifier würde plötzlich nur noch
-//      das letzte Zeichen treffen. Semantik-Änderung → verweigern.
-//   3. Im Gruppen-Inhalt liegt eine Alternation (`|`), die nicht in einer
-//      tieferen Gruppe steckt: `(a|b)c` ohne Klammern wäre `a|bc`.
-//      Ebenfalls Semantik-Änderung → verweigern. (Konservativ geprüft:
-//      auch eine Alternation in einer nicht-fangenden Untergruppe führt
-//      zur Verweigerung — falsch-negativ ist hier billiger als ein
-//      verändertes Suchverhalten.)
-//   4. Das SUCHMUSTER enthält einen Rückverweis (`\1`, `\k<name>`).
-//      Rückverweise zeigen wie `$N` auf Gruppennummern, nur eben innerhalb
-//      des Suchausdrucks — und das Auflösen einer Gruppe verschiebt genau
-//      diese Nummerierung. Gemessen: `(a)(b)\1` trifft „aba", das daraus
-//      gebaute `a(b)\1` trifft „aba" nicht mehr, dafür „abb"; `(a)(b)\2`
-//      ergäbe `a(b)\2` und ließe sich gar nicht mehr übersetzen.
-//   5. Das Replace-Template ließe sich nicht gleichbedeutend umschreiben.
-//      Das betrifft Referenzen auf nicht vorhandene Gruppen: Mit zehn
-//      Gruppen zeigt `$11` ins Leere, mit neun liest Foundation daraus
-//      Gruppe 1 plus das Literal „1" — und eine einstellige Ausweichnummer
-//      über neun gibt es nicht.
+// Löst eine Capture-Gruppe auf: Klammern entfernen, Inhalt behalten und
+// nachfolgende Ersetzungsreferenzen umnummerieren. `nil` verhindert eine
+// veränderte Such-/Ersetzungssemantik bei diesen Fällen:
+// 1. Die entfernte Gruppe wird im Ersetzungsmuster referenziert.
+// 2. Ein nachfolgender Quantifizierer würde ohne Klammern anders binden
+//    (`(abc)+` würde `abc+`).
+// 3. Alternation ist nicht durch eine tiefere fangende Gruppe geschützt
+//    (`(a|b)c` würde `a|bc`). Auch nichtfangende Untergruppen werden
+//    konservativ abgewiesen.
+// 4. Das Suchmuster enthält Rückverweise, deren Nummerierung sich verschöbe.
+// 5. Foundation würde das umgeschriebene Ersetzungsmuster anders auslegen:
+//    `$11` ist bei zehn Gruppen leer, bei neun aber Gruppe 1 plus „1“.
+// Die Oberfläche erklärt eine verweigerte Aktion; `GroupRemovalTests`
+// prüft die reine Logik.
 
+import FastraPatternSyntax
 import Foundation
 
 enum GroupRemoval {
@@ -66,13 +51,13 @@ enum GroupRemoval {
         if quantifierFollows { return nil }
 
         // Verweigerungs-Grund 3: Alternation im Gruppen-Inhalt, die nicht
-        // in einer TIEFEREN fangenden Gruppe steckt.
+        // in einer tieferen fangenden Gruppe steckt.
         let innerEnd = group.innerRange.location + group.innerRange.length
         let hasTopLevelAlternation = tokenization.tokens.contains { token in
             guard token.kind == .alternation,
                   token.range.location >= group.innerRange.location,
                   token.range.location < innerEnd else { return false }
-            // Liegt das `|` vollständig in einer ANDEREN Gruppe, die
+            // Liegt das `|` vollständig in einer anderen Gruppe, die
             // ihrerseits komplett im Inhalt unserer Gruppe liegt? Dann
             // schützt deren Klammerung die Semantik.
             let shielded = tokenization.groups.contains { other in
@@ -100,7 +85,7 @@ enum GroupRemoval {
         var newPattern = ns.replacingCharacters(in: suffixRange, with: "")
         newPattern = (newPattern as NSString).replacingCharacters(in: prefixRange, with: "")
 
-        // Replace-Template: alle Referenzen ÜBER der gelöschten Nummer eins
+        // Replace-Template: alle Referenzen über der gelöschten Nummer eins
         // herunterschieben. Verweigerungs-Grund 5 steckt in `rewritten`: Es
         // prüft am Ergebnis nach, dass die Ersetzung denselben Text erzeugt wie
         // vorher — nicht am Ziffernbudget. So fällt auch der Fall auf, in dem
@@ -115,7 +100,7 @@ enum GroupRemoval {
     }
 
     /// `true`, wenn das Replace-Template `$number` referenziert.
-    /// Berücksichtigt Escapes (`\$` ist KEINE Referenz) und die Ziffernregel
+    /// Berücksichtigt Escapes (`\$` ist keine Referenz) und die Ziffernregel
     /// von Foundation: Wie viele Ziffern zur Nummer gehören, hängt von
     /// `groupCount` ab — bei zwei Gruppen referenziert `$12` die Gruppe 1
     /// und nicht die Gruppe 12.
@@ -131,7 +116,7 @@ enum GroupRemoval {
     /// Schiebt alle `$N`-Referenzen mit N > `above` um eins herunter.
     /// `$0` (ganzer Treffer) und Referenzen ≤ `above` bleiben unverändert.
     ///
-    /// - Parameter groupCount: fangende Gruppen im Pattern VOR dem Löschen;
+    /// - Parameter groupCount: fangende Gruppen im Pattern vor dem Löschen;
     ///   danach ist es genau eine weniger.
     static func shiftReferencesDown(in replacement: String, above: Int,
                                     groupCount: Int) -> String {
@@ -140,7 +125,7 @@ enum GroupRemoval {
         )
     }
 
-    /// Die Umnummerierung des Auflösens: Jede Gruppe ÜBER der gelöschten rückt
+    /// Die Umnummerierung des Auflösens: Jede Gruppe über der gelöschten rückt
     /// um eins nach vorn, `$0` und alles darunter bleibt. Wie ins Leere
     /// zeigende Referenzen behandelt werden, entscheidet
     /// `ReplacementReferences` einheitlich für beide Aktionen.

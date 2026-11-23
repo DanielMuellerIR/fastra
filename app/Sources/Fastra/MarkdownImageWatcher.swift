@@ -1,19 +1,11 @@
 // MarkdownImageWatcher.swift
 //
-// Beobachtet die Elternordner der in der Markdown-Vorschau referenzierten
-// Bilder über FSEvents (Roadmap „Nacharbeit aus dem Code-Review 2026-08-06").
-// Hintergrund: Bei unverändertem Markdown kehrte die Vorschau-Aktualisierung
-// zurück, bevor Bild-Adressen neu berechnet wurden — ein extern am gleichen
-// Pfad ausgetauschtes Bild blieb deshalb unsichtbar alt, bis sich Markdown,
-// Dokumentpfad oder Darstellungsstil änderten.
-//
-// Vorlage ist `ProjectFileWatcher`, aber mit MEHREREN Pfaden und ohne
-// Projektbindung: Ein Markdown-Dokument darf Bilder aus beliebigen Ordnern
-// referenzieren. Beobachtet werden die Elternordner (nicht die Dateien
-// selbst) — ein atomarer Austausch ersetzt die Datei durch ein neues Objekt,
-// und der Ordner meldet das zuverlässig. Bei einem symbolischen Link zählen
-// beide Ordner: der des Links und der des aufgelösten Ziels (siehe
-// `directoriesToWatch`).
+// Beobachtet Elternordner referenzierter Bilder über FSEvents, damit extern
+// ersetzte Bilder auch bei unverändertem Markdown neu geladen werden.
+// Ein atomarer Austausch ersetzt das Dateiobjekt; die Beobachtung seines
+// Ordners bleibt dabei wirksam. Bei Symlinks zählen Link- und Zielordner
+// (`directoriesToWatch`). Anders als `ProjectFileWatcher` unterstützt der
+// Watcher mehrere Ordner ohne Projektbindung.
 
 import Foundation
 import CoreServices
@@ -49,15 +41,14 @@ final class MarkdownImageWatcher {
     }
 
     /// Die zu beobachtenden Ordner: zu jedem Bild der Elternordner des
-    /// verlinkten Pfades UND der des symlink-aufgelösten Ziels.
+    /// verlinkten Pfades und der des symlink-aufgelösten Ziels.
     ///
     /// Der zweite Ordner ist nicht bloß Vorsicht: Vorschau-Ausgabe und
     /// Bild-Kennung (`MarkdownImages.imageToken`) lesen ausdrücklich das
     /// aufgelöste Ziel. Zeigt `bilder/foo.png` als symbolischer Link in einen
-    /// anderen Ordner, dann tauscht ein externes Werkzeug die Datei DORT aus —
+    /// anderen Ordner, dann tauscht ein externes Werkzeug die Datei dort aus —
     /// im Ordner des Links passiert dabei nichts, es gibt also kein Ereignis
     /// und die offene Vorschau zeigte weiter das alte Bild
-    /// (Code-Review 2026-08-10).
     ///
     /// Die Auflösung passiert bei jedem Aufruf neu, damit ein auf ein anderes
     /// Ziel umgehängter Link den neuen Zielordner mitbringt. Sie kostet je Bild
@@ -65,14 +56,14 @@ final class MarkdownImageWatcher {
     /// Renderlauf, der ohnehin jedes Bild einmal per `stat` anfasst.
     ///
     /// Wichtig ist die Reihenfolge der beiden Rechnungen: Für den Ordner des
-    /// LINKS wird erst der Dateiname abgeschnitten und dann aufgelöst (sonst
+    /// Links wird erst der Dateiname abgeschnitten und dann aufgelöst (sonst
     /// verschwände genau der Ordner, in dem der Link liegt); für den Ordner des
-    /// ZIELS umgekehrt. Ist die Datei gar kein Link, ergeben beide Rechnungen
+    /// Ziels umgekehrt. Ist die Datei gar kein Link, ergeben beide Rechnungen
     /// denselben Pfad und die Menge bleibt einelementig.
     static func directoriesToWatch(for imageURLs: [URL]) -> Set<String> {
         var directories: Set<String> = []
         for url in imageURLs {
-            // Auch symbolische VERZEICHNIS-Komponenten beobachten. Wird etwa
+            // Auch symbolische Verzeichnis-Komponenten beobachten. Wird etwa
             // `assets` von Ziel A auf Ziel B umgehängt, meldet das der echte
             // Elternordner des Links; im bisherigen Zielordner passiert nichts.
             var current = URL(fileURLWithPath: "/", isDirectory: true)

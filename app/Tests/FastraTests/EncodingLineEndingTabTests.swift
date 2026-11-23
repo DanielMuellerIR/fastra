@@ -56,7 +56,7 @@ func fileLoader_forcedWrongEncodingThrows() throws {
     let url = testTemporaryDirectory()
         .appendingPathComponent("fastra-enc-\(UUID().uuidString).txt")
     defer { try? FileManager.default.removeItem(at: url) }
-    // Latin-1-Bytes (0xE9 allein) sind KEIN gültiges UTF-8.
+    // Latin-1-Bytes (0xE9 allein) sind kein gültiges UTF-8.
     try "café".data(using: .isoLatin1)!.write(to: url)
 
     #expect(throws: FileLoader.LoadError.self) {

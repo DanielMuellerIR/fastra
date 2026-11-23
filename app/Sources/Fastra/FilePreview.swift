@@ -1,9 +1,8 @@
 // FilePreview.swift
 //
-// Read-only-Vorschau für Bilder (ImageIO, mit Downsampling) und PDF (PDFKit)
-// — Etappe 2 Wunschpaket 2026-07. Beide Vorschauen sind reine Anzeigen:
-// Sie verändern nie die Datei und halten nie unkontrolliert das Vollbild
-// im Speicher.
+// Read-only-Vorschau für Bilder (ImageIO, mit Downsampling)
+// und PDF (PDFKit). Die Ansichten verändern keine Datei und laden das
+// Vollbild nicht unkontrolliert in den Speicher.
 
 import SwiftUI
 import AppKit
@@ -18,7 +17,7 @@ enum ImagePreviewLoader {
     /// wird trotzdem nie vollständig dekodiert.
     static let maxThumbnailPixelSize = 3200
 
-    /// Dekodiert ein downgesampeltes Vorschaubild DIREKT auf Zielgröße.
+    /// Dekodiert ein downgesampeltes Vorschaubild direkt auf Zielgröße.
     /// `CGImageSourceCreateThumbnailAtIndex` liest dabei nur die nötigen
     /// Daten — das Vollbild landet nie im Speicher (Leitplanke Etappe 2).
     /// `kCGImageSourceCreateThumbnailWithTransform` übernimmt die
@@ -80,7 +79,7 @@ enum ImagePreviewLoader {
 /// Er ist die Druckvorlage: Gedruckt wird genau dieses Objekt, nie ein
 /// Neuladen von der Platte — zwischen Vorschauaufbau und Druckbefehl kann
 /// die Datei ersetzt worden sein, und der Ausdruck muss zeigen, was das
-/// Fenster zeigt (Reviewfund 2026-08-19).
+/// Fenster zeigt.
 struct VisiblePreviewSnapshot {
     enum Content {
         case image(NSImage)

@@ -37,7 +37,7 @@ fn check(root: &gtk::Widget, label: &str) -> Option<gtk::CheckButton> {
     }
     None
 }
-fn menu(root: &gtk::Widget, label: &str) -> Option<gtk::MenuButton> {
+pub(super) fn menu(root: &gtk::Widget, label: &str) -> Option<gtk::MenuButton> {
     if let Some(item) = root
         .downcast_ref::<gtk::MenuButton>()
         .filter(|m| m.label().as_deref() == Some(label) || m.tooltip_text().as_deref() == Some(label))

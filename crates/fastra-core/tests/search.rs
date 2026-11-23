@@ -466,6 +466,71 @@ fn wildcard_mode_without_a_star_keeps_replacement_stars_and_dollars_literal() {
 }
 
 #[test]
+fn extra_wildcard_runs_stay_empty_past_one_digit() {
+    for group_count in [1, 9, 10] {
+        let find = vec!["*"; group_count].join(":");
+        let text = (1..=group_count)
+            .map(|n| format!("G{n}"))
+            .collect::<Vec<_>>()
+            .join(":");
+        let replacement = ["[*]"; 11].join(" ");
+        let expected = (1..=11)
+            .map(|n| if n <= group_count { format!("[G{n}]") } else { "[]".into() })
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(
+            replace(&text, request(&find, &replacement, SearchMode::Wildcard)),
+            expected
+        );
+    }
+}
+
+#[test]
+fn wildcard_notice_counts_only_standalone_star_runs() {
+    use fastra_core::wildcard::{compile_find, star_run_count};
+    for (text, expected) in [("", 0), ("*\u{301}", 0), ("**a***", 2), ("*\u{301} ** $1 *", 2)] {
+        assert_eq!(star_run_count(text).unwrap(), expected);
+        assert_eq!(compile_find(text).unwrap().star_offsets.len(), expected);
+    }
+}
+
+#[test]
+fn empty_wildcard_run_preserves_literal_digit_after_explicit_reference() {
+    let find = ["*"; 10].join(":");
+    let groups = (1..=10).map(|n| format!("G{n}")).collect::<Vec<_>>();
+    let replacement = ["*"; 10].join("|") + "|$1*7|**9";
+    let expected = groups.join("|") + "|G17|9";
+    assert_eq!(
+        replace(
+            &groups.join(":"),
+            request(&find, &replacement, SearchMode::Wildcard)
+        ),
+        expected
+    );
+    assert_eq!(
+        replace(
+            &groups.join(":"),
+            request(
+                &find,
+                &replacement.replace("*7", "*7\u{301}"),
+                SearchMode::Wildcard,
+            )
+        ),
+        expected.replace("G17", "G17\u{301}")
+    );
+}
+
+#[test]
+fn wildcard_preserves_explicit_reference_with_combining_mark() {
+    let find = ["*"; 12].join(":");
+    let text = (1..=12).map(|n| format!("G{n}")).collect::<Vec<_>>().join(":");
+    assert_eq!(
+        replace(&text, request(&find, "$12\u{301}", SearchMode::Wildcard)),
+        "G12\u{301}"
+    );
+}
+
+#[test]
 fn prepared_search_reuses_pattern_without_leaking_previous_text_or_captures() {
     let cancel = Cancellation::default();
     let prepared = fastra_core::PreparedSearch::new(

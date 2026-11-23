@@ -1,16 +1,11 @@
 // GitReviewFixTests.swift
 //
-// Regressionstests zu Git-Befunden der Code-Reviews vom 2026-08-10 und
-// 2026-08-11:
-//   A1  Fastra darf `index.lock` nie selbst entfernen: Selbst ein direkt nach
-//       der Vorprüfung angelegter fremder Lock muss unangetastet bleiben.
-//   A2  „Verwerfen" muss Repository und Aktionskontext vor der Rückfrage
-//       einfrieren und danach auf Aktualität prüfen.
-//   A3  Der Push muss gegen genau die geprüfte, eindeutige Adresse laufen,
-//       ohne Geheimnisse in Prozessargumente zu schreiben oder die
-//       Remote-Tracking-Referenz zu verlieren.
-//
-// Alle Git-Tests arbeiten ausschließlich gegen temporäre Repositories.
+// Verträge gegen temporäre Repositories prüfen:
+//   A1  Fremde `index.lock`-Dateien niemals selbst entfernen.
+//   A2  Repository/Aktionskontext vor der Verwerfen-Rückfrage binden und
+//       danach erneut auf Aktualität prüfen.
+//   A3  Push nur zur geprüften eindeutigen Adresse, ohne Geheimnisse in argv
+//       oder Verlust der Remote-Tracking-Referenz.
 
 import Foundation
 import Testing
@@ -223,9 +218,9 @@ struct GitReviewFixDiscardContextTests {
         guard GitRunner.isAvailable else { return }
         let fixture = try makeFixture("discard-tracked")
         defer { cleanUp(fixture) }
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
+        let oldDialogs = fixture.workspace.gitInteraction.presentsDialogs
+        fixture.workspace.gitInteraction.presentsDialogs = false
+        defer { fixture.workspace.gitInteraction.presentsDialogs = oldDialogs }
 
         fixture.workspace.projectURL = fixture.first
         let frozen = try #require(fixture.workspace.currentGitActionContext)
@@ -241,9 +236,9 @@ struct GitReviewFixDiscardContextTests {
     func untrackedDiscardStopsAfterProjectChange() throws {
         let fixture = try makeFixture("discard-untracked")
         defer { cleanUp(fixture) }
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
+        let oldDialogs = fixture.workspace.gitInteraction.presentsDialogs
+        fixture.workspace.gitInteraction.presentsDialogs = false
+        defer { fixture.workspace.gitInteraction.presentsDialogs = oldDialogs }
 
         let name = "gleicher-name.txt"
         let inFirst = fixture.first.appendingPathComponent(name)
@@ -267,9 +262,9 @@ struct GitReviewFixDiscardContextTests {
         guard GitRunner.isAvailable else { return }
         let fixture = try makeFixture("discard-multi")
         defer { cleanUp(fixture) }
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
+        let oldDialogs = fixture.workspace.gitInteraction.presentsDialogs
+        fixture.workspace.gitInteraction.presentsDialogs = false
+        defer { fixture.workspace.gitInteraction.presentsDialogs = oldDialogs }
 
         let untracked = fixture.second.appendingPathComponent("neu.txt")
         try Data("B".utf8).write(to: untracked)
@@ -289,9 +284,9 @@ struct GitReviewFixDiscardContextTests {
         guard GitRunner.isAvailable else { return }
         let fixture = try makeFixture("discard-current")
         defer { cleanUp(fixture) }
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
+        let oldDialogs = fixture.workspace.gitInteraction.presentsDialogs
+        fixture.workspace.gitInteraction.presentsDialogs = false
+        defer { fixture.workspace.gitInteraction.presentsDialogs = oldDialogs }
 
         fixture.workspace.projectURL = fixture.first
         let frozen = try #require(fixture.workspace.currentGitActionContext)
@@ -303,6 +298,77 @@ struct GitReviewFixDiscardContextTests {
             #expect(fixture.executor.arguments[index] == ["checkout", "--", "a.txt"])
             #expect(fixture.executor.directories[index].path == fixture.first.path)
         }
+    }
+}
+
+@MainActor
+@Suite("Lebensdauer ausstehender Push-Prüfungen", .serialized)
+struct GitReviewFixPushReadLifetimeTests {
+    @Test("Ausstehende Push-Reads halten den Workspace nicht am Leben",
+          arguments: [false, true])
+    func pendingPushReadDoesNotRetainWorkspace(remoteComparison: Bool) async throws {
+        try #require(GitRunner.isAvailable)
+        let root = try reviewFixTempDirectory("push-read-lifetime")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let suite = "Fastra-PushRead-Lifetime-\(UUID().uuidString)"
+        let defaults = testSuiteDefaults(named: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let executor = ReviewFixExecutor()
+        let coordinator = GitOperationsCoordinator(executor: executor)
+        let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
+        var workspace: Workspace? = Workspace(defaults: defaults,
+            gitOperationsCoordinator: coordinator, gitRepositoryStore: store)
+        weak var weakWorkspace = workspace
+        workspace?.projectURL = root
+        workspace?.gitInteraction.presentsDialogs = false
+        let address = root.appendingPathComponent("remote.git").path
+        workspace?.gitPush(to: GitPushTarget(remote: "origin", addresses: [address]))
+
+        var readIndex = 0
+        func reply(_ prefix: [String], _ outcome: GitExecutionOutcome) async throws {
+            try #require(await waitUntil { executor.count > readIndex })
+            try #require(executor.arguments[readIndex].starts(with: prefix))
+            let index = readIndex
+            readIndex += 1
+            executor.complete(index, outcome)
+        }
+        let config = "remote.origin.url\n\(address)\0"
+        try await reply(GitRemoteConfiguration.orderedRemoteArguments, reviewFixSuccess(config))
+        try await reply(["remote", "get-url", "--push", "--all", "origin"],
+                        reviewFixSuccess(address + "\n"))
+        try await reply(["symbolic-ref", "--short", "--quiet", "HEAD"], reviewFixSuccess("main\n"))
+        try await reply(GitRemoteConfiguration.orderedRemoteArguments, reviewFixSuccess(config))
+        try await reply(["remote", "get-url", "--push", "--all", "origin"],
+                        reviewFixSuccess(address + "\n"))
+        if remoteComparison {
+            try await reply(GitPushCommand.rewriteRuleArguments, reviewFixUnset())
+            try await reply(["symbolic-ref", "--short", "--quiet", "HEAD"], reviewFixSuccess("main\n"))
+            try await reply(["config", "--get", "branch.main.remote"], reviewFixSuccess("origin\n"))
+            try await reply(["config", "--get", "branch.main.merge"], reviewFixSuccess("refs/heads/main\n"))
+            let sourceOID = String(repeating: "a", count: 40)
+            let remoteOID = String(repeating: "b", count: 40)
+            try await reply(["rev-parse", "HEAD"], reviewFixSuccess(sourceOID + "\n"))
+            try await reply(["ls-remote", "--exit-code", "--refs"],
+                            reviewFixSuccess(remoteOID + "\trefs/heads/main\n"))
+            try await reply(["fetch", "--no-tags", "--no-write-fetch-head"], reviewFixSuccess())
+            try #require(await waitUntil { executor.count > readIndex })
+            #expect(executor.arguments[readIndex] == ["rev-list", "--left-right", "--count",
+                                                     "\(sourceOID)...\(remoteOID)"])
+        } else {
+            try #require(await waitUntil { executor.count > readIndex })
+            #expect(executor.arguments[readIndex] == GitPushCommand.rewriteRuleArguments)
+        }
+
+        // Kein closeProject: Ein Fenster darf auch ohne Kontextmutation enden.
+        // Der kontrollierte Read bleibt während der eigentlichen Probe offen.
+        workspace = nil
+        let releasedWhileReading = await waitUntil(timeout: 1) { weakWorkspace == nil }
+        #expect(releasedWhileReading)
+        let pendingReadCount = executor.count
+        executor.complete(readIndex, .cancelled)
+        #expect(await waitUntil { !coordinator.state(for: root).isBusy })
+        #expect(await waitUntil { weakWorkspace == nil })
+        #expect(executor.count == pendingReadCount)
     }
 }
 
@@ -400,7 +466,7 @@ struct GitIntegrationReviewFixPushTargetTests {
                                     in: work)).ok)
         #expect((await reviewFixGit(["commit", "--allow-empty", "-m", "Start"],
                                     in: work)).ok)
-        // Die Konfiguration zeigt auf das FALSCHE Ziel — genau der Zustand, den
+        // Die Konfiguration zeigt auf das falsche Ziel — genau der Zustand, den
         // eine Änderung zwischen Prüfung und Prozessstart hinterlassen würde.
         #expect((await reviewFixGit(["remote", "add", "origin", changed.path],
                                     in: work)).ok)
@@ -410,7 +476,7 @@ struct GitIntegrationReviewFixPushTargetTests {
             refspec: "refs/heads/main:refs/heads/main",
             remoteRef: "refs/heads/main", expectedOID: nil,
             temporaryRemote: "fastra-test")
-        // Selbst eine NACH dem Aufbau des gebundenen Aufrufs eingetragene
+        // Selbst eine nach dem Aufbau des gebundenen Aufrufs eingetragene
         // Push-Umschreibung darf die bestätigte Adresse nicht mehr umlenken.
         #expect((await reviewFixGit(
             ["config", "url.\(changed.path).pushInsteadOf", "fastra-bound-"],
@@ -429,7 +495,7 @@ struct GitIntegrationReviewFixPushTargetTests {
         #expect(!(await reviewFixGit(["rev-parse", "--verify", "refs/heads/main"],
                                      in: changed)).ok)
         // Wichtig für die Oberfläche: Remote-Tracking und Upstream entstehen
-        // wie bisher, weil der Remote-NAME im Aufruf stehen bleibt.
+        // wie bisher, weil der Remote-Name im Aufruf stehen bleibt.
         let tracking = await reviewFixGit(["rev-parse", "refs/remotes/origin/main"],
                                           in: work)
         #expect(tracking.ok)
@@ -514,9 +580,9 @@ struct GitIntegrationReviewFixPushFlowTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let workspace = Workspace(defaults: defaults)
         workspace.projectURL = root
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
+        let oldDialogs = workspace.gitInteraction.presentsDialogs
+        workspace.gitInteraction.presentsDialogs = false
+        defer { workspace.gitInteraction.presentsDialogs = oldDialogs }
         var confirmations: [GitMutationConfirmation] = []
         workspace.gitMutationConfirmationHandler = { confirmation in
             confirmations.append(confirmation)
@@ -583,9 +649,9 @@ struct GitIntegrationReviewFixPushFlowTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let workspace = Workspace(defaults: defaults)
         workspace.projectURL = root
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
+        let oldDialogs = workspace.gitInteraction.presentsDialogs
+        workspace.gitInteraction.presentsDialogs = false
+        defer { workspace.gitInteraction.presentsDialogs = oldDialogs }
         var confirmations: [GitMutationConfirmation] = []
         workspace.gitMutationConfirmationHandler = { confirmation in
             confirmations.append(confirmation)
@@ -681,9 +747,9 @@ struct GitIntegrationReviewFixPushFlowTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let workspace = Workspace(defaults: defaults)
         workspace.projectURL = root
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
+        let oldDialogs = workspace.gitInteraction.presentsDialogs
+        workspace.gitInteraction.presentsDialogs = false
+        defer { workspace.gitInteraction.presentsDialogs = oldDialogs }
         var confirmations = 0
         var rewriteSucceeded = false
         workspace.gitMutationConfirmationHandler = { _ in
@@ -757,9 +823,9 @@ struct GitIntegrationReviewFixPushFlowTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let workspace = Workspace(defaults: defaults)
         workspace.projectURL = root
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
+        let oldDialogs = workspace.gitInteraction.presentsDialogs
+        workspace.gitInteraction.presentsDialogs = false
+        defer { workspace.gitInteraction.presentsDialogs = oldDialogs }
         workspace.gitMutationConfirmationHandler = { _ in true }
 
         workspace.gitPush(to: GitPushTarget(remote: "github",

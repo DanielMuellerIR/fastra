@@ -1,15 +1,8 @@
 // QuitConfirmationVisibilityTests.swift
 //
-// Eine Rückfrage muss zeigen, worum es geht (Fehlerbericht aus dem
-// Arbeitsbetrieb, 2026-08-07): Beim Neustart nach einem Update erschien
-// „Wollen Sie die Datei ‚Ohne Titel' sichern?" — zu einem Dokument, das in
-// keinem Fenster und keinem Tab zu finden war. Ohne Gegenstand ist die Frage
-// nicht beantwortbar: Wer „Nicht sichern" wählt, verwirft etwas Unbekanntes.
-//
-// Geprüft wird der Teil, der ohne Fenster prüfbar ist: Der Tab, über den
-// gefragt wird, ist beim Fragen der AKTIVE. Dass zusätzlich das Fenster nach
-// vorn kommt und verwaiste Workspaces gar nicht erst fragen, liegt in
-// `AppDelegate.applicationShouldTerminate` und im Fenster-Selbsttest.
+// Der von der Sicherungsrückfrage betroffene Tab muss dabei aktiv sein.
+// Fensteraktivierung und Ausschluss verwaister Workspaces prüft der
+// Fenster-Selbsttest über `AppDelegate.applicationShouldTerminate`.
 
 import Foundation
 import Testing
@@ -22,12 +15,12 @@ private func makeWorkspace() -> Workspace {
     return Workspace(defaults: defaults)
 }
 
+@MainActor
 @Suite("Sichtbarkeit der Schließen-Rückfrage")
 struct QuitConfirmationVisibilityTests {
 
-    /// Der Kern des Befunds: Gefragt wird über den zweiten Tab, während der
-    /// erste aktiv ist. Beim Erscheinen des Dialogs muss der GEFRAGTE Tab
-    /// vorne liegen.
+    /// Über den zweiten Tab fragen, während der erste aktiv ist.
+    /// Beim Anzeigen des Dialogs muss der zweite aktiv sein.
     @Test("Beim Beenden ist der gefragte Tab der aktive")
     func quitActivatesTheTabInQuestion() {
         let ws = makeWorkspace()

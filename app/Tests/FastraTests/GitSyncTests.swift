@@ -630,7 +630,8 @@ private func waitUntil(_ description: String = "Asynchroner Testzustand wurde ni
 
 @Suite("Auto-Fetch-Steuerung", .serialized)
 struct GitAutoFetchControllerTests {
-    private func makeController(decision: GitAutomaticFetchDecision = .automatic)
+    private func makeController(decision: GitAutomaticFetchDecision = .automatic,
+                                clock: GitSyncClock = SystemGitSyncClock())
         -> (GitAutoFetchController, SyncTestExecutor, ManualGitScheduler,
             UserDefaults, String) {
         let suite = "Fastra-GitAutoFetch-\(UUID().uuidString)"
@@ -645,6 +646,7 @@ struct GitAutoFetchControllerTests {
         let scheduler = ManualGitScheduler()
         let controller = GitAutoFetchController(store: store,
                                                 preferences: preferencesStore,
+                                                clock: clock,
                                                 executor: executor,
                                                 scheduler: scheduler)
         return (controller, executor, scheduler, defaults, suite)
@@ -790,6 +792,71 @@ struct GitAutoFetchControllerTests {
         first.cancel(); second.cancel(); third.cancel()
     }
 
+    @Test("Ein zweites Fenster kann nach Verlust des ersten die Erstfrage beantworten")
+    func releasedPromptOwnerOffersWaitingWindow() async throws {
+        let clock = MutableGitClock(Date(timeIntervalSince1970: 1_800_000_000))
+        let (controller, executor, _, defaults, suite) = makeController(decision: .ask, clock: clock)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var owner: GitInteraction? = GitInteraction()
+        weak var weakOwner = owner
+        let ownerPrompt = try #require(owner?.automaticFetchPromptHandler())
+        let lock = NSLock()
+        var firstAnswer: ((GitFetchPromptChoice) -> Void)?
+        var secondAnswer: ((GitFetchPromptChoice) -> Void)?
+        let first = controller.observe(repository: syncRepository("released-owner")) { completion in
+            lock.withLock { firstAnswer = completion }
+        }
+        executor.complete(0, syncSuccess("origin\n"))
+        try await waitUntil { lock.withLock { firstAnswer != nil } }
+        let second = controller.observe(repository: syncRepository("waiting-owner")) { completion in
+            lock.withLock { secondAnswer = completion }
+        }
+        defer { first.cancel(); second.cancel() }
+        executor.complete(1, syncSuccess("origin\n"))
+
+        owner = nil
+        #expect(weakOwner == nil)
+        let answer = try #require(lock.withLock { firstAnswer })
+        ownerPrompt(answer)
+        let preferences = GitPreferencesStore(defaults: defaults)
+        try await waitUntil { lock.withLock { secondAnswer != nil } }
+        #expect(preferences.load().automaticFetchDecision == .ask)
+        #expect(preferences.promptDeferredUntil == nil)
+
+        let answerFromSecond = try #require(lock.withLock { secondAnswer })
+        answer(.disabled)
+        answerFromSecond(.later)
+        try await waitUntil { preferences.promptDeferredUntil != nil }
+        #expect(preferences.load().automaticFetchDecision == .ask)
+        #expect(preferences.promptDeferredUntil == clock.now.addingTimeInterval(GitFetchPromptPolicy.deferral))
+    }
+
+    @Test("Eine vor der Main-Zustellung abgemeldete Beobachtung kann die Erstfrage nicht anzeigen")
+    @MainActor
+    func canceledObservationSkipsAlreadyRequestedPrompt() async throws {
+        let (controller, executor, _, defaults, suite) = makeController(decision: .ask)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let lock = NSLock()
+        var shown: [String] = []
+        let first = controller.observe(repository: syncRepository("canceled-observation")) { completion in
+            lock.withLock { shown.append("first") }
+            completion(.later)
+        }
+        let second = controller.observe(repository: syncRepository("active-observation")) { completion in
+            lock.withLock { shown.append("second") }
+            completion(.disabled)
+        }
+        defer { second.cancel() }
+        executor.complete(0, syncSuccess("origin\n"))
+        executor.complete(1, syncSuccess("origin\n"))
+        // Main kann die Anzeige erst nach diesem Cancel übernehmen.
+        first.cancel()
+        let preferences = GitPreferencesStore(defaults: defaults)
+        try await waitUntil { preferences.load().automaticFetchDecision == .disabled }
+        #expect(lock.withLock { shown } == ["second"])
+        #expect(preferences.promptDeferredUntil == nil)
+    }
+
     @Test("Verschiedene Repositories dürfen parallel fetchen")
     func differentRepositoriesParallel() async throws {
         let (controller, executor, _, defaults, suite) = makeController()
@@ -804,14 +871,9 @@ struct GitAutoFetchControllerTests {
     }
 }
 
-// Die Suite treibt Workspaces, deren Completions per `DispatchQueue.main.async`
-// zurückkommen und dabei auch EINFACHE (nicht-`@Published`) Instanzvariablen
-// anfassen. Von einem eigenen Test-Thread aus wäre das dieselbe Absturzklasse,
-// die am 2026-08-09 in GitConflictAndAdvancedTests als SIGSEGV belegt wurde
-// (siehe dort und AGENTS.md, „Bekannte technische Fallen"). Im Produkt läuft
-// der Workspace vollständig auf dem Main-Thread; die MainActor-Tests bilden
-// genau das ab. Die übrigen Suiten dieser Datei treiben nur Store, Coordinator
-// und Controller, die intern verriegelt sind; sie bleiben parallel.
+// Workspace-Suite auf MainActor ausführen, passend zu ihren Main-Queue-
+// Completions und ungeschützten Instanzfeldern. Die übrigen Suites prüfen
+// intern verriegelte Stores, Coordinator und Controller und bleiben parallel.
 @MainActor
 @Suite("Workspace-Pull", .serialized)
 struct GitWorkspacePullTests {
@@ -844,9 +906,9 @@ struct GitWorkspacePullTests {
         try await waitUntil("Initialer Store-Snapshot wurde nicht veröffentlicht") {
             workspace.gitStatus != nil
         }
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
+        let oldDialogs = workspace.gitInteraction.presentsDialogs
+        workspace.gitInteraction.presentsDialogs = false
+        defer { workspace.gitInteraction.presentsDialogs = oldDialogs }
         workspace.gitPull()
         #expect(executor.arguments[5] == GitStatusParser.arguments)
         executor.complete(5, .completed(GitResult(exitCode: 0,
@@ -938,6 +1000,44 @@ struct GitWorkspacePullTests {
         workspace.gitPull()
         #expect(executor.count == 1)
         #expect(executor.arguments[0] == GitRemoteConfiguration.orderedRemoteArguments)
+    }
+}
+
+@Suite("Fensterlokale Workspace-Gitentscheidungen")
+@MainActor
+struct GitWorkspaceInteractionTests {
+    @Test("Unterdrückter manueller Fetch verwendet die konfigurierte Remoteauswahl")
+    func suppressedFetchUsesConfiguredRemoteScope() async throws {
+        let executor = SyncTestExecutor()
+        let coordinator = GitOperationsCoordinator(executor: executor)
+        let store = GitRepositoryStore(executor: executor, coordinator: coordinator)
+        let suite = "Fastra-Fetch-Owner-\(UUID().uuidString)"
+        let defaults = testSuiteDefaults(named: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var preferences = GitPreferences()
+        preferences.remoteScope = .relevant
+        preferences.prune = true
+        GitPreferencesStore(defaults: defaults).save(preferences)
+        let workspace = Workspace(defaults: defaults,
+                                  gitOperationsCoordinator: coordinator,
+                                  gitRepositoryStore: store)
+        let root = syncRepository("fetch-owner")
+        workspace.projectURL = root
+        let interaction = workspace.gitInteraction
+        let oldDialogs = interaction.presentsDialogs
+        interaction.presentsDialogs = false
+        defer { interaction.presentsDialogs = oldDialogs }
+
+        workspace.gitFetch()
+        #expect(executor.arguments == [GitRemoteConfiguration.orderedRemoteArguments])
+        executor.complete(0, syncSuccess("remote.mirror.url\nmirror\0remote.origin.url\norigin\0"))
+        try await waitUntil { executor.count == 2 }
+        #expect(executor.arguments[1] == ["fetch", "--prune", "origin"])
+        #expect(executor.directories[1] == root)
+        executor.complete(1, .cancelled)
+        try await waitUntil { store.snapshot(for: root)?.fetch.isBusy == false }
+        #expect(executor.count == 2)
+        #expect(!coordinator.state(for: root).isBusy)
     }
 }
 

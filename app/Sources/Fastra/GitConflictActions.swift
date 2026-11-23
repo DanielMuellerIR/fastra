@@ -150,7 +150,7 @@ extension Workspace {
         switch support {
         case .text(let value, _), .unsafe(let value, _): change = value
         case .none, .unsupported:
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: "Konfliktauflösung",
                 text: L10n.string("Diese Datei kann nicht sicher als Textkonflikt aufgelöst werden."))
             return
@@ -158,13 +158,13 @@ extension Workspace {
         guard let path = change.actionPath,
               let url = tab.url,
               let context = currentGitActionContext else {
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: "Konfliktauflösung",
                 text: L10n.string("Diese Datei kann nicht sicher als Textkonflikt aufgelöst werden."))
             return
         }
         guard !tab.hasUnsavedChanges else {
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: "Konfliktauflösung",
                 text: L10n.string("Speichere die Datei zuerst. Erst der gespeicherte Stand darf als gelöst markiert werden."))
             return
@@ -173,7 +173,7 @@ extension Workspace {
             content: tab.content, encoding: tab.encoding,
             bom: tab.bom, lineEnding: tab.lineEnding, preservingLineEndings: true
         ) else {
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: "Konfliktauflösung",
                 text: L10n.string("Der Editorinhalt lässt sich nicht verlustfrei im gewählten Datei-Encoding speichern."))
             return
@@ -209,18 +209,6 @@ extension Workspace {
         gitRepositoryStore.publishOperations(for: context.root)
     }
 
-    static func defaultConfirmIntentionalConflictMarkers(_ path: String) -> Bool {
-        guard presentGitDialogs else { return false }
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = L10n.string("Konfliktmarker absichtlich beibehalten?")
-        alert.informativeText = L10n.format(
-            "„%@“ enthält weiterhin Zeilen wie <<<<<<<, ======= oder >>>>>>>. Nur fortsetzen, wenn diese Zeichenfolgen beabsichtigter Dateiinhalt und keine ungelösten Konflikte sind. Fastra staged ausschließlich die zuvor geprüften Bytes dieser Datei.",
-            path)
-        alert.addButton(withTitle: L10n.string("Marker absichtlich beibehalten"))
-        alert.addButton(withTitle: L10n.string("Abbrechen"))
-        return alert.runModal() == .alertFirstButtonReturn
-    }
 
     func refreshActiveConflictMarkerSize() {
         invalidateAndRefreshActiveConflictInspection()
@@ -302,17 +290,17 @@ extension Workspace {
         case .executed(.completed(let result)) where result.ok:
             recordGitSuccess(action.localizedSuccess(successArgument))
         case .executed(.completed(let result)):
-            Self.presentGitError(label: label, result: result)
+            self.gitInteraction.presentGitError(label: label, result: result)
         case .executed(let failure), .inspectionFailed(let failure):
-            Self.presentGitExecutionFailure(label: label, outcome: failure)
+            self.gitInteraction.presentGitExecutionFailure(label: label, outcome: failure)
         case .blocked(let reason):
-            Self.presentGitErrorText(label: label, text: reason)
+            self.gitInteraction.presentGitErrorText(label: label, text: reason)
         case .missingIdentity:
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: label,
                 text: L10n.string("Git benötigt vor dieser Aktion eine bewusst konfigurierte Commit-Identität."))
         case .repositoryChanged:
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: label,
                 text: L10n.string("Repository, Branch oder Arbeitsbaum haben sich während der Sicherheitsprüfung geändert. Prüfe den neuen Stand und starte die Aktion erneut."))
         case .cancelled:

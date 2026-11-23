@@ -49,9 +49,16 @@ enum TextWorkflowFailure {
             case .cancelled: return message(TextWorkflowFilePlan.Failure.cancelled)
             case .planNotApplyable(let detail), .conflict(let detail), .backupFailed(let detail),
                  .undoConflict(let detail), .legacySession(let detail): return detail
+            case .recoveryUnavailable(let partial, let detail):
+                return partial.entries.isEmpty
+                    ? L10n.format("%@\nDie Zieldateien blieben unverändert.", detail) : detail
             case .writeFailed(let partial, let detail):
-                if partial.entries.isEmpty { return L10n.format("%@\nEs wurden keine Dateien geschrieben.", detail) }
+                if partial.isCleanupOnly {
+                    return L10n.format("%@\nDie Zieldateien blieben unverändert. Eigene temporäre Dateien sind erhalten. Behebe die Ursache und nutze „Aufräumen“.", detail)
+                }
+                if partial.entries.isEmpty { return L10n.format("%@\nDie Zieldateien blieben unverändert.", detail) }
                 return L10n.format("%@\nBereits geschriebene Dateien bilden eine geschützte Teilsitzung. Nutze „Plattenänderungen zurücknehmen“.", detail)
+            case .undoFailed(let partial, let detail) where partial.isCleanupOnly: return detail
             case .undoFailed(_, let detail): return L10n.format("%@\nDie Rücknahme ist teilweise erfolgt. Die geschützte Rücknahme kann fortgesetzt werden.", detail)
             }
         }

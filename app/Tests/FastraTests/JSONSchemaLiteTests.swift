@@ -1,9 +1,9 @@
 // JSONSchemaLiteTests.swift
 //
-// Tests des minimalen JSON-Schema-Prüfers (Etappe 6 Wunschpaket 2026-07c):
-// erst die unterstützten Konstrukte gegen ein Mini-Schema, dann das ECHTE
-// gebündelte 4D-Formular-Schema samt Positions-Zuordnung und die
-// `.4DForm`-Anbindung im DocumentLinter.
+// Tests des minimalen JSON-Schema-Prüfers: erst die
+// unterstützten Konstrukte gegen ein Mini-Schema, dann das echte gebündelte
+// 4D-Formular-Schema samt Positions-Zuordnung und die `.4DForm`-Anbindung im
+// DocumentLinter.
 
 import Testing
 import Foundation
@@ -112,7 +112,7 @@ func schemaPositionMapping() {
     ]
     let position = JSONSchemaLite.position(of: path, in: text)
     #expect(position.line == 4)
-    // Position zeigt auf den WERT von width (-1).
+    // Position zeigt auf den Wert von width (-1).
     #expect(position.column > 25)
 }
 

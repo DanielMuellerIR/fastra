@@ -78,8 +78,8 @@ extension TextView {
     ///
     /// Upstreams `findWordBoundary` kennt nur Bezeichner, Leerraum, Zeilenenden
     /// und Satzzeichen; alles andere (Emojis, Pfeile, mathematische Symbole)
-    /// liefert einen leeren Bereich, ein Doppelklick markierte also nichts
-    /// (Daniel-Befund 2026-07-27). Gezählt wird über Swifts `Character`, das
+    /// liefert einen leeren Bereich, ein Doppelklick markierte also nichts.
+    /// Gezählt wird über Swifts `Character`, das
     /// erweiterte Graphem-Cluster kennt: Basiszeichen plus Variantenselektor,
     /// Surrogatpaare, Hautfarben-Modifikatoren und ZWJ-Familien bleiben eine
     /// Einheit. `NSString.rangeOfComposedCharacterSequence` würde eine
@@ -159,14 +159,14 @@ extension TextView {
         )
     }
 
-    /// Offset der AKTIVEN Kopfzeile einer gültigen Rechteckauswahl.
+    /// Offset der aktiven Kopfzeile einer gültigen Rechteckauswahl.
     ///
     /// `fastraSetColumnSelection` erzeugt die Zeilenbereiche immer von oben
-    /// nach unten, unabhängig von der Ziehrichtung. Bei einem nach OBEN
+    /// nach unten, unabhängig von der Ziehrichtung. Bei einem nach oben
     /// gezogenen Rechteck ist die zuletzt bewegte Zeile deshalb die erste und
     /// nicht die letzte Range. Die Hervorhebung der aktuellen Zeile fragt
     /// darum hier nach, statt die letzte Range zu raten — sonst leuchtete die
-    /// falsche Zeile (Review 2026-08-06).
+    /// falsche Zeile.
     public var fastraColumnSelectionHeadOffset: Int? {
         guard let state = fastraValidColumnSelectionState() else { return nil }
         return state.rows.first { $0.lineIndex == state.headLine }?.range.location
@@ -482,11 +482,11 @@ private extension TextView {
             location: line.contentRange.location,
             length: bounded - line.contentRange.location
         )
-        // Ohne Zeilenkopie (Review 2026-08-02): Vorher kopierte jeder Aufruf
+        // Ohne Zeilenkopie: Vorher kopierte jeder Aufruf
         // den Zeilenanfang als eigenen String — auf sehr langen Zeilen und
         // bei jedem Maus-Tick ein spürbarer Allokationsposten. Die
         // Graphem-Zählung läuft jetzt direkt über den Dokumentspeicher;
-        // ein Tab ist immer genau EINE UTF-16-Einheit und wird über den
+        // ein Tab ist immer genau eine UTF-16-Einheit und wird über den
         // Zeichencode erkannt.
         let ns = string as NSString
         var column = 0
@@ -497,7 +497,7 @@ private extension TextView {
                 column += self.fastraColumnSelectionTabWidth
                     - (column % self.fastraColumnSelectionTabWidth)
             } else {
-                // Eine zusammengesetzte Sequenz ist EIN Graphem — Emoji und
+                // Eine zusammengesetzte Sequenz ist ein Graphem — Emoji und
                 // kombinierende Zeichen zählen damit genau einmal.
                 column += 1
             }
@@ -525,9 +525,9 @@ private extension TextView {
         in line: FastraLogicalLine,
         edge: FastraColumnEdge
     ) -> Int {
-        // Ohne Zeilenkopie und mit frühem Stopp (Review 2026-08-02): Die
+        // Ohne Zeilenkopie und mit frühem Stopp: Die
         // Suche läuft graphemweise über den Dokumentspeicher und endet an
-        // der Zielspalte, statt vorher die GANZE Zeile zu kopieren.
+        // der Zielspalte, statt vorher die ganze Zeile zu kopieren.
         let ns = string as NSString
         var column = 0
         var result: Int?

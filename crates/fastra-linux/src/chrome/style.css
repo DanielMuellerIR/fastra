@@ -5,6 +5,7 @@
 .chrome-icon, .window-chrome menubutton > button { min-width: 24px; min-height: 22px; padding: 0 2px; margin: 0 1px; border: 0; box-shadow: none; border-radius: 8px; background: transparent; color: @fastra_muted; }
 .chrome-icon:hover, .window-chrome menubutton > button:hover { background: @fastra_control; }
 .chrome-icon image { -gtk-icon-size: 13px; }
+.window-chrome .fastra-app-menu > button { padding: 0 6px; color: @fastra_text; }
 .chrome-tabs { padding: 4px 10px; }
 .tab-pill { background: transparent; border: 1px solid transparent; border-radius: 9px; padding: 0 7px; min-height: 26px; }
 .tab-pill.active { background: @fastra_control; border-color: @fastra_line; }
@@ -23,6 +24,7 @@
 .sidebar-project-name { font-size: 15px; font-weight: 600; color: @fastra_text; }
 .sidebar-path { font-size: 10px; color: @fastra_muted; }
 .sidebar-filter { min-height: 18px; padding: 0 6px; margin: 0 10px 8px; border-radius: 6px; background: transparent; border: 1px solid @fastra_line; box-shadow: none; font-size: 11px; margin-bottom: 6px; }
+.sidebar-filter-status { margin: 0 14px 4px; color: @fastra_muted; font-size: 9.5px; }
 .sidebar-open { border: 0; border-top: 1px solid @fastra_line; border-radius: 0; min-height: 28px; background: transparent; box-shadow: none; color: @fastra_muted; }
 .document-stack, .document-stack > stack { background: @fastra_surface; border: 0; }
 .editor-tools { min-height: 24px; padding: 0 8px; border-bottom: 1px solid @fastra_line; }
@@ -30,14 +32,10 @@
 .import-banner button { border: 0; box-shadow: none; background: transparent; color: @fastra_accent; font-size: 11px; font-weight: 600; padding: 0 4px; min-height: 22px; }
 .project-menu > button { background: transparent; padding: 0; border: 0; box-shadow: none; }
 .project-sidebar row button.project-selected { background: @fastra_surface; color: @fastra_text; }
-.window-chrome windowcontrols { padding: 0 3px; }
-.window-chrome windowcontrols button { min-width: 12px; min-height: 12px; padding: 0; margin: 0 4px; border: 1px solid alpha(black,.12); border-radius: 50%; box-shadow: none; }
-.window-chrome windowcontrols button image { opacity: 0; -gtk-icon-size: 8px; }
-.window-chrome windowcontrols:hover button image { opacity: .6; }
-.window-chrome windowcontrols button.close { background: #ff5f57; }
-.window-chrome windowcontrols button.minimize { background: #febc2e; }
-.window-chrome windowcontrols button.maximize { background: #28c840; }
-.window-chrome windowcontrols:backdrop button { background: #e1e1e1; }
+.window-chrome windowcontrols, .dialog-titlebar windowcontrols { padding: 0 3px; }
+.window-chrome windowcontrols button, .fastra-tool .dialog-titlebar windowcontrols button { min-width: 28px; min-height: 26px; padding: 0; margin: 0; border: 0; border-radius: 6px; box-shadow: none; background: transparent; color: @fastra_text; }
+.window-chrome windowcontrols button:hover, .fastra-tool .dialog-titlebar windowcontrols button:hover { background: @fastra_control; }
+.window-chrome windowcontrols button.close:hover, .fastra-tool .dialog-titlebar windowcontrols button.close:hover { background: #c43126; color: white; }
 .editor-tools button, .editor-tools checkbutton { font-size: 11px; min-height: 21px; padding: 0 3px; color: @fastra_muted; background: transparent; border: 0; box-shadow: none; }
 .editor-tools checkbutton check { min-width: 12px; min-height: 10px; border-radius: 2px; }
 .window-status { background: @fastra_base; border-top: 1px solid @fastra_line; min-height: 25px; }
@@ -60,7 +58,9 @@
 .fastra-source { font-family: "Menlo", "DejaVu Sans Mono", monospace; font-size: 13px; }
 .fastra-source border { background: @fastra_surface; }
 .fastra-search.fastra-tool entry, .fastra-search.fastra-tool dropdown > button { min-height: 22px; padding: 0 7px; border-radius: 6px; }
-.fastra-search .search-status { color: @fastra_muted; font-size: 11px; }
+.fastra-search .search-status { color: @fastra_text; font-size: 11px; }
+.search-input-notice { color: @fastra_text; background: alpha(@fastra_warning,.08); padding: 5px 8px; border-radius: 4px; font-size: 11px; }
+.search-input-notice image { color: @fastra_warning; }
 .fastra-shell paned > separator { min-width: 1px; min-height: 1px; background: @fastra_line; }
 .document-status .soft-wrap check, .document-status .soft-wrap check:checked { min-width: 13px; min-height: 13px; border: 0; background: transparent; box-shadow: none; -gtk-icon-source: -gtk-icontheme("fastra-wrap-symbolic"); color: @fastra_accent; }
 .document-status .view-mode check { opacity: 0; min-width: 0; min-height: 0; padding: 0; margin: 0; border: 0; -gtk-icon-size: 0; }
@@ -74,13 +74,6 @@
 .fastra-search .titlebar { padding: 0; margin: 0; border-bottom: 1px solid @fastra_line; min-height: 28px; }
 .search-titlebar { min-height: 28px; background: @fastra_surface; }
 .search-titlebar > label { font-size: 13px; font-weight: 600; }
-.search-titlebar windowcontrols { padding: 0 4px; }
-.search-titlebar windowcontrols button { min-width: 12px; min-height: 12px; padding: 0; margin: 0 4px; border: 1px solid alpha(black,.12); border-radius: 50%; box-shadow: none; }
-.search-titlebar windowcontrols button image { opacity: 0; -gtk-icon-size: 8px; }
-.search-titlebar windowcontrols:hover button image { opacity: .6; }
-.search-titlebar windowcontrols button.close { background: #ff5f57; }
-.search-titlebar windowcontrols button.minimize { background: #febc2e; }
-.search-titlebar windowcontrols button.maximize { background: #28c840; }
 .search-content { padding: 16px; }
 .search-scopes { padding-bottom: 4px; }
 .fastra-search.fastra-tool .scope-tab { border: 0; box-shadow: none; background: transparent; padding: 0 10px; border-radius: 7px; min-height: 24px; font-size: 12px; }
@@ -131,16 +124,10 @@
 .fastra-tool .titlebar { padding: 0; margin: 0; min-height: 28px; background: @fastra_surface; border-bottom: 1px solid @fastra_line; }
 .dialog-titlebar { min-height: 28px; background: @fastra_surface; }
 .dialog-titlebar > label { font-size: 13px; font-weight: 600; }
-.fastra-tool .traffic-controls { padding: 0 4px; }
-.fastra-tool .traffic-controls button { min-width: 12px; min-height: 12px; padding: 0; margin: 0 4px; border: 1px solid alpha(black,.12); border-radius: 50%; box-shadow: none; }
-.traffic-controls image { opacity: 0; -gtk-icon-size: 8px; }
-.traffic-controls:hover image { opacity: .6; }
-.traffic-controls button.close { background: #ff5f57; }
-.traffic-controls button.minimize { background: #febc2e; }
-.traffic-controls button.maximize { background: #28c840; }
 .fastra-tool button { background: @fastra_surface; color: @fastra_text; border: 1px solid @fastra_line; border-radius: 6px; box-shadow: 0 1px 1px alpha(black,.05); min-height: 22px; padding: 0 8px; font-size: 12px; }
 .fastra-tool button:disabled { color: @fastra_muted; opacity: .55; }
 .fastra-tool button.suggested-action { background: #0780ff; color: white; border-color: #0780ff; }
+.fastra-snippet-window button.suggested-action:disabled { background: @fastra_control; color: @fastra_text; border-color: @fastra_line; box-shadow: none; opacity: 1; }
 .fastra-tool button:hover { background: @fastra_control; }
 .fastra-tool entry, .fastra-tool dropdown > button, .fastra-tool spinbutton { background: @fastra_surface; color: @fastra_text; border: 1px solid @fastra_line; border-radius: 6px; box-shadow: none; min-height: 25px; }
 .fastra-tool entry:focus-within { border-color: @fastra_accent; }
@@ -362,3 +349,13 @@
 .markdown-mode-choice button label { font-weight: 600; }
 .markdown-mode-choice button.suggested-action:hover { background: #007aff; }
 .markdown-mode-choice button.suggested-action:disabled { opacity: .45; }
+
+.fastra-close-backdrop { background: alpha(black, .30); }
+.fastra-close-prompt {
+  background: @fastra_sheet;
+  color: @fastra_text;
+  border: 1px solid @fastra_line;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px alpha(black, .25);
+  padding: 18px;
+}

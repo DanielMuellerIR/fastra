@@ -168,7 +168,7 @@ func historyFile_nameIsLastComponent() {
 @Test("Dateiverlauf liegt in einer einzigen Spalte")
 func fileHistoryLayout_singleLane() {
     // Ohne Elternteil in der Liste (typisch für eine gefilterte Historie)
-    // würde der normale Lane-Algorithmus für JEDEN Commit eine neue Spalte
+    // würde der normale Lane-Algorithmus für jeden Commit eine neue Spalte
     // öffnen. Genau das darf hier nicht passieren.
     let commits = GitGraph.parse(rawLog([
         (h: "c3", p: "weg1", s: "dritte Änderung"),

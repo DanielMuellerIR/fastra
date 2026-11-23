@@ -30,9 +30,8 @@ struct PatternEditorView: View {
             .onChange(of: selectedID) { _, id in load(id: id) }
 
             Divider()
-            // Die Knopfzeile steht UNTER dem Form, nicht darin: Im Form
-            // bekommt sie nur die Wertespalte, und SwiftUI kürzte alle sechs
-            // Knöpfe auf „…" (Sichtprüfung dialoglayout, 2026-09-15).
+            // Knopfzeile außerhalb des Form platzieren: Innerhalb bekäme sie nur die
+            // Wertespalte und die sechs Beschriftungen würden auf „…“ gekürzt.
             VStack(spacing: 12) {
                 Form {
                     TextField("Name", text: $name)

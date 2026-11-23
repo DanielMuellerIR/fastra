@@ -470,7 +470,7 @@ fn adopt(flow: Rc<Flow>, snapshot: fastra_io::Snapshot, content: String, reset_u
         doc.revision.set(doc.revision.get().wrapping_add(1));
     }
     if path_changed {
-        watch::relocated(&doc);
+        watch::baseline_changed(&doc);
     } else {
         rich_editor::after_save(&doc);
     }

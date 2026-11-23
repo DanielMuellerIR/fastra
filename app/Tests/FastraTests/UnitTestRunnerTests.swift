@@ -13,6 +13,7 @@ private final class UnitTestRunnerFixture {
     let sandboxParent: URL
     let probe: URL
     let childPID: URL
+    let realPreferences: URL
     private let binaryDirectory: URL
     private let counter: URL
 
@@ -24,6 +25,10 @@ private final class UnitTestRunnerFixture {
         probe = root.appendingPathComponent("probe.txt")
         counter = root.appendingPathComponent("counter.txt")
         childPID = root.appendingPathComponent("child.pid")
+        realPreferences = root.appendingPathComponent("preferences")
+        try FileManager.default.createDirectory(
+            at: realPreferences, withIntermediateDirectories: true
+        )
         try FileManager.default.createDirectory(
             at: sandboxParent, withIntermediateDirectories: true
         )
@@ -44,6 +49,20 @@ private final class UnitTestRunnerFixture {
         printf '%s\n' "$call" > "$FASTRA_TEST_COUNTER"
         printf 'CALL %s TMP %s CF %s\n' \
           "$call" "$TMPDIR" "$CFFIXED_USER_HOME" >> "$FASTRA_TEST_PROBE"
+        suite="${FASTRA_SELFTEST_DEFAULTS_SUITE:-unset}"
+        registry="$FASTRA_TEST_DEFAULTS_REGISTRY"
+        bound=no
+        /usr/bin/grep -Fxq "$suite" "$registry" && bound=yes
+        printf 'DEFAULTS %s %s %s %s %s\n' \
+          "$call" "$suite" "$registry" "$bound" "$HOME" >> "$FASTRA_TEST_PROBE"
+        # Die echten Cleanup-Pfade müssen beide eigenen Preferences-Dateien
+        # entfernen; eine bloß entfernte Registry wäre kein ausreichender Beleg.
+        if [[ "$suite" =~ ^Fastra-[0-9A-Fa-f-]{36}$ ]] && [ "$bound" = yes ]; then
+          /bin/mkdir -p "$CFFIXED_USER_HOME/Library/Preferences"
+          /usr/bin/touch "$CFFIXED_USER_HOME/Library/Preferences/$suite.plist" || exit 96
+          /usr/bin/touch "$FASTRA_TEST_REAL_PREFERENCES_DIRECTORY/$suite.plist" || exit 96
+          printf 'CREATED %s\n' "$call" >> "$FASTRA_TEST_PROBE"
+        fi
         for argument in "$@"; do
           printf 'ARG %s %s\n' "$call" "$argument" >> "$FASTRA_TEST_PROBE"
         done
@@ -69,6 +88,11 @@ private final class UnitTestRunnerFixture {
               /bin/sleep 0.02
             done
             exit 97
+            ;;
+          signal)
+            kill -TERM "$PPID"
+            /bin/sleep 10
+            exit 99
             ;;
           cleanup-failure)
             if [ "$call" -eq 2 ]; then
@@ -108,10 +132,15 @@ private final class UnitTestRunnerFixture {
 
     func run(arguments: [String] = [], mode: String = "statuses",
              firstStatus: Int = 0, secondStatus: Int = 0,
-             sandboxParent overrideSandboxParent: URL? = nil) throws
+             sandboxParent overrideSandboxParent: URL? = nil,
+             callerSuite: String? = nil, runner: URL = unitTestRunnerURL) throws
         -> TestProcessResult {
         let oldPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
-        return try runTestProcess("/bin/bash", arguments: [unitTestRunnerURL.path] + arguments,
+        // Ohne Caller-Suite auch die vom äußeren Unitlauf geerbte Suite
+        // entfernen: Dieser Fall prüft einen tatsächlich fehlenden ENV-Eingang.
+        let executable = callerSuite == nil ? "/usr/bin/env" : "/bin/bash"
+        let prefix = callerSuite == nil ? ["-u", "FASTRA_SELFTEST_DEFAULTS_SUITE", "/bin/bash"] : []
+        return try runTestProcess(executable, arguments: prefix + [runner.path] + arguments,
                                   environment: [
             "PATH": binaryDirectory.path + ":" + oldPath,
             "FASTRA_TEST_SANDBOX_PARENT": (overrideSandboxParent ?? sandboxParent).path,
@@ -121,10 +150,13 @@ private final class UnitTestRunnerFixture {
             "FASTRA_TEST_FAKE_MODE": mode,
             "FASTRA_TEST_STATUS_1": String(firstStatus),
             "FASTRA_TEST_STATUS_2": String(secondStatus),
+            "FASTRA_SELFTEST_DEFAULTS_SUITE": callerSuite ?? "",
+            "FASTRA_TEST_REAL_PREFERENCES_DIRECTORY": realPreferences.path,
         ])
     }
 
-    func calls() throws -> [(tmp: String, cf: String, arguments: [String])] {
+    func calls() throws -> [(tmp: String, cf: String, suite: String,
+                             registry: String, bound: Bool, created: Bool, home: String, arguments: [String])] {
         let lines = try String(contentsOf: probe, encoding: .utf8)
             .split(whereSeparator: \Character.isNewline).map(String.init)
         return [1, 2].compactMap { wanted in
@@ -137,7 +169,11 @@ private final class UnitTestRunnerFixture {
                 let prefix = "ARG \(wanted) "
                 return line.hasPrefix(prefix) ? String(line.dropFirst(prefix.count)) : nil
             }
-            return (tmp: parts[3], cf: parts[5], arguments: arguments)
+            guard let defaults = lines.first(where: { $0.hasPrefix("DEFAULTS \(wanted) ") })?
+                .split(separator: " ").map(String.init), defaults.count == 6 else { return nil }
+            return (tmp: parts[3], cf: parts[5], suite: defaults[2],
+                    registry: defaults[3], bound: defaults[4] == "yes",
+                    created: lines.contains("CREATED \(wanted)"), home: defaults[5], arguments: arguments)
         }
     }
 
@@ -149,30 +185,68 @@ private final class UnitTestRunnerFixture {
 
 @Suite("Unit-Test-Runner mit zwei Phasen", .serialized)
 struct SerialRunnerIntegrationTests {
-    @Test("EXIT-Pfad wartet nach fehlgeschlagener Terminierung nicht erneut")
+    @Test("Originalrunner erhält registrierte Testdaten bei ungeklärtem Folgestart")
     func failedTerminationPreservesSandboxWithoutWaiting() throws {
-        let definition = try shellFunction(named: "cleanup", in: unitTestRunnerURL)
-        let script = #"""
-        set -u
-        FASTRA_TEST_STARTED_ROOTS=(4242)
-        TEST_PROCESS_PID=4242
-        FASTRA_TEST_PENDING_PID=4343
-        requested_phases=1
-        run_phases=0
-        passed_phases=0
-        failed_phases=0
-        environment_errors=0
-        terminate_fastra_test_process_trees() { printf 'OWNED_ROOTS %s\n' "$*"; return 1; }
-        wait() { printf 'UNEXPECTED_WAIT\n'; }
-        purge_fastra_registered_test_defaults() { printf 'UNEXPECTED_PURGE\n'; }
-        release_fastra_test_sandbox() { printf 'UNEXPECTED_RELEASE\n'; }
-        """# + definition + "\ntrue\ncleanup\n"
-        let result = try runTestProcess("/bin/bash", arguments: ["-c", script], timeout: 5)
+        let fixture = try UnitTestRunnerFixture()
+        let runner = fixture.root.appendingPathComponent("test.sh")
+        let tools = fixture.root.appendingPathComponent("tools")
+        let files = FileManager.default
+        try files.copyItem(at: unitTestRunnerURL, to: runner)
+        try files.createDirectory(at: tools, withIntermediateDirectories: false)
+        try files.createSymbolicLink(at: tools.appendingPathComponent("test-sandbox.sh"),
+                                     withDestinationURL: unitTestRunnerURL.deletingLastPathComponent()
+                                        .appendingPathComponent("tools/test-sandbox.sh"))
+        // Der erste Start führt die Swift-Attrappe aus. Beim zweiten bleibt
+        // die simulierte Pending-PID unaufgelöst; das Fixture sendet kein Signal.
+        try #"""
+        FASTRA_TEST_STARTED_ROOTS=()
+        FASTRA_TEST_PENDING_PID=""
+
+        fastra_test_start_new_session() {
+            if [ "${#FASTRA_TEST_STARTED_ROOTS[@]}" -ne 0 ]; then
+                FASTRA_TEST_PENDING_PID=2147483647
+                return 2
+            fi
+            "$@" &
+            FASTRA_TEST_STARTED_PID=$!
+            FASTRA_TEST_STARTED_ROOTS+=("$FASTRA_TEST_STARTED_PID")
+            printf 'TRACKED_ROOT %s\n' "$FASTRA_TEST_STARTED_PID"
+        }
+        fastra_test_adopt_started_session() { return 0; }
+        terminate_fastra_test_process_trees() {
+            [ -n "$FASTRA_TEST_PENDING_PID" ] || return 0
+            printf 'CLEANUP_TARGETS %s\n' "$*"
+            return 2
+        }
+        wait() {
+            if [ -n "$FASTRA_TEST_PENDING_PID" ]; then
+                printf 'UNEXPECTED_WAIT %s\n' "$*" >> "$FASTRA_TEST_PROBE"
+                return 91
+            fi
+            builtin wait "$@"
+        }
+        """#.write(to: tools.appendingPathComponent("test-process-tree.sh"), atomically: true, encoding: .utf8)
+
+        let result = try fixture.run(runner: runner)
         #expect(result.status == 2, "\(result.output)")
-        #expect(!result.output.contains("UNEXPECTED_"), "\(result.output)")
+        let probe = try String(contentsOf: fixture.probe, encoding: .utf8)
+        #expect(!probe.contains("UNEXPECTED_WAIT"), "\(probe)")
         #expect(result.output.contains("Sandbox bleiben unangetastet"))
-        #expect(result.output.contains("environment_errors=1 exit=2"))
-        #expect(result.output.contains("OWNED_ROOTS 4242 4343"), "\(result.output)")
+        #expect(result.output.contains("requested_phases=2 run_phases=2 passed_phases=1 failed_phases=0 environment_errors=2 exit=2"))
+        let lines = result.output.split(whereSeparator: \.isNewline)
+        let tracked = try #require(lines.first { $0.hasPrefix("TRACKED_ROOT ") }?.split(separator: " ").last)
+        #expect(lines.filter { $0.hasPrefix("CLEANUP_TARGETS ") } == ["CLEANUP_TARGETS \(tracked) 2147483647"])
+
+        let calls = try fixture.calls()
+        try #require(calls.count == 1)
+        let call = calls[0]
+        #expect(call.bound && call.created)
+        let registry = try String(contentsOfFile: call.registry, encoding: .utf8).split(whereSeparator: \.isNewline)
+        #expect(registry.count == 2 && registry.first == Substring(call.suite))
+        let preferences = URL(fileURLWithPath: call.cf)
+            .appendingPathComponent("Library/Preferences/\(call.suite).plist")
+        #expect(files.fileExists(atPath: preferences.path))
+        #expect(files.fileExists(atPath: fixture.realPreferences.appendingPathComponent("\(call.suite).plist").path))
     }
 
     @Test("Komplementärer Marker teilt den vollständigen Bestand ohne Lücke")
@@ -196,6 +270,47 @@ struct SerialRunnerIntegrationTests {
         #expect(fixture.sandboxIsEmpty)
     }
 
+    @Test("Jede Phase erhält eine frische registrierte Suite und lässt die Caller-Suite unberührt",
+          arguments: [false, true])
+    func phaseDefaultsAreIsolatedAndCleaned(_ inheritsSuite: Bool) throws {
+        let fixture = try UnitTestRunnerFixture()
+        let callerSuite = "Fastra-\(UUID().uuidString)"
+        let callerFile = fixture.realPreferences.appendingPathComponent("\(callerSuite).plist")
+        let original = Data("caller-owned".utf8)
+        try original.write(to: callerFile)
+        let result = try fixture.run(callerSuite: inheritsSuite ? callerSuite : nil)
+        #expect(result.status == 0, "\(result.output)")
+        let calls = try fixture.calls()
+        try #require(calls.count == 2)
+        #expect(calls[0].suite != calls[1].suite)
+        #expect(calls[0].registry == calls[1].registry)
+        for call in calls {
+            #expect(call.suite.hasPrefix("Fastra-"))
+            #expect(UUID(uuidString: String(call.suite.dropFirst("Fastra-".count))) != nil)
+            #expect(call.suite != callerSuite)
+            #expect(call.bound && call.created)
+            #expect(call.registry == URL(fileURLWithPath: call.tmp)
+                .deletingLastPathComponent().appendingPathComponent("defaults-registry.txt").path)
+            #expect(call.home == ProcessInfo.processInfo.environment["HOME"])
+            #expect(!FileManager.default.fileExists(atPath:
+                fixture.realPreferences.appendingPathComponent("\(call.suite).plist").path))
+        }
+        #expect(try Data(contentsOf: callerFile) == original)
+        #expect(fixture.sandboxIsEmpty)
+    }
+
+    @Test("TERM beendet den Runner mit Signalstatus und räumt die registrierte Suite auf")
+    func signalCleansPhaseDefaults() throws {
+        let fixture = try UnitTestRunnerFixture()
+        let result = try fixture.run(mode: "signal")
+        #expect(result.status == 143, "\(result.output)")
+        let calls = try fixture.calls()
+        try #require(calls.count == 1)
+        #expect(calls[0].bound && calls[0].created)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.realPreferences.path).isEmpty)
+        #expect(fixture.sandboxIsEmpty)
+    }
+
     @Test("Fehler jeder Phase ergeben Exit 1 und lassen die andere Phase laufen")
     func phaseFailuresAggregateToFunctionalFailure() throws {
         let fastFailure = try UnitTestRunnerFixture()
@@ -204,6 +319,8 @@ struct SerialRunnerIntegrationTests {
         #expect(try fastFailure.calls().count == 2)
         #expect(first.output.contains("failed_phases=1"))
         #expect(fastFailure.sandboxIsEmpty)
+        #expect(try fastFailure.calls().allSatisfy { $0.bound && $0.created })
+        #expect(try FileManager.default.contentsOfDirectory(atPath: fastFailure.realPreferences.path).isEmpty)
 
         let gitFailure = try UnitTestRunnerFixture()
         let second = try gitFailure.run(secondStatus: 9)
@@ -211,6 +328,8 @@ struct SerialRunnerIntegrationTests {
         #expect(try gitFailure.calls().count == 2)
         #expect(second.output.contains("failed_phases=1"))
         #expect(gitFailure.sandboxIsEmpty)
+        #expect(try gitFailure.calls().allSatisfy { $0.bound && $0.created })
+        #expect(try FileManager.default.contentsOfDirectory(atPath: gitFailure.realPreferences.path).isEmpty)
     }
 
     @Test("Aufruferfilter bleibt in beiden Phasen eine Schnittmenge")

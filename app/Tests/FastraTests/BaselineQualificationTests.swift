@@ -11,34 +11,25 @@ private struct QualificationCase: Sendable, CustomStringConvertible {
     let qualified: Bool
 }
 
-/// Die Qualifikations-Gatter entscheiden als EINZIGE Stelle, ob eine Messung in
-/// die kanonische Performance-Historie aufgenommen wird. Die Zusage dazu steht
-/// in `docs/BUILD-AND-TEST.md`: nur ein vollständig grüner Lauf von einem
-/// sauberen, währenddessen unveränderten Stand. Bis zum Infrastruktur-Review
-/// 2026-09-10 prüfte sie kein einziger Test — eine versehentlich invertierte
-/// oder gelöschte Teilbedingung hätte rote oder schmutzige Läufe in die
-/// Historie geschrieben, ohne dass irgendetwas rot geworden wäre.
+/// Die Qualifikationsprüfung entscheidet über Aufnahme in die kanonische
+/// Performance-Historie. Laut `docs/BUILD-AND-TEST.md` darf nur ein vollständig
+/// grüner Lauf auf sauberem, währenddessen unverändertem Stand aufgenommen werden.
 @Suite("Qualifikation der Performance-Baseline")
 struct BaselineQualificationTests {
 
-    private func judge(function: String, in script: String,
+    private func judge(function: String,
                        assignments: [String: String]) throws -> Bool {
-        let runner = runnerDirectory.appendingPathComponent(script)
-        let definition = try shellFunction(named: function, in: runner)
-        let setup = assignments
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key)=\($0.value)" }
-            .joined(separator: "\n")
-        let source = definition + "\n" + setup + "\n"
-            + "if \(function); then exit 0; else exit 7; fi\n"
-        let result = try runTestProcess("/bin/bash", arguments: ["-c", source])
-        #expect(result.status == 0 || result.status == 7,
+        let helper = runnerDirectory.appendingPathComponent("tools/performance-qualification.sh")
+        let result = try runTestProcess("/bin/bash", arguments: [
+            "-c", #"set -eu; . "$1"; "$2""#, "baseline-qualification", helper.path, function,
+        ], environment: assignments)
+        #expect(result.status == 0 || result.status == 1,
                 "unerwarteter Status \(result.status): \(result.output)")
         return result.status == 0
     }
 
     /// Der grüne Ausgangsfall — und aus ihm abgeleitet je ein Fall, der genau
-    /// EINE Bedingung verletzt.
+    /// eine Bedingung verletzt.
     private static let selftestBase: [String: String] = [
         "real_fail_count": "0",
         "env_fail_count": "0",
@@ -49,8 +40,8 @@ struct BaselineQualificationTests {
         "RUN_HEAD_END": "abc",
         "RUN_BINARY_SHA_START": "sha",
         "RUN_BINARY_SHA_END": "sha",
-        "RUN_DIRTY_START": "''",
-        "RUN_DIRTY_END": "''",
+        "RUN_DIRTY_START": "",
+        "RUN_DIRTY_END": "",
         "FASTRA_PERFORMANCE_BASELINE_RUN": "1",
     ]
 
@@ -75,9 +66,9 @@ struct BaselineQualificationTests {
         selftestCase("Binary während des Laufs getauscht",
                      ["RUN_BINARY_SHA_END": "anders"], qualified: false),
         selftestCase("Arbeitsbaum vorher schmutzig",
-                     ["RUN_DIRTY_START": "' M x'"], qualified: false),
+                     ["RUN_DIRTY_START": " M x"], qualified: false),
         selftestCase("Arbeitsbaum nachher schmutzig",
-                     ["RUN_DIRTY_END": "' M x'"], qualified: false),
+                     ["RUN_DIRTY_END": " M x"], qualified: false),
         selftestCase("kein ausdrücklicher Baseline-Lauf",
                      ["FASTRA_PERFORMANCE_BASELINE_RUN": "0"], qualified: false),
     ]
@@ -85,8 +76,7 @@ struct BaselineQualificationTests {
     @Test("Selbsttest-Lauf wird nur vollständig grün und unverändert zur Baseline",
           arguments: selftestCases)
     fileprivate func selftestQualification(fixture: QualificationCase) throws {
-        let result = try judge(function: "performance_run_is_qualified",
-                               in: "selftest.sh", assignments: fixture.assignments)
+        let result = try judge(function: "performance_run_is_qualified", assignments: fixture.assignments)
         #expect(result == fixture.qualified, Comment(rawValue: fixture.description))
     }
 
@@ -94,7 +84,7 @@ struct BaselineQualificationTests {
         "ROUNDS": "60",
         // Die drei Ergebniszahlen des Laufs: keine Invarianten-Verstöße, keine
         // durch die Umgebung abgebrochene Phase, und wirklich geprüft wurde
-        // auch etwas (Review-Fund 2026-09-17).
+        // auch etwas.
         "FINDINGS": "0",
         "ENVIRONMENT_PHASES": "0",
         "ACTIONS": "180",
@@ -102,8 +92,8 @@ struct BaselineQualificationTests {
         "SOAK_HEAD_END": "abc",
         "SOAK_BINARY_SHA_START": "sha",
         "SOAK_BINARY_SHA_END": "sha",
-        "SOAK_DIRTY_START": "''",
-        "SOAK_DIRTY_END": "''",
+        "SOAK_DIRTY_START": "",
+        "SOAK_DIRTY_END": "",
         "FASTRA_PERFORMANCE_BASELINE_RUN": "1",
     ]
 
@@ -125,8 +115,8 @@ struct BaselineQualificationTests {
         soakCase("keine einzige geprüfte Aktion", ["ACTIONS": "0"], qualified: false),
         soakCase("HEAD gewechselt", ["SOAK_HEAD_END": "def"], qualified: false),
         soakCase("Binary getauscht", ["SOAK_BINARY_SHA_END": "anders"], qualified: false),
-        soakCase("vorher schmutzig", ["SOAK_DIRTY_START": "' M x'"], qualified: false),
-        soakCase("nachher schmutzig", ["SOAK_DIRTY_END": "' M x'"], qualified: false),
+        soakCase("vorher schmutzig", ["SOAK_DIRTY_START": " M x"], qualified: false),
+        soakCase("nachher schmutzig", ["SOAK_DIRTY_END": " M x"], qualified: false),
         soakCase("kein Baseline-Lauf",
                  ["FASTRA_PERFORMANCE_BASELINE_RUN": "0"], qualified: false),
     ]
@@ -134,17 +124,14 @@ struct BaselineQualificationTests {
     @Test("Dauertest wird nur ab 60 Runden und unverändert zur Baseline",
           arguments: soakCases)
     fileprivate func soakQualification(fixture: QualificationCase) throws {
-        let result = try judge(function: "soak_run_is_qualified",
-                               in: "soak-test.sh", assignments: fixture.assignments)
+        let result = try judge(function: "soak_run_is_qualified", assignments: fixture.assignments)
         #expect(result == fixture.qualified, Comment(rawValue: fixture.description))
     }
 }
 
-/// `test.sh` weist zwei Aufrufe ausdrücklich mit Exit 2 ab — sich
-/// ausschließende Phasenschalter und ein `--filter` ohne Muster. Beides ist
-/// Umgebungs-/Bedienfehler und darf nicht als Testlauf durchgehen; geprüft hat
-/// es bis 2026-09-10 nichts. Die Fälle laufen ohne echten Testlauf: Das Skript
-/// bricht in der Argumentprüfung ab, bevor es irgendetwas startet.
+/// `test.sh` weist widersprüchliche Phasenschalter und `--filter` ohne
+/// Muster mit Exit 2 ab. Die Tests prüfen nur die Argumentverarbeitung;
+/// es wird kein eigentlicher Testlauf gestartet.
 @Suite("Argumentprüfung des Unit-Test-Runners")
 struct UnitTestRunnerArgumentTests {
     private func run(_ arguments: [String]) throws -> (status: Int32, output: String) {

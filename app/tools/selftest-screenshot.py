@@ -19,6 +19,7 @@ SHOTS = {
     "filesgitshot": ("FILESGITSHOT-WINDOW", "git-files"),
     "graphshot": ("GRAPHSHOT-WINDOW", "git-graph"),
     "historyshot": ("HISTORYSHOT-WINDOW", "git-history"),
+    "aboutshot": ("ABOUTSHOT-WINDOW", "about"),
 }
 # Die Frist muss unter der Runner-Frist (60 s) bleiben und über dem, was ein
 # Aufbau unter Last braucht. 15 s waren zu knapp: Ein gesunder, nur langsamer

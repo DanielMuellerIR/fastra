@@ -34,7 +34,7 @@ enum FolderSearch {
     // MARK: - Datenmodell
 
     /// Warum eine Datei nicht in die Suche eingegangen ist. Sichtbar
-    /// im Ergebnis, damit der Nutzer SIEHT, was übersprungen wurde
+    /// im Ergebnis, damit der Nutzer sieht, was übersprungen wurde
     /// — stilles Überspringen wäre ein Sicherheits-Schluckauf
     /// (siehe ApplyEngine, gleiches Prinzip).
     enum SkipReason: Equatable {
@@ -57,11 +57,11 @@ enum FolderSearch {
         let id = UUID()
         let url: URL
         let matches: [BufferSearch.Match]
-        /// ECHTE Trefferzahl in dieser Datei — kann `matches.count` ÜBERSTEIGEN,
+        /// Echte Trefferzahl in dieser Datei — kann `matches.count` übersteigen,
         /// wenn der Pro-Datei-Cap (`maxMatches`) gegriffen hat. `BufferSearch`
-        /// zählt immer ALLE Treffer, materialisiert aber nur die ersten N
+        /// zählt immer alle Treffer, materialisiert aber nur die ersten N
         /// (BBEdit-Verhalten: wahrer Count in der Statuszeile, gekürzte Liste).
-        /// Für die Gesamt-Zählung verwenden, NICHT `matches.count`.
+        /// Für die Gesamt-Zählung verwenden, nicht `matches.count`.
         let totalMatches: Int
         let skipped: SkipReason?
         /// Exakte Dateibasis dieser sichtbaren Treffer. Apply akzeptiert nur
@@ -84,24 +84,25 @@ enum FolderSearch {
 
     /// Gesamt-Ergebnis. Wenn das Find-Pattern syntaktisch kaputt ist,
     /// wird in jedem `perFile`-Eintrag das `skipped == nil` mit 0 Matches
-    /// stehen UND `invalidPatternMessage` enthält den Text — die Maske
+    /// stehen und `invalidPatternMessage` enthält den Text — die Maske
     /// zeigt dieselbe Fehler-Anzeige wie bei der Buffer-Suche.
     ///
     /// `wasCapped`: `true`, wenn der Gesamt-Cap (`maxTotalMatches`) während
     /// der Enumeration ausgelöst hat und die Suche deshalb frühzeitig
     /// abgebrochen wurde. Die Maske zeigt in diesem Fall einen Hinweis,
-    /// damit der Nutzer weiß, dass er NICHT alle Treffer sieht.
+    /// damit der Nutzer weiß, dass er nicht alle Treffer sieht.
     struct Result: Equatable {
         let perFile: [PerFileResult]
         let invalidPatternMessage: String?
         /// `true` = Gesamt-Cap wurde ausgelöst; Trefferliste ist unvollständig.
         let wasCapped: Bool
+        var sourceBasis: SourceBasis? = nil
 
         static let empty = Result(perFile: [], invalidPatternMessage: nil, wasCapped: false)
 
-        /// Summe der ECHTEN Per-Datei-Counts (nicht der materialisierten
+        /// Summe der echten Per-Datei-Counts (nicht der materialisierten
         /// `matches.count`) — sonst untercountete eine Datei mit mehr Treffern
-        /// als dem Pro-Datei-Cap (Review-Befund 2026-06-23).
+        /// als dem Pro-Datei-Cap.
         var totalMatches: Int { perFile.reduce(0) { $0 + $1.totalMatches } }
         var filesWithMatches: [PerFileResult] { perFile.filter(\.hasMatches) }
     }
@@ -147,10 +148,10 @@ enum FolderSearch {
     /// Sucht in allen übergebenen Ordnern rekursiv und liefert ein
     /// `Result`. Reihenfolge: pro Ordner, pro Datei in `enumerator`-
     /// Reihenfolge (≈ alphabetisch je nach Dateisystem). Übergebene
-    /// `folders` mit Tilde-Pfaden werden NICHT expandiert — das ist
+    /// `folders` mit Tilde-Pfaden werden nicht expandiert — das ist
     /// Sache des Aufrufers (UserDefaults-Adapter macht das).
     ///
-    /// `maxTotalMatches`: Gesamt-Cap über ALLE Dateien. Sobald die Summe
+    /// `maxTotalMatches`: Gesamt-Cap über alle Dateien. Sobald die Summe
     /// aller bisherigen Treffer den Cap erreicht, bricht die Enumeration
     /// sauber ab (keine weiteren Dateien werden gelesen). Das verhindert
     /// Freeze und Speicher-Explosion bei kurzen Patterns in riesigen Repos.
@@ -204,136 +205,112 @@ enum FolderSearch {
         var totalSoFar = 0
         // Wurde der Cap während der Enumeration ausgelöst?
         var capped = false
-        // Überlappende Datei-Set-Wurzeln (z. B. „.“ und „Sources“) dürfen
-        // dieselbe Datei nicht zweimal durchsuchen oder ersetzen.
-        var seenFiles = Set<String>()
-        // Alle Globs genau einmal pro Lauf normalisieren und kompilieren.
-        // Vorher entstand für jeden der zehntausenden Kandidaten je Muster
-        // erneut eine NSRegularExpression.
-        let exclusionMatcher = PathExclusion.Matcher(
-            patterns: excludedPatterns,
-            relativeTo: projectRoot
-        )
+        let selection = SourceSelection(roots: folders, filter: filter, exclusions: excludedPatterns,
+                                        projectRoot: projectRoot)
+        var textFiles: [URL: FileSnapshot] = [:]
+        var scannedBytes: UInt64 = 0
 
-        outerLoop:
-        for folder in folders {
-            if shouldCancel() { return .empty }
-            let fm = FileManager.default
-            var rootIsDirectory: ObjCBool = false
-            guard fm.fileExists(atPath: folder.path, isDirectory: &rootIsDirectory) else {
-                return Result(perFile: [], invalidPatternMessage: L10n.format(
-                    "Die Suchquelle „%@“ fehlt oder ist nicht zugänglich. Die Suche ist unvollständig.", folder.lastPathComponent),
-                    wasCapped: false)
-            }
-            // Einzelne Datei und Ordner liefern Kandidaten für denselben
-            // Suchpfad: Dateibasis, Abbruch und Treffergrenzen dürfen nicht
-            // davon abhängen, wie eine Datei in das Such-Set gelangt ist.
-            let urls: [URL]
-            if !rootIsDirectory.boolValue {
-                urls = [folder]
-            } else {
-                // `rg --files` ist hier der schnelle Standardpfad. Er liefert
-                // nullgetrennte Dateinamen und respektiert dank `--no-ignore`
-                // bewusst NICHT .gitignore — exakt wie die frühere Rekursion.
-                // Nur ein echter Start-/Ressourcenfehler darf auf FileManager
-                // zurückfallen. Timeout, Abbruch oder gekürzte Ausgabe sind KEINE
-                // vollständige Dateiliste und werden deshalb sichtbar gemeldet.
-                let enumerationStarted = diagnostics.map { _ in ProcessInfo.processInfo.systemUptime }
-                do {
-                    urls = try RipgrepFileEnumerator.files(in: folder,
-                                                           excludedPatterns: excludedPatterns,
-                                                           shouldCancel: shouldCancel)
-                } catch RipgrepFileEnumerator.Failure.unavailable {
-                    do {
-                        urls = try legacyFileURLs(in: folder,
-                                                  shouldCancel: shouldCancel)
-                    } catch {
-                        return .empty
-                    }
-                } catch RipgrepFileEnumerator.Failure.cancelled {
-                    return .empty
-                } catch let failure as RipgrepFileEnumerator.Failure {
-                    return failedEnumerationResult(failure)
-                } catch {
-                    return Result(
-                        perFile: [],
-                        invalidPatternMessage: L10n.format(
-                            "Die Ordnersuche konnte die Dateiliste nicht vollständig lesen: %@",
-                            error.localizedDescription),
-                        wasCapped: false)
-                }
-                if let enumerationStarted {
-                    diagnostics?.enumerationSeconds += ProcessInfo.processInfo.systemUptime - enumerationStarted
-                    diagnostics?.candidateCount += urls.count
-                }
-            }
-            var packageCache = PackageMembershipCache(root: folder)
-            for url in urls {
-                if shouldCancel() { return .empty }
-                // Billige, bereits kompilierte Pfad- und Dateitypfilter müssen
-                // vor jeder macOS-Metadatenabfrage greifen. Im realen
-                // 4D-Testkorpus schrumpft die Menge von 47.030 auf 2.275.
-                if exclusionMatcher.matches(url) { continue }
-                guard passesFilter(url: url, filter: filter) else { continue }
-                // `rg --files` kennt macOS-Pakete nicht. Ohne diesen Check
-                // würden etwa `.app`- oder `.bundle`-Inhalte anders als im
-                // bisherigen FileManager-Pfad durchsuchbar. Der Cache prüft
-                // jeden Elternordner höchstens einmal pro Suchwurzel.
-                guard !rootIsDirectory.boolValue || !packageCache.contains(url) else { continue }
-                // Die Dateisystemauflösung gehört zum ohnehin abgekoppelten
-                // Suchlauf. Das veröffentlichte Ergebnis trägt anschließend
-                // schon die stabile URL; Navigation und Apply müssen sie auf
-                // dem Main-Thread nur noch als Wert vergleichen.
-                // Ein späterer atomarer Austausch trifft damit das echte Ziel
-                // und ersetzt keinen Symlink durch eine reguläre Datei.
-                let canonical = url.canonicalFileURL
-                guard seenFiles.insert(canonical.path).inserted else { continue }
-
-                // Datei durchsuchen. Der effektive Pro-Datei-Cap ist das
-                // Minimum aus `maxResultsPerFile` und dem noch verfügbaren
-                // Rest bis zum Gesamt-Cap. Das begrenzt die sichtbaren
-                // Treffer; die Datei wird trotzdem vollständig gezählt,
-                // weshalb totalMatches über maxTotalMatches liegen kann.
-                let remaining = maxTotalMatches - totalSoFar
-                let effectivePerFile = min(maxResultsPerFile, remaining)
-                // Foundation/FileHandle erzeugt beim Lesen temporäre
-                // Objective-C-Objekte. Ohne lokalen Pool bleiben sie in einem
-                // langen detached Task bis zum Laufende liegen; auf realen
-                // Projekten wächst der Resident-Speicher dann pro Datei.
+        do {
+            try selection.visitFiles(diagnostics: diagnostics, shouldCancel: shouldCancel) { url in
+                // Der letzte gelesene Treffer zählt vollständig, auch wenn nur
+                // ein Teil seiner Datei noch in die sichtbare Liste passt.
+                let effectivePerFile = min(maxResultsPerFile, maxTotalMatches - totalSoFar)
+                // Ohne lokalen Pool bleiben Foundation-Objekte eines langen
+                // detached Tasks bis zum Laufende liegen.
                 let fileStarted = diagnostics?.beginFile()
                 let result = autoreleasepool {
-                    searchOneFile(at: canonical, plan: searchPlan,
-                                  maxMatches: effectivePerFile,
-                                  shouldCancel: shouldCancel)
+                    searchOneFile(at: url, plan: searchPlan,
+                                  maxMatches: effectivePerFile, shouldCancel: shouldCancel)
                 }
-                if let fileStarted { diagnostics?.fileSearchSeconds += ProcessInfo.processInfo.systemUptime - fileStarted }
-                if shouldCancel() { return .empty }
-
-                // Nur Dateien aufnehmen, die entweder Treffer ODER einen
-                // ernsthaften Skip-Grund (binary/undecodable/unreadable)
-                // haben — sonst wäre die Liste voller leerer Einträge.
-                if result.skipped != nil || !result.matches.isEmpty {
-                    perFile.append(result)
+                if let fileStarted {
+                    diagnostics?.fileSearchSeconds += ProcessInfo.processInfo.systemUptime - fileStarted
                 }
-
-                // Gesamt-Cap prüfen. Skip-Einträge (binär etc.) haben 0 Treffer
-                // → addieren sicher, ohne die Zählung zu verfälschen.
-                // WICHTIG: den WAHREN Per-Datei-Count zählen (`totalMatches`),
-                // nicht die materialisierte, per-Datei gekappte Liste
-                // (`matches.count`) — sonst rechnet der Gesamt-Cap bei Dateien
-                // über dem Pro-Datei-Cap zu klein und liest Folgedateien,
-                // obwohl das Limit längst überschritten ist (Review 2026-07-03).
+                if shouldCancel() { throw CancellationError() }
+                if let snapshot = result.snapshot {
+                    scannedBytes += UInt64(snapshot.byteCount)
+                    if result.skipped == nil { textFiles[url] = snapshot }
+                }
+                // Leere und trefferlose Textdateien gehören zur Suchbasis,
+                // aber nicht zur sichtbaren Trefferliste.
+                if result.skipped != nil || !result.matches.isEmpty { perFile.append(result) }
                 totalSoFar += result.totalMatches
-                if totalSoFar >= maxTotalMatches {
-                    // Cap ausgelöst: Enumeration sauber abbrechen. Keine
-                    // weiteren Dateien lesen — das ist der Kern des
-                    // Freeze-Schutzes. Das bisherige Ergebnis bleibt gültig.
-                    capped = true
-                    break outerLoop
+                capped = totalSoFar >= maxTotalMatches
+                return !capped
+            }
+        } catch is CancellationError {
+            return .empty
+        } catch SourceSelection.Failure.missingRoot(let folder) {
+            return Result(perFile: [], invalidPatternMessage: L10n.format(
+                "Die Suchquelle „%@“ fehlt oder ist nicht zugänglich. Die Suche ist unvollständig.", folder.lastPathComponent),
+                wasCapped: false)
+        } catch let failure as RipgrepFileEnumerator.Failure {
+            return failedEnumerationResult(failure)
+        } catch {
+            return Result(perFile: [], invalidPatternMessage: L10n.format(
+                "Die Ordnersuche konnte die Dateiliste nicht vollständig lesen: %@",
+                error.localizedDescription), wasCapped: false)
+        }
+        let complete = !capped && perFile.allSatisfy { $0.skipped == nil || $0.skipped == .binary }
+        return Result(perFile: perFile, invalidPatternMessage: nil, wasCapped: capped,
+                      sourceBasis: complete ? SourceBasis(selection: selection, textFiles: textFiles,
+                                                         scannedBytes: scannedBytes) : nil)
+    }
+
+    /// Dieselbe Pfadauswahl für den Suchlauf und seine spätere Prüfung.
+    struct SourceSelection: Equatable, Sendable {
+        enum Failure: Error { case missingRoot(URL) }
+
+        let roots: [URL]
+        let filter: FileTypeFilter
+        let exclusions: [String]
+        let projectRoot: URL?
+
+        func visitFiles(diagnostics: Diagnostics? = nil,
+                        shouldCancel: @escaping @Sendable () -> Bool,
+                        visit: (URL) throws -> Bool) throws {
+            // Überlappende Datei-Set-Wurzeln durchsuchen jede Datei nur einmal.
+            var seenFiles = Set<String>()
+            let exclusionMatcher = PathExclusion.Matcher(patterns: exclusions, relativeTo: projectRoot)
+            for root in roots {
+                if shouldCancel() { throw CancellationError() }
+                var isDirectory: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory) else {
+                    throw Failure.missingRoot(root)
+                }
+                let urls: [URL]
+                if isDirectory.boolValue {
+                    let started = diagnostics.map { _ in ProcessInfo.processInfo.systemUptime }
+                    do {
+                        urls = try RipgrepFileEnumerator.files(in: root, excludedPatterns: exclusions,
+                                                               shouldCancel: shouldCancel)
+                    } catch RipgrepFileEnumerator.Failure.unavailable {
+                        // Abbruch, Timeout und unvollständige Ausgabe dürfen
+                        // keinen zweiten Vollscan mit anderen Regeln auslösen.
+                        urls = try legacyFileURLs(in: root, shouldCancel: shouldCancel)
+                    }
+                    if let started {
+                        diagnostics?.enumerationSeconds += ProcessInfo.processInfo.systemUptime - started
+                        diagnostics?.candidateCount += urls.count
+                    }
+                } else {
+                    urls = [root]
+                }
+
+                var packageCache = PackageMembershipCache(root: root)
+                for url in urls {
+                    if shouldCancel() { throw CancellationError() }
+                    // Billige Filter vor macOS-Metadatenabfragen anwenden.
+                    guard !exclusionMatcher.matches(url), passesFilter(url: url, filter: filter) else { continue }
+                    // ripgrep kennt macOS-Pakete nicht.
+                    guard !isDirectory.boolValue || !packageCache.contains(url) else { continue }
+                    // Navigation und Apply vergleichen dieselbe, bereits im
+                    // Worker ermittelte kanonische Pfadform.
+                    let canonical = url.canonicalFileURL
+                    guard seenFiles.insert(canonical.path).inserted else { continue }
+                    if try !visit(canonical) { return }
                 }
             }
         }
-        return Result(perFile: perFile, invalidPatternMessage: nil, wasCapped: capped)
     }
 
     /// Der bewusst schmale Fallback für Umgebungen, in denen der mitgelieferte
@@ -343,18 +320,24 @@ enum FolderSearch {
         in folder: URL,
         shouldCancel: @escaping @Sendable () -> Bool
     ) throws -> [URL] {
+        var enumerationError: (any Error)?
         guard let enumerator = FileManager.default.enumerator(
             at: folder,
             includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return [] }
+            options: [.skipsHiddenFiles, .skipsPackageDescendants],
+            errorHandler: { _, error in
+                enumerationError = error
+                return false
+            }
+        ) else { throw SourceSelection.Failure.missingRoot(folder) }
         var urls: [URL] = []
         for case let url as URL in enumerator {
-            if shouldCancel() { throw RipgrepFileEnumerator.Failure.cancelled }
-            if (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
+            if shouldCancel() { throw CancellationError() }
+            if try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true {
                 urls.append(url)
             }
         }
+        if let enumerationError { throw enumerationError }
         return urls
     }
 
@@ -455,7 +438,7 @@ enum FolderSearch {
             // ließen sich aber nur abschnittsweise und damit nie am Treffer
             // öffnen.
             read = try FileSnapshot.read(
-                from: url, byteLimit: FileLoader.largeFileThreshold)
+                from: url, byteLimit: FileLoader.largeFileThreshold, isCancelled: shouldCancel)
         } catch FileSnapshotReadError.tooLarge {
             // Bewusst eigener Grund statt „unlesbar": Die Datei existiert und
             // wäre lesbar, sie ist nur größer als die Speicher-Grenze.
@@ -472,17 +455,15 @@ enum FolderSearch {
                                  skipped: nil, snapshot: nil,
                                  searchOptions: options)
         }
-        let data = read.data
-        let (bom, bomEncoding) = ApplyEngine.detectBOM(in: data)
-        // Dieselben vollständig gelesenen Bytes müssen auch im Editor als
-        // Text öffnen. Eine UTF-8-BOM erklärt keine Nullbytes im Inhalt.
-        if !FileLoader.bomEncodingAllowsNUL(bomEncoding) && data.contains(0) {
+        let text: String
+        switch classify(read.data) {
+        case .text(let decoded):
+            text = decoded
+        case .binary:
             return PerFileResult(url: url, matches: [], totalMatches: 0,
                                  skipped: .binary, snapshot: read.snapshot,
                                  searchOptions: options)
-        }
-        let payload = Data(data.dropFirst(bom.count))
-        guard let decoded = ApplyEngine.decode(payload: payload, bomEncoding: bomEncoding) else {
+        case .undecodable:
             return PerFileResult(url: url, matches: [], totalMatches: 0,
                                  skipped: .undecodable, snapshot: read.snapshot,
                                  searchOptions: options)
@@ -490,11 +471,11 @@ enum FolderSearch {
         // Pro-Datei-Cap direkt an find() geben — sonst griffe dort der
         // niedrigere Default-Cap und schnitte Treffer unter den vom Ordner-
         // Lauf vorgesehenen Rest-bis-Gesamtcap. `prefix` bleibt als Gürtel.
-        let search = BufferSearch.find(in: decoded.0, plan: plan,
+        let search = BufferSearch.find(in: text, plan: plan,
                                        maxMatches: maxMatches,
                                        shouldCancel: shouldCancel)
         let capped = Array(search.matches.prefix(maxMatches))
-        // `search.totalMatches` ist die ECHTE Trefferzahl (zählt alle, auch über
+        // `search.totalMatches` ist die echte Trefferzahl (zählt alle, auch über
         // dem Cap) — als wahren Per-Datei-Count durchreichen, damit die Gesamt-
         // Statistik bei >maxMatches-Dateien nicht untercountet. `matches`/`capped`
         // bleiben materialisiert begrenzt (UI-Speicher).
@@ -502,6 +483,20 @@ enum FolderSearch {
                              totalMatches: search.totalMatches, skipped: nil,
                              snapshot: read.snapshot, searchOptions: options,
                              isWritable: ApplyEngine.isWritableTarget(url))
+    }
+
+    enum FileContent {
+        case text(String), binary, undecodable
+    }
+
+    static func classify(_ data: Data) -> FileContent {
+        let (bom, bomEncoding) = ApplyEngine.detectBOM(in: data)
+        // Dieselben Bytes müssen im Editor als Text öffnen. Eine UTF-8-BOM
+        // erklärt keine Nullbytes im Inhalt.
+        if !FileLoader.bomEncodingAllowsNUL(bomEncoding) && data.contains(0) { return .binary }
+        guard let decoded = ApplyEngine.decode(payload: Data(data.dropFirst(bom.count)),
+                                               bomEncoding: bomEncoding) else { return .undecodable }
+        return .text(decoded.0)
     }
 }
 

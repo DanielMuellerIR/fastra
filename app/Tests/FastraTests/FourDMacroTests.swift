@@ -125,7 +125,7 @@ func macroTextParts() throws {
     #expect(macros[0].textParts == [.caret])
     #expect(macros[6].textParts == [.clipboard])
 
-    // Datums-/Zeitformat kommt als Zahl aus dem Attribut; `<text/>` INNERHALB
+    // Datums-/Zeitformat kommt als Zahl aus dem Attribut; `<text/>` innerhalb
     // von `<text>` ist der Platzhalter für den kompletten Methodentext.
     #expect(macros[9].textParts == [
         .literal("// "),
@@ -265,7 +265,7 @@ func macroCapabilityKinds() throws {
     let macros = try parseSample()
     #expect(FourDMacroXML.capability(of: macros[5]) == .nativeText)
     #expect(FourDMacroXML.capability(of: macros[9]) == .nativeText)
-    // Ein unbekannter Platzhalter macht das Makro NICHT ausführbar: Fastra
+    // Ein unbekannter Platzhalter macht das Makro nicht ausführbar: Fastra
     // würde sonst still unvollständigen Text einsetzen.
     #expect(unsupportedReason(FourDMacroXML.capability(of: macros[10]))?
         .contains("neuer_platzhalter") == true)
@@ -612,7 +612,7 @@ func macroSourcesHonorSourceBudget() throws {
     #expect(limited.map(\.url.lastPathComponent)
             == ["m1.xml", "m2.xml", "m3.xml", "m4.xml"])
 
-    // Komponentenquellen verbrauchen das Budget VOR dem Benutzerordner:
+    // Komponentenquellen verbrauchen das Budget vor dem Benutzerordner:
     // Die Prioritätsreihenfolge der Fundorte bleibt erhalten.
     let root = scratch.appendingPathComponent("MeinProjekt")
     try writeFile(root.appendingPathComponent("Project/App.4DProject"))
@@ -633,10 +633,10 @@ func macroSourcesHonorSourceBudget() throws {
 /// Zeichnet die Verzeichniszugriffe der Discovery auf. Der Test prüft damit
 /// nicht nur die Ergebniszahl, sondern ob nach verbrauchtem Quellenbudget
 /// tatsächlich keine nachrangigen Fundorte mehr gelesen werden. Die Discovery
-/// zählt Ordner lazy über `enumerator(at:)` auf — das ist eine NICHT
+/// zählt Ordner lazy über `enumerator(at:)` auf — das ist eine nicht
 /// überschreibbare Swift-Extension, deshalb beobachtet der Doppelgänger die
 /// geöffneten Wurzeln über die Testnaht `MacroDirectoryEnumerationObserving`
-/// statt über einen wirkungslosen Override (Review 2026-08-31).
+/// statt über einen wirkungslosen Override.
 private final class RecordingMacroFileManager: FileManager,
                                                MacroDirectoryEnumerationObserving {
     private(set) var readDirectories: [URL] = []
@@ -651,7 +651,7 @@ private final class RecordingMacroFileManager: FileManager,
             at: url, includingPropertiesForKeys: keys, options: mask)
     }
 
-    // Aufgezeichnet wird die geöffnete WURZEL, nicht jeder Eintrag: Genau
+    // Aufgezeichnet wird die geöffnete Wurzel, nicht jeder Eintrag: Genau
     // sie beantwortet die Frage „wurde dieser Fundort noch gelesen?".
     func noteDirectoryEnumeration(at url: URL) {
         readDirectories.append(url.standardizedFileURL)
@@ -800,9 +800,9 @@ func macroDependenciesFIFOIsRejectedWithoutBlocking() throws {
     let sources = project.appendingPathComponent("Project/Sources", isDirectory: true)
     try FileManager.default.createDirectory(at: sources,
                                             withIntermediateDirectories: true)
-    // Eine benannte Pipe OHNE Schreiber: Ein blockierendes `open` wartete
-    // hier unbegrenzt — der Katalog-Task hing dauerhaft fest
-    // (Review 2026-08-31). Mit dem nicht blockierenden Lesepfad kehrt der
+    // Eine benannte Pipe ohne Schreiber: Ein blockierendes `open` wartete
+    // hier unbegrenzt — der Katalog-Task hing dauerhaft fest.
+    // Mit dem nicht blockierenden Lesepfad kehrt der
     // Aufruf sofort mit leerem Ergebnis zurück.
     let fifo = sources.appendingPathComponent("dependencies.json")
     try #require(mkfifo(fifo.path, 0o644) == 0)
@@ -845,13 +845,13 @@ func projectRootHonorsSharedEntryBudget() throws {
 
     // Erschöpftes Budget: kein einziger Verzeichniseintrag wird mehr gelesen,
     // die Wurzel bleibt unerkannt — statt eines unbegrenzten Scans fremder
-    // `Project`-Ordner (Review 2026-08-31).
+    // `Project`-Ordner.
     var exhausted = 0
     #expect(FourDMacroDiscovery.projectRoot(
         forDocument: document, fileManager: .default,
         entryBudget: &exhausted) == nil)
 
-    // Mit Budget wird die Wurzel gefunden UND der Verbrauch ist am
+    // Mit Budget wird die Wurzel gefunden und der Verbrauch ist am
     // verbleibenden Budget ablesbar — dieselbe Zahl bekommt anschließend
     // `macroSources` als Rest.
     var shared = FourDMacroDiscovery.maximumDirectoryEntryCount
@@ -926,7 +926,7 @@ func macroApplicationVersionChoice() throws {
     let scratch = try makeMacroScratch()
     defer { try? FileManager.default.removeItem(at: scratch) }
     let apps = scratch.appendingPathComponent("Applications")
-    // „20.10" ist numerisch NEUER als „20.9".
+    // „20.10" ist numerisch neuer als „20.9".
     try makeFourDBundle(at: apps.appendingPathComponent("4D v20.9/4D.app"),
                         version: "20.9", languages: ["de"])
     try makeFourDBundle(at: apps.appendingPathComponent("4D v20.10/4D.app"),
@@ -1010,7 +1010,7 @@ struct FourDMacroRenderingTests {
 
     @Test("Ein gelerntes Teilwort verdoppelt das Suffix des längeren Namens nicht")
     func learnedRoundtripKeepsOverlappingNamesDisjoint() {
-        // `Future Tail` UND das eigenständige `Tail` sind beide gelernt. Ohne
+        // `Future Tail` und das eigenständige `Tail` sind beide gelernt. Ohne
         // Bereichsbelegung bekam der enttokenisierte mehrwortige Name zuerst
         // das Suffix von `Tail` und am selben Offset zusätzlich das von
         // `Future Tail` — der geschriebene 4D-Code war damit kaputt.
@@ -1033,7 +1033,7 @@ struct FourDMacroRenderingTests {
             text, learned: [:], isCancelled: { false })
             == FourDTokenTransform.retokenize(text, learned: [:]))
         // Der reine Kommentar erzeugt kein rücktokenisierbares Token. Nur ein
-        // Abbruch IM Tokenizer kann den Lauf deshalb stoppen; die spätere
+        // Abbruch im Tokenizer kann den Lauf deshalb stoppen; die spätere
         // Planungsschleife wird bei diesem Fixture nie betreten.
         var checks = 0
         let cancelled = FourDTokenTransform.retokenize(
@@ -1079,14 +1079,14 @@ struct FourDMacroRenderingTests {
     }
 }
 
-// MARK: - Reviewfunde 2026-08-20
+// MARK: - Makro-Ausführung und Token-Erhaltung
 
 @Test("IDs: zwei gleichnamige Quellen kollidieren nicht")
 func macroIDsStayUniqueAcrossSameNamedSources() {
     // Real gibt es „Macros.xml“ mehrfach gleichzeitig: einmal mitgeliefert in
     // 4D.app, einmal in einer Projekt-Komponente. Ohne eigenen Quellschlüssel
     // hätten beide dieselben IDs, und ein Menüklick führte das Makro der
-    // FALSCHEN Quelle aus.
+    // falschen Quelle aus.
     let xml = """
     <macros><macro name="A" version="2"><text>x</text></macro></macros>
     """
@@ -1137,7 +1137,7 @@ func macroKomplettierenSignaturesAreExact() {
         == .ohneNichtVerwendetUndVar)
 
     // Kein Argument, fremdes erstes Argument, falsche Festwerte, zu viele
-    // Argumente: alles KEINE bekannte Variante mehr.
+    // Argumente: alles keine bekannte Variante mehr.
     #expect(FourDMacroXML.komplettierenVariant(arguments: []) == nil)
     #expect(FourDMacroXML.komplettierenVariant(arguments: ["\"Fremd\""]) == nil)
     #expect(FourDMacroXML.komplettierenVariant(
@@ -1431,7 +1431,7 @@ func macroPreviewApplyUsesBoundEditorInsteadOfGlobalTarget() throws {
     )
     WorkspaceWindowRegistry.register(competingWorkspace, for: competingWindow)
     // Ohne Key-Window nimmt die globale Zielwahl das vorderste Dokument.
-    // Der konkurrierende Workspace steht absichtlich VOR dem Lease-Fenster.
+    // Der konkurrierende Workspace steht absichtlich vor dem Lease-Fenster.
     competingWindow.orderFront(nil)
     defer {
         WorkspaceWindowRegistry.unregister(competingWindow)
@@ -1572,7 +1572,7 @@ func staleEngineCompletionKeepsNewerRunLock() {
     defer { defaults.removePersistentDomain(forName: suite) }
     let workspace = Workspace(defaults: defaults)
 
-    // Erster Lauf: Preflight/tool4d laufen, noch KEIN Postprocess-Task.
+    // Erster Lauf: Preflight/tool4d laufen, noch kein Postprocess-Task.
     let firstRun = workspace.beginFourDMacroEngineRun()
     #expect(workspace.fourDMacroEngineBusy)
 
@@ -1585,9 +1585,8 @@ func staleEngineCompletionKeepsNewerRunLock() {
     let secondRun = workspace.beginFourDMacroEngineRun()
     #expect(workspace.fourDMacroEngineBusy)
 
-    // Die verspätete Completion des ERSTEN Laufs darf die Sperre des
+    // Die verspätete Completion des ersten Laufs darf die Sperre des
     // zweiten nicht löschen — sonst könnte ein dritter Lauf parallel starten
-    // (Review 2026-08-29).
     workspace.releaseFourDMacroEngineLock(runID: firstRun)
     #expect(workspace.fourDMacroEngineBusy)
 
@@ -1620,11 +1619,10 @@ func openReplaceAllCancelsMacroPostprocessing() throws {
     workspace.openResults = found.perTab
     workspace.openTotalMatches = found.totalMatches
     workspace.openResultsWereCapped = found.wasCapped
-    workspace.visibleBufferResultsOptions = workspace.currentSearchOptions
+    publishPreparedSearchResults(workspace)
 
     // Die programmgesteuerte Inhaltsänderung läuft am Editor-Binding vorbei;
     // sie muss die Nachbearbeitung des Makro-Tabs trotzdem sofort abbrechen
-    // (Review 2026-08-29).
     #expect(workspace.applyAllInOpenTabs() == 1)
 
     #expect(probe.diffCancelled.wait(timeout: .now() + 2) == .success)

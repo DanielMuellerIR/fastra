@@ -17,7 +17,7 @@ private func makeFreshDefaults() -> (UserDefaults, suiteName: String) {
 }
 
 /// Schreibt `content` mit UTF-8 in eine temporäre Datei und gibt die URL zurück.
-/// Liefert die KANONISCHE Form (`canonicalFileURL`) — genau die trägt der Tab
+/// Liefert die kanonische Form (`canonicalFileURL`) — genau die trägt der Tab
 /// nach `loadFile` (das intern kanonisiert, damit `/var` und `/private/var`
 /// nicht als zwei Dateien gelten). Ohne diese Angleichung schlügen die
 /// `$0.url == url`-Vergleiche in Temp-Verzeichnissen fehl.
@@ -41,6 +41,15 @@ private final class WorkspaceLoadCallCounter: @unchecked Sendable {
     }
 }
 
+// Der SearchRunner reiht bei Workspace.init einen ersten Suchlauf ein. Vor
+// kontrollierten Sprüngen muss er fertig sein, damit er ihre Generation nicht entwertet.
+@MainActor
+private func waitForInitialSearchTurn() async {
+    await withCheckedContinuation { continuation in
+        DispatchQueue.main.async { continuation.resume() }
+    }
+}
+
 // MARK: - Tests: Normaler Ladevorgang
 
 @Test("loadFile: Platzhalter-Tab isLoading = true sofort nach dem Aufruf")
@@ -54,14 +63,14 @@ func wsLoad_placeholderIsLoadingImmediately() async throws {
     let url = try writeTmpUTF8(content)
     defer { try? FileManager.default.removeItem(at: url) }
 
-    // loadFile aufrufen — kehrt sofort zurück, BEVOR der Hintergrund-Task
-    // fertig ist. Der Lade-Platzhalter muss sofort da und AKTIV sein; der
+    // loadFile aufrufen — kehrt sofort zurück, bevor der Hintergrund-Task
+    // fertig ist. Der Lade-Platzhalter muss sofort da und aktiv sein; der
     // unberührte Start-Tab darf während des Ladens stehen bleiben (sein
     // Willkommens-Platzhalter zeigt sich nur, wenn er selbst aktiv ist).
     var completionCalled = false
     ws.loadFile(at: url) { _ in completionCalled = true }
 
-    // DIREKT nach dem Aufruf (noch im selben RunLoop-Tick) prüfen:
+    // Direkt nach dem Aufruf (noch im selben RunLoop-Tick) prüfen:
     let placeholder = ws.tabs.last
     #expect(placeholder?.isLoading == true,
             "Platzhalter-Tab muss sofort isLoading = true haben")
@@ -91,16 +100,23 @@ func wsLoad_afterCompletionContentLoaded() async throws {
     // Completion-Ergebnis aufzeichnen.
     var completionResult: Bool? = nil
     ws.loadFile(at: url) { ok in completionResult = ok }
+    let placeholder = try #require(ws.activeTab)
+    #expect(placeholder.isLoading)
+    // Beim Fensteraufbau kann der Editor seinen Verlauf schon am leeren Platzhalter holen.
+    let history = placeholder.undoHistory.manager(for: placeholder.content)
+    #expect(!history.canUndo)
 
     // Auf Completion warten.
     _ = await waitUntil { completionResult != nil }
 
     // Nach der Completion: Tab fertig geladen.
     #expect(completionResult == true, "Completion soll true liefern")
-    let loadedTab = ws.tabs.first(where: { $0.url == url })
-    #expect(loadedTab != nil, "Geladener Tab muss in ws.tabs vorhanden sein")
-    #expect(loadedTab?.isLoading == false, "isLoading muss nach Completion false sein")
-    #expect(loadedTab?.content == content, "Inhalt muss mit Datei-Inhalt übereinstimmen")
+    let loadedTab = try #require(ws.activeTab)
+    #expect(loadedTab.url == url)
+    #expect(!loadedTab.isLoading, "isLoading muss nach Completion false sein")
+    #expect(loadedTab.content == content, "Inhalt muss mit Datei-Inhalt übereinstimmen")
+    let editorHistory = loadedTab.undoHistory.manager(for: loadedTab.content)
+    #expect(!editorHistory.canUndo, "Rückgängig darf die geladene Datei nicht leeren")
 }
 
 // MARK: - Tests: Dedup
@@ -281,9 +297,8 @@ func wsLoad_expectedSnapshotRejectsDirtyOpenTabBeforeActivation() async throws {
         expectedDiskSnapshot: expected
     ) { outcome = $0 }
 
-    // Typisiert: Ein dirty Tab ist KEIN Beleg für eine veraltete
+    // Typisiert: Ein dirty Tab ist kein Beleg für eine veraltete
     // Trefferbasis — die Navigation zeigt dafür einen eigenen Hinweis
-    // (Review 2026-08-31).
     #expect(outcome == .unsavedChanges)
     #expect(ws.activeTabID == other.id)
     #expect(ws.tabs[fileIndex].content == "ungesicherte Änderung\n")
@@ -366,7 +381,7 @@ func wsLoad_expectedSnapshotReportsBusyLoadingTab() async throws {
     let fileIndex = try #require(ws.tabs.firstIndex(where: { $0.url == canonical }))
     let expected = try #require(ws.tabs[fileIndex].diskSnapshot)
     // Zustand „ein früherer Auftrag lädt noch": Der zweite Sprung darf die
-    // gültige Trefferbasis dann NICHT als veraltet melden (Review 2026-08-31).
+    // gültige Trefferbasis dann nicht als veraltet melden.
     ws.tabs[fileIndex].isLoading = true
 
     var outcome: FileLoadOutcome? = nil
@@ -379,18 +394,17 @@ func wsLoad_expectedSnapshotReportsBusyLoadingTab() async throws {
     ws.tabs[fileIndex].isLoading = false
 }
 
-// Befund Review 2026-09-01: Der erste Sprung in eine noch ungeöffnete
-// Funddatei legte einen Platzhalter an. Ein direkt folgender Treffer derselben
-// Datei bekam nur `.busyLoading`, entwertete aber zugleich die Acceptance des
-// ersten Reads; dessen Completion verwarf daraufhin den Platzhalter. Damit ging
-// gerade der neueste Treffer verloren. Der Read wird hier deterministisch
-// angehalten, sodass kein Scheduler-Rennen den Ablauf verdecken kann.
+// Zwei schnelle Sprünge in dieselbe noch ladende Funddatei prüfen.
+// Der zweite darf weder die Acceptance des ersten Reads entwerten noch dessen
+// Platzhalter verlieren. Den Read deterministisch anhalten, um den Zustand
+// unabhängig vom Scheduler herzustellen.
 @Test("Zwei schnelle Ordner-Treffer derselben neuen Datei teilen den Read und führen den neuesten Sprung aus")
 @MainActor
 func wsLoad_folderMatchCoalescesLatestRequestForSameFile() async throws {
     let (defaults, suite) = makeFreshDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
     let ws = Workspace(defaults: defaults)
+    await waitForInitialSearchTurn()
     let content = "eins TREFFER zwei TREFFER\n"
     let url = try writeTmpUTF8(content)
     defer { try? FileManager.default.removeItem(at: url) }
@@ -456,6 +470,78 @@ func wsLoad_folderMatchCoalescesLatestRequestForSameFile() async throws {
     #expect(ws.tabs.filter { $0.url == url }.count == 1)
 }
 
+@Test("Zusammengeführte Ordner-Treffer schließen nach Workspace-Freigabe jeden Auftrag genau einmal ab")
+@MainActor
+func wsLoad_folderMatchCoalescedRequestsReportOnceAfterWorkspaceDisappears() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var workspace: Workspace? = Workspace(defaults: defaults)
+    weak var releasedWorkspace = workspace
+    await waitForInitialSearchTurn()
+    let url = try writeTmpUTF8("eins TREFFER zwei TREFFER\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let expected = try FileSnapshot.readSnapshotOnly(from: url)
+
+    let started = DispatchSemaphore(value: 0)
+    let mayFinish = DispatchSemaphore(value: 0)
+    // Auch eine fehlgeschlagene Vorbedingung muss den echten Read freigeben.
+    defer { mayFinish.signal() }
+    let calls = WorkspaceLoadCallCounter()
+    let finishedReads = WorkspaceLoadCallCounter()
+    workspace?.initialFileLoader = { url in
+        calls.increment()
+        started.signal()
+        mayFinish.wait()
+        defer { finishedReads.increment() }
+        return try FileLoader.load(url: url)
+    }
+
+    // Die Outcomes halten ausschließlich ihre Arrays, damit sie die tatsächliche
+    // Workspace-Freigabe vor dem Readabschluss nicht selbst verhindern.
+    var firstOutcomes: [FileLoadOutcome] = []
+    let firstGeneration = try #require(workspace?.beginMatchJump())
+    workspace?.noteMatchNavigationTarget(index: 0, generation: firstGeneration)
+    workspace?.loadFolderMatchFile(
+        atCanonicalURL: url,
+        expectedDiskSnapshot: expected,
+        jumpGeneration: firstGeneration
+    ) { firstOutcomes.append($0) }
+    try #require(await waitUntil {
+        started.wait(timeout: .now()) == .success
+    }, "Der kontrollierte Dateiread muss begonnen haben")
+
+    var secondOutcomes: [FileLoadOutcome] = []
+    let secondGeneration = try #require(workspace?.beginMatchJump())
+    workspace?.noteMatchNavigationTarget(index: 1, generation: secondGeneration)
+    workspace?.loadFolderMatchFile(
+        atCanonicalURL: url,
+        expectedDiskSnapshot: expected,
+        jumpGeneration: secondGeneration
+    ) { secondOutcomes.append($0) }
+    try #require(firstOutcomes == [.cancelled],
+                 "Das Ersetzen muss den ersten logischen Auftrag sofort einmal abschließen")
+    try #require(secondOutcomes.isEmpty)
+    try #require(calls.value == 1, "Beide Aufträge müssen denselben Read teilen")
+    try #require(finishedReads.value == 0)
+
+    workspace = nil
+    try #require(await waitUntil { releasedWorkspace == nil },
+                 "Ohne echte Workspace-Freigabe wird der Zielpfad nicht geprüft")
+    try #require(finishedReads.value == 0,
+                 "Der Workspace muss vor dem physischen Readabschluss verschwinden")
+    mayFinish.signal()
+
+    try #require(await waitUntil { finishedReads.value == 1 },
+                 "Der echte Dateiread muss nach der Freigabe abschließen")
+    #expect(await waitUntil { !secondOutcomes.isEmpty },
+            "Auch der neueste logische Auftrag muss einen terminalen Abschluss erhalten")
+    #expect(firstOutcomes == [.cancelled],
+            "Der ersetzte Auftrag darf nach dem Readabschluss nicht erneut melden")
+    #expect(secondOutcomes == [.cancelled],
+            "Ohne Workspace muss der neueste Auftrag genau einmal cancelled melden")
+    #expect(calls.value == 1)
+}
+
 @Test("Ein neuer erfolgreicher Ordner-Sprung löscht den Hinweis des vorherigen Dirty-Tabs")
 @MainActor
 func wsLoad_successfulFolderMatchClearsPreviousUnsavedNotice() async throws {
@@ -517,14 +603,14 @@ func wsLoad_successfulFolderMatchClearsPreviousUnsavedNotice() async throws {
 @Test("Ein veralteter Folgeauftrag löscht den Hinweis des neuesten Sprungs nicht")
 @MainActor
 func wsLoad_staleRecursiveFolderMatchKeepsNewestNotice() async throws {
-    // Drei überlappende Aufträge (Review 2026-09-02):
+    // Drei überlappende Aufträge:
     //   A  liest die Funddatei, der Read wird künstlich angehalten.
-    //   A' springt zur selben Datei mit einem ANDEREN Snapshot — ersetzt den
+    //   A' springt zur selben Datei mit einem anderen Snapshot — ersetzt den
     //      wartenden Auftrag; die Read-Completion startet dafür später einen
     //      Folgeauftrag B mit A's Generation.
     //   C  springt zu einer dirty geöffneten Datei und setzt den Hinweis.
     // Läuft A's Read danach aus, darf der veraltete Folgeauftrag B den
-    // Hinweis von C nicht löschen — vorher stand das Löschen VOR dem
+    // Hinweis von C nicht löschen — vorher stand das Löschen vor dem
     // Generations-Guard.
     let (defaults, suite) = makeFreshDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -596,9 +682,8 @@ func wsLoad_staleRecursiveFolderMatchKeepsNewestNotice() async throws {
 @Test("Umbenennen während des ersten Reads lädt den Platzhalter unter dem neuen Pfad fertig")
 @MainActor
 func wsLoad_renameDuringInitialReadRestartsLoadForNewPath() async throws {
-    // Review 2026-09-03: `handleFileTreeMoveLocally` hängt den Lade-
-    // Platzhalter auf den neuen Pfad um; der laufende Read kam mit der alten
-    // URL zurück, wurde verworfen und ließ den Tab dauerhaft im Ladezustand.
+    // `handleFileTreeMoveLocally` benennt den Ladeplatzhalter während des Reads
+    // um. Der Read muss dem neuen Pfad folgen, statt den Tab im Ladezustand zu lassen.
     let (defaults, suite) = makeFreshDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
     let ws = Workspace(defaults: defaults)
@@ -612,7 +697,7 @@ func wsLoad_renameDuringInitialReadRestartsLoadForNewPath() async throws {
     }
 
     // Der erste Read hält an, bis der Test die Umbenennung erledigt hat. Die
-    // gelesenen URLs zeigen, dass danach ein zweiter Read am NEUEN Pfad läuft.
+    // gelesenen URLs zeigen, dass danach ein zweiter Read am neuen Pfad läuft.
     let started = DispatchSemaphore(value: 0)
     let mayFinish = DispatchSemaphore(value: 0)
     let readURLs = WorkspaceLoadURLRecorder()
@@ -665,18 +750,13 @@ private final class WorkspaceLoadURLRecorder: @unchecked Sendable {
 @Test("Der auf den neuen Pfad umgehängte Read bedient keinen Ordner-Sprung des alten Pfads")
 @MainActor
 func wsLoad_renamedReadDoesNotServeFolderMatchJumpOfOldPath() async throws {
-    // Review 2026-09-04: Ein wartender Ordner-Sprung liegt unter dem PFAD der
-    // Funddatei. Benennt die Seitenleiste die Datei während des Reads um,
-    // startet derselbe Read unter dem neuen Pfad neu — trägt aber weiterhin
-    // die Completion, die den Wartenden des ALTEN Pfads abrechnet. Klickt der
-    // Nutzer den noch sichtbaren Treffer des alten Pfads erneut, bekam dieser
-    // neueste Auftrag deshalb das Ergebnis der UMBENANNTEN Datei gemeldet:
-    // `.opened`, obwohl seine eigene Datei nie gelesen wurde. Der
-    // anschließende URL-Guard der Treffer-Navigation kann damit nicht
-    // springen, und der Nutzer landet nirgends.
+    // Nach Umbenennen während des Reads einen Treffer des alten Pfads erneut
+    // anklicken. Dessen wartender Auftrag darf nicht `.opened` mit dem Ergebnis
+    // der umbenannten Datei erhalten; URL und Completion müssen zusammengehören.
     let (defaults, suite) = makeFreshDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
     let ws = Workspace(defaults: defaults)
+    await waitForInitialSearchTurn()
     let original = try writeTmpUTF8("Inhalt vor dem Umbenennen\n")
     let renamed = original.deletingLastPathComponent()
         .appendingPathComponent("fastra-wsload-renamed-\(UUID().uuidString).txt")
@@ -687,7 +767,7 @@ func wsLoad_renamedReadDoesNotServeFolderMatchJumpOfOldPath() async throws {
     }
     let snapshot = try FileSnapshot.readSnapshotOnly(from: original)
 
-    // Nur der ERSTE Read hält an; er deckt die Umbenennung und den zweiten
+    // Nur der erste Read hält an; er deckt die Umbenennung und den zweiten
     // Trefferklick ab. Alle weiteren Reads laufen normal durch.
     let started = DispatchSemaphore(value: 0)
     let mayFinish = DispatchSemaphore(value: 0)
@@ -715,7 +795,7 @@ func wsLoad_renamedReadDoesNotServeFolderMatchJumpOfOldPath() async throws {
     ws.handleFileTreeMove(from: original, to: renamed)
     #expect(ws.tabs.first(where: { $0.id == placeholderID })?.url == renamed)
 
-    // Zweiter Klick auf den noch sichtbaren Treffer des ALTEN Pfads.
+    // Zweiter Klick auf den noch sichtbaren Treffer des alten Pfads.
     var secondOutcomes: [FileLoadOutcome] = []
     let secondGeneration = ws.beginMatchJump()
     ws.loadFolderMatchFile(atCanonicalURL: original,
@@ -750,4 +830,277 @@ func wsLoad_renamedReadDoesNotServeFolderMatchJumpOfOldPath() async throws {
     #expect(secondOutcomes == [.failed])
     #expect(ws.tabs.filter { $0.url == original }.isEmpty,
             "Für den verschwundenen alten Pfad darf kein Platzhalter zurückbleiben")
+}
+
+@Test("Ein erneut aus dem Abbruchcallback gestarteter Ordner-Sprung bleibt der neueste Auftrag")
+@MainActor
+func wsLoad_folderMatchReplacementKeepsReentrantRequest() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let ws = Workspace(defaults: defaults)
+    await waitForInitialSearchTurn()
+    let url = try writeTmpUTF8("Treffer\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let expected = try FileSnapshot.readSnapshotOnly(from: url)
+    let started = DispatchSemaphore(value: 0)
+    let mayFinish = DispatchSemaphore(value: 0)
+    defer { mayFinish.signal() }
+    let calls = WorkspaceLoadCallCounter()
+    ws.initialFileLoader = { url in
+        calls.increment()
+        started.signal()
+        mayFinish.wait()
+        return try FileLoader.load(url: url)
+    }
+
+    var firstOutcomes: [FileLoadOutcome] = []
+    var secondOutcomes: [FileLoadOutcome] = []
+    var reentrantOutcomes: [FileLoadOutcome] = []
+    ws.loadFolderMatchFile(
+        atCanonicalURL: url, expectedDiskSnapshot: expected,
+        jumpGeneration: ws.beginMatchJump()
+    ) { [weak ws] outcome in
+        firstOutcomes.append(outcome)
+        guard outcome == .cancelled, let ws else { return }
+        ws.loadFolderMatchFile(
+            atCanonicalURL: url, expectedDiskSnapshot: expected,
+            jumpGeneration: ws.beginMatchJump()
+        ) { reentrantOutcomes.append($0) }
+    }
+    try #require(await waitUntil { started.wait(timeout: .now()) == .success })
+    ws.loadFolderMatchFile(
+        atCanonicalURL: url, expectedDiskSnapshot: expected,
+        jumpGeneration: ws.beginMatchJump()
+    ) { secondOutcomes.append($0) }
+
+    try #require(firstOutcomes == [.cancelled])
+    try #require(secondOutcomes == [.cancelled],
+                 "Der Rückruf des ersten Auftrags muss den zweiten bereits ablösen können")
+    try #require(reentrantOutcomes.isEmpty)
+    try #require(calls.value == 1)
+    mayFinish.signal()
+    #expect(await waitUntil { !reentrantOutcomes.isEmpty })
+    #expect(firstOutcomes == [.cancelled])
+    #expect(secondOutcomes == [.cancelled])
+    #expect(reentrantOutcomes == [.opened])
+    #expect(calls.value == 1)
+    #expect(ws.tabs.first(where: { $0.url == url })?.content == "Treffer\n")
+}
+
+@Test("Ein Ordner-Sprung mit neuem Snapshot schließt nach Readneustart und Workspace-Freigabe einmal ab")
+@MainActor
+func wsLoad_folderMatchSnapshotRestartReportsAfterWorkspaceDisappears() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var workspace: Workspace? = Workspace(defaults: defaults)
+    weak var releasedWorkspace = workspace
+    await waitForInitialSearchTurn()
+    let url = try writeTmpUTF8("alter Treffer\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let originalSnapshot = try FileSnapshot.readSnapshotOnly(from: url)
+    let firstStarted = DispatchSemaphore(value: 0)
+    let firstMayFinish = DispatchSemaphore(value: 0)
+    let nextStarted = DispatchSemaphore(value: 0)
+    let nextMayFinish = DispatchSemaphore(value: 0)
+    defer {
+        firstMayFinish.signal()
+        nextMayFinish.signal()
+    }
+    let calls = WorkspaceLoadCallCounter()
+    let finishedReads = WorkspaceLoadCallCounter()
+    workspace?.initialFileLoader = { url in
+        calls.increment()
+        if calls.value == 1 {
+            firstStarted.signal()
+            firstMayFinish.wait()
+        } else {
+            nextStarted.signal()
+            nextMayFinish.wait()
+        }
+        defer { finishedReads.increment() }
+        return try FileLoader.load(url: url)
+    }
+
+    var firstOutcomes: [FileLoadOutcome] = []
+    let firstGeneration = try #require(workspace?.beginMatchJump())
+    workspace?.loadFolderMatchFile(
+        atCanonicalURL: url, expectedDiskSnapshot: originalSnapshot,
+        jumpGeneration: firstGeneration
+    ) { firstOutcomes.append($0) }
+    try #require(await waitUntil { firstStarted.wait(timeout: .now()) == .success })
+    try "neuer Treffer mit geändertem Snapshot\n".write(to: url, atomically: true, encoding: .utf8)
+    let newSnapshot = try FileSnapshot.readSnapshotOnly(from: url)
+    try #require(newSnapshot != originalSnapshot)
+    var latestOutcomes: [FileLoadOutcome] = []
+    let latestGeneration = try #require(workspace?.beginMatchJump())
+    workspace?.loadFolderMatchFile(
+        atCanonicalURL: url, expectedDiskSnapshot: newSnapshot,
+        jumpGeneration: latestGeneration
+    ) { latestOutcomes.append($0) }
+    try #require(firstOutcomes == [.cancelled])
+    firstMayFinish.signal()
+    try #require(await waitUntil { nextStarted.wait(timeout: .now()) == .success },
+                 "Der neue Snapshot muss einen eigenen Read erhalten")
+    try #require(calls.value == 2 && finishedReads.value == 1)
+    try #require(latestOutcomes.isEmpty)
+
+    workspace = nil
+    try #require(await waitUntil { releasedWorkspace == nil })
+    try #require(finishedReads.value == 1)
+    nextMayFinish.signal()
+    #expect(await waitUntil { !latestOutcomes.isEmpty })
+    #expect(firstOutcomes == [.cancelled])
+    #expect(latestOutcomes == [.cancelled])
+    #expect(calls.value == 2 && finishedReads.value == 2)
+}
+
+@Test("Nach Umbenennen und Workspace-Freigabe meldet der verspätete umgehängte Read keinen alten Auftrag")
+@MainActor
+func wsLoad_folderMatchTransferredReadReportsAfterWorkspaceDisappears() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var workspace: Workspace? = Workspace(defaults: defaults)
+    weak var releasedWorkspace = workspace
+    await waitForInitialSearchTurn()
+    let original = try writeTmpUTF8("Treffer vor dem Umbenennen\n")
+    let renamed = original.deletingLastPathComponent()
+        .appendingPathComponent("fastra-wsload-renamed-\(UUID().uuidString).txt")
+        .canonicalFileURL
+    defer {
+        try? FileManager.default.removeItem(at: original)
+        try? FileManager.default.removeItem(at: renamed)
+    }
+    let snapshot = try FileSnapshot.readSnapshotOnly(from: original)
+    let firstStarted = DispatchSemaphore(value: 0)
+    let firstMayFinish = DispatchSemaphore(value: 0)
+    let transferredStarted = DispatchSemaphore(value: 0)
+    let transferredMayFinish = DispatchSemaphore(value: 0)
+    let movedStarted = DispatchSemaphore(value: 0)
+    let movedMayFinish = DispatchSemaphore(value: 0)
+    defer {
+        firstMayFinish.signal()
+        transferredMayFinish.signal()
+        movedMayFinish.signal()
+    }
+    let calls = WorkspaceLoadCallCounter()
+    let finishedReads = WorkspaceLoadCallCounter()
+    workspace?.initialFileLoader = { url in
+        calls.increment()
+        if calls.value == 1 {
+            firstStarted.signal()
+            firstMayFinish.wait()
+        } else if url == original {
+            transferredStarted.signal()
+            transferredMayFinish.wait()
+        } else {
+            movedStarted.signal()
+            movedMayFinish.wait()
+        }
+        defer { finishedReads.increment() }
+        return try FileLoader.load(url: url)
+    }
+
+    var firstOutcomes: [FileLoadOutcome] = []
+    let firstGeneration = try #require(workspace?.beginMatchJump())
+    workspace?.loadFolderMatchFile(
+        atCanonicalURL: original, expectedDiskSnapshot: snapshot,
+        jumpGeneration: firstGeneration
+    ) { firstOutcomes.append($0) }
+    try #require(await waitUntil { firstStarted.wait(timeout: .now()) == .success })
+    try FileManager.default.moveItem(at: original, to: renamed)
+    workspace?.handleFileTreeMove(from: original, to: renamed)
+    var latestOutcomes: [FileLoadOutcome] = []
+    let latestGeneration = try #require(workspace?.beginMatchJump())
+    workspace?.loadFolderMatchFile(
+        atCanonicalURL: original, expectedDiskSnapshot: snapshot,
+        jumpGeneration: latestGeneration
+    ) { latestOutcomes.append($0) }
+    try #require(firstOutcomes == [.cancelled])
+    firstMayFinish.signal()
+    try #require(await waitUntil { transferredStarted.wait(timeout: .now()) == .success })
+    try #require(await waitUntil { movedStarted.wait(timeout: .now()) == .success })
+    try #require(calls.value == 3 && finishedReads.value == 1)
+    try #require(latestOutcomes.isEmpty)
+
+    workspace = nil
+    try #require(await waitUntil { releasedWorkspace == nil })
+    // Erst den umgehängten Read beenden. Sein alter Wartender wurde bereits
+    // übertragen und darf weder den ersetzten noch den neuesten Auftrag melden.
+    movedMayFinish.signal()
+    try #require(await waitUntil { finishedReads.value == 2 })
+    await waitForInitialSearchTurn()
+    #expect(firstOutcomes == [.cancelled])
+    #expect(latestOutcomes.isEmpty)
+    transferredMayFinish.signal()
+    #expect(await waitUntil { !latestOutcomes.isEmpty })
+    await waitForInitialSearchTurn()
+    #expect(firstOutcomes == [.cancelled])
+    #expect(latestOutcomes == [.cancelled])
+    #expect(calls.value == 3 && finishedReads.value == 3)
+}
+
+@Test("Normale Loadernähte lesen außerhalb Main, auch nach Encodingwechsel und Plattenmutation")
+@MainActor
+func wsLoad_loaderSeamsStayOffMain() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let url = try writeTmpUTF8("Hintergrund-Read\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = Workspace(defaults: defaults)
+    let reads = WorkspaceLoadCallCounter()
+    ws.initialFileLoader = { url in
+        #expect(!Thread.isMainThread)
+        reads.increment()
+        return try FileLoader.load(url: url)
+    }
+    ws.reloadFileLoader = { url in
+        #expect(!Thread.isMainThread)
+        reads.increment()
+        return try FileLoader.load(url: url)
+    }
+    ws.reopenFileLoader = { url, encoding in
+        #expect(!Thread.isMainThread)
+        reads.increment()
+        return try FileLoader.load(url: url, forcedEncoding: encoding)
+    }
+    var opened = false
+    ws.loadFile(at: url) { opened = $0 }
+    #expect(await waitUntil { opened })
+    let tabID = try #require(ws.tabs.first(where: { $0.url == url })?.id)
+    ws.reloadTabFromDisk(id: tabID)
+    #expect(await waitUntil { ws.tabs.first(where: { $0.id == tabID })?.isLoading == false })
+    ws.reopenActiveTab(withEncoding: .utf8)
+    #expect(await waitUntil { ws.tabs.first(where: { $0.id == tabID })?.isLoading == false })
+    ws.reloadOpenTabs(for: [url])
+    #expect(await waitUntil { ws.tabs.first(where: { $0.id == tabID })?.isLoading == false })
+    #expect(reads.value == 4)
+    #expect(ws.tabs.first(where: { $0.id == tabID })?.content == "Hintergrund-Read\n")
+}
+
+@Test("Ein begonnener Mainabschluss hält den Workspace durch eine reentrante Acceptance bis zur Rückmeldung")
+@MainActor
+func wsLoad_acceptanceCanReleaseLastWorkspaceReferenceDuringCompletion() async throws {
+    let (defaults, suite) = makeFreshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let url = try writeTmpUTF8("Angenommener Inhalt\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    var workspace: Workspace? = Workspace(defaults: defaults)
+    weak var releasedWorkspace: Workspace?
+    releasedWorkspace = workspace
+    var acceptanceCalls = 0
+    var outcomes: [Bool] = []
+    var contentAtOutcome: String?
+    workspace?.loadFile(at: url, acceptance: FileLoadAcceptance {
+        acceptanceCalls += 1
+        if acceptanceCalls == 2 { workspace = nil }
+        return true
+    }) { opened in
+        outcomes.append(opened)
+        contentAtOutcome = releasedWorkspace?.tabs.first(where: { $0.url == url })?.content
+    }
+    #expect(await waitUntil { !outcomes.isEmpty })
+    #expect(acceptanceCalls == 2)
+    #expect(outcomes == [true])
+    #expect(contentAtOutcome == "Angenommener Inhalt\n")
+    #expect(releasedWorkspace == nil)
 }

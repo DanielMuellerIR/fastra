@@ -30,7 +30,7 @@ struct FileIdentity: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-enum FileSnapshotReadError: Error {
+enum FileSnapshotReadError: Error, Equatable {
     case changedDuringRead
     /// Der Pfad ist keine reguläre Datei, sondern z. B. eine FIFO (benannte
     /// Pipe), ein Socket, eine Gerätedatei oder ein Verzeichnis. Solche
@@ -112,26 +112,37 @@ struct FileSnapshot: Codable, Equatable, Hashable, Sendable {
     }
 
     static func read(from url: URL,
-                     byteLimit: UInt64 = maximumReadBytes) throws
+                     byteLimit: UInt64 = maximumReadBytes,
+                     isCancelled: () -> Bool = { false }) throws
         -> (data: Data, snapshot: FileSnapshot) {
         // Bytes und Dateiidentität müssen zum selben geöffneten Dateiobjekt
         // gehören. Ein separates Data(contentsOf:) plus spätere Pfadabfrage
         // könnte bei einem atomaren Fremd-Replace zwei verschiedene Inodes
         // zu einem scheinbar gültigen Snapshot vermischen.
+        if isCancelled() { throw CancellationError() }
         let (descriptor, before) = try openRegularFile(at: url)
         defer { close(descriptor) }
 
+        return try read(descriptor: descriptor, fileStat: before, byteLimit: byteLimit,
+                        isCancelled: isCancelled)
+    }
+
+    static func read(descriptor: Int32, fileStat before: stat, byteLimit: UInt64,
+                     isCancelled: () -> Bool) throws -> (data: Data, snapshot: FileSnapshot) {
         guard before.st_size >= 0, UInt64(before.st_size) <= byteLimit else {
             throw FileSnapshotReadError.tooLarge(byteCount: UInt64(max(0, before.st_size)))
         }
         let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
         // Chunkweise lesen statt readToEnd(): So greift die Grenze auch dann,
-        // wenn die Datei WÄHREND des Lesens wächst — der Speicher ist sonst
+        // wenn die Datei während des Lesens wächst — der Speicher ist sonst
         // schon verbraucht, bevor die Änderungs-Prüfung unten anspringt.
         var data = Data()
         data.reserveCapacity(Int(before.st_size))
         while true {
-            let chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
+            if isCancelled() { throw CancellationError() }
+            let remaining = byteLimit - UInt64(data.count)
+            let chunkLimit = remaining >= 4 * 1024 * 1024 ? 4 * 1024 * 1024 : Int(remaining) + 1
+            let chunk = try handle.read(upToCount: chunkLimit) ?? Data()
             if chunk.isEmpty { break }
             data.append(chunk)
             guard UInt64(data.count) <= byteLimit else {
@@ -148,7 +159,7 @@ struct FileSnapshot: Codable, Equatable, Hashable, Sendable {
         return (data, FileSnapshot(data: data, identity: FileIdentity(stat: after)))
     }
 
-    /// Wie `read`, aber OHNE die Bytes zu behalten: Der SHA-256 wird
+    /// Wie `read`, aber ohne die Bytes zu behalten: Der SHA-256 wird
     /// chunkweise gefüttert, im Speicher liegt nie mehr als ein 4-MiB-Block.
     /// Das ist der richtige Weg für reine Vergleichs-Snapshots — etwa die
     /// Fremdänderungs-Prüfung, die den Inhalt selbst gar nicht braucht.

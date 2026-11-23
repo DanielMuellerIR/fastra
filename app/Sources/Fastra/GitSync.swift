@@ -176,6 +176,7 @@ enum GitFetchPromptChoice: Equatable {
     case automatic
     case disabled
     case later
+    case windowUnavailable
 }
 
 enum GitFetchPromptPolicy {
@@ -539,7 +540,7 @@ struct SystemGitSyncClock: GitSyncClock {
 /// einen neu geplanten Dispatch-Block; bei Inaktivität existiert kein Timer.
 final class GitAutoFetchController {
     static let shared = GitAutoFetchController(store: .shared,
-                                               preferences: GitPreferencesStore())
+                                               preferences: GitPreferencesStore(defaults: AppDefaults.store))
 
     private struct Registration {
         var count: Int
@@ -557,7 +558,14 @@ final class GitAutoFetchController {
     private var registrations: [String: Registration] = [:]
     private var scheduled: GitCancelling?
     private var active = true
-    private var promptInFlight = false
+    private struct PromptRequest {
+        weak var registration: GitDeferredRegistration?
+        let present: (@escaping (GitFetchPromptChoice) -> Void) -> Void
+        var isActive: Bool { registration?.isCancelled == false }
+    }
+
+    private var promptInFlight: UUID?
+    private var pendingPrompts: [PromptRequest] = []
     private var regularFetchNotBefore: Date?
 
     init(store: GitRepositoryStore, preferences: GitPreferencesStore,
@@ -588,7 +596,7 @@ final class GitAutoFetchController {
             guard !remotes.isEmpty else { return }
             let attached = self.attach(repository: repository, remotes: remotes)
             if state.installIfActive(attached) {
-                self.considerPrompt(hasRemote: true, prompt: prompt)
+                self.considerPrompt(for: state, prompt: prompt)
             }
         }
         _ = state.installIfActive(token)
@@ -644,41 +652,64 @@ final class GitAutoFetchController {
     }
 
     private func considerPrompt(
-        hasRemote: Bool,
+        for registration: GitDeferredRegistration,
         prompt: @escaping (@escaping (GitFetchPromptChoice) -> Void) -> Void
     ) {
-        queue.async { [weak self] in
-            guard let self else { return }
-            let preferences = self.preferencesStore.load()
-            guard !self.promptInFlight,
-                  GitFetchPromptPolicy.shouldPrompt(
-                    decision: preferences.automaticFetchDecision,
-                    hasRemote: hasRemote, now: self.clock.now,
-                    deferredUntil: self.preferencesStore.promptDeferredUntil
-                  ) else { return }
-            self.promptInFlight = true
-            DispatchQueue.main.async {
-                prompt { [weak self] choice in
-                    guard let self else { return }
-                    self.queue.async {
-                        var preferences = self.preferencesStore.load()
-                        switch choice {
-                        case .automatic:
-                            preferences.automaticFetchDecision = .automatic
-                            self.preferencesStore.clearAutomaticFetchPromptDeferral()
-                        case .disabled:
-                            preferences.automaticFetchDecision = .disabled
-                            self.preferencesStore.clearAutomaticFetchPromptDeferral()
-                        case .later:
-                            self.preferencesStore.deferAutomaticFetchPrompt(from: self.clock.now)
-                        }
-                        if choice != .later { self.preferencesStore.save(preferences) }
-                        self.promptInFlight = false
-                        self.reschedule(runDueNow: choice == .automatic)
-                    }
-                }
-            }
+        queue.async { [weak self, weak registration] in
+            guard let self, let registration, !registration.isCancelled, self.shouldOfferPrompt() else { return }
+            self.pendingPrompts.removeAll { !$0.isActive }
+            self.pendingPrompts.append(PromptRequest(registration: registration, present: prompt))
+            self.presentNextPrompt()
         }
+    }
+
+    private func shouldOfferPrompt() -> Bool {
+        GitFetchPromptPolicy.shouldPrompt(
+            decision: preferencesStore.load().automaticFetchDecision,
+            hasRemote: true, now: clock.now, deferredUntil: preferencesStore.promptDeferredUntil)
+    }
+
+    private func presentNextPrompt() {
+        guard promptInFlight == nil else { return }
+        guard shouldOfferPrompt() else {
+            pendingPrompts.removeAll()
+            return
+        }
+        pendingPrompts.removeAll { !$0.isActive }
+        guard !pendingPrompts.isEmpty else { return }
+        let request = pendingPrompts.removeFirst()
+        let id = UUID()
+        promptInFlight = id
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let completion: (GitFetchPromptChoice) -> Void = { [weak self] choice in
+                self?.queue.async { [weak self] in self?.finishPrompt(id: id, choice: choice) }
+            }
+            guard request.isActive else { completion(.windowUnavailable); return }
+            request.present(completion)
+        }
+    }
+
+    private func finishPrompt(id: UUID, choice: GitFetchPromptChoice) {
+        guard promptInFlight == id else { return }
+        promptInFlight = nil
+        var preferences = preferencesStore.load()
+        switch choice {
+        case .windowUnavailable:
+            presentNextPrompt()
+            return
+        case .automatic:
+            preferences.automaticFetchDecision = .automatic
+            preferencesStore.clearAutomaticFetchPromptDeferral()
+        case .disabled:
+            preferences.automaticFetchDecision = .disabled
+            preferencesStore.clearAutomaticFetchPromptDeferral()
+        case .later:
+            preferencesStore.deferAutomaticFetchPrompt(from: clock.now)
+        }
+        pendingPrompts.removeAll()
+        if choice != .later { preferencesStore.save(preferences) }
+        reschedule(runDueNow: choice == .automatic)
     }
 
     private func reschedule(runDueNow: Bool) {

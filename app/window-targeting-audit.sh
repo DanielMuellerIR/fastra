@@ -1,28 +1,14 @@
 #!/usr/bin/env bash
 # Fastra — Wächter für die Fenster-Zielwahl
 #
-# Verhindert die Rückkehr eines Fehlers, der die Anwendung unbenutzbar macht:
-# Ein Befehl wirkt im FALSCHEN Fenster. Beobachtet am 2026-08-07 im
-# Arbeitsbetrieb — bei zwei offenen Dokumenten formatierte ⌘B im
-# Hintergrundfenster, an einer nie angeklickten Stelle.
+# Produktcode bestimmt Dokumentziele zentral über `CommandTargeting`.
+# `NSApp.windows` ist unsortiert und erlaubt keine verlässliche Auswahl
+# des vordersten Fensters.
 #
-# Die Ursache ist eine Zeile, die harmlos aussieht:
-#
-#     for window in NSApp.windows where window.isVisible { … }
-#
-# `NSApp.windows` ist eine UNGEORDNETE Menge aller Fenster — nicht nach
-# Vordergrund sortiert. Wer daraus „das erste sichtbare" nimmt, erwischt bei
-# mehreren Fenstern ein zufälliges. Nichts am Code sieht falsch aus, und mit
-# nur einem offenen Fenster funktioniert alles.
-#
-# Deshalb ein mechanischer Wächter statt einer Merkregel: Produktcode fragt
-# AppKit nicht mehr selbst nach Fenstern, sondern ausschließlich über
-# `CommandTargeting`. Dort steht die Begründung ausführlich.
-#
-# Exit-Codes (maschinenlesbar):
+# Exit-Codes:
 #   0 = keine verbotenen Zugriffe
 #   1 = mindestens ein verbotener Zugriff
-#   2 = Umgebungsfehler (Quellverzeichnis fehlt)
+#   2 = Umgebungsfehler (Quellverzeichnis fehlt oder Suche fehlgeschlagen)
 
 set -u
 
@@ -36,7 +22,7 @@ fi
 
 # Dateien, die AppKit direkt nach Fenstern fragen dürfen:
 #   CommandTargeting.swift   — die eine erlaubte Stelle, mit voller Begründung
-#   DocumentWindowController.swift — Fenster ERZEUGEN und ordnen; nutzt
+#   DocumentWindowController.swift — Fenster erzeugen und ordnen; nutzt
 #                                    ausschließlich das sortierte
 #                                    `orderedWindows`, was der Wächter prüft
 #   SelfTest.swift           — Testcode, der Fenster von außen inspiziert
@@ -52,6 +38,22 @@ is_allowed() {
   done
   return 1
 }
+
+# grep unterscheidet „kein Treffer“ (1) von einem Suchfehler (>1).
+# Ein fehlgeschlagener Scan darf niemals einen sauberen Bestand bestätigen.
+window_matches="$(grep -rn -E "(NSApp|NSApplication\.shared)\.windows([^A-Za-z0-9_]|$)" "$SOURCE_DIR")"
+scan_status=$?
+if [ "$scan_status" -gt 1 ]; then
+  echo "WINDOW TARGETING AUDIT: Umgebungsfehler — Fenster-Suche fehlgeschlagen (grep: $scan_status)." >&2
+  exit 2
+fi
+# Bezeichnergrenzen schließen NSWorkspace aus, ohne benachbarte echte Leser zu verwerfen.
+workspace_matches="$(grep -rn -E "(^|[^[:alnum:]_])Workspace\.shared([^[:alnum:]_]|$)" "$SOURCE_DIR")"
+scan_status=$?
+if [ "$scan_status" -gt 1 ]; then
+  echo "WINDOW TARGETING AUDIT: Umgebungsfehler — Workspace-Suche fehlgeschlagen (grep: $scan_status)." >&2
+  exit 2
+fi
 
 findings=0
 
@@ -72,25 +74,18 @@ while IFS=: read -r file line text; do
   echo "  $file:$line"
   echo "    $trimmed"
 done <<EOF
-$(grep -rn -E "(NSApp|NSApplication\.shared)\.windows([^A-Za-z0-9_]|$)" "$SOURCE_DIR" 2>/dev/null)
+$window_matches
 EOF
 
-# Zweite Hälfte derselben Fehlerklasse: Wer sein Ziel aus `Workspace.shared`
-# LIEST, verbindet bei mehreren Fenstern womöglich zwei verschiedene Dokumente
-# — genau so landete der Alt-Doppelklick-Methodensprung im falschen Fenster
-# (Befund aus dem Dauertest, 2026-08-08), obwohl die erste Prüfung oben grün
-# war: Sie kennt nur `NSApp.windows`, nicht `Workspace.shared`.
+# Lesen aus `Workspace.shared` kann einen anderen Workspace liefern als
+# das separat bestimmte Fenster. Ziel deshalb gemeinsam über
+# `CommandTargeting.workspace(for:)` bzw. `CommandTargeting.target()` bestimmen.
+# Zuweisungen und Identitätsvergleiche bleiben erlaubt.
 #
-# Erlaubt bleiben ZUWEISUNGEN (`Workspace.shared = …`, so wird der Wert ja
-# gepflegt) und IDENTITÄTSVERGLEICHE (`=== `/`!== `, „bin ich der aktive?").
-# Ein Lesezugriff außerhalb der Liste unten gehört auf
-# `CommandTargeting.workspace(for:)` bzw. `CommandTargeting.target()` umgebaut.
-#
-# Dateien, die `Workspace.shared` mit Begründung lesen dürfen:
-#   AppDelegate.swift  — App-Lebenszyklus (Start, Beenden, Aktivierung),
-#                        kein Befehl auf ein bestimmtes Fenster
-#   SelfTest.swift     — Testcode stellt Zustände von außen her
-#   SoakTest.swift     — desgleichen, langer Dauertest
+# Begründete Ausnahmen für Lesezugriffe:
+#   AppDelegate.swift — App-Lebenszyklus statt Dokumentbefehl
+#   SelfTest.swift    — gezielter Testaufbau
+#   SoakTest.swift    — gezielter Dauertestaufbau
 READS_ALLOWED="AppDelegate.swift SelfTest.swift SoakTest.swift"
 
 reads_allowed() {
@@ -111,14 +106,28 @@ while IFS=: read -r file line text; do
   case "$trimmed" in
     //*) continue ;;
   esac
-  # Zuweisung an `Workspace.shared` (ein `=` ohne zweites) und
-  # Identitätsvergleiche sind erlaubt — gemeldet wird nur das LESEN.
-  if printf '%s' "$trimmed" | grep -Eq 'Workspace\.shared[[:space:]]*=([^=]|$)'; then
-    continue
-  fi
-  if printf '%s' "$trimmed" | grep -Eq 'Workspace\.shared[[:space:]]*[!=]=='; then
-    continue
-  fi
+  # Pro Vorkommen nur direkt folgende Zuweisung/Identität freigeben;
+  # weitere Leser derselben Zeile müssen sichtbar bleiben.
+  printf '%s\n' "$trimmed" | awk '
+    {
+      rest = $0
+      while (match(rest, /(^|[^[:alnum:]_])Workspace[.]shared([^[:alnum:]_]|$)/)) {
+        start = RSTART
+        if (substr(rest, start, 1) != "W") start++
+        after = substr(rest, start + length("Workspace.shared"))
+        if (after !~ /^[[:space:]]*(=([^=]|$)|[!=]==)/) exit 1
+        rest = after
+      }
+    }
+  '
+  classification_status=$?
+  case "$classification_status" in
+    0) continue ;;
+    1) ;;
+    *)
+      echo "WINDOW TARGETING AUDIT: Umgebungsfehler — Workspace-Klassifizierung fehlgeschlagen (awk: $classification_status)." >&2
+      exit 2 ;;
+  esac
   if [ "$read_findings" -eq 0 ]; then
     echo "WINDOW TARGETING AUDIT: FAIL — Lesezugriff auf Workspace.shared außerhalb von CommandTargeting:"
   fi
@@ -127,7 +136,7 @@ while IFS=: read -r file line text; do
   echo "  $file:$line"
   echo "    $trimmed"
 done <<EOF
-$(grep -rn "Workspace\.shared" "$SOURCE_DIR" 2>/dev/null | grep -v "NSWorkspace\.shared")
+$workspace_matches
 EOF
 
 if [ "$findings" -gt 0 ]; then

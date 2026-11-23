@@ -244,14 +244,13 @@ async fn open_settings(app: &gtk::Application) -> gtk::Window {
     wait("settings", || settings(app).is_some()).await;
     let window = settings(app).unwrap();
     let switch: gtk::Switch = named(&window, "fastra-markdown-visual-default");
-    wait("settings control allocated", || switch.is_mapped() && switch.width() > 0 && switch.height() > 0).await;
-    reveal(&switch);
+    reveal(&switch).await;
     glib::timeout_future(Duration::from_millis(180)).await;
     window
 }
 async fn retry(window: &gtk::Window, state: &State) {
     let retry: gtk::Button = named(window, "fastra-markdown-mode-retry");
-    reveal(&retry);
+    reveal(&retry).await;
     glib::timeout_future(Duration::from_millis(120)).await;
     input(&retry, &[], true).await;
     settled(state).await;

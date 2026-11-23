@@ -3,36 +3,24 @@ import SwiftUI
 /// Entscheidet, ob der Willkommensbildschirm den Editor-Bereich ersetzt.
 /// Pure Funktion → unit-testbar (Muster: KeyRouting, FooterLogic).
 enum WelcomeLogic {
-    /// Der Willkommens-Platzhalter liegt genau dann über dem Editor, wenn der
-    /// AKTIVE Tab ein unberührter leerer Tab ist (`isPristineScratch`) —
-    /// Firefox-artig zeigt damit JEDER frische Tab (Start, ⌘T, ⌘N-Fenster,
-    /// auch in Fenstern mit geladenem Projekt) die Starthilfe, und das erste
-    /// getippte Zeichen blendet sie aus (Daniel-Entscheidung 2026-07-30;
-    /// ersetzt den eigenen Willkommen-Tab vom 2026-07-12). Tabs mit Inhalt,
-    /// Datei oder Sonderrolle zeigen den nackten Editor.
+    /// Die Starthilfe erscheint für jeden aktiven unberührten leeren Tab
+    /// (`isPristineScratch`), auch mit geladenem Projekt. Das erste Zeichen
+    /// blendet sie aus; Tabs mit Datei, Inhalt oder Sonderrolle zeigen den Editor.
     ///
-    /// BEWUSST ohne Projekt-Sperre (Daniel-Befund 2026-07-30): Fastra setzt
-    /// beim Öffnen einer Einzeldatei implizit den Elternordner als Projekt —
-    /// mit einer Sperre wäre die Starthilfe im Alltag praktisch nie sichtbar,
-    /// und Daniels Vorgabe lautet „alle neuen Dateien". Wie in Firefox darf
-    /// die Neuer-Tab-Starthilfe neben bestehender Arbeit erscheinen.
-    ///
-    /// GAR KEIN Tab (`nil`) zählt ebenfalls als Willkommen: Ein sichtbares
-    /// Fenster ohne Tabs ist immer ein kaputter Zwischenzustand — dann lieber
-    /// die Starthilfe als eine tippbare Editorfläche, die in kein Dokument
-    /// schreibt (Daniel-Befund 2026-07-29, leeres Startfenster).
+    /// Keine Projekt-Sperre: Schon das Öffnen einer Einzeldatei setzt ihren
+    /// Elternordner als Projekt. Ohne Tab (`nil`) ebenfalls die Starthilfe zeigen,
+    /// damit keine tippbare Fläche ohne zugehöriges Dokument angeboten wird.
     static func shouldShow(activeTab: EditorTab?) -> Bool {
         guard let activeTab else { return true }
         return activeTab.isPristineScratch
     }
 
-    /// ⌘N-Sonderfall (Wunschpaket 2026-07, Etappe 1): Zeigt das aktive UND
-    /// einzige Dokumentfenster nur einen unberührten leeren Tab ohne Projekt
-    /// (= reiner Startzustand), öffnet ⌘N wie ⌘T einen neuen Tab im selben
-    /// Fenster — ein zweites, fast identisches Fenster neben dem unbenutzten
-    /// Startfenster wäre nur verwirrend. Sobald mehr offen ist (weiterer
-    /// Tab, Projekt oder weiteres Fenster), bleibt ⌘N das gewohnte
-    /// Fenster-Kommando.
+    /// ⌘N-Sonderfall: Zeigt das aktive und einzige Dokumentfenster nur einen
+    /// unberührten leeren Tab ohne Projekt (= reiner Startzustand), öffnet ⌘N
+    /// wie ⌘T einen neuen Tab im selben Fenster — ein zweites, fast identisches
+    /// Fenster neben dem unbenutzten Startfenster wäre nur verwirrend. Sobald
+    /// mehr offen ist (weiterer Tab, Projekt oder weiteres Fenster), bleibt ⌘N
+    /// das gewohnte Fenster-Kommando.
     static func newWindowCommandOpensTab(tabs: [EditorTab],
                                          hasProject: Bool,
                                          visibleDocumentWindows: Int) -> Bool {
@@ -58,12 +46,12 @@ enum WelcomeLayout {
 }
 
 /// Willkommens-Platzhalter (Firefox-Neuer-Tab-Muster, aber Apple-dezent):
-/// liegt als Overlay ÜBER der Editorfläche, solange der aktive Tab ein
+/// liegt als Overlay über der Editorfläche, solange der aktive Tab ein
 /// unberührter leerer Tab ist. Der Cursor blinkt dahinter in Zeile 1; das
 /// erste getippte Zeichen blendet das Overlay aus (die Bedingung lebt in
 /// `WelcomeLogic.shouldShow`). Bietet die drei Einstiegs-Aktionen und die
 /// Liste der zuletzt benutzten Projekte — ein Klick lädt das Projekt in die
-/// Seitenleiste. Bewusst OHNE eigenen Hintergrund: Klicks in freie Flächen
+/// Seitenleiste. Bewusst ohne eigenen Hintergrund: Klicks in freie Flächen
 /// erreichen den Editor darunter, nur die eigentlichen Inhalte fangen sie ab.
 struct WelcomeView: View {
     @EnvironmentObject var workspace: Workspace
@@ -121,7 +109,7 @@ struct WelcomeView: View {
 
                     if workspace.recentProjects.isEmpty {
                         // Dezente Erklärung statt leerer Fläche — sagt zugleich,
-                        // WIE Projekte in die Liste kommen (automatisch).
+                        // wie Projekte in die Liste kommen (automatisch).
                         Text("Projekte merkt sich Fastra von selbst: Öffne eine Datei aus einem Git-Repository oder einen Ordner.")
                             .fastraFont(.small)
                             .foregroundColor(Theme.textSecondary)

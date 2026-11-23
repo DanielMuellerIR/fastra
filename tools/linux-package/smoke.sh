@@ -21,6 +21,15 @@ runtimes=("$work"/*/manifest.json)
 runtime=${runtimes[0]%/manifest.json}
 mkdir -p "$work/runtime" "$work/config" "$work/cache" "$work/data"
 chmod 700 "$work/runtime"
+# Der Vorschau-Test beginnt mit gewähltem Quelltextmodus und ausgeblendeter
+# Vorschau, damit Erstfrage und gespeicherte Vorgabe den Klick nicht ersetzen.
+for kind in installed relocated; do
+  profile="$work/config/$kind/fastra-editor"
+  mkdir -m 700 -p "$profile"
+  printf '%s\n' '{"version":1,"visual":false}' > "$profile/markdown-mode.json"
+  printf '%s\n' '{"version":1,"shown":false}' > "$profile/markdown-preview.json"
+  chmod 600 "$profile/markdown-mode.json" "$profile/markdown-preview.json"
+done
 cat > "$work/preview.md" <<'MARKDOWN'
 # PORTABLE PREVIEW OK
 
@@ -57,7 +66,7 @@ done
 xdotool windowsize --sync "$window" 1400 900
 sleep 1
 import -silent -window "$window" "$FASTRA_SMOKE_WORK/$FASTRA_SMOKE_KIND-before.png"
-# Vorschauknopf der kompakten Titelleiste, geprüft bei 1400×900 (1.190.0).
+# Vorschauknopf der kompakten Titelleiste bei 1400×900.
 # Bei Layoutänderungen anhand der Vorher-Aufnahme neu bestimmen.
 read -r x y <<< "${FASTRA_SMOKE_MARKDOWN_POINT:?}"
 [[ $x =~ ^[0-9]+$ && $y =~ ^[0-9]+$ ]]
@@ -74,7 +83,22 @@ for attempt in {1..100}; do
 done
 [[ $found == 1 ]]
 sleep 2
-import -silent -window "$window" "$FASTRA_SMOKE_WORK/$FASTRA_SMOKE_KIND-markdown.png"
+preview="$FASTRA_SMOKE_WORK/$FASTRA_SMOKE_KIND-markdown.png"
+visible_pixels=0
+for attempt in {1..40}; do
+  kill -0 "$app"
+  import -silent -window "$window" "$preview"
+  # Bei 1400 × 900 liegt dieser Ausschnitt im Vorschauinhalt, unter der Titelleiste
+  # und rechts vom Teiler. Ein laufender WebKit-Prozess kann dort noch leer sein.
+  visible_pixels=$(convert "$preview" -crop 635x478+725+72 +repage -colorspace Gray \
+    -threshold 60% -format '%[fx:round((1-mean)*w*h)]' info:)
+  if (( visible_pixels > 256 )); then break; fi
+  sleep 0.25
+done
+if (( visible_pixels <= 256 )); then
+  echo "Markdown preview stayed blank: $FASTRA_SMOKE_KIND" >&2
+  exit 1
+fi
 : > "$FASTRA_SMOKE_WORK/$FASTRA_SMOKE_KIND-sandbox.txt"
 for status in /proc/[0-9]*/status; do
   IFS= read -r first < "$status" || continue
@@ -122,7 +146,7 @@ print('PASS runtime manifest:',manifest['version'],manifest['source_sha256'])
 PYTHON
   runuser -u fastra -- env FASTRA_SMOKE_WORK="$work" FASTRA_SMOKE_KIND="$kind" FASTRA_SMOKE_LAUNCHER="$launcher" \
     FASTRA_SMOKE_MARKDOWN_POINT="${FASTRA_SMOKE_MARKDOWN_POINT:-1348 18}" \
-    XDG_CONFIG_HOME="$work/config" XDG_CACHE_HOME="$work/cache" XDG_DATA_HOME="$work/data" XDG_RUNTIME_DIR="$work/runtime" \
+    XDG_CONFIG_HOME="$work/config/$kind" XDG_CACHE_HOME="$work/cache" XDG_DATA_HOME="$work/data" XDG_RUNTIME_DIR="$work/runtime" \
     GTK_A11Y=none GDK_BACKEND=x11 GSK_RENDERER=cairo GTK_THEME=Adwaita LANGUAGE=en GSETTINGS_BACKEND=memory GIO_USE_VFS=local \
     env -u WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS -u WAYLAND_DISPLAY \
     xvfb-run -a -s '-screen 0 1600x1000x24 -nolisten tcp' \

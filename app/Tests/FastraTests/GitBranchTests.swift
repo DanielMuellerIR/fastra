@@ -37,7 +37,7 @@ struct GitBranchTests {
             "feature\t \t/pfad/zum/worktree\0\nmain\t*\t/pfad/zum/projekt\0\n"
         )
         #expect(branches.first?.blockingWorktree == "/pfad/zum/worktree")
-        // Der EIGENE Worktree steht ebenfalls in der Ausgabe. Er blockiert
+        // Der eigene Worktree steht ebenfalls in der Ausgabe. Er blockiert
         // nichts — sonst gälte der aktuelle Branch als unerreichbar.
         #expect(branches.last?.isCurrent == true)
         #expect(branches.last?.blockingWorktree == nil)
@@ -84,7 +84,7 @@ struct GitBranchTests {
         #expect(gone.informativeText != existing.informativeText)
     }
 
-    /// Nur die ENGLISCHE Seite ist hier prüfbar: Deutsch ist die Quellsprache,
+    /// Nur die englische Seite ist hier prüfbar: Deutsch ist die Quellsprache,
     /// unter `Resources/` liegt allein `en.lproj`, und `L10n.string(_:language:)`
     /// gibt ohne passendes `lproj` den Schlüssel selbst zurück. Ein „de"-Arm
     /// vergliche also das Testliteral mit sich selbst und könnte nie

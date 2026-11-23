@@ -6,6 +6,24 @@ pub struct Compiled {
     pub star_offsets: Vec<usize>,
 }
 
+/// Zählt für den Suchhinweis dieselben alleinstehenden Stern-Grapheme wie die Compiler.
+pub fn star_run_count(text: &str) -> Result<usize, Error> {
+    if !text.contains('*') {
+        return Ok(0);
+    }
+    let mut runs = 0;
+    let mut in_run = false;
+    icu::walk_graphemes(text, |grapheme| {
+        let star = grapheme == "*";
+        if star && !in_run {
+            runs += 1;
+        }
+        in_run = star;
+        Ok(())
+    })?;
+    Ok(runs)
+}
+
 pub fn escape_pattern(value: &str) -> String {
     let mut output = String::with_capacity(value.len());
     for c in value.chars() {
@@ -91,18 +109,26 @@ pub fn compile_replace(value: &str, capture_count: Option<usize>) -> Result<Stri
                 .get(index)
                 .and_then(|s| s.chars().next())
                 .is_some_and(|c| c.is_ascii_digit());
-            output.push_str(
-                &capture_count
-                    .map(|n| {
-                        reference_spelling(
-                            positional,
-                            positional.to_string().len(),
-                            n,
-                            next_is_digit,
-                        )
-                    })
-                    .unwrap_or_else(|| format!("${positional}")),
-            );
+            if capture_count.is_some_and(|count| positional > count) {
+                // Ein leerer Sternlauf kann die Ziffer direkt hinter
+                // eine vorherige Referenz rücken. Escape hält sie literal.
+                if next_is_digit {
+                    output.push('\\');
+                }
+            } else {
+                output.push_str(
+                    &capture_count
+                        .map(|n| {
+                            reference_spelling(
+                                positional,
+                                positional.to_string().len(),
+                                n,
+                                next_is_digit,
+                            )
+                        })
+                        .unwrap_or_else(|| format!("${positional}")),
+                );
+            }
             positional += 1;
             continue;
         }

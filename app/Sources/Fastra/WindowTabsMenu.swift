@@ -1,16 +1,9 @@
 import AppKit
 
-// Tab-Untermenüs im „Fenster"-Menü (Daniel-Wunsch 2026-09-01): pro
-// Dokumentfenster ein Eintrag, der als Untermenü alle offenen Tabs des
-// Fensters zeigt. Ein Klick holt das Fenster nach vorn und wählt den Tab.
-// Das ersetzt die entfernte „GEÖFFNET"-Liste der Seitenleiste — die wuchs
-// ungebremst mit jedem Tab und verdrängte am Ende Dateibaum und Tab-Leiste.
-//
-// Bewusst AppKit statt SwiftUI-Commands: Eine `CommandGroup(before:
-// .windowList)` legte in diesem AppKit-verwalteten Fenster-Menü überhaupt
-// keine Einträge an (nachgemessen am 2026-09-01 im tabflood-Selbsttest).
-// Die App pflegt ihre Fenster-Einträge dort ohnehin schon selbst über
-// `NSApp.changeWindowsItem` (siehe `MainWindowTitleBridge`).
+// Tab-Untermenüs im „Fenster“-Menü: Je Dokumentfenster ein Eintrag mit allen
+// offenen Tabs. Ein Klick holt das Fenster vor und wählt den Tab.
+// AppKit verwaltet das Fenstermenü; SwiftUI-`CommandGroup(before: .windowList)`
+// legt dort keine Einträge an. Die Titelbrücke bindet `WindowsMenuTabs` ein.
 
 /// Reine, unit-testbare Beschriftungslogik — bewusst ohne AppKit-Zustand,
 /// damit die Dirty-Markierung ohne Fenster prüfbar bleibt.
@@ -63,7 +56,7 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
     /// Reihenfolge der Einträge, wie sie angelegt wurden. Das Wörterbuch
     /// allein reicht nicht: Swift sichert für `items.values` keine
     /// Reihenfolge zu, und beim Umzug in ein neu aufgebautes Menü standen
-    /// die Fenster sonst in zufälliger Folge (Review 2026-09-02).
+    /// die Fenster sonst in zufälliger Folge.
     private var order: [ObjectIdentifier] = []
     /// Trennlinie unter dem Tab-Abschnitt — nur vorhanden, solange es
     /// mindestens einen Eintrag gibt.
@@ -77,12 +70,8 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
     /// Willkommens-bewusst („Fastra v… <Datum>" ohne echte Datei).
     func updateItem(for window: NSWindow, workspace: Workspace, title: String) {
         guard let menu = NSApp.windowsMenu else {
-            // Beim App-Start (besonders mit Sitzungswiederherstellung)
-            // existiert das „Fenster"-Menü noch nicht. Kurz später erneut
-            // versuchen — die schwachen Referenzen lassen ein inzwischen
-            // geschlossenes Fenster einfach fallen (Daniel-Befund 2026-09-01:
-            // ohne diesen Retry blieb der Eintrag in der wiederhergestellten
-            // Sitzung dauerhaft aus).
+            // Beim Start kann das „Fenster“-Menü noch fehlen. Später erneut versuchen;
+            // schwache Referenzen lassen inzwischen geschlossene Fenster aus.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 [weak window, weak workspace] in
                 guard let window, let workspace else { return }
@@ -128,13 +117,13 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
         item.state = window.isKeyWindow ? .on : .off
     }
 
-    /// Bindet alle verwalteten Einträge an das AKTUELLE „Fenster"-Menü. Der
+    /// Bindet alle verwalteten Einträge an das aktuelle „Fenster"-Menü. Der
     /// `AppDelegate` ruft das bei jeder Menüänderung und App-Aktivierung —
     /// den Stellen, an denen SwiftUI oder macOS die Menüinstanz getauscht
     /// haben kann. Vorher zog nur das nächste Titel-Update der
     /// `MainWindowTitleBridge` um, und das kommt nach einem Neuaufbau nicht
     /// garantiert: Bis dahin fehlten alle Tab-Untermenüs, obwohl die
-    /// Dokumentfenster offen waren (Review 2026-09-02).
+    /// Dokumentfenster offen waren.
     func synchronizeWithCurrentWindowsMenu() {
         guard let menu = NSApp.windowsMenu else { return }
         let bindings = DocumentWindowController.visibleDocumentWindows().compactMap {
@@ -174,8 +163,8 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
     /// `AppDelegate`, Sparkle-/Soft-Wrap-Eintrag). Wechselt dabei die Instanz
     /// des „Fenster"-Menüs, hingen die schon angelegten Einträge am alten,
     /// nicht mehr sichtbaren Menü, und `updateItem` fand sie im Cache und
-    /// legte nichts neu an — das Tab-Untermenü war dann vollständig weg
-    /// (Review 2026-09-02). Deshalb alle verwalteten Einträge samt Trenner in
+    /// legte nichts neu an — das Tab-Untermenü war dann vollständig weg.
+    /// Deshalb alle verwalteten Einträge samt Trenner in
     /// das neue Menü umziehen, in der bisherigen Reihenfolge am Anfang.
     ///
     /// Ein Eintrag ohne Menü zählt ebenfalls als umzugspflichtig: Gibt AppKit
@@ -230,7 +219,7 @@ final class WindowsMenuTabs: NSObject, NSMenuDelegate {
         }
     }
 
-    /// Füllt ein Tab-Untermenü beim Öffnen mit dem AKTUELLEN Tab-Stand.
+    /// Füllt ein Tab-Untermenü beim Öffnen mit dem aktuellen Tab-Stand.
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         guard let context = items.values

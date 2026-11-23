@@ -1,5 +1,5 @@
 // SearchPerformanceProbeTests.swift
-// Der Messlauf ohne Aufrufparameter muss sagen, WAS fehlt — nicht „Datei
+// Der Messlauf ohne Aufrufparameter muss sagen, was fehlt — nicht „Datei
 // existiert nicht".
 
 import Foundation

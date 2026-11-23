@@ -12,7 +12,7 @@ final class ExternalDiffService {
     static let shared = ExternalDiffService(
         endpoint: Bundle.main.bundleIdentifier.map { DiffProtocol.endpoint(bundleIdentifier: $0) },
         // `handle` ruft den Öffnen-Schritt ausschließlich innerhalb von
-        // `DispatchQueue.main.sync` — dort IST Main der aktuelle Actor.
+        // `DispatchQueue.main.sync` — dort ist Main der aktuelle Actor.
         open: { request in MainActor.assumeIsolated { ExternalDiffWindow.open(request) } })
 
     private let endpoint: String?
@@ -32,7 +32,7 @@ final class ExternalDiffService {
     /// Idempotent: Ein zweiter Aufruf ohne Port versucht es erneut. Der Name
     /// kann beim ersten Mal vergeben sein, wenn eine andere Fastra-Instanz mit
     /// derselben Bundle-ID läuft (etwa Build im Repo-Root neben der
-    /// installierten App). Ein portloses Server-Objekt wird NICHT behalten —
+    /// installierten App). Ein portloses Server-Objekt wird nicht behalten —
     /// sonst gäbe es nie einen zweiten Versuch, und nach dem Ende der anderen
     /// Instanz fände `fastra-diff` keinen Endpunkt mehr.
     func start() {

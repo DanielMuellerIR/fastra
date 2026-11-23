@@ -1,8 +1,8 @@
 // CustomLanguageRegistry.swift
 //
-// Eigen-Sprachen-Registry (Etappe 3 Wunschpaket 2026-07b): die EINE zentrale
-// Beschreibung aller Sprachen, die NICHT über CodeEditLanguages laufen
-// (derzeit einziger Eintrag: 4D). Sowohl das Fußzeilen-Sprachmenü
+// Eigen-Sprachen-Registry: die eine zentrale
+// Beschreibung aller Sprachen, die nicht über CodeEditLanguages laufen (derzeit
+// einziger Eintrag: 4D). Sowohl das Fußzeilen-Sprachmenü
 // (`LanguageMenuSupport`) als auch das Editor-Routing (Provider, Theme,
 // Endungs-Automatik in `EditorView`) speisen sich aus dieser Quelle — eine
 // künftige Eigen-Sprache kann damit nicht mehr am Menü vorbeilaufen
@@ -44,7 +44,7 @@ extension CustomLanguage: Equatable, Hashable {
 
 enum CustomLanguageRegistry {
     /// 4D-Methoden (.4dm). Die Projekt-Begleitdateien `.4DProject`/`.4DForm`
-    /// (JSON) und `.4DCatalog`/`.4DSettings` (XML) gehören bewusst NICHT
+    /// (JSON) und `.4DCatalog`/`.4DSettings` (XML) gehören bewusst nicht
     /// hierher — das sind echte JSON-/XML-Dateien und behalten ihr Routing
     /// in `DocumentFormatResolver`.
     static let fourD = CustomLanguage(
@@ -87,7 +87,7 @@ final class CustomLanguageProviders: ObservableObject {
             let normalizedProjects = Set(projectMethodNames.map { $0.lowercased() })
             let normalizedComponents = Set(componentMethodNames.map { $0.lowercased() })
             // CESE vergleicht Provider über ihre Objektidentität. Eine neue
-            // Instanz nach einem Projekt- ODER Component-Index-Scan
+            // Instanz nach einem Projekt- oder Component-Index-Scan
             // invalidiert daher die sichtbaren Highlights, ohne den Editor
             // neu zu mounten oder die Selektion anzutasten.
             if normalizedProjects != fourDProjectMethodNames

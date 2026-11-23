@@ -29,7 +29,7 @@ enum DocumentLintMode: Equatable, Sendable {
 
     /// Adapter für Aufrufer, die ausschließlich eine Dateiendung besitzen,
     /// etwa Format-Fixtures. Die Oberfläche verwendet immer `resolve(tab:)`.
-    /// Bewusst KEINE eigene Endungstabelle: Der Adapter baut einen
+    /// Bewusst keine eigene Endungstabelle: Der Adapter baut einen
     /// unbenannten Tab mit dieser Endung und fragt denselben Resolver wie die
     /// Oberfläche — so können die beiden Zuordnungen nicht auseinanderlaufen.
     static func forFileExtension(_ fileExtension: String?) -> DocumentLintMode? {

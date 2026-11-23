@@ -92,8 +92,7 @@ final class FilePageModel: ObservableObject {
     /// Zählt abgeschlossene Ladevorgänge. Die Ansicht meldet ihren
     /// Drucksnapshot pro abgeschlossenem Ladevorgang statt pro Datenänderung:
     /// Zwei inhaltsgleiche Nachbarseiten ändern `data` nicht — Abschnitts-
-    /// nummer und Hex-Basisadressen im Snapshot blieben sonst veraltet
-    /// (Reviewfund 2026-08-18).
+    /// nummer und Hex-Basisadressen im Snapshot blieben sonst veraltet.
     @Published private(set) var completedLoadCount = 0
 
     let url: URL
@@ -127,13 +126,10 @@ final class FilePageModel: ObservableObject {
         pageIndex = page
         isLoading = true
         errorMessage = nil
-        // Die alten Bytes gehören zur VORIGEN Seite, `offset` zeigt aber schon
-        // auf die neue. Blieben sie bis zum Hintergrund-Abschluss stehen,
-        // zeigte die Ansicht Adressen der neuen Seite mit Bytes der alten —
-        // und eine Hex-Bearbeitung in diesem Fenster erzeugte eine Änderung
-        // am falschen Offset mit dem falschen Altwert (Reviewfund 2026-08-19).
-        // Leer heißt: Die Ansicht zeigt den Lade-Spinner, bearbeitbare Zeilen
-        // existieren nicht.
+        // Alte Seitenbytes sofort entfernen, sobald `offset` auf die neue Seite
+        // zeigt. Sonst würden Anzeige und Hex-Bearbeitung neue Adressen mit alten
+        // Bytes verbinden. Ohne Bytes zeigt die Ansicht den Lade-Spinner und keine
+        // bearbeitbaren Zeilen.
         data = Data()
         let offset = UInt64(page) * UInt64(pageSize)
         let count = Int(min(UInt64(pageSize), totalBytes > offset ? totalBytes - offset : 0))
@@ -156,10 +152,8 @@ final class FilePageModel: ObservableObject {
                 case .success(let data):
                     self.data = data
                 case .failure(let error):
-                    // Die alten Bytes gehören zur VORIGEN Seite. Blieben sie
-                    // stehen, zeigte die Ansicht zwar den Fehler, aber
-                    // „Drucken" gäbe weiter den alten Abschnitt aus
-                    // (Reviewfund 2026-08-18).
+                    // Alte Seitenbytes auch bei Ladefehlern entfernen, damit „Drucken“ nicht
+                    // den vorherigen Abschnitt ausgibt.
                     self.data = Data()
                     self.errorMessage = pagedFileReadErrorDescription(error)
                 }
@@ -582,11 +576,11 @@ private struct TextFilePageNavigation: View {
 }
 
 /// Native, virtualisierte Hex+ASCII-Ansicht. Binärdateien werden automatisch
-/// durch Null-Byte-Probe hierher geroutet; über den Ansichts-Umschalter ist
-/// sie für jede Datei manuell erreichbar (Etappe 2 Wunschpaket 2026-07).
-/// Bearbeitung ist Opt-in: erst nach ausdrücklicher Bestätigung, geschrieben
-/// wird erst nach sichtbarer Änderungsvorschau und zweiter Bestätigung.
-/// Wer nichts ändert, bekommt auch keinen Speicher-Zwang.
+/// durch Null-Byte-Probe hierher geroutet; über den Ansichts-Umschalter ist sie
+/// für jede Datei manuell erreichbar. Bearbeitung ist Opt-in: erst nach
+/// ausdrücklicher Bestätigung, geschrieben wird erst nach sichtbarer
+/// Änderungsvorschau und zweiter Bestätigung. Wer nichts ändert, bekommt auch
+/// keinen Speicher-Zwang.
 struct HexFileView: View {
     @StateObject private var model: FilePageModel
     /// Dokumentgebundener Zustand aus `EditorTab`. Eine lokale StateObject-
@@ -813,11 +807,11 @@ struct HexFileView: View {
     }
 
     private func hexLine(at row: Int) -> String {
-        // Dieselbe Formatierung wie im Ausdruck (`HexDump`) UND dieselben
+        // Dieselbe Formatierung wie im Ausdruck (`HexDump`) und dieselben
         // effektiven Bytes wie der Drucksnapshot: Auch nach dem Ausschalten
         // von „Bearbeiten erlauben" bleiben offene Änderungen sichtbar —
         // sonst druckte Fastra Bytes, die die schreibgeschützte Zeile nicht
-        // zeigt (Reviewfund 2026-08-18). Byteweiser Overlay statt
+        // zeigt. Byteweiser Overlay statt
         // `visiblePageData()`: Eine Vollkopie der Seite je Zeile wäre beim
         // Rendern unnötig teuer.
         let end = min(row + HexDump.bytesPerRow, model.data.count)

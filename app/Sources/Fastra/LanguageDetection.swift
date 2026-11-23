@@ -1,13 +1,12 @@
 // LanguageDetection.swift
 //
-// Inhaltsbasierte Spracherkennung für ungespeicherte, endungslose Tabs
-// (Etappe 3 Wunschpaket 2026-07). Reine, UI-unabhängige Logik:
-// - konservative Format-Heuristiken (nur bei hoher Konfidenz ein Ergebnis)
-// - Hysterese (einmal Erkanntes flackert beim Tippen nicht zurück)
-// - Auslöser-/Drossel-Entscheidung (Paste sofort, sonst Debounce)
-// Debounce, Hintergrundarbeit und Abbruch koordiniert der
-// DocumentLanguageDetector; hier ist alles pure Funktion und damit direkt
-// unit-testbar.
+// Inhaltsbasierte Spracherkennung für ungespeicherte,
+// endungslose Tabs. Reine, UI-unabhängige Logik: - konservative
+// Format-Heuristiken (nur bei hoher Konfidenz ein Ergebnis) - Hysterese (einmal
+// Erkanntes flackert beim Tippen nicht zurück) - Auslöser-/Drossel-Entscheidung
+// (Paste sofort, sonst Debounce) Debounce, Hintergrundarbeit und Abbruch
+// koordiniert der DocumentLanguageDetector; hier ist alles pure Funktion und
+// damit direkt unit-testbar.
 
 import Foundation
 
@@ -27,7 +26,7 @@ enum ContentLanguageDetection {
         let isComplete: Bool
     }
 
-    /// Ab dieser Zeichenzahl in EINER Änderung gilt sie als Block-Einfügung
+    /// Ab dieser Zeichenzahl in einer Änderung gilt sie als Block-Einfügung
     /// (Paste/Drop) → sofort analysieren statt zu warten.
     static let bulkInsertThreshold = 32
 
@@ -68,8 +67,8 @@ enum ContentLanguageDetection {
 
     // MARK: - Hysterese (pure)
 
-    /// Eine gesetzte Erkennung wird nur durch STARKE Gegenevidenz ersetzt —
-    /// also durch ein ANDERES Format mit hoher Konfidenz. Liefert die
+    /// Eine gesetzte Erkennung wird nur durch starke Gegenevidenz ersetzt —
+    /// also durch ein anderes Format mit hoher Konfidenz. Liefert die
     /// Analyse nichts (`nil`), bleibt die bisherige Erkennung stehen (kein
     /// Hin-und-her-Flackern, während ein Dokument beim Tippen kurzzeitig
     /// „ungültig" ist).
@@ -122,7 +121,7 @@ enum ContentLanguageDetection {
             return structured
         }
 
-        // CSS und JavaScript können sich oberflächlich ähneln — sind BEIDE
+        // CSS und JavaScript können sich oberflächlich ähneln — sind beide
         // Heuristiken überzeugt, ist gar nichts sicher (konservativ).
         let css = looksLikeCSS(trimmed)
         let js = looksLikeJavaScript(trimmed)
@@ -153,7 +152,7 @@ enum ContentLanguageDetection {
             }
             // Abgeschnittener Riesen-Paste: typischer JSON-Anfang
             // („{ "schlüssel": …" bzw. „[ { "schlüssel": …") reicht — ein
-            // JavaScript-PROGRAMM beginnt nie mit einem nackten Objektliteral.
+            // JavaScript-Programm beginnt nie mit einem nackten Objektliteral.
             if trimmed.range(of: #"^[\[{][\s\[{]*"[^"\n]+"\s*:"#,
                              options: .regularExpression) != nil {
                 return .json
@@ -184,7 +183,7 @@ enum ContentLanguageDetection {
         return !jsMarkers.contains(where: text.contains)
     }
 
-    /// JavaScript: mindestens zwei VERSCHIEDENE starke, JS-typische Marker.
+    /// JavaScript: mindestens zwei verschiedene starke, JS-typische Marker.
     /// (Ein einzelner Treffer wie `const` käme auch in C/C++ vor.)
     private static func looksLikeJavaScript(_ text: String) -> Bool {
         let markers = [
@@ -195,7 +194,7 @@ enum ContentLanguageDetection {
         return hits >= 2
     }
 
-    /// Markdown: mindestens zwei VERSCHIEDENE Marker-Arten. Eine einzelne
+    /// Markdown: mindestens zwei verschiedene Marker-Arten. Eine einzelne
     /// `#`-Zeile könnte auch ein Shell-Kommentar sein — erst die Kombination
     /// (Überschrift + Link, Überschrift + Codezaun, …) ist hohe Konfidenz.
     private static func looksLikeMarkdown(_ text: String) -> Bool {

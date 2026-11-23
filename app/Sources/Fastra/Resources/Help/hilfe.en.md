@@ -221,6 +221,11 @@ Example: search `*, the`, replace `The *` turns “ring, The” into
 “The ring”. The always-visible “∗ literal” switch treats `*` as a normal
 character. It is enabled only while regex is off and the search expression
 contains at least one `*`.
+Consecutive asterisks count as one wildcard. If Replace contains more
+wildcards than Find, the extras expand to empty text. A notice below
+Replace explains this case. Since 1.242.48, this
+also applies from the tenth position onward. Saved replacements use the
+corrected behavior the next time you build a preview.
 
 **Regex:** The regex switch enables regular expressions (ICU syntax, as
 in `NSRegularExpression`). It is off when the app starts — new searches
@@ -246,9 +251,22 @@ a regex such as `foo|bar`. Existing capture group numbers stay the same.
 - Only “Apply Approved Changes” executes the reviewed operation. Search options, sources, document revisions and the originating window must still match the preview. Changes invalidate old approvals. Closing or cancelling during preparation prevents a delayed Apply from that preview.
 - In **File** and **Open**, Apply changes memory only. Save the documents explicitly afterwards. Each document change is one native Undo step: **⌘Z** undoes it and **⇧⌘Z** redoes it. Earlier edits remain available after switching tabs and in the split Markdown view.
 - “Restore Memory Changes” undoes the last approval operation together; “Reapply Together” reapplies it. The documents actually changed must still be on their exact expected basis. Later edits in unrelated documents are preserved. After editing an affected document again, use its individual Undo history.
-- In **Folder** and **Project**, Apply writes to disk. Before the preview and before the first write, Fastra also rechecks listed match files without approvals. External changes, unsaved edits in affected open files or write protection block the operation. Replacements without an actual change do not write a file.
-- Planning, backups and writes run in the background with progress feedback. “Cancel Apply” stops before the write phase without changing targets. A write phase that has already started finishes safely. Writes are **atomic per file**, with automatic backups; a failed operation across several files may have partially completed. “Undo” restores files actually changed byte for byte and stops on later changes or write protection.
+- In **Folder** and **Project**, Apply writes to disk. On macOS, Fastra rechecks all text files in scope when creating the preview and before the first write, including files without matches. If an eligible text file is added, removed, or changed, run the search again and approve the changes. File type filters and folder exclusions still apply. External changes and unsaved edits in affected open files block the operation. Replacements without an actual change do not write a file.
+- On macOS, matches in read-only files remain visible and cannot be approved. On Linux, Fastra can atomically replace an approved, readable file without write permission on the file when its directory allows the replacement. The file permissions are preserved. If you change file permissions after the preview, review the approvals again.
+- On Linux, a size limit error during Apply requires a fresh search and approval. If Fastra reports a partially completed operation with recovery data, the error message retains the path to that data.
+- When a file changes, Fastra clears approvals for the affected search. Search again, review the current matches, and approve them before applying a new preview.
+- On Linux, an earlier external-change notice clears when Apply, Undo or file recovery updates an open editor without unsaved changes to the verified disk version. Fastra reports subsequent external changes as they occur.
+- Planning, backups and writes run in the background with progress feedback. “Cancel Apply” stops before the write phase without changing targets. A write phase that has already started finishes safely. Writes are **atomic per file** and create backups automatically. A failed operation across several files may have partially completed. “Undo” restores files actually changed byte for byte and stops on later changes or missing permissions for the restore.
+- If the backup location changes during a file operation on macOS, Fastra stops and reports confirmed file changes and reachable backups. Undo or Clean Up is available for that operation only when Fastra can verify the recovery data. This also applies to text workflows that operate on files.
+- Undo also protects a file that has since been replaced, even when its text is identical. If a backup is missing, read access is denied or its contents differ from the original, Fastra reports the affected file, the cause and the full backup path. Keep the listed files until any backup or cleanup error is resolved.
+- Before the first file replacement, Fastra verifies and synchronizes the original backups. If Fastra detects that the backup directory was replaced when you cancel during preparation, it reports the error and leaves the directories in place. Saved session progress is also verified and synchronized.
+- If a failed Apply has not changed any target files and Fastra can safely identify its remaining temporary files, “Clean Up” becomes available. Resolve the reported cause and use the action in the running app before starting another Apply. Fastra verifies its temporary files before removing them; target files remain unchanged. Paths that cannot be safely identified are preserved for inspection.
 - Capped match lists, missing search sources, read errors and incomplete diffs never enable Apply. A cap within a single file also reports the actual visible and counted matches. Unreadable, oversized, or undecodable files are explained with counts and reasons; the tooltip lists up to eight paths and the number of further files. Deliberately skipped binary files do not block approvals. Refine the search or fix the cause and search again. Approval previews are limited to 500 inputs, 64 MiB each of original, output and preview text, 32 MiB of text per file, 100,000 total preview rows and 60 seconds. The diff handles at most 200,000 lines per side and 30,000 differing lines in the remaining comparison range. Encoding, BOM and unchanged line endings are preserved; unrepresentable replacements are rejected.
+
+On macOS, Fastra checks whether the volumes holding the affected files
+support safe atomic replacement before replacing any file. If a volume
+reports that it cannot perform the swap, Fastra stops the entire operation
+and names the affected file.
 
 **Navigation:** Return or ⌘G jumps to the next match, ⇧⌘G to the
 previous one; the arrow keys walk the results list, which scrolls to the
@@ -257,6 +275,10 @@ allow and gives it a stronger colored highlight while the search panel is
 open. That line highlight remains visible with a selected match and with
 ordinary multiline or rectangular selections; only one active selection line
 is emphasized. Escape hides the panel.
+
+On macOS, “File recovery…” in the Folder or Project scope opens earlier sessions from Fastra’s protected backup storage. Explicitly select a session and review every affected path, the differences between current file contents and the backed-up original, and the remaining cleanup resources. Only “Restore displayed files” or “Complete displayed session” starts the approved action. All targets in the complete session must be contained in the selected sources; add multiple related roots in the Folder scope if needed. No files are restored automatically at app launch.
+
+Cancellation or changed sources revoke approval. Before writing, Fastra rechecks backups, targets, open documents and session storage. Unsaved affected documents, other running Fastra copies, changed files and previews that cannot be displayed completely block the action. Comparisons allow up to 4 MiB per file and 32 MiB of preview text in total. A partially completed restoration remains recorded in the journal. Resolve the reported issue and use “Review session again” before confirming the remaining restoration or cleanup. The current Undo session is retained independently. Backups remain subject to the existing 30-day cleanup; a session that has since been removed or replaced requires a new review. This cannot exclude a noncooperating app that starts after the final process check.
 
 ## Comparing Files
 
@@ -404,7 +426,8 @@ those would turn into symbols. Applying it twice changes nothing further;
 **Undo emoji presentation** is the way back.
 
 The visible **Format** control in the footer, **Format Document** (⌥⇧F) in the
-**Text** menu, and the editor's right-click menu pretty-print JSON/XML. The
+**Text** menu, and the editor's right-click menu pretty-print JSON/XML. When
+the search window is active, the shortcut formats its document. The
 footer control remains visible in text mode and explains that JSON or XML must
 be selected first. Also in the menu: **Validate Document** (syntax check with
 error position), and **Minify Document**. Formatting and minifying follow the
@@ -413,7 +436,7 @@ error position), and **Minify Document**. Formatting and minifying follow the
 language chip, the commands also work in a `.txt` file or an unsaved tab.
 Large formatting and minification jobs run in the background and are applied
 only while the document and selection remain unchanged. After two seconds,
-the document shows an activity indicator. Text files up to 128 MiB open fully
+the document shows an activity indicator. If you switch tabs during the operation, the original window shows the cancellation and names the affected document. Text files up to 128 MiB open fully
 for editing; larger files use the section view. **Validate Document**
 also follows the effective format: **JSON** enables validation in a `.txt`
 file, while **Plain Text** disables it even in a `.json` file. XML detected
@@ -471,7 +494,11 @@ saved bytes in Hex; choose a known text encoding explicitly with
 If another program changes the file while Fastra is reading a section, Fastra
 discards the complete section instead of mixing old metadata with new bytes.
 Use **File → Reload from Disk** to adopt the new on-disk version, including a
-changed file size.
+changed file size. If there are unsaved changes, the confirmation applies to
+the named tab and its state when the prompt opened. In the automatic prompt
+after an external change, Keep applies to the checked file. Reload preserves
+a draft that changed while the prompt was open. If you save while a check
+for external changes is in progress, Fastra checks the new file version.
 
 The hex view starts read-only. **Allow Editing** enables input only after a
 warning; **Preview & Save…** then shows every planned byte change and asks a
@@ -500,7 +527,7 @@ discarded.
 Markdown also offers the button in the formatted editor. Snippets complement
 the existing 4D macros and do not execute scripts.
 
-On Linux, text snippets are also available under **Tools → Text snippets …**. The library and insertion preview use the source or Rich selection captured when opening. Rich image references require a saved target document.
+On Linux, text snippets are also available under **Menu → Tools → Text snippets …**. The library and insertion preview use the source or Rich selection captured when opening. Rich image references require a saved target document.
 
 Choose **New**, enter a name and template, then save it. **Duplicate** creates an
 independent copy. You can edit, delete and search templates by name. Switching or
@@ -561,8 +588,9 @@ processed as one text fragment; neighboring content remains unchanged. Even
 line operations cannot change characters outside it. **Calculate Preview**
 shows the final result. Use the preview picker to inspect each enabled step.
 **Apply in Memory** requires a saved definition and the visible, complete final result;
-it creates one undo step and does not save the document to disk. If the document
-snapshot changes, close the dialog and start again.
+it creates one undo step and does not save the document to disk. When the sheet
+closes, keyboard focus returns to the editor. Press Command-Z to undo. If the
+document snapshot changes, close the dialog and start again.
 
 **Open Documents in This Window** lists every fully loaded editable text document
 in this window, including unsaved documents. Other windows are outside this scope.
@@ -857,6 +885,8 @@ Pasting a single line over the entire cell text does not add a line break.
 to edit directly in the formatted view or use source text with a preview.
 WYSIWYG hides Markdown syntax. The format toolbar works in both modes.
 Typing, formatting and Undo happen directly in the document.
+The blank area below a short text is part of the editor too: click there to
+continue typing.
 When Markdown delimiters cannot express the selected formatting unambiguously,
 Fastra uses allowed HTML tags in the source so that saving and reopening preserve
 its appearance.
@@ -966,6 +996,12 @@ Every insertion creates its own copy with a free number, even for identical
 image data. Save new documents before
 inserting images (⌘S).
 
+Each file extension has 9,999 available image names. If all are in use or
+reserved for Undo, Fastra explains the limit and inserts no link. Existing
+images are preserved.
+On Linux, a failed insertion may show a recovery location. Inspect that path
+and keep any files found there.
+
 Click an image in WYSIWYG mode to select it. Use the Delete key or
 **Right-click → Delete** to remove it; ⌘Z restores it. For previously saved
 images, the file is removed only on the next save so the saved document remains
@@ -973,7 +1009,13 @@ valid. Images used by other Markdown files in the same folder or other open
 documents are preserved. Files outside the immediate `images` folder are not
 removed automatically.
 
-Removed Undo images are held only in memory, without hidden backup folders.
+On Linux, Fastra reports denied write access when an image file stays in the `images` folder after Undo. Fix the permissions and open Image Recovery Files from the image menu to retry.
+
+On macOS, Rename in the Files sidebar waits for image actions to finish.
+Renaming a Markdown file in the same folder with the same extension keeps
+Undo and Redo available in the visual editor.
+
+Removed Undo images are held in memory.
 Image bytes and metadata such as Finder tags, access permissions including
 macOS access control lists (ACLs), owner and group share
 a 512 MiB limit across all windows. When space runs out, the oldest
@@ -981,9 +1023,12 @@ affected document history is discarded completely. An image action larger than
 the limit loses its history immediately. Closing or quitting releases the
 retained Undo images.
 If the metadata cannot be restored, the image file is preserved.
+If Fastra cannot create a file in the images folder to check whether it can
+restore the image, Undo reports the reason, such as denied write access.
 
 ⌘Z after an unsaved insertion also removes the newly created image file; Redo
-restores both while the history is available. The original source file is no
+restores both while the history is available.
+If a required image stayed on disk, Redo uses the current file at the same path. If the file is missing, Fastra shows its path and waits for the file before redoing the change. The original source file is no
 longer needed. The number stays reserved until the undo step is discarded. Save As copies only images still
 used. Save As to a different folder starts a new Markdown Undo history so old
 relative image paths cannot enter the new document. Markdown and `images` can be
@@ -993,15 +1038,44 @@ copied, renamed and moved together.
 `images` folder before deleting them. Save the document first. Other Markdown
 files in the same folder, open documents and active image undo steps protect
 their files. Subfolders and symbolic links are left untouched. Fastra checks
-the preview again after confirmation. Image and download references count even
+the preview again after confirmation. If the candidate files have changed, Fastra
+deletes nothing and asks you to open “Clean up images folder” again.
+Image and download references count even
 when the preview does not display them. Unsupported file formats are preserved.
 CSS, alternative HTML image sources and templates conservatively protect all
 files in the affected images folder.
+On a partial failure, Fastra reports paths already removed, restored to their
+original location or preserved, together with the cause. Files may remain in a
+private working folder. After an incomplete Undo, Fastra retains the required
+image data for Redo during the session. Restarting does not rebuild an Undo
+history from preserved files.
+Error messages retain the cause and paths recorded when the image operation
+finished, even if another cleanup runs afterward.
+A later confirmed image reference ends cleanup that was rejected solely because
+open references changed without an outdated cancellation warning. Earlier real
+file failures and partial progress remain visible until their resolution is
+verified. Paths reported as preserved earlier have not been checked again;
+Fastra does not automatically search for or clean up such detached remnants.
+
+If the check of open documents cannot reach a stable completion, Undo still
+finishes in source-text and WYSIWYG modes. Target images already restored remain
+with their matching text. Fastra warns that remaining image files were not
+cleaned up further. Image data needed for Redo remains available during the session.
+
+After such a completed visual Undo, a successful Redo does not repeat the
+resolved reference-check cancellation. Real file failures and unresolved
+remaining paths continue to be reported.
 
 Fastra publishes an image file only after the copy is complete and never
 overwrites a file created concurrently. If the real `images` folder is
 replaced with a symbolic link while copying, the operation stops and writes
 nothing to the link target.
+
+The operation reports success only after synchronizing the file and the
+required directory entries. If completion fails after publication, a complete
+image copy may remain. The error message lists its path; no new image link is
+inserted. A failed Redo leaves the text unchanged and can be retried. Empty
+`images` folders remain after Undo or an error.
 
 ### HTML in the Preview
 
@@ -1031,6 +1105,10 @@ from the Open dialog, Finder, drag and drop, the welcome screen, recent files,
 the project sidebar and opening current files from Git views. **Cancel** opens
 and changes nothing. The conversion command remains available in the **File**
 menu, the project sidebar's context menu and above the opened original.
+
+For the prompt to appear, `poormans-text --formats --json` must provide the
+format catalog. RTF and RTFD conversion requires Pandoc with support for
+`--sandbox`.
 
 Only one conversion runs across the app at a time. A second window keeps its
 own offer visible, explains that another conversion is active, and disables
@@ -1110,7 +1188,7 @@ paragraphs and deliberately visible blank lines remain separated.
 The compact **Soft Wrap control** sits in the footer next to the language
 chip. It visibly shows **On** or **Off**; clicking the main control toggles
 it immediately. The separate arrow and a right-click open the same options.
-**View → Soft Wrap** (⇧⌘L) toggles the same value.
+**View → Soft Wrap** (⇧⌘L) toggles the same value. This document command is unavailable while Help or Settings is in front.
 
 Soft Wrap is stored **per effective document format** and applies
 application-wide to every open and later-opened document of that format.
@@ -1220,6 +1298,9 @@ the list manually, ↑/↓ select, Return/Tab accepts, Esc closes. The
 names, signatures, and command numbers come from the official 4D
 documentation (CC BY 4.0, © 4D SAS — see the third-party notices).
 
+On Linux, **Fastra menu → Tools → 4D completion …** also opens the list in
+the active 4D source editor.
+
 **Parameter help:** When the cursor is inside the parentheses of a project
 method call, a small panel below the line shows the method's signature —
 the parameter the cursor is currently in is highlighted, and the method's
@@ -1281,9 +1362,9 @@ do not need to be renamed. If several are present, Fastra picks the
 highest version.
 
 **Your own tool4d path:** Settings under “4D” lets you enter the executable
-directly; `~` is allowed. Only an EMPTY field means “Fastra searches by
+directly; `~` is allowed. Only an empty field means “Fastra searches by
 itself”. If an entered path points nowhere, at a folder, or at something not
-executable, the field says so right away — Fastra does NOT silently fall back
+executable, the field says so right away — Fastra does not silently fall back
 to some other installation it happens to find.
 
 **Check Document:** When a saved `.4dm` method belongs to an open 4D project
@@ -1401,9 +1482,11 @@ projects quickly, and the right-click menu offers “Show in Finder” and
 “Copy Path”. The latter copies the complete POSIX path, including the file name,
 to the clipboard. **⌘-click a document tab** shows the file’s macOS path menu. The
 file tree can create, rename, and trash files and folders.
-It can also duplicate an item: the copy gets “copy” and, when needed, a running
-number before its extension and opens immediately as the active tab. A saved
-tab's right-click menu contains the same file actions; options that need a file
+It can also duplicate an item. The copy gets “copy” and, when needed, a running
+number before its extension. Fastra opens a copied file automatically while the
+original window is open and you stay in the same tab and project. After switching
+tabs or projects, the copy is available in the original folder. A saved tab's
+right-click menu contains the same file actions; options that need a file
 stay disabled on an unsaved tab. On wide windows, the sidebar can be expanded
 to 760 points so long paths remain readable.
 
@@ -1413,14 +1496,22 @@ no fuzzy matching); a wider sidebar gives it more room. Matches appear
 with their parent folders expanded; everything else is hidden, and the
 counter above the tree shows “N of M files”. Escape or the X
 clears the filter and restores the previous expansion state. The filter
-only searches NAMES — for contents, use “Search in Project or Folders…” (⇧⌘F, also
+only searches names — for contents, use “Search in Project or Folders…” (⇧⌘F, also
 offered as a link when the filter finds nothing).
+
+On Linux, the project sidebar counts regular files in the scanned tree when
+the filter is active. If the scan is incomplete, the counter labels them as
+scanned files. Clearing the filter hides the count.
 
 Switching between the sidebar tabs is not a fresh start: the filter text
 and its match list, the expanded commits in the graph and each list's
 scroll position are all back in place when you switch back.
 
 ## Git
+
+In the **Git** menu, **Show History** and **Show Changes (Diff)** become
+available when Fastra recognises a Git repository in the active window.
+This includes a newly initialised repository before its first commit.
 
 If the project is a Git repository (and `git` is installed), the sidebar
 additionally shows the **Changes** and **Graph** tabs. The Changes tab carries
@@ -1502,7 +1593,10 @@ open. In detail:
   Section headers stay pinned while you scroll, so the title and the buttons
   remain reachable with many files; in a narrow sidebar the title is
   truncated first, never a button.
-- **Graph:** the commit graph with branches and merges.
+- **Graph:** the commit graph with branches and merges. Click a commit to
+  expand it. Its author, relative time, date and time, full subject,
+  change statistics and short hash appear directly below the commit row,
+  followed by its files. Double-click to open the commit diff.
 - **History of a single file:** right-click a file in the Files tab (or
   its document tab) → “Show Git History”. Fastra switches to the Graph
   tab and shows only that file's commits, listed vertically instead of as
@@ -1536,7 +1630,9 @@ and lines; with a selection they refer to the selected text.
 The footer shows the encoding and line ending of the active tab:
 
 - **Encoding chip:** “Reopen with encoding” reloads the file from disk
-  with a different encoding.
+  with a different encoding. If there are unsaved changes, the confirmation
+  applies only to the file named in the dialog. Return and Escape cancel
+  and keep the draft. Choose “Reload” to discard it.
 - **Line-ending chip:** choose LF, CRLF, or CR — the change takes
   effect on the next save.
 
@@ -1775,7 +1871,13 @@ Unchanged source blocks retain their original notation. The visual viewport is
 remembered per document when returning to that editing mode. Copied highlights
 also provide their color to HTML and RTF destinations.
 
-Local raster images in Linux Rich view refresh automatically in the background after external file changes. Text, selection and Undo are retained. Missing or invalid images retain their source references without displaying stale image bytes. Refresh waits during image and clipboard actions.
+Local raster images in Linux Rich view refresh automatically in the background after external file changes. Text, selection and Undo are retained. Missing or invalid images retain their source references without displaying stale image bytes. Images retained only for Redo do not trigger a missing-image warning once Fastra has checked the current references. Refresh waits during image and clipboard actions.
+
+In the Linux “Git · Read” window, **Status** checks whether the folder is
+inside a Git repository. If Git finds that the folder is outside a repository,
+**History**, **Staged diff**, and **Working diff** become unavailable. Use
+**Choose folder …** to switch to a repository. Both diffs work before the
+first commit.
 
 In Linux Git tools, “Create commit …” opens the complete index preview. Review the tree, parent commits, author/committer, message and diff, then approve that state. Fastra uses a normal Git commit with active hooks and native signing. Later staging and unsaved editor buffers are retained. Hook changes, signing failures or a stale basis stop the commit; actual output and the resulting Git state remain visible. Git 2.43 or newer with files refs is required.
 
@@ -1798,6 +1900,8 @@ HTML and external links
 The preview uses the strict Mac allowlist for HTML tags and attributes. Tables, local raster images and expandable details are rendered; scripts, network images and foreign internal position/copy attributes remain excluded. Rejected HTML appears as text. Unmapped raw HTML has no source jump or dedicated code-copy button. Explicitly activating an HTTP, HTTPS or mailto link opens the system browser or mail application. The preview itself stays local; automatic navigation and other protocols are blocked.
 
 Click between source and Markdown preview
+Drag the divider between source and preview to adjust the split. Switching to Rich and back retains that split for the open document.
+
 Clicking source text scrolls the corresponding preview block into view. Clicking ordinary preview text places the caret in the last-used source view, expands folded target regions and focuses the editor. Links, text selection and copy buttons retain their own actions. Columns are approximate where Markdown markup has been removed; scrolling is not continuously coupled.
 
 Copy code blocks
@@ -1882,13 +1986,21 @@ The export button saves a complete UTF-8 text report. Choose a separate file; co
 
 The main window has tabs at the top, a collapsible project tree on the left and a status bar at the bottom. An empty tab shows file and folder actions and recent projects. Opening a file replaces only a completely untouched empty tab; other documents are retained.
 
+Activating a text tab focuses its editor. Press Ctrl+C to copy its current selection. “Reopen in tab” in the encoding menu focuses the new text editor. Unsaved edits and the selection in the original tab are retained.
+
 “Find” in the status bar or Ctrl+F opens a separate search window. The File, Open, Folder and Project scopes offer search, a complete preview and match approvals. Escape or Ctrl+W closes the search window. Applying changes still requires the approved, verified source state.
+
+When Fastra rejects a file operation because its source state changed, it discards the preview and its approvals. Create a new preview and approve the changes again. This also applies to saved text workflows that operate on files.
+
+If the project folder was replaced at the same path, close the old search or workflow dialog on Linux. Select the folder again in the project window, then create a new preview.
 
 File and open-document searches update matches 120 ms after typing or changing options; folder and project searches wait 420 ms. Previous previews and approvals become invalid immediately. Folder and project searches start automatically with at least three visible characters; use Find or Return for shorter patterns. Ctrl+F focuses the existing window for the active scope and selects the search field. Reopening in the same editor retains the folder path, exclusions and text-format choice; project settings belong to that project. Closing cancels searches and removes source highlights.
 
 Sources remain usable during a read-only folder or project search. Changing them invalidates the old preview, cancels the old scan and then calculates current matches. Closing the search or editor window cancels a read-only scan. Writes, restoration, text workflows and unsaved settings must finish or be cancelled first.
 
 The folder list contains previously added folders. Check the sources to search; removing a row changes only the list. Add folders accepts multiple sources. The list scrolls from eight entries; up to 64 folders can be searched together. File types selects known text formats or all files; binary files remain skipped. Additional folder exclusions are inside the File types menu.
+
+After applying in the Folder or Project scope, Fastra closes the completed review. If a file changed, Undo is available in the search window.
 
 The template menu beside Find contains the bundled categories and user templates. It reloads the collection when opened. Selecting a template sets the search expression and RegEx, and adopts a replacement suggestion only when one is supplied. Scope and other options are retained. “— None —” clears the template association while keeping both fields. The sliders button opens the manager for saving, importing and exporting. Empty results distinguish missing input, the minimum length for automatic folder search, and completed searches with no matches. Clicking the already selected Open scope shows its coverage and limits.
 
@@ -1905,6 +2017,14 @@ Capture pills in every search scope come directly from the pattern, including wi
 Select text in the detail box. Define group snaps to complete regex elements and inserts a capture into the pattern, renumbering existing replacement references without changing their meaning. Delete group ungroups the selected capture, or the last pattern capture when there are no matches. Referenced replacement groups, backreferences, quantifiers, risky alternatives and changed inline-flag boundaries block the action with an explanation. These commands change only search fields and invalidate old approvals. Analysis is limited to a 64 KiB pattern, 65,536 syntax nodes, 256 tree levels and 200 ms parser time; reaching a limit disables group editing with an explanation.
 
 Each new search starts without approvals. Select matches individually or with All; without a selection, review and apply remain disabled. The match list groups files, shows the active match in detail and offers individual approvals and All/None. “Review approvals” opens the complete comparison preview with colored changes; approved changes are applied there. If line alignment exceeds its comparison budget, the preview explicitly shows both complete texts without that alignment. “Extract matches” creates a new unsaved document or copies to the clipboard. Separator, quoting, duplicate removal and replacement are selectable; output is limited to 16 MiB. New documents also enforce the editor limit of 64 KiB per logical line; clipboard output can contain longer lines.
+
+An incomplete folder or project search keeps discovered matches visible and
+selectable. Unreadable files or folders, text that cannot be decoded losslessly
+and individual inputs over the displayed limits block approval and Apply.
+Blocking paths appear first in the list of skipped inputs. Resolve the listed
+issues or narrow the scope, then search again. File types, file sets and
+exclusions define the scope. Fully read binary files are listed
+as skipped and rechecked at Apply. Links and special files are excluded.
 
 Click a match or use Previous/Next to jump to its verified source; Up and Down also work in the match list. The source marks up to 2,000 matches plus the active match; zero-length matches appear as marked insertion positions. The source editor selects the actual match; text and Undo remain unchanged. Selection only freezes the range chosen when enabled, bound to that document. Match navigation preserves this range; text edits move its boundaries. Disable and re-enable the option to choose a different range. Empty or rectangle selections are refused without searching the whole document. Open tabs are identified independently of their names. Folder and project matches open files only on an explicit jump and reuse matching open sources. Changed disk data or conflicting open buffers block the jump with an explanation. A late loading reply after a search or window change creates no new document.
 
@@ -1945,6 +2065,8 @@ Editor options include an app-wide choice of installed fixed-pitch fonts and the
 The choice is saved locally in the background. If a previously selected font is missing, Fastra marks it as unavailable and temporarily uses system monospace. The saved choice is retained until an explicit new selection. A save error preserves the previous setting on disk; “Retry” repeats the save. Source files are not changed.
 
 ## Linux: view and editing menu
+
+Open “View and editing” next to the source editor and choose “Editor options …”. Turn on “Show invisible characters” to display spaces, tabs, and line endings separately. The setting applies to both source panes in the open tab. Text, selection, and the file stay unchanged.
 
 Command buttons in “View and editing”, such as “Column paste”, close the menu after running. You can then continue typing in the source. Toggles remain usable in the open menu.
 

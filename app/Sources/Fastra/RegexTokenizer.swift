@@ -23,9 +23,9 @@
 //   • pattern/term/alternation sind reine Strukturknoten — sie erzeugen
 //     keine eigenen Tokens, ihre Kinder schon.
 //   • Quantifier-Knoten (one_or_more, zero_or_more, optional, count_quantifier)
-//     enthalten ihr lazy-"?"-Kind SCHON in ihrer eigenen Range — deshalb
-//     wird der GESAMTE Knoten als EIN Token ausgegeben (kein Descent).
-//   • character_class (`[...]`) ist ein GANZER Knoten — ebenfalls KEIN Descent.
+//     enthalten ihr lazy-"?"-Kind schon in ihrer eigenen Range — deshalb
+//     wird der gesamte Knoten als ein Token ausgegeben (kein Descent).
+//   • character_class (`[...]`) ist ein ganzer Knoten — ebenfalls kein Descent.
 //   • Gruppen-Klammern sind anonyme Kinder (nodeType == "(" / ")" usw.),
 //     wir lesen ihre Range direkt aus dem Baum.
 
@@ -37,7 +37,7 @@ import TreeSitterRegex
 
 /// Globale Sperre für alle tree-sitter-Parser-Aufrufe.
 ///
-/// tree-sitter ist grundsätzlich NICHT thread-safe — auch wenn jeder Aufruf
+/// tree-sitter ist grundsätzlich nicht thread-safe — auch wenn jeder Aufruf
 /// einen eigenen Parser erzeugt, teilen sich verschiedene Instanzen globalen
 /// C-seitigen Zustand (Language-Initialisierung, Memory-Pools). Diese Sperre
 /// serialisiert alle tokenize()-Aufrufe und verhindert „Fatal access conflict"-
@@ -76,7 +76,7 @@ enum RegexTokenizer {
         tokenizerLock.lock()
         defer { tokenizerLock.unlock() }
 
-        // Jeden Aufruf einen frischen Parser erzeugen — Parser ist NICHT
+        // Jeden Aufruf einen frischen Parser erzeugen — Parser ist nicht
         // thread-safe und Pattern sind kurz, daher kein Recycling.
         let language = Language(language: tree_sitter_regex())
         let parser = Parser()
@@ -103,7 +103,7 @@ enum RegexTokenizer {
 
         // --- Schritt 1: Rohe Knoten-Liste per rekursivem Descent sammeln ---
         // pendingLiterals puffert aufeinanderfolgende pattern_character-Nodes,
-        // damit sie am Ende als EIN Token zusammengeführt werden können.
+        // damit sie am Ende als ein Token zusammengeführt werden können.
         var rawTokens: [RegexToken] = []
         var pendingLiteralNodes: [NodeInfo] = []  // gepufferte Literale
         var captureGroupInfos: [CaptureGroupInfo] = []
@@ -181,7 +181,7 @@ enum RegexTokenizer {
                 let text = substring(of: pattern, range: range)
                 rawTokens.append(RegexToken(kind: .anchor, range: range, text: text))
 
-            // --- Zeichenklassen: gesamter Knoten als EIN Token (kein Descent) ---
+            // --- Zeichenklassen: gesamter Knoten als ein Token (kein Descent) ---
             // character_class = das gesamte [...]-Konstrukt
             case "character_class",
                  "character_class_escape",
@@ -192,7 +192,7 @@ enum RegexTokenizer {
                 let text = substring(of: pattern, range: range)
                 rawTokens.append(RegexToken(kind: .characterClass, range: range, text: text))
 
-            // --- Quantifier: gesamter Knoten (inkl. lazy-Kind) als EIN Token ---
+            // --- Quantifier: gesamter Knoten (inkl. lazy-Kind) als ein Token ---
             // Die Range des Quantifier-Knotens schließt das lazy-"?" bereits ein.
             case "one_or_more",
                  "zero_or_more",
@@ -205,11 +205,11 @@ enum RegexTokenizer {
 
             // --- Gruppen: Klammern als Delimiter, Inhalt rekursiv ---
             //
-            // Muster bei allen fünf Gruppen-Typen: Die Nummer wird VOR dem
+            // Muster bei allen fünf Gruppen-Typen: Die Nummer wird vor dem
             // Handler-Aufruf vergeben (Klammer-Reihenfolge bleibt korrekt,
             // verschachtelte Gruppen nummerieren sich in der Rekursion
-            // danach). Der Handler sammelt seine Delimiter-Tokens LOKAL und
-            // gibt sie zurück; erst NACH der Rückkehr hängen wir sie an
+            // danach). Der Handler sammelt seine Delimiter-Tokens lokal und
+            // gibt sie zurück; erst nach der Rückkehr hängen wir sie an
             // rawTokens an. So hält niemand exklusiven Zugriff auf die
             // Sammlungen, während collectNodes hineinschreibt (Exclusivity-
             // Crash der ersten Fassung — siehe Kommentar bei den Handlern).
@@ -278,7 +278,7 @@ enum RegexTokenizer {
             case "backreference_escape",
                  "named_group_backreference":
                 flushLiterals()
-                // Gesamten Knoten als EIN Token (inkl. <name>-Kind)
+                // Gesamten Knoten als ein Token (inkl. <name>-Kind)
                 let range = node.range
                 let text = substring(of: pattern, range: range)
                 rawTokens.append(RegexToken(kind: .backreference, range: range, text: text))
@@ -334,20 +334,15 @@ private struct NodeInfo {
     let range: NSRange
 }
 
-// MARK: - Gruppen-Handler (ausgelagert für Lesbarkeit)
+// MARK: - Gruppen-Handler
 //
-// WICHTIG (Exclusivity-Lehre, 2026-06-11): Die Handler nehmen die Token-/
-// Gruppen-Sammlungen NICHT als `inout` entgegen. Frühere Fassung tat das —
-// und hielt damit für die gesamte Handler-Laufzeit EXKLUSIVEN Zugriff auf
-// `rawTokens`, während der `collectNodes`-Callback im Gruppeninhalt
-// DIESELBE Variable mutierte → „Fatal access conflict" (Swift-Exclusivity-
-// Verletzung, crasht zur Laufzeit). Stattdessen sammeln die Handler ihre
-// Delimiter-Tokens LOKAL und geben sie zurück; der Aufrufer hängt sie nach
-// der Rückkehr an. Die Reihenfolge ist egal — tokenize() sortiert am Ende
-// alle Tokens nach Position.
+// Handler sammeln Delimiter-Tokens lokal und geben sie zurück. `inout` auf
+// `rawTokens` würde den exklusiven Zugriff während `collectNodes` halten,
+// obwohl dessen Callback dieselbe Sammlung verändert; Swift bricht dann
+// mit „Fatal access conflict“ ab. `tokenize()` sortiert am Ende nach Position.
 
 /// Verarbeitet eine anonymous_capturing_group: öffnende "(" + Inhalt + schließende ")".
-/// `number` wird vom Aufrufer VOR dem Aufruf vergeben (Klammer-Reihenfolge).
+/// `number` wird vom Aufrufer vor dem Aufruf vergeben (Klammer-Reihenfolge).
 /// Rückgabe: Delimiter-Tokens der Klammern + die fertige Gruppen-Info.
 private func handleCapturingGroup(
     node: Node,
@@ -406,7 +401,7 @@ private func handleCapturingGroup(
 }
 
 /// Verarbeitet eine named_capturing_group: `(?<name>` + Inhalt + `)`.
-/// Das öffnende Präfix inkl. Name und `>` ist EIN groupDelimiter-Token.
+/// Das öffnende Präfix inkl. Name und `>` ist ein groupDelimiter-Token.
 private func handleNamedCapturingGroup(
     node: Node,
     number: Int,
@@ -445,7 +440,7 @@ private func handleNamedCapturingGroup(
                 // ">" schließt das Präfix
                 prefixEndLoc = child.range.location + child.range.length
                 prefixEndReached = true
-                // Präfix als EIN groupDelimiter-Token ausgeben
+                // Präfix als ein groupDelimiter-Token ausgeben
                 let prefixRange = NSRange(location: groupRange.location,
                                           length: prefixEndLoc - groupRange.location)
                 ownTokens.append(RegexToken(kind: .groupDelimiter,
@@ -483,7 +478,7 @@ private func handleNamedCapturingGroup(
 }
 
 /// Verarbeitet eine non_capturing_group: `(?:` + Inhalt + `)`.
-/// Zählt NICHT als Capture Group. Rückgabe: die Delimiter-Tokens.
+/// Zählt nicht als Capture Group. Rückgabe: die Delimiter-Tokens.
 private func handleNonCapturingGroup(
     node: Node,
     pattern: String,
@@ -516,7 +511,7 @@ private func handleNonCapturingGroup(
 }
 
 /// Verarbeitet eine lookaround_assertion: `(?=…)`, `(?!…)`, `(?<=…)`, `(?<!…)`.
-/// Kein Capture. Öffnendes Präfix (alles bis und inkl. "=" oder "!") als EIN Token.
+/// Kein Capture. Öffnendes Präfix (alles bis und inkl. "=" oder "!") als ein Token.
 /// Rückgabe: die Delimiter-Tokens.
 private func handleLookaroundGroup(
     node: Node,

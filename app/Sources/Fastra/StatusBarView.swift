@@ -49,10 +49,10 @@ struct StatusBarView: View {
             }
             Spacer()
             HStack(spacing: 12) {
-                // Ansichts-Umschalter (Text/Vorschau/Hex) — seit Etappe 1
-                // Wunschpaket 2026-07b hier statt in einer eigenen Zeile über
-                // dem Editor. Weiterhin nur sichtbar, wenn die Datei mehr als
-                // eine Ansicht bietet; Menüpunkte und Shortcuts unverändert.
+                // Ansichts-Umschalter (Text/Vorschau/Hex) — seit der aktuellen
+                // Sprachauswahl hier statt in einer eigenen Zeile über dem
+                // Editor. Weiterhin nur sichtbar, wenn die Datei mehr als eine
+                // Ansicht bietet; Menüpunkte und Shortcuts unverändert.
                 if workspace.availableViewModes.count > 1 {
                     viewModePicker
                 }
@@ -99,7 +99,7 @@ struct StatusBarView: View {
         .padding(.vertical, 4)
         .background(Theme.surfaceSand.opacity(0.5))
         // Marker für den Fenster-Selbsttest `footerfit`: Er misst an dieser
-        // View, ob die Fußzeile vollständig im Fenster liegt. Bewusst OHNE
+        // View, ob die Fußzeile vollständig im Fenster liegt. Bewusst ohne
         // Nullgröße — der Marker soll die echte Fußzeilenfläche abbilden.
         .background(SelfTestMarker(id: "footerBar"))
         // Gesamten Footer-Text dimmen, wenn das Hauptfenster nicht vorn ist.
@@ -236,10 +236,10 @@ struct StatusBarView: View {
         }
     }
 
-    /// Sprach-Chip als Menü (Etappe 3): manueller Sprachumschalter. Die Wahl
-    /// gewinnt immer vor Endung und Inhalts-Erkennung; „Automatisch" kehrt
-    /// zur Automatik zurück. Enthält seit Etappe 3 Wunschpaket 2026-07b auch
-    /// die Eigen-Sprachen der Registry (derzeit 4D).
+    /// Sprach-Chip als Menü: manueller Sprachumschalter. Die Wahl
+    /// gewinnt immer vor Endung und Inhalts-Erkennung; „Automatisch" kehrt zur
+    /// Automatik zurück. Enthält auch die
+    /// Eigen-Sprachen der Registry (derzeit 4D).
     private var languageMenu: some View {
         Menu {
             Button {
@@ -474,10 +474,10 @@ struct StatusBarView: View {
             }
         }
         Divider()
-        // Einrückungsprofil (Etappe 4): Tab-Taste, Shift-Links/Rechts,
+        // Einrückungsprofil: Tab-Taste, Shift-Links/Rechts,
         // Entab/Detab und „Einfügen und Einrückung angleichen" nutzen
         // dieselbe Einstellung. Eine Profiländerung formatiert bestehenden
-        // Text NIE automatisch um.
+        // Text nie automatisch um.
         Menu {
             Button {
                 workspace.setIndentUsesTabs(true)

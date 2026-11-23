@@ -1,3 +1,4 @@
+import FastraPatternSyntax
 import CodeEditTextView
 import SwiftUI
 import AppKit
@@ -42,7 +43,7 @@ enum LineEnding: String, Equatable, CaseIterable, Identifiable {
         return .lf
     }
 
-    /// Konvertiert ALLE Zeilenumbrüche in `text` einheitlich auf dieses
+    /// Konvertiert alle Zeilenumbrüche in `text` einheitlich auf dieses
     /// Format. Erst auf LF normalisieren (CRLF/CR→LF), damit auch gemischte
     /// Eingaben sauber werden, dann auf das Ziel. Pure Funktion → testbar.
     /// Wird beim Speichern angewandt (`Workspace.write`), damit die im Footer
@@ -209,7 +210,7 @@ struct EditorTab: Identifiable, Hashable {
     /// dirty Tab geschützt, bis derselbe Platteninhalt sicher zurückkehrt oder
     /// der Nutzer ihn ausdrücklich speichert beziehungsweise neu lädt.
     var externalFileUnavailable: Bool
-    /// Art eines Git-Text-Tabs (Etappe 2): `.log` / `.diff` / `.commit`.
+    /// Art eines Git-Text-Tabs: `.log` / `.diff` / `.commit`.
     /// `nil` = normale, editierbare Datei. Git-Tabs sind read-only, haben
     /// `url == nil` und werden nicht gespeichert.
     var gitKind: GitTabKind?
@@ -217,10 +218,10 @@ struct EditorTab: Identifiable, Hashable {
     /// kompatiblen Unified-Fallback für Verlauf/Commit-Metadaten. Auftrag und
     /// Dokument hängen zusammen (`DiffTabState.swift`).
     var gitDiff: GitDiffTabState?
-    /// Auftrag eines Datei-Vergleichs-Tabs (Etappe 1 Wunschpaket 2026-07c).
-    /// `nil` = normaler Tab. Vergleichs-Tabs sind wie Git-Tabs read-only,
-    /// haben `url == nil` und werden nicht gespeichert. Ergebnis und
-    /// Generation hängen am Auftrag (`FileDiffTabState`).
+    /// Auftrag eines Datei-Vergleichs-Tabs. `nil` = normaler Tab.
+    /// Vergleichs-Tabs sind wie Git-Tabs read-only, haben `url == nil` und
+    /// werden nicht gespeichert. Ergebnis und Generation hängen am Auftrag
+    /// (`FileDiffTabState`).
     var fileDiff: FileDiffTabState?
     var folderComparison: FolderComparisonTabState? = nil
 
@@ -228,20 +229,19 @@ struct EditorTab: Identifiable, Hashable {
     var gitDiffRequest: GitDiffRequest? { gitDiff?.request }
     var gitDiffDocument: GitDiffDocument? { gitDiff?.document }
     var fileDiffRequest: FileDiffRequest? { fileDiff?.request }
-    /// Fertig berechneter Vergleich (Ergebnis ODER erklärte Grenze);
+    /// Fertig berechneter Vergleich (Ergebnis oder erklärte Grenze);
     /// `nil` = Berechnung läuft noch oder kein Vergleichs-Tab.
     var fileDiffDocument: FileDiffDocument? { fileDiff?.document }
-    /// Vom Nutzer gewählte Ansicht (Text/Vorschau/Hex, Etappe 2 Wunschpaket
-    /// 2026-07). `nil` = automatischer Standard nach Dateityp
+    /// Vom Nutzer gewählte Ansicht (Text/Vorschau/Hex, der aktuellen
+    /// Sprachauswahl). `nil` = automatischer Standard nach Dateityp
     /// (`ViewModeRouting.defaultMode`). Nicht persistiert.
     var viewMode: EditorViewMode?
-    /// Manuell gewählte Editor-Sprache (Etappe 3 Wunschpaket 2026-07) —
-    /// das Sicherheitsventil gegen Fehlerkennung. Gewinnt IMMER (vor Endung
-    /// und Inhalts-Erkennung) und beendet die Automatik für diesen Tab.
-    /// `nil` = automatisch.
+    /// Manuell gewählte Editor-Sprache — das Sicherheitsventil gegen
+    /// Fehlerkennung. Gewinnt immer (vor Endung und Inhalts-Erkennung) und
+    /// beendet die Automatik für diesen Tab. `nil` = automatisch.
     var languageOverride: CodeLanguage?
-    /// Manuell gewählte EIGEN-Sprache (Registry-ID, derzeit nur 4D; Etappe 3
-    /// Wunschpaket 2026-07b) — aktiviert Provider + Theme unabhängig von der
+    /// Manuell gewählte Eigen-Sprache (Registry-ID, derzeit nur 4D; der
+    /// aktuellen Sprachauswahl) — aktiviert Provider + Theme unabhängig von der
     /// Dateiendung. Höchstens eines von `languageOverride`/dieser ID ist
     /// gesetzt (die Setter halten die Invariante). `nil` = automatisch.
     var customLanguageOverrideID: String?
@@ -443,14 +443,10 @@ struct EditorTab: Identifiable, Hashable {
         isOrdinaryTextDocument && !hexEditSession.hasChanges
     }
 
-    /// „Unberührter Notizzettel": unbenannt, leer, ungeändert, fertig geladen,
-    /// normale Textansicht, keine Sonderrolle (Git/Vergleich). Genau diese
-    /// Tabs zeigen den Willkommens-Platzhalter über dem Editor (Firefox-artig,
-    /// Daniel-Entscheidung 2026-07-30 — ersetzt den eigenen Willkommen-Tab vom
-    /// 2026-07-12) und dürfen beim Öffnen echter Dateien abgeräumt werden.
-    /// Ab dem ersten getippten Zeichen ist der Tab nicht mehr unberührt;
-    /// löscht man alles wieder, gilt er erneut als unberührt — der Zustand
-    /// ist bewusst rein aus dem Tab abgeleitet, ohne verstecktes Flag.
+    /// Unberührter Tab: unbenannt, leer, ungeändert, fertig geladen, normale
+    /// Textansicht ohne Git-/Vergleichsrolle. Er zeigt die Starthilfe und darf
+    /// beim Öffnen einer Datei ersetzt werden. Der Zustand folgt allein aus dem
+    /// Tab: Nach Tippen nicht mehr unberührt, nach vollständigem Löschen erneut.
     var isPristineScratch: Bool {
         url == nil && content.isEmpty && !isDirty && !isLoading
             && gitKind == nil && fileDiffRequest == nil && gitSnapshotRequest == nil
@@ -523,18 +519,8 @@ enum CloseConfirmation {
     case cancel      // Schließen abbrechen, Tab bleibt offen
 }
 
-/// Kleines threadsicheres Signal zwischen Main-Actor und synchronem
-/// Hintergrund-Read. `FileLoader` fragt es zwischen seinen Abschnitten ab.
-private final class PreviewLoadCancellation: @unchecked Sendable {
-    private let lock = NSLock()
-    private var cancelled = false
-
-    var isCancelled: Bool { lock.withLock { cancelled } }
-    func cancel() { lock.withLock { cancelled = true } }
-}
-
 /// Startwerte und UserDefaults-Schlüssel der ziehbaren Fensterbreiten. Die
-/// Werte sind PRO FENSTER veränderlich (siehe `Workspace.sidebarWidth`); der
+/// Werte sind pro Fenster veränderlich (siehe `Workspace.sidebarWidth`); der
 /// gespeicherte Wert dient nur als Startbreite neuer Fenster. Die Schlüssel
 /// bleiben identisch zur früheren `@AppStorage`-Fassung, damit bereits
 /// gespeicherte Nutzerbreiten weiter gelten.
@@ -568,12 +554,12 @@ struct FileLoadAcceptance: @unchecked Sendable {
 }
 
 /// Typisiertes Ergebnis eines snapshot-gebundenen Ladeauftrags. Die
-/// Treffer-Navigation muss unterscheiden, WARUM ein Auftrag nicht ausgeführt
+/// Treffer-Navigation muss unterscheiden, warum ein Auftrag nicht ausgeführt
 /// wurde: Nur ein echter Plattenstand-Konflikt entwertet die
 /// Ordner-Trefferbasis. Vorher galt jedes `false` als „veraltet" — ein
 /// zweiter Sprung während des ersten Ladens löschte damit korrekte
 /// Ordnerergebnisse, und ein ungesicherter Tab erzwang eine neue Suche, die
-/// den Pufferkonflikt gar nicht lösen kann (Review 2026-08-31).
+/// den Pufferkonflikt gar nicht lösen kann.
 enum FileLoadOutcome: Equatable {
     /// Datei geladen bzw. der passende Tab aktiviert.
     case opened
@@ -723,6 +709,7 @@ final class Workspace: ObservableObject {
             // stattdessen `comparisonTabID`.
             if oldValue != activeTabID {
                 comparisonTabID = nil
+                tabNavigationRevision &+= 1
             }
             // Merkliste „zuletzt benutzt" pflegen: der aktive Tab wandert an
             // die Spitze. Doppelte Einträge gibt es nicht, jeder Tab steht
@@ -736,15 +723,13 @@ final class Workspace: ObservableObject {
             refreshFourDMacroCatalogIfNeeded()
         }
     }
-    /// Zuletzt aktive Tabs, der jüngste zuerst. Bestimmt nach dem Schließen
-    /// des aktiven Tabs den Nachfolger: ⌘W soll zum zuletzt benutzten Tab
-    /// zurückkehren und nicht stumpf zum ersten Tab der Leiste springen
-    /// (Daniel-Befund 2026-07-29: echtes Dokument + mehrere frische ⌘T-Tabs,
-    /// zweimal ⌘W schloss das echte Dokument statt der leeren Tabs).
-    /// Einträge geschlossener Tabs werden beim Schließen entfernt; die Liste
-    /// bleibt dadurch so klein wie die Tab-Leiste selbst.
+    /// Zuletzt aktive Tabs, jüngster zuerst. Nach Schließen des aktiven Tabs
+    /// zum zuletzt benutzten zurückkehren. Geschlossene IDs entfernen, damit die
+    /// Liste auf die offenen Tabs begrenzt bleibt.
     private var recentlyActiveTabIDs: [UUID] = []
-    // MARK: - Projekt-Zustand (Projekt- & Git-Ausbau, Etappe 1)
+    /// Auch A → B → A entwertet das automatische Öffnen einer noch laufenden Kopie.
+    private var tabNavigationRevision: UInt64 = 0
+    // MARK: - Projekt-Zustand
     /// Wurzelordner des aktuell geladenen Projekts — steuert die
     /// Dateibaum-Seitenleiste. `nil` = kein Projekt geladen (flache
     /// „GEÖFFNET"-Seitenleiste wie bisher). Nur die optionale, sichere
@@ -753,20 +738,20 @@ final class Workspace: ObservableObject {
     @Published var projectURL: URL?
     var projectLocationReference: FileLocationReference?
     private var projectLocationCheckID: UUID?
-    /// In der Projekt-Seitenleiste zuletzt angeklickter Ordner (Etappe 1
-    /// Wunschpaket 2026-07). Dient dem Save-Dialog als Vorschlagsordner;
-    /// ein Klick auf eine Datei hebt die Ordner-Markierung wieder auf.
-    /// Nicht persistiert; Projektwechsel setzt zurück.
+    /// In der Projekt-Seitenleiste zuletzt angeklickter Ordner. Dient dem
+    /// Save-Dialog als Vorschlagsordner; ein Klick auf eine Datei hebt die
+    /// Ordner-Markierung wieder auf. Nicht persistiert; Projektwechsel setzt
+    /// zurück.
     @Published var selectedFileTreeFolder: URL?
     /// Kurzlebiger, nicht-modaler Hinweis in der Projekt-Seitenleiste —
     /// z. B. „Seitenleiste zeigt jetzt …“ nach dem automatischen
     /// Ordnerwechsel. Blendet sich nach wenigen Sekunden selbst aus.
     @Published var sidebarNotice: String?
-    /// Breite der linken Seitenleiste in Punkten. Bewusst PRO FENSTER (nicht
+    /// Breite der linken Seitenleiste in Punkten. Bewusst pro Fenster (nicht
     /// prozessweit über `@AppStorage`): Der Splitter darf nur das eigene
-    /// Fenster verändern, nicht alle offenen gleichzeitig verschieben
-    /// (Daniel-Befund 2026-07-20). Der zuletzt gezogene Wert wird dennoch in
-    /// UserDefaults gemerkt und dient als Startbreite NEUER Fenster. Das
+    /// Fenster verändern, nicht alle offenen gleichzeitig verschieben.
+    /// Der zuletzt gezogene Wert wird dennoch in
+    /// UserDefaults gemerkt und dient als Startbreite neuer Fenster. Das
     /// Klemmen auf einen sinnvollen Bereich erledigt die Editor-Ansicht.
     @Published var sidebarWidth: Double = SidebarLayout.defaultSidebarWidth
     /// Breite der rechten Markdown-Vorschau in Punkten. Gleiche Begründung wie
@@ -774,21 +759,21 @@ final class Workspace: ObservableObject {
     /// Fenster. Vorher teilte auch dieser Splitter alle Fenster (identischer
     /// Befund wie die Seitenleiste).
     @Published var markdownPreviewWidth: Double = SidebarLayout.defaultPreviewWidth
-    /// Dateinamens-Filter der Projekt-Seitenleiste (Etappe 3 Wunschpaket
-    /// 2026-07c). Leer = kein Filter. Projektwechsel setzt zurück.
+    /// Dateinamens-Filter der Projekt-Seitenleiste. Leer = kein Filter.
+    /// Projektwechsel setzt zurück.
     @Published var fileTreeFilterQuery: String = ""
     /// Fertiges Scan-Ergebnis zum Filter. Liegt am Workspace und nicht als
     /// `@State` in der Seitenleiste, weil SwiftUI die Dateien-Ansicht beim
     /// Wechsel auf einen anderen Seitenleisten-Tab vollständig abbaut: Der
     /// Suchtext blieb danach stehen, das Ergebnis war weg und der Baum zeigte
-    /// sich ungefiltert (Daniel-Befund 2026-08-24).
+    /// sich ungefiltert.
     @Published var fileTreeFilterResult: FileTreeFilterResult?
     /// Aktiver Tab der Seitenleiste. Ebenfalls am Workspace, weil Befehle ihn
     /// setzen müssen — „Git-Historie anzeigen" im Kontextmenü des Dateibaums
     /// springt damit auf den Graph-Tab.
     @Published var sidebarMode: SidebarMode = .files
     /// Scrollpositionen der Seitenleisten-Listen über einen Tab-Wechsel
-    /// hinweg. Bewusst NICHT `@Published`: Der Wert wird beim Scrollen
+    /// hinweg. Bewusst nicht `@Published`: Der Wert wird beim Scrollen
     /// laufend fortgeschrieben und darf kein SwiftUI-Update auslösen.
     let sidebarScrollMemory = SidebarScrollMemory()
     /// Atomarer 4D-Projektindex für dieses Fenster. Projekt- und Komponenten-
@@ -824,7 +809,7 @@ final class Workspace: ObservableObject {
     /// `true`, während ein tool4d-Makrolauf dieses Fensters läuft. Sperrt
     /// Menüeinträge und Shortcuts gegen parallele Läufe desselben Puffers.
     @Published var fourDMacroEngineBusy = false
-    /// Laufende Nachbearbeitung des Engine-Ergebnisses: Rücktokenisierung UND
+    /// Laufende Nachbearbeitung des Engine-Ergebnisses: Rücktokenisierung und
     /// Diff-Berechnung samt Tab ihrer Lease. Eine Inhaltsänderung, Tab- oder
     /// Fensterschließung entwertet die Lease endgültig und gibt die Makro-Sperre
     /// sofort frei. Die ID verhindert, dass ein spät endender abgebrochener Task
@@ -833,11 +818,11 @@ final class Workspace: ObservableObject {
     var fourDMacroPostprocessTabID: UUID?
     var fourDMacroPostprocessID: UUID?
     /// Identität des laufenden Engine-Laufs (Preflight + tool4d-Prozess),
-    /// VOR der Nachbearbeitung. Nur die Completions genau dieses Laufs dürfen
+    /// vor der Nachbearbeitung. Nur die Completions genau dieses Laufs dürfen
     /// die gemeinsame Sperre `fourDMacroEngineBusy` freigeben: Gibt Home oder
     /// Fensterschluss die Sperre vorzeitig frei und startet danach ein neuer
     /// Lauf, darf die verspätete Completion des alten Laufs die Sperre des
-    /// Nachfolgers nicht löschen (Review 2026-08-29). (Pflege in
+    /// Nachfolgers nicht löschen. (Pflege in
     /// `FourDMacroAssist.swift`.)
     var fourDMacroEngineRunID: UUID?
     /// Zuletzt angeforderter, noch von keinem Editor verarbeiteter
@@ -852,7 +837,7 @@ final class Workspace: ObservableObject {
     /// Nummer und entwertet damit alle älteren Aufträge.
     ///
     /// Warum zusätzlich zu `MatchJumpTarget`? Der Dokument-/URL-Guard erkennt
-    /// nur einen Wechsel des Ziels. Wählt der Nutzer zwei Treffer DERSELBEN
+    /// nur einen Wechsel des Ziels. Wählt der Nutzer zwei Treffer derselben
     /// noch ladenden Datei, ist der Guard für beide wahr: Die späte Completion
     /// des ersten Auftrags überschreibt dann den bereits geposteten zweiten
     /// Sprung, und der Editor springt zum älteren Treffer, während die
@@ -877,12 +862,12 @@ final class Workspace: ObservableObject {
     /// in der asynchronen Snapshot-/Lade-Completion fortgeschrieben; ohne
     /// diese Vormerkung berechneten mehrere schnelle ⌘G-/Pfeil-Eingaben alle
     /// denselben Nachfolger aus dem alten Index und bewegten die Auswahl nur
-    /// um EINEN Treffer (Review 2026-08-31). Gültig nur, solange seine
+    /// um einen Treffer. Gültig nur, solange seine
     /// Generation die aktuelle ist; jede neue Navigation oder Entwertung
     /// macht ihn damit automatisch bedeutungslos.
     private var pendingMatchNavigation: (generation: Int, index: Int)?
 
-    /// Basisindex für die NÄCHSTE Navigationseingabe: das noch ausstehende
+    /// Basisindex für die nächste Navigationseingabe: das noch ausstehende
     /// Ziel der laufenden Navigation, sonst der bestätigte aktive Index.
     var matchNavigationBaseIndex: Int {
         if let pending = pendingMatchNavigation,
@@ -915,8 +900,8 @@ final class Workspace: ObservableObject {
     /// ladenden Funddatei zieht seine Nummer beim Klick; ohne diese
     /// Entwertung passierte seine Lade-Completion nach einer Sucheingabe
     /// weiterhin `isCurrentMatchJump` und den URL-Guard, postete den Sprung
-    /// aus der ALTEN Ergebnisliste und übernahm den alten Index in die neue
-    /// Trefferbasis (Review 2026-08-22). Ein bereits hinterlegter, noch nicht
+    /// aus der alten Ergebnisliste und übernahm den alten Index in die neue
+    /// Trefferbasis. Ein bereits hinterlegter, noch nicht
     /// verbrauchter `pendingEditorJump` gehört ebenfalls zur alten Basis und
     /// wird mit verworfen.
     func invalidateMatchJumps() {
@@ -927,14 +912,14 @@ final class Workspace: ObservableObject {
         fourDMethodIndexSnapshot.componentMethodDisplayNames
     }
     /// Merkt sich den jeweils letzten Hinweis, damit ein verzögertes
-    /// Ausblenden niemals einen NEUEREN Hinweis wegräumt.
+    /// Ausblenden niemals einen neueren Hinweis wegräumt.
     private var sidebarNoticeToken = UUID()
     /// Zuletzt benutzte Projekte für den Willkommensbildschirm. Wird
     /// automatisch gepflegt: explizit geöffnete Ordner und erkannte
     /// Git-Repositories geöffneter Dateien (Persistenz via Combine-Sink
     /// in `init`, Muster recentFiles).
     @Published var recentProjects: [ProjectEntry] = []
-    /// Git-Status des aktuellen Projekts (Etappe 2). `nil` = kein Projekt,
+    /// Git-Status des aktuellen Projekts. `nil` = kein Projekt,
     /// kein Repo oder git nicht installiert → keine Git-Anzeige. Asynchron
     /// über `refreshGitStatus()` gefüllt.
     @Published var gitStatus: GitStatusSummary?
@@ -992,10 +977,8 @@ final class Workspace: ObservableObject {
     /// Commit-Botschaft des Änderungen-Tabs (VS-Code-artiges Eingabefeld). Pro
     /// Fenster; nach erfolgreichem Commit geleert.
     @Published var commitMessage: String = ""
-    // Startet GESCHLOSSEN (Daniel 2026-06-22: „nicht mehr mit offenem Suchdialog
-    // starten, das war nur zum Testen"). CMD+F / CMD+SHIFT+F öffnen sie. Die
-    // fenster-abhängigen Selbsttests (cmdw/fields) öffnen sie jetzt selbst,
-    // siehe SelfTest.openSearchThen.
+    // Suchmaske startet geschlossen. ⌘F und ⇧⌘F öffnen sie; Fenstertests tun
+    // das ausdrücklich über `SelfTest.openSearchThen`.
     @Published var showSearchDialog: Bool = false {
         didSet {
             // Während Suche/Ersetzung bleibt ihr Projektkontext eingefroren.
@@ -1007,8 +990,7 @@ final class Workspace: ObservableObject {
             }
         }
     }
-    /// Öffnet den Dialog „Dateien vergleichen…" (Etappe 1 Wunschpaket
-    /// 2026-07c) als Sheet auf dem Hauptfenster.
+    /// Öffnet den Dialog „Dateien vergleichen…" als Sheet auf dem Hauptfenster.
     @Published var showCompareFilesDialog: Bool = false
     @Published var showFolderComparisonDialog = false
     var folderComparisonPrefill: (left: URL?, right: URL?) = (nil, nil)
@@ -1031,15 +1013,8 @@ final class Workspace: ObservableObject {
 
     // MARK: - Such-Optionen (Suchmasken-Konzept B.5)
     //
-    // Default-Haltung: RegEx aus. Fastra ist „ein Editor mit RegEx-
-    // Superkraft", nicht „ein RegEx-Tool, das auch suchen kann". Wer RegEx
-    // kennt, schaltet es bewusst ein; wer es nicht kennt, bekommt mit
-    // Klartext- und Stern-Suche das erwartbare Verhalten (Testerin-Befund
-    // 2026-08-28: Klartext-Suche fand mit aktivem RegEx nichts). Der alte
-    // Prototyp-Startwert `true` stammte aus der Demo-Phase und sollte laut
-    // damaligem Kommentar mit der echten Suchlogik auf `false` wechseln —
-    // das holt dieser Default nach. RegEx-Vorlagen und der Element-Picker
-    // schalten den Modus weiterhin selbst ein.
+    // RegEx startet ausgeschaltet, damit Klartext und Sterne ohne Regex-Kenntnisse
+    // benutzbar sind. RegEx-Vorlagen und Element-Picker aktivieren den Modus bei Bedarf.
     @Published var useRegex: Bool = false {
         didSet { disableWildcardLiteralOptionIfUnavailable() }
     }
@@ -1047,7 +1022,7 @@ final class Workspace: ObservableObject {
     @Published var wholeWord: Bool = false
     @Published var wrapAround: Bool = true
 
-    /// Mini-Schalter „`*` wörtlich nehmen" (Feature J). Bleibt in der Maske
+    /// Mini-Schalter „`*` wörtlich nehmen". Bleibt in der Maske
     /// sichtbar, ist aber nur aktiv, wenn RegEx aus ist und das Muster ein `*`
     /// enthält. Aus = `*` wirkt als Platzhalter; an = `*` wird buchstäblich
     /// gesucht. Ungültige Zustände setzen den Wert sofort auf `false` zurück.
@@ -1069,8 +1044,8 @@ final class Workspace: ObservableObject {
 
     // MARK: - „Nur in Auswahl" (BBEdit „Selected Text Only", K3)
     //
-    // Wenn an, suchen/ersetzen Buffer-Operationen NUR innerhalb einer
-    // EINGEFRORENEN Selektions-Range (`searchSelectionRange`), nicht der
+    // Wenn an, suchen/ersetzen Buffer-Operationen nur innerhalb einer
+    // eingefrorenen Selektions-Range (`searchSelectionRange`), nicht der
     // live mitwandernden `selectionRange`. Sonst würde ein Treffer-Sprung
     // (der selbst eine Selektion setzt) den Such-Bereich auf diesen einen
     // Treffer zusammenschrumpfen. Der Snapshot wird beim Einschalten gesetzt.
@@ -1127,15 +1102,9 @@ final class Workspace: ObservableObject {
     /// dieselben vier Megabyte gleichzeitig auf mehreren Threads.
     private var statsTask: Task<Void, Never>?
 
-    // MARK: - Asynchrones Datei-Laden (v0.9)
-    //
-    // Jede `loadFile`-Anfrage bekommt eine Generation-Nummer (pro Tab-ID).
-    // Wenn ein Tab geschlossen wird, bevor der Hintergrund-Task fertig ist,
-    // erkennt der Guard das an der fehlenden ID und bricht ab — kein
-    // Geister-Tab, kein falsches activeTabID.
-    /// Aktuellste Lade-Generation pro Tab-UUID. Pattern analog zu
-    /// `statsGeneration` in `recomputeDocumentStats`.
-    private var loadGeneration: [UUID: Int] = [:]
+    // Der Owner entsteht erst am ersten gesicherten Main-Einstieg. Insbesondere
+    // Workspace.init bleibt für unabhängige parallele Konstruktion unisoliert.
+    private var documentFileLoads: DocumentFileLoads?
     private let markdownImportService: MarkdownImportService
     /// Testnaht für das erste, nicht-flüchtige Laden einer Datei. Der
     /// Produktionspfad bleibt `FileLoader.load`; Tests können den Read
@@ -1144,27 +1113,10 @@ final class Workspace: ObservableObject {
     var initialFileLoader: @Sendable (URL) throws -> FileLoader.LoadedFile = {
         try FileLoader.load(url: $0, largeFileThreshold: FileLoader.editableFileThreshold)
     }
-    /// Neuester logischer Ordner-Sprung, der auf den physischen Read dieser
-    /// Datei wartet. Zwei schnelle Treffer derselben anfangs ungeöffneten
-    /// Datei teilen sich dadurch EINEN Read; nur das jüngste Ziel wird nach
-    /// dessen Abschluss ausgeführt (Review 2026-09-01).
-    private struct PendingFolderMatchFileLoad {
-        let generation: Int
-        let expectedDiskSnapshot: FileSnapshot
-        let outcome: (FileLoadOutcome) -> Void
+    /// Wie beim Datei-Read kann ein Test den echten Kopierabschluss gezielt verzögern.
+    var fileTreeDuplicator: @Sendable (URL) throws -> URL = {
+        try FileTreeOperations.duplicate($0)
     }
-    private var pendingFolderMatchFileLoads: [String: PendingFolderMatchFileLoad] = [:]
-    /// Der physische Read, der den wartenden Sprung dieses Pfades gerade
-    /// bedient. Der Schlüssel allein reicht dafür nicht: Benennt die
-    /// Seitenleiste die Datei während des Lesens um, liest DERSELBE Read ab
-    /// dann einen ANDEREN Pfad zu Ende. Ohne diese Kennung rechnete seine
-    /// Completion trotzdem den Wartenden des alten Pfads ab und meldete ihm
-    /// das Ergebnis der umbenannten Datei (Review 2026-09-04).
-    private var folderMatchReadTokens: [String: UUID] = [:]
-    /// Kooperative Abbruchsignale ausschließlich für flüchtige Dateivorschauen.
-    /// Ein neuer Klick beendet den alten Read an der nächsten Abschnittsgrenze,
-    /// statt mehrere große Dateien parallel bis zum Ende einzulesen.
-    private var previewLoadCancellations: [UUID: PreviewLoadCancellation] = [:]
     /// Fensterlokaler Besitzer der laufenden Plattenprüfungen. Der Inspector
     /// kennt keinen Workspace; Tab- und Reload-Entscheidungen bleiben hier.
     private let externalChangeInspector: ExternalChangeInspector
@@ -1227,10 +1179,13 @@ final class Workspace: ObservableObject {
     /// Echte Treffer im aktiven Buffer — gefüttert vom `SearchRunner`,
     /// gilt im Datei-Scope.
     @Published var bufferMatches: [BufferSearch.Match] = []
-    @Published var searchApproval = SearchApproval()
+    @Published private(set) var searchResultState = SearchResultState()
+    var searchApproval: SearchApproval { searchResultState.approval }
+    private var searchResultSession: SearchResultSession?
+    private var searchTestWindowBinding: SearchWindowBinding?
     @Published var lastSearchApprovalMemoryChange: TextWorkflowOpenDocumentsPlan.AppliedChange?
     @Published var searchApprovalMemoryRestored = false
-    /// ECHTE Gesamtzahl der Buffer-Treffer. Kann `bufferMatches.count`
+    /// Echte Gesamtzahl der Buffer-Treffer. Kann `bufferMatches.count`
     /// übersteigen, wenn der Cap (`BufferSearch.defaultMaxMatches`) griff —
     /// die Maske zeigt diese Zahl (ehrlicher Count wie BBEdits Statuszeile).
     @Published var bufferTotalMatches: Int = 0
@@ -1239,11 +1194,11 @@ final class Workspace: ObservableObject {
     @Published var bufferResultsWereCapped: Bool = false
     /// `true`, solange die Buffer-Suche im Hintergrund läuft (großer Buffer
     /// + kurzes Pattern). Die Maske zeigt darauf basierend einen Spinner —
-    /// die Suche blockiert NIE den Main-Thread (kein Beachball).
-    @Published var bufferSearching: Bool = false
+    /// die Suche blockiert nie den Main-Thread (kein Beachball).
+    var bufferSearching: Bool { searchResultState.bufferSearching }
     /// Wenn das Find-Pattern syntaktisch ungültig ist, steht hier die
     /// erklärende Meldung. Die Maske zeigt sie als roten Hinweis-Streifen.
-    @Published var searchError: String? = nil
+    var searchError: String? { searchResultState.error }
     /// Index des aktiv im Detail-Bereich gezeigten Treffers.
     @Published var activeMatchIndex: Int = 0
     /// Nach Einzel-Ersetzen im Geöffnet-Scope liefert erst der asynchrone
@@ -1253,13 +1208,13 @@ final class Workspace: ObservableObject {
     private var pendingOpenReplaceNavigation: (options: SearchOptions, index: Int)?
 
     /// Zähler, der den Editor zu einer Neuerzeugung zwingt, wenn der aktive
-    /// Buffer-Inhalt PROGRAMMATISCH geändert wurde (z.B. „Alle ersetzen" /
+    /// Buffer-Inhalt programmatisch geändert wurde (z.B. „Alle ersetzen" /
     /// Einzel-Ersetzen). Hintergrund: CodeEditSourceEditor liest den
-    /// Binding-Text NUR EINMAL bei der Erzeugung und schiebt spätere
-    /// Binding-Änderungen NICHT in die TextView zurück (Text fließt nur
+    /// Binding-Text nur einmal bei der Erzeugung und schiebt spätere
+    /// Binding-Änderungen nicht in die TextView zurück (Text fließt nur
     /// TextView → Binding, siehe EditorView). Ein In-Memory-Replace ändert
     /// daher zwar das Modell (und die Suche findet danach korrekt 0 Treffer),
-    /// aber der Editor zeigt weiter den ALTEN Text — es sieht aus, als sei
+    /// aber der Editor zeigt weiter den alten Text — es sieht aus, als sei
     /// „nichts passiert". EditorView hängt diesen Zähler an die `.id` des
     /// Editors; jedes Hochzählen erzeugt den Editor mit dem frischen Inhalt
     /// neu — dieselbe bewährte Mechanik wie bei Tab-Wechsel und Datei-Reload.
@@ -1273,15 +1228,15 @@ final class Workspace: ObservableObject {
     @Published var folderTotalMatches: Int = 0
     /// `true`, solange die Folder-Suche im Hintergrund läuft. Die Maske
     /// zeigt darauf basierend einen Spinner oder „Suche läuft…"-Hinweis.
-    @Published var folderSearching: Bool = false
+    var folderSearching: Bool { searchResultState.folderSearching }
     /// `true`, wenn im Ordner-Scope eine explizite Suche aussteht — die
-    /// Eingaben haben sich geändert, aber Ordner werden NICHT live
+    /// Eingaben haben sich geändert, aber Ordner werden nicht live
     /// durchsucht (Konzept Abschnitt C). Die Maske zeigt dann statt
     /// „Keine Treffer." den Hinweis, „Suchen" zu klicken / Return zu
     /// drücken. Wird vom `SearchRunner` gesetzt/gelöscht.
-    @Published var folderNeedsSearch: Bool = false
+    var folderNeedsSearch: Bool { searchResultState.folderNeedsSearch }
     /// Eigene Dateischreibvorgänge verlangen einen neuen, ausdrücklich gestarteten Lauf.
-    @Published var folderResultsAreStale = false
+    var folderResultsAreStale: Bool { searchResultState.folderResultsAreStale }
 
     var waitingForShortFolderSearch: Bool {
         scope.isFolderLike && folderNeedsSearch && !folderSearching
@@ -1292,7 +1247,7 @@ final class Workspace: ObservableObject {
     /// `true`, wenn der letzte Ordner-Such-Lauf durch den Gesamt-Cap
     /// (`FolderSearch.find maxTotalMatches`) vorzeitig abgebrochen wurde.
     /// Die Maske zeigt dann einen dezenten Hinweis-Streifen, damit der
-    /// Nutzer NICHT still-trunkierte Ergebnisse für vollständig hält.
+    /// Nutzer nicht still-trunkierte Ergebnisse für vollständig hält.
     @Published var folderResultsWereCapped: Bool = false
     /// Verständlicher Hinweis nach einem abgewiesenen Treffer-Sprung. Das ist
     /// kein Syntaxfehler und sperrt deshalb den erneuten Suchlauf nicht.
@@ -1300,6 +1255,9 @@ final class Workspace: ObservableObject {
     /// Planung/Backup/Apply einer bestätigten Ordner-Vorschau laufen im
     /// Hintergrund. Der Suchdialog zeigt Status und eine Abbruchaktion.
     @Published var folderApplying: Bool = false
+    @Published var fileRecoverySession: ApplyRecoverySession?
+    @Published var fileRecoveryApplying = false
+    var diskMutationIsActive: Bool { folderApplying || fileRecoveryApplying }
     @Published var folderApplyProgressText: String? = nil
     private var folderApplyTask: Task<Void, Never>?
     private var folderApplyGeneration = 0
@@ -1308,7 +1266,7 @@ final class Workspace: ObservableObject {
 
     // MARK: Scope „Geöffnet" (BBEdit „Open text documents", Kap. 7 S. 184)
 
-    /// Pro-Tab-Treffer im Geöffnet-Scope — Suche über ALLE offenen Tabs,
+    /// Pro-Tab-Treffer im Geöffnet-Scope — Suche über alle offenen Tabs,
     /// rein in-memory (auch dirty/ungespeicherte Inhalte). Gefüttert vom
     /// `SearchRunner`, asynchron wie die Buffer-Suche.
     @Published var openResults: [OpenTabsSearch.TabHits] = []
@@ -1318,23 +1276,122 @@ final class Workspace: ObservableObject {
     /// die Maske zeigt dann den orangen Hinweis-Streifen.
     @Published var openResultsWereCapped: Bool = false
 
-    /// Die Suchoptionen, zu denen die aktuell SICHTBAREN Treffer der Datei-
-    /// und Geöffnet-Suche gehören. `nil` heißt: Es gibt gerade keine gültige
-    /// Vorschau — eine Eingabe hat sich geändert und der neue Lauf ist noch
-    /// nicht fertig.
-    ///
-    /// Warum ein eigenes Feld: „Alle ersetzen" rechnet die Ersetzung frisch
-    /// aus `currentSearchOptions`, benutzt als Freigabe aber nur die
-    /// Trefferzahl der Vorschau. Zwischen einem Tastendruck und dem 120 ms
-    /// später laufenden Neu-Suchen gehörten beide zu VERSCHIEDENEN Mustern:
-    /// Die alte sichtbare Trefferzahl gab eine Ersetzung frei, die mit dem
-    /// neuen Muster gerechnet wurde — eine Änderung ohne je gezeigte
-    /// Vorschau (Review 2026-08-02). Der Ordner-Scope prüft dasselbe schon
-    /// länger über `result.searchOptions == options` in `applyAllInFolder`.
-    ///
-    /// Bewusst NICHT `@Published`: Das Feld steuert nur die Freigabe, keine
-    /// Anzeige — jede Änderung würde sonst die gesamte Maske neu zeichnen.
-    var visibleBufferResultsOptions: SearchOptions?
+    /// Optionsbindung ausschließlich aus einem akzeptierten Ergebnisbericht.
+    var visibleBufferResultsOptions: SearchOptions? { searchResultState.options }
+
+    // Der Workspace darf weiterhin auf fremden Threads erzeugt werden. Erst
+    // der Main-Anschluss erzeugt den isolierten Besitzer; vorher gilt geschlossen.
+    @MainActor private func attachedSearchResultSession() -> SearchResultSession {
+        if let searchResultSession { return searchResultSession }
+        let session = SearchResultSession { [weak self] state in self?.searchResultState = state }
+        searchResultSession = session
+        return session
+    }
+
+    @MainActor private var searchWindowBinding: SearchWindowBinding? {
+        if let window = CommandTargeting.registeredWindow(for: self) {
+            return .document(ObjectIdentifier(window))
+        }
+        return searchTestWindowBinding
+    }
+
+    @MainActor func bindSearchResultsToTestWindow(_ id: UUID) {
+        searchTestWindowBinding = .test(id)
+        _ = attachedSearchResultSession()
+    }
+
+    @MainActor var currentSearchBasis: SearchBasis {
+        let documents: [EditorTab]
+        switch scope {
+        case .file: documents = activeTab.map { [$0] } ?? []
+        case .open: documents = tabs
+        case .folder, .project: documents = []
+        }
+        return SearchBasis(scope: scope, options: currentSearchOptions,
+            documents: documents.map { .init(tabID: $0.id, documentID: $0.documentID,
+                revision: $0.contentRevision, title: $0.title, isLoading: $0.isLoading,
+                isText: $0.isOrdinaryTextDocument) },
+            selection: scope == .file ? activeSearchRange : nil,
+            sources: scope.isFolderLike ? activeMultiFileSearchURLs : [],
+            filter: scope.isFolderLike ? activeMultiFileFilter : nil,
+            exclusions: scope == .project ? projectSearchConfiguration.excludePatterns : [],
+            projectRoot: scope == .project ? projectURL : nil)
+    }
+
+    @MainActor func invalidateSearchResults(_ reason: SearchResultSession.InvalidationReason,
+                                          next: SearchPhase, error: String? = nil) {
+        attachedSearchResultSession().invalidate(reason, next: next, scope: scope, error: error)
+        invalidateMatchJumps()
+    }
+
+    @MainActor func closeDocumentSearchResults() {
+        searchTestWindowBinding = nil
+        attachedSearchResultSession().close()
+        invalidateMatchJumps()
+        discardPendingOpenReplaceNavigation()
+    }
+
+    @MainActor func beginSearchResultRun() -> SearchResultSession.RunToken? {
+        guard let binding = searchWindowBinding else {
+            invalidateSearchResults(.visibility, next: .closed)
+            return nil
+        }
+        invalidateMatchJumps()
+        return attachedSearchResultSession().begin(currentSearchBasis, window: binding)
+    }
+
+    /// Prüfung, Datenübernahme und Freigabe bleiben in demselben Main-Durchlauf.
+    @MainActor @discardableResult
+    func commitSearchResult(_ token: SearchResultSession.RunToken, publication: SearchResultPublication) -> Bool {
+        guard let binding = searchWindowBinding,
+              attachedSearchResultSession().accepts(token, current: currentSearchBasis, window: binding) else { return false }
+        switch publication {
+        case .buffer(let result):
+            guard scope == .file else { return false }
+            bufferMatches = result.matches
+            bufferTotalMatches = result.totalMatches
+            bufferResultsWereCapped = result.wasCapped
+        case .open(let result):
+            guard scope == .open else { return false }
+            openResults = result.perTab
+            openTotalMatches = result.totalMatches
+            openResultsWereCapped = result.wasCapped
+        case .folder(let result):
+            guard scope.isFolderLike else { return false }
+            folderResults = result.perFile
+            folderTotalMatches = result.totalMatches
+            folderResultsWereCapped = result.wasCapped
+        }
+        return attachedSearchResultSession().commit(token, report: publication.report(options: token.basis.options))
+    }
+
+    var searchResultsAreCurrent: Bool {
+        guard Thread.isMainThread else { return false }
+        return MainActor.assumeIsolated {
+            guard let binding = searchWindowBinding, let searchResultSession else { return false }
+            return searchResultSession.isCurrent(currentSearchBasis, window: binding)
+                && searchApproval.matchIDs == searchResultMatchIDs
+        }
+    }
+
+    @MainActor var currentFolderSearchSourceBasis: FolderSearch.SourceBasis? {
+        guard scope.isFolderLike, searchResultsAreCurrent else { return nil }
+        return searchResultSession?.folderSourceBasis
+    }
+
+    private var searchResultMatchIDs: [UUID] {
+        switch scope {
+        case .file: return bufferMatches.map(\.id)
+        case .open: return openResults.flatMap { $0.matches.map(\.id) }
+        case .folder, .project: return folderResults.flatMap { $0.matches.map(\.id) }
+        }
+    }
+
+    @MainActor @discardableResult
+    func updateSearchResultApproval(_ approved: Bool, ids: Set<UUID>, generation: UInt64) -> Bool {
+        guard searchResultsAreCurrent else { return false }
+        return attachedSearchResultSession().setApproved(approved, ids: ids, generation: generation)
+    }
 
     /// Wird in `init` aufgebaut und hält die Combine-Subscription am
     /// Leben. Sucht in `bufferMatches` neu, sobald sich Such-Inputs
@@ -1346,7 +1403,7 @@ final class Workspace: ObservableObject {
     private var persistenceBag = Set<AnyCancellable>()
 
     /// Die in `init` injizierte UserDefaults-Suite — Selbsttests bekommen
-    /// eine isolierte, Normalbetrieb `.standard`. ALLE Persistenz-Pfade
+    /// eine isolierte, Normalbetrieb `.standard`. Alle Persistenz-Pfade
     /// des Workspace müssen über diese Suite laufen (siehe init-Kommentar).
     private let defaultsStore: UserDefaults
     /// Dieselbe Suite zum Lesen für Wege außerhalb des Workspace — die
@@ -1357,12 +1414,12 @@ final class Workspace: ObservableObject {
     /// großen Textdatei). Nur diese Ansicht kennt ihren geladenen Abschnitt,
     /// und genau er ist die Druckvorlage.
     ///
-    /// Bewusst KEIN `@Published`: Der Wert dient allein dem Drucken und darf
+    /// Bewusst kein `@Published`: Der Wert dient allein dem Drucken und darf
     /// keinen Neuaufbau der Oberfläche auslösen.
     var visiblePrintPage: VisiblePrintPage?
     /// Das geladene Objekt der Bild-/PDF-Vorschau — die Druckvorlage dieser
     /// Ansichten. Gedruckt wird genau dieses Objekt, nie ein Neuladen von der
-    /// Platte (siehe `VisiblePreviewSnapshot`). Bewusst KEIN `@Published`,
+    /// Platte (siehe `VisiblePreviewSnapshot`). Bewusst kein `@Published`,
     /// gleiche Begründung wie `visiblePrintPage`.
     var visiblePreviewSnapshot: VisiblePreviewSnapshot?
     /// Gemeinsame Quelle für formatspezifischen Soft Wrap. Der Store ist
@@ -1381,7 +1438,7 @@ final class Workspace: ObservableObject {
     private let gitPreviewLoads = GitPreviewLoads()
     /// Laufende Datei-Vergleiche dieses Fensters (je Tab höchstens einer).
     let fileDiffComputations = FileDiffComputations()
-    /// Laufender Verlaufs-Lauf EINER Datei plus seine Generation. Eine
+    /// Laufender Verlaufs-Lauf einer Datei plus seine Generation. Eine
     /// überholte Antwort darf die inzwischen gewählte Datei nicht überschreiben.
     private var gitFileHistoryLease: GitOperationLease?
     private var gitFileHistoryGeneration: UInt64 = 0
@@ -1415,35 +1472,34 @@ final class Workspace: ObservableObject {
     /// gestartet wurde. Ein späterer Nutzer-Projektwechsel entwertet seine
     /// Abschlussaktion, bevor sie Tabs oder Projektkontext zurücksetzen kann.
     var sessionRestoreGeneration: UInt64 = 0
-    /// Zählt hoch, sobald ein gezielter Sprung in DIESEM Fenster scrollt.
+    let scrollRestoreDiagnostics = ScrollRestoreDiagnostics()
+    let markdownImportDecisions = MarkdownImportDecisions()
+    let gitInteraction: GitInteraction
+    /// Zählt hoch, sobald ein gezielter Sprung in diesem Fenster scrollt.
     /// Die laufende Ausschnitt-Wiederherstellung dieses Fensters erkennt
     /// daran, dass sie überholt wurde (`EditorView.restoreScrollOffset`).
-    /// Bewusst je Workspace statt prozessweit (Review 2026-08-02).
+    /// Bewusst je Workspace statt prozessweit.
     var scrollRestoreGeneration = 0
 
     /// In Tests injizierbar; der Produktpfad postet an den sichtbaren nativen
     /// Editor und läuft damit durch dessen Undo-Manager.
     var conflictTextReplacementHandler: ConflictTextReplacementHandler = ConflictEditorBridge.post
-    var confirmIntentionalConflictMarkersHandler: (String) -> Bool = Workspace.defaultConfirmIntentionalConflictMarkers
-    var gitMutationConfirmationHandler: (GitMutationConfirmation) -> Bool = Workspace.defaultGitMutationConfirmation
-    var gitIdentityPromptHandler: (GitIdentitySnapshot?) -> GitIdentityConfiguration? = Workspace.defaultGitIdentityPrompt
+    var confirmIntentionalConflictMarkersHandler: (String) -> Bool
+    var gitMutationConfirmationHandler: (GitMutationConfirmation) -> Bool
+    var gitIdentityPromptHandler: (GitIdentitySnapshot?) -> GitIdentityConfiguration?
     var gitBranchNamePromptHandler: (String?) -> String? = Workspace.defaultGitBranchNamePrompt
     /// Absage eines Branch-Wechsels, den ein anderes Arbeitsverzeichnis
     /// blockiert. Rückgabe `true`: Der Nutzer will dieses Verzeichnis als
     /// Projekt öffnen. In Selbsttests ersetzbar, damit kein modaler Dialog
     /// den Lauf anhält.
-    var gitBranchWorktreeBlockHandler: (GitBranchWorktreeBlock) -> Bool = Workspace.defaultGitBranchWorktreeBlock
+    var gitBranchWorktreeBlockHandler: (GitBranchWorktreeBlock) -> Bool
 
-    /// Schwache Referenz auf den Workspace des gerade aktiven Dokumentfensters.
-    /// Die In-App-Selbsttests verwenden denselben Hook. Seit mehrere
-    /// Dokumentfenster möglich sind, setzen die Fenster-Brücken diesen Wert bei
-    /// jedem Fokuswechsel neu; globale Menübefehle landen dadurch nicht im
-    /// falschen Dokument.
-    /// Swift-Testing erzeugt Workspaces parallel, und jede Erzeugung setzt
-    /// diesen Wert. Eine schwache Referenz darf nicht gleichzeitig aus zwei
-    /// Threads überschrieben werden, sonst geben beide dieselbe alte Referenz
-    /// frei (beobachtet am 2026-07-26 als SIGSEGV). Der Zugriff läuft deshalb
-    /// über ein kurz gehaltenes Lock — wie bei `liveWorkspaces`.
+    /// Schwache Referenz für den aktiven Dokumentkontext und In-App-Selbsttests.
+    /// Fensterbrücken setzen sie bei Fokuswechseln neu. Dokumentbefehle bestimmen
+    /// ihr zusammengehöriges Ziel über `CommandTargeting`.
+    /// Die parallele Testsuite setzt den Wert auch von anderen Threads. Ein Lock
+    /// serialisiert Zugriffe, damit gleichzeitige Zuweisungen dieselbe alte
+    /// Referenz nicht doppelt freigeben (wie bei `liveWorkspaces`).
     private static weak var sharedStorage: Workspace?
     private static let sharedLock = NSLock()
 
@@ -1451,15 +1507,15 @@ final class Workspace: ObservableObject {
         get { sharedLock.withLock { sharedStorage } }
         set {
             sharedLock.withLock { sharedStorage = newValue }
-            // Die Kontextaktivierung liest den Wert ERNEUT aus dem Storage
+            // Die Kontextaktivierung liest den Wert erneut aus dem Storage
             // und läuft immer auf dem Main-Thread. Vorher konnte eine späte
             // Aktivierung mit ihrem alten, festgehaltenen Wert eine neuere
             // überholen — Storage und Kontext zeigten dann dauerhaft auf
-            // verschiedene Workspaces (Review 2026-08-02). Durch das erneute
+            // verschiedene Workspaces. Durch das erneute
             // Lesen konvergiert der Kontext stets auf den letzten Write.
             // (Direkt über den Lock statt über den Getter: Der Fenster-Audit
             // erlaubt `Workspace.shared`-Lesezugriffe nur in CommandTargeting;
-            // HIER ist der Zugriff Teil des Setters selbst.)
+            // hier ist der Zugriff Teil des Setters selbst.)
             if Thread.isMainThread {
                 ActiveDocumentContext.shared.activate(sharedLock.withLock { sharedStorage })
             } else {
@@ -1490,7 +1546,7 @@ final class Workspace: ObservableObject {
         liveWorkspaces.add(workspace)
     }
 
-    init(defaults: UserDefaults = .standard,
+    init(defaults: UserDefaults = AppDefaults.store,
          markdownImportService: MarkdownImportService = .shared,
          softWrapProfiles: SoftWrapProfileStore? = nil,
          gitOperationsCoordinator: GitOperationsCoordinator = .shared,
@@ -1510,12 +1566,16 @@ final class Workspace: ObservableObject {
          deliverProjectContextResult: @escaping ProjectContextScheduler = {
              DispatchQueue.main.async(execute: $0)
          }) {
-        // Die injizierten Defaults merken — ALLE Persistenz-Pfade des
-        // Workspace müssen dieselbe Suite nutzen. Vorher schrieb der
-        // recentSearchFolders-Sink hart in `.standard`: Selbsttest-Läufe
-        // (isolierte Suite!) haben so ihre Temp-Ordner in die ECHTEN
-        // Nutzer-Defaults gemüllt (Befund 2026-06-11, 16 Leichen).
+        // Alle Persistenzpfade des Workspace verwenden dieselben injizierten
+        // Defaults. Insbesondere der recentSearchFolders-Sink darf im Selbsttest
+        // keine temporären Pfade in `.standard` speichern.
         self.defaultsStore = defaults
+        let interaction = GitInteraction()
+        self.gitInteraction = interaction
+        self.confirmIntentionalConflictMarkersHandler = interaction.defaultConfirmIntentionalConflictMarkers
+        self.gitMutationConfirmationHandler = interaction.defaultGitMutationConfirmation
+        self.gitIdentityPromptHandler = interaction.defaultGitIdentityPrompt
+        self.gitBranchWorktreeBlockHandler = interaction.defaultGitBranchWorktreeBlock
         self.markdownImportService = markdownImportService
         self.softWrapProfiles = softWrapProfiles
             ?? SoftWrapProfileStore(defaults: defaults)
@@ -1564,22 +1624,13 @@ final class Workspace: ObservableObject {
         self.activeTabID = scratch.id
         self.findPattern = ""
         self.replacePattern = ""
-        // Combine legt das Verlags-Objekt hinter jedem @Published-Feld erst
-        // beim ersten Zugriff an und tauscht dabei UNGESCHÜTZT den internen
-        // Feldspeicher aus. Ab der nächsten Zeile entkommt `self` anderen
-        // Threads: Der SearchRunner schickt sein initiales `rerun()` auf die
-        // Main-Queue (die dort viele @Published-Felder liest UND schreibt),
-        // und `Workspace.shared` stößt die Kontextaktivierung an, deren
-        // objectWillChange-Getter ALLE Felder einzeln verdrahtet. Die
-        // parallele Testsuite erzeugt Workspaces auf eigenen Threads —
-        // Main- und Erzeuger-Thread konvertierten dann denselben Speicher
-        // gleichzeitig, beobachtet am 2026-08-09 als SIGSEGV/Heap-Korruption
-        // (os_unfair_lock auf NULL in PublishedSubject, Müll-Adressen in
-        // deinit und Subject-Sends). Der eine Getter-Aufruf hier erledigt
-        // die komplette Anlage, solange NUR dieser Thread das Objekt kennt;
-        // danach sind alle @Published-Zugriffe durch Combines interne
-        // Verriegelung gedeckt. MUSS vor der SearchRunner-Erzeugung stehen.
-        // (Regressionstest: WorkspaceParallelStressTests.)
+        // Combine initialisiert den Publisher-Speicher von `@Published` erst beim
+        // ersten Zugriff. `objectWillChange` deshalb auf dem erzeugenden Thread
+        // vorwärmen, bevor `self` andere Threads erreicht. Der SearchRunner plant
+        // bereits bei seiner Erzeugung ein `rerun()` auf Main; in parallelen Tests
+        // könnten Main- und Erzeuger-Thread sonst denselben Feldspeicher gleichzeitig
+        // initialisieren. Nach dem Vorwärmen greift Combines interne Verriegelung.
+        // Regressionstest: `WorkspaceParallelStressTests`.
         _ = objectWillChange
         self.searchRunner = SearchRunner(workspace: self)
         Workspace.registerLive(self)
@@ -1592,15 +1643,15 @@ final class Workspace: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &persistenceBag)
 
-        // Recent-Folders aus DERSELBEN Suite laden, in die auch gespeichert
+        // Recent-Folders aus derselben Suite laden, in die auch gespeichert
         // wird. Der Property-Default (`.standard` im Initializer) wird hier
-        // bewusst überschrieben — Property-Initializer laufen VOR dem
+        // bewusst überschrieben — Property-Initializer laufen vor dem
         // init-Body und kennen `defaults` noch nicht.
         self.recentSearchFolders = RecentSearchFoldersStore.load(from: defaults)
 
         // Jede Änderung an der Recent-Folders-Liste in UserDefaults
         // schreiben. `dropFirst()` überspringt den Initial-Wert (das Setzen
-        // direkt hier drüber zählt NICHT — der Sink wird erst danach
+        // direkt hier drüber zählt nicht — der Sink wird erst danach
         // registriert), sonst würden wir gleich nach dem Init schon
         // (überflüssig) speichern. `defaults` capturen, damit Selbsttests
         // in ihrer isolierten Suite bleiben.
@@ -1609,8 +1660,8 @@ final class Workspace: ObservableObject {
             .sink { entries in RecentSearchFoldersStore.save(entries, to: defaults) }
             .store(in: &persistenceBag)
 
-        // Seitenleisten-/Vorschau-Breite pro Fenster (Daniel-Befund 2026-07-20):
-        // aus DERSELBEN Suite laden, in die auch gespeichert wird. Der
+        // Seitenleisten-/Vorschau-Breite pro Fenster:
+        // aus derselben Suite laden, in die auch gespeichert wird. Der
         // gespeicherte Wert ist nur die Startbreite dieses frisch geöffneten
         // Fensters; das Ziehen wirkt danach lokal und verschiebt keine anderen
         // Fenster mehr. `object(forKey:)` unterscheidet „nie gesetzt" (→
@@ -1631,7 +1682,7 @@ final class Workspace: ObservableObject {
             .sink { width in defaults.set(width, forKey: SidebarLayout.previewWidthKey) }
             .store(in: &persistenceBag)
 
-        // Recent-Files (K2) und Such-Verlauf (K4) aus DERSELBEN Suite laden
+        // Recent-Files (K2) und Such-Verlauf (K4) aus derselben Suite laden
         // und bei jeder Änderung zurückschreiben — gleiches Muster wie oben.
         self.recentFiles = RecentFilesStore.load(from: defaults)
         $recentFiles
@@ -1675,8 +1726,8 @@ final class Workspace: ObservableObject {
             }
             .store(in: &persistenceBag)
 
-        // Beim KALTEN Start kann eine per Finder/CLI geöffnete Datei schon
-        // VOR diesem init im AppDelegate gepuffert worden sein → jetzt, wo
+        // Beim kalten Start kann eine per Finder/CLI geöffnete Datei schon
+        // vor diesem init im AppDelegate gepuffert worden sein → jetzt, wo
         // `Workspace.shared` steht, dem AppDelegate signalisieren, dass es
         // gepufferte URLs ausliefern darf (K1). Bewusst über eine
         // Notification statt `NSApp.delegate` — in Unit-Tests gibt es keine
@@ -1721,6 +1772,7 @@ final class Workspace: ObservableObject {
     }
 
     @Published var documentTransformationActivity: DocumentTransformationActivity?
+    @Published var documentTransformationNotice: String?
 
     /// Kanonischer Typ für Formatieren/Minifizieren. Eine bewusste manuelle
     /// Formatwahl gewinnt vor der Endung; „Reiner Text“ auf einer `.json`
@@ -1755,7 +1807,7 @@ final class Workspace: ObservableObject {
         activeTabIsMarkdown && activeViewMode == .text
             && activeTab.map { textEditingIsAllowed(for: $0) } == true
             && (activeTab?.markdownVisualOverride
-                ?? SelfTest.workspaceDefaults().bool(forKey: MarkdownEditingMode.defaultsKey))
+                ?? defaultsStore.bool(forKey: MarkdownEditingMode.defaultsKey))
     }
 
     private var performingVisualAction = false
@@ -1769,8 +1821,8 @@ final class Workspace: ObservableObject {
             return true
         }
         guard !performingVisualAction, let editor = visualMarkdownEditor, editor.ready else { return false }
-        editor.synchronize(holdingInput: true) { [weak self] succeeded in
-            defer { editor.completeAction() }
+        editor.synchronize(holdingInput: true) { [weak self] succeeded, hold in
+            defer { hold?.finish() }
             guard succeeded, let self else { onFailure?(); return }
             self.performingVisualAction = true
             action()
@@ -1818,7 +1870,7 @@ final class Workspace: ObservableObject {
 
     /// Zeigt der aktive Tab einen Vergleich (Datei-Diff oder Git-Diff)?
     /// Die zweispaltige Ansicht hat kein Dateiformat — ihre Soft-Wrap-Wahl
-    /// gehört deshalb an die ANSICHT und nicht an die Sprache der beiden
+    /// gehört deshalb an die Ansicht und nicht an die Sprache der beiden
     /// verglichenen Dateien.
     var activeTabShowsDiff: Bool {
         guard let tab = activeTab else { return false }
@@ -1846,7 +1898,7 @@ final class Workspace: ObservableObject {
         softWrapProfiles.hasOverride(for: softWrapScopeFormatID)
     }
 
-    // Umbruchziel, feste Breite und Einrückung gehören zum EDITOR, und ein
+    // Umbruchziel, feste Breite und Einrückung gehören zum Editor, und ein
     // Vergleich hat keinen. Sie fragen deshalb bewusst das Dokumentformat und
     // nicht `softWrapScopeFormatID`; die Fußzeile blendet sie im Vergleich aus
     // (siehe `StatusBarView.softWrapOptions`). Wer diese Einstellungen einmal
@@ -1923,7 +1975,7 @@ final class Workspace: ObservableObject {
         softWrapProfiles.resetToFactoryDefault(for: softWrapScopeFormatID)
     }
 
-    // MARK: - Einrückungsprofil (Etappe 4, Beschluss 2026-07-19)
+    // MARK: - Einrückungsprofil
 
     /// Das wirksame Einrückungsprofil des aktiven Formats. Return/Tab
     /// (CESE-`indentOption`), Shift-Links/Rechts, Entab/Detab und
@@ -1999,7 +2051,7 @@ final class Workspace: ObservableObject {
     }
 
     /// `true`, wenn dieses Fenster gerade den Willkommens-Platzhalter zeigt —
-    /// nämlich genau dann, wenn der AKTIVE Tab ein unberührter leerer Tab ist
+    /// nämlich genau dann, wenn der aktive Tab ein unberührter leerer Tab ist
     /// (oder ausnahmsweise gar kein Tab existiert). Fenstertitel
     /// (Version+Datum statt Dateiname), Home-Symbol, Fußzeile und das
     /// Editor-Overlay greifen auf dieselbe Wahrheit zu.
@@ -2024,7 +2076,7 @@ final class Workspace: ObservableObject {
         // Ein Home-Wechsel darf weder alte Projektbeobachter noch später
         // eintreffende Datei-Ladevorgänge in den neuen Zustand hineintragen.
         closeProject()
-        loadGeneration.removeAll()
+        withDocumentFileLoads { $0.invalidateAll() }
         documentLanguageDetector.cancelAll()
         // Laufende Datei-Vergleiche gehören zu den Tabs, die gleich
         // verschwinden: wirklich abbrechen, statt sie bis zum Ende rechnen
@@ -2108,7 +2160,7 @@ final class Workspace: ObservableObject {
                     } else if !matchesSaved {
                         self.tabs[idx].isDirty = true
                     }
-                    // Inhaltsbasierte Spracherkennung (Etappe 3): reagiert
+                    // Inhaltsbasierte Spracherkennung: reagiert
                     // nur bei geeigneten Tabs; Block-Einfügungen sofort,
                     // Tippen debounced. Kostet hier nur den Längenvergleich.
                     if needsLanguageLengths {
@@ -2198,8 +2250,8 @@ final class Workspace: ObservableObject {
         tabs.append(new)
         activeTabID = new.id
         // Der neue Tab ist selbst ein unberührter leerer Tab → wie in Firefox
-        // zeigt auch ER den Willkommens-Platzhalter, bis das erste Zeichen
-        // getippt ist (Daniel-Entscheidung 2026-07-30). Nachbartabs bleiben
+        // zeigt auch er den Willkommens-Platzhalter, bis das erste Zeichen
+        // getippt ist. Nachbartabs bleiben
         // unangetastet.
     }
 
@@ -2235,7 +2287,7 @@ final class Workspace: ObservableObject {
     /// (rechts → links): Sichern (Default), Abbrechen, Nicht sichern.
     static func defaultCloseConfirmation(_ title: String) -> CloseConfirmation {
         let alert = NSAlert()
-        // codereview-ok: „…“ (U+201E/U+201C) IST das korrekte deutsche Anführungszeichen-Paar; U+201D wäre englisch (2026-07-06)
+        // codereview-ok: „…“ (U+201E/U+201C) ist das korrekte deutsche Anführungszeichen-Paar; U+201D wäre englisch
         alert.messageText = L10n.format("Möchten Sie die Änderungen an „%@“ sichern?", title)
         alert.informativeText = L10n.string("Ihre Änderungen gehen verloren, wenn Sie sie nicht sichern.")
         alert.addButton(withTitle: L10n.string("Sichern"))
@@ -2303,10 +2355,10 @@ final class Workspace: ObservableObject {
             || tabs.first(where: { $0.id == id })?.hexEditSession.isSaving == true
     }
 
-    /// Darf der Tab geschlossen werden? Sauberer Tab → ja, OHNE Rückfrage (so
+    /// Darf der Tab geschlossen werden? Sauberer Tab → ja, ohne Rückfrage (so
     /// schließt ein leeres/unverändertes Dokument wie bisher sofort). Dirty →
     /// fragt über `confirmCloseHandler`: „Nicht sichern" → ja (verwerfen),
-    /// „Abbrechen" → nein, „Sichern" → erst sichern, dann ja — aber NUR, wenn das
+    /// „Abbrechen" → nein, „Sichern" → erst sichern, dann ja — aber nur, wenn das
     /// Sichern wirklich klappte. Ein abgebrochenes „Sichern unter…"-Panel oder ein
     /// Schreibfehler lässt `isDirty` true → wir geben false zurück, damit nichts
     /// ungesichert verloren geht.
@@ -2322,13 +2374,9 @@ final class Workspace: ObservableObject {
         guard Self.requiresSaveBeforeClosing(tab) else {
             return true
         }
-        // Den Tab, um den es geht, VOR der Rückfrage nach vorn holen. Sonst
-        // nennt der Dialog einen Dateinamen, während im Fenster ein ganz
-        // anderer Tab steht: Der Nutzer kann nicht nachsehen, worüber er
-        // gerade entscheidet, und „Nicht sichern" wird zum Blindflug
-        // (Fehlerbericht 2026-08-07). Der `.save`-Zweig brauchte diese
-        // Aktivierung ohnehin — jetzt gilt sie für alle drei Antworten.
-        // Die Aufrufer stellen den ursprünglich aktiven Tab am Ende wieder her.
+        // Vor der Rückfrage den betroffenen Tab aktivieren, damit der Nutzer den
+        // Inhalt sieht, über dessen Sicherung er entscheidet. Aufrufer stellen danach
+        // den ursprünglich aktiven Tab wieder her.
         activeTabID = id
         // Ein bereits bestätigter Schreibvorgang läuft weiter. Währenddessen
         // darf weder „Nicht sichern“ den Tab entfernen noch ein zweiter
@@ -2393,8 +2441,7 @@ final class Workspace: ObservableObject {
             return                                          // Abbrechen → Tab bleibt
         }
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
-        previewLoadCancellations.removeValue(forKey: id)?.cancel()
-        loadGeneration.removeValue(forKey: id)
+        withDocumentFileLoads { $0.remove(tabID: id) }
         documentLanguageDetector.cancel(tabID: id, documentID: tabs[idx].documentID)
         gitPreviewLoads.cancel(tabID: id)
         // Ein geschlossener Vergleichs-Tab braucht sein Ergebnis nicht mehr —
@@ -2409,7 +2456,7 @@ final class Workspace: ObservableObject {
         if comparisonTabID == id {
             comparisonTabID = nil
         }
-        // Aktiven Tab konsistent halten: war ein ANDERER Tab aktiv und existiert
+        // Aktiven Tab konsistent halten: war ein anderer Tab aktiv und existiert
         // noch, bleibt er aktiv (mayCloseTab kann activeTabID fürs Sichern kurz
         // umgesetzt haben); sonst übernimmt der zuletzt benutzte Tab.
         if let prev = previousActive, prev != id, tabs.contains(where: { $0.id == prev }) {
@@ -2425,7 +2472,7 @@ final class Workspace: ObservableObject {
         closeTab(id: id)
     }
 
-    /// Nachfolger des soeben geschlossenen AKTIVEN Tabs: zuerst der zuletzt
+    /// Nachfolger des soeben geschlossenen aktiven Tabs: zuerst der zuletzt
     /// benutzte noch offene Tab (wie BBEdit und Safari), erst wenn die
     /// Merkliste nichts mehr hergibt der Nachbar an der bisherigen Position
     /// (der Tab rechts davon, am Leistenende der links davon).
@@ -2445,7 +2492,7 @@ final class Workspace: ObservableObject {
     /// verwendet. `false` bedeutet: Nutzer hat abgebrochen, Fenster bleibt.
     func prepareToCloseWindow() -> Bool {
         if synchronizeVisualMarkdownBefore({ if self.prepareToCloseWindow() { self.closeWindowHandler?() } }) { return false }
-        guard !folderApplying else { return false }
+        guard !diskMutationIsActive else { return false }
         let previousActive = activeTabID
         for id in tabs.map(\.id) {
             guard mayCloseTab(id: id) else {
@@ -2468,14 +2515,9 @@ final class Workspace: ObservableObject {
         tabs.removeAll()
         recentlyActiveTabIDs.removeAll()
         activeTabID = nil
-        // Das Fenster schließt gleich — der Workspace kann es aber überleben:
-        // SwiftUI hält die Szene des Hauptfensters samt Workspace am Leben,
-        // und macOS kann dieselbe Szene später wieder anzeigen (Dock-Klick).
-        // Bliebe es beim leeren Tab-Array, stünde dann ein Fenster ganz ohne
-        // Tabs da, dessen Editorfläche sich tippen lässt, aber nirgendwohin
-        // schreibt (vermutete Ursache von Daniels leerem Startfenster,
-        // 2026-07-29). Deshalb sofort in den definierten Willkommens-Zustand
-        // zurückkehren; im wirklich schließenden Fenster ist das unsichtbar.
+        // SwiftUI kann den Workspace nach Fensterschluss behalten und dieselbe Szene
+        // später erneut zeigen. Sofort den definierten Willkommens-Zustand herstellen,
+        // damit dabei kein Fenster ohne Tab und ohne Ziel für getippten Text erscheint.
         enterWelcomeState()
         return true
     }
@@ -2483,7 +2525,7 @@ final class Workspace: ObservableObject {
     /// Schließt alle Tabs außer dem mit `id` (BBEdit „Close Others", K8).
     /// Der behaltene Tab wird aktiv. Bei nur einem Tab no-op. Vor dem Schließen
     /// wird pro Tab mit ungespeicherten Änderungen gefragt; „Abbrechen" bricht die
-    /// GESAMTE Aktion ab (es wird dann kein Tab geschlossen).
+    /// gesamte Aktion ab (es wird dann kein Tab geschlossen).
     func closeOtherTabs(keeping id: UUID) {
         if synchronizeVisualMarkdownBefore({ self.closeOtherTabs(keeping: id) }) { return }
         guard tabs.contains(where: { $0.id == id }) else { return }
@@ -2499,8 +2541,7 @@ final class Workspace: ObservableObject {
             }
         }
         for removedID in tabs.map(\.id) where removedID != id {
-            previewLoadCancellations.removeValue(forKey: removedID)?.cancel()
-            loadGeneration.removeValue(forKey: removedID)
+            withDocumentFileLoads { $0.remove(tabID: removedID) }
             if let removedTab = tabs.first(where: { $0.id == removedID }) {
                 documentLanguageDetector.cancel(
                     tabID: removedID, documentID: removedTab.documentID
@@ -2520,18 +2561,18 @@ final class Workspace: ObservableObject {
         synchronizeProjectWithActiveTabIfNeeded()
     }
 
-    /// Vor dem App-Beenden (⌘Q): über JEDEN Tab mit ungespeicherten Änderungen die
+    /// Vor dem App-Beenden (⌘Q): über jeden Tab mit ungespeicherten Änderungen die
     /// BBEdit-Rückfrage führen (Sichern / Nicht sichern / Abbrechen). Liefert
     /// `true`, wenn alle aufgelöst sind (gesichert oder bewusst verworfen) → die App
     /// darf enden; `false`, sobald der Nutzer einmal „Abbrechen" wählt oder ein
-    /// „Sichern unter…" abbricht → Beenden abbrechen. Schließt KEINE Tabs (die App
+    /// „Sichern unter…" abbricht → Beenden abbrechen. Schließt keine Tabs (die App
     /// endet ohnehin) — entscheidend ist nur, dass nichts ungefragt verloren geht.
     /// Vom AppDelegate aus `applicationShouldTerminate` aufgerufen.
     func confirmCloseAllDirtyForQuit() -> Bool {
-        guard !folderApplying else { return false }
+        guard !diskMutationIsActive else { return false }
         // `mayCloseTab` setzt im „Sichern"-Zweig kurz `activeTabID` auf den
-        // gerade gesicherten Tab um (saveActiveTab wirkt nur auf den AKTIVEN
-        // Tab). Da diese Methode KEINE Tabs schließt, würde ein abgebrochenes
+        // gerade gesicherten Tab um (saveActiveTab wirkt nur auf den aktiven
+        // Tab). Da diese Methode keine Tabs schließt, würde ein abgebrochenes
         // Beenden den ursprünglich aktiven Tab verlieren — der zuletzt
         // gesicherte bliebe aktiv. Deshalb wie `closeTab` den ursprünglich
         // aktiven Tab merken und am Ende wiederherstellen.
@@ -2564,7 +2605,7 @@ final class Workspace: ObservableObject {
     @discardableResult
     func returnToWelcome() -> Bool {
         if synchronizeVisualMarkdownBefore({ _ = self.returnToWelcome() }) { return false }
-        guard !folderApplying else { return false }
+        guard !diskMutationIsActive else { return false }
         if projectURL == nil, tabs.count == 1, tabs[0].isPristineScratch {
             return true
         }
@@ -2609,7 +2650,7 @@ final class Workspace: ObservableObject {
 
     // MARK: - Zeilenenden umschalten (K7)
 
-    /// Setzt die Zeilenende-Konvention des aktiven Tabs. Der Inhalt wird NICHT
+    /// Setzt die Zeilenende-Konvention des aktiven Tabs. Der Inhalt wird nicht
     /// sofort umgeschrieben. `write` konvertiert erst nach dieser ausdrücklichen
     /// Wahl und übernimmt nach erfolgreichem Speichern denselben Inhalt in
     /// Modell, Undo und Ansichten. Der Tab zeigt die vorgemerkte Änderung an.
@@ -2648,7 +2689,7 @@ final class Workspace: ObservableObject {
         .isoLatin1, .windowsCP1252, .macOSRoman, .ascii,
     ]
 
-    /// Lädt den aktiven Tab erneut von der Platte, dekodiert dabei MIT dem
+    /// Lädt den aktiven Tab erneut von der Platte, dekodiert dabei mit dem
     /// gewählten Encoding (BBEdit „Reopen using Encoding"). Nur möglich, wenn
     /// der Tab eine Datei-URL hat. Bei ungespeicherten Änderungen wird vorher
     /// gewarnt (das Neu-Laden verwirft sie). Async + Generation-Guard wie
@@ -2659,86 +2700,59 @@ final class Workspace: ObservableObject {
             NSSound.beep()   // unbenannter Tab → nichts zum Neu-Laden
             return
         }
-        guard !tabs[idx].hexEditSession.isSaving,
+        let tab = tabs[idx]
+        let target = DocumentFileLoadTarget(tab)
+        guard !tab.hexEditSession.isSaving,
               !fileMutationIsInFlight(for: url) else {
             NSSound.beep()
             return
         }
-        if tabs[idx].hasUnsavedChanges {
+        if target.hasUnsavedChanges {
+            let hexLineage = tab.hexEditSession.editingLineageID
+            let hexRevision = tab.hexEditSession.changeRevision
             let alert = NSAlert()
             alert.messageText = L10n.string("Ungespeicherte Änderungen verwerfen?")
-            // codereview-ok: „…“ (U+201E/U+201C) IST das korrekte deutsche Anführungszeichen-Paar; U+201D wäre englisch (2026-07-06)
+            // codereview-ok: „…“ (U+201E/U+201C) ist das korrekte deutsche Anführungszeichen-Paar; U+201D wäre englisch
             alert.informativeText = L10n.format(
                 "„%@“ wird mit %@ neu von der Platte geladen. Deine ungespeicherten Änderungen gehen dabei verloren.",
-                tabs[idx].title, encoding.displayName
+                tab.title, encoding.displayName
             )
             alert.alertStyle = .warning
+            let cancelButton = alert.addButton(withTitle: L10n.string("Abbrechen"))
             alert.addButton(withTitle: L10n.string("Neu laden"))
-            alert.addButton(withTitle: L10n.string("Abbrechen"))
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            let dialogWindow = alert.window
+            // AppKit kann „Abbrechen“ automatisch Escape zuordnen. Return muss ebenfalls abbrechen.
+            let cancelKeys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                guard NSApp.modalWindow === dialogWindow,
+                      event.window == nil || event.window === dialogWindow,
+                      event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+                      event.keyCode == 36 || event.keyCode == 53 || event.keyCode == 76 else { return event }
+                cancelButton.performClick(nil)
+                return nil
+            }
+            let response = alert.runModal()
+            if let cancelKeys { NSEvent.removeMonitor(cancelKeys) }
+            guard response == .alertSecondButtonReturn else { return }
+            // Während der Rückfrage können andere Ladeaufträge die Tabliste ändern.
+            guard let current = tabs.first(where: { $0.id == target.id }),
+                  current.documentID == target.documentID, current.url == target.url,
+                  current.contentRevision == target.contentRevision,
+                  current.diskSnapshot == target.diskSnapshot,
+                  current.pendingLineEndingConversion == tab.pendingLineEndingConversion,
+                  current.hexEditSession.editingLineageID == hexLineage,
+                  current.hexEditSession.changeRevision == hexRevision,
+                  !current.hexEditSession.isSaving,
+                  !fileMutationIsInFlight(for: url) else { return }
         }
 
-        let tabID = tabs[idx].id
-        let originalRevision = tabs[idx].contentRevision
-        let originalDiskSnapshot = tabs[idx].diskSnapshot
-        let generation = (loadGeneration[tabID] ?? 0) + 1
-        loadGeneration[tabID] = generation
-        tabs[idx].isLoading = true
-
-        let loader = reopenFileLoader
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let result = Result { try loader(url, encoding) }
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                guard self.loadGeneration[tabID] == generation,
-                      let i = self.tabs.firstIndex(where: { $0.id == tabID }) else {
-                    if !self.tabs.contains(where: { $0.id == tabID }) {
-                        self.loadGeneration.removeValue(forKey: tabID)
-                    }
-                    return
-                }
-                self.loadGeneration.removeValue(forKey: tabID)
-                switch result {
-                case .success(let loaded):
-                    // URL-Vergleich wie in `reloadTabFromDisk`: kein Inhalt
-                    // des alten Pfads in einen umgebundenen Tab.
-                    guard self.tabs[i].url == url,
-                          self.tabs[i].contentRevision == originalRevision,
-                          self.tabs[i].diskSnapshot == originalDiskSnapshot else {
-                        self.tabs[i].isLoading = false
-                        return
-                    }
-                    self.tabs[i].content    = loaded.content
-                    self.tabs[i].encoding   = loaded.encoding
-                    self.tabs[i].bom        = loaded.bom
-                    self.tabs[i].lineEnding = loaded.lineEnding
-                    self.tabs[i].displayMode = loaded.displayMode
-                    self.tabs[i].fileSize = loaded.fileSize
-                    self.tabs[i].isDirty    = false
-                    self.tabs[i].hexEditSession.discard()
-                    self.tabs[i].isLoading  = false
-                    self.tabs[i].diskSnapshot = loaded.diskSnapshot
-                    self.tabs[i].recordExternalFileObservation(
-                        snapshot: loaded.diskSnapshot,
-                        observation: loaded.externalObservation,
-                        contentLoaded: true
-                    )
-                    // Neuer Plattenstand = neue Basis für den Punkt im Tab.
-                    self.tabs[i].recordSavedContentBaseline()
-                case .failure:
-                    // Bytes passen nicht zum gewählten Encoding → Tab unverändert
-                    // lassen (kein Datenverlust), Spinner aus, Hinweis zeigen.
-                    self.tabs[i].isLoading = false
-                    NSAlert.runWarning(title: L10n.string("Neu öffnen fehlgeschlagen"),
-                        text: L10n.format("Die Datei lässt sich nicht als %@ lesen. Der bisherige Inhalt bleibt unverändert.", encoding.displayName))
-                }
-            }
+        withDocumentFileLoads { loads in
+            loads.reopen(target: target, encoding: encoding, loader: { reopenFileLoader })
         }
     }
 
     // MARK: Extern-Änderungs-Erkennung (BBEdit „Reload from Disk", Kap. 3 S. 59)
 
-    /// Rückfrage bei extern geänderter Datei MIT lokalen ungespeicherten
+    /// Rückfrage bei extern geänderter Datei mit lokalen ungespeicherten
     /// Änderungen. `true` = neu laden (lokale Änderungen verwerfen).
     /// Injizierbar für Tests (kein Modal) — Muster wie `confirmCloseHandler`.
     var externalReloadConfirmHandler: (String) -> Bool = Workspace.defaultExternalReloadConfirmation
@@ -2798,6 +2812,22 @@ final class Workspace: ObservableObject {
         }
     }
 
+    private struct ExternalChangeBaseline: Equatable {
+        let saved: FileSnapshot?
+        let observed: ExternalFileObservation?
+        let observedContent: FileSnapshot?
+        let observedGeneration: UInt64
+        let unavailable: Bool
+
+        init(_ tab: EditorTab) {
+            saved = tab.diskSnapshot
+            observed = tab.externalFileObservation
+            observedContent = tab.externalContentSnapshot
+            observedGeneration = tab.externalContentGeneration
+            unavailable = tab.externalFileUnavailable
+        }
+    }
+
     /// Prüft alle offenen Tabs gegen die Platte (Aufruf: App wird aktiv —
     /// der dominante Fall „woanders editiert, zurückgewechselt"; BBEdits
     /// „Automatically refresh documents"-Default). Der leichte `stat`-
@@ -2825,32 +2855,37 @@ final class Workspace: ObservableObject {
             // Platten-Fingerabdruck (`open`+`fstat`) kann auf getrennten oder
             // nicht reagierenden Datenträgern blockieren und entsteht deshalb
             // erst in der Hintergrundprüfung des Inspectors.
-            let observedContent = tab.externalContentSnapshot ?? tab.diskSnapshot
+            let baseline = ExternalChangeBaseline(tab)
             let request = ExternalChangeInspector.Request(
                 tabID: tab.id,
                 documentID: tab.documentID,
                 url: url,
-                knownObservation: tab.externalFileObservation,
-                observedByteCount: observedContent?.byteCount,
+                knownObservation: baseline.observed,
+                observedByteCount: (baseline.observedContent ?? baseline.saved)?.byteCount,
                 isDirty: tab.hasUnsavedChanges,
                 locationReference: tab.fileLocationReference
             )
             externalChangeInspector.inspect(request) { [weak self] inspection in
-                self?.finishExternalChangeInspection(inspection)
+                self?.finishExternalChangeInspection(inspection, baseline: baseline)
             }
         }
     }
 
-    private func finishExternalChangeInspection(_ inspection: ExternalChangeInspector.Inspection) {
+    private func finishExternalChangeInspection(
+        _ inspection: ExternalChangeInspector.Inspection,
+        baseline: ExternalChangeBaseline
+    ) {
         if inspection.resolvedURL != inspection.url,
-           synchronizeVisualMarkdownBefore({ self.finishExternalChangeInspection(inspection) }) { return }
+           synchronizeVisualMarkdownBefore({
+               self.finishExternalChangeInspection(inspection, baseline: baseline)
+           }) { return }
         // Während der Prüfung eingegangene Anlässe jetzt nachholen —
         // unabhängig davon, ob dieses Ergebnis unten noch verwertbar
         // ist. Die Nachprüfung startet mit frischem Modellzustand.
-        let rerunPending = self.pendingExternalCheckTabIDs
+        var shouldRecheck = self.pendingExternalCheckTabIDs
             .remove(inspection.tabID) != nil
         defer {
-            if rerunPending {
+            if shouldRecheck {
                 self.checkExternalChanges(only: inspection.tabID)
             }
         }
@@ -2867,6 +2902,12 @@ final class Workspace: ObservableObject {
               // Befund zum alten Pfad darf dann weder Dialog noch
               // Reload am neu gebundenen Tab auslösen.
               self.tabs[idx].url == inspection.url else {
+            return
+        }
+        // Ein eigener Save oder eine neuere Beobachtung kann die Vergleichsbasis
+        // während des Lesens ersetzen. Dann muss auch ein fehlender Pfad neu geprüft werden.
+        guard ExternalChangeBaseline(self.tabs[idx]) == baseline else {
+            shouldRecheck = true
             return
         }
 
@@ -2900,11 +2941,7 @@ final class Workspace: ObservableObject {
         // dirty gewordenen Tabs aber bräuchte. Ergebnis verwerfen
         // und sofort mit dem aktuellen Zustand neu prüfen.
         guard inspection.wasDirty == self.tabs[idx].hasUnsavedChanges else {
-            // Läuft ohnehin gleich eine gemerkte Nachprüfung (defer
-            // oben), genügt die; sonst hier selbst neu anstoßen.
-            if !rerunPending {
-                self.checkExternalChanges(only: inspection.tabID)
-            }
+            shouldRecheck = true
             return
         }
 
@@ -2928,21 +2965,37 @@ final class Workspace: ObservableObject {
             return
         }
 
-        if self.tabs[idx].hasUnsavedChanges {
-            if self.externalReloadConfirmHandler(self.tabs[idx].title) {
-                self.reloadTabFromDisk(id: inspection.tabID)
-            } else {
-                // Die automatische Rückfrage gilt als beantwortet;
-                // `diskSnapshot` bleibt absichtlich alt, damit ein
-                // späteres Speichern weiterhin gesondert warnt.
-                self.tabs[idx].recordExternalFileObservation(
-                    snapshot: inspection.stableSnapshot,
-                    observation: after,
-                    contentChangeAccepted: true
-                )
-            }
-        } else {
+        let tab = self.tabs[idx]
+        guard tab.hasUnsavedChanges else {
             self.reloadTabFromDisk(id: inspection.tabID)
+            return
+        }
+        let hexLineage = tab.hexEditSession.editingLineageID
+        let hexRevision = tab.hexEditSession.changeRevision
+        let reload = self.externalReloadConfirmHandler(tab.title)
+        // Der modale Dialog lässt Ladeaufträge und weitere Fremdprüfungen abschließen.
+        guard let currentIndex = self.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        let current = self.tabs[currentIndex]
+        guard current.documentID == tab.documentID, current.url == tab.url,
+              current.diskSnapshot == tab.diskSnapshot,
+              current.externalFileObservation == tab.externalFileObservation,
+              current.externalContentGeneration == tab.externalContentGeneration,
+              current.externalFileUnavailable == tab.externalFileUnavailable,
+              current.hasUnsavedChanges, !current.isLoading, !current.hexEditSession.isSaving,
+              !self.fileMutationIsInFlight(for: inspection.resolvedURL) else { return }
+        if reload {
+            guard current.contentRevision == tab.contentRevision,
+                  current.pendingLineEndingConversion == tab.pendingLineEndingConversion,
+                  current.hexEditSession.editingLineageID == hexLineage,
+                  current.hexEditSession.changeRevision == hexRevision else { return }
+            self.reloadTabFromDisk(id: tab.id)
+        } else {
+            // `diskSnapshot` bleibt absichtlich alt, damit ein späteres Speichern weiterhin warnt.
+            self.tabs[currentIndex].recordExternalFileObservation(
+                snapshot: inspection.stableSnapshot,
+                observation: after,
+                contentChangeAccepted: true
+            )
         }
     }
 
@@ -2951,92 +3004,48 @@ final class Workspace: ObservableObject {
     /// `reopenActiveTab` (Generation-Guard, isLoading-Toggle für die
     /// Editor-Neuerzeugung), aber ohne Encoding-Zwang und ohne eigene
     /// Rückfrage — die trifft der Aufrufer.
-    func reloadTabFromDisk(id: UUID) {
+    @discardableResult
+    func reloadTabFromDisk(id: UUID) -> Task<Void, Never>? {
         guard let idx = tabs.firstIndex(where: { $0.id == id }),
               let url = tabs[idx].url else {
             NSSound.beep()   // unbenannter Tab → nichts zum Neu-Laden
-            return
+            return nil
         }
         guard !tabs[idx].hexEditSession.isSaving,
-              !fileMutationIsInFlight(for: url) else { NSSound.beep(); return }
-        let tabID = tabs[idx].id
-        let originalRevision = tabs[idx].contentRevision
-        let originalDiskSnapshot = tabs[idx].diskSnapshot
-        let generation = (loadGeneration[tabID] ?? 0) + 1
-        loadGeneration[tabID] = generation
-        tabs[idx].isLoading = true
-
-        let loader = reloadFileLoader
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let result = Result { try loader(url) }
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                guard self.loadGeneration[tabID] == generation,
-                      let i = self.tabs.firstIndex(where: { $0.id == tabID }) else {
-                    if !self.tabs.contains(where: { $0.id == tabID }) {
-                        self.loadGeneration.removeValue(forKey: tabID)
-                    }
-                    return
-                }
-                self.loadGeneration.removeValue(forKey: tabID)
-                switch result {
-                case .success(let loaded):
-                    // Der URL-Vergleich schützt gegen „Sichern unter" und
-                    // Verschieben während des Ladens: Der Inhalt des alten
-                    // Pfads darf nicht in den inzwischen umgebundenen Tab
-                    // übernommen werden.
-                    guard self.tabs[i].url == url,
-                          self.tabs[i].contentRevision == originalRevision,
-                          self.tabs[i].diskSnapshot == originalDiskSnapshot else {
-                        self.tabs[i].isLoading = false
-                        return
-                    }
-                    self.tabs[i].content    = loaded.content
-                    self.tabs[i].encoding   = loaded.encoding
-                    self.tabs[i].bom        = loaded.bom
-                    self.tabs[i].lineEnding = loaded.lineEnding
-                    self.tabs[i].displayMode = loaded.displayMode
-                    self.tabs[i].fileSize = loaded.fileSize
-                    self.tabs[i].isDirty    = false
-                    self.tabs[i].hexEditSession.discard()
-                    self.tabs[i].isLoading  = false
-                    self.tabs[i].diskSnapshot = loaded.diskSnapshot
-                    self.tabs[i].recordExternalFileObservation(
-                        snapshot: loaded.diskSnapshot,
-                        observation: loaded.externalObservation,
-                        contentLoaded: true
-                    )
-                    // Neuer Plattenstand = neue Basis für den Punkt im Tab.
-                    self.tabs[i].recordSavedContentBaseline()
-                case .failure:
-                    // Datei nicht (mehr) lesbar → Tab-Inhalt behalten, kein
-                    // Datenverlust; Spinner aus. Kein Alert im Auto-Pfad —
-                    // ein App-Wechsel darf keine Modal-Kaskade auslösen.
-                    self.tabs[i].isLoading = false
-                    if self.tabs[i].url == url {
-                        self.tabs[i].protectContentAfterExternalFileBecameUnavailable()
-                    }
-                }
-            }
+              !fileMutationIsInFlight(for: url) else { NSSound.beep(); return nil }
+        return withDocumentFileLoads { loads in
+            loads.reload(target: DocumentFileLoadTarget(tabs[idx]), loader: { reloadFileLoader })
         }
     }
 
     /// Menü-Einstieg „Ablage → Von Festplatte neu laden" (BBEdit „Reload
-    /// from Disk"): lädt den AKTIVEN Tab neu; dirty → gleiche Rückfrage
+    /// from Disk"): lädt den aktiven Tab neu; dirty → gleiche Rückfrage
     /// wie die automatische Erkennung.
     func reloadActiveTabFromDisk() {
         guard let idx = activeTabIndex, let url = tabs[idx].url else {
             NSSound.beep()
             return
         }
-        guard !tabs[idx].hexEditSession.isSaving,
+        let tab = tabs[idx]
+        guard !tab.hexEditSession.isSaving,
               !fileMutationIsInFlight(for: url) else {
             NSSound.beep()
             return
         }
-        if tabs[idx].hasUnsavedChanges,
-           !externalReloadConfirmHandler(tabs[idx].title) { return }
-        reloadTabFromDisk(id: tabs[idx].id)
+        if tab.hasUnsavedChanges {
+            let hexLineage = tab.hexEditSession.editingLineageID
+            let hexRevision = tab.hexEditSession.changeRevision
+            guard externalReloadConfirmHandler(tab.title) else { return }
+            // Die Rückfrage lässt frühere Ladeaufträge und neuere Änderungen zu.
+            guard let current = tabs.first(where: { $0.id == tab.id }),
+                  current.documentID == tab.documentID, current.url == url,
+                  current.contentRevision == tab.contentRevision,
+                  current.diskSnapshot == tab.diskSnapshot,
+                  current.pendingLineEndingConversion == tab.pendingLineEndingConversion,
+                  current.hexEditSession.editingLineageID == hexLineage,
+                  current.hexEditSession.changeRevision == hexRevision else { return }
+        }
+        reloadTabFromDisk(id: tab.id)
     }
 
     // MARK: - Suchfelder tauschen (K9)
@@ -3053,7 +3062,7 @@ final class Workspace: ObservableObject {
     func openFile() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
-        // Ordner ebenfalls wählbar (Daniel-Wunsch 2026-07-12): ein gewählter
+        // Ordner ebenfalls wählbar: ein gewählter
         // Ordner wird wie über den Willkommensbildschirm als Projekt geladen
         // (Git-Erkennung inklusive), eine Datei landet in einem Tab.
         panel.canChooseDirectories = true
@@ -3095,7 +3104,7 @@ final class Workspace: ObservableObject {
                     openSource()
                     return
                 }
-                switch Workspace.askMarkdownImportFileChoice(for: url, format: format) {
+                switch self.markdownImportDecisions.askFileChoice(for: url, format: format) {
                 case .convert:
                     guard expectedGitContext?.isCurrent(in: self) != false else { return }
                     self.convertToMarkdown(url, expectedGitContext: expectedGitContext,
@@ -3107,8 +3116,8 @@ final class Workspace: ObservableObject {
             }
             return
         }
-        // Ein Ordner OHNE Endung ist immer ein Projekt — der Normalfall bleibt
-        // dadurch völlig unverzögert. Nur ein Ordner MIT Endung kann ein
+        // Ein Ordner ohne Endung ist immer ein Projekt — der Normalfall bleibt
+        // dadurch völlig unverzögert. Nur ein Ordner mit Endung kann ein
         // Dokumentpaket wie `.rtfd` sein; erst dafür wird der Formatkatalog
         // befragt (aus dem Zwischenspeicher meist sofort).
         guard !url.pathExtension.isEmpty else {
@@ -3117,16 +3126,15 @@ final class Workspace: ObservableObject {
         }
         markdownImportService.withCatalog { [weak self] catalog in
             guard let self, expectedGitContext?.isCurrent(in: self) != false else { return }
-            // Bewusst auch NICHT verfügbare Formate erkennen: Fehlt nur das
+            // Bewusst auch nicht verfügbare Formate erkennen: Fehlt nur das
             // Zusatzwerkzeug (meist pandoc), soll die Rückfrage das erklären,
             // statt das Dokumentpaket stillschweigend als Ordner zu öffnen
-            // (Daniel-Befund 2026-07-29).
             guard let format = catalog?.format(forExtension: url.pathExtension),
                   format.supportsContainer(isDirectory: true) else {
                 self.openProject(at: url)
                 return
             }
-            switch Workspace.askMarkdownImportPackageChoice(for: url, format: format) {
+            switch self.markdownImportDecisions.askPackageChoice(for: url, format: format) {
             case .convert:
                 self.convertToMarkdown(url, expectedGitContext: expectedGitContext,
                                        onFileOpened: onFileOpened)
@@ -3138,119 +3146,9 @@ final class Workspace: ObservableObject {
         }
     }
 
-    enum MarkdownImportFileChoice {
-        case convert
-        case openAsText
-        case cancel
-    }
-
-    /// Testhaken für den fensterlosen Importtest; der UI-Test nutzt den echten Dialog.
-    static var markdownImportFileChoiceProvider:
-        ((URL, MarkdownImportFormat) -> MarkdownImportFileChoice)?
-
-    static func askMarkdownImportFileChoice(
-        for url: URL,
-        format: MarkdownImportFormat
-    ) -> MarkdownImportFileChoice {
-        if let provider = markdownImportFileChoiceProvider {
-            return provider(url, format)
-        }
-        let alert = NSAlert()
-        alert.messageText = L10n.format("„%@“ ist ein %@-Dokument.",
-                                        url.lastPathComponent, format.identifier.uppercased())
-        guard format.isAvailable else {
-            alert.informativeText = [
-                L10n.format(
-                    "Fastra könnte das %@-Dokument in Markdown umwandeln, doch dafür fehlt gerade etwas.",
-                    format.identifier.uppercased()
-                ),
-                markdownImportUnavailableExplanation(for: format),
-            ].compactMap { $0 }.joined(separator: "\n\n")
-            alert.addButton(withTitle: L10n.string("Als Quelltext öffnen"))
-            alert.addButton(withTitle: L10n.string("Abbrechen"))
-            return alert.runModal() == .alertFirstButtonReturn ? .openAsText : .cancel
-        }
-        alert.informativeText = L10n.format(
-            "Fastra kann das %@-Dokument in Markdown umwandeln und danach öffnen. Das Original bleibt unverändert.",
-            format.identifier.uppercased()
-        )
-        addMarkdownConversionButton(to: alert)
-        alert.addButton(withTitle: L10n.string("Als Quelltext öffnen"))
-        alert.addButton(withTitle: L10n.string("Abbrechen"))
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: return .convert
-        case .alertSecondButtonReturn: return .openAsText
-        default: return .cancel
-        }
-    }
-
-    /// Wie ein Dokumentpaket geöffnet werden soll.
-    enum MarkdownImportPackageChoice {
-        case convert
-        case openAsFolder
-        case cancel
-    }
-
-    /// Testhaken: ersetzt die Rückfrage. `nil` = echter Dialog. Nötig, weil ein
-    /// modaler `NSAlert` einen fensterlosen Selbsttest anhalten würde.
-    static var markdownImportPackageChoiceProvider:
-        ((URL, MarkdownImportFormat) -> MarkdownImportPackageChoice)?
-
-    /// Ein Dokumentpaket sieht im Finder aus wie ein Ordner. Fastra kann es
-    /// nicht gleichzeitig als Ordner zeigen und umwandeln, deshalb ist hier —
-    /// anders als bei einer Datei — eine echte Rückfrage nötig.
-    ///
-    /// Die Frage selbst kennt keinen Aufrufer-Kontext: Was „als Ordner öffnen"
-    /// bedeutet, entscheidet die aufrufende Stelle (Projekt laden bzw. im
-    /// Dateibaum aufklappen).
-    static func askMarkdownImportPackageChoice(
-        for url: URL,
-        format: MarkdownImportFormat
-    ) -> MarkdownImportPackageChoice {
-        if let provider = markdownImportPackageChoiceProvider {
-            return provider(url, format)
-        }
-        let alert = NSAlert()
-        alert.messageText = L10n.format("„%@“ ist ein Dokument, kein Projektordner.",
-                                        url.lastPathComponent)
-        // Fehlt das Zusatzwerkzeug (meist pandoc), gibt es keinen
-        // Umwandeln-Knopf, der ohnehin scheitern würde — stattdessen erklärt
-        // der Dialog, was fehlt und wie man es bekommt (Daniel-Befund
-        // 2026-07-29: vorher öffnete das Paket wortlos als Ordner).
-        guard format.isAvailable else {
-            alert.informativeText = [
-                L10n.format(
-                    "Fastra könnte das %@-Dokument in Markdown umwandeln, doch dafür fehlt gerade etwas.",
-                    format.identifier.uppercased()
-                ),
-                markdownImportUnavailableExplanation(for: format),
-            ].compactMap { $0 }.joined(separator: "\n\n")
-            alert.addButton(withTitle: L10n.string("Als Ordner öffnen"))
-            alert.addButton(withTitle: L10n.string("Abbrechen"))
-            switch alert.runModal() {
-            case .alertFirstButtonReturn: return .openAsFolder
-            default:                      return .cancel
-            }
-        }
-        // Bewusst EIN Literal: Ein per `+` zusammengesetzter Text wäre kein
-        // statisch erkennbarer Lokalisierungsschlüssel mehr.
-        alert.informativeText = L10n.format(
-            "Fastra kann das %@-Dokument in Markdown umwandeln und danach öffnen. Das Original bleibt unverändert.",
-            format.identifier.uppercased()
-        )
-        addMarkdownConversionButton(to: alert)
-        alert.addButton(withTitle: L10n.string("Als Ordner öffnen"))
-        alert.addButton(withTitle: L10n.string("Abbrechen"))
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:  return .convert
-        case .alertSecondButtonReturn: return .openAsFolder
-        default:                       return .cancel
-        }
-    }
-
     /// Erklärung in Nutzersprache, warum ein erkanntes Format gerade nicht
     /// umgewandelt werden kann — samt Installationshilfe, wenn das fehlende
-    /// Werkzeug bekannt ist. Wird von Dialog UND Hinweisleiste benutzt.
+    /// Werkzeug bekannt ist. Wird von Dialog und Hinweisleiste benutzt.
     static func markdownImportUnavailableExplanation(
         for format: MarkdownImportFormat
     ) -> String? {
@@ -3270,25 +3168,13 @@ final class Workspace: ObservableObject {
         return lines.joined(separator: " ")
     }
 
-    private static func addMarkdownConversionButton(to alert: NSAlert) {
-        let button = alert.addButton(withTitle: L10n.string("In Markdown umwandeln"))
-        if MarkdownImportService.shared.isRunning {
-            button.isEnabled = false
-            alert.informativeText += "\n\n" + L10n.string("Eine andere Umwandlung läuft bereits.")
-        }
-    }
 
     // MARK: - Markdown-Umwandlung
 
-    /// Angebot für den aktiven Tab — oder `nil`, wenn es keins gibt.
-    ///
-    /// Bewusst nur aus dem ZWISCHENGESPEICHERTEN Katalog: Diese Eigenschaft
-    /// wird bei jedem Neuzeichnen gelesen und darf nie einen Prozess starten.
-    ///
-    /// Auch ein erkanntes, aber gerade NICHT umwandelbares Format liefert ein
-    /// Angebot: Die Leiste zeigt dann statt des Umwandeln-Knopfs, welches
-    /// Zusatzprogramm fehlt (Daniel-Befund 2026-07-29 — vorher blieb die
-    /// Leiste bei fehlendem pandoc einfach unsichtbar).
+    /// Angebot für den aktiven Tab oder `nil`. Nur den gepufferten Katalog lesen:
+    /// Die bei jedem Neuzeichnen gelesene Eigenschaft darf keinen Prozess starten.
+    /// Auch nicht ausführbare erkannte Formate liefern ein Angebot, damit die
+    /// Leiste das fehlende Zusatzprogramm erklären kann.
     func markdownImportOffer(for url: URL?) -> MarkdownImportOffer? {
         guard let url, !dismissedMarkdownImports.contains(url),
               let catalog = markdownImportService.cachedCatalog,
@@ -3306,7 +3192,7 @@ final class Workspace: ObservableObject {
             .availableFormat(forExtension: url.pathExtension) != nil
     }
 
-    /// Format, WENN dieser Ordner in Wahrheit ein Dokumentpaket ist (`.rtfd`).
+    /// Format, wenn dieser Ordner in Wahrheit ein Dokumentpaket ist (`.rtfd`).
     /// `nil` für jeden echten Ordner. Der Dateibaum wartet vor dieser Abfrage
     /// auf den Formatkatalog, damit auch der erste Klick ein Paket erkennt.
     /// Ein bekanntes, aber gerade nicht umwandelbares Paket zählt mit, damit
@@ -3361,13 +3247,13 @@ final class Workspace: ObservableObject {
     }
 
     /// Entfernt „leere Notizzettel"-Tabs — außer dem Tab `keepID`. Ein Tab gilt
-    /// als wertloser leerer Scratch, wenn er UNBENANNT (`url == nil`), LEER
-    /// (`content.isEmpty`), NICHT geändert (`!isDirty`) und NICHT gerade am Laden
+    /// als wertloser leerer Scratch, wenn er unbenannt (`url == nil`), leer
+    /// (`content.isEmpty`), nicht geändert (`!isDirty`) und nicht gerade am Laden
     /// (`!isLoading`) ist.
     ///
-    /// BBEdit-Verhalten (Daniel-Befund 2026-06-22): Öffnet man eine Datei,
+    /// BBEdit-Verhalten: Öffnet man eine Datei,
     /// während das leere unbenannte Start-Dokument offen ist, wird dieses
-    /// abgeräumt — es ist wertlos. Getippter/„dirty" Inhalt bleibt dagegen IMMER
+    /// abgeräumt — es ist wertlos. Getippter/„dirty" Inhalt bleibt dagegen immer
     /// erhalten (BBEdits „Rescuing Untitled"). Pure Funktion → unit-testbar.
     static func tabsRemovingEmptyScratch(_ tabs: [EditorTab], keeping keepID: UUID) -> [EditorTab] {
         tabs.filter { tab in
@@ -3379,7 +3265,7 @@ final class Workspace: ObservableObject {
     }
 
     /// Lädt eine Ordner-Funddatei und bindet den physischen Read an den
-    /// NEUESTEN Sprung derselben URL. Der erste Sprung darf seinen laufenden
+    /// neuesten Sprung derselben URL. Der erste Sprung darf seinen laufenden
     /// Platzhalter nicht mehr verwerfen, wenn unmittelbar danach ein zweiter
     /// Treffer derselben Datei gewählt wird: Dessen Generation und Completion
     /// ersetzen den alten Wartenden, während der Read weiterläuft.
@@ -3387,108 +3273,56 @@ final class Workspace: ObservableObject {
                              expectedDiskSnapshot: FileSnapshot,
                              jumpGeneration: Int,
                              outcome: @escaping (FileLoadOutcome) -> Void) {
-        guard isCurrentMatchJump(jumpGeneration) else {
-            outcome(.cancelled)
-            return
-        }
-        // Ein Hinweis erklärt immer nur den LETZTEN Versuch. Ohne dieses
-        // zentrale Löschen blieb eine Dirty-Ablehnung auch nach einem
-        // erfolgreichen Sprung zu einer anderen Datei sichtbar. Das Löschen
-        // steht bewusst HINTER dem Generations-Guard: Ein veralteter Auftrag
-        // — etwa der Folgeauftrag, den die Read-Completion unten für einen
-        // inzwischen geänderten Snapshot startet — darf den Hinweis eines
-        // neueren Sprungs nicht mehr anfassen (Review 2026-09-02).
-        folderNavigationNotice = nil
-
-        let key = url.path
-        let request = PendingFolderMatchFileLoad(
-            generation: jumpGeneration,
-            expectedDiskSnapshot: expectedDiskSnapshot,
-            outcome: outcome
-        )
-        if let previous = pendingFolderMatchFileLoads.updateValue(request,
-                                                                   forKey: key) {
-            // Der ältere UI-Auftrag ist abgeschlossen, der physische Read
-            // bleibt bestehen. Seine Completion prüft beim Eintreffen den
-            // inzwischen aktualisierten Eintrag und bedient nur den neuesten.
-            previous.outcome(.cancelled)
-            return
-        }
-
-        // Kennung genau dieses physischen Reads. Nur solange sie unter dem
-        // Pfad eingetragen ist, gehört der Read zu diesem Schlüssel.
-        let readToken = UUID()
-        folderMatchReadTokens[key] = readToken
-
-        loadFile(
-            atCanonicalURL: url,
-            expectedDiskSnapshot: expectedDiskSnapshot,
-            acceptance: FileLoadAcceptance { [weak self] in
-                guard let self,
-                      self.folderMatchReadTokens[key] == readToken,
-                      let latest = self.pendingFolderMatchFileLoads[key]
-                else { return false }
-                return self.isCurrentMatchJump(latest.generation)
-                    && latest.expectedDiskSnapshot == expectedDiskSnapshot
-            },
-            folderMatchReadToken: readToken
-        ) { [weak self] physicalOutcome in
-            guard let self else {
-                outcome(.cancelled)
-                return
-            }
-            // Wurde der Read inzwischen auf einen anderen Pfad umgehängt, hat
-            // `releaseFolderMatchRead` den Wartenden bereits an einen eigenen
-            // Read übergeben. Hier darf dann nichts mehr gemeldet werden —
-            // sonst bekäme derselbe logische Auftrag zwei Ergebnisse.
-            guard self.folderMatchReadTokens[key] == readToken else { return }
-            self.folderMatchReadTokens.removeValue(forKey: key)
-            guard let latest = self.pendingFolderMatchFileLoads.removeValue(forKey: key)
-            else {
-                outcome(.cancelled)
-                return
-            }
-
-            // Stammt der neueste Auftrag bereits aus einer neuen Suche mit
-            // anderem Snapshot, konnte der alte Read ihn nicht erfüllen. Nach
-            // dem verworfenen Platzhalter startet derselbe logische Auftrag
-            // deshalb einmal frisch auf seiner eigenen Basis.
-            guard latest.expectedDiskSnapshot == expectedDiskSnapshot else {
-                self.loadFolderMatchFile(
-                    atCanonicalURL: url,
-                    expectedDiskSnapshot: latest.expectedDiskSnapshot,
-                    jumpGeneration: latest.generation,
-                    outcome: latest.outcome
-                )
-                return
-            }
-            guard self.isCurrentMatchJump(latest.generation) else {
-                latest.outcome(.cancelled)
-                return
-            }
-            latest.outcome(physicalOutcome)
+        withDocumentFileLoads { loads in
+            loads.openFolderMatch(at: url, expectedDiskSnapshot: expectedDiskSnapshot,
+                                  jumpGeneration: jumpGeneration, outcome: outcome)
         }
     }
 
-    /// Gibt den Pfad `url` durch den Read mit der Kennung `token` frei, weil
-    /// dieser Read ab jetzt eine umbenannte Datei unter einem ANDEREN Pfad
-    /// liest. Ein Ordner-Sprung, der noch auf `url` wartet, darf sein Ergebnis
-    /// nicht mehr von ihm bekommen: Er bekäme den Inhalt einer anderen Datei
-    /// als geöffnet gemeldet, und der URL-Guard der Treffer-Navigation könnte
-    /// den Sprung danach nicht mehr ausführen. Der Wartende bekommt deshalb
-    /// einen eigenen Read auf seinem eigenen Pfad (Review 2026-09-04).
-    private func releaseFolderMatchRead(token: UUID, forPathOf url: URL) {
-        let key = url.path
-        guard folderMatchReadTokens[key] == token else { return }
-        folderMatchReadTokens.removeValue(forKey: key)
-        guard let waiting = pendingFolderMatchFileLoads.removeValue(forKey: key)
-        else { return }
-        loadFolderMatchFile(
-            atCanonicalURL: url,
-            expectedDiskSnapshot: waiting.expectedDiskSnapshot,
-            jumpGeneration: waiting.generation,
-            outcome: waiting.outcome
-        )
+    struct FileTreeDuplicateContext {
+        fileprivate let navigation: UInt64
+        fileprivate let project: UInt64
+        fileprivate let document: UUID?
+    }
+
+    func fileTreeDuplicateContext() -> FileTreeDuplicateContext {
+        FileTreeDuplicateContext(navigation: tabNavigationRevision,
+                                 project: projectGeneration, document: activeDocumentID)
+    }
+
+    /// Der Plattenauftrag läuft immer aus. Nur das anschließende Öffnen gehört
+    /// zum ursprünglichen Bedienkontext; die Rückmeldung aktualisiert weiterhin
+    /// den Dateibaum beziehungsweise zeigt den ursprünglichen Kopierfehler.
+    func duplicateFileTreeItem(at source: URL, isDirectory: Bool,
+                               openingContext: FileTreeDuplicateContext,
+                               completion: @escaping (Result<URL, Error>) -> Void) {
+        let duplicator = fileTreeDuplicator
+        Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                Result { try duplicator(source) }
+            }.value
+            completion(result)
+            guard case .success(let destination) = result, !isDirectory else { return }
+            self?.openDuplicatedFile(at: destination, in: openingContext)
+        }
+    }
+
+    @MainActor
+    private func openDuplicatedFile(at destination: URL, in context: FileTreeDuplicateContext) {
+        guard tabNavigationRevision == context.navigation, projectGeneration == context.project,
+              activeDocumentID == context.document else { return }
+        // Visualsync und Bild-Undo können noch einmal warten. Danach denselben
+        // Ursprung prüfen, bevor überhaupt ein Ladeplatzhalter aktiviert wird.
+        if synchronizeVisualMarkdownBefore({ [weak self] in
+            self?.openDuplicatedFile(at: destination, in: context)
+        }) { return }
+        performWithSynchronizedVisualMarkdown {
+            loadFile(at: destination, acceptance: FileLoadAcceptance { [weak self] in
+                // Der eigene Platzhalter ist ein gewollter Tabwechsel. Normales
+                // Laden erhält jede danach gewählte aktive Ansicht von selbst.
+                self?.projectGeneration == context.project
+            })
+        }
     }
 
     /// Lädt eine Datei asynchron in einen neuen Tab und kehrt sofort zurück.
@@ -3502,7 +3336,7 @@ final class Workspace: ObservableObject {
     /// - Parameter completion: Optionaler Callback, der auf dem Main-Thread
     ///   aufgerufen wird. `true` = Inhalt steht im Tab (Datei war schon offen
     ///   oder Laden erfolgreich). `false` = Laden fehlgeschlagen, Platzhalter
-    ///   wurde entfernt. Zugesichert wird GENAU EIN Aufruf — auch dann, wenn
+    ///   wurde entfernt. Zugesichert wird genau ein Aufruf — auch dann, wenn
     ///   der Workspace während des Ladens verschwindet (Fenster geschlossen).
     ///
     /// Ablauf:
@@ -3519,12 +3353,8 @@ final class Workspace: ObservableObject {
                   expectedDiskSnapshot: FileSnapshot? = nil,
                   acceptance: FileLoadAcceptance? = nil,
                   completion: ((Bool) -> Void)? = nil) {
-        // URL-Form vereinheitlichen: dieselbe Datei kommt je nach Quelle in
-        // verschiedenen Formen an — programmatisch gebaut `/var/…`, aus
-        // Verzeichnis-Listings (Projektbaum!) und NSOpenPanel dagegen
-        // `/private/var/…`. Ohne Normalisierung scheitern Tab-Dedup und
-        // Aktiv-Markierung im Projektbaum an `/var` ≠ `/private/var`
-        // (Befund Screenshot 2026-07-12).
+        // URL-Formen wie `/var/…` und `/private/var/…` vereinheitlichen, damit
+        // Tab-Dedup und Aktiv-Markierung im Projektbaum dieselbe Datei erkennen.
         loadFile(atCanonicalURL: url.canonicalFileURL,
                  preview: preview,
                  expectedGitContext: expectedGitContext,
@@ -3538,9 +3368,9 @@ final class Workspace: ObservableObject {
     /// Variante für Pfade, die ein Hintergrundlauf bereits über
     /// `canonicalPathKey` aufgelöst hat. Ordner-Treffer verwenden sie, damit
     /// ihr Klick auf dem Main-Thread keine zweite Metadatenabfrage ausführt.
-    /// Meldet ein TYPISIERTES Ergebnis: Die Treffer-Navigation behandelt nur
+    /// Meldet ein typisiertes Ergebnis: Die Treffer-Navigation behandelt nur
     /// den echten Snapshot-Konflikt als veraltete Trefferbasis, nicht jeden
-    /// abgelehnten Auftrag (Review 2026-08-31).
+    /// abgelehnten Auftrag.
     /// - Parameter folderMatchReadToken: Nur von `loadFolderMatchFile` gesetzt.
     ///   Kennzeichnet den Read als Bediener des wartenden Ordner-Sprungs unter
     ///   diesem Pfad, damit er die Zuständigkeit abgeben kann, sobald ihn eine
@@ -3571,423 +3401,10 @@ final class Workspace: ObservableObject {
                           expectedDiskSnapshot: expectedDiskSnapshot, acceptance: acceptance,
                           folderMatchReadToken: folderMatchReadToken, outcome: outcome)
         }, onFailure: { outcome?(.cancelled) }) { return }
-        // ── (1) Dedup ──────────────────────────────────────────────────────
-        // Wenn die Datei schon als Tab offen ist, nur aktivieren — kein zweiter Tab.
-        if let existingIdx = tabs.firstIndex(where: { $0.url == url }) {
-            if let expectedDiskSnapshot {
-                let existing = tabs[existingIdx]
-                // Die Gründe getrennt melden: Ein noch ladender oder
-                // ungesichert geänderter Tab ist KEIN Beleg für eine
-                // veraltete Trefferbasis.
-                if existing.hasUnsavedChanges {
-                    outcome?(.unsavedChanges)
-                    return
-                }
-                if existing.isLoading {
-                    outcome?(.busyLoading)
-                    return
-                }
-                guard existing.diskSnapshot == expectedDiskSnapshot else {
-                    outcome?(.staleSnapshot)
-                    return
-                }
-                let existingID = existing.id
-                // `diskSnapshot` beschreibt den zuletzt geladenen Stand des
-                // Tabs. Ein Fremdprogramm kann den Pfad danach ersetzt haben,
-                // bevor der Dateiwächter reagiert. Deshalb den aktuellen
-                // Plattenstand im Hintergrund erneut hashen und erst danach
-                // den bereits offenen Tab aktivieren.
-                Task.detached(priority: .userInitiated) { [weak self] in
-                    let currentDiskSnapshot = try? FileSnapshot.readSnapshotOnly(
-                        from: url, byteLimit: FileLoader.largeFileThreshold)
-                    await MainActor.run { [weak self] in
-                        guard let self, acceptance?.acceptsResult() != false else {
-                            outcome?(.cancelled)
-                            return
-                        }
-                        guard currentDiskSnapshot == expectedDiskSnapshot else {
-                            outcome?(.staleSnapshot)
-                            return
-                        }
-                        guard let currentIndex = self.tabs.firstIndex(where: {
-                            $0.id == existingID && $0.url == url
-                        }) else {
-                            // Der Tab wurde während des Hintergrund-Hashs
-                            // geschlossen — der Auftrag ist gegenstandslos.
-                            outcome?(.cancelled)
-                            return
-                        }
-                        if self.tabs[currentIndex].hasUnsavedChanges {
-                            outcome?(.unsavedChanges)
-                            return
-                        }
-                        if self.tabs[currentIndex].isLoading {
-                            outcome?(.busyLoading)
-                            return
-                        }
-                        guard self.tabs[currentIndex].diskSnapshot
-                                == expectedDiskSnapshot else {
-                            outcome?(.staleSnapshot)
-                            return
-                        }
-                        if !preview { self.tabs[currentIndex].isPreview = false }
-                        self.activeTabID = existingID
-                        self.noteRecentFile(url)
-                        self.synchronizeProjectWithActiveTabIfNeeded()
-                        outcome?(.opened)
-                    }
-                }
-                return
-            }
-            // Ein Doppelklick folgt in der Änderungen-Liste auf den bereits
-            // ausgeführten Einzelklick. Er findet denselben Tab und steckt ihn
-            // fest, statt einen zweiten zu öffnen.
-            if !preview { tabs[existingIdx].isPreview = false }
-            activeTabID = tabs[existingIdx].id
-            noteRecentFile(url)
-            synchronizeProjectWithActiveTabIfNeeded()
-            outcome?(.opened)
-            return
-        }
-
-        // ── (2) Platzhalter-Tab anlegen ───────────────────────────────────
-        // Der Tab ist sofort in der Tab-Leiste sichtbar (isLoading = true →
-        // Spinner statt Editor). Dadurch fühlt sich die App sofort reaktiv an,
-        // auch bei großen Dateien.
-        let replaceablePreviewIndex = preview
-            ? tabs.firstIndex(where: { $0.isPreview && !$0.hasUnsavedChanges })
-            : nil
-        let reusedID = replaceablePreviewIndex.map { tabs[$0].id }
-        let previousActiveTabID: UUID?
-        if let reusedID, activeTabID == reusedID {
-            previousActiveTabID = tabs.first(where: { $0.id != reusedID })?.id
-        } else {
-            previousActiveTabID = activeTabID
-        }
-        let placeholder = EditorTab(
-            id: reusedID ?? UUID(),
-            title: url.lastPathComponent,
-            path: url.deletingLastPathComponent().path,
-            url: url,
-            content: "",
-            isDirty: false,
-            isLoading: true,
-            isPreview: preview
-        )
-        // Ein etwaiger unberührter Start-Tab bleibt während des Ladens einfach
-        // stehen: Sein Willkommens-Platzhalter ist nur sichtbar, wenn ER aktiv
-        // ist — aktiv ist ab jetzt der Lade-Platzhalter. Nach erfolgreichem
-        // Laden räumt `tabsRemovingEmptyScratch` ihn ab; scheitert das Laden,
-        // ist er unverändert wieder da (keine Sonder-Maschinerie mehr nötig).
-        if let replaceablePreviewIndex {
-            // Derselbe Tab-Platz bleibt erhalten; dadurch springt die Leiste
-            // beim raschen Durchsehen vieler Dateien nicht nach links/rechts.
-            documentLanguageDetector.cancel(tabID: placeholder.id)
-            gitPreviewLoads.cancel(tabID: placeholder.id)
-            previewLoadCancellations.removeValue(forKey: placeholder.id)?.cancel()
-            comparisonTabID = nil
-            tabs[replaceablePreviewIndex] = placeholder
-        } else {
-            tabs.append(placeholder)
-        }
-        // Ein Ordner-Treffer wird erst nach dem Snapshot-Abgleich aktiviert.
-        // Bis der Hintergrund-Read fertig ist, bleibt das bisherige Dokument
-        // sichtbar und kann nicht durch eine veraltete Treffbasis verdrängt
-        // werden.
-        if expectedDiskSnapshot == nil {
-            activeTabID = placeholder.id
-        }
-
-        // ── (3) Generation hochzählen ─────────────────────────────────────
-        // Ermöglicht es, einen abgebrochenen Load zu erkennen (Tab schon
-        // gelöscht, oder inzwischen ein neuerer Load für dieselbe ID gestartet).
-        let tabID = placeholder.id
-        // Die Dokument-ID ist die eigentliche Ladeidentität: Ein recycelter
-        // Vorschauplatz behält seine Tab-ID, bekommt aber mit jedem neuen
-        // Inhalt eine frische Dokument-ID. Die Generation allein reicht nicht
-        // — sie wird nach jedem abgeschlossenen Laden aus dem Wörterbuch
-        // entfernt und beginnt für denselben Platz wieder bei 1, sodass ein
-        // sehr später alter Read dieselbe Nummer tragen kann wie der gerade
-        // laufende (Review 2026-09-02).
-        let placeholderDocumentID = placeholder.documentID
-        let generation = (loadGeneration[tabID] ?? 0) + 1
-        loadGeneration[tabID] = generation
-        let previewCancellation = preview ? PreviewLoadCancellation() : nil
-        if let previewCancellation {
-            previewLoadCancellations[tabID] = previewCancellation
-        }
-
-        // ── (4) Hintergrund-Task starten ──────────────────────────────────
-        startInitialFileRead(
-            url: url, tabID: tabID, placeholderDocumentID: placeholderDocumentID,
-            generation: generation, previewCancellation: previewCancellation,
-            expectedDiskSnapshot: expectedDiskSnapshot, acceptance: acceptance,
-            expectedGitContext: expectedGitContext,
-            previousActiveTabID: previousActiveTabID,
-            folderMatchReadToken: folderMatchReadToken, outcome: outcome
-        )
-    }
-
-    /// Schritt (4) von `loadFile`: liest `url` im Hintergrund und schreibt das
-    /// Ergebnis in den Platzhalter `tabID`. Eigene Methode, weil der Read sich
-    /// selbst neu starten muss, wenn die Seitenleiste den Platzhalter während
-    /// des Lesens umbenennt (`handleFileTreeMoveLocally`, Review 2026-09-03).
-    private func startInitialFileRead(
-        url: URL, tabID: UUID, placeholderDocumentID: UUID, generation: Int,
-        previewCancellation: PreviewLoadCancellation?,
-        expectedDiskSnapshot: FileSnapshot?, acceptance: FileLoadAcceptance?,
-        expectedGitContext: GitActionContext?, previousActiveTabID: UUID?,
-        folderMatchReadToken: UUID?,
-        outcome: ((FileLoadOutcome) -> Void)?
-    ) {
-        // [weak self]: Workspace darf verschwinden (z.B. Preview), ohne Leak.
-        let initialFileLoader = initialFileLoader
-        Task.detached(priority: .userInitiated) { [weak self] in
-            // I/O im Hintergrund — blockiert NICHT den Main-Thread.
-            let loadResult = Result {
-                if let previewCancellation {
-                    return try FileLoader.load(
-                        url: url,
-                        largeFileThreshold: FileLoader.editableFileThreshold,
-                        isCancelled: { previewCancellation.isCancelled }
-                    )
-                }
-                return try initialFileLoader(url)
-            }
-
-            // Zurück auf den Main-Thread für alle UI-/Model-Mutationen.
-            await MainActor.run { [weak self] in
-                // ── Completion garantieren ────────────────────────────────
-                // Die Completion hängt NICHT am Workspace: Schließt der Nutzer
-                // das Fenster während des Ladens, ist `self` hier nil — der
-                // Wartende (z. B. `SessionRestorationCoordinator`, der seine
-                // offenen Fenster ausschließlich über diese Rückmeldungen
-                // herunterzählt) bekäme sonst nie eine Antwort und lieferte
-                // gepufferte Finder-/CLI-Öffnungen nicht mehr aus.
-                // `report` ist einmalig; das `defer` fängt jeden Rückweg ab,
-                // auf dem sonst gar nichts gemeldet würde.
-                var didReport = false
-                func report(_ result: FileLoadOutcome) {
-                    guard !didReport else { return }
-                    didReport = true
-                    outcome?(result)
-                }
-                defer { report(.failed) }
-
-                guard let self else { return }
-
-                func discardPlaceholder() {
-                    // Nur wenn der Platzhalter beim Verwerfen selbst noch aktiv
-                    // ist, darf sein Verschwinden die Auswahl verschieben. Hat
-                    // der Nutzer während des Ladens bewusst einen anderen Tab
-                    // gewählt (z. B. beim Restore mehrerer Dateien), bliebe
-                    // ein bedingungsloser Rücksprung auf den gemerkten
-                    // Vorgängertab wie eine Geisterhand-Umschaltung zurück.
-                    let placeholderWasActive = self.activeTabID == tabID
-                    self.tabs.removeAll { $0.id == tabID }
-                    if self.tabs.isEmpty {
-                        let scratch = Self.makeScratchTab()
-                        self.tabs = [scratch]
-                        self.activeTabID = scratch.id
-                    } else if placeholderWasActive {
-                        if let previousActiveTabID,
-                           self.tabs.contains(where: { $0.id == previousActiveTabID }) {
-                            self.activeTabID = previousActiveTabID
-                        } else {
-                            self.activeTabID = self.tabs.first?.id
-                        }
-                    } else if !self.tabs.contains(where: { $0.id == self.activeTabID }) {
-                        // Sicherheitsnetz: Zeigt die Auswahl aus anderem Grund
-                        // ins Leere, fällt sie auf den ersten Tab zurück.
-                        self.activeTabID = self.tabs.first?.id
-                    }
-                }
-
-                // ── Generation-Guard ──────────────────────────────────────
-                // Wenn der Tab inzwischen geschlossen wurde (`loadGeneration`
-                // hat keine Eintrags-ID mehr) ODER eine neue Generation für
-                // diese ID gestartet wurde ODER unter dieser Tab-ID inzwischen
-                // ein anderes Dokument liegt (recycelter Vorschauplatz mit
-                // neuer Dokument-ID) → dieses Ergebnis verwerfen.
-                guard self.loadGeneration[tabID] == generation,
-                      let placeholderIndex = self.tabs.firstIndex(where: {
-                          $0.id == tabID && $0.documentID == placeholderDocumentID
-                      }) else {
-                    // Platzhalter kann weg sein (Nutzer hat Tab während des
-                    // Ladens geschlossen) — kein Fehler, einfach still beenden.
-                    // Aufräumen: Ist der Tab weg, kommt seine UUID nie wieder
-                    // → Generation-Eintrag entfernen, sonst bliebe er für
-                    // immer im Dictionary. (Bei bloß veralteter Generation
-                    // bleibt der Eintrag — er gehört dem neueren Ladevorgang.)
-                    if !self.tabs.contains(where: { $0.id == tabID }) {
-                        self.loadGeneration.removeValue(forKey: tabID)
-                    }
-                    report(.cancelled)
-                    return
-                }
-
-                // ── Während des Ladens umbenannt ──────────────────────────
-                // Derselbe Platzhalter (Tab- und Dokument-ID unverändert,
-                // Generation noch unsere) trägt eine andere URL: Die
-                // Seitenleiste hat die Datei während des Reads umbenannt
-                // (`handleFileTreeMoveLocally`). Das Ergebnis stammt vom
-                // alten Pfad und wird nicht übernommen. Den Platzhalter
-                // einfach zu verwerfen oder still liegen zu lassen wäre aber
-                // falsch: Er bliebe unter dem neuen Pfad für immer im
-                // Ladezustand, und ein erneutes Öffnen fände nur den
-                // ladenden Tab (Review 2026-09-03). Deshalb denselben Auftrag
-                // mit neuer Generation für den neuen Pfad noch einmal
-                // starten; die Rückmeldung an den Aufrufer übernimmt der
-                // neue Read — deswegen hier ausdrücklich nichts melden.
-                if let movedURL = self.tabs[placeholderIndex].url, movedURL != url {
-                    // Ab hier liest dieser Read einen anderen Pfad. Einen
-                    // Ordner-Sprung, der noch auf den alten wartet, dürfte er
-                    // dann nicht mehr bedienen — der bekommt seinen eigenen
-                    // Read (Review 2026-09-04). Mit der Zuständigkeit fällt
-                    // auch die Gültigkeitsprüfung des Sprungs weg: Sie hängt
-                    // am freigegebenen Wartenden und würde den umbenannten
-                    // Platzhalter sonst als entwertet verwerfen. Ein Read mit
-                    // Sprung-Kennung hat keine andere Bindung.
-                    var movedAcceptance = acceptance
-                    if let folderMatchReadToken {
-                        self.releaseFolderMatchRead(token: folderMatchReadToken,
-                                                    forPathOf: url)
-                        movedAcceptance = nil
-                    }
-                    let nextGeneration = generation + 1
-                    self.loadGeneration[tabID] = nextGeneration
-                    self.startInitialFileRead(
-                        url: movedURL, tabID: tabID,
-                        placeholderDocumentID: placeholderDocumentID,
-                        generation: nextGeneration,
-                        previewCancellation: previewCancellation,
-                        expectedDiskSnapshot: expectedDiskSnapshot,
-                        acceptance: movedAcceptance,
-                        expectedGitContext: expectedGitContext,
-                        previousActiveTabID: previousActiveTabID,
-                        folderMatchReadToken: nil,
-                        outcome: outcome
-                    )
-                    didReport = true
-                    return
-                }
-
-                // Sitzungs-Restore und andere gebundene Aufrufer prüfen ihre
-                // Gültigkeit VOR dem Publizieren des fertigen Tabs. Besonders
-                // nach `closeProject()` darf ein verspäteter Restore-Load nicht
-                // mehr über die automatische Projektsynchronisierung den eben
-                // geschlossenen Ordner wieder öffnen.
-                guard acceptance?.acceptsResult() != false else {
-                    self.loadGeneration.removeValue(forKey: tabID)
-                    discardPlaceholder()
-                    report(.cancelled)
-                    return
-                }
-
-                // Eintrags-ID verbraucht → aus dem Dictionary entfernen.
-                self.loadGeneration.removeValue(forKey: tabID)
-                if let previewCancellation,
-                   self.previewLoadCancellations[tabID] === previewCancellation {
-                    self.previewLoadCancellations.removeValue(forKey: tabID)
-                }
-
-                // Dateiöffnungen aus der Änderungen-Liste gehören zum beim
-                // Klick eingefrorenen Repository. Nach Projektwechsel oder
-                // Schließen darf ein später Read den alten Kontext keinesfalls
-                // über den aktiven Dateitab erneut öffnen.
-                if let expectedGitContext,
-                   !expectedGitContext.isCurrent(in: self) {
-                    self.tabs.removeAll { $0.id == tabID }
-                    if self.tabs.isEmpty {
-                        let scratch = Self.makeScratchTab()
-                        self.tabs = [scratch]
-                        self.activeTabID = scratch.id
-                    } else if !self.tabs.contains(where: { $0.id == self.activeTabID }) {
-                        self.activeTabID = self.tabs.first?.id
-                    }
-                    report(.cancelled)
-                    return
-                }
-
-                switch loadResult {
-                case .success(let loaded):
-                    // ── Erfolg ────────────────────────────────────────────
-                    // Inhalt in den Platzhalter-Tab schreiben und isLoading
-                    // auf false setzen. Der EditorView reagiert darauf:
-                    // isLoading-Kippen → `.id(activeTab.id)` erzeugt den
-                    // SourceEditor NEU → makeNSViewController läuft mit
-                    // fertigem Inhalt (CESE-Falle umgangen).
-                    guard let idx = self.tabs.firstIndex(where: {
-                        $0.id == tabID && $0.documentID == placeholderDocumentID
-                    }) else {
-                        report(.cancelled)
-                        return
-                    }
-                    guard expectedDiskSnapshot == nil
-                            || loaded.diskSnapshot == expectedDiskSnapshot else {
-                        discardPlaceholder()
-                        report(.staleSnapshot)
-                        return
-                    }
-                    // Den fertigen Tab lokal aufbauen und erst einmalig
-                    // publizieren. Feldweise Zuweisungen an `tabs[idx]`
-                    // lösten vorher für ein einziges Laden mehr als zehn
-                    // vollständige SwiftUI-/Such-/Statistik-Runden aus.
-                    var loadedTab = self.tabs[idx]
-                    loadedTab.content    = loaded.content
-                    loadedTab.encoding   = loaded.encoding
-                    loadedTab.bom        = loaded.bom
-                    loadedTab.lineEnding = loaded.lineEnding
-                    loadedTab.displayMode = loaded.displayMode
-                    loadedTab.fileSize = loaded.fileSize
-                    loadedTab.diskSnapshot = loaded.diskSnapshot
-                    loadedTab.recordExternalFileObservation(
-                        snapshot: loaded.diskSnapshot,
-                        observation: loaded.externalObservation,
-                        contentLoaded: true
-                    )
-                    loadedTab.isDirty = false
-                    // Früher manuell gewähltes Format dieser Datei zurückholen,
-                    // BEVOR der Editor mit `isLoading = false` entsteht.
-                    self.applyRememberedLanguageChoice(to: &loadedTab)
-                    loadedTab.isLoading = false
-                    // Frisch geladener Plattenstand ist die Vergleichsbasis,
-                    // gegen die der Punkt im Tab künftig verschwinden kann.
-                    loadedTab.recordSavedContentBaseline()
-                    // BBEdit-Verhalten: das leere unbenannte Start-/Scratch-
-                    // Dokument abräumen, sobald eine echte Datei geladen ist
-                    // (der gerade geladene Tab bleibt erhalten).
-                    var loadedTabs = self.tabs
-                    loadedTabs[idx] = loadedTab
-                    self.tabs = Workspace.tabsRemovingEmptyScratch(
-                        loadedTabs,
-                        keeping: tabID
-                    )
-                    if expectedDiskSnapshot != nil {
-                        self.activeTabID = tabID
-                    }
-                    self.noteRecentFile(url)
-                    self.synchronizeProjectWithActiveTabIfNeeded()
-                    AppDelegate.inspectRecovery(forOpenedDocument: url)
-                    report(.opened)
-
-                case .failure(let error):
-                    // ── Fehler ────────────────────────────────────────────
-                    // Platzhalter entfernen und früheren Tab reaktivieren.
-                    // Ein etwaiger Start-Tab wurde nie angerührt und steht
-                    // damit von selbst wieder da.
-                    if case FileLoader.LoadError.cancelled = error {
-                        // Der nächste Vorschauklick ist bereits sichtbar; der
-                        // alte Hintergrundlauf endet absichtlich geräuschlos.
-                        discardPlaceholder()
-                        report(.cancelled)
-                        return
-                    }
-                    NSSound.beep()
-                    discardPlaceholder()
-                    report(.failed)
-                }
-            }
+        withDocumentFileLoads { loads in
+            loads.open(at: url, preview: preview, expectedGitContext: expectedGitContext,
+                       expectedDiskSnapshot: expectedDiskSnapshot, acceptance: acceptance,
+                       folderMatchReadToken: folderMatchReadToken, outcome: outcome)
         }
     }
 
@@ -4114,7 +3531,7 @@ final class Workspace: ObservableObject {
         }
         func rollback(_ prepared: MarkdownSaveAs.Prepared) {
             guard !prepared.createdImages.isEmpty else { complete(false); return }
-            MarkdownImageUndoSideEffect.perform({ prepared.rollback(); return true }) { _ in complete(false) }
+            prepared.rollbackReporting(warningHandler: saveSafetyWarningHandler) { complete(false) }
         }
         func finish(_ prepared: MarkdownSaveAs.Prepared) {
             if synchronizeVisualMarkdownBefore({ finish(prepared) }, onFailure: {
@@ -4187,13 +3604,13 @@ final class Workspace: ObservableObject {
         if previousURL != url, visualMarkdownEditor?.tabID == tabs[idx].id {
             visualMarkdownEditor?.invalidateForSourceReplacement()
         }
-        // Die manuelle Formatwahl gehört zur DATEI und muss deshalb am NEUEN
+        // Die manuelle Formatwahl gehört zur Datei und muss deshalb am neuen
         // Pfad landen. Bei einem noch nie gespeicherten Tab war sie mangels
         // URL überhaupt nicht abgelegt (siehe `rememberLanguageChoice`), bei
         // einer bestehenden Datei hing sie am alten Pfad. Ohne diese Zeile
         // öffnete die eben geschriebene Datei wieder mit der Automatik —
-        // gerade bei einer Datei ohne Endung fällt das sofort auf
-        // (Review 2026-08-06). „Automatisch" schreibt bewusst `nil` und
+        // gerade bei einer Datei ohne Endung fällt das sofort auf.
+        // „Automatisch" schreibt bewusst `nil` und
         // löscht damit eine ältere Wahl am Zielpfad.
         rememberLanguageChoice(currentLanguageChoiceID(forTabAt: idx),
                                forTabAt: idx)
@@ -4449,10 +3866,10 @@ final class Workspace: ObservableObject {
         }
     }
 
-    // MARK: - Projekte (Projekt- & Git-Ausbau, Etappe 1)
+    // MARK: - Projekte
 
     /// Merkt sich einen Projekt-Ordner oben in `recentProjects` — nur die
-    /// Liste, lädt NICHT das Projekt (Persistenz via Combine-Sink in `init`).
+    /// Liste, lädt nicht das Projekt (Persistenz via Combine-Sink in `init`).
     func noteRecentProject(_ url: URL) {
         // Wie bei `recentFiles` hält jedes Fenster nur eine lokale Ansicht.
         // Vor dem Schreiben deshalb den gemeinsamen Stand zusammenführen.
@@ -4460,15 +3877,14 @@ final class Workspace: ObservableObject {
         recentProjects = ProjectStore.prepending(url.path, to: persisted)
     }
 
-    // MARK: - Etappe-1-UX (Wunschpaket 2026-07)
+    // MARK: - Etappe-1-UX
 
-    /// Wählt den Ordner für das AUTOMATISCHE Projekt-Öffnen (Etappe 1
-    /// Wunschpaket 2026-07b): Liegt die Datei in einem Git-Repository, ist
-    /// dessen Wurzelordner das Ziel — so passen Seitenleisten-Anzeige und
-    /// Git-Funktionen (die den Root ohnehin selbst finden) zusammen. Ohne
-    /// Repo bleibt es beim unmittelbaren Elternordner. Gilt bewusst NUR für
-    /// diesen Auto-Pfad: Wer explizit einen Unterordner als Projekt öffnet,
-    /// behält ihn. Pure Funktion → unit-testbar.
+    /// Wählt den Ordner für das automatische Projekt-Öffnen: Liegt die Datei in
+    /// einem Git-Repository, ist dessen Wurzelordner das Ziel — so passen
+    /// Seitenleisten-Anzeige und Git-Funktionen (die den Root ohnehin selbst
+    /// finden) zusammen. Ohne Repo bleibt es beim unmittelbaren Elternordner.
+    /// Gilt bewusst nur für diesen Auto-Pfad: Wer explizit einen Unterordner
+    /// als Projekt öffnet, behält ihn. Pure Funktion → unit-testbar.
     static func autoProjectFolder(for url: URL,
                                   fileManager: FileManager = .default) -> URL? {
         if let root = ProjectStore.repositoryRoot(for: url, fileManager: fileManager) {
@@ -4557,7 +3973,7 @@ final class Workspace: ObservableObject {
         }
     }
 
-    // MARK: - Inhaltsbasierte Spracherkennung (Etappe 3 Wunschpaket 2026-07)
+    // MARK: - Inhaltsbasierte Spracherkennung
 
     /// Fensterlokale Mechanik für Debounce, Hintergrundarbeit und veraltete
     /// Ergebnisse. Eignung und jede Mutation des Tab-Zustands bleiben hier.
@@ -4643,7 +4059,7 @@ final class Workspace: ObservableObject {
             editorReloadNonce += 1
         }
         tabs[idx].languageOverride = language
-        // Die Wahl gehört zur DATEI, nicht nur zum offenen Tab: Beim nächsten
+        // Die Wahl gehört zur Datei, nicht nur zum offenen Tab: Beim nächsten
         // Öffnen soll dieselbe Datei wieder mit diesem Format erscheinen.
         rememberLanguageChoice(
             language.map { LanguageMenuSupport.Entry.grammar($0).id },
@@ -4662,7 +4078,7 @@ final class Workspace: ObservableObject {
         }
     }
 
-    /// Manuelle Wahl einer EIGEN-Sprache aus der Registry (derzeit 4D):
+    /// Manuelle Wahl einer Eigen-Sprache aus der Registry (derzeit 4D):
     /// aktiviert Provider + Theme unabhängig von der Dateiendung. Die
     /// Endungs-Automatik bleibt unangetastet; „Automatisch“ oder eine
     /// Grammatik-Wahl (`setLanguageOverride`) verlassen die Eigen-Sprache
@@ -4689,7 +4105,7 @@ final class Workspace: ObservableObject {
         languageChoices.setChoiceID(entryID, for: url)
     }
 
-    /// Der Menü-Bezeichner der aktuell wirksamen MANUELLEN Wahl eines Tabs —
+    /// Der Menü-Bezeichner der aktuell wirksamen manuellen Wahl eines Tabs —
     /// `nil`, wenn die Automatik gilt. Eine Eigen-Sprache trägt ihre Kennung
     /// selbst als Bezeichner (`LanguageMenuSupport.Entry.custom`), eine
     /// Grammatik bekommt den `grammar.`-Bezeichner.
@@ -4702,7 +4118,7 @@ final class Workspace: ObservableObject {
     }
 
     /// Holt eine gemerkte Formatwahl auf einen frisch geladenen Tab zurück.
-    /// Läuft VOR dem ersten Editor-Aufbau, damit Grammatik und Chip von
+    /// Läuft vor dem ersten Editor-Aufbau, damit Grammatik und Chip von
     /// Anfang an stimmen und kein sichtbarer Sprachwechsel nachflackert.
     private func applyRememberedLanguageChoice(toTabAt idx: Int) {
         var tab = tabs[idx]
@@ -4731,7 +4147,7 @@ final class Workspace: ObservableObject {
         )
     }
 
-    // MARK: - XPath-Navigation (Etappe 5 Wunschpaket 2026-07)
+    // MARK: - XPath-Navigation
 
     /// Dateitypen mit XPath-Leiste (XML-artige Quelltexte).
     static let xpathExtensions: Set<String> = [
@@ -4739,7 +4155,7 @@ final class Workspace: ObservableObject {
     ]
 
     /// XPath ist für den aktiven Tab verfügbar, wenn der Dateityp XML-artig
-    /// ist UND gerade der Quelltext sichtbar ist (SVG-Vorschau z. B. nicht —
+    /// ist und gerade der Quelltext sichtbar ist (SVG-Vorschau z. B. nicht —
     /// gesprungen wird im Text).
     var activeTabSupportsXPath: Bool {
         guard let tab = activeTab, tab.gitKind == nil,
@@ -4753,7 +4169,7 @@ final class Workspace: ObservableObject {
         return activeViewMode == .text
     }
 
-    // MARK: - Ansichts-Umschalter (Etappe 2 Wunschpaket 2026-07)
+    // MARK: - Ansichts-Umschalter
 
     /// Verfügbare Ansichten des aktiven Tabs (Umschalter + Menüpunkte).
     /// Git-Ansichten und Datei-Vergleiche haben keinen Umschalter.
@@ -5075,18 +4491,16 @@ final class Workspace: ObservableObject {
         }
     }
 
-    /// Lädt einen Ordner als Projekt: Dateibaum-Seitenleiste zeigt ihn,
-    /// der Ordner wandert in die Zuletzt-benutzt-Liste. URL wird kanonisiert —
+    /// Lädt einen Ordner als Projekt: Dateibaum-Seitenleiste zeigt ihn, der
+    /// Ordner wandert in die Zuletzt-benutzt-Liste. URL wird kanonisiert —
     /// gleiche Begründung wie in `loadFile` (Dedup über URL-Formen hinweg).
-    ///
-    /// `keepingUnrelatedTabs`: Beim IMPLIZITEN Öffnen (Einzeldatei ohne
-    /// Projekt → Elternordner erscheint in der Seitenleiste, Etappe 1
-    /// Wunschpaket 2026-07) dürfen fremde offene Tabs NICHT geschlossen
-    /// werden — der Nutzer hat keinen Projektwechsel verlangt. Nur der
-    /// ausdrückliche Wechsel (Willkommensseite, ⌘⇧O) räumt wie bisher auf.
-    /// Ein unberührter leerer Start-Tab bleibt in beiden Fällen einfach
-    /// stehen — sein Willkommens-Platzhalter zeigt sich nur, solange er
-    /// selbst aktiv ist.
+    /// `keepingUnrelatedTabs`: Beim impliziten Öffnen (Einzeldatei ohne Projekt
+    /// → Elternordner erscheint in der Seitenleiste, der aktuellen
+    /// Sprachauswahl) dürfen fremde offene Tabs nicht geschlossen werden — der
+    /// Nutzer hat keinen Projektwechsel verlangt. Nur der ausdrückliche Wechsel
+    /// (Willkommensseite, ⌘⇧O) räumt wie bisher auf. Ein unberührter leerer
+    /// Start-Tab bleibt in beiden Fällen einfach stehen — sein
+    /// Willkommens-Platzhalter zeigt sich nur, solange er selbst aktiv ist.
     func openProject(at url: URL, keepingUnrelatedTabs: Bool = false,
                      invalidatingSessionRestore: Bool = true) {
         if invalidatingSessionRestore { sessionRestoreGeneration &+= 1 }
@@ -5105,20 +4519,15 @@ final class Workspace: ObservableObject {
             activeTabID = tabs.first?.id
         }
         // Markierter Seitenleisten-Ordner, Hinweis und Dateinamens-Filter
-        // gehören zum ALTEN Projektbaum → beim Wechsel zurücksetzen.
+        // gehören zum alten Projektbaum → beim Wechsel zurücksetzen.
         selectedFileTreeFolder = nil
         sidebarNotice = nil
         fileTreeFilterQuery = ""
-        // Auch das ERGEBNIS des Filters, nicht nur der Suchtext: Steht beim
-        // Wechsel der Graph-Tab vorn, existiert `FileTreeSidebar` gar nicht und
-        // kann es über seinen `onChange`-Pfad nicht wegräumen. Tippt der Nutzer
-        // im neuen Projekt denselben Filtertext, galten sonst die Pfade des
-        // alten Projekts als Treffer, bis der neue Scan fertig war
-        // (Review-Fund 2026-08-25).
+        // Auch das Filterergebnis leeren. Bei aktivem Graph-Tab ist FileTreeSidebar
+        // nicht montiert und kann dies nicht per `onChange` tun; alte Projektpfade
+        // dürfen bis zum neuen Scan nicht als Treffer gelten.
         fileTreeFilterResult = nil
-        // Die Scroll-Schlüssel der Seitenleiste sind projektübergreifend
-        // dieselben. Ohne Leerung öffnete das neue Projekt an der Position des
-        // alten (Review-Fund 2026-08-25).
+        // Projektübergreifend gleiche Scroll-Schlüssel beim Projektwechsel leeren.
         sidebarScrollMemory.removeAll()
         // Wurden ausschließlich saubere Dateien eines anderen Projekts
         // geschlossen, braucht das neue Projekt wieder einen Editor-Tab.
@@ -5194,10 +4603,8 @@ final class Workspace: ObservableObject {
             guard let self, self.projectGeneration == generation,
                   self.projectURL == url else { return }
             self.gitAutoFetchObservation = self.gitAutoFetchController?.observe(
-                repository: url
-            ) { completion in
-                Self.promptForAutomaticFetch(completion: completion)
-            }
+                repository: url, prompt: self.gitInteraction.automaticFetchPromptHandler()
+            )
             self.gitRepositoryStore.refresh(repository: url, scope: .full)
         }
         if let resolver = gitRepositoryIdentityResolver {
@@ -5281,31 +4688,164 @@ final class Workspace: ObservableObject {
         showsConflictBase = false
     }
 
+    private struct FileTreeRenameTabBinding: Hashable {
+        let workspace: ObjectIdentifier
+        let tabID: UUID
+        let documentID: UUID
+    }
+
+    @MainActor
+    func renameFileTreeItem(at source: URL, to name: String,
+                            completion: @escaping (Result<URL, Error>) -> Void) {
+        do {
+            let destination = try FileTreeOperations.destination(named: name, in: source.deletingLastPathComponent())
+            let workspaces = fileTreeMutationWorkspaces()
+            let editors = fileTreeRenameVisualEditors(for: source, in: workspaces)
+            var sourceInfo = stat()
+            guard MarkdownFormat.isMarkdown(format: DocumentFormatResolver.resolve(filename: source.lastPathComponent)),
+                  MarkdownFormat.isMarkdown(format: DocumentFormatResolver.resolve(filename: destination.lastPathComponent)),
+                  source.pathExtension.caseInsensitiveCompare(destination.pathExtension) == .orderedSame,
+                  lstat(source.path, &sourceInfo) == 0,
+                  sourceInfo.st_mode & S_IFMT == S_IFREG,
+                  !editors.isEmpty else {
+                performFileTreeRename(from: source, to: destination, completion: completion)
+                return
+            }
+            let bindings = fileTreeRenameTabBindings(for: source, in: workspaces)
+            guard editors.allSatisfy({ fileTreeRenameEditorIsBound($0, to: source) }),
+                  !workspaces.contains(where: { owner in owner.tabs.contains { $0.url?.canonicalFileURL == destination.canonicalFileURL } }) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            // Erst den sichtbaren DOM und laufende Bildaktionen abschließen.
+            // Eine frühere Pfadsperre würde deren noch nötige Übernahme ablehnen.
+            Task { @MainActor in
+                var holds: [MarkdownVisualCoordinator.ActionHold] = []
+                let synchronized: Bool = await withCheckedContinuation { continuation in
+                    let group = DispatchGroup()
+                    var success = true
+                    for (_, editor) in editors {
+                        group.enter()
+                        editor.synchronize(holdingInput: true) { accepted, hold in
+                            success = success && accepted
+                            if let hold { holds.append(hold) }
+                            group.leave()
+                        }
+                    }
+                    group.notify(queue: .main) { continuation.resume(returning: success) }
+                }
+                defer { holds.forEach { $0.finish() } }
+                do {
+                    let currentWorkspaces = self.fileTreeMutationWorkspaces(including: workspaces)
+                    let currentEditors = self.fileTreeRenameVisualEditors(for: source, in: currentWorkspaces)
+                    guard synchronized,
+                          bindings == self.fileTreeRenameTabBindings(for: source, in: currentWorkspaces),
+                          currentEditors.count == editors.count,
+                          editors.allSatisfy({ captured in
+                              self.fileTreeRenameEditorIsBound(captured, to: source)
+                                  && currentEditors.contains { $0.0 === captured.0 && $0.1 === captured.1 }
+                                  && holds.contains { $0.isCurrent(for: captured.1) }
+                          }),
+                          !currentWorkspaces.contains(where: { owner in owner.tabs.contains { $0.url?.canonicalFileURL == destination.canonicalFileURL } }) else {
+                        throw CocoaError(.fileWriteUnknown)
+                    }
+                    // Nur denselben regulären Plattenstand umbenennen. Das Ziel
+                    // kann während der WebKit-Rückmeldung fremd belegt worden sein.
+                    var currentInfo = stat()
+                    guard lstat(source.path, &currentInfo) == 0,
+                          currentInfo.st_mode & S_IFMT == S_IFREG,
+                          FileSnapshot.describesSameOpenedVersion(sourceInfo, currentInfo) else {
+                        throw CocoaError(.fileWriteUnknown)
+                    }
+                    _ = try FileTreeOperations.destination(named: name, in: source.deletingLastPathComponent())
+                    var targetInfo = stat()
+                    guard lstat(destination.path, &targetInfo) != 0, errno == ENOENT else {
+                        throw FileTreeOperationError.alreadyExists(destination.lastPathComponent)
+                    }
+                    self.performFileTreeRename(from: source, to: destination,
+                                               preservingVisualSession: true, completion: completion)
+                } catch {
+                    completion(.failure(error))
+                }
+            }
+        } catch {
+            completion(.failure(error))
+        }
+    }
+
+    private func fileTreeRenameTabBindings(for source: URL, in workspaces: [Workspace]) -> Set<FileTreeRenameTabBinding> {
+        Set(workspaces.flatMap { owner in
+            owner.tabs.compactMap { tab in
+                guard tab.url?.canonicalFileURL == source.canonicalFileURL else { return nil }
+                return FileTreeRenameTabBinding(workspace: ObjectIdentifier(owner), tabID: tab.id, documentID: tab.documentID)
+            }
+        })
+    }
+
+    private func fileTreeRenameVisualEditors(for source: URL, in workspaces: [Workspace]) -> [(Workspace, MarkdownVisualCoordinator)] {
+        workspaces.compactMap { owner in
+            guard let editor = owner.visualMarkdownEditor, editor.web != nil,
+                  editor.documentURL?.canonicalFileURL == source.canonicalFileURL
+                    || owner.tabs.contains(where: { $0.id == editor.tabID && $0.url?.canonicalFileURL == source.canonicalFileURL }) else { return nil }
+            return (owner, editor)
+        }
+    }
+
+    private func fileTreeRenameEditorIsBound(_ captured: (Workspace, MarkdownVisualCoordinator), to source: URL) -> Bool {
+        let (owner, editor) = captured
+        return owner.visualMarkdownEditor === editor && editor.workspace === owner && editor.ready
+            && owner.activeMarkdownIsVisual && owner.activeTabID == editor.tabID
+            && owner.activeTab?.url?.canonicalFileURL == source.canonicalFileURL
+            && editor.documentURL?.canonicalFileURL == source.canonicalFileURL
+    }
+
+    @MainActor
+    private func performFileTreeRename(from source: URL, to destination: URL,
+                                       preservingVisualSession: Bool = false,
+                                       completion: (Result<URL, Error>) -> Void) {
+        do {
+            guard let operation = beginFileTreeMove(from: source, to: destination) else {
+                completion(.failure(CancellationError()))
+                return
+            }
+            defer { finishFileTreeMove(operation) }
+            let moved = try FileTreeOperations.rename(source, to: destination.lastPathComponent)
+            handleFileTreeMove(from: source, to: moved, operation: operation,
+                               preservingVisualSession: preservingVisualSession)
+            completion(.success(moved))
+        } catch {
+            completion(.failure(error))
+        }
+    }
+
     /// Zieht offene Tabs nach einer Datei- oder Ordner-Umbenennung mit. Ohne
     /// diese Kopplung würde ein späteres ⌘S am alten Pfad eine zweite Datei
     /// erzeugen. Bei Ordnern werden alle darin geöffneten Dateien angepasst.
     func handleFileTreeMove(
         from source: URL,
         to destination: URL,
-        operation: FileTreeMoveOperation? = nil
+        operation: FileTreeMoveOperation? = nil,
+        preservingVisualSession: Bool = false
     ) {
         // Die gemerkten Formatwahlen hängen am Dateipfad und müssen deshalb
         // mitwandern. Das gilt auch für Dateien in einem verschobenen Ordner,
         // die gar nicht offen sind — für sie gibt es keinen Tab, über den man
-        // später nachbessern könnte (Review 2026-08-06).
+        // später nachbessern könnte.
         languageChoices.moveChoices(from: source, to: destination)
         for workspace in fileTreeMutationWorkspaces(
             including: operation?.workspaces ?? []
         ) {
-            workspace.handleFileTreeMoveLocally(from: source, to: destination)
+            workspace.handleFileTreeMoveLocally(from: source, to: destination, preservingVisualSession: preservingVisualSession)
         }
     }
 
-    private func handleFileTreeMoveLocally(from source: URL, to destination: URL) {
+    private func handleFileTreeMoveLocally(from source: URL, to destination: URL, preservingVisualSession: Bool) {
         for index in tabs.indices {
             guard let oldURL = tabs[index].url,
                   let newURL = Self.movedURL(oldURL, from: source, to: destination)
             else { continue }
+            if preservingVisualSession, visualMarkdownEditor?.tabID == tabs[index].id {
+                visualMarkdownEditor?.relocateDocument(from: oldURL, to: newURL.canonicalFileURL)
+            }
             tabs[index].url = newURL.canonicalFileURL
             tabs[index].title = newURL.lastPathComponent
             tabs[index].path = newURL.deletingLastPathComponent().path
@@ -5515,8 +5055,7 @@ final class Workspace: ObservableObject {
         let previousActive = activeTabID
         for id in nonTextTabIDs {
             guard let index = tabs.firstIndex(where: { $0.id == id }) else { continue }
-            previewLoadCancellations.removeValue(forKey: id)?.cancel()
-            loadGeneration.removeValue(forKey: id)
+            withDocumentFileLoads { $0.remove(tabID: id) }
             documentLanguageDetector.cancel(
                 tabID: id, documentID: tabs[index].documentID
             )
@@ -5549,7 +5088,7 @@ final class Workspace: ObservableObject {
         return destination.appendingPathComponent(suffix)
     }
 
-    // MARK: - Git-Status (Projekt- & Git-Ausbau, Etappe 2)
+    // MARK: - Git-Status
 
     /// Aktualisiert nur den Status; Branches und Graph bleiben aus dem letzten
     /// vollständigen, gemeinsam revidierten Snapshot erhalten.
@@ -5585,7 +5124,7 @@ final class Workspace: ObservableObject {
     /// außen vor: Ein Klick soll keinen impliziten Tracking-Branch erzeugen.
     func refreshGitBranches() {
         guard let root = projectURL, GitRunner.isAvailable else { return }
-        // Eine ausdrückliche Branch-Aktualisierung muss NACH einem schon
+        // Eine ausdrückliche Branch-Aktualisierung muss nach einem schon
         // laufenden Full-Batch nochmals lesen. Sonst kann ein externer
         // Checkout genau während dieses Batches dauerhaft unsichtbar bleiben.
         gitRepositoryStore.refresh(
@@ -5670,7 +5209,7 @@ final class Workspace: ObservableObject {
         return GitFileHistory.relativePath(of: url, in: root) != nil
     }
 
-    /// Schränkt den Graph-Tab auf den Verlauf EINER Datei ein und zeigt ihn.
+    /// Schränkt den Graph-Tab auf den Verlauf einer Datei ein und zeigt ihn.
     /// Aufrufer ist „Git-Historie anzeigen" im Kontextmenü des Dateibaums.
     func showGitHistory(for url: URL) {
         guard let root = projectURL, gitStatus != nil, GitRunner.isAvailable,
@@ -5704,7 +5243,7 @@ final class Workspace: ObservableObject {
     ///
     /// Die Generation verwirft die Antwort eines überholten Laufs: Klickt der
     /// Nutzer schnell hintereinander zwei Dateien an, darf die spätere Antwort
-    /// der ERSTEN Datei die inzwischen sichtbare zweite nicht überschreiben.
+    /// der ersten Datei die inzwischen sichtbare zweite nicht überschreiben.
     private func loadGitFileHistory(_ file: GitHistoryFile) {
         guard let context = currentGitActionContext, GitRunner.isAvailable else { return }
         gitFileHistoryLease?.cancel()
@@ -5749,7 +5288,7 @@ final class Workspace: ObservableObject {
         loadGitFileHistory(file)
     }
 
-    // MARK: - Git-Text-Tabs: History & Diff (Etappe 2, Schritt 2+3)
+    // MARK: - Git-Text-Tabs: History & Diff
 
     /// Öffnet den Verlaufs-Graphen (`git log --graph`) als read-only-Tab.
     func openGitLog() {
@@ -5809,7 +5348,7 @@ final class Workspace: ObservableObject {
         // den Diff dieser Datei bereits als Vorschau geöffnet. Die dauerhafte
         // Datei übernimmt dann den Tabplatz dieser Diff-Vorschau, statt
         // daneben aufzugehen und die Vorschau verwaist stehen zu lassen.
-        // Eine Vorschau zu einer ANDEREN Datei bleibt unberührt.
+        // Eine Vorschau zu einer anderen Datei bleibt unberührt.
         let supersededDiff = preview ? nil : tabs.first(where: {
             $0.isPreview && !$0.hasUnsavedChanges
                 && $0.gitDiffRequest?.source.changeListPath == path
@@ -6173,15 +5712,8 @@ final class Workspace: ObservableObject {
             $0.isPreview && !$0.hasUnsavedChanges
         }) else { return nil }
         let id = tabs[index].id
-        // Einen noch laufenden Datei-Read dieses Platzes entwerten, ohne den
-        // Zähler auf einen wiederverwendbaren Anfangswert zurückzusetzen:
-        // Nach `removeValue` bekäme der nächste `loadFile` desselben Platzes
-        // wieder Generation 1 — genau die Nummer, mit der ein alter, noch
-        // nicht zugestellter Read unterwegs sein kann. Der landete dann mit
-        // dem Inhalt der zuvor angeklickten Datei im Tab der neuen (Review
-        // 2026-09-02). Hochzählen entwertet ihn und hält die Folge lückenlos.
-        loadGeneration[id] = (loadGeneration[id] ?? 0) + 1
-        previewLoadCancellations.removeValue(forKey: id)?.cancel()
+        // Die laufende Ladeantwort gehört zum bisherigen Vorschau-Dokument.
+        withDocumentFileLoads { $0.supersede(tabID: id) }
         documentLanguageDetector.cancel(tabID: id)
         gitPreviewLoads.cancel(tabID: id)
         comparisonTabID = nil
@@ -6197,7 +5729,7 @@ final class Workspace: ObservableObject {
         tabs[index].gitDiff?.document = document
     }
 
-    // MARK: - Datei-Vergleich (Etappe 1 Wunschpaket 2026-07c)
+    // MARK: - Datei-Vergleich
 
     /// Öffnet einen Datei-Vergleichs-Tab und startet die Berechnung im
     /// Hintergrund. Ein inhaltlich gleicher Vergleich (Seiten + Optionen)
@@ -6240,7 +5772,7 @@ final class Workspace: ObservableObject {
         // Helfer bricht den Task dann in seinem deinit ab.
         let task = Task.detached(priority: .userInitiated) { [weak self] in
             // Abbruch kommt als `CancellationError` zurück: dann gibt es
-            // kein Dokument, das irgendwo landen könnte. Jeder ANDERE Fehler
+            // kein Dokument, das irgendwo landen könnte. Jeder andere Fehler
             // wird als Vergleichsfehler angezeigt, statt den Tab dauerhaft im
             // Ladezustand zu lassen (heute wirft der Kern nur den Abbruch;
             // eine injizierte oder erweiterte Berechnung darf mehr).
@@ -6339,7 +5871,7 @@ final class Workspace: ObservableObject {
     }
 
     /// „Mit gespeicherter Fassung vergleichen" (BBEdit „Compare Against Disk
-    /// File") ist nur sinnvoll, wenn der aktive Tab eine Datei MIT
+    /// File") ist nur sinnvoll, wenn der aktive Tab eine Datei mit
     /// ungespeicherten Änderungen zeigt.
     var canCompareActiveTabAgainstDisk: Bool {
         guard let tab = activeTab, tab.gitKind == nil, tab.fileDiffRequest == nil,
@@ -6392,9 +5924,7 @@ final class Workspace: ObservableObject {
     }
 
     private func cancelAllPreviewLoads() {
-        let cancellations = previewLoadCancellations.values
-        previewLoadCancellations.removeAll()
-        cancellations.forEach { $0.cancel() }
+        withDocumentFileLoads { $0.cancelPreviews() }
     }
 
     /// Aktualisiert alle offenen Arbeitsbaum-/Index-Diffs dieses Projekts, ohne
@@ -6451,7 +5981,7 @@ final class Workspace: ObservableObject {
 
     /// Nimmt das aktuelle Find-/Replace-Paar in den Verlauf auf. An diskreten
     /// Such-Aktionen aufgerufen (Treffer-Navigation, Ersetzen, Ordner-Suche) —
-    /// NICHT bei jedem Tastendruck. Leerer Find-String wird ignoriert (Logik
+    /// nicht bei jedem Tastendruck. Leerer Find-String wird ignoriert (Logik
     /// im Store). Dedup + Cap erledigt `SearchHistoryStore.prepending`.
     func recordSearchHistory() {
         let entry = SearchHistoryEntry(find: findPattern, replace: replacePattern)
@@ -6504,7 +6034,7 @@ final class Workspace: ObservableObject {
     /// Führt die eingefrorene Such-Selektion bei einem Ersetzen um die
     /// Längenänderung mit. Ohne das driftet die Range: ein kürzerer Ersatz
     /// ließe sie über das ursprüngliche Auswahl-Ende hinausragen (Treffer
-    /// AUSSERHALB der Auswahl tauchten auf), ein längerer verkürzte den
+    /// außerhalb der Auswahl tauchten auf), ein längerer verkürzte den
     /// erfassten Bereich (Treffer am Ende fehlten). Die Location bleibt — der
     /// ersetzte Treffer liegt innerhalb der Auswahl, nur deren Ende wandert.
     /// No-op, wenn „Nur in Auswahl" aus ist.
@@ -6514,7 +6044,7 @@ final class Workspace: ObservableObject {
                                        length: max(0, r.length + delta))
     }
 
-    /// Beim Öffnen der Maske auswerten: liegt eine MEHRZEILIGE Selektion vor,
+    /// Beim Öffnen der Maske auswerten: liegt eine mehrzeilige Selektion vor,
     /// „Nur in Auswahl" automatisch einschalten + einfrieren; sonst neutral
     /// ausschalten. So muss der Block-Such-Fall nichts klicken, der Normalfall
     /// bleibt unbeeinflusst.
@@ -6529,7 +6059,7 @@ final class Workspace: ObservableObject {
 
     /// „Auswahl als Suchbegriff" (⌘E, BBEdit „Use Selection for Find", K5):
     /// übernimmt den aktuell im Editor selektierten Text als Find-Pattern,
-    /// OHNE sofort zu suchen. Keine Selektion → nichts tun (Beep).
+    /// ohne sofort zu suchen. Keine Selektion → nichts tun (Beep).
     func useSelectionForFind() {
         guard let range = selectionRange, range.length > 0 else {
             NSSound.beep()
@@ -6577,13 +6107,13 @@ final class Workspace: ObservableObject {
     }
 
     /// Gemeinsamer Modellpfad für Menü und globale Tastenkürzel. Die
-    /// Auswahl wird nur beim echten NEUÖFFNEN der Datei-Suche eingefroren;
+    /// Auswahl wird nur beim echten Neuöffnen der Datei-Suche eingefroren;
     /// ein bloßes Nach-vorn-Holen verändert weder Scope noch „Nur Auswahl“.
     ///
     /// `forceScope` gilt für den ausdrücklich beschrifteten Menüpunkt „In
     /// Ordnern suchen…“: Er verspricht einen bestimmten Bereich und muss ihn
     /// deshalb auch bei offener, befüllter Maske herstellen. Die Kurzbefehle
-    /// bleiben bereichserhaltend (Review 2026-08-06).
+    /// bleiben bereichserhaltend.
     func presentSearch(requestedScope: SearchScope, captureSelection: Bool = false,
                        forceScope: Bool = false) {
         let preserveExistingSearch = showSearchDialog && !findPattern.isEmpty
@@ -6599,14 +6129,9 @@ final class Workspace: ObservableObject {
         showSearchDialog = true
     }
 
-    /// Gemeinsamer Einstieg für Aktionen, die ausdrücklich „im Projekt bzw.
-    /// in den Ordnern suchen" versprechen: der Go-to-Target-Rückfall bei
-    /// unbekanntem 4D-Methodennamen und der Link „Im Inhalt suchen…" des
-    /// leeren Dateibaumfilters. Beide setzten den Bereich früher fest auf
-    /// `.folder` und durchsuchten so bei offenem Projekt die unabhängige
-    /// Liste gemerkter Ordner statt des Projekts (Review-Fund 2026-09-16).
-    /// Der Bereich wird erzwungen, weil die Aktion ihn verspricht.
-    /// `pattern` ersetzt den Suchbegriff als Klartext; `nil` lässt ihn stehen.
+    /// Mehrdatei-Suche für Go-to-Target-Fallback und „Im Inhalt suchen…“:
+    /// Mit Projekt ausdrücklich `.project`, sonst die gemerkten Ordner wählen.
+    /// `pattern` setzt den Klartext-Suchbegriff; `nil` erhält ihn.
     func presentMultiFileContentSearch(pattern: String? = nil) {
         if let pattern {
             findPattern = pattern
@@ -6629,7 +6154,7 @@ final class Workspace: ObservableObject {
     /// Zuletzt für die Suche verwendete Ordner. Beim Init aus
     /// UserDefaults geladen; bei jeder Änderung automatisch zurück
     /// in UserDefaults geschrieben (Combine-Sink in init).
-    // Startet leer und wird im init-Body aus der INJIZIERTEN Defaults-Suite
+    // Startet leer und wird im init-Body aus der injizierten Defaults-Suite
     // geladen (Property-Initializer kennen den init-Parameter noch nicht).
     // Vorher stand hier ein Load aus `.standard` — Selbsttests lasen damit
     // die echte Nutzer-Ordnerliste statt ihrer isolierten Suite.
@@ -6769,6 +6294,7 @@ final class Workspace: ObservableObject {
     }
 
     var navMatches: [NavMatch] {
+        guard searchResultsAreCurrent else { return [] }
         if scope.isFolderLike {
             // Während ein neuer Lauf aussteht oder arbeitet, existiert keine
             // gültige Navigations-/Apply-Basis — selbst dann nicht, wenn ein
@@ -6938,32 +6464,36 @@ final class Workspace: ObservableObject {
         textWorkflowMutationTabs(in: fileTreeMutationWorkspaces())
     }
 
-    @MainActor func synchronizeTextWorkflowDiskDocuments() async -> (Bool, [MarkdownVisualCoordinator]) {
+    @MainActor func synchronizeTextWorkflowDiskDocuments() async -> (Bool, [MarkdownVisualCoordinator.ActionHold]) {
         let editors = fileTreeMutationWorkspaces().compactMap(\.visualMarkdownEditor).filter(\.ready)
         guard !editors.isEmpty else { return (true, []) }
         // WebKit kann die letzte Eingabe noch im DOM halten. Alle betroffenen
         // Fenster vor der Pfadsperre synchronisieren und Eingaben bis zum
         // Abschluss halten; sonst würde die Sperre ihre Rückmeldung ablehnen.
+        var holds: [MarkdownVisualCoordinator.ActionHold] = []
         let succeeded: Bool = await withCheckedContinuation { continuation in
             let group = DispatchGroup()
             var success = true
             for editor in editors {
                 group.enter()
-                editor.synchronize(holdingInput: true) { value in success = success && value; group.leave() }
+                editor.synchronize(holdingInput: true) { value, hold in
+                    success = success && value
+                    if let hold { holds.append(hold) }
+                    group.leave()
+                }
             }
             group.notify(queue: .main) { continuation.resume(returning: success) }
         }
-        return (succeeded, editors)
+        return (succeeded, holds)
     }
 
-    @MainActor func textWorkflowDiskEditorsAreHeld(_ editors: [MarkdownVisualCoordinator]) -> Bool {
-        let held = Set(editors.map(ObjectIdentifier.init))
+    @MainActor func textWorkflowDiskEditorsAreHeld(_ holds: [MarkdownVisualCoordinator.ActionHold]) -> Bool {
         return fileTreeMutationWorkspaces().compactMap(\.visualMarkdownEditor).filter(\.ready)
-            .allSatisfy { held.contains(ObjectIdentifier($0)) }
+            .allSatisfy { editor in holds.contains { $0.isCurrent(for: editor) } }
     }
 
     @MainActor func beginTextWorkflowDiskMutation(urls: [URL]) throws -> TextWorkflowDiskMutation {
-        guard !folderApplying, let id = WorkspacePathOperationRegistry.begin(paths: urls, exclusive: true) else {
+        guard !diskMutationIsActive, let id = WorkspacePathOperationRegistry.begin(paths: urls, exclusive: true) else {
             throw ApplyError.conflict(TextWorkflowFailure.busy)
         }
         let workspaces = fileTreeMutationWorkspaces()
@@ -6995,6 +6525,43 @@ final class Workspace: ObservableObject {
             for workspace in workspaces { workspace.searchRunner?.folderResultsBecameStale() }
             reloadOpenTabsAcrossWorkspaces(for: changedURLs, capturedWorkspaces: workspaces)
         }
+    }
+
+    @MainActor func reloadRecoveryDocuments(_ mutation: TextWorkflowDiskMutation,
+                                            expectedSnapshots: [URL: FileSnapshot]) async -> [URL] {
+        let changedURLs = Array(expectedSnapshots.keys)
+        let workspaces = fileTreeMutationWorkspaces(including: mutation.workspaces)
+        for workspace in workspaces { workspace.searchRunner?.folderResultsBecameStale() }
+        return await withCheckedContinuation { continuation in
+            let group = DispatchGroup()
+            var failures: [URL] = []
+            for workspace in workspaces {
+                group.enter()
+                workspace.withDocumentFileLoads { loads in
+                    let loader = workspace.reloadFileLoader
+                    loads.reloadAfterDiskMutation(changedURLs: changedURLs, loader: {
+                        { url in
+                            let loaded = try loader(url)
+                            guard loaded.diskSnapshot == expectedSnapshots[url] else {
+                                throw FileSnapshotReadError.changedDuringRead
+                            }
+                            return loaded
+                        }
+                    }) { failed in
+                        failures.append(contentsOf: failed)
+                        group.leave()
+                    }
+                }
+            }
+            group.notify(queue: .main) { continuation.resume(returning: failures) }
+        }
+    }
+
+    @MainActor func finishRecoveryDiskMutation(_ mutation: TextWorkflowDiskMutation) {
+        // Reload und Sitzungs-Schlussprüfung sind bereits beendet. Dieser
+        // gemeinsame Abschluss gibt erst jetzt Pfade und native Eingaben frei.
+        finishTextWorkflowDiskMutation(mutation, changedURLs: [], session: nil)
+        fileRecoveryApplying = false
     }
 
     /// Ein Hex-Save schreibt direkt aus der Abschnittsansicht. Alle Fenster,
@@ -7048,12 +6615,12 @@ final class Workspace: ObservableObject {
             guard MainActor.assumeIsolated({ approvedPreview.request.isCurrent(in: self) }), approvedPreview.changedCount > 0,
                   case .files = approvedPreview.request.source else { return false }
         }
-        guard scope.isFolderLike,
+        guard scope.isFolderLike, searchResultsAreCurrent, searchApproval.isComplete,
               searchError == nil,
               !folderSearching,
               !folderNeedsSearch,
               !folderResults.isEmpty,
-              !folderApplying else { return false }
+              !diskMutationIsActive else { return false }
         let visibleResults = folderResults.filter { !$0.matches.isEmpty }
         guard !visibleResults.isEmpty else { return false }
         guard !folderResultsWereCapped,
@@ -7076,9 +6643,13 @@ final class Workspace: ObservableObject {
             return false
         }
         let inputs: [ApplyTransaction.Input]
-        if let approvedPreview, case .files(let approvedInputs) = approvedPreview.request.source {
+        let sourceBasis: FolderSearch.SourceBasis
+        if let approvedPreview, case .files(let approvedInputs, let approvedBasis) = approvedPreview.request.source {
             inputs = approvedInputs
+            sourceBasis = approvedBasis
         } else {
+            guard let currentBasis = MainActor.assumeIsolated({ currentFolderSearchSourceBasis }) else { return false }
+            sourceBasis = currentBasis
             inputs = visibleResults.map { result in
                 ApplyTransaction.Input(
                     url: result.url,
@@ -7091,9 +6662,10 @@ final class Workspace: ObservableObject {
         }
         let urls = inputs.filter { $0.approvedRanges?.isEmpty != true }.map(\.url)
 
-        // Die Warnung kommt VOR jedem Voll-Read. `byteCount` stammt aus dem
+        // Die Warnung kommt vor jedem Voll-Read. `byteCount` stammt aus dem
         // stabilen Vorschau-Snapshot und ist damit zugleich billig und exakt.
         let totalBytes = inputs.reduce(0) { $0 + $1.snapshot.byteCount }
+        let checkedGeneration = searchApproval.generation
         if totalBytes > Workspace.folderApplyWarnBytes {
             let alert = NSAlert()
             alert.messageText = L10n.string("Große Replace-Operation")
@@ -7111,6 +6683,7 @@ final class Workspace: ObservableObject {
         // Ein Alert pumpt die Runloop; auch ein zweites Fenster kann bis hier
         // noch Text oder Bytes geändert haben. Erst unmittelbar vor dem
         // Hintergrundstart wird deshalb app-weit erneut geprüft und gesperrt.
+        guard searchApproval.generation == checkedGeneration, searchResultsAreCurrent else { return false }
         if let approvedPreview,
            !MainActor.assumeIsolated({ approvedPreview.request.isCurrent(in: self) }) { return false }
         let mutationWorkspaces = fileTreeMutationWorkspaces()
@@ -7131,8 +6704,9 @@ final class Workspace: ObservableObject {
         )
         noteFileMutationChange(in: mutationWorkspaces)
 
-        let transaction = ApplyTransaction(inputs: inputs, options: options)
+        let transaction = ApplyTransaction(inputs: inputs, options: options, folderSourceBasis: sourceBasis)
         let backupRoot = folderApplyBackupRoot
+        let approvalGeneration = searchApproval.generation
         folderApplyGeneration &+= 1
         let generation = folderApplyGeneration
         let progressRelay = FolderApplyProgressRelay(workspace: self,
@@ -7156,7 +6730,8 @@ final class Workspace: ObservableObject {
                     return
                 }
                 self.finishFolderApply(
-                    result, generation: generation, mutationID: mutationID
+                    result, generation: generation, approvalGeneration: approvalGeneration,
+                    mutationID: mutationID
                 )
             }
         }
@@ -7172,8 +6747,14 @@ final class Workspace: ObservableObject {
         folderApplyProgressText = L10n.string("Ordner-Apply wird abgebrochen…")
     }
 
-    private func finishFolderApply(
-        _ result: Result<ApplySession, Error>, generation: Int, mutationID: UUID
+    @MainActor func discardStaleFolderSearchApproval(generation: UInt64) {
+        guard searchApproval.generation == generation else { return }
+        searchRunner?.folderResultsBecameStale()
+    }
+
+    @MainActor private func finishFolderApply(
+        _ result: Result<ApplySession, Error>, generation: Int, approvalGeneration: UInt64,
+        mutationID: UUID
     ) {
         guard folderApplyGeneration == generation else {
             WorkspacePathOperationRegistry.finish(mutationID)
@@ -7201,18 +6782,34 @@ final class Workspace: ObservableObject {
             }, capturedWorkspaces: mutation?.workspaces ?? [])
         case .failure(ApplyError.cancelled):
             break
-        case .failure(ApplyError.planNotApplyable(let message)),
-             .failure(ApplyError.conflict(let message)):
+        case .failure(ApplyError.conflict(let message)):
+            discardStaleFolderSearchApproval(generation: approvalGeneration)
+            folderPreviewConflictHandler(message)
+        case .failure(ApplyError.planNotApplyable(let message)):
             folderPreviewConflictHandler(message)
         case .failure(ApplyError.backupFailed(let message)):
             NSAlert.runWarning(
                 title: L10n.string("Backup fehlgeschlagen"),
                 text: L10n.format("Es wurde nichts verändert.\n\n%@", message))
-        case .failure(ApplyError.writeFailed(let session, let message)):
-            lastApplySession = session
+        case .failure(ApplyError.recoveryUnavailable(let session, let message)):
+            lastApplySession = nil
             NSAlert.runWarning(
-                title: L10n.string("Apply teilweise fehlgeschlagen"),
-                text: L10n.format("%@\n\nBereits geschriebene Dateien können über die Rückgängig-Aktion zurückgespielt werden.", message))
+                title: session.entries.isEmpty ? L10n.string("Apply fehlgeschlagen") : L10n.string("Apply teilweise fehlgeschlagen"),
+                text: session.entries.isEmpty
+                    ? L10n.format("%@\nDie Zieldateien blieben unverändert.", message) : message)
+            searchRunner?.folderResultsBecameStale()
+            reloadOpenTabsAcrossWorkspaces(for: session.entries.map {
+                URL(fileURLWithPath: $0.originalPath)
+            }, capturedWorkspaces: mutation?.workspaces ?? [])
+        case .failure(ApplyError.writeFailed(let session, let message)):
+            lastApplySession = session.hasRecoveryWork ? session : nil
+            NSAlert.runWarning(
+                title: session.entries.isEmpty ? L10n.string("Apply fehlgeschlagen") : L10n.string("Apply teilweise fehlgeschlagen"),
+                text: session.isCleanupOnly
+                    ? L10n.format("%@\nDie Zieldateien blieben unverändert. Eigene temporäre Dateien sind erhalten. Behebe die Ursache und nutze „Aufräumen“.", message)
+                    : session.entries.isEmpty
+                        ? L10n.format("%@\nDie Zieldateien blieben unverändert.", message)
+                        : L10n.format("%@\n\nBereits geschriebene Dateien können über die Rückgängig-Aktion zurückgespielt werden.", message))
             // Auch der Teil-Erfolg hat Dateien verändert.
             searchRunner?.folderResultsBecameStale()
             reloadOpenTabsAcrossWorkspaces(for: session.entries.map {
@@ -7226,8 +6823,9 @@ final class Workspace: ObservableObject {
     /// Macht die letzte Folder-Apply-Session bit-exakt rückgängig.
     @discardableResult
     func undoLastFolderApply() -> Bool {
-        guard !folderApplying, let session = lastApplySession else { return false }
-        let urls = session.entries.map { URL(fileURLWithPath: $0.originalPath) }
+        guard !diskMutationIsActive, let session = lastApplySession else { return false }
+        let urls = session.undoResourceURLs()
+        let targetURLs = session.entries.map { URL(fileURLWithPath: $0.originalPath) }
         let mutationWorkspaces = fileTreeMutationWorkspaces()
         let blockedTabs = blockedTabsForFileMutation(
             urls: urls, workspaces: mutationWorkspaces
@@ -7254,7 +6852,7 @@ final class Workspace: ObservableObject {
             // dem Apply: Die sichtbaren Treffer gehören zu einem alten Stand.
             searchRunner?.folderResultsBecameStale()
             reloadOpenTabsAcrossWorkspaces(
-                for: urls, capturedWorkspaces: mutationWorkspaces
+                for: targetURLs, capturedWorkspaces: mutationWorkspaces
             )
             lastApplySession = nil
             return true
@@ -7267,8 +6865,10 @@ final class Workspace: ObservableObject {
         } catch ApplyError.undoFailed(let partial, let message) {
             lastApplySession = partial
             NSAlert.runWarning(
-                title: L10n.string("Rückgängig teilweise fehlgeschlagen"),
-                text: L10n.format("%@\n\nDer bereits gespeicherte Fortschritt kann mit Rückgängig fortgesetzt werden.", message))
+                title: partial.isCleanupOnly ? L10n.string("Aufräumen fehlgeschlagen") : L10n.string("Rückgängig teilweise fehlgeschlagen"),
+                text: partial.isCleanupOnly
+                    ? L10n.format("%@\nDie eigenen temporären Dateien konnten noch nicht vollständig aufgeräumt werden. Behebe die Ursache und wiederhole „Aufräumen“.", message)
+                    : L10n.format("%@\n\nDer bereits gespeicherte Fortschritt kann mit Rückgängig fortgesetzt werden.", message))
             searchRunner?.folderResultsBecameStale()
             reloadOpenTabsAcrossWorkspaces(
                 for: partial.entries.filter { $0.state == .restored }
@@ -7284,7 +6884,12 @@ final class Workspace: ObservableObject {
                                text: message)
             return false
         } catch {
-            NSAlert(error: error).runModal()
+            if session.isCleanupOnly {
+                NSAlert.runWarning(title: L10n.string("Aufräumen fehlgeschlagen"),
+                    text: L10n.format("%@\nDie eigenen temporären Dateien konnten noch nicht vollständig aufgeräumt werden. Behebe die Ursache und wiederhole „Aufräumen“.", error.localizedDescription))
+            } else {
+                NSAlert(error: error).runModal()
+            }
             return false
         }
     }
@@ -7308,92 +6913,8 @@ final class Workspace: ObservableObject {
     }
 
     func reloadOpenTabs(for changedURLs: [URL]) {
-        let changed = Set(changedURLs.map { $0.standardizedFileURL.path })
-        // Snapshot der zu reloadenden Tab-IDs + URLs aufnehmen — die
-        // Schleife muss nicht auf dem aktuellen `tabs`-Array laufen.
-        let toReload: [(id: UUID, url: URL, contentRevision: UInt64,
-                       diskSnapshot: FileSnapshot?)] = tabs.compactMap { tab in
-            guard let url = tab.url,
-                  changed.contains(url.standardizedFileURL.path) else { return nil }
-            // Ein Dirty-/Ladezustand darf weder hier noch in der Completion
-            // automatisch verworfen werden.
-            guard !tab.hasUnsavedChanges, !tab.isLoading else { return nil }
-            return (id: tab.id, url: url, contentRevision: tab.contentRevision,
-                    diskSnapshot: tab.diskSnapshot)
-        }
-        let loader = reloadFileLoader
-        for (tabID, url, originalRevision, originalDiskSnapshot) in toReload {
-            // Generation hochzählen, damit ein paralleles `loadFile` auf
-            // dieselbe Datei das Ergebnis des reloadOpenTabs überschreiben kann
-            // (oder umgekehrt — der spätere Guard entscheidet).
-            let generation = (loadGeneration[tabID] ?? 0) + 1
-            loadGeneration[tabID] = generation
-
-            // Lade-Spinner einschalten, damit CESE den Editor neu erzeugt.
-            if let idx = tabs.firstIndex(where: { $0.id == tabID }) {
-                tabs[idx].isLoading = true
-            }
-
-            Task.detached(priority: .userInitiated) { [weak self] in
-                let loadResult = Result { try loader(url) }
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    guard self.loadGeneration[tabID] == generation,
-                          let idx = self.tabs.firstIndex(where: { $0.id == tabID }) else {
-                        // Tab während des Reloads geschlossen → Generation-
-                        // Eintrag aufräumen (UUID kommt nie wieder). Bei bloß
-                        // veralteter Generation bleibt er (gehört dem neueren
-                        // Ladevorgang).
-                        if !self.tabs.contains(where: { $0.id == tabID }) {
-                            self.loadGeneration.removeValue(forKey: tabID)
-                        }
-                        return
-                    }
-                    self.loadGeneration.removeValue(forKey: tabID)
-                    if case .success(let loaded) = loadResult {
-                        // URL-Vergleich wie in `reloadTabFromDisk`: kein
-                        // Inhalt des alten Pfads in einen während des Ladens
-                        // umgebundenen Tab.
-                        guard self.tabs[idx].url == url,
-                              !self.tabs[idx].hasUnsavedChanges,
-                              self.tabs[idx].contentRevision == originalRevision,
-                              self.tabs[idx].diskSnapshot == originalDiskSnapshot else {
-                            self.tabs[idx].isLoading = false
-                            return
-                        }
-                        self.tabs[idx].content    = loaded.content
-                        self.tabs[idx].encoding   = loaded.encoding
-                        self.tabs[idx].bom        = loaded.bom
-                        self.tabs[idx].lineEnding = loaded.lineEnding
-                        self.tabs[idx].displayMode = loaded.displayMode
-                        self.tabs[idx].fileSize = loaded.fileSize
-                        self.tabs[idx].hexEditSession.discard()
-                        self.tabs[idx].diskSnapshot = loaded.diskSnapshot
-                        self.tabs[idx].recordExternalFileObservation(
-                            snapshot: loaded.diskSnapshot,
-                            observation: loaded.externalObservation,
-                            contentLoaded: true
-                        )
-                        self.tabs[idx].isDirty    = false
-                        self.tabs[idx].isLoading  = false
-                        // Der frisch geladene Inhalt IST jetzt der gespeicherte
-                        // Stand — wie auf jedem anderen Lade- und Speicherpfad.
-                        // Ohne diese Zeile blieb die alte Basis stehen: Ein Undo
-                        // auf den Vor-Apply-Inhalt hätte den Tab wieder „sauber"
-                        // aussehen lassen, und ⌘W hätte ihn ohne Nachfrage
-                        // geschlossen (Review 2026-08-02).
-                        self.tabs[idx].recordSavedContentBaseline()
-                    } else {
-                        // Reload fehlgeschlagen: isLoading zurücksetzen,
-                        // aber alten Inhalt NICHT löschen (besser veralteter
-                        // Inhalt als leere Anzeige).
-                        self.tabs[idx].isLoading = false
-                        if self.tabs[idx].url == url {
-                            self.tabs[idx].protectContentAfterExternalFileBecameUnavailable()
-                        }
-                    }
-                }
-            }
+        withDocumentFileLoads { loads in
+            loads.reloadAfterDiskMutation(changedURLs: changedURLs, loader: { reloadFileLoader })
         }
     }
 
@@ -7403,17 +6924,17 @@ final class Workspace: ObservableObject {
     /// gibt es mehr Treffer als materialisiert sind.
     ///
     /// Die letzte Bedingung hält die Vorschau-Grenze: Die sichtbare
-    /// Trefferzahl darf nur eine Ersetzung freigeben, die zu GENAU DIESEN
+    /// Trefferzahl darf nur eine Ersetzung freigeben, die zu genau diesen
     /// Optionen gehört. Sonst gäbe der alte Trefferstand kurz nach einem
     /// Tastendruck eine Ersetzung mit dem neuen Muster frei
-    /// (Review 2026-08-02).
     ///
     /// Jede Oberfläche mit einem „Alle ersetzen"-Knopf muss dieselbe Freigabe
     /// abfragen. Die Vorschau tat das nicht und ließ ihren Knopf allein an
     /// der Zeilenzahl aktiv: Ein Klick im Debounce-Fenster sah wirksam aus
-    /// und tat nichts (Review 2026-08-06).
+    /// und tat nichts.
     var canApplyAllInActiveBuffer: Bool {
-        activeTab.map { textEditingIsAllowed(for: $0) } == true
+        searchResultsAreCurrent && searchApproval.isComplete
+            && activeTab.map { textEditingIsAllowed(for: $0) } == true
             && bufferTotalMatches > 0 && searchError == nil
             && !bufferResultsWereCapped
             && bufferMatches.count == bufferTotalMatches
@@ -7435,7 +6956,7 @@ final class Workspace: ObservableObject {
     /// read-only Git-Ansicht darf nicht bloß übersprungen werden, denn dann
     /// würde Apply auf weniger Treffer wirken als die Vorschau zeigt.
     var canApplyAllInOpenTabs: Bool {
-        guard openTotalMatches > 0, searchError == nil,
+        guard searchResultsAreCurrent, searchApproval.isComplete, openTotalMatches > 0, searchError == nil,
               !openResultsWereCapped,
               openResults.reduce(0, { $0 + $1.matches.count }) == openTotalMatches,
               visibleBufferResultsOptions == currentSearchOptions else {
@@ -7449,7 +6970,7 @@ final class Workspace: ObservableObject {
     }
 
     var canReplaceActiveSearchMatch: Bool {
-        guard !scope.isFolderLike, searchError == nil,
+        guard searchResultsAreCurrent, !scope.isFolderLike, searchError == nil,
               visibleBufferResultsOptions == currentSearchOptions else {
             return false
         }
@@ -7465,13 +6986,12 @@ final class Workspace: ObservableObject {
     }
 
     /// Ersetzt alle aktuell gefundenen Treffer im aktiven Buffer durch
-    /// ihre Replacement-Texte. NUR im Speicher — keine Disk-Writes, kein
+    /// ihre Replacement-Texte. Nur im Speicher — keine Disk-Writes, kein
     /// Apply-Backup (das ist die Schiene für die Ordner-Suche). Speichern
     /// erfolgt wie gewohnt über CMD+S; das markiert den Tab als dirty.
     /// Liefert `true`, wenn wirklich ersetzt wurde. Der Rückgabewert ist keine
     /// Kosmetik: Die Vorschau darf sich nur nach einer bestätigten Anwendung
     /// schließen, sonst verschwindet sie im Debounce-Fenster wirkungslos
-    /// (Review 2026-08-06).
     @discardableResult
     func applyAllInActiveBuffer() -> Bool {
         guard canApplyAllInActiveBuffer else { return false }
@@ -7487,7 +7007,7 @@ final class Workspace: ObservableObject {
         activeTab?.undoHistory.replace(text, with: replaced)
         activeTabContent.wrappedValue = replaced
         // Editor zur Neuerzeugung zwingen, sonst zeigt CodeEditSourceEditor
-        // weiter den Vor-Replace-Text (Binding-Änderungen fließen NICHT zurück
+        // weiter den Vor-Replace-Text (Binding-Änderungen fließen nicht zurück
         // in die TextView). Ohne das wirkt „Alle ersetzen" folgenlos, obwohl
         // das Modell korrekt ersetzt wurde (siehe `editorReloadNonce`).
         editorReloadNonce += 1
@@ -7495,7 +7015,6 @@ final class Workspace: ObservableObject {
         // das Format bei fast gleicher Länge komplett wechseln. Die vom
         // Binding-Setter angestoßene Erkennung würde so einen Fall über die
         // Tipp-Drossel verschlucken — deshalb ausdrücklich erzwingen
-        // (Review 2026-08-31).
         forceLanguageDetectionAfterProgrammaticReplace(
             oldText: text, newText: replaced)
         // „Nur in Auswahl": eingefrorene Range um die Gesamt-Längenänderung
@@ -7509,7 +7028,7 @@ final class Workspace: ObservableObject {
         return true
     }
 
-    /// „Alle ersetzen" im Geöffnet-Scope: ersetzt ALLE Treffer in ALLEN
+    /// „Alle ersetzen" im Geöffnet-Scope: ersetzt alle Treffer in allen
     /// offenen Tabs — rein in-memory (kein Disk-Write, kein Apply-Backup;
     /// Speichern wie gewohnt via ⌘S pro Tab). Geänderte Tabs werden dirty
     /// markiert, der sichtbare Editor per Reload-Nonce neu erzeugt (CESE
@@ -7528,10 +7047,10 @@ final class Workspace: ObservableObject {
         guard !changed.isEmpty else { return 0 }
         for idx in tabs.indices {
             guard let newContent = changed[tabs[idx].id] else { continue }
-            // Eignung VOR den Längen bestimmen: `String.count` läuft linear
+            // Eignung vor den Längen bestimmen: `String.count` läuft linear
             // über alle Graphemcluster und blockierte hier den Main-Thread
             // auch für gespeicherte große Dateien, die an der
-            // Inhaltserkennung gar nicht teilnehmen (Review 2026-08-31).
+            // Inhaltserkennung gar nicht teilnehmen.
             // Die Eignung hängt nicht vom Inhalt ab und ändert sich durch die
             // Ersetzung nicht.
             let needsLanguageLengths = Self.isEligibleForContentDetection(tabs[idx])
@@ -7543,7 +7062,7 @@ final class Workspace: ObservableObject {
             // damit an dessen Makro-Abbruch) vorbei. Eine Inhaltsänderung
             // entwertet die Lease der Makro-Nachbearbeitung aber genauso wie
             // normales Tippen — sonst blieben Diff-Task und Makro-Sperre bis
-            // zum Rechenende aktiv (Review 2026-08-29).
+            // zum Rechenende aktiv.
             cancelFourDMacroPostprocessing(ifTab: tabs[idx].id)
             if needsLanguageLengths {
                 scheduleLanguageDetection(
@@ -7558,7 +7077,7 @@ final class Workspace: ObservableObject {
         return changed.count
     }
 
-    /// Ersetzt NUR den aktuell aktiven Treffer im aktiven Buffer und rückt
+    /// Ersetzt nur den aktuell aktiven Treffer im aktiven Buffer und rückt
     /// zum nachfolgenden Treffer vor — die BBEdit-„Replace"-Semantik
     /// (ein Treffer ersetzen, dann zum nächsten springen).
     ///
@@ -7567,9 +7086,9 @@ final class Workspace: ObservableObject {
     /// Ergebnis-Fenster (Schritt 2); deshalb hier bewusst ausgeklammert.
     func replaceActiveMatch() {
         // Auch hier gilt die Vorschau-Grenze, und zwar noch direkter als beim
-        // Alle-Ersetzen: Der Treffer wird als BEREICH in den aktuellen Text
+        // Alle-Ersetzen: Der Treffer wird als Bereich in den aktuellen Text
         // gespleißt. Gehört er zu einem älteren Muster oder Textstand, träfe
-        // der Bereich die falsche Stelle (Review 2026-08-02).
+        // der Bereich die falsche Stelle.
         guard canReplaceActiveSearchMatch else { return }
         recordSearchHistory()
         if scope == .open {
@@ -7589,19 +7108,18 @@ final class Workspace: ObservableObject {
         // Der Treffer-Sprung unten läuft async (`focusEditorForVisibleJump`)
         // und greift den frisch erzeugten Editor → bleibt sichtbar.
         editorReloadNonce += 1
-        // Auch das Einzel-Ersetzen ist eine programmgesteuerte Ersetzung und
-        // muss die Tipp-Drossel der Inhaltserkennung umgehen (siehe
-        // applyAllInActiveBuffer, Review 2026-08-31).
+        // Einzel-Ersetzen umgeht wie `applyAllInActiveBuffer` die Tipp-Drossel
+        // der Inhaltserkennung.
         forceLanguageDetectionAfterProgrammaticReplace(
             oldText: text, newText: replaced)
 
         // „Nur in Auswahl": eingefrorene Range um die Längenänderung des
-        // ersetzten Treffers mitführen, BEVOR der Re-Find unten sie nutzt
+        // ersetzten Treffers mitführen, bevor der Re-Find unten sie nutzt
         // (sonst sucht er in einem verschobenen Bereich). Bei genau einem
         // ersetzten Treffer ist die Gesamt-Längenänderung exakt dessen Delta.
         adjustSearchSelectionRange(lengthDelta: (replaced as NSString).length - (text as NSString).length)
 
-        // Synchron neu suchen, damit bufferMatches + der Sprung unten SOFORT
+        // Synchron neu suchen, damit bufferMatches + der Sprung unten sofort
         // stimmen. Die Live-Such-Pipeline läuft seit v0.10 async — der
         // debounced Async-Runner käme erst 120 ms später und der Sprung
         // zielte auf eine veraltete Liste. Einzel-Ersetzen ist eine bewusste
@@ -7609,15 +7127,14 @@ final class Workspace: ObservableObject {
         // hier vertretbar (BBEdit-„Replace & Find Again"-Semantik). Der
         // Combine-Trigger der tabs-Änderung stößt zusätzlich einen
         // redundanten, gleichwertigen Async-Lauf an.
-        let result = BufferSearch.find(in: replaced, options: currentSearchOptions,
-                                       searchRange: activeSearchRange)
-        bufferMatches = result.matches
-        bufferTotalMatches = result.totalMatches
-        bufferResultsWereCapped = result.wasCapped
-        // Die frische Vorschau gehört zu genau diesen Optionen — sonst bliebe
-        // „Alle ersetzen" nach einem Einzel-Ersetzen bis zum Async-Lauf gesperrt.
-        visibleBufferResultsOptions = currentSearchOptions
-        searchError = result.invalidPatternMessage
+        let result: BufferSearch.SearchResult? = MainActor.assumeIsolated {
+            guard let token = beginSearchResultRun() else { return nil }
+            let result = BufferSearch.find(in: replaced, options: token.basis.options,
+                                           searchRange: token.basis.selection)
+            guard commitSearchResult(token, publication: .buffer(result)) else { return nil }
+            return result
+        }
+        guard let result else { return }
         if activeMatchIndex >= result.matches.count {
             activeMatchIndex = max(0, result.matches.count - 1)
         }
@@ -7652,16 +7169,15 @@ final class Workspace: ObservableObject {
         // Vor der @Published-Array-Mutation setzen: Sie stößt synchron die
         // Invalidierung und verzögert danach den asynchronen Neulauf an.
         pendingOpenReplaceNavigation = (currentSearchOptions, activeMatchIndex)
-        // Eignung VOR den Längen bestimmen — `String.count` ist linear und
-        // für ungeeignete (z. B. gespeicherte große) Tabs reine Main-Thread-
-        // Verschwendung (Review 2026-08-31, wie in applyAllInOpenTabs).
+        // Eignung vor den Längen bestimmen, wie `applyAllInOpenTabs`:
+        // Lineares `String.count` für ungeeignete Tabs würde den Main-Thread belasten.
         let needsLanguageLengths = Self.isEligibleForContentDetection(tabs[tabIndex])
         tabs[tabIndex].undoHistory.replace(text, with: replaced)
         tabs[tabIndex].content = replaced
         tabs[tabIndex].isDirty = true
         // Wie in `applyAllInOpenTabs`: Die direkte Modellmutation muss die
         // Makro-Nachbearbeitung dieses Tabs selbst abbrechen — sie umgeht
-        // das `activeTabContent`-Binding (Review 2026-08-29).
+        // das `activeTabContent`-Binding.
         cancelFourDMacroPostprocessing(ifTab: tabID)
         if needsLanguageLengths {
             scheduleLanguageDetection(
@@ -7676,8 +7192,8 @@ final class Workspace: ObservableObject {
     /// Ersetzung im aktiven Tab. Der Setter von `activeTabContent` plant nur
     /// die gedrosselte Tipp-Erkennung; ersetzt eine Aktion den gesamten
     /// Inhalt durch ein anderes Format ähnlicher Länge, lieferte die Drossel
-    /// `.none` und Sprache samt Syntaxhervorhebung blieben beim alten Format
-    /// (Review 2026-08-31). Längen werden nur für geeignete Tabs gezählt.
+    /// `.none` und Sprache samt Syntaxhervorhebung blieben beim alten Format.
+    /// Längen werden nur für geeignete Tabs gezählt.
     private func forceLanguageDetectionAfterProgrammaticReplace(
         oldText: String, newText: String
     ) {
@@ -7732,7 +7248,7 @@ final class Workspace: ObservableObject {
     }
 
     /// Stößt die explizite Ordner-Suche an („Suchen"-Klick / Return in der
-    /// Maske). Der Ordner-Scope wird bewusst NICHT live durchsucht
+    /// Maske). Der Ordner-Scope wird bewusst nicht live durchsucht
     /// (Konzept Abschnitt C) — dies ist der einzige Auslöser dafür.
     func runFolderSearchNow() {
         recordSearchHistory()
@@ -7748,9 +7264,9 @@ final class Workspace: ObservableObject {
     }
 
     /// Erklärt, warum der Sprung zu einem Ordner-Treffer gerade nicht
-    /// ausgeführt wird, OHNE die weiterhin gültige Trefferbasis zu verwerfen:
+    /// ausgeführt wird, ohne die weiterhin gültige Trefferbasis zu verwerfen:
     /// Der offene Tab der Funddatei enthält ungesicherte Änderungen, und eine
-    /// neue Suche würde diesen Konflikt nicht lösen (Review 2026-08-31).
+    /// neue Suche würde diesen Konflikt nicht lösen.
     func folderMatchNavigationBlockedByUnsavedChanges() {
         folderNavigationNotice = L10n.string(
             "Die Funddatei ist mit ungesicherten Änderungen geöffnet. Ohne Speichern schließen und erneut springen – oder speichern und danach erneut suchen.")
@@ -7761,7 +7277,6 @@ final class Workspace: ObservableObject {
     /// Plattenstand-Konflikt (und eine nicht mehr lesbare Datei) entwertet
     /// die Trefferbasis. Ein noch laufender Ladevorgang oder ein entwerteter
     /// Auftrag lässt die gültigen Ordnerergebnisse unangetastet
-    /// (Review 2026-08-31).
     func handleFolderMatchLoadDenial(_ outcome: FileLoadOutcome,
                                      jumpGeneration: Int) {
         guard isCurrentMatchJump(jumpGeneration) else { return }
@@ -7790,13 +7305,13 @@ final class Workspace: ObservableObject {
     }
 
     /// BBEdit „Extract" (Handbuch 16.0.1, S. 168/193): alle Treffer in ein
-    /// NEUES unbenanntes Dokument extrahieren, ein Treffer pro Zeile. Mit
+    /// neues unbenanntes Dokument extrahieren, ein Treffer pro Zeile. Mit
     /// gefülltem Ersetzen-Feld wird jeder Treffer erst transformiert
     /// (`$1`-Backrefs, `\U`-Case-Operatoren, Wildcard-Pillen) — leer heißt
     /// „roh extrahieren". Liefert `true`, wenn ein Tab entstanden ist
     /// (Testbarkeit); bei 0 Treffern passiert nichts.
     ///
-    /// Buffer-Scope: Die Treffer werden UNGEKAPPT frisch erhoben — die
+    /// Buffer-Scope: Die Treffer werden ungekappt frisch erhoben — die
     /// Live-Liste materialisiert nur die ersten 2000, Extract soll aber
     /// alle liefern (keine stille Trunkierung). Folder-Scope: nutzt die
     /// materialisierten Ergebnisse; deren Cap zeigt die Maske bereits als
@@ -7841,7 +7356,7 @@ final class Workspace: ObservableObject {
 }
 
 /// Ein Ordner in der „Recent Folders"-Liste der erweiterten Suchmaske.
-/// `id` ist nur zur SwiftUI-Identifikation gedacht und wird NICHT
+/// `id` ist nur zur SwiftUI-Identifikation gedacht und wird nicht
 /// persistiert (UUID würde sonst pro App-Start „neu" wirken). Beim Laden
 /// aus UserDefaults wird die UUID frisch generiert.
 struct SearchFolderEntry: Identifiable, Hashable, Codable {
@@ -7884,10 +7399,10 @@ struct SearchFolderEntry: Identifiable, Hashable, Codable {
 
 extension URL {
     /// Kanonische Form einer Datei-URL für Identitäts-Vergleiche (Tab-Dedup,
-    /// Aktiv-Markierung im Projektbaum). WICHTIG: `resolvingSymlinksInPath`
-    /// reicht NICHT — es lässt die `/private`-Aliasse (`/var`, `/tmp`, `/etc`)
+    /// Aktiv-Markierung im Projektbaum). Wichtig: `resolvingSymlinksInPath`
+    /// reicht nicht — es lässt die `/private`-Aliasse (`/var`, `/tmp`, `/etc`)
     /// per dokumentierter Ausnahme stehen, Verzeichnis-Listings liefern aber
-    /// die `/private/…`-Form (Befund 2026-07-12). `canonicalPathKey` löst
+    /// die `/private/…`-Form. `canonicalPathKey` löst
     /// vollständig auf (inkl. Groß-/Kleinschreibung des Dateisystems).
     /// Nicht existierende Pfade bleiben unverändert.
     var canonicalFileURL: URL {
@@ -7899,9 +7414,9 @@ extension URL {
 }
 
 extension NSAlert {
-    /// Kurzer Helfer für nicht-modale Fehler-/Warn-Hinweise mit einem
-    /// einzelnen OK-Button. Vermeidet die Boilerplate-Wiederholung an
-    /// fünf verschiedenen Stellen.
+    /// Bündelt Fehler-/Warnhinweise mit einem einzelnen OK-Button.
+    /// Der Dialog ist modal: Der Aufruf kehrt erst nach dem Schließen
+    /// des Dialogs zurück.
     static func runWarning(title: String, text: String) {
         let a = NSAlert()
         a.messageText = title
@@ -7944,4 +7459,241 @@ enum FileTypeFilter: String, CaseIterable, Identifiable, Codable {
     case knownText = "Bekannte Textformate"
     case all       = "Alle Dateien"
     var id: String { rawValue }
+}
+
+extension Workspace {
+    /// Alle Aufrufer dieser Fassade kommen aus den dokumentierten Main-Routen.
+    /// Die synchrone Anheftung braucht weder Fensterregistrierung noch Fokus;
+    /// parallele, unabhängige Workspace-Konstruktion erzeugt noch keinen Owner.
+    private func withDocumentFileLoads<Result>(
+        _ action: @MainActor (DocumentFileLoads) -> Result
+    ) -> Result {
+        MainActor.assumeIsolated {
+            if let documentFileLoads { return action(documentFileLoads) }
+            let loads = DocumentFileLoads(adapter: DocumentFileLoadAdapter(workspace: self))
+            documentFileLoads = loads
+            return action(loads)
+        }
+    }
+
+    /// Nur dieser Adapter publiziert freigegebene Ladeergebnisse im Workspace.
+    /// Er speichert weder Tabs noch Undo und hält das Fenster nicht am Leben.
+    @MainActor
+    final class DocumentFileLoadAdapter {
+        private weak var workspace: Workspace?
+
+        init(workspace: Workspace) { self.workspace = workspace }
+
+        var isAlive: Bool { workspace != nil }
+
+        /// Wie das frühere `guard let self` im Mainabschluss: Reentrante
+        /// Acceptance-/Published-Rückrufe dürfen die letzte externe Referenz
+        /// lösen, ohne diesen bereits begonnenen synchronen Abschluss zu kürzen.
+        /// Außerhalb dieses Durchlaufs bleibt die Rückreferenz ausschließlich weak.
+        func withWorkspaceLifetime(_ action: () -> Void) {
+            withExtendedLifetime(workspace) { action() }
+        }
+
+        var initialLoader: (@Sendable (URL) throws -> FileLoader.LoadedFile)? {
+            workspace?.initialFileLoader
+        }
+
+        func target(id: UUID) -> DocumentFileLoadTarget? {
+            workspace?.tabs.first(where: { $0.id == id }).map(DocumentFileLoadTarget.init)
+        }
+
+        func target(at url: URL) -> DocumentFileLoadTarget? {
+            workspace?.tabs.first(where: { $0.url == url }).map(DocumentFileLoadTarget.init)
+        }
+
+        func targetsForReload(changedPaths: Set<String>) -> [DocumentFileLoadTarget] {
+            guard let workspace else { return [] }
+            return workspace.tabs.compactMap { tab in
+                guard let url = tab.url, changedPaths.contains(url.standardizedFileURL.path),
+                      !tab.hasUnsavedChanges, !tab.isLoading else { return nil }
+                return DocumentFileLoadTarget(tab)
+            }
+        }
+
+        func isCurrentMatchJump(_ generation: Int) -> Bool {
+            workspace?.isCurrentMatchJump(generation) == true
+        }
+
+        func clearFolderNavigationNotice() { workspace?.folderNavigationNotice = nil }
+
+        func isCurrentGitContext(_ context: GitActionContext) -> Bool {
+            guard let workspace else { return false }
+            return context.isCurrent(in: workspace)
+        }
+
+        func openFolderFile(at url: URL, expectedDiskSnapshot: FileSnapshot,
+                            acceptance: FileLoadAcceptance, readToken: UUID,
+                            outcome: @escaping (FileLoadOutcome) -> Void) {
+            guard let workspace else { outcome(.failed); return }
+            workspace.loadFile(atCanonicalURL: url, expectedDiskSnapshot: expectedDiskSnapshot,
+                               acceptance: acceptance, folderMatchReadToken: readToken, outcome: outcome)
+        }
+
+        func selectExisting(tabID: UUID, pin: Bool, recentURL: URL) {
+            guard let workspace,
+                  let index = workspace.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+            if pin { workspace.tabs[index].isPreview = false }
+            workspace.activeTabID = tabID
+            workspace.noteRecentFile(recentURL)
+            workspace.synchronizeProjectWithActiveTabIfNeeded()
+        }
+
+        func preparePlaceholder(url: URL, preview: Bool, snapshotBound: Bool,
+                                cancelReusedPreview: (UUID) -> Void) -> DocumentFileLoadPlaceholder? {
+            guard let workspace else { return nil }
+            let replaceablePreviewIndex = preview
+                ? workspace.tabs.firstIndex(where: { $0.isPreview && !$0.hasUnsavedChanges })
+                : nil
+            let reusedID = replaceablePreviewIndex.map { workspace.tabs[$0].id }
+            let previousActiveTabID: UUID?
+            if let reusedID, workspace.activeTabID == reusedID {
+                previousActiveTabID = workspace.tabs.first(where: { $0.id != reusedID })?.id
+            } else {
+                previousActiveTabID = workspace.activeTabID
+            }
+            let placeholder = EditorTab(
+                id: reusedID ?? UUID(), title: url.lastPathComponent,
+                path: url.deletingLastPathComponent().path, url: url, content: "",
+                isDirty: false, isLoading: true, isPreview: preview
+            )
+            // Der saubere Previewplatz behält Position und Tab-ID, erhält aber
+            // eine neue Dokument-ID. Der unberührte Scratch bleibt bis Erfolg.
+            if let replaceablePreviewIndex {
+                workspace.documentLanguageDetector.cancel(tabID: placeholder.id)
+                workspace.gitPreviewLoads.cancel(tabID: placeholder.id)
+                cancelReusedPreview(placeholder.id)
+                workspace.comparisonTabID = nil
+                workspace.tabs[replaceablePreviewIndex] = placeholder
+            } else {
+                workspace.tabs.append(placeholder)
+            }
+            // Snapshotgebundene Sprünge aktivieren erst den geprüften Inhalt.
+            if !snapshotBound { workspace.activeTabID = placeholder.id }
+            return DocumentFileLoadPlaceholder(id: placeholder.id, documentID: placeholder.documentID,
+                                               previousActiveTabID: previousActiveTabID)
+        }
+
+        func discardPlaceholder(tabID: UUID, previousActiveTabID: UUID?) {
+            guard let workspace else { return }
+            // Bewusst gewählte andere Tabs bleiben aktiv. Nur der noch aktive
+            // Platzhalter darf auf seinen früheren Tab zurückfallen.
+            let placeholderWasActive = workspace.activeTabID == tabID
+            workspace.tabs.removeAll { $0.id == tabID }
+            if workspace.tabs.isEmpty {
+                let scratch = Workspace.makeScratchTab()
+                workspace.tabs = [scratch]
+                workspace.activeTabID = scratch.id
+            } else if placeholderWasActive {
+                if let previousActiveTabID,
+                   workspace.tabs.contains(where: { $0.id == previousActiveTabID }) {
+                    workspace.activeTabID = previousActiveTabID
+                } else {
+                    workspace.activeTabID = workspace.tabs.first?.id
+                }
+            } else if !workspace.tabs.contains(where: { $0.id == workspace.activeTabID }) {
+                workspace.activeTabID = workspace.tabs.first?.id
+            }
+        }
+
+        func discardForGitContext(tabID: UUID) {
+            guard let workspace else { return }
+            // Die Gitkontext-Ablehnung hatte einen eigenen Auswahlrückfall;
+            // sie springt ausdrücklich nicht auf previousActiveTabID zurück.
+            workspace.tabs.removeAll { $0.id == tabID }
+            if workspace.tabs.isEmpty {
+                let scratch = Workspace.makeScratchTab()
+                workspace.tabs = [scratch]
+                workspace.activeTabID = scratch.id
+            } else if !workspace.tabs.contains(where: { $0.id == workspace.activeTabID }) {
+                workspace.activeTabID = workspace.tabs.first?.id
+            }
+        }
+
+        func publishInitial(tabID: UUID, loaded: FileLoader.LoadedFile, url: URL, snapshotBound: Bool) {
+            guard let workspace,
+                  let idx = workspace.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+            // Nur eine aktuelle lokale Tabkopie aufbauen und einmal publizieren:
+            // Feldweise Veröffentlichung löste mehrere komplette UI-Runden aus.
+            var loadedTab = workspace.tabs[idx]
+            loadedTab.content = loaded.content
+            loadedTab.encoding = loaded.encoding
+            loadedTab.bom = loaded.bom
+            loadedTab.lineEnding = loaded.lineEnding
+            loadedTab.displayMode = loaded.displayMode
+            loadedTab.fileSize = loaded.fileSize
+            loadedTab.diskSnapshot = loaded.diskSnapshot
+            loadedTab.recordExternalFileObservation(
+                snapshot: loaded.diskSnapshot, observation: loaded.externalObservation, contentLoaded: true
+            )
+            loadedTab.isDirty = false
+            workspace.applyRememberedLanguageChoice(to: &loadedTab)
+            loadedTab.isLoading = false
+            loadedTab.recordSavedContentBaseline()
+            // Ein früherer Editoraufbau kann den leeren Ladeplatzhalter als Basis kennen.
+            loadedTab.undoHistory.reset(to: loadedTab.content)
+            var loadedTabs = workspace.tabs
+            loadedTabs[idx] = loadedTab
+            workspace.tabs = Workspace.tabsRemovingEmptyScratch(loadedTabs, keeping: tabID)
+            if snapshotBound { workspace.activeTabID = tabID }
+            workspace.noteRecentFile(url)
+            workspace.synchronizeProjectWithActiveTabIfNeeded()
+            AppDelegate.inspectRecovery(forOpenedDocument: url)
+        }
+
+        func setLoading(tabID: UUID, value: Bool) {
+            guard let workspace,
+                  let index = workspace.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+            workspace.tabs[index].isLoading = value
+        }
+
+        func publishReload(tabID: UUID, loaded: FileLoader.LoadedFile, afterDiskMutation: Bool) {
+            guard let workspace,
+                  let i = workspace.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+            workspace.tabs[i].content = loaded.content
+            workspace.tabs[i].encoding = loaded.encoding
+            workspace.tabs[i].bom = loaded.bom
+            workspace.tabs[i].lineEnding = loaded.lineEnding
+            workspace.tabs[i].displayMode = loaded.displayMode
+            workspace.tabs[i].fileSize = loaded.fileSize
+            if afterDiskMutation {
+                workspace.tabs[i].hexEditSession.discard()
+                workspace.tabs[i].diskSnapshot = loaded.diskSnapshot
+                workspace.tabs[i].recordExternalFileObservation(
+                    snapshot: loaded.diskSnapshot, observation: loaded.externalObservation, contentLoaded: true
+                )
+                workspace.tabs[i].isDirty = false
+                workspace.tabs[i].isLoading = false
+            } else {
+                workspace.tabs[i].isDirty = false
+                workspace.tabs[i].hexEditSession.discard()
+                workspace.tabs[i].isLoading = false
+                workspace.tabs[i].diskSnapshot = loaded.diskSnapshot
+                workspace.tabs[i].recordExternalFileObservation(
+                    snapshot: loaded.diskSnapshot, observation: loaded.externalObservation, contentLoaded: true
+                )
+            }
+            // Neuer Plattenstand wird auch für Undo zur gespeicherten Basis.
+            workspace.tabs[i].recordSavedContentBaseline()
+        }
+
+        func failReload(tabID: UUID, expectedURL: URL?) {
+            guard let workspace,
+                  let i = workspace.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+            workspace.tabs[i].isLoading = false
+            if workspace.tabs[i].url == expectedURL {
+                workspace.tabs[i].protectContentAfterExternalFileBecameUnavailable()
+            }
+        }
+
+        func showReopenFailure(encoding: String.Encoding) {
+            NSAlert.runWarning(title: L10n.string("Neu öffnen fehlgeschlagen"),
+                text: L10n.format("Die Datei lässt sich nicht als %@ lesen. Der bisherige Inhalt bleibt unverändert.",
+                                  encoding.displayName))
+        }
+    }
 }

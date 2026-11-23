@@ -5,7 +5,7 @@
 // Vorlagen- und Datei-Set-Menüs der Suchmaske stehen mit `.fixedSize()` in
 // einer Zeile mit den Eingabefeldern; ein beliebig langer, vom Nutzer
 // vergebener Name würde sonst das Suchen- bzw. Ersetzen-Feld bis zur
-// Unbedienbarkeit zusammenschieben (Review-Fund 2026-09-16). Der volle Name
+// Unbedienbarkeit zusammenschieben. Der volle Name
 // bleibt lesbar: bei Vorlagen in der aufgeklappten Menüliste und im
 // Verwalten-Dialog, beim aktiven Datei-Set im Tooltip des Pickers.
 

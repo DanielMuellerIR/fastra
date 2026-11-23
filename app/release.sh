@@ -11,7 +11,7 @@
 #      mit Hintergrundbild (src/DmgBackground.png) und Finder-Icon-Layout,
 #      Ausgabe in dist/Fastra-<version>.dmg.
 #   4. Signatur und App-Ticket im DMG-Inhalt verifizieren.
-#   5. DMG signieren, notarisieren und stapeln — läuft automatisch, WENN echt signiert wurde und das
+#   5. DMG signieren, notarisieren und stapeln — läuft automatisch, wenn echt signiert wurde und das
 #      Keychain-Profil vorhanden ist; bei Ad-hoc-Signierung wird der Schritt
 #      sauber übersprungen.
 #
@@ -27,7 +27,7 @@
 #     über NOTARY_PROFILE überschreibbar), pro Mac einmalig eingerichtet via:
 #       xcrun notarytool store-credentials "notary" \
 #         --apple-id "<deine Apple-ID>" --team-id "<deine Team-ID>"
-#     (KEIN --password-Argument — das Tool fragt interaktiv nach dem
+#     (kein --password-Argument — das Tool fragt interaktiv nach dem
 #      App-Specific-Password; so landet es nie in Shell-History/Transkript)
 #
 # Aufruf:
@@ -61,22 +61,14 @@ for arg in "$@"; do
   esac
 done
 
-# Hilfe-Pflege-Gate (Etappe 4 Wunschpaket 2026-07b): Ein Release mit
-# ungeprüften produktrelevanten Commits seit dem letzten Hilfe-Check ist ein
-# harter Fehler — erst Hilfe prüfen/aktualisieren, Marker fortschreiben.
+# Hilfe-Pflege-Gate: Ein Release mit ungeprüften produktrelevanten Commits seit
+# dem letzten Hilfe-Check ist ein harter Fehler — erst Hilfe
+# prüfen/aktualisieren, Marker fortschreiben.
 ./help-audit.sh --release
 
-# Veröffentlichungs-Gate: interne Angaben (Rechnernamen, private Pfade, interne
-# Hosts) dürfen nicht mit nach draußen.
-#
-# Nur Exit 0 heißt „geprüft und sauber". Jeder andere Status bricht ab —
-# einschließlich Exit 2 (kein öffentliches Remote bekannt, also GAR NICHT
-# geprüft) und der Shell-Startfehler 126/127 (Skript nicht ausführbar bzw.
-# nicht gefunden). Bis 2026-08-02 brach nur Exit 1 ab; ein Release konnte
-# damit an einem Wächter vorbeilaufen, der nie gelaufen war (Review
-# 2026-08-02). Ist wirklich kein öffentliches Remote da, holt
-# `git fetch github` den Ref — das ist die Reparatur, kein Grund zum
-# Weitermachen.
+# Publikationsaudit muss Exit 0 liefern. Auch Exit 2 (nicht geprüft) und
+# Shell-Startfehler 126/127 brechen das Release ab. Ein fehlender öffentlicher
+# Remote-Ref muss vor Fortsetzung über `git fetch github` bereitgestellt werden.
 public_history_status=0
 ./public-history-audit.sh --release || public_history_status=$?
 if [ "$public_history_status" -ne 0 ]; then
@@ -86,15 +78,15 @@ if [ "$public_history_status" -ne 0 ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────────
-# Signatur-Identität bestimmen — VOR dem langen Build
+# Signatur-Identität bestimmen — vor dem langen Build
 # ─────────────────────────────────────────────────────────────────
 # Gleiche Automatik wie in install.sh: Ist FASTRA_SIGN_IDENTITY nicht gesetzt,
 # wird die Developer ID aus dem Schlüsselbund gelesen. Vorher verlangte dieses
 # Skript die Variable ausdrücklich und fiel sonst still auf Ad-hoc zurück — auf
 # einem korrekt eingerichteten Mac entstand so ein nicht verteilbares DMG,
-# obwohl alles Nötige vorhanden war (Befund 2026-07-28).
+# obwohl alles Nötige vorhanden war.
 #
-# Der Identitätsname wird bewusst NICHT ausgegeben (Sicherheitsregel „Secrets
+# Der Identitätsname wird bewusst nicht ausgegeben (Sicherheitsregel „Secrets
 # im Terminal"); gemeldet wird nur, ob und woher eine gefunden wurde.
 SIGN_IDENTITY="${FASTRA_SIGN_IDENTITY:-}"
 if [ -n "$SIGN_IDENTITY" ]; then
@@ -200,12 +192,12 @@ mkdir -p "$MOUNT_DIR" "$VERIFY_MOUNT"
 # Beide Mountpunkte gehören ausschließlich diesem Lauf. Der eine EXIT-Trap
 # räumt sie auch bei Fehlern oder Signalen auf, ohne ein gleichnamiges Volume
 # eines Nutzers anzufassen. Das eigene RW-Volume wird dafür über seine beim
-# Attach gemerkte GERÄTEIDENTITÄT (dev-entry, z. B. /dev/disk4) ausgehängt,
+# Attach gemerkte Geräteidentität (dev-entry, z. B. /dev/disk4) ausgehängt,
 # nicht über den Mountpfad: Im Finder-Layout-Fall ist der Pfad
 # /Volumes/Fastra, und den kann nach dem eigenen Detach — etwa während der
 # minutenlangen Notarisierung — ein fremdes gleichnamiges Volume neu belegen;
-# ein Pfad-Detach im Trap würde dann dieses fremde Volume auswerfen
-# (Review 2026-08-29). ATTACHED_DEV ist nur zwischen eigenem Attach und
+# ein Pfad-Detach im Trap würde dann dieses fremde Volume auswerfen.
+# ATTACHED_DEV ist nur zwischen eigenem Attach und
 # erfolgreichem eigenem Detach gesetzt. VERIFY_MOUNT bleibt ein Pfad-Detach:
 # Dieser Mountpunkt liegt privat im einmaligen Staging-Verzeichnis und kann
 # nicht mit einem fremden Volume kollidieren.
@@ -214,9 +206,9 @@ ATTACHED_DEV=""
 # Prüft unmittelbar vor dem Detach, dass die gemerkte Gerätenummer weiterhin
 # zum eigenen RW-Image gehört. Gerätenummern werden vom Kernel wiederverwendet;
 # die beim Attach gespeicherte Nummer allein ist daher keine dauerhafte
-# Identität (Review 2026-08-30).
+# Identität.
 #
-# Drei Ergebnisse (Review 2026-09-02): 0 = eigenes Gerät, 1 = nachweislich
+# Drei Ergebnisse: 0 = eigenes Gerät, 1 = nachweislich
 # fremdes Gerät, 2 = Prüfung nicht möglich (hdiutil-Fehler, unlesbare Plist).
 # Der Aufrufer darf ATTACHED_DEV nur bei 1 vergessen; bei 2 ist das Image
 # vermutlich noch eingehängt, und der EXIT-Trap braucht die Kennung weiter.
@@ -291,7 +283,7 @@ cleanup_release() {
 
 # Liest aus der -plist-Ausgabe von `hdiutil attach` die Geräteidentität und
 # den Mountpunkt des gemounteten Dateisystems (zwei Zeilen: dev-entry,
-# mount-point). Bevorzugt wird der Eintrag MIT Mountpunkt; als Rückfall dient
+# mount-point). Bevorzugt wird der Eintrag mit Mountpunkt; als Rückfall dient
 # der erste dev-entry, damit der Trap das Volume auch dann kennt, wenn die
 # Mountpunkt-Auswertung leer bleibt.
 fastra_attach_info() {
@@ -328,7 +320,7 @@ if [ "$SIGN_IDENTITY" != "-" ]; then
 fi
 
 # a) Hintergrundbild aufbereiten: Der Finder zeigt auf Retina-Displays nur
-#    dann ein scharfes Bild, wenn das TIFF BEIDE Auflösungen enthält
+#    dann ein scharfes Bild, wenn das TIFF beide Auflösungen enthält
 #    (1x = 600×420 Punkte bei 72 dpi, 2x = 1200×840 Pixel bei 144 dpi).
 #    sips skaliert die Quelle auf beide Größen, tiffutil kombiniert sie zu
 #    einem Multi-Resolution-TIFF (-cathidpicheck prüft das 1x/2x-Verhältnis).
@@ -352,24 +344,17 @@ if [ "$FINDER_LAYOUT" = "1" ] && [ -e "/Volumes/$VOL_NAME" ]; then
   FINDER_LAYOUT=0
 fi
 hdiutil create -size 200m -fs HFS+ -volname "$VOL_NAME" -ov -quiet "$RW_DMG"
-# Fürs Finder-Layout MUSS das Volume am Standardort unter /Volumes hängen:
-# Seit macOS 26.6 registriert der Finder ein an einen privaten Mountpunkt
-# gehängtes Volume nicht mehr als `disk "<Name>"`, und das AppleScript unten
-# scheiterte mit Fehler -1728 (nachgemessen 2026-08-28: privater Mountpunkt
-# → `exists disk "Fastra"` = false, Standardort → true). Der Wächter oben
-# stellt sicher, dass /Volumes/$VOL_NAME frei ist. Wohin hdiutil tatsächlich
-# gemountet hat, wird aus dessen -plist-Ausgabe GELESEN statt angenommen:
-# Taucht zwischen Wächter und Attach doch ein fremdes Fastra-Volume auf,
-# weicht hdiutil auf „Fastra 1" aus — mit einem angenommenen Pfad liefe die
-# Inhaltskopie dann in das fremde Volume. Bei unerwartetem Mountpunkt wird
-# nur das dekorative Layout übersprungen; kopiert und ausgehängt wird immer
-# der echte eigene Mountpunkt. Ohne Layout (headless, --no-finder-layout
-# oder belegter Name) bleibt der private Mountpunkt — er verhindert dort
-# Kollisionen mit bereits geöffneten DMGs.
+# Finder-Layout benötigt seit macOS 26.6 den Standard-Mountpunkt unter
+# /Volumes. Einen privaten Mount erkennt Finder nicht als `disk "<Name>"`.
+# Den tatsächlichen Mountpunkt aus hdiutils Plist lesen: Bei Namenskollision
+# könnte er trotz Vorprüfung abweichen. Dann nur das dekorative Layout
+# auslassen; Kopieren und Aushängen betreffen immer das eigene Volume.
+# Ohne Finder-Layout (headless, Option oder belegter Name) schützt ein privater
+# Mountpunkt vor Kollisionen mit geöffneten DMGs.
 if [ "$FINDER_LAYOUT" = "1" ]; then
   ATTACH_PLIST="$(hdiutil attach -readwrite -noverify -noautoopen -plist "$RW_DMG")"
   ATTACH_INFO="$(printf '%s' "$ATTACH_PLIST" | fastra_attach_info)"
-  # Geräteidentität ZUERST übernehmen: Selbst wenn der Mountpunkt unten leer
+  # Geräteidentität zuerst übernehmen: Selbst wenn der Mountpunkt unten leer
   # bleibt, kennt der EXIT-Trap damit das schon gemountete eigene Volume und
   # lässt es nicht hängen.
   ATTACHED_DEV="$(printf '%s\n' "$ATTACH_INFO" | sed -n 1p)"
@@ -414,10 +399,10 @@ cp "$DMG_STAGING/DmgBackground.tiff" "$MOUNT_DIR/.background/DmgBackground.tiff"
 #    überspringbar (z.B. headless), das DMG bleibt voll funktionsfähig.
 if [ "$FINDER_LAYOUT" = "1" ]; then
   echo "   Finder-Layout einstellen (Fenster, Icon-Positionen, Hintergrund)"
-  # Das dekorative Layout ist BEST-EFFORT. In automatisierten oder headless
+  # Das dekorative Layout ist Best-Effort. In automatisierten oder headless
   # Läufen (kein GUI-Fokus, gesperrter Bildschirm) liefert der Finder
   # reproduzierbar den AppleScript-Fehler -1728 — er kann das container window
-  # nicht öffnen. Ein solcher Fehler darf den Release NIE abbrechen (`set -e`):
+  # nicht öffnen. Ein solcher Fehler darf den Release nie abbrechen (`set -e`):
   # Das DMG ist auch ohne dekoratives Layout voll funktionsfähig, nur schlichter.
   # Deshalb bis zu zwei Versuche; bleibt es fehlerhaft, wird gewarnt und ohne
   # Layout weitergebaut. Das `if osascript …` fängt den Exit-Code selbst ab,
@@ -530,11 +515,11 @@ echo
 # ─────────────────────────────────────────────────────────────────
 # Schritt 5: Notarization — automatisch, wenn echt signiert wurde
 # ─────────────────────────────────────────────────────────────────
-# Läuft NUR, wenn in Schritt 2 mit einer echten Developer-ID signiert wurde
+# Läuft nur, wenn in Schritt 2 mit einer echten Developer-ID signiert wurde
 # (Developer-ID-Identität gefunden). Ad-hoc-Bundles können nicht notarisiert
 # werden — dann wird dieser Schritt übersprungen.
 #
-# Das notarytool-Keychain-Profil ist PRO MAC eingerichtet (Schlüsselbund wird
+# Das notarytool-Keychain-Profil ist pro Mac eingerichtet (Schlüsselbund wird
 # nicht über Macs gesynct). Default-Profilname "notary" wird
 # projektübergreifend wiederverwendet; über die Umgebungsvariable
 # NOTARY_PROFILE überschreibbar. Einmalig je Mac angelegt via:
@@ -556,7 +541,7 @@ else
 
   # Hochladen + auf Apples Prüfung warten (--wait, typ. 1-10 Min). notarytool
   # notarisiert den DMG-Inhalt rekursiv mit. Profil liefert die Credentials —
-  # KEIN Passwort als Argument (Sicherheitsregel "Secrets im Terminal").
+  # kein Passwort als Argument (Sicherheitsregel "Secrets im Terminal").
   echo "   notarytool submit mit lokalem Keychain-Profil — wartet auf Apple…"
   xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
 

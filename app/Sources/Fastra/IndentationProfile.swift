@@ -1,17 +1,14 @@
 // IndentationProfile.swift
 //
-// Etappe 4 des Soft-Wrap-Pakets (Beschluss 2026-07-19): konsistente
-// Einrückung. Diese Datei bündelt das wirksame Einrückungsprofil eines
-// Formats und den UI-freien Algorithmus für „Einfügen und Einrückung
-// angleichen" (BBEdit „Paste and Match Indentation", Handbuch 16.0.2
-// S. 89: „this command will attempt to indent the pasted text to the same
-// level as the line on which you paste (or if that line is empty, the most
-// recent non-empty line)").
+// Wirksames Einrückungsprofil eines Formats und UI-freier Algorithmus für
+// „Einfügen und Einrückung angleichen“. Entsprechend BBEdit „Paste and Match
+// Indentation“ (Handbuch 16.0.2, S. 89) gilt die Einrückung der Zielzeile;
+// ist sie leer, zählt die letzte nichtleere Zeile.
 
 import Foundation
 
 /// Das wirksame Einrückungsprofil eines Formats: Tabs oder Leerzeichen,
-/// Einrückungsbreite (Leerzeichen je Stufe) und Tab-DARSTELLUNGS-Breite.
+/// Einrückungsbreite (Leerzeichen je Stufe) und Tab-Darstellungs-Breite.
 /// Werkstandard ist das bisher fest verdrahtete Verhalten (vier Leerzeichen,
 /// Tabbreite vier) — migrationssicher, keine geratenen Sprachdefaults.
 struct IndentationProfile: Equatable {
@@ -21,7 +18,7 @@ struct IndentationProfile: Equatable {
 
     static let factory = IndentationProfile(usesTabs: false, indentWidth: 4, tabWidth: 4)
 
-    /// Der Text EINER Einrückungsstufe (Tab-Taste, Shift-Right).
+    /// Der Text einer Einrückungsstufe (Tab-Taste, Shift-Right).
     var unitString: String {
         usesTabs ? "\t" : String(repeating: " ", count: indentWidth)
     }
@@ -65,7 +62,7 @@ enum IndentationMatchingPaste {
         var lines: [String] = []
         var current = ""
         var endsWithNewline = false
-        // Swift fasst "\r\n" als EINEN Character-Cluster zusammen — der
+        // Swift fasst "\r\n" als einen Character-Cluster zusammen — der
         // Vergleich deckt deshalb alle drei Umbrucharten je Cluster ab.
         for character in text {
             if character == "\n" || character == "\r" || character == "\r\n" {
@@ -97,13 +94,13 @@ enum IndentationMatchingPaste {
     ///   Zielzeile die der zuletzt vorangehenden nicht leeren Zeile
     ///   (BBEdit-Semantik, Handbuch S. 89).
     /// - `prefixIsWhitespaceOnly`: `true`, wenn vor der Einfügestelle auf
-    ///   ihrer Zeile nur Whitespace steht — nur dann wird auch die ERSTE
+    ///   ihrer Zeile nur Whitespace steht — nur dann wird auch die erste
     ///   eingefügte Zeile eingerückt; mitten in einer Zeile bliebe sonst
     ///   Whitespace im Satz stehen.
     /// - `replacementStart`: Dokumentposition, ab der ersetzt werden muss.
     ///   Steht vor der Einfügestelle nur Einrückung (typisch auf einer
     ///   automatisch eingerückten Leerzeile), gehört diese zum Block und wird
-    ///   MIT ersetzt — sonst addierte sie sich zu der Einrückung, die
+    ///   mit ersetzt — sonst addierte sie sich zu der Einrückung, die
     ///   `matchedText` der ersten Zeile ohnehin voranstellt, und der Block
     ///   säße eine Ebene zu tief. Sonst ist es die Einfügestelle selbst.
     static func targetContext(documentText: String, insertionLocation: Int,
@@ -111,7 +108,7 @@ enum IndentationMatchingPaste {
         -> (columns: Int, prefixIsWhitespaceOnly: Bool, replacementStart: Int) {
         let ns = documentText as NSString
         let location = max(0, min(insertionLocation, ns.length))
-        // Die Position HINTER einem End-Umbruch ist der Anfang einer leeren
+        // Die Position hinter einem End-Umbruch ist der Anfang einer leeren
         // letzten Zeile — `lineRange` kennt diese implizite Zeile nicht und
         // fiele sonst auf die Zeile davor zurück (deren Umbruch den Präfix
         // „nicht nur Whitespace" machte).
@@ -188,7 +185,7 @@ enum IndentationMatchingPaste {
             let relative = (indents[index] ?? base) - base
             if index == 0 && !indentFirstLine {
                 // Mitten in einer Zeile eingefügt: Die erste Zeile beginnt an
-                // der Einfügestelle; nur ihre RELATIVE Tiefe über der Basis
+                // der Einfügestelle; nur ihre relative Tiefe über der Basis
                 // bleibt erhalten.
                 result.append(profile.whitespace(forColumns: relative) + content)
             } else {

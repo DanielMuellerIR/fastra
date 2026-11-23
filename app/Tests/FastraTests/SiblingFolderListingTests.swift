@@ -1,7 +1,7 @@
 // SiblingFolderListingTests.swift
 //
-// Tests für das Geschwisterordner-Menü am Seitenleisten-Kopf (Etappe 1
-// Wunschpaket 2026-07b): nur Ordner, versteckte ausgeblendet, alphabetisch,
+// Tests für das Geschwisterordner-Menü am
+// Seitenleisten-Kopf: nur Ordner, versteckte ausgeblendet, alphabetisch,
 // aktueller Ordner bleibt in der Liste (fürs Häkchen im Menü).
 
 import Foundation
@@ -25,7 +25,7 @@ func siblings_filtersFilesAndHidden() throws {
             try fm.createDirectory(at: parent.appendingPathComponent(name),
                                    withIntermediateDirectories: true)
         }
-        // Versteckter Ordner und eine normale Datei dürfen NICHT erscheinen.
+        // Versteckter Ordner und eine normale Datei dürfen nicht erscheinen.
         try fm.createDirectory(at: parent.appendingPathComponent(".versteckt"),
                                withIntermediateDirectories: true)
         try "x".write(to: parent.appendingPathComponent("datei.txt"),

@@ -2,9 +2,8 @@
 //
 // Deckt die reine Shortcut-Entscheidungslogik ab (CMD+F, CMD+SHIFT+F,
 // ESC). Diese Tests sind der Regressions-Schutz gegen den wiederkehrenden
-// „Zombie-Find-Bar"-Bug: solange `KeyRouting.route` CMD+F korrekt als
-// abzufangende Route meldet, leiten BEIDE Handler (sendEvent + Monitor)
-// das Event nicht an die NSTextView weiter.
+// „Zombie-Find-Bar"-Bug: Der lokale Monitor fängt CMD+F anhand
+// von `KeyRouting.route` vor der NSTextView ab.
 
 import Testing
 import AppKit
@@ -49,6 +48,33 @@ func cmdF_uppercase() {
         isDocumentWindowKey: true
     )
     #expect(route == .showSearchFile)
+}
+
+@Test("⌥⇧F erreicht den Formatierbefehl aus Dokument und Suchmaske",
+      arguments: [false, true])
+func optionShiftF_routesFromDocumentOrSearch(searchIsKey: Bool) {
+    let route = KeyRouting.route(
+        isKeyDown: true,
+        modifierFlags: [.option, .shift],
+        charactersIgnoringModifiers: "F",
+        keyCode: 3,
+        isSearchWindowKey: searchIsKey,
+        isDocumentWindowKey: !searchIsKey
+    )
+    #expect(route == .formatDocument)
+}
+
+@Test("⌥⇧F bleibt bei einem Hilfsfenster frei")
+func optionShiftF_passesThroughForHelp() {
+    let route = KeyRouting.route(
+        isKeyDown: true,
+        modifierFlags: [.option, .shift],
+        charactersIgnoringModifiers: "F",
+        keyCode: 3,
+        isSearchWindowKey: false,
+        isHelpWindowKey: true
+    )
+    #expect(route == .passThrough)
 }
 
 @Test("CMD+CTRL+F wird NICHT gekapert")

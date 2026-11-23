@@ -35,10 +35,6 @@ struct GitMarkdownConversionTests {
         let defaults = testSuiteDefaults(named: suite)
         let service = MarkdownImportService()
         let pending = PendingGitMarkdownImport()
-        let previousChoice = Workspace.markdownImportFileChoiceProvider
-        let previousPackageChoice = Workspace.markdownImportPackageChoiceProvider
-        Workspace.markdownImportFileChoiceProvider = { _, _ in .convert }
-        Workspace.markdownImportPackageChoiceProvider = { _, _ in .convert }
         service.locateTool = { URL(fileURLWithPath: "/bin/echo") }
         service.runProcess = { _, arguments, _, _, completion in
             if arguments.contains("--formats") {
@@ -53,11 +49,16 @@ struct GitMarkdownConversionTests {
             return nil
         }
         let workspace = Workspace(defaults: defaults, markdownImportService: service)
+        let decisions = workspace.markdownImportDecisions
+        let previousChoice = decisions.fileChoiceProvider
+        let previousPackageChoice = decisions.packageChoiceProvider
+        decisions.fileChoiceProvider = { _, _ in .convert }
+        decisions.packageChoiceProvider = { _, _ in .convert }
         workspace.projectURL = root.canonicalFileURL
         defer {
             service.runProcess = nil
-            Workspace.markdownImportFileChoiceProvider = previousChoice
-            Workspace.markdownImportPackageChoiceProvider = previousPackageChoice
+            decisions.fileChoiceProvider = previousChoice
+            decisions.packageChoiceProvider = previousPackageChoice
             workspace.closeProject()
             defaults.removePersistentDomain(forName: suite)
             try? FileManager.default.removeItem(at: root)

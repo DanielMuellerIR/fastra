@@ -185,7 +185,7 @@ enum AtomicCommitRecovery {
                 }
             }
             try writeAll(data, to: journalFD)
-            try synchronizeFile(journalFD)
+            try FileDurability.synchronizeFile(journalFD)
             guard Darwin.close(journalFD) == 0 else {
                 journalIsOpen = false
                 throw currentPOSIXError()
@@ -331,7 +331,7 @@ enum AtomicCommitRecovery {
                             identity: record.preparedIdentity,
                             signature: record.replacementContent)) {
                         // Vor dem Entfernen des Journals wird die Abwesenheit
-                        // des zweiten Namens im ZIELVERZEICHNIS dauerhaft
+                        // des zweiten Namens im Zielverzeichnis dauerhaft
                         // gemacht. Sonst könnte ein späterer Stromausfall den
                         // Cleanup-Namen ohne seine Zuordnung wieder zeigen.
                         try synchronizeParentDirectory(of: paths.target)
@@ -618,26 +618,8 @@ enum AtomicCommitRecovery {
 
     private static func writeAll(_ data: Data, to descriptor: Int32) throws {
         try data.withUnsafeBytes { bytes in
-            guard let baseAddress = bytes.baseAddress else { return }
-            var offset = 0
-            while offset < bytes.count {
-                let count = Darwin.write(
-                    descriptor, baseAddress.advanced(by: offset),
-                    bytes.count - offset)
-                if count < 0, errno == EINTR { continue }
-                guard count > 0 else { throw currentPOSIXError() }
-                offset += count
-            }
+            try POSIXBufferWriter.writeAll(bytes, to: descriptor)
         }
-    }
-
-    private static func synchronizeFile(_ descriptor: Int32) throws {
-        if fcntl(descriptor, F_FULLFSYNC) == 0 { return }
-        let code = errno
-        guard code == ENOTSUP || code == EINVAL || code == ENOTTY else {
-            throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
-        }
-        guard fsync(descriptor) == 0 else { throw currentPOSIXError() }
     }
 
     private static func journalName(for id: UUID) -> String {

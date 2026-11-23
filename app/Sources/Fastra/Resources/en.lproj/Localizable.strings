@@ -141,6 +141,8 @@
 "Soft Wrap für %@: %@. Hauptklick schaltet um; Pfeil oder Rechtsklick öffnet Optionen." = "Soft Wrap for %@: %@. Click the main control to toggle; use the arrow or right-click for options.";
 "Soft-Wrap-Optionen" = "Soft Wrap Options";
 "Schaltet Soft Wrap für das Format %@ um." = "Toggles Soft Wrap for the %@ format.";
+"Formatierung für „%@“ abgebrochen. Der ursprüngliche Editor ist nicht mehr aktiv." = "Formatting cancelled for ‘%@’. Its original editor is no longer active.";
+"Minifizierung für „%@“ abgebrochen. Der ursprüngliche Editor ist nicht mehr aktiv." = "Minifying cancelled for ‘%@’. Its original editor is no longer active.";
 "Formatierung nicht übernommen" = "Formatting Not Applied";
 "Das Dokument oder die Auswahl hat sich während der Formatierung geändert. Der neue Stand blieb unverändert." = "The document or selection changed while formatting. The newer content was left unchanged.";
 "Für %@ auf Werkseinstellung zurücksetzen" = "Reset %@ to Factory Default";
@@ -168,6 +170,7 @@
 "Umbenennen…" = "Rename…";
 "VORSCHAU" = "PREVIEW";
 "Verlauf anzeigen" = "Show History";
+"Verlauf und Diff benötigen ein geöffnetes Git-Repository." = "Open a Git repository to view history and changes.";
 "Verlauf anzeigen (git log)" = "Show History (git log)";
 "Verlauf durchsuchen…" = "Search History…";
 "Verlauf löschen" = "Clear History";
@@ -461,6 +464,9 @@
 "Der sichere Dateiaustausch konnte nicht vollständig abgeschlossen werden. Prüfe „%@“ und „%@“; Fastra löscht in diesem Zustand keinen der beiden Pfade." = "The safe file exchange could not be fully completed. Check “%@” and “%@”; Fastra does not delete either path in this state.";
 "Die sichtbare Vorschau ist gekürzt. Verfeinere die Suche, bis alle Treffer sichtbar sind, bevor du Änderungen anwendest." = "The visible preview is truncated. Refine the search until every match is visible before applying changes.";
 "Dateien oder Suchoptionen haben sich seit der sichtbaren Vorschau geändert. Starte die Suche erneut; es wurde nichts verändert." = "Files or search options changed after the visible preview. Run the search again; nothing was changed.";
+"Die Suchquellen konnten nicht vollständig geprüft werden. Starte die Suche erneut. Es wurde nichts verändert." = "The search sources could not be fully checked. Run the search again. Nothing was changed.";
+"Die Prüfung der Suchquellen hat die Lesegrenze erreicht. Verfeinere die Suche. Es wurde nichts verändert." = "Checking the search sources reached the read limit. Narrow the search. Nothing was changed.";
+"Die Prüfung der Suchquellen hat zu lange gedauert. Verfeinere die Suche. Es wurde nichts verändert." = "Checking the search sources took too long. Narrow the search. Nothing was changed.";
 "Die berechnete Änderung stimmt nicht mehr mit der sichtbaren Vorschau überein. Starte die Suche erneut; es wurde nichts verändert." = "The calculated change no longer matches the visible preview. Run the search again; nothing was changed.";
 "Der Editorinhalt hat sich während der Rückfrage geändert. Die neueren Änderungen bleiben ungespeichert erhalten." = "The editor content changed while confirmation was open. The newer changes remain safely unsaved.";
 "Neuere Änderungen noch ungespeichert" = "Newer Changes Still Unsaved";
@@ -581,8 +587,10 @@
 "Backup-Ordner anlegen: %@" = "Create backup folder: %@";
 "Backup schreiben (%@): %@" = "Write backup (%@): %@";
 "Manifest schreiben: %@" = "Write manifest: %@";
+"Die Sicherung wurde verändert oder ist keine reguläre Datei." = "The backup changed or is not a regular file.";
+"Die Sicherung für „%@“ konnte nicht gelesen werden: %@\n%@" = "The backup for “%@” could not be read: %@\n%@";
 "%@: %@" = "%@: %@";
-"Backup-Hash stimmt nicht: %@" = "Backup hash mismatch: %@";
+"Die Sicherung für „%@“ stimmt nicht mit dem Original überein.\n%@" = "The backup for “%@” does not match the original.\n%@";
 
 /* Mitgelieferte Suchvorlagen und Regex-Bausteine. */
 "E-Mail-Adresse" = "Email Address";
@@ -1090,21 +1098,21 @@
 "Die Herkunft der direkten Git-Identität ist nicht eindeutig. Fastra hat nichts geschrieben." = "The origin of the direct Git identity is ambiguous. Fastra did not write anything.";
 "Git lieferte keine eindeutige Herkunft der Identitätswerte." = "Git did not report an unambiguous origin for the identity values.";
 
-// Gemeinsamer Seitenleisten-Kopf + Pfadmenüs (Etappe 1 Wunschpaket 2026-07b)
+// Gemeinsamer Seitenleisten-Kopf + Pfadmenüs
 "Projektansicht schließen" = "Close Project View";
 "Blendet die Projekt-Seitenleiste aus. Offene Tabs bleiben erhalten." = "Hides the project sidebar. Open tabs are kept.";
 "Ordner „%@“ lässt sich nicht lesen: %@" = "Folder “%1$@” can’t be read: %2$@";
 "Projektordner %@" = "Project folder %@";
 "⌘-Klick zeigt die Nachbarordner zum Projektwechsel." = "⌘-click shows the neighboring folders to switch projects.";
 
-// Live-Trefferanzeige im Editor (Etappe 2 Wunschpaket 2026-07b)
+// Live-Trefferanzeige im Editor
 "Im Editor sind nur diese ersten %ld Treffer markiert." = "Only these first %ld matches are highlighted in the editor.";
 
-// Hilfe (Etappe 4 Wunschpaket 2026-07b)
+// Hilfe
 "Fastra-Hilfe" = "Fastra Help";
 "Die Hilfe-Datei fehlt im App-Paket. Bitte Fastra neu installieren." = "The help file is missing from the app package. Please reinstall Fastra.";
 
-// Assistiertes Markdown-Schreiben (Etappe 5 Wunschpaket 2026-07b)
+// Assistiertes Markdown-Schreiben
 "Fett" = "Bold";
 "Kursiv" = "Italic";
 "Hervorheben" = "Highlight";
@@ -1128,13 +1136,14 @@
 "Erst speichern" = "Save First";
 "Das Dokument hat noch keinen Speicherort. Bitte erst speichern (⌘S) — dann kann Fastra Bilder im Unterordner „images“ ablegen." = "The document has no location on disk yet. Please save it first (⌘S) — then Fastra can store images in the “images” subfolder.";
 "Die Bilddaten konnten nicht gelesen werden." = "The image data could not be read.";
+"Alle 9.999 Bildnamen für diese Dateiendung im Ordner „images“ sind bereits belegt oder für Rückgängig reserviert." = "All 9,999 image names for this file extension in the “images” folder are already in use or reserved for Undo.";
 "„images“ ist kein echter Ordner. Bitte den symbolischen Link oder die Datei umbenennen und erneut versuchen." = "‘images’ is not a real folder. Rename the symbolic link or file, then try again.";
 "Fastra legt eingefügte Bilder im Unterordner „images“ ab und verlinkt sie relativ — Details in der Hilfe." = "Fastra stores inserted images in the “images” subfolder and links them relatively — see Help for details.";
 "Hilfe öffnen" = "Open Help";
 "Hinweis ausblenden" = "Dismiss hint";
 "Markdown" = "Markdown";
 
-/* Datei-Vergleich (Etappe 1 Wunschpaket 2026-07c) */
+/* Datei-Vergleich */
 "Dateien vergleichen…" = "Compare Files…";
 "Dateien vergleichen" = "Compare Files";
 "Mit gespeicherter Fassung vergleichen" = "Compare Against Saved Version";
@@ -1201,12 +1210,12 @@
 "Wähle hier eine Datei. Für zwei Ordner nutze „Ordner vergleichen…“." = "Choose a file here. For two folders, use “Compare Folders…”.";
 "Binärdatei — ein Zeilenvergleich ist nicht möglich." = "Binary file — a line comparison is not possible.";
 
-/* Gemeinsamer Dual-Pane-Renderer (Etappe 2 Wunschpaket 2026-07c) */
+/* Gemeinsamer Dual-Pane-Renderer */
 "Zu Unterschied %ld springen" = "Jump to difference %ld";
 "Übersicht der Unterschiede" = "Overview of the differences";
 "Übersicht der Unterschiede; die hervorgehobene Markierung ist der aktuelle." = "Overview of the differences; the highlighted marker is the current one.";
 
-/* Seitenleisten-Dateifilter (Etappe 3 Wunschpaket 2026-07c) */
+/* Seitenleisten-Dateifilter */
 "Dateien filtern" = "Filter files";
 "Filtert den Dateibaum nach Dateinamen (Teilstring, Groß-/Kleinschreibung egal). Inhalte durchsucht „In Projekt oder Ordnern suchen…“ (⇧⌘F)." = "Filters the file tree by file name (substring, case-insensitive). To search contents, use “Search in Project or Folders…” (⇧⌘F).";
 "Filter leeren (Escape)" = "Clear filter (Escape)";
@@ -1219,7 +1228,7 @@
 "Im Inhalt suchen…" = "Search in contents…";
 "Öffnet den Suchdialog für die Volltextsuche im Projekt beziehungsweise in den Ordnern." = "Opens the search dialog for full-text search in the project or in the folders.";
 
-/* tool4d-Ersteinrichtungshilfe (Etappe 4 Wunschpaket 2026-07c) */
+/* tool4d-Ersteinrichtungshilfe */
 "tool4d finden…" = "Find tool4d…";
 "tool4d gefunden" = "tool4d found";
 "Kein tool4d gefunden" = "No tool4d found";
@@ -1235,7 +1244,7 @@
 "Einrichtung anzeigen" = "Show Setup";
 "Nicht mehr zeigen" = "Don’t show again";
 
-/* 4D-Struktur-Hinweise (Etappe 5 Wunschpaket 2026-07c) */
+/* 4D-Struktur-Hinweise */
 "Struktur-Hinweise" = "Structure Hints";
 "Struktur-Hinweis" = "Structure Hint";
 "Keine Auffälligkeiten gefunden (Block-, Klammer-, String- und Kommentar-Balance). Das ist eine Heuristik, kein Compiler-Ersatz — verbindlich prüft tool4d, siehe Hilfe „4D und tool4d“." = "No anomalies found (block, bracket, string, and comment balance). This is a heuristic, not a compiler replacement — tool4d checks authoritatively, see Help “4D and tool4d”.";
@@ -1253,7 +1262,7 @@
 "„Else“ außerhalb von „If“/„Case of“." = "“Else” outside of “If”/“Case of”.";
 "„Function“ in Zeile %ld" = "“Function” in line %ld";
 
-/* 4D-Werkzeuge (Etappe 6 Wunschpaket 2026-07c) */
+/* 4D-Werkzeuge */
 " oder " = " or ";
 "Konstante" = "Constant";
 "keine Parameter" = "no parameters";
@@ -1281,14 +1290,14 @@
 "4D: Token-Suffixe entfernen (:Cnnn/:Knnn)" = "4D: Remove token suffixes (:Cnnn/:Knnn)";
 "4D: Befehls-Token ergänzen (:Cnnn)" = "4D: Add command tokens (:Cnnn)";
 
-/* Gehe zum Ziel (Etappe 7 Wunschpaket 2026-07c) */
+/* Gehe zum Ziel */
 "Kein Ziel für „%@“ gefunden." = "No target found for “%@”.";
 "Datei „%@“ nicht gefunden." = "File “%@” not found.";
 "Keine Überschrift zu „%@“ gefunden." = "No heading found for “%@”.";
 "Relative Ziele brauchen eine gespeicherte Datei als Ausgangspunkt." = "Relative targets need a saved file as their starting point.";
 "„%@“ ist keine gültige Adresse." = "“%@” is not a valid address.";
 
-/* tool4d-LSP-Dokumentprüfung (Etappe 8 Wunschpaket 2026-07c) */
+/* tool4d-LSP-Dokumentprüfung */
 "Der lokale Diagnosekanal für tool4d konnte nicht geöffnet werden." = "The local diagnostic channel for tool4d could not be opened.";
 "tool4d hat die Verbindung und Initialisierung nicht rechtzeitig abgeschlossen." = "tool4d did not complete the connection and initialization in time.";
 "tool4d hat innerhalb der Wartezeit keine Diagnosen geliefert." = "tool4d did not provide diagnostics within the time limit.";
@@ -1829,6 +1838,7 @@
 "Images-Ordner aufräumen" = "Clean up images folder";
 "Images-Ordner aufräumen…" = "Clean up images folder…";
 "Speichere das Markdown-Dokument vor dem Aufräumen." = "Save the Markdown document before cleaning up.";
+"Die Dateien oder ihre Referenzen haben sich seit der Vorschau geändert. Öffne „Images-Ordner aufräumen“ erneut. Fastra hat keine Dateien gelöscht." = "The files or their references changed after the preview. Open “Clean up images folder” again. Fastra did not delete any files.";
 "Keine unbenutzten Dateien im Images-Ordner gefunden." = "No unused files found in the images folder.";
 "Diese Dateien werden gelöscht. Bilder anderer Markdown-Dateien im selben Ordner und offener Dokumente bleiben erhalten. Unterordner werden nicht verändert." = "These files will be deleted. Images used by other Markdown files in the same folder or by open documents are preserved. Subfolders are left unchanged.";
 
@@ -2296,3 +2306,106 @@
 
 "Dokument wird formatiert…" = "Formatting document…";
 "Dokument wird minifiziert…" = "Minifying document…";
+
+"Die eigene Bildkopie „%@“ blieb erhalten. Die Einfügung wurde nicht abgeschlossen." = "The image copy “%@” was preserved. Insertion was not completed.";
+"Die Bereinigung der Bildablage konnte nicht vollständig synchronisiert werden." = "Cleanup of the image storage could not be fully synchronized.";
+"Der Text blieb unverändert. Die Wiederherstellung der Bilder wurde nicht abgeschlossen." = "The text is unchanged. The images could not be fully restored.";
+
+"Bilddateien konnten nicht vollständig entfernt werden" = "Image files could not be completely removed";
+
+"Bei der Bildbereinigung blieb „%@“ erhalten." = "The path ‘%@’ was preserved during image cleanup.";
+
+"Die Bilddatei „%@“ wurde entfernt." = "The image file ‘%@’ was removed.";
+
+"Die Bilddatei „%@“ wurde zurückgestellt." = "The image file ‘%@’ was restored to its original path.";
+
+"Zusätzlicher Fehler beim Sichern oder Aufräumen: %@" = "Additional error while preserving or cleaning up: %@";
+
+"Bestätigt angewendete Dateien:\n%@" = "Files confirmed changed on disk:\n%@";
+"Die Sicherungsablage wurde während des Apply verändert. Der Vorgang wurde angehalten." = "The backup location changed while Fastra was applying changes. The operation stopped.";
+"Erreichbare temporäre Wiederherstellungsdateien:\n%@" = "Reachable temporary recovery files:\n%@";
+"Erreichbare unveränderte Originalsicherungen:\n%@" = "Reachable, verified original backups:\n%@";
+"Erreichbare ursprüngliche Sicherungsordner (Stand der Fehlerprüfung):\n%@" = "Original backup folders reachable when the error was checked:\n%@";
+"Kein ursprünglicher Sicherungsordner ist unter einem geprüften Pfad erreichbar." = "Fastra could not verify a path to an original backup folder.";
+"Noch nicht abschließend geprüfte Dateien:\n%@" = "Files pending final verification:\n%@";
+"Unter dem bisherigen Pfad ist keine verlässlich erreichbare Rückgängig-Basis bestätigt. Erhaltene Sicherungen und temporäre Dateien wurden nicht gelöscht." = "Fastra could not verify undo data at the original location. The remaining backups and temporary files were kept.";
+
+"Erhaltene Pfade:\n%@" = "Preserved paths:\n%@";
+
+"%@\nDie Zieldateien blieben unverändert. Eigene temporäre Dateien sind erhalten. Behebe die Ursache und nutze „Aufräumen“." = "%@\nThe target files remained unchanged. Fastra’s temporary files have been preserved. Resolve the cause and choose “Clean Up”.";
+
+"%@\nDie Zieldateien blieben unverändert." = "%@\nThe target files remained unchanged.";
+
+"%@\nDie eigenen temporären Dateien konnten noch nicht vollständig aufgeräumt werden. Behebe die Ursache und wiederhole „Aufräumen“." = "%@\nFastra’s temporary files could not be fully cleaned up yet. Resolve the cause and choose “Clean Up” again.";
+
+"Die eigenen temporären Dateien wurden aufgeräumt. Die Zieldateien blieben unverändert." = "Fastra’s temporary files were cleaned up. The target files remained unchanged.";
+
+"Aufräumen" = "Clean Up";
+
+"Entfernt Fastras verbliebene temporäre Dateien. Die Zieldateien bleiben unverändert." = "Removes Fastra’s remaining temporary files. The target files remain unchanged.";
+
+"Apply fehlgeschlagen" = "Apply Failed";
+
+"Aufräumen fehlgeschlagen" = "Clean Up Failed";
+
+"Die Prüfung offener Dokumente wurde nicht stabil abgeschlossen. Verbliebene Bilddateien wurden nicht weiter bereinigt." = "The check of open documents did not reach a stable completion. Remaining image files were not cleaned up further.";
+
+"Bei einer früheren Bildbereinigung blieb „%@“ erhalten." = "The path ‘%@’ was preserved during an earlier image cleanup.";
+
+// Dateiwiederherstellung nach erneutem App-Start.
+"%@\n%@" = "%@\n%@";
+"Abbruch anfordern" = "Request cancellation";
+"Abbruch angefordert. Bereits erfolgte Rücknahmen bleiben im Journal erhalten." = "Cancellation requested. Restorations already completed remain recorded in the journal.";
+"Aktueller Dateistand" = "Current file contents";
+"Aufbewahrte Sitzung" = "Retained session";
+"BOM aktuell: %@ · BOM Original: %@" = "Current BOM: %@ · Original BOM: %@";
+"Bereits wiederhergestellt; bleibt unverändert." = "Already restored; remains unchanged.";
+"Dateien: %ld · Verbleibende Aufräumpfade: %ld" = "Files: %ld · Remaining cleanup paths: %ld";
+"Dateiwiederherstellung" = "File recovery";
+"Dateiwiederherstellung…" = "File recovery…";
+"Der Inhalt einer Sicherung stimmt nicht mit dem gespeicherten Original überein." = "A backup does not match the recorded original contents.";
+"Die Datei entspricht nicht mehr dem bestätigten Stand nach der Änderung oder ist schreibgeschützt.\n%@" = "The file no longer matches the verified state after the change, or is read-only.\n%@";
+"Die Dateien wurden bearbeitet, aber diese offenen Dokumente konnten nicht bestätigt neu geladen werden:\n%@" = "The files were processed, but these open documents could not be reloaded to a verified state:\n%@";
+"Die Dateiwiederherstellung konnte nicht abgeschlossen werden: %@" = "File recovery could not be completed: %@";
+"Die Freigabe ist verbraucht. Behebe die Ursache und prüfe dieselbe Sitzung vor einer Wiederholung erneut." = "The approval has been consumed. Resolve the issue and review the same session again before retrying.";
+"Die Sitzung enthält ungültige oder nicht sicher gebundene Dateien. Bewahre die Sicherungen zur Klärung auf." = "The session contains invalid files or files whose binding cannot be verified. Keep the backups until the issue is resolved.";
+"Die Sitzung überschreitet eine sichere Lese- oder Vorschaugrenze. Pro Datei sind höchstens 4 MiB für den Vergleich und insgesamt 32 MiB Vorschautext erlaubt. Es wird keine Teilvorschau freigegeben." = "The session exceeds a safe reading or preview limit. Comparisons allow up to 4 MiB per file and 32 MiB of preview text in total. A partial preview cannot be approved.";
+"Die Sitzung, der Suchbereich oder die Vorschau hat sich geändert. Prüfe die Sitzung erneut; die alte Freigabe gilt nicht mehr." = "The session, search scope or preview has changed. Review the session again; the previous approval is no longer valid.";
+"Die Sitzungsablage ist nicht ausreichend gegen Änderungen durch andere Benutzer geschützt." = "The session storage is not sufficiently protected against changes by other users.";
+"Die Wiederherstellungsvorschau ist nicht vollständig darstellbar. Es wurde nichts freigegeben." = "The recovery preview cannot be displayed completely. Nothing was approved.";
+"Die begrenzte Liste zeigt nur einen Teil der aufbewahrten Sitzungen. Es wurde nichts angewendet." = "The bounded list shows only some of the retained sessions. Nothing was applied.";
+"Die bestätigte Dateiwiederherstellung wird geprüft…" = "Verifying the approved file recovery…";
+"Die bestätigte Sitzung ist abgeschlossen. Für weitere Aktionen die Sitzung erneut prüfen." = "The approved session is complete. Review the session again before further actions.";
+"Die geschützte Sitzungsablage konnte nicht geprüft werden: %@" = "The protected session storage could not be verified: %@";
+"Die gespeicherten Pfade lassen sich dieser Sitzung nicht sicher zuordnen." = "The stored paths cannot be safely associated with this session.";
+"Die vollständige Sitzung liegt nicht innerhalb der gewählten Quellen. Ergänze im Ordnerbereich alle zugehörigen Wurzeln und öffne die Wiederherstellung erneut.\n%@" = "The complete session is not contained in the selected sources. Add all related roots in the Folder scope, then reopen file recovery.\n%@";
+"Diese Aufräumressource lässt sich nicht unverändert der Sitzung zuordnen. Sie bleibt erhalten.\n%@" = "This cleanup resource cannot be verified as unchanged and belonging to the session. It is retained.\n%@";
+"Diese Sitzung enthält keine Wiederherstellungsarbeit." = "This session contains no recovery work.";
+"Diese Sitzung gehört zum laufenden App-Start. Nutze die zugehörige Rückgängig- oder Aufräumen-Aktion." = "This session belongs to the current app launch. Use its Undo or Clean Up action.";
+"Diese zugehörigen temporären Ressourcen werden entfernt:" = "These associated temporary resources will be removed:";
+"Diese ältere Sitzung besitzt keine vollständig prüfbare Wiederherstellungsbasis und kann nicht automatisch angewendet werden." = "This older session has no fully verifiable recovery basis and cannot be applied automatically.";
+"Dieser Pfad ist für eine geschützte Wiederherstellung ungeeignet.\n%@" = "This path is unsuitable for protected recovery.\n%@";
+"Eine benötigte Sicherung oder ein Teil der Sitzungsablage fehlt. Die Wiederherstellung wurde nicht freigegeben." = "A required backup or part of the session storage is missing. Recovery was not approved.";
+"Eine zweite Fastra-Instanz läuft. Beende die weitere Kopie regulär und prüfe die Sitzung erneut." = "A second Fastra instance is running. Quit the other copy normally, then review the session again.";
+"Fastra konnte laufende Besitzer der Sitzung nicht zuverlässig prüfen. Die Wiederherstellung bleibt gesperrt." = "Fastra could not reliably check for running owners of the session. Recovery remains blocked.";
+"Für diese Datei lässt sich keine vollständige Textvorschau darstellen.\n%@" = "A complete text preview cannot be displayed for this file.\n%@";
+"Gesichertes Original" = "Backed-up original";
+"Gewählte Quellen:\n%@" = "Selected sources:\n%@";
+"Gezeigte Dateien wiederherstellen" = "Restore displayed files";
+"Gezeigte Sitzung abschließen" = "Complete displayed session";
+"Keine frühere Sitzung in der geschützten Ablage gefunden." = "No earlier session was found in the protected storage.";
+"Mehrere Einträge bezeichnen dieselbe Zieldatei. Die vollständige Sitzung wird abgewiesen.\n%@" = "Multiple entries refer to the same target file. The complete session is rejected.\n%@";
+"Originalbytes sind bereits vorhanden; kein Zurückschreiben nötig." = "Original bytes are already present; no file write is needed.";
+"Prüft eine frühere vollständige Sitzung mit Vorschau, bevor Dateien wiederhergestellt oder temporäre Reste entfernt werden." = "Reviews an earlier complete session with a preview before restoring files or removing temporary remnants.";
+"Sitzung auswählen…" = "Select a session…";
+"Sitzung erneut prüfen" = "Review session again";
+"Unterschiede zeigen" = "Show differences";
+"Wiederherstellung angehalten" = "Recovery stopped";
+"Wird durch das gesicherte Original ersetzt." = "Will be replaced by the backed-up original.";
+"Wähle ausdrücklich eine vollständige Sitzung. Erst die Bestätigung stellt die gezeigten Originaldateien wieder her und entfernt zugehörige temporäre Reste. Die Änderung erfolgt atomar pro Datei und kann bei einem Fehler teilweise erfolgt sein." = "Explicitly select a complete session. Only confirmation restores the displayed original files and removes associated temporary remnants. Changes are atomic per file; an error may leave a partially completed operation.";
+"Wähle eine Sitzung, um ihre Dateien und verbleibenden Aufräumarbeiten zu prüfen." = "Select a session to review its files and remaining cleanup work.";
+"keine" = "none";
+
+"Die benötigte Bilddatei „%@“ fehlt. Stelle sie am ursprünglichen Pfad wieder bereit und versuche Wiederholen erneut." = "The required image file ‘%@’ is missing. Restore it at its original path and try Redo again.";
+"Die benötigte Bilddatei „%@“ konnte nicht geprüft werden: %@" = "The required image file ‘%@’ could not be checked: %@";
+"Der benötigte Bildpfad „%@“ ist keine reguläre Datei." = "The required image path ‘%@’ is not a regular file.";

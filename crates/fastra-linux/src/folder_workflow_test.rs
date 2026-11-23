@@ -277,6 +277,9 @@ pub(super) fn run(state: Rc<FolderWindow>) {
                     return glib::ControlFlow::Continue;
                 }
                 assert!(state.transaction.borrow().is_none());
+                assert!(state.pending.borrow().is_none());
+                assert!(!state.pane.has_approvals());
+                assert!(!state.apply.is_sensitive());
                 if scope != "file" {
                     assert_eq!(std::fs::read(inputs.join("a.txt")).unwrap(), originals[0]);
                 }

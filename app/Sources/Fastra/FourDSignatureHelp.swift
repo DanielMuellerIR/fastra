@@ -1,9 +1,9 @@
 // FourDSignatureHelp.swift
 //
-// Parameterhilfe für 4D-Projektmethoden (Daniel-Wunsch 2026-07-24): Steht der
+// Parameterhilfe für 4D-Projektmethoden: Steht der
 // Cursor innerhalb der runden Klammern eines Methodenaufrufes, zeigt Fastra
 // die Parameter der Methode wie der 4D-Methodeneditor — dazu den
-// Kommentarkopf der Methode. Die Informationen kommen NICHT aus tool4d
+// Kommentarkopf der Methode. Die Informationen kommen nicht aus tool4d
 // (dessen LSP liefert nur Diagnosen), sondern direkt aus der `.4dm`-Datei
 // der Methode im Projektbaum.
 //
@@ -229,12 +229,9 @@ enum FourDSignatureHelpLogic {
         var index = lineRange.location
         var inString = false
 
-        // Beginnt die Zeile bereits INNERHALB eines mehrzeiligen
-        // Blockkommentars, startet der Scan im Kommentarzustand: Endet der
-        // Kommentar mit einem `*/` vor dem Cursor, steht dahinter wieder
-        // gültiger 4D-Code und wird ganz normal ausgewertet. Fehlt das `*/`,
-        // steht der Cursor selbst im Kommentar — dann gibt es keine Hilfe
-        // (Review 2026-08-10; vorher brach die Zeile hier immer ab).
+        // Den Kommentarzustand vom Zeilenanfang übernehmen. Steht hinter einem
+        // schließenden `*/` vor dem Cursor gültiger 4D-Code, darf die Hilfe wieder
+        // greifen. Ohne schließendes `*/` bleibt der Cursor im Kommentar.
         if lineStartsInsideBlockComment(ns, lineStart: lineRange.location) {
             guard let close = blockCommentEnd(ns, from: lineRange.location,
                                               before: cursor) else { return nil }
@@ -261,7 +258,7 @@ enum FourDSignatureHelpLogic {
                     if Character(next) == "/" { return nil }
                     // Blockkommentar in der Zeile: bis zum schließenden `*/`
                     // überspringen. Endet er nicht vor dem Cursor, steht der
-                    // Cursor im Kommentar → keine Hilfe (Review 2026-08-02).
+                    // Cursor im Kommentar → keine Hilfe.
                     if Character(next) == "*" {
                         guard let close = blockCommentClose(ns, openIndex: index,
                                                             before: cursor) else {
@@ -282,7 +279,7 @@ enum FourDSignatureHelpLogic {
             }
             index += 1
         }
-        // `inString` maskiert nur Klammern und Semikolons WÄHREND des Scans.
+        // `inString` maskiert nur Klammern und Semikolons während des Scans.
         // Steht der Cursor selbst in einem String-Argument, bleibt die Hilfe
         // sichtbar — genau dann tippt man ja gerade einen Parameter.
         guard let innermost = stack.last else { return nil }
@@ -321,16 +318,16 @@ enum FourDSignatureHelpLogic {
         return false
     }
 
-    /// Index HINTER dem schließenden `*/` eines bei `openIndex` beginnenden
+    /// Index hinter dem schließenden `*/` eines bei `openIndex` beginnenden
     /// Blockkommentars — oder `nil`, wenn er nicht vor `limit` endet.
     private static func blockCommentClose(_ ns: NSString, openIndex: Int,
                                           before limit: Int) -> Int? {
         blockCommentEnd(ns, from: openIndex + 2, before: limit)
     }
 
-    /// Index HINTER dem nächsten `*/` ab `from` — oder `nil`, wenn vor `limit`
+    /// Index hinter dem nächsten `*/` ab `from` — oder `nil`, wenn vor `limit`
     /// keines mehr kommt. Getrennt vom Aufruf oben, weil eine Zeile auch
-    /// MITTEN in einem Blockkommentar beginnen kann: Dann gibt es keine
+    /// mitten in einem Blockkommentar beginnen kann: Dann gibt es keine
     /// öffnende `/*`-Stelle in dieser Zeile, wohl aber ein schließendes `*/`.
     private static func blockCommentEnd(_ ns: NSString, from: Int,
                                         before limit: Int) -> Int? {
@@ -348,7 +345,7 @@ enum FourDSignatureHelpLogic {
     /// `true`, wenn die Position in einem Kommentar (Zeilen- oder Block-)
     /// oder einem String-Literal steht. Die Vervollständigung unterdrückt
     /// dort ihre Vorschläge: Methodennamen sind beim Prosa-Tippen sinnlos
-    /// und stören (Review 2026-08-02).
+    /// und stören.
     static func isInsideCommentOrString(in text: String,
                                         utf16Location location: Int) -> Bool {
         let ns = text as NSString
@@ -361,7 +358,6 @@ enum FourDSignatureHelpLogic {
         // Wie in `callContext`: Eine Zeile, die in einem Blockkommentar
         // beginnt, kann hinter ihrem `*/` wieder Code enthalten. Nur wenn das
         // `*/` fehlt, steht die Position wirklich im Kommentar
-        // (Review 2026-08-10).
         if lineStartsInsideBlockComment(ns, lineStart: lineRange.location) {
             guard let close = blockCommentEnd(ns, from: lineRange.location,
                                               before: location) else { return true }

@@ -79,6 +79,86 @@ struct TextWorkflowSessionTests {
         return value
     }
 
+    @MainActor private func applyDocument(in ws: Workspace, window: NSWindow, defaults: UserDefaults) async throws -> TextWorkflowSession {
+        window.contentView = NSHostingView(rootView: EditorView().environmentObject(ws))
+        window.alphaValue = 0; window.orderBack(nil)
+        #expect(await waitUntil { CommandTargeting.editorTextView(for: ws)?.string == "one" })
+        let value = try session(ws, window, defaults)
+        value.calculate()
+        #expect(await waitUntil { value.canApply })
+        #expect(value.apply())
+        #expect(ws.activeTab?.content == "ONE" && ws.textWorkflowSession == nil)
+        return value
+    }
+
+    @Test("Die Apply-Rückkehr findet den neu montierten Editor samt Dokumentverlauf")
+    @MainActor func serialRunnerIntegrationApplyFocusTargetAfterRemount() async throws {
+        try await fixture { ws, window, defaults, _ in
+            let value = try await applyDocument(in: ws, window: window, defaults: defaults)
+            let previous = try #require(value.editorFocusTargetAfterDismissal()?.editor)
+            let history = try #require(previous.undoManager)
+            #expect(ws.activeTab?.contentRevision != value.snapshot.revision)
+            window.contentView = NSHostingView(rootView: EditorView().environmentObject(ws))
+            #expect(await waitUntil {
+                guard let target = value.editorFocusTargetAfterDismissal() else { return false }
+                return target.editor !== previous && target.editor.string == "ONE"
+            })
+            let target = try #require(value.editorFocusTargetAfterDismissal())
+            #expect(target.window === window && target.editor.undoManager === history)
+            history.undo()
+            #expect(await waitUntil { ws.activeTab?.content == "one" && target.editor.string == "one" })
+            history.redo()
+            #expect(await waitUntil { ws.activeTab?.content == "ONE" && target.editor.string == "ONE" })
+        }
+    }
+
+    @Test("Eine verspätete Apply-Rückkehr bleibt beim Ursprung und wird ohne Key-Fenster verworfen")
+    @MainActor func serialRunnerIntegrationApplyFocusTargetGuards() async throws {
+        try await fixture { ws, window, defaults, _ in
+            let value = try await applyDocument(in: ws, window: window, defaults: defaults)
+            #expect(value.editorFocusTargetAfterDismissal() != nil)
+            ws.activeTabID = ws.tabs[1].id
+            #expect(value.editorFocusTargetAfterDismissal() == nil)
+            ws.activeTabID = ws.tabs[0].id
+            let documentID = ws.tabs[0].documentID
+            ws.tabs[0].documentID = UUID()
+            #expect(value.editorFocusTargetAfterDismissal() == nil)
+            ws.tabs[0].documentID = documentID
+            #expect(value.editorFocusTargetAfterDismissal() != nil)
+            #expect(!window.isKeyWindow)
+            let otherWindow = NSWindow()
+            #expect(!value.finishEditorFocusAfterSheetEnd(in: otherWindow))
+            value.cancelEditorFocusIfKeyWindowChanged(to: window)
+            #expect(value.editorFocusTargetAfterDismissal() != nil)
+            #expect(value.finishEditorFocusAfterSheetEnd(in: window))
+            #expect(value.editorFocusTargetAfterDismissal() == nil)
+            #expect(!window.isKeyWindow)
+        }
+    }
+
+    @Test("Ein anderes Schlüsselfenster verbraucht die ausstehende Apply-Fokusrückgabe")
+    @MainActor func serialRunnerIntegrationApplyFocusDoesNotSurviveWindowSwitch() async throws {
+        try await fixture { ws, window, defaults, _ in
+            let value = try await applyDocument(in: ws, window: window, defaults: defaults)
+            #expect(value.editorFocusTargetAfterDismissal() != nil)
+            value.cancelEditorFocusIfKeyWindowChanged(to: NSWindow())
+            value.cancelEditorFocusIfKeyWindowChanged(to: window)
+            #expect(value.editorFocusTargetAfterDismissal() == nil)
+        }
+    }
+
+    @Test("Eine geöffnete und sofort geschlossene Folgesitzung lässt den alten Fokusauftrag nicht wiederaufleben")
+    @MainActor func serialRunnerIntegrationApplyFocusDoesNotSurviveReplacement() async throws {
+        try await fixture { ws, window, defaults, _ in
+            let value = try await applyDocument(in: ws, window: window, defaults: defaults)
+            #expect(value.editorFocusTargetAfterDismissal() != nil)
+            let next = try session(ws, window, defaults)
+            #expect(!next.finishEditorFocusAfterSheetEnd(in: window))
+            next.close()
+            #expect(value.editorFocusTargetAfterDismissal() == nil)
+        }
+    }
+
     @Test("Abbruch und Bereichswechsel verhindern verspätete Vorschauen")
     @MainActor func generation() async throws {
         try await fixture { ws, window, defaults, _ in
@@ -262,4 +342,86 @@ struct TextWorkflowSessionTests {
             #expect(try Data(contentsOf: second) == Data("SECOND".utf8))
         }
     }
+    @Test("Cleanup-only bleibt im Textablauf und im Workspace bis zur echten Wiederholung erhalten")
+    @MainActor func serialRunnerIntegrationCleanupOnlyRetry() async throws {
+        try await fixture { ws, window, defaults, root in
+            let targets = root.appendingPathComponent("targets", isDirectory: true)
+            try FileManager.default.createDirectory(at: targets, withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: targets.path) }
+            let original = targets.appendingPathComponent("original.txt")
+            try Data("original".utf8).write(to: original)
+            let originalSnapshot = try FileSnapshot.readSnapshotOnly(from: original)
+            let pending = try ApplyPendingFile.prepare(Data("partial".utf8),
+                at: targets.appendingPathComponent("own-partial.tmp"))
+            let directory = root.appendingPathComponent("session")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let partial = ApplySession(timestamp: Date(), sessionDirectory: directory,
+                                       entries: [], retainedPendingFiles: [pending])
+            try ApplyEngine.writeManifest(partial)
+            let value = try session(ws, window, defaults)
+            value.scope = .folder
+            let mutation = try ws.beginTextWorkflowDiskMutation(urls: [original])
+            value.finishDiskOperation(.failure(ApplyError.writeFailed(partial: partial, message: "prepare rejected")),
+                undo: nil, in: ws, mutation: mutation, heldEditors: [])
+            #expect(value.diskAppliedSession == partial && ws.lastApplySession == partial)
+            #expect(value.error == TextWorkflowFailure.message(ApplyError.writeFailed(partial: partial, message: "prepare rejected")))
+            #expect(!partial.undoResourceURLs().isEmpty)
+            #expect(!partial.undoResourceURLs().contains(original))
+
+            try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: targets.path)
+            value.restoreDisk()
+            #expect(await waitUntil { !value.isBusy })
+            #expect(value.error != nil && value.diskAppliedSession == partial && ws.lastApplySession == partial)
+            #expect(try FileSnapshot.readSnapshotOnly(from: original) == originalSnapshot)
+            #expect(try FileSnapshot.readSnapshotOnly(from: pending.url) == pending.snapshot)
+
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: targets.path)
+            value.restoreDisk()
+            #expect(await waitUntil { !value.isBusy })
+            #expect(value.error == nil && value.diskAppliedSession == nil && ws.lastApplySession == nil)
+            #expect(value.status == L10n.string("Die eigenen temporären Dateien wurden aufgeräumt. Die Zieldateien blieben unverändert."))
+            #expect(try FileSnapshot.readSnapshotOnly(from: original) == originalSnapshot)
+            for url in pending.cleanupResourceURLs { #expect(!FileManager.default.fileExists(atPath: url.path)) }
+        }
+    }
+
+    @Test("Cleanup-only reserviert echte Ressourcen; Ordner-Retry und ältere Textsitzung behalten den Besitzer")
+    @MainActor func serialRunnerIntegrationCleanupOnlyReservationAndOwnership() async throws {
+        try await fixture { ws, window, defaults, root in
+            let pending = try ApplyPendingFile.prepare(Data("partial".utf8), at: root.appendingPathComponent("own-partial.tmp"))
+            let directory = root.appendingPathComponent("session")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let partial = ApplySession(timestamp: Date(), sessionDirectory: directory, entries: [], retainedPendingFiles: [pending])
+            try ApplyEngine.writeManifest(partial)
+            ws.lastApplySession = partial
+            let mutation = try ws.beginTextWorkflowDiskMutation(urls: partial.undoResourceURLs())
+            var conflict: String?
+            ws.folderPreviewConflictHandler = { conflict = $0 }
+            #expect(!ws.undoLastFolderApply() && conflict != nil)
+            #expect(try FileSnapshot.readSnapshotOnly(from: pending.url) == pending.snapshot)
+            ws.finishTextWorkflowDiskMutation(mutation, changedURLs: [], session: nil)
+            #expect(ws.undoLastFolderApply() && ws.lastApplySession == nil)
+            for url in pending.cleanupResourceURLs { #expect(!FileManager.default.fileExists(atPath: url.path)) }
+
+            let value = try session(ws, window, defaults)
+            value.scope = .folder
+            let reserved = try ws.beginTextWorkflowDiskMutation(urls: [root])
+            value.finishDiskOperation(.failure(ApplyError.writeFailed(partial: partial, message: "prepare rejected")),
+                undo: nil, in: ws, mutation: reserved, heldEditors: [])
+            let newer = ApplySession(timestamp: Date(), sessionDirectory: root.appendingPathComponent("newer"), entries: [])
+            ws.lastApplySession = newer
+            let rawFailure = NSError(domain: "CleanupManifest", code: 1,
+                                     userInfo: [NSLocalizedDescriptionKey: "manifest rejected"])
+            let reservedAgain = try ws.beginTextWorkflowDiskMutation(urls: partial.undoResourceURLs())
+            value.finishDiskOperation(.failure(rawFailure), undo: partial, in: ws,
+                                     mutation: reservedAgain, heldEditors: [])
+            #expect(value.diskAppliedSession == partial && ws.lastApplySession == newer)
+            #expect(value.error?.contains("manifest rejected") == true)
+            value.restoreDisk()
+            #expect(await waitUntil { !value.isBusy })
+            #expect(value.diskAppliedSession == nil && ws.lastApplySession == newer)
+        }
+    }
+
 }

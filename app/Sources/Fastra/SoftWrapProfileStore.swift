@@ -26,9 +26,8 @@ final class SoftWrapProfileStore: ObservableObject {
         var softWrapEnabled: Bool?
         var target: SoftWrapTarget?
         var fixedColumn: Int?
-        // Einrückungsprofil (Etappe 4, Beschluss 2026-07-19). Optionale
-        // Felder — vorhandene v2-Payloads laden unverändert, `nil` heißt
-        // Werkstandard (Leerzeichen, Breite 4, Tabbreite 4).
+        // Optionale Felder des Einrückungsprofils erhalten vorhandene v2-Payloads.
+        // `nil` bedeutet Werkstandard: Leerzeichen, Breite 4, Tabbreite 4.
         var indentUsesTabs: Bool?
         var indentWidth: Int?
         var tabWidth: Int?
@@ -148,7 +147,7 @@ final class SoftWrapProfileStore: ObservableObject {
         Self.validatedColumn(payload.formats[formatID.rawValue]?.fixedColumn)
     }
 
-    /// Das wirksame Einrückungsprofil des Formats (Etappe 4).
+    /// Das wirksame Einrückungsprofil des Formats.
     func indentationProfile(for formatID: DocumentFormatID) -> IndentationProfile {
         let stored = payload.formats[formatID.rawValue]
         return IndentationProfile(

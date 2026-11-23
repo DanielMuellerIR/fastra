@@ -255,7 +255,11 @@ pub(crate) fn install(app: &gtk::Application) {
     ] {
         let action = gio::SimpleAction::new(name, None);
         let owner = state.clone();
-        action.connect_activate(move |_, _| owner.change(document, delta));
+        action.connect_activate(move |_, _| {
+            if !crate::application_lifecycle::quit_prompt_active() {
+                owner.change(document, delta);
+            }
+        });
         app.add_action(&action);
         app.set_accels_for_action(&format!("app.{name}"), &accelerators);
         let weak = action.downgrade();
@@ -284,6 +288,9 @@ pub(crate) fn install(app: &gtk::Application) {
     let action = gio::SimpleAction::new("settings", None);
     let weak = app.downgrade();
     action.connect_activate(move |_, _| {
+        if crate::application_lifecycle::quit_prompt_active() {
+            return;
+        }
         if let Some(app) = weak.upgrade() {
             controls::open(&app);
         }

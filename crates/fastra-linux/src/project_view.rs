@@ -330,6 +330,7 @@ pub(super) struct State {
     path: gtk::Entry,
     hidden: gtk::CheckButton,
     filter: gtk::Entry,
+    filter_status: gtk::Label,
     list: gtk::ListBox,
     rows: RefCell<Vec<(PathBuf, gtk::glib::WeakRef<gtk::Button>)>>,
     status: gtk::Label,
@@ -470,6 +471,7 @@ impl State {
         self.generation.set(self.generation.get() + 1);
         self.request.set(self.request.get() + 1);
         self.tree.borrow_mut().take();
+        self.filter_status.set_visible(false);
         while let Some(child) = self.list.first_child() {
             self.list.remove(&child);
         }
@@ -570,6 +572,9 @@ impl State {
         let tree = self.tree.borrow();
         let Some(tree) = tree.as_ref() else { return };
         let needle = self.filter.text().to_lowercase();
+        let filtering = !needle.is_empty();
+        let mut files = 0;
+        let mut matching_files = 0;
         let mut entries: Vec<_> = tree.entries.iter().collect();
         // Nur die Darstellung wird sprachfreundlich sortiert. Der geprüfte
         // Scan und sämtliche Dateibindungen behalten ihre unveränderten Pfade.
@@ -581,10 +586,11 @@ impl State {
             }).collect::<Vec<_>>()
         });
         for entry in entries {
-            if !needle.is_empty() && !display(&entry.relative).to_lowercase().contains(&needle) {
+            files += usize::from(entry.openable);
+            if filtering && !display(&entry.relative).to_lowercase().contains(&needle) {
                 continue;
             }
-            if needle.is_empty()
+            if !filtering
                 && entry
                     .relative
                     .ancestors()
@@ -593,6 +599,7 @@ impl State {
             {
                 continue;
             }
+            matching_files += usize::from(entry.openable);
             let text = format!(
                 "{} {}",
                 if entry.directory {
@@ -639,6 +646,18 @@ impl State {
             });
             self.list.append(&button);
         }
+        if filtering {
+            if let Some(ui) = self.ui.upgrade() {
+                let text = match (ui.lang.0, tree.issues.is_empty()) {
+                    (true, true) => format!("{matching_files} von {files} Dateien"),
+                    (false, true) => format!("{matching_files} of {files} files"),
+                    (true, false) => format!("{matching_files} von {files} erfassten Dateien"),
+                    (false, false) => format!("{matching_files} of {files} scanned files"),
+                };
+                self.filter_status.set_text(&text);
+            }
+        }
+        self.filter_status.set_visible(filtering);
     }
     fn open_entry(self: &Rc<Self>, entry: &Entry) {
         let Some(ui) = self.ui.upgrade() else { return };
@@ -729,6 +748,11 @@ pub(super) fn open(ui: &Rc<Ui>) -> Rc<State> {
         ))
         .build();
     root.append(&filter);
+    let filter_status = gtk::Label::new(None);
+    filter_status.set_xalign(0.);
+    filter_status.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    filter_status.set_visible(false);
+    filter_status.add_css_class("sidebar-filter-status");
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let refresh = gtk::Button::with_label(ui.lang.text("Aktualisieren", "Refresh"));
     let cancel = gtk::Button::with_label(ui.lang.text("Abbrechen", "Cancel"));
@@ -761,6 +785,7 @@ pub(super) fn open(ui: &Rc<Ui>) -> Rc<State> {
         path: path.clone(),
         hidden: hidden.clone(),
         filter: filter.clone(),
+        filter_status: filter_status.clone(),
         list: list.clone(),
         rows: RefCell::new(Vec::new()),
         status,
@@ -902,7 +927,7 @@ pub(super) fn open(ui: &Rc<Ui>) -> Rc<State> {
         }
     });
     *ui.project.borrow_mut() = Some(state.clone());
-    super::chrome::sidebar(ui, &root, &path, &filter, &list_scroll);
+    super::chrome::sidebar(ui, &root, &path, &filter, &filter_status, &list_scroll);
     state.start_polling();
     window.present();
     state

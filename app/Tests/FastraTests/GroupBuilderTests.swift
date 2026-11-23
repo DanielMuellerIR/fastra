@@ -5,11 +5,11 @@
 // Phase 3 — der Nutzer baut hier ohne RegEx-Wissen Gruppen, und ein Fehler
 // würde ein kaputtes Pattern erzeugen.
 //
-// WICHTIG — Unabhängigkeit vom Tokenizer:
+// Wichtig — Unabhängigkeit vom Tokenizer:
 // Die folgenden Unit-Fixtures verwenden den echten `RegexTokenizer` bewusst
 // nicht; der Integrationstest zur Referenzverschiebung prüft ihn zusätzlich. Stattdessen konstruieren diese Tests die `RegexTokenization` mit
 // einem kleinen Hand-Tokenizer (`HandTok`) von Hand. Das macht die Tests
-// unabhängig vom Tokenizer-Stand UND dokumentiert zugleich das exakte
+// unabhängig vom Tokenizer-Stand und dokumentiert zugleich das exakte
 // Token-Format, das GroupBuilder erwartet (flach, sortiert, lückenlos).
 
 import Testing
@@ -88,7 +88,7 @@ private enum HandTok {
         return RegexTokenization(tokens: tokens, groups: groups, hasErrors: false)
     }
 
-    /// Fangend = `(` oder benannt `(?<name>`/`(?P<name>` — aber NICHT
+    /// Fangend = `(` oder benannt `(?<name>`/`(?P<name>` — aber nicht
     /// `(?:`, `(?=`, `(?!`, `(?<=`, `(?<!`.
     private static func isCapturingOpen(_ delim: String) -> Bool {
         if delim == "(" { return true }
@@ -221,7 +221,7 @@ func units_quantifiedGroupNotReusable() {
     let units = GroupBuilder.units(pattern: pattern, tokenization: tok,
                                    matchText: "abc", caseSensitive: false)
     #expect(units?.count == 1)
-    // Die Gruppe MIT folgendem Quantifier ist als Ganzes keine wiederverwendbare
+    // Die Gruppe mit folgendem Quantifier ist als Ganzes keine wiederverwendbare
     // Gruppe — sonst würde `(\w)+` zerteilt.
     #expect(units?[0].isExistingGroup == false)
 }
@@ -320,7 +320,7 @@ func snap_emptySelectionOnBoundaryPicksRight() {
     let text = "anna@test.de"   // „anna"=0..4, „@"=4..5
     // Cursor bei Index 4 — genau die Grenze zwischen „anna" (endet bei 4)
     // und „@" (beginnt bei 4). Das Konzept bricht den Gleichstand zugunsten
-    // der RECHTEN Unit auf → es snappt auf „@", nicht auf „anna".
+    // der rechten Unit auf → es snappt auf „@", nicht auf „anna".
     let prop = GroupBuilder.propose(selection: NSRange(location: 4, length: 0),
                                     pattern: "(\\w+)@(\\w+)\\.de", tokenization: tok,
                                     matchText: text, replacement: "", caseSensitive: false)
@@ -344,7 +344,7 @@ func snap_overEmptyOptional() {
     // Snappt auf „color" minus Kopf: „lor" liegt in `colo`(0..4) + `r`(4..5);
     // die `u?` dazwischen trägt nichts bei → Snapped umfasst „lor" → „lor"
     // beginnt bei 2, deckt `colo`-Teil (bis 4) und `r` (4..5) → Vereinigung
-    // 2..5 = „lor". Aber die Unit `colo` trägt 0..4 bei → Snap auf GANZE
+    // 2..5 = „lor". Aber die Unit `colo` trägt 0..4 bei → Snap auf ganze
     // beitragende Units: „colo"(0..4) ∪ „r"(4..5) = „color"(0..5).
     #expect(prop?.snappedMatchRange == NSRange(location: 0, length: 5))
 }
@@ -364,7 +364,7 @@ func proposal_deBecomesGroup3() {
     #expect(prop?.newPattern == "(\\w+)@(\\w+)\\.(de)")
     #expect(prop?.newGroupNumber == 3)
     #expect(prop?.isAlreadyGroup == false)
-    // $1 und $2 liegen UNTER 3 → bleiben unverändert.
+    // $1 und $2 liegen unter 3 → bleiben unverändert.
     #expect(prop?.rewrittenReplacement == "[$1]($2)")
 }
 
@@ -519,7 +519,7 @@ func caseInsensitiveRematch() {
 func caseSensitiveNoMatch() {
     let pattern = "ABC"
     let tok = HandTok.tokenize(pattern, [ p("ABC", .literal) ])
-    // Bei case-SENSITIVEM Re-Match passt „abc" nicht zu „ABC" → nicht
+    // Bei case-sensitivem Re-Match passt „abc" nicht zu „ABC" → nicht
     // zuordenbar, kein Crash.
     let units = GroupBuilder.units(pattern: pattern, tokenization: tok,
                                    matchText: "abc", caseSensitive: true)

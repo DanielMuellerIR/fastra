@@ -9,9 +9,42 @@ private let imageUndoPNG = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB
 
 @Suite
 struct MarkdownImageUndoBufferTests {
+    @Test("Ein normales Arbeitsergebnis false endet einmal auf Main ohne Wiederholung")
+    @MainActor
+    func referenceWorkFailureCompletesOnce() async throws {
+        let buffer = MarkdownImageUndoBuffer(byteLimit: 1024)
+        let calls = NSLock()
+        var attempts = 0
+        var completions = 0
+        var outcome: MarkdownImageUndo.ReferenceWorkResult?
+        MarkdownImageUndo.performWithReferences(buffer: buffer, work: { _, _ in
+            calls.withLock { attempts += 1 }
+            return .capture(false, effects: [])
+        }, completion: { result in
+            #expect(Thread.isMainThread)
+            outcome = result
+            completions += 1
+        })
+        try #require(await waitUntil { outcome != nil })
+        guard case .completed(false) = outcome?.outcome else { Issue.record("Dateifehler wurde nicht als completed(false) abgeschlossen"); return }
+        #expect(calls.withLock { attempts } == 1 && completions == 1)
+        #expect(outcome?.removalWarning == nil)
+    }
+
+    @Test("Ein unveränderter Snapshot umgeht kein abgewiesenes allow")
+    @MainActor
+    func referenceGateStillRequiresAllow() {
+        let snapshot = MarkdownImageUndo.openDocumentContents()
+        var committed = false
+        var rejected = false
+        let gate = MarkdownImageUndo.removalGate(for: snapshot, allow: { false }, onStale: { rejected = true })
+        #expect(!gate { committed = true; return true })
+        #expect(rejected && !committed)
+    }
+
     @Test("Ein Bild über dem Budget verschwindet samt Undo-Verlauf statt eine Sicherungsdatei anzulegen")
     @MainActor
-    func imageUndoDropsHistoryWhenBudgetCannotFit() async throws {
+    func imageUndoDropsHistoryWhenBudgetCannotFitSerialRunnerIntegration() async throws {
         let directory = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -29,7 +62,8 @@ struct MarkdownImageUndoBufferTests {
         #expect(!manager.canUndo && !manager.canRedo)
         #expect(buffer.byteCount == 0)
         #expect(!FileManager.default.fileExists(atPath: image.fileURL.path))
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["test.md"])
+        #expect(try Set(FileManager.default.contentsOfDirectory(atPath: directory.path)) == ["test.md", "images"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.appendingPathComponent("images").path).isEmpty)
     }
 
     @Test("Eine neu hinzugekommene offene Bildreferenz verhindert das Entfernen nach dem Hintergrundscan")
@@ -71,7 +105,8 @@ struct MarkdownImageUndoBufferTests {
             effects.append(effect)
             #expect(effect.undo())
             #expect(!FileManager.default.fileExists(atPath: image.fileURL.path))
-            #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["images"])
+            #expect(try FileManager.default.contentsOfDirectory(atPath: directory.appendingPathComponent("images").path).isEmpty)
             #expect(buffer.byteCount <= buffer.byteLimit)
         }
         #expect(lost.isEmpty)
@@ -99,7 +134,8 @@ struct MarkdownImageUndoBufferTests {
         #expect(buffer.byteCount == 0)
         #expect(!effect.redo())
         #expect(images.allSatisfy { !FileManager.default.fileExists(atPath: $0.fileURL.path) })
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["images"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.appendingPathComponent("images").path).isEmpty)
         buffer.takeInvalidations().forEach { $0() }
         #expect(lost)
     }
@@ -121,6 +157,45 @@ struct MarkdownImageUndoBufferTests {
         buffer.remove(second)
         #expect(buffer.byteCount == 0)
         #expect(MarkdownImageUndoBuffer.shared.byteLimit == 512 * 1024 * 1024)
+    }
+
+    @Test("Teilweise Bildentfernung trennt Text-Undo, RAM und wiederholbares Redo")
+    @MainActor
+    func partialImageRemovalKeepsNativeRedoSerialRunnerIntegration() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let document = directory.appendingPathComponent("note.md")
+        let images = try (0..<2).map { _ in
+            try MarkdownImageStore.storePastedData(.init(data: imageUndoPNG, fileExtension: "png"), documentURL: document)
+        }
+        let buffer = MarkdownImageUndoBuffer(byteLimit: 1024 * 1024)
+        let insertion = images.map(\.link).joined(separator: "\n")
+        let view = TextView(string: "before")
+        view.replaceCharacters(in: NSRange(location: 6, length: 0), with: insertion)
+        var warnings: [String] = []
+        MarkdownImageUndo.register(textView: view, insertion: insertion, storedImages: images,
+            documentURL: document, buffer: buffer, removalHooks: .init(beforeUnlink: { index in
+                if index == 1 { throw POSIXError(.EIO) }
+            }), redoWarningHandler: { _, message in warnings.append(message) })
+        let manager = try #require(view.undoManager as? CEUndoManager)
+        manager.undo()
+        try #require(await waitUntil { !manager.isUndoing })
+        #expect(view.string == "before")
+        #expect(manager.canRedo)
+        #expect(buffer.byteCount > 0)
+        #expect(!FileManager.default.fileExists(atPath: images[0].fileURL.path))
+        #expect(try Data(contentsOf: images[1].fileURL) == imageUndoPNG)
+        #expect(warnings.count == 1)
+        #expect(warnings[0].contains(POSIXError(.EIO).localizedDescription))
+        #expect(warnings[0].contains(images[0].fileURL.path))
+        #expect(warnings[0].contains(images[1].fileURL.path))
+        #expect(view.isEditable && !manager.canUndo)
+        manager.redo()
+        try #require(await waitUntil { !manager.isRedoing })
+        #expect(view.string == "before" + insertion)
+        #expect(buffer.byteCount == 0)
+        for image in images { #expect(try Data(contentsOf: image.fileURL) == imageUndoPNG) }
     }
 
     @Test("Verwerfen während eines asynchronen Undo hängt keine ungültige Redo-Gruppe wieder ein")

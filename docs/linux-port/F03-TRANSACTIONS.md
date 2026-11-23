@@ -7,9 +7,10 @@ Die ursprüngliche Primitive-Probe bleibt unter F03-SAFETY dokumentiert.
 Ein Snapshot hält Originalbytes, Verzeichnis- und Dateiidentität, Größe,
 Änderungszeit, Modus, Eigentümer/Gruppe, xattrs und SHA-256 zusammen. Öffnungen
 sind verzeichnisrelativ und folgen keinen Symlinks; FIFOs blockieren nicht.
-Hardlinks, besondere Modusbits, nicht erhaltbare Metadaten und andere
-Dateisysteme werden abgewiesen. Der Host darf vor dem Laden einen bewusst
-gewählten Symlink auflösen. Lesen und Schreiben gehören auf eine Hintergrundqueue.
+Hardlinks, besondere Modusbits und nicht erhaltbare Metadaten werden
+abgewiesen. Für Schreibziele gilt zusätzlich die Dateisystemgrenze. Der Host
+darf vor dem Laden einen bewusst gewählten Symlink auflösen. Lesen und
+Schreiben gehören auf eine Hintergrundqueue.
 
 ## Vorschau und Apply
 
@@ -60,8 +61,15 @@ Die Belege verweigern identische Bytes eines fremden Inodes und falsche
 Transaktionsphasen. Beide ext4-Läufe bestätigten Unmount, Detach des eigenen
 Loop-Geräts und Entfernung des eigenen Images.
 
+Am 2026-11-20 hat der GTK-Ordnerdialog in Linux 1.242.73 eine gemeinsame
+Freigabe für zwei Schreibziele auf Btrfs und tmpfs vor dem ersten Dateitausch
+abgewiesen. Beide Originale behielten Bytes und Dateiidentität. Es entstand
+kein Journal. Die Adapterprobe bestand in beiden Zielreihenfolgen. Ein
+Snapshot auf tmpfs konnte zugleich als reine Lesebasis für Apply und
+Rückgängig auf Btrfs dienen.
+
 Grenzen bleiben Stromausfalltests, ACL-/Security-xattr-Abnahme, Netz-/Wechselmedien,
-Dateisystemgrenzen innerhalb einer Transaktion und gegen denselben Benutzer
+die Kombination zweier beschreibbarer Volumes und gegen denselben Benutzer
 gerichtete Namespace-Angriffe. Journale sind keine authentifizierten Fremddaten.
 Die Adapterabnahme allein ersetzt weder sichtbare Vorschau noch Host-Dirty-
 Prüfung oder vollständige native Desktop-Abnahme.
@@ -81,6 +89,13 @@ möglich. Dirty-, speichernde oder aktiv formatierte betroffene Editoren blockie
 die Wiederherstellung. Nach Erfolg erhalten saubere offene Texttabs ausschließlich
 die exakt bestätigten Originalsnapshots. Das Entfernen der Sicherung benötigt
 eine weitere Freigabe nach verifiziertem Undo; bei Fehlern bleibt sie erhalten.
+
+Im GTK-Paket 1.242.73 wurden nach einem Teil-Apply zwei Fehler an einer zuvor
+geprüften Originalkopie ausgelöst. Bei geänderten Bytes gleicher Länge mit
+derselben Inode und Änderungszeit sowie bei einer fehlenden Kopie verweigerte
+Fastra die bestätigte Rücknahme. Zielzustände und Journal blieben erhalten.
+Nach Rückgabe der gültigen Sicherung brauchte die Rücknahme eine neue Prüfung
+und Bestätigung. Danach stimmten die ursprünglichen Bytes und Dateiidentitäten.
 
 Der echte private GTK-Lauf prüfte stale Freigabe, Dirty-Editor-Abweisung,
 UTF-16LE/BOM, exakte Editoraktualisierung und ausdrücklich bestätigtes Aufräumen.

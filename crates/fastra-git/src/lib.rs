@@ -42,6 +42,7 @@ pub enum Error {
     IndexPublished(String),
     MalformedOutput(&'static str),
     Io(String),
+    NotRepository(GitOutput),
     GitFailed(GitOutput),
     Cancelled(GitOutput),
     TimedOut(GitOutput),
@@ -127,12 +128,20 @@ impl Git {
     ) -> Result<Repository, Error> {
         let directory =
             fs::canonicalize(directory).map_err(|error| Error::Io(error.to_string()))?;
-        let root = self.checked(
-            &directory,
-            &["rev-parse".into(), "--show-toplevel".into()],
-            policy,
-            cancellation,
-        )?;
+        // Git verwendet Exit 128 auch für andere Fehler. Nur die eindeutige
+        // Diagnose dieser Abfrage kennzeichnet einen Ordner ohne Repository.
+        let root = self
+            .checked_env(
+                &directory,
+                &["rev-parse".into(), "--show-toplevel".into()],
+                policy,
+                cancellation,
+                &[("LC_ALL".into(), "C".into())],
+            )
+            .map_err(|error| match error {
+                Error::GitFailed(output) if not_repository(&output) => Error::NotRepository(output),
+                other => other,
+            })?;
         let root = output_path(&root.stdout)?;
         let git_dir = self.checked(
             &root,
@@ -209,6 +218,17 @@ impl Git {
             Err(Error::GitFailed(result))
         }
     }
+}
+fn not_repository(output: &GitOutput) -> bool {
+    let diagnostic = &output.stderr;
+    let outside = b"fatal: not a git repository (or any of the parent directories): .git\n";
+    let boundary_start = b"fatal: not a git repository (or any parent up to mount point ";
+    let boundary_end = b")\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n";
+    output.exit_code == Some(128)
+        && output.stdout.is_empty()
+        && !output.stderr_truncated
+        && (diagnostic == outside
+            || (diagnostic.starts_with(boundary_start) && diagnostic.ends_with(boundary_end)))
 }
 fn output_path(bytes: &[u8]) -> Result<PathBuf, Error> {
     let path = bytes

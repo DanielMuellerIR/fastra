@@ -2,46 +2,46 @@
 //
 // Geführte Capture-Group-Definition (Phase 3, Suchmasken-Konzept §3+§4).
 //
-// PRODUKT-IDEE (für Leser ohne RegEx-Hintergrund):
-// In der Suchmaske sieht der Nutzer GENAU EINEN Treffer im Detail-Bereich —
+// Produkt-Idee (für Leser ohne RegEx-Hintergrund):
+// In der Suchmaske sieht der Nutzer genau einen Treffer im Detail-Bereich —
 // nur den nackten Match-Text (z.B. „anna@test.de"), keinen RegEx. Er markiert
 // dort mit der Maus eine Teil-Stelle (z.B. „de") und klickt „Gruppe
 // definieren". Diese Datei übersetzt diese Selektion in eine `(...)`-Capture-
-// Group im DAHINTERLIEGENDEN Suchausdruck — ohne dass der Nutzer je eine
-// Klammer tippt. Der Nutzer braucht NULL RegEx-Wissen, und ein kaputtes
+// Group im dahinterliegenden Suchausdruck — ohne dass der Nutzer je eine
+// Klammer tippt. Der Nutzer braucht null RegEx-Wissen, und ein kaputtes
 // Pattern ist konstruktiv ausgeschlossen, weil die Selektion immer auf
 // vollständige Token-Grenzen „snappt" (§4 Token-Schutz).
 //
 // ─────────────────────────────────────────────────────────────────────────
-// ALGORITHMUS — „instrumentiertes Re-Matching"
+// Algorithmus — „instrumentiertes Re-Matching"
 //
-// Das Kernproblem: Wir haben den Match-TEXT und das PATTERN, aber NICHT die
+// Das Kernproblem: Wir haben den Match-Text und das Pattern, aber nicht die
 // Zuordnung, welcher Pattern-Teil welches Stück des Match-Textes erzeugt hat.
-// (`\w+` kann „anna" ODER „test" sein.) Diese Zuordnung gewinnen wir, indem
+// (`\w+` kann „anna" oder „test" sein.) Diese Zuordnung gewinnen wir, indem
 // wir ein zweites, „instrumentiertes" Pattern bauen, in dem jede Pattern-
 // Einheit in eine eigene Capture-Group gehüllt ist, und es erneut gegen den
 // Match-Text laufen lassen. Aus dem Match lesen wir pro Einheit die Range im
 // Match-Text ab. Damit wird aus der freien Maus-Selektion eine eindeutige
 // Folge ganzer Pattern-Einheiten — und daraus die neue `(...)`-Gruppe.
 //
-//   Schritt 1  SNAP-UNITS bilden  — Pattern in Top-Level-Einheiten zerlegen.
-//   Schritt 2  INSTRUMENTIEREN    — jede Einheit in `(...)` hüllen, Buch führen.
-//   Schritt 3  RE-MATCH           — Instrument gegen Match-Text, Ranges lesen.
-//   Schritt 4  SNAP               — Selektion auf minimale Unit-Folge runden.
-//   Schritt 5  VORSCHLAG          — `(...)` ins Original-Pattern einsetzen,
+//   Schritt 1  Snap-Units bilden  — Pattern in Top-Level-Einheiten zerlegen.
+//   Schritt 2  Instrumentieren    — jede Einheit in `(...)` hüllen, Buch führen.
+//   Schritt 3  Re-Match           — Instrument gegen Match-Text, Ranges lesen.
+//   Schritt 4  Snap               — Selektion auf minimale Unit-Folge runden.
+//   Schritt 5  Vorschlag          — `(...)` ins Original-Pattern einsetzen,
 //                                    neue Gruppennummer + `$N`-Rewrite.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// v1.0-EINSCHRÄNKUNGEN (bewusst, dokumentiert):
+// v1.0-Einschränkungen (bewusst, dokumentiert):
 //
-// * TOP-LEVEL-ALTERNATION (`a|b` außerhalb aller Gruppen): Das gesamte
-//   Pattern wird EINE einzige Unit — es kann in v1.0 nur als Ganzes gruppiert
-//   werden. Grund: bei `a|b` matcht je Durchlauf nur EIN Zweig; eine pro-Zweig-
+// * Top-Level-Alternation (`a|b` außerhalb aller Gruppen): Das gesamte
+//   Pattern wird eine einzige Unit — es kann in v1.0 nur als Ganzes gruppiert
+//   werden. Grund: bei `a|b` matcht je Durchlauf nur ein Zweig; eine pro-Zweig-
 //   Instrumentierung würde inkonsistente Einheiten erzeugen. Alternation
-//   INNERHALB einer Gruppe (`(a|b)c`) ist unkritisch — die Gruppe bleibt eine
+//   innerhalb einer Gruppe (`(a|b)c`) ist unkritisch — die Gruppe bleibt eine
 //   Unit.
 // * wholeWord / Kontext-Anker: `buildRegex` umschließt das Pattern ggf. mit
-//   `\b…\b`. GroupBuilder arbeitet aber NUR mit dem rohen Pattern (ohne diese
+//   `\b…\b`. GroupBuilder arbeitet aber nur mit dem rohen Pattern (ohne diese
 //   Hülle) — der Match-Text enthält die `\b`-Anker ohnehin nicht (Anker sind
 //   nullbreit). Falls das Re-Matching wider Erwarten scheitert (z.B. weil der
 //   Match-Text durch Kontext-Anker im Original gar nicht eigenständig matcht),
@@ -51,6 +51,7 @@
 //   und AppKit (NSAttributedString). Emoji (Surrogatpaare) zählen als 2
 //   UTF-16-Code-Units; das ist konsistent durchgezogen.
 
+import FastraPatternSyntax
 import Foundation
 
 enum GroupBuilder {
@@ -60,7 +61,7 @@ enum GroupBuilder {
     /// Eine Top-Level-Einheit des Patterns plus ihr Beitrag im Match-Text.
     /// Wird auch fürs UI gebraucht (Snap-Visualisierung der Token-Grenzen).
     struct SnapUnit: Equatable {
-        /// Bereich dieser Einheit im ORIGINAL-Pattern (UTF-16).
+        /// Bereich dieser Einheit im Original-Pattern (UTF-16).
         let patternRange: NSRange
         /// Beitrag dieser Einheit im Match-Text (UTF-16). `nil`, wenn die
         /// Einheit nichts beigetragen hat — entweder weil sie nullbreit ist
@@ -68,7 +69,7 @@ enum GroupBuilder {
         /// Treffer reduziert hat. Über solche Einheiten snappt die Selektion
         /// hinweg, als wären sie nicht da.
         let matchRange: NSRange?
-        /// `true`, wenn diese Einheit GENAU einer bestehenden fangenden
+        /// `true`, wenn diese Einheit genau einer bestehenden fangenden
         /// Top-Level-Gruppe entspricht (ohne folgenden Quantifier).
         let isExistingGroup: Bool
         /// 1-basierte Gruppennummer (NSRegularExpression-Zählung), falls
@@ -133,7 +134,7 @@ enum GroupBuilder {
                         matchText: String,
                         replacement: String,
                         caseSensitive: Bool) -> Proposal? {
-        // Verweigerung: Rückverweise (`\1`, `\k<name>`) im SUCHMUSTER zeigen
+        // Verweigerung: Rückverweise (`\1`, `\k<name>`) im Suchmuster zeigen
         // ebenfalls auf Gruppennummern. Eine neue Klammer verschiebt diese
         // Nummerierung, `insertParentheses` fasst das Muster aber nur an der
         // Klammerstelle an. Gemessen: `(a)b\1` trifft „aba", `((a)b)\1` nicht
@@ -155,10 +156,10 @@ enum GroupBuilder {
 
         // Snapped-Range = Vereinigung der Match-Beiträge von Unit i…j.
         // (Beide haben garantiert einen Beitrag — snapRange wählt nur Units
-        // MIT Beitrag als Endpunkte.)
+        // mit Beitrag als Endpunkte.)
         let snappedMatchRange = unionMatchRange(units: snapUnits, from: i, to: j)
 
-        // Schritt 5a: Trifft [i…j] EXAKT eine bestehende fangende Gruppe?
+        // Schritt 5a: Trifft [i…j] exakt eine bestehende fangende Gruppe?
         // Dann ist nichts einzufügen — wir melden die bestehende Gruppe.
         if i == j, snapUnits[i].isExistingGroup, let n = snapUnits[i].existingGroupNumber {
             return Proposal(snappedMatchRange: snappedMatchRange,
@@ -176,8 +177,8 @@ enum GroupBuilder {
         let newPattern = insertParentheses(in: pattern, openAt: openAt, closeAt: closeAt)
 
         // Neue Gruppennummer = 1 + Anzahl fangender Gruppen, deren öffnende
-        // Klammer im ALTEN Pattern VOR `openAt` liegt. (Alle bestehenden
-        // Gruppen, die VOLLSTÄNDIG in [i…j] liegen, öffnen NACH `openAt` und
+        // Klammer im alten Pattern vor `openAt` liegt. (Alle bestehenden
+        // Gruppen, die vollständig in [i…j] liegen, öffnen nach `openAt` und
         // verschieben sich daher um +1 — siehe Replace-Rewrite.)
         let groupsBefore = tokenization.groups.filter { $0.range.location < openAt }.count
         let newGroupNumber = groupsBefore + 1
@@ -206,8 +207,8 @@ enum GroupBuilder {
 
     /// Hebt im Replacement-Template alle `$N`-Backrefs mit `N >= atOrAbove`
     /// um genau 1 an. Regeln:
-    /// * `$0` (der ganze Match) bleibt IMMER unverändert.
-    /// * `\$` ist ein escapter Dollar (literaler `$`) und wird NICHT als
+    /// * `$0` (der ganze Match) bleibt immer unverändert.
+    /// * `\$` ist ein escapter Dollar (literaler `$`) und wird nicht als
     ///   Backref gewertet — bleibt unangetastet.
     /// * Wie viele Ziffern zur Nummer gehören, hängt von `groupCount` ab:
     ///   `$12` ist bei zwei Gruppen Gruppe 1 gefolgt vom Literal „2", erst
@@ -215,7 +216,7 @@ enum GroupBuilder {
     ///
     /// - Parameters:
     ///   - atOrAbove: ab dieser Gruppennummer (inkl.) wird verschoben.
-    ///   - groupCount: fangende Gruppen im Pattern VOR dem Einfügen. Danach
+    ///   - groupCount: fangende Gruppen im Pattern vor dem Einfügen. Danach
     ///     ist es genau eine mehr — beim Sprung von 9 auf 10 Gruppen ändert
     ///     das die Schreibweise der Referenzen.
     static func shiftBackreferencesUp(in replacement: String,
@@ -262,8 +263,8 @@ enum GroupBuilder {
         let tokens = tokenization.tokens
         if tokens.isEmpty { return [] }
 
-        // SONDERFALL Top-Level-Alternation: ein `|` außerhalb aller Gruppen
-        // macht das GANZE Pattern zu einer einzigen Unit (v1.0-Einschränkung).
+        // Sonderfall Top-Level-Alternation: ein `|` außerhalb aller Gruppen
+        // macht das ganze Pattern zu einer einzigen Unit (v1.0-Einschränkung).
         if hasTopLevelAlternation(tokens: tokens) {
             let whole = NSRange(location: 0, length: (pattern as NSString).length)
             return [RawUnit(patternRange: whole,
@@ -283,7 +284,7 @@ enum GroupBuilder {
 
             // (a) Beginnt hier eine Top-Level-Gruppe? Erkennbar an einem
             //     `.groupDelimiter`, der eine öffnende Klammer ist. Wir
-            //     suchen die zugehörige Gruppe in `tokenization.groups` ODER
+            //     suchen die zugehörige Gruppe in `tokenization.groups` oder
             //     (für nicht-fangende Gruppen/Lookarounds) per Klammer-Balance.
             if tok.kind == .groupDelimiter, isOpeningDelimiter(tok.text) {
                 if let unit = consumeGroup(startIndex: idx,
@@ -327,8 +328,8 @@ enum GroupBuilder {
 
             if hasQuantifierNext {
                 let quant = tokens[idx + 1]
-                // SONDERFALL Literal vor Quantifier: Der Quantifier bezieht
-                // sich nur auf das LETZTE Zeichen. `abc?` heißt „ab" + „c?",
+                // Sonderfall Literal vor Quantifier: Der Quantifier bezieht
+                // sich nur auf das letzte Zeichen. `abc?` heißt „ab" + „c?",
                 // nicht „(abc)?". Wir spalten ein mehrzeichiges Literal-Token
                 // in Kopf („ab") + letztes Graphem („c") auf.
                 if tok.kind == .literal,
@@ -374,7 +375,7 @@ enum GroupBuilder {
 
     /// Verschlingt eine komplette Top-Level-Gruppe ab `startIndex` (ein
     /// öffnender `.groupDelimiter`) und gibt sie als eine RawUnit zurück.
-    /// `nextIndex` wird auf das erste Token NACH der Gruppe (+ Quantifier)
+    /// `nextIndex` wird auf das erste Token nach der Gruppe (+ Quantifier)
     /// gesetzt.
     private static func consumeGroup(startIndex: Int,
                                      tokens: [RegexToken],
@@ -384,8 +385,8 @@ enum GroupBuilder {
         let openTok = tokens[startIndex]
         let openLoc = openTok.range.location
 
-        // Balance über die Klammer-Delimiter zählen, um das ZUGEHÖRIGE `)`
-        // zu finden. Wir verlassen uns NICHT auf `groups`, weil auch nicht-
+        // Balance über die Klammer-Delimiter zählen, um das zugehörige `)`
+        // zu finden. Wir verlassen uns nicht auf `groups`, weil auch nicht-
         // fangende Gruppen (`(?:…)`) und Lookarounds als Units zählen.
         var depth = 0
         var closeIndex: Int? = nil
@@ -407,8 +408,8 @@ enum GroupBuilder {
         }
         guard let close = closeIndex else { return nil }
 
-        // Folgt direkt ein Quantifier? Dann gehört er zur Unit — UND macht
-        // sie zu einer NICHT wiederverwendbaren Gruppe (`(\w)+` als Ganzes
+        // Folgt direkt ein Quantifier? Dann gehört er zur Unit — und macht
+        // sie zu einer nicht wiederverwendbaren Gruppe (`(\w)+` als Ganzes
         // ist keine fangende Einzel-Gruppe mehr).
         var endIndex = close
         var hasQuantifier = false
@@ -421,15 +422,15 @@ enum GroupBuilder {
         let fullRange = NSRange(location: openLoc,
                                 length: endTok.range.location + endTok.range.length - openLoc)
 
-        // Ist das eine FANGENDE Gruppe (anonym oder benannt)? Wir matchen
-        // über die EXAKTE Klammer-Range (`group.range` inkl. Klammern) gegen
+        // Ist das eine fangende Gruppe (anonym oder benannt)? Wir matchen
+        // über die exakte Klammer-Range (`group.range` inkl. Klammern) gegen
         // die Gruppe ohne folgenden Quantifier.
         let closeTok = tokens[close]
         let groupRange = NSRange(location: openLoc,
                                  length: closeTok.range.location + closeTok.range.length - openLoc)
         let matchingGroup = groups.first { NSEqualRanges($0.range, groupRange) }
 
-        // Wiederverwendbar nur, wenn fangend UND ohne folgenden Quantifier.
+        // Wiederverwendbar nur, wenn fangend und ohne folgenden Quantifier.
         let isExisting = (matchingGroup != nil) && !hasQuantifier
 
         nextIndex = endIndex + 1
@@ -467,7 +468,7 @@ enum GroupBuilder {
 
     /// Spaltet ein mehrzeichiges Literal-Token in „alles bis aufs letzte
     /// Zeichen" (`head`) und „letztes Zeichen" (`last`). Maßeinheit ist das
-    /// EXTENDED GRAPHEME CLUSTER (also robust gegen Surrogatpaare/Emoji), die
+    /// Extended Grapheme Cluster (also robust gegen Surrogatpaare/Emoji), die
     /// Ranges sind aber UTF-16. Gibt `nil`, wenn das Token nur ein Graphem
     /// hat (dann gibt es nichts zu spalten — der Aufrufer merged ganz normal).
     private static func splitTrailingGrapheme(of token: RegexToken,
@@ -498,9 +499,9 @@ enum GroupBuilder {
         let nsPattern = pattern as NSString
 
         // Schritt 2: Instrument-Pattern bauen. Wir gehen die Units in
-        // Pattern-Reihenfolge durch und hüllen jede NICHT-nullbreite Unit in
+        // Pattern-Reihenfolge durch und hüllen jede nicht-nullbreite Unit in
         // `(...)`. Bereits-fangende Top-Level-Gruppen (isExistingGroup) sind
-        // schon eine Klammer — die NICHT doppelt wrappen, sonst stimmt die
+        // schon eine Klammer — die nicht doppelt wrappen, sonst stimmt die
         // Nummerierung nicht.
         //
         // `instrumentNumber[idx]` = Gruppennummer im Instrument-Pattern, aus
@@ -522,7 +523,7 @@ enum GroupBuilder {
 
             if unit.isExistingGroup {
                 // Schon eine fangende Gruppe — ihre eigene öffnende Klammer
-                // bekommt die nächste Nummer. ABER: sie kann GESCHACHTELTE
+                // bekommt die nächste Nummer. Aber: sie kann geschachtelte
                 // fangende Gruppen enthalten, die in der Instrument-Zählung
                 // mitzählen. Deshalb zählen wir alle öffnenden fangenden
                 // Klammern in ihrem Snippet.
@@ -533,7 +534,7 @@ enum GroupBuilder {
             } else {
                 // Unit selbst in eine fangende Klammer hüllen. Diese äußere
                 // Klammer bekommt die nächste Nummer; etwaige geschachtelte
-                // fangende Klammern IM Snippet zählen danach.
+                // fangende Klammern im Snippet zählen danach.
                 let myNumber = openCount + 1
                 instrumentNumber[idx] = myNumber
                 instrument += "(" + snippet + ")"
@@ -541,7 +542,7 @@ enum GroupBuilder {
             }
         }
 
-        // Schritt 3: Instrument verankert gegen den GESAMTEN Match-Text
+        // Schritt 3: Instrument verankert gegen den gesamten Match-Text
         // matchen. `\A(?:…)\z` erzwingt „komplett von Anfang bis Ende" —
         // robuster als Anchored-Optionen, deckt auch mehrzeilige Texte ab.
         let anchored = "\\A(?:" + instrument + ")\\z"
@@ -587,9 +588,9 @@ enum GroupBuilder {
         return result2
     }
 
-    /// Zählt öffnende FANGENDE Klammern in einem Pattern-Schnipsel — also `(`,
-    /// die KEINE nicht-fangende Gruppe (`(?:`, `(?=`, `(?!`, `(?<=`, `(?<!`)
-    /// und keine escapte Klammer (`\(`) sind. `(?<name>` IST fangend.
+    /// Zählt öffnende fangende Klammern in einem Pattern-Schnipsel — also `(`,
+    /// die keine nicht-fangende Gruppe (`(?:`, `(?=`, `(?!`, `(?<=`, `(?<!`)
+    /// und keine escapte Klammer (`\(`) sind. `(?<name>` ist fangend.
     private static func countCapturingOpens(in snippet: String) -> Int {
         let chars = Array(snippet)
         var count = 0
@@ -613,10 +614,10 @@ enum GroupBuilder {
                 continue
             }
             if c == "(" {
-                // `(?...` ist nicht-fangend, AUSSER `(?<name>` und `(?'name'`.
+                // `(?...` ist nicht-fangend, außer `(?<name>` und `(?'name'`.
                 if k + 1 < chars.count, chars[k + 1] == "?" {
                     // `(?<name>` / `(?P<name>` sind fangend; `(?<=`/`(?<!`
-                    // (Lookbehind) NICHT.
+                    // (Lookbehind) nicht.
                     if k + 2 < chars.count, chars[k + 2] == "<",
                        k + 3 < chars.count, chars[k + 3] != "=", chars[k + 3] != "!" {
                         count += 1
@@ -639,7 +640,7 @@ enum GroupBuilder {
     // ─────────────────────────────────────────────────────────────────────
 
     /// Findet die minimale zusammenhängende Folge von Units, deren Match-
-    /// Beiträge die Selektion abdecken. Nur Units MIT Beitrag (nicht
+    /// Beiträge die Selektion abdecken. Nur Units mit Beitrag (nicht
     /// nullbreit, nicht beitragslos) kommen als Endpunkte infrage.
     ///
     /// - Returns: `(i, j)` Indizes in `units` (inklusive), oder `nil`, wenn
@@ -648,8 +649,8 @@ enum GroupBuilder {
         let selStart = selection.location
         let selEnd = selection.location + selection.length
 
-        // Indizes aller Units, deren Match-Beitrag die Selektion SCHNEIDET.
-        // Schneiden = die Bereiche überlappen sich um >0, ODER (für leere
+        // Indizes aller Units, deren Match-Beitrag die Selektion schneidet.
+        // Schneiden = die Bereiche überlappen sich um >0, oder (für leere
         // Selektion) der Cursor liegt im/am Beitrag.
         var hits: [Int] = []
         for (idx, unit) in units.enumerated() {
@@ -658,9 +659,9 @@ enum GroupBuilder {
             let mEnd = m.location + m.length
 
             if selection.length == 0 {
-                // Leere Selektion: Cursor in [mStart, mEnd] INKLUSIVE Rändern.
+                // Leere Selektion: Cursor in [mStart, mEnd] inklusive Rändern.
                 // (Cursor genau an einer Token-Grenze → wir nehmen die Unit,
-                // in der er liegt; bei Grenze gewinnt die RECHTE, s.u.)
+                // in der er liegt; bei Grenze gewinnt die rechte, s.u.)
                 if selStart >= mStart && selStart <= mEnd {
                     hits.append(idx)
                 }
@@ -676,18 +677,18 @@ enum GroupBuilder {
 
         guard let first = hits.first, let last = hits.last else { return nil }
 
-        // Bei leerer Selektion an einer Grenze können ZWEI Units passen
+        // Bei leerer Selektion an einer Grenze können zwei Units passen
         // (Cursor == Ende von Unit A == Anfang von Unit B, weil wir oben
         // beide Ränder inklusive prüfen). Das Konzept (§4, Schritt 4) gibt
-        // die Tie-Break-Regel vor: an der Kante gewinnt die RECHTE Unit —
+        // die Tie-Break-Regel vor: an der Kante gewinnt die rechte Unit —
         // der Cursor „gehört" zu dem, was nach ihm kommt. Wir nehmen daher
-        // den GRÖSSTEN passenden Index (`last`).
+        // den größten passenden Index (`last`).
         if selection.length == 0 && hits.count > 1 {
             return (last, last)
         }
 
         // [first…last] umfasst alle schneidenden Units. Endpunkte sind per
-        // Konstruktion beitragende Units. Units OHNE Beitrag DAZWISCHEN
+        // Konstruktion beitragende Units. Units ohne Beitrag dazwischen
         // (z.B. `u?` in „colour"/„color") liegen im Bereich, sind aber
         // unschädlich — die Vereinigung der Pattern-Klammern umschließt sie
         // einfach mit (snapRange liefert Indizes, das Einsetzen nutzt die
@@ -711,8 +712,8 @@ enum GroupBuilder {
     // MARK: - Schritt 5b: Klammern ins Pattern einsetzen
 
     /// Fügt `(` an UTF-16-Position `openAt` und `)` an `closeAt` (Position im
-    /// ORIGINAL-Pattern) ein. Weil das Einfügen von `(` alle nachfolgenden
-    /// Positionen um 1 verschiebt, setzen wir die HINTERE Klammer zuerst.
+    /// Original-Pattern) ein. Weil das Einfügen von `(` alle nachfolgenden
+    /// Positionen um 1 verschiebt, setzen wir die hintere Klammer zuerst.
     private static func insertParentheses(in pattern: String, openAt: Int, closeAt: Int) -> String {
         let ns = NSMutableString(string: pattern)
         ns.insert(")", at: closeAt)   // erst hinten (Index bleibt gültig)

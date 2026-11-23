@@ -199,10 +199,11 @@ struct TextWorkflowFilePlanTests {
         }
     }
 
-    @Test("Teilfehler behalten das vorhandene Journal und erlauben eine geschützte Rücknahme")
-    func partialWrite() throws {
+    @Test("Teilfehler behalten das vorhandene Journal und erlauben eine geschützte Rücknahme", arguments: [false, true])
+    func partialWrite(_ reload: Bool) throws {
         try fixture { first, second, backups in
             try Data("one".utf8).write(to: first); try Data("two".utf8).write(to: second)
+            let secondOriginal = try FileSnapshot.readSnapshotOnly(from: second)
             let plan = try TextWorkflowFilePlan.build(uppercase, inputs: [.init(url: first), .init(url: second)])
             var partial: ApplySession?
             do {
@@ -213,10 +214,19 @@ struct TextWorkflowFilePlanTests {
             let session = try #require(partial)
             #expect(session.entries.count == 1 && session.entries[0].state == .applied)
             #expect(try ApplyEngine.loadSession(at: session.sessionDirectory) == session)
+            #expect(session.retainedPendingFiles.isEmpty)
+            #expect(session.entries[0].pendingFile?.isValid == true)
             #expect(try Data(contentsOf: first) == Data("ONE".utf8))
             #expect(try Data(contentsOf: second) == Data("two".utf8))
-            _ = try ApplyEngine.undo(session)
+            #expect(try FileSnapshot.readSnapshotOnly(from: second) == secondOriginal)
+            // B wurde nie angewendet und darf auch nach einer späteren
+            // Fremdänderung kein Ziel dieser Rücknahme werden.
+            try Data("foreign".utf8).write(to: second, options: .atomic)
+            let foreignSecond = try FileSnapshot.readSnapshotOnly(from: second)
+            let undoSession = reload ? try ApplyEngine.loadSession(at: session.sessionDirectory) : session
+            _ = try ApplyEngine.undo(undoSession)
             #expect(try Data(contentsOf: first) == Data("one".utf8))
+            #expect(try FileSnapshot.readSnapshotOnly(from: second) == foreignSecond)
         }
     }
 

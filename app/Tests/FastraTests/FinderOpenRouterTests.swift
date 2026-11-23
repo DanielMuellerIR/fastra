@@ -1,8 +1,7 @@
 // FinderOpenRouterTests.swift
 //
-// Reine Routing-Auswahl für aus dem Finder/Dock geöffnete Dateien
-// (Nutzerwunsch 2026-07-20 „alle Fenster durchsuchen"): Eine Datei landet im
-// Fenster, das ihr Projekt/Repo zeigt oder sie bereits offen hat; sonst neu.
+// Eine aus Finder/Dock geöffnete Datei dem passenden Fenster zuordnen:
+// bereits offen oder im angezeigten Projekt/Repo, andernfalls neues Fenster.
 
 import Foundation
 import Testing

@@ -142,9 +142,9 @@ func preview_crLineEndings() {
 
 @Test("Demo-Szenario Namens-Swap: (\\w+), (\\w+) + $2 $1 → 'Mustermann, Max' wird 'Max Mustermann'")
 func preview_nameSwapDemo() {
-    // Genau Daniels Präsentations-Demo: zwei Gruppen umgekehrt einsetzen.
-    // Die Capture-Group-Pillen fügen per DnD/Klick `$2` bzw. `$1` ein — das
-    // Replace-Template ist also `$2 $1`. Hier auf der Engine-Ebene abgesichert.
+    // Zwei Capture-Gruppen über `$2 $1` umgekehrt einsetzen. Das entspricht
+    // dem Template, das Klick/Drag der Gruppen-Pillen erzeugt; hier wird die
+    // Engine-Ebene geprüft.
     let text = "Mustermann, Max\nSchmidt, Anna"
     let opts = SearchOptions(find: "(\\w+), (\\w+)", replace: "$2 $1", isRegex: true)
     let m = BufferSearch.find(in: text, options: opts).matches
@@ -168,14 +168,14 @@ func preview_wildcardReplacement() {
 
 @Test("Wildcard-Vorschau löst per Drag&Drop eingefügte $2/$1-Pillen auf")
 func preview_wildcardPillReplacement() {
-    // Regression Daniel 2026-07-10: Die Vorschau zeigte zuvor buchstäblich
-    // „$2 $1", weil der Plain-Text-Pfad alle Dollarzeichen escapte.
-    let text = "Müller, Daniel"
+    // Die Vorschau muss `$2 $1` expandieren statt die Dollarzeichen wie im
+    // Plain-Text-Pfad zu maskieren.
+    let text = "Müller, Markus"
     let opts = SearchOptions(find: "*, *", replace: "$2 $1", isRegex: false)
     let matches = BufferSearch.find(in: text, options: opts).matches
     let preview = ReplacePreview.build(text: text, matches: matches)
-    #expect(preview.rows.first?.before == "Müller, Daniel")
-    #expect(preview.rows.first?.after == "Daniel Müller")
+    #expect(preview.rows.first?.before == "Müller, Markus")
+    #expect(preview.rows.first?.after == "Markus Müller")
 }
 
 // MARK: - Stale-Treffer-Robustheit (Regression: inline Live-Vorschau)
@@ -186,7 +186,7 @@ func preview_staleMatchesEmptyText() {
     let old = "Mustermann, Max\nSchmidt, Anna\nMeyer, Eva"
     let stale = matches(in: old, find: "(\\w+), (\\w+)", replace: "$2 $1", isRegex: true)
     #expect(!stale.isEmpty)
-    // … und gegen einen LEEREN (frisch gewechselten) Buffer verwenden. Früher
+    // … und gegen einen leeren (frisch gewechselten) Buffer verwenden. Früher
     // crashte `lineRange(for:)` an der out-of-bounds Range; jetzt: leer.
     let r = ReplacePreview.build(text: "", matches: stale)
     #expect(r == .empty)
@@ -194,7 +194,7 @@ func preview_staleMatchesEmptyText() {
 
 @Test("Gemischt: nur in-bounds Treffer überleben, out-of-bounds wird übersprungen")
 func preview_staleMatchesMixed() {
-    // Treffer aus einem 3-Zeilen-Text; danach ein KÜRZERER Text, in dem nur
+    // Treffer aus einem 3-Zeilen-Text; danach ein kürzerer Text, in dem nur
     // die erste Zeile (Treffer 1) noch existiert.
     let old = "Mustermann, Max\nSchmidt, Anna\nMeyer, Eva"
     let stale = matches(in: old, find: "(\\w+), (\\w+)", replace: "$2 $1", isRegex: true)

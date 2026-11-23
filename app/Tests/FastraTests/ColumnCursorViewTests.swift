@@ -1,15 +1,8 @@
 // ColumnCursorViewTests.swift
 //
-// Regressionstest für den Tester-Nachbefund vom 2026-08-28 (v1.113.0):
-// Nach Tippen in eine Rechteckauswahl wurden zwar in ALLEN Zeilen Zeichen
-// eingefügt (Modell korrekt, siehe ColumnTypingDriftTests), sichtbar blinkte
-// danach aber nur in einem Teil der Zeilen ein Cursor — teils zusätzlich an
-// der falschen x-Position (am linken Rand statt hinter dem eingefügten
-// Zeichen).
-//
-// Geprüft wird die VIEW-Schicht: Nach dem Tippen und dem nächsten
-// Layout-Durchlauf muss jede (leere) Selektion eine Cursor-View besitzen,
-// deren Position mit der echten Textgeometrie übereinstimmt.
+// Nach Tippen in eine Rechteckauswahl muss jede leere Selektion eine
+// Cursor-View an der echten Textposition besitzen. Das prüft nach dem
+// Layout auch die Ansicht; `ColumnTypingDriftTests` prüft die Textänderung.
 
 import AppKit
 import CodeEditLanguages
@@ -21,8 +14,7 @@ import Testing
 @Test("Nach Tippen in eine Rechteckauswahl hat jede Zeile eine korrekt platzierte Cursor-View")
 @MainActor
 func columnTypingKeepsOneCursorViewPerLine() throws {
-    // Die Zutatenliste aus dem Befund: 13 Zeilen, führender Leerraum gemischt
-    // aus Tabs und Leerzeichen.
+    // 13 Zeilen mit führendem Leerraum aus Tabs und Leerzeichen.
     let lines = [
         "\t500 g Pasta",
         "  500 g Haehnchenbrust",
@@ -69,8 +61,8 @@ func columnTypingKeepsOneCursorViewPerLine() throws {
     controller.view.layoutSubtreeIfNeeded()
     #expect(window.makeFirstResponder(textView))
 
-    // Rechteck über den führenden Leerraum aller 13 Zeilen aufziehen —
-    // wie im Befund per Auswahl der ersten Zeile plus Select Down.
+    // Rechteck über den führenden Leerraum aller 13 Zeilen aufziehen:
+    // erste Zeile auswählen, dann Select Down.
     textView.selectionManager.setSelectedRanges([NSRange(location: 0, length: 1)])
     for _ in 1..<lines.count {
         #expect(textView.fastraSelectColumn(upwards: false))

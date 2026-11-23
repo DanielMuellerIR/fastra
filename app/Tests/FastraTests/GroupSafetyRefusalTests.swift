@@ -1,9 +1,10 @@
 import Foundation
 import Testing
 @testable import Fastra
+@testable import FastraPatternSyntax
 
 // Diese Datei prüft die beiden Zusagen, an denen „Gruppe definieren" und
-// „Gruppe löschen" hängen — und zwar an ECHTEN Ersetzungen und echten
+// „Gruppe löschen" hängen — und zwar an echten Ersetzungen und echten
 // Treffern, nicht an Zwischenwerten:
 //
 //   1. Das Suchmuster trifft nach der Aktion dieselbe Textmenge.
@@ -11,7 +12,7 @@ import Testing
 //      umnummerierten Gruppen.
 //
 // Wo eine der beiden Zusagen nicht einzuhalten ist, muss die Aktion
-// VERWEIGERN (nil) statt still etwas anderes zu tun.
+// verweigern (nil) statt still etwas anderes zu tun.
 
 /// Trifft `pattern` in `text` genau diese Fundstellen?
 private func matches(_ pattern: String, _ text: String) throws -> [String] {

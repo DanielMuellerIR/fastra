@@ -40,33 +40,6 @@ extension Workspace {
         searchApprovalMemoryRestored.toggle()
     }
 
-    func publishSearchApprovals() {
-        let matches = navMatches
-        let complete: Bool
-        switch scope {
-        case .file:
-            complete = !bufferSearching && !bufferResultsWereCapped
-                && matches.count == bufferTotalMatches
-                && visibleBufferResultsOptions == currentSearchOptions
-        case .open:
-            complete = !bufferSearching && !openResultsWereCapped
-                && matches.count == openTotalMatches
-                && visibleBufferResultsOptions == currentSearchOptions
-        case .folder, .project:
-            complete = !folderSearching && !folderNeedsSearch && !folderResultsAreStale
-                && !folderResultsWereCapped && matches.count == folderTotalMatches
-                && folderResults.allSatisfy { result in
-                    if result.skipped == .binary { return true }
-                    return result.skipped == nil && result.snapshot != nil
-                        && result.totalMatches == result.matches.count
-                        && result.searchOptions == currentSearchOptions
-                }
-        }
-        searchApproval.publish(matchIDs: matches.map(\.id),
-                               isComplete: complete && searchError == nil,
-                               generation: searchApproval.generation)
-    }
-
     func searchMatchIsEditable(_ match: NavMatch) -> Bool {
         if scope.isFolderLike {
             guard let url = match.url else { return false }
@@ -97,7 +70,10 @@ extension Workspace {
         if approved {
             guard ids.isSubset(of: editableSearchMatchIDs) else { return false }
         }
-        return searchApproval.setApproved(approved, ids: ids, generation: generation)
+        guard Thread.isMainThread else { return false }
+        return MainActor.assumeIsolated {
+            updateSearchResultApproval(approved, ids: ids, generation: generation)
+        }
     }
 
     @discardableResult

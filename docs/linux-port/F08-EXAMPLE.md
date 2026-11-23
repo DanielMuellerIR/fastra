@@ -22,13 +22,13 @@ Eingabewechsel brechen frühere Jobs ab; veraltete Completions werden verworfen.
 Die Vorschau nutzt unverändert die echte Wildcard-Engine und zeigt Suchen,
 Ersetzen und tatsächliches Ergebnis über die bestehende vollständige Escape-
 Darstellung (je höchstens 64 KiB). Erst bei kanonisch gleichem Ziel ist Übernehmen
-möglich. Originalbytes bleiben erhalten. Das füllt ausschließlich das gebundene
-Suchformular und wählt Wildcard, ohne Bereich oder Optionen zu verändern. Es
-startet weder Suche noch Editor-/Dateischreibvorgang. Eine bestehende Vorschau
-wird entwertet; die reguläre Vorschau/Freigabe bleibt erforderlich. Geänderte
-Formulargeneration, aktiver Tab oder geschlossenes Besitzerfenster sperren die
-Übernahme. Return übernimmt, Escape verwirft; Shift+Return ermöglicht Beispiele
-mit Umbrüchen.
+möglich. Originalbytes bleiben erhalten. Übernehmen füllt das gebundene
+Suchformular und wählt Wildcard. Suchbereich und übrige Optionen bleiben
+erhalten. Die Live-Suche aktualisiert im Dateibereich die Trefferliste. Eine
+bestehende Vorschau wird entwertet. Vor einer Mehrfachänderung sind eine neue
+Vorschau und eine ausdrückliche Freigabe erforderlich. Geänderte Formulargeneration,
+aktiver Tab oder geschlossenes Besitzerfenster sperren die Übernahme. Return
+übernimmt, Escape verwirft. Shift+Return ermöglicht Beispiele mit Umbrüchen.
 
 ## Belegter Sonderfall im Bestand
 

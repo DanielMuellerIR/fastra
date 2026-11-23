@@ -36,7 +36,7 @@ enum PatienceDiff {
         var oldStart = 0
         var newStart = 0
         // Die Summe der quadratischen Obergrenzen darf nicht größer sein
-        // als bei EINEM bisherigen Maximalvergleich. Viele kleine Blöcke
+        // als bei einem bisherigen Maximalvergleich. Viele kleine Blöcke
         // dürfen das Schutzbudget nicht vervielfachen.
         var remainingWork = maximumInputLines * maximumInputLines
         for index in 0...anchors.count {

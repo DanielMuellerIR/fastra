@@ -67,7 +67,7 @@ impl Attempt {
             return;
         };
         let this = self.clone();
-        close_protocol::prepare(
+        close_protocol::prepare_app_quit(
             ui,
             Box::new(move |result| {
                 if !this.current() {
@@ -239,6 +239,15 @@ impl Coordinator {
 }
 /// Verborgene Fenster bleiben bis zum tatsächlichen window-removed im Inventar.
 pub(crate) fn ordinary_windows()->Option<Vec<Rc<Ui>>> {COORDINATOR.with_borrow(|owner|owner.upgrade().and_then(|owner|owner.windows.try_borrow().ok().map(|windows|windows.clone())))}
+pub(crate) fn prompt_active() -> bool {
+    COORDINATOR.with_borrow(|owner| {
+        owner.upgrade().is_some_and(|owner| {
+            owner.attempt.borrow().as_ref().is_some_and(|attempt| {
+                attempt.windows.iter().any(|ui| close_protocol::embedded_prompt_active(ui))
+            })
+        })
+    })
+}
 pub(super) fn install(app: &gtk::Application, windows: &Rc<RefCell<Vec<Rc<Ui>>>>) {
     let coordinator = Rc::new(Coordinator {
         app: app.downgrade(),

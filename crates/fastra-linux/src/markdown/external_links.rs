@@ -1,4 +1,5 @@
 use super::{MarkdownView, BASE};
+use crate::Language;
 use gtk::{gio, glib, prelude::*};
 use std::{cell::RefCell, rc::Rc};
 mod portal;
@@ -83,10 +84,7 @@ pub(super) fn install(preview: &Rc<MarkdownView>) {
                     move |result| {
                         if let (Err(error), Some(preview)) = (result, weak.upgrade()) {
                             if preview.generation.get() == generation && preview.visible.get() {
-                                let german = std::env::var("LANGUAGE")
-                                    .or_else(|_| std::env::var("LANG"))
-                                    .unwrap_or_default()
-                                    .starts_with("de");
+                                let german = Language::from_environment().0;
                                 preview.status.set_text(&error.message(german));
                             }
                         }
@@ -104,10 +102,7 @@ pub(super) fn install(preview: &Rc<MarkdownView>) {
                 move |result| {
                     if let (Err(error), Some(preview)) = (result, weak.upgrade()) {
                         if preview.generation.get() == generation && preview.visible.get() {
-                            let german = std::env::var("LANGUAGE")
-                                .or_else(|_| std::env::var("LANG"))
-                                .unwrap_or_default()
-                                .starts_with("de");
+                            let german = Language::from_environment().0;
                             preview.status.set_text(&format!(
                                 "{}: {error}",
                                 if german {

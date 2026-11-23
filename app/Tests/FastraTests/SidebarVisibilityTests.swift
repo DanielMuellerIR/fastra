@@ -1,6 +1,6 @@
 // SidebarVisibilityTests.swift
 //
-// Regeln der linken Seitenleiste (Änderungswunsch 2026-09-06): ohne
+// Regeln der linken Seitenleiste: ohne
 // geöffneten Ordner/Repo keine Seitenleiste — unabhängig von Tabs und
 // Nutzerschalter; mit Projekt entscheidet der Schalter, eingehängt bleibt
 // sie immer.

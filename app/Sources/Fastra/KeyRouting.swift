@@ -6,13 +6,12 @@
 //   Der „Zombie-Find-Bar"-Bug kam mehrfach zurück, weil die Shortcut-
 //   Behandlung tief in AppKit-Glue (NSApplication-Subklasse, NSEvent-
 //   Monitor) steckte — dort ist sie praktisch nicht automatisiert
-//   testbar, und sie existierte in ZWEI Kopien (sendEvent + Monitor),
+//   testbar, und sie existierte in zwei Kopien (sendEvent + Monitor),
 //   die auseinanderlaufen konnten.
 //
 //   Lösung: die Entscheidung „welches Event löst welche Aktion aus" ist
-//   hier als pure Funktion gekapselt. Beide Aufrufer (FastraApplication
-//   und AppDelegate) nutzen exakt dieselbe Funktion — keine Divergenz —
-//   und die Funktion ist in `KeyRoutingTests` vollständig abgedeckt.
+//   hier als reine Funktion gekapselt. Der lokale Monitor in AppDelegate
+//   führt die ermittelte Aktion aus; KeyRoutingTests prüfen die Entscheidung.
 
 import AppKit
 
@@ -45,6 +44,8 @@ enum KeyRoute: Equatable {
     case extendSelectionToLineBoundary(backward: Bool)
     /// CMD+B wählt einen Klammerblock oder formatiert Markdown fett.
     case selectBracketBlockOrBold
+    /// ⌥⇧F formatiert das Dokument des aktiven Fensters oder der Suchmaske.
+    case formatDocument
     /// CMD+<Kürzel> eines 4D-Makros bei aktiver `.4dm`-Datei. Kontextsensitiv
     /// gewinnt das Makro über gleichlautende Menü-Shortcuts (⌘T „Neuer Tab"),
     /// weil die Kürzelmenge nur bei aktiver 4D-Methode überhaupt gefüllt ist.
@@ -132,6 +133,11 @@ enum KeyRouting {
             return .passThrough
         }
 
+        if charactersIgnoringModifiers?.lowercased() == "f",
+           modifierFlags.intersection([.command, .option, .control, .shift]) == [.option, .shift] {
+            return .formatDocument
+        }
+
         // CMD+<Kürzel> eines 4D-Makros (z. B. ⌘# „Methode analysieren und
         // ergänzen", ⌘T „Kürzel und Datum einsetzen"). Nur im echten
         // Dokumentfenster; die Kürzelmenge ist ausschließlich bei aktiver
@@ -204,7 +210,7 @@ enum KeyRouting {
         case .showGotoLine:       return .fastraShowGotoLine
         case .closeHelp, .closeDocument,
              .moveToBeginningOfDocument, .moveToEndOfDocument, .extendSelectionToLineBoundary,
-             .runFourDMacro, .selectBracketBlockOrBold:
+             .runFourDMacro, .selectBracketBlockOrBold, .formatDocument:
             // Diese Aktionen gehen direkt an die fokussierte Editor-TextView
             // bzw. den Workspace des Key-Windows; eine globale Notification
             // würde Suchfelder oder fremde Fenster versehentlich erfassen.

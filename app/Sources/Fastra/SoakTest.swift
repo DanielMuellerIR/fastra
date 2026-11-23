@@ -1,45 +1,18 @@
 // SoakTest.swift
 //
-// Langer, realistischer Dauertest — bewusst NICHT Teil von `ALL_TESTS`.
+// Langer Dauertest, bewusst außerhalb von `ALL_TESTS`. Er prüft Zustände,
+// die erst durch längere Arbeit mit mehreren großen Dokumenten und Fenstern
+// oder durch App-Neustarts entstehen.
 //
-// WARUM ES IHN GIBT
+// Wechselnde Aktionen umfassen Tippen, Auswahl, Formatieren, Sichern,
+// Tab-/Fensterwechsel, Vorschau, Suche und Undo. Nach jeder Aktion werden
+// Invarianten geprüft; der Lauf sammelt Verstöße und setzt fort, damit
+// Zusammenhänge über die Zeit sichtbar bleiben.
 //
-// Am 2026-08-07 meldete der Arbeitsbetrieb vier Fehler, die unsere rund
-// achtzig Selbsttests alle nicht gefunden hatten: ein Befehl wirkte im
-// falschen Fenster, eine Rückfrage nannte ein Dokument ohne Fenster, ein
-// geschlossenes Fenster kam zurück, und beim Markieren kroch die Ansicht
-// langsam nach unten. Zwei davon ließen sich anschließend in einer kurz
-// aufgebauten Testwelt nicht einmal nachstellen.
-//
-// Das ist kein Fleißproblem, sondern ein Konstruktionsproblem: Ein
-// Selbsttest baut eine frische Miniwelt, prüft EINE Sache und räumt ab. Ein
-// Zustandsfehler, der nach zwanzig Minuten Arbeit mit vier offenen
-// Dokumenten entsteht, kann darin gar nicht auftreten.
-//
-// Dieser Test dreht das um:
-//
-//   * Er arbeitet über eine LANGE Sitzung mit mehreren großen Dokumenten in
-//     mehreren Fenstern, die offen bleiben.
-//   * Er handelt wie ein Mensch: tippen, markieren, formatieren, sichern,
-//     Tab wechseln, Fenster wechseln, in der Vorschau springen, suchen,
-//     rückgängig machen — in wechselnder Reihenfolge.
-//   * Nach JEDER Aktion prüft er die Invarianten. Nicht „stimmt das
-//     Ergebnis", sondern „gilt alles, was immer gelten muss".
-//   * Er läuft bei einem Verstoß WEITER und sammelt. Bei Zustandsfehlern
-//     ist das Muster über die Zeit die eigentliche Information.
-//   * Er arbeitet, wo vorhanden, mit ECHTEN Dokumenten statt nur mit
-//     Fixtures: einer realen Markdown-Datei, einem RTFD-Bundle, das über
-//     den echten Öffnen-Pfad umgewandelt und SOFORT weiterbearbeitet wird,
-//     und einem echten 4D-Projekt samt Completion, Signaturhilfe und
-//     ALT-Doppelklick. (Die Dateien stellt das Skript bereit; Namen und
-//     Pfade echter Quellen gehören nicht in diesen Code.)
-//   * Er verschiebt und skaliert Fenster, kopiert über die Zwischenablage
-//     zwischen Fenstern (⌘C/⌘V über die Responder-Chain) und löst Sichern,
-//     „Neuer Tab" und Rückgängig über die ECHTEN Menübefehle aus — nicht
-//     über direkte Modellaufrufe.
-//
-// Die Invarianten sind der Kern. Sie sind so gewählt, dass jeder der vier
-// gemeldeten Fehler an mindestens einer davon auffällt.
+// Soweit vorhanden werden bereitgestellte Dokumentkopien verwendet, darunter
+// Markdown, RTFD und ein 4D-Projekt. Namen und Pfade der Quellen gehören nicht
+// in den Code. Fenstergeometrie, Zwischenablage und Menübefehle werden über
+// die tatsächlichen AppKit-/Responder-Wege bedient.
 
 import AppKit
 import CodeEditTextView
@@ -109,7 +82,7 @@ enum SoakTest {
         return environmentIssues.isEmpty ? .pass : .environment
     }
 
-    /// Hinweis ins Lauf-Log (stderr) — bewusst KEIN Befund. Für optionale
+    /// Hinweis ins Lauf-Log (stderr) — bewusst kein Befund. Für optionale
     /// Schritte, die mangels passender Stelle übersprungen werden.
     static func note(_ text: String) {
         FileHandle.standardError.write(Data("SOAK-HINWEIS \(text)\n".utf8))
@@ -117,7 +90,7 @@ enum SoakTest {
 
     // MARK: - Zustandsschnappschuss
 
-    /// Alles an einem Fenster, was sich ohne Zutun NICHT ändern darf.
+    /// Alles an einem Fenster, was sich ohne Zutun nicht ändern darf.
     struct WindowSnapshot: Equatable {
         let title: String
         let documentPath: String?
@@ -154,7 +127,7 @@ enum SoakTest {
 
     /// Prüft nach einer Aktion alles, was gelten muss.
     ///
-    /// `target` ist das Fenster, das die Aktion verändern DURFTE. Alle
+    /// `target` ist das Fenster, das die Aktion verändern durfte. Alle
     /// anderen müssen unberührt sein — das ist die schärfste Invariante und
     /// genau die, an der „⌘B wirkt im Hintergrundfenster" auffällt.
     static func checkInvariants(
@@ -178,16 +151,11 @@ enum SoakTest {
         checkFixedChromeVisible()
     }
 
-    /// (10) Wachsender Inhalt darf das feste Seitenleisten-Chrome nicht aus
-    /// dem sichtbaren Fensterbereich drängen. Befund 2026-09-01: Die frühere
-    /// „GEÖFFNET"-Liste schob mit jedem offenen Tab erst den Dateibaum, dann
-    /// Tab-Leiste und Fensterkopf aus dem Fenster — und keine
-    /// Existenzprüfung bemerkte es, weil verdrängte Views im View-Baum
-    /// weiterleben. Geprüft wird deshalb die tatsächliche Geometrie: Liegt
-    /// ein vorhandener Chrome-Marker außerhalb des Content-Bereichs, ist das
-    /// ein Befund. Fehlt er (Seitenleiste zu, kein Projekt), gilt die
-    /// Invariante als unberührt. Der gezielte Einzelfall läuft zusätzlich im
-    /// `tabflood`-Selbsttest mit 40 gefluteten Tabs.
+    /// (10) Feste Seitenleisten-Elemente müssen innerhalb des Fensterinhalts
+    /// bleiben, auch bei wachsendem Inhalt. Die Marker-Geometrie prüfen, nicht nur
+    /// die Existenz im View-Baum. Fehlende Marker bei geschlossener Seitenleiste
+    /// oder ohne Projekt verletzen die Invariante nicht. `tabflood` prüft den
+    /// gezielten Einzelfall zusätzlich mit 40 Tabs.
     private static func checkFixedChromeVisible() {
         for window in documentWindows() {
             guard let content = window.contentView else { continue }
@@ -230,7 +198,7 @@ enum SoakTest {
     /// die Umkehrung zu bilden und bricht die Anwendung mit „Range invalid
     /// for string" ab. Genau so endete der erste Dauerlauf.
     ///
-    /// Die Invariante wird VOR jeder Aktion mitgeprüft. Dadurch beantwortet
+    /// Die Invariante wird vor jeder Aktion mitgeprüft. Dadurch beantwortet
     /// der Test selbst, woher ein solcher Zustand kommt: Meldet er die
     /// Verletzung nach „Tab wechseln", stammt sie aus dem Tabwechsel — nicht
     /// aus dem Tippen, das daran nur zerbricht.
@@ -260,7 +228,7 @@ enum SoakTest {
     /// sonst endet der Lauf, statt weiterzusammeln. Gemeldet wird der Zustand
     /// trotzdem: Die Klemmung verdeckt nichts, sie hält den Lauf am Leben.
     ///
-    /// Ausnahme: `{NSNotFound, 0}` ist KEIN kaputter Zustand, sondern der
+    /// Ausnahme: `{NSNotFound, 0}` ist kein kaputter Zustand, sondern der
     /// dokumentierte Normalfall eines Fensters, in das noch niemand geklickt
     /// hat — nach der Sitzungswiederherstellung steht jedes Fenster so da.
     /// Ein Mensch klickt vor dem Tippen; der Test bildet das nach, indem er
@@ -453,10 +421,10 @@ enum SoakTest {
 
     /// (1) Eine Aktion darf nur das Fenster verändern, in dem sie ausgelöst
     /// wurde. Findet den Fehler „Befehl landet im falschen Fenster" —
-    /// unabhängig davon, WELCHER Befehl es war.
+    /// unabhängig davon, welcher Befehl es war.
     /// Fenster, deren scrollY-Prüfung nach einem Resize vorübergehend
     /// ausgesetzt ist: Ein Breiten-Resize wickelt Soft-Wrap-Text neu, und
-    /// `documentVisibleRect.minY` zieht dabei VERZÖGERT nach — auch erst in
+    /// `documentVisibleRect.minY` zieht dabei verzögert nach — auch erst in
     /// der Folgerunde. Auswahl, Textlänge und Änderungspunkt bleiben für
     /// diese Fenster scharf geprüft.
     private static var scrollForgiven: Set<ObjectIdentifier> = []
@@ -541,7 +509,7 @@ enum SoakTest {
         }
         let open = Set(documentWindows().map(\.title).filter { !$0.isEmpty })
         // Die Fenstereinträge stehen am Ende, hinter den AppKit-Befehlen.
-        // Verglichen wird deshalb nur, ob jeder offene Titel VORKOMMT.
+        // Verglichen wird deshalb nur, ob jeder offene Titel vorkommt.
         let listed = Set(windowsMenu.items.map(\.title))
         let missing = open.subtracting(listed)
         if !missing.isEmpty {
@@ -593,7 +561,7 @@ enum SoakTest {
 
     // MARK: - Menschliche Aktionen
     //
-    // Jede Aktion geht durch DENSELBEN Weg wie die Bedienung: Formatbefehle
+    // Jede Aktion geht durch denselben Weg wie die Bedienung: Formatbefehle
     // über die Menü-Notification, Sichern über den Workspace-Befehl,
     // Fensterwechsel über `makeKeyAndOrderFront`. Würde der Test direkt am
     // Modell arbeiten, prüfte er die halbe Anwendung nicht — gerade die
@@ -805,7 +773,7 @@ enum SoakTest {
             let windows = documentWindows()
             guard windows.count > 1 else { return nil }
             // Ein anderes Fenster nach vorn holen. Der Wechsel selbst darf
-            // NICHTS am Inhalt ändern — auch das prüfen die Invarianten.
+            // nichts am Inhalt ändern — auch das prüfen die Invarianten.
             let other = windows[1 + nextRandom(windows.count - 1)]
             other.makeKeyAndOrderFront(nil)
             return (other, action.label, nil, nil)
@@ -877,7 +845,7 @@ enum SoakTest {
                             display: true)
             // Ein Breiten-Resize wickelt Soft-Wrap-Text neu;
             // `documentVisibleRect.minY` zieht dabei verzögert nach — auch
-            // erst in der FOLGERUNDE. Die scrollY-Prüfung für dieses Fenster
+            // erst in der Folgerunde. Die scrollY-Prüfung für dieses Fenster
             // deshalb zwei Runden lang aussetzen (siehe `scrollForgiven`).
             scrollForgiven.insert(ObjectIdentifier(window))
             scrollForgivenRoundsRemaining = 2
@@ -951,7 +919,7 @@ enum SoakTest {
             + "textViewImFenster=\(textView.window === window)"
     }
 
-    /// Sucht den ⌘-Menüpunkt FRISCH im aktuellen Hauptmenü. Referenzen werden
+    /// Sucht den ⌘-Menüpunkt frisch im aktuellen Hauptmenü. Referenzen werden
     /// bewusst nie gecacht: SwiftUI baut das Menü laufend neu auf, ein
     /// gemerkter `NSMenuItem` zeigte dann ins Leere. `update()` entspricht dem
     /// Aufklappen des Menüs samt SwiftUI-Validierung; ein deaktivierter Punkt
@@ -967,7 +935,7 @@ enum SoakTest {
     /// Rekursive Suche wie im Selbsttest: Modifier werden geprüft, damit
     /// nicht ⇧⌘S („Sichern unter…") statt ⌘S getroffen wird. Der Vergleich
     /// ist bewusst exakt (Kleinbuchstabe): Ein Shift-Kürzel kann auch als
-    /// GROSSBUCHSTABE ohne .shift-Maske codiert sein.
+    /// Großbuchstabe ohne .shift-Maske codiert sein.
     private static func menuItem(forKeyEquivalent key: String,
                                  in menu: NSMenu) -> NSMenuItem? {
         for item in menu.items {
@@ -1042,11 +1010,11 @@ enum SoakTest {
             checkSaveWroteWindowContent(window: round.target)
         }
         if let (baseline, textView, window) = round.undoBaseline {
-            // Nach dem Rückgängigmachen muss der Text ANDERS sein als vorher
+            // Nach dem Rückgängigmachen muss der Text anders sein als vorher
             // (sonst hat Undo nichts getan). Die bisherige Nicht-leer-Prüfung
             // bleibt als eigener Schutz für Datei-Tabs bestehen. Danach wird
             // die Aktion per Redo wiederholt: Erst dieser zweite Schritt kann
-            // exakt mit dem Text VOR dem Undo verglichen werden.
+            // exakt mit dem Text vor dem Undo verglichen werden.
             let tabHasFile = WorkspaceWindowRegistry.workspace(for: window)?
                 .activeTab?.url != nil
             if textView.string.isEmpty, tabHasFile {
@@ -1071,7 +1039,7 @@ enum SoakTest {
             }
         }
         // Die scrollY-Nachsicht nach einem Resize endet mit dem Abschluss der
-        // ÜBERNÄCHSTEN Runde: erst dann ist die verzögerte Neuauslegung des
+        // übernächsten Runde: erst dann ist die verzögerte Neuauslegung des
         // Soft-Wrap-Textes sicher durch.
         if scrollForgivenRoundsRemaining > 0 {
             scrollForgivenRoundsRemaining -= 1
@@ -1099,17 +1067,8 @@ enum SoakTest {
     /// Eine Zeile je Befund, danach die Zusammenfassung.
     // MARK: - Befunde sofort auf Platte
 
-    /// Protokolldatei dieser Phase. Ist sie gesetzt, wandert JEDER Befund
-    /// sofort dorthin.
-    ///
-    /// Vorher sammelten sich die Befunde bis zum Phasenende ausschließlich im
-    /// Arbeitsspeicher, und `appendReport` lief nur im Abschlusszweig. Wurde
-    /// die Phase vorher abgeschossen — etwa von der Frist des Runners —, waren
-    /// SÄMTLICHE Befunde dieser Phase weg; im Protokoll stand nur die
-    /// Ersatzzeile „Zeitüberschreitung". Bei 200 Runden gingen so bis zu 199
-    /// Runden Beobachtung verloren. Genau das ist beim Dauertest der teuerste
-    /// mögliche Verlust: Er läuft eine halbe Stunde, um seltene Zustände zu
-    /// finden.
+    /// Protokolldatei dieser Phase. Jeder Befund wird sofort geschrieben, damit
+    /// ein späterer Prozessabbruch bereits beobachtete Verstöße nicht verliert.
     private(set) static var reportLogURL: URL?
     private static var writtenFindings = 0
     private static var writtenEnvironmentIssues = 0
@@ -1191,14 +1150,9 @@ enum SoakTest {
 
     // MARK: - Phasen über App-Neustarts hinweg
     //
-    // Der Test läuft in mehreren App-Starts, weil zwei der gemeldeten Fehler
-    // genau am Neustart hingen (Sitzungswiederherstellung, Rückfrage beim
-    // Beenden). `soak-test.sh` startet die Phasen deshalb nacheinander, und
-    // die Befunde sammeln sich in einer gemeinsamen Datei statt im
-    // Arbeitsspeicher — seit 2026-09-10 nicht nur ZWISCHEN den Phasen, sondern
-    // auch innerhalb einer: Jeder Befund wird sofort geschrieben (siehe
-    // `beginReport`). Vorher galt die Aussage nur für den Phasenwechsel, und
-    // ein abgeschossener Lauf verlor alles, was er bis dahin gesehen hatte.
+    // `soak-test.sh` startet Phasen nacheinander, um Wiederherstellung und
+    // Beenden mitzuprüfen. `beginReport` schreibt Befunde sofort in die gemeinsame
+    // Datei; sie bleiben auch bei Abbruch innerhalb einer Phase erhalten.
 
     /// Hängt die Befunde dieses Starts an das gemeinsame Protokoll an.
     /// Schreibfehler müssen die Phase scheitern lassen: Ein Bericht früherer
@@ -1219,7 +1173,7 @@ enum SoakTest {
         }
     }
 
-    /// Legt die Arbeitsdateien an: mehrere GROSSE Markdown-Dokumente mit
+    /// Legt die Arbeitsdateien an: mehrere große Markdown-Dokumente mit
     /// eingebetteten Bildern.
     ///
     /// Größe und Bilder sind kein Selbstzweck. Die gemeldeten Fehler traten
@@ -1268,7 +1222,7 @@ enum SoakTest {
     /// solches Dokument könnte die Invariante „Vorschau gehört zu ihrem
     /// Fenster" nie echt anschlagen: Ein leerer neuer Tab zeigt die
     /// Startansicht (ganz ohne Editor und Vorschau), erst ein aktives
-    /// Nicht-Markdown-DOKUMENT lässt eine stehengebliebene Vorschau auffliegen.
+    /// Nicht-Markdown-Dokument lässt eine stehengebliebene Vorschau auffliegen.
     static func prepareTextDocument(in directory: URL) -> URL {
         var lines: [String] = []
         for line in 1...200 {
@@ -1307,42 +1261,44 @@ enum SoakTest {
         return bundle
     }
 
-    /// Öffnet das RTFD-Bundle über den ECHTEN Öffnen-Pfad (`openFileOrFolder`),
+    /// Öffnet das RTFD-Bundle über den echten Öffnen-Pfad (`openFileOrFolder`),
     /// wählt die Rückfrage automatisch mit „umwandeln" und bearbeitet den
-    /// entstandenen Markdown-Tab SOFORT weiter — genau in diesem Zustand
+    /// entstandenen Markdown-Tab sofort weiter — genau in diesem Zustand
     /// werden Fehler vermutet. `MarkdownImportService` ist ein Singleton;
     /// es läuft nie eine zweite Umwandlung parallel.
     static func runRTFDImport(bundle: URL, workspace: Workspace,
                               completion: @escaping @MainActor () -> Void) {
         // Das erste Fenster nach vorn holen: Notification- und Menübefehle
-        // der folgenden Schritte wirken auf das VORDERSTE Fenster.
+        // der folgenden Schritte wirken auf das vorderste Fenster.
         let window = documentWindows().first {
             WorkspaceWindowRegistry.workspace(for: $0) === workspace
         }
         window?.makeKeyAndOrderFront(nil)
         // Die echte Rückfrage ist ein modaler NSAlert und würde den Lauf
         // anhalten; der Testhaken wählt automatisch „In Markdown umwandeln".
-        Workspace.markdownImportPackageChoiceProvider = { _, _ in .convert }
+        let decisions = workspace.markdownImportDecisions
+        decisions.packageChoiceProvider = { _, _ in .convert }
         workspace.openFileOrFolder(at: bundle)
-        pollRTFDImportResult(workspace: workspace, window: window, tick: 0,
+        pollRTFDImportResult(workspace: workspace, decisions: decisions, window: window, tick: 0,
                              completion: completion)
     }
 
     /// Wartet auf das Ende der Umwandlung: Zustand `finished`, der erzeugte
     /// Markdown-Tab ist aktiv und fertig geladen. Frist 60 s.
     private static func pollRTFDImportResult(
-        workspace: Workspace, window: NSWindow?, tick: Int,
+        workspace: Workspace, decisions: MarkdownImportDecisions,
+        window: NSWindow?, tick: Int,
         completion: @escaping @MainActor () -> Void
     ) {
         let invariant = "RTFD-Umwandlung liefert einen bearbeitbaren Tab"
         if case .failed(let message) = MarkdownImportService.shared.state {
-            Workspace.markdownImportPackageChoiceProvider = nil
+            decisions.packageChoiceProvider = nil
             record(invariant, "Umwandlung fehlgeschlagen: \(message)")
             completion()
             return
         }
         // Fertig heißt: Zustand `finished`, der erzeugte Tab ist aktiv und
-        // geladen UND der Editor steht wirklich im Fenster. Das Modell ist
+        // geladen und der Editor steht wirklich im Fenster. Das Modell ist
         // dem View-Baum einen Runloop voraus — ohne die letzte Bedingung
         // prüfte der Test einen Editor, den SwiftUI noch gar nicht gebaut hat.
         if case .finished(let markdownFile, _) = MarkdownImportService.shared.state,
@@ -1350,13 +1306,13 @@ enum SoakTest {
            tab.url?.canonicalFileURL.path == markdownFile.canonicalFileURL.path,
            let window, let content = window.contentView,
            descendantTextView(in: content) != nil {
-            Workspace.markdownImportPackageChoiceProvider = nil
+            decisions.packageChoiceProvider = nil
             runRTFDEditSteps(window: window, workspace: workspace,
                              completion: completion)
             return
         }
         if tick >= 600 {
-            Workspace.markdownImportPackageChoiceProvider = nil
+            decisions.packageChoiceProvider = nil
             record(invariant,
                    "Umwandlung nicht binnen 60 s fertig "
                    + "(aktiver Tab: \(workspace.activeTab?.title ?? "—"))")
@@ -1365,7 +1321,7 @@ enum SoakTest {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             MainActor.assumeIsolated {
-                pollRTFDImportResult(workspace: workspace, window: window,
+                pollRTFDImportResult(workspace: workspace, decisions: decisions, window: window,
                                      tick: tick + 1, completion: completion)
             }
         }
@@ -1437,7 +1393,7 @@ enum SoakTest {
     // Die Completion-/Signatur-Popups sind Kindfenster und werden von
     // `documentWindows()` bereits herausgefiltert.
 
-    /// Öffnet das 4D-Projekt in einem NEUEN Fenster, wartet auf den
+    /// Öffnet das 4D-Projekt in einem neuen Fenster, wartet auf den
     /// Methodenindex, lädt die vorgegebene Methode und prüft die drei
     /// Sprachfunktionen. Danach nimmt das Fenster am Zufallsbetrieb teil.
     static func runFourDScenario(projectURL: URL, methodURL: URL,
@@ -1533,7 +1489,7 @@ enum SoakTest {
 
     /// Schritt 1: Zwei Zeichen auf einer frischen Zeile am Dokumentende
     /// tippen — über `insertText`, also durch dieselbe CESE-Textmutation wie
-    /// eine echte Taste, bewusst NICHT am Delegate vorbei. Danach muss das
+    /// eine echte Taste, bewusst nicht am Delegate vorbei. Danach muss das
     /// Vorschlagsfenster erscheinen; geschlossen wird es wie beim
     /// Completion-Selbsttest mit Escape.
     private static func runFourDCompletionStep(
@@ -1568,7 +1524,7 @@ enum SoakTest {
     /// Schritt 2: Cursor in die Klammern eines Aufrufs setzen und auf das
     /// Signaturhilfe-Panel warten.
     ///
-    /// Die Stelle wird gezielt gewählt und VORHER verifiziert:
+    /// Die Stelle wird gezielt gewählt und vorher verifiziert:
     /// `fourDProjectMethodDisplayNames` liefert die Original-Schreibweise —
     /// der Namensindex selbst ist kleingeschrieben und träfe im Text nie —
     /// und `FourDSignatureHelpLogic.callContext` bestätigt, dass die Stelle
@@ -1576,7 +1532,7 @@ enum SoakTest {
     /// offen). Gibt es im Dokument keinen solchen Aufruf, tippt der Test
     /// selbst einen ans Dokumentende — über `insertText`, den echten
     /// Tastenweg. Erst mit verifizierter Stelle ist ein ausbleibendes Panel
-    /// ein BEFUND; an einer beliebigen Klammer wäre es nur geraten.
+    /// ein Befund; an einer beliebigen Klammer wäre es nur geraten.
     ///
     /// Das Panel hat zusätzlich ein Sichtbarkeits-Gate: Liegt die öffnende
     /// Klammer außerhalb von `visibleRect`, blendet es sich sofort wieder
@@ -1605,7 +1561,7 @@ enum SoakTest {
         }
         if cursorLocation == NSNotFound {
             // Für den selbst getippten Aufruf einen Namen wählen, der auch
-            // als Aufruf ZÄHLT: `calleeName` verlangt Buchstabe oder
+            // als Aufruf zählt: `calleeName` verlangt Buchstabe oder
             // Unterstrich am Anfang — „00_Done(" wäre kein Methodenaufruf.
             let callable = workspace.fourDProjectMethodDisplayNames.first {
                 guard let first = $0.first else { return false }

@@ -4,7 +4,7 @@
 // - Tooltip mit dem vollen Pfad auf dem Namen.
 // - Rechtsklickmenü mit „Im Finder zeigen…“ und „Projektansicht schließen“
 //   (der Dateien-Tab hängt sein bestehendes Vollmenü zusätzlich an).
-// - Cmd-Klick auf den Namen öffnet ein Menü mit allen GESCHWISTER-Ordnern
+// - Cmd-Klick auf den Namen öffnet ein Menü mit allen Geschwister-Ordnern
 //   im selben Elternordner — Auswahl wechselt das Projekt wie „Ordner öffnen“.
 
 import SwiftUI
@@ -160,12 +160,10 @@ final class SiblingFolderMenuPresenter: NSObject {
     }
 }
 
-/// Kopfzeile der Projekt-Seitenleiste: Ordnername links, rechts ein optionales
-/// Zubehör (der Dateien-Tab legt dort sein kompaktes Filterfeld hin).
-/// `extraMenu` erlaubt dem Dateien-Tab, sein Vollmenü (Neue Datei/Ordner,
-/// Terminal) unter die gemeinsamen Punkte zu hängen. Das frühere Schließen-X
-/// ist entfallen (Daniel 2026-09-01: kein Vorteil, der Platz gehört dem
-/// Filterfeld); „Projektansicht schließen“ bleibt im Rechtsklickmenü.
+/// Projektkopf: Ordnername links, optionales Zubehör rechts; der Dateien-Tab
+/// verwendet es für den kompakten Filter. `extraMenu` ergänzt gemeinsame Punkte
+/// um Neue Datei/Ordner und Terminal. „Projektansicht schließen“ liegt im
+/// Rechtsklickmenü.
 struct SidebarProjectHeader<ExtraMenu: View, Accessory: View>: View {
     let rootURL: URL
     @ViewBuilder var extraMenu: () -> ExtraMenu

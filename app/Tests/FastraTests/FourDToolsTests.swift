@@ -1,6 +1,6 @@
 // FourDToolsTests.swift
 //
-// Tests für die 4D-Werkzeuge aus Etappe 6 (Wunschpaket 2026-07c):
+// Tests für die 4D-Werkzeuge aus Etappe 6:
 // Vervollständigungs-Logik (Präfix + Matching mit Signaturen) und die
 // Export-Transformation (Token-Suffixe strippen / Befehls-Token ergänzen,
 // Roundtrip).
@@ -57,7 +57,7 @@ func completionMatching() throws {
     #expect(matches[0].signature?.contains("ALERT") == true)
 
     // „al“ liefert mit ALERT und Align echte Treffer beider Kategorien.
-    // Vor dem ERSTEN Konstanteneintrag liegt definitionsgemäß nie eine
+    // Vor dem ersten Konstanteneintrag liegt definitionsgemäß nie eine
     // Konstante. Erst der gesamte Rest belegt, dass kein Befehl nachfolgt.
     let mixed = FourDCompletionLogic.matches(forPrefix: "al")
     #expect(mixed.contains { $0.name == "ALERT" && !$0.isConstant })

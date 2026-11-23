@@ -2,8 +2,8 @@
 //
 // BBEdit-Feature „Extract" (User Manual 16.0.1, Kap. 5 S. 168 / Kap. 7
 // S. 193): Alle Treffer einer Suche werden — zeilengetrennt — in ein
-// NEUES unbenanntes Dokument gesammelt. Ist ein Ersetzungsmuster
-// angegeben, wird jeder Treffer VOR dem Sammeln damit transformiert
+// neues unbenanntes Dokument gesammelt. Ist ein Ersetzungsmuster
+// angegeben, wird jeder Treffer vor dem Sammeln damit transformiert
 // (Backrefs `$1`, Case-Operatoren `\U…`, Wildcard-Pillen) — so wird aus
 // einer Log-Datei mit `_TAG_(\w+)` → `$1` z.B. die reine Tag-Liste.
 //
@@ -58,7 +58,7 @@ enum HitExtraction {
     /// - `matches`: die Treffer in Dokument-Reihenfolge.
     /// - `useReplacement`: `true` → pro Treffer der transformierte Text
     ///   (`replacedText`), `false` → der rohe Treffertext (`matchText`).
-    ///   BBEdit-Regel: Das Ersetzungsmuster ist bei Extract OPTIONAL —
+    ///   BBEdit-Regel: Das Ersetzungsmuster ist bei Extract optional —
     ///   leer heißt „roh extrahieren", nicht „durch nichts ersetzen".
     ///
     /// Jeder Treffer wird zu einer Zeile; ein End-Newline schließt das

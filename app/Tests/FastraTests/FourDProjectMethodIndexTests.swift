@@ -10,14 +10,9 @@ import Foundation
 import Testing
 @testable import Fastra
 
-/// Warte-Frist der Controller-Tests: eine Hänge-Erkennung, keine
-/// Laufzeitbehauptung. Der Index-Scan läuft im Produkt bewusst als
-/// `Task.detached(priority: .utility)` — in der vollen parallelen Suite kann
-/// so ein niedrig priorisierter Task hinter der `userInitiated`-Arbeit aller
-/// anderen Tests lange anstehen. 15 Sekunden rissen dabei lastabhängig
-/// (beobachtet 2026-08-16 am Warten auf die dritte Zustellung), obwohl der
-/// Scan danach korrekt lief. 30 Sekunden halten echtes Steckenbleiben weiter
-/// sicher rot.
+/// 30 s als Hänge-Erkennung, nicht als Laufzeitversprechen. Produktive
+/// Index-Scans laufen mit `.utility`; in parallelen Tests können höher
+/// priorisierte Tasks ihren Start erheblich verzögern.
 private let fourDIndexWait: TimeInterval = 30
 
 @Test("Index liest 4dm-Dateinamen case-insensitiv aus dem Methodenordner")

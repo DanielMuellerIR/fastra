@@ -107,7 +107,7 @@ Timeout-Ursache wird getrennt weiter diagnostiziert.
   v1.50.0 umgesetzt — Typeahead + Signaturhilfe aus `.4dbase`, `.4DZ` und
   Methodendokumentation, nur geteilte Methoden, Projektmethode gewinnt):
   - **Plugins:** Struktur zuerst am echten Bundle erheben, nichts aus
-    Erinnerung raten. **Stand 2026-08-09:** Ein reales Referenzprojekt MIT
+    Erinnerung raten. **Stand 2026-08-09:** Ein reales Referenzprojekt mit
     `Plugins`-Ordner (enthält `4D InternetCommands.bundle`) ist inzwischen
     lokal verfügbar (privater Pfad, siehe gitignorierte
     `app/soak-test.local`) — die Erhebung kann bei Bedarf starten.
@@ -190,9 +190,9 @@ Timeout-Ursache wird getrennt weiter diagnostiziert.
     Fastra-Neustart macht sie sofort verfügbar. Bewusst so — eine
     Invalidierung über einen Dateiwächter wäre für den Nutzen zu viel
     Maschinerie.
-  - Es läuft immer nur EINE Umwandlung gleichzeitig; der Befehl ist währenddessen
+  - Es läuft immer nur eine Umwandlung gleichzeitig; der Befehl ist währenddessen
     gesperrt. Eine Warteschlange lohnt erst, wenn Stapelumwandlung gewünscht ist.
-  - Der Katalog fragt nur, OB ein Werkzeug installiert ist, nicht welche
+  - Der Katalog fragt nur, ob ein Werkzeug installiert ist, nicht welche
     Eingabeformate dessen Version beherrscht. Ein sehr altes Pandoc könnte
     deshalb erst beim Umwandeln scheitern — dann mit echter Fehlermeldung.
 
@@ -206,7 +206,7 @@ Timeout-Ursache wird getrennt weiter diagnostiziert.
   selbst steht seit v1.5x in README und mitgelieferter Hilfe, bewusst ohne
   Produktnamen und Werturteile). Sollte je ein konkreter Vergleich mit
   anderen Werkzeugen gewünscht sein: nur mit eigener, aktueller Messung,
-  und dabei zwischen der VORGEFUNDENEN Konfiguration und der
+  und dabei zwischen der vorgefundenen Konfiguration und der
   Auslieferungs-Voreinstellung unterscheiden — eine Aussage über die
   Voreinstellung braucht eine frische Umgebung. Die Einzelmessung vom
   2026-07-28 liegt in der privaten Projektdokumentation; ein öffentliches
@@ -252,7 +252,7 @@ und sie sind noch offen.
   startete gar nicht (`executor.count == 0`) — der Guard in
   `invalidateAndRefreshActiveConflictInspection` bricht dann still ab.
   Der Test degradiert seit 2026-08-09 sauber (Issue statt Index-Trap, der
-  vorher die GANZE Suite beendete). Ursache unklar; Verdacht ist ein
+  vorher die ganze Suite beendete). Ursache unklar; Verdacht ist ein
   asynchroner Überschreiber von `gitStatus` unter Testparallelität. Bei
   erneutem Auftreten die Guard-Bedingungen einzeln protokollieren.
 
@@ -263,7 +263,7 @@ und sie sind noch offen.
   Wanduhr-Frist verstrich dadurch, ohne dass der Test überhaupt nachsehen
   konnte; `waitUntil` misst seitdem nur noch beobachtete Zeit (AGENTS.md,
   „Bekannte technische Fallen"). Die beiden Befunde darüber stammen aus der
-  Zeit davor und sind damit NICHT erklärt: Sie melden einen falschen Wert,
+  Zeit davor und sind damit nicht erklärt: Sie melden einen falschen Wert,
   keine gerissene Frist. Bei einem neuen lastabhängigen Befund trotzdem
   zuerst prüfen, ob eine Frist beteiligt war.
 
@@ -311,9 +311,9 @@ und sie sind noch offen.
 ## Ältere offene Beobachtungen (2026-07-24/25, nicht reproduziert)
 
 - **Editor-Befunde 2026-07-24/25:** Der Return-/Tipp-Scroll-Befund ist mit
-  v1.50.1 GELÖST (State-Reconcile-Race, F.23; verifiziert am
+  v1.50.1 gelöst (State-Reconcile-Race, F.23; verifiziert am
   Live-Repro), ebenso der dabei entdeckte ⌘V+⌘Z-Crash (F.24). Offen
-  bleiben zwei Beobachtungen aus der Sitzung VOR dem cfprefsd-Neustart
+  bleiben zwei Beobachtungen aus der Sitzung vor dem cfprefsd-Neustart
   vom 2026-07-24, seither nicht wieder aufgetreten: Palette-Emoji erschien
   erst nach dem zweiten Einfügen; Shift+← hinter Emojis erweiterte die
   Markierung sichtbar nicht. Beide passen zur selben Klasse „laufende

@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Read-only Anzeige eines Git-Text-Tabs (Etappe 2). Wählt anhand der `kind`
+/// Read-only Anzeige eines Git-Text-Tabs. Wählt anhand der `kind`
 /// die passende Darstellung: klickbarer Verlaufs-Graph oder gefärbter Diff.
 /// Beide sind bewusst schlicht — Monospace, kein Editor, keine Bearbeitung,
-/// links-oben-bündig mit horizontalem UND vertikalem Scrollen (kein Umbruch,
+/// links-oben-bündig mit horizontalem und vertikalem Scrollen (kein Umbruch,
 /// damit Code-/Graph-Zeilen ihre Struktur behalten).
 struct GitTextView: View {
     let kind: GitTabKind
@@ -29,11 +29,10 @@ struct GitTextView: View {
     }
 
     var body: some View {
-        // GeometryReader liefert die Viewport-Breite: Der Inhalt bekommt sie als
-        // MINDESTbreite (links ausgerichtet). Sonst zentriert ein bidirektionaler
-        // ScrollView Inhalt, der schmaler als der Viewport ist (Befund
-        // Screenshot 2026-07-12) — mit minWidth klebt er links und wächst nur
-        // bei langen Zeilen nach rechts (dann horizontaler Scroll).
+        // Der Inhalt erhält die Viewport-Breite aus GeometryReader als
+        // Mindestbreite und bleibt links ausgerichtet. Ohne `minWidth` würde die
+        // bidirektionale ScrollView schmalen Inhalt zentrieren; lange Zeilen dürfen
+        // weiterhin nach rechts wachsen und horizontal scrollen.
         GeometryReader { geo in
             ScrollView([.vertical, .horizontal]) {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -43,7 +42,7 @@ struct GitTextView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                // Mindestens Viewport-Größe in BEIDEN Achsen, oben-links
+                // Mindestens Viewport-Größe in beiden Achsen, oben-links
                 // verankert — sonst zentriert der ScrollView kurzen Inhalt
                 // auch vertikal.
                 .frame(minWidth: geo.size.width, minHeight: geo.size.height,

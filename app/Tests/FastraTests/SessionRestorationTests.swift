@@ -358,10 +358,10 @@ func sessionRestoreHasNoTransientScratchTab() async throws {
         activeDocumentPath: first.path,
         frame: nil
     )
-    // Bewusst OHNE await: Die Lade-Platzhalter werden synchron angehängt, die
+    // Bewusst ohne await: Die Lade-Platzhalter werden synchron angehängt, die
     // asynchronen Ladeabschlüsse können den Main-Actor bis zum ersten `await`
     // nicht betreten. So prüft der Test genau den Zustand, den SwiftUI im
-    // ersten Frame zeichnen würde (Daniel-Befund 2026-07-20).
+    // ersten Frame zeichnen würde.
     var finished = false
     workspace.restore(state) { finished = true }
 

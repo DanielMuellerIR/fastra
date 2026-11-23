@@ -127,6 +127,9 @@ pub(super) fn install(ui: &Rc<Ui>) {
     target.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak=Rc::downgrade(ui);
     target.connect_drop(move |_, value, x, y| {
+        if crate::application_lifecycle::quit_prompt_active() {
+            return false;
+        }
         value.get::<gtk::gdk::FileList>().is_ok_and(|list| {
             let files=list.files();
             if weak.upgrade().is_some_and(|ui|crate::rich_editor::drop_files_at(&ui,&files,x,y)){return true;}

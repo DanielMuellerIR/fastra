@@ -1,9 +1,9 @@
 // SelectableMatchText.swift
 //
-// Der Treffer-Detail-Bereich der Suchmaske zeigt GENAU EINEN Treffer
+// Der Treffer-Detail-Bereich der Suchmaske zeigt genau einen Treffer
 // (Suchmasken-Konzept §3). Hier markiert der Nutzer eine Teil-Selektion
 // und definiert daraus eine Capture Group — dafür brauchen wir die
-// ECHTE Selektion (NSRange) aus der View zurück. SwiftUIs `Text` mit
+// echte Selektion (NSRange) aus der View zurück. SwiftUIs `Text` mit
 // `.textSelection(.enabled)` kann das nicht (keine programmatische
 // Selektions-API), deshalb eine kleine AppKit-Brücke:
 //
@@ -30,14 +30,9 @@ struct SelectableMatchText: NSViewRepresentable {
 
     typealias NSViewType = NSScrollView
 
-    /// Der Textkasten hat seit dem Layout-Umbau 2026-09-15 eine FESTE Höhe
-    /// von einer Zeile (siehe `FloatingSearchDialog.detailTextHeight`).
-    /// Damit ein langer oder mehrzeiliger Treffer (`**` über Zeilengrenzen)
-    /// trotzdem vollständig erreichbar bleibt, liegt die NSTextView in einer
-    /// NSScrollView ohne sichtbare Balken: Der Inhalt scrollt per Trackpad
-    /// in beide Richtungen, nichts wird still abgeschnitten. Ohne ScrollView
-    /// zeichnete AppKit den Überhang über die Nachbarn, weil NSViews ihre
-    /// Subviews nicht beschneiden.
+    /// Der Textkasten ist eine Zeile hoch (`FloatingSearchDialog.detailTextHeight`).
+    /// Eine NSScrollView ohne sichtbare Balken hält lange und mehrzeilige Treffer
+    /// vollständig per Trackpad erreichbar und verhindert Zeichnung über Nachbarn.
     func makeNSView(context: Context) -> NSScrollView {
         let textView = NSTextView()
         textView.isEditable = false
@@ -86,11 +81,7 @@ struct SelectableMatchText: NSViewRepresentable {
         guard let storage = textView.textStorage else { return }
         let fullRange = NSRange(location: 0, length: storage.length)
         storage.beginEditing()
-        // Basis: dunkle Ink-Farbe, kein Hintergrund.
-        storage.addAttribute(.foregroundColor,
-                             value: NSColor(srgbRed: 0x1A/255.0, green: 0x18/255.0,
-                                            blue: 0x10/255.0, alpha: 1),
-                             range: fullRange)
+        storage.addAttribute(.foregroundColor, value: NSColor.textColor, range: fullRange)
         storage.removeAttribute(.backgroundColor, range: fullRange)
         for (number, range) in groupRanges {
             // Defensive Range-Prüfung — ein Treffer kann sich geändert

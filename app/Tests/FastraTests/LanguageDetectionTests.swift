@@ -1,8 +1,8 @@
 // LanguageDetectionTests.swift
 //
-// Tests für die inhaltsbasierte Spracherkennung (Etappe 3 Wunschpaket
-// 2026-07): Positiv-/Negativbeispiele je Format (inklusive absichtlich
-// mehrdeutiger Fälle, die Plaintext bleiben MÜSSEN), Hysterese sowie die
+// Tests für die inhaltsbasierte Spracherkennung:
+// Positiv-/Negativbeispiele je Format (inklusive absichtlich mehrdeutiger
+// Fälle, die Plaintext bleiben müssen), Hysterese sowie die
 // Debounce-/Drossel-Entscheidung als pure Funktion.
 
 import Foundation
@@ -49,7 +49,7 @@ func detect_jsonArray() {
 
 @Test("JSON: abgeschnittener Riesen-Paste mit typischem Anfang wird erkannt")
 func detect_jsonTruncatedStart() {
-    // Bewusst NICHT parsebar (fehlende Klammern), aber eindeutiger Anfang.
+    // Bewusst nicht parsebar (fehlende Klammern), aber eindeutiger Anfang.
     let text = #"{"records": [{"id": 1, "payload": "..."#
         + String(repeating: "x", count: 100)
     #expect(Detection.detect(in: text) == .json)
@@ -284,7 +284,7 @@ func workspace_openReplacementsRescheduleLanguageDetection() throws {
             options: workspace.currentSearchOptions)
         workspace.openResults = found.perTab
         workspace.openTotalMatches = found.totalMatches
-        workspace.visibleBufferResultsOptions = workspace.currentSearchOptions
+        publishPreparedSearchResults(workspace)
         return (workspace, defaults, suite)
     }
 
@@ -343,7 +343,7 @@ func workspace_manualOverrideStopsAutomatic() async throws {
     #expect(ws.tabs[0].languageOverride == .swift)
     #expect(!Workspace.isEligibleForContentDetection(ws.tabs[0]))
 
-    // Ein JSON-Paste darf die manuelle Wahl NICHT mehr ändern.
+    // Ein JSON-Paste darf die manuelle Wahl nicht mehr ändern.
     ws.activeTabContent.wrappedValue =
         #"{"name": "Fastra", "version": 21, "aktiv": true}"#
     try await Task.sleep(nanoseconds: 300_000_000)
@@ -351,12 +351,9 @@ func workspace_manualOverrideStopsAutomatic() async throws {
     #expect(ws.tabs[0].languageOverride == .swift)
 }
 
-// Befund Review 2026-08-31: Die dateibezogenen Ersetzungen schrieben über das
-// `activeTabContent`-Binding, dessen Setter nur die GEDROSSELTE Tipp-Erkennung
-// plant. Ersetzte der Nutzer den gesamten Inhalt durch ein anderes Format
-// ähnlicher Länge, lieferte die Drossel `.none` — Sprache und Hervorhebung
-// blieben beim alten Format. Beide Pfade erzwingen die Analyse jetzt wie der
-// Geöffnet-Bereich.
+// Programmgesteuerte Ersetzungen müssen die Formatanalyse erzwingen.
+// Die Tipp-Drossel kann bei ähnlich langen Inhalten `.none` liefern und
+// würde Sprache und Hervorhebung trotz vollständigem Formatwechsel beibehalten.
 @Test("Dateibezogene Ersetzungen erkennen das neue Dokumentformat")
 @MainActor
 func workspace_bufferReplacementsForceLanguageDetection() throws {
@@ -390,7 +387,7 @@ func workspace_bufferReplacementsForceLanguageDetection() throws {
         workspace.bufferMatches = found.matches
         workspace.bufferTotalMatches = found.totalMatches
         workspace.bufferResultsWereCapped = found.wasCapped
-        workspace.visibleBufferResultsOptions = workspace.currentSearchOptions
+        publishPreparedSearchResults(workspace)
         return (workspace, defaults, suite)
     }
 

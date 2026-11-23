@@ -1,15 +1,14 @@
 // FourDHighlightProvider.swift
 //
-// Anbindung des eigenen 4D-Tokenizers an CodeEditSourceEditors
-// `HighlightProviding`-Protokoll (Etappe 4 Wunschpaket 2026-07). Ersetzt
-// für .4dm-Dokumente die tree-sitter-Pipeline vollständig — bewusst KEINE
-// neue tree-sitter-Grammatik (Bundle-Größe, Wartung).
-//
-// Arbeitsweise: Der komplette Text wird EINMAL pro Änderung tokenisiert und
-// als Capture-Ranges zwischengespeichert; die Chunk-Anfragen des Editors
-// werden aus dem Cache beantwortet. 4D-Methoden sind typischerweise klein —
-// oberhalb einer harten Grenze wird gar nicht mehr eingefärbt, damit der
-// Main-Thread nie an einem Riesen-Dokument hängt.
+// Anbindung des eigenen 4D-Tokenizers an
+// CodeEditSourceEditors `HighlightProviding`-Protokoll. Ersetzt für
+// .4dm-Dokumente die tree-sitter-Pipeline vollständig — bewusst keine neue
+// tree-sitter-Grammatik (Bundle-Größe, Wartung). Arbeitsweise: Der komplette
+// Text wird einmal pro Änderung tokenisiert und als Capture-Ranges
+// zwischengespeichert; die Chunk-Anfragen des Editors werden aus dem Cache
+// beantwortet. 4D-Methoden sind typischerweise klein — oberhalb einer harten
+// Grenze wird gar nicht mehr eingefärbt, damit der Main-Thread nie an einem
+// Riesen-Dokument hängt.
 
 import Foundation
 import AppKit
@@ -106,7 +105,7 @@ final class FourDHighlightProvider: ObservableObject, HighlightProviding {
     }
 
     /// Schneidet Cache-Treffer auf den angefragten Chunk zu. CESEs
-    /// `StyledRangeContainer` verlangt Bereiche INNERHALB des Chunks und
+    /// `StyledRangeContainer` verlangt Bereiche innerhalb des Chunks und
     /// verwirft alles, was davor beginnt („Skip! Overlapping“). Ein langer
     /// `/* … */`-Kommentar verlor dadurch hinter einer Editposition seine
     /// Farbe: Die Neufärbung ab dem Edit bekam das ungeclippte Token mit

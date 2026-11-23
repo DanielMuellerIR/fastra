@@ -1,25 +1,17 @@
 // TextLinePrepareForDisplayClampTests.swift
 //
-// Regressionstests für die build.sh-Patches 4z und 4z1: Während einer
-// Undo-Klammer beschreibt der lineStorage des Layout-Managers noch den ALTEN
-// (längeren) Text. Löst ein reentranter Scroll-Callback in diesem Fenster ein
-// Layout aus (scrollSelectionToVisible → synchroner Bounds-Beobachter →
-// layoutLines), reicht layoutLine eine veraltete Zeilen-Range an
-// `TextLine.prepareForDisplay` weiter, die über das aktuelle Textende
-// hinausreicht. `stringRef.attributedSubstring(from:)` warf dann eine
-// NSRangeException und riss die App mit SIGABRT ab (belegt im Dauertest,
-// Crash-Report 2026-08-09, nach ~1600 Aktionen).
-//
-// OHNE die Patches bricht der Testprozess mit der NSRangeException ab —
-// genau das ist der Beleg, dass Klemmung und Konsistenz-Ausstieg nötig sind.
-// MIT den Patches kehren die Aufrufe harmlos zurück.
+// Regression für build.sh-Patches 4z/4z1: Ein reentranter Scroll kann während
+// Undo Zeilenlayout mit veraltetem, längerem lineStorage anstoßen.
+// `prepareForDisplay` muss die Range gegen den aktuellen Text begrenzen;
+// `layoutLines` darf inkonsistente Zwischenstände nicht auslegen. Ohne Schutz
+// würde `attributedSubstring(from:)` eine NSRangeException auslösen.
 
 import AppKit
 import Testing
 import CodeEditTextView
 @testable import Fastra
 
-/// TextView mit veraltetem Zeilen-Storage: Der Text schrumpft OHNE die
+/// TextView mit veraltetem Zeilen-Storage: Der Text schrumpft ohne die
 /// Delegate-Benachrichtigung — wie im Rennen zwischen Undo-Mutation und
 /// Zeilen-Storage-Update (Muster aus TextLayoutManagerStaleOffsetTests).
 @MainActor
@@ -54,7 +46,7 @@ func prepareForDisplay_survivesStaleRange() throws {
     )
     let storageLength = textView.textStorage.length
 
-    // Fall 1: Zeile GANZ hinter dem aktuellen Textende (die letzte Zeile des
+    // Fall 1: Zeile ganz hinter dem aktuellen Textende (die letzte Zeile des
     // alten Textes) — der 4z-Patch kehrt ohne Typeset zurück.
     let lastLine = try #require(textView.layoutManager.textLineForIndex(2))
     #expect(lastLine.range.location >= storageLength,
@@ -67,7 +59,7 @@ func prepareForDisplay_survivesStaleRange() throws {
         attachments: []
     )
 
-    // Fall 2: Zeile ragt nur TEILWEISE über das Textende hinaus — der
+    // Fall 2: Zeile ragt nur teilweise über das Textende hinaus — der
     // 4z-Patch klemmt auf den echten Rest und typesettet diesen.
     let partialLine = try #require(textView.layoutManager.textLineForIndex(1))
     #expect(partialLine.range.location < storageLength,
@@ -92,7 +84,7 @@ func prepareForDisplay_survivesStaleRange() throws {
 func layoutLines_skipsInconsistentLineStorage() throws {
     // Der 4z1-Patch ersetzt den toten Transaktionsschutz: Weicht die Länge
     // des Zeilen-Storage vom Text ab, steigt layoutLines früh aus, statt mit
-    // veralteten Ranges in prepareForDisplay zu laufen. Ohne BEIDE Patches
+    // veralteten Ranges in prepareForDisplay zu laufen. Ohne beide Patches
     // bräche dieser Aufruf mit der NSRangeException ab.
     let textView = makeTextViewWithStaleLineStorage()
     textView.layoutManager.layoutLines()

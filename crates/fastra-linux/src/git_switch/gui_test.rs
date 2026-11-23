@@ -70,6 +70,97 @@ fn review_controls(w: &gtk::Window) -> (gtk::CheckButton, gtk::Button) {
         .clone();
     (c, b)
 }
+#[derive(Clone, Copy, Debug)]
+enum JobClickResult {
+    Waiting,
+    Rejected,
+    Started(u64),
+}
+
+struct JobClick {
+    button: gtk::Button,
+    handler: Option<glib::SignalHandlerId>,
+    clock: gtk::gdk::FrameClock,
+    paint_handler: Option<glib::SignalHandlerId>,
+    delivery: Rc<RefCell<Option<mpsc::Receiver<()>>>>,
+    delivered: Cell<bool>,
+    result: Rc<Cell<JobClickResult>>,
+}
+
+impl JobClick {
+    fn send(state: &Rc<State>, button: &gtk::Button) -> Self {
+        assert!(state.job.get().is_none());
+        let before = state.generation.get();
+        let state = Rc::downgrade(state);
+        let result = Rc::new(Cell::new(JobClickResult::Waiting));
+        let observed = result.clone();
+        // Der schon verbundene Produkthandler legt die Job-ID synchron an.
+        // Der Worker kann zwischen zwei Polls fertig werden.
+        let handler = button.connect_clicked(move |_| {
+            let job = state.upgrade().and_then(|s| s.job.get());
+            observed.set(match job {
+                Some(id) if id != before => JobClickResult::Started(id),
+                _ => JobClickResult::Rejected,
+            });
+        });
+        let clock = button.frame_clock().expect("Branch dialog frame clock");
+        let delivery = Rc::new(RefCell::new(None));
+        let pending = delivery.clone();
+        let target = button.downgrade();
+        // Erst nach dem Zeichenzyklus die Klickposition aus dem aktuellen
+        // Layout lesen. Ein Branchwechsel in der Auswahl kann es verschieben.
+        let paint_handler = clock.connect_after_paint(move |_| {
+            if pending.borrow().is_some() {
+                return;
+            }
+            let button = target.upgrade().unwrap();
+            assert!(
+                button.is_sensitive(),
+                "Disabled button: {:?}",
+                button.label()
+            );
+            *pending.borrow_mut() = Some(support::test_input_completed(&button, &[], true));
+        });
+        button.queue_draw();
+        Self {
+            button: button.clone(),
+            handler: Some(handler),
+            clock,
+            paint_handler: Some(paint_handler),
+            delivery,
+            delivered: Cell::new(false),
+            result,
+        }
+    }
+
+    fn started(&self, state: &State) -> Option<u64> {
+        let label = self.button.label().unwrap_or_default();
+        if !self.delivered.get() {
+            let delivery = self.delivery.borrow();
+            match delivery.as_ref()?.try_recv() {
+                Ok(()) => self.delivered.set(true),
+                Err(mpsc::TryRecvError::Empty) => return None,
+                Err(mpsc::TryRecvError::Disconnected) => panic!("native input failed: {label}"),
+            }
+        }
+        match self.result.get() {
+            JobClickResult::Waiting => None,
+            JobClickResult::Rejected => panic!("click accepted without starting a job: {label}"),
+            JobClickResult::Started(id) => {
+                assert_eq!(state.generation.get(), id, "job invalidated: {label}");
+                Some(id)
+            }
+        }
+    }
+}
+
+impl Drop for JobClick {
+    fn drop(&mut self) {
+        self.clock.disconnect(self.paint_handler.take().unwrap());
+        self.button.disconnect(self.handler.take().unwrap());
+    }
+}
+
 pub(super) fn run(ui: Rc<Ui>) {
     assert_eq!(std::env::var("FASTRA_ISOLATED_DISPLAY").as_deref(), Ok("1"));
     support::background(
@@ -160,6 +251,7 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
     let state = RefCell::<Option<Rc<State>>>::new(None);
     let stage = Cell::new(0);
     let logged_stage = Cell::new(u32::MAX);
+    let job_click = RefCell::<Option<JobClick>>::new(None);
     let started = Instant::now();
     let review = RefCell::<Option<gtk::Window>>::new(None);
     let observer_calls = Rc::new(Cell::new(0));
@@ -177,8 +269,13 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
         }
         assert!(
             started.elapsed() < Duration::from_secs(80),
-            "switch GUI timeout {}",
-            stage.get()
+            "switch GUI timeout {}; last job click: {:?}",
+            stage.get(),
+            job_click.borrow().as_ref().map(|click| (
+                click.button.label(),
+                click.delivered.get(),
+                click.result.get(),
+            ))
         );
         if stage.get() == 0 {
             if !entry.is_mapped() {
@@ -210,6 +307,12 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
             b.text(&b.start_iter(), &b.end_iter(), true).to_string()
         };
         let idle = || s.job.get().is_none();
+        let send_job_click = |button| {
+            drop(job_click.take());
+            *job_click.borrow_mut() = Some(JobClick::send(&s, button));
+        };
+        let started_job = || job_click.borrow().as_ref().unwrap().started(&s);
+        let job_finished = || started_job().is_some() && idle();
         let select = |name: &[u8]| {
             let index = s.targets.borrow().iter().position(|n| n == name).unwrap();
             s.target.set_selected(index as u32);
@@ -224,11 +327,11 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
                     return glib::ControlFlow::Continue;
                 }
                 assert!(!s.start.is_sensitive());
-                support::test_click(&s.prepare, &[]);
+                send_job_click(&s.prepare);
                 stage.set(2);
             }
             2 => {
-                if !idle() {
+                if !job_finished() {
                     return glib::ControlFlow::Continue;
                 }
                 assert!(s.preview.borrow().is_some(), "{}", out());
@@ -250,11 +353,11 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
                 assert!(!s.approved.is_active());
                 assert!(!s.start.is_sensitive());
                 select(b"refs/heads/target");
-                support::test_click(&s.prepare, &[]);
+                send_job_click(&s.prepare);
                 stage.set(4);
             }
             4 => {
-                if !idle() {
+                if !job_finished() {
                     return glib::ControlFlow::Continue;
                 }
                 assert!(s.preview.borrow().is_some(), "{}", out());
@@ -265,11 +368,11 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
                 if !s.approved.is_active() {
                     return glib::ControlFlow::Continue;
                 }
-                support::test_click(&s.start, &[]);
+                send_job_click(&s.start);
                 stage.set(6);
             }
             6 => {
-                if !idle() {
+                if !job_finished() {
                     return glib::ControlFlow::Continue;
                 }
                 assert!(
@@ -425,11 +528,11 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
                     return glib::ControlFlow::Continue;
                 }
                 select(b"refs/heads/main");
-                support::test_click(&s.prepare, &[]);
+                send_job_click(&s.prepare);
                 stage.set(14);
             }
             14 => {
-                if !idle() {
+                if !job_finished() {
                     return glib::ControlFlow::Continue;
                 }
                 assert!(s.preview.borrow().is_some());
@@ -465,19 +568,20 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
                     }
                 }
                 s.window.present();
-                support::test_click(&s.reload, &[]);
+                send_job_click(&s.reload);
                 stage.set(16);
             }
             16 => {
-                if !idle() || s.loaded.borrow().is_none() {
+                if !job_finished() {
                     return glib::ControlFlow::Continue;
                 }
+                assert!(s.loaded.borrow().is_some(), "{}", out());
                 select(b"refs/heads/main");
-                support::test_click(&s.prepare, &[]);
+                send_job_click(&s.prepare);
                 stage.set(17);
             }
             17 => {
-                if !idle() {
+                if !job_finished() {
                     return glib::ControlFlow::Continue;
                 }
                 assert!(s.preview.borrow().is_some(), "{}", out());
@@ -510,19 +614,20 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
                 if !support::try_capture(&s.window, "git-switch-project-aba") {
                     return glib::ControlFlow::Continue;
                 }
-                support::test_click(&s.reload, &[]);
+                send_job_click(&s.reload);
                 stage.set(181);
             }
             181 => {
-                if !idle() || s.loaded.borrow().is_none() {
+                if !job_finished() {
                     return glib::ControlFlow::Continue;
                 }
+                assert!(s.loaded.borrow().is_some(), "{}", out());
                 select(b"refs/heads/main");
-                support::test_click(&s.prepare, &[]);
+                send_job_click(&s.prepare);
                 stage.set(182);
             }
             182 => {
-                if !idle() {
+                if !job_finished() {
                     return glib::ControlFlow::Continue;
                 }
                 assert!(s.preview.borrow().is_some(), "{}", out());
@@ -586,11 +691,11 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
                     return glib::ControlFlow::Continue;
                 }
                 select(b"refs/heads/main");
-                support::test_click(&s.prepare, &[]);
+                send_job_click(&s.prepare);
                 stage.set(21);
             }
             21 => {
-                if !idle() {
+                if !job_finished() {
                     return glib::ControlFlow::Continue;
                 }
                 assert!(s.preview.borrow().is_some(), "{}", out());
@@ -601,14 +706,17 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
                 if !s.approved.is_active() {
                     return glib::ControlFlow::Continue;
                 }
-                support::test_click(&s.start, &[]);
+                send_job_click(&s.start);
                 stage.set(23);
             }
             23 => {
+                let Some(id) = started_job() else {
+                    return glib::ControlFlow::Continue;
+                };
+                assert_eq!(s.job.get(), Some(id), "{}", out());
                 if !fixture.marker.exists() || !out().contains("native-cancel-ready") {
                     return glib::ControlFlow::Continue;
                 }
-                assert!(!idle());
                 if !support::try_capture(&s.window, "git-switch-live") {
                     return glib::ControlFlow::Continue;
                 }
@@ -619,6 +727,7 @@ fn check(ui: Rc<Ui>, fixture: Fixture, text: fastra_document::TextDocument) {
                 if !idle() {
                     return glib::ControlFlow::Continue;
                 }
+                assert!(s.cancellation.borrow().is_cancelled());
                 assert!(
                     out().contains(s.lang().text("abgebrochen", "cancelled")),
                     "{}",

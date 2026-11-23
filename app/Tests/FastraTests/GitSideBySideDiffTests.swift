@@ -562,14 +562,9 @@ private final class ControlledDiffExecutor: GitCommandExecuting {
     }
 }
 
-// `@MainActor` für Aufbau und Lifecycle-Tests: Sie treiben einen Workspace,
-// dessen Diff- und Store-Completions per `DispatchQueue.main.async`
-// zurückkommen und dabei auch EINFACHE (nicht-`@Published`) Instanzvariablen
-// anfassen (Tab-Liste, Git-Vorschauaufträge). Von einem eigenen Test-Thread
-// aus wäre das dieselbe Absturzklasse, die am 2026-08-09 in
-// GitConflictAndAdvancedTests als SIGSEGV belegt wurde (siehe dort und
-// AGENTS.md, „Bekannte technische Fallen"). Die Parser- und Request-Tests
-// dieser Datei berühren keinen Workspace und bleiben parallel.
+// Workspace-Aufbau und Lifecycle auf MainActor prüfen: Main-Queue-
+// Completions greifen auf Tab-Liste und Vorschauaufträge zu. Parser- und
+// Request-Tests verwenden keinen Workspace und bleiben parallel.
 @MainActor
 private func makeDiffWorkspace() async throws
     -> (ControlledDiffExecutor, Workspace, UserDefaults, String, URL) {
@@ -716,11 +711,11 @@ func sideBySideUntrackedRefreshAcceptsDifferenceExit() async throws {
 private struct DiffStateTimeout: Error {}
 
 /// Lässt alle bereits eingereihten Main-Queue-Blöcke durchlaufen, bevor der
-/// Test weiter prüft. Nötig nach einer Completion, die NICHT mehr wirken soll:
+/// Test weiter prüft. Nötig nach einer Completion, die nicht mehr wirken soll:
 /// Ihre Verarbeitung springt per `DispatchQueue.main.async` auf die Main-Queue,
 /// und ein MainActor-Test käme ihr sonst zuvor — die negative Erwartung wäre
 /// dann immer erfüllt, auch wenn die Verarbeitung fälschlich weiterliefe. Der
-/// Continuation-Block reiht sich HINTER die schon wartenden Blöcke ein (FIFO
+/// Continuation-Block reiht sich hinter die schon wartenden Blöcke ein (FIFO
 /// der Main-Queue), danach ist die verspätete Completion sicher verarbeitet.
 @MainActor
 private func drainMainQueue() async {
@@ -745,7 +740,7 @@ private func waitForDiffState(_ description: String,
     }
 }
 
-// MARK: - Einzel- und Doppelklick in der Änderungen-Liste (2026-09-02)
+// MARK: - Einzel- und Doppelklick in der Änderungen-Liste
 
 // MainActor: treibt einen Workspace (Begründung an makeDiffWorkspace).
 @MainActor
@@ -818,7 +813,7 @@ func changeListPinnedFileSupersedesOwnDiffPreview() async throws {
         workspace.tabs.first(where: { $0.id == previewID })?.isLoading == false
     }
 
-    // Die Vorschau einer ANDEREN Datei bleibt beim dauerhaften Öffnen stehen.
+    // Die Vorschau einer anderen Datei bleibt beim dauerhaften Öffnen stehen.
     workspace.openGitChangeDiff(change: b, staged: false, preview: true)
     workspace.openGitChangeFile(change: a, staged: false, preview: false)
     #expect(workspace.tabs.contains(where: {
@@ -839,12 +834,9 @@ func changeListPinnedFileSupersedesOwnDiffPreview() async throws {
 @MainActor
 @Test("Verspäteter Vorschau-Read landet nicht im recycelten Platz einer anderen Datei")
 func changeListRecycledPreviewSlotRejectsStaleFileRead() async throws {
-    // Review 2026-09-02: Datei A als Vorschau anklicken, sofort eine
-    // Diff-Zeile (recycelt den Platz und setzte die Lade-Generation zurück),
-    // dann Datei B in denselben Platz. B bekam wieder Generation 1 — dieselbe
-    // Nummer wie der noch laufende Read von A. Kam der jetzt an, prüfte
-    // `loadFile` nur Tab-ID und Generation und schrieb A's Inhalt unter B's
-    // Titel in den Tab (oder verwarf beim Abbruch B's Platzhalter).
+    // Vorschauplatz mehrfach recyceln: Datei A, Diff-Zeile, Datei B.
+    // B darf keine alte Ladegeneration wiederverwenden und damit einen noch
+    // laufenden Read von A akzeptieren.
     guard GitRunner.isAvailable else { return }
     let (_, workspace, defaults, suite, repo) = try await makeDiffWorkspace()
     defer {
@@ -858,7 +850,7 @@ func changeListRecycledPreviewSlotRejectsStaleFileRead() async throws {
     try "inhalt-b\n".write(to: bURL, atomically: true, encoding: .utf8)
     let diffRow = GitChange(path: "c.txt", staged: nil, unstaged: .modified)
 
-    // Alle drei Klicks OHNE den Main-Actor freizugeben: So ist sicher, dass
+    // Alle drei Klicks ohne den Main-Actor freizugeben: So ist sicher, dass
     // A's Rückmeldung erst nach dem dritten Klick zugestellt wird — genau
     // die Reihenfolge, die im Produkt beim schnellen Durchsehen entsteht.
     var aDone = false

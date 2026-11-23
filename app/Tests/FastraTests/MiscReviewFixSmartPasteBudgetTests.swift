@@ -1,13 +1,9 @@
 // MiscReviewFixSmartPasteBudgetTests.swift
 //
-// Regressionstest zu Fund G2 des Code-Reviews vom 2026-08-10.
-//
-// `ProcessPipeCapture` begrenzte nur die Bytes JE Drain-Durchlauf (1 MiB) und
-// hängte sonst alles bis zum Fristablauf an `Data` an. Ein defektes oder
-// manipuliertes md-clip konnte in den zehn Sekunden also beliebig viel
-// Speicher belegen. Jetzt teilen sich stdout und stderr ein hartes
-// Gesamtbudget; bei Überschreitung endet die ganze Prozessgruppe sofort und
-// der Nutzer bekommt einen sichtbaren Konvertierungsfehler.
+// stdout und stderr müssen ein gemeinsames Gesamtbudget einhalten.
+// Ein Limit je Drain-Durchlauf allein würde über die gesamte Prozesslaufzeit
+// unbegrenztes Wachstum erlauben. Überschreitung beendet die Prozessgruppe
+// und liefert einen sichtbaren Konvertierungsfehler.
 
 import Foundation
 import Testing
@@ -42,10 +38,8 @@ func serialRunnerIntegration_miscReviewFix_outputBudgetStopsEndlessOutput() thro
     }
     // Der Text ist lokalisiert; sprachunabhängig steht darin der Werkzeugname.
     #expect(detail.contains("md-clip"))
-    // Deutlich unter der Frist von 60 Sekunden: Ein Rückfall auf das alte
-    // Verhalten liefe in den Timeout statt in den Budgetabbruch. Der Abstand
-    // ist bewusst groß — mit 10 s Frist und 5 s Grenze riss der Test im
-    // parallelen Gesamtlauf unter Fremdlast bei 5,4 s (2026-09-17).
+    // Budgetabbruch deutlich vor der 60-s-Frist verlangen. Der große Abstand
+    // trennt ihn auch unter paralleler Last vom gewöhnlichen Timeout.
     #expect(elapsed < 30.0,
             "Budgetabbruch wartete \(elapsed) Sekunden statt sofort zu greifen")
 }
@@ -68,7 +62,7 @@ func serialRunnerIntegration_miscReviewFix_outputBudgetKeepsSmallOutput() throws
 
 @Test("markdownFromClipboard: auch endlose stderr-Ausgabe zählt aufs Budget")
 func serialRunnerIntegration_miscReviewFix_outputBudgetCoversStderr() throws {
-    // Das Budget gilt für BEIDE Ströme zusammen — ein Fehlerkanal-Schwall darf
+    // Das Budget gilt für beide Ströme zusammen — ein Fehlerkanal-Schwall darf
     // den Speicher genauso wenig füllen wie stdout.
     let stub = try makeBudgetStub(
         name: "flood-stderr", body: "exec /usr/bin/yes fastra >&2")

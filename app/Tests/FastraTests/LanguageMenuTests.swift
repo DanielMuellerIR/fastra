@@ -1,10 +1,10 @@
 // LanguageMenuTests.swift
 //
-// Anti-Drift-Tests für das Sprachmenü und die Eigen-Sprachen-Registry
-// (Etappe 3 Wunschpaket 2026-07b): Jede unterstützte Sprache — gebündelte
-// tree-sitter-Grammatiken UND Registry-Eigen-Sprachen — muss im Menü
-// wählbar sein; bewusst versteckte IDs bleiben dokumentiert. Dazu das
-// Override-Routing: 4D manuell an/aus, unabhängig von der Dateiendung.
+// Anti-Drift-Tests für das Sprachmenü und die
+// Eigen-Sprachen-Registry: Jede unterstützte Sprache — gebündelte
+// tree-sitter-Grammatiken und Registry-Eigen-Sprachen — muss im Menü wählbar
+// sein; bewusst versteckte IDs bleiben dokumentiert. Dazu das Override-Routing:
+// 4D manuell an/aus, unabhängig von der Dateiendung.
 
 import Foundation
 import Testing
@@ -50,7 +50,7 @@ func registry_fourDDescription() {
     #expect(CustomLanguageRegistry.language(forExtension: "4dm") == CustomLanguageRegistry.fourD)
     #expect(CustomLanguageRegistry.language(forExtension: "4DM") == CustomLanguageRegistry.fourD)
     #expect(CustomLanguageRegistry.fourD.baseGrammar == .default)
-    // Projekt-Begleitdateien sind echte JSON-/XML-Dateien — KEINE Eigen-Sprache.
+    // Projekt-Begleitdateien sind echte JSON-/XML-Dateien — keine Eigen-Sprache.
     #expect(CustomLanguageRegistry.language(forExtension: "4dproject") == nil)
     #expect(CustomLanguageRegistry.language(forExtension: "4dcatalog") == nil)
 }
@@ -150,7 +150,7 @@ func workspace_saveAsRemembersLanguageChoice() throws {
     ws.activeTabID = ws.tabs[0].id
     ws.setLanguageOverride(.markdown)
 
-    // Zielname OHNE Endung — genau dort ist die Automatik machtlos.
+    // Zielname ohne Endung — genau dort ist die Automatik machtlos.
     let target = directory.appendingPathComponent("notiz")
     try Data().write(to: target)
     ws.adoptSavedTarget(target, forTabAt: 0)
@@ -172,7 +172,7 @@ func workspace_fileTreeMoveMovesLanguageChoice() throws {
     let source = directory.appendingPathComponent("alt", isDirectory: true)
     try FileManager.default.createDirectory(at: source,
                                             withIntermediateDirectories: true)
-    // Die Datei ist NICHT geöffnet: Ohne die Wanderung im Speicher gäbe es
+    // Die Datei ist nicht geöffnet: Ohne die Wanderung im Speicher gäbe es
     // keinen Tab, über den man nachbessern könnte.
     let file = source.appendingPathComponent("notiz")
     try Data().write(to: file)

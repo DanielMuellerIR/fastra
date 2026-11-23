@@ -1,13 +1,8 @@
 import AppKit
 
-/// Erscheinungsbild-Einstellung: Hell, Dunkel oder automatisch dem System
-/// folgen (Einstellungen → Erscheinungsbild, ⌘,).
-///
-/// Historie: v1.0 erzwang app-weit `.aqua` (Light), weil alle Theme-Farben
-/// feste helle Werte waren und der System-Dark-Mode un-getönte Texte weiß
-/// färbte (weiß-auf-weiß, siehe _log/decisions.md 2026-06-05). Seit v1.1
-/// sind alle `Theme`-Farben dynamisch (helle + dunkle Ausprägung) — die App
-/// darf dem System folgen oder manuell umgeschaltet werden.
+/// Erscheinungsbild-Einstellung: Hell, Dunkel oder dem System folgen
+/// (Einstellungen → Erscheinungsbild, ⌘,). Die dynamischen `Theme`-Farben
+/// besitzen helle und dunkle Ausprägungen.
 enum AppearanceSetting: String, CaseIterable, Identifiable {
     /// Automatisch — dem macOS-System-Erscheinungsbild folgen.
     case system

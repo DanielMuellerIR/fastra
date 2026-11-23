@@ -1,8 +1,8 @@
 // HelpAuditTests.swift
 //
-// Tests für app/help-audit.sh (Etappe 4 Wunschpaket 2026-07b) gegen
-// TEMPORÄRE Fixture-Repos (nie das echte Arbeitsrepo): Marker aktuell →
-// PASS; Marker veraltet → Hinweis, aber Exit 0; Release-Modus → Exit 1.
+// Tests für app/help-audit.sh gegen temporäre
+// Fixture-Repos (nie das echte Arbeitsrepo): Marker aktuell → PASS; Marker
+// veraltet → Hinweis, aber Exit 0; Release-Modus → Exit 1.
 
 import Foundation
 import Testing
@@ -123,7 +123,7 @@ func gitIntegration_auditReleaseModeFails() throws {
 func gitIntegration_auditReleaseModePassesWithDocsOnly() throws {
     let (root, _) = try makeFixtureRepo()
     defer { try? FileManager.default.removeItem(at: root) }
-    // Ein Commit AUSSERHALB von app/Sources zählt nicht als produktrelevant.
+    // Ein Commit außerhalb von app/Sources zählt nicht als produktrelevant.
     try "Notiz\n".write(to: root.appendingPathComponent("README.md"),
                         atomically: true, encoding: .utf8)
     try run("/usr/bin/git", ["-c", "user.email=t@example.invalid",

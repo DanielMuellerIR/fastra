@@ -31,6 +31,7 @@ RELEVANT_PATHS = [
     "app/build.sh",
     "app/selftest.sh",
     "app/soak-test.sh",
+    "app/tools/performance-qualification.sh",
     "app/Package.swift",
     "app/Package.resolved",
 ]

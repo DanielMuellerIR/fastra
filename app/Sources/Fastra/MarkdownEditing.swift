@@ -1,16 +1,16 @@
 // MarkdownEditing.swift
 //
-// Markdown-Formatierungsbefehle auf den QUELLTEXT (Etappe 5 Wunschpaket
-// 2026-07b): pure, unit-testbare Textfunktionen. Die Anwendung auf den
-// Editor (Undo-fähig über `textView.replaceCharacters`) übernimmt
-// `EditorContextMenu.applyMarkdownFormat`; sichtbar sind die Befehle nur
-// für Markdown-Tabs (Toolbar, Rechtsklickmenü, Markdown-Menü).
+// Markdown-Formatierungsbefehle auf den Quelltext: pure,
+// unit-testbare Textfunktionen. Die Anwendung auf den Editor (Undo-fähig über
+// `textView.replaceCharacters`) übernimmt
+// `EditorContextMenu.applyMarkdownFormat`; sichtbar sind die Befehle nur für
+// Markdown-Tabs (Toolbar, Rechtsklickmenü, Markdown-Menü).
 
 import Foundation
 import CodeEditLanguages
 
 /// Die angebotenen Befehle. Rohwert wandert durch die Notification
-/// (`.fastraMarkdownFormat`) — neue Fälle deshalb IMMER hinten anhängen.
+/// (`.fastraMarkdownFormat`) — neue Fälle deshalb immer hinten anhängen.
 enum MarkdownFormatCommand: Int, CaseIterable {
     case bold, italic, code
     case heading1, heading2, heading3, plainParagraph
@@ -166,7 +166,7 @@ struct MarkdownFormatShortcut: Equatable {
 
 enum MarkdownFormat {
 
-    /// Ein Edit als Ersetzung im ALTEN Text plus Ziel-Selektion im NEUEN.
+    /// Ein Edit als Ersetzung im alten Text plus Ziel-Selektion im neuen.
     /// Genau die Form, die `textView.replaceCharacters` + `setSelectedRange`
     /// brauchen — so bleibt jeder Befehl ein normaler Undo-Schritt.
     struct Edit: Equatable {
@@ -176,7 +176,7 @@ enum MarkdownFormat {
     }
 
     /// Gilt der Dateiname als Markdown? (.md/.markdown, Groß-/Kleinschreibung
-    /// egal.) Diese reine Namensregel beantwortet Fragen zu einer DATEI —
+    /// egal.) Diese reine Namensregel beantwortet Fragen zu einer Datei —
     /// ob die Markdown-Funktionen der Oberfläche erscheinen, entscheidet
     /// dagegen `isMarkdown(format:)` am effektiven Format.
     static func isMarkdownFilename(_ filename: String) -> Bool {
@@ -184,14 +184,9 @@ enum MarkdownFormat {
         return lower.hasSuffix(".md") || lower.hasSuffix(".markdown")
     }
 
-    /// Gilt das EFFEKTIVE Dokumentformat als Markdown?
-    ///
-    /// Maßgeblich ist derselbe Wert, den der Sprach-Chip in der Fußzeile
-    /// anzeigt — die manuelle Wahl gewinnt darin vor der Endung. Nur so
-    /// öffnet ein Umstellen auf „Markdown" die Vorschau, und ein Wechsel
-    /// zu einem anderen Format schließt sie wieder (Daniel-Befund
-    /// 2026-08-06). Die frühere Prüfung sah nur den Dateinamen und ließ die
-    /// Vorschau deshalb unabhängig von der Wahl in der Fußzeile stehen.
+    /// Prüft das effektive Dokumentformat aus dem Sprach-Chip. Die manuelle
+    /// Wahl gewinnt vor der Endung und steuert damit auch Öffnen und Schließen
+    /// der Markdown-Vorschau.
     static func isMarkdown(format: DocumentFormat) -> Bool {
         format.id == .grammar(.markdown)
     }
@@ -207,7 +202,7 @@ enum MarkdownFormat {
         let markerLength = (marker as NSString).length
         let selected = ns.substring(with: selection)
 
-        // Auswahl ENTHÄLT die Marker („**fett**“ markiert) → auspacken.
+        // Auswahl enthält die Marker („**fett**“ markiert) → auspacken.
         if selection.length >= 2 * markerLength,
            selected.hasPrefix(marker), selected.hasSuffix(marker) {
             let inner = String(selected.dropFirst(marker.count).dropLast(marker.count))
@@ -215,7 +210,7 @@ enum MarkdownFormat {
                         selection: NSRange(location: selection.location,
                                            length: (inner as NSString).length))
         }
-        // Marker liegen direkt UM die Auswahl („fett“ markiert) → entfernen.
+        // Marker liegen direkt um die Auswahl („fett“ markiert) → entfernen.
         let before = NSRange(location: selection.location - markerLength,
                              length: markerLength)
         let after = NSRange(location: NSMaxRange(selection), length: markerLength)
@@ -383,7 +378,7 @@ enum MarkdownFormat {
         }
         return mapLines(text, selection: selection) { line, index in
             // Andersartige Listen-/Zitat-Präfixe zuerst räumen, damit die
-            // Befehle sich gegenseitig ERSETZEN statt zu stapeln.
+            // Befehle sich gegenseitig ersetzen statt zu stapeln.
             let (indentation, content) = indentedParts(line)
             var plain = stripping(taskPrefix, from: content)
             plain = stripping(bulletPrefix, from: plain)

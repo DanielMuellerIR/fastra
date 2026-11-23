@@ -7,6 +7,502 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.242.83] — 2026-11-23
+
+### Behoben
+
+- macOS: In einer leeren Textbausteinsammlung öffnet „Importieren…“ direkt die Dateiauswahl, solange die Startvorlage unverändert ist. Bearbeitete Entwürfe lösen weiterhin eine Rückfrage aus.
+
+## [v1.242.82] — 2026-11-23
+
+### Behoben
+
+- Linux: Eine leere `LANGUAGE`-Variable lässt die Sprache der Desktop-Sitzung gelten. Das Hauptfenster und seine Dialoge verwenden dieselbe Sprachauswahl.
+- Linux: Die Fenstersteuerung sitzt am rechten Rand der Titelleiste. Das Fastra-Menü ist direkt daneben durch Symbol und Beschriftung erkennbar. „Baustein einfügen“ bleibt auch deaktiviert lesbar.
+
+## [v1.242.81] — 2026-11-21
+
+### Behoben
+
+- macOS: Return und Escape im Kodierungsdialog erhalten ungesicherte Änderungen. „Neu laden“ bleibt eine ausdrückliche Wahl.
+- macOS: Eine Dateiersetzung stoppt vor dem ersten Tausch, wenn ein beteiligter Datenträger den sicheren atomaren Austausch nicht unterstützt. Fastra nennt die betroffene Datei.
+- Linux: Quellfenster öffnen und schließen auch auf neueren GTK-Versionen ohne Hänger. Geöffnete 4D-Vorschläge werden beim Schließen sauber entfernt.
+- Linux: Beim appweiten Beenden bleibt die Rückfrage im betroffenen Fenster. Abbrechen über Bedienungshilfen erhält beide Entwürfe auch bei einer sofortigen Folgeabfrage.
+
+## [v1.242.80] — 2026-11-20
+
+### Hinzugefügt
+
+- Linux: Der Projektfilter zeigt unter dem Eingabefeld, wie viele Dateien von der erfassten Gesamtzahl zum Filter passen.
+
+## [v1.242.79] — 2026-11-20
+
+### Behoben
+
+- Linux: Das Git-Fenster erklärt nach der Statusprüfung eines Ordners ohne Git-Repository, warum Verlauf und beide Diffs deaktiviert sind. Nach dem Ordnerwechsel sind die Befehle wieder verfügbar.
+
+## [v1.242.78] — 2026-11-20
+
+### Behoben
+
+- Linux: Beim Einfügen lokaler Bilder im visuellen Markdown-Editor behalten neue Absatzumbrüche das Zeilenformat des Dokuments.
+
+## [v1.242.77] — 2026-11-20
+
+### Hinzugefügt
+
+- Linux: Die Editoroptionen markieren Leerzeichen, Tabulatoren und Zeilenenden einzeln. Die Anzeige gilt für beide Quellansichten des aktiven Tabs.
+
+## [v1.242.76] — 2026-11-20
+
+### Behoben
+
+- Linux: Nach dem Austausch eines Projektordners erklärt die leere Trefferliste, wie das Projekt erneut ausgewählt wird.
+
+## [v1.242.75] — 2026-11-20
+
+### Behoben
+
+- Linux: Bei einem ausgetauschten Projektordner erklärt Fastra, wie du das Projekt erneut auswählst und eine neue Vorschau erstellst.
+
+## [v1.242.74] — 2026-11-20
+
+### Behoben
+
+- Linux: Sobald eine Vorschau ungültig wird, verschwinden die alten Trefferzeilen und Freigabehaken.
+
+## [v1.242.73] — 2026-11-20
+
+### Behoben
+
+- Linux: Die Felder „Suchen“ und „Ersetzen“ haben in allen Suchbereichen einen lokalisierten Namen für Bildschirmleser.
+
+## [v1.242.72] — 2026-11-20
+
+### Behoben
+
+- macOS: Das Git-Menü erklärt, wann Verlauf und Diff verfügbar sind. Die Befehle sind erst aktiv, wenn das aktuelle Fenster ein Git-Repository zeigt.
+
+## [v1.242.71] — 2026-11-19
+
+### Behoben
+
+- Linux: Beim Speichern aus einer schreibgeschützten Ansicht meldet Fastra den tatsächlichen Zustand. Das gilt auch für PDF-, Bild- und SVG-Vorschauen.
+
+## [v1.242.70] — 2026-11-19
+
+### Behoben
+
+- macOS: Auch bei verzögerter Zustellung des Duplizieren-Befehls aus dem Kontextmenü bleibt ein später gewählter Tab aktiv.
+
+## [v1.242.69] — 2026-11-19
+
+### Behoben
+
+- macOS: Beim Duplizieren im Projektbaum wird die Kopie im ursprünglichen Ordner fertiggestellt. Nach einem Tab- oder Projektwechsel bleibt die zuletzt gewählte Ansicht aktiv.
+
+## [v1.242.68] — 2026-11-19
+
+### Behoben
+
+- macOS: Nach einem Tabwechsel zeigt das ursprüngliche Fenster, welche Formatierung oder Minifizierung abgebrochen wurde. Der aktive Tab behält seinen Text und Fokus.
+
+## [v1.242.67] — 2026-11-19
+
+### Behoben
+
+- Linux: Nach erfolgreicher Bildrücknahme warnt Fastra bei geprüfter Referenzliste nur für Bilder, die der aktuelle Rich-Text noch verwendet.
+
+## [v1.242.66] — 2026-11-19
+
+### Behoben
+
+- Linux: Wenn Schreibrechte die Bildrücknahme verhindern, zeigt der Rich-Editor den Grund. Unter Rücknahmedaten kannst du die betroffenen Pfade prüfen und die Rücknahme nach Freigabe erneut versuchen.
+
+## [v1.242.65] — 2026-11-19
+
+### Behoben
+
+- macOS: Bricht Wiederholen einer Markdown-Bildaktion ab, bleiben bereits vorhandene Bilder erhalten. Eine fehlende Bilddatei wird mit ihrem Pfad gemeldet. Wurde das Bild am selben Pfad korrigiert, zeigt der visuelle Editor die aktualisierte Datei.
+
+## [v1.242.64] — 2026-11-19
+
+### Neu
+
+- macOS: In der Ordner- und Projektsuche lässt sich eine frühere Apply-Sitzung nach einem Neustart auswählen und prüfen. Die Dateiwiederherstellung zeigt betroffene Pfade, Änderungen und Aufräumreste. Erst die eigene Bestätigung startet die Rücknahme.
+
+## [v1.242.63] — 2026-11-19
+
+### Behoben
+
+- macOS: Die Ordner- und Projektfreigabe prüft vor dem ersten Schreiben auch passende Textdateien ohne Treffer. Ändert sich die Suchbasis oder kommt eine passende Textdatei hinzu, verlangt Fastra eine neue Suche und Freigabe.
+
+## [v1.242.62] — 2026-11-19
+
+### Behoben
+
+- macOS: Ordner-Apply und Textabläufe prüfen ihre ursprünglichen Sicherungsordner bis zum Abschluss. Wird die Ablage ausgetauscht, bleiben fremde Dateien erhalten. Fastra zeigt bestätigte Änderungen sowie erreichbare Sicherungen und bietet Rückgängig oder Aufräumen nur bei bestätigter Wiederherstellungsbasis an.
+
+## [v1.242.61] — 2026-11-19
+
+### Behoben
+
+- Linux: Nach einem Größenfehler beim Anwenden musst du neu suchen und die Änderungen erneut freigeben. Wenn Fastra einen teilweise ausgeführten Auftrag wiederherstellen muss, bleibt der Sicherungspfad sichtbar.
+
+## [v1.242.60] — 2026-11-19
+
+### Behoben
+
+- macOS: Beim Umbenennen einer Markdown-Datei in der Seitenleiste wartet Fastra auf laufende Bildaktionen im visuellen Editor. Bei gleicher Dateiendung bleibt der Verlauf für Rückgängig und Wiederholen erhalten.
+
+## [v1.242.59] — 2026-11-19
+
+### Behoben
+
+- macOS: Hat sich die gespeicherte oder bereits geprüfte Dateifassung während einer Fremdprüfung geändert, prüft Fastra erneut. Ein eigener Speichervorgang löst keine Rückfrage aus einer alten Prüfung mehr aus.
+
+## [v1.242.58] — 2026-11-19
+
+### Behoben
+
+- macOS: Die automatische Rückfrage bei Fremdänderungen bleibt bei „Behalten“ und „Neu laden“ an die geprüfte Datei gebunden. Neuere ungesicherte Entwürfe bleiben erhalten.
+
+## [v1.242.57] — 2026-11-19
+
+### Behoben
+
+- macOS: „Von Festplatte neu laden“ bindet die Rückfrage an den bestätigten Tab und dessen Entwurf. Ein verschobener Nachbartab und neuere Änderungen bleiben erhalten.
+
+## [v1.242.56] — 2026-11-19
+
+### Behoben
+
+- macOS: Wird ein Projektfenster vor der Rückfrage zum automatischen Git-Abruf geschlossen, bleibt die Rückfrage für andere Fenster verfügbar. Beim Schließen vor der Rückfrage beginnt keine Wartezeit.
+
+## [v1.242.55] — 2026-11-19
+
+### Behoben
+
+- macOS: Rückgängig nennt bei einer beschädigten Originalsicherung die betroffene Datei und den vollständigen Sicherungspfad.
+
+## [v1.242.54] — 2026-11-19
+
+### Behoben
+
+- Der visuelle Markdown-Editor nimmt erst Eingaben an, wenn er den Quelltext vollständig übernommen hat.
+
+## [v1.242.53] — 2026-11-19
+
+### Behoben
+
+- Linux: Bei unvollständiger Ordner- und Projektsuche stehen die blockierenden Dateien oben in der Liste übersprungener Eingaben.
+
+## [v1.242.52] — 2026-11-19
+
+### Behoben
+
+- macOS: Die Rückfrage beim Neuöffnen mit anderer Kodierung bleibt an das bestätigte Dokument gebunden, auch wenn währenddessen ein anderer Tab verschwindet.
+
+## [v1.242.51] — 2026-11-19
+
+### Behoben
+
+- Linux: Ordner- und Projektsuchen mit unvollständiger Textgrundlage lassen Treffer anzeigen und sperren ihre Freigabe. Bei vollständiger Suche prüft Anwenden auch die gelesenen Binärdateien erneut.
+
+## [v1.242.50] — 2026-11-19
+
+### Behoben
+
+- macOS: Nach einer veralteten Vorschau zur Markdown-Bildbereinigung erklärt Fastra die Änderung und fordert zum erneuten Öffnen der Vorschau auf.
+
+## [v1.242.49] — 2026-11-19
+
+### Behoben
+
+- Linux: Die Suchmaske erklärt unter dem Ersetzen-Feld, wann überzählige Ersetzungssterne leer bleiben.
+
+## [v1.242.48] — 2026-11-19
+
+### Behoben
+
+- macOS und Linux: Überzählige Sternläufe in Platzhalter-Ersetzungen bleiben auch ab der zehnten Position leer. Literale Ziffern neben gültigen Gruppenverweisen bleiben erhalten.
+
+## [v1.242.47] — 2026-11-19
+
+### Behoben
+
+- Linux: Fehlermeldungen, Hinweise zu Suchgrenzen und Meldungen beim Sprung zum Treffer verwenden die lesbare Textfarbe der Suchmaske.
+
+## [v1.242.46] — 2026-11-19
+
+### Behoben
+
+- macOS: Suchhinweise und Fehlermeldungen sind in der hellen Suchmaske leichter zu lesen. Farbige Symbole und Flächen kennzeichnen die Hinweise weiterhin.
+
+## [v1.242.45] — 2026-11-19
+
+### Behoben
+
+- macOS: Der Treffertext im Suchdetail ist im dunklen Erscheinungsbild lesbar. Die farbigen Capture-Markierungen bleiben sichtbar.
+
+## [v1.242.44] — 2026-11-19
+
+### Behoben
+
+- Linux: Bei einem Speicherkonflikt beschreibt die Meldung den geänderten Dateistand. Das gilt auch nach dem Speichern in einem zweiten Fastra-Fenster.
+
+## [v1.242.43] — 2026-11-19
+
+### Behoben
+
+- Linux: Wenn sich Dateien nach der Wiederherstellungsvorschau ändern, leert Fastra die veraltete Ansicht und sperrt die Freigabe bis zur erneuten Prüfung. Die Sicherung bleibt erhalten.
+
+## [v1.242.42] — 2026-11-18
+
+### Behoben
+
+- macOS: Nach „Im Speicher anwenden“ in einem gespeicherten Textablauf erhält der Editor die Tastatur zurück, sobald das Blatt geschlossen ist. ⌘Z funktioniert dann ohne zusätzlichen Klick in den Editor.
+
+## [v1.242.41] — 2026-11-18
+
+### Behoben
+
+- Linux: Kann der visuelle Markdown-Editor eine Bildeinfügung nach einem Schreibfehler nicht abschließen, nennt die Meldung den verfügbaren Wiederherstellungsort.
+
+## [v1.242.40] — 2026-11-18
+
+### Behoben
+
+- macOS: Scheitert Rückgängig am Lesen einer Sicherung, nennt Fastra die betroffene Datei, die Ursache und den Sicherungspfad.
+
+## [v1.242.39] — 2026-11-18
+
+### Behoben
+
+- macOS: ⌥⇧F formatiert das zum aktiven Dokument- oder Suchfenster gehörende JSON- oder XML-Dokument. In einem Dokument ohne Formatierfunktion bleibt die Tastenkombination für die normale Zeicheneingabe verfügbar.
+
+## [v1.242.38] — 2026-11-18
+
+### Behoben
+
+- macOS: Beim Rückgängigmachen einer Markdown-Bildeinfügung meldet Fastra den Grund, wenn sich im Bilderordner keine Prüfdatei für die Wiederherstellung anlegen lässt. Die Bilddatei bleibt erhalten.
+
+## [v1.242.37] — 2026-11-18
+
+### Behoben
+
+- macOS: Erkennt Fastra in der Ordner- oder Projektsuche eine geänderte Dateibasis, verwirft es die Treffer und Freigaben des betroffenen Suchlaufs. Erneutes Suchen ist erforderlich, bevor Änderungen angewendet werden können.
+
+## [v1.242.36] — 2026-11-18
+
+### Behoben
+
+- Linux: Wird eine Dateiübernahme wegen einer geänderten Dateibasis abgelehnt, verwirft Fastra die alte Vorschau und ihre Freigaben. Eine neue Vorschau ist vor der nächsten Übernahme erforderlich.
+
+## [v1.242.35] — 2026-11-18
+
+### Behoben
+
+- macOS: Zitate und Tabellenköpfe im visuellen Markdown-Editor behalten beim Wechsel des Erscheinungsbilds dieselbe Hintergrunddarstellung wie beim Öffnen einer Datei.
+
+## [v1.242.34] — 2026-11-18
+
+### Behoben
+
+- Linux: Übernimmt ein offener Editor nach Apply, Undo oder Dateiwiederherstellung den bestätigten Plattenstand, verschwindet die alte Fremdänderungswarnung. Spätere externe Änderungen werden weiterhin angezeigt.
+
+## [v1.242.33] — 2026-11-18
+
+### Behoben
+
+- macOS: Beim mehrfachen Neuladen derselben Datei kann eine verspätete Antwort den aktuellen Ladevorgang nicht mehr beenden. Der Tab übernimmt den aktuellen Text und den dazugehörigen Plattenstand.
+
+## [v1.242.32] — 2026-11-18
+
+### Behoben
+
+- macOS: Erkennt ein Apply-Abbruch in der Vorbereitung eine ausgetauschte Sicherungsablage, zeigt Fastra den Sicherungsfehler an und lässt die vorhandenen Ordner stehen.
+
+## [v1.242.31] — 2026-11-18
+
+### Behoben
+
+- macOS: Beim Öffnen einer Datei beginnt der Undo-Verlauf mit dem geladenen Text. „Rückgängig“ kann den Editor nach dem Laden und Speichern ohne Bearbeitung nicht mehr leeren.
+
+## [v1.242.30] — 2026-11-18
+
+### Behoben
+
+- Linux: Nach „Neu öffnen in Tab“ ist der Texteditor sofort per Tastatur erreichbar. Beim Rückwechsel lässt sich die erhaltene Auswahl des ursprünglichen Tabs direkt kopieren.
+
+## [v1.242.29] — 2026-11-18
+
+### Behoben
+
+- Linux: Beim Aktivieren eines Texttabs erhält der Editor den Tastaturfokus. Die vorhandene Auswahl kann direkt kopiert werden.
+
+## [v1.242.28] — 2026-11-18
+
+### Behoben
+
+- Linux: Nach dem Anwenden einer Ordner- oder Projektvorschau schließt Fastra die erledigte Freigabe und macht „Rückgängig“ im Suchfenster wieder erreichbar.
+
+## [v1.242.27] — 2026-11-18
+
+### Behoben
+
+- Linux: „4D-Vervollständigung …“ öffnet die Vorschläge auch aus dem verschachtelten Werkzeugmenü, sobald das Editorfenster wieder aktiv ist.
+
+## [v1.242.26] — 2026-11-17
+
+### Behoben
+
+- Linux: Beim Wechsel von der Markdown-Quelle zu Rich und zurück bleibt die gewählte Teilung zwischen Quelle und Vorschau im offenen Dokument erhalten.
+
+## [v1.242.25] — 2026-11-17
+
+### Behoben
+
+- macOS: Überlappende Dokumentaktionen im visuellen Markdown-Editor halten die Eingabe bis zum Ende jeder eigenen Aktion gesperrt. Ein älterer Abschluss entsperrt weder laufende Aktionen noch die nach „Speichern unter“ noch nicht ersetzte Ansicht.
+
+## [v1.242.24] — 2026-11-17
+
+### Behoben
+
+- macOS: Das Versionsdatum im Fenstertitel stimmt wieder mit dem Versionsverlauf überein.
+
+## [v1.242.23] — 2026-11-17
+
+### Behoben
+
+- macOS: Nach kontrolliert abgeschlossenem visuellem Bild-Undo zeigt ein erfolgreiches Redo keine erledigte Abbruchursache wegen wechselnder Bildverweise erneut. Echte Dateifehler und ungelöste Restpfade bleiben sichtbar. Wartende Speicher- und Tabaktionen bleiben bis zum zugehörigen Abschluss gebunden.
+
+## [v1.242.22] — 2026-11-16
+
+### Behoben
+
+- macOS: Zusammengeführte Ladeanfragen aus Ordnersuchen melden ihren Abschluss auch dann genau einmal, wenn ihr Workspace während des Lesens freigegeben wird. Erneutes Lesen nach Dateiänderung oder Umbenennung erhält die Rückmeldung des aktuellen Auftrags.
+
+## [v1.242.21] — 2026-11-16
+
+### Behoben
+
+- Linux: Auch ein Klick in die freie Fläche unter einem kurzen Markdown-Dokument aktiviert die Texteingabe im visuellen Editor.
+
+## [v1.242.20] — 2026-11-16
+
+### Behoben
+
+- macOS: Ein später bestätigter Bildverweis beendet eine zuvor nur wegen geänderter Referenzen abgewiesene Bereinigung ohne überholte Abbruchwarnung. Echte frühere Dateifehler behalten ihre Ursachen, Teilfortschritte und ungelösten Restpfade auch nach weiteren Versuchen. Frühere Restpfade werden als solche ausgewiesen und nur nach belegter Auflösung aus der Meldung entfernt.
+
+## [v1.242.19] — 2026-11-16
+
+### Behoben
+
+- macOS: Auch im visuellen Markdown-Editor endet Bild-Undo bei fortgesetzt wechselnden offenen Dokumenten. Bereits wiederhergestellte Zielbilder und der zugehörige Text werden bestätigt; Fastra warnt, wenn verbliebene Bilddateien nicht weiter bereinigt wurden. Benötigte Bilddaten bleiben für Redo erhalten.
+
+## [v1.242.18] — 2026-11-15
+
+### Behoben
+
+- macOS: Fehlermeldungen beim Entfernen und Wiederherstellen von Markdown-Bildern behalten die Ursache und Pfadangaben des abgeschlossenen Vorgangs. Eine anschließende Bildaktion kann diesen Befund vor der Anzeige nicht mehr verdrängen.
+
+## [v1.242.17] — 2026-11-15
+
+### Behoben
+
+- macOS: Die Referenzprüfung beim Quelltext-Undo für eingefügte Bilder und bei ihrer Bereinigung beim Speichern oder Verwerfen endet auch bei fortgesetzt wechselnden offenen Dokumenten. Fastra schließt das Text-Undo ab und warnt, wenn verbliebene Bilddateien nicht weiter bereinigt wurden. Vorhandene Referenzen und benötigte Bilddaten für Redo bleiben geschützt.
+
+## [v1.242.16] — 2026-11-15
+
+### Geändert
+
+- macOS: Vor dem ersten Dateitausch prüft und synchronisiert Apply die Original-Sicherungen samt ihren Verzeichnissen. Auch gespeicherte Sitzungsfortschritte werden geprüft und synchronisiert. Schlägt eine zusätzliche Prüfung oder Synchronisierung fehl, bleiben die benötigten Sicherungen und Aufräumdaten erhalten.
+
+## [v1.242.15] — 2026-11-15
+
+### Geändert
+
+- macOS: Die aufgeklappten Git-Commitdetails zeigen den zusätzlichen erklärenden HEAD-Absatz nicht mehr.
+
+## [v1.242.14] — 2026-11-15
+
+### Behoben
+
+- macOS: Scheitern die Vorbereitung einer Ersetzung und das anschließende Aufräumen, bleiben die tatsächlichen Ursachen und Restpfade sichtbar. Ordner- und Textabläufe behalten die nötigen Aufräumdaten. Wurde keine Zieldatei geändert, entfernt die Aktion „Aufräumen“ ausschließlich die geprüften eigenen temporären Dateien; fremde Ersatzdateien bleiben geschützt.
+
+## [v1.242.13] — 2026-11-15
+
+### Neu
+
+- macOS: Aufgeklappte Commits im Git-Graph zeigen Autor, Zeitpunkt mit Datum und Uhrzeit, vollständigen Betreff, Änderungsstatistik und Kurz-Hash direkt über ihren Dateien. Auch Commits ohne Dateien lassen sich aufklappen; ein Doppelklick öffnet weiterhin den Commit-Diff.
+
+## [v1.242.12] — 2026-11-15
+
+### Behoben
+
+- macOS: Bild-Undo, Aufräumen und fehlgeschlagene Einfügungen prüfen und entfernen eigene Bilder in einem privaten Arbeitsordner. Teilfehler nennen entfernte, zurückgestellte und erhaltene Pfade sowie die Ursache. Fremde Ersatzdateien bleiben erhalten. Nach einem unvollständigen Undo bleiben die benötigten Bilddaten für Redo verfügbar. Auch der visuelle Editor und „Speichern unter“ zeigen Rückbaufehler vor ihrem Abschluss.
+
+## [v1.242.11] — 2026-11-15
+
+### Behoben
+
+- macOS: Die Clipboard-Sicherung automatisierter Kurz- und Dauertests bricht vor einer eigenen Änderung ab, wenn während des ersten Einlesens jemand kopiert. Alte Inhalte werden dadurch nicht mit dem Zähler der neueren Kopie verbunden und später zurückgeschrieben.
+
+## [v1.242.10] — 2026-11-15
+
+### Behoben
+
+- macOS: Dokumentbefehle aus einer Suchmaske bleiben an deren Dokumentfenster gebunden, auch wenn ein anderes Dokument davor liegt. Bei vorderer Hilfe oder Einstellungen ändert Soft Wrap kein Hintergrunddokument.
+
+## [v1.242.9] — 2026-11-15
+
+### Behoben
+
+- macOS: Apply, Undo und atomare Dateiaustausche nennen bei Lesefehlern die betroffene Datei und die tatsächliche Ursache.
+
+## [v1.242.8] — 2026-11-14
+
+### Behoben
+
+- macOS: Nach dem Anwenden eines Textablaufs kehrt der Tastaturfokus in den ursprünglichen Editor zurück. Undo ist dadurch ohne zusätzlichen Editorklick erreichbar.
+
+## [v1.242.7] — 2026-11-14
+
+### Behoben
+
+- macOS: Nach einem Teilabbruch von Dateiänderungen stimmen die zurückgegebene Rücknahmesitzung und das gespeicherte Journal auch nach erfolgreicher Bereinigung überein. Ein zusätzlicher Journalfehler erhält die sichere Rücknahmebasis und nennt die Ursache.
+
+## [v1.242.6] — 2026-11-14
+
+### Behoben
+
+- macOS: Die Markdown-Bildablage und Bild-Redo bestätigen Erfolg erst nach Datei- und Verzeichnissynchronisierung. Fehler nach Veröffentlichung erhalten vollständige Kopien und erklären verbleibende Pfade; fremde Ersatzdateien bleiben unangetastet. Redo behält bei Fehlern Text und Rücknahmepuffer für einen erneuten Versuch. Leere `images`-Ordner bleiben erhalten.
+
+## [v1.242.5] — 2026-11-14
+
+### Behoben
+
+- macOS: Ordner-Apply bindet einen offenen Sicherungseintrag vor dem Dateiaustausch an die tatsächlich vorbereitete Ersatzdatei. Eine fremde Datei mit gleichen Ersatzbytes wird bei der Wiederaufnahme nicht überschrieben. Manifest- und Bereinigungsfehler erhalten die nötigen Sicherungen und nennen verbleibende Pfade.
+
+## [v1.242.4] — 2026-11-14
+
+### Verbessert
+
+- macOS: Fenster, Einstellungsansichten und Hintergrunddienste verwenden einen gemeinsamen Einstellungsspeicher. Isolierte Prüfsitzungen übernehmen keine Einstellungen des normalen Profils und starten keine automatische Updateprüfung. Ein ungültiger Isolationsauftrag endet vor dem Fensteraufbau mit einem auswertbaren Umgebungsfehler.
+
+## [v1.242.3] — 2026-11-14
+
+### Behoben
+
+- macOS: Ein Schreibvorgang ohne Fortschritt meldet bei Wiederherstellungsdaten und Markdown-Bildern einen E/A-Schreibfehler. Eine frühere Systemfehlernummer oder die Meldung für unlesbare Bilddaten wird dafür nicht mehr verwendet.
+
+## [v1.242.2] — 2026-11-14
+
+### Behoben
+
+- macOS: Sind alle Bildnamen einer Dateiendung belegt oder für Rückgängig reserviert, erklärt die Markdown-Bildablage diese Grenze statt eines Lesefehlers. Vorhandene Bilder bleiben erhalten; es wird kein Link eingefügt.
+
 ## [v1.242.1] — 2026-11-14
 
 ### Behoben
@@ -1938,11 +2434,11 @@ Der Vertrag und die Abnahmegrenzen stehen in [LOCAL-CONTROL.md](docs/LOCAL-CONTR
 - Ein Branch, der in einem anderen Arbeitsverzeichnis ausgecheckt ist, dessen
   Ordner aber gelöscht wurde, reagierte gar nicht mehr: kein Dialog, keine
   Meldung, kein Wechsel — beliebig oft wiederholbar. Der Rückgabewert des
-  Dialogs lautete „Ordner vorhanden UND Knopf geklickt", und die zweite Hälfte
+  Dialogs lautete „Ordner vorhanden und Knopf geklickt", und die zweite Hälfte
   wurde nach einem „nein" gar nicht mehr ausgewertet. Jetzt erscheint die
   Erklärung auch dann, samt dem einzigen brauchbaren Rat: den verwaisten
   Eintrag mit `git worktree prune` abmelden.
-- Scheiterte ein Branch-Wechsel aus einem ANDEREN Grund — lokale Änderungen,
+- Scheiterte ein Branch-Wechsel aus einem anderen Grund — lokale Änderungen,
   Hook-Abbruch, ungültige Referenz —, zeigte Fastra trotzdem die Erklärung zur
   Worktree-Sperre und verschluckte die echte git-Meldung. Die Zuordnung hängt
   jetzt daran, dass git dieses Verzeichnis selbst nennt.
@@ -2359,7 +2855,7 @@ dieselbe Wurzel zurückgeführt und mit einem Selbsttest belegt.
   (Finder-Doppelklick, Dock-Klick), standen sie wieder da. Das wieder
   angezeigte Fenster hatte zudem seinen Eintrag in der Fenster-Registry beim
   Schließen verloren und bekam ihn nicht zurück: Es zählte nicht mehr als
-  Dokumentfenster, und eine per Doppelklick geöffnete Datei erschien in ZWEI
+  Dokumentfenster, und eine per Doppelklick geöffnete Datei erschien in zwei
   Fenstern unterschiedlicher Größe — einmal im wieder angezeigten Hauptfenster
   mit dem alten Tab, einmal in einem neuen Fenster. Der Knopf fragt jetzt wie
   ⌘W nach, fährt den Workspace in den Willkommens-Zustand und schließt dann;
@@ -2386,7 +2882,7 @@ dieselbe Wurzel zurückgeführt und mit einem Selbsttest belegt.
 
 ## [v1.118.4] — 2026-09-04
 
-Nacht-Review vom 2026-09-04 abgearbeitet (ein Fund, behoben).
+Code-Review vom 2026-09-04 abgearbeitet (ein Fund, behoben).
 
 ### Behoben
 
@@ -2425,7 +2921,7 @@ Nacht-Review vom 2026-09-04 abgearbeitet (ein Fund, behoben).
 
 ## [v1.118.2] — 2026-09-03
 
-Nacht-Review vom 2026-09-03 abgearbeitet (ein Fund, behoben).
+Code-Review vom 2026-09-03 abgearbeitet (ein Fund, behoben).
 
 ### Behoben
 
@@ -2441,7 +2937,7 @@ Nacht-Review vom 2026-09-03 abgearbeitet (ein Fund, behoben).
 
 ## [v1.118.1] — 2026-09-02
 
-Nacht-Review vom 2026-09-02 abgearbeitet (vier Funde, alle behoben).
+Code-Review vom 2026-09-02 abgearbeitet (vier Funde, alle behoben).
 
 ### Behoben
 
@@ -2495,7 +2991,7 @@ Nacht-Review vom 2026-09-02 abgearbeitet (vier Funde, alle behoben).
 
 ## [v1.117.2] — 2026-09-02
 
-Nacht-Review vom 2026-09-02 abgearbeitet (acht Funde, alle behoben).
+Code-Review vom 2026-09-02 abgearbeitet (acht Funde, alle behoben).
 
 ### Behoben
 
@@ -2903,7 +3399,7 @@ ROADMAP.
   eine Selektion pro Aktualisierungslauf ihre Cursor-Anzeige — nach dem
   Tippen in ein Rechteck fehlten dadurch fast alle Cursor, vereinzelt stand
   einer an veralteter Position; die Texteingabe selbst war korrekt
-  (Tester-Nachbefund 2026-08-28 zu v1.113.0). Ursache war eine
+  (v1.113.0). Ursache war eine
   Kurzschluss-Auswertung in der Cursor-View-Aktualisierung des Editors;
   jetzt wird jede Selektion in jedem Lauf positioniert.
 
@@ -2914,7 +3410,7 @@ ROADMAP.
 - **Neue Suchen starten im Klartext-Modus; RegEx ist ein bewusster
   Opt-in.** Der RegEx-Schalter stand seit der Demo-Phase beim App-Start
   immer auf „an“ — eine Klartext-Suche mit Sonderzeichen fand dann
-  scheinbar grundlos nichts (Testerin-Befund 2026-08-28). Der schon damals
+  scheinbar grundlos nichts. Der schon damals
   dokumentierte Ziel-Default „RegEx aus“ gilt jetzt: Wer RegEx kennt,
   schaltet es ein; RegEx-Vorlagen und der Element-Picker aktivieren den
   Modus weiterhin automatisch.
@@ -2925,8 +3421,8 @@ ROADMAP.
   Ersetzen mehrerer nicht-leerer Bereiche (ein Bereich pro Rechteckzeile)
   verrechnete der Editor die Verschiebung der übrigen Cursor — jeder tiefere
   Cursor sammelte den Fehler aller vorigen Ersetzungen auf und stand danach
-  mitten in seiner Zeile; jeder weitere Tastendruck fügte dort ein
-  (Testerin-Befund 2026-08-28). Die Cursor bleiben jetzt hinter ihrer
+  mitten in seiner Zeile; jeder weitere Tastendruck fügte dort ein. Die Cursor bleiben
+  jetzt hinter ihrer
   jeweiligen Ersetzung; Regressionstests decken Tippen, Rechteck-Backspace
   und wiederholtes Einrücken ab.
 - **Kein Absturz mehr beim Zeichnen veralteter Suchtreffer-Markierungen.**
@@ -3346,7 +3842,7 @@ ROADMAP.
 
 ## [v1.111.1] — 2026-08-22
 
-Nacht-Review 2026-08-22, ein P2-Fund.
+Code-Review 2026-08-22, ein P2-Fund.
 
 ### Behoben
 
@@ -3476,7 +3972,7 @@ Abarbeitung der offenen Funde aus dem Code-Review vom 2026-08-19/20.
   Makro-ID bestand aus Dateiname plus laufender Nummer. Real heißen mehrere
   gleichzeitig geladene Makro-Dateien „Macros.xml" (die mitgelieferte in
   4D.app und eine in einer Projekt-Komponente) — deren IDs waren damit
-  identisch, und der Klick traf immer das Makro der ERSTEN Quelle. Die ID
+  identisch, und der Klick traf immer das Makro der ersten Quelle. Die ID
   enthält jetzt den vollen Quellpfad; im Menü-Tooltip steht weiterhin der
   kurze Dateiname.
 - **⌘T bleibt außerhalb von 4D „Neuer Tab".** Beim Wechsel auf eine
@@ -3614,7 +4110,7 @@ vorbereitet; diese Nummern blieben unveröffentlicht und werden hier durch
 - **Komplettieren-Familie über die tool4d-Engine:** Der Puffer wandert
   detokenisiert an die neue Startup-Methode `MacroRun` des konfigurierbaren
   Engine-Projekts (Einstellungen → 4D), das Ergebnis erscheint als
-  Diff-Vorschau (DualPane) und wird erst nach „Anwenden" als EIN
+  Diff-Vorschau (DualPane) und wird erst nach „Anwenden" als ein
   Undo-Schritt geschrieben — nur solange das Dokument exakt dem
   Vorschau-Stand entspricht. Token-Suffixe (`:C41`, `:K5:70`) stellt eine
   lernende Rücktokenisierung aus dem Original wieder her
@@ -3642,10 +4138,9 @@ prüfung. Die Gegenstelle `MacroRun` liegt im MAO_Makros-Projekt.
 
 ## [v1.104.0] — 2026-08-19
 
-Sichtbare Push-Rückmeldung in der Änderungen-Seitenleiste (Daniel-Wunsch
-2026-08-19). Die Nummern 1.103.1/Build 196 sind bewusst übersprungen: Sie sind
-von der parallel laufenden tabscroll-Fix-Linie belegt, die noch auf ihre
-Testläufe wartet.
+Sichtbare Push-Rückmeldung in der Änderungen-Seitenleiste. Die Nummern 1.103.1/Build 196
+sind bewusst übersprungen: Sie sind
+für die getrennte tabscroll-Korrektur reserviert.
 
 ### Behoben
 
@@ -3672,7 +4167,7 @@ Testläufe wartet.
   Fehlerpfad die Laufanzeige zuverlässig zurücknimmt.
 ## [v1.103.0] — 2026-08-19
 
-Abarbeitung des Nacht-Code-Reviews vom 2026-08-19 (13 Funde, alle bestätigt):
+Abarbeitung des Code-Reviews vom 2026-08-19 (13 Funde, alle bestätigt):
 
 ### Behoben
 
@@ -3750,7 +4245,7 @@ Abarbeitung des Nacht-Code-Reviews vom 2026-08-19 (13 Funde, alle bestätigt):
 
 ## [v1.101.0] — 2026-08-18
 
-Abarbeitung des Nacht-Code-Reviews vom 2026-08-18 (16 Funde, alle bestätigt):
+Abarbeitung des Code-Reviews vom 2026-08-18 (16 Funde, alle bestätigt):
 Korrekturen an der neuen Druckfunktion, ein Prozessgruppen-Race im
 Git-Abbruchweg und eine kleine tool4d-Erkennungslücke.
 
@@ -3870,7 +4365,7 @@ Vollständige Druckfunktion. Fastra konnte bisher gar nicht drucken: Das
 
 ## [v1.99.3] — 2026-08-17
 
-Abarbeitung des Nacht-Code-Reviews vom 2026-08-17 (7 Funde: 1 P1, 4 P2, 2 P3;
+Abarbeitung des Code-Reviews vom 2026-08-17 (7 Funde: 1 P1, 4 P2, 2 P3;
 alle behoben — vier Produkt-Fixes, drei Testhärtungen).
 
 ### Behoben
@@ -3923,7 +4418,7 @@ alle behoben — vier Produkt-Fixes, drei Testhärtungen).
 
 ## [v1.99.1] — 2026-08-16
 
-Abarbeitung des Nacht-Code-Reviews vom 2026-08-16 (8 Funde, alle behoben).
+Abarbeitung des Code-Reviews vom 2026-08-16 (8 Funde, alle behoben).
 
 ### Behoben
 
@@ -4850,7 +5345,7 @@ Nacharbeit aus dem vollen Selbsttest- und Dauertestlauf zu v1.68.0:
   (Selbsttest `gitmultidiscard` schreibt den Vertrag fest).
 - **Die Sitzungswiederherstellung gibt unter Fremdlast nicht mehr nach 2 s
   auf:** Das Wartefenster auf das erste SwiftUI-Fenster beträgt jetzt 10 s.
-  Vorher ließ ein langsamer Kaltstart ALLE weiteren Fenster weg — im
+  Vorher ließ ein langsamer Kaltstart alle weiteren Fenster weg — im
   Dauertest kam nach dem Neustart nur 1 von 3 Fenstern zurück (Soak-Befund
   2026-08-09 unter kontrollierter Fremdlast).
 
@@ -4879,7 +5374,7 @@ erhoben und festgehalten.
   davor stehende nicht leere Zeile zählt; Leerzeilen bleiben leer; der
   Zeilenendungsstil des Dokuments bleibt erhalten; ohne abschließenden
   Clipboard-Umbruch endet auch das Ergebnis ohne. Die gesamte Einfügung ist
-  EINE Undo-Aktion. Bei Rechteck- oder Mehrfachauswahl erklärt der Befehl
+  eine Undo-Aktion. Bei Rechteck- oder Mehrfachauswahl erklärt der Befehl
   sichtbar, dass er dort nicht wirkt — niemals nur der erste Bereich.
 
 ### Geändert
@@ -4935,7 +5430,7 @@ Zwei offene Funde aus dem langen Dauertest (2026-08-07/08):
 
 ### Verbessert
 
-Die beiden zusammengehörigen Markdown-Vorschau-Punkte aus dem Abendlauf-Review
+Die beiden zusammengehörigen Markdown-Vorschau-Punkte aus dem Code-Review
 vom 2026-08-06 — gemeinsam umgesetzt über dasselbe Fundament (Rendern im
 Hintergrund, abgesichert über eine Generationsnummer):
 
@@ -4949,7 +5444,7 @@ Hintergrund, abgesichert über eine Generationsnummer):
   Vorschau-Pfad: neuer Fenster-Selbsttest `mdimagewatch` tauscht die Datei am
   gleichen Pfad aus und misst die dargestellte Bildbreite (1 px → 2 px).
 - **Das Vorschau-Fragment entsteht nicht mehr auf dem UI-Thread.** Alle
-  cmark-Renderläufe laufen über EINE serielle Hintergrund-Queue — auch die
+  cmark-Renderläufe laufen über eine serielle Hintergrund-Queue — auch die
   synchronen Einstiege, denn die cmark-Extension-Registrierung ist global und
   parallele Läufe wären ein Wettlauf. Bei vielen Bildern oder Bildern auf
   einem Netzlaufwerk konnte das Tippen vorher sichtbar hängen; veraltete
@@ -5347,7 +5842,7 @@ kein neues Verhalten.
   man Suchbegriff oder Ersatztext, wurden im Datei- und Geöffnet-Bereich zwar
   die Ergebnisse neu berechnet — aber erst nach einer kurzen Verzögerung. In
   diesem Fenster gab die noch sichtbare, alte Trefferzahl eine Ersetzung frei,
-  die bereits mit dem NEUEN Muster gerechnet wurde: eine Änderung, deren
+  die bereits mit dem neuen Muster gerechnet wurde: eine Änderung, deren
   Vorschau nie zu sehen war. Die sichtbaren Treffer merken sich jetzt, zu
   welchen Suchoptionen sie gehören; „Alle ersetzen" und „Ersetzen" laufen erst
   wieder, wenn Vorschau und Eingaben zusammenpassen. Für den Ordner-Bereich galt
@@ -5356,13 +5851,13 @@ kein neues Verhalten.
 - **Eine Datei ohne echte Änderung bricht den Ordner-Apply nicht mehr ab.**
   Enthielt ein Auftrag eine Datei, deren Treffer zwar existieren, deren
   Ersetzung aber genau denselben Text ergibt (etwa „foo" durch „foo" ohne
-  Beachtung der Großschreibung), scheiterte der GESAMTE Vorgang — auch alle
+  Beachtung der Großschreibung), scheiterte der gesamte Vorgang — auch alle
   echten Änderungen der übrigen Dateien. Solche Dateien werden jetzt
   übersprungen und bekommen weder Sicherung noch Rückgängig-Eintrag. Nur wenn
   sich keine einzige Datei ändert, wird der Auftrag abgelehnt.
 - **Ein neu geladener Tab gilt wieder als gespeichert.** Wurden offene Tabs nach
   einer Ordner-Ersetzung von der Platte nachgeladen, blieb die Vergleichsbasis
-  für den Änderungspunkt auf dem Stand VOR dem Nachladen stehen. Ein Rückgängig
+  für den Änderungspunkt auf dem Stand vor dem Nachladen stehen. Ein Rückgängig
   auf den alten Inhalt ließ den Tab dann fälschlich sauber aussehen, und ⌘W
   hätte ihn ohne Nachfrage geschlossen. Inhalt, Platten-Abbild und
   Vergleichsbasis werden jetzt gemeinsam aktualisiert.
@@ -5412,14 +5907,14 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
 
 ### Hinzugefügt
 
-- **Mehrere Dateien auf dem Änderungen-Tab gemeinsam behandeln**
-  (Daniel-Wunsch 2026-07-30). In der Dateiliste markiert ein Klick eine Zeile,
+- **Mehrere Dateien auf dem Änderungen-Tab gemeinsam behandeln**. In der Dateiliste
+  markiert ein Klick eine Zeile,
   ⇧-Klick den Bereich bis dorthin und ⌘-Klick einzelne Zeilen zusätzlich oder
   wieder ab — wie in macOS-Listen üblich; markierte Zeilen sind farbig
   hinterlegt. Eine Aktion auf einer markierten Zeile (Verwerfen,
   Bereitstellen, Aus-Bereitstellung-nehmen; Hover-Knopf wie Kontextmenü)
   wirkt dann auf die ganze Auswahl, und das Kontextmenü nennt die Anzahl.
-  Verwerfen fragt EINMAL für die gesamte Auswahl und weist dabei gesondert
+  Verwerfen fragt einmal für die gesamte Auswahl und weist dabei gesondert
   aus, wie viele nicht versionierte Dateien dabei gelöscht werden. Getrackte
   Pfade gehen in ein gemeinsames `git checkout --`, Bereitstellen und
   Entnehmen in ein gemeinsames `git add` beziehungsweise `git reset` — ein
@@ -5433,8 +5928,8 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
 
 ### Behoben
 
-- **Die Abschnittsköpfe der Änderungen-Liste scrollen nicht mehr weg**
-  (Daniel-Wunsch 2026-07-30). „BEREITGESTELLT" und „ÄNDERUNGEN" bleiben samt
+- **Die Abschnittsköpfe der Änderungen-Liste scrollen nicht mehr weg**. „BEREITGESTELLT"
+  und „ÄNDERUNGEN" bleiben samt
   ihren Sammel-Knöpfen oben stehen; bei 85 geänderten Dateien waren
   Überschrift und Knöpfe vorher nach wenigen Zeilen aus dem Bild. Zwei
   Folgefehler derselben Kopfzeile fielen dabei auf und sind mitbehoben: Die
@@ -5443,15 +5938,15 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
   schnitt die Überschrift den letzten Knopf ab. Jetzt weicht zuerst die
   Überschrift — gekürzt, nie umgebrochen; Knöpfe und Anzahl bleiben
   vollständig.
-- **In der zweispaltigen Diff-Ansicht laufen die Spalten nicht mehr ineinander**
-  (Daniel-Befund 2026-07-30 am Gesamt-Diff). Jede Zeile, die breiter als eine
+- **In der zweispaltigen Diff-Ansicht laufen die Spalten nicht mehr ineinander**. Jede
+  Zeile, die breiter als eine
   halbe Fensterbreite war, wurde über die Spaltengrenze hinaus gezeichnet und
   überschrieb den Text der anderen Seite — betroffen waren Git-Diffs und
   „Dateien vergleichen" gleichermaßen. Ursache: Beide Zellen bekamen
   `maxWidth: .infinity` und teilten sich damit die sichtbare Breite, während
   der Text darin per `fixedSize` auf seiner vollen Idealbreite bestand und
   ungeklippt darüber hinaus zeichnete. Jetzt sind beide Spalten gleich breit
-  und teilen sich die Fläche, und zu langer Text bricht INNERHALB seiner
+  und teilen sich die Fläche, und zu langer Text bricht innerhalb seiner
   Spalte um. Umbruch statt Kürzung mit „…", weil ein Diff das Zeilenende
   nicht verschweigen darf; beide Seiten einer Zeile bleiben gleich hoch,
   damit kein Hintergrund mitten in der Zeile endet. Zwischenstand auf dem Weg
@@ -5463,8 +5958,7 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
   Nachbar an derselben Position) statt stumpf der erste Tab der Leiste.
   Vorher schloss die Folge „echtes Dokument öffnen, mehrere leere Tabs per ⌘T
   anlegen, zweimal ⌘W" das echte Dokument: Das erste ⌘W warf den Fokus auf
-  `tabs.first` zurück, und das zweite traf damit das Dokument (Daniel-Befund
-  2026-07-29).
+  `tabs.first` zurück, und das zweite traf damit das Dokument.
 - **Fehlendes pandoc wird erklärt statt verschwiegen.** War Poor Man's Text
   installiert, aber das von ihm benötigte pandoc nicht, verschwand das
   Umwandlungsangebot bisher wortlos: kein Hinweis über dem Editor, und ein
@@ -5472,25 +5966,25 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
   und `.rtfd`-Rückfrage das fehlende Zusatzprogramm samt Installationsweg
   (`brew install pandoc`, danach Fastra neu starten). Grundlage ist die
   `unavailableReason`-Angabe des Formatkatalogs; unverstandene Gründe
-  erscheinen wörtlich statt gedeutet (Daniel-Befund 2026-07-29).
+  erscheinen wörtlich statt gedeutet.
 - **Kein Fenster ohne Tabs mit Geister-Editor mehr.** Nach dem Schließen des
   letzten Tabs blieb der Workspace mit null Tabs zurück; zeigte macOS die am
   Leben gehaltene Fenster-Szene später wieder an (Dock-Klick wirkt wie
   App-Start), stand ein Fenster ganz ohne Tabs da, dessen Editorfläche sich
-  tippen ließ, aber in kein Dokument schrieb (Daniel-Befund 2026-07-29,
-  einmalig beobachtet). Doppelt abgesichert: Beim Fensterschließen parkt der
+  tippen ließ, aber in kein Dokument schrieb (einmalig beobachtet).
+  Doppelt abgesichert: Beim Fensterschließen parkt der
   Workspace jetzt im Willkommens-Zustand, und ein Fenster ohne jeden Tab
   zeigt notfalls die Willkommensseite statt des Geister-Editors.
 
 ### Geändert
 
-- **Die Tooltips der Sammel-Knöpfe nennen die Alternative** (Daniel-Wunsch
-  2026-07-30): „Alle Änderungen verwerfen — einzelne oder mehrere Dateien über
+- **Die Tooltips der Sammel-Knöpfe nennen die Alternative**: „Alle Änderungen verwerfen —
+  einzelne oder mehrere Dateien über
   Rechtsklick bzw. ⇧/⌘-Klick". Wer den Knopf sieht, erfährt damit auch, dass
   es die feinere Auswahl gibt; gleiches gilt für Bereitstellen und
   Aus-Bereitstellung-nehmen.
 - **Willkommen ist jetzt ein Platzhalter über neuen Tabs, kein eigener Tab
-  mehr** (Daniel-Entscheidung 2026-07-30, Firefox-Neuer-Tab-Muster; ersetzt
+  mehr** (Firefox-Neuer-Tab-Muster; ersetzt
   das Willkommen-Tab-Modell vom 2026-07-12). Jeder unberührte leere Tab —
   Start, ⌘T, ⌘N-Fenster — zeigt die Starthilfe (Wortmarke, Einstiegs-
   Aktionen, Zuletzt-Liste) als Overlay über der Editorfläche; der Cursor
@@ -5499,8 +5993,7 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
   Beschriftung „Willkommen". Die Starthilfe erscheint bewusst auch in
   Fenstern mit geladenem Projekt: Fastra setzt beim Öffnen einer Einzeldatei
   implizit den Elternordner als Projekt — eine Projekt-Sperre hätte sie im
-  Alltag praktisch unsichtbar gemacht (Daniel-Befund 2026-07-30 am
-  installierten Stand).
+  Alltag praktisch unsichtbar gemacht.
   Der Zustand ist rein aus dem Tab abgeleitet (`isPristineScratch`) — das
   frühere `isWelcome`-Flag samt Sonderpfaden (Willkommen unterdrücken/
   wiederherstellen beim Datei-Laden, Umwandeln in ⌘N-Fenstern) ist komplett
@@ -5509,8 +6002,8 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
   „unberührte leere Tabs bleiben stehen und werden beim Öffnen echter
   Dateien abgeräumt". ⌘N wirkt im reinen Startzustand weiter wie ⌘T; ein
   frisches ⌘N-Fenster zeigt — wie in Firefox — ebenfalls die Starthilfe.
-- **Markdown-Toolbar nennt Tastenkürzel im Tooltip**, z. B. „Fett (⌘B)"
-  (Daniel-Wunsch 2026-07-29). Kürzel-Beschreibung und Markdown-Menü speisen
+- **Markdown-Toolbar nennt Tastenkürzel im Tooltip**, z. B. „Fett (⌘B)".
+  Kürzel-Beschreibung und Markdown-Menü speisen
   sich jetzt aus derselben Quelle (`MarkdownFormatCommand.shortcut`) und
   können nicht mehr auseinanderlaufen.
 
@@ -5539,7 +6032,7 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
 - **Neuer Fenster-Selbsttest `diffwide`** messt die Geometrie der
   zweispaltigen Diff-Ansicht an den echten Zell-Frames: beide Spalten gleich
   breit, Spaltenbreite unabhängig vom Inhalt, keine Überlappung, und die
-  ~900 Zeichen lange Zeile MEHRZEILIG hoch — nur dann bricht der Text in
+  ~900 Zeichen lange Zeile mehrzeilig hoch — nur dann bricht der Text in
   seiner Spalte um. Gegengeprüft: Mit dem alten Layout meldet er
   „Die lange Zeile ist nur 22 pt hoch … der Text bricht nicht um, sondern
   läuft über die Spaltengrenze". Dazu der Diagnose-Shot `diffwideshot` für
@@ -5553,7 +6046,7 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
   Fastra den Fokus an eine fremde App, sagt der Test das jetzt und der Runner
   zählt einen Umgebungs-FAIL (Exit 2) statt eines Funktionsfehlers — wie
   `completion4d` es an allen seinen Fokus-Prüfungen schon tat. Ist Fastra
-  dagegen aktiv und nur ein anderes EIGENES Fenster hat den Key-Status, bleibt
+  dagegen aktiv und nur ein anderes eigenes Fenster hat den Key-Status, bleibt
   es ein echter Fehler; genau den sucht der Test. Vorher verdeckte ein Lauf auf
   einem benutzten Mac echte Fehler in derselben Zusammenfassung.
 - **Wächter gegen interne Angaben im ausgehenden Stand.**
@@ -5571,7 +6064,7 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
   geladenen Inhalt). Der spätere Vergleich lief dann gegen ein bereits
   ersetztes Objekt, und der Test scheiterte mit „Controller vor Font-Zoom
   verloren", ohne dass am Produkt etwas defekt war — gemessen zwei von acht
-  Läufen. Er wartet jetzt auf einen stabilen Editor: Tab fertig geladen UND
+  Läufen. Er wartet jetzt auf einen stabilen Editor: Tab fertig geladen und
   dieselbe TextView über drei aufeinanderfolgende Prüfungen. Danach zwölf von
   zwölf Läufen grün.
 
@@ -5692,7 +6185,7 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
   `swift test` und löscht ihre Skripte — nur nach bekanntem Namensmuster und
   nur älter als eine Stunde, damit parallele Läufe unberührt bleiben.
 - Die Vorbedingungen des `tool4dlsp`-Selbsttests stehen jetzt in
-  `docs/BUILD-AND-TEST.md`: Er braucht ein installiertes tool4d UND eine
+  `docs/BUILD-AND-TEST.md`: Er braucht ein installiertes tool4d und eine
   ausdrücklich übergebene sichere Kopie eines echten 4D-Projekts. Ein selbst
   zusammengesetztes Minimalprojekt genügt nachweislich nicht.
 
@@ -5835,8 +6328,8 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
 - Die Projekt-Seitenleiste liest Ordnerinhalte nicht mehr bei jedem
   SwiftUI-Render-Durchlauf synchron von der Platte. Bei sehr großen Ordnern
   war das ein Main-Thread-Fresser: 30.000 Einträge kosteten pro Durchlauf
-  rund 940 ms Enumeration+Sortierung — die App wirkte eingefroren
-  (sample-Befund 2026-07-24). Die Listings liegen jetzt in einem Cache pro
+  rund 940 ms Enumeration+Sortierung — die App wirkte eingefroren. Die Listings liegen
+  jetzt in einem Cache pro
   Ordner (Zugriff ≈ 0,4 µs); Dateiänderungen (FSEvents) lesen im Hintergrund
   neu ein, der bisherige Stand bleibt bis zur Lieferung sichtbar.
 - Beim Wechsel auf ein anderes Projekt beobachtet der Dateibaum jetzt
@@ -5932,8 +6425,8 @@ Commit; der Sprung gleicht den aufgelaufenen Rückstand aus.
   Zugriffsverfolgung (SIGSEGV in `swift_beginAccess`). Der fehlerhafte
   Scroll-Reconcile ist jetzt stattdessen direkt in CodeEditSourceEditor
   deaktiviert (dokumentierter Checkout-Patch 4x); der `EditorView` nutzt
-  wieder das normale `@State`-Binding. Von Daniel am realen Ablauf
-  abgenommen (⌘V, ⌘Z/⇧⌘Z, Tippen, Return — Scroll folgt, kein Absturz).
+  wieder das normale `@State`-Binding. Am realen Ablauf
+  geprüft (⌘V, ⌘Z/⇧⌘Z, Tippen, Return — Scroll folgt, kein Absturz).
 
 ## [v1.50.1] — 2026-07-24
 
@@ -6684,7 +7177,7 @@ nach dem Vorbild des 4D-Methodeneditors.
   (`Project/Sources/Methods/<Name>.4dm`, auch mehrwortige Namen),
   Klassenname → `Project/Sources/Classes/<Name>.4dm`,
   `Function`-Definitionen in der aktuellen Datei springen lokal.
-  Projektwurzeln werden über die Vorfahren der aktiven Datei UND die
+  Projektwurzeln werden über die Vorfahren der aktiven Datei und die
   Seitenleisten-Projektwurzel gefunden. Fallback: Projektsuche mit dem
   Namen (Suchdialog, Ordner-Bereich) — nie ein stiller No-Op.
 - **Markdown:** relative Dateipfade in Links/Bildern öffnen im Editor,
@@ -6699,7 +7192,7 @@ nach dem Vorbild des 4D-Methodeneditors.
 
 - Pure Ziel-Auflösung mit Fixture-Tests (Methoden-/Klassen-/Function-
   Ziele, Linkarten, Anker, Registry); Fenster-Selbsttest `gototarget`
-  mit ECHTEN synthetischen Alt-Doppelklicks über die Event-Queue.
+  mit echten synthetischen Alt-Doppelklicks über die Event-Queue.
 
 ## [v1.37.0] — 2026-07-18
 
@@ -6762,7 +7255,7 @@ Etappe 5 des Wunschpakets 2026-07c: 4D-Struktur-Hinweise.
 ### Intern
 
 - Neue pure Prüf-Logik `FourDStructureCheck` mit 21 Fixture-Tests
-  (valide Methoden/Klassen erzeugen KEINE Hinweise; kaputte Fälle
+  (valide Methoden/Klassen erzeugen keine Hinweise; kaputte Fälle
   finden die richtige Zeile).
 
 ## [v1.35.0] — 2026-07-18
@@ -6817,7 +7310,7 @@ Etappe 3 des Wunschpakets 2026-07c: Suchfunktion in der Projektansicht.
   Sicherheitsgrenze (50.000 Dateien) gekappt, steht das sichtbar dabei.
 - Leeres Ergebnis → verständlicher Leerzustand statt leerem Baum, mit
   Link „Im Inhalt suchen…“, der den Suchdialog mit Ordner-Bereich
-  öffnet (der Filter durchsucht nur NAMEN — Volltext bleibt Sache des
+  öffnet (der Filter durchsucht nur Namen — Volltext bleibt Sache des
   Suchdialogs).
 - Scan läuft asynchron (debounced, abbrechbar) und wiederholt sich bei
   externen Dateiänderungen (FSEvents) idempotent; FSEvents setzen das
@@ -7186,7 +7679,7 @@ Etappe 1 des Wunschpakets 2026-07b: Navigation & Chrome.
 
 - **4D-Methoden (.4dm) mit Syntax-Highlighting:** ein eigener, leichter
   Tokenizer über CodeEditSourceEditors `HighlightProviding`-Protokoll —
-  bewusst KEINE neue tree-sitter-Grammatik (Bundle wächst nur um ~24 KB).
+  bewusst keine neue tree-sitter-Grammatik (Bundle wächst nur um ~24 KB).
   Erkannt werden Kommentare (`//`, `/* */`), Strings, Zahlen,
   Schlüsselwörter, mehrwortige englische Befehle und Konstanten
   (case-tolerant, Longest-Prefix, inkl. `:C…`/`:K…`-Suffixe), `$lokale`
@@ -7207,7 +7700,7 @@ Etappe 1 des Wunschpakets 2026-07b: Navigation & Chrome.
 - **Endungs-Mapping:** `.4DProject`/`.4DForm` → JSON-Grammatik,
   `.4DCatalog`/`.4DSettings` → XML-Pfad (HTML-Grammatik); Footer zeigt
   passende Format-Labels. Neuer Selbsttest `highlight4d` beobachtet die
-  echten 4D-Vordergrundfarben im gepackten Bundle — hell UND dunkel.
+  echten 4D-Vordergrundfarben im gepackten Bundle — hell und dunkel.
 
 ## [v1.22.0] — 2026-07-17
 
@@ -8255,9 +8748,9 @@ Projekt- & Git-Ausbau, Etappe 1 (siehe ROADMAP.md → „Projekt- & Git-Ausbau")
 ### Hinzugefügt
 
 - **Doppelstern `**` im Platzhalter-Modus:** ein Lauf aus zwei oder mehr
-  Sternen ist EINE Fanggruppe, die auch über Zeilenumbrüche fängt (z.B.
+  Sternen ist eine Fanggruppe, die auch über Zeilenumbrüche fängt (z.B.
   `BEGIN**END` sammelt den kompletten Block dazwischen ein). Der Einzelstern
-  bleibt wie gehabt zeilenintern; auch im Ersetzen-Feld zählt `**` als EIN
+  bleibt wie gehabt zeilenintern; auch im Ersetzen-Feld zählt `**` als ein
   Verweis. Der Hinweis „Ersetzen hat mehr ∗ als Suchen" zählt jetzt Läufe.
   (Vorher war `**` ein entartetes Doppel-`(.+)`.)
 - Diagnose-Selbsttest `searchshot` (Screenshot-Helfer: Suchmaske im leeren
@@ -8266,7 +8759,7 @@ Projekt- & Git-Ausbau, Etappe 1 (siehe ROADMAP.md → „Projekt- & Git-Ausbau")
 ### Geändert
 
 - **Spendenaufruf vorerst deaktiviert** (Hauptschalter
-  `DonationPrompt.isEnabled = false`, Daniel-Entscheidung 2026-07-10):
+  `DonationPrompt.isEnabled = false`):
   Banner erscheint nicht mehr; Logik, View, Start-Zähler und Tests bleiben
   vollständig erhalten, Reaktivierung = ein Flag. Finale Entscheidung vor
   Release (siehe todo.md).
@@ -8326,7 +8819,7 @@ Projekt- & Git-Ausbau, Etappe 1 (siehe ROADMAP.md → „Projekt- & Git-Ausbau")
 
 Erster produktiver Release. Umfasst alle Build-Stände v0.10.x aus dem Branch
 `sprint_to_v1` (BBEdit-Nachbau Teil 1–5, Bundle-Verschlankung auf ~53 MB,
-Suchdialog-QA, Mehrfenster-Betrieb); von Daniel abgenommen.
+Suchdialog-QA, Mehrfenster-Betrieb); manuell abgenommen.
 
 ### Behoben (2026-07-10, v0.10.15 Build-Stand)
 
@@ -8397,7 +8890,7 @@ Suchdialog-QA, Mehrfenster-Betrieb); von Daniel abgenommen.
 ### Bundle-Größe drastisch reduziert — Apple-Silicon-only (2026-07-08, v0.10.12)
 
 - **App-Bundle von 489 MB auf ~53 MB (−89 %)** — kleiner als BBEdit (68 MB).
-- **Kein Intel/x86_64 mehr** (Daniel-Entscheidung): Fastra wird nur für Apple Silicon (arm64) gebaut.
+- **Kein Intel/x86_64 mehr**: Fastra wird nur für Apple Silicon (arm64) gebaut.
 - **Totes Grammatik-XCFramework nicht mehr ins Bundle kopiert:** `CodeLanguagesContainer`
   (CodeEditLanguages, `.binaryTarget`) ist ein statisches ar-Archiv (~375 MB, universal), das
   zur Build-Zeit ins Binary gelinkt und zur Laufzeit nie geladen wird — reines totes Gewicht.
@@ -8408,10 +8901,10 @@ Suchdialog-QA, Mehrfenster-Betrieb); von Daniel abgenommen.
 - Verifiziert: 599/599 Unit-Tests, 14/14 In-App-Selbsttests grün; Signatur gültig, arm64-only.
 
 ### BBEdit-Nachbau Teil 5 — Suche & Dateimodell (2026-07-04, v0.10.11)
-> Quelle: systematischer Neu-Durchgang durchs BBEdit User Manual **16.0.1** (Kap. 3, 5, 7, 8) auf noch nicht übernommene, zum Kern passende Funktionen. Fünf Features übernommen; bewusst NICHT übernommen: Pattern Playground (unsere Live-Vorschau + Pillen decken das ab), Live-Match-Highlighting im Editor (CESE-Framework-Grenze, v1.1+), Folds/Spell/Completion/Multi-Window (außerhalb „light editor").
-- **Case-Transformationen im Ersetzungsmuster** (Kap. 8 S. 216): `\U`/`\L` (alles Folgende GROSS/klein bis `\E`), `\u`/`\l` (nur nächstes Zeichen) — wirken auf den ERSETZTEN Text inkl. `$N`-Backrefs. Beispiel: `(\w+), (\w+)` → `\U$2\E $1` macht aus „Müller, Daniel" → „DANIEL Müller". Neue pure Logik `CaseTemplate` (Segment-Parser + Zustandsmaschine, NSRegularExpression expandiert die Backrefs pro Segment); greift in Treffer-Vorschau, „Alle ersetzen" und Ordner-Apply. Plain-/Platzhalter-Modus bleibt strikt literal.
-- **Treffer extrahieren (BBEdit „Extract", S. 168/193):** Button neben „Treffer kopieren" — sammelt alle Treffer zeilengetrennt in ein NEUES unbenanntes Dokument (dirty, Schließen-Rückfrage greift). Ist das Ersetzen-Feld gefüllt, wird jeder Treffer erst transformiert (`$1` → reine Gruppen-Liste); leer = roh. Im Datei-Scope ungekappt (alle Treffer, nicht nur die 2000 materialisierten der Live-Liste).
-- **Such-Scope „Geöffnet" ist jetzt echt** (BBEdit „Open text documents", Kap. 7 S. 184): Suche über ALLE offenen Tabs in-memory (auch ungespeicherte), live beim Tippen, Trefferliste pro Tab gruppiert, Klick/⌘G aktiviert den Ziel-Tab und springt zum Treffer. „Alle ersetzen" ersetzt in allen Tabs (nur im Speicher, geänderte Tabs werden dirty; ⌘S speichert wie gewohnt). Der Scope war seit v0.5 angelegt, aber nie implementiert und zuletzt ausgeblendet.
+> Quelle: systematischer Neu-Durchgang durchs BBEdit User Manual **16.0.1** (Kap. 3, 5, 7, 8) auf noch nicht übernommene, zum Kern passende Funktionen. Fünf Features übernommen; bewusst nicht übernommen: Pattern Playground (unsere Live-Vorschau + Pillen decken das ab), Live-Match-Highlighting im Editor (CESE-Framework-Grenze, v1.1+), Folds/Spell/Completion/Multi-Window (außerhalb „light editor").
+- **Case-Transformationen im Ersetzungsmuster** (Kap. 8 S. 216): `\U`/`\L` (alles Folgende GROSS/klein bis `\E`), `\u`/`\l` (nur nächstes Zeichen) — wirken auf den ersetzten Text inkl. `$N`-Backrefs. Beispiel: `(\w+), (\w+)` → `\U$2\E $1` macht aus „Müller, Markus" → „MARKUS Müller". Neue pure Logik `CaseTemplate` (Segment-Parser + Zustandsmaschine, NSRegularExpression expandiert die Backrefs pro Segment); greift in Treffer-Vorschau, „Alle ersetzen" und Ordner-Apply. Plain-/Platzhalter-Modus bleibt strikt literal.
+- **Treffer extrahieren (BBEdit „Extract", S. 168/193):** Button neben „Treffer kopieren" — sammelt alle Treffer zeilengetrennt in ein neues unbenanntes Dokument (dirty, Schließen-Rückfrage greift). Ist das Ersetzen-Feld gefüllt, wird jeder Treffer erst transformiert (`$1` → reine Gruppen-Liste); leer = roh. Im Datei-Scope ungekappt (alle Treffer, nicht nur die 2000 materialisierten der Live-Liste).
+- **Such-Scope „Geöffnet" ist jetzt echt** (BBEdit „Open text documents", Kap. 7 S. 184): Suche über alle offenen Tabs in-memory (auch ungespeicherte), live beim Tippen, Trefferliste pro Tab gruppiert, Klick/⌘G aktiviert den Ziel-Tab und springt zum Treffer. „Alle ersetzen" ersetzt in allen Tabs (nur im Speicher, geänderte Tabs werden dirty; ⌘S speichert wie gewohnt). Der Scope war seit v0.5 angelegt, aber nie implementiert und zuletzt ausgeblendet.
 - **Extern geänderte Dateien werden erkannt** (BBEdit „Reload from Disk" / „Automatically refresh documents", Kap. 3 S. 59): Beim Zurückwechseln in die App wird jeder offene Tab gegen die Platte geprüft. Sauberer Tab → lädt still neu; Tab mit ungespeicherten Änderungen → Rückfrage „Behalten / Neu laden" (Behalten merkt sich die Entscheidung, fragt nicht bei jedem App-Wechsel erneut). Eigenes Speichern löst keinen Fehlalarm aus. Neu im „Ablage"-Menü: **„Von Festplatte neu laden"** für den aktiven Tab.
 - **Unicode-Transforms im „Text"-Menü** (Kap. 5 S. 156): „Leerzeichen vereinheitlichen" (alle Unicode-Space-Varianten wie NBSP/schmale Spaces → ASCII-Space), „Diakritische Zeichen entfernen" (á→a, ü→u), „Unicode zusammensetzen (NFC)" und „Unicode zerlegen (NFD)". Der No-Op-Schutz vergleicht bei NFC/NFD scalar-exakt (Swifts `String ==` gilt kanonisch äquivalent — sonst wäre die Normalisierung immer ein „No-Op").
 - Qualität: +52 Unit-Tests (598 gesamt grün), neuer fensterloser Selbsttest `openscope` (echter SearchRunner-Async-Pfad), komplette Selbsttest-Suite 14/14 PASS.
@@ -8420,60 +8913,60 @@ Suchdialog-QA, Mehrfenster-Betrieb); von Daniel abgenommen.
 - **Beenden abgebrochen: ursprünglich aktiver Tab bleibt aktiv** (Code-Review-Befund): Beim ⌘Q-Beenden sicherte `confirmCloseAllDirtyForQuit` pro Dirty-Tab über `mayCloseTab`, das im „Sichern"-Zweig `activeTabID` kurz auf den gerade gesicherten Tab umsetzt. Wurde das Beenden bei einem späteren Tab abgebrochen, blieb fälschlich der zuletzt gesicherte Tab aktiv statt des ursprünglich aktiven (anders als `closeTab`, das `previousActive` rettet). Jetzt wird wie bei `closeTab` der ursprünglich aktive Tab gemerkt und am Ende — egal ob beendet oder abgebrochen — wiederhergestellt. +1 Repro-Test (535 gesamt grün).
 
 ### Schließen-/Beenden-Rückfrage bei ungespeicherten Änderungen (2026-06-25, v0.10.8)
-> BBEdit-Verhalten (Daniel-Befund bei der GUI-Abnahme): ein leeres/unverändertes Dokument schließt sofort, ein Dokument mit ungesicherten Änderungen fragt erst.
+> BBEdit-Verhalten (GUI-Abnahme): ein leeres/unverändertes Dokument schließt sofort, ein Dokument mit ungesicherten Änderungen fragt erst.
 - **Tab schließen (⌘W / Tab-X / „Andere Tabs schließen"):** bei ungespeicherten Änderungen erscheint die BBEdit-Rückfrage **Sichern / Abbrechen / Nicht sichern**. „Abbrechen" lässt alles unverändert, „Nicht sichern" verwirft, „Sichern" schreibt (bzw. öffnet „Sichern unter…" bei unbenanntem Dokument) und schließt erst bei Erfolg — ein abgebrochenes Speichern-Panel hält den Tab offen, damit nichts verloren geht. Saubere Tabs schließen weiterhin ohne Rückfrage. Zentrale Logik `Workspace.closeTab` für alle drei Schließen-Wege.
 - **App beenden (⌘Q):** beendet nicht mehr stillschweigend bei ungesicherten Tabs, sondern führt pro betroffenem Tab dieselbe Rückfrage (`applicationShouldTerminate` → `Workspace.confirmCloseAllDirtyForQuit`); „Abbrechen" bricht das Beenden ab. (Automatisches Speichern ohne Rückfrage wäre das riskantere Verhalten — bewusst die Rückfrage-Variante wie BBEdit-Default.)
 - Die Modal-Entscheidung ist über `Workspace.confirmCloseHandler` injizierbar → der komplette Schließen-/Beenden-Pfad ist unit-getestet (+13 Tests, 534 gesamt grün), der Dialog selbst per GUI-Abnahme.
 
 ### BBEdit „Text"-Menü-Basics, Teil 4 (2026-06-25, v0.10.7)
 > Quelle/Vergleich: BBEdit User Manual, Kap. 5 „Text Transformations". Drei weitere Transforms, schwerpunktmäßig die RegEx-nahen — passen besonders gut zum Fastra-Kern.
-- **Zeilen mit Treffer behalten/löschen (BBEdit „Process Lines Containing"):** ein RegEx-basierter Zeilenfilter. „Nur Zeilen mit Treffer behalten" wirft alles weg, was das Muster NICHT enthält; „Zeilen mit Treffer löschen" entfernt die Treffer-Zeilen. Muster wird im Dialog abgefragt (RegEx, per Default Groß-/Kleinschreibung egal). Ein versehentlicher Voll-Wipe des Dokuments wird verhindert (würde der Filter alle Zeilen entfernen → kein Effekt, Beep). Neue pure Logik `LineFilter`.
+- **Zeilen mit Treffer behalten/löschen (BBEdit „Process Lines Containing"):** ein RegEx-basierter Zeilenfilter. „Nur Zeilen mit Treffer behalten" wirft alles weg, was das Muster nicht enthält; „Zeilen mit Treffer löschen" entfernt die Treffer-Zeilen. Muster wird im Dialog abgefragt (RegEx, per Default Groß-/Kleinschreibung egal). Ein versehentlicher Voll-Wipe des Dokuments wird verhindert (würde der Filter alle Zeilen entfernen → kein Effekt, Beep). Neue pure Logik `LineFilter`.
 - **Process Duplicate Lines (BBEdit „Process Duplicate Lines"):** zwei neue Modi neben dem bestehenden „Duplikate entfernen" (das je das erste Vorkommen behält) — „Nur doppelte Zeilen behalten" (zeigt jede mehrfach vorkommende Zeile einmal, in Reihenfolge des ersten Auftretens; macht Dubletten in Logs/Listen sichtbar) und „Mehrfach vorkommende Zeilen entfernen" (lässt nur die einmaligen Zeilen stehen). Sorgfältige Behandlung des Datei-End-Newlines (Phantom-Leerzeile zählt nicht als Inhalt).
 - **Zeilen hart umbrechen (BBEdit „Hard Wrap"):** bricht jede Zeile greedy an Wortgrenzen auf eine im Dialog abgefragte Spaltenbreite (Default 72) um — das Gegenstück zu „Zeilen verbinden". Wörter werden nie zerschnitten (ein überlanges Einzelwort bleibt ungebrochen auf eigener Zeile); führende Einrückung bleibt an der ersten Zeile, Mehrfach-Whitespace zwischen Wörtern kollabiert zu einem Leerzeichen; CRLF und Datei-End-Newline bleiben erhalten.
-- Alle drei pur, Undo-fähig, erreichbar im Menüleisten-„Text"-Menü UND im Editor-Rechtsklick-Submenü. +48 Unit-Tests (521 gesamt grün). Menü-Dispatch per Selbsttest `textop` belegt; parallel implementiert (3 Agenten) + adversarial reviewt (Befunde eingearbeitet: ein Process-Duplicate-Test mit falscher Erwartung, ein zu schwacher Hard-Wrap-Invarianten-Test, das `.+ERROR`-Muster eines Filter-Tests — alle korrigiert).
+- Alle drei pur, Undo-fähig, erreichbar im Menüleisten-„Text"-Menü und im Editor-Rechtsklick-Submenü. +48 Unit-Tests (521 gesamt grün). Menü-Dispatch per Selbsttest `textop` belegt; unabhängig gegengeprüft (Befunde eingearbeitet: ein Process-Duplicate-Test mit falscher Erwartung, ein zu schwacher Hard-Wrap-Invarianten-Test, das `.+ERROR`-Muster eines Filter-Tests — alle korrigiert).
 
 ### Behoben (2026-06-25, v0.10.7)
-- **Neuer Tab / Editor bekommt sofort den Tastaturfokus** (GUI-Abnahme-Befund): Nach ⌘T (sowie Tab-Wechsel / fertig geladener Datei) war die Editor-Textfläche nicht First Responder — ein direktes ⌘V verpuffte, bis man einmal in den Text klickte. Der frisch gemountete Editor fokussiert sich jetzt selbst (`EditorView.focusActiveEditor` in `.onAppear`), aber NUR wenn das Hauptfenster ohnehin Key ist → die schwebende Suchmaske behält bei offenem Suchfeld ihren Fokus (kein Fokus-Klau). Jump-Fokus-Pfade (Selbsttests `navmatch`/`jump`) unverändert grün, 521 Unit-Tests grün.
+- **Neuer Tab / Editor bekommt sofort den Tastaturfokus** (GUI-Abnahme-Befund): Nach ⌘T (sowie Tab-Wechsel / fertig geladener Datei) war die Editor-Textfläche nicht First Responder — ein direktes ⌘V verpuffte, bis man einmal in den Text klickte. Der frisch gemountete Editor fokussiert sich jetzt selbst (`EditorView.focusActiveEditor` in `.onAppear`), aber nur wenn das Hauptfenster ohnehin Key ist → die schwebende Suchmaske behält bei offenem Suchfeld ihren Fokus (kein Fokus-Klau). Jump-Fokus-Pfade (Selbsttests `navmatch`/`jump`) unverändert grün, 521 Unit-Tests grün.
 
 ### BBEdit „Text"-Menü-Basics, Teil 3 (2026-06-25)
 > Quelle/Vergleich: BBEdit User Manual 14.6.9, Kap. 5 „Text Transformations" — Semantik 1:1 übernommen.
-- **Anführungszeichen schwungvoll (BBEdit „Educate Quotes"):** die kontextsensitive Umkehrung von „Straighten Quotes" — gerade `"`/`'` werden zu typografischen `“ ”` / `‘ ’`. Öffnend vs. schließend entscheidet sich am Zeichen DAVOR (Textanfang/Whitespace/öffnende Klammer → öffnend, sonst schließend); ein Apostroph mitten im Wort (don't, it's) wird korrekt zu `’`. Englischer Stil wie BBEdit; längenstabil, Emoji/Surrogatpaare bleiben unversehrt.
+- **Anführungszeichen schwungvoll (BBEdit „Educate Quotes"):** die kontextsensitive Umkehrung von „Straighten Quotes" — gerade `"`/`'` werden zu typografischen `“ ”` / `‘ ’`. Öffnend vs. schließend entscheidet sich am Zeichen davor (Textanfang/Whitespace/öffnende Klammer → öffnend, sonst schließend); ein Apostroph mitten im Wort (don't, it's) wird korrekt zu `’`. Englischer Stil wie BBEdit; längenstabil, Emoji/Surrogatpaare bleiben unversehrt.
 - **Zeichen tauschen / Wörter tauschen (BBEdit „Exchange Characters/Words"):** vertauscht zwei benachbarte Zeichen (bzw. Wörter) je nach Cursor/Selektion — der klassische „Buchstaben verdreht"-Fix. Vier Regeln wie BBEdit: Cursor mitten in der Zeile → links/rechts tauschen; am Zeilenanfang → die zwei folgenden; am Zeilenende → die zwei vorangehenden; bei Selektion → erstes und letztes Element. Arbeitet auf Graphem-Grenzen (Emoji bleiben heil), bewegt nie einen Zeilenumbruch.
 - **Zeilennummern hinzufügen/entfernen (BBEdit „Add/Remove Line Numbers"):** stellt jeder Zeile ihre laufende Nummer voran (rechtsbündig auf die Breite der größten Nummer aufgefüllt, ein Trenner-Leerzeichen, Nummerierung relativ zum Block ab 1); Entfernen strippt einen führenden Nummern-Lauf (tolerant gegen fremd-nummerierte Dateien, Zeilen ohne Nummer bleiben stehen). CRLF bleibt erhalten.
 - **Escape-Sequenzen auflösen (BBEdit „Convert Escape Sequences"):** ersetzt in einem Durchlauf `\n \r \t \f \\`, Hex (`\xNN`, `\x{…}`), Unicode (`\uNNNN`, `\u{…}`), HTML-Entities (numerisch vollständig, benannte kuratiert inkl. dt. Umlaute) und Prozent-Escapes (`%NN` als UTF-8-Bytefolge, mehrbyte-fähig). Malformte/unbekannte Sequenzen und ungültige Skalarwerte bleiben literal stehen — Texthygiene für Logs/4D-Exporte.
-- Alle vier pur (`TextOperations`), Undo-fähig, erreichbar im Menüleisten-„Text"-Menü UND im Editor-Rechtsklick-Submenü. +53 Unit-Tests (473 gesamt grün).
+- Alle vier pur (`TextOperations`), Undo-fähig, erreichbar im Menüleisten-„Text"-Menü und im Editor-Rechtsklick-Submenü. +53 Unit-Tests (473 gesamt grün).
 
 ### BBEdit „Text"-Menü-Basics, Teil 2 (2026-06-25)
 > Quelle/Vergleich: BBEdit User Manual 14.6.9, Kap. 5 „Text Transformations" — Semantik 1:1 übernommen.
 - **Steuerzeichen entfernen (BBEdit „Zap Gremlins"):** entfernt unsichtbare Steuerzeichen (C0-Bereich inkl. NUL sowie DEL) aus Selektion bzw. ganzer Datei — Tab, Zeilenumbruch und Wagenrücklauf bleiben erhalten. Texthygiene für Logs/4D-Exporte; arbeitet pro Unicode-Scalar (Emoji bleiben unversehrt).
 - **Anführungszeichen gerade richten (BBEdit „Straighten Quotes"):** wandelt geschwungene Quotes (“ ” „ ‟ ‘ ’ ‚ ‛) in gerade `"` / `'` — gegen aus Word/Web kopierte Quotes, die CSV/JSON/SQL brechen.
 - **Zeilen verbinden (BBEdit „Remove Line Breaks"):** zwei Varianten — „mit Leerzeichen" (Fließtext) und „ohne Trenner" (Daten-/Spalten-Zusammenzug). Ein abschließendes Datei-End-Newline wird geschluckt (kein Trenner am Ende), CRLF-Eingabe erzeugt kein verirrtes `\r`.
-- Alle drei pur (`TextOperations`), Undo-fähig, erreichbar im Menüleisten-„Text"-Menü UND im Editor-Rechtsklick-Submenü. +13 Unit-Tests.
+- Alle drei pur (`TextOperations`), Undo-fähig, erreichbar im Menüleisten-„Text"-Menü und im Editor-Rechtsklick-Submenü. +13 Unit-Tests.
 
 ### Behoben (2026-06-25)
-- **Absturz der inline Live-Vorschau bei Tab-/Datei-Wechsel:** Beim Wechsel auf einen kürzeren oder leeren Buffer rief die Live-Vorschau `ReplacePreview.build` kurz mit STALE Treffern (Ranges des alten Inhalts) gegen den neuen, kürzeren Text auf → `lineRange(for:)` lief out of bounds und die App stürzte ab. `ReplacePreview.build` filtert solche Treffer jetzt defensiv heraus (schützt auch das „Vorschau der Änderungen"-Sheet). +2 Regressions-Tests. **Gefunden per fenstergezieltem GUI-Screenshot-Test** (`-selftest wildcardshot`).
+- **Absturz der inline Live-Vorschau bei Tab-/Datei-Wechsel:** Beim Wechsel auf einen kürzeren oder leeren Buffer rief die Live-Vorschau `ReplacePreview.build` kurz mit stale Treffern (Ranges des alten Inhalts) gegen den neuen, kürzeren Text auf → `lineRange(for:)` lief out of bounds und die App stürzte ab. `ReplacePreview.build` filtert solche Treffer jetzt defensiv heraus (schützt auch das „Vorschau der Änderungen"-Sheet). +2 Regressions-Tests. **Gefunden per fenstergezieltem GUI-Screenshot-Test** (`-selftest wildcardshot`).
 - **„PLATZHALTER"-Label brach in zwei Zeilen um** (breiter als die 80-pt-Label-Spalte, anders als „GRUPPEN") → eine Zeile erzwungen + bei Bedarf leicht skaliert.
 
 ### Suchdialog: Performance + Treffer-Navigation (RC-Abnahme, 2026-06-22)
-- **Trefferliste virtualisiert (`List` statt nicht-lazy `VStack`):** Bei vielen Treffern (echter Fall: 36.905) rief jeder Treffer-Klick einen Neuaufbau ALLER bis zu 2000 Zeilen auf dem Main-Thread hervor → Beachball, träges CMD+W, träge Hauptfenster-Klicks (der geteilte Workspace re-rendert den offenen Dialog mit). `List` (NSTableView-backed) rendert nur sichtbare Zeilen und aktualisiert die aktive-Treffer-Markierung zuverlässig (anders als der früher problematische LazyVStack). `HitGroup` bekam eine stabile Identität (vorher `UUID()` pro Render).
-- **Treffer-Sprung scrollt bei großen Dokumenten wieder hin:** Klick/CMD+G markierte den Treffer, scrollte aber nicht dorthin (41k-Zeilen-Datei). Ursache: CESEs `scrollSelectionToVisible()` läuft ins Leere, wenn die Ziel-Zeile noch nicht ausgelegt ist (boundingRect `.zero`). Fix app-seitig: nach dem Sprung über `scrollToRange` scrollen, Ziel aus der ZEILENNUMMER gerechnet (nicht aus der Selektion, die zum async-Zeitpunkt noch nicht gesetzt ist). Abgesichert durch neuen Selbsttest `scrolljump` (Sprung Zeile 1900 → Treffer im sichtbaren Bereich; prüft zugleich aufsteigende Trefferliste).
+- **Trefferliste virtualisiert (`List` statt nicht-lazy `VStack`):** Bei vielen Treffern (echter Fall: 36.905) rief jeder Treffer-Klick einen Neuaufbau aller bis zu 2000 Zeilen auf dem Main-Thread hervor → Beachball, träges CMD+W, träge Hauptfenster-Klicks (der geteilte Workspace re-rendert den offenen Dialog mit). `List` (NSTableView-backed) rendert nur sichtbare Zeilen und aktualisiert die aktive-Treffer-Markierung zuverlässig (anders als der früher problematische LazyVStack). `HitGroup` bekam eine stabile Identität (vorher `UUID()` pro Render).
+- **Treffer-Sprung scrollt bei großen Dokumenten wieder hin:** Klick/CMD+G markierte den Treffer, scrollte aber nicht dorthin (41k-Zeilen-Datei). Ursache: CESEs `scrollSelectionToVisible()` läuft ins Leere, wenn die Ziel-Zeile noch nicht ausgelegt ist (boundingRect `.zero`). Fix app-seitig: nach dem Sprung über `scrollToRange` scrollen, Ziel aus der Zeilennummer gerechnet (nicht aus der Selektion, die zum async-Zeitpunkt noch nicht gesetzt ist). Abgesichert durch neuen Selbsttest `scrolljump` (Sprung Zeile 1900 → Treffer im sichtbaren Bereich; prüft zugleich aufsteigende Trefferliste).
 - **Bedeutungslose Scope-Zahlen entfernt:** Die Badges an „Datei/Geöffnet/Ordner" (8/51/51) waren hartcodierte Prototyp-Reste, an nichts gekoppelt — raus. Die echte Treffer-Zahl steht weiter bei „Treffer (N)".
 - **Start ohne offenen Suchdialog:** `showSearchDialog` startet jetzt `false` (war Test-Default); CMD+F / CMD+SHIFT+F öffnen ihn. Die fenster-abhängigen Selbsttests (cmdw/fields/navmatch) öffnen die Maske selbst.
 
 ### Tab-Verhalten (RC-Abnahme, 2026-06-22)
-- **Leeres Startdokument wird beim Datei-Öffnen abgeräumt (BBEdit-Verhalten):** Öffnet man eine Datei, während das leere unbenannte „Ohne Titel"-Dokument offen ist, verschwindet dieses jetzt — es ist wertlos. Getippter/„dirty" Inhalt bleibt dagegen IMMER erhalten. Pure Logik `Workspace.tabsRemovingEmptyScratch` + 8 Tests (inkl. loadFile-Integration).
+- **Leeres Startdokument wird beim Datei-Öffnen abgeräumt (BBEdit-Verhalten):** Öffnet man eine Datei, während das leere unbenannte „Ohne Titel"-Dokument offen ist, verschwindet dieses jetzt — es ist wertlos. Getippter/„dirty" Inhalt bleibt dagegen immer erhalten. Pure Logik `Workspace.tabsRemovingEmptyScratch` + 8 Tests (inkl. loadFile-Integration).
 
 ### Editor-Fixes aus der RC-Abnahme (2026-06-22)
-- **Gutter-Durchschuss behoben:** Die Zeilennummern-Spalte zeichnete über den oberen Rand des Editor-Bereichs hinaus ins Tab-/Header-Band (CESEs Gutter ist ein Floating-Subview, der ohne Clipping über seinen ScrollView hinausragt). Fix: `.clipped()` am Editor in `EditorView`. Der zunächst vermutete Titelleisten-Auto-Inset war NICHT die Ursache (der Überstand blieb mit `contentInsets = 0` unverändert); der 0-Inset bleibt dennoch als sinnvolle Konfig für den versteckten Titelleisten-Modus (keine Phantom-Polsterung über dem Text).
+- **Gutter-Durchschuss behoben:** Die Zeilennummern-Spalte zeichnete über den oberen Rand des Editor-Bereichs hinaus ins Tab-/Header-Band (CESEs Gutter ist ein Floating-Subview, der ohne Clipping über seinen ScrollView hinausragt). Fix: `.clipped()` am Editor in `EditorView`. Der zunächst vermutete Titelleisten-Auto-Inset war nicht die Ursache (der Überstand blieb mit `contentInsets = 0` unverändert); der 0-Inset bleibt dennoch als sinnvolle Konfig für den versteckten Titelleisten-Modus (keine Phantom-Polsterung über dem Text).
 - **Drag-Selektion über die Gutter-Spalte repariert:** Schnelles Linksziehen über die Zeilennummern fror die Selektion ein, statt bis Spalte 1 zu wachsen. Ursache: CESEs `mouseDragged` clampt die Drag-Position auf `max(0, …)` — im Gutter-Inset-Bereich liefert `textOffsetAtPoint` dort `nil`, und das `guard … else { return }` bricht den Drag ab. Fix als sechster `build.sh`-Checkout-Patch (CodeEditTextView): Clamp auf `max(layoutManager.edgeInsets.left, …)` → der Punkt mappt auf den Zeilenanfang statt nil. (Maus-Interaktion, nicht unit-testbar — per echtem Drag verifiziert.)
 
 ### Feature J (Platzhalter-Suche `*`) — Schritt 1 (2026-06-22)
-- **Pure Übersetzungslogik `WildcardPattern`** (`*` → gierige Gruppe `(.+)` auf der Such-Seite, `$N` auf der Ersetzen-Seite; alles andere wörtlich via `escapedPattern`/`escapedTemplate`) + 21 Tests. **Noch NICHT in die Such-Engines verdrahtet** — `*` wird in der App weiterhin wörtlich gesucht; das Anschließen (inkl. Mini-Schalter „`*` wörtlich nehmen") ist Schritt 2.
+- **Pure Übersetzungslogik `WildcardPattern`** (`*` → gierige Gruppe `(.+)` auf der Such-Seite, `$N` auf der Ersetzen-Seite; alles andere wörtlich via `escapedPattern`/`escapedTemplate`) + 21 Tests. **Noch nicht in die Such-Engines verdrahtet** — `*` wird in der App weiterhin wörtlich gesucht; das Anschließen (inkl. Mini-Schalter „`*` wörtlich nehmen") ist Schritt 2.
 
 ### Feature J (Platzhalter-Suche `*`) — Pillen + Live-Vorschau (2026-06-24)
-- **Platzhalter-Pillen:** Im Plain-Modus mit `*` zeigt der Suchdialog jetzt eine `PLATZHALTER`-Zeile mit einer nummerierten Pille `$1…$N` pro Stern — dieselbe Low-Friction-Mechanik wie die Capture-Group-Pillen: aufs Ersetzen-Feld ziehen ODER anklicken fügt `$N` ein. (`wildcardGroupsRow` + `WildcardPill` in `FloatingSearchDialog`, Wiederverwendung von `RegexFieldTextView`-Drop + `replaceFieldController`.)
+- **Platzhalter-Pillen:** Im Plain-Modus mit `*` zeigt der Suchdialog jetzt eine `PLATZHALTER`-Zeile mit einer nummerierten Pille `$1…$N` pro Stern — dieselbe Low-Friction-Mechanik wie die Capture-Group-Pillen: aufs Ersetzen-Feld ziehen oder anklicken fügt `$N` ein. (`wildcardGroupsRow` + `WildcardPill` in `FloatingSearchDialog`, Wiederverwendung von `RegexFieldTextView`-Drop + `replaceFieldController`.)
 - **Inline Live-Vorschau Vorher→Nachher:** Direkt unter den Feldern erscheint beim Tippen ein kompakter Vorher→Nachher-Streifen (erste 3 betroffene Zeilen + „… und N weitere") — in den Buffer-Scopes, sobald Ersetzen-Text und Treffer da sind. Wiederverwendung der getesteten `ReplacePreview.build`-Logik (gleiche Quelle wie das große „Vorschau der Änderungen"-Sheet); live korrekt, weil `replacePattern` ein Such-Trigger ist.
-- **Aus dem Multi-Agent-Review:** `ReplacePreview.Row` bekommt eine stabile Identität (Zeilennummer statt frischer `UUID()` je `build` → kein ForEach-Identitäts-Flackern bei der live mittippenden Vorschau — dieselbe Falle wie früher bei `HitGroup`). Die Pillen-Zeile bleibt textfrei wie ihr RegEx-Pendant `groupsRow`.
+- **Stabile Vorschau-Identität:** `ReplacePreview.Row` bekommt eine stabile Identität (Zeilennummer statt frischer `UUID()` je `build` → kein ForEach-Identitäts-Flackern bei der live mittippenden Vorschau — dieselbe Falle wie früher bei `HitGroup`). Die Pillen-Zeile bleibt textfrei wie ihr RegEx-Pendant `groupsRow`.
 - 405 Unit-Tests grün; Selbsttest `wildcard` um den End-to-End-`replacedText`-Check erweitert (`The *` → „The ring"), `pilldrop`/`replaceall`/`fields` weiter PASS.
 
 ---
@@ -8490,8 +8983,8 @@ Suchdialog-QA, Mehrfenster-Betrieb); von Daniel abgenommen.
 - Messung (`-selftest loadperf`, Debug-Build): 10/50/100 MB → größte Main-Thread-Lücke 48/54/50 ms (Akzeptanz: < 250 ms). Bekannte Grenze: das Einsetzen des Inhalts in den Editor (CESE-Mount) blockiert weiterhin proportional zur Dateigröße — laut Scope-Entscheidung akzeptiert, Chunk-Loading ist v1.1+.
 
 ### Selbsttest-Infrastruktur repariert — „kein Hauptfenster"-Bug gelöst (2026-06-11)
-- **Root Cause:** AppKit interpretiert unbekannte POSITIONALE Argumente (`--selftest-…`) als „zu öffnende Datei" — SwiftUI erzeugt dann nie das WindowGroup-Hauptfenster (App startet fensterlos, Main-Thread idle). Früher kaschierte die Fenster-Restauration aus dem Saved State das Problem; die `-ApplePersistenceIgnoreState YES`-Konvention legte es frei. Der Code der v0.7/v0.8-Etappen war unschuldig.
-- **Fix:** Selbsttest-Auswahl jetzt via `-selftest <name>` (NSArgumentDomain) oder Umgebungsvariable `FASTRA_SELFTEST=<name>`; die alte Aufrufform wird erkannt und FAILt sofort mit Migrations-Hinweis. Fensterbasierte Tests POLLEN bis 15 s auf ihr Fenster (statt 2-s-Guard) und liefern bei Timeout einen Fenster-Dump.
+- **Root Cause:** AppKit interpretiert unbekannte positionale Argumente (`--selftest-…`) als „zu öffnende Datei" — SwiftUI erzeugt dann nie das WindowGroup-Hauptfenster (App startet fensterlos, Main-Thread idle). Früher kaschierte die Fenster-Restauration aus dem Saved State das Problem; die `-ApplePersistenceIgnoreState YES`-Konvention legte es frei. Der Code der v0.7/v0.8-Etappen war unschuldig.
+- **Fix:** Selbsttest-Auswahl jetzt via `-selftest <name>` (NSArgumentDomain) oder Umgebungsvariable `FASTRA_SELFTEST=<name>`; die alte Aufrufform wird erkannt und FAILt sofort mit Migrations-Hinweis. Fensterbasierte Tests pollen bis 15 s auf ihr Fenster (statt 2-s-Guard) und liefern bei Timeout einen Fenster-Dump.
 - **Neu: `selftest.sh`** — Runner für alle In-App-Selbsttests; kapselt sämtliche Umgebungs-Fallen (Persistence-Flag, Bildschirm-Lock-Check, externe Aktivierung für den fokus-pflichtigen cmdw-Test) und liefert agententaugliche Exit-Codes (0 = PASS, 1 = echter FAIL, 2 = nur Umgebungs-FAILs).
 - **Neu: `-selftest windows`** — Diagnose-Dump aller NSApp.windows über 10 s (das Messinstrument, das den Root Cause fand).
 
@@ -8559,11 +9052,11 @@ am 2026-06-03. Code-Wahrheit: alles ab Commit nach `v0.5`-Tag ist v0.6.)
 - **Gesamt-Treffer-Cap für die Ordner-Suche** (Freeze-Schutz): `FolderSearch.find` bricht dateiübergreifend sauber ab, sobald 10.000 Treffer erreicht sind — keine weiteren Dateien werden gelesen. Kein silent truncation: oranger Hinweis-Streifen in der Maske („Trefferliste auf 10.000 gekappt — Suchbegriff verfeinern."). 3 neue FolderSearchTests.
 - **`--selftest-search`** (neu): treibt Workspace + SearchRunner End-to-End — Buffer-Scope (bekannter Text, Treffer-Anzahl + Zeile/Spalte des ersten Treffers), Live-Ordner (echter Temp-Ordner, Debounce-Polling, `folderTotalMatches`) und Negativ-Pfad. Fängt die „0 Treffer trotz vorhandener"-Klasse, die reine Unit-Tests nicht sehen.
 - **`--selftest-contrast`** (neu): Weiß-auf-weiß-Wächter — sammelt alle `NSTextField` in Such- und Hauptfenster ein und prüft Textfarbe gegen effektiven Hintergrund (WCAG-Luminanz, Schwelle 2.0). FAIL bei 0 geprüften Feldern (Test-Selbstschutz). Grenze: SwiftUI-`Text`-Views bridgen nicht immer zu `NSTextField` — der Test fängt primär die Eingabefeld-Klasse des ursprünglichen Dark-Mode-Bugs.
-- **Demo-Inhalt nur noch beim ersten Start:** `DemoData.consumeFirstLaunch` (UserDefaults-Flag) — der allererste Start lädt wie bisher Demo-Tab + vorbelegtes E-Mail-Pattern (Interview-Erkenntnis 4: leerer Start verhindert Einstieg), jeder weitere Start beginnt mit leerem unbenanntem Tab ohne Pattern. Selbsttest-Läufe nutzen eine isolierte, pro Lauf geleerte UserDefaults-Suite — deterministisch UND ohne das echte Erststart-Flag zu verbrauchen. 3 neue FirstLaunchTests.
+- **Demo-Inhalt nur noch beim ersten Start:** `DemoData.consumeFirstLaunch` (UserDefaults-Flag) — der allererste Start lädt wie bisher Demo-Tab + vorbelegtes E-Mail-Pattern (Interview-Erkenntnis 4: leerer Start verhindert Einstieg), jeder weitere Start beginnt mit leerem unbenanntem Tab ohne Pattern. Selbsttest-Läufe nutzen eine isolierte, pro Lauf geleerte UserDefaults-Suite — deterministisch und ohne das echte Erststart-Flag zu verbrauchen. 3 neue FirstLaunchTests.
 - **Gutter-Dimmen → v1.1 verschoben:** `GutterView.backgroundColor` ist in CodeEditSourceEditor `internal`; ein sechster Checkout-Patch für einen Nice-to-have wäre unverhältnismäßig (Entscheidung in `_log/decisions.md`).
 
 ### `--selftest-cmdw` entflaked (2026-06-04)
-- Der CMD+W-Schließen-Selbsttest schlug sporadisch fehl (häufiger im Release). Ursache war nicht die Funktion — CMD+W schließt die Suchmaske zuverlässig — sondern der Test selbst: er prüfte den Fenster-Zustand EINMAL nach fixen 0,6 s. Schloss das Fenster geringfügig später, gab es einen falschen FAIL. Fix wie beim Findbar-Test: App via `NSApp.activate` nach vorn holen (CMD+W routet nur ans Key-Window) und über ~1,5 s engmaschig pollen (`pollForClose`) — PASS, sobald das Fenster unsichtbar wird. Verifiziert: 12/12 PASS (alle Tick 1, schließt < 30 ms), übrige Selbsttests weiter grün.
+- Der CMD+W-Schließen-Selbsttest schlug sporadisch fehl (häufiger im Release). Ursache war nicht die Funktion — CMD+W schließt die Suchmaske zuverlässig — sondern der Test selbst: er prüfte den Fenster-Zustand einmal nach fixen 0,6 s. Schloss das Fenster geringfügig später, gab es einen falschen FAIL. Fix wie beim Findbar-Test: App via `NSApp.activate` nach vorn holen (CMD+W routet nur ans Key-Window) und über ~1,5 s engmaschig pollen (`pollForClose`) — PASS, sobald das Fenster unsichtbar wird. Verifiziert: 12/12 PASS (alle Tick 1, schließt < 30 ms), übrige Selbsttests weiter grün.
 
 ---
 
@@ -8587,7 +9080,7 @@ gehört streng genommen schon zu v0.6 — historisch hier protokolliert.)
 - Footer-Statistik (Zeichen/Wörter/Zeilen) bezieht sich auf die Selektion, falls eine besteht, sonst auf die ganze Datei (mit „Sel"-Marker). Berechnung läuft asynchron auf einem Hintergrund-Thread (Generation-Token verwirft veraltete Ergebnisse) — blockiert große Dateien nicht.
 
 ### Regressions-Schutz (Tests)
-- Shortcut-Routing in reine, getestete Funktion `KeyRouting.route` extrahiert — `sendEvent` UND der Fallback-Monitor nutzen dieselbe Logik (keine Divergenz mehr).
+- Shortcut-Routing in reine, getestete Funktion `KeyRouting.route` extrahiert — `sendEvent` und der Fallback-Monitor nutzen dieselbe Logik (keine Divergenz mehr).
 - Footer-Logik (bewegte Kante, Statistik) in pure Helfer `CursorFooter` / `DocumentStats` extrahiert.
 - Find-Bar-Abwehr (`disableFindBars`, `purge`, `isFindRelated`) testbar gemacht.
 - Neue Test-Suites `KeyRoutingTests`, `FooterLogicTests`, `FindBarSuppressionTests` — Gesamtsuite 30 Tests, < 0,1 s.
@@ -8619,10 +9112,10 @@ gehört streng genommen schon zu v0.6 — historisch hier protokolliert.)
 ### v0.6-Vorbereitung — Apply-Sicherheits-Gerüst
 - `FileScanner.isBinary` / `isBinaryFile` — Null-Byte-Heuristik (8000-Byte-Fenster wie Git) für den Binär-Schutz; liest nur den Dateianfang.
 - Reproduzierbarer Test-Korpus (`Tests/FastraTests/Support/TestCorpus.swift`): 10 Dateien mit verschiedenen Encodings (UTF-8, Latin-1, UTF-16LE+BOM, Win-1252), Line-Endings (LF/CRLF/CR), leer und 2 Binärdateien.
-- `ApplySafetyTests`: grüne Bausteine (Binär-Erkennung inkl. dokumentiertem UTF-16-Sonderfall, Line-Ending-Erkennung, Korpus-Integrität) plus `withKnownIssue`-Markierung für das noch offene Apply-Gate (Dry-Run, Byte-Vergleich, mtime-Unverändertheit, atomare Writes, bit-exaktes Undo). Noch KEIN Apply-Code.
-- **Apply-Engine Dry-Run-Stufe** (`Sources/Fastra/ApplyEngine.swift`): pure `ApplyEngine.plan(files:options:)`-Funktion, die Such-/Ersetzen-Pläne berechnet OHNE eine einzige Datei zu verändern. Modell-Typen: `SearchOptions`, `ReplacePlan`, `PlannedFileChange`, `PlannedMatch`, `SkipReason`. Encoding bleibt erhalten (BOM-Erkennung vor Null-Byte-Heuristik → UTF-16 wird nicht fälschlich als binär verworfen). Binärdateien landen als `.binary`-Skip im Plan, niemals stillschweigend. Ungültige RegEx → alle Dateien `.invalidPattern`, kein Apply möglich.
+- `ApplySafetyTests`: grüne Bausteine (Binär-Erkennung inkl. dokumentiertem UTF-16-Sonderfall, Line-Ending-Erkennung, Korpus-Integrität) plus `withKnownIssue`-Markierung für das noch offene Apply-Gate (Dry-Run, Byte-Vergleich, mtime-Unverändertheit, atomare Writes, bit-exaktes Undo). Noch kein Apply-Code.
+- **Apply-Engine Dry-Run-Stufe** (`Sources/Fastra/ApplyEngine.swift`): pure `ApplyEngine.plan(files:options:)`-Funktion, die Such-/Ersetzen-Pläne berechnet ohne eine einzige Datei zu verändern. Modell-Typen: `SearchOptions`, `ReplacePlan`, `PlannedFileChange`, `PlannedMatch`, `SkipReason`. Encoding bleibt erhalten (BOM-Erkennung vor Null-Byte-Heuristik → UTF-16 wird nicht fälschlich als binär verworfen). Binärdateien landen als `.binary`-Skip im Plan, niemals stillschweigend. Ungültige RegEx → alle Dateien `.invalidPattern`, kein Apply möglich.
 - 12 neue Dry-Run-Tests in `ApplySafetyTests`: mtime-Unverändertheit, Treffer-Vollständigkeit, Binär-Skip, UTF-16-Round-Trip mit BOM, Latin-1-Byte-Erhalt, Leere-Datei-Idempotenz, CRLF-Erhalt, Plain-Text-Meta-Escape, ungültige RegEx, Case-Sensitivity, Whole-Word, Capture-Backref-Auflösung.
-- **Apply-Engine Schreibseite + Undo**: `ApplyEngine.apply(plan:backupRoot:cleanupOlderThan:)` schreibt pro Datei atomar via `FileManager.replaceItemAt(_:withItemAt:)`. Vor jedem Apply wandern die Original-Bytes ALLER zu verändernden Dateien in einen Session-Ordner unter `~/Library/Application Support/Fastra/undo/session-<ISO-ts>-<uuid8>/` — schlägt der Backup-Schritt fehl, wird nichts geschrieben. Manifest (`manifest.json`) mit SHA-256-Hash jeder Original-Datei. `ApplyEngine.undo(_:)` spielt das Backup atomar zurück (Hash-Check vor Restore). `ApplyEngine.cleanupBackups(maxAge:)` läuft automatisch vor jedem Apply und löscht Session-Ordner älter als 30 Tage (konfigurierbar). Fremde Dateien im Backup-Root bleiben unangetastet.
+- **Apply-Engine Schreibseite + Undo**: `ApplyEngine.apply(plan:backupRoot:cleanupOlderThan:)` schreibt pro Datei atomar via `FileManager.replaceItemAt(_:withItemAt:)`. Vor jedem Apply wandern die Original-Bytes aller zu verändernden Dateien in einen Session-Ordner unter `~/Library/Application Support/Fastra/undo/session-<ISO-ts>-<uuid8>/` — schlägt der Backup-Schritt fehl, wird nichts geschrieben. Manifest (`manifest.json`) mit SHA-256-Hash jeder Original-Datei. `ApplyEngine.undo(_:)` spielt das Backup atomar zurück (Hash-Check vor Restore). `ApplyEngine.cleanupBackups(maxAge:)` läuft automatisch vor jedem Apply und löscht Session-Ordner älter als 30 Tage (konfigurierbar). Fremde Dateien im Backup-Root bleiben unangetastet.
 - 8 Schreib-/Undo-Tests in `ApplySafetyTests`: newBytes werden geschrieben, Backup enthält Original-Bytes mit korrektem Hash, bit-exaktes Undo über mehrere Dateien, fremde Dateien unverändert (Inhalt + mtime), Plan mit invalidPattern wird abgelehnt, Manifest-Round-Trip, Cleanup entfernt alte Sessions ohne fremde Ordner anzufassen, keine Temp-Datei-Leichen neben Originalen. Gesamtsuite 60/60 grün, <0,1 s.
 - CMD+F-Routing über NSApplication-Subklasse `FastraApplication`, die `sendEvent` überschreibt — vor jeder Key-Equivalent-Verarbeitung. Beendet einen langen Eskalations-Pfad (Local-Monitor → Find-Menü-Purge → NSTextView-Find-Bar deaktivieren → schließlich NSApp-Subklasse).
 - `CommandGroup(replacing: .textEditing) { }` plus aktive Bereinigung der Edit-Menü-Hierarchie um find-bezogene Selektoren (`performTextFinderAction:`, `performFindPanelAction:`).
@@ -8651,7 +9144,7 @@ gehört streng genommen schon zu v0.6 — historisch hier protokolliert.)
 ### Geändert
 - **Vorschau der Änderungen** (vormals „Preview"-Button) als Stub stehen gelassen — die ausgewachsene Side-by-side-Diff-Implementierung verschoben auf v0.9 oder v1.1+, weil die Sofort-Trefferliste in der Maske den primären Bedarf weitgehend erfüllt. Entscheidung über endgültigen Verbleib des Buttons nach Nutzer-Feedback.
 
-### Konzept-Erweiterungen (Daniel, 2026-05-26)
+### Konzept-Erweiterungen (2026-05-26)
 - Such-Optionen als BBEdit-Stil-Toggles in der Suchmaske (Abschnitt B.5 im Suchmasken-Konzept). **Default `RegEx = aus`** — Haltung: „Editor mit RegEx-Superkraft", nicht „RegEx-Tool, das auch suchen kann".
 - Tooltips für **alle** Schalter, deutsch formuliert.
 - BBEdit als Referenz-Editor bei UI-Zweifeln (`AGENTS.md`/Zusammenarbeit).

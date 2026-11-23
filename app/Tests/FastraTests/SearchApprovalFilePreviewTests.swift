@@ -6,6 +6,94 @@ import Testing
 @Suite("Freigabevorschau für Plattendateien")
 @MainActor
 struct SearchApprovalFilePreviewTests {
+    enum SourceChange: CaseIterable {
+        case changed, added, removed, replacedEmpty
+    }
+
+    @Test("Ordner- und Projekt-Apply brauchen nach geänderten Textquellen eine neue Freigabe",
+          arguments: [false, true], SourceChange.allCases)
+    func completeFolderBasis(_ project: Bool, _ change: SourceChange) async throws {
+        let root = testTemporaryDirectory().appendingPathComponent("approval-basis-\(UUID().uuidString)").canonicalFileURL
+        let sources = root.appendingPathComponent("sources")
+        let backups = root.appendingPathComponent("undo")
+        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let hit = sources.appendingPathComponent("hit.txt")
+        let other = sources.appendingPathComponent("other.txt")
+        let original = Data("foo\r\n🙂\r\n".utf8)
+        try original.write(to: hit)
+        let otherOriginal = change == .replacedEmpty ? Data() : Data("kein Treffer\n".utf8)
+        try otherOriginal.write(to: other)
+        let workspace = Workspace(defaults: testSuiteDefaults(named: "fastra-complete-basis-\(UUID().uuidString)"))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        WorkspaceWindowRegistry.register(workspace, for: window)
+        defer {
+            workspace.showSearchDialog = false
+            WorkspaceWindowRegistry.unregister(window)
+            window.close()
+        }
+        workspace.scope = project ? .project : .folder
+        workspace.projectURL = project ? sources : nil
+        workspace.recentSearchFolders = [.init(path: sources.path, enabled: true)]
+        workspace.findPattern = "foo"; workspace.replacePattern = "bar"; workspace.useRegex = false
+        workspace.folderApplyBackupRoot = backups
+        workspace.showSearchDialog = true
+        try #require(await waitUntil { workspace.searchApproval.isComplete && workspace.folderTotalMatches == 1 })
+        try #require(workspace.setAllSearchMatchesApproved(true, generation: workspace.searchApproval.generation))
+        let preview = try await Task.detached {
+            try SearchApprovalPreview.build(await SearchApprovalPreview.Request.capture(in: workspace))
+        }.value
+        let changed = change == .added ? sources.appendingPathComponent("nested/new.txt") : other
+        let foreign: Data?
+        switch change {
+        case .removed:
+            try FileManager.default.removeItem(at: other)
+            foreign = nil
+        case .replacedEmpty:
+            let oldIdentity = try #require(FileIdentity(url: other))
+            try otherOriginal.write(to: other, options: .atomic)
+            #expect(FileIdentity(url: other) != oldIdentity)
+            foreign = otherOriginal
+        case .changed, .added:
+            let bytes = Data("foo extern\r\n".utf8)
+            try FileManager.default.createDirectory(at: changed.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try bytes.write(to: changed, options: .atomic)
+            foreign = bytes
+        }
+        var conflict = ""
+        workspace.folderPreviewConflictHandler = { conflict = $0 }
+        let started = try workspace.applySearchApproval(preview)
+        try #require(started)
+        try #require(await waitUntil { !workspace.folderApplying })
+        #expect(!conflict.isEmpty)
+        #expect(workspace.searchApproval.ticket == nil)
+        #expect(workspace.folderNeedsSearch)
+        #expect(workspace.lastApplySession == nil)
+        #expect(try Data(contentsOf: hit) == original)
+        #expect((try? Data(contentsOf: changed)) == foreign)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
+
+        if change == .added {
+            workspace.runFolderSearchNow()
+            try #require(await waitUntil { workspace.searchApproval.isComplete && workspace.folderTotalMatches == 2 })
+            try #require(workspace.setAllSearchMatchesApproved(true, generation: workspace.searchApproval.generation))
+            let fresh = try await Task.detached {
+                try SearchApprovalPreview.build(await SearchApprovalPreview.Request.capture(in: workspace))
+            }.value
+            try #require(try workspace.applySearchApproval(fresh))
+            try #require(await waitUntil { !workspace.folderApplying })
+            try #require(workspace.lastApplySession?.entries.count == 2)
+            #expect(try Data(contentsOf: hit) == Data("bar\r\n🙂\r\n".utf8))
+            #expect(try Data(contentsOf: changed) == Data("bar extern\r\n".utf8))
+            try #require(workspace.undoLastFolderApply())
+            #expect(try Data(contentsOf: hit) == original)
+            #expect(try Data(contentsOf: changed) == foreign)
+        }
+    }
+
     @Test("Die Teilvorschau erhält UTF-16/BOM und zeigt Unicode exakt, ohne Dateien zu ändern")
     func partialEncodedPreview() throws {
         try fixture { workspace, files, original in
@@ -74,7 +162,7 @@ struct SearchApprovalFilePreviewTests {
             workspace.folderResults = result.perFile
             workspace.folderTotalMatches = result.totalMatches
             workspace.folderResultsWereCapped = result.wasCapped
-            workspace.publishSearchApprovals()
+            publishPreparedSearchResults(workspace)
             #expect(workspace.folderResultsContainCappedFiles)
             #expect(workspace.navMatches.count == 5001)
             #expect(workspace.folderTotalMatches == 6001)
@@ -103,7 +191,7 @@ struct SearchApprovalFilePreviewTests {
             workspace.folderResults = result.perFile
             workspace.folderTotalMatches = result.totalMatches
             workspace.folderResultsWereCapped = result.wasCapped
-            workspace.publishSearchApprovals()
+            publishPreparedSearchResults(workspace)
             #expect(workspace.searchApprovalIncompleteFiles.count == (kind == 2 ? 0 : 1))
             #expect(workspace.searchApproval.isComplete == (kind == 2))
             let approved = workspace.setAllSearchMatchesApproved(true, generation: workspace.searchApproval.generation)
@@ -131,7 +219,7 @@ struct SearchApprovalFilePreviewTests {
                 workspace.folderResults.append(FolderSearch.PerFileResult(url: files[0].deletingLastPathComponent().appendingPathComponent("missing.txt"),
                     matches: [], totalMatches: 0, skipped: .unreadable, snapshot: nil, searchOptions: workspace.currentSearchOptions))
             }
-            workspace.publishSearchApprovals()
+            publishPreparedSearchResults(workspace)
             #expect(workspace.searchApproval.approvedIDs.isEmpty)
             #expect(throws: (any Error).self) { try SearchApprovalPreview.Request.capture(in: workspace) }
         }
@@ -159,8 +247,7 @@ struct SearchApprovalFilePreviewTests {
             #expect(result.perFile.isEmpty)
             workspace.folderResults = result.perFile
             workspace.folderTotalMatches = result.totalMatches
-            workspace.searchError = result.invalidPatternMessage
-            workspace.publishSearchApprovals()
+            publishPreparedSearchResults(workspace, error: result.invalidPatternMessage)
             _ = workspace.setAllSearchMatchesApproved(true, generation: workspace.searchApproval.generation)
             #expect(workspace.searchApproval.ticket == nil)
             let unchanged = try Data(contentsOf: files[0])
@@ -177,7 +264,7 @@ struct SearchApprovalFilePreviewTests {
             try original.write(to: files[0])
             workspace.folderResults = files.map { FolderSearch.searchOneFile(at: $0, options: workspace.currentSearchOptions) }
             workspace.folderTotalMatches = workspace.folderResults.reduce(0) { $0 + $1.totalMatches }
-            workspace.publishSearchApprovals()
+            publishPreparedSearchResults(workspace)
             let approved = workspace.setAllSearchMatchesApproved(true, generation: workspace.searchApproval.generation)
             try #require(approved)
             let request = try SearchApprovalPreview.Request.capture(in: workspace)
@@ -213,8 +300,7 @@ struct SearchApprovalFilePreviewTests {
         workspace.scope = .folder; workspace.findPattern = "foo"; workspace.replacePattern = replacement; workspace.useRegex = false
         workspace.folderResults = files.map { FolderSearch.searchOneFile(at: $0, options: workspace.currentSearchOptions) }
         workspace.folderTotalMatches = workspace.folderResults.reduce(0) { $0 + $1.totalMatches }
-        workspace.folderSearching = false; workspace.folderNeedsSearch = false; workspace.folderResultsAreStale = false
-        workspace.publishSearchApprovals()
+        publishPreparedSearchResults(workspace)
         let selected = try #require(workspace.folderResults[0].matches.last?.id)
         let approved = workspace.setSearchMatchesApproved(true, ids: [selected], generation: workspace.searchApproval.generation)
         try #require(approved)

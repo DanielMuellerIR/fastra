@@ -83,6 +83,7 @@ func ghostTextRequiresObservableFragments() {
 func emptySearchEvidenceRequiresCompletedCurrentSearch() async throws {
     let workspace = Workspace(defaults: testSuiteDefaults(
         named: "FastraTests.SearchEvidence.\(UUID().uuidString)"))
+    bindSearchResultWindowForTesting(workspace)
     workspace.scope = .file
     workspace.useRegex = false
     workspace.tabs[0].content = "vorhandener Text"
@@ -652,10 +653,8 @@ func screenshotFixtureDirectoriesAreOwned() throws {
     let sandbox = parent.appendingPathComponent("runner-tmp")
     try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: false)
     let fromRunner = SelfTest.makeScreenshotFixtureDirectory(environment: ["TMPDIR": sandbox.path])
-    // Pfadvergleich statt URL-Vergleich: `standardizedFileURL` hängt unter
-    // `/var/folders` einen Schrägstrich an, unter der `/tmp`-Sandbox von
-    // `test.sh` nicht (belegt 2026-09-17) — der URL-Vergleich hing damit am
-    // Ort der Sandbox, nicht am geprüften Verhalten.
+    // Pfade statt URLs vergleichen: `standardizedFileURL` kann je nach
+    // Sandbox-Ort einen abschließenden Schrägstrich ergänzen.
     #expect(fromRunner.deletingLastPathComponent().standardizedFileURL.path
             == sandbox.standardizedFileURL.path)
     #expect(first != second)

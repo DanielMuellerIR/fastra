@@ -1,21 +1,10 @@
 // ColumnTypingDriftTests.swift
 //
-// Regressionstests für den Tester-Befund vom 2026-08-28 (Crash-Report
-// EFD87C70-8440-4AA9-9D92-24E87E27B802, „Zeilen völlig auseinandergerissen“):
-// Nach einer Rechteckauswahl (Alt-Drag) über führenden Leerraum zerlegte
-// wiederholtes Tippen die Zeilen an wandernden, scheinbar zufälligen Stellen.
-//
-// Wurzel: `TextSelectionManager.didReplaceCharacters` rechnete beim ERSETZEN
-// eines nicht-leeren Bereichs die Verschiebung nachfolgender Cursor falsch —
-// `delta = replacementLength` statt `replacementLength - range.length`. Bei
-// einer Mehrfachersetzung (Tippen in eine Rechteckauswahl, ein Bereich pro
-// Zeile) sammelt jeder weiter unten platzierte Cursor den Fehler aller über
-// ihm liegenden Ersetzungen auf: Er steht danach mitten in seiner Zeile, und
-// jeder weitere Tastendruck fügt dort ein — die beobachteten „gesprengten“
-// Zeilen.
-//
-// Geprüft wird das reale Nutzer-Szenario über die öffentlichen Eingabe-APIs
-// (Rechteckauswahl, Backspace, Tippen), nicht die Patch-Zeile.
+// Bei Rechteckersetzungen müssen nachfolgende Cursor um
+// `replacementLength - range.length` verschoben werden. Nur die Ersatzlänge
+// zu addieren summiert je Zeile Fehler auf; weiteres Tippen würde an falschen
+// Positionen einfügen. Öffentliche Eingabe-APIs für Rechteckauswahl, Backspace
+// und Tippen prüfen das Verhalten unabhängig von der Patch-Zeile.
 
 import AppKit
 import Testing
@@ -40,9 +29,8 @@ private func cursorLocations(_ textView: CodeEditTextView.TextView) -> [Int] {
 @Test("Tippen in eine Mehrfachauswahl setzt jeden Cursor hinter seine eigene Ersetzung")
 @MainActor
 func typingIntoMultipleRangesPlacesCursorsAfterEachReplacement() {
-    // Drei Zeilen mit unterschiedlich LANGEM führenden Leerraum (Tab,
-    // vier Leerzeichen, zwei Leerzeichen) — genau die Situation der
-    // Zutatenliste aus dem Befund.
+    // Drei Zeilen mit unterschiedlich langem führendem Leerraum:
+    // Tab, vier Leerzeichen, zwei Leerzeichen.
     let textView = makeTextView("\t500\n    600\n  700")
 
     // Die Rechteckauswahl markiert pro Zeile den führenden Leerraum.
@@ -56,7 +44,7 @@ func typingIntoMultipleRangesPlacesCursorsAfterEachReplacement() {
     textView.insertText(" ")
 
     #expect(textView.string == " 500\n 600\n 700")
-    // Jeder Cursor muss direkt HINTER seinem eingefügten Leerzeichen stehen.
+    // Jeder Cursor muss direkt hinter seinem eingefügten Leerzeichen stehen.
     // Mit dem Delta-Fehler standen sie bei [1, 7, 16] — mitten im Text bzw.
     // hinter dem Dokumentende.
     #expect(cursorLocations(textView) == [1, 6, 11])
@@ -71,9 +59,8 @@ func typingIntoMultipleRangesPlacesCursorsAfterEachReplacement() {
 @Test("Rechteckauswahl, Backspace und wiederholtes Tippen rücken alle Zeilen gleichmäßig ein")
 @MainActor
 func columnBackspaceThenTypingKeepsLinesAligned() {
-    // Gemischter Leerraum wie im Befund („Leerzeichen oder Tabs“):
-    // Tab / vier Leerzeichen / zwei Leerzeichen plus Tab — alle enden
-    // visuell an Spalte 4.
+    // Gemischter Leerraum: Tab, vier Leerzeichen, zwei Leerzeichen plus Tab.
+    // Alle enden visuell an Spalte 4.
     let textView = makeTextView(
         "\t500 g Pasta\n    600 g Haehnchen\n  \t700 ml Bruehe"
     )

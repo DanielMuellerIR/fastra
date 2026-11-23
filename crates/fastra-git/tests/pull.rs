@@ -558,11 +558,29 @@ fn explicit_raw_ref_and_ff_without_commit_identity_work() {
 }
 #[test]
 fn stale_preview_never_launches_native_pull_and_new_preview_does() {
-    use std::os::unix::fs::PermissionsExt;
     let f = Fixture::new(false, false);
     let wrapper = f.t.path().join("git-proof");
-    fs::write(&wrapper,"#!/bin/sh\nfor arg in \"$@\"; do if [ \"$arg\" = pull ]; then printf native-pull > .git/pull-started; fi; done\nexec /usr/bin/git \"$@\"\n").unwrap();
-    fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o700)).unwrap();
+    let script = r#"#!/bin/sh
+for arg in "$@"; do
+    if [ "$arg" = pull ]; then
+        printf native-pull > .git/pull-started
+    fi
+done
+exec /usr/bin/git "$@"
+"#;
+    // Parallele Kindstarts können einen Schreibdeskriptor bis zum exec erben.
+    // Ein separater Schreibprozess beendet sich vor dem ersten Start des Skripts.
+    let written = Command::new("/bin/sh")
+        .args([
+            "-c",
+            "umask 077; printf '%s' \"$2\" > \"$1\" && /bin/chmod 700 \"$1\"",
+            "write-git-proof",
+        ])
+        .arg(&wrapper)
+        .arg(script)
+        .status()
+        .unwrap();
+    assert!(written.success());
     let r = Git::new(wrapper)
         .unwrap()
         .discover(f.path(), Policy::default(), &Cancellation::default())

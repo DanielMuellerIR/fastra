@@ -148,7 +148,7 @@ struct TextSnippetSheet: View {
     }
 
     private func protectDraft(_ action: @escaping () -> Void) {
-        if session.dirty { pendingAction = action; showDiscard = true }
+        if session.requiresDiscardConfirmation { pendingAction = action; showDiscard = true }
         else { action() }
     }
 }

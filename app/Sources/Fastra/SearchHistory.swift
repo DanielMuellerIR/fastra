@@ -1,13 +1,13 @@
 // SearchHistory.swift
 //
 // Persistenz + reine Logik für den Such-Verlauf (BBEdit: „Search History"-
-// Popup am Find-Feld). Ein Eintrag ist ein Find-/Replace-PAAR — beim
+// Popup am Find-Feld). Ein Eintrag ist ein Find-/Replace-Paar — beim
 // Auswählen werden beide Felder gefüllt, genau wie in BBEdit.
 
 import Foundation
 
 /// Ein gemerktes Such-/Ersetz-Paar. `id` ist nur zur SwiftUI-Identifikation
-/// (ForEach im Popup) und wird NICHT persistiert — beim Laden frisch erzeugt,
+/// (ForEach im Popup) und wird nicht persistiert — beim Laden frisch erzeugt,
 /// damit die Liste nicht bei jedem Start „neu" wirkt (gleiches Muster wie
 /// `SearchFolderEntry`).
 struct SearchHistoryEntry: Identifiable, Hashable, Codable {
@@ -39,7 +39,7 @@ enum SearchHistoryStore {
     static let maxCount = 15
 
     /// Reine Logik fürs Voranstellen: Das frisch benutzte Paar landet ganz
-    /// oben. Ein identisches Paar (gleicher Find UND gleicher Replace) wird
+    /// oben. Ein identisches Paar (gleicher Find und gleicher Replace) wird
     /// nach oben verschoben statt dupliziert. Liste auf `max` gekürzt.
     ///
     /// Leerer Find-String → keine Aufnahme (gibt die Liste unverändert

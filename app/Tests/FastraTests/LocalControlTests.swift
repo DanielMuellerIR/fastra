@@ -72,6 +72,46 @@ struct LocalControlContractTests {
         #expect(throws: ControlFailure.expired) { try request.validate() }
     }
 
+    @Test("Interne Lade- und Navigationsaufträge weisen unvollständige Wire-Felder ab")
+    func validatedRequestsRejectMissingFields() throws {
+        let hash = String(repeating: "a", count: 64)
+        let snapshot = ControlRequest(operation: "snapshot", path: "/tmp/source", sha256: hash, location: 0, length: 0)
+        for field in ["path", "sha256", "location", "length"] {
+            var invalid = snapshot
+            switch field {
+            case "path": invalid.path = nil
+            case "sha256": invalid.sha256 = nil
+            case "location": invalid.location = nil
+            default: invalid.length = nil
+            }
+            #expect(throws: ControlFailure.invalidRequest) { try validatedControlSnapshot(invalid) }
+        }
+        let navigation = ControlRequest(operation: "navigate", sha256: hash, location: 0, length: 0,
+                                        sessionID: UUID(), documentID: UUID())
+        for field in ["sessionID", "documentID", "sha256", "location", "length"] {
+            var invalid = navigation
+            switch field {
+            case "sessionID": invalid.sessionID = nil
+            case "documentID": invalid.documentID = nil
+            case "sha256": invalid.sha256 = nil
+            case "location": invalid.location = nil
+            default: invalid.length = nil
+            }
+            #expect(throws: ControlFailure.invalidRequest) { try validatedControlNavigation(invalid) }
+        }
+        #expect(throws: ControlFailure.invalidRequest) { try validatedControlSnapshot(navigation) }
+        #expect(throws: ControlFailure.invalidRequest) { try validatedControlNavigation(snapshot) }
+    }
+
+    @Test("Pflichtwerte für Erklärung, Status, Abbruch und Schließen fehlen als Vertragsfehler")
+    func remainingOperationsRejectMissingFields() {
+        for operation in ["explanation", "status", "cancel", "close"] {
+            #expect(throws: ControlFailure.invalidRequest) {
+                try ValidatedControlOperation(ControlRequest(operation: operation))
+            }
+        }
+    }
+
     @Test("UTF16-Auswahl respektiert Emoji, Grapheme, CRLF und EOF")
     func graphemeRanges() throws {
         let text = "a\r\n😀e\u{301}\n"
@@ -100,12 +140,12 @@ struct LocalControlContractTests {
         try bytes.write(to: url)
         let request = ControlRequest(operation: "snapshot", path: url.path,
                                      sha256: FileSnapshot.sha256Hex(bytes), location: 5, length: 2)
-        let loaded = try ControlSnapshotLoader.load(request)
+        let loaded = try ControlSnapshotLoader.load(validatedControlSnapshot(request))
         #expect(loaded.content == "one\r\n😀\n")
         #expect(loaded.bom == Data([0xff, 0xfe]))
         #expect(loaded.diskSnapshot?.sha256 == request.sha256)
         var stale = request; stale.sha256 = String(repeating: "0", count: 64)
-        #expect(throws: ControlFailure.stale) { try ControlSnapshotLoader.load(stale) }
+        #expect(throws: ControlFailure.stale) { try ControlSnapshotLoader.load(validatedControlSnapshot(stale)) }
     }
 
     @Test("Loader lehnt Binärdaten, Verzeichnisse, FIFO und große Quellen ab")
@@ -117,7 +157,7 @@ struct LocalControlContractTests {
         func rejected(_ path: String) {
             let request = ControlRequest(operation: "snapshot", path: path,
                                          sha256: String(repeating: "0", count: 64), location: 0, length: 0)
-            #expect(throws: ControlFailure.source) { try ControlSnapshotLoader.load(request) }
+            #expect(throws: ControlFailure.source) { try ControlSnapshotLoader.load(validatedControlSnapshot(request)) }
         }
         try Data([0, 1, 2]).write(to: url)
         rejected(url.path); rejected(root.path)
@@ -192,7 +232,7 @@ struct LocalControlJobTests {
         _ = NSApplication.shared
         let (url, request) = try fixture()
         defer { try? FileManager.default.removeItem(at: url) }
-        let loaded = try ControlSnapshotLoader.load(request)
+        let loaded = try ControlSnapshotLoader.load(validatedControlSnapshot(request))
         let controller = LocalControlController(showWindows: false, load: { _ in
             // Absichtlich unkooperative Completion: Auch ohne Task-Abbruch
             // muss die Generation ein nachträgliches Installieren verhindern.
@@ -231,7 +271,7 @@ struct LocalControlJobTests {
         #expect(try controller.execute(ControlRequest(operation: "status", jobID: pending.id)).job?.state == "cancelled")
         #expect(window.textView.selectedRange() == NSRange(location: 1, length: 0))
 
-        let loaded = try ControlSnapshotLoader.load(request)
+        let loaded = try ControlSnapshotLoader.load(validatedControlSnapshot(request))
         let closing = LocalControlController(showWindows: false, load: { _ in
             try? await Task.sleep(nanoseconds: 80_000_000)
             return loaded
@@ -318,4 +358,21 @@ struct LocalControlEOFTests {
         }
         Issue.record("EOF-Auftrag erreichte keinen Endzustand")
     }
+}
+
+func validatedControlSnapshot(_ request: ControlRequest) throws -> ValidatedControlSnapshotRequest {
+    guard case .snapshot(let payload) = try ValidatedControlOperation(request) else { throw ControlFailure.invalidRequest }
+    return payload
+}
+
+func validatedControlSourceSnapshot(_ request: ControlRequest, allowExpired: Bool = false) throws -> ValidatedControlSourceSnapshotRequest {
+    guard case .sourceSnapshot(let payload) = try ValidatedControlOperation(request, allowExpired: allowExpired) else {
+        throw ControlFailure.invalidRequest
+    }
+    return payload
+}
+
+func validatedControlNavigation(_ request: ControlRequest) throws -> ValidatedControlNavigationRequest {
+    guard case .navigate(let payload) = try ValidatedControlOperation(request) else { throw ControlFailure.invalidRequest }
+    return payload
 }

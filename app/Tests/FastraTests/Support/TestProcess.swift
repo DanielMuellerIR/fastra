@@ -19,8 +19,7 @@ struct TestProcessTimeout: Error, CustomStringConvertible {
 /// `operations` bündelt die Kernel-Abfragen der Wiederverwendungs-Wächter
 /// (Startzeit einer PID, Mitglieder der Prozessgruppe, Signal an genau eine
 /// PID). Standard sind die echten Aufrufe; nur Tests setzen Attrappen ein und
-/// spielen damit eine neu vergebene PID oder Gruppen-ID deterministisch durch
-/// (Review-Hinweis 2026-09-17).
+/// spielen damit eine neu vergebene PID oder Gruppen-ID deterministisch durch.
 func runTestProcess(_ executable: String, arguments: [String],
                     environment: [String: String]? = nil,
                     timeout: TimeInterval = 120,
@@ -161,7 +160,7 @@ func runTestProcess(_ executable: String, arguments: [String],
 /// niemals das Beenden seiner gesamten (möglicherweise fremden) Prozessgruppe.
 /// `operations` ist wie bei `runTestProcess` nur für Attrappen in Tests da.
 /// Der Nachweis über `/bin/ps` bleibt absichtlich ein echter Prozessstart:
-/// Er muss die WIRKLICHE Kommandozeile der PID lesen.
+/// Er muss die wirkliche Kommandozeile der PID lesen.
 func stopTestFixtureProcess(_ pid: pid_t, marker: String,
                             operations: ProcessGroupOperations = .live) {
     guard pid > 1, !marker.isEmpty,
@@ -190,17 +189,56 @@ func stopTestFixtureProcess(_ pid: pid_t, marker: String,
 /// Teil ihrer künstlichen Prozesswelt behandeln. Nur die eine globale
 /// Fremd-App-Abfrage wird ausgeblendet; Kindprozess-Abfragen gehen weiter an
 /// das echte `pgrep`, damit die Cleanup-Tests aussagekräftig bleiben.
-func pathIgnoringForeignFastraProcess(in root: URL) throws -> String {
+/// Die Guardregression lässt nur die echte Antwort für ihre eigene, vorher
+/// bestätigte Prozessidentität durch. Startzeit und zufällige Kommandozeile
+/// binden auch die Shell-Abfrage an diese Fixture.
+func pathIgnoringForeignFastraProcess(in root: URL,
+                                     matchingForeignProcess: ProcessIdentity? = nil) throws -> String {
     let bin = root.appendingPathComponent("bin")
     let pgrep = bin.appendingPathComponent("pgrep")
     try FileManager.default.createDirectory(
         at: bin, withIntermediateDirectories: true
     )
+    var allowedPID = ""
+    var allowedStart = ""
+    var allowedCommand = ""
+    if let identity = matchingForeignProcess,
+       ProcessGroupOperations.live.startToken(identity.pid) == identity.startToken {
+        let start = try runTestProcess("/bin/ps", arguments: ["-p", "\(identity.pid)", "-o", "lstart="], timeout: 2)
+        let command = try runTestProcess("/bin/ps", arguments: ["-ww", "-p", "\(identity.pid)", "-o", "command="], timeout: 2)
+        if start.status == 0, command.status == 0,
+           ProcessGroupOperations.live.startToken(identity.pid) == identity.startToken {
+            allowedPID = String(identity.pid)
+            allowedStart = start.output.trimmingCharacters(in: .newlines)
+            allowedCommand = command.output.trimmingCharacters(in: .newlines)
+        }
+    }
+    func quoted(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'" }
     try #"""
     #!/bin/bash
-    if [ "${1:-}" = "-f" ] \
-       && [ "${2:-}" = '/Fastra\.app/Contents/MacOS/Fastra([[:space:]]|$)' ]; then
-      exit 1
+    if [ "$#" -eq 2 ] && [ "$1" = "-f" ]; then
+      case "$2" in
+        '/Fastra\.app/Contents/MacOS/Fastra([[:space:]]|$)'|'/[^/]+\.app/Contents/MacOS/Fastra([[:space:]]|$)')
+          [ \#(matchingForeignProcess == nil ? "0" : "1") -eq 1 ] || exit 1
+          allowed_pid=\#(quoted(allowedPID))
+          owned_probe() {
+            [ -n "$allowed_pid" ] \
+              && [ "$(/bin/ps -p "$allowed_pid" -o lstart= 2>/dev/null)" = \#(quoted(allowedStart)) ] \
+              && [ "$(/bin/ps -ww -p "$allowed_pid" -o command= 2>/dev/null)" = \#(quoted(allowedCommand)) ]
+          }
+          owned_probe || { /usr/bin/pgrep "$@" >/dev/null; exit 1; }
+          matches="$(/usr/bin/pgrep "$@")"
+          owned_probe || exit 1
+          while IFS= read -r matched_pid; do
+            if [ "$matched_pid" = "$allowed_pid" ]; then
+              owned_probe || exit 1
+              printf '%s\n' "$matched_pid"
+              exit 0
+            fi
+          done <<< "$matches"
+          exit 1
+          ;;
+      esac
     fi
     exec /usr/bin/pgrep "$@"
     """#.write(to: pgrep, atomically: true, encoding: .utf8)

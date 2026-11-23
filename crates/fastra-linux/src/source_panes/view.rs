@@ -1,4 +1,4 @@
-//! Die abgeleitete View besitzt den vollständigen PRIMARY-Lifecycle ihrer Elternklasse.
+//! Die Quellansicht verwaltet PRIMARY und zusätzliche Kind-Widgets vor dem Abbau der Elternklasse.
 use super::*;
 use gtk::subclass::prelude::*;
 use sourceview5::subclass::prelude::*;
@@ -13,6 +13,7 @@ mod imp {
         pub(super) folds: RefCell<Weak<folding::Folds>>,
         pub(super) fold_pane: Cell<usize>,
         pub(super) search_caret: RefCell<Option<gtk::TextMark>>,
+        pub(super) completion_popover: RefCell<Option<gtk::Popover>>,
     }
     #[glib::object_subclass]
     impl ObjectSubclass for View {
@@ -46,6 +47,10 @@ mod imp {
         }
         fn dispose(&self) {
             if !self.disposed.replace(true) {
+                // GtkTextView kennt nur seine eigenen Kinder und kann dieses Popover nicht entfernen.
+                if let Some(popover) = self.completion_popover.borrow_mut().take() {
+                    popover.unparent();
+                }
                 self.obj().set_search_caret(None);
                 self.restore();
                 self.buffer.borrow_mut().take();
@@ -53,6 +58,13 @@ mod imp {
         }
     }
     impl WidgetImpl for View {
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            self.parent_size_allocate(width, height, baseline);
+            if let Some(popover) = self.completion_popover.borrow().as_ref().filter(|p| p.is_visible()) {
+                popover.present();
+            }
+        }
+
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             self.parent_snapshot(snapshot);
             if let Some(folds) = self.folds.borrow().upgrade() {
@@ -159,6 +171,12 @@ glib::wrapper! {
     @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Scrollable;
 }
 impl View {
+    pub(super) fn bind_completion_popover(&self, popover: &gtk::Popover) {
+        assert!(self.imp().completion_popover.borrow().is_none());
+        popover.set_parent(self);
+        self.imp().completion_popover.replace(Some(popover.clone()));
+    }
+
     pub(super) fn bind_folding(&self, folds: &Rc<folding::Folds>, index: usize) {
         *self.imp().folds.borrow_mut() = Rc::downgrade(folds);
         self.imp().fold_pane.set(index);

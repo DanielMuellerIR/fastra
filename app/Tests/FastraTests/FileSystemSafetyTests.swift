@@ -78,19 +78,30 @@ struct FileSystemSafetyTests {
         let files = [root.appendingPathComponent("a.txt"), root.appendingPathComponent("b.txt")]
         for file in files { try Data("foo".utf8).write(to: file) }
         let support = try #require(root.resourceValues(forKeys: [.volumeSupportsSwapRenamingKey]).volumeSupportsSwapRenaming)
-        let preview = try transaction(files, options: SearchOptions(find: "foo", replace: "bar", isRegex: false))
+        let options = SearchOptions(find: "foo", replace: "bar", isRegex: false)
         if support {
+            let preview = try transaction(files, options: options)
             let session = try preview.execute(backupRoot: backups, cleanupOlderThan: nil)
             #expect(session.entries.count == 2)
             for file in files { #expect(try Data(contentsOf: file) == Data("bar".utf8)) }
             _ = try ApplyEngine.undo(session)
         } else {
+            // Die erste Datei wäre schreibbar. Erst das zweite Volume muss den gesamten Auftrag stoppen.
+            let earlier = backups.appendingPathComponent("earlier.txt")
+            let journalRoot = backups.appendingPathComponent("undo", isDirectory: true)
+            try #require(backups.resourceValues(forKeys: [.volumeSupportsSwapRenamingKey]).volumeSupportsSwapRenaming == true)
+            try Data("foo".utf8).write(to: earlier)
+            let preview = try transaction([earlier] + files, options: options)
             do {
-                _ = try preview.execute(backupRoot: backups, cleanupOlderThan: nil)
+                _ = try preview.execute(backupRoot: journalRoot, cleanupOlderThan: nil)
                 Issue.record("Apply schrieb trotz fehlender atomarer Austausch-Unterstützung")
-            } catch ApplyError.conflict(let message) {
-                #expect(message == AtomicFileCommit.Failure.unsupportedAtomicSwap.localizedDescription)
+            } catch ApplyError.planNotApplyable(let message) {
+                #expect(message.contains(files[0].path))
+                #expect(message.contains(AtomicFileCommit.Failure.unsupportedAtomicSwap.localizedDescription))
             }
+            #expect(try Data(contentsOf: earlier) == Data("foo".utf8))
+            #expect(try FileManager.default.contentsOfDirectory(atPath: journalRoot.path).isEmpty)
+            #expect(try Set(FileManager.default.contentsOfDirectory(atPath: root.path)) == Set(["a.txt", "b.txt"]))
         }
         for file in files { #expect(try Data(contentsOf: file) == Data("foo".utf8)) }
     }
@@ -152,9 +163,9 @@ struct FileSystemSafetyTests {
             #expect(partial.entries.count == 1)
             #expect(try Data(contentsOf: second) == bytes)
             _ = try ApplyEngine.undo(partial)
-        } catch ApplyError.conflict(let message) {
+        } catch ApplyError.planNotApplyable(let message) {
             #expect(!supportsSwap && !renamed)
-            #expect(message == AtomicFileCommit.Failure.unsupportedAtomicSwap.localizedDescription)
+            #expect(message.contains(AtomicFileCommit.Failure.unsupportedAtomicSwap.localizedDescription))
         }
         #expect(try Data(contentsOf: first) == bytes)
         #expect(try Data(contentsOf: second) == bytes)

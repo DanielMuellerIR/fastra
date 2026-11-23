@@ -1,7 +1,7 @@
 // FileTreeFilterTests.swift
 //
-// Unit-Tests des Dateinamens-Filters der Projekt-Seitenleiste (Etappe 3
-// Wunschpaket 2026-07c): Teilstring-Matching (case-insensitiv, Umlaute),
+// Unit-Tests des Dateinamens-Filters der
+// Projekt-Seitenleiste: Teilstring-Matching (case-insensitiv, Umlaute),
 // versteckte Dateien, Eltern-Aufklappung, Zähler und sichtbare Kappung.
 
 import Testing
@@ -64,13 +64,9 @@ func detachedFilterScanCancellation() async {
     let scan = Task {
         await FileTreeFilter.runCancellableScan {
             probe.markStarted()
-            // Der Körper muss so lange leben, bis das `cancel()` des Tests
-            // ihn erreicht — und das kann in der vollen parallelen Suite
-            // beliebig verzögert sein. Mit einer festen kurzen Schleife
-            // (500 × 1 ms) lief er unter Last schon vor dem Abbruch aus,
-            // und die Beobachtung fehlte (reproduziert 2026-08-16).
-            // Funktioniert die Weitergabe, endet der Scan in Millisekunden;
-            // die Frist begrenzt nur den roten Pfad.
+            // Der Scan muss bis zum `cancel()` des Tests leben. Eine kurze feste
+            // Schleife könnte unter paralleler Last vorher auslaufen und den Abbruch
+            // ungeprüft lassen. Die Frist begrenzt nur den Fehlerfall.
             let deadline = Date().addingTimeInterval(30)
             while Date() < deadline {
                 if Task.isCancelled {

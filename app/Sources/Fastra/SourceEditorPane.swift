@@ -26,12 +26,12 @@ struct SourceEditorPane: View {
     private var activeCustomLanguage: CustomLanguage? { EditorView.customLanguage(for: workspace.activeTab) }
     private var activeTabIsMarkdown: Bool { workspace.activeTabIsMarkdown }
     @StateObject private var minimapLayoutCoordinator = MinimapLayoutCoordinator()
-    /// Highlight-Provider der Eigen-Sprachen (Registry, Etappe 3 Wunschpaket
-    /// 2026-07b) — ein Provider je Sprache, überlebt Tab-Wechsel/Remounts.
+    /// Highlight-Provider der Eigen-Sprachen (Registry, der aktuellen
+    /// Sprachauswahl) — ein Provider je Sprache, überlebt Tab-Wechsel/Remounts.
     @StateObject private var customProviders = CustomLanguageProviders()
 
-    /// 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c). Stark gehalten —
-    /// der `completionDelegate` des Editors ist nur eine weak-Referenz.
+    /// 4D-Vervollständigung. Stark gehalten — der `completionDelegate` des
+    /// Editors ist nur eine weak-Referenz.
     @StateObject private var fourDCompletion = FourDCompletionDelegate()
     @StateObject private var foldProviders = CodeFoldProviders()
     /// Parameterhilfe für 4D-Aufrufe (Panel unter der Aufrufzeile). Lebt wie
@@ -85,16 +85,15 @@ struct SourceEditorPane: View {
                 isFourD: activeCustomLanguage?.id == CustomLanguageRegistry.fourD.id),
             undoManager: workspace.activeTab.map { $0.undoHistory.manager(for: $0.content) },
             coordinators: [minimapLayoutCoordinator, sourceCoordinator],
-            // 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c) — NUR
-            // bei aktiver 4D-Sprache; sonst bleibt das Vorschlagsfenster
-            // komplett aus (Delegate nil).
+            // 4D-Vervollständigung — nur bei aktiver 4D-Sprache; sonst bleibt
+            // das Vorschlagsfenster komplett aus (Delegate nil).
             completionDelegate: activeCustomLanguage?.id == CustomLanguageRegistry.fourD.id
                 ? fourDCompletion : nil
         )
         .background(GutterDimmingBridge().frame(width: 0, height: 0))
         // Frisch erscheinender Editor (neuer Tab ⌘T, Tab-Wechsel, fertig geladene
         // Datei, programmatischer Reload) soll sofort den Tastaturfokus bekommen —
-        // sonst verpuffte nach ⌘T ein direktes ⌘V (Daniel-Befund 2026-06-25).
+        // sonst verpuffte nach ⌘T ein direktes ⌘V.
         .onAppear { if isActive { EditorView.focusActiveEditor(in: workspace) } }
         .onChange(of: activeTabIsMarkdown) { _, _ in
             EditorView.configureMarkdownDrop(in: workspace)
@@ -107,14 +106,14 @@ struct SourceEditorPane: View {
                 switchDocument(to: workspace.activeDocumentID)
             }
             guard let target = memory.pendingScrollRestore else {
-                EditorView.scrollRestoreDebug("onAppear ohne Restore-Ziel")
+                workspace.scrollRestoreDiagnostics.emit("onAppear ohne Restore-Ziel")
                 return
             }
             // Das Ziel-Dokument festhalten: Wechselt der Nutzer währenddessen
             // erneut den Tab, darf weder weiter auf dessen ScrollView
             // gescrollt noch sein frischer Auftrag gelöscht werden.
             let restoreDocumentID = workspace.activeDocumentID
-            EditorView.scrollRestoreDebug("onAppear startet Restore auf y=\(Int(target.y))")
+            workspace.scrollRestoreDiagnostics.emit("onAppear startet Restore auf y=\(Int(target.y))")
             EditorView.restoreScrollOffset(target, in: workspace,
                                            pane: pane, documentID: restoreDocumentID) {
                 guard workspace.activeDocumentID == restoreDocumentID else { return }
@@ -149,11 +148,11 @@ struct SourceEditorPane: View {
                 }
             }
         }
-        // Live-Trefferanzeige (Etappe 2 Wunschpaket 2026-07b): Markierungen
-        // leben auf der TextView-Instanz und verschwinden bei jedem Remount
-        // (Tab-Wechsel, Reload) von selbst — onAppear zeichnet sie für den
-        // neuen Editor nach. Die übrigen Auslöser: neue Suchtreffer aus dem
-        // Debounce, Scope-Wechsel, Öffnen/Schließen der Suchmaske.
+        // Live-Trefferanzeige: Markierungen leben auf der TextView-Instanz und
+        // verschwinden bei jedem Remount (Tab-Wechsel, Reload) von selbst —
+        // onAppear zeichnet sie für den neuen Editor nach. Die übrigen
+        // Auslöser: neue Suchtreffer aus dem Debounce, Scope-Wechsel,
+        // Öffnen/Schließen der Suchmaske.
         .onAppear { EditorView.updateSearchEmphasis(in: workspace) }
         .onReceive(workspace.$bufferMatches) { _ in
             EditorView.updateSearchEmphasis(in: workspace)
@@ -216,7 +215,7 @@ struct SourceEditorPane: View {
         // CodeEditSourceEditor `findPanelVisible = true` in den State zurück.
         // Wir fangen das ab, schließen das Editor-Panel sofort wieder
         // (findPanelVisible = false → der Editor reconciled und blendet aus)
-        // und öffnen STATTDESSEN unsere eigene Suchmaske. Das ist unabhängig
+        // und öffnen stattdessen unsere eigene Suchmaske. Das ist unabhängig
         // von der (nicht steuerbaren) Reihenfolge der Event-Monitore.
         .onChange(of: memory.editorState.findPanelVisible) { _, visible in
             guard visible == true else { return }
@@ -231,11 +230,8 @@ struct SourceEditorPane: View {
         }
         .onAppear {
             if isActive { scheduleStats(for: memory.editorState.cursorPositions ?? []) }
-            // Ein Sprung, dessen Notification in die Editor-Neuerzeugung
-            // fiel (alter Empfänger abgehängt, neuer noch nicht abonniert),
-            // wird hier nachgeholt. Ohne dieses Nachholen wirkte der Klick
-            // auf einen Suchtreffer unter Last gelegentlich „folgenlos"
-            // (reproduziert 2026-08-19 im jump-Selbsttest, 1 von 3 Läufen).
+            // Einen beim Editor-Remount hinterlegten Sprung nachholen. Seine Notification
+            // kann zwischen Abhängen des alten und Abonnieren des neuen Editors liegen.
             guard isActive, let pending = workspace.pendingEditorJump,
                   pending.documentID == workspace.activeTab?.documentID else {
                 return
@@ -265,13 +261,13 @@ struct SourceEditorPane: View {
         // Programmatische Modelländerungen erzeugen beim Remount einen neuen
         // gemeinsamen Speicher; native Edits melden sich nach endEditing über
         // den Coordinator an den bestehenden Workspace-Binding-Pfad zurück.
-        // Bei einem Tab-Wechsel UND nach abgeschlossenem
+        // Bei einem Tab-Wechsel und nach abgeschlossenem
         // asynchronen Laden (isLoading wechselt false → sourceEditor wechselt
         // auf actualEditor) wird der Editor neu erzeugt → `makeNSViewController`
         // läuft mit dem bereits vollständig geladenen Inhalt. Die ID bleibt
-        // beim Tippen konstant — Eingaben werden NICHT unterbrochen.
+        // beim Tippen konstant — Eingaben werden nicht unterbrochen.
         //
-        // `editorReloadNonce` hängt zusätzlich an der ID: ein PROGRAMMATISCHER
+        // `editorReloadNonce` hängt zusätzlich an der ID: ein programmatischer
         // Buffer-Replace (Alle/Einzel-Ersetzen) zählt ihn hoch → der Editor wird
         // mit dem ersetzten Inhalt neu erzeugt und zeigt die Änderung sofort
         // (sonst bliebe der alte Text stehen — „Ersetzen wirkt folgenlos“).
@@ -279,15 +275,10 @@ struct SourceEditorPane: View {
         .id(EditorView.editorIdentity(tabID: workspace.activeTab?.documentID,
                                       reloadNonce: workspace.editorReloadNonce))
         .onChange(of: workspace.activeDocumentID) { _, newTabID in switchDocument(to: newTabID) }
-        // Willkommens-Platzhalter (Umbau 2026-07-30, ersetzt den früheren
-        // Einzeilen-Hinweis): Solange der aktive Tab ein unberührter leerer
-        // Tab ist, liegt der Willkommensinhalt über der Editorfläche —
-        // Cursor und Tastatur gehören weiter dem Editor dahinter. Beim
-        // ersten getippten Zeichen ist der Tab nicht mehr unberührt →
-        // SwiftUI blendet das Overlay automatisch aus; der Editor wird dabei
-        // NICHT neu erzeugt, weil .id(tab.id) konstant bleibt. Die
-        // Willkommens-Knöpfe bleiben klickbar; freie Flächen reichen Klicks
-        // an den Editor durch (WelcomeView hat bewusst keinen Hintergrund).
+        // Bei unberührtem leerem Tab liegt die Starthilfe über dem Editor.
+        // Das erste Zeichen blendet sie aus, ohne den Editor neu zu erzeugen
+        // (`.id(tab.id)` bleibt gleich). Knöpfe bleiben klickbar; der hintergrundlose
+        // `WelcomeView` reicht Klicks auf freie Flächen an den Editor weiter.
         .overlay(
             Group {
                 if workspace.isWelcomeScreen {
@@ -315,7 +306,7 @@ struct SourceEditorPane: View {
             currentOffset: liveOffset ?? memory.editorState.scrollPosition,
             to: newTabID
         )
-        EditorView.scrollRestoreDebug("switchTab gemerkt="
+        workspace.scrollRestoreDiagnostics.emit("switchTab gemerkt="
             + "\(Int((liveOffset ?? memory.editorState.scrollPosition ?? .zero).y)) "
             + "live=\(liveOffset != nil) "
             + "restore=\(memory.pendingScrollRestore.map { Int($0.y) }.map(String.init) ?? "nil")")
@@ -367,7 +358,7 @@ struct SourceEditorPane: View {
         let primaryRange = positions.last?.range
         let selection = !workspace.activeMarkdownIsVisual && (primaryRange?.length ?? 0) > 0 ? primaryRange : nil
         // Selektion in den Workspace spiegeln — Quelle für „Nur in Auswahl"
-        // (K3) und „Auswahl als Suchbegriff" (⌘E, K5). Bewusst die LIVE-
+        // (K3) und „Auswahl als Suchbegriff" (⌘E, K5). Bewusst die Live-
         // Selektion; das Einfrieren für die Suche macht der Workspace selbst
         // (setSearchInSelectionOnly), damit ein Treffer-Sprung den Such-
         // Bereich nicht zusammenschrumpft.

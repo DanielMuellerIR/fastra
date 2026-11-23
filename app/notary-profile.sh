@@ -23,15 +23,10 @@ fastra_require_notary_profile() {
     profile="${profile:-notary}"
   fi
 
-  # `history` ist der verlässliche Test des notarytool-Profils. Ein bloßer
-  # `security find-generic-password`-Check findet gültige Profile nicht immer.
-  #
-  # Fünf Versuche statt einem: `history` meldet gelegentlich fälschlich „No
-  # Keychain password item found", obwohl das Profil da ist (am 2026-07-26
-  # belegt — Versuch 1 fehlgeschlagen, Versuch 2 sofort ok). Ein einzelner
-  # Fehlversuch würde sonst einen ganzen Lauf grundlos abbrechen oder unnötig
-  # nach store-credentials fragen; ein wirklich fehlendes Profil scheitert auch
-  # nach fünf Versuchen.
+  # Notarytool-Profil über `history` prüfen; `security find-generic-password`
+  # erkennt gültige Profile nicht immer. Bis zu fünf Versuche tolerieren die
+  # gelegentliche falsche Meldung „No Keychain password item found“.
+  # Ein tatsächlich fehlendes Profil scheitert weiterhin.
   local attempt profile_ok=0
   for attempt in 1 2 3 4 5; do
     if xcrun notarytool history --keychain-profile "$profile" >/dev/null 2>&1; then

@@ -1,18 +1,6 @@
 use super::selftest::{find, view};
 use super::*;
-fn first_entry(widget: &gtk::Widget) -> Option<gtk::Entry> {
-    if let Some(e) = widget.downcast_ref::<gtk::Entry>() {
-        return Some(e.clone());
-    }
-    let mut child = widget.first_child();
-    while let Some(w) = child {
-        if let Some(e) = first_entry(&w) {
-            return Some(e);
-        }
-        child = w.next_sibling();
-    }
-    None
-}
+
 pub(super) fn run(ui: Rc<Ui>) {
     assert_eq!(std::env::var("FASTRA_ISOLATED_DISPLAY").as_deref(), Ok("1"));
     let base = PathBuf::from(std::env::var_os("FASTRA_UI_TEST_ROOT").unwrap());
@@ -37,15 +25,7 @@ pub(super) fn run(ui: Rc<Ui>) {
         doc.buffer.insert(&mut doc.buffer.end_iter(), " dirty");
     }
     if scope == "project" {
-        crate::project_view::open(&ui);
-        let window = gtk::Window::list_toplevels()
-            .into_iter()
-            .filter_map(|w| w.downcast::<gtk::Window>().ok())
-            .find(|w| w.title().as_deref() == Some(ui.lang.text("Projektdateien", "Project files")))
-            .unwrap();
-        first_entry(window.upcast_ref())
-            .unwrap()
-            .set_text(inputs.to_str().unwrap());
+        crate::project_view::open_path(&ui, inputs.clone());
     }
     let phase = Cell::new(0);
     let pause = Cell::new(std::time::Instant::now());

@@ -1,16 +1,16 @@
 // GitDualPaneDiffView.swift
 //
-// Git-Diff auf dem GEMEINSAMEN Dual-Pane-Renderer (Etappe 2 Wunschpaket
-// 2026-07c). Der Git-spezifische Unterbau (GitDiffRequest/GitDiffParser,
-// Hunk-Folding, Mehr-Datei-Diffs, Commit-Metadaten, Unified-Fallback)
-// bleibt vollständig erhalten — NUR die Darstellungsschicht ist mit dem
-// Datei-Diff vereinheitlicht: eine Optik, eine Tastatur-Navigation, eine
-// Differenzen-Liste (früher: eigener Renderer `GitSideBySideDiffView`).
+// Git-Diff auf dem gemeinsamen Dual-Pane-Renderer.
+// Der Git-spezifische Unterbau (GitDiffRequest/GitDiffParser, Hunk-Folding,
+// Mehr-Datei-Diffs, Commit-Metadaten, Unified-Fallback) bleibt vollständig
+// erhalten — nur die Darstellungsschicht ist mit dem Datei-Diff
+// vereinheitlicht: eine Optik, eine Tastatur-Navigation, eine Differenzen-Liste
+// (früher: eigener Renderer `GitSideBySideDiffView`).
 
 import SwiftUI
 
 /// Pure Abbildung „Git-Diff-Modell → gemeinsames Anzeige-Modell".
-/// Die Zeilen-AUSRICHTUNG stammt unverändert aus `GitDiffParser`; hier wird
+/// Die Zeilen-Ausrichtung stammt unverändert aus `GitDiffParser`; hier wird
 /// nichts neu ausgerichtet, nur 1:1 übersetzt (unit-getestet).
 enum GitDiffDisplay {
 

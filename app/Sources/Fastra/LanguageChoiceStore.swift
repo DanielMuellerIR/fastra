@@ -1,26 +1,17 @@
 // LanguageChoiceStore.swift
 //
-// Merkt sich die manuelle Formatwahl aus dem Sprach-Chip der Fußzeile pro
-// DATEI. Ohne diesen Speicher galt die Wahl nur für den geöffneten Tab: Nach
-// dem Schließen der Datei oder einem Neustart fiel Fastra auf die Automatik
-// zurück. Bei einer Datei OHNE Endung ist die Automatik machtlos — die Wahl
-// war also genau dort verloren, wo sie am nötigsten ist (Daniel-Befund
-// 2026-08-06).
-//
-// Gespeichert wird ausschließlich der stabile Menü-Bezeichner der Wahl
-// (`LanguageMenuSupport.Entry.id`), nie ein Dokumentinhalt.
+// Speichert die manuelle Formatwahl aus dem Sprach-Chip pro Datei über
+// Schließen und Neustart hinweg. Das ist besonders für Dateien ohne Endung
+// nötig, deren Format die Automatik nicht erkennen kann.
+// Gespeichert wird nur `LanguageMenuSupport.Entry.id`, kein Dokumentinhalt.
 
 import Foundation
 
-/// Persistenter Zuordnungsspeicher „Dateipfad → gewähltes Format".
+/// Persistenter Zuordnungsspeicher „Dateipfad → gewähltes Format“.
 ///
-/// Der Speicher hält bewusst KEINE Kopie des Inhalts. Jedes Dokumentfenster
-/// erzeugt sich eine eigene Instanz; eine beim Initialisieren geladene und
-/// später vollständig zurückgeschriebene Kopie hätte deshalb alles
-/// überschrieben, was ein anderes Fenster inzwischen gespeichert hat — die
-/// Wahl aus Fenster A verschwand, sobald Fenster B eine eigene Wahl traf
-/// (Review 2026-08-06, Regel in AGENTS.md). Gelesen und geändert wird
-/// stattdessen immer der aktuelle Stand aus den Defaults.
+/// Jedes Dokumentfenster besitzt eine Instanz. Deshalb vor jedem Lesen und
+/// Ändern den aktuellen Defaults-Stand verwenden: Eine langlebige lokale
+/// Kopie könnte zwischenzeitliche Änderungen anderer Fenster überschreiben.
 final class LanguageChoiceStore {
 
     struct Payload: Codable, Equatable {
@@ -78,19 +69,18 @@ final class LanguageChoiceStore {
     /// Zieht gemerkte Wahlen nach einer Datei- oder Ordnerumbenennung mit.
     ///
     /// Die Schlüssel sind Dateipfade. Ohne diese Migration bliebe der Eintrag
-    /// am ALTEN Pfad liegen: Die verschobene Datei öffnete danach wieder mit
+    /// am alten Pfad liegen: Die verschobene Datei öffnete danach wieder mit
     /// der Automatik, und der verwaiste Eintrag belegte bis zur
     /// Größenbegrenzung Platz. Bei einem Ordner wandert der gesamte
     /// Pfadpräfix mit — auch für Dateien, die gar nicht offen sind und für
     /// die es deshalb keinen Tab gibt, über den man nachbessern könnte
-    /// (Review 2026-08-06).
     func moveChoices(from source: URL, to destination: URL) {
         let destinationKey = Self.key(for: destination)
-        // Die Quelle gibt es beim Aufruf meist NICHT mehr: Die Umbenennung
+        // Die Quelle gibt es beim Aufruf meist nicht mehr: Die Umbenennung
         // ist schon ausgeführt, erst danach zieht Fastra seinen Zustand nach.
         // `canonicalPath` beantwortet nur vorhandene Pfade, liefert also den
         // rohen Pfad zurück. Der zweite Kandidat setzt den Schlüssel deshalb
-        // aus dem kanonischen ELTERNORDNER und dem alten Namen zusammen —
+        // aus dem kanonischen Elternordner und dem alten Namen zusammen —
         // genau so, wie er beim Speichern entstanden ist.
         var sourceKeys: [String] = []
         for candidate in [Self.key(for: source), Self.keyViaParent(for: source)]
@@ -118,7 +108,7 @@ final class LanguageChoiceStore {
             for (oldKey, newKey) in renames {
                 payload.choices[newKey] = payload.choices.removeValue(forKey: oldKey)
                 // Ein bereits vorhandener Eintrag am Ziel wird ersetzt — nach
-                // dem Verschieben IST die Quelldatei die Datei am Zielpfad.
+                // dem Verschieben ist die Quelldatei die Datei am Zielpfad.
                 payload.order.removeAll { $0 == newKey }
             }
             payload.order = payload.order.map { renames[$0] ?? $0 }
@@ -163,7 +153,7 @@ final class LanguageChoiceStore {
     }
 
     /// Lesen, ändern, zurückschreiben — als eine ununterbrochene Einheit.
-    /// Geändert wird immer der FRISCH gelesene Stand, nie eine alte Kopie.
+    /// Geändert wird immer der frisch gelesene Stand, nie eine alte Kopie.
     private func mutate(_ change: (inout Payload) -> Void) {
         Self.lock.lock()
         defer { Self.lock.unlock() }

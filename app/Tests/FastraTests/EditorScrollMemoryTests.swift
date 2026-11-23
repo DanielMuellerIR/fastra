@@ -1,11 +1,8 @@
 // EditorScrollMemoryTests.swift
 //
-// Der sichtbare Ausschnitt gehört zum Tab, nicht zum Editor: Beim Tab-Wechsel
-// wird der eigentliche Editor per `.id` neu erzeugt und startet am
-// Dateianfang. Ohne gemerkten Ausschnitt riss CESEs „Einfügemarke sichtbar
-// machen" die Cursorzeile in die oberste Bildschirmzeile (Daniel-Befund
-// 2026-07-27). Die reine Merk-Logik ist hier geprüft; dass der Ausschnitt im
-// echten Fenster zurückkommt, prüft `-selftest tabscroll`.
+// Der sichtbare Ausschnitt gehört zum Tab. Ein per `.id` neu erzeugter
+// Editor beginnt sonst am Dateianfang und macht nur die Einfügemarke sichtbar.
+// Hier wird die Merklogik geprüft, im echten Fenster durch `-selftest tabscroll`.
 
 import AppKit
 import Testing

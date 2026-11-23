@@ -1,11 +1,11 @@
 // MarkdownImportBar.swift
 //
-// Dezente, NICHT-modale Leiste über dem Editor: bietet für ein erkanntes
+// Dezente, nicht-modale Leiste über dem Editor: bietet für ein erkanntes
 // Fremdformat die Umwandlung nach Markdown an und zeigt danach Warnungen oder
 // den echten Fehler.
 //
 // Bewusst kein Dialog beim Öffnen: Wer mehrere Dokumente hintereinander öffnet,
-// soll nicht jedes Mal wegklicken müssen. Der Klick auf „Umwandeln" IST die
+// soll nicht jedes Mal wegklicken müssen. Der Klick auf „Umwandeln" ist die
 // verlangte sichtbare Zustimmung — vorher schreibt Fastra nichts.
 
 import SwiftUI
@@ -13,11 +13,10 @@ import SwiftUI
 struct MarkdownImportBar: View {
     /// Quelle, für die das Angebot gilt (nur im Angebots-Zustand gesetzt).
     let offer: MarkdownImportOffer?
-    /// Zustand, den DIESES Fenster zeichnen darf. Der Dienst ist ein
-    /// Singleton; läuft dort die Umwandlung eines ANDEREN Fensters, übergibt
+    /// Zustand, den dieses Fenster zeichnen darf. Der Dienst ist ein
+    /// Singleton; läuft dort die Umwandlung eines anderen Fensters, übergibt
     /// `EditorView` hier `.idle`, damit die Leiste nur das eigene Angebot
     /// zeigt statt fremdem Fortschritt, Erfolg oder Fehler
-    /// (Code-Review 2026-08-10).
     let effectiveState: MarkdownImportState
     /// Ein anderes Fenster wandelt bereits um. Das eigene Angebot bleibt zur
     /// Einordnung sichtbar, löst aber keinen wirkungslosen Klick mit Piepton aus.
@@ -147,7 +146,6 @@ struct MarkdownImportBar: View {
     /// Format erkannt, aber die Umwandlung würde scheitern, weil ein
     /// Zusatzprogramm (meist pandoc) fehlt. Statt die Leiste ganz zu
     /// verstecken, steht hier, was fehlt und wie man es installiert
-    /// (Daniel-Befund 2026-07-29).
     private func unavailableOfferBar(_ offer: MarkdownImportOffer) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")

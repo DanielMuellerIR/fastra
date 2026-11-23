@@ -175,7 +175,7 @@ func replaceActiveMatch_adjustsFrozenSelectionRange() {
     ws.bufferTotalMatches = r.totalMatches
     // Wie der echte Runner: sichtbare Treffer und ihre Optionen gehören
     // zusammen — ohne das gibt die Vorschau-Grenze kein Ersetzen frei.
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
     #expect(ws.bufferMatches.count == 2)
     ws.activeMatchIndex = 0
 
@@ -185,7 +185,7 @@ func replaceActiveMatch_adjustsFrozenSelectionRange() {
     // Eingefrorene Selektion deckt jetzt das längere Ende ab: Location 0, Länge 9.
     #expect(ws.activeSearchRange == NSRange(location: 0, length: 9))
     // Der verbliebene Treffer in der Auswahl ist das zweite „foo" (jetzt Offset 6);
-    // das dritte „foo" (jetzt Offset 10) liegt außerhalb und darf NICHT erscheinen.
+    // das dritte „foo" (jetzt Offset 10) liegt außerhalb und darf nicht erscheinen.
     #expect(ws.bufferMatches.count == 1)
     #expect(ws.bufferMatches.first?.range.location == 6)
 }
@@ -206,7 +206,7 @@ func applyAllInSelection_adjustsFrozenSelectionRange() {
                               searchRange: ws.activeSearchRange)
     ws.bufferMatches = r.matches
     ws.bufferTotalMatches = r.totalMatches
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
 
     // Beide Treffer in der Auswahl ersetzen: „XXXXX XXXXX foo" (delta +4).
     ws.applyAllInActiveBuffer()
@@ -217,12 +217,9 @@ func applyAllInSelection_adjustsFrozenSelectionRange() {
 
 // MARK: - Vorschau-Grenze: Ersetzen nur auf der SICHTBAREN Trefferbasis
 
-// Befund 2026-08-02: `searchInputsDidChange` leerte nur die Ordner-Vorschau.
-// Trefferzahl und Treffer der Datei-/Geöffnet-Suche blieben bis zum 120 ms
-// später laufenden Neu-Suchen stehen, während „Alle ersetzen" die Ersetzung
-// schon mit den NEUEN Optionen rechnete. In diesem Fenster gab eine Vorschau
-// zum alten Muster eine Änderung nach dem neuen frei — genau das, was die
-// Vorschau-Grenze verhindern soll.
+// Neue Sucheingaben müssen Datei-/Geöffnet-Treffer sofort entwerten,
+// bevor die gedrosselte Suche neu läuft. Andernfalls könnte die alte Vorschau
+// eine Ersetzung mit bereits neuen Optionen freigeben.
 
 @Test("Alle ersetzen läuft nicht mit alter Vorschau und neuem Muster")
 @MainActor
@@ -239,7 +236,7 @@ func applyAll_refusesPreviewFromAnEarlierPattern() {
                                     searchRange: ws.activeSearchRange)
     ws.bufferMatches = preview.matches
     ws.bufferTotalMatches = preview.totalMatches
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
     #expect(ws.bufferTotalMatches == 2)
 
     // Ein Tastendruck ändert das Muster. Der Neulauf ist verzögert und hier
@@ -248,9 +245,8 @@ func applyAll_refusesPreviewFromAnEarlierPattern() {
     ws.findPattern = "o"
     #expect(ws.bufferTotalMatches == 2, "Die sichtbare Vorschau soll stehen bleiben")
 
-    // Der Rückgabewert muss die Ablehnung MELDEN. Die Vorschau schloss sich
+    // Der Rückgabewert muss die Ablehnung melden. Die Vorschau schloss sich
     // sonst nach einem folgenlosen Klick, ohne dass etwas ersetzt wurde
-    // (Review 2026-08-06).
     #expect(ws.applyAllInActiveBuffer() == false)
     #expect(ws.activeTabContent.wrappedValue == "foo foo",
             "Ersetzen darf erst nach einer Vorschau zum neuen Muster laufen")
@@ -262,7 +258,7 @@ func applyAll_refusesPreviewFromAnEarlierPattern() {
                                   searchRange: ws.activeSearchRange)
     ws.bufferMatches = fresh.matches
     ws.bufferTotalMatches = fresh.totalMatches
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
     #expect(ws.applyAllInActiveBuffer() == true)
     #expect(ws.activeTabContent.wrappedValue == "fXX fXX")
 }
@@ -285,7 +281,7 @@ func applyAll_refusesCappedFilePreview() {
     ws.bufferMatches = preview.matches
     ws.bufferTotalMatches = preview.totalMatches
     ws.bufferResultsWereCapped = preview.wasCapped
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
 
     #expect(!ws.canApplyAllInActiveBuffer)
     #expect(!ws.applyAllInActiveBuffer())
@@ -307,7 +303,7 @@ func replaceActiveMatch_refusesPreviewFromAnEarlierPattern() {
                                     searchRange: ws.activeSearchRange)
     ws.bufferMatches = preview.matches
     ws.bufferTotalMatches = preview.totalMatches
-    ws.visibleBufferResultsOptions = ws.currentSearchOptions
+    publishPreparedSearchResults(ws)
     ws.activeMatchIndex = 0
 
     ws.findPattern = "o"

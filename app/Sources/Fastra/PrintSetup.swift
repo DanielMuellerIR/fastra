@@ -14,7 +14,7 @@ import Foundation
 // MARK: - Was gedruckt wird
 
 /// Druckvorlage eines Tabs. Ein Tab kann mehrere anbieten: Ein Markdown-
-/// Dokument lässt sich als gerenderte Vorschau ODER als Quelltext drucken.
+/// Dokument lässt sich als gerenderte Vorschau oder als Quelltext drucken.
 enum PrintTarget: String, CaseIterable, Equatable, Hashable {
     /// Der Text, den der Editor zeigt (auch der sichtbare Abschnitt einer
     /// großen Datei sowie Git-Text-Tabs wie Verlauf oder Diff).
@@ -32,7 +32,7 @@ enum PrintTarget: String, CaseIterable, Equatable, Hashable {
     /// Markdown druckt über WebKit und ein PDF druckt PDFKit unverändert —
     /// beide zeichnen keine Dekoration. Der zusätzliche Rand dafür darf dort
     /// also auch nicht reserviert werden: Er verkleinerte sonst wirkungslos
-    /// die Druckfläche (Reviewfund 2026-08-18).
+    /// die Druckfläche.
     var drawsDecoration: Bool {
         switch self {
         case .source, .hexDump, .image: return true
@@ -235,7 +235,7 @@ enum PrintLineNumbers {
     }
 
     /// Zeilen eines Textes für den Ausdruck. Ein abschließendes Zeilenende
-    /// erzeugt bewusst KEINE zusätzliche leere Nummernzeile.
+    /// erzeugt bewusst keine zusätzliche leere Nummernzeile.
     static func lines(of text: String) -> [String] {
         var lines = text.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
@@ -289,7 +289,7 @@ enum HexDump {
 
 // MARK: - Sehr großer Ausdruck
 
-/// Schätzt den Umfang eines Textausdrucks, BEVOR er entsteht.
+/// Schätzt den Umfang eines Textausdrucks, bevor er entsteht.
 ///
 /// Der Grund liegt in der Seitenaufteilung: Sie muss den vollständigen Text
 /// setzen, und das läuft zwingend auf dem Main-Thread — AppKit druckt von dort.
@@ -322,7 +322,7 @@ enum PrintVolume {
 
 // MARK: - Schrift an die Seitenbreite anpassen
 
-/// Rechnet die Schriftgröße für Text mit FESTER Zeilenbreite.
+/// Rechnet die Schriftgröße für Text mit fester Zeilenbreite.
 ///
 /// Nur der Hex-Abzug braucht das: Seine Zeilen sind ein Raster aus Adresse,
 /// Bytes und ASCII-Spalte. Bricht eine solche Zeile um, ist das Raster
@@ -368,8 +368,8 @@ enum PrintPreferences {
     static let fontSizeRange: ClosedRange<Double> = 6...18
 
     /// Ein nie gesetzter Schlüssel liefert bei `bool(forKey:)` immer `false`.
-    /// Für Voreinstellungen, die AN sind, muss deshalb das Fehlen des Werts
-    /// geprüft werden — sonst wäre der Standard versehentlich AUS.
+    /// Für Voreinstellungen, die an sind, muss deshalb das Fehlen des Werts
+    /// geprüft werden — sonst wäre der Standard versehentlich aus.
     static func showsLineNumbers(_ defaults: UserDefaults) -> Bool {
         defaults.object(forKey: Keys.lineNumbers) == nil
             ? defaultLineNumbers : defaults.bool(forKey: Keys.lineNumbers)
@@ -380,7 +380,7 @@ enum PrintPreferences {
             ? defaultHeaderFooter : defaults.bool(forKey: Keys.headerFooter)
     }
 
-    /// Syntaxfarben im Quelltext-Ausdruck (Folgeauftrag 2026-09-05).
+    /// Syntaxfarben im Quelltext-Ausdruck.
     static func showsSyntaxColors(_ defaults: UserDefaults) -> Bool {
         defaults.object(forKey: Keys.syntaxColors) == nil
             ? defaultSyntaxColors : defaults.bool(forKey: Keys.syntaxColors)

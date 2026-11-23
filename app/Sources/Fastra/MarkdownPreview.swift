@@ -14,7 +14,7 @@
 //     Die dafür nötigen Zeilenmarken entstehen beim Rendern
 //     (siehe `MarkdownSourceMarkers`).
 //
-// Historie: Bis v1.25 gab es zusätzlich ein separates Vorschau-FENSTER.
+// Historie: Bis v1.25 gab es zusätzlich ein separates Vorschau-Fenster.
 // Es war zuletzt ohne Aufrufer (kein Menüeintrag, kein Shortcut) und wurde
 // von der integrierten Vorschau vollständig abgelöst.
 
@@ -39,12 +39,12 @@ import cmark_gfm_extensions
 /// - Ist er es nicht: freundlicher Platzhalter.
 struct MarkdownPreviewView: View {
 
-    /// Workspace wird NICHT als @EnvironmentObject erwartet, sondern direkt
+    /// Workspace wird nicht als @EnvironmentObject erwartet, sondern direkt
     /// übergeben — `EditorView` reicht den konkreten Workspace herein,
     /// unabhängig davon ob er im SwiftUI-Environment registriert ist.
     @ObservedObject var workspace: Workspace
-    @AppStorage(DocumentZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var documentZoomLevel = 0
-    @AppStorage(PreviewFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var previewFontName = PreviewFonts.systemName
+    @AppStorage(DocumentZoom.defaultsKey, store: AppDefaults.store) private var documentZoomLevel = 0
+    @AppStorage(PreviewFonts.defaultsKey, store: AppDefaults.store) private var previewFontName = PreviewFonts.systemName
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -167,7 +167,6 @@ enum MarkdownRichText {
     /// Zuordnung und gleich danach noch einmal in `htmlDocument`. Jeder
     /// Renderlauf kostet einen cmark-Durchlauf und je Bild einen
     /// Dateisystemzugriff, und beides läuft auf dem UI-Thread
-    /// (Review 2026-08-06).
     static func htmlDocument(fragment: MarkdownRenderedFragment,
                              fontName: String,
                              fontSize: CGFloat,
@@ -506,7 +505,7 @@ enum MarkdownRichText {
         renderedFragment(markdown: markdown, documentURL: nil).html
     }
 
-    /// EINE serielle Queue für alle cmark-Renderläufe:
+    /// Eine serielle Queue für alle cmark-Renderläufe:
     /// `cmark_gfm_core_extensions_ensure_registered()` schreibt in eine
     /// globale Registrierung — zwei parallele Läufe wären ein Wettlauf.
     /// Auch die synchronen Einstiege (Tests, `htmlFragment`) laufen deshalb
@@ -525,7 +524,7 @@ enum MarkdownRichText {
         }
     }
 
-    /// Der eigentliche Renderlauf. NUR von `renderQueue` aus aufrufen.
+    /// Der eigentliche Renderlauf. Nur von `renderQueue` aus aufrufen.
     /// Abgebrochene Platzhalter veröffentlicht der generationengeprüfte Coalescer nie.
     static func renderFragmentOnQueue(
         markdown: String,
@@ -590,7 +589,7 @@ enum MarkdownRichText {
             extraction: math
         )
 
-        // Rohes HTML durch die enge Positivliste schicken, BEVOR gerendert wird.
+        // Rohes HTML durch die enge Positivliste schicken, bevor gerendert wird.
         // Der Prüfer sieht dadurch ausschließlich die Fragmente aus der Datei,
         // nie Fastras eigenes erzeugtes HTML.
         //
@@ -649,18 +648,17 @@ enum MarkdownRichText {
     }
 }
 
-/// Sammelt die Renderanforderungen EINER Vorschau nach der Regel „die jüngste
+/// Sammelt die Renderanforderungen einer Vorschau nach der Regel „die jüngste
 /// gewinnt".
 ///
 /// Jede Texteingabe braucht ein frisches Fragment, und ein Renderlauf kostet
 /// einen cmark-Durchlauf plus je Bild einen Systemaufruf. Vorher wurde für
 /// jeden Tastendruck ein eigener Lauf in die eine serielle Render-Queue
 /// gestellt, und ob sein Ergebnis überhaupt noch aktuell ist, prüfte die
-/// Vorschau erst NACH der teuren Arbeit. In einem großen Dokument wuchs beim
+/// Vorschau erst nach der teuren Arbeit. In einem großen Dokument wuchs beim
 /// schnellen Tippen eine Warteschlange längst überholter Läufe
-/// (Code-Review 2026-08-10).
 ///
-/// Hier wartet stattdessen immer höchstens EINE Anforderung; eine neue ersetzt
+/// Hier wartet stattdessen immer höchstens eine Anforderung; eine neue ersetzt
 /// die wartende. Die Completion einer so ersetzten Anforderung läuft nie — die
 /// Vorschau braucht sie auch nicht, denn sie zeigt ohnehin nur den neuesten
 /// Stand.
@@ -712,7 +710,7 @@ final class MarkdownRenderCoalescer: @unchecked Sendable {
         MarkdownRichText.renderQueue.async { [weak self] in self?.step() }
     }
 
-    /// Genau EIN Renderlauf je Queue-Block. Ist währenddessen eine neuere
+    /// Genau ein Renderlauf je Queue-Block. Ist währenddessen eine neuere
     /// Anforderung eingegangen, stellt sie sich hinten an — so kommen andere
     /// Fenster zwischen zwei Läufen an die gemeinsame serielle Queue, statt
     /// von einer Endlosschleife ausgesperrt zu werden.
@@ -856,7 +854,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         )
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        // Editor→Vorschau-Sprung (Etappe 5): Reveal-Ziel registrieren.
+        // Editor→Vorschau-Sprung: Reveal-Ziel registrieren.
         context.coordinator.revealWebView = webView
         context.coordinator.observeReveal()
         update(webView: webView, coordinator: context.coordinator)
@@ -876,7 +874,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
 
     private func update(webView: WKWebView, coordinator: Coordinator) {
         coordinator.workspace = workspace
-        // Bei JEDEM Update setzen, nicht nur beim Erzeugen: Diese Farbe füllt
+        // Bei jedem Update setzen, nicht nur beim Erzeugen: Diese Farbe füllt
         // den Bereich außerhalb der Seite (Overscroll und der Streifen unter
         // der Scrollleiste). Wird sie nur einmal gesetzt, friert sie WebKits
         // eigene Ableitung aus dem Dokument ein — nach einem Hell-/Dunkel-
@@ -905,19 +903,15 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             // `didFinish` nicht über das neue Dokument schreiben.
             coordinator.pendingFragment = nil
             // Solange noch kein `loadHTMLString` gelaufen ist, braucht die
-            // Vorschau ein VOLLSTÄNDIGES Dokument. Diesen Bedarf merkte sich
+            // Vorschau ein vollständiges Dokument. Diesen Bedarf merkte sich
             // vorher niemand: Wurde getippt, bevor das erste Fragment fertig
             // war, verwarf die Generationsprüfung die erste Completion, und
             // die zweite legte ihr Fragment wegen `isReady == false` nur
             // beiseite — für ein `didFinish`, das ohne gestartete Navigation
             // nie kommt. Die Vorschau blieb dauerhaft leer
-            // (Code-Review 2026-08-10).
             coordinator.needsFullLoad = true
-            // Rendern läuft im Hintergrund auf der seriellen Render-Queue;
-            // die Generation verwirft ein überholtes Ergebnis (Roadmap
-            // „Nacharbeit 2026-08-06"). Dasselbe Fragment wird für das HTML
-            // weiterverwendet, statt ein zweites Mal zu rendern
-            // (Review 2026-08-06).
+            // Auf der seriellen Render-Queue rendern; die Generation verwirft
+            // überholte Ergebnisse. Dasselbe Fragment für das HTML weiterverwenden.
             coordinator.renderGeneration &+= 1
             let generation = coordinator.renderGeneration
             coordinator.renderRequest.render(
@@ -957,10 +951,10 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         var darkMode = false
         /// `true`, solange für dieses Dokument noch kein `loadHTMLString`
         /// gestartet wurde. Dann muss das nächste fertige Fragment als
-        /// VOLLSTÄNDIGES Dokument geladen werden — ein bloßes Beiseitelegen
+        /// vollständiges Dokument geladen werden — ein bloßes Beiseitelegen
         /// würde auf ein `didFinish` warten, das nie kommt.
         var needsFullLoad = true
-        /// Verdichtet die Renderanforderungen DIESER Vorschau; beim Tippen
+        /// Verdichtet die Renderanforderungen dieser Vorschau; beim Tippen
         /// wartet dadurch höchstens eine Anforderung statt einer wachsenden
         /// Warteschlange überholter Läufe.
         let renderRequest = MarkdownRenderCoalescer()
@@ -972,11 +966,9 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         var renderGeneration: UInt64 = 0
         /// Für den Bildwächter-Neurender nötig — das Update hält ihn aktuell.
         var documentURL: URL?
-        /// Beobachtet die Elternordner der referenzierten Bilder: Ein extern
-        /// am gleichen Pfad ausgetauschtes Bild spielt generationengesichert
-        /// ein frisches Fragment ein (Roadmap „Nacharbeit 2026-08-06"). Der
-        /// Bild-Token trägt Änderungsdatum und Größe — der Austausch umgeht
-        /// damit auch WebKits Speicher-Cache.
+        /// Die Bildordner beobachten und bei externem Austausch ein frisches,
+        /// generationengesichertes Fragment einspielen. Änderungsdatum und Größe im
+        /// Bild-Token verhindern ein veraltetes Bild aus WebKits Speicher-Cache.
         private let imageWatcher = MarkdownImageWatcher()
         /// Verwirft eine überholte Hintergrund-Auflösung der Wächterpfade.
         private var imageWatchGeneration: UInt64 = 0
@@ -1018,7 +1010,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             }
         }
 
-        /// Der EINE Ort, an dem ein fertiges Fragment in die Vorschau geht.
+        /// Der eine Ort, an dem ein fertiges Fragment in die Vorschau geht.
         ///
         /// Hier entscheidet sich, ob ein vollständiges Dokument geladen, das
         /// Fragment für das noch laufende Laden beiseitegelegt oder nur der
@@ -1057,7 +1049,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
         // die `data-srcline`-Mechanik rückwärts genutzt.
         weak var revealWebView: WKWebView?
         private var revealObserver: NSObjectProtocol?
-        // Zählt jede Reveal-Meldung hoch. Nur die Versuchskette der JÜNGSTEN
+        // Zählt jede Reveal-Meldung hoch. Nur die Versuchskette der jüngsten
         // Meldung darf scrollen: Findet ein älterer Klick sein Ziel erst im
         // späten Retry, würde er sonst einen inzwischen erfolgten neueren
         // Sprung wieder wegscrollen.
@@ -1069,7 +1061,7 @@ private struct MarkdownRichTextView: NSViewRepresentable {
             }
         }
 
-        /// Beobachtet die Reveal-Notification. Nur die Vorschau DESSELBEN
+        /// Beobachtet die Reveal-Notification. Nur die Vorschau desselben
         /// Workspace reagiert (Mehrfenster-Betrieb).
         func observeReveal() {
             guard revealObserver == nil else { return }

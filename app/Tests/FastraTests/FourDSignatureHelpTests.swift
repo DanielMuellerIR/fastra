@@ -439,7 +439,7 @@ func signatureResolution_invalidationDropsDispatchedCompletion() {
     #expect(recorder.snapshot.isEmpty)
 }
 
-// MARK: - Kommentare (Review 2026-08-02)
+// MARK: - Kommentare
 
 @Test("Blockkommentar in der Zeile: Cursor darin bekommt keine Hilfe")
 func contextInsideInlineBlockComment() {
@@ -492,7 +492,7 @@ func insideCommentOrString() {
     let code = "ALERT(Variable"
     #expect(!FourDSignatureHelpLogic.isInsideCommentOrString(
         in: code, utf16Location: (code as NSString).length))
-    // Hinter einem GESCHLOSSENEN String/Kommentar ebenfalls frei.
+    // Hinter einem geschlossenen String/Kommentar ebenfalls frei.
     let closed = "\"Text\" /* x */ code"
     #expect(!FourDSignatureHelpLogic.isInsideCommentOrString(
         in: closed, utf16Location: (closed as NSString).length))

@@ -10,7 +10,7 @@ import Foundation
 /// Bestimmt, welche Kante einer Selektion im Footer angezeigt wird.
 ///
 /// `CursorPosition` liefert nur `start` (untere Offset-Kante) und `end`
-/// (obere Kante) eines Bereichs, NICHT die Zieh-Richtung. BBEdit zeigt im
+/// (obere Kante) eines Bereichs, nicht die Zieh-Richtung. BBEdit zeigt im
 /// Footer immer die Kante am Mauszeiger. Dafür merken wir uns die
 /// *stillstehende* Kante (Anker) und zeigen die andere (Kopf).
 enum CursorFooter {

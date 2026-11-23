@@ -1,9 +1,9 @@
 // DocumentLinter.swift
 //
-// „Dokument prüfen" (Etappe 6 Wunschpaket 2026-07): native Validierung für
-// JSON und XML mit Fehlerposition (Zeile/Spalte) und Meldung in
-// Nutzersprache — ohne gebündelte Fremd-Linter (Größe/Lizenz/Wartung
-// stünden in keinem Verhältnis; JS/CSS/HTML bleiben bewusst außen vor).
+// „Dokument prüfen": native Validierung für JSON und XML
+// mit Fehlerposition (Zeile/Spalte) und Meldung in Nutzersprache — ohne
+// gebündelte Fremd-Linter (Größe/Lizenz/Wartung stünden in keinem Verhältnis;
+// JS/CSS/HTML bleiben bewusst außen vor).
 
 import Foundation
 
@@ -19,11 +19,11 @@ enum DocumentLinter {
         /// Dokument ist gültig; der String ist das Format-Label („JSON"/„XML").
         case valid(String)
         case issue(Issue)
-        /// Heuristische Prüfung OHNE Auffälligkeiten (4D-Struktur-Hinweise,
-        /// Etappe 5 Wunschpaket 2026-07c). Bewusst NICHT `.valid`: die
-        /// Heuristik ist kein Compiler-Ersatz und darf nie „gültig" sagen.
+        /// Heuristische Prüfung ohne Auffälligkeiten (4D-Struktur-Hinweise, der
+        /// aktuellen Sprachauswahl). Bewusst nicht `.valid`: die Heuristik ist
+        /// kein Compiler-Ersatz und darf nie „gültig" sagen.
         case hintFree
-        /// Ein heuristischer Struktur-HINWEIS (kein bewiesener Fehler).
+        /// Ein heuristischer Struktur-Hinweis (kein bewiesener Fehler).
         case hint(Issue)
         case unsupported
     }
@@ -40,8 +40,7 @@ enum DocumentLinter {
         case .json:
             return lintJSON(text)
         case .fourDForm:
-            // Erst die JSON-Syntax, dann das gebündelte Formular-Schema
-            // (Etappe 6 Wunschpaket 2026-07c).
+            // Erst die JSON-Syntax, dann das gebündelte Formular-Schema.
             let json = lintJSON(text)
             guard case .valid = json else { return json }
             return lintFormSchema(text)
@@ -55,7 +54,7 @@ enum DocumentLinter {
         }
     }
 
-    // MARK: - 4D-Formular-Schema (Etappe 6 Wunschpaket 2026-07c)
+    // MARK: - 4D-Formular-Schema
 
     /// Das gebündelte Formular-Schema (formsSchema.json, MIT — siehe
     /// THIRD-PARTY-NOTICES.md), einmalig geladen.
@@ -163,7 +162,7 @@ enum DocumentLinter {
 
     // MARK: - Positions-Helfer (pure, testbar)
 
-    /// Zeile/Spalte (1-basiert) am ENDE des übergebenen Präfix-Textes.
+    /// Zeile/Spalte (1-basiert) am Ende des übergebenen Präfix-Textes.
     /// Spalten zählen Zeichen (nicht Bytes) — multibyte-sicher.
     static func lineColumn(atEndOf prefix: String) -> (line: Int, column: Int) {
         var line = 1

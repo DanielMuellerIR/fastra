@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Gespeichert werden ausschließlich Pfade bereits gesicherter Dokumente,
 /// Projektordner, aktiver Tab und Fensterrahmen. Dokumentinhalt gehört
-/// absichtlich NICHT zum Schema: Ein unbenanntes oder ungesichertes Dokument
+/// absichtlich nicht zum Schema: Ein unbenanntes oder ungesichertes Dokument
 /// kann dadurch weder versehentlich persistiert noch beim Start vorgetäuscht
 /// werden.
 enum SessionRestorationPreferences {
@@ -82,8 +82,8 @@ struct RestorableWindowState: Codable, Equatable {
     let frame: RestorableWindowFrame?
 
     /// Ein Fenster ist nur wiederherstellenswert, wenn es mindestens eine
-    /// gespeicherte Datei zeigt. Ein reines Projekt-/Repo-Fenster OHNE offene
-    /// Dateien wird bewusst NICHT gespeichert (Daniel-Befund 2026-07-20): Sonst
+    /// gespeicherte Datei zeigt. Ein reines Projekt-/Repo-Fenster ohne offene
+    /// Dateien wird bewusst nicht gespeichert: Sonst
     /// käme beim nächsten Start statt des Willkommensbildschirms der zuletzt
     /// geöffnete Ordner mit einem leeren „Ohne Titel"-Tab zurück — und der
     /// Willkommensbildschirm wäre, einmal einen Ordner geöffnet, nie wieder
@@ -252,11 +252,10 @@ extension Workspace {
             ) { [weak self] _ in
                 remaining -= 1
                 guard remaining == 0 else { return }
-                // Die Abschlussmeldung hängt NICHT an der Workspace-Lebenszeit:
+                // Die Abschlussmeldung hängt nicht an der Workspace-Lebenszeit:
                 // Schließt jemand das Fenster, während die Loads laufen, muss
                 // der wartende Aufrufer trotzdem sein Signal bekommen — sonst
                 // bliebe z. B. die Restore-Kette der übrigen Fenster stehen
-                // (Review 2026-08-02).
                 defer { completion?() }
                 guard let self else { return }
                 // Während der Loads kann der Nutzer längst ein anderes
@@ -300,9 +299,9 @@ extension Workspace {
         }
 
         // Die Lade-Platzhalter der Dateien stehen jetzt (synchron angehängt).
-        // Den unberührten Start-Tab des Fensters deshalb SOFORT entfernen,
+        // Den unberührten Start-Tab des Fensters deshalb sofort entfernen,
         // noch in diesem Runloop-Tick. Sonst blitzt er auf, bis der erste
-        // asynchrone Ladevorgang ihn wegräumt (Daniel-Befund 2026-07-20).
+        // asynchrone Ladevorgang ihn wegräumt.
         // Die Platzhalter (isLoading = true, mit URL) sind kein unberührter
         // leerer Tab und bleiben erhalten.
         if let active = activeTabID {

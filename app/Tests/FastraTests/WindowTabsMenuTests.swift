@@ -1,11 +1,8 @@
 // WindowTabsMenuTests.swift
 //
-// Beschriftungslogik der Tab-Untermenüs im „Fenster"-Menü (Daniel-Wunsch
-// 2026-09-01): pro Dokumentfenster ein Eintrag mit allen offenen Tabs. Der
-// Eintragstitel selbst kommt fertig aus `MainWindowTitleMetadata` (dort ist
-// der Willkommens-Zustand schon berücksichtigt); hier bleibt die reine
-// Zeilen-Beschriftung prüfbar. Die Befüllung beim Öffnen deckt der
-// tabflood-Fenster-Selbsttest ab.
+// Je Dokumentfenster ein Untermenü mit allen Tabs. Den Eintragstitel liefert
+// `MainWindowTitleMetadata`; hier wird die Zeilenbeschriftung geprüft.
+// Die tatsächliche Befüllung beim Öffnen prüft der `tabflood`-Selbsttest.
 
 import AppKit
 import Foundation
@@ -30,9 +27,8 @@ struct WindowTabsMenuTests {
 struct WindowTabsMenuRebuildTests {
     @Test("Einträge und Trenner ziehen in ein neu aufgebautes Fenster-Menü um")
     func entriesMoveToRebuiltMenu() {
-        // SwiftUI kann das App-Menü nach dem Start neu aufbauen; dann ist
-        // `NSApp.windowsMenu` eine andere Instanz. Vor der Korrektur (Review
-        // 2026-09-02) blieben die gecachten Einträge am alten Menü hängen.
+        // SwiftUI kann das App-Menü nach dem Start ersetzen. Vorhandene Einträge
+        // müssen dann in die neue `NSApp.windowsMenu`-Instanz umziehen.
         let suite = "fastra-tests-windowtabsmenu-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -61,7 +57,7 @@ struct WindowTabsMenuRebuildTests {
         #expect(newMenu.items[2].isSeparatorItem)
         #expect(newMenu.items[3].title == "Minimieren")
 
-        // Schließen entfernt aus dem NEUEN Menü, nicht aus dem alten.
+        // Schließen entfernt aus dem neuen Menü, nicht aus dem alten.
         menus.removeItem(for: windowB)
         menus.removeItem(for: windowA)
         #expect(newMenu.items.map(\.title) == ["Minimieren"])
@@ -75,11 +71,9 @@ struct WindowTabsMenuRebuildTests {
 
     @Test("Der zentrale Abgleich zieht auch ohne Bridge-Update um")
     func synchronizeMovesEntriesWithoutBridgeUpdate() {
-        // Review 2026-09-02: `adoptMenuIfChanged` lief nur im nächsten
-        // `updateItem` der Bridge. Ersetzte SwiftUI das Menü danach, blieb
-        // das Tab-Untermenü bis zu einem nicht garantierten Titel-Update weg.
-        // Der `AppDelegate` ruft deshalb den Abgleich bei jeder Menüänderung
-        // und App-Aktivierung; hier wird sein Kern direkt getrieben.
+        // Nach Menüersatz den Abgleich ohne weiteres Titel-Update ausführen.
+        // AppDelegate stößt ihn bei Menüänderung und Aktivierung an; hier wird der
+        // Kern von `adoptMenuIfChanged` direkt geprüft.
         let suite = "fastra-tests-windowtabsmenu-sync-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -112,7 +106,7 @@ struct WindowTabsMenuRebuildTests {
 
     @Test("Ein halb umgezogener Abschnitt endet in der ursprünglichen Reihenfolge")
     func partialMoveKeepsCreationOrder() {
-        // Das Titel-Update EINES Fensters kann den Umzug schon angestoßen
+        // Das Titel-Update eines Fensters kann den Umzug schon angestoßen
         // haben, bevor der zentrale Abgleich läuft. Die restlichen Einträge
         // dürfen dann nicht vor den bereits umgezogenen landen.
         let suite = "fastra-tests-windowtabsmenu-partial-\(UUID().uuidString)"
@@ -149,7 +143,7 @@ struct WindowTabsMenuRebuildTests {
     @Test("Einträge eines freigegebenen Menüs ziehen trotzdem um")
     func entriesOfReleasedMenuAreReinserted() {
         // Gibt AppKit das alte Menü frei, hängen die Einträge nirgends mehr
-        // (`menu == nil`). Vorher galt nur ein Eintrag mit FREMDEM Menü als
+        // (`menu == nil`). Vorher galt nur ein Eintrag mit fremdem Menü als
         // umzugspflichtig — diese Einträge wären für immer verschwunden.
         let suite = "fastra-tests-windowtabsmenu-released-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -172,9 +166,8 @@ struct WindowTabsMenuRebuildTests {
 
     @Test("Der Abgleich baut einen verlorenen Eintrag wieder auf")
     func synchronizationRebuildsMissingEntry() {
-        // Live-Befund 2026-09-03: Das Dokumentfenster war sichtbar, sein
-        // Eintrag im Fenster-Menü aber vollständig verschwunden. Ein reiner
-        // Umzug vorhandener NSMenuItems kann diesen Zustand nicht reparieren.
+        // Fehlt ein Fenstereintrag vollständig, genügt das Umziehen vorhandener
+        // NSMenuItems nicht; der Abgleich muss ihn erneut aufbauen.
         let suite = "fastra-tests-windowtabsmenu-rebuild-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }

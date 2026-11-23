@@ -1,23 +1,17 @@
 // MyersDiff.swift
 //
-// Eigener, kooperativ abbrechbarer Myers-Diff über zwei Ganzzahlfolgen.
+// Kooperativ abbrechbarer Myers-Diff über zwei Ganzzahlfolgen.
+// Foundations `CollectionDifference.difference(from:)` ist nicht
+// unterbrechbar; diese Fassung prüft in jeder Suchrunde die Abbruchquelle.
 //
-// Warum nicht Foundations `CollectionDifference`? Dessen `difference(from:)`
-// ist ein einzelner, nicht unterbrechbarer Aufruf: Nach Tab-/Fensterschluss
-// oder einer neuen Anfrage rechnete ein alter Vergleich bis zum Ende weiter
-// und belegte parallel zu neuen Läufen Rechenzeit und Speicher (Review
-// 2026-08-29, Folgeauftrag 2026-09-05). Diese Fassung prüft in jeder
-// Suchrunde die Abbruchquelle und gibt dann sofort auf.
-//
-// Der Algorithmus ist absichtlich derselbe wie in der Swift-Standardbibliothek
-// (`stdlib/public/core/Diffing.swift`, Apache 2.0 mit Runtime Library
-// Exception): die Linear-Space-Variante von Myers — Teile-und-herrsche über
-// die „mittlere Schlange", vorwärts und rückwärts gleichzeitig gesucht.
-// Gleiche Suchreihenfolge, gleiche Entscheidung bei Gleichstand: Nur so
-// bleiben die Zeilen-Ausrichtung und damit alle vorhandenen Diff-Fixtures
-// bytegleich; `FileDiffCancellationTests` belegt die Gleichheit gegen
-// `CollectionDifference` mit Zufallsfolgen. Speicherbedarf: linear in der
-// Summe beider Längen (zwei k-Vektoren), nicht quadratisch.
+// Der Algorithmus entspricht der Linear-Space-Variante der Swift-
+// Standardbibliothek (`stdlib/public/core/Diffing.swift`, Apache 2.0 mit
+// Runtime Library Exception): Teile-und-herrsche über die „mittlere Schlange“.
+// Suchreihenfolge und Entscheidung bei Gleichstand bleiben gleich, damit
+// Zeilenausrichtung und Diff-Fixtures bytegleich bleiben.
+// `FileDiffCancellationTests` vergleicht Zufallsfolgen gegen
+// `CollectionDifference`. Speicherbedarf: linear in der Summe beider Längen
+// (zwei k-Vektoren).
 
 import Foundation
 

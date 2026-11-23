@@ -1,24 +1,19 @@
 // FourDComponentIndex.swift
 //
-// Index der Komponentenmethoden eines 4D-Projekts (Daniel-Auftrag
-// 2026-07-24). Komponenten liegen unter `<Projekt>/Components/` (4D schreibt
-// den Ordner auch klein als `components`) und treten in drei Formen auf:
+// Index der Komponentenmethoden eines 4D-Projekts. Komponenten liegen unter
+// `<Projekt>/Components/` oder `components` und treten in drei Formen auf:
 //
-// 1. Entpackte `.4dbase`-Ordner mit `Project/Sources/Methods/*.4dm` —
-//    interpretierte Komponenten, die Quelldateien liegen direkt auf der Platte.
-// 2. Gebaute `.4dbase`-Bundles mit `Contents/<Name>.4DZ` — das 4DZ ist ein
-//    gewöhnliches ZIP. Enthält es `.4dm`-Quellen, werden sie einzeln aus dem
-//    Archiv gelesen; kompilierte Komponenten enthalten stattdessen nur
+// 1. Entpackte `.4dbase`-Ordner mit `Project/Sources/Methods/*.4dm`.
+// 2. Gebaute `.4dbase`-Bundles mit `Contents/<Name>.4DZ` (ZIP). Enthaltene
+//    `.4dm`-Quellen werden einzeln gelesen; kompilierte Komponenten liefern
 //    `Project/DerivedData/methodAttributes.json` als Methodenkatalog.
-// 3. Nackte `<Name>.4DZ`-Archive direkt im Komponentenordner.
+// 3. `<Name>.4DZ`-Archive direkt im Komponentenordner.
 //
-// Nur GETEILTE Methoden (`shared`) sind aus dem Hostprojekt aufrufbar:
-// interpretiert steht das in der `//%attributes`-Kopfzeile der `.4dm`-Datei,
-// kompiliert in `methodAttributes.json`. Nicht geteilte Methoden werden
-// deshalb bewusst nicht angeboten. Für kompilierte Methoden ohne Quelltext
-// kann `Contents/Documentation/Methods/<Name>.md` als Signaturquelle dienen —
-// 4D legt dort den Kommentarkopf samt Deklarationszeilen ab. Fehlt auch die,
-// bleibt ehrlich nur der Methodenname (keine erfundenen Parameter).
+// Nur geteilte (`shared`) Methoden sind aus dem Hostprojekt aufrufbar.
+// Bei Quellen steht das in `//%attributes`, bei kompilierten Methoden in
+// `methodAttributes.json`. Ohne Quelltext kann
+// `Contents/Documentation/Methods/<Name>.md` Signaturen liefern. Fehlt auch
+// diese Dokumentation, wird nur der Methodenname angeboten.
 
 import Foundation
 
@@ -57,7 +52,7 @@ enum FourDComponentIndex {
         for bundle in componentBundles(in: projectURL, fileManager: fileManager) {
             // Abbruchpunkt pro Komponente: Nach einem Projektwechsel bricht
             // der alte Scan hier früh ab, statt weiter Archive zu lesen. Das
-            // Teilergebnis verwirft der Aufrufer ohnehin (Review 2026-08-02).
+            // Teilergebnis verwirft der Aufrufer ohnehin.
             if Task.isCancelled { return result }
             for method in methods(ofComponentAt: bundle, fileManager: fileManager) {
                 let key = method.displayName.lowercased()
@@ -133,7 +128,6 @@ enum FourDComponentIndex {
                 // beschreibt sonst den Link statt der Zieldatei, und ein
                 // Attributfehler darf nicht als Größe 0 durchgehen — sonst
                 // umginge eine riesige oder nicht reguläre Datei die Grenze
-                // (Review 2026-08-02).
                 let resolved = file.resolvingSymlinksInPath()
                 guard let values = try? resolved.resourceValues(
                           forKeys: [.isRegularFileKey, .fileSizeKey]),
@@ -178,7 +172,7 @@ enum FourDComponentIndex {
             !$0.isDirectory
                 && $0.path.hasPrefix(methodPrefix)
                 && $0.path.lowercased().hasSuffix(".4dm")
-                // Nur Dateien DIREKT im Methodenordner, keine Unterordner.
+                // Nur Dateien direkt im Methodenordner, keine Unterordner.
                 && !$0.path.dropFirst(methodPrefix.count).contains("/")
         }
         if !sourceEntries.isEmpty {

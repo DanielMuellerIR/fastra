@@ -19,13 +19,11 @@ struct OpenWindowSnapshot: Equatable {
 
 /// Reine Auswahl des Zielfensters für eine aus dem Finder/Dock geöffnete Datei.
 ///
-/// Entscheidung (Nutzerwunsch 2026-07-20 „alle Fenster durchsuchen"):
-/// 1. Ist die Datei bereits irgendwo als Tab offen, gewinnt dieses Fenster
-///    (Dedup, vorderstes zuerst) — so entsteht kein zweiter Tab derselben Datei.
+/// 1. Ein bereits offener Tab derselben Datei gewinnt (vorderstes Fenster
+///    zuerst), damit kein doppelter Tab entsteht.
 /// 2. Sonst das erste Fenster, dessen Projekt-/Repo-Ordner die Datei enthält.
-/// 3. Sonst das erste leere/Willkommens-Fenster — ein solches nimmt die Datei
-///    auf, statt ein zweites Fenster zu erzeugen (Daniel-Befund 2026-07-20).
-/// 4. Passt keines, liefert die Funktion `nil` → ein neues Fenster ist nötig.
+/// 3. Sonst das erste leere/Willkommens-Fenster.
+/// 4. Passt keines, liefert die Funktion `nil` für ein neues Fenster.
 enum FinderOpenRouter {
     /// - Parameter windows: Kandidaten in Vordergrund-Reihenfolge (vorderstes
     ///   zuerst). Der Rückgabe-Index bezieht sich auf genau diese Reihenfolge.
@@ -40,7 +38,7 @@ enum FinderOpenRouter {
         }
 
         // (2) Projekt/Repo enthält die Datei. Grenzsicherer Prefix-Vergleich:
-        // „/tmp/projekt-alt/x“ darf NICHT als in „/tmp/projekt“ liegend gelten
+        // „/tmp/projekt-alt/x“ darf nicht als in „/tmp/projekt“ liegend gelten
         // (gleiche grenzsichere Pfadregel wie im Workspace-Projektkontext).
         if let project = windows.firstIndex(where: { snapshot in
             guard let root = snapshot.projectURL?.canonicalFileURL.path else { return false }
@@ -79,11 +77,9 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     private init(defaults: UserDefaults,
                  restoredFrame: NSRect? = nil) {
         workspace = Workspace(defaults: defaults)
-        // Jedes Fenster startet gleich: mit einem unberührten leeren Tab,
-        // über dem der Willkommens-Platzhalter liegt (Firefox-Muster,
-        // Daniel-Entscheidung 2026-07-30 — ersetzt die Sonderrolle des
-        // ersten Fensters vom 2026-07-12). Beim Wiederherstellen ersetzen
-        // die geladenen Dateien diesen Tab gleich wieder.
+        // Jedes Fenster startet mit einem unberührten leeren Tab und dem
+        // Willkommens-Overlay. Bei der Sitzungswiederherstellung ersetzen die
+        // geladenen Dateien diesen Tab.
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0,
                                 width: MainWindowSizing.defaultWidth,
@@ -144,7 +140,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         } else if let visible = (window.screen ?? NSScreen.main)?.visibleFrame {
             // Erstes Fenster ohne Vorbild: praktische Startgröße statt der
             // festen 1100×720. Auf einem großen Bildschirm ist ein 720 Punkte
-            // hohes Fenster unnötig flach (Daniel-Wunsch 2026-08-06).
+            // hohes Fenster unnötig flach.
             let frame = MainWindowSizing.newWindowFrame(inVisibleScreen: visible)
             frameToRestoreAfterFirstLayout = frame
             window.setFrame(frame, display: false)
@@ -173,8 +169,8 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     }
 
     /// Anzahl der sichtbaren Dokumentfenster. Für den ⌘N-Sonderfall der
-    /// Willkommensseite (Etappe 1 Wunschpaket 2026-07): nur wenn genau EIN
-    /// Fenster offen ist und dieses nur Willkommen zeigt, wirkt ⌘N wie ⌘T.
+    /// Willkommensseite: nur wenn genau ein Fenster offen ist und dieses nur
+    /// Willkommen zeigt, wirkt ⌘N wie ⌘T.
     static func visibleDocumentWindowCount() -> Int {
         visibleDocumentWindows().count
     }
@@ -216,7 +212,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     /// Ziel für Datei-/Ordner-Öffnen: vorhandenes Vorderfenster oder ein neu
     /// erzeugtes Dokumentfenster, wenn der Nutzer alle Fenster geschlossen hat.
     static func workspaceForOpening(
-        defaults: UserDefaults = SelfTest.workspaceDefaults()
+        defaults: UserDefaults = AppDefaults.store
     ) -> Workspace {
         // Ein echtes Key-Dokumentfenster ist das eindeutigste Ziel. Direkt
         // nach makeKeyAndOrderFront kann AppKits orderedWindows-Reihenfolge
@@ -228,14 +224,13 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     }
 
     /// Öffnet eine Liste aus dem Finder/Dock stammender URLs im jeweils am
-    /// besten passenden Fenster und holt dieses nach vorn (Nutzerwunsch
-    /// 2026-07-20). Ordner werden wie bisher als Projekt geladen; für Dateien
+    /// besten passenden Fenster und holt dieses nach vorn. Ordner werden wie bisher als Projekt geladen; für Dateien
     /// entscheidet `FinderOpenRouter`. Findet sich kein Fenster, entsteht ein
     /// neues — mehrere gemeinsam geöffnete Dateien desselben (neuen) Auto-
     /// Projektordners teilen dabei genau ein Fenster.
     static func openFinderItems(
         _ urls: [URL],
-        defaults: UserDefaults = SelfTest.workspaceDefaults()
+        defaults: UserDefaults = AppDefaults.store
     ) {
         var newWindowByFolder: [String: Workspace] = [:]
         for url in urls {
@@ -294,7 +289,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     /// nur leere „Ohne Titel"-/Willkommen-Tabs ohne ungesicherte Arbeit. Nur
     /// dann darf eine aus dem Finder geöffnete Datei dieses Fenster übernehmen,
     /// statt ein neues zu erzeugen. Ein Fenster mit ungesichertem Tippinhalt
-    /// (dirty) oder einer Git-/Vergleichsansicht zählt bewusst NICHT als leer.
+    /// (dirty) oder einer Git-/Vergleichsansicht zählt bewusst nicht als leer.
     private static func windowIsEmptyWelcome(_ workspace: Workspace) -> Bool {
         guard workspace.projectURL == nil else { return false }
         return workspace.tabs.allSatisfy { tab in
@@ -306,7 +301,6 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     /// Holt das Fenster des angegebenen Workspace nach vorn und macht es zum
     /// aktiven Dokument. Behebt, dass beim Öffnen aus dem Finder zwar der
     /// richtige Tab entstand, aber ein anderes Fenster nach vorn kam
-    /// (Daniel-Befund 2026-07-20).
     private static func raiseWindow(for workspace: Workspace) {
         let window = windowForRaising(
             workspace,
@@ -314,12 +308,9 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
             registeredWindows: WorkspaceWindowRegistry.registeredWindows()
         )
         guard let window else { return }
-        // Bewusst KEIN zusätzliches NSApp.activate(): Der Finder-Öffnen-Vorgang
-        // aktiviert die App bereits. Ein zweites Aktivieren holte zuerst das
-        // bisherige Vorderfenster nach vorn und schaltete erst danach auf das
-        // Zielfenster um (sichtbares Gezappel, Daniel-Befund 2026-07-20).
-        // `makeKeyAndOrderFront` holt das Zielfenster direkt nach vorn und
-        // aktiviert die App dabei bei Bedarf selbst.
+        // Kein zusätzliches `NSApp.activate()`: Finder-Öffnen aktiviert die App
+        // bereits. `makeKeyAndOrderFront` holt direkt das Zielfenster vor und
+        // aktiviert bei Bedarf, ohne zuvor ein anderes Fenster zu zeigen.
         window.makeKeyAndOrderFront(nil)
         Workspace.shared = workspace
     }
@@ -345,11 +336,9 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     }
 
     /// Öffnet ein leeres, unabhängiges Dokumentfenster und gibt dessen
-    /// Workspace für den Fenster-Selbsttest zurück. Willkommen zeigt es nur,
-    /// wenn noch kein anderes Dokumentfenster offen ist (Daniel-Wunsch
-    /// 2026-07-12): ⌘N ohne offenes Fenster → Willkommen, sonst direkt Editor.
+    /// Workspace für den Fenster-Selbsttest zurück.
     @discardableResult
-    static func openNewDocument(defaults: UserDefaults = SelfTest.workspaceDefaults()) -> Workspace {
+    static func openNewDocument(defaults: UserDefaults = AppDefaults.store) -> Workspace {
         let controller = DocumentWindowController(defaults: defaults)
         openControllers[ObjectIdentifier(controller.window)] = controller
         controller.window.makeKeyAndOrderFront(nil)
@@ -358,12 +347,9 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
         // wie beim Sitzungs-Restore ausdrücklich anstoßen; der Guard macht den
         // späteren Delegate-Aufruf zum sicheren No-op.
         controller.restoreFrameAfterFirstSwiftUILayout()
-        // Kein `NSApp.addWindowsItem` mehr: Den „Fenster"-Menü-Eintrag pflegt
-        // seit v1.117.1 ausschließlich `WindowsMenuTabs` über
-        // `MainWindowTitleBridge` (Tab-Untermenü). Der frühere AppKit-Eintrag
-        // (Daniel-Befund 2026-07-12: AppKit-Fenster fehlten im Menü) stand
-        // sonst bis zum ersten Bridge-Update doppelt im Menü
-        // (Review 2026-09-02).
+        // `WindowsMenuTabs` pflegt den „Fenster“-Menü-Eintrag über die
+        // `MainWindowTitleBridge`. Ein zusätzlicher `NSApp.addWindowsItem`-Eintrag
+        // würde bis zum ersten Bridge-Update doppelt erscheinen.
         Workspace.shared = controller.workspace
         return controller.workspace
     }
@@ -373,7 +359,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
     @discardableResult
     static func openRestoredDocument(
         _ state: RestorableWindowState,
-        defaults: UserDefaults = SelfTest.workspaceDefaults(),
+        defaults: UserDefaults = AppDefaults.store,
         screenFrames: [NSRect] = NSScreen.screens.map(\.visibleFrame),
         completion: (() -> Void)? = nil
     ) -> Workspace {
@@ -430,7 +416,7 @@ final class DocumentWindowController: NSObject, NSWindowDelegate {
 /// aber vorher benutzt hat, trägt einen gespeicherten Rahmen mit sich herum —
 /// vom Startfenster (SwiftUI merkt sich dessen Größe selbst) bis zu den
 /// Rahmen der Sitzungswiederherstellung. Diese Korrektur läuft deshalb genau
-/// EINMAL pro Nutzer; danach gehört jede Fenstergröße wieder allein dem
+/// einmal pro Nutzer; danach gehört jede Fenstergröße wieder allein dem
 /// Nutzer, auch eine bewusst kleine.
 @MainActor
 enum MainWindowHeightNormalization {
@@ -438,17 +424,17 @@ enum MainWindowHeightNormalization {
 
     /// Fenster, deren Größe der Nutzer selbst am Rahmen gezogen hat.
     ///
-    /// Die Korrektur läuft erst, wenn die Sitzungswiederherstellung ALLE
+    /// Die Korrektur läuft erst, wenn die Sitzungswiederherstellung alle
     /// Dokumente geladen hat. Die Fenster stehen aber schon vorher sichtbar da:
     /// Bei einer langsamen Wiederherstellung kann der Nutzer eines davon
     /// bewusst kleiner ziehen — und die Korrektur zog es danach wieder groß,
-    /// obwohl die Größe da längst ihm gehörte (Review 2026-08-06).
+    /// obwohl die Größe da längst ihm gehörte.
     private static var userResizedWindows: Set<ObjectIdentifier> = []
 
     private static var resizeObservation: NSObjectProtocol?
     private static var resizeObservationCenter: NotificationCenter?
 
-    /// `didEndLiveResize` feuert NUR, wenn der Nutzer den Fensterrahmen
+    /// `didEndLiveResize` feuert nur, wenn der Nutzer den Fensterrahmen
     /// losgelassen hat — ein programmatisches `setFrame` (Wiederherstellung,
     /// diese Korrektur selbst) löst es nicht aus. Genau diese Unterscheidung
     /// braucht die Ausnahme oben. Beim App-Start einmal aufrufen, bevor die

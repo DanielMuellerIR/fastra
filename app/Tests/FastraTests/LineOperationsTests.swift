@@ -55,7 +55,7 @@ func expand_partialSelection() {
     // Selektion „et" in „beta" (Zeile 2 beginnt bei 6).
     let expanded = LineOperations.expandToFullLines(in: text,
                                                     selection: NSRange(location: 7, length: 2))
-    // Ganze Zeile „beta" = {6,4}, OHNE das \n dahinter.
+    // Ganze Zeile „beta" = {6,4}, ohne das \n dahinter.
     #expect(expanded == NSRange(location: 6, length: 4))
 }
 

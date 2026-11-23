@@ -1,30 +1,10 @@
 // CommandTargeting.swift
 //
-// EINZIGE Quelle für die Frage: „Welches Fenster meint ein globaler Befehl?"
-//
-// Warum es diese Datei gibt (Fehlerbericht aus dem Arbeitsbetrieb, 2026-08-07):
-// Bei zwei offenen Dokumentfenstern formatierte ⌘B im HINTERGRUNDFENSTER, an
-// einer Stelle, die der Nutzer nie angeklickt hatte. Die Ursache war eine
-// Zeile, die harmlos aussieht:
-//
-//     for window in NSApp.windows where window.isVisible { … }   // FALSCH
-//
-// `NSApp.windows` ist eine ungeordnete Menge ALLER Fenster der Anwendung —
-// nicht nach Vordergrund sortiert. Wer daraus „das erste sichtbare" nimmt,
-// erwischt bei mehreren Fenstern ein zufälliges. Richtig ist
-// `NSApp.orderedWindows`: von vorne nach hinten sortiert.
-//
-// Die zweite Falle war `Workspace.shared`. Der Wert wird bei jedem
-// Fokuswechsel gesetzt, aber auch in `Workspace.init` — die
-// Sitzungswiederherstellung erzeugt mehrere Workspaces nacheinander, und
-// danach zeigt `shared` auf den ZULETZT erzeugten statt auf den vordersten.
-// Ein Befehl, der sein Ziel aus `Workspace.shared` bestimmt, greift deshalb
-// nach einem Neustart mit mehreren Fenstern ins Leere oder ins falsche
-// Dokument.
-//
-// Deshalb: Befehle fragen ausschließlich hier nach ihrem Ziel. `app/
-// window-targeting-audit.sh` hält die Regel maschinell durch und lässt
-// `NSApp.windows` im Produktcode nur noch in dieser Datei zu.
+// Dokumentbefehle bestimmen Fenster, Workspace und Editor gemeinsam.
+// AppKit liefert die Fensterreihenfolge über `orderedWindows`;
+// `NSApp.windows` ist unsortiert, `Workspace.shared` kann nach einer
+// Sitzungswiederherstellung auf ein anderes Fenster zeigen.
+// `app/window-targeting-audit.sh` sichert den zentralen Zugriff ab.
 
 import AppKit
 import CodeEditTextView
@@ -47,16 +27,21 @@ enum WindowTargeting {
         /// noch nicht registriertes Vorderfenster darf niemals bewirken, dass
         /// ein Dokumentfenster im Hintergrund getroffen wird.
         let allowsDocumentFallback: Bool
+        /// Suchmaske und Dokument müssen demselben registrierten Workspace
+        /// gehören; die Fensterreihenfolge allein belegt diese Bindung nicht.
+        let documentOwnerID: ObjectIdentifier?
         /// Ein Vergleich ohne Editor sperrt auch ohne aktives Key-Window
         /// den Rückfall auf ein dahinter liegendes Dokument.
         let blocksInactiveDocumentFallback: Bool
 
         init(isDocumentWindow: Bool, isKey: Bool,
              allowsDocumentFallback: Bool = false,
+             documentOwnerID: ObjectIdentifier? = nil,
              blocksInactiveDocumentFallback: Bool = false) {
             self.isDocumentWindow = isDocumentWindow
             self.isKey = isKey
             self.allowsDocumentFallback = allowsDocumentFallback
+            self.documentOwnerID = documentOwnerID
             self.blocksInactiveDocumentFallback = blocksInactiveDocumentFallback
         }
     }
@@ -67,15 +52,19 @@ enum WindowTargeting {
     ///
     /// Die Regeln, in dieser Reihenfolge:
     /// 1. Bedient der Nutzer gerade ein Dokumentfenster, gilt dieses.
-    /// 2. Hält die BEKANNTE Suchmaske die Tastatur, gilt das vorderste
-    ///    Dokumentfenster dahinter.
+    /// 2. Hält die bekannte Suchmaske die Tastatur, gilt ausschließlich ihr
+    ///    noch sichtbares, registriertes Dokumentfenster.
     /// 3. Hält ein anderes Fenster die Tastatur, gibt es kein Dokumentziel.
     ///    Besonders ⌘W darf dann niemals ein Fenster dahinter schließen.
     /// 4. Ohne Key-Window gilt das vorderste Dokumentfenster.
     static func targetIndex(in candidates: [Candidate]) -> Int? {
         if let keyed = candidates.firstIndex(where: \.isKey) {
             if candidates[keyed].isDocumentWindow { return keyed }
-            guard candidates[keyed].allowsDocumentFallback else { return nil }
+            guard candidates[keyed].allowsDocumentFallback,
+                  let owner = candidates[keyed].documentOwnerID else { return nil }
+            return candidates.firstIndex {
+                $0.isDocumentWindow && $0.documentOwnerID == owner
+            }
         } else if candidates.first?.blocksInactiveDocumentFallback == true {
             return nil
         }
@@ -96,6 +85,8 @@ enum CommandTargeting {
             WindowTargeting.Candidate(isDocumentWindow: isDocumentWindow($0),
                                       isKey: $0.isKeyWindow,
                                       allowsDocumentFallback: SearchWindow.isSearchWindow($0),
+                                      documentOwnerID: WorkspaceWindowRegistry.workspace(for: $0)
+                                        .map(ObjectIdentifier.init),
                                       blocksInactiveDocumentFallback:
                                         ExternalDiffWindow.isExternalDiffWindow($0)
                                         || ControlSnapshotWindow.isSnapshotWindow($0))
@@ -135,9 +126,9 @@ enum CommandTargeting {
         return (window, workspace)
     }
 
-    /// Fenster, Workspace und Editor in EINEM Zugriff.
+    /// Fenster, Workspace und Editor in einem Zugriff.
     ///
-    /// Wer Inhalt liest und Text schreibt, muss beides aus DEMSELBEN Fenster
+    /// Wer Inhalt liest und Text schreibt, muss beides aus demselben Fenster
     /// nehmen. Genau daran scheiterte „Dokument formatieren": Es las den
     /// Tabinhalt aus `Workspace.shared` und schrieb in einen Editor, der aus
     /// einer zweiten, unabhängigen Suche stammte — bei zwei Fenstern konnten
@@ -180,12 +171,12 @@ enum CommandTargeting {
     /// Rückfrage ohne zugehöriges Fenster. Die Registry kennt dagegen jedes
     /// noch nicht geschlossene Fenster.
     ///
-    /// Liefert diese Funktion `nil`, gehört der Workspace zu KEINEM Fenster
+    /// Liefert diese Funktion `nil`, gehört der Workspace zu keinem Fenster
     /// mehr — er ist verwaist und darf nichts mehr melden.
     static func registeredWindow(for workspace: Workspace) -> NSWindow? {
         if let visible = documentWindow(for: workspace) { return visible }
         return WorkspaceWindowRegistry.registeredWindows().first {
-            // Der Rückfall darf die Sichtbarkeit bewusst NICHT verlangen:
+            // Der Rückfall darf die Sichtbarkeit bewusst nicht verlangen:
             // AppKit kann hintere Dokumentfenster beim Beenden ausblenden.
             // Such- und Hilfefenster kennen teils denselben Workspace, sind
             // aber niemals der sichtbare Gegenstand einer Sicherungsfrage.
@@ -195,7 +186,7 @@ enum CommandTargeting {
         }
     }
 
-    /// Der Workspace, zu dem DIESER Editor gehört.
+    /// Der Workspace, zu dem dieser Editor gehört.
     ///
     /// Die Umkehrung ist das Mittel gegen die gefährlichste Spielart des
     /// Fensterfehlers: Eine Operation liest den Tabinhalt aus einer Quelle und
@@ -214,7 +205,7 @@ enum CommandTargeting {
     ///
     /// Die einzige Stelle im Produktcode, die AppKit direkt nach Fenstern
     /// fragt. `orderedWindows` ist von vorne nach hinten sortiert;
-    /// `NSApp.windows` wäre es NICHT (siehe Dateikopf).
+    /// `NSApp.windows` wäre es nicht (siehe Dateikopf).
     private static func orderedWindows() -> [NSWindow] {
         NSApp?.orderedWindows ?? []
     }

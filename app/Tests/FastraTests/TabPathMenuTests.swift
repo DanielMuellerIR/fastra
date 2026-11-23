@@ -1,7 +1,7 @@
 // TabPathMenuTests.swift
 //
-// Tests für die Pfadkette des Tab-Pfadmenüs (Etappe 1 Wunschpaket 2026-07b):
-// Datei zuoberst, dann jeder Elternordner aufwärts bis zur Wurzel „/“.
+// Tests für die Pfadkette des Tab-Pfadmenüs: Datei
+// zuoberst, dann jeder Elternordner aufwärts bis zur Wurzel „/“.
 
 import AppKit
 import Testing

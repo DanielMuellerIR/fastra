@@ -43,11 +43,11 @@ final class FourDSignatureHelpController: ObservableObject {
                 textView: TextView?,
                 cursorPositions: [CursorPosition],
                 isFourDActive: Bool) {
-        // Zuerst ALLE noch laufenden Hintergrundauflösungen entwerten — auch
+        // Zuerst alle noch laufenden Hintergrundauflösungen entwerten — auch
         // dann, wenn dieser Aufruf gleich unten abbricht. Vorher zählte nur
         // der Erfolgsfall hoch: Eine bereits laufende Auflösung behielt ihre
         // gültige Generation und zeigte die längst veraltete Hilfe danach
-        // erneut an (Review 2026-08-10).
+        // erneut an.
         updateGeneration &+= 1
         let generation = updateGeneration
         guard isFourDActive,
@@ -80,7 +80,7 @@ final class FourDSignatureHelpController: ObservableObject {
         // Alles, was die Platte anfasst — Existenzprüfung der Methodendatei,
         // Änderungsdatum, Lesen des Archivs und Parsen —, läuft im
         // Hintergrund. Auf einem Netz- oder Wechseldatenträger blockierte
-        // sonst jede Cursorbewegung die Oberfläche (Review 2026-08-10). Aus
+        // sonst jede Cursorbewegung die Oberfläche. Aus
         // dem Workspace werden hier nur reine Daten entnommen; die Generation
         // verwirft ein verspätetes Ergebnis.
         let request = titleRequest(workspace: workspace, context: context)
@@ -124,10 +124,10 @@ final class FourDSignatureHelpController: ObservableObject {
                               context: FourDCallContext) -> FourDSignatureResolver.Request {
         let lowered = context.methodName.lowercased()
         let snapshot = workspace.fourDMethodIndexSnapshot
-        // Die Schreibweise der DATEI kommt aus dem Index, nicht aus dem
+        // Die Schreibweise der Datei kommt aus dem Index, nicht aus dem
         // getippten Aufruf: 4D vergleicht Methodennamen ohne Groß-/
         // Kleinschreibung, ein case-sensitives Dateisystem aber nicht —
-        // `alert(…)` fände `ALERT.4dm` sonst nicht (Review 2026-08-02).
+        // `alert(…)` fände `ALERT.4dm` sonst nicht.
         let fileName = snapshot.projectMethodNames.contains(lowered)
             ? (snapshot.projectMethodDisplayNames
                 .first(where: { $0.lowercased() == lowered }) ?? context.methodName)
@@ -330,12 +330,11 @@ final class FourDSignatureHelpController: ObservableObject {
 
 // MARK: - Signatur laden (Hintergrund)
 
-/// Der Teil der Parameterhilfe, der die PLATTE anfasst: Methodendatei suchen,
+/// Der Teil der Parameterhilfe, der die Platte anfasst: Methodendatei suchen,
 /// Änderungsdatum lesen, Datei bzw. 4DZ-Eintrag lesen und parsen. Er steht
 /// bewusst außerhalb des `@MainActor`-Controllers, damit er vollständig auf
 /// einer Hintergrund-Queue laufen kann — auf einem Netz- oder
 /// Wechseldatenträger blockierte jede dieser Fragen sonst die Oberfläche
-/// (Review 2026-08-10).
 enum FourDSignatureResolver {
 
     /// Alle Eingaben einer Auflösung als reine Daten. Der Hintergrundauftrag
@@ -395,7 +394,7 @@ enum FourDSignatureResolver {
         }
         // Geteilte Komponentenmethode: Signatur aus `.4dm`-Quelle (Platte
         // oder 4DZ-Archiv) bzw. aus der Methodendokumentation. Eine Doku ohne
-        // Deklarationszeilen beweist NICHT, dass die Methode parameterlos ist.
+        // Deklarationszeilen beweist nicht, dass die Methode parameterlos ist.
         if let componentMethod = request.componentMethod,
            let signature = signature(forComponentMethod: componentMethod,
                                      cache: cache) {

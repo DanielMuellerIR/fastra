@@ -1,6 +1,6 @@
 [package]
 name = "fastra-linux"
-version = "1.240.0"
+version = "1.242.83"
 edition.workspace = true
 license.workspace = true
 

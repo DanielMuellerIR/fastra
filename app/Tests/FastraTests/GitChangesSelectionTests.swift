@@ -1,7 +1,7 @@
 import XCTest
 @testable import Fastra
 
-/// Mehrfachauswahl der Änderungen-Liste (Daniel-Wunsch 2026-07-30): Klick,
+/// Mehrfachauswahl der Änderungen-Liste: Klick,
 /// Cmd-Klick-Umschalten, Shift-Klick-Bereich und das Austragen verschwundener
 /// Zeilen — plus die Aufteilung des Verwerfen-Plans in untracked/getrackt.
 final class GitChangesSelectionTests: XCTestCase {

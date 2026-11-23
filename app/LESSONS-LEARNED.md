@@ -38,7 +38,7 @@ Das funktioniert sowohl mit `swift build` als auch beim Öffnen in Xcode. Wenn `
 **Lösung:** `#Preview`-Blöcke in den Sources weglassen, **wenn der Workflow CLI-Builds einschließt**. Stattdessen Previews erst nach dem Öffnen in Xcode hinzufügen, oder via `#if DEBUG && canImport(SwiftUI) && canImport(PreviewsMacros)` einklammern (umständlich).
 
 ### A.3 `Assets.xcassets` funktioniert ohne Xcode
-Anders als befürchtet wird `Assets.xcassets` (inkl. `AppIcon.appiconset`) vom SPM-Build sauber kompiliert. Ergebnis ist `Assets.car` neben der Binary. Das App-Icon erscheint allerdings nur, wenn `Info.plist` `CFBundleIconName=AppIcon` und `CFBundleIconFile=AppIcon` enthält UND die App in einer richtigen `.app`-Bundle-Struktur läuft (siehe A.4).
+Anders als befürchtet wird `Assets.xcassets` (inkl. `AppIcon.appiconset`) vom SPM-Build sauber kompiliert. Ergebnis ist `Assets.car` neben der Binary. Das App-Icon erscheint allerdings nur, wenn `Info.plist` `CFBundleIconName=AppIcon` und `CFBundleIconFile=AppIcon` enthält und die App in einer richtigen `.app`-Bundle-Struktur läuft (siehe A.4).
 
 ### A.4 `swift run` ≠ "richtige Mac-App"
 **Beobachtung:** `swift run` startet die Binary im Terminal-Kontext. Das Fenster erscheint, aber:
@@ -216,7 +216,7 @@ Diagnose via `lldb -o "b objc_exception_throw" -o "run"` — ohne den Breakpoint
 
 ### F.9 CMD+F-Zombie-Patch — Editor-eigenes Find-Panel an der Quelle abschalten (2026-06-03)
 
-`CodeEditSourceEditor` installiert beim Laden einen eigenen `keyDown`-Monitor (`TextViewController.handleCommand`), der bei fokussiertem Editor CMD+F abfängt und sein internes Find-Panel via `showFindPanel()` zeigt. Wir wollen stattdessen unsere eigene Suchmaske. Das Rennen der konkurrierenden `NSEvent`-Local-Monitore (LIFO) ist **nicht zuverlässig gewinnbar** — das Panel blitzte trotz Write-back-Reconcile (`EditorView.onChange(findPanelVisible)`) noch kurz auf, weil `showFindPanel()` 0,15 s einanimiert.
+`CodeEditSourceEditor` installiert beim Laden einen eigenen `keyDown`-Monitor (`TextViewController.handleCommand`), der bei fokussiertem Editor CMD+F abfängt und sein internes Find-Panel via `showFindPanel()` zeigt. Fastra verwendet stattdessen seine eigene Suchmaske. Das Rennen der konkurrierenden `NSEvent`-Local-Monitore (LIFO) ist **nicht zuverlässig gewinnbar** — das Panel blitzte trotz Write-back-Reconcile (`EditorView.onChange(findPanelVisible)`) noch kurz auf, weil `showFindPanel()` 0,15 s einanimiert.
 
 **Workaround (vierter build.sh-Patch):** Im resolved Checkout `…/Controller/TextViewController+Lifecycle.swift` den CMD+F-Zweig von
 
@@ -230,7 +230,7 @@ case (commandKey, "f"):
 auf `return event` umbiegen (CMD+F durchreichen statt Panel zeigen). Damit fängt CMD+F ausschließlich unser App-Monitor ab — deterministisch, unabhängig von der Monitor-Reihenfolge.
 
 **Zwei Stolpersteine:**
-1. SPM trackt Quell-Änderungen **innerhalb** von `.build/checkouts/` NICHT (Dependencies gelten als immutable). Der Patch landet sonst nicht im Binary. → build.sh verwirft nach dem Patchen die CESE-Build-Artefakte (`.build/*/{debug,release}/CodeEditSourceEditor.build` + `.swiftmodule`), damit SPM neu übersetzt. Gilt für das Build-System `native`; `swiftbuild` (Default ab Swift 6.4) erkennt die Änderung selbst, siehe A.6.
+1. SPM trackt Quell-Änderungen **innerhalb** von `.build/checkouts/` nicht (Dependencies gelten als immutable). Der Patch landet sonst nicht im Binary. → build.sh verwirft nach dem Patchen die CESE-Build-Artefakte (`.build/*/{debug,release}/CodeEditSourceEditor.build` + `.swiftmodule`), damit SPM neu übersetzt. Gilt für das Build-System `native`; `swiftbuild` (Default ab Swift 6.4) erkennt die Änderung selbst, siehe A.6.
 2. Der Patch **verifiziert sich selbst** (`grep` nach `showFindPanel()` muss danach leer sein, sonst `exit 1`) — nach einem Versions-Bump mit geänderter Quelle kehrt der Zombie sonst lautlos zurück.
 
 Verifikation: `./selftest.sh findbar` pollt auf transientes Aufblitzen. Volle
@@ -239,7 +239,7 @@ Begründung und verbotene Irrwege stehen in
 
 ### F.10 Toter cursorPositions-Reconcile — Treffer-Sprung an der Quelle reparieren (2026-06-04)
 
-Der Treffer-Sprung (CMD+G / Listen-Klick / Voriger-Nächster) setzt `editorState.cursorPositions`; CodeEditSourceEditor soll daraus die Editor-Selektion ableiten und in Sicht scrollen. Tat es NIE. Grund ist ein Bug in CESE 0.15.x: `SourceEditor.updateControllerWithState` prüft
+Der Treffer-Sprung (CMD+G / Listen-Klick / Voriger-Nächster) setzt `editorState.cursorPositions`; CodeEditSourceEditor soll daraus die Editor-Selektion ableiten und in Sicht scrollen. Tat es nie. Grund ist ein Bug in CESE 0.15.x: `SourceEditor.updateControllerWithState` prüft
 
 ```swift
 if let cursorPositions = state.cursorPositions, cursorPositions != state.cursorPositions {
@@ -249,7 +249,7 @@ if let cursorPositions = state.cursorPositions, cursorPositions != state.cursorP
 
 Die Bedingung vergleicht die frisch gebundene Variable **mit sich selbst** → immer `false`. `setCursorPositions()` läuft dadurch nur einmal in `makeNSViewController` (Editor-Erzeugung); jede spätere Änderung von außen verpufft. Reine Unit-Tests sahen das nicht — sie durchlaufen das CESE-Zeile/Spalte→Selektion-Mapping nicht.
 
-**Workaround (fünfter build.sh-Patch):** Im resolved Checkout `…/SourceEditor/SourceEditor.swift` die Bedingung auf den IST-Stand des Controllers umbiegen und beim Anwenden in Sicht scrollen:
+**Workaround (fünfter build.sh-Patch):** Im resolved Checkout `…/SourceEditor/SourceEditor.swift` die Bedingung auf den Ist-Stand des Controllers umbiegen und beim Anwenden in Sicht scrollen:
 
 ```swift
 if let cursorPositions = state.cursorPositions, cursorPositions != controller.cursorPositions {
@@ -528,7 +528,7 @@ Editor treffen und `textOffsetAtPoint` eine Position liefern.
 ### F.20 Caret-Rundung ist die falsche Basis für Doppelklick-Wörter (2026-07-24)
 
 `textOffsetAtPoint` rundet wie eine Einfüge-Position: Ein Klick auf die
-rechte Hälfte eines Zeichens liefert den Offset DANACH. Für den einfachen
+rechte Hälfte eines Zeichens liefert den Offset danach. Für den einfachen
 Klick ist das korrekt. Der Doppelklick-Pfad übernahm dieselbe Position und
 markierte deshalb beim Klick auf die rechte Hälfte des letzten Wortzeichens
 den Leerraum hinter dem Wort. NSTextView und BBEdit wählen das Wort über die
@@ -544,7 +544,7 @@ Umbruchkante und verlangt exakt dieses Wort als Auswahl.
 
 ### F.21 Der Drag-Anker gehört an den Maus-Down, nicht an das erste Drag-Event (2026-07-24)
 
-CodeEditTextView verankerte eine Maus-Selektion erst im ERSTEN
+CodeEditTextView verankerte eine Maus-Selektion erst im ersten
 `mouseDragged`. Schnelle Mausbewegungen liefern grob gerasterte Events: Das
 erste Drag-Ereignis kann weit vom Klickpunkt entfernt liegen, unterhalb des
 Fensters wird es durch das Clamping sogar auf das Dokumentende gezogen. Die
@@ -557,7 +557,7 @@ auf die geklemmte Klickposition; das erste Drag-Ereignis erweitert nur noch.
 
 **Regression:** `./selftest.sh dragscroll` beginnt den Drag bei Offset 10,
 zieht mit echten Events 40 Punkte unter das Fenster und verlangt beides:
-Autoscroll folgt nach unten UND die Auswahl bleibt am Klickpunkt verankert.
+Autoscroll folgt nach unten und die Auswahl bleibt am Klickpunkt verankert.
 `./selftest.sh selshort` sichert zusätzlich die Tastaturvariante in der
 kleinen, stark umbrochenen Nutzerdatei (11 Zeilen, längste 646 Zeichen).
 
@@ -565,7 +565,7 @@ kleinen, stark umbrochenen Nutzerdatei (11 Zeilen, längste 646 Zeichen).
 
 CESEs `StyledRangeContainer.applyHighlightResult` dokumentiert den Vertrag
 nur im Kommentar: Gelieferte Highlight-Bereiche dürfen den angefragten
-Bereich nicht überschreiten. Ein Bereich, der VOR dem Chunk beginnt, wird
+Bereich nicht überschreiten. Ein Bereich, der vor dem Chunk beginnt, wird
 komplett verworfen („Skip! Overlapping“) — ohne Assertion, ohne Log. Nach
 einem Edit färbt CESE ab der Editposition neu; Fastras 4D-Provider lieferte
 seine gecachten Token aber ungeclippt. Ein langer `/* … */`-Kommentarblock
@@ -586,7 +586,7 @@ Kommentarblock und verlangt anschließend Kommentarfarbe bis zum Blockende
 `SourceEditor.updateControllerWithState` scrollt bei jedem SwiftUI-Update auf
 `state.scrollPosition`, sobald sie von der echten ClipView-Position abweicht.
 Der Rückschreiber (`Coordinator.textControllerScrollDidChange`) läuft aber
-via `receive(on: RunLoop.main)` erst im NÄCHSTEN Runloop. Löst ein
+via `receive(on: RunLoop.main)` erst im nächsten Runloop. Löst ein
 Tastendruck neben dem Tipp-Scroll noch ein weiteres SwiftUI-Update aus
 (bei Fastra: Fußzeile mit Zeile/Spalte), gewinnt der Reconcile mit der
 veralteten Position: Der frische Scroll wird zurückgedreht, der Cursor
@@ -610,8 +610,8 @@ schreibt während View-Updates hinein — das verträgt nur das echte
 
 **Regression:** `./selftest.sh typescroll` (inkl. erzwungenem Zusatz-Update
 nach jedem Tastendruck und Zweitfenster-Stufe); das Race selbst feuert unter
-Testtiming nicht deterministisch — verlässlicher Beleg war Daniels
-100-%-Repro vor/nach dem Fix.
+Testtiming nicht deterministisch — der manuell reproduzierte Ablauf vor und nach dem Fix lieferte den
+verlässlichen Nachweis.
 
 ### F.24 rectForOffset crasht im Undo-Fenster mit veraltetem Zeilen-Storage (2026-07-24)
 
@@ -624,7 +624,7 @@ nicht geclampten alten Cursorposition. Der Bounds-Check gegen
 `rangeOfComposedCharacterSequence(at:)` wirft eine NSRangeException →
 SIGABRT (Befund: Crash nach ⌘V + ⌘Z am Dateiende).
 
-**Workaround (Patch 4w in `build.sh`):** Offsets außerhalb des ECHTEN
+**Workaround (Patch 4w in `build.sh`):** Offsets außerhalb des echten
 Storage liefern ein 0-breites Rechteck statt der Range-Abfrage.
 
 **Regression:** `TextLayoutManagerStaleOffsetTests` stellt das Fenster nach
@@ -788,18 +788,18 @@ be created from a negative number of bytes", ausgelöst durch einen ganz
 normalen Tastendruck.
 
 `TextSelection.pivot` ist der feste Anker, um den Shift+Pfeil eine Auswahl
-dreht. Upstream setzt ihn nur beim ERSTEN Shift-Schritt (`pivot == nil`) und
+dreht. Upstream setzt ihn nur beim ersten Shift-Schritt (`pivot == nil`) und
 verwirft ihn nie wieder: `didReplaceCharacters` verschiebt nach einem Edit
 nur die Range, der Anker bleibt auf dem alten Text stehen. Nach einem
-Backspace zeigt er dadurch RECHTS neben den Cursor. Das nächste Shift+→
+Backspace zeigt er dadurch rechts neben den Cursor. Das nächste Shift+→
 landet in `updateSelectionRange` im Schrumpf-Zweig (`pivot > location`,
 `length -= range.length`) und rechnet aus der leeren Auswahl `{9, 0}` den
 Bereich `{10, -1}` aus.
 
-Die negative Länge fällt durch ALLE Bereichs-Wächter des Pakets: Sowohl
+Die negative Länge fällt durch alle Bereichs-Wächter des Pakets: Sowohl
 `substring(from:)` (TextStory) als auch die `setSelectedRange(s)`-Prüfungen
 testen nur `location ≥ 0` und `max ≤ length` — bei negativer Länge liegt
-`max` UNTER `location`, beides geht auf. Erst `-[NSString substringWithRange:]`
+`max` unter `location`, beides geht auf. Erst `-[NSString substringWithRange:]`
 reicht die Länge als CFRange an CoreFoundation weiter, und die App bricht ab.
 Ein Bereichs-Wächter ist also erst vollständig mit `length >= 0`.
 

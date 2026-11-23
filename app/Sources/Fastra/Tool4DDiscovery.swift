@@ -1,13 +1,11 @@
 // Tool4DDiscovery.swift
 //
-// tool4d-Ersteinrichtungshilfe (Etappe 4 Wunschpaket 2026-07c).
-//
-// Fastra bündelt tool4d NICHT, lädt nichts herunter und startet keine
-// Installation (Produktgrundsatz: keine versteckten Netzwerkaktionen).
-// Diese Datei findet lediglich ein vom Nutzer bereits installiertes tool4d
-// an den bekannten Orten, liest die Version aus dem Bundle-Info.plist
-// (OHNE das Programm auszuführen) und merkt sich den Fundort als Grundlage
-// einer späteren Prüf-Integration (Etappe 8).
+// tool4d-Ersteinrichtungshilfe. Fastra bündelt tool4d
+// nicht, lädt nichts herunter und startet keine Installation (Produktgrundsatz:
+// keine versteckten Netzwerkaktionen). Diese Datei findet lediglich ein vom
+// Nutzer bereits installiertes tool4d an den bekannten Orten, liest die Version
+// aus dem Bundle-Info.plist (ohne das Programm auszuführen) und merkt sich den
+// Fundort als Grundlage einer späteren Prüf-Integration.
 
 import Foundation
 import AppKit
@@ -30,7 +28,7 @@ enum Tool4DDiscovery {
         /// oder ein nacktes Binary aus dem PATH).
         let executableURL: URL
         /// Version aus dem App-Bundle-Info.plist; `nil` bei nacktem Binary.
-        /// Wird bewusst NIE durch Ausführen ermittelt.
+        /// Wird bewusst nie durch Ausführen ermittelt.
         let version: String?
         let source: Source
     }
@@ -117,7 +115,7 @@ enum Tool4DDiscovery {
                 }
             }
         }
-        // `max(by:)` liefert das GRÖSSTE Element; die Ordnung ist bewusst
+        // `max(by:)` liefert das größte Element; die Ordnung ist bewusst
         // total, damit das Ergebnis nicht von der Verzeichnis-Lesereihenfolge
         // abhängt.
         return candidates.max { lhs, rhs in
@@ -193,11 +191,10 @@ enum Tool4DDiscovery {
     static let maximumInfoPlistBytes = 4 * 1024 * 1024
 
     /// Version eines tool4d.app-Bundles aus dessen Info.plist — reines
-    /// Datei-Lesen, KEIN Programmstart. Über den gemeinsamen vorsichtigen
+    /// Datei-Lesen, kein Programmstart. Über den gemeinsamen vorsichtigen
     /// Lesepfad: nicht blockierend, nur reguläre Dateien, feste Obergrenze.
     /// `Data(contentsOf:)` lüde vorher eine übergroße oder als FIFO
     /// untergeschobene „Info.plist" ungebremst bzw. hinge dort fest
-    /// (Review 2026-08-31).
     static func bundleVersion(appURL: URL) -> String? {
         let plist = appURL.appendingPathComponent("Contents/Info.plist")
         guard let data = BoundedFileReading.openRegularFile(
@@ -214,14 +211,13 @@ enum Tool4DDiscovery {
     /// Namensregel wie die Programme-Ordner-Suche: Ein real heruntergeladenes
     /// Bundle heißt versioniert („tool4d_v21….app"), nur der exakte Name
     /// „tool4d.app" wäre zu eng — die Version eines über PATH gefundenen oder
-    /// gemerkten versionierten Bundles erschiene dann als unbekannt
-    /// (Reviewfund 2026-08-18).
+    /// gemerkten versionierten Bundles erschiene dann als unbekannt.
     ///
-    /// Verlangt wird die ECHTE Bundle-Struktur, also genau das ausführbare
+    /// Verlangt wird die echte Bundle-Struktur, also genau das ausführbare
     /// Binary `<tool4d…*.app>/Contents/MacOS/tool4d`. Ein bloß übergeordnetes
     /// tool4d-…app-Verzeichnis (etwa `tool4d-wrapper.app/bin/tool4d`) reicht
     /// nicht: Seine Info.plist beschreibt ein anderes Programm, die Anzeige
-    /// wäre eine fremde Versionsnummer (Reviewfund 2026-08-19). Symlinks —
+    /// wäre eine fremde Versionsnummer. Symlinks —
     /// typisch ein PATH-Eintrag `/usr/local/bin/tool4d` — werden vor der
     /// Strukturprüfung aufgelöst.
     static func bundleVersion(forExecutable executable: URL) -> String? {
@@ -244,7 +240,7 @@ enum Tool4DDiscovery {
 /// Nutzersichtbarer Teil der Einrichtungshilfe: Erst-Kontakt-Hinweis-Zustand,
 /// „tool4d finden…"-Dialog und der gemerkte Fundort.
 enum Tool4DAssist {
-    /// Download-Seite von 4D (öffnet NUR auf Klick — nie automatisch).
+    /// Download-Seite von 4D (öffnet nur auf Klick — nie automatisch).
     static let downloadPageURL = URL(string: "https://product-download.4d.com")!
 
     private static let hintShownKey = "fastra.tool4d.firstContactHintShown"
@@ -256,8 +252,8 @@ enum Tool4DAssist {
     /// einen der beiden Buttons quittiert wurde. Läuft über die isolierte
     /// Selbsttest-Suite, damit Tests das echte Flag nicht verbrauchen.
     static var firstContactHintShown: Bool {
-        get { SelfTest.workspaceDefaults().bool(forKey: hintShownKey) }
-        set { SelfTest.workspaceDefaults().set(newValue, forKey: hintShownKey) }
+        get { AppDefaults.store.bool(forKey: hintShownKey) }
+        set { AppDefaults.store.set(newValue, forKey: hintShownKey) }
     }
 
     /// Trigger des Erst-Kontakt-Hinweises: `.4dm`-Datei oder `.4DProject`.
@@ -270,8 +266,8 @@ enum Tool4DAssist {
     /// selbst startet ihn nie; ausgeführt wird tool4d erst auf den bewussten
     /// Befehl „Dokument prüfen“ für ein passendes geöffnetes Projekt.
     static var rememberedExecutablePath: String? {
-        get { SelfTest.workspaceDefaults().string(forKey: rememberedPathKey) }
-        set { SelfTest.workspaceDefaults().set(newValue, forKey: rememberedPathKey) }
+        get { AppDefaults.store.string(forKey: rememberedPathKey) }
+        set { AppDefaults.store.set(newValue, forKey: rememberedPathKey) }
     }
 
     /// Normalisiert einen von Hand eingetragenen tool4d-Pfad: Leerraum am
@@ -309,7 +305,7 @@ enum Tool4DAssist {
     /// wie „Hilfe → tool4d finden…“. Damit startet die Prüfung nie eine
     /// unbekannte oder inzwischen gelöschte Installation.
     ///
-    /// Wichtig: Ein GESETZTER Pfad, der nicht funktioniert, fällt NICHT auf
+    /// Wichtig: Ein gesetzter Pfad, der nicht funktioniert, fällt nicht auf
     /// die automatische Suche zurück — sonst liefe eine andere tool4d-Version
     /// als die ausdrücklich eingetragene, ohne dass es jemand merkt. Automatik
     /// gilt nur bei leerem Feld; das kündigt der Einstellungsdialog auch so an.

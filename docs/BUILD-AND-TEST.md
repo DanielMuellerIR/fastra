@@ -2,13 +2,95 @@
 
 Diese Datei beschreibt den reproduzierbaren Build-, Paketierungs- und Testweg.
 Projektfakten, Produktinvarianten und Konventionen stehen in
-[AGENTS.md](../AGENTS.md).
+[AGENTS.md](../AGENTS.md). Die Regeln für Main, Worker, Rückrufe und
+geteilten Zustand stehen in [Nebenläufigkeit und Zustandsbesitz](CONCURRENCY.md).
 
 Build, Installation und Unitlauf derselben Arbeitskopie nacheinander ausführen.
 Sie verwenden dieselbe SwiftPM-Build-Datenbank; ein durch parallele Zugriffe
 gestörter Lauf zählt nicht als Abschlussprüfung. Getrennte Arbeitskopien
 benötigen getrennte Build-Verzeichnisse.
 
+
+## Schmales SwiftLint-Gate (macOS)
+
+`python3 app/swift-lint.py` prüft rekursiv **alle** Swift-Dateien unter
+`app/Sources`, einschließlich kleiner Targets, Selbsttests und Soak-Code.
+Es verwendet SwiftLint **0.65.1** mit den Regeln `force_cast`, `force_try` und
+`force_unwrapping`, ohne SourceKit, Cache oder automatische Korrekturen.
+Dies ist eine Konventionsprüfung: Bekannte Befunde sind keine belegten
+Produktfehler. Das Gate bestätigt weder gültige Swift-Syntax noch Typkorrektheit;
+der vollständige Build und die bestehenden Tests bleiben erforderlich.
+
+Die CLI lokal über `SWIFTLINT_BIN=/pfad/zu/swiftlint` oder `PATH` bereitstellen;
+das Skript installiert nichts. Das offizielle portable Archiv liegt unter
+[SwiftLint 0.65.1](https://github.com/realm/SwiftLint/releases/tag/0.65.1).
+Sein SHA256 lautet
+`c1e429b0599cf1b516f369a2d9ec04eaf0e436f3c12b637df8851fa52ff694d0`.
+CI lädt es in einen eigenen Ordner unter `RUNNER_TEMP`, prüft vor Ausführung
+diesen Hash und behält den vorhandenen Xcode-Pin sowie Build und Tests bei.
+
+```bash
+SWIFTLINT_BIN=/pfad/zu/swiftlint python3 app/swift-lint.py
+SWIFTLINT_BIN=/pfad/zu/swiftlint python3 -m unittest discover \
+  -s app/Tests/Tooling -p test_swift_lint.py -v
+```
+
+Die versionierte `app/swift-lint-baseline.json` bindet jeden akzeptierten Befund
+an relativen Dateipfad, positive Zeile und Spalte, Regel, genaue Diagnose sowie
+SHA256 der vollständigen Quellzeile **einschließlich ihres Zeilenendes**.
+Toolversion und Hash der `app/swift-lint-configuration.json` gehören ebenfalls
+dazu. Gleiche Einträge zählen als Multimenge; weder Gesamtzahlen noch
+Git-Diffbereiche erlauben neue Befunde. Geänderte Zeilen mit gleicher
+Befundanzahl werden ebenso abgewiesen wie entfernte, veraltete Baselineeinträge.
+Auch reine Zeilenverschiebungen können deshalb eine bewusste Pflege erfordern.
+Die eingebaute SwiftLint-Baselinefilterung wird nicht verwendet.
+
+SwiftLint-Steueranweisungen in Quellen können Diagnosen unterdrücken.
+Deshalb bindet `controlled_sources` in derselben Baseline zusätzlich den
+relativen Inventurpfad und SHA256 **aller Bytes** jeder Swift-Datei, die
+`swiftlint` gefolgt von optionalem Leerraum und `:` enthält, unabhängig von
+Groß-/Kleinschreibung. Neue Steuerquellen und jede Änderung an bereits
+akzeptierten Steuerquellen scheitern, auch bei unveränderter Diagnosenzahl.
+Die Baseline ist die einzige Reviewoberfläche für diese Steuerquellen;
+ihr Export verlangt eine bewusste Prüfung der vollständigen betroffenen Datei.
+Dies ist eine konservative Literalerkennung, kein Swift-Kommentarparser:
+Auch Markerbeispiele in Strings werden vollständig gebunden. Daraus folgt
+keine Garantie einer vollständigen Analyse der Swift-Kommentargrammatik.
+
+Bei einer absichtlichen Änderung zuerst die neuen und veralteten Befunde
+prüfen. `python3 app/swift-lint.py --export` liefert den aktuellen Bestand nach
+stdout, ohne Dateien zu schreiben. Einen Export zunächst außerhalb der
+Baseline ablegen, mit der bestehenden Baseline vergleichen und nur die bewusst
+geprüfte Fassung übernehmen. CI aktualisiert sie niemals automatisch.
+`--root` und `--baseline` erlauben getrennte, ausschließlich gelesene
+Test-Fixtures; standardmäßig wird das Repository relativ zum Skript gefunden.
+
+Exit 0 bedeutet exakte Übereinstimmung mit der geprüften Baseline; Exit 1
+bedeutet Abweichung oder Eingabe-/Werkzeugfehler. Fehlende oder leere
+Quellbäume, unlesbare beziehungsweise nicht reguläre Swift-Dateien, Symlinks,
+falsche Toolversionen, ungültiges JSON und unpassende Konfigurationen oder
+Baselines liefern keinen erfolgreichen Lauf. Die Werkzeugtests prüfen
+Kernfälle mit echter CLI; Mocks simulieren nur Tool-/Reporterfehler und
+relative Reporterpfade. Die normalen Prüfungen schreiben weder Quellen noch
+Baseline.
+
+## Fenster-Zielwahl-Audit (macOS)
+
+`bash app/window-targeting-audit.sh` prüft direkte Fensterzugriffe und
+`Workspace.shared` vor der Kompilierung. Außerhalb begründeter Dateiausnahmen
+wird jedes bezeichnerbegrenzte Vorkommen einzeln geprüft: Nur optionaler Leerraum
+und danach `=` (ohne zweites `=`), `===` oder `!==` erlauben es.
+Weitere Leser derselben Zeile bleiben Befunde, auch bei einer Zuweisung.
+
+Der konservative Zeilenscan weist deshalb `Workspace.shared = Workspace.shared`,
+`workspace === Workspace.shared` und `Workspace.shared === Workspace.shared` ab.
+Dies behauptet keinen Produktfehler der Identitätsvergleiche. Vollzeilenkommentare
+und Dateiausnahmen bleiben erlaubt; mehrzeilige Zugriffe, allgemeine Kommentar-/
+Stringanalyse, Aliasse und vollständige Swift-Bezeichnersemantik sind nicht erfasst.
+Exit 0 heißt kein Befund, Exit 1 verbotener Zugriff, Exit 2 erkannter Such-/
+Klassifizierungsfehler oder fehlende Quellen. Die echten Prozess-Fixtures laufen
+nach dem Build mit `cd app && ./test.sh --filter
+WindowTargetingAuditSerialRunnerIntegrationTests`.
 
 ## Klammerblock auswählen (macOS)
 
@@ -184,6 +266,31 @@ Die Fixturepfade werden vor dem Panelstart gesetzt; der normale Appbetrieb erhä
 keine Pfadvorgabe. Der Test gehört wie `diffexport` nicht zum Standardlauf.
 
 ## Gespeicherte Textabläufe
+
+Ordner- und Platten-Textabläufe verwenden dieselbe Apply-Sicherung. Die
+Foundation-Schreibvorgänge bleiben atomar. Vor dem ersten Zieltausch werden
+sämtliche Originalbackups über no-follow geöffnete Deskriptoren auf erwartete
+Größe und stabilen Hash geprüft und über `FileDurability` synchronisiert.
+Danach folgen die gebundenen Sessionverzeichnisse einschließlich neu angelegter
+Root-/Elternabhängigkeiten. Erst anschließend prüft der globale Zielpreflight
+nochmals die vollständige Vorschaugrundlage.
+
+Der Defaultmanifestwriter prüft nach dem Foundationwrite die erwarteten
+JSONbytes am geöffneten Deskriptor, synchronisiert Datei und Sessionverzeichnis
+und bestätigt danach erneut denselben Datei-/Namensstand. Erfolgreiche
+Rückgabe umfasst die ausgewerteten Closefehler. Bei zusätzlichem Fehler bleiben
+die nötigen Sicherungen, Stagingdaten und laufenden Aufräumaufträge erhalten;
+ein Fehler des ersten leeren Manifests erfindet keinen Undoauftrag.
+`./test.sh --filter 'applyPersistence|FileDurabilityTests'` ergänzt die
+vorhandenen Apply-/Manifest-Rückschrittprüfungen um reale Inhalts-, Typ-,
+Verzeichnis-, Alias- und Retentionsfälle.
+
+Dies sind ausdrückliche Synchronisierungsanforderungen, keine Messung der
+Foundation-internen Systemaufrufe oder Garantie bei Stromausfall. Die
+Prozessproben prüfen gezielte Abbrüche und Reload; sie injizieren keinen echten
+Kernel-EIO beim Apply-Sync. Der neue Prüfhelfer löscht oder veröffentlicht
+selbst keine Dateien und leitet aus identischem Inhalt keine Eigentumsrechte
+ab. Der bestehende spätere 30-Tage-Sessioncleanup bleibt unverändert.
 
 `./test.sh --filter 'TextWorkflow|ApplyTransaction|AtomicFileCommit|SearchUndo|HardWrap'`
 prüft zusätzlich vollständige Mehrdokumentpläne, gemeinsame Speicher-Rücknahme,
@@ -422,10 +529,27 @@ Undo-Verlauf mit asynchronen Bildaktionen. Der Editor bleibt während der Dateia
 gesperrt; Speichern, Ansichtswechsel und Beenden warten auf ihren Abschluss.
 Dateiinhalte werden im Hintergrund geprüft. Unmittelbar vor dem Entfernen gleicht
 der Main-Thread alle offenen Dokumentreferenzen erneut ab und führt nur noch die
-kurze Metadatenoperation aus. Geänderte Referenzen lösen eine neue Prüfung aus.
+kurze Metadatenoperation aus. Geänderte Referenzen lösen begrenzt neue Prüfungen aus.
+Wird die Prüfung nicht stabil abgeschlossen, endet das Text-Undo trotzdem; Fastra
+warnt, dass verbliebene Bilddateien nicht weiter bereinigt wurden. Benötigte
+RAM-Daten bleiben für Redo erhalten. Auch der direkte visuelle Bildabgleich
+endet nach höchstens drei eigenen Versuchen: Bei weiterhin gültigem Dokument
+bestätigt er die bereits vorbereiteten Zielbilder samt Text und warnt über die
+unterbliebene Restbereinigung. Restorefehler und verworfene Dokumentgenerationen
+behalten ihre getrennten Abbruchwege. Das Budget begrenzt Versuche, nicht die
+Dauer einzelner Prüfungen oder wartender I/O-Aufträge.
+
+Fehlertexte werden am Ende des jeweiligen Bild-I/O-Arbeitsblocks gesichert,
+bevor Main benachrichtigt wird. Ein Folgeauftrag kann eine bereits erfasste
+Ursache oder ihre Pfadangaben nicht verdrängen. Der Referenzwrapper meldet
+weiterhin nur den terminalen Versuch, keine gesammelte Warnhistorie.
+`MarkdownImageResultHandoffSerialRunnerIntegrationTests` prüft die geordnete
+Übergabe bei zwei Fehlern und bei anschließendem Erfolg. Die höchstens zwei
+Sekunden dauernde Mainbarriere gehört ausschließlich zur Testreihenfolge und
+ist keine Latenzabnahme; ein Timeout lässt die Probe fehlschlagen.
 
 Nach `./build.sh` prüfen `./test.sh --filter
-'MarkdownImageUndoBufferTests|MarkdownImageStoreTests|MarkdownVisualTests|SearchUndoTests|AtomicFileCommitTests'`
+'MarkdownImageResultHandoff|MarkdownImageUndoBufferTests|MarkdownImageReferenceCompletion|MarkdownImageStoreTests|MarkdownVisualTests|SearchUndoTests|AtomicFileCommitTests'`
 das Speicherlimit, Verwerfen während einer laufenden Aktion, gespeicherte und
 geteilte Bildreferenzen, Dateikollisionen sowie echte WebKit-Undo-Vorgänge.
 Die verzögerte Undo-Completion wird auch mit einer zwischenzeitlichen Modell-
@@ -436,6 +560,17 @@ Eine geerbte Schreibsperre prüft, dass nicht restaurierbare Metadaten das
 Entfernen verhindern. Die Bereinigung wird gegen SVG, gefiltertes und ungequotetes
 HTML einschließlich `object[data]`, nackte und codierte Prozentzeichen,
 Referenzbilder und Downloadlinks geprüft.
+`MarkdownImageFailureRetentionSerialRunnerIntegrationTests` ergänzt echte
+Mehrbild-Teilfehler, mehrere Ursachen desselben Dateibesitzers, Allow-Vorrang,
+echte ECANCELED-Hooks vor/nach Claim und den betretenen Gatebody. Erfolgreiche
+Claims-/Ordnerauflösung darf den Live-Altbefund erledigen; ein abgetrennter oder
+unbekannter früherer Restpfad bleibt ausdrücklich historisch sichtbar. Die
+Legacy-Gateprobe `ImageGatePartialDiagnosticTests` behält Ursache und früheren
+entfernten Pfad ohne Annahme über die unbekannte Ablehnungsursache. Die acht
+Source-Referenzvarianten prüfen leere Warnlisten vor und nach Redo sowie
+unveränderte Bytes, Claims/Unlinks, RAM und History. Diese Fälle laufen über
+`./test.sh --filter 'MarkdownImageFailureRetention|ImageGatePartialDiagnostic|MarkdownImageReferenceCompletion'`.
+
 Die Fenster-Selbsttests `mdassist`, `mdvisual`, `searchundo` und `cmdw` ergänzen
 native Eingaben, Ansichtswechsel und Schließen im gepackten Bundle. `mdimagequit`
 durchläuft den echten Beenden-Hook während einer angehaltenen Undo-Dateiphase
@@ -474,7 +609,7 @@ interaktive Bootstrap einmal nötig, weil iCloud notarytool-Profile nicht synct.
 Developer ID + Hardened Runtime, notarisiert bei Apple (`--wait`), stapelt das
 Ticket und kopiert nach `/Applications`. Die Signatur-Identität wird zur Laufzeit
 aus dem Schlüsselbund ermittelt (nichts Privates im Skript — public Repo). Der
-Notary-Keychain-Profilname steht bewusst NICHT im Skript; er wird per
+Notary-Keychain-Profilname steht bewusst nicht im Skript; er wird per
 `NOTARY_PROFILE`, lokaler Git-Konfiguration oder Erstdialog ermittelt.
 `./install.sh --no-notarize` signiert nur und legt das Test-Bundle im
 Projekt-Root ab; es installiert ausdrücklich nichts nach `/Applications`.
@@ -487,6 +622,34 @@ Signatur-, Ticket- und Gatekeeper-Prüfung atomar durch das neue ersetzt.
 Der Root-Wrapper `./install.sh` reicht Optionen und Umgebungsvariablen
 unverändert an `app/install.sh` weiter; dadurch funktioniert der komplette Lauf
 auch ohne vorheriges `cd app`.
+
+### Beenden und laufende Instanzen
+
+Vor einem Update oder Test zuerst feststellen, ob die Zielinstanz tatsächlich
+weichen muss. Für ein Update des installierten macOS-Bundles den exakten
+Prozesspfad in `ps -axww -o pid=,comm=` prüfen. Ein isolierter Prüflauf kann
+die Nutzerinstanz offen lassen.
+
+Muss Fastra beendet werden, die Zielinstanz über den normalen Menüpunkt
+„Fastra beenden“ oder das reguläre Quit-Ereignis schließen. Auf macOS prüft
+`AppDelegate.applicationShouldTerminate` nach der Synchronisierung des
+visuellen Markdown-Editors alle Fenster und Tabs, einschließlich unbenannter
+Dokumente und Hex-Änderungen. Ein Fenstertitel, der rote Fensterknopf oder ein
+einzelner Tab zeigt den Zustand der übrigen Tabs nicht an. Das reguläre
+Beenden dient auch als sichere Prüfung, wenn der Tabzustand von außen unklar
+ist.
+
+Ohne Sichern-Dialog und nach bestätigtem Prozessende direkt fortfahren. Bei
+einem Sichern-Dialog den Nutzer entscheiden lassen. Ohne bestätigtes
+Prozessende bleibt das Bundle an Ort und Stelle. Der macOS-Installer bricht
+bei laufendem Zielprozess ab. Signale, „Nicht sichern“ und automatische
+Dialogbestätigungen umgehen den Schutz und gehören nicht zum Update- oder
+Testablauf. Nach Austausch die App bei Bedarf regulär neu starten.
+
+Für ein lokales Fastra-Update oder einen vorbereiteten Fastra-Test ist die
+nötige Fokusübernahme vorab freigegeben, sobald alle geöffneten Fastra-Tabs
+nachweislich frei von ungesicherten Änderungen sind. Ein sauberer aktiver Tab
+allein genügt dafür nicht.
 
 **Pflicht-Gate für Installationen (seit v1.12.2):** SwiftPMs generierte
 `Bundle.module`-Accessor erwarten beim CLI-Build Ressourcen neben dem
@@ -532,7 +695,7 @@ Gatekeeper-Akzeptanz und Codesignatur des Quell-Bundles. Beim Version-Bump
 `app/Info.plist` mitziehen (siehe AGENTS.md), sonst zeigt die App eine veraltete
 Version.
 
-`build.sh` kapselt Xcode-Toolchain-Switch + sechsunddreißig Checkout-Patches
+`build.sh` kapselt den Xcode-Toolchain-Wechsel und die Checkout-Patches
 (SwiftLint-Plugins aus, CodeEditSymbols Resources, CMD+F-Zombie-Kill,
 toter cursorPositions-Reconcile, verworfene Auto-Vervollständigung schließen,
 Gutter-Drag-Clamp, horizontaler Scrollbalken, Zeilenbreiten-Messung,
@@ -545,6 +708,17 @@ Trefferflächen nach Texteingaben, klickdurchlässige verborgene Minimap,
 zellenbasierte Doppelklick-Wortauswahl, Drag-Anker am Maus-Down,
 Storage-/Layout-Konsistenz, aktuelle Zeile bei Auswahl, Fließtext-Einrückung
 und den positionsgebundenen externen Bild-Drop).
+
+Die Pythonanteile dieser Patches liegen nach Abhängigkeit geordnet unter
+`app/Patches/`. `build.sh` ruft sie aus dem App-Verzeichnis mit
+`/usr/bin/python3` und den jeweiligen Checkoutpfaden auf. Vorbedingungen,
+unmittelbare Erfolgskontrollen und das Verwerfen betroffener Buildprodukte
+bleiben im Buildskript. Die Manual-Completion-Migration unterscheidet einen
+erfolgreichen Umbau (Status 0) vom bereits passenden Stand (Status 3);
+andere Rückgabestatus brechen den Build ab. Der funktionale Wächter
+`./test.sh --fast-only --filter ManualCompletionMigrationTests` führt die
+echte Patchsektion mit frischen und vorbereiteten Quellen sowie fehlenden,
+unlesbaren und syntaktisch defekten Helfern in einer Test-Sandbox aus.
 
 Seit v1.19.0 verpackt `build.sh` zusätzlich das exakt gepinnte
 `Sparkle.framework` unter `Contents/Frameworks`, entfernt die für die nicht
@@ -571,7 +745,7 @@ Gutter-Drag-Clamp (4d in build.sh): CESEs `mouseDragged` clampt die Drag-Positio
 auf `max(0, …)` → über der Gutter-Spalte liefert `textOffsetAtPoint` nil und die
 Selektion friert ein; Patch clampt auf `max(layoutManager.edgeInsets.left, …)`.
 Der zugehörige Gutter-Durchschuss-ins-Header-Fix ist App-seitig (`.clipped()` am
-Editor in `EditorView`), KEIN Checkout-Patch.
+Editor in `EditorView`), kein Checkout-Patch.
 Patch 4c1 (4D-Auto-Vervollständigung, 2026-07-19): CESE setzt vor einer
 asynchronen Vorschlagsanfrage `activeTextView`. Liefert der 4D-Delegate für das
 erste Zeichen absichtlich noch `nil`, blieb dieser Zustand ohne sichtbares
@@ -863,11 +1037,11 @@ Anwenden. Wächter sind `DifficultDocumentCorpusTests`,
 ### Bundle-Größe — Apple-Silicon-only, ~57 MB (Stand 2026-07-15)
 
 Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
-1. **Kein Intel.** Fastra wird nur für arm64 gebaut (Produktentscheidung 2026-07-08).
+1. **Kein Intel.** Fastra wird nur für arm64 gebaut.
    `swift build` baut ohnehin nur die Host-Arch; die einzige x86_64-Quelle war das
    Grammatik-XCFramework (s. u.), das jetzt nicht mehr mitwandert.
-2. **Grammatik-XCFramework NICHT mehr ins Bundle kopiert** (Bundle-Schritt in build.sh).
-   `CodeLanguagesContainer` (CodeEditLanguages, `.binaryTarget`) ist ein STATISCHES
+2. **Grammatik-XCFramework nicht mehr ins Bundle kopiert** (Bundle-Schritt in build.sh).
+   `CodeLanguagesContainer` (CodeEditLanguages, `.binaryTarget`) ist ein statisches
    ar-Archiv (~375 MB, universal): zur Build-Zeit ins Binary gelinkt, zur Laufzeit nie
    geladen (dyld kann kein ar-Archiv laden; nicht in `otool -L`). War reines totes Gewicht.
    Nur echte dynamische Frameworks (.dylib-Binary) dürften wieder kopiert werden.
@@ -908,6 +1082,12 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Dasselbe gilt für `ExternalDiffServiceSerialRunnerIntegrationTests`: Die
   echten Annahme-/Zustellfristen dürfen nicht durch schwere Editor-Tests auf
   demselben MainActor ablaufen. Die Fristen selbst bleiben unverändert.
+  Die damit markierten nativen Bildfälle brauchen innerhalb der begrenzten
+  Referenzprüfung einen unveränderten appweiten Dokument-Snapshot bis zur
+  Dateientnahme. Fremde Teständerungen können sonst einen sicheren terminalen
+  Abbruch auslösen und die vorausgesetzte Dateientnahme verhindern. Ihre
+  Prüfungen und Zeitgrenzen bleiben unverändert. Dazu gehört auch der Test
+  zur Bildzuordnung beim Verwerfen und Speichern unter.
   `MarkdownVisualTests` läuft ebenfalls im frischen seriellen Prozess. Die
   echten WebViews sollen keine verbliebenen Layout- und Hintergrundaufgaben
   des großen Editor-Belastungskorpus übernehmen; alle Formatierungs-, Speicher-
@@ -976,7 +1156,7 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Trefferliste mindestens 25 % der Höhe. Mit
   `FASTRA_SEARCHLAYOUT_DIR=<ordner>` legt er je Kombination ein PNG des
   Fensterinhalts ab (`search-<Bereich>-<Breite>.png`) — nach jeder Änderung
-  an der Suchmaske alle Bereichs-, Breiten- und Mustervarianten ansehen (Befund 2026-09-15).
+  an der Suchmaske alle Bereichs-, Breiten- und Mustervarianten ansehen.
 - **Trefferfreigabe:** `./selftest.sh searchapproval` bedient Treffer- und Datei-Checkboxen, Alle/Keine, die vollständige Vorschau und Apply per echten AppKit-Ereignissen. Er prüft Speicher-/Plattenänderungen, natives Undo/Redo, gemeinsame Rücknahme, Read-only und Ticketentwertung. `FASTRA_SEARCHLAYOUT_DIR` sammelt die befüllten vier Bereiche in hell/dunkel bei Mindestbreite/breit sowie die Vorschau- und Fehlerzustände. Alle Sprachfassungen visuell prüfen.
   `./selftest.sh searchapprovalclose` verzögert den getrennten Webprozess kurz und schließt das Sheet per Maus während einer realen Synchronisierung. Die Rückmeldung darf danach keine Speicheränderung mehr ausführen. Die Probe kontrolliert die unveränderte Quelle vor Apply und protokolliert Vorher/Nachher und den Rücknahmestand. Die Undo-Probe schließt die Suchmaske über ihren nativen Fensterknopf und fokussiert den Dokumenteditor per Mausklick; vor ⌘Z müssen das Hauptfenster und dessen Editor tatsächlich den Tastaturfokus besitzen. Eine gesetzte First-Responder-Referenz allein belegt das aktive Fenster nicht. Sie benötigt wie `searchapproval` eine kontrollierte Fokus-Sitzung.
 - **Übrige Dialoge:** `./selftest.sh dialoglayout` öffnet Einstellungen,
@@ -989,7 +1169,7 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
 - **Fokus der Suchmaske:** `./selftest.sh searchfocus` schließt und öffnet die
   Maske per ⌘F, ⇧⌘F und Menüpunkt in Datei- und Projekt-Bereich und verlangt
   jedes Mal das Suchfeld als First Responder, auch nach einem Klick in
-  „Ausschlüsse" (Befund 2026-09-15).
+  „Ausschlüsse".
 - **README-Aufnahmen:** `./screenshot-run.sh [all|de|en] [all|search]` verwendet
   den gemeinsamen Selbsttest-Runner mit GUI-Sperre, Test-Sandbox und begrenztem
   Prozess-Cleanup. `search` erzeugt nur die beiden Suchmasken. Die Sprachwahl
@@ -1002,6 +1182,11 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   fordert keine neue Berechtigung an. Die Fensteraufnahme verwendet
   `screencapture -x` ohne Kameraton und ersetzt ein vorhandenes Bild erst nach
   erfolgreicher Aufnahme. Danach beide Sprachfassungen visuell prüfen.
+- **Über-Dialog-Aufnahme:** Mit `FASTRA_SELFTEST_LANGUAGE=de` und
+  `FASTRA_SELFTEST_SCREENSHOT_DIR=<ordner>` erzeugt `./selftest.sh aboutshot`
+  eine fenstergezielte `about.png`; mit Sprache `en` entsteht `about.en.png`.
+  Das bestätigt die Fensterbereitschaft und Aufnahme der bestehenden Diagnose,
+  nicht die vollständige Funktion des Über-Dialogs.
 - **Markdown-Umwandlung:** `./selftest.sh markdownimport` läuft fensterlos gegen
   das echte `poormans-text`: Formatkatalog (RTF als Datei, RTFD als Paket),
   Zwischenspeicher, Öffnen/Abbruch aller gemeldeten Endungs-/Containerkombinationen,
@@ -1031,7 +1216,7 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   abbilden: Der Block kennt nur seine erste Zeile, die restlichen löst erst das
   Vorschau-JS über die Zeilenumbrüche vor der Klickstelle auf. Steht der Cursor
   am Absatzanfang statt in der geklickten Zeile, ist diese Auflösung defekt.
-- **XPath-Sprung:** `./selftest.sh xpath` tippt die Query bewusst SOFORT nach
+- **XPath-Sprung:** `./selftest.sh xpath` tippt die Query bewusst sofort nach
   dem Öffnen der Leiste, also bevor der asynchrone Index fertig ist — genau der
   Fall, in dem der Sprung verloren ging. Die Fixture ist deshalb absichtlich
   groß (rund 4000 Elemente): Bei einer winzigen Datei ist der Index manchmal
@@ -1049,7 +1234,7 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Niemals das echte Arbeitsprojekt übergeben — der Test startet einen echten
   tool4d-Sprachserver darauf.
 
-  Ein selbst zusammengesetztes Minimalprojekt genügt NICHT: Mit einer bloßen
+  Ein selbst zusammengesetztes Minimalprojekt genügt nicht: Mit einer bloßen
   `.4DProject`-Datei plus einer `.4dm`-Methode liefert tool4d innerhalb der
   Wartezeit keine Diagnosen, und der Test schlägt als Funktionsfehler fehl,
   obwohl am Produkt nichts defekt ist (geprüft 2026-07-28). Welche
@@ -1063,7 +1248,7 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   schlägt der Test fehl, mit dem Setzen bei jedem Update besteht er.
 - **Drucken:** `./selftest.sh print` druckt alle sechs Fassungen (Quelltext,
   Markdown-Vorschau, Markdown-Quelltext, Hex-Abzug, Bild, PDF) ohne Drucker in
-  PDF-Dateien und prüft am ERGEBNIS: Seitenzahl, enthaltener Text, gerenderter
+  PDF-Dateien und prüft am Ergebnis: Seitenzahl, enthaltener Text, gerenderter
   Diagramm- und Formelinhalt statt rohem Markdown, keine umgebrochene
   Hex-Rasterzeile. Zum Schluss prüft er die ⌘P-/⌥⌘P-/⇧⌘P-Menüpunkte
   strukturell (exaktes Kürzel samt Modifiern), löst den Druckbefehl aus und
@@ -1094,18 +1279,35 @@ Das Bundle war einmal 489 MB. Drei Ursachen, alle in `build.sh` adressiert:
   Feld im echten Vergleichs-Sheet erscheinen; ein normaler Klick muss die
   Paar-Auswahl wieder aufheben.
 
+### Swift-Startkatalog der Selbsttests
+
+`SelfTestLaunchCatalog` enthält ausführbare Routen; die privaten Einträge in
+`SelfTest.swift` sind zugleich Quelle der Bekanntmeldung. Die regulären
+`SelfTestLaunchCatalogTests` halten Bereitschaftsfortsetzungen gezielt zurück
+und prüfen deren Reihenfolge sowie die tatsächlichen Startzuordnungen.
+Die Liveanbindung verwendet weiterhin die vorhandenen Waiter und Settlepausen.
+`updates` (Sparkle-Menübereitschaft) und `controlhost` (Deadline vor dem
+Fensterwarten) bleiben genau zwei ablaufgesteuerte Ausnahmen. Der enge
+Quellwächter für den Update-Helfer bleibt deshalb bestehen.
+
+Diese Proben belegen Router und Bindungsmetadaten, keine native
+AppKit-Bereitschaft und nicht jeden privaten Testbody. Repräsentative Starts
+im gepackten Bundle bleiben erforderlich. Die Listen in `selftest.sh` für
+Standardlauf, Fensterlosigkeit, Fokus und LaunchServices sind davon getrennte
+Runnerpolicy und werden nicht aus den Swift-Routen abgeleitet.
+
 ### Regressions-Schutz — Lehre aus dem „Zombie-Find-Bar" (2026-05-27)
 
 Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach gründlicher Analyse:
 
-1. **Echter Root Cause:** Der „Zombie" ist NICHT die macOS-NSTextView-Find-Bar, sondern **CodeEditSourceEditors eigenes Find-Panel**. Der Editor installiert beim Laden einen EIGENEN lokalen `keyDown`-Monitor (`TextViewController.handleCommand`), der bei fokussiertem Editor CMD+F abfängt und `showFindPanel()` aufruft. Deshalb halfen `disableFindBars`/Menü-Purge nie — die zielen auf den FALSCHEN Mechanismus (Standard-NSTextView-Find), nicht aufs Editor-eigene Panel.
-   **Was NICHT funktioniert:** Versuchen, den Konflikt über die Reihenfolge konkurrierender `NSEvent`-Local-Monitore zu gewinnen (LIFO/„neuester zuerst"). Diese Reihenfolge ist in der Praxis **nicht zuverlässig steuerbar** — Reinstall-auf-Notification und Launch-Timer waren beide flaky (per Selbsttest reproduziert).
-   **Zwischenschritt (Write-back-Reconcile, reicht NICHT ganz):** CodeEditSourceEditors Coordinator schreibt `findPanelVisible` in den `SourceEditorState`-Binding ZURÜCK, wenn sein Panel öffnet (`SourceEditor+Coordinator`). Wir beobachten `editorState.findPanelVisible` in `EditorView`: wird es `true`, setzen wir es sofort `false` (der Editor reconciled → Panel schließt) und öffnen STATTDESSEN unsere Suchmaske (`.fastraShowSearchFile`). Problem: `showFindPanel()` animiert das Panel 0,15 s EIN, bevor unser `false` es wieder schließt — es **blitzt kurz auf** (reproduzierbar bei rapidem CMD+F + Klick ins Hauptfenster).
-   **Finaler Fix (deterministisch, 2026-06-03):** `build.sh` patcht den resolved CESE-Checkout — der CMD+F-Zweig in `TextViewController.handleCommand` ruft nicht mehr `showFindPanel()`, sondern `return event` (CMD+F wird durchgereicht). Damit zeigt der Editor sein Panel NIE, egal wer das Monitor-Rennen gewinnt; CMD+F fängt ausschließlich unser App-Monitor ab. Der Patch fügt sich in das bestehende `build.sh`-Patch-Muster (nicht-invasiv, idempotent, verifiziert dass er greift, invalidiert die CESE-Build-Artefakte — SPM trackt Checkout-Änderungen sonst NICHT). Write-back-Reconcile + Reinstall-Hack (`installKeyMonitor`/`installFlagsMonitor` auf `didBecomeKey`/flagsChanged) bleiben als Sicherheitsnetz. Unser App-Monitor deckt zusätzlich CMD+F bei NICHT fokussiertem Editor sowie CMD+SHIFT+F/ESC ab.
+1. **Echter Root Cause:** Der „Zombie" ist nicht die macOS-NSTextView-Find-Bar, sondern **CodeEditSourceEditors eigenes Find-Panel**. Der Editor installiert beim Laden einen eigenen lokalen `keyDown`-Monitor (`TextViewController.handleCommand`), der bei fokussiertem Editor CMD+F abfängt und `showFindPanel()` aufruft. Deshalb halfen `disableFindBars`/Menü-Purge nie — die zielen auf den falschen Mechanismus (Standard-NSTextView-Find), nicht aufs Editor-eigene Panel.
+   **Was nicht funktioniert:** Versuchen, den Konflikt über die Reihenfolge konkurrierender `NSEvent`-Local-Monitore zu gewinnen (LIFO/„neuester zuerst"). Diese Reihenfolge ist in der Praxis **nicht zuverlässig steuerbar** — Reinstall-auf-Notification und Launch-Timer waren beide flaky (per Selbsttest reproduziert).
+   **Zwischenschritt (Write-back-Reconcile, reicht nicht ganz):** CodeEditSourceEditors Coordinator schreibt `findPanelVisible` in den `SourceEditorState`-Binding zurück, wenn sein Panel öffnet (`SourceEditor+Coordinator`). Wir beobachten `editorState.findPanelVisible` in `EditorView`: wird es `true`, setzen wir es sofort `false` (der Editor reconciled → Panel schließt) und öffnen stattdessen unsere Suchmaske (`.fastraShowSearchFile`). Problem: `showFindPanel()` animiert das Panel 0,15 s ein, bevor unser `false` es wieder schließt — es **blitzt kurz auf** (reproduzierbar bei rapidem CMD+F + Klick ins Hauptfenster).
+   **Finaler Fix (deterministisch, 2026-06-03):** `build.sh` patcht den resolved CESE-Checkout — der CMD+F-Zweig in `TextViewController.handleCommand` ruft nicht mehr `showFindPanel()`, sondern `return event` (CMD+F wird durchgereicht). Damit zeigt der Editor sein Panel nie, egal wer das Monitor-Rennen gewinnt; CMD+F fängt ausschließlich unser App-Monitor ab. Der Patch fügt sich in das bestehende `build.sh`-Patch-Muster (nicht-invasiv, idempotent, verifiziert dass er greift, invalidiert die CESE-Build-Artefakte — SPM trackt Checkout-Änderungen sonst nicht). Write-back-Reconcile + Reinstall-Hack (`installKeyMonitor`/`installFlagsMonitor` auf `didBecomeKey`/flagsChanged) bleiben als Sicherheitsnetz. Unser App-Monitor deckt zusätzlich CMD+F bei nicht fokussiertem Editor sowie CMD+SHIFT+F/ESC ab.
 
-2. **VERBOTENER Irrweg (kostete eine Session):** `NSApplication` zu subclassen, um CMD+F in `sendEvent` abzufangen — egal ob via `NSPrincipalClass` (wird unter SwiftUI ignoriert) oder via eigenem `main.swift`, der `CustomApp.shared` vor `App.main()` verankert. Letzteres ERSETZT SwiftUIs interne `SwiftUI.AppKitApplication`, deren eigenes Event-Routing dann fehlt → **die gesamte App wird maus-tot** (keine Klicks, kein Fenster-Schließen, CMD+Tab bringt nicht nach vorn). **Niemals NSApplication unter SwiftUI-Lifecycle subclassen.** Zur Laufzeit ist `NSApp.className == "SwiftUI.AppKitApplication"` — das ist korrekt und soll so bleiben.
+2. **Verbotener Irrweg (kostete eine Session):** `NSApplication` zu subclassen, um CMD+F in `sendEvent` abzufangen — egal ob via `NSPrincipalClass` (wird unter SwiftUI ignoriert) oder via eigenem `main.swift`, der `CustomApp.shared` vor `App.main()` verankert. Letzteres ersetzt SwiftUIs interne `SwiftUI.AppKitApplication`, deren eigenes Event-Routing dann fehlt → **die gesamte App wird maus-tot** (keine Klicks, kein Fenster-Schließen, CMD+Tab bringt nicht nach vorn). **Niemals NSApplication unter SwiftUI-Lifecycle subclassen.** Zur Laufzeit ist `NSApp.className == "SwiftUI.AppKitApplication"` — das ist korrekt und soll so bleiben.
 
-3. **In-App-Selbsttests** (`SelfTest.swift`, kein Accessibility nötig — Events werden intern gepostet). **Aufruf: bevorzugt über den Runner `./selftest.sh` (alle Tests oder `./selftest.sh findbar jump`), direkt via `Fastra -selftest findbar -ApplePersistenceIgnoreState YES` oder Umgebungsvariable `FASTRA_SELFTEST=findbar`.** `-selftest findbar` postet ein echtes CMD+F bei fokussiertem Editor und **pollt ~1,2 s engmaschig**, ob das Editor-Find-Panel AUCH NUR KURZ auftaucht (eine Einzel-Messung am Ende würde das Aufblitzen verpassen). `-selftest newwindow` löst den echten ⌘N-Menübefehl aus und prüft im Hintergrund ein zweites, passend großes Dokumentfenster mit unabhängigem Workspace und gültigem Editor-Einfügepunkt. Den echten Fokuswechsel, ⌘T zwischen zwei Workspaces und ⌘W am letzten Tab prüft anschließend der fokuspflichtige Sammeltest `cmdw`; er schließt zuvor bereits Suchmaske und Hilfe jeweils per echtem ⌘W. `-selftest fields` prüft, ob Suchen- UND Ersetzen-Feld echte, editierbare, betippbare Texteingaben sind (fing den toten Find-Feld-Bug). `-selftest tabswitch` prüft, ob der Editor beim Tab-Wechsel neu erzeugt wird (CESE schiebt Binding-Text nicht zurück → ohne `.id(activeTab.id)` bliebe der Inhalt stehen; via Objekt-Identität vorher≠nachher belegt). `-selftest jump` lädt Text mit unterschiedlich langen Vorzeilen (inkl. Emoji als UTF-16-Surrogatpaar) in einen Tab, postet exakt wie die GUI einen Treffer-Sprung (Zeile/Spalte-Pfad über `postMatchJump`) und liest die ECHTE Editor-Selektion zurück (`CodeEditTextView.TextView.selectedRange()`): der selektierte Text muss exakt der Treffer sein. Fing den toten Treffer-Sprung — CESE 0.15.x reconcilet `cursorPositions` von außen NIE (Bedingung `!= state.cursorPositions` vergleicht mit sich selbst, immer false; in `build.sh` gepatcht auf `!= controller.cursorPositions` + `scrollToVisible`). `-selftest replaceall` lädt den Demo-Inhalt („Nachname, Vorname"), setzt `(\w+), (\w+)` → `$2 $1`, ruft `applyAllInActiveBuffer()` und liest den ECHTEN Editor-`.string` zurück: er muss nach dem Replace den ersetzten Text zeigen (== Modell-Inhalt). Fing die Regression, dass „Alle ersetzen" im Editor folgenlos blieb (CESE übernimmt Binding-Änderungen nicht → in `EditorView` über `editorReloadNonce` an der `.id` eine Neuerzeugung erzwungen). `-selftest pilldrop` fokussiert das Ersetzen-Feld und treibt dessen Drag-Destination-Methoden mit einem `NSDraggingInfo`-Mock („$1"): Annahme (`draggingEntered == .copy`) + Einfügung müssen AUCH bei Fokus klappen. Fing den Bug, dass ein Gruppen-Pillen-Drop aufs fokussierte Ersetzen-Feld verpuffte (NSTextView lehnt Drops bei First-Responder ab → in `RegexFieldTextView` die Destination-Methoden überschrieben). `-selftest windows` ist ein reines Diagnose-Flag (Fenster-Dump über 10 s). Jeder Test schreibt atomar `SELFTEST-RESULT v=1 test=<name> status=PASS|SKIP|ENV|FAIL` und danach die lesbare `SELFTEST <name>: …`-Zeile. Der Runner wertet ausschließlich den strukturierten Status aus; unbekannte Versionen oder Werte sind echte Protokollfehler. Nur bei alten Bundles ohne Maschinenzeile greift noch die fest positionierte Textauswertung. Nach der Auswertung gibt der Runner je Test genau eine kanonische Maschinenzeile aus, auch für ein altes Bundle. Mehrere Befunde werden in der Reihenfolge `FAIL > ENV > SKIP > PASS` zusammengeführt. Fenster-Tests pollen bis 15 s auf ihr Fenster statt nach fixer Frist zu guarden. **Genau die Bug-Klasse (App-weites Event-/Eingabe-Verhalten), die reine Unit-Tests NICHT fangen.** Nach jeder Änderung an Lifecycle/Fenster/Monitoren mehrfach laufen lassen (Flakiness zeigt Race-Conditions).
+3. **In-App-Selbsttests** (`SelfTest.swift`; interne Events benötigen keine Accessibility-Freigabe, die drei unten beschriebenen Menüroot-Proben verwenden einen externen AX-Client). **Aufruf: bevorzugt über den Runner `./selftest.sh` (alle Tests oder `./selftest.sh findbar jump`), direkt via `Fastra -selftest findbar -ApplePersistenceIgnoreState YES` oder Umgebungsvariable `FASTRA_SELFTEST=findbar`.** `-selftest findbar` postet ein echtes CMD+F bei fokussiertem Editor und **pollt ~1,2 s engmaschig**, ob das Editor-Find-Panel auch nur kurz auftaucht (eine Einzel-Messung am Ende würde das Aufblitzen verpassen). `-selftest newwindow` löst den echten ⌘N-Menübefehl aus und prüft im Hintergrund ein zweites, passend großes Dokumentfenster mit unabhängigem Workspace und gültigem Editor-Einfügepunkt. Den echten Fokuswechsel, ⌘T zwischen zwei Workspaces und ⌘W am letzten Tab prüft anschließend der fokuspflichtige Sammeltest `cmdw`; er schließt zuvor bereits Suchmaske und Hilfe jeweils per echtem ⌘W. `-selftest fields` prüft, ob Suchen- und Ersetzen-Feld echte, editierbare, betippbare Texteingaben sind (fing den toten Find-Feld-Bug). `-selftest tabswitch` prüft, ob der Editor beim Tab-Wechsel neu erzeugt wird (CESE schiebt Binding-Text nicht zurück → ohne `.id(activeTab.id)` bliebe der Inhalt stehen; via Objekt-Identität vorher≠nachher belegt). `-selftest jump` lädt Text mit unterschiedlich langen Vorzeilen (inkl. Emoji als UTF-16-Surrogatpaar) in einen Tab, postet exakt wie die GUI einen Treffer-Sprung (Zeile/Spalte-Pfad über `postMatchJump`) und liest die echte Editor-Selektion zurück (`CodeEditTextView.TextView.selectedRange()`): der selektierte Text muss exakt der Treffer sein. Fing den toten Treffer-Sprung — CESE 0.15.x reconcilet `cursorPositions` von außen nie (Bedingung `!= state.cursorPositions` vergleicht mit sich selbst, immer false; in `build.sh` gepatcht auf `!= controller.cursorPositions` + `scrollToVisible`). `-selftest replaceall` lädt den Demo-Inhalt („Nachname, Vorname"), setzt `(\w+), (\w+)` → `$2 $1`, ruft `applyAllInActiveBuffer()` und liest den echten Editor-`.string` zurück: er muss nach dem Replace den ersetzten Text zeigen (== Modell-Inhalt). Fing die Regression, dass „Alle ersetzen" im Editor folgenlos blieb (CESE übernimmt Binding-Änderungen nicht → in `EditorView` über `editorReloadNonce` an der `.id` eine Neuerzeugung erzwungen). `-selftest pilldrop` fokussiert das Ersetzen-Feld und treibt dessen Drag-Destination-Methoden mit einem `NSDraggingInfo`-Mock („$1"): Annahme (`draggingEntered == .copy`) + Einfügung müssen auch bei Fokus klappen. Fing den Bug, dass ein Gruppen-Pillen-Drop aufs fokussierte Ersetzen-Feld verpuffte (NSTextView lehnt Drops bei First-Responder ab → in `RegexFieldTextView` die Destination-Methoden überschrieben). `-selftest windows` ist ein reines Diagnose-Flag (Fenster-Dump über 10 s). Jeder Test schreibt atomar `SELFTEST-RESULT v=1 test=<name> status=PASS|SKIP|ENV|FAIL` und danach die lesbare `SELFTEST <name>: …`-Zeile. Der Runner wertet ausschließlich den strukturierten Status aus; unbekannte Versionen oder Werte sind echte Protokollfehler. Nur bei alten Bundles ohne Maschinenzeile greift noch die fest positionierte Textauswertung. Nach der Auswertung gibt der Runner je Test genau eine kanonische Maschinenzeile aus, auch für ein altes Bundle. Mehrere Befunde werden in der Reihenfolge `FAIL > ENV > SKIP > PASS` zusammengeführt. Fenster-Tests pollen bis 15 s auf ihr Fenster statt nach fixer Frist zu guarden. **Genau die Bug-Klasse (App-weites Event-/Eingabe-Verhalten), die reine Unit-Tests nicht fangen.** Nach jeder Änderung an Lifecycle/Fenster/Monitoren mehrfach laufen lassen (Flakiness zeigt Race-Conditions).
    Seit v1.19.2 setzt `-selftest newwindow` zusätzlich eine markante
    Ausgangsgröße und vergleicht nach ⌘N den tatsächlichen `NSWindow`-Rahmen,
    damit SwiftUIs spätes Zurücksetzen auf die fitting size nicht unbemerkt bleibt.
@@ -1178,11 +1380,11 @@ Die Find-Leiste tauchte bei CMD+F mehrfach wieder auf. Der korrekte Befund nach 
    Dokumentbereich ist doppelt sichtbar. Er sichert den Fehler ab, bei dem
    Wörter nach Paste/Laden mehrfach erschienen und rechts aus dem Editor liefen.
    **Umgebungs-Fallen beim Selbsttest-Aufruf (2026-06-11, alle in `selftest.sh` gekapselt):**
-   - **NIEMALS positionale `--selftest-…`-Argumente verwenden (Root Cause des „kein Hauptfenster"-Bugs).** AppKit interpretiert unbekannte positionale Argumente als „zu öffnende Datei" — die App durchläuft dann den Open-File-Launchpfad statt `applicationOpenUntitledFile`, und SwiftUI erzeugt das WindowGroup-Hauptfenster NIE (`NSApp.windows` bleibt leer, Main-Thread idle; empirisch: JEDES `--flag` löst das aus). `-Key Value`-Argumente (NSArgumentDomain) sind unschädlich → daher `-selftest <name>`. Dass die Fenster-Tests früher trotz `--selftest-…` grün waren, lag mutmaßlich an der Fenster-Restauration aus dem Saved State — die seit 2026-06-11 mitgegebene `-ApplePersistenceIgnoreState YES` schaltete genau diese Krücke ab und machte den Bug sichtbar. Alte Aufrufform wird erkannt und FAILt sofort mit Hinweis.
-   - **Immer `-ApplePersistenceIgnoreState YES` mitgeben** (`Fastra -selftest findbar -ApplePersistenceIgnoreState YES`). Nach einem abgebrochenen Lauf (z.B. `pkill` in build.sh) zeigt macOS sonst beim nächsten Start den modalen „Fenster wiederherstellen?"-Dialog (`NSPersistentUIManager`) — die App hängt dann VOR dem Selbsttest endlos (per `sample` diagnostiziert: Main-Thread in `promptToIgnorePersistentStateWithCrashHistory`).
+   - **Niemals positionale `--selftest-…`-Argumente verwenden (Root Cause des „kein Hauptfenster"-Bugs).** AppKit interpretiert unbekannte positionale Argumente als „zu öffnende Datei" — die App durchläuft dann den Open-File-Launchpfad statt `applicationOpenUntitledFile`, und SwiftUI erzeugt das WindowGroup-Hauptfenster nie (`NSApp.windows` bleibt leer, Main-Thread idle; empirisch: jedes `--flag` löst das aus). `-Key Value`-Argumente (NSArgumentDomain) sind unschädlich → daher `-selftest <name>`. Dass die Fenster-Tests früher trotz `--selftest-…` grün waren, lag mutmaßlich an der Fenster-Restauration aus dem Saved State — die seit 2026-06-11 mitgegebene `-ApplePersistenceIgnoreState YES` schaltete genau diese Krücke ab und machte den Bug sichtbar. Alte Aufrufform wird erkannt und FAILt sofort mit Hinweis.
+   - **Immer `-ApplePersistenceIgnoreState YES` mitgeben** (`Fastra -selftest findbar -ApplePersistenceIgnoreState YES`). Nach einem abgebrochenen Lauf (z.B. `pkill` in build.sh) zeigt macOS sonst beim nächsten Start den modalen „Fenster wiederherstellen?"-Dialog (`NSPersistentUIManager`) — die App hängt dann vor dem Selbsttest endlos (per `sample` diagnostiziert: Main-Thread in `promptToIgnorePersistentStateWithCrashHistory`).
    - **Gesperrter Bildschirm = keine Fenster-Selbsttests.** Bei gesperrter Konsole (`ioreg -n Root -d1 | grep IOConsoleLocked` → Yes) schlagen alle fensterbasierten Tests fehl — das ist Umgebung, nicht Code. Nur die im Runner ausdrücklich als fensterlos markierten Tests sind dann aussagekräftig. `selftest.sh` prüft das vorab.
    - **Nur `cmdw` und `completion4d` brauchen die externe Aktivierung über LaunchServices und System Events.** macOS 26 verweigert einem im Hintergrund gestarteten Prozess die Selbst-Aktivierung komplett (`NSApp.activate` wirkungslos, `isActive` bleibt false — kooperative Aktivierung). `selftest.sh` hält diese Namen in `FOCUS_REQUIRED_TESTS`, startet nur sie via `open`, setzt `FASTRA_SELFTEST_ALLOW_ACTIVATION=1` und holt die App per System Events nach vorn. Für die ausdrücklich hintergrundfähigen Tests setzt der Runner dagegen `FASTRA_SELFTEST_ALLOW_ACTIVATION=0`; auch produktive Fenster-Helfer können die aktive Nutzer-App dann nicht verdrängen. `newwindow`, `projectinput`, `help` und `welcomenew` prüfen weiterhin echte Fenster und brauchen deshalb eine entsperrte WindowServer-Sitzung, laufen dort aber ohne globale Aktivierung. Andere direkt gestartete Tests behalten ihr bisheriges Aktivierungsverhalten und können Fastra selbst aktivieren, solange ihre Fokusabhängigkeit nicht eigens entfernt wurde. Soll so ein Test trotzdem im Hintergrund laufen (jemand arbeitet gerade am Mac, oder ein Agent hat keine Zustimmung zum Fokuswechsel), nimmt `FASTRA_SELFTEST_NO_ACTIVATION="tabflood sessionrestore" ./selftest.sh tabflood` die genannten Namen für diesen Lauf in die Hintergrundliste auf; `tabflood` besteht so (belegt 2026-09-02, Fenster-Menü mit 41 Einträgen). Ein Test, der ohne Aktivierung nicht auskommt, meldet dann einen Umgebungsfehler, keinen Erfolg. Bereits fertige Fokustests brechen die Aktivierungsschleife vor dem nächsten Ein-Sekunden-Warten ab. Arbeitet gleichzeitig jemand aktiv am Mac, kann dessen App den Fokus dennoch zurückholen → der Test meldet einen ausgewiesenen Umgebungsfehler (`selftest.sh`-Exit-Code 2), keinen Funktionsfehler. Für die beiden extern aktivierten Tests den Desktop unbeaufsichtigt lassen oder manuell bewerten.
-   - **Ohne Automation-Freigabe antwortet System Events nie (2026-07-26).** In einer ssh-Sitzung oder einem launchd-Job fehlt die Freigabe „darf System Events steuern". Der Apple-Event wartet dann UNBEGRENZT auf den TCC-Dialog, den dort niemand wegklickt — der Runner hing dadurch minutenlang statt einen Umgebungs-FAIL zu melden. `selftest.sh` begrenzt den Aufruf deshalb doppelt (`with timeout of 3 seconds` plus harter Kill nach `ACTIVATE_TIMEOUT_SECS`) und gibt nach der ersten Zeitüberschreitung auf, statt achtmal aufzulaufen. Die Aktivierung übernimmt dann allein LaunchServices (`open` ohne `-g`) — auf einem unbenutzten Mac genügt das für echten Fokus.
+   - **Ohne Automation-Freigabe antwortet System Events nie (2026-07-26).** In einer ssh-Sitzung oder einem launchd-Job fehlt die Freigabe „darf System Events steuern". Der Apple-Event wartet dann unbegrenzt auf den TCC-Dialog, den dort niemand wegklickt — der Runner hing dadurch minutenlang statt einen Umgebungs-FAIL zu melden. `selftest.sh` begrenzt den Aufruf deshalb doppelt (`with timeout of 3 seconds` plus harter Kill nach `ACTIVATE_TIMEOUT_SECS`) und gibt nach der ersten Zeitüberschreitung auf, statt achtmal aufzulaufen. Die Aktivierung übernimmt dann allein LaunchServices (`open` ohne `-g`) — auf einem unbenutzten Mac genügt das für echten Fokus.
    - **Keine Bildschirmaufnahme-Freigabe während eines Testlaufs anfordern.** `typescroll` vergleicht nach Möglichkeit zwei echte Fensteraufnahmen. Neu gebaute, nicht notarierte Debug-Bundles verlieren diese TCC-Freigabe jedoch regelmäßig; ein ungeprüfter `screencapture`-Start öffnet dann einen modalen Systemdialog im Namen von Fastra und entzieht späteren Fenstertests den Fokus. Der Test fragt deshalb nur den bestehenden Freigabestatus ab und nutzt ohne Freigabe sofort seinen AppKit-Ersatz. Er öffnet niemals selbst den Berechtigungsdialog.
 
    **Fenster-Selbsttests auf einem entfernten Mac (verifiziert 2026-07-26 auf einem unbenutzten Mac):**
@@ -1288,6 +1490,70 @@ Performance-Baseline. Echte Invarianten-Verstöße behalten auch bei späterem
 Fokusverlust Exit 1. Die Zusammenfassung zählt Umgebungsprobleme im Feld
 `umgebung` getrennt von `befunde`.
 
+Die drei Menüproben `multisearch`, `softwrapprofiles` und `textworkflow`
+sind im regulären Runner bis zu einer neuen Pilotfreigabe gestoppt, auch bei
+expliziter Testwahl. Der Runner weist sie vor App- und Senderstart als `SKIP`
+aus; ein Lauf mit diesen Skips endet ohne echten Fehler mit Exit 2. Es gibt
+keinen nativen Opt-in. Andere Tests laufen unverändert weiter.
+
+Der vorhandene Pilot öffnet ausschließlich native Hauptmenüwurzeln über den
+begrenzten externen Sender `tools/selftest-menu-root.py`. Die App führt alle
+Item-, Action- und Produktprüfungen aus. Nur ein tatsächlich zurückgekehrter
+`AXUIElementPerformAction(..., AXPress)` mit AXsuccess gilt als Annahme; ein
+frischer `NSMenu`-Beginn, reguläres Ende, passende Itembindung und zurückgekehrte
+Produktaktion bleiben zusätzlich Pflicht. Itemprüfung und Aktion dürfen nach
+dem Beginn laufen, bevor der externe AX-Aufruf zurückkehrt, damit modales
+Menütracking keinen gegenseitigen Wartezustand erzeugt. Die vorhandenen
+App- und Runnerfristen bleiben unverändert.
+
+Der appfreie Fixture-Lauf legt pro Probe einen privaten Ordner (0700) in seiner
+Sandbox an und bindet ihn über `FASTRA_SELFTEST_MENU_ROOT_DIR` an genau diese
+Appinstanz, den Runner und dessen eigenen Sender. Starttoken aus `ps lstart`,
+kanonische EXE-Pfade, exakter Sender-Skriptpfad sowie Lauf- und Request-Nonces
+verhindern eine Verwechslung mit alten oder fremden Prozessen und Antworten.
+Der Runner liest Skriptpfad und Argumente aus der Argumentliste des
+macOS-Kernels. Dadurch bleiben Leerzeichen, Anführungszeichen und leere
+Argumente eindeutig. Die appfreien Prozessproben prüfen diese Bindung mit
+echten Kindprozessen.
+App und Sender lesen ausschließlich über den geprüften Directory-Deskriptor;
+JSON-Dateien sind atomar veröffentlichte eigene reguläre 0600-Dateien.
+Unbekannte Versionen, beschädigte Daten und alte Antworten belegen keinen
+AX-Erfolg. Jede Nonce erlaubt höchstens einen AXPress-Versuch.
+
+Der Sender prüft `AXIsProcessTrusted()` ohne Dialog und die tatsächlich
+fokussierte Anwendung vor Auflösung und unmittelbar vor Input. Fehlende
+Accessibility-Freigabe, fremder Vordergrund und andere belegte Fehler vor Input
+melden ENV ohne Eingabe; der Sender aktiviert keine Anwendung und verwendet
+keinen Ersatzklick. Die unvermeidliche Lücke zwischen Fokusprüfung und AXPress
+ist keine atomare Fokusgarantie. Ein zurückgekehrter AX-Fehler nach versuchtem
+Input bleibt dagegen eine fehlgeschlagene Probe mit dem rohen AX-Code. Der
+Sender besitzt keine Screenshot-, Clipboard- oder allgemeine Eingabeschnittstelle.
+
+Eine neue native Abnahme benötigt eine eigene Freigabe und die bewusste
+Wiederaufnahme des Piloten. Der erste Versuch erreichte das vereinbarte
+Stoppkriterium vor Eingabe. Die differenzierte Behandlung eines frühen
+Senderausfalls bleibt bis zu dieser Entscheidung zurückgestellt; der vorhandene
+Fehlerstatus wird nicht umgedeutet. Sender und App gehören zum bestehenden
+Session-/Prozessgruppen-Cleanup des Runners. Ein lebender Sender ersetzt beim
+Ergebniswarten niemals die gebundene App-PID. TERM/KILL müssen durch beobachtetes
+Ende und Reap bestätigt sein; bei unsicherem Cleanup bleibt die Sandbox erhalten.
+Ein unveränderter SIGALRM-Default schützt den Sender mit der bestehenden äußeren
+Runnerfrist auch dann, wenn ein ctypes-Aufruf blockiert und der Runner abrupt
+verloren geht. Der Sender wird nicht in das Produktbundle gepackt.
+
+Die appfreien Prüfungen liegen in `SelfTestMenuRootTests` und der bereits regulär
+seriell gerouteten Suite `SerialRunnerIntegrationMenuRootTests`. Sie prüfen echte
+JSON-Dateien, einen ausschließlich intern injizierten FakeAX sowie den echten
+`selftest.sh` mit eigenen Fake-Prozessen und Wegwerf-Produktzielen. Der enge
+`FASTRA_SELFTEST_TEST_MENU_ROOT_SENDER`-Override ist nur nach validierter
+Fixture-Isolation erlaubt; nur diese appfreien Proben dürfen den gestoppten
+Runnerzweig weiter ausführen. Der Python-Teil lässt sich ohne App oder AX-Aufruf
+separat ausführen:
+
+```bash
+/usr/bin/python3 tools/tests/test_selftest_menu_root.py --unit-only
+```
+
 Alle In-App-Selbsttests und der Dauertest verwenden einen gemeinsamen, pro
 Nutzer maschinenweiten Lock. Damit können zwei Worktrees ihre App-Prozesse und
 den Fensterfokus nicht mehr gegenseitig verfälschen. Ein zweiter Runner endet
@@ -1312,15 +1578,34 @@ und `NSTemporaryDirectory()` liefern auf macOS immer den Benutzer-Temp-Ordner
 lagen dort). Fixtures der Unit-Tests holen ihre Wurzel deshalb über
 `testTemporaryDirectory()` (`Tests/FastraTests/Support/`), die Selbsttests
 über `selfTestTemporaryDirectory()`; beide lesen `TMPDIR` selbst. Der Wächter
-`TestTemporaryDirectoryTests` lehnt jeden direkten Zugriff in Tests und
-`SelfTest.swift` ab.
+`TestTemporaryDirectoryTests` prüft die Swift-Dateien aller Unit-Tests sowie
+rekursiv `SelfTest*.swift` und `SoakTest*.swift` unter `Sources/Fastra`.
+Direkte Temp-Zugriffe bleiben nur in den beiden Helfern selbst und im
+vergleichenden Wächter erlaubt.
 Benannte `UserDefaults`-Suiten können diese Umleitung auf macOS umgehen und
 lassen über `cfprefsd` nach dem Prozessende nochmals eine leere Plist entstehen.
 Der Testcode meldet seine exakten UUID-Domains deshalb zusätzlich an den
 äußeren Runner; nur dieser kann die letzte leere Plist nach dem Prozessende
 sicher entfernen. Ein per SIGKILL oder Rechnerausfall unterbrochener
 Sandbox-Rest wird beim nächsten Lauf nach 24 Stunden übernommen, sofern PID
-UND Startzeit nicht mehr zum damaligen Besitzer gehören.
+und Startzeit nicht mehr zum damaligen Besitzer gehören.
+
+Fastras eigene Einstellungsspeicher und `AppStorage` verwenden pro Prozess
+`AppDefaults.store`. Ohne expliziten Isolationsauftrag bleibt dies unverändert
+`UserDefaults.standard`. Für eine normale GUI-Prüfung ohne Selbsttestablauf
+kann der vorhandene Runner-Eingang `FASTRA_SELFTEST_DEFAULTS_SUITE` zusammen
+mit `FASTRA_TEST_DEFAULTS_REGISTRY` gesetzt werden. Er verlangt eine sichere
+Test-Domain mit UUID und eine beschreibbare Cleanup-Registry. Vor der ersten
+Suiteverwendung jedes App-Starts wird das Profil beim äußeren Runner registriert.
+Alle Fenster und normale App-Neustarts derselben Suite erhalten die gespeicherten
+Werte; die App leert das Profil weder beim Start noch bei ihrem Ende. Erst nach
+dem gesamten GUI-Prüfblock räumt der äußere Runner/Janitor die registrierte
+Domain auf. Fehler beenden den Start mit Exit 2, ohne auf den Produktstore
+zurückzufallen. Ein solcher GUI-Start führt keinen Selbsttest aus und erzeugt
+keinen Sparkle-Controller. Die Soak-Folgephasen behalten ihren bisherigen Vertrag:
+Zustand ab Phase 2 erhalten, abschließend durch den Runner entfernen.
+Diese Einstellungsauswahl isoliert keine AppKit-/LaunchServices-Metadaten;
+die folgenden zusätzlichen Sicherungen bleiben erforderlich.
 
 AppKit und Sparkle beachten diese Umleitung nicht in jedem Pfad. Die beiden
 GUI-Runner sichern deshalb zusätzlich die echte Fastra-Preferences-Domain und
@@ -1331,8 +1616,9 @@ läuft und der Snapshot vollständig belegt ist; ein Lese- oder Kopierfehler
 bricht ab, ohne den Originalzustand anzufassen. Die maschinenweite GUI-Sperre
 wird vor diesen Snapshots erworben.
 
-Die Runner-Fixtures der Unit-Tests (`SelfTestPerformanceTests`) fahren das
-echte `selftest.sh` gegen ein Ersatz-Binary. Sie dürfen dabei die echten
+Die Runner-Fixtures der Unit-Tests (`SelfTestPerformanceTests` und
+`SoakCleanupTests`) fahren die vollständigen Originalrunner `selftest.sh` und
+`soak-test.sh` gegen ein Ersatz-Binary. Sie dürfen dabei die echten
 Einstellungen nie erreichen: Jede Fixture lenkt Domain und Saved-State-Ordner
 über `FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN` (Testpräfix plus UUID, wie alle
 Test-Domains) und `FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR` (direkt unter dem
@@ -1341,6 +1627,44 @@ Sandbox-Elternordner der Fixture) auf Wegwerfziele. Ein Lauf mit umgelenktem
 Ziel unsicher ist, endet mit Exit 2, bevor er etwas sichert oder startet
 (`configure_product_state_overrides`; Review-Fund 2026-09-17: Unit-Tests
 schrieben bis dahin Nutzereinstellungen zurück).
+Die kurzen Runner-Fixtures legen auch simulierte Fehlerdiagnosen und
+Rettungsbelege unter ihrem Sandbox-Elternordner ab. Die Fixture räumt sie
+zusammen auf. Die Rotation normaler Selbsttestbelege läuft dabei nicht.
+
+Bei `selftest.sh` mit einem App- oder Binary-Pfad unter `/Applications` gilt
+die normale Zustandssicherung. Der Runner weist die beiden Fixture-Umlenkungen
+für diesen Aufruf bereits vor dem Start ab. AppKit kann den gespeicherten
+Fensterrahmen auch bei einer isolierten Test-Suite in die echte Domain schreiben.
+
+Der Soak-Fixturepfad verlangt eine eigene echte, absolute und kanonische
+Elternwurzel. Auch ein leerer expliziter Elternwert oder State-Overrides ohne
+Elternwurzel werden abgewiesen. Ein vorhandenes Saved-Stateziel muss bereits
+beim Eingang ein eigener echter Ordner sein; Dateien, Symlinks und kaputte
+Links sind unzulässig. Die vom bestehenden Pruning belegten Namen
+`fastra-soak-run.*` und `fastra-soak-befunde-*` sind als Saved-Stateziel
+ausgeschlossen; auch `.` und `..` bezeichnen kein direktes Kindziel.
+Fehlender eigener Zustand ist erlaubt und wird nach
+dem Lauf wieder entfernt. Im Fixturemodus verwenden sowohl Belegrotation als
+auch neue Fehlerbelege ausschließlich diese geprüfte Elternwurzel. Die
+normalen Belegziele und die Auswahl der fünf jüngsten Läufe insgesamt bleiben
+unverändert. Ältere Belegbäume mit einem direkten Eintrag
+`pasteboard-backup.plist` bleiben zusätzlich erhalten. Derselbe Schutz gilt
+beim Start und beim Cleanup, im normalen Betrieb wie im Fixturemodus. Die
+normale Soak-Rotation löst die Suchwurzeln `/tmp` und `TMPDIR` auf und zählt
+dasselbe Verzeichnis einmal. Die fünf jüngsten Läufe werden gemeinsam aus
+beiden Suchwurzeln ermittelt.
+
+Die Soak-Fixtures laufen mit `--fixtures-only --rounds 1`, privater GUI-Sperre
+und umgelenkter Performancehistorie. Ihr minimales Ersatzbundle hat keine
+`Info.plist` und erzeugt keine LaunchServices-Registrierung. Drei echte
+Phasenstarts und der Defaults-Purge durchlaufen den Originalrunner mit seinen
+unveränderten Prozess- und Zeitgrenzen. Der Prozessfilter zeigt dem Fremdguard
+nur die echte Betriebssystemantwort für den eigenen, über PID und
+Kernelstartzeit gebundenen Probeprozess. Die Fixtures belegen Eingangsprüfung,
+Prozessguard, synthetischen State-Restore und private Belegziele. Sie prüfen
+keine AppKit-Aktionen, Zwischenablage, Fenster, TCC oder Performance und
+erlauben keine parallelen echten GUI-Läufe. Fremde Dateibesitzer werden nur
+geprüft, soweit sie ohne zusätzliche Rechte real darstellbar sind.
 
 `cfprefsd` kann eine bereits geleerte Test-Domain erst nach dem Ende des
 Testprozesses nochmals als leere Plist schreiben. Der äußere Runner beobachtet
@@ -1361,8 +1685,17 @@ frischer Hilfsprozess. Hat der Nutzer inzwischen kopiert, bleibt der neuere
 Inhalt unangetastet. Sparkle wird im Selbsttest gar nicht gestartet.
 
 Fehlerausgaben der kurzen Selbsttests und Beweise des Dauertests werden mit
-Zugriffsrechten nur für den aktuellen Nutzer aufbewahrt; jeweils höchstens die
-fünf jüngsten Läufe. Ein per LaunchServices gestartetes Debug-Bundle wird nach
+Zugriffsrechten nur für den aktuellen Nutzer aufbewahrt; jeweils die fünf
+jüngsten Läufe insgesamt. Bei kurzen Selbsttests und Dauertests sind
+ältere Ordner mit einem Zwischenablage-Rettungsbackup zusätzlich von dieser
+Rotation ausgenommen. Der direkte Markername schützt auch Symlinks,
+kaputte Links und Verzeichnisse. Fehlende Lese-/Suchrechte oder ein
+fehlgeschlagener Markerscan verhindern das Löschen ebenfalls; der Pruner
+liest keine Backupinhalte. Die Vollrunner-Fixtures prüfen synthetische
+Markerformen sowie unmarkierte Gegenfälle bei Start und Cleanup. Sie belegen
+keinen fortbestehenden Scanfehler: Das vorgeschaltete Rechte-Hardening kann
+anfangs fehlende POSIX-Rechte wiederherstellen. Ein per LaunchServices gestartetes
+Debug-Bundle wird nach
 dem Lauf am exakten Pfad wieder abgemeldet. Dasselbe gilt für direkte
 App-Starts der Portabilitäts-, Selbst- und Dauertests, weil schon AppKit deren
 Debug-Bundle bei LaunchServices registrieren kann. SwiftPM-, Build-,
@@ -1371,7 +1704,7 @@ außerhalb der Wegwerf-Sandbox und bleiben für spätere Läufe erhalten.
 
 **Daraus abgeleitete Test-Leitlinien (verbindlich):**
 - **Logik aus AppKit-Glue in pure Funktionen ziehen.** Entscheidungen (Event→Aktion, Footer-Kante, find-bezogener Menüpunkt) leben in `KeyRouting`, `CursorFooter`, `DocumentStats`, `AppDelegate.isFindRelated`. Abgedeckt durch `KeyRoutingTests`, `FooterLogicTests`, `FindBarSuppressionTests`, `RegexElementsTests`.
-- **ABER: Pure Unit-Tests fangen die gefährlichste Bug-Klasse NICHT** — App-weite Event-/Lifecycle-/Monitor-Ordering-Fehler. Die `KeyRouting`-Tests waren grün, während die App komplett unbenutzbar war. Lehre: Logik-Tests sind nötig, aber NICHT hinreichend. Jede Änderung an App-Lifecycle/Fenster/Monitoren MUSS zusätzlich real verifiziert werden (manuell oder per UI-Automation).
+- **Aber: Pure Unit-Tests fangen die gefährlichste Bug-Klasse nicht** — App-weite Event-/Lifecycle-/Monitor-Ordering-Fehler. Die `KeyRouting`-Tests waren grün, während die App komplett unbenutzbar war. Lehre: Logik-Tests sind nötig, aber nicht hinreichend. Jede Änderung an App-Lifecycle/Fenster/Monitoren muss zusätzlich real verifiziert werden (manuell oder per UI-Automation).
 - **Single Source of Truth.** CMD+F/ESC-Routing existiert genau einmal (`KeyRouting.route`).
 
 ## Speicher-Diagnose: `leakscenario` + `leaks`
@@ -1396,7 +1729,7 @@ Fastra-Klasse in den Leak-Bäumen. Bundle-Wachstum des Wunschpakets
 (überwiegend die generierten 4D-Symbollisten); Etappen 1–3 waren reiner
 Code ohne neue Ressourcen. Gesamt klar unter der Leitplanke.
 
-**Pflicht-Smoke-Test nach JEDER Änderung an App-Lifecycle, Fenster-Setup, Menüleiste oder Event-Monitoren — die Klasse von Bugs, die Unit-Tests nicht fangen:**
+**Pflicht-Smoke-Test nach jeder Änderung an App-Lifecycle, Fenster-Setup, Menüleiste oder Event-Monitoren — die Klasse von Bugs, die Unit-Tests nicht fangen:**
 0. **Maus funktioniert überhaupt:** Klick in Editor setzt Cursor, Buttons reagieren, roter Schließen-Knopf schließt, CMD+Tab holt App nach vorn. (Diese Stufe zuerst — ist sie rot, ist alles andere irrelevant.)
 1. CMD+F (Editor fokussiert) → Suchmaske öffnet, **kein** Editor-Find-Panel.
 2. CMD+SHIFT+F → Ordner-Modus, Fenster wächst, kein Find-Panel.
@@ -1813,7 +2146,11 @@ Der Testpfad wird vor dem Öffnen am Panel konfiguriert; nachträgliche Setter
 ändern den macOS-Open/Save-Service nicht zuverlässig. Ein externer Tastentreiber
 liest `FASTRA_DIFFEXPORT_INPUT_DIR/key-0.json` bis `key-3.json` (PID, keyCode 53
 für Abbruch beziehungsweise 36 für Speichern) und sendet echte Tasten nur bei
-bestätigtem Fokus der Test-App. Ohne Treiber gehört der Test nicht zum Standardlauf.
+bestätigtem Fokus der Test-App. Mit gesetztem `FASTRA_DIFFEXPORT_INPUT_DIR`
+startet `./selftest.sh diffexport` die Test-App über LaunchServices und reicht
+den Eingabeordner sowie ein optionales Aufnahmeziel weiter. Ohne Eingabeordner
+bleibt der direkte Start für die ENV-Diagnose verfügbar. `diffexport` gehört
+zum gezielten Abnahmelauf.
 
 `sourceprovenance` übernimmt ein Mitglied eines geschachtelten ZIP als eigene
 schreibgeschützte Sitzungskopie. Der Senderpfad wird nach `ready` entfernt,
@@ -1889,6 +2226,10 @@ Die Linux-Oberflächenschrift Inter 4.1 liegt unverändert unter `crates/fastra-
 Die Rootskripte wählen unter macOS weiterhin `app/`, unter Linux `linux/`.
 Die Linuxversion und die native Buildnummer werden aus Cargo und `Info.plist`
 ermittelt und auf Konsistenz geprüft; kein Skript erhöht selbst die Version.
+Bei jedem Versionsbump auch die Paketversion in
+`crates/fastra-linux/Cargo.toml` und ihren Eintrag in `Cargo.lock` mitführen.
+Die Prüfung `python3 tools/linux-package/identity.py --version .` muss am
+Repo-Root auch bei Änderungen laufen, die nur macOS betreffen.
 
 ```bash
 ./build.sh                    # nativer Debugbuild, drei ELF
@@ -2214,7 +2555,12 @@ Steuerungsprobe für Mehrfensterentscheidungen, native Speicherauswahl,
 veraltete Freigaben und den tatsächlichen Service-/Socketabschluss.
 `./linux/test.sh application-quit-asset-io` hält echte Bildrücknahme und deren
 letzten Main-Rückruf gezielt an: Beenden muss bis zum vollständigen Abschluss
-blockiert bleiben und danach bei erneutem Versuch funktionieren.
+blockiert bleiben und danach bei erneutem Versuch funktionieren. Die globalen
+Versuche verwenden echte Strg+Umschalt+Q-Ereignisse; Strg+Q prüft gesondert das
+Schließen eines Fensters. Die Probe protokolliert die gewählte Bild-Apply-Zeile;
+bei einem Publikations-Timeout bleiben Zustand und ein Bild des isolierten
+Desktops als Geschwister der Fixture für die Diagnose erhalten. Die getrennte Desktopabnahme umfasst auch
+Beenden über das Menü.
 
 Diese Tests verwenden ausschließlich ihre privaten Homes, Dateisystem-Fixtures
 und Xvfb-Anzeigen. Dateitransaktionen brauchen das vom normalen Runner vorbereitete

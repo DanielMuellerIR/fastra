@@ -18,13 +18,16 @@ final class TextSnippetSession: ObservableObject, Identifiable {
     @Published private(set) var isBusy = false
     @Published private(set) var error: String?
     @Published private(set) var status: String?
+    private let startingDefinition: TextSnippetDefinition
     private var baseline: TextSnippetDefinition?
     private var closed = false
     private var observation: AnyCancellable?
 
     init(workspace: Workspace, target: TextSnippetInsertionTarget, store: TextSnippetStore? = nil) {
         self.workspace = workspace; self.target = target; self.store = store ?? TextSnippetStore()
-        definition = TextSnippetDefinition(name: L10n.string("Neuer Textbaustein"), template: "{{Text}}")
+        let startingDefinition = TextSnippetDefinition(name: L10n.string("Neuer Textbaustein"), template: "{{Text}}")
+        self.startingDefinition = startingDefinition
+        definition = startingDefinition
         _ = objectWillChange
         do {
             saved = try self.store.load()
@@ -37,6 +40,7 @@ final class TextSnippetSession: ObservableObject, Identifiable {
     }
 
     var dirty: Bool { baseline != definition }
+    var requiresDiscardConfirmation: Bool { dirty && definition != startingDefinition }
     var placeholders: [String] { (try? TextSnippetTemplate(definition.template).names) ?? [] }
     var preview: String? { try? TextSnippetTemplate(definition.template).render(values: values) }
     var validationMessage: String? {
@@ -116,7 +120,7 @@ final class TextSnippetSession: ObservableObject, Identifiable {
     func importFile() {
         guard !closed, !isBusy else { return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]; panel.allowsMultipleSelection = false
-        SelfTest.configureTextSnippetPanel(panel, importing: true)
+        TextSnippetPanelConfiguration.configure(panel, importing: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         isBusy = true; error = nil
         Task {
@@ -153,7 +157,7 @@ final class TextSnippetSession: ObservableObject, Identifiable {
         do {
             let data = try TextSnippetArchive.encode(store.load())
             let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = L10n.string("Textbausteine.json")
-            SelfTest.configureTextSnippetPanel(panel, importing: false)
+            TextSnippetPanelConfiguration.configure(panel, importing: false)
             guard panel.runModal() == .OK, let url = panel.url else { return }
             isBusy = true; error = nil
             Task {

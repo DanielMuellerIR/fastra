@@ -1,14 +1,8 @@
 // WindowTargetingTests.swift
 //
-// Zielwahl für globale Befehle (Fehlerbericht aus dem Arbeitsbetrieb,
-// 2026-08-07): Bei zwei offenen Dokumentfenstern formatierte ⌘B im
-// HINTERGRUNDFENSTER. Ursache war eine Fenstersuche über `NSApp.windows` —
-// eine ungeordnete Menge, aus der „das erste sichtbare" ein zufälliges
-// Fenster ist.
-//
-// Die Regeln liegen deshalb pur in `WindowTargeting` und werden hier
-// festgenagelt. Ein Fenster-Selbsttest kann eine Regression zeigen, aber
-// nicht alle Kombinationen durchspielen — und er braucht eine UI-Sitzung.
+// Reine Zielwahl für Dokumentbefehle prüfen. `NSApp.windows` ist unsortiert;
+// die Funktion erhält Kandidaten in expliziter Reihenfolge. Fensterlose Tests
+// decken Kombinationen unabhängig von einer UI-Sitzung ab.
 
 import AppKit
 import Foundation
@@ -58,14 +52,18 @@ func finderOpenRaisesDocumentWindowNotSearchWindow() {
 struct WindowTargetingTests {
 
     private typealias Candidate = WindowTargeting.Candidate
+    private let ownerA = NSObject()
+    private let ownerB = NSObject()
 
-    private func document(key: Bool = false) -> Candidate {
-        Candidate(isDocumentWindow: true, isKey: key)
+    private func document(key: Bool = false, owner: NSObject? = nil) -> Candidate {
+        Candidate(isDocumentWindow: true, isKey: key,
+                  documentOwnerID: ObjectIdentifier(owner ?? ownerA))
     }
 
     private func searchPanel(key: Bool = false) -> Candidate {
         Candidate(isDocumentWindow: false, isKey: key,
-                  allowsDocumentFallback: true)
+                  allowsDocumentFallback: true,
+                  documentOwnerID: ObjectIdentifier(ownerA))
     }
 
     private func unknownWindow(key: Bool = false) -> Candidate {
@@ -92,8 +90,8 @@ struct WindowTargetingTests {
         #expect(WindowTargeting.targetIndex(in: [document(key: true)]) == 0)
     }
 
-    /// Der eigentliche Befund: Das bediente Fenster gewinnt — auch wenn es in
-    /// der Liste NICHT vorne steht. Genau hier griff der alte Code daneben.
+    /// Das bediente Fenster gewinnt auch dann, wenn es nicht vorne in der
+    /// übergebenen Liste steht.
     @Test("Das bediente Fenster gewinnt, auch wenn es hinten steht")
     func keyWindowWinsEvenWhenNotFirst() {
         let candidates = [document(), document(), document(key: true)]
@@ -107,12 +105,28 @@ struct WindowTargetingTests {
     }
 
     /// Die schwebende Suchmaske hält den Tastaturfokus, ist aber kein
-    /// Dokumentfenster. Ein Menübefehl muss trotzdem wirken — auf dem
-    /// vordersten Dokument dahinter.
-    @Test("Hält ein Panel die Tastatur, gilt das vorderste Dokumentfenster")
+    /// Dokumentfenster. Ein Menübefehl wirkt auf ihren registrierten Besitzer.
+    @Test("Die Suchmaske delegiert an ihr Dokument")
     func panelKeepsKeyboardButIsNoTarget() {
         let candidates = [searchPanel(key: true), document(), document()]
         #expect(WindowTargeting.targetIndex(in: candidates) == 1)
+    }
+
+    @Test("Die Suchmaske A überspringt ein vorderes Dokument B")
+    func searchOwnerWinsOverDocumentOrder() {
+        let candidates = [searchPanel(key: true), document(owner: ownerB), document()]
+        #expect(WindowTargeting.targetIndex(in: candidates) == 2)
+        #expect(WindowTargeting.targetIndex(in: [document(owner: ownerB),
+            searchPanel(key: true), document()]) == 2)
+    }
+
+    @Test("Fehlendes Suchdokument und unbekannter Besitzer sperren fremde Dokumente")
+    func missingSearchOwnerBlocksFallback() {
+        #expect(WindowTargeting.targetIndex(in: [searchPanel(key: true),
+            document(owner: ownerB)]) == nil)
+        let unboundSearch = Candidate(isDocumentWindow: false, isKey: true,
+                                      allowsDocumentFallback: true)
+        #expect(WindowTargeting.targetIndex(in: [unboundSearch, document()]) == nil)
     }
 
     @Test("Panels sind nie selbst das Ziel")
@@ -122,9 +136,9 @@ struct WindowTargetingTests {
     }
 
     /// Zwei Dokumentfenster, dazwischen ein Panel mit dem Tastaturfokus: Das
-    /// Ziel ist das vorderste DOKUMENT, nicht das Panel und nicht das hintere
-    /// Dokument.
-    @Test("Panel zwischen zwei Dokumenten ändert das Ziel nicht")
+    /// Beide Dokumentkandidaten gehören hier demselben Besitzer; nur die
+    /// Suchmaske selbst bleibt als Dokumentziel ausgeschlossen.
+    @Test("Panel zwischen Dokumentkandidaten ist nie selbst das Ziel")
     func panelBetweenDocuments() {
         let candidates = [document(), searchPanel(key: true), document()]
         #expect(WindowTargeting.targetIndex(in: candidates) == 0)
@@ -150,18 +164,14 @@ struct WindowTargetingTests {
 
 // MARK: - Auswahl ohne Klick
 
-/// Ein frisch geöffneter Editor hat KEINE Auswahl; `selectedRange()` liefert
-/// dann `{NSNotFound, 0}`. Reicht ein Aufrufer das ungeprüft an
-/// `replaceCharacters` weiter, bricht die Anwendung im Undo-Verwalter mit
-/// „Range invalid for string" ab — real auslösbar, indem man ein Bild in ein
-/// gerade geöffnetes Markdown-Dokument zieht (Dauertest, 2026-08-08).
-///
-/// Geprüft wird die reine Klemm-Rechnung; der Editor selbst braucht ein
-/// Fenster und ist im Dauertest abgedeckt.
+/// Ein Editor ohne Auswahl kann `{NSNotFound, 0}` liefern. Vor
+/// `replaceCharacters` muss die Range begrenzt werden, sonst kann die
+/// Undo-Verwaltung abbrechen. Hier wird die reine Klemmrechnung geprüft;
+/// der echte Editor ist im Dauertest abgedeckt.
 @Suite("Auswahl ohne Klick")
 struct SafeSelectionTests {
 
-    /// Ruft den PRODUKTIVEN Code auf, keine Nachbildung — sonst prüfte der
+    /// Ruft den produktiven Code auf, keine Nachbildung — sonst prüfte der
     /// Test nur sich selbst.
     private func clamp(_ range: NSRange, textLength: Int) -> NSRange {
         SelectionClamping.clamp(range, textLength: textLength)
@@ -196,4 +206,17 @@ struct SafeSelectionTests {
         let result = clamp(NSRange(location: 250, length: 0), textLength: 100)
         #expect(result == NSRange(location: 100, length: 0))
     }
+}
+
+@Test("Hilfsfenster aktualisieren Befehle ohne den letzten Dokumentkontext zu verlieren")
+@MainActor
+func auxiliaryWindowRefreshPreservesDocumentContext() {
+    let defaults = testSuiteDefaults(named: "fastra-test-command-context-\(UUID().uuidString)")
+    let workspace = Workspace(defaults: defaults)
+    let context = ActiveDocumentContext()
+    context.activate(workspace)
+    let previousRevision = context.revision
+    context.commandTargetDidChange()
+    #expect(context.workspace === workspace)
+    #expect(context.revision == previousRevision &+ 1)
 }

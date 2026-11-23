@@ -1,41 +1,31 @@
 #!/bin/zsh
-# public-history-audit.sh — Wächter gegen interne Angaben in dem, was zum
-# ÖFFENTLICHEN Remote geht. Gegenstück zu help-audit.sh, gleiche Mechanik.
+# public-history-audit.sh — Prüft ausgehende Commits auf interne Angaben.
 #
-# Warum überhaupt: Commit-Nachrichten entstehen im Moment der Arbeit, wo
-# Rechnername und Testumgebung genau die nützliche Information sind — und sie
-# werden erst Wochen später öffentlich. Am 2026-07-28 gingen so Rechnernamen
-# und Personenbezüge in 50 Commits mit; im Dateiinhalt ließ sich das vor dem
-# Push noch generalisieren, in der History nicht mehr.
+# Nur `<remote>/<branch>..HEAD` prüfen. Bereits veröffentlichte Historie ist
+# nicht Teil dieses Gates.
 #
-# Geprüft wird ausschließlich der AUSGEHENDE Stand (`<remote>/<branch>..HEAD`).
-# Bereits veröffentlichte Commits sind ohnehin nicht mehr zu korrigieren; sie
-# hier zu melden würde den Wächter dauerhaft rot färben und damit wertlos machen.
-#
-# Zwei Musterquellen:
-#   1. Eingebaut und public-safe: private IP-Bereiche, absolute Home-Pfade,
-#      E-Mail-Adressen, ssh-Remotes. Nur gegen COMMIT-NACHRICHTEN — im Code
-#      sind solche Zeichenketten oft legitime Beispiele (etwa „192.168.1.1"
-#      als Beispieltreffer des IPv4-Suchmusters).
-#   2. Optional und lokal: eine gitignorierte Datei mit den eigenen internen
-#      Namen (Rechnernamen, interne Hosts). Die gehört NICHT ins öffentliche
-#      Repo — sonst veröffentlicht der Wächter genau das, wovor er schützt.
-#      Diese Muster laufen gegen Nachrichten UND hinzugefügte Zeilen.
+# Musterquellen:
+#   1. Eingebaute öffentliche Muster für private IP-Bereiche, absolute
+#      Home-Pfade, E-Mail-Adressen und SSH-Remotes. Sie gelten nur für
+#      Commit-Nachrichten, weil Code legitime Beispiele enthalten kann.
+#   2. Optionale gitignorierte Datei für interne Namen und Hosts.
+#      Diese Muster gelten für Nachrichten und hinzugefügte Zeilen und
+#      dürfen nicht selbst ins öffentliche Repo gelangen.
 #
 # Aufruf:
-#   ./public-history-audit.sh            Normallauf: Hinweis, Exit 0.
-#   ./public-history-audit.sh --release  Release-Modus: harter Fehler (Exit 1).
+#   ./public-history-audit.sh            Hinweise, Exit 0 bei Fund.
+#   ./public-history-audit.sh --release  Fund ist harter Fehler (Exit 1).
 #
 # Exit-Codes:
-#   0 = nichts gefunden (oder Fund im Normallauf, nur als Hinweis)
-#   1 = Fund im Release-Modus ODER ein Muster ließ sich nicht anwenden
-#   2 = Umgebungsproblem (kein öffentliches Remote bekannt) — kein Befund
+#   0 = kein Fund oder Hinweis im Normallauf
+#   1 = Fund im Release-Modus oder unanwendbares Muster
+#   2 = Umgebungsproblem, etwa fehlendes öffentliches Remote
 #
-# Steuerbar für Tests und andere Clones:
-#   FASTRA_PUBLIC_REMOTE   Name des öffentlichen Remotes (Default: github)
-#   FASTRA_PUBLIC_BRANCH   Branch dort (Default: main)
-#   FASTRA_PRIVATE_PATTERNS  Pfad zur lokalen Musterdatei
-#                            (Default: app/public-history-patterns.local)
+# Test-/Clone-Overrides:
+#   FASTRA_PUBLIC_REMOTE    Öffentliches Remote (Default: github)
+#   FASTRA_PUBLIC_BRANCH    Branch dort (Default: main)
+#   FASTRA_PRIVATE_PATTERNS Lokale Musterdatei
+#                          (Default: app/public-history-patterns.local)
 set -euo pipefail
 
 release=0
@@ -104,12 +94,12 @@ report() {
 # Treffer des letzten `scan`-Laufs, eine Zeile je Fund.
 scan_output=""
 
-# grep über stdin MIT ehrlichem Status. grep unterscheidet drei Fälle:
+# grep über stdin mit ehrlichem Status. grep unterscheidet drei Fälle:
 #   0 = Treffer, 1 = kein Treffer, ab 2 = grep selbst ist gescheitert
 #       (typisch: ein ungültiger regulärer Ausdruck in der lokalen Musterdatei).
 # Das frühere `|| true` warf alle drei in einen Topf: Ein kaputtes privates
 # Muster galt damit als „nichts gefunden" und der Wächter meldete PASS,
-# obwohl er gar nicht geprüft hatte (Review 2026-08-02). Ein solcher Fehler
+# obwohl er gar nicht geprüft hatte. Ein solcher Fehler
 # ist deshalb ein harter Abbruch, kein stiller Durchlauf.
 scan() {
     # `status` ist in zsh ein reservierter Name (Zweitname für `$?`) und
@@ -158,21 +148,21 @@ done
 # Lokale Musterliste: je Zeile ein erweiterter regulärer Ausdruck.
 # Leerzeilen und Zeilen ab '#' werden übersprungen.
 if [[ -f "$patterns_file" ]]; then
-    # Hinzugefügte Zeilen JE AUSGEHENDEM COMMIT sammeln, nicht aus dem
+    # Hinzugefügte Zeilen je ausgehendem Commit sammeln, nicht aus dem
     # Netto-Diff `Basis..HEAD`. Wer eine interne Angabe in einem Commit
     # hinzufügt und in einem späteren wieder entfernt, hat sie im Netto-Diff
     # nicht mehr — nach dem Push bleibt der Zwischen-Commit aber über seine
-    # SHA dauerhaft erreichbar und damit auch die Angabe darin
-    # (Review 2026-08-02). Jede Zeile trägt vorn die volle Commit-ID, damit
+    # SHA dauerhaft erreichbar und damit auch die Angabe darin.
+    # Jede Zeile trägt vorn die volle Commit-ID, damit
     # der Fund benennbar ist.
     added_lines=""
     while IFS= read -r sha; do
         [[ -z "$sha" ]] && continue
-        # `git show` MUSS gelingen. Vorher stand es mit den beiden Filtern in
-        # EINER Pipe, die auf `|| true` endete: Wegen `pipefail` verschluckte
+        # `git show` muss gelingen. Vorher stand es mit den beiden Filtern in
+        # einer Pipe, die auf `|| true` endete: Wegen `pipefail` verschluckte
         # das nicht nur den erwartbaren Status 1 eines ergebnislosen `grep`,
         # sondern auch einen echten Fehler von `git show` — der Commit lief
-        # dann mit leerem Inhalt durch die Prüfung (Review 2026-08-06).
+        # dann mit leerem Inhalt durch die Prüfung.
         commit_diff=""
         if ! commit_diff="$(git show --format='' --unified=0 "$sha")"; then
             echo "PUBLIC HISTORY AUDIT: FEHLER — „git show $sha“ scheiterte." >&2

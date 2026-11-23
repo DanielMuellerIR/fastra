@@ -154,6 +154,142 @@ fn symlink_fifo_binary_and_long_line_are_visible_skips() {
     assert_eq!(p.matches(), 1);
     assert_eq!(p.skipped().len(), 5);
     assert!(p.skipped().iter().any(|s| s.reason == SkipReason::LongLine));
+    assert!(!p.is_complete());
+}
+
+#[test]
+fn incomplete_folder_retains_hits_and_rejects_even_after_oversize_source_shrinks() {
+    let d = dir();
+    let hit = d.path().join("edit.txt");
+    let skipped = d.path().join("oversize.txt");
+    std::fs::write(&hit, b"cat\r\n").unwrap();
+    std::fs::File::create(&skipped).unwrap().set_len(33_554_433).unwrap();
+    let c = Cancellation::default();
+    let p = preview(&request(d.path().into()), 1, &c).unwrap();
+    assert_eq!(p.matches(), 1);
+    assert_eq!(p.skipped()[0].reason, SkipReason::TooLarge);
+    assert!(!p.is_complete());
+    assert!(matches!(p.changed_paths(1, &[vec![0]], &c), Err(Error::Incomplete)));
+    std::fs::write(&skipped, b"cat foreign\n").unwrap();
+    assert!(matches!(p.apply(1, &[vec![0]], &c), Err(Error::Incomplete)));
+    assert_eq!(std::fs::read(&hit).unwrap(), b"cat\r\n");
+    assert_eq!(std::fs::read(&skipped).unwrap(), b"cat foreign\n");
+    assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 2);
+}
+
+#[test]
+fn malformed_bom_and_unsupported_metadata_block_folder_approval() {
+    let d = dir();
+    let outside = dir();
+    let foreign = outside.path().join("source.txt");
+    std::fs::write(&foreign, b"cat").unwrap();
+    std::fs::hard_link(&foreign, d.path().join("linked.txt")).unwrap();
+    std::fs::write(d.path().join("a.txt"), b"cat").unwrap();
+    std::fs::write(d.path().join("invalid.txt"), [0xff, 0xfe, 0, 0xd8]).unwrap();
+    std::fs::write(d.path().join("bom-nul.txt"), b"\xef\xbb\xbfcat\0").unwrap();
+    let c = Cancellation::default();
+    let p = preview(&request(d.path().into()), 1, &c).unwrap();
+    assert_eq!(p.matches(), 1);
+    assert!(!p.is_complete());
+    assert_eq!(
+        p.skipped().iter().map(|entry| entry.reason).collect::<Vec<_>>(),
+        [SkipReason::Undecodable, SkipReason::Undecodable, SkipReason::UnsupportedFile]
+    );
+    assert!(matches!(p.apply(1, &[vec![0]], &c), Err(Error::Incomplete)));
+    assert_eq!(std::fs::read(&foreign).unwrap(), b"cat");
+}
+
+#[test]
+fn unreadable_intended_sources_leave_visible_hits_without_approvals() {
+    use std::os::unix::fs::PermissionsExt;
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let d = dir();
+    let locked = d.path().join("locked");
+    let unreadable = d.path().join("unreadable.txt");
+    std::fs::write(d.path().join("visible.txt"), b"cat").unwrap();
+    std::fs::create_dir(&locked).unwrap();
+    std::fs::write(locked.join("another.txt"), b"cat").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    std::fs::write(&unreadable, b"cat").unwrap();
+    std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let c = Cancellation::default();
+    let result = preview(&request(d.path().into()), 1, &c);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let p = result.unwrap();
+    assert_eq!(p.matches(), 1);
+    assert_eq!(p.skipped().len(), 2);
+    assert!(p.skipped().iter().all(|s| s.reason == SkipReason::Unreadable));
+    assert!(matches!(p.apply(1, &[vec![0]], &c), Err(Error::Incomplete)));
+}
+
+#[test]
+fn binary_basis_is_verified_by_apply_but_does_not_block_undo_afterward() {
+    use std::os::unix::fs::MetadataExt;
+    let d = dir();
+    let hit = d.path().join("hit.txt");
+    let bin = d.path().join("data.bin");
+    let before = b"cat\r\n";
+    std::fs::write(&hit, before).unwrap();
+    std::fs::write(&bin, b"cat\0\n").unwrap();
+    let c = Cancellation::default();
+    let r = request(d.path().into());
+    let p = preview(&r, 1, &c).unwrap();
+    assert!(p.is_complete());
+    assert_eq!(p.matches(), 1);
+    assert_eq!(p.skipped()[0].reason, SkipReason::Binary);
+    let parent_time = d.path().metadata().unwrap().modified().unwrap();
+    let meta = bin.metadata().unwrap();
+    std::fs::write(&bin, b"cat!\n").unwrap();
+    std::fs::File::open(&bin).unwrap().set_modified(meta.modified().unwrap()).unwrap();
+    assert_eq!(bin.metadata().unwrap().ino(), meta.ino());
+    assert_eq!(d.path().metadata().unwrap().modified().unwrap(), parent_time);
+    assert!(matches!(p.apply(1, &[vec![0]], &c), Err(Error::File(fastra_io::Error::Stale))));
+    assert_eq!(std::fs::read(&hit).unwrap(), before);
+    assert_eq!(std::fs::read(&bin).unwrap(), b"cat!\n");
+
+    std::fs::write(&bin, b"cat\0\n").unwrap();
+    let p = preview(&r, 2, &c).unwrap();
+    let mut transaction = p.apply(2, &[vec![0]], &c).unwrap().unwrap();
+    assert_eq!(std::fs::read(&hit).unwrap(), b"dog\r\n");
+    assert_eq!(std::fs::read(&bin).unwrap(), b"cat\0\n");
+    std::fs::write(&bin, b"next\0\n").unwrap();
+    transaction.undo(&c).unwrap();
+    transaction.discard(&c).unwrap();
+    assert_eq!(std::fs::read(&hit).unwrap(), before);
+    assert_eq!(std::fs::read(&bin).unwrap(), b"next\0\n");
+}
+
+#[test]
+fn excluded_raw_names_and_long_lines_do_not_block_explicit_scope() {
+    use std::{ffi::OsStr, os::unix::{ffi::OsStrExt, fs::symlink}};
+    let d = dir();
+    let hit = d.path().join("hit.txt");
+    std::fs::write(&hit, b"cat\r\n").unwrap();
+    for name in [b"long.txt".as_slice(), b".hidden-\xff.txt", b"raw-\xff.bin"] {
+        std::fs::write(d.path().join(OsStr::from_bytes(name)), vec![b'x'; 65_537]).unwrap();
+    }
+    symlink("hit.txt", d.path().join(OsStr::from_bytes(b"raw-\xff-link"))).unwrap();
+    let c = Cancellation::default();
+    let mut r = request(d.path().into());
+    r.known_text_only = true;
+    r.exclusions = vec!["long.txt".into()];
+    let p = preview(&r, 1, &c).unwrap();
+    assert!(p.is_complete());
+    assert_eq!(p.skipped().len(), 1);
+    assert_eq!(p.skipped()[0].reason, SkipReason::LinkOrSpecial);
+    let mut transaction = p.apply(1, &[vec![0]], &c).unwrap().unwrap();
+    assert_eq!(std::fs::read(&hit).unwrap(), b"dog\r\n");
+    transaction.undo(&c).unwrap();
+    transaction.discard(&c).unwrap();
+    assert_eq!(std::fs::read(&hit).unwrap(), b"cat\r\n");
+
+    r.exclusions.clear();
+    let p = fastra_search::preview_selected(&r, Some(&["hit.txt".into()]), 2, &c).unwrap();
+    assert!(p.is_complete() && p.skipped().is_empty());
+    assert_eq!(p.matches(), 1);
 }
 #[test]
 fn cancellation_and_match_limit_never_yield_partial_preview() {

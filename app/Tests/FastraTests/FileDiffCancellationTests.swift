@@ -1,15 +1,12 @@
 // FileDiffCancellationTests.swift
 //
-// Belege für den Folgeauftrag „Diff tatsächlich abbrechen" (2026-09-05):
-// 1. Der eigene Myers-Kern liefert dieselben Änderungen wie Foundations
-//    `CollectionDifference` — sonst würden sich die Zeilen-Ausrichtung und
-//    damit alle vorhandenen Diff-Fixtures verschieben.
-// 2. Jeder Prüfpunkt in jeder Phase bricht wirklich ab, ohne Teilergebnis.
-// 3. Der Ladepfad meldet Abbruch als Abbruch, nicht als „unlesbar".
-// 4. Workspace, Makro-Assistent und externes Fenster brechen ihre Tasks bei
-//    Tab-/Fensterschluss, neuer Anfrage und Abbau wirklich ab, und ihre
-//    Verwaltung wächst dabei nicht.
-// 5. Verzögerung bis zum Abbruch wird gemessen und muss klein bleiben.
+// 1. Myers-Ergebnis gegen `CollectionDifference` vergleichen, damit
+//    Zeilenausrichtung und bestehende Diff-Fixtures gleich bleiben.
+// 2. Jeden Abbruchprüfpunkt ohne Teilergebnis verlassen.
+// 3. Abbruch im Loader als Abbruch statt „unlesbar“ melden.
+// 4. Tasks bei Tab-/Fensterschluss, neuer Anfrage und Abbau abbrechen;
+//    Workspace-, Makro- und Fensterverwaltung dürfen nicht wachsen.
+// 5. Verzögerung bis zum Abbruch begrenzen.
 
 import Testing
 import Foundation

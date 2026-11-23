@@ -1,9 +1,9 @@
 import SwiftUI
 import AppKit
 
-// SwiftUIs `.help` zeigt auf DEAKTIVIERTEN Bedienelementen keinen Tooltip an.
+// SwiftUIs `.help` zeigt auf deaktivierten Bedienelementen keinen Tooltip an.
 // Gerade dort ist er aber am wichtigsten: Ein ausgegrauter Bild-Knopf erklärt
-// sich sonst gar nicht (Daniel-Wunsch 2026-09-01). AppKit-Tooltips kennen die
+// sich sonst gar nicht. AppKit-Tooltips kennen die
 // Einschränkung nicht — diese unsichtbare Overlay-NSView trägt den Text als
 // klassischen `toolTip` und reicht alle Klicks unverändert durch.
 private struct TooltipHostView: NSViewRepresentable {

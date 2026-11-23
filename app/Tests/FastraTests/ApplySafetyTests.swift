@@ -1,39 +1,96 @@
-// ApplySafetyTests.swift
-//
-// Gerüst für das HARTE Apply-Sicherheits-Gate (v0.6). Multi-File-Replace ist
-// potenziell zerstörerisch — laut AGENTS.md MÜSSEN diese Tests stehen, BEVOR
-// die Apply-Logik geschrieben wird.
-//
-// Was hier JETZT schon grün läuft: die Bausteine, die ohne Apply-Engine
-// existieren — Binär-Erkennung, Encoding-/Line-Ending-Erkennung und die
-// Integrität des Test-Korpus. Die apply-abhängigen Verträge (Dry-Run,
-// atomare Writes, „außerhalb Scope unverändert", bit-exaktes Undo) sind
-// unten als ausdrückliches TODO markiert und werden mit der Apply-Logik
-// implementiert.
+// Die Tests prüfen Planung ohne Schreibzugriff, unveränderte Dateien
+// außerhalb des freigegebenen Umfangs und bytegenaue Wiederherstellung.
+// Fehler vor und nach dem Tausch müssen fremde Änderungen erhalten und
+// den offenen Cleanup über persistierte Sessions fortsetzen können.
 
 import Testing
 import Foundation
+import Darwin
 @testable import Fastra
 
-@Test("Apply lehnt nach der Vorschau veränderte temporäre Ausgaben ab")
-func transactionRejectsAlteredStagingBytes() throws {
-    let backups = try makeBackupRoot()
-    defer { try? FileManager.default.removeItem(at: backups) }
-    let target = backups.appendingPathComponent("target.txt")
-    try Data("foo".utf8).write(to: target)
-    let transaction = try makeTransaction(files: [target])
-    #expect(throws: (any Error).self) {
-        try transaction.execute(backupRoot: backups, cleanupOlderThan: nil,
-            beforePreflight: {
+@Test("Apply lehnt nach der Vorschau veränderte temporäre Ausgaben ab",
+      arguments: [0, 1])
+func transactionRejectsAlteredStagingBytes(failureIndex: Int) throws {
+    let directory = try makeBackupRoot()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let targets = directory.appendingPathComponent("targets", isDirectory: true)
+    let backups = directory.appendingPathComponent("backups", isDirectory: true)
+    try FileManager.default.createDirectory(at: targets, withIntermediateDirectories: true)
+    let files = ["first.txt", "second.txt"].map { targets.appendingPathComponent($0) }
+    let originals = [Data("foo one".utf8), Data("foo two".utf8)]
+    for (file, bytes) in zip(files, originals) { try bytes.write(to: file) }
+    let originalSnapshots = try files.map { try FileSnapshot.readSnapshotOnly(from: $0) }
+    let transaction = try makeTransaction(files: files)
+    #expect(transaction.inputs.map(\.url) == files)
+    var sessionDirectory: URL?
+    var backupSnapshots: [FileSnapshot] = []
+    var progress: [ApplyTransaction.Progress] = []
+    var partial: ApplySession?
+    do {
+        _ = try transaction.execute(backupRoot: backups, cleanupOlderThan: nil,
+            progress: { progress.append($0) }, beforePreflight: {
                 let session = try #require(FileManager.default.contentsOfDirectory(
                     at: backups, includingPropertiesForKeys: nil)
                     .first { $0.lastPathComponent.hasPrefix("session-") })
-                // Gleiche Länge wie „bar“: allein die Größenprüfung reicht nicht.
-                try Data("BAD".utf8).write(
-                    to: session.appendingPathComponent("staged/0.bin"))
+                sessionDirectory = session
+                backupSnapshots = try files.indices.map {
+                    try FileSnapshot.readSnapshotOnly(
+                        from: session.appendingPathComponent("files/\($0).bin"))
+                }
+                // Gleiche Länge: allein die Größenprüfung reicht nicht.
+                try Data("BAD two".utf8).write(
+                    to: session.appendingPathComponent("staged/\(failureIndex).bin"))
             })
+        Issue.record("Die veränderte Stagingdatei hätte Apply abbrechen müssen")
+    } catch ApplyError.backupFailed(let message) {
+        #expect(failureIndex == 0)
+        #expect(message.contains(files[failureIndex].lastPathComponent))
+    } catch ApplyError.writeFailed(let session, let message) {
+        #expect(failureIndex == 1)
+        #expect(message.contains(files[failureIndex].lastPathComponent))
+        partial = session
     }
-    #expect(try Data(contentsOf: target) == Data("foo".utf8))
+    let sessionDir = try #require(sessionDirectory)
+    // Extern überschriebene Ausgaben sind kein eigener Cleanupauftrag mehr.
+    #expect(try Data(contentsOf: sessionDir.appendingPathComponent("staged/\(failureIndex).bin")) == Data("BAD two".utf8))
+    let appliedProgress = progress.filter { $0.phase == .applied }
+    #expect(appliedProgress == (failureIndex == 0 ? [] : [ApplyTransaction.Progress(
+        phase: .applied, completedFiles: 1, totalFiles: 2, fileName: files[0].lastPathComponent)]))
+    #expect(try FileSnapshot.readSnapshotOnly(from: files[1]) == originalSnapshots[1])
+    #expect(try Data(contentsOf: files[1]) == originals[1])
+    if failureIndex == 0 {
+        #expect(partial == nil)
+        #expect(try FileSnapshot.readSnapshotOnly(from: files[0]) == originalSnapshots[0])
+        #expect(try Data(contentsOf: files[0]) == originals[0])
+        #expect(FileManager.default.fileExists(atPath: sessionDir.path))
+        #expect(try files.indices.map { try FileSnapshot.readSnapshotOnly(
+            from: sessionDir.appendingPathComponent("files/\($0).bin")) } == backupSnapshots)
+    } else {
+        let session = try #require(partial)
+        #expect(session.sessionDirectory.resolvingSymlinksInPath() == sessionDir.resolvingSymlinksInPath())
+        #expect(session.entries.map(\.originalPath) == [files[0].path])
+        #expect(session.entries.map(\.state) == [.applied])
+        #expect(session.retainedPendingFiles.isEmpty)
+        #expect(try ApplyEngine.loadSession(at: sessionDir) == session)
+        let anchor = try #require(session.entries[0].pendingFile)
+        #expect(anchor.isValid)
+        #expect(try FileSnapshot.readSnapshotOnly(from: files[0]) == anchor.snapshot)
+        #expect(try Data(contentsOf: files[0]) == Data("bar one".utf8))
+        let backupURLs = files.indices.map { sessionDir.appendingPathComponent("files/\($0).bin") }
+        #expect(try backupURLs.map { try FileSnapshot.readSnapshotOnly(from: $0) } == backupSnapshots)
+        #expect(try backupURLs.map { try Data(contentsOf: $0) } == originals)
+        let undone = try ApplyEngine.undo(session)
+        #expect(undone.entries.map(\.state) == [.restored])
+        #expect(try Data(contentsOf: files[0]) == originals[0])
+        #expect(try FileSnapshot.readSnapshotOnly(from: files[1]) == originalSnapshots[1])
+        #expect(try backupURLs.map { try FileSnapshot.readSnapshotOnly(from: $0) } == backupSnapshots)
+        #expect(!FileManager.default.fileExists(atPath: anchor.url.path))
+        #expect(!FileManager.default.fileExists(atPath: try #require(anchor.cleanupClaimURL).path))
+        #expect(!FileManager.default.fileExists(atPath: try #require(anchor.cleanupDirectory).url.path))
+    }
+    // Kein Nachbar, Anker oder privater Arbeitsordner bleibt im Zielordner.
+    #expect(Set(try FileManager.default.contentsOfDirectory(atPath: targets.path))
+        == Set(files.map(\.lastPathComponent)))
 }
 
 @Test("Apply lehnt Ausgaben über der Undo-Grenze vor jedem Dateischreiben ab")
@@ -94,7 +151,7 @@ func binary_textIsNotBinary() throws {
 @Test("UTF-16-Text triggert die naive Null-Byte-Heuristik (dokumentierter Sonderfall)")
 func binary_utf16IsNaivelyBinary() throws {
     // Wichtig fürs Apply-Gate: UTF-16/32 enthält Null-Bytes. Die Binär-
-    // Heuristik allein würde solche Dateien überspringen. Daher MUSS beim
+    // Heuristik allein würde solche Dateien überspringen. Daher muss beim
     // Suchen/Apply zuerst eine BOM-/Encoding-Erkennung laufen. Dieser Test
     // hält den Sonderfall bewusst fest, damit niemand ihn vergisst.
     let corpus = try TestCorpus()
@@ -342,7 +399,7 @@ func plan_plainTextReplaceDollarIsLiteral() throws {
     defer { corpus.cleanup() }
     let url = corpus.root.appendingPathComponent("utf8-lf.txt")
     // Inhalt: "Zeile A\nZeile B\nkunde@example.com\n"
-    // RegEx aus → der Replace-String "$1!" soll WÖRTLICH stehen. Früher
+    // RegEx aus → der Replace-String "$1!" soll wörtlich stehen. Früher
     // wurde „$1" als (leerer) Backref auf Gruppe 1 interpretiert und
     // verschluckt → „!" statt „$1!".
     let plan = ApplyEngine.plan(files: [url],
@@ -467,7 +524,7 @@ func plan_capturesAreInterpolated() throws {
 //
 // Hier wird wirklich auf die Platte geschrieben — aber nur in einen
 // frischen Temp-Korpus, der nach jedem Test gelöscht wird. Backup-Wurzel
-// wird ebenfalls überschrieben (NIE der echte ~/Library-Pfad).
+// wird ebenfalls überschrieben (nie der echte ~/Library-Pfad).
 
 /// Liefert einen isolierten Backup-Root für einen einzelnen Test.
 private func makeBackupRoot() throws -> URL {
@@ -771,12 +828,11 @@ func apply_partialSessionExcludesNeverWrittenTargets() throws {
     do {
         _ = try ApplyEngine.apply(
             plan: plan, backupRoot: backups, cleanupOlderThan: nil,
-            atomicReplace: { data, target, temporary in
+            atomicReplace: { _, target, temporary in
                 writes += 1
-                try data.write(to: temporary, options: .atomic)
                 _ = try FileManager.default.replaceItemAt(target, withItemAt: temporary)
                 if writes == 1 {
-                    // Der zweite Zielkonflikt entsteht sicher VOR dessen
+                    // Der zweite Zielkonflikt entsteht sicher vor dessen
                     // Replace-Aufruf. Nur so ist belastbar bewiesen, dass die
                     // Datei nie angewendet wurde und aus Partial/Undo gehört.
                     try laterSecond.write(to: second, options: .atomic)
@@ -864,7 +920,12 @@ func apply_manifestFailureAfterReplaceRecoversPendingEntry() throws {
         at: try #require(FileManager.default.contentsOfDirectory(
             at: backups, includingPropertiesForKeys: nil).first))
     #expect(recovered.entries[0].state == .pending)
+    let retained = try #require(recovered.entries[0].pendingFile)
+    #expect(retained.isValid)
+    #expect(recovered.entries[0].appliedSnapshot == retained.snapshot)
+    #expect(try FileSnapshot.readSnapshotOnly(from: target) == retained.snapshot)
     _ = try ApplyEngine.undo(recovered)
+    #expect(!FileManager.default.fileExists(atPath: retained.url.path))
     #expect(try Data(contentsOf: target) == original)
 }
 
@@ -1203,6 +1264,448 @@ func transactionGlobalPreflightRejectsLateConflict() throws {
     #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
 }
 
+private func requireEffectiveReadDenial(at url: URL) throws {
+    try #require(chmod(url.path, 0o000) == 0)
+    let descriptor = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+    let failureCode = errno
+    if descriptor >= 0 { close(descriptor) }
+    try #require(descriptor == -1 && failureCode == EACCES,
+                 "Die Rechte-Fixture muss effektives EACCES erzeugen; privilegierte Reads zählen nicht als Nachweis")
+}
+
+private enum LegacyPlanReadFixture: CaseIterable, Equatable {
+    case missing, denied, oversized, directory
+}
+
+@Test("Dateiplan erhält konkrete Lesefehler und schreibt übersprungene Eingaben nicht",
+      arguments: LegacyPlanReadFixture.allCases)
+private func legacyPlanReadFailurePreservesCause(kind: LegacyPlanReadFixture) throws {
+    let root = try makeBackupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let target = root.appendingPathComponent("target")
+    defer { if kind == .denied { _ = chmod(target.path, 0o600) } }
+    let control = root.appendingPathComponent("control.txt")
+    let original = Data("foo untouched\n".utf8)
+    try original.write(to: control)
+    let oversizedCount = FileSnapshot.maximumReadBytes + 1
+    switch kind {
+    case .missing: break
+    case .denied:
+        try original.write(to: target)
+        try requireEffectiveReadDenial(at: target)
+    case .oversized:
+        try Data().write(to: target)
+        let handle = try FileHandle(forWritingTo: target)
+        defer { try? handle.close() }
+        try handle.truncate(atOffset: oversizedCount)
+    case .directory:
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+    }
+    let plan = ApplyEngine.plan(files: [target], options: SearchOptions(
+        find: "foo", replace: "bar", isRegex: false))
+    let file = try #require(plan.files.first)
+    #expect(file.url == target)
+    #expect(file.skipped == .unreadable)
+    #expect(file.originalSnapshot == nil && file.encoding == nil)
+    #expect(file.bom.isEmpty && file.originalBytes.isEmpty && file.newBytes.isEmpty)
+    #expect(file.matches.isEmpty && !file.hasChanges)
+    switch kind {
+    case .missing, .denied:
+        guard case .system(let cause, let underlying) = try #require(file.readFailure) else {
+            Issue.record("Der direkte POSIX-Lesefehler fehlt")
+            return
+        }
+        let code: POSIXErrorCode = kind == .missing ? .ENOENT : .EACCES
+        #expect(cause.domain == NSPOSIXErrorDomain && cause.code == Int(code.rawValue))
+        #expect(cause.message == (POSIXError(code) as NSError).localizedDescription)
+        #expect(underlying == nil)
+    case .oversized:
+        #expect(file.readFailure == .snapshot(.tooLarge(byteCount: oversizedCount)))
+    case .directory:
+        #expect(file.readFailure == .snapshot(.notRegularFile))
+    }
+    let backups = root.appendingPathComponent("backups")
+    do {
+        _ = try ApplyEngine.apply(plan: plan, backupRoot: backups, cleanupOlderThan: nil)
+        Issue.record("Ein reiner Skip-Plan darf keine Schreibsession erzeugen")
+    } catch ApplyError.planNotApplyable { }
+    #expect(!FileManager.default.fileExists(atPath: backups.path))
+    #expect(try Data(contentsOf: control) == original)
+    switch kind {
+    case .missing:
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+    case .denied:
+        try #require(chmod(target.path, 0o600) == 0)
+        #expect(try Data(contentsOf: target) == original)
+    case .oversized:
+        #expect((try FileManager.default.attributesOfItem(atPath: target.path)[.size] as? NSNumber)?.uint64Value == oversizedCount)
+    case .directory:
+        #expect(try FileManager.default.contentsOfDirectory(atPath: target.path).isEmpty)
+    }
+}
+
+@Test("Dateiplan wendet gültige Nachbarn an und erhält echte Lesefehler-Skips")
+func legacyPlanReadFailureKeepsMixedApply() throws {
+    let root = try makeBackupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let good = root.appendingPathComponent("good.txt")
+    let denied = root.appendingPathComponent("denied.txt")
+    let missing = root.appendingPathComponent("missing.txt")
+    try Data("foo good\n".utf8).write(to: good)
+    let original = Data("foo denied\n".utf8)
+    try original.write(to: denied)
+    let before = try FileSnapshot.readSnapshotOnly(from: denied)
+    let mtime = try FileManager.default.attributesOfItem(atPath: denied.path)[.modificationDate] as? Date
+    defer { _ = chmod(denied.path, 0o600) }
+    try requireEffectiveReadDenial(at: denied)
+    let plan = ApplyEngine.plan(files: [good, denied, missing], options: SearchOptions(
+        find: "foo", replace: "bar", isRegex: false))
+    #expect(plan.files.map(\.url) == [good, denied, missing])
+    #expect(plan.files[0].readFailure == nil)
+    #expect(plan.files[1].readFailure != nil && plan.files[2].readFailure != nil)
+    let session = try ApplyEngine.apply(plan: plan,
+        backupRoot: root.appendingPathComponent("backups"), cleanupOlderThan: nil)
+    #expect(session.entries.count == 1 && session.entries[0].originalPath == good.path)
+    #expect(try Data(contentsOf: good) == Data("bar good\n".utf8))
+    try #require(chmod(denied.path, 0o600) == 0)
+    #expect(try Data(contentsOf: denied) == original)
+    #expect(try FileSnapshot.readSnapshotOnly(from: denied) == before)
+    #expect(try FileManager.default.attributesOfItem(atPath: denied.path)[.modificationDate] as? Date == mtime)
+    #expect(!FileManager.default.fileExists(atPath: missing.path))
+}
+
+@Test("Dateiplan kopiert den echten Foundation-Lesefehler samt POSIX-Ursache")
+func legacyPlanReadFailureKeepsFoundationCause() throws {
+    let root = try makeBackupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let target = root.appendingPathComponent("write-only.txt")
+    try Data("own fixture".utf8).write(to: target)
+    let descriptor = open(target.path, O_WRONLY | O_CLOEXEC)
+    try #require(descriptor >= 0)
+    defer { close(descriptor) }
+    let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
+    do {
+        _ = try handle.read(upToCount: 1)
+        Issue.record("Der schreibende Deskriptor muss den echten Foundation-Lesefehler liefern")
+    } catch {
+        let original = error as NSError
+        let originalCause = try #require(original.userInfo[NSUnderlyingErrorKey] as? NSError)
+        guard case .system(let copied, let cause) = PlannedReadFailure(error) else {
+            Issue.record("Foundation-Lesefehler wurde nicht erhalten")
+            return
+        }
+        #expect(copied.domain == original.domain && copied.code == original.code)
+        #expect(copied.message == original.localizedDescription)
+        #expect(cause?.domain == NSPOSIXErrorDomain && cause?.code == Int(EBADF))
+        #expect(cause?.message == originalCause.localizedDescription)
+    }
+}
+
+@Test("Erfolgreiche, binäre und Regex-Skips erfinden keine Lesefehler")
+func legacyPlanReadFailureDoesNotInventCause() throws {
+    let root = try makeBackupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let text = root.appendingPathComponent("text.txt")
+    let binary = root.appendingPathComponent("binary.bin")
+    try Data("foo".utf8).write(to: text)
+    try Data([0, 1, 2]).write(to: binary)
+    let plan = ApplyEngine.plan(files: [text, binary], options: SearchOptions(
+        find: "foo", replace: "bar", isRegex: false))
+    #expect(plan.files.allSatisfy { $0.readFailure == nil })
+    #expect(plan.files[0].hasChanges && plan.files[1].skipped == .binary)
+    let invalid = ApplyEngine.plan(files: [root.appendingPathComponent("missing")],
+        options: SearchOptions(find: "(", replace: "bar", isRegex: true))
+    #expect(invalid.files.count == 1 && invalid.files[0].readFailure == nil)
+    #expect(invalid.files[0].skipped != .unreadable)
+}
+
+private func expectReadDenialMessage(_ message: String, at url: URL) {
+    #expect(message.contains(L10n.format("„%@“ konnte nicht gelesen werden",
+                                        url.lastPathComponent)))
+    #expect(message.contains(POSIXError(.EACCES).localizedDescription))
+    #expect(!message.contains(L10n.format(
+        "„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert.",
+        url.lastPathComponent)))
+    #expect(!message.contains(L10n.format(
+        "„%@“ wurde nach dem Apply geändert. Rückgängig wurde abgebrochen.",
+        url.lastPathComponent)))
+}
+
+@Test("Apply benennt EACCES auch für wirkungslose Eingaben vor jedem Zielwrite",
+      arguments: [false, true])
+func transactionReadDenialPreservesCause(duringGlobalPreflight: Bool) throws {
+    let directory = try makeBackupRoot()
+    let backups = try makeBackupRoot()
+    let changing = directory.appendingPathComponent("changing.txt")
+    let effectless = directory.appendingPathComponent("effectless.txt")
+    defer {
+        _ = chmod(effectless.path, 0o600)
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let changingBytes = Data("FOO wird klein".utf8)
+    let effectlessBytes = Data("foo bleibt".utf8)
+    try changingBytes.write(to: changing)
+    try effectlessBytes.write(to: effectless)
+    let transaction = try makePreviewTransaction(files: [changing, effectless],
+        options: SearchOptions(find: "foo", replace: "foo", isRegex: false))
+    if !duringGlobalPreflight { try requireEffectiveReadDenial(at: effectless) }
+    var writes = 0
+    do {
+        _ = try transaction.execute(backupRoot: backups, cleanupOlderThan: nil,
+            beforePreflight: {
+                #expect(duringGlobalPreflight)
+                try requireEffectiveReadDenial(at: effectless)
+            }, beforeAtomicReplace: { _ in writes += 1 })
+        Issue.record("Der Lesefehler muss Apply vor dem ersten Zielwrite abbrechen")
+    } catch ApplyError.conflict(let message) {
+        expectReadDenialMessage(message, at: effectless)
+    }
+    #expect(writes == 0)
+    try #require(chmod(effectless.path, 0o600) == 0)
+    #expect(try Data(contentsOf: changing) == changingBytes)
+    #expect(try Data(contentsOf: effectless) == effectlessBytes)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
+}
+
+@Test("Undo benennt EACCES und erhält Backups, Manifest und Retry-Basis",
+      arguments: [false, true])
+func undoReadDenialPreservesCauseAndRetry(firstAlreadyOriginal: Bool) throws {
+    let directory = try makeBackupRoot()
+    let backups = try makeBackupRoot()
+    let first = directory.appendingPathComponent("first.txt")
+    let second = directory.appendingPathComponent("second.txt")
+    defer {
+        _ = chmod(second.path, 0o600)
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let firstOriginal = Data("foo one".utf8)
+    let secondOriginal = Data("foo two".utf8)
+    try firstOriginal.write(to: first)
+    try secondOriginal.write(to: second)
+    let session = try makeTransaction(files: [first, second]).execute(
+        backupRoot: backups, cleanupOlderThan: nil)
+    if firstAlreadyOriginal { try firstOriginal.write(to: first, options: .atomic) }
+    let targetsBefore = try [first, second].map { try FileSnapshot.read(from: $0) }
+    let backupURLs = session.entries.map {
+        session.sessionDirectory.appendingPathComponent($0.backupRelativePath)
+    }
+    let backupsBefore = try backupURLs.map { try FileSnapshot.readSnapshotOnly(from: $0) }
+    let persistedBefore = try ApplyEngine.loadSession(at: session.sessionDirectory)
+    try requireEffectiveReadDenial(at: second)
+    var writes = 0
+    var retry = session
+    do {
+        _ = try ApplyEngine.undo(session, beforeAtomicReplace: { _ in writes += 1 })
+        Issue.record("Der Lesefehler muss Undo vor dem ersten Restore abbrechen")
+    } catch ApplyError.undoConflict(let message) {
+        #expect(!firstAlreadyOriginal)
+        expectReadDenialMessage(message, at: second)
+    } catch ApplyError.undoFailed(let partial, let message) {
+        #expect(firstAlreadyOriginal)
+        #expect(partial.entries.map(\.state) == [.restored, .applied])
+        #expect(partial.entries[1] == session.entries[1])
+        retry = partial
+        expectReadDenialMessage(message, at: second)
+    }
+    #expect(writes == 0)
+    try #require(chmod(second.path, 0o600) == 0)
+    #expect(try [first, second].map { try FileSnapshot.readSnapshotOnly(from: $0) }
+            == targetsBefore.map { $0.snapshot })
+    #expect(try backupURLs.map { try FileSnapshot.readSnapshotOnly(from: $0) } == backupsBefore)
+    #expect(try ApplyEngine.loadSession(at: session.sessionDirectory) == persistedBefore)
+    let restored = try ApplyEngine.undo(retry)
+    #expect(restored.entries.map(\.state) == [.restored, .restored])
+    #expect(try Data(contentsOf: first) == firstOriginal)
+    #expect(try Data(contentsOf: second) == secondOriginal)
+}
+
+@Test("Undo meldet fehlende oder unlesbare Sicherungen mit Pfad und hält sie wiederholbar",
+      arguments: [false, true], [false, true])
+func undoBackupReadFailurePreservesPathAndRetry(afterFirstRestore: Bool, missing: Bool) throws {
+    let root = try makeBackupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let files = ["first.txt", "second.txt"].map { root.appendingPathComponent($0) }
+    let originals = ["foo one\r\n", "foo two\r\n"].map { Data($0.utf8) }
+    let applied = ["bar one\r\n", "bar two\r\n"].map { Data($0.utf8) }
+    for (file, bytes) in zip(files, originals) { try bytes.write(to: file) }
+    let session = try makeTransaction(files: files).execute(
+        backupRoot: root.appendingPathComponent("backups"), cleanupOlderThan: nil)
+    let entry = try #require(session.entries.last)
+    let backup = session.sessionDirectory.appendingPathComponent(entry.backupRelativePath)
+    let parked = backup.appendingPathExtension("parked")
+    let originalBackup = try FileSnapshot.readSnapshotOnly(from: backup)
+    let appliedTargets = try files.map { try FileSnapshot.readSnapshotOnly(from: $0) }
+    let cause: POSIXErrorCode = missing ? .ENOENT : .EACCES
+
+    func blockBackupRead() throws {
+        if missing {
+            try FileManager.default.moveItem(at: backup, to: parked)
+            let descriptor = open(backup.path, O_RDONLY)
+            let readError = errno
+            if descriptor >= 0 { close(descriptor) }
+            try #require(descriptor == -1 && readError == ENOENT)
+        } else {
+            try requireEffectiveReadDenial(at: backup)
+        }
+    }
+
+    if !afterFirstRestore { try blockBackupRead() }
+    var swaps: [URL] = []
+    var retry = session
+    var failureMessage: String?
+    do {
+        _ = try ApplyEngine.undo(session, beforeAtomicReplace: { url in
+            swaps.append(url)
+            try #require(afterFirstRestore && swaps == [files[0]])
+            try blockBackupRead()
+        })
+        Issue.record("Die unerreichbare zweite Sicherung muss Undo abbrechen")
+    } catch ApplyError.backupFailed(let message) {
+        #expect(!afterFirstRestore)
+        failureMessage = message
+    } catch ApplyError.undoFailed(let partial, let message) {
+        #expect(afterFirstRestore)
+        retry = partial
+        failureMessage = message
+    }
+    let message = try #require(failureMessage)
+    #expect(message.contains(files[1].lastPathComponent))
+    #expect(message.contains(backup.path))
+    #expect(message.contains(POSIXError(cause).localizedDescription))
+    #expect(swaps == (afterFirstRestore ? [files[0]] : []))
+    #expect(retry.entries.map(\.state) == (afterFirstRestore ? [.restored, .applied] : [.applied, .applied]))
+    #expect(try ApplyEngine.loadSession(at: session.sessionDirectory) == retry)
+    #expect(try FileSnapshot.readSnapshotOnly(from: files[1]) == appliedTargets[1])
+    #expect(try files.map { try Data(contentsOf: $0) }
+            == (afterFirstRestore ? [originals[0], applied[1]] : applied))
+
+    if missing {
+        try FileManager.default.moveItem(at: parked, to: backup)
+    } else {
+        try #require(chmod(backup.path, 0o600) == 0)
+    }
+    let reopenedBackup = try FileSnapshot.readSnapshotOnly(from: backup)
+    #expect(reopenedBackup.identity == originalBackup.identity)
+    #expect(reopenedBackup.sha256 == originalBackup.sha256)
+    let restored = try ApplyEngine.undo(retry)
+    #expect(restored.entries.map(\.state) == [.restored, .restored])
+    #expect(try files.map { try Data(contentsOf: $0) } == originals)
+}
+
+@Test("Undo nennt bei beschädigter Sicherung die Datei und den vollständigen Sicherungspfad",
+      arguments: [false, true])
+func undoBackupContentMismatchKeepsPathAndRetry(afterFirstRestore: Bool) throws {
+    let root = try makeBackupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let files = ["first.txt", "second.txt"].map { root.appendingPathComponent($0) }
+    let originals = ["foo one\r\n", "foo two\r\n"].map { Data($0.utf8) }
+    let applied = ["bar one\r\n", "bar two\r\n"].map { Data($0.utf8) }
+    for (file, bytes) in zip(files, originals) { try bytes.write(to: file) }
+    let session = try makeTransaction(files: files).execute(
+        backupRoot: root.appendingPathComponent("backups"), cleanupOlderThan: nil)
+    let entry = try #require(session.entries.last)
+    let backup = session.sessionDirectory.appendingPathComponent(entry.backupRelativePath)
+    let damaged = Data("foo TWO\r\n".utf8)
+    try #require(damaged.count == originals[1].count)
+    if !afterFirstRestore { try damaged.write(to: backup) }
+
+    var swaps: [URL] = []
+    var retry = session
+    var failureMessage: String?
+    do {
+        _ = try ApplyEngine.undo(session, beforeAtomicReplace: { url in
+            swaps.append(url)
+            try #require(afterFirstRestore && swaps == [files[0]])
+            try damaged.write(to: backup)
+        })
+        Issue.record("Die beschädigte zweite Sicherung muss Undo abbrechen")
+    } catch ApplyError.backupFailed(let message) {
+        #expect(!afterFirstRestore)
+        failureMessage = message
+    } catch ApplyError.undoFailed(let partial, let message) {
+        #expect(afterFirstRestore)
+        retry = partial
+        failureMessage = message
+    }
+    let message = try #require(failureMessage)
+    #expect(message.contains(files[1].lastPathComponent))
+    #expect(message.contains(backup.path))
+    #expect(message.localizedCaseInsensitiveContains("original"))
+    #expect(swaps == (afterFirstRestore ? [files[0]] : []))
+    #expect(retry.entries.map(\.state) == (afterFirstRestore ? [.restored, .applied] : [.applied, .applied]))
+    #expect(try ApplyEngine.loadSession(at: session.sessionDirectory) == retry)
+    #expect(try files.map { try Data(contentsOf: $0) }
+            == (afterFirstRestore ? [originals[0], applied[1]] : applied))
+    #expect(try Data(contentsOf: backup) == damaged)
+
+    try originals[1].write(to: backup)
+    let restored = try ApplyEngine.undo(retry)
+    #expect(restored.entries.map(\.state) == [.restored, .restored])
+    #expect(try files.map { try Data(contentsOf: $0) } == originals)
+}
+
+@Test("Byte-, Identitäts-, Größen- und Typwechsel bleiben Apply-Konflikte",
+      arguments: ["bytes", "identity", "growth", "directory"], [false, true])
+func transactionReadChangesRemainConflicts(change: String, duringGlobalPreflight: Bool) throws {
+    let directory = try makeBackupRoot()
+    let backups = try makeBackupRoot()
+    defer {
+        try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: backups)
+    }
+    let first = directory.appendingPathComponent("first.txt")
+    let second = directory.appendingPathComponent("second.txt")
+    let firstBytes = Data("foo one".utf8)
+    let secondBytes = Data("foo two".utf8)
+    try firstBytes.write(to: first)
+    try secondBytes.write(to: second)
+    let transaction = try makeTransaction(files: [first, second])
+    let originalSecond = transaction.inputs[1].snapshot
+    var foreignSnapshot: FileSnapshot?
+    func changeTarget() throws {
+        switch change {
+        case "bytes": try Data("foo BAD".utf8).write(to: second)
+        case "identity":
+            try FileManager.default.moveItem(at: second,
+                to: directory.appendingPathComponent("original-second.txt"))
+            try secondBytes.write(to: second)
+        case "growth": try Data("foo two grown".utf8).write(to: second)
+        default:
+            try FileManager.default.removeItem(at: second)
+            try FileManager.default.createDirectory(at: second, withIntermediateDirectories: false)
+        }
+        if change != "directory" {
+            foreignSnapshot = try FileSnapshot.readSnapshotOnly(from: second)
+        }
+        if change == "identity" {
+            #expect(foreignSnapshot?.identity != originalSecond.identity)
+            #expect(foreignSnapshot?.hasSameContent(as: originalSecond) == true)
+        }
+    }
+    if !duringGlobalPreflight { try changeTarget() }
+    var writes = 0
+    do {
+        _ = try transaction.execute(backupRoot: backups, cleanupOlderThan: nil,
+            beforePreflight: { try changeTarget() },
+            beforeAtomicReplace: { _ in writes += 1 })
+        Issue.record("Eine abweichende Vorschaubasis muss vor dem ersten Zielwrite stoppen")
+    } catch ApplyError.conflict(let message) {
+        #expect(message == L10n.format(
+            "„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert.",
+            second.lastPathComponent))
+    }
+    #expect(writes == 0)
+    #expect(try Data(contentsOf: first) == firstBytes)
+    if let foreignSnapshot {
+        #expect(try FileSnapshot.readSnapshotOnly(from: second) == foreignSnapshot)
+    } else {
+        #expect(try second.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true)
+    }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: backups.path).isEmpty)
+}
+
 @Test("Fremd-Replace nach dem letzten Apply-Preflight bleibt erhalten")
 func transactionForeignReplaceAfterPerFilePreflightIsPreserved() throws {
     let directory = testTemporaryDirectory().appendingPathComponent(
@@ -1320,7 +1823,7 @@ func transactionGlobalPreflightCoversEffectlessInputs() throws {
             beforePreflight: { try external.write(to: effectless, options: .atomic) })
         Issue.record("Der späte Konflikt in der wirkungslosen Datei hätte stoppen müssen")
     } catch ApplyError.conflict {
-        // Erwartet: Die Vorabprüfung deckt ALLE Eingaben ab, nicht nur die
+        // Erwartet: Die Vorabprüfung deckt alle Eingaben ab, nicht nur die
         // tatsächlich zu schreibenden.
     }
 
@@ -1331,12 +1834,9 @@ func transactionGlobalPreflightCoversEffectlessInputs() throws {
 
 // MARK: W-2026-08-02. Wirkungslose Datei bricht nicht mehr den ganzen Auftrag ab
 
-// Befund 2026-08-02: Enthielt ein Auftrag eine Datei, deren Treffer zwar
-// existieren, deren Ersetzung aber exakt den Ausgangstext ergibt, brach der
-// Vorlauf den GESAMTEN Auftrag ab — auch die echten Änderungen aller anderen
-// Dateien. Der Aufbau unten ist der reale Weg: Die Eingaben stammen aus der
-// sichtbaren Ordner-Vorschau (also aus ALLEN Dateien mit Treffern), nicht aus
-// der bereits gefilterten Änderungsliste.
+// Ein Auftrag mit wirkungsloser Ersetzung muss die übrigen Änderungen
+// ausführen. Die Eingaben stammen wie im Produkt aus allen Dateien mit
+// Treffern der sichtbaren Ordner-Vorschau, nicht nur aus der Änderungsliste.
 
 /// Auftrag über alle Treffer-Dateien — so, wie ihn die Ordner-Vorschau baut.
 private func makePreviewTransaction(files: [URL],

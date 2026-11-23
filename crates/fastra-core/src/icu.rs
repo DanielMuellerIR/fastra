@@ -69,7 +69,7 @@ fn check(status: i32) -> Result<(), Error> {
 }
 
 unsafe extern "C" fn keep_matching(context: *const c_void, _steps: i32) -> i8 {
-    // Der Arc gehört Regex und bleibt bis NACH uregex_close gültig.
+    // Der Arc gehört Regex und bleibt bis nach uregex_close gültig.
     let cancelled = unsafe { &*context.cast::<AtomicBool>() };
     i8::from(!cancelled.load(Ordering::Relaxed))
 }

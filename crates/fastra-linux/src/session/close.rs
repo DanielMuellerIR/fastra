@@ -129,7 +129,7 @@ impl Permit {
             done(true);
             return;
         };
-        // Erst nach dem tatsächlichen Entfernen ALLER freigegebenen Fenster aufrufen.
+        // Erst nach dem tatsächlichen Entfernen aller freigegebenen Fenster aufrufen.
         let lang = self
             .state
             .ui

@@ -26,7 +26,7 @@ private func writeTmpUTF8(_ content: String) throws -> URL {
     return url.canonicalFileURL
 }
 
-/// Schreibt neuen Inhalt und setzt das Änderungsdatum EXPLIZIT in die
+/// Schreibt neuen Inhalt und setzt das Änderungsdatum explizit in die
 /// Zukunft — Dateisystem-Zeitauflösung darf den Test nicht flaky machen.
 private func simulateExternalEdit(_ url: URL, content: String) throws {
     try content.write(to: url, atomically: true, encoding: .utf8)
@@ -384,7 +384,7 @@ func workspace_dirtyKeepDoesNotReAsk() async throws {
     #expect(ws.tabs[idx].content == "lokal geändert\n")
 
     // Zweiter App-Wechsel, Datei unverändert → Basis-Datum wurde beim
-    // „Behalten" nachgezogen, es darf NICHT erneut fragen.
+    // „Behalten" nachgezogen, es darf nicht erneut fragen.
     ws.checkExternalChanges()
     try? await Task.sleep(for: .milliseconds(100))
     #expect(askCount == 1)
@@ -403,7 +403,7 @@ func workspace_dirtyKeepWithDifferentSizeSurvivesMetadataChange() async throws {
     var askCount = 0
     ws.externalReloadConfirmHandler = { _ in askCount += 1; return false }
 
-    // Die Fremdfassung ist DEUTLICH größer — die frühere Abkürzung „andere
+    // Die Fremdfassung ist deutlich größer — die frühere Abkürzung „andere
     // Bytezahl → Bytes nie lesen" ließ „Behalten" dann ohne Snapshot der
     // akzeptierten Fassung zurück, und jede spätere Metadatenänderung
     // erzeugte einen neuen falschen Dialog.
@@ -434,7 +434,7 @@ func workspace_dirtyDriftDuringInspectionTriggersFreshCheck() async throws {
     var askCount = 0
     ws.externalReloadConfirmHandler = { _ in askCount += 1; return false }
 
-    // Fremdfassung mit ANDERER Größe: Eine sauber gestartete Prüfung liest
+    // Fremdfassung mit anderer Größe: Eine sauber gestartete Prüfung liest
     // dann bewusst keine Bytes. Der Tab wird noch im selben Main-Durchlauf
     // dirty — die Completion der laufenden Prüfung darf ihre alte
     // Lese-Entscheidung („kein Snapshot nötig") jetzt nicht mehr anwenden,
@@ -482,7 +482,7 @@ func workspace_staleInspectionDoesNotHitReboundTab() async throws {
     ws.externalReloadConfirmHandler = { _ in askCount += 1; return true }
 
     // Gleiche Größe erzwingt den (blockierten) Byte-Vergleich — die Prüfung
-    // für den ALTEN Pfad hängt jetzt in der Luft.
+    // für den alten Pfad hängt jetzt in der Luft.
     try simulateExternalEdit(firstURL, content: "eins neu\n")
     ws.checkExternalChanges()
     #expect(await waitUntil { reader.readCount == 1 })
@@ -503,6 +503,57 @@ func workspace_staleInspectionDoesNotHitReboundTab() async throws {
     #expect(askCount == 0)
     #expect(ws.tabs[idx].content == "eins alt\n")
     #expect(ws.tabs[idx].url == secondURL)
+}
+
+@Test("Eine während des Speicherns laufende Fremdprüfung prüft danach erneut", arguments: [false, true])
+@MainActor
+func workspace_externalInspectionRefreshesAfterSave(anotherExternalWrite: Bool) async throws {
+    let url = try writeTmpUTF8("Ausgang\r\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let reader = BlockingSnapshotReader()
+    defer { reader.releaseFirstRead() }
+    let inspector = ExternalChangeInspector(snapshotReader: { reader.read($0) })
+    let (defaults, _) = makeFreshDefaults()
+    let ws = Workspace(defaults: defaults, externalChangeInspector: inspector)
+    var loaded = false
+    ws.loadFile(at: url) { loaded = $0 }
+    try #require(await waitUntil { loaded })
+    let index = try #require(ws.tabs.firstIndex { $0.url == url })
+    let tabID = ws.tabs[index].id
+    ws.activeTabID = tabID
+    let saved = Data("Eigener Stand\r\n".utf8)
+    ws.tabs[index].content = "Eigener Stand\r\n"
+    ws.tabs[index].isDirty = true
+
+    var savePrompts = 0
+    ws.saveConflictConfirmHandler = { _ in savePrompts += 1; return true }
+    var externalPrompts: [String] = []
+    ws.externalReloadConfirmHandler = { title in
+        externalPrompts.append(title)
+        return false
+    }
+    try simulateExternalEdit(url, content: "Erste Fremdfassung\r\n")
+    ws.checkExternalChanges(only: tabID)
+    try #require(await waitUntil { reader.readCount == 1 })
+
+    ws.saveActiveTab()
+    try #require(savePrompts == 1 && !ws.tabs[index].hasUnsavedChanges)
+    try #require(try Data(contentsOf: url) == saved)
+    let savedBasis = try #require(ws.tabs[index].diskSnapshot)
+    ws.tabs[index].content = "Neuer Entwurf\r\n"
+    ws.tabs[index].isDirty = true
+    if anotherExternalWrite {
+        try simulateExternalEdit(url, content: "Zweite Fremdfassung\r\n")
+    }
+    let expectedDisk = try FileSnapshot.read(from: url).snapshot
+    reader.releaseFirstRead()
+
+    try #require(await waitUntil { !inspector.isInspecting(tabID: tabID) })
+    #expect(externalPrompts == (anotherExternalWrite ? [url.lastPathComponent] : []))
+    #expect(ws.tabs[index].externalContentSnapshot == expectedDisk)
+    #expect(ws.tabs[index].diskSnapshot == savedBasis)
+    #expect(ws.tabs[index].content == "Neuer Entwurf\r\n" && ws.tabs[index].hasUnsavedChanges)
+    #expect(try Data(contentsOf: url) == (anotherExternalWrite ? Data("Zweite Fremdfassung\r\n".utf8) : saved))
 }
 
 @Test("reloadTabFromDisk übernimmt nichts in einen während des Ladens umgebundenen Tab")
@@ -551,6 +602,120 @@ func workspace_dirtyReloadDiscardsLocal() async throws {
     #expect(ws.tabs[idx].isDirty == false)
 }
 
+@Test("Automatisches Behalten quittiert nur den bestätigten Tab nach verschobener Tabliste")
+@MainActor
+func workspace_autoReloadKeepUsesConfirmedTab() async throws {
+    let first = try writeTmpUTF8("Platte A\r\n")
+    let second = try writeTmpUTF8("Platte B\r\n")
+    defer {
+        try? FileManager.default.removeItem(at: first)
+        try? FileManager.default.removeItem(at: second)
+    }
+    let ws = await loadedWorkspace(first)
+    var openedSecond = false
+    ws.loadFile(at: second) { opened in openedSecond = opened }
+    try #require(await waitUntil { openedSecond })
+    let firstIndex = try #require(ws.tabs.firstIndex { $0.url == first })
+    let secondIndex = try #require(ws.tabs.firstIndex { $0.url == second })
+    let firstID = ws.tabs[firstIndex].id
+    let secondID = ws.tabs[secondIndex].id
+    let firstBasis = ws.tabs[firstIndex].diskSnapshot
+    let secondObservation = ws.tabs[secondIndex].externalFileObservation
+    ws.tabs[firstIndex].content = "Entwurf A\n"
+    ws.tabs[firstIndex].isDirty = true
+    ws.tabs[secondIndex].content = "Entwurf B\n"
+    ws.tabs[secondIndex].isDirty = true
+    let placeholder = EditorTab(title: "Lädt", path: "")
+    ws.tabs.insert(placeholder, at: firstIndex)
+    ws.activeTabID = firstID
+    var prompts: [String] = []
+    ws.externalReloadConfirmHandler = { title in
+        prompts.append(title)
+        ws.tabs.removeAll { $0.id == placeholder.id }
+        return false
+    }
+
+    try simulateExternalEdit(first, content: "Fremdfassung A\r\n")
+    let externalObservation = try #require(ExternalFileObservation(url: first))
+    ws.checkExternalChanges(only: firstID)
+    try #require(await waitUntil { !prompts.isEmpty })
+    let a = try #require(ws.tabs.first { $0.id == firstID })
+    let b = try #require(ws.tabs.first { $0.id == secondID })
+    #expect(prompts == [first.lastPathComponent])
+    #expect(ws.activeTabID == firstID)
+    #expect(a.externalFileObservation == externalObservation)
+    #expect(a.diskSnapshot == firstBasis)
+    #expect(b.externalFileObservation == secondObservation)
+    #expect(a.content == "Entwurf A\n" && a.hasUnsavedChanges)
+    #expect(b.content == "Entwurf B\n" && b.hasUnsavedChanges)
+    #expect(try Data(contentsOf: first) == Data("Fremdfassung A\r\n".utf8))
+    #expect(try Data(contentsOf: second) == Data("Platte B\r\n".utf8))
+}
+
+@Test("Automatische Rückfrage verwirft keinen währenddessen erneuerten Entwurf")
+@MainActor
+func workspace_autoReloadProtectsNewerDraft() async throws {
+    let url = try writeTmpUTF8("Platte\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = await loadedWorkspace(url)
+    let index = try #require(ws.tabs.firstIndex { $0.url == url })
+    let tabID = ws.tabs[index].id
+    ws.tabs[index].content = "Alter Entwurf\n"
+    ws.tabs[index].isDirty = true
+    var asked = false
+    ws.externalReloadConfirmHandler = { _ in
+        asked = true
+        ws.tabs[index].content = "Neuer Entwurf\n"
+        return true
+    }
+
+    try simulateExternalEdit(url, content: "Fremdfassung\n")
+    ws.checkExternalChanges(only: tabID)
+    try #require(await waitUntil { asked })
+    #expect(!ws.tabs[index].isLoading)
+    try #require(await waitUntil { !ws.tabs[index].isLoading })
+    #expect(ws.tabs[index].content == "Neuer Entwurf\n")
+    #expect(ws.tabs[index].hasUnsavedChanges)
+    #expect(try Data(contentsOf: url) == Data("Fremdfassung\n".utf8))
+}
+
+@Test("Antwort der automatischen Rückfrage bleibt beim geprüften Pfad", arguments: [false, true])
+@MainActor
+func workspace_autoReloadRejectsReboundTabAnswer(reload: Bool) async throws {
+    let first = try writeTmpUTF8("Platte A\n")
+    let second = try writeTmpUTF8("Platte B\n")
+    defer {
+        try? FileManager.default.removeItem(at: first)
+        try? FileManager.default.removeItem(at: second)
+    }
+    let ws = await loadedWorkspace(first)
+    let index = try #require(ws.tabs.firstIndex { $0.url == first })
+    let tabID = ws.tabs[index].id
+    let observation = try #require(ExternalFileObservation(url: second))
+    ws.tabs[index].content = "Lokaler Entwurf\n"
+    ws.tabs[index].isDirty = true
+    var asked = false
+    ws.externalReloadConfirmHandler = { _ in
+        asked = true
+        ws.tabs[index].url = second
+        ws.tabs[index].title = second.lastPathComponent
+        ws.tabs[index].recordExternalFileObservation(snapshot: nil, observation: observation)
+        return reload
+    }
+
+    try simulateExternalEdit(first, content: "Fremdfassung A\n")
+    ws.checkExternalChanges(only: tabID)
+    try #require(await waitUntil { asked })
+    #expect(!ws.tabs[index].isLoading)
+    try #require(await waitUntil { !ws.tabs[index].isLoading })
+    #expect(ws.tabs[index].url == second)
+    #expect(ws.tabs[index].externalFileObservation == observation)
+    #expect(ws.tabs[index].content == "Lokaler Entwurf\n")
+    #expect(ws.tabs[index].hasUnsavedChanges)
+    #expect(try Data(contentsOf: first) == Data("Fremdfassung A\n".utf8))
+    #expect(try Data(contentsOf: second) == Data("Platte B\n".utf8))
+}
+
 @Test("Eigenes Speichern zieht das Basis-Datum nach → kein Fehlalarm")
 @MainActor
 func workspace_ownSaveIsNoExternalChange() async throws {
@@ -572,6 +737,80 @@ func workspace_ownSaveIsNoExternalChange() async throws {
     try? await Task.sleep(nanoseconds: 300_000_000)
     #expect(asked == false)
     #expect(ws.tabs[idx].content == "gespeichert\n")
+}
+
+@Test("Manuelles Neuladen bleibt nach verschobener Tabliste am bestätigten Dokument")
+@MainActor
+func workspace_manualReloadKeepsConfirmedDocument() async throws {
+    let original = Data("Ausgang A\r\n".utf8)
+    let otherOriginal = Data("Ausgang B\r\n".utf8)
+    let first = try writeTmpUTF8("Ausgang A\r\n")
+    let second = try writeTmpUTF8("Ausgang B\r\n")
+    defer {
+        try? FileManager.default.removeItem(at: first)
+        try? FileManager.default.removeItem(at: second)
+    }
+    let ws = await loadedWorkspace(first)
+    var loadedSecond = false
+    ws.loadFile(at: second) { opened in loadedSecond = opened }
+    try #require(await waitUntil { loadedSecond })
+    let firstIndex = try #require(ws.tabs.firstIndex { $0.url == first })
+    let secondIndex = try #require(ws.tabs.firstIndex { $0.url == second })
+    ws.tabs[firstIndex].content = "Entwurf A\n"
+    ws.tabs[firstIndex].isDirty = true
+    ws.tabs[secondIndex].content = "Entwurf B\n"
+    ws.tabs[secondIndex].isDirty = true
+    let firstID = ws.tabs[firstIndex].id
+    let secondID = ws.tabs[secondIndex].id
+    ws.activeTabID = firstID
+    let placeholder = EditorTab(title: "Lädt", path: "")
+    ws.tabs.insert(placeholder, at: firstIndex)
+
+    var asked: [String] = []
+    ws.externalReloadConfirmHandler = { title in
+        asked.append(title)
+        ws.tabs.removeAll { $0.id == placeholder.id }
+        return true
+    }
+    ws.reloadActiveTabFromDisk()
+
+    try #require(await waitUntil {
+        ws.tabs.contains { $0.url == first && !$0.hasUnsavedChanges }
+            || ws.tabs.contains { $0.url == second && !$0.hasUnsavedChanges }
+    })
+    let a = try #require(ws.tabs.first { $0.id == firstID })
+    let b = try #require(ws.tabs.first { $0.id == secondID })
+    #expect(asked == [first.lastPathComponent])
+    #expect(ws.activeTabID == firstID)
+    #expect(a.content.utf8.elementsEqual(original))
+    #expect(!a.hasUnsavedChanges)
+    #expect(b.content == "Entwurf B\n")
+    #expect(b.hasUnsavedChanges)
+    #expect(try Data(contentsOf: first) == original)
+    #expect(try Data(contentsOf: second) == otherOriginal)
+}
+
+@Test("Manuelles Neuladen verwirft keine neuere Änderung aus der Rückfrage")
+@MainActor
+func workspace_manualReloadPreservesNewerDraft() async throws {
+    let url = try writeTmpUTF8("Plattenfassung\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = await loadedWorkspace(url)
+    let idx = try #require(ws.tabs.firstIndex { $0.url == url })
+    ws.activeTabID = ws.tabs[idx].id
+    ws.tabs[idx].content = "Bestätigter Entwurf\n"
+    ws.tabs[idx].isDirty = true
+    ws.externalReloadConfirmHandler = { _ in
+        ws.tabs[idx].content = "Neuerer Entwurf\n"
+        return true
+    }
+    ws.reloadActiveTabFromDisk()
+
+    #expect(!ws.tabs[idx].isLoading)
+    try #require(await waitUntil { !ws.tabs[idx].isLoading })
+    #expect(ws.tabs[idx].content == "Neuerer Entwurf\n")
+    #expect(ws.tabs[idx].hasUnsavedChanges)
+    #expect(try String(contentsOf: url, encoding: .utf8) == "Plattenfassung\n")
 }
 
 @Test("reloadActiveTabFromDisk bei unbenanntem Tab tut nichts (kein Crash)")
@@ -653,8 +892,8 @@ func workspace_folderApplyBlocksDirtyTab() throws {
     // Tabs sind selbst Suchinputs. Deshalb setzt die Fixture das bereits
     // abgeschlossene Suchergebnis erst nach dem vorbereiteten Dirty-Tab ein.
     ws.folderResults = [result]
-    ws.folderSearching = false
-    ws.folderNeedsSearch = false
+    ws.folderTotalMatches = ws.folderResults.reduce(0) { $0 + $1.totalMatches }
+    publishPreparedSearchResults(ws)
     let backupRoot = testTemporaryDirectory()
         .appendingPathComponent("fastra-workspace-undo-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: backupRoot, withIntermediateDirectories: true)
@@ -673,25 +912,29 @@ func workspace_folderApplyBlocksDirtyTab() throws {
 @Test("Folder-Apply verwirft eine nach der sichtbaren Suche geänderte Datei")
 @MainActor
 func workspace_folderApplyRejectsStaleVisibleResult() async throws {
-    let url = try writeTmpUTF8("foo sichtbar\n")
-    defer { try? FileManager.default.removeItem(at: url) }
+    let root = testTemporaryDirectory().appendingPathComponent("fastra-visible-undo-\(UUID().uuidString)")
+    let inputs = root.appendingPathComponent("inputs")
+    let url = inputs.appendingPathComponent("probe.txt")
+    let backups = root.appendingPathComponent("backups")
+    try FileManager.default.createDirectory(at: inputs, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data("foo sichtbar\n".utf8).write(to: url)
     let (defaults, _) = makeFreshDefaults()
     let ws = Workspace(defaults: defaults)
-    let options = SearchOptions(find: "foo", replace: "bar", isRegex: false,
-                                caseSensitive: true)
     ws.scope = .folder
     ws.findPattern = "foo"
     ws.replacePattern = "bar"
     ws.useRegex = false
     ws.caseSensitive = true
-    ws.folderResults = [FolderSearch.searchOneFile(at: url, options: options)]
-    // Die Fixture setzt ein bereits abgeschlossenes Suchergebnis direkt ein.
-    ws.folderSearching = false
-    ws.folderNeedsSearch = false
-    let backups = testTemporaryDirectory()
-        .appendingPathComponent("fastra-visible-undo-\(UUID().uuidString)", isDirectory: true)
+    ws.recentSearchFolders = [SearchFolderEntry(path: inputs.path, enabled: true)]
+    bindSearchResultWindowForTesting(ws)
+    ws.showSearchDialog = true
+    defer { ws.showSearchDialog = false }
+    try #require(await waitUntil { ws.searchApproval.isComplete && ws.folderTotalMatches == 1 })
+    let generation = ws.searchApproval.generation
+    #expect(ws.setAllSearchMatchesApproved(true, generation: generation))
+    #expect(ws.searchApproval.ticket != nil)
     try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: backups) }
     ws.folderApplyBackupRoot = backups
     var warning = ""
     ws.folderPreviewConflictHandler = { warning = $0 }
@@ -705,6 +948,9 @@ func workspace_folderApplyRejectsStaleVisibleResult() async throws {
     }
     #expect(!ws.folderApplying)
     #expect(!warning.isEmpty)
+    #expect(ws.searchApproval.ticket == nil)
+    #expect(ws.searchApproval.generation != generation)
+    #expect(ws.folderNeedsSearch)
     #expect(try Data(contentsOf: url) == external)
     #expect((try FileManager.default.contentsOfDirectory(atPath: backups.path)).isEmpty)
 }
@@ -716,6 +962,7 @@ func workspace_folderApplyRunsAsynchronously() async throws {
     defer { try? FileManager.default.removeItem(at: url) }
     let (defaults, _) = makeFreshDefaults()
     let ws = Workspace(defaults: defaults)
+    ws.folderPreviewConflictHandler = { message in Issue.record("Unerwarteter Ordner-Apply-Konflikt: \(message)") }
     let options = SearchOptions(find: "foo", replace: "bar", isRegex: false,
                                 caseSensitive: true)
     ws.scope = .folder
@@ -725,15 +972,15 @@ func workspace_folderApplyRunsAsynchronously() async throws {
     ws.caseSensitive = true
     ws.folderResults = [FolderSearch.searchOneFile(at: url, options: options)]
     // Die Fixture setzt ein bereits abgeschlossenes Suchergebnis direkt ein.
-    ws.folderSearching = false
-    ws.folderNeedsSearch = false
+    ws.folderTotalMatches = ws.folderResults.reduce(0) { $0 + $1.totalMatches }
+    publishPreparedSearchResults(ws)
     let backups = testTemporaryDirectory()
         .appendingPathComponent("fastra-async-undo-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: backups) }
     ws.folderApplyBackupRoot = backups
 
-    #expect(ws.applyAllInFolder())
+    try #require(ws.applyAllInFolder())
     for _ in 0..<200 where ws.folderApplying {
         try await Task.sleep(for: .milliseconds(10))
     }
@@ -743,11 +990,9 @@ func workspace_folderApplyRunsAsynchronously() async throws {
     #expect(ws.lastApplySession?.entries.map(\.state) == [.applied])
 }
 
-// Befund 2026-08-06: Seit die Suchauslöser nach Bereich getrennt sind, löst
-// eine Tab-Änderung im Ordner-Bereich keine neue Suche mehr aus — richtig für
-// den Trefferklick, aber Fastras EIGENE Schreibvorgänge (Ordner-Apply und
-// dessen Rückgängig) machten die sichtbare Trefferbasis damit still veraltet.
-// Trefferzahl und Sprungziele zeigten auf Text, den es so nicht mehr gibt.
+// Fastras eigene Ordneränderungen und Undo müssen die Trefferbasis explizit
+// entwerten. Tab-Änderungen lösen im Ordner-Bereich bewusst keine neue Suche
+// aus, damit das Öffnen eines Treffers die Ergebnisse erhält.
 
 @Test("Rückgängig verwirft die sichtbare Ordner-Trefferbasis")
 @MainActor
@@ -756,6 +1001,7 @@ func workspace_folderUndoInvalidatesVisibleResults() async throws {
     defer { try? FileManager.default.removeItem(at: url) }
     let (defaults, _) = makeFreshDefaults()
     let ws = Workspace(defaults: defaults)
+    ws.folderPreviewConflictHandler = { message in Issue.record("Unerwarteter Ordner-Apply-/Undo-Konflikt: \(message)") }
     let options = SearchOptions(find: "foo", replace: "bar", isRegex: false,
                                 caseSensitive: true)
     ws.scope = .folder
@@ -764,22 +1010,22 @@ func workspace_folderUndoInvalidatesVisibleResults() async throws {
     ws.useRegex = false
     ws.caseSensitive = true
     ws.folderResults = [FolderSearch.searchOneFile(at: url, options: options)]
-    ws.folderSearching = false
-    ws.folderNeedsSearch = false
+    ws.folderTotalMatches = ws.folderResults.reduce(0) { $0 + $1.totalMatches }
+    publishPreparedSearchResults(ws)
     let backups = testTemporaryDirectory()
         .appendingPathComponent("fastra-undo-stale-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: backups) }
     ws.folderApplyBackupRoot = backups
 
-    #expect(ws.applyAllInFolder())
+    try #require(ws.applyAllInFolder())
     for _ in 0..<200 where ws.folderApplying {
         try await Task.sleep(for: .milliseconds(10))
     }
     #expect(try Data(contentsOf: url) == Data("bar sichtbar\n".utf8))
 
     // Trefferbasis wiederherstellen, wie sie eine erneute Ordnersuche liefern
-    // würde. Bewusst OHNE die veröffentlichten Sucheingaben anzufassen: Sonst
+    // würde. Bewusst ohne die veröffentlichten Sucheingaben anzufassen: Sonst
     // liefe der 120-ms-Debounce des Suchläufers mit und die Beobachtung unten
     // wäre nicht mehr eindeutig dem Rückgängig zuzuordnen.
     let afterApply = SearchOptions(find: "bar", replace: "baz", isRegex: false,
@@ -787,11 +1033,11 @@ func workspace_folderUndoInvalidatesVisibleResults() async throws {
     let visible = FolderSearch.searchOneFile(at: url, options: afterApply)
     ws.folderResults = [visible]
     ws.folderTotalMatches = visible.totalMatches
-    ws.folderSearching = false
-    ws.folderNeedsSearch = false
+    ws.folderTotalMatches = ws.folderResults.reduce(0) { $0 + $1.totalMatches }
+    publishPreparedSearchResults(ws)
     #expect(!visible.matches.isEmpty)
 
-    #expect(ws.undoLastFolderApply())
+    try #require(ws.undoLastFolderApply())
 
     #expect(try Data(contentsOf: url) == Data("foo sichtbar\n".utf8))
     #expect(ws.folderResults.isEmpty,
@@ -1007,6 +1253,57 @@ func workspace_manualReloadGenerationProtectsNewerContent() async throws {
     #expect(!ws.tabs[idx].isLoading)
 }
 
+@Test("Ein verspäteter Reload beendet keinen inzwischen gestarteten Reload")
+@MainActor
+func workspace_lateReloadCannotConsumeCurrentRead() async throws {
+    let url = try writeTmpUTF8("Ausgangsstand\n")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let ws = await loadedWorkspace(url)
+    let idx = try #require(ws.tabs.firstIndex { $0.url == url })
+    let tabID = ws.tabs[idx].id
+    let firstGate = DispatchSemaphore(value: 0)
+    let finalGate = DispatchSemaphore(value: 0)
+    defer {
+        firstGate.signal()
+        finalGate.signal()
+    }
+
+    try "erster Plattenstand\n".write(to: url, atomically: true, encoding: .utf8)
+    let firstLoaded = try FileLoader.load(url: url)
+    ws.reloadFileLoader = { _ in
+        firstGate.wait()
+        return firstLoaded
+    }
+    let firstRead = try #require(ws.reloadTabFromDisk(id: tabID))
+
+    let secondText = "zweiter Plattenstand\n"
+    try secondText.write(to: url, atomically: true, encoding: .utf8)
+    ws.reloadFileLoader = { try FileLoader.load(url: $0) }
+    let secondRead = try #require(ws.reloadTabFromDisk(id: tabID))
+    await secondRead.value
+    try #require(ws.tabs[idx].content == secondText)
+
+    let finalText = "letzter Plattenstand\n"
+    try finalText.write(to: url, atomically: true, encoding: .utf8)
+    let finalLoaded = try FileLoader.load(url: url)
+    ws.reloadFileLoader = { _ in
+        finalGate.wait()
+        return finalLoaded
+    }
+    let finalRead = try #require(ws.reloadTabFromDisk(id: tabID))
+    firstGate.signal()
+    await firstRead.value
+    #expect(ws.tabs[idx].isLoading)
+    #expect(ws.tabs[idx].content == secondText)
+
+    finalGate.signal()
+    await finalRead.value
+    #expect(ws.tabs[idx].content == finalText)
+    #expect(ws.tabs[idx].diskSnapshot == finalLoaded.diskSnapshot)
+    #expect(!ws.tabs[idx].isLoading)
+    #expect(!ws.tabs[idx].isDirty)
+}
+
 @Test("Neu öffnen mit Encoding überschreibt keine neuere Tab-Generation")
 @MainActor
 func workspace_reopenEncodingGenerationProtectsNewerContent() async throws {
@@ -1033,12 +1330,9 @@ func workspace_reopenEncodingGenerationProtectsNewerContent() async throws {
 
 // MARK: - Reload setzt auch die gespeicherte Vergleichsbasis
 
-// Befund 2026-08-02: Der Reload offener Tabs (etwa nach einem Ordner-Apply)
-// ersetzte Inhalt und Platten-Abbild und setzte `isDirty = false`, ließ aber
-// im Gegensatz zu jedem anderen Lade- und Speicherpfad die alte Vergleichs-
-// basis stehen. Ein Rückgängig auf den Inhalt VOR dem Apply traf damit genau
-// diese alte Basis: Der Tab galt als sauber, obwohl er von der Platte abwich,
-// und ⌘W hätte ihn ohne Nachfrage geschlossen.
+// Reload nach Ordner-Apply muss Inhalt, Plattenabbild und Vergleichsbasis
+// aktualisieren. Undo auf den Vor-Apply-Text muss danach dirty sein und beim
+// Schließen eine Rückfrage auslösen.
 
 @Test("Nach dem Reload gilt der frische Inhalt als gespeicherter Stand")
 @MainActor

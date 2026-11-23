@@ -1,13 +1,5 @@
 use super::*;
 use crate::Language;
-fn lang() -> Language {
-    Language(
-        std::env::var("LANGUAGE")
-            .or_else(|_| std::env::var("LANG"))
-            .unwrap_or_default()
-            .starts_with("de"),
-    )
-}
 fn stepper(root: &gtk::Box, lang: Language, document: bool) {
     let row = super::super::settings_form::row(root);
     let label = super::super::settings_form::label(&row, "");
@@ -79,7 +71,7 @@ pub(super) fn open(app: &gtk::Application) {
         window.present();
         return;
     }
-    let lang = lang();
+    let lang = Language::from_environment();
     let parent = app.active_window();
     let focus = crate::application_lifecycle::ordinary_windows()
         .and_then(|windows| {

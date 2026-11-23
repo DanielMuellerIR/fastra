@@ -135,14 +135,25 @@ enum MarkdownImageCleanup {
         return Plan(documentURL: documentURL, content: content, openDocuments: openDocuments, candidates: candidates)
     }
 
+    enum ApplyError: LocalizedError, Equatable {
+        case previewChanged
+
+        var errorDescription: String? {
+            L10n.string("Die Dateien oder ihre Referenzen haben sich seit der Vorschau geändert. Öffne „Images-Ordner aufräumen“ erneut. Fastra hat keine Dateien gelöscht.")
+        }
+    }
+
     static func apply(_ preview: Plan, gate: (() -> Bool) -> Bool = { $0() }) throws {
         let current = try plan(documentURL: preview.documentURL, content: preview.content, openDocuments: preview.openDocuments)
         guard current.candidates.count == preview.candidates.count,
               zip(current.candidates, preview.candidates).allSatisfy({
                   $0.fileURL == $1.fileURL && $0.identity == $1.identity && $0.contentSHA256 == $1.contentSHA256
-              }) else { throw CocoaError(.fileWriteUnknown) }
+              }) else { throw ApplyError.previewChanged }
         guard !preview.candidates.isEmpty else { return }
-        guard MarkdownImageUndoFiles(images: preview.candidates).removePermanently(gate: gate) else { throw CocoaError(.fileWriteUnknown) }
+        let files = MarkdownImageUndoFiles(images: preview.candidates)
+        guard files.removePermanently(gate: gate) else {
+            throw files.lastRemovalResult ?? .init(causes: [CocoaError(.fileWriteUnknown)])
+        }
     }
 }
 
@@ -164,9 +175,9 @@ extension MarkdownImageCleanup {
         guard let target = CommandTargeting.targetDocument(), target.workspace.activeTabIsMarkdown else { return }
         let workspace = target.workspace
         if let visual = workspace.visualMarkdownEditor, visual.ready {
-            visual.synchronize(holdingInput: true) { success in
-                if success { preparePresentation(workspace: workspace, window: target.window, completion: { visual.completeAction() }) }
-                else { visual.completeAction() }
+            visual.synchronize(holdingInput: true) { success, hold in
+                if success { preparePresentation(workspace: workspace, window: target.window, completion: { hold?.finish() }) }
+                else { hold?.finish() }
             }
         } else {
             preparePresentation(workspace: workspace, window: target.window, completion: {})

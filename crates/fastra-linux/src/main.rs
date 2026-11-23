@@ -8,17 +8,8 @@ use std::{
     time::Duration,
 };
 
-#[derive(Clone, Copy)]
-struct Language(bool);
-impl Language {
-    fn text(self, de: &'static str, en: &'static str) -> &'static str {
-        if self.0 {
-            de
-        } else {
-            en
-        }
-    }
-}
+mod language;
+use language::Language;
 
 struct Document {
     chrome: RefCell<Option<Rc<chrome::DocumentChrome>>>,
@@ -213,6 +204,8 @@ impl Ui {
                         *doc.format.borrow_mut() = std::sync::Arc::new(decoded);
                         *doc.snapshot.borrow_mut() = Some(snapshot.clone());
                         doc.buffer.set_modified(false);
+                        // Undo kann denselben Inode mit einer neuen bestätigten Basis zurückbringen.
+                        watch::baseline_changed(doc);
                         doc.update_label();
                     }
                 }
@@ -416,7 +409,7 @@ impl Ui {
         format_row.append(&doc.reopen);
         let weak = Rc::downgrade(self);
         let document = Rc::downgrade(&doc);
-        doc.reopen.connect_clicked(move |_| {
+        doc.reopen.connect_clicked(move |button| {
             let (Some(ui), Some(document)) = (weak.upgrade(), document.upgrade()) else {
                 return;
             };
@@ -437,7 +430,30 @@ impl Ui {
                     Some(Latin1),
                     Some(MacRoman),
                 ][charset.selected() as usize];
-                ui.load_path_as(path, encoding);
+                // Das Popover hält sonst nach dem Tabwechsel den Tastatur-Grab.
+                if let Some(popover) = button
+                    .ancestor(gtk::Popover::static_type())
+                    .and_downcast::<gtk::Popover>()
+                {
+                    popover.popdown();
+                }
+                editor_options::startup::interrupt(&ui);
+                let window = Rc::downgrade(&ui);
+                import_view::route_open_completed(
+                    &ui,
+                    path,
+                    encoding,
+                    Rc::new(|| true),
+                    None,
+                    Some(Box::new(move |opened| {
+                        let Some(ui) = window.upgrade() else { return };
+                        if ui.window.is_active()
+                            && ui.active().is_some_and(|active| Rc::ptr_eq(&active, &opened))
+                        {
+                            tab_close::focus(&ui, &opened);
+                        }
+                    })),
+                );
             }
         });
         line_endings::install(self, &doc, &format_row);
@@ -569,20 +585,25 @@ impl Ui {
                     return;
                 }
                 editor_options::markdown_preview::record_toggle(&ui, &doc);
-                if toggle.is_active() && doc.markdown.borrow().is_none() {
+                let first_preview = toggle.is_active() && doc.markdown.borrow().is_none();
+                if first_preview {
                     let preview = markdown::MarkdownView::new();
                     markdown::positions::bind(&preview, &ui, &doc, &navigation_target, &unfold_target);
                     markdown_holder.append(&preview.widget);
                     *doc.markdown.borrow_mut() = Some(preview);
                 }
                 markdown_holder.set_visible(toggle.is_active());
-                if toggle.is_active() {
+                if first_preview {
+                    // Nur die erste Vorschau zentrieren. Bei späteren
+                    // Moduswechseln behält der Paned die gewählte Teilung.
                     let split = markdown_split.downgrade();
                     glib::idle_add_local_once(move || {
                         if let Some(split) = split.upgrade() {
                             split.set_position((split.width() / 2).max(200));
                         }
                     });
+                }
+                if toggle.is_active() {
                     ui.search_section.set_expanded(false);
                 }
                 if let Some(preview) = doc.markdown.borrow().as_ref() {
@@ -1151,8 +1172,8 @@ impl Ui {
         }
         if doc.is_read_only() {
             self.status.set_text(self.lang.text(
-                "Abschnitts- und Hex-Ansichten bleiben schreibgeschützt.",
-                "Section and hex views remain read-only.",
+                "Diese Ansicht ist schreibgeschützt.",
+                "This view is read-only.",
             ));
             done(close_protocol::SaveOutcome::Failed);
             return;
@@ -1389,6 +1410,9 @@ impl Ui {
         });
     }
     fn confirm_close(self: &Rc<Self>) -> glib::Propagation {
+        if application_lifecycle::quit_prompt_active() {
+            return glib::Propagation::Stop;
+        }
         close_protocol::window_close(self)
     }
 
@@ -1415,7 +1439,7 @@ fn io_error_text(lang: Language, error: &fastra_io::Error) -> String {
     let message=match error {
         fastra_io::Error::Io(error) if error.kind()==std::io::ErrorKind::AlreadyExists=>lang.text("Das Ziel existiert bereits. Bitte einen anderen Dateinamen wählen; nichts überschrieben.","The target already exists. Choose another filename; nothing was overwritten."),
         fastra_io::Error::Limit=>lang.text("Editierbarer Text ist auf 32 MiB begrenzt. Große Dateien bleiben schreibgeschützt.","Editable text is limited to 32 MiB. Large files remain read-only."),
-        fastra_io::Error::Stale=>lang.text("Die Datei wurde außerhalb von Fastra geändert. Editorinhalt erhalten; Datei vor erneutem Speichern prüfen.","The file changed outside Fastra. Editor contents were retained; inspect the file before saving again."),
+        fastra_io::Error::Stale=>lang.text("Die Datei auf der Platte hat sich geändert. Der Editorinhalt bleibt erhalten. Prüfe die gespeicherte Fassung vor dem nächsten Speichern.","The file on disk has changed. Your editor contents are preserved. Review the saved version before saving again."),
         fastra_io::Error::RecoveryRequired(_)=>lang.text("Der Speicherzustand muss geprüft werden. Sicherung erhalten; nicht erneut überschreiben.","The save state needs inspection. Recovery data was retained; do not overwrite again."),
         fastra_io::Error::UnsupportedFilesystem=>lang.text("Dieses Dateisystem unterstützt den sicheren Austausch noch nicht.","This filesystem does not support the required safe exchange yet."),
         fastra_io::Error::UnsupportedMetadata=>lang.text("Die Dateimetadaten können nicht sicher erhalten werden.","The file metadata cannot be preserved safely."),
@@ -1509,12 +1533,7 @@ fn scroll(widget: &impl IsA<gtk::Widget>) -> gtk::ScrolledWindow {
         .build()
 }
 fn build(app: &gtk::Application) -> Rc<Ui> {
-    let lang = Language(
-        std::env::var("LANGUAGE")
-            .or_else(|_| std::env::var("LANG"))
-            .unwrap_or_default()
-            .starts_with("de"),
-    );
+    let lang = Language::from_environment();
     let default_height = gtk::gdk::Display::default()
         .and_then(|display| display.monitors().item(0))
         .and_downcast::<gtk::gdk::Monitor>()
@@ -2285,6 +2304,9 @@ fn build(app: &gtk::Application) -> Rc<Ui> {
     keys.connect_key_pressed(move |_, key, _, modifiers| {
         if !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
             return glib::Propagation::Proceed;
+        }
+        if application_lifecycle::quit_prompt_active() {
+            return glib::Propagation::Stop;
         }
         let Some(ui) = weak.upgrade() else {
             return glib::Propagation::Proceed;

@@ -10,15 +10,15 @@
 //   • Zeilen-Ops: umkehren, Präfix/Suffix anhängen, Leerzeilen entfernen
 //
 // Vertrag wie `LineOperations`: jede Funktion liefert ein
-// `LineOperations.Result` (kompletter neuer Text + ersetzter Bereich im ALTEN
+// `LineOperations.Result` (kompletter neuer Text + ersetzter Bereich im alten
 // Text) oder `nil`, wenn nichts zu tun ist (Aufrufer gibt dann einen Beep).
 // Dadurch laufen alle über denselben `applyLineOperation`-Pfad im
 // EditorContextMenu (Undo-fähig via `TextView.replaceCharacters`).
 //
 // Zwei Geltungsbereiche:
-//   • ZEICHEN-Scope (Groß/Klein): wirkt exakt auf die Selektion; ohne
+//   • Zeichen-Scope (Groß/Klein): wirkt exakt auf die Selektion; ohne
 //     Selektion auf den ganzen Text. Länge bleibt i.d.R. gleich.
-//   • ZEILEN-Scope (alle übrigen): Selektion wird auf ganze Zeilen ausgeweitet
+//   • Zeilen-Scope (alle übrigen): Selektion wird auf ganze Zeilen ausgeweitet
 //     (`LineOperations.expandToFullLines`); ohne Selektion die ganze Datei —
 //     identisches Verhalten zu sort/dedup.
 //
@@ -49,7 +49,7 @@ enum TextOperations {
 
     // MARK: - Whitespace (Zeilen-Scope)
 
-    /// Entfernt Leerzeichen und Tabs am ENDE jeder Zeile.
+    /// Entfernt Leerzeichen und Tabs am Ende jeder Zeile.
     static func trimTrailingWhitespace(in text: String, selection: NSRange) -> LineOperations.Result? {
         transformLines(in: text, selection: selection) { lines in
             lines.map { line in
@@ -100,7 +100,7 @@ enum TextOperations {
     private static func entabLine(_ line: String,
                                   tabWidth: Int = TextOperations.tabWidth) -> String {
         var out = ""
-        var col = 0          // aktuelle Spalte in der AUSGABE
+        var col = 0          // aktuelle Spalte in der Ausgabe
         var pending = 0      // gesammelte Leerzeichen
         var pendingStart = 0 // Spalte, an der der Leerzeichen-Lauf begann
 
@@ -139,7 +139,7 @@ enum TextOperations {
 
     // MARK: - Ein-/Ausrücken (Zeilen-Scope)
 
-    /// Rückt jede Zeile um EINE Einrückungsstufe des Profils EIN
+    /// Rückt jede Zeile um eine Einrückungsstufe des Profils ein
     /// (Tab-Profil: ein führender Tab; Leerzeichen-Profil: `indentWidth`
     /// Leerzeichen). Etappe 4: alle Einrückungsbefehle teilen ein Profil.
     static func shiftRight(in text: String, selection: NSRange,
@@ -149,7 +149,7 @@ enum TextOperations {
         }
     }
 
-    /// Rückt jede Zeile um EINE Einrückungsstufe AUS: ein führender Tab wird
+    /// Rückt jede Zeile um eine Einrückungsstufe aus: ein führender Tab wird
     /// entfernt, sonst bis zu einer Stufe führende Leerzeichen
     /// (Leerzeichen-Profil: `indentWidth`, Tab-Profil: `tabWidth`).
     static func shiftLeft(in text: String, selection: NSRange,
@@ -181,7 +181,7 @@ enum TextOperations {
         }
     }
 
-    /// Hängt `prefix` an jeden Zeilen-ANFANG. Leerer Präfix → nil.
+    /// Hängt `prefix` an jeden Zeilen-Anfang. Leerer Präfix → nil.
     static func prefixLines(in text: String, selection: NSRange, with prefix: String) -> LineOperations.Result? {
         guard !prefix.isEmpty else { return nil }
         return transformLines(in: text, selection: selection, requireChange: false) { lines in
@@ -189,7 +189,7 @@ enum TextOperations {
         }
     }
 
-    /// Hängt `suffix` an jedes Zeilen-ENDE. Leerer Suffix → nil.
+    /// Hängt `suffix` an jedes Zeilen-Ende. Leerer Suffix → nil.
     static func suffixLines(in text: String, selection: NSRange, with suffix: String) -> LineOperations.Result? {
         guard !suffix.isEmpty else { return nil }
         return transformLines(in: text, selection: selection, requireChange: false) { lines in
@@ -202,7 +202,7 @@ enum TextOperations {
     /// „Zap Gremlins" (BBEdit, Kap. 5 „Text Transformations"): entfernt
     /// unsichtbare Steuerzeichen aus dem Text — den gesamten C0-Bereich
     /// (U+0000–U+001F, inkl. NUL) sowie U+007F (DEL). Tab (U+0009),
-    /// Zeilenumbruch (U+000A) und Wagenrücklauf (U+000D) bleiben ERHALTEN —
+    /// Zeilenumbruch (U+000A) und Wagenrücklauf (U+000D) bleiben erhalten —
     /// sonst zerstörte die Operation die Zeilen-/Spaltenstruktur. Arbeitet pro
     /// Unicode-Scalar (Surrogatpaare/Emoji bleiben unversehrt). Zeichen-Scope:
     /// Selektion oder — ohne Selektion — der ganze Text. Typischer Fall: aus
@@ -239,30 +239,30 @@ enum TextOperations {
         }
     }
 
-    /// „Educate Quotes" (BBEdit, Kap. 5): die kontextsensitive UMKEHRUNG von
+    /// „Educate Quotes" (BBEdit, Kap. 5): die kontextsensitive Umkehrung von
     /// `straightenQuotes`. Wandelt gerade Quotes in typografische („geschwungene")
-    /// um — und entscheidet dabei je Vorkommen, ob es ein ÖFFNENDES oder
-    /// SCHLIESSENDES Zeichen ist:
+    /// um — und entscheidet dabei je Vorkommen, ob es ein öffnendes oder
+    /// schließendes Zeichen ist:
     ///   "  →  U+201C “ (öffnend)  /  U+201D ” (schließend)
     ///   '  →  U+2018 ‘ (öffnend)  /  U+2019 ’ (schließend)
     ///
-    /// Die Entscheidung fällt allein über das ZEICHEN DAVOR (im Originaltext):
+    /// Die Entscheidung fällt allein über das Zeichen davor (im Originaltext):
     /// Steht davor Textanfang, ein Whitespace (inkl. Zeilenumbruch) oder eine
     /// öffnende Klammer ( [ {, ist es öffnend — sonst schließend. Genau dadurch
     /// wird ein Apostroph mitten im Wort korrekt: bei „don't"/„it's" steht vor
     /// dem ' ein Buchstabe (kein Whitespace, keine offene Klammer) → es wird zum
     /// schließenden U+2019 ’, dem typografisch richtigen Apostroph.
     ///
-    /// Weil für das erste Zeichen der Selektion das Zeichen DAVOR (also AUSSERHALB
+    /// Weil für das erste Zeichen der Selektion das Zeichen davor (also außerhalb
     /// der Selektion) gebraucht wird, ist dies — wie `joinLines` — eine
-    /// eigenständige Funktion über den ganzen NSString. GEÄNDERT werden aber NUR
-    /// Scalars INNERHALB der Selektion (ohne Selektion der ganze Text). Arbeitet
+    /// eigenständige Funktion über den ganzen NSString. Geändert werden aber nur
+    /// Scalars innerhalb der Selektion (ohne Selektion der ganze Text). Arbeitet
     /// pro Unicode-Scalar (Emoji/Surrogatpaare bleiben unversehrt), längenstabil
     /// (1:1-Ersetzung). `nil`, wenn in der Selektion gar keine geraden Quotes
     /// stehen (No-Op → Aufrufer gibt einen Beep).
     ///
     /// SCOPE: nur englischer Stil (“ ” ‘ ’), exakt wie BBEdit. Deutsche
-    /// Anführungszeichen („…" / ‚…') sind bewusst NICHT abgedeckt — die deutsche
+    /// Anführungszeichen („…" / ‚…') sind bewusst nicht abgedeckt — die deutsche
     /// Konvention (öffnend unten, schließend oben) ist eine andere Operation.
     static func educateQuotes(in text: String, selection: NSRange) -> LineOperations.Result? {
         let ns = text as NSString
@@ -273,7 +273,7 @@ enum TextOperations {
         let range = selection.length > 0 ? NSIntersectionRange(selection, full) : full
         guard range.length > 0 else { return nil }
 
-        // Den GANZEN Text als Scalar-Array, plus die Wirk-Grenzen in
+        // Den ganzen Text als Scalar-Array, plus die Wirk-Grenzen in
         // Scalar-Indizes — so können wir links über die Selektion „hinauslugen",
         // ändern aber nur, was innerhalb liegt. (NSRange ist UTF-16; der
         // Wirkbereich liegt hier stets auf Scalar-Grenzen, weil unsere Selektion
@@ -291,7 +291,7 @@ enum TextOperations {
         let endScalar = utf16ToScalar[range.location + range.length]
 
         // Eine geschlossene Menge von „öffner"-Vorzeichen: Whitespace,
-        // Zeilenumbrüche und öffnende Klammern. Steht NICHTS davor (Textanfang),
+        // Zeilenumbrüche und öffnende Klammern. Steht nichts davor (Textanfang),
         // gilt ebenfalls „öffnend".
         let openingBrackets: Set<Unicode.Scalar> = ["(", "[", "{"]
         func precedesOpening(_ idx: Int) -> Bool {
@@ -328,7 +328,7 @@ enum TextOperations {
     // MARK: - Escape-Sequenzen auflösen (Zeichen-Scope)
 
     /// Kuratierte Liste benannter HTML-Entities (`&name;` → Zeichen).
-    /// BEWUSST NICHT die vollständige HTML5-Tabelle (über 2000 Einträge),
+    /// Bewusst nicht die vollständige HTML5-Tabelle (über 2000 Einträge),
     /// sondern die im Daten-/Log-Alltag häufigen plus die deutschen Umlaute
     /// und „ß". Numerische Entities (`&#NN;` / `&#xNN;`) decken den Rest
     /// vollständig ab — wer ein exotisches benanntes Entity braucht, kann es
@@ -346,25 +346,25 @@ enum TextOperations {
     ]
 
     /// „Convert Escape Sequences" (BBEdit, Kap. 5): ersetzt gebräuchliche
-    /// Escape-Schreibweisen durch ihre echten Zeichen — in EINEM Links-nach-
+    /// Escape-Schreibweisen durch ihre echten Zeichen — in einem Links-nach-
     /// rechts-Durchlauf. Abgedeckt:
     ///   1. Steuerzeichen (wie BBEdits Suche): `\n \r \t \f \\`.
     ///   2. Hex: `\xNN` (genau 2 Hex-Ziffern) und `\x{NNNN}` (1+ Hex-Ziffern).
     ///   3. Unicode (JavaScript-Stil): `\uNNNN` (genau 4) und `\u{NNNN}` (1+).
-    ///   4. HTML-Entities: numerisch VOLLSTÄNDIG (`&#NN;` dezimal, `&#xNN;`
-    ///      hex) sowie eine KURATIERTE Menge benannter (`&amp;` etc., siehe
+    ///   4. HTML-Entities: numerisch vollständig (`&#NN;` dezimal, `&#xNN;`
+    ///      hex) sowie eine kuratierte Menge benannter (`&amp;` etc., siehe
     ///      `namedEntities`).
     ///   5. Prozent-Escapes: `%NN` als UTF-8-Bytefolge — aufeinanderfolgende
     ///      `%NN` werden als Byte-Lauf gesammelt und gemeinsam als UTF-8
     ///      dekodiert (so wird Mehrbyte-UTF-8 wie `%C3%A4` → „ä" korrekt).
     ///
-    /// Malformte oder unbekannte Sequenzen bleiben LITERAL stehen (`\z`,
+    /// Malformte oder unbekannte Sequenzen bleiben literal stehen (`\z`,
     /// `\xZZ`, `&bogus;`, `%ZZ` etc.) — wir verschlucken nie etwas, das wir
     /// nicht sicher deuten können. Ein Skalarwert, der kein gültiger
     /// Unicode-Scalar ist (z.B. Surrogat-Bereich), bleibt ebenfalls literal.
     ///
     /// Zeichen-Scope: wirkt auf die Selektion, ohne Selektion auf den ganzen
-    /// Text. Bewusst ein HANDGESCHRIEBENER Scanner über die Unicode-Scalars
+    /// Text. Bewusst ein handgeschriebener Scanner über die Unicode-Scalars
     /// statt NSRegularExpression — die fünf Klassen überlappen sich (`\u`/`\x`,
     /// `&#x`/`&#`) und wären als ein Regex schwer korrekt und lesbar zu halten.
     static func convertEscapeSequences(in text: String, selection: NSRange) -> LineOperations.Result? {
@@ -441,7 +441,7 @@ enum TextOperations {
 
     /// Gemeinsame Mechanik für `\x…` und `\u…`: entweder geklammert
     /// (`{1+ Hex-Ziffern}`) oder genau `fixedDigits` Hex-Ziffern.
-    /// `afterPrefix` zeigt auf das erste Zeichen NACH `\x`/`\u`. `prefixLen`
+    /// `afterPrefix` zeigt auf das erste Zeichen nach `\x`/`\u`. `prefixLen`
     /// ist die Länge von `\x`/`\u` (immer 2) — nur fürs Mitzählen.
     private static func decodeHexEscape(_ scalars: [Unicode.Scalar], afterPrefix: Int,
                                         fixedDigits: Int, prefixLen: Int) -> ([Unicode.Scalar], Int)? {
@@ -511,7 +511,7 @@ enum TextOperations {
     }
 
     /// Prozent-Lauf ab `%`: sammelt aufeinanderfolgende `%NN`-Bytes und
-    /// dekodiert sie GEMEINSAM als UTF-8 (ein Zeichen wie „ä" ist `%C3%A4`,
+    /// dekodiert sie gemeinsam als UTF-8 (ein Zeichen wie „ä" ist `%C3%A4`,
     /// zwei Bytes). Liefert (dekodierte Scalars, konsumierte Länge) oder nil,
     /// wenn schon das erste `%NN` malformt ist oder die Byte-Folge kein
     /// gültiges UTF-8 ergibt → „%" bleibt literal.
@@ -566,7 +566,7 @@ enum TextOperations {
     // MARK: - Zeilen verbinden (Zeilen-Scope)
 
     /// „Remove Line Breaks" / Join Lines (BBEdit, Kap. 5): zieht die (auf ganze
-    /// Zeilen ausgeweiteten) Zeilen zu EINER Zeile zusammen, getrennt durch
+    /// Zeilen ausgeweiteten) Zeilen zu einer Zeile zusammen, getrennt durch
     /// `joiner`. `" "` (Default) entspricht BBEdits „Remove Line Breaks" für
     /// Fließtext; `""` verbindet ohne Trenner — nützlich, um eine Spalte aus
     /// einem 4D-/CSV-Export zu einem Wert zusammenzuziehen. Braucht ≥ 2
@@ -574,7 +574,7 @@ enum TextOperations {
     ///
     /// Eigene Implementierung (nicht über `transformLines`), weil ein
     /// abschließendes Datei-End-Newline (Ganz-Text-Fall) sonst einen Trenner
-    /// ans Ende hängte und die Mindestzahl auf den ECHTEN Inhaltszeilen prüfen
+    /// ans Ende hängte und die Mindestzahl auf den echten Inhaltszeilen prüfen
     /// muss (nicht auf dem Newline-Artefakt).
     static func joinLines(in text: String, selection: NSRange,
                           separator joiner: String = " ") -> LineOperations.Result? {
@@ -595,17 +595,17 @@ enum TextOperations {
     /// „Add Line Numbers" (BBEdit, Kap. 5): stellt jeder (auf ganze Zeilen
     /// ausgeweiteten) Zeile ihre laufende Nummer voran. Fastra nutzt feste
     /// Defaults (kein Dialog, wie bei joinLines): Start = 1, Schritt = 1,
-    /// rechtsbündig, ein Trenner-Leerzeichen. Die Nummerierung ist RELATIV zum
+    /// rechtsbündig, ein Trenner-Leerzeichen. Die Nummerierung ist relativ zum
     /// Block — die erste selektierte Zeile ist 1, nicht die absolute Dateizeile.
     ///
     /// Rechtsbündig heißt: jede Zahl wird mit führenden Leerzeichen auf die
-    /// Breite der GRÖSSTEN Nummer im Block aufgefüllt, damit die Zahlen-Spalte
+    /// Breite der größten Nummer im Block aufgefüllt, damit die Zahlen-Spalte
     /// bündig bleibt (12 Zeilen → " 1 a" … "12 l").
     ///
     /// Sonderfall Datei-End-Newline: Im Ganz-Text-Fall behält
     /// `expandToFullLines` das abschließende `\n`, sodass `splitLines` ein
     /// leeres Schluss-Element liefert (gleiche Falle wie bei joinLines). Diese
-    /// Phantom-Leerzeile bekommt KEINE Nummer und zählt nicht zur Spaltenbreite
+    /// Phantom-Leerzeile bekommt keine Nummer und zählt nicht zur Spaltenbreite
     /// — sonst hinge eine Nummer hinter dem letzten Zeilenumbruch.
     static func addLineNumbers(in text: String, selection: NSRange) -> LineOperations.Result? {
         transformLines(in: text, selection: selection) { lines in
@@ -627,7 +627,7 @@ enum TextOperations {
     /// Leerzeichen, mindestens einer Ziffer und einem optionalen Trenner-
     /// Leerzeichen weg (`^ *[0-9]+ ?`). Bewusst tolerant: trifft sowohl unsere
     /// rechtsbündig gepolsterten Nummern als auch von anderen Werkzeugen
-    /// nummerierte Dateien. Zeilen OHNE führende Ziffer bleiben unangetastet
+    /// nummerierte Dateien. Zeilen ohne führende Ziffer bleiben unangetastet
     /// (z.B. eingerückter Text ohne Nummer) — dadurch ist auch teilweises
     /// Entfernen möglich. Ändert sich keine Zeile, liefert `transformLines` nil.
     static func removeLineNumbers(in text: String, selection: NSRange) -> LineOperations.Result? {
@@ -650,18 +650,18 @@ enum TextOperations {
     // MARK: - Hard Wrap (Zeilen-Scope)
 
     /// "Hard Wrap" (BBEdit Kap. 5): bricht jede (auf ganze Zeilen ausgeweitete) Zeile an
-    /// Wortgrenzen so um, dass die Ausgabezeilen `column` ZEICHEN einhalten. "Zeichen" =
+    /// Wortgrenzen so um, dass die Ausgabezeilen `column` Zeichen einhalten. "Zeichen" =
     /// Unicode-Grapheme (Swift Character) — einfache, vorhersehbare Spaltenzählung (East-Asian-
-    /// Doppelbreite wird bewusst nicht behandelt). Umgebrochen wird NUR an Wortgrenzen
-    /// (Whitespace-Läufe); zwischen Wörtern wird der Whitespace zu EINEM Leerzeichen normalisiert.
+    /// Doppelbreite wird bewusst nicht behandelt). Umgebrochen wird nur an Wortgrenzen
+    /// (Whitespace-Läufe); zwischen Wörtern wird der Whitespace zu einem Leerzeichen normalisiert.
     ///
-    /// AUSNAHME von der Spaltengrenze: Da BBEdit beim Hard Wrap keine Wörter zerschneidet, kann
-    /// eine Ausgabezeile `column` ÜBERSCHREITEN, wenn ein einzelnes Wort für sich schon breiter
+    /// Ausnahme von der Spaltengrenze: Da BBEdit beim Hard Wrap keine Wörter zerschneidet, kann
+    /// eine Ausgabezeile `column` überschreiten, wenn ein einzelnes Wort für sich schon breiter
     /// als `column` ist — oder wenn die führende Einrückung zusammen mit dem ersten Wort die
     /// Breite sprengt. Solche überlangen Wörter bleiben ganz und stehen ungebrochen auf eigener
     /// Zeile. In allen anderen Fällen gilt: jede Ausgabezeile ist höchstens `column` Zeichen lang.
     ///
-    /// Führender Whitespace (Einrückung) einer Eingabezeile bleibt an deren ERSTER Ausgabezeile;
+    /// Führender Whitespace (Einrückung) einer Eingabezeile bleibt an deren erster Ausgabezeile;
     /// Folgezeilen beginnen ohne Einrückung. Leere/whitespace-only Eingabezeilen bleiben
     /// unverändert (Absatztrenner). Zeilen-Scope. nil bei column <= 0 oder wenn sich nichts ändert.
     static func hardWrap(in text: String, selection: NSRange, column: Int) -> LineOperations.Result? {
@@ -681,7 +681,7 @@ enum TextOperations {
         }
     }
 
-    /// Bricht EINE Eingabezeile greedy an Wortgrenzen um, sodass keine Ausgabezeile mehr als
+    /// Bricht eine Eingabezeile greedy an Wortgrenzen um, sodass keine Ausgabezeile mehr als
     /// `width` Grapheme zählt. Liefert die Liste der Ausgabezeilen (mindestens eine).
     private static func wrapLine(_ line: String, _ width: Int, check: () throws -> Void) rethrows -> [String] {
         // Passt die Zeile ohnehin in die Spaltenbreite (`count` = Grapheme-Anzahl), bleibt sie
@@ -695,20 +695,20 @@ enum TextOperations {
         }
         guard length > width else { return [line] }
 
-        // Führende Einrückung (Leerzeichen/Tabs) bewahren: sie bleibt nur an der ERSTEN
+        // Führende Einrückung (Leerzeichen/Tabs) bewahren: sie bleibt nur an der ersten
         // Ausgabezeile; Folgezeilen beginnen bündig links.
         let leadingWS = String(line.prefix(leadingLength))
         // Der Rest hinter der Einrückung ist der umzubrechende Inhalt.
         let body = line.dropFirst(leadingLength)
         // In Wörter zerlegen: maximale Läufe ohne Leerzeichen/Tab. Damit werden Mehrfach-
-        // Whitespace zwischen Wörtern automatisch zu EINEM Trenner normalisiert.
+        // Whitespace zwischen Wörtern automatisch zu einem Trenner normalisiert.
         // Greedy auffüllen: Wörter so lange in die aktuelle Zeile packen, wie sie (plus das
         // Trenner-Leerzeichen) in die verfügbare Spaltenzahl passen.
         var out: [String] = []
         var current = "", currentLength = 0, word = "", wordLength = 0
         func appendWord() {
             guard wordLength > 0 else { return }
-            // Die ERSTE Ausgabezeile hat weniger Platz, weil die Einrückung Spalten belegt;
+            // Die erste Ausgabezeile hat weniger Platz, weil die Einrückung Spalten belegt;
             // Folgezeilen haben die volle `width`.
             let avail = out.isEmpty ? max(0, width - leadingLength) : width
             if current.isEmpty {
@@ -751,15 +751,15 @@ enum TextOperations {
     /// Zeichen — der klassische „ich hab zwei Buchstaben verdreht"-Fix. Welche
     /// zwei Zeichen getauscht werden, hängt von Cursor/Selektion ab (BBEdit-Regeln):
     ///
-    ///   1. Cursor MITTEN in einer Zeile (nicht am Zeilen-/Dokumentanfang oder
-    ///      -ende) → die beiden Zeichen LINKS und RECHTS vom Cursor tauschen.
-    ///   2. Cursor am Zeilen-/Dokumentanfang → die beiden FOLGENDEN Zeichen tauschen.
-    ///   3. Cursor am Zeilen-/Dokumentende → die beiden VORANGEHENDEN Zeichen tauschen.
-    ///   4. Selektion vorhanden → das ERSTE und das LETZTE Zeichen der Selektion
+    ///   1. Cursor mitten in einer Zeile (nicht am Zeilen-/Dokumentanfang oder
+    ///      -ende) → die beiden Zeichen links und rechts vom Cursor tauschen.
+    ///   2. Cursor am Zeilen-/Dokumentanfang → die beiden folgenden Zeichen tauschen.
+    ///   3. Cursor am Zeilen-/Dokumentende → die beiden vorangehenden Zeichen tauschen.
+    ///   4. Selektion vorhanden → das erste und das letzte Zeichen der Selektion
     ///      tauschen (der Inhalt dazwischen bleibt unangetastet).
     ///
     /// „Anfang/Ende" bezieht sich auf `\n`-Grenzen (eine logische Zeile). Ein
-    /// „Zeichen" ist hier ein Unicode-GRAPHEM (Swift `Character`), nicht eine
+    /// „Zeichen" ist hier ein Unicode-Graphem (Swift `Character`), nicht eine
     /// einzelne UTF-16-Code-Unit — sonst zerrisse der Tausch ein Surrogatpaar
     /// (Emoji) oder einen kombinierten Buchstaben. Wir mappen deshalb die
     /// Grapheme-Grenzen auf UTF-16-Offsets und arbeiten über die NSString, damit
@@ -802,31 +802,31 @@ enum TextOperations {
             // Leere Zeile / einzelnes Zeichen vor `\n` → nichts auf beiden Seiten.
             return nil
         } else if atLineStart {
-            // Fall 2: die beiden FOLGENDEN Grapheme (ci, ci+1) tauschen.
+            // Fall 2: die beiden folgenden Grapheme (ci, ci+1) tauschen.
             guard ci + 2 < starts.count else { return nil }
             return swapGraphemeCells(ns, starts[ci], starts[ci + 1], starts[ci + 2])
         } else if atLineEnd {
-            // Fall 3: die beiden VORANGEHENDEN Grapheme (ci-2, ci-1) tauschen.
+            // Fall 3: die beiden vorangehenden Grapheme (ci-2, ci-1) tauschen.
             guard ci >= 2 else { return nil }
             return swapGraphemeCells(ns, starts[ci - 2], starts[ci - 1], starts[ci])
         } else {
-            // Fall 1: Grapheme LINKS (ci-1) und RECHTS (ci) vom Cursor tauschen.
+            // Fall 1: Grapheme links (ci-1) und rechts (ci) vom Cursor tauschen.
             guard ci >= 1, ci + 1 < starts.count else { return nil }
             return swapGraphemeCells(ns, starts[ci - 1], starts[ci], starts[ci + 1])
         }
     }
 
     /// „Exchange Words" (BBEdit, Kap. 5 — per Option-Taste aus „Exchange
-    /// Characters"): wie `exchangeCharacters`, aber auf ganzen WÖRTERN statt
+    /// Characters"): wie `exchangeCharacters`, aber auf ganzen Wörtern statt
     /// Einzelzeichen. Ein „Wort" ist ein maximaler Lauf von `\w`-Zeichen
     /// (Buchstaben, Ziffern, `_`); alles dazwischen (Leerzeichen, Satzzeichen)
     /// bleibt an seiner Stelle stehen — getauscht werden nur die Wort-Inhalte.
     /// Gleiche vier Cursor-/Selektions-Regeln wie oben:
     ///
-    ///   1. Cursor mitten drin → Wort LINKS und Wort RECHTS vom Cursor tauschen.
-    ///   2. Cursor am Zeilen-/Dokumentanfang → die beiden FOLGENDEN Wörter.
-    ///   3. Cursor am Zeilen-/Dokumentende → die beiden VORANGEHENDEN Wörter.
-    ///   4. Selektion → erstes und letztes VOLLSTÄNDIG enthaltene Wort tauschen.
+    ///   1. Cursor mitten drin → Wort links und Wort rechts vom Cursor tauschen.
+    ///   2. Cursor am Zeilen-/Dokumentanfang → die beiden folgenden Wörter.
+    ///   3. Cursor am Zeilen-/Dokumentende → die beiden vorangehenden Wörter.
+    ///   4. Selektion → erstes und letztes vollständig enthaltene Wort tauschen.
     ///
     /// Liefert `nil`, wenn auf einer Seite kein Wort steht (< 2 Wörter im Text,
     /// kein zweites Wort in der gewünschten Richtung, leere Auswahl ohne Wörter).
@@ -850,20 +850,20 @@ enum TextOperations {
         if atLineStart && atLineEnd {
             return nil
         } else if atLineStart {
-            // Fall 2: die beiden ersten Wörter, die am/nach dem Cursor BEGINNEN.
+            // Fall 2: die beiden ersten Wörter, die am/nach dem Cursor beginnen.
             let following = words.filter { $0.location >= caret }
             guard following.count >= 2 else { return nil }
             return swapWordRanges(ns, following[0], following[1])
         } else if atLineEnd {
-            // Fall 3: die beiden letzten Wörter, die VOR dem Cursor ENDEN.
+            // Fall 3: die beiden letzten Wörter, die vor dem Cursor enden.
             let before = words.filter { $0.location + $0.length <= caret }
             guard before.count >= 2 else { return nil }
             return swapWordRanges(ns, before[before.count - 2], before[before.count - 1])
         } else {
             // Fall 1: das Wort, in dem der Cursor sitzt bzw. das links vom Cursor
-            // liegt, mit seinem Nachbarn tauschen. Bevorzugt der NACHFOLGER
+            // liegt, mit seinem Nachbarn tauschen. Bevorzugt der Nachfolger
             // (erstes Wort, das am/nach dem Cursor beginnt); existiert keiner
-            // (Cursor mitten im LETZTEN Wort), dann der VORGÄNGER. So greift der
+            // (Cursor mitten im letzten Wort), dann der Vorgänger. So greift der
             // Tausch auch, wenn der Cursor im letzten Wort einer Zeile steht.
             guard let leftIdx = words.lastIndex(where: { $0.location < caret })
                 else { return nil }
@@ -922,7 +922,7 @@ enum TextOperations {
         return makeResult(ns, NSRange(location: a, length: c - a), right + left)
     }
 
-    /// Tauscht die Inhalte zweier Wort-Ranges (`w1` liegt VOR `w2`); der Text
+    /// Tauscht die Inhalte zweier Wort-Ranges (`w1` liegt vor `w2`); der Text
     /// zwischen ihnen bleibt unverändert stehen.
     private static func swapWordRanges(_ ns: NSString, _ w1: NSRange, _ w2: NSRange) -> LineOperations.Result? {
         let first = ns.substring(with: w1)
@@ -968,18 +968,18 @@ enum TextOperations {
 
     // MARK: - Unicode (Zeichen-Scope)
 
-    /// „Normalize Whitespace"-Baustein (BBEdit, Kap. 5): ersetzt ALLE
-    /// Unicode-Leerzeichen-VARIANTEN durch das gewöhnliche ASCII-Leerzeichen
+    /// „Normalize Whitespace"-Baustein (BBEdit, Kap. 5): ersetzt alle
+    /// Unicode-Leerzeichen-Varianten durch das gewöhnliche ASCII-Leerzeichen
     /// (U+0020). Gemeint ist die Unicode-Kategorie Zs („Space Separator") —
     /// z.B. das geschützte Leerzeichen NBSP (U+00A0), die typografischen
     /// Breiten U+2000–U+200A (En-/Em-Space, Thin Space …), das schmale
     /// geschützte U+202F, das mathematische U+205F und das ideographische
     /// Leerzeichen U+3000 (CJK). Solche Zeichen schleichen sich beim Kopieren
     /// aus Word/Web/PDF ein und lassen Suchen/Vergleiche scheitern, weil sie
-    /// AUSSEHEN wie ein Leerzeichen, aber keins sind.
+    /// aussehen wie ein Leerzeichen, aber keins sind.
     ///
     /// Tab (U+0009), Zeilenumbruch (U+000A) und Wagenrücklauf (U+000D) gehören
-    /// NICHT zur Kategorie Zs und bleiben unangetastet — die Zeilen-/Spalten-
+    /// nicht zur Kategorie Zs und bleiben unangetastet — die Zeilen-/Spalten-
     /// struktur bleibt erhalten. Arbeitet pro Unicode-Scalar und ersetzt 1:1
     /// (längenstabil pro Scalar). Zeichen-Scope: Selektion oder ganzer Text.
     static func normalizeSpaces(in text: String, selection: NSRange) -> LineOperations.Result? {
@@ -1003,12 +1003,12 @@ enum TextOperations {
     /// (Akzente, Tilden, Trema …) von Buchstaben — „á"→„a", „ç"→„c", „ü"→„u",
     /// „É"→„E". Nützlich, um Namen/Daten für Vergleiche oder ASCII-only-Systeme
     /// zu vereinheitlichen. Beachte das BBEdit-Verhalten beim deutschen Umlaut:
-    /// „ü" wird zu „u" (NICHT zur Transliteration „ue") — es fällt schlicht der
+    /// „ü" wird zu „u" (nicht zur Transliteration „ue") — es fällt schlicht der
     /// Akzent-Anteil weg.
     ///
     /// Umsetzung über Foundations `folding(options: .diacriticInsensitive)`:
     /// zerlegt intern jedes Zeichen (NFD) und wirft die kombinierenden
-    /// Akzent-Marks weg. Bewusst NUR diese eine Option — keine Case-Faltung
+    /// Akzent-Marks weg. Bewusst nur diese eine Option — keine Case-Faltung
     /// (Großbuchstaben bleiben groß) und keine Breiten-Faltung (Halb-/Vollbreite
     /// bleibt). `locale: nil` = locale-unabhängig, damit das Ergebnis auf jedem
     /// System gleich ist. Emoji und Schriften ohne Diakritika (Kyrillisch ohne
@@ -1020,10 +1020,10 @@ enum TextOperations {
     }
 
     /// „Precompose Unicode" (BBEdit, Kap. 5): Unicode-Normalisierung nach
-    /// NFC — kombinierte Sequenzen werden, wo möglich, zu EINEM Zeichen
+    /// NFC — kombinierte Sequenzen werden, wo möglich, zu einem Zeichen
     /// zusammengesetzt: „e" + kombinierender Akut (U+0065 U+0301, zwei
     /// Scalars) → „é" (U+00E9, ein Scalar). Der sichtbare Text ändert sich
-    /// NICHT, nur die Byte-Darstellung. Typischer Anwendungsfall: Dateien von
+    /// nicht, nur die Byte-Darstellung. Typischer Anwendungsfall: Dateien von
     /// macOS-Dateisystemen (HFS+ lieferte dekomponiert) vereinheitlichen,
     /// damit String-Vergleiche und RegEx-Treffer wieder stimmen.
     /// Direkt Foundations `precomposedStringWithCanonicalMapping` (= NFC).
@@ -1047,17 +1047,17 @@ enum TextOperations {
     }
 
     /// Ergänzt den Variantenselektor U+FE0F, wo ein Zeichen erst damit als
-    /// farbiges Emoji erscheint (Daniel-Befund 2026-07-27).
+    /// farbiges Emoji erscheint.
     ///
     /// Unicode teilt Emoji-fähige Zeichen in zwei Gruppen: Solche mit
     /// `Emoji_Presentation` (🎶) sind von sich aus farbig. Zeichen wie `⏸`, `⏹`
-    /// oder `▶` gelten dagegen als TEXT-Zeichen und werden erst durch ein
+    /// oder `▶` gelten dagegen als Text-Zeichen und werden erst durch ein
     /// angehängtes U+FE0F zum Emoji. Fastras Editor zeigt sie trotzdem farbig,
     /// weil macOS für sie nur die Emoji-Schrift besitzt — Markdown-Vorschau,
     /// Browser, GitHub und Keynote zeigen die schmale Textform. Diese Operation
     /// schreibt die Absicht in die Datei, statt sie der Anzeige zu überlassen.
     ///
-    /// Bewusst NICHT angefasst:
+    /// Bewusst nicht angefasst:
     /// - Zeichen, die schon `Emoji_Presentation` haben (kein U+FE0F nötig).
     /// - ASCII: `#`, `*` und die Ziffern sind laut Unicode Emoji-fähig (als
     ///   Keycap-Basis). Ein U+FE0F daran würde normalen Text in Symbole
@@ -1131,9 +1131,9 @@ enum TextOperations {
 
     /// Zeichen-Scope-Transformation: wirkt auf die Selektion (oder den ganzen
     /// Text bei leerer Selektion). `nil`, wenn sich nichts ändert.
-    /// `scalarExactChangeCheck`: Swifts `String ==` vergleicht KANONISCH
+    /// `scalarExactChangeCheck`: Swifts `String ==` vergleicht kanonisch
     /// äquivalent — „é" (NFC) und „e"+Akut (NFD) gelten als gleich. Für die
-    /// NFC-/NFD-Normalisierung wäre der No-Op-Schutz damit IMMER aktiv
+    /// NFC-/NFD-Normalisierung wäre der No-Op-Schutz damit immer aktiv
     /// (die Transformation ändert ja nur die Scalar-Darstellung, nie den
     /// sichtbaren Text). Diese Ops vergleichen deshalb Scalar-für-Scalar.
     private static func transformSelection(in text: String, selection: NSRange,
@@ -1147,9 +1147,8 @@ enum TextOperations {
         if scalarExactChangeCheck {
             // Rangegrenzen nie mitten durch eine zusammengesetzte Sequenz
             // legen: Endete die Auswahl zwischen Basiszeichen und dessen
-            // U+FE0F, entstünde beim Ergänzen ein DOPPELTER Selektor, und
+            // U+FE0F, entstünde beim Ergänzen ein doppelter Selektor, und
             // ein zerschnittenes Surrogatpaar ergäbe kaputte Zeichen
-            // (Review 2026-08-02).
             range = ns.rangeOfComposedCharacterSequences(for: range)
         }
         let original = ns.substring(with: range)

@@ -1,7 +1,7 @@
 // FourDProjectIndexController.swift
 //
 // Fensterlokale Koordination des 4D-Projektindex. Der Controller bündelt
-// Projekt- und Komponentenmethoden in EINEM unveränderlichen Snapshot und
+// Projekt- und Komponentenmethoden in einem unveränderlichen Snapshot und
 // besitzt alle kurzlebigen Ressourcen des Indexes: FSEvents-Watcher,
 // Hintergrundscan und Debounce.
 

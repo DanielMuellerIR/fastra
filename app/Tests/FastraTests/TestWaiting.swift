@@ -1,25 +1,13 @@
 // TestWaiting.swift
 //
-// Signalfreundliches Warten für async-Tests. Bewusst mit echten
-// Schlafpausen statt `Task.yield()`: Eine Yield-Schleife dreht frei und
-// kann unter Fremdlast genau die Main-Actor-Arbeit verhungern lassen, auf
-// die sie wartet — der wahrscheinlichste Kandidat für sporadische Hänger
-// (Roadmap „Bekannte Fehler", umgestellt im Review-Nachgang 2026-08-02).
+// Warten mit Schlafpausen statt frei drehendem `Task.yield()`, damit die
+// angeforderte Main-Actor-Arbeit unter Last Ausführungszeit erhält.
 //
-// Die Frist misst bewusst NICHT die Wanduhrzeit, sondern nur die Zeit, in der
-// diese Schleife wirklich an die Reihe kam. Grund, gemessen am 2026-08-17 im
-// vollen parallelen Lauf: swift-testing führt alle Tests im selben Prozess
-// nebenläufig aus, und sämtliche `@MainActor`-Tests teilen sich denselben
-// einen Main-Actor. Ein einzelner schwerer Nachbar — etwa der Aufbau eines
-// 4,36-MB-Editors — belegt ihn sekundenlang am Stück. Die 10-ms-Pause dieser
-// Schleife wurde dabei einmal 6,98 s lang nicht bedient: Die komplette
-// 5-Sekunden-Frist verstrich, ohne dass der Test auch nur ein einziges Mal
-// nachsehen konnte, und er meldete einen Fehler, den es nicht gab. Losgelöste
-// Hintergrundaufgaben liefen in derselben Messung binnen einer Millisekunde an
-// — der Engpass war also allein der Main-Actor. Eine solche Pause gehört einem
-// fremden Main-Actor-Halter und wird deshalb nur mit dem regulären
-// Pausenanteil verrechnet. Ein echt hängendes Verhalten verbraucht die Frist
-// dagegen unverändert, weil seine Durchläufe ganz normal laufen.
+// Nur bediente Zeit zählt zur Prüffrist. Alle `@MainActor`-Tests teilen sich
+// einen Executor; lange fremde Arbeit kann einen angeforderten kurzen
+// Durchlauf um Sekunden verzögern. Solche Lücken nur mit dem regulären
+// Pausenanteil verbuchen. Regelmäßig bediente, erfolglose Prüfungen verbrauchen
+// die Frist weiterhin vollständig.
 
 import Foundation
 

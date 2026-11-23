@@ -57,12 +57,8 @@ func welcomeStateShowsVersionTitleNotUntitled() {
 
 // MARK: - Versionsdatum gegen den CHANGELOG
 
-/// Das im Fenstertitel gezeigte Versionsdatum stammt aus `app/Info.plist`,
-/// gepflegt wird die Historie aber im `CHANGELOG.md`. Am 2026-08-02 standen
-/// dort für 1.60.0 zwei verschiedene Daten (Plist 2026-07-25, CHANGELOG
-/// 2026-07-30) — Nutzer sahen für das installierte Bundle also ein falsches
-/// Datum. Dieser Test vergleicht beide Quellen mechanisch, damit das nicht
-/// wieder unbemerkt auseinanderläuft.
+/// Versionsdatum aus `app/Info.plist` gegen `CHANGELOG.md` prüfen, damit
+/// Fenstertitel und Versionsgeschichte dasselbe Datum zeigen.
 @Test("Version und Versionsdatum aus Info.plist stehen so im CHANGELOG")
 func infoPlistVersionMatchesChangelog() throws {
     let appDirectory = URL(fileURLWithPath: #filePath)

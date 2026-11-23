@@ -58,7 +58,7 @@ adopt_soak_process() {
   local pid="$1"
   fastra_test_adopt_started_session && return 0
   echo "   ✗ Testprozess konnte nicht sicher übernommen werden" >&2
-  # Der Prozess ist bereits freigegeben. Deshalb sofort anhand der VOR der
+  # Der Prozess ist bereits freigegeben. Deshalb sofort anhand der vor der
   # Übernahme global gesetzten PID beenden; kein Folgelauf darf diese Marke
   # überschreiben. Auch bei erfolgreichem Kill ist der Testaufbau ungültig.
   cleanup_soak_process "$pid" || true

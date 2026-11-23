@@ -1,7 +1,7 @@
 // FileLoader.swift
 //
 // Reine, UI-unabhängige Lade-Logik: Encoding-Erkennung + Line-Ending-Erkennung.
-// Diese Datei hat KEINE SwiftUI- oder AppKit-Abhängigkeit — sie lässt sich
+// Diese Datei hat keine SwiftUI- oder AppKit-Abhängigkeit — sie lässt sich
 // deshalb problemlos vom Hintergrund-Thread aufrufen, ohne die Main-Runloop
 // zu blockieren.
 //
@@ -22,7 +22,7 @@ enum EditorDisplayMode: Equatable, Hashable {
     case hex
 }
 
-/// Lädt und dekodiert eine Datei von der Platte — OHNE UI-Interaktion.
+/// Lädt und dekodiert eine Datei von der Platte — ohne UI-Interaktion.
 ///
 /// Nutzung: Nur von einem Nicht-Main-Thread aufrufen (z.B. `Task.detached`).
 /// Der Rückgabewert `LoadedFile` ist ein reiner Wert-Typ und thread-sicher.
@@ -70,23 +70,15 @@ enum FileLoader {
 
     // MARK: - Kernfunktion
 
-    /// Liest die Datei unter `url` synchron ein und gibt ein `LoadedFile` zurück.
-    ///
-    /// Ablauf:
-    /// 1. `String(contentsOf:usedEncoding:)` — erkennt Encoding automatisch
-    ///    (BOM, System-Heuristik). Klappt für die meisten Text-Encodings.
-    /// 2. Fallback: `Data(contentsOf:)` + Lossy-UTF-8-Konvertierung —
-    ///    fängt Dateien, die Apple's Heuristik nicht erkennt (z.B. Latin-1
-    ///    ohne BOM, der als UTF-8 fehlschlägt).
-    /// 3. Schlägt beides fehl (z.B. Binärdatei mit Null-Bytes, kein UTF-8):
-    ///    `LoadError.unreadable` werfen.
+    /// Lädt eine reguläre Datei über einen gebundenen Deskriptor. Vollständig
+    /// geladener Text verwendet denselben Decoder wie Ordnersuche und Apply.
+    /// Ohne Vorgabe hat eine BOM Vorrang. Sonst versucht der Decoder UTF-8
+    /// und entscheidet bei Einbyte-Text zwischen Windows-1252 und Latin-1.
     ///
     /// - Parameter url: Datei-URL; muss eine reguläre Datei sein.
-    /// - Parameter forcedEncoding: Wenn gesetzt, wird die automatische
-    ///   Erkennung übersprungen und die Datei MIT GENAU diesem Encoding
-    ///   dekodiert („Neu öffnen mit Encoding", K6). Schlägt die Dekodierung
-    ///   fehl (Bytes passen nicht), wird `LoadError.unreadable` geworfen —
-    ///   bewusst KEIN Lossy-Fallback, sonst wäre die Encoding-Wahl wirkungslos.
+    /// - Parameter forcedEncoding: Explizite Auswahl beim Neuöffnen. Ein
+    ///   vollständiger Text-Read verwendet diese Kodierung ohne Fallback auf
+    ///   eine andere. Große Dateien bleiben auch mit Vorgabe abschnittsweise.
     /// - Returns: `LoadedFile` mit Inhalt, Encoding und Line-Ending.
     /// - Throws: `LoadError.unreadable`, wenn keine Dekodierung gelang.
     static let largeFileThreshold: UInt64 = 32 * 1024 * 1024
@@ -111,24 +103,15 @@ enum FileLoader {
                          try handle.read(upToCount: count) ?? Data()
                      }) throws -> LoadedFile {
         guard !isCancelled() else { throw LoadError.cancelled }
-        // Typ und Größe am GEÖFFNETEN Deskriptor klären — nicht vorab am
-        // Pfad. Beides ist eine Sicherheitsbedingung, keine Bequemlichkeit:
-        // 1. Nicht reguläre Pfade (FIFO, Socket, Gerätedatei, Verzeichnis)
-        //    dürfen nie gelesen werden. `openRegularFile` öffnet mit
-        //    O_NONBLOCK — schon `open(2)` auf eine FIFO ohne Schreiber würde
-        //    sonst unbegrenzt blockieren — und weist alles Nicht-Reguläre am
-        //    Deskriptor ab. Weil Typ, Größe, Probe UND der spätere Voll-Read
-        //    am SELBEN geöffneten Dateiobjekt hängen, kann ein Symlink
-        //    zwischen Prüfung und Lesen nicht mehr auf ein anderes Ziel
-        //    umgebogen werden (TOCTOU, Review 2026-08-02 und 2026-08-10).
-        // 2. Ein Fehler beim Ermitteln der Attribute darf NICHT als Größe 0
-        //    durchgehen. Sonst gälte eine riesige Datei als winzig, umginge
-        //    die Abschnitts-/Hex-Grenze und landete komplett im Speicher.
-        //    `fstat` liefert die echte Größe des Zielobjekts; ein toter Link
-        //    scheitert schon beim Öffnen und wird `unreadable`.
-        // Die Null-Byte-Probe ist die verbindliche Binär-Erkennung aus der
-        // Roadmap. Nur einen kleinen Anfang lesen — auch eine 20-GB-Datei
-        // wird dadurch praktisch sofort als Hex-View geöffnet.
+        // Typ und Größe am geöffneten Deskriptor prüfen. `openRegularFile` verwendet
+        // O_NONBLOCK, damit schon das Öffnen einer FIFO nicht blockiert, und weist
+        // FIFO, Socket, Gerät und Verzeichnis zurück. Typ, Größe, Binärprobe und
+        // Voll-Read bleiben am selben Objekt; Symlink-Wechsel können das Ziel nach
+        // der Prüfung nicht austauschen (TOCTOU).
+        // Ein Attributfehler darf nicht als Größe 0 die Abschnitts-/Hex-Grenze
+        // umgehen. `fstat` liefert die Zielgröße, tote Links scheitern beim Öffnen.
+        // Die Null-Byte-Binärprobe liest nur einen kleinen Anfang, auch bei sehr
+        // großen Dateien.
         let opened: (descriptor: Int32, stat: stat)
         do {
             opened = try FileSnapshot.openRegularFile(at: url)
@@ -138,13 +121,13 @@ enum FileLoader {
             throw LoadError.unreadable
         }
         // Der Deskriptor bleibt bis zum Ende dieses Ladevorgangs offen: Probe,
-        // Nachscan und Voll-Read hängen dadurch alle am SELBEN Dateiobjekt.
+        // Nachscan und Voll-Read hängen dadurch alle am selben Dateiobjekt.
         // Ein zweites `open` desselben Pfades — etwa über
         // `FileSnapshot.read(from:)` — könnte nach einem umgebogenen Symlink
         // oder einem atomaren Austausch eine völlig andere und viel größere
         // Datei liefern. Die oben geprüfte Größe gälte dann für eine Datei,
         // die gar nicht gelesen wird, und die 32-MiB-Grenze für editierbare
-        // Dateien wäre umgangen (Review 2026-08-10).
+        // Dateien wäre umgangen.
         defer { close(opened.descriptor) }
         return try load(descriptor: opened.descriptor, forcedEncoding: forcedEncoding,
                         largeFileThreshold: largeFileThreshold, isCancelled: isCancelled,
@@ -244,7 +227,7 @@ enum FileLoader {
             }
 
             // Der frühere Nachscan lief bis EOF und verzögerte damit die erste
-            // Seite proportional zur GESAMTEN Dateigröße. Eine feste 1-MiB-
+            // Seite proportional zur gesamten Dateigröße. Eine feste 1-MiB-
             // Anfangsprobe hält die Klassifikation begrenzt. Spätere Abschnitte
             // dekodiert der Seitenreader weiterhin streng; über den sichtbaren
             // Ansichtsumschalter bleibt Hex jederzeit erreichbar.
@@ -352,7 +335,7 @@ enum FileLoader {
             || encoding == .utf32LittleEndian || encoding == .utf32BigEndian
     }
 
-    /// Liest die Datei vollständig aus einem BEREITS geöffneten Deskriptor und
+    /// Liest die Datei vollständig aus einem bereits geöffneten Deskriptor und
     /// baut daraus den Save-Snapshot.
     ///
     /// Warum nicht `FileSnapshot.read(from:)`? Das öffnet den Pfad erneut. Ein
@@ -360,7 +343,7 @@ enum FileLoader {
     /// andere Datei zeigen — die Entscheidung „klein genug zum Editieren" wäre
     /// dann an der einen, der Inhalt aus der anderen Datei gemessen.
     ///
-    /// `byteLimit` ist hart und gilt zusätzlich WÄHREND des Lesens: Wächst die
+    /// `byteLimit` ist hart und gilt zusätzlich während des Lesens: Wächst die
     /// Datei nach dem Öffnen über die Grenze, bricht der Lauf ab, statt den
     /// Speicher zu füllen. Die anschließende String-Dekodierung kann ein
     /// Vielfaches der Bytezahl belegen.
@@ -395,7 +378,7 @@ enum FileLoader {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
         // Volume und Inode können sich am offenen Deskriptor nicht mehr ändern.
-        // Größe und Zeitstempel schon: Wurde IN die Datei geschrieben, während
+        // Größe und Zeitstempel schon: Wurde in die Datei geschrieben, während
         // wir lasen, passen Probe, Inhalt und Snapshot zu keinem einzigen
         // Plattenstand — dann lieber gar kein Ergebnis.
         guard FileSnapshot.describesSameOpenedVersion(before, after) else {

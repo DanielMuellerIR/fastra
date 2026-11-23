@@ -1,9 +1,9 @@
 // OpenTabsSearch.swift
 //
-// Suche über ALLE geöffneten Tabs (BBEdit: Multi-File-Search-Quelle
+// Suche über alle geöffneten Tabs (BBEdit: Multi-File-Search-Quelle
 // „Open text documents", Handbuch 16.0.1 Kap. 7 S. 184) — der dritte
 // Such-Scope „Geöffnet" neben „Datei" und „Ordner". Anders als die
-// Ordner-Suche arbeitet dieser Scope rein IN-MEMORY: durchsucht wird der
+// Ordner-Suche arbeitet dieser Scope rein in-memory: durchsucht wird der
 // aktuelle Tab-Inhalt (auch ungespeicherte/dirty Tabs), nicht die Platte.
 //
 // Pure Logik ohne Workspace/UI — der SearchRunner reicht einen Snapshot
@@ -22,7 +22,7 @@ enum OpenTabsSearch {
         let content: String
     }
 
-    /// Treffer EINES Tabs. `id` == Tab-ID → stabile SwiftUI-Identität für
+    /// Treffer eines Tabs. `id` == Tab-ID → stabile SwiftUI-Identität für
     /// die Gruppen-Sections in der Trefferliste.
     struct TabHits: Identifiable, Equatable {
         let id: UUID
@@ -47,7 +47,7 @@ enum OpenTabsSearch {
     }
 
     /// Durchsucht alle Tabs der Reihe nach. Der Materialisierungs-Cap
-    /// (`maxTotal`) gilt GESAMT über alle Tabs — gezählt wird trotzdem
+    /// (`maxTotal`) gilt gesamt über alle Tabs — gezählt wird trotzdem
     /// alles (ehrlicher Count in Footer/Maske, keine stille Trunkierung).
     /// Tabs ohne Treffer erscheinen nicht im Ergebnis.
     static func find(tabs: [TabInput], options: SearchOptions,
@@ -91,7 +91,7 @@ enum OpenTabsSearch {
                       wasCapped: total > materialized, invalidPatternMessage: nil)
     }
 
-    /// „Alle ersetzen" über alle Tabs: liefert pro Tab-ID den NEUEN Inhalt —
+    /// „Alle ersetzen" über alle Tabs: liefert pro Tab-ID den neuen Inhalt —
     /// nur für Tabs, deren Inhalt sich tatsächlich ändert. Der Workspace
     /// wendet das Dictionary dann aufs Tab-Array an (dirty-Markierung,
     /// Editor-Reload). Rein in-memory, kein Disk-Write (Speichern via ⌘S).

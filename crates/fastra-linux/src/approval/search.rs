@@ -72,6 +72,7 @@ pub(super) struct Surface {
     message: gtk::Label,
     count: gtk::Label,
     empty: gtk::Label,
+    pub(super) empty_notice: Cell<Option<&'static str>>,
     completed: Cell<bool>,
     approved: gtk::Label,
     position: gtk::Label,
@@ -225,7 +226,7 @@ impl Surface {
         )]);
         let navigation_message = git_view::label("");
         navigation_message.set_visible(false);
-        navigation_message.add_css_class("muted");
+        navigation_message.add_css_class("search-status");
         let state = Rc::new(Self {
             pane: Rc::downgrade(pane),
             disk,
@@ -258,6 +259,7 @@ impl Surface {
             message,
             count,
             empty,
+            empty_notice: Cell::new(None),
             completed: Cell::new(false),
             approved,
             position,
@@ -411,7 +413,7 @@ impl Surface {
         let owner = owner.downgrade();
         state.review.connect_clicked(move |_| {
             if let (Some(s), Some(owner)) = (weak.upgrade(), owner.upgrade()) {
-                if s.available() && owner.is_visible() {
+                if s.can_approve() && owner.is_visible() {
                     s.window.present();
                 }
             }
@@ -472,6 +474,9 @@ impl Surface {
                 .upgrade()
                 .is_some_and(|p| !p.frozen.get() && p.render_ready.get())
     }
+    fn can_approve(&self) -> bool {
+        self.available() && self.pane.upgrade().is_some_and(|pane| pane.allow_approval.get())
+    }
     pub(super) fn refresh(&self) {
         let Some(pane) = self.pane.upgrade() else {
             return;
@@ -498,14 +503,15 @@ impl Surface {
             pane.lang.text("Freigaben prüfen", "Review approvals")
         ));
         let available = self.available();
+        let approvable = available && pane.allow_approval.get();
         self.message
             .set_visible(!available && pane.render_error.get());
         if !available {
             self.message.set_text(&pane.render_status.text());
         }
-        self.review.set_sensitive(available && count > 0);
+        self.review.set_sensitive(approvable && count > 0);
         self.replace.set_sensitive(
-            available
+            approvable
                 && total > 0
                 && self.selected.get().is_some()
                 && !self.single_busy.get()
@@ -513,13 +519,18 @@ impl Surface {
                 && (self.disk || self.ui.upgrade().is_some_and(|ui| ui.active().is_some_and(|doc| !doc.source_edits_locked()))),
         );
         self.list.set_sensitive(available);
-        self.all.set_sensitive(available && count < total);
-        self.none.set_sensitive(available && count > 0);
+        self.all.set_sensitive(approvable && count < total);
+        self.none.set_sensitive(approvable && count > 0);
         self.previous.set_sensitive(available && total > 0);
         self.next.set_sensitive(available && total > 0);
         self.refresh_rows();
         groups::refresh(self);
         self.inline.refresh();
+        self.refresh_empty();
+    }
+    pub(super) fn show_empty_notice(&self, notice: &'static str) {
+        self.empty_notice.set(Some(notice));
+        self.empty.remove_css_class("muted");
         self.refresh_empty();
     }
     fn refresh_empty(&self) {
@@ -528,7 +539,9 @@ impl Surface {
         };
         let lang = ui.lang;
         let pattern = ui.find.text();
-        let text = if pattern.is_empty() {
+        let text = if let Some(notice) = self.empty_notice.get() {
+            notice
+        } else if pattern.is_empty() {
             lang.text("Suchausdruck eingeben…", "Enter a search expression…")
         } else if self.completed.get() {
             if self.disk {
@@ -590,6 +603,9 @@ impl Surface {
         self.refresh();
     }
     pub(super) fn rebuild(self: &Rc<Self>) {
+        if self.empty_notice.take().is_some() {
+            self.empty.add_css_class("muted");
+        }
         self.clear();
         self.completed.set(true);
         let Some(pane) = self.pane.upgrade() else {
@@ -682,6 +698,7 @@ impl Surface {
         let button = row.last_child().unwrap().downcast::<gtk::Button>().unwrap();
         let label = button.child().unwrap().downcast::<gtk::Label>().unwrap();
         self.updating.set(true);
+        check.set_sensitive(pane.allow_approval.get());
         label.set_tooltip_text(None);
         match data {
             Row::File { item, title } => {
@@ -740,7 +757,7 @@ impl Surface {
         self.updating.set(false);
     }
     pub(super) fn toggle(&self, index: usize, value: bool) {
-        if !self.available() {
+        if !self.can_approve() {
             return;
         }
         let Some(pane) = self.pane.upgrade() else {
@@ -769,7 +786,7 @@ impl Surface {
         self.refresh();
     }
     fn set_all(&self, value: bool) {
-        if !self.available() {
+        if !self.can_approve() {
             return;
         }
         if let Some(pane) = self.pane.upgrade() {

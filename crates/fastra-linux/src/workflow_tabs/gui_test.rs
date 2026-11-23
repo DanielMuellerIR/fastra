@@ -281,8 +281,11 @@ pub(super) fn run(ui: Rc<Ui>) {
                         ui.tabs.remove_page(Some((n - 1) as u32));
                     }
                     5 => {
+                        let old_row = checkbox(&state);
+                        assert!(old_row.is_mapped());
                         let mut end = c.buffer.end_iter();
                         c.buffer.insert(&mut end, "external edit\n");
+                        assert!(!old_row.is_mapped());
                     }
                     6 => {
                         *a.section_view.borrow_mut() = Some(document_view::DocumentView::new(
@@ -309,7 +312,10 @@ pub(super) fn run(ui: Rc<Ui>) {
                 b.buffer.set_modified(true);
                 locked.rich.borrow().as_ref().unwrap().active.set(true);
                 stale_case.set(stale_case.get() + 1);
-                if stale_case.get() < 8 {
+                if stale_case.get() == 6 {
+                    phase.set(91);
+                    pause.set(Instant::now());
+                } else if stale_case.get() < 8 {
                     state.search.emit_clicked();
                     pause.set(Instant::now());
                 } else {
@@ -317,6 +323,13 @@ pub(super) fn run(ui: Rc<Ui>) {
                     phase.set(10);
                     pause.set(Instant::now());
                 }
+            }
+            91 => {
+                assert!(!state.apply.is_sensitive());
+                assert!(state.pane.checks.first_child().is_none());
+                state.search.emit_clicked();
+                phase.set(9);
+                pause.set(Instant::now());
             }
             10 => {
                 if !ready(&state) {

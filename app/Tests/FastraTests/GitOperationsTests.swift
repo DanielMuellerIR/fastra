@@ -133,7 +133,7 @@ private func waitForOperationState(_ state: GitOperationState,
 }
 
 private func graphSnapshot(hash: String) -> Data {
-    var data = Data("\u{1e}\(hash)\u{1f}\u{1f}Daniel\u{1f}2026-07-15\u{1f}1\u{1f}HEAD -> main\u{1f}Test".utf8)
+    var data = Data("\u{1e}\(hash)\u{1f}\u{1f}Markus\u{1f}2026-07-15\u{1f}1\u{1f}HEAD -> main\u{1f}Test".utf8)
     data.append(0)
     return data
 }
@@ -343,15 +343,10 @@ struct GitRepositoryStoreTests {
         #expect(store.snapshot(for: repo)?.headOID == "new")
     }
 
-    // `@MainActor` nur für diesen Test der Suite: Er ist der einzige hier, der
-    // Workspace-Instanzen treibt. Deren Completions kommen per
-    // `DispatchQueue.main.async` zurück und fassen dabei auch EINFACHE
-    // (nicht-`@Published`) Instanzvariablen an. Liefe der Test auf einem
-    // eigenen Thread, läse er unsynchronisiert neben Main — dieselbe
-    // Absturzklasse, die am 2026-08-09 in GitConflictAndAdvancedTests als
-    // SIGSEGV belegt wurde (siehe dort und AGENTS.md, „Bekannte technische
-    // Fallen"). Die übrigen Tests der Suite treiben nur Store und Coordinator,
-    // die intern verriegelt und bewusst threadsicher sind; sie bleiben parallel.
+    // Nur dieser Test treibt Workspaces und läuft deshalb auf MainActor:
+    // Ihre Main-Queue-Completions greifen auch auf ungeschützte einfache Felder zu.
+    // Die übrigen Tests prüfen intern verriegelte Stores/Coordinator und bleiben
+    // parallel (wie in `GitConflictAndAdvancedTests`).
     @MainActor
     @Test("Zwei Workspaces erhalten denselben zentral erkannten Merge-Zustand",
           .timeLimit(.minutes(1)))
@@ -630,11 +625,11 @@ private func waitForStoreSnapshot(_ store: GitRepositoryStore, repository: URL,
 }
 
 /// Lässt alle bereits eingereihten Main-Queue-Blöcke durchlaufen, bevor der
-/// Test weiter prüft. Nötig nach einer Completion, die NICHT mehr wirken soll:
+/// Test weiter prüft. Nötig nach einer Completion, die nicht mehr wirken soll:
 /// Ihre Verarbeitung springt per `DispatchQueue.main.async` auf die Main-Queue,
 /// und ein MainActor-Test käme ihr sonst zuvor — die negative Erwartung wäre
 /// dann immer erfüllt, auch wenn die Verarbeitung fälschlich weiterliefe. Der
-/// Continuation-Block reiht sich HINTER die schon wartenden Blöcke ein (FIFO
+/// Continuation-Block reiht sich hinter die schon wartenden Blöcke ein (FIFO
 /// der Main-Queue), danach ist die verspätete Completion sicher verarbeitet.
 @MainActor
 private func drainMainQueue() async {

@@ -1,18 +1,13 @@
 // MarkdownReviewFixTests.swift
 //
-// Regressionstests zu den Markdown-Funden des Code-Reviews vom 2026-08-10:
-//
-//   • E2 — Renderanforderungen der Vorschau verdichten sich auf die jüngste,
-//     statt eine Warteschlange überholter Vollläufe aufzubauen.
-//   • E3 — Der Bildwächter beobachtet bei einem symbolischen Link BEIDE
-//     Ordner: den des Links und den des aufgelösten Ziels.
-//   • E5 — Anlegen des `images`-Ordners, Kopie und das Zurücknehmen eines
-//     leer gebliebenen Ordners laufen unter demselben Ordner-Lock.
-//
-// Fund E1 (leere Vorschau, wenn vor der Erstnavigation getippt wird) und
-// Fund E4 (fremder Umwandlungszustand in einem zweiten Fenster) sitzen in
-// SwiftUI-/WebKit-Pfaden ohne fensterlosen Einstieg; sie werden von den
-// Fenster-Selbsttests abgedeckt (siehe Bericht).
+// Fensterlose Regressionstests:
+// - E2: Renderanforderungen auf die jüngste verdichten, statt überholte
+//   Vollläufe in einer Warteschlange zu sammeln.
+// - E3: Bei Symlink-Bildern sowohl Link- als auch Zielordner beobachten.
+// - E5: Anlegen des Bildordners, Kopieren und Rücknahme eines leeren Ordners
+//   unter demselben Ordner-Lock ausführen.
+// Die SwiftUI-/WebKit-Pfade für Erstnavigation (E1) und fenstereigene
+// Importzustände (E4) benötigen zusätzlich Fenstertests.
 
 import Foundation
 import Testing
@@ -30,7 +25,7 @@ private func makeTempDirectory() throws -> URL {
 
 /// Sammelt die Completions der Vorschau-Renderläufe.
 /// Der Zähler ist die eigentliche Aussage des Tests: Er zählt, wie oft
-/// WIRKLICH gerendert wurde.
+/// wirklich gerendert wurde.
 private final class RenderCollector {
     private let lock = NSLock()
     private var completions = 0
@@ -97,7 +92,7 @@ func renderCoalescer_onlyLatestIsRendered() async {
     let body = (0..<400)
         .map { "Zeile \($0) mit **Auszeichnung** und `Code`." }
         .joined(separator: "\n\n")
-    // Die Eingaben ENTSTEHEN vor der Messung: Im Anmeldelauf soll nichts
+    // Die Eingaben entstehen vor der Messung: Im Anmeldelauf soll nichts
     // außer der Anmeldung selbst Zeit kosten.
     let inputs = (0..<200).map { "# Titel\n\n\(body)\n\nAbschluss \($0)\n" }
     let sentinel = "Abschluss \(inputs.count - 1)"
@@ -213,10 +208,9 @@ func imageStore_serializesDirectoryCreationAndCopy() async throws {
     let mayFinishCopy = DispatchSemaphore(value: 0)
     let outcomes = StoreOutcomes()
 
-    // Eigene Threads statt `DispatchQueue.global()`: Im parallelen Gesamtlauf
-    // war der globale Pool so ausgelastet, dass der Block nicht binnen zehn
-    // Sekunden startete (2026-09-17, isoliert grün). Die Semaphore-Wartezeiten
-    // messen dann Fremdlast statt des Ordner-Locks.
+    // Eigene Threads für die Lock-Prüfung verwenden. Ein ausgelasteter globaler
+    // Dispatch-Pool könnte Blöcke erst nach der Semaphore-Frist starten und damit
+    // Schedulerlast statt des Ordner-Locks messen.
     Thread {
         do {
             _ = try MarkdownImageStore.storeImageFile(first, documentURL: document,
@@ -275,9 +269,9 @@ func imageStore_serializesDirectoryCreationAndCopy() async throws {
         atPath: images.appendingPathComponent("2.png").path))
 }
 
-@Test("Gescheiterte Ablage nimmt nur den selbst angelegten leeren Ordner zurück")
-func imageStore_removesOnlySelfCreatedEmptyDirectory() throws {
-    // Fall 1: `images` gab es vorher nicht → nach dem Fehler ist es weg.
+@Test("Gescheiterte Ablage erhält leere neue und bereits vorhandene Bildordner")
+func imageStore_retainsEmptyAndExistingDirectories() throws {
+    // Auch ein eigener Ordnername kann öffentlich ausgetauscht werden.
     let fresh = try makeTempDirectory()
     defer { try? FileManager.default.removeItem(at: fresh) }
     let freshDocument = fresh.appendingPathComponent("Notiz.md")
@@ -291,8 +285,11 @@ func imageStore_removesOnlySelfCreatedEmptyDirectory() throws {
             hooks: .init(failCopyAfterBytes: 0)
         )
     }
-    #expect(FileManager.default.fileExists(
-        atPath: fresh.appendingPathComponent("images").path) == false)
+    let freshImages = fresh.appendingPathComponent("images")
+    #expect(FileManager.default.fileExists(atPath: freshImages.path))
+    #expect(try FileManager.default.contentsOfDirectory(atPath: freshImages.path).isEmpty)
+    #expect(try Data(contentsOf: freshSource) == Data("Bild".utf8))
+    #expect(try Data(contentsOf: freshDocument) == Data("# Notiz\n".utf8))
 
     // Fall 2: `images` war schon da → es bleibt samt Inhalt stehen.
     let existing = try makeTempDirectory()

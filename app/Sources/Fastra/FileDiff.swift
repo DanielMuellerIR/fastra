@@ -1,20 +1,18 @@
 // FileDiff.swift
 //
-// UI-freier Zwei-Text-Zeilendiff (Etappe 1 Wunschpaket 2026-07c).
-//
-// Verallgemeinert die Zeilen-Ausrichtung aus `ReplacePreview.buildSideBySide`
-// zu einer eigenständigen, voll testbaren Komponente: zwei Strings + Optionen
-// hinein, ausgerichtete Zeilenpaare (unchanged/changed/removed/added) mit
-// Intraline-Bereichen plus eine Differenzen-Liste (Blöcke) heraus.
-// Funktioniert komplett OHNE Git — Basis ist der eigene, abbrechbare
-// Myers-Diff in `MyersDiff.swift`, bei großen Eingaben mit Zeilenankern
-// aus `PatienceDiff.swift` (derselbe Algorithmus wie Foundations
-// `CollectionDifference`, das die Ersetzungs-Vorschau weiter nutzt).
-//
-// Ehrliche Grenzen statt stiller Kappung: zu große oder zu unterschiedliche
-// Eingaben liefern eine verständliche `FileDiffLimitation`, die die Ansicht
-// sichtbar erklärt — es wird nie ein unvollständiger Diff als vollständig
-// angezeigt (Produktinvariante).
+// UI-freier Zwei-Text-Zeilendiff. Verallgemeinert die
+// Zeilen-Ausrichtung aus `ReplacePreview.buildSideBySide` zu einer
+// eigenständigen, voll testbaren Komponente: zwei Strings + Optionen hinein,
+// ausgerichtete Zeilenpaare (unchanged/changed/removed/added) mit
+// Intraline-Bereichen plus eine Differenzen-Liste (Blöcke) heraus. Funktioniert
+// komplett ohne Git — Basis ist der eigene, abbrechbare Myers-Diff in
+// `MyersDiff.swift`, bei großen Eingaben mit Zeilenankern aus
+// `PatienceDiff.swift` (derselbe Algorithmus wie Foundations
+// `CollectionDifference`, das die Ersetzungs-Vorschau weiter nutzt). Ehrliche
+// Grenzen statt stiller Kappung: zu große oder zu unterschiedliche Eingaben
+// liefern eine verständliche `FileDiffLimitation`, die die Ansicht sichtbar
+// erklärt — es wird nie ein unvollständiger Diff als vollständig angezeigt
+// (Produktinvariante).
 
 import Foundation
 
@@ -23,7 +21,7 @@ import Foundation
 struct FileDiffOptions: Hashable, Sendable {
     /// Leerraum am Zeilenende ignorieren.
     var ignoreTrailingWhitespace = false
-    /// ALLE Leerraum-Unterschiede ignorieren (schließt das Zeilenende ein).
+    /// Alle Leerraum-Unterschiede ignorieren (schließt das Zeilenende ein).
     var ignoreAllWhitespace = false
     /// Leerzeilen ignorieren: nur-Leerzeilen-Unterschiede sind kein Unterschied.
     var ignoreBlankLines = false
@@ -34,7 +32,7 @@ struct FileDiffOptions: Hashable, Sendable {
     var isDefault: Bool { self == FileDiffOptions() }
 
     /// Vergleichs-Schlüssel einer Zeile nach den aktiven Optionen. Angezeigt
-    /// wird immer die ORIGINALZEILE — normalisiert wird nur der Vergleich.
+    /// wird immer die Originalzeile — normalisiert wird nur der Vergleich.
     func normalizedKey(for line: String) -> String {
         var key = line
         if ignoreAllWhitespace {
@@ -175,7 +173,7 @@ enum FileDiff {
     /// Eine ausgerichtete Anzeigezeile: links Vorher, rechts Nachher.
     /// `nil` auf einer Seite = dort existiert keine Gegenzeile.
     struct Row: Hashable, Identifiable, Sendable {
-        /// Fortlaufender Index — stabile ForEach-Identität UND Scroll-Ziel.
+        /// Fortlaufender Index — stabile ForEach-Identität und Scroll-Ziel.
         let id: Int
         /// 1-basierte Zeilennummern (wie im Editor-Gutter).
         let beforeLine: Int?
@@ -188,7 +186,7 @@ enum FileDiff {
         let afterHighlight: Range<Int>?
         /// `true`, wenn die Zeile für die Intraline-Markierung zu lang war.
         let intralineWasLimited: Bool
-        /// `true` = Leerzeile, die NUR wegen „Leerzeilen ignorieren" kein
+        /// `true` = Leerzeile, die nur wegen „Leerzeilen ignorieren" kein
         /// Unterschied ist. Sie bleibt sichtbar (keine stille Auslassung),
         /// zählt aber nicht als Differenz.
         let isIgnoredBlank: Bool
@@ -270,7 +268,7 @@ enum FileDiff {
     /// Berechnung gehört auf einen Hintergrund-Task (kann bei großen Dateien
     /// spürbar dauern), das Ergebnis zurück auf den Main-Thread.
     ///
-    /// `isCancelled` wird in JEDER Phase befragt: Zeilenzerlegung,
+    /// `isCancelled` wird in jeder Phase befragt: Zeilenzerlegung,
     /// Schlüsselbildung, Myers-Diff, Zeilen-Ausrichtung und Blockbildung.
     /// Meldet es `true`, wirft der Vergleich `CancellationError` — es gibt
     /// nie ein halbes Ergebnis, das eine Ansicht für vollständig halten
@@ -299,7 +297,7 @@ enum FileDiff {
         let leftBlank = try mapCancellable(leftLines, isCancelled: isCancelled, isBlank)
         let rightBlank = try mapCancellable(rightLines, isCancelled: isCancelled, isBlank)
 
-        // Bei „Leerzeilen ignorieren" nehmen Leerzeilen NICHT am Diff teil —
+        // Bei „Leerzeilen ignorieren" nehmen Leerzeilen nicht am Diff teil —
         // sie werden später als ignorierte Zeilen wieder eingefügt.
         // `leftIndex[k]` = Original-Zeilenindex des k-ten Diff-Teilnehmers.
         var leftIndex: [Int] = []
@@ -432,7 +430,7 @@ enum FileDiff {
         var nextCancellationCheck = 0
 
         // Ignorierte Leerzeilen nehmen nicht am Diff teil; sie tauchen hier
-        // als eigene, NICHT als Unterschied gezählte Zeilen wieder auf.
+        // als eigene, nicht als Unterschied gezählte Zeilen wieder auf.
         func isIgnoredLeft(_ index: Int) -> Bool {
             options.ignoreBlankLines && leftBlank[index]
         }
@@ -664,7 +662,7 @@ enum FileDiff {
                 let fold = Fold(id: "fold-\(rows[foldStart].id)",
                                 count: foldEnd - foldStart,
                                 rowIDs: rows[foldStart].id..<(rows[foldEnd - 1].id + 1))
-                // Ausgeklappt bleibt der Knopf VOR den Zeilen stehen
+                // Ausgeklappt bleibt der Knopf vor den Zeilen stehen
                 // (zum Wieder-Einklappen) — gleiches Verhalten wie der
                 // Git-Diff (`GitDiffViewModel.fold`).
                 result.append(.fold(fold))

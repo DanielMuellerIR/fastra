@@ -41,7 +41,7 @@ func scrollMemory_clampsNegative() {
 @Test("Leeren wirft alle Einträge weg")
 func scrollMemory_removeAll() {
     // Der Projektwechsel leert den ganzen Speicher: Die Schlüssel sind über
-    // Projekte hinweg dieselben (Review-Fund 2026-08-25).
+    // Projekte hinweg dieselben.
     let memory = SidebarScrollMemory()
     memory.record(50, for: "gitGraph:a.txt")
     memory.record(240, for: "fileTree")
@@ -86,7 +86,7 @@ func scrollMemory_recordRefreshesAge() {
 
 @Test("Ziel wird auf das tatsächlich Erreichbare geklemmt")
 func scrollRestore_clampsToDocument() {
-    // `NSClipView.scroll(to:)` klemmt selbst NICHT — ein zu großes Ziel wird
+    // `NSClipView.scroll(to:)` klemmt selbst nicht — ein zu großes Ziel wird
     // scheinbar übernommen und schnappt beim nächsten Layout auf null zurück.
     #expect(SidebarScrollRestore.reachable(target: 5000, documentHeight: 800,
                                            viewportHeight: 300) == 500)
@@ -114,9 +114,8 @@ func scrollRestore_settledWhenReached() {
 
 @Test("Eine noch am Anfang stehende Liste läuft weiter")
 func scrollRestore_keepsTryingWhileDocumentGrows() {
-    // Der gefährliche Fall: Direkt nach dem Aufbau ist die LazyVStack leer,
-    // die erreichbare Position also 0. Wer hier abbricht, lässt die Liste für
-    // immer oben stehen (Selbsttest `sidebarstate`, 2026-08-24).
+    // LazyVStack kann beim Aufbau noch leer sein. Erreichbare Position 0 darf
+    // dann nicht als endgültiges Wiederherstellungsziel gelten.
     #expect(!SidebarScrollRestore.isSettled(target: 400, achieved: 0,
                                             attempt: 0, maximumAttempts: 12))
     #expect(!SidebarScrollRestore.isSettled(target: 400, achieved: 100,

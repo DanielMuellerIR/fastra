@@ -219,12 +219,12 @@ impl View {
     }
     pub fn ready(&self) {
         if let Some(s) = &self.status {
-            s.set_text(language().text("Schreibgeschützter Snapshot", "Read-only snapshot"));
+            s.set_text(Language::from_environment().text("Schreibgeschützter Snapshot", "Read-only snapshot"));
         }
     }
     pub fn failure(&self, error: Option<&Failure>) {
         if let Some(status) = &self.status {
-            status.set_text(failure_text(error, language()));
+            status.set_text(failure_text(error, Language::from_environment()));
         }
     }
 }

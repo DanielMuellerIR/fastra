@@ -30,6 +30,7 @@ pub struct ApprovalPane {
     visible: RefCell<Vec<usize>>,
     approved: RefCell<Vec<Vec<bool>>>,
     frozen: Cell<bool>,
+    allow_approval: Cell<bool>,
     pub(super) wrap_around: Cell<bool>,
     pub exact: gtk::CheckButton,
     summary: gtk::Label,
@@ -40,6 +41,7 @@ pub struct ApprovalPane {
     render_ready: Cell<bool>,
     render_error: Cell<bool>,
     labels_ready: Cell<bool>,
+    clearing_checks: Cell<bool>,
     changed: RefCell<Option<ChangeHandler>>,
     lang: Language,
     #[cfg(debug_assertions)]
@@ -143,6 +145,7 @@ impl ApprovalPane {
             visible: RefCell::new(vec![]),
             approved: RefCell::new(vec![]),
             frozen: Cell::new(false),
+            allow_approval: Cell::new(false),
             wrap_around: Cell::new(true),
             exact,
             summary,
@@ -153,6 +156,7 @@ impl ApprovalPane {
             render_ready: Cell::new(false),
             render_error: Cell::new(false),
             labels_ready: Cell::new(false),
+            clearing_checks: Cell::new(false),
             changed: RefCell::new(None),
             lang,
             #[cfg(debug_assertions)]
@@ -261,6 +265,7 @@ impl ApprovalPane {
             changed(
                 valid
                     && !self.frozen.get()
+                    && self.allow_approval.get()
                     && self.render_ready.get()
                     && self
                         .search
@@ -304,7 +309,19 @@ impl ApprovalPane {
             self.update_after();
         }
     }
+    pub(super) fn show_search_empty_notice(&self, notice: &'static str) {
+        if let Some(surface) = self.search.borrow().as_ref() {
+            surface.show_empty_notice(notice);
+        }
+    }
+    pub(super) fn has_search_empty_notice(&self) -> bool {
+        self.search
+            .borrow()
+            .as_ref()
+            .is_some_and(|surface| surface.empty_notice.get().is_some())
+    }
     pub fn clear(self: &Rc<Self>) {
+        self.allow_approval.set(false);
         self.render_error.set(false);
         if let Some(surface) = self.search.borrow().as_ref() {
             surface.clear();
@@ -322,10 +339,14 @@ impl ApprovalPane {
         self.after.buffer().set_text("");
         self.files.set_model(None::<&gtk::StringList>);
         self.files.set_visible(false);
-        self.remove_checks_later();
+        self.clear_checks();
         self.notify(false);
     }
     pub fn set_items(self: &Rc<Self>, items: Vec<Item>) {
+        self.set_items_with_approval(items, true);
+    }
+    pub fn set_items_with_approval(self: &Rc<Self>, items: Vec<Item>, allow_approval: bool) {
+        self.allow_approval.set(allow_approval);
         self.render_error.set(false);
         #[cfg(debug_assertions)]
         self.test_initial_approved.set(false);
@@ -347,7 +368,7 @@ impl ApprovalPane {
         self.files.set_visible(visible.len() > 1);
         *self.approved.borrow_mut() = items
             .iter()
-            .map(|item| vec![self.search.borrow().is_none(); item.preview.matches().len()])
+            .map(|item| vec![allow_approval && self.search.borrow().is_none(); item.preview.matches().len()])
             .collect();
         *self.visible.borrow_mut() = visible;
         *self.items.borrow_mut() = items;
@@ -420,7 +441,7 @@ impl ApprovalPane {
         self.render_ready.get()
     }
     pub fn approvals(&self) -> Option<Vec<Vec<usize>>> {
-        if !self.render_ready.get() || self.frozen.get() {
+        if !self.render_ready.get() || self.frozen.get() || !self.allow_approval.get() {
             return None;
         }
         Some(
@@ -436,8 +457,11 @@ impl ApprovalPane {
                 .collect(),
         )
     }
-    fn remove_checks_later(self: &Rc<Self>) {
-        let generation = self.render_generation.get();
+    fn clear_checks(self: &Rc<Self>) {
+        self.checks.set_visible(false);
+        if self.checks.first_child().is_none() || self.clearing_checks.replace(true) {
+            return;
+        }
         let weak = Rc::downgrade(self);
         // Ein normal priorisierter, begrenzter Idle-Takt verhungert nicht hinter
         // fortlaufenden GTK-Layoutframes wie eine DEFAULT_IDLE-Quelle.
@@ -445,24 +469,32 @@ impl ApprovalPane {
             let Some(pane) = weak.upgrade() else {
                 return glib::ControlFlow::Break;
             };
-            if pane.render_generation.get() != generation {
-                return glib::ControlFlow::Break;
-            }
-            let start = std::time::Instant::now();
-            for _ in 0..48 {
-                let Some(child) = pane.checks.first_child() else {
-                    return glib::ControlFlow::Break;
-                };
-                pane.checks.remove(&child);
-                if start.elapsed() >= Duration::from_millis(3) {
-                    break;
+            // Neue Treffer räumen ihre Vorgänger beim Aufbau selbst ab.
+            // Einfrieren oder ein Ansichtswechsel unterbricht die leere Liste dabei nicht.
+            if pane.visible.borrow().is_empty() {
+                let start = std::time::Instant::now();
+                for _ in 0..48 {
+                    let Some(child) = pane.checks.first_child() else {
+                        break;
+                    };
+                    pane.checks.remove(&child);
+                    if start.elapsed() >= Duration::from_millis(3) {
+                        break;
+                    }
+                }
+                if pane.checks.first_child().is_some() {
+                    return glib::ControlFlow::Continue;
                 }
             }
-            glib::ControlFlow::Continue
+            pane.clearing_checks.set(false);
+            glib::ControlFlow::Break
         });
     }
     fn show(self: &Rc<Self>) {
         self.labels_ready.set(false);
+        if self.visible.borrow().is_empty() {
+            self.clear_checks();
+        }
         self.update_after();
     }
     fn update_after(self: &Rc<Self>) {
@@ -633,7 +665,7 @@ impl ApprovalPane {
                     let weak = Rc::downgrade(&pane);
                     check.connect_toggled(move |check| {
                         if let Some(pane) = weak.upgrade() {
-                            if pane.frozen.get() || !pane.render_ready.get() {
+                            if pane.frozen.get() || !pane.render_ready.get() || !pane.allow_approval.get() {
                                 return;
                             }
                             pane.approved.borrow_mut()[item][n] = check.is_active();
@@ -660,7 +692,8 @@ impl ApprovalPane {
                         }
                         pane.render_status.set_text(if exact { pane.lang.text("Vollständige Escape-Ansicht · Originaltexte werden angewendet.", "Complete escaped display · original text will be applied.") } else { pane.lang.text("Vollständige Textansicht · Escapes zeigen Unicode und Zeilenenden exakt.", "Complete text display · escapes reveal exact Unicode and line endings.") });
                         pane.render_ready.set(true);
-                        pane.checks.set_sensitive(true);
+                        pane.checks.set_sensitive(pane.allow_approval.get());
+                        pane.checks.set_visible(true);
                         pane.notify(true);
                         return glib::ControlFlow::Break;
                     }

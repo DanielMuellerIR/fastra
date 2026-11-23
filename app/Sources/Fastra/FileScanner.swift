@@ -2,7 +2,7 @@
 //
 // Bausteine für die Datei-Suche und die (noch kommende) Apply-Logik in
 // v0.6. Bewusst klein und pur gehalten, damit jedes Stück einzeln testbar
-// ist — die Apply-Logik selbst kommt ERST, wenn die Sicherheits-Tests
+// ist — die Apply-Logik selbst kommt erst, wenn die Sicherheits-Tests
 // stehen (siehe AGENTS.md, „Hartes Gate für die Apply-Logik").
 
 import Foundation
@@ -18,10 +18,10 @@ enum FileScanner {
     /// Regel, die auch Git nutzt — Textdateien (egal welches Encoding außer
     /// UTF-16/32 mit eingebetteten Nullen) haben keine Null-Bytes.
     ///
-    /// ACHTUNG für später: UTF-16/UTF-32-kodierter Text enthält Null-Bytes
+    /// Achtung für später: UTF-16/UTF-32-kodierter Text enthält Null-Bytes
     /// und würde hier als „binär" gelten. Beim Öffnen/Suchen muss deshalb
     /// zuerst eine BOM-/Encoding-Erkennung laufen; erst der Rest geht in
-    /// diese Heuristik. Für den Binär-SCHUTZ (nichts kaputt machen) ist die
+    /// diese Heuristik. Für den Binär-Schutz (nichts kaputt machen) ist die
     /// konservative Seite ohnehin richtig: im Zweifel nicht anfassen.
     static func isBinary(_ data: Data) -> Bool {
         let window = data.prefix(binarySniffWindow)

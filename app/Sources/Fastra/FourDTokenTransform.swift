@@ -1,18 +1,15 @@
 // FourDTokenTransform.swift
 //
-// Transformation „tokenisierter 4D-Export ↔ Klartext" (Etappe 6 Wunschpaket
-// 2026-07c). Kanonische 4D-Exporte hängen Token-Suffixe an Befehle und
+// Transformation „tokenisierter 4D-Export ↔
+// Klartext". Kanonische 4D-Exporte hängen Token-Suffixe an Befehle und
 // Konstanten (`ALERT:C41`, `Into variable:K79:31`) — zum Lesen/Diffen stört
-// das, zum Wiedereinspielen hilft es.
-//
-// Ehrliche Grenzen:
-// - „Token-Suffixe entfernen" strippt BEIDE Formen (:Cnnn und :Knn:mm) —
-//   token-basiert über den FourDTokenizer, Strings/Kommentare bleiben also
-//   unangetastet.
-// - „Befehls-Token ergänzen" kennt nur BEFEHLS-Nummern (aus der 4D-Doku
-//   generiert, siehe FourDSymbols). Konstanten-Nummern stehen in keiner
-//   öffentlichen Quelle — Konstanten bleiben unverändert, das steht so im
-//   Menütitel (kein stilles Halbergebnis).
+// das, zum Wiedereinspielen hilft es. Ehrliche Grenzen: - „Token-Suffixe
+// entfernen" strippt beide Formen (:Cnnn und :Knn:mm) — token-basiert über den
+// FourDTokenizer, Strings/Kommentare bleiben also unangetastet. -
+// „Befehls-Token ergänzen" kennt nur Befehls-Nummern (aus der 4D-Doku
+// generiert, siehe FourDSymbols). Konstanten-Nummern stehen in keiner
+// öffentlichen Quelle — Konstanten bleiben unverändert, das steht so im
+// Menütitel (kein stilles Halbergebnis).
 
 import Foundation
 
@@ -73,7 +70,7 @@ enum FourDTokenTransform {
     /// Name (lowercased) → Suffix, z. B. `"alert" → ":C41"` und
     /// `"into variable" → ":K79:31"`. Grundlage, um nach einem headless
     /// ausgeführten 4D-Makro (das untokenisierten Code liefert) auch die
-    /// KONSTANTEN-Token wiederherzustellen — deren Nummern stehen in keiner
+    /// Konstanten-Token wiederherzustellen — deren Nummern stehen in keiner
     /// öffentlichen Quelle, wohl aber im Original-Puffer.
     static func learnedSuffixes(from text: String) -> [String: String] {
         let tokens = FourDTokenizer.tokenize(text)
@@ -90,7 +87,7 @@ enum FourDTokenTransform {
     }
 
     /// Token-Klassen, die ein gelerntes Suffix zurückbekommen dürfen: alles,
-    /// was ein NAME ist. Der Umweg ist nötig, weil der Tokenizer denselben
+    /// was ein Name ist. Der Umweg ist nötig, weil der Tokenizer denselben
     /// Namen vor und nach dem Entfernen des Suffixes unterschiedlich einstuft:
     /// `FutureCommand:C9999` erkennt er am `:C` als Befehl, das nackte
     /// `FutureCommand(` mangels Eintrag im Katalog aber als Methodenaufruf.
@@ -124,7 +121,7 @@ enum FourDTokenTransform {
         let original = text as NSString
         let declarationTypes = declarationTypeLocations(tokens, in: original)
         let result = NSMutableString(string: text)
-        // Längster Name zuerst: Sind `MyConst` UND `MyConst Extra` gelernt,
+        // Längster Name zuerst: Sind `MyConst` und `MyConst Extra` gelernt,
         // gehört das Suffix am gemeinsamen Start dem vollständigen Symbol.
         var learnedNames: [(name: String, length: Int, suffix: String)] = []
         for (name, suffix) in learned {
@@ -133,11 +130,11 @@ enum FourDTokenTransform {
         learnedNames.sort {
             $0.length == $1.length ? $0.name < $1.name : $0.length > $1.length
         }
-        // Kandidaten nach ihrem ERSTEN WORT indexieren: `learnedMatch`
+        // Kandidaten nach ihrem ersten Wort indexieren: `learnedMatch`
         // verlangt, dass der gelernte Name mit dem Tokentext beginnt, und der
         // Tokenizer beendet ein Token nie mitten in einem Wort. Ein Treffer
         // teilt deshalb immer das erste Wort mit dem Token. Statt für jedes
-        // Token ALLE gelernten Namen linear zu prüfen (Tokens × Namen,
+        // Token alle gelernten Namen linear zu prüfen (Tokens × Namen,
         // quadratisch), wird nur der kleine passende Eimer durchsucht; die
         // Sortierung „längster zuerst" bleibt innerhalb jedes Eimers erhalten.
         var candidatesByFirstWord:
@@ -148,7 +145,7 @@ enum FourDTokenTransform {
         }
         // Erst planen, dann anwenden. Ein gelernter mehrwortiger Name deckt
         // die Folge-Tokens mit ab: Für `Future Tail` liefert der Tokenizer
-        // ohne Suffix zwei Namen (`Future` und `Tail`). Sind BEIDE gelernt,
+        // ohne Suffix zwei Namen (`Future` und `Tail`). Sind beide gelernt,
         // bekäme derselbe Textbereich zwei Suffixe — zuerst das von `Tail`,
         // danach am selben Offset das von `Future Tail`. Der Vorwärtslauf mit
         // `claimedUntil` belegt den Bereich des längeren Treffers und lässt
@@ -223,7 +220,7 @@ enum FourDTokenTransform {
     )
 
     /// Bestimmt alle Typpositionen in einem Vorwärtslauf über Text und Tokens.
-    /// Der frühere Einzeltest kopierte für JEDES Token den gesamten Präfix und
+    /// Der frühere Einzeltest kopierte für jedes Token den gesamten Präfix und
     /// zerlegte ihn in Zeilen; große Methoden wurden dadurch quadratisch.
     private static func declarationTypeLocations(
         _ tokens: [FourDTokenizer.Token], in text: NSString

@@ -20,7 +20,7 @@ public enum PatternCategory: String, CaseIterable, Sendable, Codable {
     case dateTime     = "Datum & Zeit"
     case textStructure = "Text-Strukturen"
     case numbers      = "Zahlen"
-    // Neue Kategorien (v1.1) bewusst NACH den bestehenden — der Picker
+    // Neue Kategorien (v1.1) bewusst nach den bestehenden — der Picker
     // iteriert `allCases`, so bleiben die etablierten Vorlagen oben.
     case words        = "Wörter & Zeilen"
     case whitespace   = "Leerraum & Aufräumen"

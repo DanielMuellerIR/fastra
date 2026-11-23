@@ -1,6 +1,6 @@
 // BoundedFileReading.swift
 //
-// Gemeinsamer, absichtlich vorsichtiger Lesepfad für FREMDE Dateien: Die
+// Gemeinsamer, absichtlich vorsichtiger Lesepfad für fremde Dateien: Die
 // 4D-Makro-Discovery und die tool4d-Suche öffnen Dateien aus Projekt- und
 // Programme-Ordnern, deren Inhalt und Typ Fastra nicht kontrolliert. Zwei
 // Gefahren fängt dieser Pfad zentral ab:
@@ -38,7 +38,7 @@ enum BoundedFileReading {
     static func openRegularFile(at url: URL, maximumBytes: Int,
                                 readData: Bool) -> RegularFile? {
         guard maximumBytes >= 0, maximumBytes < Int.max else { return nil }
-        // Symlinks bewusst VOR dem Öffnen auflösen und dann mit O_NOFOLLOW
+        // Symlinks bewusst vor dem Öffnen auflösen und dann mit O_NOFOLLOW
         // öffnen: Ein regulärer Verweis auf eine Datei funktioniert damit
         // weiterhin, nur ein zwischen Auflösung und Öffnen untergeschobener
         // neuer Link wird abgewiesen.

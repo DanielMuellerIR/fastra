@@ -2,15 +2,11 @@ import Foundation
 import Testing
 @testable import Fastra
 
-// Tests für die Schließen-Rückfrage bei ungespeicherten Änderungen (BBEdit-Stil,
-// Daniel-Befund 2026-06-25): Ein leeres/unverändertes Dokument schließt ohne
-// Rückfrage, ein Dokument mit ungesicherten Änderungen fragt erst (Sichern /
-// Nicht sichern / Abbrechen).
-//
-// Der echte Modal-Dialog (`NSAlert`) ist headless nicht prüfbar; deshalb ist die
-// Entscheidung über `Workspace.confirmCloseHandler` injizierbar. So lässt sich der
-// komplette Schließen-Pfad (Routing, aktiver-Tab-Nachzug, Save-vor-Close) ohne UI
-// testen. Der Dialog selbst wird per GUI-Abnahme geprüft.
+// Schließen-Rückfrage bei ungespeicherten Änderungen nach BBEdit-Verhalten:
+// Unveränderte Dokumente schließen sofort, dirty Dokumente fragen nach
+// Sichern / Nicht sichern / Abbrechen.
+// `Workspace.confirmCloseHandler` macht Routing, Tab-Aktivierung und Sichern
+// vor dem Schließen fensterlos prüfbar. Den echten NSAlert prüft die GUI-Abnahme.
 
 private func makeWorkspace() -> Workspace {
     let suite = "fastra-close-\(UUID().uuidString)"
@@ -20,6 +16,7 @@ private func makeWorkspace() -> Workspace {
 }
 
 @Test("Sauberer Tab schließt ohne Rückfrage")
+@MainActor
 func close_cleanTabNoPrompt() {
     let ws = makeWorkspace()
     var asked = false
@@ -35,6 +32,7 @@ func close_cleanTabNoPrompt() {
 }
 
 @Test("Dirty-Tab: Abbrechen lässt den Tab offen")
+@MainActor
 func close_dirtyCancelKeeps() {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .cancel }
@@ -46,6 +44,7 @@ func close_dirtyCancelKeeps() {
 }
 
 @Test("Nicht-aktiven Dirty-Tab schließen: Abbrechen stellt den aktiven Tab wieder her")
+@MainActor
 func close_inactiveDirtyCancelRestoresActive() {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .cancel }
@@ -62,6 +61,7 @@ func close_inactiveDirtyCancelRestoresActive() {
 }
 
 @Test("Dirty-Tab: Nicht sichern schließt und verwirft")
+@MainActor
 func close_dirtyDontSaveCloses() {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .dontSave }
@@ -75,6 +75,7 @@ func close_dirtyDontSaveCloses() {
 }
 
 @Test("Dirty-Tab: Sichern schreibt auf die Platte und schließt dann")
+@MainActor
 func close_dirtySaveWritesAndCloses() throws {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .save }
@@ -90,14 +91,15 @@ func close_dirtySaveWritesAndCloses() throws {
     ws.tabs = [a]
     ws.activeTabID = a.id
     ws.closeTab(id: a.id)
-    // Geschlossen; der Workspace parkt seit 2026-07-29 im Willkommens-Zustand,
-    // damit eine später wieder angezeigte Fenster-Szene nie ohne Tabs dasteht.
+    // Nach Fensterschluss im Willkommens-Zustand parken, damit eine später
+    // wieder angezeigte Szene einen gültigen Tab besitzt.
     #expect(ws.tabs.map(\.isPristineScratch) == [true])
     let onDisk = try String(contentsOf: url, encoding: .utf8)
     #expect(onDisk == "neu gesichert")                       // vorher gesichert
 }
 
 @Test("Letzter Tab ohne Fenster-Handler fällt auf den Startzustand statt Null-Tab zurück")
+@MainActor
 func close_lastWithoutWindowHandlerReturnsToWelcome() {
     let ws = makeWorkspace()
     let tab = EditorTab(title: "sauber.txt", path: "/tmp", content: "x")
@@ -112,6 +114,7 @@ func close_lastWithoutWindowHandlerReturnsToWelcome() {
 }
 
 @Test("closeActiveTab nutzt denselben Rückfrage-Pfad")
+@MainActor
 func close_activeDelegates() {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .cancel }
@@ -123,6 +126,7 @@ func close_activeDelegates() {
 }
 
 @Test("Letzter sauberer Tab schließt das Fenster statt einen Null-Tab-Rahmen zu lassen")
+@MainActor
 func close_lastCleanTabClosesWindow() {
     let ws = makeWorkspace()
     var windowCloseCount = 0
@@ -137,14 +141,14 @@ func close_lastCleanTabClosesWindow() {
 
     #expect(asked == false)
     #expect(windowCloseCount == 1)
-    // Fenster zu; der Workspace parkt im Willkommens-Zustand (2026-07-29) —
-    // eine wieder angezeigte Szene zeigt Willkommen statt eines Null-Tab-
-    // Rahmens mit tippbarem Geister-Editor.
+    // Geschlossener Workspace bleibt im Willkommens-Zustand für eine später
+    // wieder angezeigte Szene.
     #expect(ws.tabs.map(\.isPristineScratch) == [true])
     #expect(ws.activeTabID == ws.tabs.first?.id)
 }
 
 @Test("Letzter leerer unbenannter Dirty-Tab schließt ohne Rückfrage")
+@MainActor
 func close_lastEmptyUntitledDirtyClosesWithoutPrompt() {
     let ws = makeWorkspace()
     var windowCloseCount = 0
@@ -160,11 +164,12 @@ func close_lastEmptyUntitledDirtyClosesWithoutPrompt() {
 
     #expect(asked == false)
     #expect(windowCloseCount == 1)
-    // Fenster zu → Workspace geparkt auf Willkommen (siehe oben, 2026-07-29).
+    // Geschlossen; Workspace im Willkommens-Zustand.
     #expect(ws.tabs.map(\.isPristineScratch) == [true])
 }
 
 @Test("Letzter unbenannter Tab mit Inhalt fragt; Abbrechen hält Fenster und Tab offen")
+@MainActor
 func close_lastUntitledWithContentCancelKeepsWindow() {
     let ws = makeWorkspace()
     var windowCloseCount = 0
@@ -185,6 +190,7 @@ func close_lastUntitledWithContentCancelKeepsWindow() {
 }
 
 @Test("Letzter unbenannter Tab mit Inhalt: Nicht sichern schließt das Fenster")
+@MainActor
 func close_lastUntitledWithContentDontSaveClosesWindow() {
     let ws = makeWorkspace()
     var windowCloseCount = 0
@@ -198,12 +204,13 @@ func close_lastUntitledWithContentDontSaveClosesWindow() {
     ws.closeActiveTab()
 
     #expect(windowCloseCount == 1)
-    // Fenster zu → Workspace geparkt auf Willkommen (siehe oben, 2026-07-29).
+    // Geschlossen; Workspace im Willkommens-Zustand.
     #expect(ws.tabs.map(\.isPristineScratch) == [true])
     #expect(ws.activeTabID == ws.tabs.first?.id)
 }
 
 @Test("closeOtherTabs fragt pro Dirty-Tab; Abbrechen bricht die ganze Aktion ab")
+@MainActor
 func close_othersCancelAborts() {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .cancel }
@@ -217,6 +224,7 @@ func close_othersCancelAborts() {
 }
 
 @Test("closeOtherTabs mit Nicht sichern schließt die anderen, behält den Ziel-Tab")
+@MainActor
 func close_othersDontSave() {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .dontSave }
@@ -233,6 +241,7 @@ func close_othersDontSave() {
 // MARK: - Beenden (⌘Q) — confirmCloseAllDirtyForQuit
 
 @Test("Beenden ohne Dirty-Tabs: keine Rückfrage, darf beenden")
+@MainActor
 func quit_allCleanTerminates() {
     let ws = makeWorkspace()
     var asked = false
@@ -244,6 +253,7 @@ func quit_allCleanTerminates() {
 }
 
 @Test("Beenden mit Dirty-Tab + Abbrechen: Beenden wird verweigert")
+@MainActor
 func quit_dirtyCancelBlocks() {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .cancel }
@@ -252,6 +262,7 @@ func quit_dirtyCancelBlocks() {
 }
 
 @Test("Beenden mit Dirty-Tab + Nicht sichern: darf beenden (verwirft)")
+@MainActor
 func quit_dirtyDontSaveTerminates() {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .dontSave }
@@ -261,6 +272,7 @@ func quit_dirtyDontSaveTerminates() {
 }
 
 @Test("Beenden mit Dirty-Tab + Sichern: schreibt auf die Platte, darf beenden")
+@MainActor
 func quit_dirtySaveWritesAndTerminates() throws {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .save }
@@ -278,6 +290,7 @@ func quit_dirtySaveWritesAndTerminates() throws {
 }
 
 @Test("Beenden: eine Abbrechen-Antwort blockt, auch wenn andere sauber sind")
+@MainActor
 func quit_oneCancelAmongCleanBlocks() {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .cancel }
@@ -286,12 +299,11 @@ func quit_oneCancelAmongCleanBlocks() {
     #expect(ws.confirmCloseAllDirtyForQuit() == false)
 }
 
-// Code-Review-Befund 2026-06-27: `confirmCloseAllDirtyForQuit` musste den
-// ursprünglich aktiven Tab merken und wiederherstellen — `mayCloseTab` setzt im
-// „Sichern"-Zweig kurz `activeTabID` auf den gesicherten Tab um. Da beim Beenden
-// KEINE Tabs geschlossen werden, blieb bei einem späteren „Abbrechen" der zuletzt
-// gesicherte Tab fälschlich aktiv statt des ursprünglich aktiven.
+// `confirmCloseAllDirtyForQuit` muss den ursprünglich aktiven Tab wieder
+// herstellen. Sichern kann ihn zwischenzeitlich wechseln; nach späterem
+// Abbrechen des Beendens darf nicht der zuletzt gesicherte Tab aktiv bleiben.
 @Test("Beenden abgebrochen nach Sichern: ursprünglich aktiver Tab bleibt aktiv")
+@MainActor
 func quit_cancelAfterSaveRestoresActive() throws {
     let ws = makeWorkspace()
     // Pro Tab unterschiedlich antworten: den ersten Dirty-Tab sichern (setzt
@@ -317,6 +329,7 @@ func quit_cancelAfterSaveRestoresActive() throws {
 }
 
 @Test("Nicht-aktiven Dirty-Tab schließen lässt den aktiven Tab aktiv")
+@MainActor
 func close_inactiveKeepsActive() {
     let ws = makeWorkspace()
     ws.confirmCloseHandler = { _ in .dontSave }
@@ -324,7 +337,7 @@ func close_inactiveKeepsActive() {
     let other  = EditorTab(title: "other.txt", path: "/tmp", content: "x", isDirty: true)
     ws.tabs = [active, other]
     ws.activeTabID = active.id
-    ws.closeTab(id: other.id)               // einen NICHT-aktiven Tab schließen
+    ws.closeTab(id: other.id)               // einen nicht-aktiven Tab schließen
     #expect(ws.tabs.map(\.id) == [active.id])
     #expect(ws.activeTabID == active.id)    // aktiver Tab unverändert
 }

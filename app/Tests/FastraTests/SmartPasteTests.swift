@@ -2,7 +2,7 @@
 //
 // Unit-Tests für SmartPaste.swift (Roadmap H, v0.8 — Markdown Smart-Paste).
 //
-// Was NICHT getestet wird:
+// Was nicht getestet wird:
 //   - Das echte md-clip (externes CLI, nicht in der Testumgebung verfügbar)
 //   - Modale NSAlert-Interaktion
 //
@@ -62,7 +62,7 @@ private func makeMdClipStub(name: String, body: String) throws -> URL {
 
 @Test("findMdClip: gibt nil zurück, wenn kein Pfad ausführbar ist")
 func findMdClip_noneExecutable() throws {
-    // Zwei temporäre Dateien anlegen — beide OHNE x-Bit.
+    // Zwei temporäre Dateien anlegen — beide ohne x-Bit.
     let fileA = try makeTempFile(name: "md-clip-a", withXBit: false)
     let fileB = try makeTempFile(name: "md-clip-b", withXBit: false)
     defer {
@@ -77,7 +77,7 @@ func findMdClip_noneExecutable() throws {
 
 @Test("findMdClip: gibt URL des ersten ausführbaren Pfads zurück")
 func findMdClip_firstExecutable() throws {
-    // Erster Pfad OHNE x-Bit, zweiter MIT x-Bit.
+    // Erster Pfad ohne x-Bit, zweiter mit x-Bit.
     let noXBit = try makeTempFile(name: "md-clip-nox", withXBit: false)
     let withXBit = try makeTempFile(name: "md-clip-x", withXBit: true)
     defer {
@@ -366,8 +366,8 @@ func serialRunnerIntegration_markdownFromClipboard_timeoutKillsResistantProcess(
 @Test("markdownFromClipboard: Fristablauf beendet auch Enkelprozesse")
 func serialRunnerIntegration_markdownFromClipboard_timeoutKillsGrandchildren() throws {
     // Der Stub startet einen langlebigen Enkel und blockiert dann SIGTERM.
-    // Beim Fristablauf muss die GANZE Prozessgruppe enden — vorher überlebte
-    // der Enkel den Abbruch (Roadmap „Bekannte Fehler", Review 2026-08-02).
+    // Beim Fristablauf muss die ganze Prozessgruppe enden — vorher überlebte
+    // der Enkel den Abbruch .
     let stub = try makeMdClipStub(
         name: "grandchild",
         body: """

@@ -233,6 +233,11 @@ Pillenreihe seitlich. Beispiel: Suchen `*, the`,
 Ersetzen `The *` macht aus „ring, The“ → „The ring“. Der immer sichtbare
 Schalter „∗ wörtlich“ behandelt `*` als normales Zeichen. Er ist nur aktiv,
 wenn RegEx aus ist und der Suchausdruck mindestens ein `*` enthält.
+Aufeinanderfolgende Sterne zählen zusammen als ein Platzhalter. Enthält
+„Ersetzen“ mehr Platzhalter als „Suchen“, bleiben die überzähligen leer.
+Der Hinweis unter dem Ersetzen-Feld erklärt diesen Fall.
+Seit 1.242.48 gilt das auch ab der zehnten Position. Gespeicherte Ersetzungen
+verwenden die korrigierte Auswertung ab der nächsten Vorschau.
 
 **RegEx:** Der RegEx-Schalter aktiviert reguläre Ausdrücke
 (ICU-Syntax, wie `NSRegularExpression`). Beim App-Start ist er
@@ -259,9 +264,22 @@ einem RegEx wie `foo|bar`. Die Nummern vorhandener Capture-Gruppen bleiben gleic
 - Erst „Freigegebene Änderungen anwenden“ führt den geprüften Auftrag aus. Suchoptionen, Quellen, Dokumentrevisionen und Ursprungsfenster müssen weiterhin zur Vorschau passen. Änderungen entwerten alte Freigaben. Schließen oder Abbrechen während der Vorbereitung verhindert ein späteres Apply dieser Vorschau.
 - In **Datei** und **Geöffnet** ändert Apply ausschließlich den Speicher. Speichere die Dokumente anschließend ausdrücklich. Jede Änderung ist pro Dokument ein nativer Undo-Schritt: **⌘Z** nimmt sie zurück, **⇧⌘Z** wiederholt sie. Frühere Bearbeitungen bleiben erhalten, auch nach einem Tabwechsel und in der geteilten Markdown-Ansicht.
 - „Speicheränderungen zurücknehmen“ nimmt die letzte Freigabe gemeinsam zurück; „Gemeinsam wiederherstellen“ wendet sie erneut an. Dafür müssen die tatsächlich geänderten Dokumente noch exakt auf der erwarteten Basis stehen. Spätere Änderungen an unbeteiligten Dokumenten bleiben erhalten. Nach weiteren Bearbeitungen eines betroffenen Dokuments nutze dessen eigenen Undo-Verlauf.
-- In **Ordner** und **Projekt** schreibt Apply auf die Platte. Fastra prüft vor der Vorschau und vor dem ersten Schreiben auch die gelisteten Trefferdateien ohne Freigaben erneut. Fremdänderungen, ungesicherte Änderungen in betroffenen offenen Dateien oder Schreibschutz verhindern den Vorgang. Wirkungslose Ersetzungen schreiben keine Datei.
-- Planung, Backup und Schreiben laufen mit Fortschritt im Hintergrund. „Apply abbrechen“ stoppt vor der Schreibphase ohne Zieldateiänderung. Eine bereits begonnene Schreibphase wird sicher beendet. Fastra schreibt **atomar pro Datei**, mit automatischem Backup; eine Mehrdateiänderung kann bei Fehlern teilweise erfolgt sein. „Rückgängig“ restauriert tatsächlich angewendete Dateien bitgenau und stoppt bei späteren Änderungen oder Schreibschutz.
+- In **Ordner** und **Projekt** schreibt Apply auf die Platte. Unter macOS prüft Fastra beim Erstellen der Vorschau und vor dem ersten Schreiben alle zur Suche passenden Textdateien erneut, auch solche ohne Treffer. Kommt eine passende Textdatei hinzu, fällt sie weg oder ändert sie sich, musst du erneut suchen und die Änderungen freigeben. Dateitypfilter und Ordnerausschlüsse gelten weiterhin. Fremdänderungen und ungesicherte Änderungen in betroffenen offenen Dateien verhindern den Vorgang. Wirkungslose Ersetzungen schreiben keine Datei.
+- Unter macOS bleiben Treffer in schreibgeschützten Dateien sichtbar und können nicht freigegeben werden. Unter Linux kann Fastra eine freigegebene, lesbare Datei auch ohne Schreibrecht an der Datei atomar ersetzen, wenn der Ordner den Austausch erlaubt. Die Dateirechte bleiben dabei erhalten. Änderst du die Dateirechte nach der Vorschau, musst du die Freigabe neu prüfen.
+- Unter Linux verlangt ein Größenfehler beim Anwenden eine neue Suche und Freigabe. Meldet Fastra einen teilweise ausgeführten Auftrag mit Wiederherstellungsdaten, bleibt deren Pfad im Fehlerhinweis erhalten.
+- Ändert sich die Dateibasis, verwirft Fastra die Freigaben der betroffenen Suche. Suche erneut, prüfe die aktuellen Treffer und gib sie frei, bevor du eine neue Vorschau anwendest.
+- Unter Linux verschwindet ein früherer Fremdänderungshinweis, sobald Apply, Rückgängig oder die Dateiwiederherstellung den bestätigten Dateistand in einen offenen, unveränderten Editor übernimmt. Weitere Fremdänderungen werden erneut gemeldet.
+- Planung, Backup und Schreiben laufen mit Fortschritt im Hintergrund. „Apply abbrechen“ stoppt vor der Schreibphase ohne Zieldateiänderung. Eine bereits begonnene Schreibphase wird sicher beendet. Fastra schreibt **atomar pro Datei** und legt automatisch Sicherungen an. Eine Mehrdateiänderung kann bei Fehlern teilweise erfolgt sein. „Rückgängig“ restauriert tatsächlich angewendete Dateien bitgenau und stoppt bei späteren Änderungen oder fehlenden Rechten für die Wiederherstellung.
+- Wird die Sicherungsablage während einer Dateiübernahme unter macOS ausgetauscht, hält Fastra an und nennt bestätigte Dateiänderungen und noch erreichbare Sicherungen. Fastra bietet Rückgängig oder Aufräumen für diesen Vorgang nur bei bestätigter Wiederherstellungsbasis an. Das gilt auch für Textabläufe auf Dateien.
+- Eine inzwischen ausgetauschte Datei bleibt auch bei gleichem Text vor Rückgängig geschützt. Fehlt eine Sicherung, wird ihr Lesezugriff verweigert oder weicht ihr Inhalt vom Original ab, nennt Fastra die zugehörige Datei, die Ursache und den vollständigen Sicherungspfad. Bewahre bei Sicherungs- und Aufräumfehlern die genannten Dateien auf, bis die Ursache geklärt ist.
+- Vor dem ersten Dateitausch prüft und synchronisiert Fastra die Original-Sicherungen. Erkennt Fastra beim Abbruch in dieser Vorbereitung eine ausgetauschte Sicherungsablage, meldet es den Fehler und lässt die vorhandenen Ordner stehen. Auch der gespeicherte Sitzungsfortschritt wird geprüft und synchronisiert.
+- Wenn Fastra beim fehlgeschlagenen Apply noch keine Zieldatei geändert hat und eigene temporäre Restdateien sicher zuordnen kann, erscheint „Aufräumen“. Behebe die gemeldete Ursache und nutze die Aktion in der laufenden App, bevor du ein weiteres Apply startest. Fastra prüft die eigenen Restdateien vor dem Entfernen; die Zieldateien bleiben unverändert. Nicht eindeutig zuordenbare Pfade bleiben zur Klärung erhalten.
 - Gekappte Trefferlisten, fehlende Suchquellen, Lesefehler und unvollständige Diffs geben kein Apply frei. Auch eine Kappung innerhalb einer einzelnen Datei nennt die tatsächlich sichtbare und die gezählte Trefferzahl. Nicht lesbare, zu große oder nicht dekodierbare Dateien werden mit Anzahl und Grund erklärt; der Tooltip nennt bis zu acht Pfade und die Zahl weiterer Dateien. Bewusst übersprungene Binärdateien sperren die Freigaben nicht. Verfeinere die Suche oder behebe die Ursache und suche erneut. Die Freigabevorschau ist auf 500 Eingaben, je 64 MiB Original-, Ausgabe- und Vorschautext, 32 MiB Text pro Datei, 100.000 gemeinsame Vorschauzeilen und 60 Sekunden begrenzt. Der Diff verarbeitet höchstens 200.000 Zeilen pro Seite und 30.000 unterschiedliche Zeilen im verbleibenden Vergleichsbereich. Kodierung, BOM und unveränderte Zeilenenden bleiben erhalten; nicht darstellbare Ersetzungen werden abgewiesen.
+
+Auf macOS prüft Fastra vor der ersten Dateiersetzung, ob die Datenträger
+der betroffenen Dateien den sicheren atomaren Austausch unterstützen.
+Meldet ein Datenträger fehlende Unterstützung, hält Fastra den ganzen
+Auftrag an und nennt die betroffene Datei.
 
 **Navigation:** Return bzw. ⌘G springt zum nächsten, ⇧⌘G zum vorherigen
 Treffer; die Pfeiltasten wandern durch die Trefferliste, die dabei zum
@@ -271,6 +289,10 @@ farbig hervor. Die Zeilenhervorhebung bleibt auch über der Auswahl eines
 Treffers sowie bei normalen mehrzeiligen oder rechteckigen Auswahlen sichtbar;
 es wird dabei immer nur eine aktive Auswahlzeile betont. Escape blendet die
 Maske aus.
+
+Unter macOS öffnet „Dateiwiederherstellung…“ im Ordner- oder Projektbereich frühere Sitzungen aus Fastras geschützter Sicherungsablage. Wähle die Sitzung ausdrücklich aus und prüfe alle betroffenen Pfade, die Unterschiede zwischen aktuellem Dateistand und gesichertem Original sowie die verbleibenden Aufräumressourcen. Erst „Gezeigte Dateien wiederherstellen“ beziehungsweise „Gezeigte Sitzung abschließen“ startet die bestätigte Aktion. Alle Ziele der vollständigen Sitzung müssen innerhalb der gewählten Quellen liegen; ergänze nötigenfalls mehrere zugehörige Wurzeln im Ordnerbereich. Es werden keine Dateien beim App-Start automatisch zurückgeschrieben.
+
+Abbrechen oder geänderte Quellen entziehen die Freigabe. Fastra prüft vor dem Schreiben erneut Sicherungen, Ziele, offene Dokumente und die Sitzungsablage. Ungesicherte betroffene Dokumente, weitere laufende Fastra-Kopien, geänderte Dateien und nicht vollständig darstellbare Vorschauen sperren die Aktion. Der Vergleich ist auf 4 MiB pro Datei und insgesamt 32 MiB Vorschautext begrenzt. Eine teilweise erfolgte Rücknahme bleibt im Journal erhalten. Behebe die gemeldete Ursache und nutze „Sitzung erneut prüfen“, bevor du die verbleibende Rücknahme oder das Aufräumen bestätigst. Die laufende Rückgängig-Sitzung bleibt unabhängig davon erhalten. Sicherungen unterliegen weiterhin der bestehenden Altersbereinigung nach 30 Tagen; eine inzwischen entfernte oder ausgetauschte Sitzung verlangt eine neue Prüfung. Eine nicht mitwirkende App, die erst nach der letzten Prozessprüfung startet, lässt sich damit nicht ausschließen.
 
 ## Dateien vergleichen
 
@@ -426,7 +448,8 @@ anwenden ändert nichts mehr; **Emoji-Darstellung aufheben** ist der Rückweg.
 
 Der sichtbare Schalter **Formatieren** in der Fußzeile sowie der Befehl
 **Dokument formatieren** (⌥⇧F) im Menü **Text** und im Rechtsklickmenü rücken
-JSON/XML hübsch ein. Der Schalter bleibt im Textmodus sichtbar und erklärt
+JSON/XML hübsch ein. Bei aktiver Suchmaske gilt das Kürzel für deren Dokument.
+Der Schalter bleibt im Textmodus sichtbar und erklärt
 dort, dass zuerst JSON oder XML gewählt werden muss. Ebenfalls im Menü:
 **Dokument prüfen**
 (Syntaxprüfung mit Fehlerposition) und **Dokument minifizieren**. Formatieren
@@ -436,7 +459,7 @@ manuellen Wahl von **JSON** oder **XML** im Sprach-Chip funktionieren die
 Befehle auch in einer `.txt`-Datei oder einem ungespeicherten Tab. Große
 Formatierungen und Minifizierungen laufen im Hintergrund und werden nur
 übernommen, solange Dokument und Auswahl unverändert sind. Nach zwei Sekunden
-zeigt das Dokument einen Aktivitätshinweis. Textdateien bis 128 MiB werden
+zeigt das Dokument einen Aktivitätshinweis. Wenn du während der Berechnung den Tab wechselst, zeigt das ursprüngliche Fenster den Abbruch und den Namen des betroffenen Dokuments. Textdateien bis 128 MiB werden
 vollständig zum Bearbeiten geöffnet; größere Dateien verwenden die
 Abschnittsansicht. Auch **Dokument
 prüfen** folgt der effektiven Formatwahl: **JSON** aktiviert die Prüfung in
@@ -496,7 +519,13 @@ Stand dann als Hex sichtbar; ein bekanntes Text-Encoding lässt sich mit
 Ändert ein anderes Programm die Datei genau während Fastra einen Abschnitt
 liest, verwirft Fastra den Abschnitt vollständig, statt alte Metadaten mit
 neuen Bytes zu mischen. **Ablage → Von Festplatte neu laden** übernimmt danach
-den neuen Plattenstand samt geänderter Dateigröße.
+den neuen Plattenstand samt geänderter Dateigröße. Bei ungesicherten
+Änderungen gilt die Rückfrage für den genannten Tab und seinen Stand beim
+Öffnen der Rückfrage. Bei der automatischen Rückfrage nach einer Änderung
+von außen gilt „Behalten“ für die geprüfte Datei. „Neu laden“ lässt einen
+Entwurf stehen, der sich seit dem Öffnen der Rückfrage geändert hat. Wenn
+du während einer laufenden Fremdprüfung speicherst, prüft Fastra anschließend
+die neue Dateifassung.
 
 Die Hex-Ansicht ist zunächst schreibgeschützt. **Bearbeiten erlauben** schaltet
 die Eingabe erst nach einer Warnung frei; **Vorschau & Speichern…** zeigt danach
@@ -527,7 +556,7 @@ Dateibaum erst nach dem Speichern oder Verwerfen in den Papierkorb legen.
 Vorlagen. In Markdown steht der Knopf auch im formatierten Editor zur Verfügung.
 Die Bausteine ergänzen die vorhandenen 4D-Makros; sie führen keine Skripte aus.
 
-Unter Linux stehen Textbausteine auch unter **Werkzeuge → Textbausteine …**. Die Bibliothek und die Einfügevorschau arbeiten ebenso mit der beim Öffnen festgehaltenen Quell- oder Rich-Auswahl. Für Bildverweise im Rich-Modus muss das Zieldokument bereits gespeichert sein.
+Unter Linux stehen Textbausteine auch unter **Menü → Werkzeuge → Textbausteine …**. Die Bibliothek und die Einfügevorschau arbeiten ebenso mit der beim Öffnen festgehaltenen Quell- oder Rich-Auswahl. Für Bildverweise im Rich-Modus muss das Zieldokument bereits gespeichert sein.
 
 Wähle **Neu**, gib einen Namen und die Vorlage ein und speichere sie.
 **Duplizieren** erzeugt eine unabhängige Kopie. Vorlagen lassen sich bearbeiten,
@@ -596,6 +625,7 @@ Zeilenoperationen können dadurch keine außerhalb liegenden Zeichen verändern.
 prüfst du jeden aktiven Zwischenschritt. **Im Speicher anwenden** ist erst mit gespeicherter
 Definition und sichtbarem, vollständigem Gesamtergebnis möglich und erzeugt
 genau einen Rückgängig-Schritt. Es schreibt noch keine Datei auf die Platte.
+Sobald das Blatt geschlossen ist, liegt der Tastaturfokus wieder im Editor. Mit ⌘Z machst du die Änderung rückgängig.
 Ändert sich die Dokumentbasis, musst du den Dialog schließen und neu starten.
 
 Bei **Offene Dokumente dieses Fensters** zeigt die Eingabeliste alle vollständig
@@ -907,6 +937,8 @@ bekommen keine Strukturänderung; Fastra zeigt den Grund an. Während du eine Au
 in der formatierten Ansicht oder mit Quelltext und Vorschau arbeiten möchtest.
 Im WYSIWYG-Modus bleiben Markdown-Kürzel verborgen. Die Format-Toolbar funktioniert
 in beiden Modi. Tippen, Formatieren und Rückgängig erfolgen direkt im Dokument.
+Auch die freie Fläche unter einem kurzen Text gehört zum Editor: Klicke dort,
+um weiterzuschreiben.
 Wo Markdown-Trennzeichen eine gewählte Formatierung nicht eindeutig ausdrücken
 können, verwendet Fastra erlaubte HTML-Auszeichnungen im Quelltext, damit die
 Darstellung beim Speichern und Wiederöffnen erhalten bleibt.
@@ -1026,6 +1058,12 @@ Jede Einfügung erzeugt eine eigene Kopie mit freier Nummer, auch bei gleichen
 Bilddaten. Speichere
 neue Dokumente vor dem Einfügen von Bildern (⌘S).
 
+Pro Dateiendung stehen 9.999 Bildnamen zur Verfügung. Sind alle belegt oder
+für Rückgängig reserviert, erklärt Fastra die Grenze und fügt keinen Link ein.
+Vorhandene Bilder bleiben erhalten.
+Unter Linux kann eine fehlgeschlagene Einfügung einen Wiederherstellungsort
+nennen. Prüfe den angezeigten Pfad und bewahre vorhandene Dateien auf.
+
 Ein Klick wählt ein Bild im WYSIWYG-Modus aus. Mit der Löschtaste oder
 **Rechtsklick → Löschen** entfernst du es; ⌘Z stellt es wieder her.
 Bei schon gespeicherten Bildern wird die Datei erst beim nächsten Speichern
@@ -1033,17 +1071,25 @@ entfernt, damit der bisherige Plattenstand gültig bleibt. Bilder anderer
 Markdown-Dateien im selben Ordner und anderer offener Dokumente bleiben erhalten.
 Dateien außerhalb des unmittelbaren `images`-Ordners werden nicht automatisch entfernt.
 
-Entfernte Undo-Bilder liegen ausschließlich im Arbeitsspeicher, ohne versteckte
-Sicherungsordner. Bildbytes und Metadaten wie Finder-Tags, Zugriffsrechte
+Unter Linux meldet Fastra verweigerte Schreibrechte, wenn eine Bilddatei bei Rückgängig im `images`-Ordner bleibt. Behebe die Rechte und öffne im Bildmenü „Rücknahmedaten“, um die Bildrücknahme erneut zu versuchen.
+
+Auf macOS wartet „Umbenennen“ in der Dateien-Seitenleiste auf laufende
+Bildaktionen. Beim Umbenennen einer Markdown-Datei im selben Ordner mit
+gleicher Dateiendung bleiben Rückgängig und Wiederholen im visuellen Editor verfügbar.
+
+Entfernte Undo-Bilder liegen im Arbeitsspeicher. Bildbytes und Metadaten wie Finder-Tags, Zugriffsrechte
 einschließlich macOS-Zugriffsregeln (ACLs), Eigentümer und Gruppe
 teilen sich insgesamt 512 MiB für alle Fenster.
 Lassen sich die Metadaten nicht wiederherstellen, bleibt die Bilddatei erhalten.
+Kann Fastra im Bilderordner keine Prüfdatei für die Wiederherstellung anlegen,
+zeigt „Rückgängig“ die Ursache an, etwa einen verweigerten Schreibzugriff.
 Bei Platzmangel entfällt der älteste betroffene Dokumentverlauf vollständig.
 Übersteigt schon eine einzelne Bildaktion das Limit, entfällt ihr Verlauf sofort.
 Schließen oder Beenden gibt die gespeicherten Undo-Bilder frei.
 
 ⌘Z nach einer noch ungespeicherten Einfügung entfernt auch die neu erzeugte
 Bilddatei; Redo stellt beides wieder her, solange der Verlauf verfügbar ist.
+Ist ein benötigtes Bild auf der Platte geblieben, verwendet Wiederholen die aktuelle Datei am selben Pfad. Fehlt sie, zeigt Fastra den Pfad an und wartet mit dem Wiederholen auf die Datei.
 Die ursprüngliche Quelldatei wird dafür nicht benötigt. Die Nummer bleibt bis zum Verwerfen des Undo-Schritts reserviert.
 „Speichern unter“ nimmt nur noch verwendete Bilder mit. Beim Wechsel in einen
 anderen Ordner beginnt der Markdown-Undo-Verlauf neu, damit alte relative
@@ -1058,11 +1104,42 @@ werden nicht entfernt. Auch Bild- und Downloadverweise zählen, die die Vorschau
 nicht darstellt. Nicht unterstützte Dateiformate bleiben erhalten. Bei CSS,
 alternativen HTML-Bildquellen oder Vorlagen bleiben vorsichtshalber alle Dateien
 im betroffenen Images-Ordner erhalten. Nach Bestätigung prüft Fastra die Vorschau erneut.
+Wenn die Vorschau durch geänderte Kandidaten veraltet ist, löscht Fastra nichts
+und fordert dich auf, „Images-Ordner aufräumen“ erneut zu öffnen.
+Bei einem Teilfehler nennt Fastra bereits entfernte, zurückgestellte und
+erhaltene Pfade samt Ursache. Dabei können Dateien in einem privaten
+Arbeitsordner erhalten bleiben. Nach einem unvollständigen Undo behält Fastra
+die benötigten Bilddaten während der Sitzung für Redo. Nach einem Neustart
+wird aus erhaltenen Dateien kein Undo-Verlauf wiederhergestellt.
+Fehlermeldungen behalten die Ursache und Pfadangaben des abgeschlossenen
+Bildvorgangs, auch wenn anschließend eine weitere Bereinigung läuft.
+Ein später bestätigter Bildverweis beendet eine nur wegen geänderter offener
+Referenzen abgewiesene Bereinigung ohne alte Abbruchwarnung. Echte frühere
+Dateifehler und Teilfortschritte bleiben bis zu ihrer belegten Auflösung
+sichtbar. Als früher erhalten gemeldete Pfade wurden nicht erneut geprüft;
+Fastra sucht oder bereinigt solche abgetrennten Reste nicht automatisch.
+
+Lässt sich die Prüfung offener Dokumente nicht stabil abschließen, endet das
+Undo im Quelltext- und WYSIWYG-Modus trotzdem. Bereits wiederhergestellte
+Zielbilder bleiben mit dem zugehörigen Text erhalten. Fastra warnt, dass
+verbliebene Bilddateien nicht weiter bereinigt wurden. Für Redo benötigte
+Bilddaten bleiben während der Sitzung erhalten.
+
+Nach einem so abgeschlossenen visuellen Undo zeigt ein erfolgreiches Redo die
+erledigte reine Abbruchursache nicht erneut. Echte Dateifehler und noch
+ungelöste Restpfade bleiben weiterhin gemeldet.
 
 Fastra veröffentlicht eine Bilddatei erst nach der vollständigen Kopie und
 überschreibt keine gleichzeitig entstandene Datei. Wird der echte
 `images`-Ordner währenddessen durch einen symbolischen Link ersetzt, bricht
 die Ablage ab und schreibt nichts ins Linkziel.
+
+Die Ablage bestätigt Erfolg erst nach der Synchronisierung der Datei und der
+benötigten Ordnereinträge. Scheitert der Abschluss nach der Veröffentlichung,
+kann eine vollständige Bildkopie erhalten bleiben. Die Fehlermeldung nennt
+den Pfad; es wird kein neuer Bildlink eingefügt. Ein fehlgeschlagenes Redo
+lässt den Text unverändert und kann erneut versucht werden. Leere
+`images`-Ordner bleiben auch nach Rückgängig oder einem Fehler erhalten.
 
 ### HTML in der Vorschau
 
@@ -1093,6 +1170,9 @@ Willkommensbildschirm, unter „Zuletzt benutzt“, in der Projekt-Seitenleiste 
 beim Öffnen aktueller Dateien aus Git-Ansichten. **Abbrechen** öffnet und verändert
 nichts. Der Umwandlungsbefehl bleibt auch im Menü **Ablage**, im Rechtsklickmenü
 der Projekt-Seitenleiste und über dem geöffneten Original erreichbar.
+
+Für die Rückfrage muss `poormans-text --formats --json` den Formatkatalog
+liefern. Für RTF und RTFD muss Pandoc die Option `--sandbox` unterstützen.
 
 Es läuft appweit höchstens eine Umwandlung. In einem zweiten Fenster bleibt das
 eigene Angebot sichtbar, erklärt aber den laufenden Vorgang und ist bis zu
@@ -1176,7 +1256,7 @@ gewöhnliche Absätze und bewusst sichtbare Leerzeilen bleiben getrennt.
 Der kompakte **Soft-Wrap-Schalter** steht in der Fußzeile direkt neben
 dem Sprach-Chip. Er zeigt **Ein** oder **Aus** sichtbar an; ein Hauptklick
 schaltet sofort um. Der separate Pfeil und ein Rechtsklick öffnen dieselben
-Optionen. **Darstellung → Soft Wrap** (⇧⌘L) schaltet denselben Wert.
+Optionen. **Darstellung → Soft Wrap** (⇧⌘L) schaltet denselben Wert. Bei vorderer Hilfe oder Einstellungen ist dieser Dokumentbefehl nicht verfügbar.
 
 Soft Wrap wird **pro effektivem Dokumentformat** gespeichert und gilt
 appweit für alle offenen und später geöffneten Dokumente dieses Formats.
@@ -1298,6 +1378,9 @@ schließt. Die Namen, Signaturen und Befehlsnummern stammen aus der
 offiziellen 4D-Dokumentation (CC BY 4.0, © 4D SAS — Details in den
 Third-Party-Notices).
 
+Unter Linux öffnet auch **Fastra-Menü → Werkzeuge → 4D-Vervollständigung …**
+die Liste im aktiven 4D-Quelleditor.
+
 **Parameterhilfe:** Steht der Cursor innerhalb der runden Klammern eines
 Projektmethoden-Aufrufs, zeigt ein kleines Panel unter der Zeile die
 Signatur der Methode — der Parameter, in dem der Cursor gerade steht, ist
@@ -1360,10 +1443,10 @@ also nicht umbenannt werden. Liegen mehrere, wählt Fastra die höchste
 Version.
 
 **Eigener tool4d-Pfad:** In den Einstellungen unter „4D“ lässt sich die
-ausführbare Datei direkt eintragen; `~` ist erlaubt. Nur ein LEERES Feld
+ausführbare Datei direkt eintragen; `~` ist erlaubt. Nur ein leeres Feld
 bedeutet „Fastra sucht selbst“. Zeigt ein eingetragener Pfad ins Leere, auf
 einen Ordner oder auf etwas nicht Ausführbares, sagt das Feld das direkt —
-Fastra weicht dann NICHT still auf eine andere gefundene Installation aus.
+Fastra weicht dann nicht still auf eine andere gefundene Installation aus.
 
 **Dokument prüfen:** Ist eine gespeicherte `.4dm`-Methode Teil eines geöffneten
 4D-Projekts und tool4d vorhanden, startet **Text → Dokument prüfen** eine
@@ -1488,9 +1571,11 @@ Nachbarordner zum schnellen Projektwechsel, das Rechtsklickmenü bietet
 „Im Finder zeigen“ und „Pfad kopieren“. Letzteres kopiert den vollständigen POSIX-Pfad einschließlich Dateinamen in die Zwischenablage. **⌘-Klick auf einen Dokument-Tab** zeigt
 das macOS-Pfadmenü der Datei. Der Dateibaum kann Dateien und Ordner
 anlegen, umbenennen, duplizieren und in den Papierkorb legen. Ein Duplikat
-erhält vor der Endung „Kopie“ samt nötiger laufender Nummer und öffnet sofort
-als aktiver Tab. Das Rechtsklickmenü eines gespeicherten Tabs enthält dieselben
-Dateiaktionen; bei einem noch ungesicherten Tab sind unpassende Punkte
+erhält vor der Endung „Kopie“ samt nötiger laufender Nummer. Fastra öffnet eine
+kopierte Datei automatisch, solange das ursprüngliche Fenster geöffnet ist
+und du im selben Tab und Projekt geblieben bist. Nach einem Wechsel findest
+du die Kopie im ursprünglichen Ordner. Das Rechtsklickmenü eines gespeicherten
+Tabs enthält dieselben Dateiaktionen; bei einem noch ungesicherten Tab sind unpassende Punkte
 deaktiviert. Die Seitenleiste lässt sich auf breiten Fenstern bis 760 Punkte
 aufziehen, damit lange Pfade lesbar bleiben.
 
@@ -1501,15 +1586,23 @@ mehr Platz. Treffer erscheinen mit aufgeklappten Elternordnern,
 alles andere ist ausgeblendet; der Zähler über dem Baum zeigt
 „N von M Dateien“.
 Escape oder das X leeren den Filter und stellen den vorigen
-Aufklappzustand wieder her. Der Filter durchsucht nur NAMEN — für
+Aufklappzustand wieder her. Der Filter durchsucht nur Namen — für
 Inhalte gibt es „In Projekt oder Ordnern suchen…“ (⇧⌘F, auch als Link am leeren
 Filterergebnis).
+
+Unter Linux zählt die Projektleiste beim Filtern die regulären Dateien im
+gelesenen Baum. Bei einem unvollständigen Scan kennzeichnet der Zähler die
+Dateien als erfasst. Beim Leeren des Filters verschwindet der Zähler.
 
 Ein Wechsel zwischen den Seitenleisten-Tabs ist kein Neuanfang: Filtertext
 samt Trefferliste, aufgeklappte Commits im Graphen und die Scrollposition
 jeder Liste stehen beim Zurückwechseln wieder so da wie vorher.
 
 ## Git
+
+Im Menü **Git** sind **Verlauf anzeigen** und **Änderungen anzeigen (Diff)**
+verfügbar, sobald Fastra im aktiven Fenster ein Git-Repository erkannt hat.
+Das gilt auch für ein frisch initialisiertes Repository vor dem ersten Commit.
 
 Ist das Projekt ein Git-Repository (und `git` installiert), zeigt die
 Seitenleiste zusätzlich die Tabs **Änderungen** und **Graph**. Der
@@ -1597,7 +1690,11 @@ sichtbar, während der Dateien- oder Graph-Tab offen ist. Im Einzelnen:
   beim Scrollen oben stehen, damit Überschrift und Knöpfe auch bei vielen
   Dateien erreichbar sind; in einer schmal gezogenen Seitenleiste wird
   zuerst die Überschrift gekürzt, nie ein Knopf.
-- **Graph:** der Commit-Graph mit Verzweigungen und Merges.
+- **Graph:** der Commit-Graph mit Verzweigungen und Merges. Ein Klick auf
+  einen Commit klappt ihn auf. Direkt unter seiner Commit-Zeile
+  stehen Autor, relative Zeit, Datum und Uhrzeit, der vollständige Betreff,
+  Änderungsstatistik und Kurz-Hash; darunter folgen seine Dateien. Ein
+  Doppelklick öffnet den Commit-Diff.
 - **Verlauf einer einzelnen Datei:** Rechtsklick auf eine Datei im
   Dateien-Tab (oder auf ihren Dokument-Tab) → „Git-Historie anzeigen“.
   Fastra wechselt auf den Graph-Tab und zeigt dort nur noch die Commits
@@ -1635,7 +1732,9 @@ Zeilen; bei einer Auswahl bezieht sie sich auf den markierten Bereich.
 Die Fußzeile zeigt Encoding und Zeilenende des aktiven Tabs:
 
 - **Encoding-Chip:** „Neu öffnen mit Encoding“ lädt die Datei mit einem
-  anderen Encoding neu von der Platte.
+  anderen Encoding neu von der Platte. Bei ungesicherten Änderungen gilt
+  die Rückfrage nur für die darin genannte Datei. Return und Escape brechen
+  ab und behalten den Entwurf. Wähle „Neu laden“, um ihn zu verwerfen.
 - **Zeilenenden-Chip:** wählt LF, CRLF oder CR — die Umstellung wirkt
   beim nächsten Speichern.
 
@@ -1891,7 +1990,13 @@ eine leere Editorzeile zurück. Unveränderte Quellblöcke behalten ihre Schreib
 Der visuelle Ausschnitt wird pro Dokument für einen erneuten Moduswechsel gemerkt.
 Kopierte Textmarker geben ihre Farbe auch an HTML- und RTF-Ziele weiter.
 
-Lokale Rasterbilder in der Linux-Rich-Ansicht aktualisieren sich bei externen Dateiänderungen automatisch im Hintergrund. Text, Auswahl und Rücknahme bleiben erhalten. Fehlende oder ungültige Bilder behalten ihren Quellverweis, zeigen aber keine veralteten Bildbytes. Während Bild- und Clipboardaktionen wartet die Aktualisierung.
+Lokale Rasterbilder in der Linux-Rich-Ansicht aktualisieren sich bei externen Dateiänderungen automatisch im Hintergrund. Text, Auswahl und Rücknahme bleiben erhalten. Fehlende oder ungültige Bilder behalten ihren Quellverweis, zeigen aber keine veralteten Bildbytes. Bilder, die nur noch für Wiederholen aufbewahrt werden, führen bei geprüften Verweisen nicht zu einer Fehlmeldung. Während Bild- und Clipboardaktionen wartet die Aktualisierung.
+
+Im Linux-Fenster „Git · Lesen“ zeigt **Status**, ob sich der Ordner in einem
+Git-Repository befindet. Außerhalb eines Repositorys sind **Verlauf**,
+**Bereitgestellter Diff** und **Arbeits-Diff** nach der Diagnose deaktiviert.
+Über **Ordner wählen …** kannst du zu einem Repository wechseln. Beide Diffs
+funktionieren auch vor dem ersten Commit.
 
 In den Linux-Gitwerkzeugen öffnet „Commit erstellen …“ die vollständige Indexvorschau. Prüfe Tree, Parent-Commits, Autor/Committer, Nachricht und Diff und bestätige anschließend diesen Stand. Fastra verwendet den normalen Git-Commit mit aktiven Hooks und nativer Signierung. Späteres Staging und ungesicherte Editorpuffer bleiben erhalten. Hookänderungen, fehlerhafte Signierung oder eine veraltete Basis halten den Commit an; die tatsächliche Ausgabe und der anschließende Git-Zustand bleiben sichtbar. Git 2.43 oder neuer mit Files-Refs ist erforderlich.
 
@@ -1914,6 +2019,8 @@ HTML und externe Links
 Die Vorschau verwendet die enge Mac-Positivliste für HTML-Tags und Attribute. Tabellen, lokale Rasterbilder und aufklappbare Details werden dargestellt; Skripte, Netzbilder und fremde interne Positions-/Kopierattribute bleiben ausgeschlossen. Abgewiesenes HTML erscheint als Text. Rohe HTML-Bereiche ohne Quellzuordnung besitzen keinen Quelltextsprung oder eigenen Codekopierknopf. Ein ausdrücklich aktivierter HTTP-, HTTPS- oder Mailto-Link öffnet den Systembrowser beziehungsweise das Mailprogramm. Die Vorschau selbst bleibt lokal; automatische Navigation und andere Protokolle sind gesperrt.
 
 Quelltext und Markdown-Vorschau per Klick
+Die Trennlinie zwischen Quelltext und Vorschau lässt sich ziehen. Beim Wechsel zu Rich und zurück bleibt die gewählte Teilung für das geöffnete Dokument erhalten.
+
 Ein Klick im Quelltext scrollt den passenden Vorschauabschnitt sichtbar. Ein Klick auf normalen Vorschautext setzt die Einfügemarke in der zuletzt benutzten Quellansicht, öffnet gegebenenfalls eingeklappte Bereiche und fokussiert den Editor. Links, Textauswahl und Kopierknöpfe bleiben eigene Aktionen. Die Spalte ist bei entferntem Markdown-Markup eine Näherung; es gibt keine fortlaufende Scrollkopplung.
 
 Codeblöcke kopieren
@@ -1998,13 +2105,30 @@ Der Exportknopf speichert einen vollständigen UTF-8-Textbericht. Wähle dafür 
 
 Das Hauptfenster enthält Tabs oben, den einblendbaren Projektbaum links und die Statusleiste unten. Ein leerer Tab zeigt Datei- und Ordneraktionen sowie zuletzt benutzte Projekte. Eine geöffnete Datei ersetzt nur einen vollständig unberührten leeren Tab; andere Dokumente bleiben erhalten.
 
+Beim Aktivieren eines Texttabs erhält der Editor den Tastaturfokus. Mit Ctrl+C lässt sich seine vorhandene Auswahl direkt kopieren. „Neu öffnen in Tab“ im Kodierungsmenü fokussiert den neuen Texteditor. Ungespeicherte Änderungen und die Auswahl im ursprünglichen Tab bleiben erhalten.
+
 „Suchen“ in der Statusleiste oder Ctrl+F öffnet das eigene Suchfenster. Die Bereiche Datei, Geöffnet, Ordner und Projekt bieten Suche, vollständige Vorschau und Trefferfreigaben. Escape oder Ctrl+W schließt das Suchfenster. Eine Übernahme verändert weiterhin nur die freigegebene, geprüfte Grundlage.
+
+Wenn Fastra eine Dateiübernahme wegen einer geänderten Dateibasis abweist, verwirft es die Vorschau und ihre Freigaben. Erstelle eine neue Vorschau und gib die Änderungen erneut frei. Das gilt auch für gespeicherte Textabläufe auf Dateien.
+
+Wurde der Projektordner am selben Pfad ausgetauscht, schließe unter Linux den alten Such- oder Textablaufdialog. Wähle den Ordner im Projektfenster erneut und erstelle dann eine neue Vorschau.
 
 Datei und geöffnete Dokumente aktualisieren Treffer beim Tippen und bei Optionswechseln nach 120 ms, Ordner und Projekte nach 420 ms. Alte Vorschauen und Freigaben werden sofort ungültig. Ordner und Projekte beginnen ab drei sichtbaren Zeichen automatisch; kürzere Muster suchen Sie mit „Suchen“ oder Return. Ctrl+F fokussiert das bestehende Fenster des aktiven Bereichs und markiert das Suchfeld. Zusätzliche Ordnerausschlüsse bleiben beim Wiederöffnen im selben Editor erhalten; gespeicherte Ordner- und Projektwahlen sind unten beschrieben. Schließen beendet Suchaufträge und entfernt Quellmarkierungen.
 
 Quellen bleiben während einer lesenden Ordner- oder Projektsuche bedienbar. Eine Änderung verwirft die alte Vorschau, beendet den alten Lauf und berechnet danach aktuelle Treffer. Ein reiner Suchlauf lässt sich durch Schließen des Suchfensters oder Editors abbrechen. Schreiben, Rücknahme, Textabläufe und noch nicht gesicherte Einstellungen müssen zuerst abgeschlossen oder abgebrochen werden.
 
 Die Ordnerliste enthält zuletzt hinzugefügte Ordner. Kreuzen Sie die gewünschten Quellen an; Entfernen ändert nur die Liste. „Ordner hinzufügen…“ nimmt mehrere Quellen an. Ab acht Einträgen scrollt die Liste; bis zu 64 Ordner lassen sich gleichzeitig durchsuchen. „Dateitypen“ wählt bekannte Textformate oder alle Dateien, wobei Binärdateien weiterhin ausgelassen werden. Zusätzliche Ordnerausschlüsse stehen im aufgeklappten Dateitypmenü.
+
+Nach dem Anwenden im Ordner- oder Projektbereich schließt Fastra die erledigte Freigabe. Hat sich eine Datei geändert, steht „Rückgängig“ im Suchfenster bereit.
+
+Bei einer unvollständigen Ordner- oder Projektsuche bleiben gefundene Treffer
+sichtbar und anwählbar. Nicht lesbare Dateien oder Ordner, nicht verlustfrei
+dekodierbarer Text und einzelne Eingaben über den angezeigten Grenzen sperren
+Freigabe und Anwenden. Die Liste übersprungener Eingaben beginnt mit den
+blockierenden Pfaden. Behebe die gemeldeten Gründe oder grenze den Suchbereich
+ein und suche erneut. Dateitypen, Dateisets und Ausschlüsse begrenzen die Suche.
+Vollständig gelesene Binärdateien werden als übersprungen angezeigt und beim
+Anwenden erneut geprüft. Verweise und besondere Dateien bleiben ausgeschlossen.
 
 Das Vorlagenmenü am Suchfeld enthält die mitgelieferten Kategorien und eigene Vorlagen. Es liest die Sammlung beim Öffnen neu ein. Die Auswahl setzt den Suchausdruck und RegEx; einen Ersetzungsvorschlag übernimmt sie nur, wenn die Vorlage einen enthält. Bereich und übrige Optionen bleiben erhalten. „— Keine —“ entfernt nur die Vorlagenzuordnung, ohne die Felder zu leeren. Der Reglerknopf daneben öffnet die Verwaltung zum Speichern, Importieren und Exportieren. Leere Trefferlisten unterscheiden fehlende Eingaben, die Mindestlänge für die automatische Ordnersuche und abgeschlossene Suchläufe ohne Treffer. Ein Klick auf den bereits gewählten Bereich „Geöffnet“ zeigt dessen Umfang und Grenzen.
 
@@ -2061,6 +2185,8 @@ Die Editoroptionen enthalten eine appweite Wahl installierter Festbreitenschrift
 Die Wahl wird lokal im Hintergrund gespeichert. Fehlt eine früher gewählte Schrift, zeigt Fastra sie als nicht verfügbar an und verwendet vorläufig System-Monospace. Die gespeicherte Wahl bleibt bis zu einer ausdrücklichen neuen Auswahl erhalten. Ein Speicherfehler erhält die vorige Einstellung auf der Platte; „Erneut versuchen“ wiederholt die Sicherung. Quelldateien werden dadurch nicht geändert.
 
 ## Linux: Darstellungsmenü
+
+Öffnen Sie „Darstellung und Bearbeitung“ neben dem Quelltext und wählen Sie „Editoroptionen …“. Unter „Unsichtbare Zeichen anzeigen“ können Sie Leerzeichen, Tabulatoren und Zeilenenden getrennt sichtbar machen. Die Einstellung gilt für beide Quellausschnitte des geöffneten Tabs. Text, Auswahl und Datei bleiben unverändert.
 
 Befehlsknöpfe im Menü „Darstellung und Bearbeitung“, etwa „Spaltenpaste“, schließen das Menü nach ihrer Ausführung. Danach können Sie im Quelltext weitertippen. Umschalter bleiben im geöffneten Menü bedienbar.
 

@@ -1,9 +1,8 @@
 // Tool4DDiscoveryTests.swift
 //
-// Unit-Tests der tool4d-Pfad-Discovery (Etappe 4 Wunschpaket 2026-07c) —
-// komplett mit temporären Fixtures, es braucht KEIN echtes tool4d. Die
-// Version stammt ausschließlich aus dem Info.plist des App-Bundles;
-// ausgeführt wird nie etwas.
+// Unit-Tests der tool4d-Pfad-Discovery — komplett
+// mit temporären Fixtures, es braucht kein echtes tool4d. Die Version stammt
+// ausschließlich aus dem Info.plist des App-Bundles; ausgeführt wird nie etwas.
 
 import Testing
 import Foundation
@@ -83,7 +82,7 @@ func locateVersionedBundleName() throws {
     let scratch = try makeScratch()
     defer { try? FileManager.default.removeItem(at: scratch) }
     let apps = scratch.appendingPathComponent("Applications")
-    // So heißt ein real von 4D heruntergeladenes Nightly — NICHT "tool4d.app".
+    // So heißt ein real von 4D heruntergeladenes Nightly — nicht "tool4d.app".
     try makeToolBundle(
         at: apps.appendingPathComponent("tool4d_v21_nightly_2026-08-05.app"),
         version: "21.1 build 21.100550"
@@ -107,7 +106,7 @@ func locateHighestVersionAmongBundles() throws {
     let scratch = try makeScratch()
     defer { try? FileManager.default.removeItem(at: scratch) }
     let apps = scratch.appendingPathComponent("Applications")
-    // "20.10" ist numerisch NEUER als "20.9" — lexikalisch wäre es umgekehrt.
+    // "20.10" ist numerisch neuer als "20.9" — lexikalisch wäre es umgekehrt.
     try makeToolBundle(at: apps.appendingPathComponent("tool4d.app"), version: "20.9")
     try makeToolBundle(at: apps.appendingPathComponent("tool4d_v20_r10.app"),
                        version: "20.10")
@@ -146,7 +145,7 @@ func locateInAnalyzerStorage() throws {
     let scratch = try makeScratch()
     defer { try? FileManager.default.removeItem(at: scratch) }
     let storage = scratch.appendingPathComponent("storage")
-    // Zwei Versionen — 20.10 ist numerisch NEUER als 20.9
+    // Zwei Versionen — 20.10 ist numerisch neuer als 20.9
     // (localizedStandardCompare, nicht lexikalisch).
     try makeToolBundle(
         at: storage.appendingPathComponent("20.9/100089/tool4d.app"),
@@ -209,7 +208,7 @@ func bundleVersionRejectsFIFOAndOversizedPlist() throws {
 
     // Eine FIFO als Info.plist: Ein blockierendes `Data(contentsOf:)` bzw.
     // `open` wartete hier unbegrenzt auf einen Schreiber und hielt den
-    // Katalog-Task fest (Review 2026-08-31). Der nicht blockierende Lesepfad
+    // Katalog-Task fest. Der nicht blockierende Lesepfad
     // kehrt sofort mit `nil` zurück.
     let fifoApp = scratch.appendingPathComponent("fifo/4D.app", isDirectory: true)
     let fifoContents = fifoApp.appendingPathComponent("Contents", isDirectory: true)
@@ -261,8 +260,7 @@ func versionFromExecutableInsideVersionedBundle() throws {
     // Dieselbe Namensregel wie die Programme-Ordner-Suche: Ein echtes
     // Nightly heißt „tool4d_v21….app". Über PATH gefunden oder als gemerkter
     // Pfad neu geladen, muss seine Version trotzdem lesbar sein — vorher
-    // erkannte `bundleVersion(forExecutable:)` nur exakt „tool4d.app"
-    // (Reviewfund 2026-08-18).
+    // erkannte `bundleVersion(forExecutable:)` nur exakt „tool4d.app".
     let scratch = try makeScratch()
     defer { try? FileManager.default.removeItem(at: scratch) }
     let binary = try makeToolBundle(
@@ -281,10 +279,9 @@ func versionFromExecutableInsideVersionedBundle() throws {
 func versionRequiresRealBundleStructure() throws {
     let scratch = try makeScratch()
     defer { try? FileManager.default.removeItem(at: scratch) }
-    // Ein Verzeichnis, das nur WIE ein tool4d-Bundle heißt, mit einem Binary
-    // an fremder Stelle: `tool4d-wrapper.app/bin/tool4d` ist NICHT das Binary
-    // dieses Bundles — seine Info.plist-Version wäre eine fremde Angabe
-    // (Reviewfund 2026-08-19).
+    // Ein Verzeichnis, das nur wie ein tool4d-Bundle heißt, mit einem Binary
+    // an fremder Stelle: `tool4d-wrapper.app/bin/tool4d` ist nicht das Binary
+    // dieses Bundles — seine Info.plist-Version wäre eine fremde Angabe.
     let wrapper = scratch.appendingPathComponent("tool4d-wrapper.app")
     let contents = wrapper.appendingPathComponent("Contents")
     try FileManager.default.createDirectory(

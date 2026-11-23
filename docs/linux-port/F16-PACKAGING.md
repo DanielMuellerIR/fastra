@@ -17,11 +17,17 @@ Systembibliotheken; es ist kein unabhängiges AppImage.
 
 Die native Bild-/SVG-/PDF-Vorschau benötigt zusätzlich Bubblewrap, `prlimit`,
 ImageMagick, `rsvg-convert`, `pdfinfo` und `pdftoppm`. Debian/Mint beziehen sie
-über `bubblewrap`, `util-linux`, `imagemagick`, `librsvg2-bin` und `poppler-utils`;
+über `bubblewrap`, `util-linux`, `imagemagick`, `librsvg2-bin`, `librsvg2-common` und `poppler-utils`;
 Arch über `bubblewrap`, `util-linux`, `imagemagick`, `librsvg` und `poppler`.
 Builder, Smokeimage und Paketabhängigkeiten führen diese Pakete ausdrücklich.
 Fehlt ein Backend oder verbietet das System die Isolation, bleibt die Vorschau
 mit sichtbarem Fehler gesperrt.
+
+Die GTK-Oberfläche verwendet außerdem SVG-Symbole aus ihrem GResource.
+GdkPixbuf muss diese Bilder auch in Archivinstallationen und isolierten
+UI-Prüfungen dekodieren können. Die enthaltenen SVG-Dateien allein belegen
+keine funktionierende Bilddekodierung. Das Debian-Paket und die
+Builder-/Smokeimages führen deshalb `librsvg2-common` ausdrücklich.
 
 ICU 78.3 wird mitgeliefert: `libicudata`, `libicuuc` und `libicui18n` mit
 relativen SONAME-Verweisen. Der Launcher ermittelt auch über `/usr/bin/fastra`
@@ -166,7 +172,7 @@ docker run --rm --network none \
   /packages/fastra_1.158.0_amd64.deb /packages/fastra-1.158.0-linux-x86_64.tar.gz
 ```
 
-Die beiden äußeren Docker-Ausnahmen erlauben verschachtelte User-/PID-
+Die äußeren Docker-Ausnahmen erlauben verschachtelte User-/PID-
 Namespaces und einen privaten Proc-Mount für WebKits eigene Sandbox. Ohne
 sie blockiert Docker diesen Aufbau. Es werden weder `--privileged` noch
 zusätzliche Capabilities verwendet und WebKits Sandbox wird nicht abgeschaltet.
@@ -177,11 +183,13 @@ Namespace. Das App-Netzwerk ist vollständig abgeschaltet.
 Der Test installiert das Debian-Paket, prüft sämtliche Runtime-Dateihashes,
 die Auflösung der drei privaten ICU-Bibliotheken und startet den echten
 installierten `/usr/bin/fastra` sowie das zufällig verschobene Archiv in
-getrennten privaten Xvfb-/DBus-Sitzungen. Er aktiviert die tatsächliche
-Markdown-Checkbox und sichert Fensterbilder für Überschrift, KaTeX,
+getrennten privaten Xvfb-/DBus-Sitzungen. Jeder Start erhält eigene normale Preferences, die
+vorher den Quelltextmodus wählen und die Vorschau ausblenden. Die Markdown-Erstfrage
+ist eine eigene Abnahme. Der Test aktiviert den sichtbaren Vorschauknopf der
+Titelleiste und sichert Fensterbilder für Überschrift, KaTeX,
 Mermaid und Tabelle. Die Bilder müssen auf tatsächliche Darstellung geprüft
 werden; das bloße Vorhandensein eines WebKit-Prozesses belegt keine korrekte
-DOM-Darstellung. Die getestete Checkbox-Position gehört zu 1.158.0 bei
+DOM-Darstellung. Die Position des Vorschauknopfs gilt für
 1400 × 900; nach Layoutänderungen anhand der Vorher-Aufnahme kontrollieren
 und nötigenfalls `FASTRA_SMOKE_MARKDOWN_POINT="x y"` anpassen.
 

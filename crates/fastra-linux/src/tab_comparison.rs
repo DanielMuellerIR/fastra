@@ -179,4 +179,9 @@ pub(super) fn activate(ui: &Rc<Ui>, doc: &Rc<Document>) {
     clear(ui);
     tab_close::activate(ui, doc);
     chrome::refresh(ui);
+    if doc.is_rich_active() {
+        tab_close::focus(ui, doc);
+    } else if let Some(pane) = super::source_panes::capture(doc) {
+        pane.view.grab_focus();
+    }
 }

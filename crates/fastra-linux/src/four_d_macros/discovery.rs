@@ -93,7 +93,7 @@ impl SettingsStore {
     }
 }
 // Bereits beim UI-Ereignis einreihen, nicht erst in beliebig gestarteten Hintergrundtasks.
-// Der eine Writer liest unter dem gehaltenen Eltern-FD für JEDE Feldänderung neu.
+// Der eine Writer liest unter dem gehaltenen Eltern-FD für jede Feldänderung neu.
 pub(super) fn update_config(change: Change) -> PendingSave {
     static STORE: OnceLock<SettingsStore> = OnceLock::new();
     if let Some(path) = settings_path() {

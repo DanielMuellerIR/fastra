@@ -37,8 +37,7 @@ private struct SelfTestParserFixture: Sendable, CustomStringConvertible {
         .init(description: "Beschädigtes Präfix", payload:
               "SELFTEST-RESULTX v=1 test=search status=PASS",
               legacyLine: "SELFTEST search: PASS", expected: "FAIL", protocolError: true),
-        // Ab hier: Zweige, die der Parser hat, aber bis 2026-09-10 kein
-        // Fixture erreichte.
+        // Zusätzliche Parserzweige durch Fixtures abdecken.
         .init(description: "Unbekannter Statuswert bei gültigem Rahmen", payload:
               "SELFTEST-RESULT v=1 test=search status=WEIRD",
               legacyLine: "SELFTEST search: PASS", expected: "FAIL", protocolError: true),
@@ -49,7 +48,7 @@ private struct SelfTestParserFixture: Sendable, CustomStringConvertible {
               "SELFTEST-RESULT v=1 test=search status=PASS zusatz=1",
               legacyLine: "SELFTEST search: PASS", expected: "FAIL", protocolError: true),
         // Der wichtigste der vier: Eine gültige PASS-Zeile darf einen
-        // Protokollfehler in derselben Ausgabe NICHT überstimmen.
+        // Protokollfehler in derselben Ausgabe nicht überstimmen.
         .init(description: "Gültige PASS-Zeile neben einer beschädigten", payload: """
             SELFTEST-RESULT v=1 test=search status=PASS
             SELFTEST-RESULT v=1 test=search status=KAPUTT

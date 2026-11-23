@@ -76,6 +76,16 @@ def xdo(*arguments):
     return result.stdout.strip()
 
 
+def click_native_control(window, control):
+    xid = window['xid']
+    # GTK zieht den Versatz bei der Eingabe ab. X11 braucht die Gegenrichtung.
+    x = round(control['x'] + window['surfaceX'])
+    y = round(control['y'] + window['surfaceY'])
+    xdo('windowraise', xid, 'windowfocus', '--sync', xid,
+        'mousemove', '--window', xid, x, y, 'click', 1)
+    return xid
+
+
 def window_ids(pid):
     return xdo('search', '--onlyvisible', '--pid', pid).splitlines()
 
@@ -152,8 +162,7 @@ def native_quit_probe():
      return [(w,b) for w in state()['native'] if xid is None or w['xid']==xid for b in w['widgets'] if (label is None or (b['label'] or '').replace('_','')==label) and (kind is None or b['kind']==kind) and b['width']>0 and b['height']>0]
     def click(label=None,kind=None,xid=None):
      w,b=wait(lambda:next(((w,b) for w,b in controls(label,kind,xid) if b['sensitive']),None),'control '+str((label,kind,xid)))
-     xdo('windowraise',w['xid'],'windowfocus','--sync',w['xid'],'mousemove','--window',w['xid'],round(b['x']+w['surfaceX']),round(b['y']+w['surfaceY']),'click',1)
-     return w['xid']
+     return click_native_control(w,b)
     def key(xid,*keys):xdo('windowraise',xid,'windowfocus','--sync',xid,'key','--clearmodifiers',*keys)
     def type_source(xid,text):
      if document(xid)['pathBytes'] is None:
@@ -293,10 +302,49 @@ def native_asset_io_probe():
     def remote(*args):assert subprocess.run([str(APP),*map(str,args)],timeout=12).returncode==0
     def controls(label=None,kind=None,xid=None):
      return [(w,b) for w in state()['native'] if xid is None or w['xid']==xid for b in w['widgets'] if (label is None or (b['label'] or '').replace('_','')==label) and (kind is None or b['kind']==kind) and b['width']>0 and b['height']>0]
-    def click(label=None,kind=None,xid=None):
+    apply_trace_error=None
+    def click(label=None,kind=None,xid=None,trace_apply=False):
+     nonlocal apply_trace_error
      w,b=wait(lambda:next(((w,b) for w,b in controls(label,kind,xid) if b['sensitive']),None),'control '+str((label,kind,xid)))
-     xdo('windowraise',w['xid'],'windowfocus','--sync',w['xid'],'mousemove','--window',w['xid'],round(b['x']),round(b['y']),'click',1)
-     return w['xid']
+     if trace_apply:apply_click_trace=dict(window=w,button=b)
+     clicked_window=click_native_control(w,b)
+     if trace_apply:
+      try:
+       trace_path=ROOT.parent/(ROOT.name+'-image-apply-click.json')
+       trace_path.write_text(json.dumps(apply_click_trace,ensure_ascii=False))
+       print('NATIVE_IMAGE_APPLY_CLICK '+str(trace_path),flush=True)
+      except Exception as error:
+       apply_trace_error=error
+       print('NATIVE_IMAGE_APPLY_TRACE_ERROR click '+repr(error),flush=True)
+     return clicked_window
+    def click_view_mode(xid):
+     def unique():
+      matches=[(w,b) for w,b in controls(kind='check',xid=xid) if 'view-mode' in b['classes'] and b['sensitive']]
+      assert len(matches)<=1,('ambiguous mapped sensitive view-mode',xid,matches)
+      return matches[0] if matches else None
+     w,b=wait(unique,'one mapped sensitive view-mode in document window '+str(xid))
+     click_native_control(w,b)
+    def click_rich_center(xid):
+     def unique():
+      matches=[(w,b) for w,b in controls(kind='rich',xid=xid) if b['sensitive']]
+      assert len(matches)<=1,('ambiguous mapped sensitive Rich editor',xid,matches)
+      return matches[0] if matches else None
+     w,b=wait(unique,'one mapped sensitive Rich editor in document window '+str(xid))
+     click_native_control(w,b)
+    def request_global_quit(xid,allow_exit=False):
+     before={w['xid']:w['status'] for w in windows()}
+     key(xid,'ctrl+shift+q')
+     if not allow_exit:
+      busy=L('Bilddateiaktion läuft noch. Vor dem Schließen vollständig abschließen lassen.','Image file operation is still running. Wait for completion before closing.')
+      def blocked():
+       code=p.poll()
+       assert code is None,('unexpected process exit after global Quit shortcut',code)
+       after={w['xid']:w['status'] for w in windows()}
+       return after if after and all(status==busy for status in after.values()) else None
+      after=wait(blocked,'global Quit busy status in all registered windows')
+      assert p.poll() is None,('unexpected process exit after global Quit shortcut',p.returncode)
+      print('NATIVE_GLOBAL_QUIT_BUSY_STATUS '+json.dumps(dict(before=before,after=after,expected=busy)),flush=True)
+      assert after and all(status==busy for status in after.values()),('global Quit busy status missing',before,after,busy)
     def key(xid,*keys):xdo('windowraise',xid,'windowfocus','--sync',xid,'key','--clearmodifiers',*keys)
     def type_source(xid,text):
      click(kind='source',xid=xid);time.sleep(.15);key(xid,'ctrl+End');xdo('type','--clearmodifiers','--delay',2,text)
@@ -329,23 +377,42 @@ def native_asset_io_probe():
     if MAIN:(ROOT/'pause-restore').touch()
     p,runtime=start();remote(a);wait(lambda:windows(1),'A');remote(other);wait(lambda:windows(2),'B')
     wa,wb=[w['xid']for w in windows()];wait(lambda:all(any(d['pathBytes'] for d in w['documents']) for w in windows()),'loaded');time.sleep(.4)
-    click(L('Rich-Markdown','Rich Markdown'),kind='check',xid=wa);wait(lambda:document(wa)['rich'] and bool(controls(kind='rich',xid=wa)),'rich mapped');time.sleep(.7)
-    click(kind='rich',xid=wa);key(wa,'ctrl+End','ctrl+v')
+    click_view_mode(wa);wait(lambda:document(wa)['rich'] and bool(controls(kind='rich',xid=wa)),'rich mapped');time.sleep(.7)
+    click_rich_center(wa);key(wa,'ctrl+End','ctrl+v')
     apply=L('Bilder speichern und einfügen','Save images and insert');wait(lambda:bool(controls(apply)),'real PNG clipboard asset preview')
-    click(apply);wait(lambda:(ROOT/'ready-apply').exists(),'image physical publication before native completion')
+    click(apply,trace_apply=True)
+    try:
+     wait(lambda:(ROOT/'ready-apply').exists(),'image physical publication before native completion')
+    except Exception:
+     try:
+      trace_path=ROOT.parent/(ROOT.name+'-image-apply-failure.json')
+      trace_path.write_text(json.dumps(state(),ensure_ascii=False))
+      print('NATIVE_IMAGE_APPLY_FAILURE_STATE '+str(trace_path),flush=True)
+     except Exception as error:
+      print('NATIVE_IMAGE_APPLY_TRACE_ERROR failure-state '+repr(error),flush=True)
+     try:
+      trace_path=ROOT.parent/(ROOT.name+'-image-apply-failure.png')
+      assert subprocess.run(['import','-silent','-window','root',str(trace_path)],timeout=10).returncode==0,('native root image dialog capture failed',str(trace_path))
+      print('NATIVE_IMAGE_APPLY_FAILURE_CAPTURE '+str(trace_path),flush=True)
+     except Exception as error:
+      print('NATIVE_IMAGE_APPLY_TRACE_ERROR failure-capture '+repr(error),flush=True)
+     raise
+    if apply_trace_error is not None:
+     raise RuntimeError('Diagnostic abort: required native Apply click metadata was not saved') from apply_trace_error
     image=ROOT/'images/1.png';assert image.exists();original=image.read_bytes()
     click(C);assert controls(C),'first Cancel keeps committing preview open'
     (ROOT/'release-apply').touch();wait(lambda:(ROOT/('ready-worker'if MAIN else 'ready-undo')).exists(),'real compensation after undo')
     assert not image.exists()
     choose(C)
-    click(L('Rich-Markdown','Rich Markdown'),kind='check',xid=wa)
+    click_view_mode(wa)
     wait(lambda:not document(wa)['rich'] and bool(controls(kind='source',xid=wa)),'source mode detached old Rich while compensation pending')
     if MAIN:type_source(wb,' ![shared](images/1.png)')
     else:(ROOT/'neighbour.md').write_text('![shared](images/1.png)\n')
     assert not image.exists()
     if FIXED:
+     # Ctrl+Q prüft den Fensterschließschutz; appweites Quit folgt über Ctrl+Shift+Q.
      key(wb,'ctrl+q');time.sleep(.15);assert len(windows())==2 and state()['pendingAssetIO']>0
-    click(Q,xid=wa)
+    request_global_quit(wa,allow_exit=not FIXED)
     if not FIXED:
      complete(p);assert not image.exists()
      assert list((ROOT/'images').glob('.fastra-image-undo-*'))
@@ -358,17 +425,17 @@ def native_asset_io_probe():
      if MAIN:
       wait(lambda:(ROOT/'ready-restore').exists(),'nested restore worker completed before final Main callback')
       assert image.read_bytes()==original and state()['pendingAssetIO']>0
-      click(Q,xid=wa);wait(lambda:all(not w['closeActive']for w in windows()),'Quit held through nested restore Main completion')
+      request_global_quit(wa);wait(lambda:all(not w['closeActive']for w in windows()),'Quit held through nested restore Main completion')
       assert p.poll() is None and len(windows())==2
       (ROOT/'pause-main').touch();(ROOT/'release-restore').touch()
       wait(lambda:(ROOT/'ready-main').exists(),'nested worker returned; final Main continuation held')
       assert state()['pendingAssetIO']>0 and image.read_bytes()==original
-      click(Q,xid=wa);time.sleep(.1);assert p.poll() is None and len(windows())==2
+      request_global_quit(wa);time.sleep(.1);assert p.poll() is None and len(windows())==2
       (ROOT/'release-main').touch()
      wait(lambda:state().get('pendingAssetIO',1)==0 and image.exists(),'all mutation and Main postchecks completed')
      assert image.read_bytes()==original and a.read_text()=='Asset source original.\n'
      print('PASS global asset IO guard: inactive/detached Rich cannot hide pending rollback; native Quit held through '+('nested restore + final Main postcheck'if MAIN else 'undo + saved-neighbour protection/restore')+'; exact image bytes restored',flush=True)
-     click(Q,xid=wa)
+     request_global_quit(wa,allow_exit=True)
      if MAIN:choose(D)
      complete(p)
      print('PASS new native Quit succeeds only after complete owned mutation settles',flush=True)
@@ -378,6 +445,8 @@ def native_folder_quit_probe():
     """Echte Ordner-Dateiänderung/Rücknahme bis zum Main-Ergebnis vor Quit schützen."""
     import ctypes,hashlib,json,os,subprocess,sys,time,uuid
     from pathlib import Path
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+    from native_clipboard import clipboard_text
     assert os.environ.get('FASTRA_ISOLATED_DISPLAY')=='1'
     assert ctypes.CDLL(None,use_errno=True).prctl(36,1,0,0,0)==0
     ROOT=Path(os.environ['FASTRA_LIFECYCLE_SELFTEST_DIR']);APP=Path(sys.argv[1]).resolve();CLI=APP.with_name('fastra-control')
@@ -410,12 +479,11 @@ def native_folder_quit_probe():
      result=json.loads(r.stdout);assert 'error' not in result,result
      return result
     def remote(*args):assert subprocess.run([str(APP),*map(str,args)],timeout=12).returncode==0
-    def controls(label=None,kind=None,xid=None):
-     return [(w,b) for w in state()['native'] if xid is None or w['xid']==xid for b in w['widgets'] if (label is None or (b['label'] or '').replace('_','')==label) and (kind is None or b['kind']==kind) and b['width']>0 and b['height']>0]
-    def click(label=None,kind=None,xid=None):
-     w,b=wait(lambda:next(((w,b) for w,b in controls(label,kind,xid) if b['sensitive']),None),'control '+str((label,kind,xid)))
-     xdo('windowraise',w['xid'],'windowfocus','--sync',w['xid'],'mousemove','--window',w['xid'],round(b['x']),round(b['y']),'click',1)
-     return w['xid']
+    def controls(label=None, kind=None, xid=None):
+     return [(w,c) for w in state()['native'] if xid is None or w['xid']==xid for c in w['widgets'] if (label is None or (c['label'] or '').replace('_','')==label) and (kind is None or c['kind']==kind) and c['width']>0 and c['height']>0]
+    def click(label=None, kind=None, xid=None):
+     selected=wait(lambda:next((pair for pair in controls(label,kind,xid) if pair[1]['sensitive']),None),'control '+str((label,kind,xid)))
+     return click_native_control(*selected)
     def key(xid,*keys):xdo('windowraise',xid,'windowfocus','--sync',xid,'key','--clearmodifiers',*keys)
     def type_source(xid,text):
      click(kind='source',xid=xid);time.sleep(.15);key(xid,'ctrl+End');xdo('type','--clearmodifiers','--delay',2,text)
@@ -451,37 +519,85 @@ def native_folder_quit_probe():
      display=x.XOpenDisplay(None);assert display;ev=Event();ev.client.type=33;ev.client.send_event=1;ev.client.display=display;ev.client.window=wid;ev.client.message_type=x.XInternAtom(display,b'WM_PROTOCOLS',0);ev.client.format=32;ev.client.data.l[0]=x.XInternAtom(display,b'WM_DELETE_WINDOW',0)
      assert x.XSendEvent(display,wid,0,0,ctypes.byref(ev));x.XFlush(display);x.XCloseDisplay(display)
     def native_present(wid):return any(w['xid']==wid for w in state()['native'])
-    folder=ROOT/'changes';folder.mkdir();source=folder/'sample.txt';before=L('Katze Katze\n','cat cat\n');after=L('Hund Hund\n','dog dog\n');source.write_text(before)
+    folder=ROOT/'changes';folder.mkdir();source=folder/'sample.txt'
+    before=L('Katze Katze\n','cat cat\n').encode();after=L('Hund Hund\n','dog dog\n').encode()
+    source.write_bytes(before)
     (ROOT/'pause-apply').touch();(ROOT/'pause-undo').touch()
     p,runtime=start();remote();wait(lambda:windows(1),'host A');remote();wait(lambda:windows(2),'host B');wa,wb=[w['xid']for w in windows()]
-    click(L('Ordner durchsuchen …','Search folder …'),xid=wa)
-    fw=wait(lambda:next((w for w in state()['native']if w['title']==L('Ordner · Vorschau und Ersetzen','Folder · Preview and Replace')),None),'folder window');wf=fw['xid']
-    click(kind='entry',xid=wf);key(wf,'ctrl+a');xdo('type','--clearmodifiers',str(folder))
-    click(L('Vorschau erstellen','Create preview'),xid=wf)
-    apply=L('Freigegebene Treffer in Dateien anwenden','Apply approved matches to files');click(apply,xid=wf)
+    def titled(title):
+     return next((window for window in state()['native'] if window['title']==title), None)
+
+    search_title=L('Suchen & Ersetzen','Search & Replace')
+    search=L('Suchen','Find')
+    add_folders=L('Ordner hinzufügen…','Add folders…')
+    review_title=L('Freigegebene Änderungen','Approved changes')
+    key(wa,'ctrl+f')
+    initial=wait(lambda:titled(search_title),'search window')['xid']
+    click(L('Ordner','Folder'),xid=initial)
+    wf=wait(lambda:next((window['xid'] for window,_ in controls(add_folders)
+                         if window['title']==search_title),None),'folder scope')
+    click(add_folders,xid=wf)
+    picker=wait(lambda:titled(L('Ordner hinzufügen','Add folders')),'native folder chooser')['xid']
+    key(picker,'ctrl+l')
+    def location_entry():
+     return next((control for _,control in controls(kind='entry',xid=picker)
+                  if 'FileChooser' in control['name']),None)
+    wait(location_entry,'folder chooser location field')
+    key(picker,'ctrl+a')
+    key(picker,'BackSpace')
+    wait(lambda:location_entry() and location_entry()['text']=='','folder location cleared')
+    with clipboard_text(str(folder),ROOT/'clipboard-ready',os.environ):
+     wait((ROOT/'clipboard-ready').exists,'private clipboard owner')
+     key(picker,'ctrl+v')
+     wait(lambda:location_entry() and location_entry()['text'].rstrip('/')==str(folder),'exact folder path')
+    # Der native GTK-Dialog kann eine andere Sprache als Fastra verwenden.
+    accept=wait(lambda:next((pair for label in ('Auswählen','Select')
+                            for pair in controls(label,xid=picker) if pair[1]['sensitive']),None),'folder chooser accept')
+    click_control(*accept)
+    wait(lambda:not native_present(picker),'folder chooser accepted')
+
+    def expression_fields():
+     fields=sorted(controls(kind='entry',xid=wf),key=lambda pair:pair[1]['y'])
+     return fields if len(fields)==2 and fields[0][1]['y']<fields[1][1]['y'] else None
+    for index,value in enumerate((L('Katze','cat'),L('Hund','dog'))):
+     click_control(*wait(expression_fields,'find and replacement fields')[index])
+     key(wf,'ctrl+a')
+     xdo('type','--clearmodifiers',value)
+     wait(lambda:expression_fields() and expression_fields()[index][1]['text']==value,'exact search field text')
+    click(search,xid=wf)
+    click(L('Alle','All'),xid=wf)
+    click(L('Freigaben prüfen · 2','Review approvals · 2'),xid=wf)
+    review=wait(lambda:titled(review_title),'complete preview')['xid']
+    assert source.read_bytes()==before
+    click(L('Freigegebene Änderungen anwenden','Apply approved changes'),xid=review)
     wait(lambda:(ROOT/'ready-apply').exists(),'real file transaction completed before Main result')
-    assert source.read_text()==after and state().get('pendingAssetIO',0)==0
+    assert source.read_bytes()==after and state().get('pendingAssetIO',0)==0
     journals=list(folder.rglob('.fastra-transaction-*'));assert journals
+    wmclose(review);time.sleep(.15);assert native_present(review),'busy approval review close must reject'
     wmclose(wf);time.sleep(.15);assert native_present(wf),'own busy folder close must reject'
     if not FIXED:
-     key(wf,'ctrl+shift+q');complete(p)
-     assert source.read_text()==after
+     key(wb,'ctrl+shift+q');complete(p)
+     assert source.read_bytes()==after
      assert not any(json.loads(path.read_text()).get('recovery_journals') for path in (ROOT/'state/fastra').glob('*.json'))
      print('CONFIRMED pre-fix: own Folder close rejects, but native global Quit destroys parent/tool and exits during real File Apply before Main journal/status completion',flush=True)
     else:
      wmclose(wa);time.sleep(.2);assert len(windows())==2 and native_present(wf)
      print('PARENT_WM_POLICY', 'app busy gate reached' if L('Dateivorgang','File operation') in windows()[0]['status'] else 'GTK modal layer holds before app handler',flush=True)
-     key(wf,'ctrl+shift+q');time.sleep(.15);assert p.poll() is None and len(windows())==2 and native_present(wf) and request()['runtimeID']==runtime
-     assert L('Dateivorgang','File operation') in windows()[0]['status']
+     key(wb,'ctrl+shift+q');time.sleep(.15);assert p.poll() is None and len(windows())==2 and native_present(wf) and native_present(review) and request()['runtimeID']==runtime
+     assert any(L('Dateivorgang','File operation') in w['status'] for w in windows())
+     print('PASS busy Folder Apply: review and search stay open; native global Quit held the two editor windows; disk writes and journal exist',flush=True)
      (ROOT/'release-apply').touch()
-     undo=L('Dateiänderungen rückgängig','Undo file changes');wait(lambda:bool([(w,b)for w,b in controls(undo,xid=wf)if b['sensitive']]),'Apply Main completion enables Undo')
      wait(lambda:windows()[0]['session']['journalsEpoch']>0,'journal indexed after completion')
+     if native_present(review):
+      click(L('Schließen','Close'),xid=review)
+      wait(lambda:not native_present(review),'finished approval review closes')
+     undo=L('Rückgängig','Undo');wait(lambda:bool([(w,b)for w,b in controls(undo,xid=wf)if b['sensitive']]),'Apply Main completion enables Undo')
      print('PASS busy Folder Apply: own/tool/global close held; parent retained; actual busy gate reports its reason; actual file bytes and complete Main journal receipt retained',flush=True)
-     click(undo,xid=wf);wait(lambda:(ROOT/'ready-undo').exists(),'real Undo complete before Main result');assert source.read_text()==before
+     click(undo,xid=wf);wait(lambda:(ROOT/'ready-undo').exists(),'real Undo complete before Main result');assert source.read_bytes()==before
      wmclose(wf);wmclose(wa);time.sleep(.15);assert native_present(wf)and len(windows())==2
-     key(wf,'ctrl+shift+q');time.sleep(.15);assert p.poll() is None and len(windows())==2
-     (ROOT/'release-undo').touch();wait(lambda:any(b['sensitive']for w,b in controls(L('Vorschau erstellen','Create preview'),xid=wf)),'Undo Main completion')
-     assert source.read_text()==before
+     key(wb,'ctrl+shift+q');time.sleep(.15);assert p.poll() is None and len(windows())==2
+     (ROOT/'release-undo').touch();wait(lambda:any(b['sensitive']for w,b in controls(search,xid=wf)),'Undo Main completion')
+     assert source.read_bytes()==before
      wmclose(wf);wait(lambda:not native_present(wf),'idle folder close succeeds')
      wmclose(wb);wait(lambda:len(windows())==1,'unrelated host closes after native modality ends')
      wait(lambda:not windows()[0]['session']['busy'] and windows()[0]['session']['journalsEpoch']==windows()[0]['session']['journalsSaved'],'journal idle')

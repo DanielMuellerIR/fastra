@@ -89,17 +89,14 @@ final class ControlSourceSnapshot {
         return encoding
     }
 
-    static func adopt(_ request: ControlRequest, temporaryRoot: URL = FileManager.default.temporaryDirectory) throws -> ControlSourceSnapshot {
-        // Der Controller hat die Annahmefrist bereits geprüft. Wartende
-        // Jobs behalten danach ihre eigene Ausführungsfrist.
-        try request.validate(allowExpired: true)
-        guard let provenance = request.provenance, let path = request.path else { throw ControlFailure.invalidRequest }
+    static func adopt(_ request: ValidatedControlSourceSnapshotRequest, temporaryRoot: URL = FileManager.default.temporaryDirectory) throws -> ControlSourceSnapshot {
+        let provenance = request.provenance
         let identifier = UUID()
         let directory = temporaryRoot.appendingPathComponent(prefix + identifier.uuidString, isDirectory: true)
         var createdDirectory = false
         do {
             try verifyOuter(provenance)
-            let raw = try FileSnapshot.read(from: URL(fileURLWithPath: path), byteLimit: UInt64(ControlProtocol.maximumSnapshotBytes))
+            let raw = try FileSnapshot.read(from: URL(fileURLWithPath: request.path), byteLimit: UInt64(ControlProtocol.maximumSnapshotBytes))
             guard raw.snapshot.sha256 == request.sha256 else { throw ControlFailure.stale }
             let encoding = try explicitEncoding(request.textEncoding, data: raw.data)
             try Task.checkCancellation()
@@ -114,7 +111,7 @@ final class ControlSourceSnapshot {
             let loaded = try FileLoader.load(url: destination, forcedEncoding: encoding, largeFileThreshold: UInt64(ControlProtocol.maximumSnapshotBytes),
                                             isCancelled: { Task.isCancelled })
             guard loaded.displayMode == .text, loaded.diskSnapshot?.sha256 == request.sha256 else { throw ControlFailure.source }
-            try ControlSelection(location: request.location!, length: request.length!).validate(in: loaded.content)
+            try request.selection.validate(in: loaded.content)
             try verifyOuter(provenance)
             try Task.checkCancellation()
             return ControlSourceSnapshot(loaded: loaded, provenance: provenance, fileURL: destination, directory: directory)

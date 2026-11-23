@@ -3,7 +3,7 @@
 // Regressionstest für den build.sh-Patch 4o („Doppelklick auf Symbole"):
 // Upstreams `findWordBoundary` kennt nur Bezeichner, Leerraum, Zeilenenden und
 // Satzzeichen. Ein Doppelklick auf ein Emoji oder ein Symbol markierte deshalb
-// gar nichts (Daniel-Befund 2026-07-27). Geprüft wird das reale Verhalten von
+// gar nichts. Geprüft wird das reale Verhalten von
 // `selectWord(_:)`, nicht die Patch-Zeile.
 
 import AppKit
@@ -49,7 +49,7 @@ func doubleClickSelectsComposedEmoji() {
 @Test("Doppelklick markiert auch ein nacktes Symbol ohne Variantenselektor")
 @MainActor
 func doubleClickSelectsBareSymbol() {
-    // Genau der Fall aus Daniels Sprechskript: `⏸` ohne U+FE0F.
+    // Basiszeichen `⏸` ohne U+FE0F prüfen.
     let text = "Pause \u{23F8} weiter"
     #expect(selection(in: text, doubleClickAt: 6) == NSRange(location: 6, length: 1))
     let arrow = "links \u{2192} rechts"
@@ -71,8 +71,8 @@ func doubleClickKeepsWordBehaviour() {
 @Test("Doppelklick auf die rechte Zellenhälfte rückt clusterweise zurück")
 @MainActor
 func doubleClickRightHalfStepsBackByComposedCluster() {
-    // Regressionstest für den build.sh-Patch 4u (Review 2026-08-02): Die
-    // Auswahlbasis rückte um genau EINE UTF-16-Einheit zurück und landete
+    // Regressionstest für den build.sh-Patch 4u: Die
+    // Auswahlbasis rückte um genau eine UTF-16-Einheit zurück und landete
     // bei zerlegtem Unicode mitten im Cluster. Geprüft wird der echte
     // Mausweg (mouseDown mit clickCount 2) in einem echten Fenster.
     let text = "Wort🎶 Ende"                    // Surrogatpaar an Offset 4–5
@@ -90,7 +90,7 @@ func doubleClickRightHalfStepsBackByComposedCluster() {
         return
     }
     // Rechte Hälfte der Emoji-Zelle: `textOffsetAtPoint` rundet auf den
-    // Offset HINTER dem Cluster; die Rückrechnung muss an dessen Anfang.
+    // Offset hinter dem Cluster; die Rückrechnung muss an dessen Anfang.
     let clickPoint = NSPoint(x: emojiRect.maxX - max(1, emojiRect.width * 0.25),
                              y: emojiRect.midY)
     let pointInWindow = textView.convert(clickPoint, to: nil)

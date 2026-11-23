@@ -2,7 +2,7 @@
 //
 // Reine, UI- und prozessfreie Logik für „Dokument in Markdown umwandeln".
 //
-// Fastra bringt KEIN eigenes Formatwissen mit. Welche Dateitypen umwandelbar
+// Fastra bringt kein eigenes Formatwissen mit. Welche Dateitypen umwandelbar
 // sind, beantwortet ausschließlich das externe Werkzeug `poormans-text` über
 // `--formats --json`. Dadurch wirken später hinzukommende Formate sofort, ohne
 // dass hier eine Liste gepflegt werden müsste. Diese Datei kennt daher nur:
@@ -18,7 +18,7 @@ import Foundation
 
 /// Findet das installierte `poormans-text`.
 ///
-/// Eine GUI-App erbt NICHT den PATH der Login-Shell: Homebrew-Pfade fehlen dort
+/// Eine GUI-App erbt nicht den PATH der Login-Shell: Homebrew-Pfade fehlen dort
 /// regelmäßig. Deshalb werden die bekannten Orte zuerst direkt geprüft und der
 /// PATH nur als Ergänzung benutzt — dieselbe Lehre wie bei der git-Suche.
 enum MarkdownImportTool {
@@ -87,7 +87,7 @@ struct MarkdownImportFormat: Equatable {
     /// `false`, wenn ein benötigtes Werkzeug (meist Pandoc) gerade fehlt.
     let isAvailable: Bool
     let unavailableReason: String?
-    /// Neuere Kataloge erlauben mehrere Container, etwa Datei UND Paket für MBOX.
+    /// Neuere Kataloge erlauben mehrere Container, etwa Datei und Paket für MBOX.
     var containers: [String] = []
 
     func supportsContainer(isDirectory: Bool) -> Bool {
@@ -133,7 +133,7 @@ struct MarkdownImportCatalog: Equatable {
         return formats.first { $0.fileExtensions.contains(needle) }
     }
 
-    /// Nur Formate, die JETZT auch wirklich konvertierbar sind. Ein Angebot für
+    /// Nur Formate, die jetzt auch wirklich konvertierbar sind. Ein Angebot für
     /// ein Format ohne installiertes Pandoc würde verlässlich scheitern.
     func availableFormat(forExtension rawExtension: String) -> MarkdownImportFormat? {
         guard let format = format(forExtension: rawExtension), format.isAvailable else {
@@ -203,17 +203,17 @@ struct MarkdownImportOutput: Equatable {
     }
 }
 
-/// Prüft die vom Werkzeug gemeldeten Pfade, BEVOR Fastra damit eine Datei
+/// Prüft die vom Werkzeug gemeldeten Pfade, bevor Fastra damit eine Datei
 /// bewegt.
 ///
 /// Die Antwort des Werkzeugs ist eine fremde Eingabe. Sie nennt einen
 /// absoluten Pfad, und Fastra verschiebt danach genau diesen. Ungeprüft könnte
 /// eine fehlerhafte oder manipulierte Antwort die Quelldatei selbst oder eine
 /// beliebige andere erreichbare Datei verschieben und damit die zentrale
-/// Zusage „Die Quelle wird nie verändert" brechen (Review 2026-08-02).
+/// Zusage „Die Quelle wird nie verändert" brechen.
 enum MarkdownImportOutputGuard {
 
-    /// `true`, wenn `candidate` eine gewöhnliche Datei INNERHALB von
+    /// `true`, wenn `candidate` eine gewöhnliche Datei innerhalb von
     /// `directory` ist.
     ///
     /// Beide Seiten werden vorher symbolisch aufgelöst. Das ist nicht
@@ -233,12 +233,12 @@ enum MarkdownImportOutputGuard {
     /// Relativer Pfad am geprüften, aufgelösten Ausgabeordner. Vor dem Rename
     /// sichern: Danach existiert der Arbeitsordner nicht mehr.
     static func relativePublishablePath(_ candidate: URL, in directory: URL) -> String? {
-        // Der Ausgabeordner selbst muss ein ECHTER Ordner sein. Fastra legt nur
+        // Der Ausgabeordner selbst muss ein echter Ordner sein. Fastra legt nur
         // das Zwischenverzeichnis an; `out` darin erzeugt das Werkzeug. Wäre
         // `out` ein Verweis auf einen fremden Ordner, zeigten unten beide
         // aufgelösten Pfade dorthin, der Präfixvergleich ginge auf und Fastra
         // holte eine beliebige fremde Datei — und entfernte sie an ihrem
-        // Ursprungsort (Review 2026-08-06).
+        // Ursprungsort.
         var directoryInfo = stat()
         guard lstat(directory.path, &directoryInfo) == 0,
               (directoryInfo.st_mode & S_IFMT) == S_IFDIR else { return nil }
@@ -247,7 +247,7 @@ enum MarkdownImportOutputGuard {
         let resolved = candidate.resolvingSymlinksInPath().standardizedFileURL.path
         guard resolved.hasPrefix(allowed + "/") else { return nil }
 
-        // `lstat` beschreibt den Pfad SELBST und folgt keinem Verweis —
+        // `lstat` beschreibt den Pfad selbst und folgt keinem Verweis —
         // genau die Auskunft, die hier gebraucht wird.
         var info = stat()
         guard lstat(candidate.path, &info) == 0 else { return nil }
@@ -258,15 +258,13 @@ enum MarkdownImportOutputGuard {
 
 // MARK: - Zielname neben der Quelle
 
-/// Bestimmt, wie das Ergebnis neben der Ursprungsdatei heißt.
-///
-/// Regel (Produktentscheidung 2026-07-26): Entstand NUR Markdown, liegt es als
-/// `Name.md` direkt neben der Quelle. Entstanden zusätzlich Bilder, kommt alles
-/// in den Ordner `Name` — benannt nach dem Dateinamen ohne Endung.
+/// Bestimmt den Ergebnisnamen neben der Ursprungsdatei. Reines Markdown
+/// liegt als `Name.md` neben der Quelle; mit zusätzlichen Bildern liegt das
+/// Ergebnis im Ordner `Name` ohne Dateiendung.
 enum MarkdownImportNaming {
 
     /// Ist bereits etwas mit diesem Namen da, wird `-2`, `-3` … angehängt.
-    /// Bestehendes wird NIE überschrieben: `Dokument.rtf` und `Dokument.docx`
+    /// Bestehendes wird nie überschrieben: `Dokument.rtf` und `Dokument.docx`
     /// im selben Ordner wollen beide `Dokument.md` — der zweite bekommt
     /// `Dokument-2.md`.
     static func availableTarget(

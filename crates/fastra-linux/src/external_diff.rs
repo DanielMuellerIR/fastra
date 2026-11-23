@@ -28,14 +28,6 @@ struct State {
     hold: Option<gio::ApplicationHoldGuard>,
 }
 thread_local! {static SERVICE: RefCell<Option<Rc<RefCell<State>>>>=const{RefCell::new(None)};}
-fn lang() -> Language {
-    Language(
-        std::env::var("LANGUAGE")
-            .or_else(|_| std::env::var("LANG"))
-            .unwrap_or_default()
-            .starts_with("de"),
-    )
-}
 fn reply(invocation: gio::DBusMethodInvocation, code: i32) {
     invocation.return_value(Some(&(code,).to_variant()));
 }
@@ -197,7 +189,7 @@ fn open(
     request: &Request,
     state: &Rc<RefCell<State>>,
 ) -> gtk::ApplicationWindow {
-    let language = lang();
+    let language = Language::from_environment();
     let names = [request.left_label.clone(), request.right_label.clone()];
     let title = format!("Diff: {} ↔ {}", names[0], names[1]);
     let window = gtk::ApplicationWindow::builder()

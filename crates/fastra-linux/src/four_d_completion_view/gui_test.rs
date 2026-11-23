@@ -8,6 +8,30 @@ fn widgets(widget: &gtk::Widget, all: &mut Vec<gtk::Widget>) {
         child = item.next_sibling();
     }
 }
+fn allocated(widget: &impl IsA<gtk::Widget>) -> bool {
+    widget.is_mapped() && widget.width() > 0 && widget.height() > 0
+}
+fn menu(root: &gtk::Widget, title: &str) -> Option<gtk::MenuButton> {
+    let mut all = Vec::new();
+    widgets(root, &mut all);
+    all.into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
+        .find(|button| {
+            allocated(button)
+                && (button.label().as_deref() == Some(title)
+                    || button.tooltip_text().as_deref() == Some(title))
+        })
+}
+fn tool(menu: &gtk::MenuButton, title: &str) -> Option<gtk::Button> {
+    let popover = menu.popover()?;
+    let mut all = Vec::new();
+    widgets(popover.upcast_ref(), &mut all);
+    all.into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .find(|button| {
+            allocated(button) && button.label().as_deref() == Some(title)
+        })
+}
 fn active(ui: &Rc<Ui>) -> Rc<State> {
     STATES.with(|all| {
         all.borrow()
@@ -90,7 +114,8 @@ pub(super) fn run(ui: Rc<Ui>) {
         "//%attributes={\"shared\":true}",
     )
     .unwrap();
-    ui.add_document("completion.4dm", "");
+    // Ein ungespeicherter leerer Tab zeigt den Willkommensbildschirm über dem Editor.
+    ui.add_document("completion.4dm", " ");
     let doc = ui.active().unwrap();
     let page = ui.tabs.current_page();
     if let Ok(width) = std::env::var("FASTRA_TOOL_WIDTH") {
@@ -115,7 +140,7 @@ pub(super) fn run(ui: Rc<Ui>) {
                 }
                 let state = active(&ui);
                 assert_eq!(doc.buffer.language().unwrap().id(), "fastra-4d");
-                git_view::test_click(&state.view.upgrade().unwrap(), &["o", "b"]);
+                git_view::test_click(&state.view.upgrade().unwrap(), &["ctrl+a", "o", "b"]);
                 *held.borrow_mut() = Some(state);
                 stage.set(1);
             }
@@ -210,39 +235,37 @@ pub(super) fn run(ui: Rc<Ui>) {
                 }
                 let state = held.borrow().as_ref().unwrap().clone();
                 assert!(!state.popup.is_visible());
-                let mut all = Vec::new();
-                widgets(ui.window.upcast_ref(), &mut all);
-                all.into_iter()
-                    .filter_map(|w| w.downcast::<gtk::MenuButton>().ok())
-                    .find(|b| b.label().as_deref() == Some(ui.lang.text("Werkzeuge", "Tools")))
-                    .unwrap()
-                    .popup();
-                pause.set(Instant::now());
-                stage.set(61);
+                let Some(root) = menu(ui.window.upcast_ref(), ui.lang.text("Fastra-Menü", "Fastra menu")) else {
+                    return glib::ControlFlow::Continue;
+                };
+                git_view::test_click(&root, &[]);
+                stage.set(60);
             }
-            61 => {
+            60 | 140 => {
+                let Some(tools) = menu(ui.window.upcast_ref(), ui.lang.text("Werkzeuge", "Tools")) else {
+                    return glib::ControlFlow::Continue;
+                };
+                git_view::test_click(&tools, &[]);
+                pause.set(Instant::now());
+                stage.set(if stage.get() == 60 { 61 } else { 141 });
+            }
+            61 | 141 => {
                 if pause.get().elapsed() < Duration::from_millis(250) {
                     return glib::ControlFlow::Continue;
                 }
-                let mut all = Vec::new();
-                widgets(ui.window.upcast_ref(), &mut all);
-                let menu = all
-                    .into_iter()
-                    .filter_map(|w| w.downcast::<gtk::MenuButton>().ok())
-                    .find(|b| b.label().as_deref() == Some(ui.lang.text("Werkzeuge", "Tools")))
-                    .unwrap();
-                let mut all = Vec::new();
-                widgets(menu.popover().unwrap().upcast_ref(), &mut all);
-                let button = all
-                    .into_iter()
-                    .filter_map(|w| w.downcast::<gtk::Button>().ok())
-                    .find(|b| {
-                        b.label().as_deref()
-                            == Some(ui.lang.text("4D-Vervollständigung …", "4D completion …"))
-                    })
-                    .unwrap();
+                let Some(tools) = menu(ui.window.upcast_ref(), ui.lang.text("Werkzeuge", "Tools")) else {
+                    return glib::ControlFlow::Continue;
+                };
+                let title = if stage.get() == 61 {
+                    ui.lang.text("4D-Vervollständigung …", "4D completion …")
+                } else {
+                    ui.lang.text("4D-Projekt-/Komponentenindex aktualisieren", "Refresh 4D project/component index")
+                };
+                let Some(button) = tool(&tools, title) else {
+                    return glib::ControlFlow::Continue;
+                };
                 git_view::test_click(&button, &[]);
-                stage.set(7);
+                stage.set(if stage.get() == 61 { 7 } else { 15 });
             }
             7 => {
                 let state = held.borrow().as_ref().unwrap().clone();
@@ -296,6 +319,9 @@ pub(super) fn run(ui: Rc<Ui>) {
                     return glib::ControlFlow::Continue;
                 }
                 let row = state.list.row_at_index(0).unwrap();
+                if !allocated(&row) {
+                    return glib::ControlFlow::Continue;
+                }
                 *picked.borrow_mut() = state.pending.borrow().as_ref().unwrap().suggestions.items
                     [0]
                 .name
@@ -357,55 +383,14 @@ pub(super) fn run(ui: Rc<Ui>) {
                 if project_view::current_binding(&ui).is_none() {
                     return glib::ControlFlow::Continue;
                 }
-                for window in gtk::Window::list_toplevels()
-                    .into_iter()
-                    .filter_map(|w| w.downcast::<gtk::Window>().ok())
-                    .filter(|w| {
-                        w.title().as_deref()
-                            == Some(ui.lang.text("Projektdateien", "Project files"))
-                    })
-                {
-                    window.set_visible(false);
-                }
                 ui.window.present();
                 let state = held.borrow().as_ref().unwrap().clone();
                 state.view.upgrade().unwrap().grab_focus();
-                let mut all = Vec::new();
-                widgets(ui.window.upcast_ref(), &mut all);
-                all.into_iter()
-                    .filter_map(|w| w.downcast::<gtk::MenuButton>().ok())
-                    .find(|b| b.label().as_deref() == Some(ui.lang.text("Werkzeuge", "Tools")))
-                    .unwrap()
-                    .popup();
-                pause.set(Instant::now());
-                stage.set(141);
-            }
-            141 => {
-                if pause.get().elapsed() < Duration::from_millis(250) {
+                let Some(root) = menu(ui.window.upcast_ref(), ui.lang.text("Fastra-Menü", "Fastra menu")) else {
                     return glib::ControlFlow::Continue;
-                }
-                let mut all = Vec::new();
-                widgets(ui.window.upcast_ref(), &mut all);
-                let menu = all
-                    .into_iter()
-                    .filter_map(|w| w.downcast::<gtk::MenuButton>().ok())
-                    .find(|b| b.label().as_deref() == Some(ui.lang.text("Werkzeuge", "Tools")))
-                    .unwrap();
-                let mut all = Vec::new();
-                widgets(menu.popover().unwrap().upcast_ref(), &mut all);
-                let button = all
-                    .into_iter()
-                    .filter_map(|w| w.downcast::<gtk::Button>().ok())
-                    .find(|b| {
-                        b.label().as_deref()
-                            == Some(ui.lang.text(
-                                "4D-Projekt-/Komponentenindex aktualisieren",
-                                "Refresh 4D project/component index",
-                            ))
-                    })
-                    .unwrap();
-                git_view::test_click(&button, &[]);
-                stage.set(15);
+                };
+                git_view::test_click(&root, &[]);
+                stage.set(140);
             }
             15 => {
                 let state = held.borrow().as_ref().unwrap().clone();

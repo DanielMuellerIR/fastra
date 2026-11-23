@@ -47,7 +47,7 @@ enum MarkdownPreviewAssets {
     }
 
     /// Prüft Typ und Größe am symlink-aufgelösten Ziel und gibt genau diese
-    /// geprüfte Adresse zurück. Das ist eine Vorprüfung am PFAD — verbindlich
+    /// geprüfte Adresse zurück. Das ist eine Vorprüfung am Pfad — verbindlich
     /// entscheidet `readImageData` am geöffneten Deskriptor.
     static func readableImageURL(_ url: URL) throws -> URL {
         let resolved = url.resolvingSymlinksInPath().standardizedFileURL
@@ -64,12 +64,12 @@ enum MarkdownPreviewAssets {
 
     /// Liest ein Vorschaubild und hält dabei die 32-MiB-Grenze ein.
     ///
-    /// Entscheidend ist, dass Typ- und Größenprüfung an DEMSELBEN geöffneten
+    /// Entscheidend ist, dass Typ- und Größenprüfung an demselben geöffneten
     /// Dateiobjekt hängen, aus dem anschließend gelesen wird. Eine Prüfung am
     /// Pfad und ein späteres `Data(contentsOf:)` öffnen die Adresse zweimal:
     /// Dazwischen kann ein Symlink umgebogen oder die Datei atomar ersetzt
-    /// werden, und die Vorschau lädt eine ganz andere, beliebig große Datei
-    /// (Review 2026-08-10). Ein Symlink auf eine normale Bilddatei bleibt
+    /// werden, und die Vorschau lädt eine ganz andere, beliebig große Datei.
+    /// Ein Symlink auf eine normale Bilddatei bleibt
     /// erlaubt — `open` folgt ihm, `fstat` beschreibt das Ziel.
     static func readImageData(_ url: URL) throws -> Data {
         let resolved = try readableImageURL(url)
@@ -91,7 +91,7 @@ enum MarkdownPreviewAssets {
             let chunk = try handle.read(upToCount: 4 * 1024 * 1024) ?? Data()
             if chunk.isEmpty { break }
             data.append(chunk)
-            // Die Grenze gilt auch WÄHREND des Lesens: Wächst die Datei nach
+            // Die Grenze gilt auch während des Lesens: Wächst die Datei nach
             // dem Öffnen, wäre der Speicher sonst schon verbraucht.
             guard data.count <= maximumImageBytes else {
                 throw CocoaError(.fileReadTooLarge)

@@ -5,15 +5,15 @@
 // (Smart-Paste, eine der drei Alleinstellungen), „Zeilen sortieren" und
 // „Duplikate entfernen" (LineOperations).
 //
-// WARUM EIN EVENT-MONITOR STATT EINES VIEW-HOOKS:
-// CodeEditTextViews `TextView.menu(for:)` liefert ein HARTKODIERTES
+// Warum ein Event-Monitor statt eines View-Hooks:
+// CodeEditTextViews `TextView.menu(for:)` liefert ein hartkodiertes
 // Cut/Copy/Paste-Menü (TextView+Menu.swift im Checkout) — es gibt keine
 // öffentliche Erweiterungs-API. Ein sechster build.sh-Checkout-Patch wäre
 // unverhältnismäßig (Wartungslast, siehe Gutter-Entscheidung in
 // _log/decisions.md). Stattdessen nutzen wir das im Projekt etablierte
 // Muster der lokalen NSEvent-Monitore (vgl. CMD+F im AppDelegate):
 // Ein Monitor fängt `.rightMouseDown` ab; liegt der Klick über der
-// Editor-TextView, zeigen wir UNSER Menü und konsumieren das Event —
+// Editor-TextView, zeigen wir unser Menü und konsumieren das Event —
 // das eingebaute Menü kommt dann nie zum Zug.
 
 import AppKit
@@ -96,24 +96,12 @@ enum EditorDocumentTransformationScheduler {
 }
 
 extension TextView {
-    /// Auswahl, die garantiert INNERHALB des Textes liegt.
+    /// Auswahl innerhalb des Textes, auch vor dem ersten Klick in den Editor.
     ///
-    /// `selectedRange()` liefert `{NSNotFound, 0}`, solange der Editor
-    /// überhaupt keine Auswahl hat — der Normalzustand eines frisch
-    /// geöffneten Fensters, in das noch niemand geklickt hat
-    /// (`TextView+NSTextInput.swift`: `textSelections.first?.range ??
-    /// NSRange(location: NSNotFound, length: 0)`).
-    ///
-    /// Wer diesen Wert ungeprüft an `replaceCharacters` weitergibt, bricht
-    /// die ganze Anwendung ab: Der Undo-Verwalter bildet die Umkehrung der
-    /// Änderung und trifft dabei auf „Range invalid for string". Real
-    /// auslösbar, indem man in ein gerade geöffnetes Markdown-Dokument ein
-    /// Bild zieht, ohne vorher hineingeklickt zu haben (vom Dauertest
-    /// gefunden, 2026-08-08).
-    ///
-    /// Dieselbe Wurzel hat der `IndexSet`-Absturz aus den Fenstertests:
-    /// Auch dort war eine Auswahl mit `NSNotFound` die Ursache. Deshalb
-    /// gehen ALLE Lesezugriffe auf die Auswahl über diese eine Stelle.
+    /// `selectedRange()` kann `{NSNotFound, 0}` liefern. An `replaceCharacters`
+    /// weitergegeben führt dieser Wert zu einer ungültigen Undo-Range; auch ein
+    /// `IndexSet` darf daraus nicht gebildet werden. Lesezugriffe auf die Auswahl
+    /// verwenden deshalb diese geklemmte Range.
     var fastraSafeSelectedRange: NSRange {
         SelectionClamping.clamp(selectedRange(), textLength: textStorage.length)
     }
@@ -224,14 +212,14 @@ enum TextOpKind: Int, CaseIterable {
     // BBEdit „Hard Wrap": Zeilen auf eine feste Spaltenbreite umbrechen.
     case hardWrap
     // Unicode-Gruppe (BBEdit Kap. 5): Leerzeichen-Varianten vereinheitlichen,
-    // Diakritika strippen, NFC-/NFD-Normalisierung. Neue Fälle IMMER hinten
+    // Diakritika strippen, NFC-/NFD-Normalisierung. Neue Fälle immer hinten
     // anhängen — der Int-Rohwert wandert durch die Notification, Einschieben
     // würde bestehende Werte verschieben.
     case normalizeSpaces, stripDiacriticals, precomposeUnicode, decomposeUnicode
-    // 4D-Export-Transformation (Etappe 6 Wunschpaket 2026-07c):
-    // Token-Suffixe strippen bzw. Befehls-Token ergänzen.
+    // 4D-Export-Transformation: Token-Suffixe strippen bzw. Befehls-Token
+    // ergänzen.
     case fourDDetokenize, fourDTokenizeCommands
-    // Emoji-Präsentation (Daniel-Befund 2026-07-27): Variantenselektor
+    // Emoji-Präsentation: Variantenselektor
     // U+FE0F ergänzen bzw. entfernen. Wieder hinten angehängt.
     case addEmojiPresentation, removeEmojiPresentation
 
@@ -324,6 +312,7 @@ final class EditorContextMenu: NSObject {
         let formatID: DocumentFormatID
         private let tabID: UUID
         let documentID: UUID
+        let documentTitle: String
         private let contentRevision: UInt64
 
         init?(editor: TextView, workspace: Workspace, formatID: DocumentFormatID) {
@@ -338,13 +327,18 @@ final class EditorContextMenu: NSObject {
             self.formatID = formatID
             self.tabID = tab.id
             self.documentID = tab.documentID
+            self.documentTitle = tab.title
             self.contentRevision = tab.contentRevision
         }
 
+        func hasWindowContext(in workspace: Workspace) -> Bool {
+            guard self.workspace === workspace, let window else { return false }
+            return WorkspaceWindowRegistry.workspace(for: window) === workspace
+        }
+
         func hasDocumentContext(in workspace: Workspace) -> Bool {
-            guard self.workspace === workspace, let window, let editor else { return false }
+            guard hasWindowContext(in: workspace), let window, let editor else { return false }
             return editor.window === window
-                && WorkspaceWindowRegistry.workspace(for: window) === workspace
                 && workspace.activeTabID == tabID
                 && workspace.activeTab?.documentID == documentID
         }
@@ -494,7 +488,7 @@ final class EditorContextMenu: NSObject {
                                 keyEquivalent: "")
         format.target = self
         format.toolTip = L10n.string("Formatiert JSON oder XML. Eine Auswahl wird einzeln formatiert.")
-        // Der Menüaufbau kennt seinen Editor — die Endung deshalb aus DESSEN
+        // Der Menüaufbau kennt seinen Editor — die Endung deshalb aus dessen
         // Tab holen, nicht aus dem globalen `Workspace.shared`. Sonst richtet
         // sich das Kontextmenü eines Fensters nach dem Dokument eines anderen.
         let menuWorkspace = workspace(forEditor: textView)
@@ -549,9 +543,9 @@ final class EditorContextMenu: NSObject {
             textItem,
         ]
 
-        // Markdown-Submenü (Etappe 5 Wunschpaket 2026-07b) — nur sichtbar,
-        // wenn der aktive Tab ein Markdown-Dokument ist. (Der Monitor läuft
-        // auf dem Main-Thread; die Klasse ist nur nicht annotiert.)
+        // Markdown-Submenü — nur sichtbar, wenn der aktive Tab ein
+        // Markdown-Dokument ist. (Der Monitor läuft auf dem Main-Thread; die
+        // Klasse ist nur nicht annotiert.)
         if MainActor.assumeIsolated({
             MarkdownAssist.isMarkdownTabActive(in: CommandTargeting.workspace(for: textView))
         }) {
@@ -649,7 +643,7 @@ final class EditorContextMenu: NSObject {
             warnColumnSelectionUnsupported()
             return
         }
-        // Effektives Format aus dem Workspace GENAU DIESES Editors — nicht
+        // Effektives Format aus dem Workspace genau dieses Editors — nicht
         // aus `Workspace.shared`. So gewinnt auch eine manuelle JSON-Wahl bei
         // `.txt`, ohne dass Fenster A nach dem Format von Fenster B arbeitet.
         guard let workspace = workspace(forEditor: textView),
@@ -669,6 +663,7 @@ final class EditorContextMenu: NSObject {
         guard workspace.documentTransformationActivity == nil else { NSSound.beep(); return }
         let activity = DocumentTransformationActivity(documentID: lease.documentID,
             label: minifying ? L10n.string("Dokument wird minifiziert…") : L10n.string("Dokument wird formatiert…"))
+        workspace.documentTransformationNotice = nil
         workspace.documentTransformationActivity = activity
         EditorDocumentTransformationScheduler.run(
             operation: {
@@ -682,12 +677,16 @@ final class EditorContextMenu: NSObject {
                 }
             },
             completion: { [weak workspace] result in
-                defer {
-                    if workspace?.documentTransformationActivity?.id == activity.id {
-                        workspace?.documentTransformationActivity = nil
+                guard let workspace, workspace.documentTransformationActivity?.id == activity.id else { return }
+                defer { workspace.documentTransformationActivity = nil }
+                guard lease.hasDocumentContext(in: workspace) else {
+                    if lease.hasWindowContext(in: workspace) {
+                        workspace.documentTransformationNotice = minifying
+                            ? L10n.format("Minifizierung für „%@“ abgebrochen. Der ursprüngliche Editor ist nicht mehr aktiv.", lease.documentTitle)
+                            : L10n.format("Formatierung für „%@“ abgebrochen. Der ursprüngliche Editor ist nicht mehr aktiv.", lease.documentTitle)
                     }
+                    return
                 }
-                guard let workspace, lease.hasDocumentContext(in: workspace) else { return }
                 switch result {
                 case .success(let formatted):
                     guard let formatted else {
@@ -719,7 +718,7 @@ final class EditorContextMenu: NSObject {
         format(on: textView)
     }
 
-    /// „Text → Dokument minifizieren“ (Etappe 6): JSON kompakt (Schlüssel
+    /// „Text → Dokument minifizieren“: JSON kompakt (Schlüssel
     /// sortiert wie beim Formatieren), XML konservativ (nur Einrückungs-
     /// Whitespace zwischen Tags). Gleicher Apply-Pfad wie das Formatieren.
     func minifyActiveDocument() {
@@ -731,7 +730,7 @@ final class EditorContextMenu: NSObject {
         transformDocument(on: textView, minifying: true)
     }
 
-    /// „Text → Dokument prüfen“ (Etappe 6): validiert JSON/XML nativ und
+    /// „Text → Dokument prüfen“: validiert JSON/XML nativ und
     /// nennt bei Fehlern Zeile/Spalte; ein Klick springt zur Fehlerstelle.
     func lintActiveDocument() {
         guard let textView = activeEditorTextView() else { NSSound.beep(); return }
@@ -739,7 +738,7 @@ final class EditorContextMenu: NSObject {
     }
 
     private func lint(on textView: TextView) {
-        // Workspace GENAU DIESES Editors (siehe `format`).
+        // Workspace genau dieses Editors (siehe `format`).
         guard let workspace = workspace(forEditor: textView),
               let tab = workspace.activeTab,
               let mode = workspace.activeDocumentLintMode else {
@@ -824,8 +823,8 @@ final class EditorContextMenu: NSObject {
             alert.addButton(withTitle: L10n.string("OK"))
             alert.runModal()
         case .hintFree:
-            // 4D-Struktur-Hinweise (Etappe 5 Wunschpaket 2026-07c):
-            // ehrlich als Heuristik benannt — nie als „gültig" verkauft.
+            // 4D-Struktur-Hinweise: ehrlich als Heuristik benannt — nie als
+            // „gültig" verkauft.
             let alert = NSAlert()
             alert.alertStyle = .informational
             alert.messageText = L10n.string("Struktur-Hinweise")
@@ -880,7 +879,7 @@ final class EditorContextMenu: NSObject {
         validation.start(executable: finding.executableURL, workspaceRoot: workspaceRoot,
                          documentURL: documentURL, text: text) { [weak self, weak workspace] result in
             guard let self, self.tool4DValidation === validation else { return }
-            // Besitzreferenz IMMER lösen, sobald dieser Lauf fertig ist —
+            // Besitzreferenz immer lösen, sobald dieser Lauf fertig ist —
             // auch wenn Tab oder Workspace inzwischen gewechselt haben.
             // Sonst riefe der nächste Klick `cancel()` auf einem bereits
             // abgeschlossenen Lauf auf.
@@ -955,9 +954,9 @@ final class EditorContextMenu: NSObject {
         textView.window?.makeFirstResponder(textView)
     }
 
-    /// Wendet eine Text-Operation auf den AKTIVEN Editor an (Aufruf aus der
+    /// Wendet eine Text-Operation auf den aktiven Editor an (Aufruf aus der
     /// Menüleiste über `.fastraTextOp`). Sucht die Editor-TextView im
-    /// vorderen Hauptfenster (NICHT dem Such-Panel).
+    /// vorderen Hauptfenster (nicht dem Such-Panel).
     func applyToActiveEditor(_ kind: TextOpKind) {
         guard let textView = activeEditorTextView() else { NSSound.beep(); return }
         apply(kind, on: textView)
@@ -969,7 +968,7 @@ final class EditorContextMenu: NSObject {
     /// bleibt erhalten, das Ergebnis nutzt Tabs/Leerzeichen des wirksamen
     /// Profils. Rechteck- und Mehrfachauswahl sind bewusst ausgenommen —
     /// niemals nur den ersten Bereich ändern (sichtbare Erklärung statt
-    /// stiller Teilwirkung). Genau EINE Undo-Aktion.
+    /// stiller Teilwirkung). Genau eine Undo-Aktion.
     func pasteMatchingIndentationInActiveEditor() {
         MainActor.assumeIsolated {
             guard let target = CommandTargeting.target() else {
@@ -1013,7 +1012,7 @@ final class EditorContextMenu: NSObject {
                 location: context.replacementStart,
                 length: selection.location - context.replacementStart
                     + selection.length)
-            // Über denselben Undo-Pfad wie die Text-Operationen: EIN
+            // Über denselben Undo-Pfad wie die Text-Operationen: ein
             // widerrufbarer Edit durch CESEs Undo-Manager.
             textView.fastraApplyTextOperation(replacing: replaced, with: matched)
         }
@@ -1044,16 +1043,14 @@ final class EditorContextMenu: NSObject {
         }
     }
 
-    /// Menüleisten-/Toolbar-Pfad der Markdown-Formatbefehle (Etappe 5
-    /// Wunschpaket 2026-07b). Nur für Markdown-Tabs sinnvoll — die Menüs
-    /// sind sonst deaktiviert, defensiv wird trotzdem geprüft.
+    /// Menüleisten-/Toolbar-Pfad der Markdown-Formatbefehle. Nur für
+    /// Markdown-Tabs sinnvoll — die Menüs sind sonst deaktiviert, defensiv wird
+    /// trotzdem geprüft.
     func applyMarkdownFormatToActiveEditor(_ command: MarkdownFormatCommand) {
         MainActor.assumeIsolated {
-            // Workspace UND Editor in einem Zugriff aus demselben Fenster.
-            // Vorher stammte die Markdown-Prüfung aus `Workspace.shared` und
-            // der Editor aus einer eigenen Suche: Zeigte `shared` auf ein
-            // anderes Fenster, blieb ⌘B wirkungslos (nur ein Beep) — oder es
-            // wirkte im falschen Dokument (Fehlerbericht 2026-08-07).
+            // Workspace und Editor gemeinsam aus demselben Fenster bestimmen.
+            // Eine getrennte Abfrage über `Workspace.shared` könnte Markdown-Prüfung
+            // und Bearbeitung auf verschiedene Dokumente beziehen.
             if let workspace = CommandTargeting.targetWorkspace(),
                workspace.activeMarkdownIsVisual {
                 workspace.visualMarkdownEditor?.format(command)
@@ -1153,7 +1150,7 @@ final class EditorContextMenu: NSObject {
     }
 
     /// Wirksames Einrückungsprofil für Operationen auf dieser TextView —
-    /// aus dem Workspace ihres Fensters (Etappe 4). Ohne zuordenbares
+    /// aus dem Workspace ihres Fensters. Ohne zuordenbares
     /// Fenster gilt der Werkstandard. Alle Aufrufer arbeiten auf einer
     /// AppKit-View, also auf dem Main-Thread.
     private func indentationProfile(for textView: TextView) -> IndentationProfile {
@@ -1164,7 +1161,7 @@ final class EditorContextMenu: NSObject {
     }
 
     /// Mappt eine `TextOpKind` auf die zugehörige pure `TextOperations`-Funktion.
-    /// Einrückungs-Operationen erhalten das wirksame Profil (Etappe 4).
+    /// Einrückungs-Operationen erhalten das wirksame Profil.
     private func operation(for kind: TextOpKind,
                            profile: IndentationProfile = .factory)
         -> (String, NSRange) -> LineOperations.Result? {
@@ -1236,20 +1233,12 @@ final class EditorContextMenu: NSObject {
         return alert.runModal() == .alertFirstButtonReturn ? field.stringValue : nil
     }
 
-    /// Sucht die Editor-TextView im vorderen sichtbaren Hauptfenster (ohne das
-    /// Such-Panel). Für Menüleisten-Aktionen, die kein Rechtsklick-Ziel haben.
-    /// Editor des Fensters, das der Nutzer gerade bedient.
+    /// Editor des Fensters, das der Nutzer gerade bedient. Die Zielwahl für
+    /// Menüaktionen ohne Rechtsklick-Ziel übernimmt `CommandTargeting`.
     ///
-    /// Lief bis 2026-08-07 über `NSApp.windows` und nahm das erste sichtbare
-    /// Fenster mit Editor. Diese Menge ist NICHT nach Vordergrund sortiert:
-    /// Bei zwei offenen Dokumenten landete ⌘B im Hintergrundfenster, an der
-    /// Cursorposition, die es dort zufällig gab. Die Zielwahl liegt jetzt
-    /// vollständig in `CommandTargeting`.
-    ///
-    /// `assumeIsolated`: Diese Klasse ist nicht als `@MainActor` deklariert,
-    /// läuft aber ausschließlich dort — Menü-Aktionen und die
-    /// Notification-Beobachter des AppDelegate kommen alle auf dem
-    /// Main-Thread an. Dasselbe Muster wie an den übrigen Stellen der Datei.
+    /// `assumeIsolated`: Die Klasse ist nicht als `@MainActor` deklariert,
+    /// Menüaktionen und AppDelegate-Notifications laufen jedoch auf dem
+    /// Main-Thread.
     private func activeEditorTextView() -> TextView? {
         MainActor.assumeIsolated { CommandTargeting.targetEditorTextView() }
     }
@@ -1258,7 +1247,7 @@ final class EditorContextMenu: NSObject {
         MainActor.assumeIsolated { CommandTargeting.editorTextView(for: workspace) }
     }
 
-    /// Workspace, zu dem DIESER Editor gehört (siehe `activeEditorTextView`
+    /// Workspace, zu dem dieser Editor gehört (siehe `activeEditorTextView`
     /// zur Isolation). Wer Inhalt liest und Text schreibt, muss beides aus
     /// demselben Fenster nehmen.
     private func workspace(forEditor textView: TextView) -> Workspace? {
@@ -1283,8 +1272,8 @@ final class EditorContextMenu: NSObject {
     }
 
     /// Gemeinsamer Pfad beider Zeilen-Operationen: Text + Selektion aus
-    /// der TextView lesen, Operation rechnen, Ergebnis ÜBER DIE TEXTVIEW
-    /// zurückschreiben. Wichtig: NICHT über das SwiftUI-Binding — CESE
+    /// der TextView lesen, Operation rechnen, Ergebnis über die TextView
+    /// zurückschreiben. Wichtig: Nicht über das SwiftUI-Binding — CESE
     /// schiebt Binding-Änderungen nicht in die TextView zurück (bekannte
     /// Einschränkung, siehe Tab-Wechsel-Fix `.id(activeTab.id)`).
     /// `replaceCharacters` läuft durch CESEs Undo-Manager → CMD+Z geht.
@@ -1308,7 +1297,7 @@ final class EditorContextMenu: NSObject {
             NSSound.beep()
             return
         }
-        // LineOperations liefert den KOMPLETTEN neuen Text + den ersetzten
+        // LineOperations liefert den kompletten neuen Text + den ersetzten
         // Bereich (im alten Text). Für replaceCharacters brauchen wir nur
         // den neuen Block: Länge = neuer Gesamttext − (alter Gesamttext −
         // alter Block).

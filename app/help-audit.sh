@@ -1,20 +1,15 @@
 #!/bin/zsh
-# help-audit.sh — Pflege-Wächter der Fastra-Hilfe (Etappe 4 Wunschpaket
-# 2026-07b), commit-basiert nach dem Muster von localization-audit.sh:
-#
-# Die Markerdatei `app/help-reviewed-commit` hält den zuletzt HILFE-GEPRÜFTEN
-# Commit. Dieses Skript listet alle produktrelevanten Commits (Pfad
-# `app/Sources/`) seit dem Marker samt berührten Dateien. Die inhaltliche
-# Bewertung („gehört das in die Hilfe?") ist bewusst keine Skript-, sondern
-# LLM-/Menschen-Arbeit — siehe Regel in AGENTS.md.
-#
-# Verhalten:
-#   ./help-audit.sh            Normallauf: nur Hinweis, Exit 0.
-#   ./help-audit.sh --release  Release-/Bump-Modus: HARTER FEHLER (Exit 1),
-#                              wenn der Marker nicht fortgeschrieben wurde.
-#
-# Testbar: FASTRA_HELP_AUDIT_ROOT zeigt auf ein (Fixture-)Repo-Root mit
-# demselben Layout (app/Sources/, app/help-reviewed-commit).
+# help-audit.sh — Pflege-Wächter der Fastra-Hilfe, commit-basiert nach
+# dem Muster von localization-audit.sh: Die Markerdatei
+# `app/help-reviewed-commit` hält den zuletzt Hilfe-geprüften Commit. Dieses
+# Skript listet alle produktrelevanten Commits (Pfad `app/Sources/`) seit dem
+# Marker samt berührten Dateien. Die inhaltliche Bewertung („gehört das in die
+# Hilfe?") ist bewusst keine Skript-, sondern LLM-/Menschen-Arbeit — siehe Regel
+# in AGENTS.md. Verhalten: ./help-audit.sh            Normallauf: nur Hinweis,
+# Exit 0. ./help-audit.sh --release  Release-/Bump-Modus: harter Fehler (Exit
+# 1), wenn der Marker nicht fortgeschrieben wurde. Testbar:
+# FASTRA_HELP_AUDIT_ROOT zeigt auf ein (Fixture-)Repo-Root mit demselben Layout
+# (app/Sources/, app/help-reviewed-commit).
 set -euo pipefail
 
 release=0

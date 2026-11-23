@@ -1,8 +1,8 @@
 // LanguageChoiceStoreTests.swift
 //
-// Die manuelle Formatwahl aus der Fußzeile gehört zur DATEI und muss ein
+// Die manuelle Formatwahl aus der Fußzeile gehört zur Datei und muss ein
 // erneutes Öffnen überleben — besonders bei einer Datei ohne Endung, für die
-// die Automatik nichts erkennen kann (Daniel-Befund 2026-08-06).
+// die Automatik nichts erkennen kann.
 
 import Foundation
 import Testing
@@ -91,8 +91,8 @@ struct LanguageChoiceStoreTests {
     func twoLiveStoresDoNotOverwriteEachOther() {
         let fixture = LanguageChoiceFixture()
         defer { fixture.cleanUp() }
-        // Beide Stores entstehen VOR der ersten Wahl — genau der Zustand
-        // zweier gleichzeitig geöffneter Dokumentfenster (Review 2026-08-06).
+        // Beide Stores entstehen vor der ersten Wahl — genau der Zustand
+        // zweier gleichzeitig geöffneter Dokumentfenster.
         let windowA = fixture.makeStore()
         let windowB = fixture.makeStore()
         let markdown = LanguageMenuSupport.Entry.grammar(.markdown).id
@@ -144,8 +144,8 @@ struct LanguageChoiceStoreTests {
         let destination = directory.appendingPathComponent("neu", isDirectory: true)
         try FileManager.default.createDirectory(at: source,
                                                 withIntermediateDirectories: true)
-        // Die Datei liegt zwei Ebenen tief und ist NICHT geöffnet: Über einen
-        // Tab wäre hier nichts nachzubessern (Review 2026-08-06).
+        // Die Datei liegt zwei Ebenen tief und ist nicht geöffnet: Über einen
+        // Tab wäre hier nichts nachzubessern.
         let nestedDirectory = source.appendingPathComponent("tief", isDirectory: true)
         try FileManager.default.createDirectory(at: nestedDirectory,
                                                 withIntermediateDirectories: true)

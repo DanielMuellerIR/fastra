@@ -1,6 +1,6 @@
 // OpenFileOrFolderTests.swift
 //
-// ⌘O öffnet Datei ODER Ordner (Daniel-Wunsch 2026-07-12): die reine Routing-
+// ⌘O öffnet Datei oder Ordner: die reine Routing-
 // Entscheidung in Workspace.openFileOrFolder — Ordner → Projekt, Datei → Tab.
 
 import Foundation
@@ -37,8 +37,8 @@ func openFileOrFolder_fileOpensTab() async throws {
     #expect(await waitUntil { ws.tabs.contains { $0.url == file.canonicalFileURL && !$0.isLoading } })
     #expect(ws.tabs.contains { $0.url == file.canonicalFileURL })
 
-    // Nach dem asynchronen Laden öffnet der Einzeldatei-Pfad den
-    // unmittelbaren Elternordner als Projekt (Wunschpaket 2026-07, Etappe 1).
+    // Nach dem asynchronen Laden öffnet der Einzeldatei-Pfad den unmittelbaren
+    // Elternordner als Projekt.
     await waitUntil { ws.projectURL != nil }
     #expect(ws.projectURL == file.canonicalFileURL.deletingLastPathComponent())
 }
@@ -76,10 +76,8 @@ func openProject_prunesOnlyCleanOutsideFiles() throws {
 @Test("Projektwechsel behält Start-Tab und ungesicherte Tabs")
 @MainActor
 func openProject_keepsScratchAndUnsavedTabs() {
-    // Seit dem Platzhalter-Modell (2026-07-30) gibt es keinen Willkommen-Tab
-    // mehr, der beim Projektwechsel entfernt werden müsste: Der unberührte
-    // Start-Tab ist ein normaler leerer Tab und bleibt wie jeder unbenannte
-    // Notizzettel bestehen.
+    // Der unberührte Start-Tab ist ein normaler leerer Tab und bleibt beim
+    // Projektwechsel wie andere unbenannte Notizzettel bestehen.
     let root = URL(fileURLWithPath: "/tmp/projekt")
     let scratch = EditorTab(title: "Ohne Titel", path: "—")
     let draft = EditorTab(title: "Entwurf", path: "—",

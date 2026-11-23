@@ -978,7 +978,8 @@ struct HexEditLifecycleTests {
         workspace.folderResults = [
             FolderSearch.searchOneFile(at: file, options: options)
         ]
-        workspace.folderNeedsSearch = false
+        workspace.folderTotalMatches = workspace.folderResults.reduce(0) { $0 + $1.totalMatches }
+        publishPreparedSearchResults(workspace)
         workspace.fileTreeMutationWorkspaceProvider = { [workspace] }
 
         workspace.handleHexWrite(at: file)
@@ -1058,8 +1059,8 @@ struct HexEditLifecycleTests {
         workspace.folderResults = [
             FolderSearch.searchOneFile(at: file, options: options)
         ]
-        workspace.folderSearching = false
-        workspace.folderNeedsSearch = false
+        workspace.folderTotalMatches = workspace.folderResults.reduce(0) { $0 + $1.totalMatches }
+        publishPreparedSearchResults(workspace)
         workspace.folderApplyBackupRoot = directory.appendingPathComponent(
             "undo", isDirectory: true
         )

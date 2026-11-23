@@ -207,8 +207,8 @@ func projectOpenKeepsScratchAndPlaceholder() throws {
     #expect(workspace.projectURL == directory)
     #expect(workspace.tabs.count == 1)
     #expect(workspace.tabs[0].url == nil)
-    // Der Tab bleibt unberührt leer — und zeigt die Starthilfe auch neben
-    // der Projekt-Seitenleiste (bewusst ohne Projekt-Sperre, 2026-07-30).
+    // Der unberührte leere Tab zeigt auch neben der Projekt-Seitenleiste die
+    // Starthilfe; es gibt keine Projekt-Sperre.
     #expect(workspace.tabs[0].isPristineScratch)
     #expect(workspace.isWelcomeScreen)
 }

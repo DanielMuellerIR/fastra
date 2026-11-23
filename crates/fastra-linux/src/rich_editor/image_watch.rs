@@ -65,6 +65,27 @@ fn refresh(
     (loaded, current, true)
 }
 
+fn refresh_referenced(
+    cache: images::Cache,
+    before: Stamps,
+    source: &str,
+    path: Option<&std::path::Path>,
+    session: &str,
+    cancel: &crate::viewer::Cancellation,
+) -> (images::Cache, Stamps, bool, bool) {
+    let references = images::Sources::collect(source, path, session);
+    let (cache, stamps, changed) = refresh(cache, before, cancel);
+    // Undo-Versionen bleiben im Cache. Nur vollständig geprüfte Quellverweise
+    // erlauben es, Meldungen für nicht mehr verwendete Bilder auszublenden.
+    let warnings = cache.images.values().any(|image| {
+        image.version.is_empty()
+            && references
+                .as_ref()
+                .map_or(true, |references| references.0.contains_key(&image.source.raw))
+    });
+    (cache, stamps, changed, warnings)
+}
+
 fn install(editor: &Rc<RichEditor>) {
     let mapping: BTreeMap<_, _> = editor.images.borrow().images.iter().map(|(key, image)| {
         (key.clone(), json!({"raw":image.source.raw,"uri":format!("{}{key}?v={}",images::PREFIX,if image.version.is_empty(){"unavailable"}else{&image.version})}))
@@ -125,6 +146,13 @@ pub(super) fn start(editor: &Rc<RichEditor>) {
         busy.set(true);
         let old = previous.borrow().clone();
         let cancel = editor.image_cancel.clone();
+        let revision = editor.revision.get();
+        let input_revision = editor.input_revision.get();
+        let operation = editor.operation.get();
+        let path = editor.document.upgrade().and_then(|doc| doc.disk_path());
+        let source_path = path.clone();
+        let source = editor.expected.borrow().clone();
+        let session = editor.session.clone();
         let weak = Rc::downgrade(&editor);
         let busy = busy.clone();
         let previous = previous.clone();
@@ -135,7 +163,9 @@ pub(super) fn start(editor: &Rc<RichEditor>) {
             .map(|(key, image)| (key.clone(), image.version.clone()))
             .collect::<BTreeMap<_, _>>();
         crate::git_view::background(
-            move || Ok(refresh(cache, old, &cancel)),
+            move || {
+                Ok(refresh_referenced(cache, old, &source, source_path.as_deref(), &session, &cancel))
+            },
             move |result| {
                 busy.set(false);
                 let Some(editor) = weak
@@ -144,11 +174,15 @@ pub(super) fn start(editor: &Rc<RichEditor>) {
                 else {
                     return;
                 };
-                let Ok((cache, stamps, changed)) = result else {
+                let Ok((cache, stamps, changed, warnings)) = result else {
                     return;
                 };
                 if editor.busy.get()
                     || editor.clipboard_busy.get()
+                    || editor.revision.get() != revision
+                    || editor.input_revision.get() != input_revision
+                    || editor.operation.get() != operation
+                    || editor.document.upgrade().and_then(|doc| doc.disk_path()) != path
                     || editor
                         .images
                         .borrow()
@@ -162,22 +196,56 @@ pub(super) fn start(editor: &Rc<RichEditor>) {
                 }
                 *previous.borrow_mut() = stamps;
                 if changed {
-                    let warnings = !cache.warnings.is_empty();
                     *editor.images.borrow_mut() = cache;
                     install(&editor);
-                    let warning = editor.text("Ein lokales Bild fehlt oder konnte nicht sicher aktualisiert werden. Der Quellverweis bleibt erhalten.", "A local image is missing or could not be refreshed safely. Its source reference is retained.");
-                    if warnings {
-                        warned.set(true);
-                        editor.status.set_text(warning);
-                    } else if warned.replace(false) && editor.status.text() == warning {
-                        editor.status.set_text(editor.text(
-                            "Lokale Bilder aktualisiert. Text und Rücknahme bleiben erhalten.",
-                            "Local images refreshed. Text and Undo are retained.",
-                        ));
-                    }
+                }
+                let warning = editor.text("Ein lokales Bild fehlt oder konnte nicht sicher aktualisiert werden. Der Quellverweis bleibt erhalten.", "A local image is missing or could not be refreshed safely. Its source reference is retained.");
+                if warnings && (changed || !warned.get()) {
+                    warned.set(true);
+                    editor.status.set_text(warning);
+                } else if !warnings && warned.replace(false) && editor.status.text() == warning {
+                    editor.status.set_text(editor.text(
+                        "Lokale Bilder aktualisiert. Text und Rücknahme bleiben erhalten.",
+                        "Local images refreshed. Text and Undo are retained.",
+                    ));
                 }
             },
         );
         glib::ControlFlow::Continue
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn incomplete_reference_analysis_keeps_refresh_and_missing_image_warning() {
+        let root = std::env::var_os("FASTRA_IO_TEST_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let directory = tempfile::tempdir_in(root).unwrap();
+        let path = directory.path().join("document.md");
+        let known = "![Missing](missing.png)\n";
+        let cancel = crate::viewer::Cancellation::default();
+        let cache = images::Sources::collect(known, Some(&path), "watch")
+            .unwrap()
+            .load(&cancel);
+        let mut source = known.to_owned();
+        for index in 0..128 {
+            source.push_str(&format!("![Additional](additional-{index}.png)\n"));
+        }
+        assert!(images::Sources::collect(&source, Some(&path), "watch").is_err());
+        let (mut cache, stamps, changed, warning) = refresh_referenced(
+            cache, Stamps::default(), &source, Some(&path), "watch", &cancel,
+        );
+        assert!(changed && warning);
+        assert_eq!(cache.images.len(), 1);
+        assert!(cache.images.values().all(|image| image.version.is_empty()));
+        cache.warnings.clear();
+        let (_, _, changed, warning) = refresh_referenced(
+            cache, stamps, &source, Some(&path), "watch", &cancel,
+        );
+        assert!(!changed && warning);
+    }
 }

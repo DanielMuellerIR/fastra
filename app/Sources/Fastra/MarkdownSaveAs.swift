@@ -10,10 +10,43 @@ enum MarkdownSaveAs {
         let content: String
         let createdImages: [MarkdownImageStore.StoredImage]
         func commit() { MarkdownImageStore.releaseReservations(createdImages) }
-        func rollback() {
+        @discardableResult
+        func rollback(hooks: MarkdownImageRemoval.Hooks = .init()) -> MarkdownImageRemoval.Result? {
             defer { MarkdownImageStore.releaseReservations(createdImages) }
-            guard !createdImages.isEmpty else { return }
-            _ = MarkdownImageUndoFiles(images: createdImages).removePermanently()
+            guard !createdImages.isEmpty else { return nil }
+            let files = MarkdownImageUndoFiles(images: createdImages)
+            _ = files.removePermanently(hooks: hooks)
+            return files.lastRemovalResult
+        }
+
+        func rollback(after error: Error, hooks: MarkdownImageRemoval.Hooks = .init()) -> Error {
+            guard let result = rollback(hooks: hooks), !result.complete else { return error }
+            return PreparationFailure(underlying: error, cleanup: result)
+        }
+
+        /// Dateiarbeit läuft auf der I/O-Queue; perform stellt Warnung und
+        /// Abschluss wie seine anderen Aufrufer auf dem Main-Thread zu.
+        func rollbackReporting(warningHandler: @escaping (String, String) -> Void,
+                               hooks: MarkdownImageRemoval.Hooks = .init(),
+                               completion: @escaping () -> Void = {}) {
+            var result: MarkdownImageRemoval.Result?
+            MarkdownImageUndoSideEffect.perform({
+                result = rollback(hooks: hooks)
+                return result?.complete ?? true
+            }, completion: { _ in
+                if let result, !result.complete {
+                    warningHandler(L10n.string("Bilddateien konnten nicht vollständig entfernt werden"), result.localizedDescription)
+                }
+                completion()
+            })
+        }
+    }
+
+    struct PreparationFailure: LocalizedError {
+        let underlying: Error
+        let cleanup: MarkdownImageRemoval.Result
+        var errorDescription: String? {
+            underlying.localizedDescription + "\n\n" + cleanup.localizedDescription
         }
     }
     private struct Reference {
@@ -56,8 +89,7 @@ enum MarkdownSaveAs {
             }
             return Prepared(content: output as String, createdImages: created)
         } catch {
-            Prepared(content: content, createdImages: created).rollback()
-            throw error
+            throw Prepared(content: content, createdImages: created).rollback(after: error)
         }
     }
 

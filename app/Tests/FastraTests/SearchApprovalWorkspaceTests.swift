@@ -211,12 +211,11 @@ struct SearchApprovalWorkspaceTests {
     func unavailablePreview(_ kind: Int) async throws {
         try await previewFixture { workspace in
             if kind == 0 { workspace.openResultsWereCapped = true }
-            if kind == 1 { workspace.searchError = "failure" }
             if kind == 2 {
                 let id = try #require(workspace.navMatches.first?.id)
                 workspace.tabs[0].readOnlyReason = "protected"
                 #expect(!workspace.setSearchMatchesApproved(true, ids: [id], generation: workspace.searchApproval.generation))
-            } else { workspace.publishSearchApprovals() }
+            } else { publishPreparedSearchResults(workspace, error: kind == 1 ? "failure" : nil) }
             #expect(throws: (any Error).self) { try SearchApprovalPreview.Request.capture(in: workspace) }
         }
     }

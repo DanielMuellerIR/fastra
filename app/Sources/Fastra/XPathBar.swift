@@ -1,14 +1,13 @@
 // XPathBar.swift
 //
-// Schwebende XPath-Leiste (Etappe 5 Wunschpaket 2026-07): Spotlight-artiges
-// NSPanel über dem Editor für XML-artige Dokumente. Live-Springen beim
-// Tippen (erste Fundstelle), Enter/Pfeile für weitere Treffer,
-// Autovervollständigung der Kind-Element- und Attributnamen aus dem Index.
-//
-// Der Index (XPathSupport.swift) wird asynchron im Hintergrund gebaut und
-// bei Dokumentänderungen debounced erneuert; bei kaputtem XML bleibt der
-// letzte gültige Index gespeichert, wird wegen veralteter Quellbereiche aber
-// nicht mehr zum Springen benutzt. Der Fehler erscheint dezent in der Leiste.
+// Schwebende XPath-Leiste: Spotlight-artiges NSPanel über dem
+// Editor für XML-artige Dokumente. Live-Springen beim Tippen (erste
+// Fundstelle), Enter/Pfeile für weitere Treffer, Autovervollständigung der
+// Kind-Element- und Attributnamen aus dem Index. Der Index (XPathSupport.swift)
+// wird asynchron im Hintergrund gebaut und bei Dokumentänderungen debounced
+// erneuert; bei kaputtem XML bleibt der letzte gültige Index gespeichert, wird
+// wegen veralteter Quellbereiche aber nicht mehr zum Springen benutzt. Der
+// Fehler erscheint dezent in der Leiste.
 
 import SwiftUI
 import AppKit
@@ -321,7 +320,7 @@ final class XPathPanelController {
 
     /// Fenster-Identifier für Selbsttests und Debugging.
     static let panelIdentifier = NSUserInterfaceItemIdentifier("Fastra.XPathPanel")
-    /// Zuletzt gezeigter Controller — NUR für den `xpath`-Selbsttest, der
+    /// Zuletzt gezeigter Controller — nur für den `xpath`-Selbsttest, der
     /// das Modell des echten Panels steuern und beobachten muss.
     private(set) static weak var lastShown: XPathPanelController?
 

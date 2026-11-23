@@ -1,0 +1,1648 @@
+{
+  "schema": 1,
+  "tool_version": "0.65.1",
+  "configuration_sha256": "df82ff28ba60c0b9d0b021cf5171249897eb399303caa50cd0158df4aa3de7be",
+  "diagnostics": [
+    {
+      "file": "app/Sources/Fastra/GitDiff.swift",
+      "line": 680,
+      "character": 10,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "af6c677857b4cfa573a2f44211cef4c44259e3e6af200e32865b3d1bc72fa8eb"
+    },
+    {
+      "file": "app/Sources/FastraControlProtocol/ControlProtocol.swift",
+      "line": 156,
+      "character": 101,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a1e4ba501c97abdd2ca6943334cf59d1c1c621217dd4ad798eaf20adbea09ab6"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 20891,
+      "character": 108,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "507ad01407c8ac81569ea834eff932821ae6866b2248fd0a0df11c64a649792b"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 20997,
+      "character": 108,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "507ad01407c8ac81569ea834eff932821ae6866b2248fd0a0df11c64a649792b"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 3701,
+      "character": 111,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "900fe32606d43e30f7cbb60abf54761938ffd7d863201dec3a0fd93adba4c1db"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 3727,
+      "character": 111,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "900fe32606d43e30f7cbb60abf54761938ffd7d863201dec3a0fd93adba4c1db"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 3602,
+      "character": 114,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "c2586191ca9fe47739341dbd94a4f234a6802a701036daf4a9059ce5eb0a2501"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 3666,
+      "character": 122,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1d013790eee4928802e8129efca6582ad8292ea4a6ca0f33b18f87eef2800c86"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 16245,
+      "character": 134,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "ccfb99deb424f8ded9892023d79d71bec1cdd4bc6af863e58cc4d50d9531022e"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 23364,
+      "character": 142,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "0cb9d67826a1d3bee9678ce2ab124357c8a82e8625a410c47dd1f2ccfd5b9161"
+    },
+    {
+      "file": "app/Sources/Fastra/DocumentUndoHistory.swift",
+      "line": 26,
+      "character": 23,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "145ef943c5080bb8f5c95fa8d173af9c360c24a89f8100b929f25b1c151cbfab"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 1845,
+      "character": 24,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "c64add1d868563510d1253d985a77d3826256d2ece67bdfbd673bd17ec9dd1dd"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 3686,
+      "character": 243,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "68419b9fb16cd5efc97530c75f6e2d32100d070e45cea40e5af2d34f84ab6966"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownSaveAs.swift",
+      "line": 147,
+      "character": 26,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "15cf9456ddca445020480b56177acb7877eaee05b0b1a9336d74c15ad9ce337f"
+    },
+    {
+      "file": "app/Sources/Fastra/TextWorkflow.swift",
+      "line": 290,
+      "character": 27,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "e6fde5c44037fc155fae43d88e387a23778cc86be5fa3261e5f55dd733358787"
+    },
+    {
+      "file": "app/Sources/Fastra/FolderComparison.swift",
+      "line": 243,
+      "character": 28,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "e2a8d3f1da30c18f8029b3fb70e88ab5dee5c1ff5565bd4b3b828d4f93c238c9"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownVisualDocument.swift",
+      "line": 183,
+      "character": 28,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "455879d5e6af2b08933232b35a550687a424f609f4c0c90c14d40460f8b5165b"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 16251,
+      "character": 28,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "09ac4720d592a13035ee9ab80fc6bc9e96ac264d26c965ee01362dd1050e1e6e"
+    },
+    {
+      "file": "app/Sources/Fastra/DocumentUndoHistory.swift",
+      "line": 20,
+      "character": 29,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "099b96c4aabbe50dc6cf41385d23f15a0f4c5d70735ef2c0987cd843f96f430b"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownVisualDocument.swift",
+      "line": 177,
+      "character": 29,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "c8a1a72a0477d330df704c0dec772cab1197bec0c4f091b4a8654775a066e371"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownVisualDocument.swift",
+      "line": 48,
+      "character": 29,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "ef0b050e6a4caea824673f1f3416d5e0259e7530fdfc5edce944fdb18d8cb9ce"
+    },
+    {
+      "file": "app/Sources/Fastra/SearchPerformanceProbe.swift",
+      "line": 81,
+      "character": 29,
+      "rule": "force_cast",
+      "reason": "Force casts should be avoided",
+      "line_sha256": "1c7d3fdb25fd68d9a203b3c72d49c660e8f52e8113e12f309896cccb24c76806"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 16245,
+      "character": 30,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "ccfb99deb424f8ded9892023d79d71bec1cdd4bc6af863e58cc4d50d9531022e"
+    },
+    {
+      "file": "app/Sources/Fastra/FolderComparison.swift",
+      "line": 233,
+      "character": 31,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "e7a3d2b45ab527a6f55bb16e895b8f5df813de1c07ecf394a0f66e74b56b010a"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownClipboardImages.swift",
+      "line": 15,
+      "character": 31,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "2fdaf4f7de5efbf37ac1e09a8b54bdc0aa3abe8d368bb650625455674f03cba9"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 2440,
+      "character": 31,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "7df4aea1c6a4cf1f7d972cc520156d8901765c616082dbbe5e28fa8e1ff14856"
+    },
+    {
+      "file": "app/Sources/Fastra/FolderSearch.swift",
+      "line": 533,
+      "character": 33,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "622e64c73b99ec243ba9f28180378c3e461de8cd1f29790573fb16585c015311"
+    },
+    {
+      "file": "app/Sources/Fastra/HelpContent.swift",
+      "line": 59,
+      "character": 34,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "8e89118eacdcc1165797d62ee9d42db16319999e044b9d2482b9b5a1594f4abf"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownHTMLEntities.swift",
+      "line": 26,
+      "character": 34,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "d2e83e78b8ad7401ab0030b4d862b94b7151df1ec869f62b14547067c34e6d76"
+    },
+    {
+      "file": "app/Sources/Fastra/FourDDefinitions.swift",
+      "line": 16,
+      "character": 35,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "8f58174b637fb73527571a20b7d4e30a48466712b09fecdea9fa72e8dead6058"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 284,
+      "character": 36,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "df5fe37e25c803305d0641b292ce1036133741a1d2b50670264246744f10e87c"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 299,
+      "character": 36,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "fc4b82bbfe5acb644cc122a0111e3827cb2ff590df58b87ee71c0109856212b7"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 305,
+      "character": 36,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "44dfe20224e22c0c95658818436cd7ba9eb40f2f86b7d301f5256d7919278a40"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 612,
+      "character": 36,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "bc3d4e9bee5c570bcd8a528f2072909e333cd495721321b6140f2b9c7e92e6fc"
+    },
+    {
+      "file": "app/Sources/Fastra/CodeFoldingGUIProbe.swift",
+      "line": 31,
+      "character": 37,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "6c0b00d3cf759c5c4159026b2b04f3811b7e2a88ea76e9c76c817b4f36eef880"
+    },
+    {
+      "file": "app/Sources/Fastra/CodeFoldingGUIProbe.swift",
+      "line": 66,
+      "character": 37,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "71f0ebd27f6bfca4b98b3d7218a13977176e1c14a0b48ba6c63627477be45fe9"
+    },
+    {
+      "file": "app/Sources/Fastra/CodeFoldingGUIProbe.swift",
+      "line": 87,
+      "character": 37,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "c49704d59227d06881858a097929c0d2ab6833fa91b851f9991a83492b33b356"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownEditing.swift",
+      "line": 309,
+      "character": 37,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "f1972db2bbaa088581c9b3a9a7bba319b8e60d0034225c2ee10d278a5f38da56"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownReferences.swift",
+      "line": 176,
+      "character": 37,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "b31a267a639c01652cef7a0723c139bd91e004b037a6aa2b75dd8c3d33b69f47"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 244,
+      "character": 37,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "2f07d951031f84466658623ed0117c5da68cc6cabf9f8170c57de2d772a99b8f"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 245,
+      "character": 37,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "45cfcd6444b1dec28291d60a411ff17c9324575e42bda834d81df52ddd53f388"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 248,
+      "character": 37,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "115000304082a6a1c9c4c4fbac80be1d503d83eb696a697596086ab14bb89fa2"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 278,
+      "character": 37,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "d0f23b5b3bc656c781068ac1c7c05efa69eec62b24f864686e2f18fdfc295c41"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 281,
+      "character": 37,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "7dac8fbc19b4b4e07b6c274799fe52c309dc063e7d95619811d52d7a3dc0e73b"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 290,
+      "character": 37,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "f5aaaa86cff0297140b2c7d8b70d5353160d263b6a977d9b1a1b764d595459f8"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 302,
+      "character": 37,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "696d52308eca8c36b8edbf0e43cb42cb7372690efdd1aabf8c384249446257ac"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 306,
+      "character": 37,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "077f16f0c8ad155ed204ec0e670f53a513df0762283cfd06a53dbae78d9ed736"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 307,
+      "character": 37,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "3bbc659136d6a61afc4d98d9e41266ad63a32f3ee83a30f2be04e9ed08e3161d"
+    },
+    {
+      "file": "app/Sources/Fastra/FourDDefinitions.swift",
+      "line": 19,
+      "character": 38,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "96327a157490e92dcbc13af36a4eaac7adc30b4ead96786f277b3aa2f3fa3b94"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownEditing.swift",
+      "line": 308,
+      "character": 38,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "aee07f2b3d90835261d31e6a07fc1c9e037963f68b6d3d622b1d6b8809adc745"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 308,
+      "character": 38,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "71dbed09c58b95a80c1f775cc394c1898782a9f27b385013a350bbcb7b2489cf"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownSaveAs.swift",
+      "line": 185,
+      "character": 38,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "53ada14a2cb2d6f85dfe66baae83a9f9b8a6362371ceb4b6c93c4f889ce920bf"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownSourceMarkers.swift",
+      "line": 84,
+      "character": 38,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "bed15bc9d290d3cbf8ef3a47cc16a74b88e011e360aaae6a69fa992ed19768fb"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownEditing.swift",
+      "line": 306,
+      "character": 39,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "a2915747ce81804dfab034d13c61e527d02e58dbcef8b3e4aae7ebb53219e545"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 6882,
+      "character": 39,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "ef983c4c043b9ffac780ab69d770b06d3efac0455a28f6a2b16b361478b1b1c1"
+    },
+    {
+      "file": "app/Sources/Fastra/ControlSnapshotWindow.swift",
+      "line": 39,
+      "character": 40,
+      "rule": "force_cast",
+      "reason": "Force casts should be avoided",
+      "line_sha256": "5c909be9d6d3afa333e9a49969d76cd59fc6b65d9a599d38db0539de31f52025"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownEditing.swift",
+      "line": 305,
+      "character": 40,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "70e8833d30358a2561675253587801ff4822c0329392562fb32a65de7f37aef6"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownEditing.swift",
+      "line": 307,
+      "character": 40,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "348ef03d88b901705755c4c56f0fc7238ff20d44abcd59f3d850915a5c33478e"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownReferences.swift",
+      "line": 175,
+      "character": 40,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "90026420b4ca25a9e55b3476674518e95c2fefd47aeb4b26e8236a6a7416ae44"
+    },
+    {
+      "file": "app/Sources/Fastra/ControlTestHost.swift",
+      "line": 86,
+      "character": 41,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "f4b068ab0b5fd9a4e777945f0d19caaadfb34edba550cf631beebf8fe5ecf476"
+    },
+    {
+      "file": "app/Sources/Fastra/GitGraph.swift",
+      "line": 373,
+      "character": 41,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "ded4b6b4cfcfc9b69ec9ff605eb6315e56a9e4a269d7dd6dcd4820afa5d7f678"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownImageCleanup.swift",
+      "line": 16,
+      "character": 41,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "8492710cfe190a1de1ed9316197c100349bb1e8eee5cad0ba6863945ebce28e0"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownReferences.swift",
+      "line": 174,
+      "character": 41,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "2e81de2148d152243a3aa317a0b888568bf8f3b9a1616bbf42a491987e6745be"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22274,
+      "character": 41,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "b08b5e7fee8f9c590fdd1d351f70f95510aedf6a0b736046b3e8cbdfdff585cc"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 6893,
+      "character": 41,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "3d600fa4b9c1af7e8dc0bc776d8abc0b7ab8e3760b90e9974ef11ff378e2e6f7"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 23384,
+      "character": 42,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "ce26a16bd429c01750a2272ad6dcb8cfa4899399c3686284a9c05186b2cc71cb"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 6869,
+      "character": 42,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "23091bb215ad4658bf7cfa3e40d115deb846c51bf17ed68962e71458da51af1e"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTestMenuRootExchange.swift",
+      "line": 20,
+      "character": 42,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "6d89b7ec3ae82799bb3a3f757ff1306365b36bafa43879b197932b323bc30069"
+    },
+    {
+      "file": "app/Sources/Fastra/CodeExplanationPlayer.swift",
+      "line": 42,
+      "character": 43,
+      "rule": "force_cast",
+      "reason": "Force casts should be avoided",
+      "line_sha256": "86ba9a61ff377ba5aacf9672b4f762a80bfcbe09fbfdc7460364096b34b384d9"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownRendering.swift",
+      "line": 287,
+      "character": 43,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "c676c1eb652711cc988c9b1dfb0af28b5809fe83f6325a60aad29362e566f22e"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 5120,
+      "character": 43,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "5f68bec762566279d5cfcb3b5379af2338fc2dadb65b1885d2d1be30f44a75dd"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 7182,
+      "character": 43,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "3dccd86e6b121001490b4388ac115e3b635b30f1344bb07564717dcdb29a96da"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTestMenuRootExchange.swift",
+      "line": 17,
+      "character": 43,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "b599478cd703998d1d4723632f5a2cbd02f0390952db2c49ef705e2e474478ba"
+    },
+    {
+      "file": "app/Sources/FastraControlProtocol/ControlSourceProvenance.swift",
+      "line": 58,
+      "character": 43,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a471f69fef8b8ef55866cb1c8ae6915d01127af001846366ecac9933397da513"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownSourceMarkers.swift",
+      "line": 81,
+      "character": 44,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "341234fd443f2979d227eb5daa34466ff8c11d97cd1e20441b6ba3c88f98c880"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 11925,
+      "character": 44,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "f0cc84c706810048475adaf1de0bee2d5c2a7e05f6f89eb44a7f30766bde523e"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22210,
+      "character": 44,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "f4d3cc5480d5a9d3f1d044507e9c83f26e92091b5b30168b8fa7803d606ddb0f"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 7157,
+      "character": 44,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "74dd5ab3fdd44d61e15064dd56a832854d7954194bbc9b45f04d916c948a021b"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22574,
+      "character": 45,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "51ff380af529557ececb239bbe9704e09c5d43abc8662b2dc98f1f65fe84ed5b"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22811,
+      "character": 45,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "cf59c1cc5b47da7e8ab38fbcdeb2ad71afb29af324e3ddfe0f365aefbe5a7b33"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 23313,
+      "character": 45,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "f02b310e96ab70162eb1ce26bc2f7dc579d6a00136cd919d4757f8ee42ae73eb"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 23353,
+      "character": 45,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "505702a273bfca0b382781850d3290155ca32b99fad8f7b66a022f328b593e97"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 5121,
+      "character": 45,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "6a0997038db9d89f7dabb5b3288d1fcde13bc41b52f743eb6412f5a8d3bb0015"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 6896,
+      "character": 45,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "d4a8441df0124d16d1ec409f0aee33cf8ecd30e95851595be18e06e014fb5508"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 7209,
+      "character": 45,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "4e83bd8fc018d882ca07f0c9fe176a67bd0ec38c8af727ba09bf48e995daa1a2"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTestDiffExport.swift",
+      "line": 54,
+      "character": 45,
+      "rule": "force_cast",
+      "reason": "Force casts should be avoided",
+      "line_sha256": "36d4c79f01d23523d22316968705e9fcdb750a964550fee47bde6c310f7329bd"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 12413,
+      "character": 46,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "5b1b89722b78686ad4e9b3c30c1da66c35b2b70c370d90341f7ade844707514e"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 21864,
+      "character": 46,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "17c3be89f093d9a0a9488ecda442d34ac8a4f8839560ddecad2eb970790d2712"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22285,
+      "character": 46,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "5b1b89722b78686ad4e9b3c30c1da66c35b2b70c370d90341f7ade844707514e"
+    },
+    {
+      "file": "app/Sources/Fastra/TextOperations.swift",
+      "line": 524,
+      "character": 46,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "d6fce6ff31ea48cc9e010c8c3866cca26c9d91304f2cb6d22197f26f0670c03d"
+    },
+    {
+      "file": "app/Sources/Fastra/TextOperations.swift",
+      "line": 525,
+      "character": 46,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a84c32208b3d3a679e30c0940e33cb3f5b3053c31059eb8d139e894bb3fe65a0"
+    },
+    {
+      "file": "app/Sources/Fastra/Workspace.swift",
+      "line": 6656,
+      "character": 46,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "3fbb6fe9cc6b6904a14e1fc5891e19fb39340751376f6c1da6759ea258edb141"
+    },
+    {
+      "file": "app/Sources/Fastra/FastraApp.swift",
+      "line": 21,
+      "character": 47,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "52378cf33dd1d5d186d806c2aee3df6a4bd778af6c4f52f827d49fb7f53115d8"
+    },
+    {
+      "file": "app/Sources/Fastra/FileDiff.swift",
+      "line": 586,
+      "character": 47,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "d2cd0a251dd7f0f6f55b26526d1bfa9c43ffe52bb0eac70d120143ebf7642628"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22276,
+      "character": 47,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "0cb1f58de821779bda193f151b061320c62d869c739d50d551262d3072e192ec"
+    },
+    {
+      "file": "app/Sources/Fastra/FileDiff.swift",
+      "line": 584,
+      "character": 48,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a06c1cefed9475807ab9f4f382f03198670e6556d93b5fcdcebb30481c6134a9"
+    },
+    {
+      "file": "app/Sources/Fastra/ReadOnlySourceView.swift",
+      "line": 19,
+      "character": 48,
+      "rule": "force_cast",
+      "reason": "Force casts should be avoided",
+      "line_sha256": "cf795b8500d8c5bb3db66a50333fcc726a6ffa39f587ea9b5640446abcb8405d"
+    },
+    {
+      "file": "app/Sources/Fastra/RegexTokenizer.swift",
+      "line": 117,
+      "character": 48,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "061e0b8649e9e90cee52b01db3e8cbb6cc12fc3dd5bb59f3e79bb1cf732809af"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 12165,
+      "character": 48,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "481b638f18de44886add7546bb471a57597715ad117aacc4fe865b83115ea47a"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 13366,
+      "character": 48,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "39dbd4a043b8595e74d1dbf870e5a7bac140523b6be22ca0451a26147603a2ec"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 23023,
+      "character": 48,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "d306396f2a5148697cd35a1cb108558a4ea18520d246c3dd073e6dae8dae1f3e"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 23417,
+      "character": 48,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "d9b64f7cdc68ce566dc8316f73d7410d216b25eca37a02456c97d1a8a19badc5"
+    },
+    {
+      "file": "app/Sources/FastraControlProtocol/ControlSourceProvenance.swift",
+      "line": 59,
+      "character": 48,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "09cc3fb9c2f1ca3d98ad72285af9c03b43ccbb08f992b26a1ec49c8676fc907f"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 11886,
+      "character": 49,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "023622cfa8c327b8893105412dbce40f1610bae1325cfa6e70939e383bc64ed3"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 11938,
+      "character": 49,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "023622cfa8c327b8893105412dbce40f1610bae1325cfa6e70939e383bc64ed3"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 11968,
+      "character": 49,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "023622cfa8c327b8893105412dbce40f1610bae1325cfa6e70939e383bc64ed3"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTestMenuRootExchange.swift",
+      "line": 18,
+      "character": 49,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "bdb0a590b47a7f1d318512d9231875db823731f0025293a71e73b9d6b5693dc9"
+    },
+    {
+      "file": "app/Sources/Fastra/CodeFoldingGUIProbe.swift",
+      "line": 65,
+      "character": 50,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "c819f27954804ec02319c75d8abe82e5e139b1ea5f1a8de20c41400346a756a9"
+    },
+    {
+      "file": "app/Sources/Fastra/CodeFoldingGUIProbe.swift",
+      "line": 86,
+      "character": 50,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "c819f27954804ec02319c75d8abe82e5e139b1ea5f1a8de20c41400346a756a9"
+    },
+    {
+      "file": "app/Sources/Fastra/DocumentUndoHistory.swift",
+      "line": 17,
+      "character": 50,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "034b55b5b477945efcb2c3922166acf8cb5ad1798b832e9dbcd4174377695e27"
+    },
+    {
+      "file": "app/Sources/Fastra/RegexTokenizer.swift",
+      "line": 116,
+      "character": 50,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "9ed42732f5455a565840d6808e73f20a724ce17f9ed767a525f36976f566e3d5"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22050,
+      "character": 50,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1856b8aa572557b5cc55878fd2a17eeecae12c10af00af4de2b80913aa32bce5"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22389,
+      "character": 50,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1856b8aa572557b5cc55878fd2a17eeecae12c10af00af4de2b80913aa32bce5"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22963,
+      "character": 50,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1856b8aa572557b5cc55878fd2a17eeecae12c10af00af4de2b80913aa32bce5"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTestMenuRootExchange.swift",
+      "line": 19,
+      "character": 50,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "b761d19a5caf1510757177623e4a6070ec93a5edcab4d378cb26490661204b35"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTestMenuRootExchange.swift",
+      "line": 20,
+      "character": 50,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "6d89b7ec3ae82799bb3a3f757ff1306365b36bafa43879b197932b323bc30069"
+    },
+    {
+      "file": "app/Sources/Fastra/TextOperations.swift",
+      "line": 1083,
+      "character": 50,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "81a6d1986a77640db56e6ad877e831219ac2ec083cea3fcf8470a1b062dde65c"
+    },
+    {
+      "file": "app/Sources/Fastra/CodeExplanationPackage.swift",
+      "line": 120,
+      "character": 51,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "fef47d519f13f94e3d9d5d562e5ff96b57edb73aee651850dc01c8d62a66b6e0"
+    },
+    {
+      "file": "app/Sources/Fastra/FolderComparison.swift",
+      "line": 249,
+      "character": 51,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "fb602dfa20f25ee21efb7849b2a357e35c0fbe3ff848d36a4e3f56a522352bf6"
+    },
+    {
+      "file": "app/Sources/Fastra/FourDComponentIndex.swift",
+      "line": 217,
+      "character": 51,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "cb9dad365b7737eeedc3e88d13e4a01c41799bd23726175238944dc809a366d2"
+    },
+    {
+      "file": "app/Sources/Fastra/TextOperations.swift",
+      "line": 843,
+      "character": 51,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "881fbedd7bb9e16c1a141a4ccf8ba915c0eb335027e7ada880b661c0915a354d"
+    },
+    {
+      "file": "app/Sources/Fastra/FourDTokenTransform.swift",
+      "line": 218,
+      "character": 52,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "bfdcd62313f46d163234b7ceea2dd3bb735ad3a53d8d205c13e236a8edd1eddf"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 14433,
+      "character": 52,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "192e2d2464bf045825bfc65883e9d094b70aece7e77a767d19db9c8b7bcc9012"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 16268,
+      "character": 52,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "307daf03578fffe64e08475777b583b743f7624bcef0b52fa29a8f2fcd0e6afa"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTestMenuRootExchange.swift",
+      "line": 17,
+      "character": 52,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "b599478cd703998d1d4723632f5a2cbd02f0390952db2c49ef705e2e474478ba"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 11824,
+      "character": 53,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1165f027e2c3e9735eeaabad2ee906f34551bd670a9dc44a90e7cd7c1a6cd422"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22836,
+      "character": 53,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "b70d90f00a2c51bdc5bfbd67ae7cf4f6d933e7e5b0b50310d905adfe6554cf1f"
+    },
+    {
+      "file": "app/Sources/FastraControlProtocol/ControlSourceProvenance.swift",
+      "line": 80,
+      "character": 53,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "eb20c75d7fc51f40de1be782df11bc83fb7e5de85612444385ad6af829313e08"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 19260,
+      "character": 54,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "3981fb385f78bf1465e615187fc6d59aefcea66648b98fa936bf2d1142ee9f6d"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 21813,
+      "character": 54,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a3d8266fc5840845c52c6e7607d31ce83b8e8935ae45f83cf5ddfc2bd0646817"
+    },
+    {
+      "file": "app/Sources/Fastra/ApplyEngine.swift",
+      "line": 378,
+      "character": 55,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "334384f971039a5139b8619b9b63ee7dd670e588860230dac372d159e3875bb6"
+    },
+    {
+      "file": "app/Sources/Fastra/CodeFoldingGUIProbe.swift",
+      "line": 129,
+      "character": 55,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "e03a902dc5f89e91f139dc603d06cc7e3d5bd1edee5a3b810d11c049f54cca74"
+    },
+    {
+      "file": "app/Sources/Fastra/FolderComparison.swift",
+      "line": 243,
+      "character": 55,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "e2a8d3f1da30c18f8029b3fb70e88ab5dee5c1ff5565bd4b3b828d4f93c238c9"
+    },
+    {
+      "file": "app/Sources/Fastra/GitDualPaneDiffView.swift",
+      "line": 142,
+      "character": 55,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "cfe684163a37d9250a4bbf5e2276d87b472d0123bcb11c5e7d24f641be5277f6"
+    },
+    {
+      "file": "app/Sources/Fastra/SearchPerformanceProbe.swift",
+      "line": 81,
+      "character": 55,
+      "rule": "force_cast",
+      "reason": "Force casts should be avoided",
+      "line_sha256": "1c7d3fdb25fd68d9a203b3c72d49c660e8f52e8113e12f309896cccb24c76806"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 21823,
+      "character": 55,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "4942180a11009d6a4e2e0bd1d4101ffa138cbb7e02b674fe6c542a8a0c7e2ecb"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22050,
+      "character": 55,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1856b8aa572557b5cc55878fd2a17eeecae12c10af00af4de2b80913aa32bce5"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22389,
+      "character": 55,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1856b8aa572557b5cc55878fd2a17eeecae12c10af00af4de2b80913aa32bce5"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22963,
+      "character": 55,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1856b8aa572557b5cc55878fd2a17eeecae12c10af00af4de2b80913aa32bce5"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 3634,
+      "character": 55,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "562000993243c62e07c42aa02e3b6ae154fd83e2dfcdc5d40b3c2f326cebf7e9"
+    },
+    {
+      "file": "app/Sources/Fastra/GitDualPaneDiffView.swift",
+      "line": 140,
+      "character": 56,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "fcf1f347c59f4c1c7c8682f436ef234d8bd48812bf25a18c68b340361f417b1c"
+    },
+    {
+      "file": "app/Sources/Fastra/FourDTokenizer.swift",
+      "line": 356,
+      "character": 57,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "95fa749a5bd6f3eed0f523ef507fa171152194e86b0591042c86d12d9a239e11"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22072,
+      "character": 57,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a823d8092d102d3f008939f6578905ad772c70cfbbb57cfa16e30cc6c51de94f"
+    },
+    {
+      "file": "app/Sources/Fastra/JSONSchemaLite.swift",
+      "line": 210,
+      "character": 58,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "db89d8ed047840c646588943b59243231faa7da6c01d3632bf73be8f8275d888"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTestMenuRootExchange.swift",
+      "line": 18,
+      "character": 58,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "bdb0a590b47a7f1d318512d9231875db823731f0025293a71e73b9d6b5693dc9"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTestMenuRootExchange.swift",
+      "line": 19,
+      "character": 58,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "b761d19a5caf1510757177623e4a6070ec93a5edcab4d378cb26490661204b35"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 3704,
+      "character": 59,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "3afbeccbfd2ffe979e6bfec8fd6bddd6c0cdcaf40710d740e54611f351c2d61e"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 4901,
+      "character": 59,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1e47707982a4e915b55488695e8840a5c1b091b64740cbd45974723b1957f991"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownOutline.swift",
+      "line": 17,
+      "character": 60,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "5f6157beae672ac4a195c830926fe8a623a67938d4274d66eb6733f457045c5d"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownReferences.swift",
+      "line": 68,
+      "character": 60,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "5f6157beae672ac4a195c830926fe8a623a67938d4274d66eb6733f457045c5d"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 11988,
+      "character": 61,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "9022477eb1ef36bd34d3ea607f85f8df0ad7f2884b36a2b58d0689842b1297f5"
+    },
+    {
+      "file": "app/Sources/Fastra/GitRunner.swift",
+      "line": 314,
+      "character": 62,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1459453aaabd64b98c391035e5b9b2fedb4340c207c5d49f784393b3836ec4fb"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22072,
+      "character": 62,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a823d8092d102d3f008939f6578905ad772c70cfbbb57cfa16e30cc6c51de94f"
+    },
+    {
+      "file": "app/Sources/FastraControlProtocol/ControlProtocol.swift",
+      "line": 156,
+      "character": 63,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a1e4ba501c97abdd2ca6943334cf59d1c1c621217dd4ad798eaf20adbea09ab6"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 10017,
+      "character": 65,
+      "rule": "force_cast",
+      "reason": "Force casts should be avoided",
+      "line_sha256": "15647aeffe3cdf84b2bf4ee862b9fb1e6aaa3e45cb71f03d185e74f03cbd3d42"
+    },
+    {
+      "file": "app/Sources/Fastra/TextOperations.swift",
+      "line": 843,
+      "character": 65,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "881fbedd7bb9e16c1a141a4ccf8ba915c0eb335027e7ada880b661c0915a354d"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownImageUndoFiles.swift",
+      "line": 484,
+      "character": 66,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "e1a8d3642c8fa6b74586773e3b0a73b9b90cf185905cca287b58bddbb3f21fe2"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownSaveAs.swift",
+      "line": 121,
+      "character": 66,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "86756b508ca2834e2951963c393ac61104e6236de81b115e21ac686dc1882064"
+    },
+    {
+      "file": "app/Sources/Fastra/SavePanelFormat.swift",
+      "line": 54,
+      "character": 67,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "b82d64c2c8fb33405adeb014f65cf0eebc469ab7b9b9c97d1ea4d6b5ba88a071"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 3600,
+      "character": 67,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "f0fa30d77e6d8892b2d17644d2e1d987308e6c6e723dbd282cb494ad02dd5c6e"
+    },
+    {
+      "file": "app/Sources/Fastra/FileDiff.swift",
+      "line": 586,
+      "character": 69,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "d2cd0a251dd7f0f6f55b26526d1bfa9c43ffe52bb0eac70d120143ebf7642628"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 17082,
+      "character": 69,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a15b546143e1070e0b9b37177447d90be20aee70581558b53dda11f38729fc86"
+    },
+    {
+      "file": "app/Sources/Fastra/FileDiff.swift",
+      "line": 584,
+      "character": 71,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a06c1cefed9475807ab9f4f382f03198670e6556d93b5fcdcebb30481c6134a9"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 3393,
+      "character": 71,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "f1c059c63ea1ec5ac6a2d8262316c8f3992e04156215e01f7dd5ed43a13f7005"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 4845,
+      "character": 71,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "e09c8376a36f790b788202e6875d7e73cb6980b1cd0a4fa3e6bd9501e81d9106"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 12957,
+      "character": 73,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "edece5be48a81d3681a9daeb0acf3b8629f63f214a316cc4bf513bbabd5d9902"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 13363,
+      "character": 74,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1bc036e5b950124dab90ea3a71707ca375a1338c8969957ecd8014c10e13ca20"
+    },
+    {
+      "file": "app/Sources/Fastra/GitGraph.swift",
+      "line": 421,
+      "character": 75,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "2657dc8e649bdc649b0b0b5c1903b311d40c2cd1844783b6d95f96e5a8ddfa27"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 3455,
+      "character": 75,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "ed3d7e147ce71f34580762346fc838dd854a6a75be62438aaf9e6b19f9d0021c"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTestTextSnippets.swift",
+      "line": 439,
+      "character": 76,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "79ad59ee4bade7b3e3b9b080186e40bd2e35dd5fdd6e5fd292718fd658d4736c"
+    },
+    {
+      "file": "app/Sources/Fastra/ApplyEngine.swift",
+      "line": 917,
+      "character": 77,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "3276b2eb7164168fdc6e0cd8200dd43a462579eb1ef714b24f2e0acaa451adf4"
+    },
+    {
+      "file": "app/Sources/Fastra/GitDualPaneDiffView.swift",
+      "line": 142,
+      "character": 77,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "cfe684163a37d9250a4bbf5e2276d87b472d0123bcb11c5e7d24f641be5277f6"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 12958,
+      "character": 77,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "d9e382d3b64e48190a630906e8346591ae6d0c90449e37a3a0e82a1cf33c2304"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22469,
+      "character": 77,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "75440009e04f9f4ce94290c60fce5cfc4cffe33c4c6d946e344239c54475810e"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22973,
+      "character": 77,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "2615a1bc4c7a94a995b5f8688aeb430159b5baa4fc37de804a574e474ae53b2c"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 16991,
+      "character": 78,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "2d27084f09b39086cde06c5f998a799d0eb3c42f6ff0764ca79ac75f3a84a2fc"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 19950,
+      "character": 78,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "7f7d98a7d999599ba385986d5f73ddf4e12289d44fcd90a1e1e04e04421cf4d7"
+    },
+    {
+      "file": "app/Sources/Fastra/CodeExplanationPlayer.swift",
+      "line": 224,
+      "character": 79,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "fb2bb8bfeb4762e3dbfed87a11dc61c21a3700c347e26bbcaecb2000144baa92"
+    },
+    {
+      "file": "app/Sources/Fastra/GitDualPaneDiffView.swift",
+      "line": 140,
+      "character": 79,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "fcf1f347c59f4c1c7c8682f436ef234d8bd48812bf25a18c68b340361f417b1c"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 12298,
+      "character": 79,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "c56bb75ec955fd92d1b999aa0e1720cec8b41a91c087b12bb4c8ccc757ee8bd4"
+    },
+    {
+      "file": "app/Sources/Fastra/SearchUndoGUIProbe.swift",
+      "line": 44,
+      "character": 80,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "08f24921d3409e0a1de3dfc6777390a43657c7686cb12ed9ea2942ae03dcb88a"
+    },
+    {
+      "file": "app/Sources/Fastra/GitTextView.swift",
+      "line": 93,
+      "character": 82,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "7cce3e57d46a1093738103ab54b6a70be8310064a7461416203b78400d3a83c7"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 23336,
+      "character": 82,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "581de67e296e4748150f9624d6f835616f7aa566d00d916bf7d9f081c9ff22e7"
+    },
+    {
+      "file": "app/Sources/Fastra/AtomicCommitRecovery.swift",
+      "line": 528,
+      "character": 83,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "c2159de1150d3cc19c06b2da4fbe1f2fa66ac9accbbfa2a7df86d1bd5adfeb73"
+    },
+    {
+      "file": "app/Sources/FastraControlProtocol/ControlProtocol.swift",
+      "line": 156,
+      "character": 84,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a1e4ba501c97abdd2ca6943334cf59d1c1c621217dd4ad798eaf20adbea09ab6"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 7168,
+      "character": 85,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "34ef302f1bc1bcd1c985bb920f242d1063670873f988e53aac7f591da0f23640"
+    },
+    {
+      "file": "app/Sources/Fastra/CodeExplanationPlayer.swift",
+      "line": 177,
+      "character": 87,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "75f4d38126d021b820d9856508ec7b257e61ae7a38674bf2ee84e89925d6baa4"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 11925,
+      "character": 87,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "f0cc84c706810048475adaf1de0bee2d5c2a7e05f6f89eb44a7f30766bde523e"
+    },
+    {
+      "file": "app/Sources/Fastra/MarkdownImageUndo.swift",
+      "line": 182,
+      "character": 89,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "253f1f21731dfd083af53a74ffcb7dd0dd60f2556407292d3eab80cc32b536f7"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 12474,
+      "character": 89,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "4e55ee68186deb0ef15045920090ef94b2bf67fb817832086fd99057d110d6eb"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22323,
+      "character": 89,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "4e55ee68186deb0ef15045920090ef94b2bf67fb817832086fd99057d110d6eb"
+    },
+    {
+      "file": "app/Sources/Fastra/ApplyEngine.swift",
+      "line": 376,
+      "character": 9,
+      "rule": "force_try",
+      "reason": "Force tries should be avoided",
+      "line_sha256": "c992f5d0457d7d176876406a1e350a94939f34375a1ced3f4340e9cd534dc3f6"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22669,
+      "character": 91,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "9cc750124bf858073d952d57d83d58564ad3cb0edacac2c5f7f4dff48c4cb4b6"
+    },
+    {
+      "file": "app/Sources/Fastra/TextWorkflow.swift",
+      "line": 293,
+      "character": 91,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "ef6a30443645dcff1def691c5d130bf3504338d615eb9dd850cc295c355869a5"
+    },
+    {
+      "file": "app/Sources/Fastra/CodeExplanationPlayer.swift",
+      "line": 55,
+      "character": 92,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1391566f03f076640bbbd86c27c7180eac90def416679c0e3a7fb7210eac6e71"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 16239,
+      "character": 92,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "e48ced56caaa0c9e1aa01f9b78e682265d22ec8cdf1fbc38d048c9a8359d279f"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 22520,
+      "character": 92,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "96dfaf22d869eb19e3319cee9f2c3ae8963ab44363c918a616fc9382f16881cb"
+    },
+    {
+      "file": "app/Sources/Fastra/TextOperations.swift",
+      "line": 945,
+      "character": 92,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "23ce3caa89f60f782625a7a92f685ef5acc97980942c6e9089012ce764b03ab2"
+    },
+    {
+      "file": "app/Sources/Fastra/FolderComparison.swift",
+      "line": 249,
+      "character": 94,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "fb602dfa20f25ee21efb7849b2a357e35c0fbe3ff848d36a4e3f56a522352bf6"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 17114,
+      "character": 96,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "ead85c2339dfcf0313808f2219fd8f04be25e91ea131fa254ca25970d0d32acb"
+    },
+    {
+      "file": "app/Sources/Fastra/TextWorkflow.swift",
+      "line": 284,
+      "character": 96,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "0f8de6d32f8de20f4121fea9d16917b7985e5477c36289b8751d05fc21ed0465"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 12439,
+      "character": 97,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "fd50040a430826d61fa457053e832332ff28494932b785742eb13755d23257e2"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 3666,
+      "character": 97,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "1d013790eee4928802e8129efca6582ad8292ea4a6ca0f33b18f87eef2800c86"
+    },
+    {
+      "file": "app/Sources/Fastra/TextOperations.swift",
+      "line": 896,
+      "character": 97,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "a3f65d41e105ade2b452eb7b1c6f8f5964e875fe742580206d1c80a14f003893"
+    },
+    {
+      "file": "app/Sources/Fastra/SelfTest.swift",
+      "line": 4908,
+      "character": 98,
+      "rule": "force_unwrapping",
+      "reason": "Force unwrapping should be avoided",
+      "line_sha256": "6727bba942832e6e45b8348ba15469d02475da8e2ded4b98d753c15aa289c68e"
+    }
+  ],
+  "controlled_sources": {}
+}

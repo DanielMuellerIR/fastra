@@ -177,7 +177,7 @@ final class MarkdownImportService: ObservableObject {
             return
         }
 
-        // Das Zwischenverzeichnis liegt bewusst NEBEN der Quelle und nicht in
+        // Das Zwischenverzeichnis liegt bewusst neben der Quelle und nicht in
         // /tmp: Nur so ist das abschließende Umbenennen ein echtes Rename auf
         // demselben Volume. Aus /tmp wäre es ein Kopiervorgang, bei dem ein
         // Abbruch ein halbes Ergebnis neben der Quelle hinterlassen könnte.
@@ -222,10 +222,10 @@ final class MarkdownImportService: ObservableObject {
                 return
             }
 
-            // Bekanntermaßen unvollständige Ausgabe wird NICHT gelesen. Ein
+            // Bekanntermaßen unvollständige Ausgabe wird nicht gelesen. Ein
             // abgeschnittenes, aber zufällig noch lesbares JSON mit `ok: true`
             // wäre sonst als gültiges Ergebnis durchgegangen und hätte eine
-            // halbe Umwandlung neben die Quelle gelegt (Review 2026-08-02).
+            // halbe Umwandlung neben die Quelle gelegt.
             guard outcome.outputIsComplete else {
                 self.fail(L10n.string("Die Umwandlung hat eine unvollständige Antwort geliefert. Es wurde nichts übernommen."),
                           completion)
@@ -255,10 +255,10 @@ final class MarkdownImportService: ObservableObject {
                          sourceURL: URL, completion: ((URL?) -> Void)?) {
         let producesAssets = !produced.assets.isEmpty
 
-        // Der gemeldete Pfad wird gleich VERSCHOBEN. Er muss deshalb wirklich
+        // Der gemeldete Pfad wird gleich verschoben. Er muss deshalb wirklich
         // eine gewöhnliche Datei im eigenen Ausgabeordner sein — sonst würde
         // eine fehlerhafte Werkzeugantwort die Quelldatei oder irgendeine
-        // andere erreichbare Datei bewegen (Review 2026-08-02).
+        // andere erreichbare Datei bewegen.
         guard let relativeMarkdownPath = MarkdownImportOutputGuard.relativePublishablePath(
             produced.markdownFile, in: output
         ) else {
@@ -282,7 +282,7 @@ final class MarkdownImportService: ObservableObject {
             return
         }
 
-        // VOR dem Melden aufräumen: Sonst sähe ein Aufrufer, der sofort auf den
+        // Vor dem Melden aufräumen: Sonst sähe ein Aufrufer, der sofort auf den
         // Ordner schaut, noch das versteckte Zwischenverzeichnis. Der `defer`
         // des Aufrufers räumt danach nur noch ein bereits leeres Nichts weg.
         try? FileManager.default.removeItem(at: staging)
@@ -340,7 +340,7 @@ final class MarkdownImportService: ObservableObject {
 
 /// Ergebnis eines Werkzeugaufrufs, so wie dieser Dienst es braucht.
 ///
-/// `outputIsComplete == false` heißt: Die Standardausgabe ist BEKANNTERMASSEN
+/// `outputIsComplete == false` heißt: Die Standardausgabe ist bekanntermaßen
 /// unvollständig — entweder scheiterte das Einsammeln, oder die Ausgabegrenze
 /// des Runners griff. Sie darf dann nie dekodiert werden. Nur `stdout` zählt
 /// dafür; eine gekürzte Fehlerausgabe ist bloß ein kürzerer Erklärungstext.
@@ -371,10 +371,10 @@ extension MarkdownImportProcessOutcome {
                       outputIsComplete: !result.stdoutWasTruncated)
         case .captureFailed(let failure):
             // Das Einsammeln ist gescheitert — aber `GitCaptureFailure` trägt
-            // die Fehler von stdout und stderr GETRENNT. Scheiterte nur die
+            // die Fehler von stdout und stderr getrennt. Scheiterte nur die
             // Fehlerausgabe, ist die Standardausgabe trotzdem vollständig;
             // bisher wurde ein technisch gelungener Import deshalb grundlos
-            // abgelehnt (Review 2026-08-06). Maßgeblich ist allein stdout:
+            // abgelehnt. Maßgeblich ist allein stdout:
             // kein eigener Fehler und nicht an der Ausgabegrenze gekürzt.
             self.init(exitCode: failure.partialResult.exitCode,
                       stdout: failure.partialResult.stdoutData,

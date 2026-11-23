@@ -1,84 +1,31 @@
 #!/usr/bin/env bash
-# Fastra — langer, realistischer Dauertest
+# Fastra — Dauertest über längere Sitzungen und App-Neustarts.
 #
-# Bewusst NICHT Teil von `selftest.sh`: Der Lauf dauert je nach Rundenzahl
-# viele Minuten bis über eine halbe Stunde. Er wird von Hand gestartet, wenn
-# es sich lohnt — vor einem Release, nach größeren Umbauten am Fenster-,
-# Sitzungs- oder Editorverhalten, oder wenn aus dem Betrieb etwas gemeldet
-# wurde, das die kurzen Tests nicht finden.
+# Separat von `selftest.sh` manuell starten, etwa nach Änderungen an Fenster-,
+# Sitzungs- oder Editorverhalten. Mehrere große Dokumente bleiben in mehreren
+# Fenstern offen; wechselnde Aktionen prüfen nach jedem Schritt Invarianten.
 #
-# WOZU
-#
-# Am 2026-08-07 kamen vier Fehler aus dem Arbeitsbetrieb, die keiner der rund
-# achtzig Selbsttests gefunden hatte — zwei davon ließen sich in einer kurz
-# aufgebauten Testwelt nicht einmal nachstellen. Der Grund ist bauartbedingt:
-# Ein Selbsttest erzeugt eine frische Miniwelt, prüft eine Sache und räumt
-# ab. Fehler, die erst nach längerer Arbeit mit mehreren großen Dokumenten
-# entstehen, kommen darin gar nicht vor.
-#
-# Dieser Lauf arbeitet stattdessen wie ein Mensch: mehrere große Dokumente in
-# mehreren Fenstern, die offen bleiben, viele Aktionen in wechselnder
-# Reihenfolge — und nach JEDER Aktion die Prüfung aller Invarianten. Zwischen
-# den Phasen wird Fastra beendet und neu gestartet, weil zwei der gemeldeten
-# Fehler genau am Neustart hingen.
-#
-# AUFRUF
-#
-#   ./soak-test.sh                # Standard: 3 Phasen à 60 Aktionen
-#   ./soak-test.sh --rounds 200   # längerer Lauf (~30 min)
-#   ./soak-test.sh --rounds 10    # schnelle Rauchprobe des Testaufbaus selbst
+# Aufruf:
+#   ./soak-test.sh                  # 3 Phasen à 60 Aktionen
+#   ./soak-test.sh --rounds 200      # längerer Lauf (etwa 30 min)
+#   ./soak-test.sh --rounds 10       # Rauchprobe des Testaufbaus
 #   ./soak-test.sh --fixtures-only  # ohne echte Dokumente/Projekte
 #
-# ECHTE DOKUMENTE UND PROJEKTE (optional)
+# Optionale reale Quellen in der gitignorierten `soak-test.local` (Shell-Syntax):
+#   FASTRA_SOAK_RTFD="…/Testprotokoll.rtfd"
+#   FASTRA_SOAK_MD_DIR="…/Protokoll-Ordner"
+#   FASTRA_SOAK_4D_PROJECT="…/projektwurzel"
+# Der Runner kopiert die Quellen ins Arbeitsverzeichnis und folgt Symlinks,
+# damit auch verlinkte Methoden und Komponenten dort als echte Dateien liegen.
+# Originale werden nicht bearbeitet. Private Pfade, Inhalte und Namen dürfen
+# nicht ins Repo gelangen.
 #
-# Kurze Tests mit Miniaturdateien finden die Fehler nicht, die im Alltag
-# auftreten. Der Lauf kann deshalb mit echten Daten arbeiten, deren private
-# Pfade in der gitignorierten Datei `soak-test.local` stehen (Shell-Syntax):
-#
-#   FASTRA_SOAK_RTFD="…/Testprotokoll.rtfd"   # wird ins Arbeitsverzeichnis
-#   FASTRA_SOAK_MD_DIR="…/Protokoll-Ordner"   # KOPIERT (die Umwandlung
-#                                             # schreibt neben die Quelle!)
-#   FASTRA_SOAK_4D_PROJECT="…/projektwurzel"  # wird vollständig in das
-#                                             # Arbeitsverzeichnis KOPIERT
-#
-# Das 4D-Projekt wird niemals am Ort bearbeitet. Der Runner folgt beim Kopieren
-# symbolischen Links, sodass auch verlinkte Methoden und Komponenten als echte
-# Dateien INNERHALB der isolierten Kopie landen. Inhalte, Namen oder Auszüge aus
-# diesen Quellen dürfen nie ins Repo gelangen.
-#
-# EXIT-CODES (wie bei selftest.sh)
+# Exit-Codes:
 #   0 = keine Invarianten-Verstöße
-#   1 = mindestens ein Verstoß (Protokoll nennt Phase, Aktion und Invariante)
-#   2 = Umgebungsfehler (kein Bundle, kein Fensterfokus)
+#   1 = Verstoß; Protokoll nennt Phase, Aktion und Invariante
+#   2 = Umgebungsfehler, etwa fehlendes Bundle oder Fensterfokus
 
 set -u
-
-# Darf dieser Dauertest als Baseline in die Historie? Gegenstueck zu
-# `performance_run_is_qualified` in selftest.sh, aus demselben Grund eine
-# eigene Funktion: Die Zusage war ungeprueft.
-#   ROUNDS >= 60                                  — genug Arbeitsrunden?
-#   FINDINGS, ENVIRONMENT_PHASES, ACTIONS          — Lauf wirklich gruen?
-#   SOAK_HEAD_START/END, SOAK_BINARY_SHA_START/END — Stand unveraendert?
-#   SOAK_DIRTY_START/END                           — Arbeitsbaum sauber?
-#   FASTRA_PERFORMANCE_BASELINE_RUN                — ausdruecklich gewollt?
-# Die drei Ergebniszahlen stehen bewusst HIER und nicht nur in
-# `check_soak_result`: Bis zum Review 2026-09-17 haengte die Qualifikation
-# allein daran, dass `SOAK_PERFORMANCE_RECORD_PENDING` erst nach der Pruefung
-# gesetzt wird. Eine umgestellte Zeile haette einen roten Lauf zur Baseline
-# gemacht, ohne dass irgendetwas rot geworden waere — genau die Luecke, die
-# `performance_run_is_qualified` in selftest.sh mit seinen Zaehlern schliesst.
-soak_run_is_qualified() {
-  [ "${ROUNDS:-0}" -ge 60 ] || return 1
-  [ "${FINDINGS:-1}" -eq 0 ] || return 1
-  [ "${ENVIRONMENT_PHASES:-1}" -eq 0 ] || return 1
-  [ "${ACTIONS:-0}" -gt 0 ] || return 1
-  [ "${SOAK_HEAD_START:-x}" = "${SOAK_HEAD_END:-y}" ] || return 1
-  [ "${SOAK_BINARY_SHA_START:-x}" = "${SOAK_BINARY_SHA_END:-y}" ] || return 1
-  [ -n "${SOAK_DIRTY_START+gesetzt}" ] && [ -z "$SOAK_DIRTY_START" ] || return 1
-  [ -n "${SOAK_DIRTY_END+gesetzt}" ] && [ -z "$SOAK_DIRTY_END" ] || return 1
-  [ "${FASTRA_PERFORMANCE_BASELINE_RUN:-0}" = "1" ] || return 1
-  return 0
-}
 
 umask 077
 
@@ -88,12 +35,20 @@ cd "$(dirname "$0")"
 # Fokus- und Prozess-Eingriff auch über mehrere Worktrees hinweg.
 # shellcheck source=tools/gui-test-lock.sh
 . ./tools/gui-test-lock.sh
+# Die Herkunft vor dem Sandbox-Helper merken; dieser setzt sonst /tmp ein.
+SOAK_RUNS_INSIDE_TEST_FIXTURE=0
+SOAK_FIXTURE_PARENT="${FASTRA_TEST_SANDBOX_PARENT:-}"
+[ -z "${FASTRA_TEST_SANDBOX_PARENT+x}" ] || SOAK_RUNS_INSIDE_TEST_FIXTURE=1
 # shellcheck source=tools/test-sandbox.sh
 . ./tools/test-sandbox.sh
 # shellcheck source=tools/test-process-tree.sh
 . ./tools/test-process-tree.sh
 # shellcheck source=tools/soak-process-state.sh
 . ./tools/soak-process-state.sh
+# shellcheck source=tools/performance-qualification.sh
+. ./tools/performance-qualification.sh || exit 2
+# shellcheck source=tools/test-evidence-retention.sh
+. ./tools/test-evidence-retention.sh || exit 2
 
 ROUNDS=60
 FIXTURES_ONLY=0
@@ -177,10 +132,66 @@ SOAK_SAVED_STATE_BACKUP=""
 SOAK_SAVED_STATE_EXISTED=0
 SOAK_SAVED_STATE_SNAPSHOT_READY=0
 
+# Nur vollständig gebundene Fixtures dürfen den Produktzustand umleiten.
+# Die private Elternwurzel trägt zugleich Sandbox, Saved State und Belege.
+configure_product_state_overrides() {
+  local domain="${FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN:-}"
+  local saved_state="${FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR:-}"
+  if [ "$SOAK_RUNS_INSIDE_TEST_FIXTURE" -eq 0 ]; then
+    if [ -n "${FASTRA_SELFTEST_PRODUCT_DEFAULTS_DOMAIN+x}${FASTRA_SELFTEST_PRODUCT_SAVED_STATE_DIR+x}" ]; then
+      echo "SOAK: Testfixture braucht einen expliziten privaten Sandbox-Elternordner." >&2
+      return 2
+    fi
+    return 0
+  fi
+  if [ -z "$domain" ] || [ -z "$saved_state" ]; then
+    echo "SOAK: Testfixture ohne Umlenkung der echten Einstellungen; beide State-Overrides müssen gesetzt sein." >&2
+    return 2
+  fi
+  case "$SOAK_FIXTURE_PARENT" in /*) ;; *)
+    echo "SOAK: Unsicherer Fixture-Elternordner; absoluter privater Ordner nötig." >&2
+    return 2 ;;
+  esac
+  if [ ! -d "$SOAK_FIXTURE_PARENT" ] || [ -L "$SOAK_FIXTURE_PARENT" ] \
+     || [ "$(stat -f '%u' "$SOAK_FIXTURE_PARENT" 2>/dev/null || true)" != "$UID" ] \
+     || [ "$(cd "$SOAK_FIXTURE_PARENT" 2>/dev/null && pwd -P)" != "$SOAK_FIXTURE_PARENT" ]; then
+    echo "SOAK: Unsicherer Fixture-Elternordner; eigener echter kanonischer Ordner nötig." >&2
+    return 2
+  fi
+  if ! fastra_test_defaults_domain_is_safe "$domain"; then
+    echo "SOAK: Unsichere Einstellungs-Domain für die Umlenkung (Testpräfix und UUID nötig)." >&2
+    return 2
+  fi
+  case "$saved_state" in /*) ;; *)
+    echo "SOAK: Unsicherer Saved-State-Ordner; absoluter Pfad nötig." >&2
+    return 2 ;;
+  esac
+  local saved_name="${saved_state##*/}"
+  if [ -z "$saved_name" ] || [ "$saved_name" = . ] || [ "$saved_name" = .. ] \
+     || [ "$saved_state" != "$SOAK_FIXTURE_PARENT/$saved_name" ]; then
+    echo "SOAK: Unsicherer Saved-State-Ordner; direkt unter dem Fixture-Elternordner nötig." >&2
+    return 2
+  fi
+  # Diese Namen bearbeitet das bestehende Pruning schon vor dem Snapshot.
+  case "$saved_name" in fastra-soak-run.*|fastra-soak-befunde-*)
+    echo "SOAK: Unsicherer Saved-State-Ordner; Name ist für Sandbox oder Belege reserviert." >&2
+    return 2 ;;
+  esac
+  if { [ -e "$saved_state" ] || [ -L "$saved_state" ]; } \
+     && { [ ! -d "$saved_state" ] || [ -L "$saved_state" ] \
+          || [ "$(stat -f '%u' "$saved_state" 2>/dev/null || true)" != "$UID" ]; }; then
+    echo "SOAK: Unsicherer Saved-State-Ordner; eigener echter Ordner nötig." >&2
+    return 2
+  fi
+  SOAK_PRODUCT_DEFAULTS_DOMAIN="$domain"
+  SOAK_SAVED_STATE_PARENT="$SOAK_FIXTURE_PARENT"
+  SOAK_SAVED_STATE_DIR="$saved_state"
+}
+
 foreign_fastra_process_is_running() {
   # Vor Snapshot und Restore darf überhaupt keine Fastra-Instanz laufen.
   # Ein gleicher Binary-Pfad beweist kein Eigentum dieses Runners.
-  pgrep -f '/Fastra\.app/Contents/MacOS/Fastra([[:space:]]|$)' \
+  pgrep -f '/[^/]+\.app/Contents/MacOS/Fastra([[:space:]]|$)' \
     >/dev/null 2>&1
 }
 
@@ -211,13 +222,9 @@ restore_product_defaults() {
   if [ "$SOAK_PRODUCT_DEFAULTS_EXISTED" -eq 1 ]; then
     /usr/bin/defaults import "$SOAK_PRODUCT_DEFAULTS_DOMAIN" \
       "$SOAK_PRODUCT_DEFAULTS_BACKUP" >/dev/null 2>&1 || return 2
-    # `defaults import` FÜHRT ZUSAMMEN: Ein Schlüssel, den der Lauf neu
-    # angelegt hat (etwa der Fensterrahmen des Einstellungsfensters aus
-    # `dialoglayout`), bliebe sonst in den echten Einstellungen stehen, und die
-    # Nachprüfung meldete Aufräumfehler (belegt 2026-09-17). Deshalb danach
-    # genau diese Schlüssel einzeln löschen. Bewusst NICHT die ganze Domain vor
-    # dem Import leeren: Ein Abbruch zwischen Leeren und Import hinterließe
-    # leere Einstellungen (Review-Fund 2026-09-17).
+    # `defaults import` führt zusammen. Nur im Lauf neu entstandene Schlüssel
+    # nach dem Import löschen. Nicht zuerst die gesamte Domain leeren, weil ein
+    # Abbruch vor dem Import leere Einstellungen hinterließe.
     local added_key
     while IFS= read -r -d '' added_key; do
       /usr/bin/defaults delete "$SOAK_PRODUCT_DEFAULTS_DOMAIN" "$added_key" >/dev/null 2>&1 || return 2
@@ -283,48 +290,11 @@ restore_product_saved_state() {
   fi
 }
 
-# Diagnosebeweise sind nützlich, aber nicht unbegrenzt. Sie enthalten nur
-# Logs und gegebenenfalls die itemgetreue Zwischenablage-Sicherung, niemals
-# kopierte reale Dokumente. Die fünf jüngsten Läufe bleiben für die Auswertung.
-prune_soak_evidence() {
-  local parents=(/tmp)
-  local inherited_tmp="${TMPDIR:-}"
-  inherited_tmp="${inherited_tmp%/}"
-  if [ -n "$inherited_tmp" ] && [ "$inherited_tmp" != "/tmp" ]; then
-    parents+=("$inherited_tmp")
-  fi
-  local stale owner parent allowed
-  # Die ersten Versionen des Runners legten Belege mit der normalen umask an.
-  # Bevor bis zu fünf davon aufbewahrt werden, werden nur eigentümereigene,
-  # echte Verzeichnisse auf private Rechte gehärtet.
-  while IFS= read -r stale; do
-    [ -d "$stale" ] && [ ! -L "$stale" ] || continue
-    owner=$(stat -f '%u' "$stale" 2>/dev/null || true)
-    [ "$owner" = "$UID" ] || continue
-    chmod 700 "$stale" 2>/dev/null || true
-    find "$stale" -type d -exec chmod 700 {} + 2>/dev/null || true
-    find "$stale" -type f -exec chmod 600 {} + 2>/dev/null || true
-  done < <(find "${parents[@]}" -maxdepth 1 -type d \
-      -name 'fastra-soak-befunde-*' -print 2>/dev/null)
-  while IFS= read -r stale; do
-    [ -d "$stale" ] && [ ! -L "$stale" ] || continue
-    owner=$(stat -f '%u' "$stale" 2>/dev/null || true)
-    [ "$owner" = "$UID" ] || continue
-    allowed=0
-    for parent in "${parents[@]}"; do
-      case "$stale" in "$parent"/fastra-soak-befunde-*) allowed=1 ;; esac
-    done
-    [ "$allowed" -eq 1 ] && rm -rf -- "$stale"
-  done < <(
-    find "${parents[@]}" -maxdepth 1 -type d -name 'fastra-soak-befunde-*' \
-      -exec stat -f '%m %N' {} + 2>/dev/null \
-      | sort -rn | sed -n '6,$s/^[0-9][0-9]* //p'
-  )
-}
 early_cleanup() {
   local original_status=$?
+  trap ':' INT TERM
   local failed=0
-  trap - EXIT INT TERM
+  trap - EXIT
   if [[ "${FASTRA_TEST_PENDING_PID:-}" =~ ^[0-9]+$ ]]; then
     cleanup_soak_process "$FASTRA_TEST_PENDING_PID" || failed=1
   fi
@@ -343,13 +313,16 @@ early_cleanup() {
   exit "$original_status"
 }
 
-prune_soak_evidence
+configure_product_state_overrides || exit 2
+prune_soak_evidence /tmp
 
 create_fastra_test_sandbox soak-run || exit 2
 # Unmittelbar nach dem erfolgreichen mktemp gehört die Sandbox dem Trap. So
 # kann auch ein Signal zwischen Einrichtung und GUI-Sperre nichts hinterlassen.
 trap early_cleanup EXIT
-# Sperre VOR jedem Snapshot des echten Nutzerzustands. Ein abgewiesener
+trap 'exit 130' INT
+trap 'exit 143' TERM
+# Sperre vor jedem Snapshot des echten Nutzerzustands. Ein abgewiesener
 # Parallelrunner darf weder Einstellungen anfassen noch für sein Cleanup einen
 # eigenen Fastra-Hilfsprozess starten.
 acquire_fastra_gui_test_lock || exit 2
@@ -373,6 +346,9 @@ SOAK_APP_STARTED=0
 
 cleanup() {
   local original_status=$?
+  # Ein weiteres Signal darf die Wiederherstellung nicht unterbrechen. Ein
+  # gefangener Trap lässt Kindprozesse weiterhin auf ihr eigenes TERM reagieren.
+  trap ':' INT TERM
   local cleanup_failed=0
   local process_cleanup_failed=0
   local evidence_saved=1
@@ -399,13 +375,13 @@ cleanup() {
       cleanup_soak_process "$cleanup_pid" || cleanup_failed=1
     done
   fi
-  # Erst die Nachräumchance, DANN die Wiederherstellungen. Vorher standen
+  # Erst die Nachräumchance, dann die Wiederherstellungen. Vorher standen
   # `fastra_test_discard_pending_session` und `restore_soak_pasteboard` davor:
   # Scheiterte der erste `cleanup_soak_process` nur vorübergehend, setzte das
   # `SOAK_PROCESS_CLEANUP_BLOCKED`, beide Blöcke fielen aus — und
   # `retry_soak_cleanup_failures` räumte die Sperre gleich danach wieder ab.
   # Die Zwischenablage des Nutzers blieb dann mit Testinhalt überschrieben,
-  # während die Sicherung mit der Sandbox gelöscht wurde. Die Blöcke DAHINTER
+  # während die Sicherung mit der Sandbox gelöscht wurde. Die Blöcke dahinter
   # bekamen ihre zweite Chance seit jeher (Kommentar unten).
   if [ "${#SOAK_REMAINING_PIDS[@]}" -gt 0 ]; then
     retry_soak_cleanup_failures || cleanup_failed=1
@@ -462,13 +438,16 @@ cleanup() {
     recovery_backup_needed=1
   fi
   release_fastra_gui_test_lock || cleanup_failed=1
-  # Bei Befunden oder einem Absturz die BEWEISE erhalten: Protokoll und
+  # Bei Befunden oder einem Absturz die Beweise erhalten: Protokoll und
   # Phasenausgaben (mit Exception-Text und Stacktrace) überleben das
   # Aufräumen. Nur die Logs — die kopierten echten Dokumente nicht.
   if [ "${KEEP_EVIDENCE:-0}" -eq 1 ] || [ "$cleanup_failed" -eq 1 ] \
      || [ "$original_status" -ne 0 ]; then
-    local evidence
-    evidence=$(mktemp -d "/tmp/fastra-soak-befunde-$(date +%Y%m%d-%H%M%S).XXXXXX") \
+    local evidence evidence_parent=/tmp
+    if [ "${SOAK_RUNS_INSIDE_TEST_FIXTURE:-0}" -eq 1 ]; then
+      evidence_parent="$SOAK_FIXTURE_PARENT"
+    fi
+    evidence=$(mktemp -d "$evidence_parent/fastra-soak-befunde-$(date +%Y%m%d-%H%M%S).XXXXXX") \
       || evidence_saved=0
     if [ "$evidence_saved" -eq 1 ]; then
       cp -- "$LOG" "$evidence/befunde.log" || evidence_saved=0
@@ -482,7 +461,7 @@ cleanup() {
       done
       # Nutzer-Preferences sind keine gewöhnliche Diagnose. Nur wenn ihre
       # Wiederherstellung selbst scheiterte, dient die private Kopie als
-      # Recovery-Backup und darf den Runner überleben.
+      # Recovery-Backup und darf den Runner und die Belegrotation überleben.
       if [ "$recovery_backup_needed" -eq 1 ] \
          && [ -f "$SOAK_PRODUCT_DEFAULTS_BACKUP" ]; then
         cp -- "$SOAK_PRODUCT_DEFAULTS_BACKUP" "$evidence/" || evidence_saved=0
@@ -490,7 +469,7 @@ cleanup() {
     fi
     if [ "$evidence_saved" -eq 1 ]; then
       echo "   Beweise gesichert: $evidence" >&2
-      prune_soak_evidence
+      prune_soak_evidence /tmp
     else
       [ -z "${evidence:-}" ] || rm -rf -- "$evidence"
       # Für eine manuelle Clipboard-Rettung bleibt die Sandbox privat liegen;
@@ -508,7 +487,7 @@ cleanup() {
     echo "   Private Sandbox mit Einstellungs-/Fenster-Sicherung bleibt erhalten:" >&2
     echo "     $WORK_ROOT" >&2
   fi
-  # Erst NACH Wiederherstellung von Prozessen, Defaults, Saved State,
+  # Erst nach Wiederherstellung von Prozessen, Defaults, Saved State,
   # Zwischenablage, GUI-Sperre und Sandbox darf der Lauf in die lokale
   # Performance-Historie eingehen.
   if [ "${SOAK_PERFORMANCE_RECORD_PENDING:-0}" -eq 1 ] \
@@ -548,7 +527,7 @@ cleanup() {
   exit "$original_status"
 }
 
-# Echte Dokumente KOPIEREN: Tippen, Sichern und die RTFD-Umwandlung (deren
+# Echte Dokumente kopieren: Tippen, Sichern und die RTFD-Umwandlung (deren
 # Ergebnis neben der Quelle landet) dürfen die Originale nie berühren.
 REAL_DIR="$WORK_DIR/real"
 SOAK_RTFD_COPIED=0
@@ -574,7 +553,7 @@ if [ -n "${FASTRA_SOAK_MD_DIR:-}" ] && [ -d "$FASTRA_SOAK_MD_DIR" ]; then
   fi
 fi
 
-# Das reale 4D-Projekt wird wie die übrigen echten Eingaben KOPIERT. Direkte
+# Das reale 4D-Projekt wird wie die übrigen echten Eingaben kopiert. Direkte
 # Bearbeitung plus spätes `git checkout --` kann fremde Änderungen nicht
 # atomar von Teständerungen trennen; selbst Hash-Prüfungen lassen zwischen
 # Prüfung und Rücksetzen ein Datenverlustfenster. Die Kopie beseitigt diese
@@ -608,7 +587,7 @@ if [ -n "${FASTRA_SOAK_4D_PROJECT:-}" ] && [ -d "$FASTRA_SOAK_4D_PROJECT" ]; the
 fi
 
 if [ -n "$SOAK_4D" ]; then
-# Die größte echte Methode IN DER KOPIE wählen. `lstat` weist verbleibende
+# Die größte echte Methode in der Kopie wählen. `lstat` weist verbleibende
 # Links ab; der kanonische Präfixvergleich verhindert jeden Ausbruch aus der
 # isolierten Wurzel.
   SOAK_4D_METHOD=$(python3 - "$SOAK_4D" <<'PYEOF'
@@ -650,7 +629,7 @@ echo
 # Stellt eine von der App persistierte, itemgetreue Zwischenablage-Sicherung in
 # einem kleinen eigenen App-Aufruf wieder her. Das deckt normale Fehler,
 # App-Abstürze und den Timeout-Kill ab. Nicht abfangbar bleibt nur ein harter
-# Abbruch des RUNNERS selbst (SIGKILL/Systemausfall) zwischen Clipboard-Änderung
+# Abbruch des Runners selbst (SIGKILL/Systemausfall) zwischen Clipboard-Änderung
 # und diesem Schritt; dann bleibt die Sicherung im oben ausgegebenen WORK_DIR.
 restore_soak_pasteboard() {
   local label="${1:-cleanup}"
@@ -749,14 +728,9 @@ run_phase() {
   local phase="$1"
   local label="$2"
   echo "→ Phase $phase: $label"
-  # `-selftest soak` beendet die App am Ende selbst. Die Frist ist großzügig:
-  # Der Lauf soll an einer echten Hängerei scheitern, nicht an Langsamkeit.
-  #
-  # Gezählt werden die eigenen Schleifendurchläufe, NICHT die Wanduhr. Das war
-  # bis 2026-09-10 die einzige Wanduhr-Frist im ganzen Dauertest-Aufbau — die
-  # beiden Nachbarschleifen dieser Datei und sämtliche Warteschleifen der App
-  # zählen längst Durchläufe. Unter Fremdlast verbrauchte sie Zeit, die die App
-  # nie bekommen hat, und schoss eine regulär fortschreitende Phase ab.
+  # `-selftest soak` beendet die App selbst. Großzügig auf eigene
+  # Schleifendurchläufe statt Wanduhrzeit begrenzen, damit fremde Last keine
+  # regulär fortschreitende Phase abbricht.
   local timeout=$(( ROUNDS * 3 + 120 ))
   local findings_before
   findings_before=$(grep -c '^SOAK-BEFUND' "$LOG" 2>/dev/null)
@@ -874,14 +848,14 @@ run_counted_phase 3 "nach zweitem Neustart: abschließende Runde"
 echo
 echo "────────────────────────────────────────────────────────────"
 # `grep -c` zählt 0 und liefert Status 1 — ohne `|| true` bricht `set -e`-artiges
-# Verhalten ab, und ein zusätzliches `echo 0` erzeugte hier eine ZWEITE Zeile,
+# Verhalten ab, und ein zusätzliches `echo 0` erzeugte hier eine zweite Zeile,
 # an der der Vergleich unten scheiterte.
 FINDINGS=$(grep -c "^SOAK-BEFUND" "$LOG" 2>/dev/null | head -1)
 FINDINGS=${FINDINGS:-0}
 ACTIONS=$(awk -F'aktionen=' '/^SOAK-ZUSAMMENFASSUNG/{split($2,a," "); s+=a[1]} END{print s+0}' "$LOG")
 
 check_soak_result() {
-  # Ein Lauf, dessen Phasen gar nicht durchliefen, darf NIE grün melden. Der
+  # Ein Lauf, dessen Phasen gar nicht durchliefen, darf nie grün melden. Der
   # erste Probelauf tat genau das: Alle drei Phasen brachen sofort ab, und das
   # Skript meldete trotzdem „SOAK OK". Ein Test, der bei kaputtem Aufbau Erfolg
   # meldet, ist schlimmer als keiner.

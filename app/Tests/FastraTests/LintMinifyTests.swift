@@ -1,9 +1,9 @@
 // LintMinifyTests.swift
 //
-// Tests für „Dokument prüfen" und „Dokument minifizieren" (Etappe 6
-// Wunschpaket 2026-07): Fehlerpositionen gegen präparierte kaputte
-// Dateien, konservatives XML-Minify und der Minify-→-Format-Roundtrip
-// (semantisch identisches Dokument).
+// Tests für „Dokument prüfen" und „Dokument
+// minifizieren": Fehlerpositionen gegen präparierte kaputte Dateien,
+// konservatives XML-Minify und der Minify-→-Format-Roundtrip (semantisch
+// identisches Dokument).
 
 import Foundation
 import Testing
@@ -194,14 +194,14 @@ func minify_xmlConservative() throws {
 
 @Test("XML-Minify: Inline-Leerzeichen und CDATA/Kommentare bleiben erhalten")
 func minify_xmlPreservesMeaningfulContent() throws {
-    // Ein EINZELNES Leerzeichen zwischen Inline-Elementen kann Bedeutung
+    // Ein einzelnes Leerzeichen zwischen Inline-Elementen kann Bedeutung
     // tragen — es bleibt. CDATA und Kommentare bleiben byte-genau.
     let source = "<p><b>fett</b> <i>kursiv</i>\n  <pre><![CDATA[  <kein tag>\n  ]]></pre>\n  <!-- Hinweis:\n  mehrzeilig --></p>"
     let minified = try DocumentFormatter.minify(source, fileExtension: "xml")
     #expect(minified.contains("</b> <i>"))
     #expect(minified.contains("<![CDATA[  <kein tag>\n  ]]>"))
     #expect(minified.contains("<!-- Hinweis:\n  mehrzeilig -->"))
-    // Die Einrückungen VOR <pre> und VOR dem Kommentar sind verschwunden.
+    // Die Einrückungen vor <pre> und vor dem Kommentar sind verschwunden.
     #expect(minified.contains("</i><pre>"))
     #expect(minified.contains("</pre><!--"))
 }

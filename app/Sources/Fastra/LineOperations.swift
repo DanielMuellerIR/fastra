@@ -4,11 +4,11 @@
 //   - „Zeilen aufsteigend/absteigend sortieren": sortiert die selektierten
 //     Zeilen alphabetisch in der ausdrücklich gewählten Richtung.
 //   - „Duplikate entfernen": entfernt doppelte Zeilen (exakter Vergleich),
-//     das jeweils ERSTE Vorkommen bleibt stehen.
+//     das jeweils erste Vorkommen bleibt stehen.
 //
-// Beide Operationen arbeiten auf GANZEN Zeilen: Die Selektion wird auf
+// Beide Operationen arbeiten auf ganzen Zeilen: Die Selektion wird auf
 // Zeilengrenzen ausgeweitet (BBEdit-Verhalten — wer eine halbe Zeile
-// markiert, meint die ganze). Ohne Selektion (Länge 0) gilt die GANZE
+// markiert, meint die ganze). Ohne Selektion (Länge 0) gilt die ganze
 // Datei — das deckt den häufigsten Fall „Liste in Datei sortieren" ohne
 // vorheriges ⌘A ab.
 //
@@ -34,7 +34,7 @@ enum LineOperations {
     struct Result: Equatable {
         /// Der komplette neue Text (Datei-Inhalt nach der Operation).
         let newText: String
-        /// Der Bereich (im ALTEN Text), der ersetzt wurde — ganze Zeilen.
+        /// Der Bereich (im alten Text), der ersetzt wurde — ganze Zeilen.
         let affectedRange: NSRange
         /// Anzahl betroffener Zeilen (sortiert bzw. nach Dedupe übrig).
         let lineCount: Int
@@ -42,7 +42,7 @@ enum LineOperations {
 
     /// Weitet eine Selektion auf ganze Zeilen aus. Leere Selektion
     /// (Länge 0) → der gesamte Text. Das Zeilenende (`\n`) der letzten
-    /// betroffenen Zeile gehört NICHT mit zum Bereich — so bleibt ein
+    /// betroffenen Zeile gehört nicht mit zum Bereich — so bleibt ein
     /// fehlendes Newline am Dateiende erhalten.
     static func expandToFullLines(in text: String, selection: NSRange) -> NSRange {
         let ns = text as NSString
@@ -54,7 +54,7 @@ enum LineOperations {
                                                 NSRange(location: 0, length: ns.length))
         var expanded = ns.lineRange(for: safeSelection)
         // Abschließendes Zeilenende der letzten Zeile abschneiden — wir
-        // sortieren ZEILENINHALTE und bauen die Trenner selbst wieder ein.
+        // sortieren Zeileninhalte und bauen die Trenner selbst wieder ein.
         if expanded.length > 0 {
             let lastChar = ns.character(at: expanded.location + expanded.length - 1)
             if lastChar == 0x0A {                     // \n
@@ -141,8 +141,8 @@ enum LineOperations {
     }
 
     /// „Nur doppelte Zeilen behalten" (BBEdit „Process Duplicate Lines" / Find duplicates):
-    /// behält NUR die Zeilen, die im (auf ganze Zeilen ausgeweiteten) Bereich mindestens ZWEIMAL
-    /// vorkommen — je EINMAL, in Reihenfolge ihres ersten Auftretens. Nützlich, um Dubletten in
+    /// behält nur die Zeilen, die im (auf ganze Zeilen ausgeweiteten) Bereich mindestens zweimal
+    /// vorkommen — je einmal, in Reihenfolge ihres ersten Auftretens. Nützlich, um Dubletten in
     /// Logs/Listen sichtbar zu machen.
     ///
     /// Eine leere Phantom-Schlusszeile (sie entsteht im Ganz-Text-Fall durch das
@@ -162,7 +162,7 @@ enum LineOperations {
         var counts: [String: Int] = [:]
         for line in real { counts[line, default: 0] += 1 }
 
-        // Jede mindestens zweimal vorkommende Zeile EINMAL ausgeben, in Reihenfolge des
+        // Jede mindestens zweimal vorkommende Zeile einmal ausgeben, in Reihenfolge des
         // ersten Auftretens. Das Set verhindert, dass eine Dublette mehrfach emittiert wird.
         var emitted = Set<String>()
         var keptReal: [String] = []
@@ -183,8 +183,8 @@ enum LineOperations {
     }
 
     /// „Mehrfach vorkommende Zeilen entfernen" (BBEdit „Process Duplicate Lines"):
-    /// entfernt JEDE Zeile, die mehr als einmal vorkommt (inklusive ihres ersten Vorkommens) —
-    /// übrig bleiben nur die EINMALIGEN Zeilen, in Originalreihenfolge.
+    /// entfernt jede Zeile, die mehr als einmal vorkommt (inklusive ihres ersten Vorkommens) —
+    /// übrig bleiben nur die einmaligen Zeilen, in Originalreihenfolge.
     ///
     /// Phantom-Behandlung wie bei `keepDuplicateLines`: die leere Datei-End-Schlusszeile zählt
     /// nicht als Inhalt und wird hinterher wieder angehängt. `nil`, wenn weniger als 2 Zeilen
@@ -201,7 +201,7 @@ enum LineOperations {
         var counts: [String: Int] = [:]
         for line in real { counts[line, default: 0] += 1 }
 
-        // Nur die EINMALIGEN Zeilen (count == 1) behalten, in Originalreihenfolge.
+        // Nur die einmaligen Zeilen (count == 1) behalten, in Originalreihenfolge.
         let keptReal = real.filter { (counts[$0] ?? 0) == 1 }
         // Alle Zeilen waren Dubletten → nichts behalten (statt das Dokument zu leeren).
         guard !keptReal.isEmpty else { return nil }
@@ -228,7 +228,7 @@ enum LineOperations {
         return (lines, hasFinalSeparator)
     }
 
-    /// Zerlegt einen Block in Zeilen-INHALTE (ohne Trenner). Versteht
+    /// Zerlegt einen Block in Zeilen-Inhalte (ohne Trenner). Versteht
     /// LF, CRLF und CR, auch gemischt. Geladene Dokumente behalten ihre
     /// ursprünglichen Zeilenenden im Editorinhalt.
     /// `internal`, damit `TextOperations` exakt dieselbe Zerlegung nutzt

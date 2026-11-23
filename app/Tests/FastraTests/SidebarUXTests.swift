@@ -1,6 +1,6 @@
 // SidebarUXTests.swift
 //
-// Tests für die Etappe-1-UX des Wunschpakets 2026-07:
+// Tests für die Projektseitenleisten-UX:
 // - Save-Dialog-Vorschlagsordner (Sidebar vor Dokumentkontext vor Projekt)
 // - Elternordner-Öffnen beim Einzeldatei-Öffnen ohne Projekt
 // - Git-Root-Kontext bei Tabwechsel und Tab-Schließen
@@ -183,11 +183,9 @@ func loadFile_keepsExplicitProjectForNonGitFile() async throws {
       .timeLimit(.minutes(1)))
 @MainActor
 func openProject_clearsSidebarPositionAndFilterResult() throws {
-    // Review-Fund 2026-08-25: Die Scroll-Schlüssel (`fileTree`, `gitChanges`,
-    // `gitGraph`) sind über alle Projekte hinweg dieselben, und das
-    // Filterergebnis lebt am Workspace. Ohne Leerung öffnete ein neues Projekt
-    // mitten im Baum des alten — und ein erneut getippter, gleicher Filtertext
-    // galt kurzzeitig mit den Pfaden des alten Projekts als beantwortet.
+    // Projektwechsel muss Scrollpositionen und Filterergebnisse löschen.
+    // Die projektübergreifend gleichen Schlüssel dürfen keine Positionen oder
+    // Trefferpfade des vorigen Projekts übernehmen.
     let (defaults, suite) = makeFreshDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
     let ersteWurzel = try makeTmpDirectory("projekt-a")
@@ -248,7 +246,7 @@ func loadFile_parentFolderKeepsUnrelatedTabs() async throws {
             "Fremder sauberer Tab darf nicht stillschweigend schließen")
 }
 
-// MARK: - Git-Root beim automatischen Ordner-Öffnen (Wunschpaket 2026-07b)
+// MARK: - Git-Root beim automatischen Ordner-Öffnen
 
 @Test("Tabwechsel plant die Projektauflösung ein, statt den Main-Thread zu blockieren")
 @MainActor
@@ -479,7 +477,7 @@ func projectContext_followsTabAfterSearchCloses() async throws {
     #expect(await waitUntil { ws.projectURL == repoB })
 
     // Beide Sperren bilden den schärfsten Fall: Das Schließen nur einer
-    // Oberfläche darf den Kontext noch nicht wechseln. Erst wenn Suche UND
+    // Oberfläche darf den Kontext noch nicht wechseln. Erst wenn Suche und
     // Live-Vorschau beendet sind, wird der aktive Tab nachgezogen.
     ws.showSearchDialog = true
     ws.livePreview = true
@@ -522,7 +520,7 @@ func emptinessCache_detectsEmptyFolder() throws {
         scheduleProbe: { $0() },
         deliverProbeResult: { work in MainActor.assumeIsolated { work() } }
     )
-    // Erst Chevron, dann ggf. entfernen: vor der Probe gilt NICHTS als leer.
+    // Erst Chevron, dann ggf. entfernen: vor der Probe gilt nichts als leer.
     #expect(!cache.isKnownEmpty(empty))
     cache.probe(empty)
     cache.probe(filled)
@@ -552,10 +550,10 @@ func emptinessCache_isIdempotentAcrossRefreshes() throws {
     #expect(!cache.isKnownEmpty(dir))
 }
 
-// MARK: - Verzeichnis-Cache des Dateibaums (Performance-Befund 2026-07-24)
+// MARK: - Verzeichnis-Cache des Dateibaums
 
 /// Zählt Verzeichnis-Listings threadsicher — belegt, dass wiederholte
-/// Body-Zugriffe NICHT erneut von der Platte lesen (der eigentliche Bug).
+/// Body-Zugriffe nicht erneut von der Platte lesen (der eigentliche Bug).
 private final class ListingCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
@@ -598,17 +596,17 @@ func childrenCache_loadsOnceThenServesMemory() throws {
         deliverResult: { work in MainActor.assumeIsolated { work() } }
     )
 
-    // Vor der Lieferung: leer, aber genau EIN Ladeauftrag geplant — auch
+    // Vor der Lieferung: leer, aber genau ein Ladeauftrag geplant — auch
     // bei wiederholten Body-Zugriffen (Bündelung).
     #expect(cache.children(of: dir).isEmpty)
     #expect(cache.children(of: dir).isEmpty)
     #expect(pending.count == 1)
 
-    // Erst entnehmen, DANN ausführen — work() darf neue Aufträge anhängen,
+    // Erst entnehmen, dann ausführen — work() darf neue Aufträge anhängen,
     // ohne mit einer laufenden Array-Mutation zu kollidieren.
     while !pending.isEmpty { pending.removeFirst()() }
 
-    // Nach der Lieferung: Inhalt da — und weitere Zugriffe lesen NUR noch
+    // Nach der Lieferung: Inhalt da — und weitere Zugriffe lesen nur noch
     // Speicher (kein weiteres Listing; genau das war der Main-Thread-Fresser).
     #expect(cache.children(of: dir).map(\.name) == ["a.txt"])
     _ = cache.children(of: dir)
@@ -700,7 +698,7 @@ func childrenCache_unchangedListingDoesNotPublish() throws {
             "Unveränderte Listings dürfen keine Neu-Render auslösen")
 }
 
-// MARK: - Splitter-Breiten sind pro Fenster (Daniel-Befund 2026-07-20)
+// MARK: - Splitter-Breiten sind pro Fenster
 
 @Test("Splitter-Breiten: Ziehen in einem Fenster verschiebt kein anderes, seedet aber neue")
 @MainActor
@@ -722,7 +720,7 @@ func splitterWidths_arePerWindowButSeedNewWindows() {
     #expect(second.sidebarWidth == 300)
     #expect(second.markdownPreviewWidth == 500)
 
-    // Kernregel: Weiteres Ziehen im ersten Fenster darf das zweite NICHT
+    // Kernregel: Weiteres Ziehen im ersten Fenster darf das zweite nicht
     // mitbewegen — genau das war der gemeldete Fehler.
     first.sidebarWidth = 250
     first.markdownPreviewWidth = 460

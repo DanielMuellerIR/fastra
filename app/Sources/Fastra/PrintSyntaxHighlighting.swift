@@ -1,19 +1,12 @@
 // PrintSyntaxHighlighting.swift
 //
-// Syntaxfarben im Quelltext-Ausdruck (Folgeauftrag „Syntaxfarben im
-// Quelltext-Druck", 2026-09-05; beauftragt nach der Druckabnahme vom
-// 2026-08-18).
-//
-// Der Druck nutzt dieselbe Syntaxanalyse wie der Editor — tree-sitter über
-// CodeEditSourceEditors `TreeSitterClient` bzw. den 4D-Tokenizer über die
-// `CustomLanguageProviders` — aber auf einem eigenen, unsichtbaren
-// `TextView`, der nur als Textquelle dient. Dadurch werden ALLE Zeilen des
-// Dokuments eingefärbt, nicht nur die auf dem Bildschirm gerade sichtbaren,
-// und der Druck bleibt unabhängig von Auswahl, Cursorzeile und Suchmarkierung.
-//
-// Farben: immer der HELLE Farbsatz des jeweiligen Themes, egal welches
-// Erscheinungsbild der Bildschirm gerade hat — Papier ist weiß. Der Grundtext
-// bleibt Schwarz wie im einfarbigen Ausdruck.
+// Syntaxfarben für alle Zeilen des Quelltext-Ausdrucks. Ein eigener,
+// unsichtbarer `TextView` verwendet dieselbe Analyse wie der Editor:
+// tree-sitter über CESEs `TreeSitterClient` bzw. den 4D-Tokenizer über
+// `CustomLanguageProviders`. So bleibt der Druck unabhängig von sichtbarem
+// Ausschnitt, Auswahl, Cursorzeile und Suchmarkierungen.
+// Auf weißem Papier gilt immer der helle Theme-Farbsatz; Grundtext bleibt
+// wie im einfarbigen Ausdruck schwarz.
 
 import AppKit
 import CodeEditLanguages
@@ -100,7 +93,7 @@ enum PrintSyntaxHighlighting {
     }
 
     /// Färbt `text` (bereits normalisiert, siehe `normalizedText`) für das
-    /// Format ein. Der Aufrufer bekommt genau EINE Rückmeldung — auch wenn
+    /// Format ein. Der Aufrufer bekommt genau eine Rückmeldung — auch wenn
     /// Analyse und Frist gleichzeitig enden.
     ///
     /// Nur teilweise asynchron: Bei tree-sitter-Grammatiken parst der Client

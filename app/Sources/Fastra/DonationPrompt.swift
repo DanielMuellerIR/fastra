@@ -9,7 +9,7 @@
 //  • `DonationBannerView` — schmale Banner-View, die der Hauptthread
 //    am unteren Fensterrand einblendet.
 //
-// Konzept: KEIN Modal, KEIN Nag-Screen.
+// Konzept: kein Modal, kein Nag-Screen.
 // Der Banner erscheint erst ab dem 10. Start; nach einem Dismiss
 // erst wieder nach 90 Tagen. So bleibt die App nutzbar ohne Druck.
 
@@ -24,18 +24,15 @@ enum DonationPrompt {
 
     // MARK: Konstanten
 
-    /// HAUPTSCHALTER (Daniel, 2026-07-10): Spendenaufruf vorerst AUS —
-    /// ob der Button in der Release-Version bleibt, entscheidet Daniel
-    /// kurz vor Release. Zum Reaktivieren auf `true` setzen; Logik,
-    /// Banner-View, Zähler und Tests bleiben vollständig funktionsfähig
-    /// (der Start-Zähler läuft auch bei AUS weiter, damit der Banner nach
-    /// einem Einschalten sofort die echte Historie kennt). Geprüft wird
-    /// der Schalter an der Anzeige-Stelle (ContentView), damit die pure
-    /// Regel-Logik in `shouldShow` testbar bleibt.
+    /// Hauptschalter für die Anzeige des Spendenaufrufs. Zum Reaktivieren auf
+    /// `true` setzen. Der Start-Zähler läuft auch bei deaktivierter Anzeige
+    /// weiter, damit nach dem Einschalten die bisherige Nutzung zählt.
+    /// `ContentView` prüft den Schalter; die Regel in `shouldShow` bleibt
+    /// unabhängig davon testbar.
     static let isEnabled = false
 
     /// URL zur Spenden-Seite.
-    /// PLATZHALTER — wird vor dem Release durch die echte URL ersetzt.
+    /// Platzhalter — wird vor dem Release durch die echte URL ersetzt.
     static let donationURL = URL(string: "https://example.org/fastra-donate")!
 
     /// Anzahl Starts, ab der der Banner erstmals erscheinen darf.
@@ -72,7 +69,7 @@ enum DonationPrompt {
         // Regel 1: zu wenig Starts.
         guard launchCount >= minimumLaunchCount else { return false }
 
-        // Regel 2: Cooldown nach Dismiss. `<=` bewusst: Bei EXAKT 90 Tagen
+        // Regel 2: Cooldown nach Dismiss. `<=` bewusst: Bei exakt 90 Tagen
         // gilt der Cooldown noch (konservative Grenze — lieber einen Tick
         // länger still als einen Tick zu früh aufdringlich).
         if let dismissed = dismissedAt {

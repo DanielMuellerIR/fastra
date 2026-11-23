@@ -11,7 +11,7 @@ struct FileTreeNode: Identifiable, Hashable {
     var name: String { url.lastPathComponent }
 }
 
-/// Baut die Ebenen des Projekt-Dateibaums. Bewusst EINE Ebene pro Aufruf
+/// Baut die Ebenen des Projekt-Dateibaums. Bewusst eine Ebene pro Aufruf
 /// (lazy): geladen wird erst beim Aufklappen eines Ordners — ein kompletter
 /// rekursiver Scan großer Repos beim Projekt-Öffnen wäre Verschwendung.
 enum FileTree {

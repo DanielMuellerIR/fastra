@@ -266,16 +266,12 @@ private func makeMergeConflict(in root: URL) async throws -> URL {
     return file
 }
 
-// Alle drei Suites dieser Datei laufen auf dem MainActor: Die Workspace-
-// Completions (Konflikt-Inspektion, Git-Mutation, Identität) kommen per
-// `DispatchQueue.main.async` zurück und lesen/schreiben dabei auch EINFACHE
-// (nicht-`@Published`) Instanzvariablen wie `gitConflictInspectionRequestIDs`.
-// Trieben die Tests denselben Workspace von einem eigenen Thread, liefe dieser
-// Zugriff unsynchronisiert neben Main — beobachtet am 2026-08-09 als SIGSEGV
-// beim Dictionary-Lookup in der Inspektions-Completion. Im Produkt läuft der
-// Workspace vollständig auf dem Main-Thread; die MainActor-Tests bilden genau
-// das ab. Blockierende Warterei gibt es hier nur in Callbacks, die auf
-// GitRunner-Hintergrund-Threads laufen; gewartet wird per `waitAdvanced`.
+// Die drei Workspace-Suites laufen auf MainActor. Completions kommen über
+// `DispatchQueue.main.async` und greifen auch auf nicht-`@Published`-Felder
+// wie `gitConflictInspectionRequestIDs` zu. Auf einem eigenen Testthread
+// wären diese Zugriffe ungeschützt; MainActor bildet den Produktvertrag ab.
+// Nur GitRunner-Hintergrundcallbacks warten blockierend; übrige Wartewege
+// verwenden `waitAdvanced`.
 @MainActor
 @Suite("Konfliktmarker", .serialized)
 struct GitConflictMarkerTests {
@@ -781,12 +777,9 @@ struct GitConflictMarkerTests {
             indexPath: paths[0], record: Data(), headRef: headRef, headOID: headOID,
             headRefPath: paths[1], headRefNeedsNoDeref: false,
             worktreeHeadPath: paths[2], headSymbolicTarget: headRef, in: root,
-            // Die Lock-Warteschleifen unten setzen voraus, dass git seinen
-            // SIGTERM-Handler (eigenes Lock-Aufräumen) noch ausführen darf.
-            // Mit der knappen Produkt-Frist von 0,5 s wurde git unter
-            // Volllast gelegentlich vorher hart gekillt — dann bleibt
-            // index.lock dauerhaft liegen und die Warteschleife kann nie
-            // mehr grün werden (Flake-Ursache, analysiert 2026-08-16).
+            // Git braucht Zeit für seinen SIGTERM-Handler, damit eigene Locks entfernt
+            // werden. Ein zu früher SIGKILL unter Last könnte `index.lock` zurücklassen
+            // und die folgenden Warteschleifen blockieren.
             terminationGracePeriod: 10,
             verify: { _ in verifyCalled = true },
             timeoutTrigger: { timeout.store($0) },
@@ -807,17 +800,15 @@ struct GitConflictMarkerTests {
         #expect(outcome == .timedOut)
         #expect(!verifyCalled)
         #expect(FileManager.default.fileExists(atPath: foreignLock))
-        // Nicht als Momentaufnahme prüfen: Das aufgerufene git hat seine
-        // eigenen Locks unmittelbar nach der Completion nicht zwingend schon
-        // entfernt (zweimal beobachtet 2026-08-07 in vollen Läufen). Kurze
-        // Frist statt sofortigem Blick.
+        // Auf Entfernen der git-eigenen Locks mit kurzer Frist warten; die
+        // Completion garantiert noch keine unmittelbar lockfreie Momentaufnahme.
         try await waitAdvanced("Index-Lock blieb nach dem Timeout liegen") {
             !FileManager.default.fileExists(atPath: paths[0] + ".lock")
         }
         try await waitAdvanced("Worktree-HEAD-Lock blieb nach dem Timeout liegen") {
             !FileManager.default.fileExists(atPath: paths[2] + ".lock")
         }
-        // Der fremde Ref-Lock muss die Aufräumphase ÜBERLEBEN — er gehört
+        // Der fremde Ref-Lock muss die Aufräumphase überleben — er gehört
         // nicht dieser Transaktion.
         #expect(FileManager.default.fileExists(atPath: foreignLock))
     }
@@ -1005,7 +996,7 @@ struct GitConflictMarkerTests {
             // liegen.
             terminationGracePeriod: 10,
             verify: { _ in
-                // Die Prüfung läuft unter Index- UND Ref-Lock. Genau dort soll
+                // Die Prüfung läuft unter Index- und Ref-Lock. Genau dort soll
                 // die Zeitüberschreitung eintreten, deshalb wird sie hier
                 // ereignisbasiert ausgelöst und nie freigegeben. Eine kurze
                 // Wanduhrfrist konnte unter Last schon vor diesem Punkt fallen.
@@ -1269,9 +1260,6 @@ struct GitConflictMarkerTests {
 
     @Test("Binär- und Chunked-Konflikte werden nicht als Textauflösung angeboten")
     func binaryAndLargeAreUnsupported() throws {
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
         for mode in [EditorDisplayMode.hex, .chunkedText] {
             let root = testTemporaryDirectory()
                 .appendingPathComponent("Fastra-BinaryConflict-\(UUID().uuidString)")
@@ -1283,6 +1271,9 @@ struct GitConflictMarkerTests {
                 defaults: defaults,
                 gitOperationsCoordinator: GitOperationsCoordinator(executor: executor)
             )
+            let oldDialogs = workspace.gitInteraction.presentsDialogs
+            workspace.gitInteraction.presentsDialogs = false
+            defer { workspace.gitInteraction.presentsDialogs = oldDialogs }
             workspace.projectURL = root
             let tab = EditorTab(title: file.lastPathComponent, path: root.path, url: file,
                                 content: "", displayMode: mode)
@@ -1372,10 +1363,8 @@ struct GitConflictMarkerTests {
         workspace.tabs = [first, second]
         workspace.activeTabID = first.id
         workspace.invalidateAndRefreshActiveConflictInspection()
-        // Kein blinder Weiterlauf: Startet die erste Attributprüfung nicht
-        // (lastabhängig beobachtet, 2026-08-09), würde `cancellations[0]`
-        // unten die GANZE Suite per Index-Trap beenden statt einen sauberen
-        // Testfehler zu melden.
+        // Start der Attributprüfung bestätigen, bevor `cancellations[0]` gelesen
+        // wird. Ausbleibender Start soll einen Testfehler statt Index-Trap melden.
         guard executor.count == 1 else {
             Issue.record("Erste Attributprüfung startete nicht (executor.count == \(executor.count))")
             return
@@ -1405,9 +1394,6 @@ struct GitConflictMarkerTests {
 
     @Test("Als gelöst markieren verlangt zuerst einen gespeicherten Editorstand")
     func resolveRequiresSave() throws {
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
         let root = testTemporaryDirectory()
             .appendingPathComponent("Fastra-Resolve-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -1424,6 +1410,9 @@ struct GitConflictMarkerTests {
         let (defaults, suite) = makeDefaults("resolve")
         defer { defaults.removePersistentDomain(forName: suite) }
         let workspace = Workspace(defaults: defaults, gitOperationsCoordinator: coordinator)
+        let oldDialogs = workspace.gitInteraction.presentsDialogs
+        workspace.gitInteraction.presentsDialogs = false
+        defer { workspace.gitInteraction.presentsDialogs = oldDialogs }
         workspace.projectURL = root
         let tab = EditorTab(title: file.lastPathComponent,
                             path: file.deletingLastPathComponent().path,
@@ -1944,9 +1933,9 @@ struct GitConflictMarkerTests {
             "Git klassifiziert diesen Konflikt über Dateiattribute als binär. Fastra bietet keine Textauflösung oder Stage-Aktion an. Öffne ein Terminal für die Git-Auflösung."
         ))
 
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
+        let oldDialogs = workspace.gitInteraction.presentsDialogs
+        workspace.gitInteraction.presentsDialogs = false
+        defer { workspace.gitInteraction.presentsDialogs = oldDialogs }
         workspace.acceptActiveConflict(.upper)
         workspace.markActiveConflictResolved()
         #expect(try Data(contentsOf: file) == mainBytes)
@@ -2655,9 +2644,9 @@ struct GitValidatedMutationTests {
             confirmationWasShown = true
             return true
         }
-        let oldDialogs = Workspace.presentGitDialogs
-        Workspace.presentGitDialogs = false
-        defer { Workspace.presentGitDialogs = oldDialogs }
+        let oldDialogs = workspace.gitInteraction.presentsDialogs
+        workspace.gitInteraction.presentsDialogs = false
+        defer { workspace.gitInteraction.presentsDialogs = oldDialogs }
         workspace.gitContinueOperation()
         try await waitAdvanced("Edit-Rebase-Prüfung endete nicht", timeout: .seconds(10)) {
             !coordinator.state(for: root).isBusy

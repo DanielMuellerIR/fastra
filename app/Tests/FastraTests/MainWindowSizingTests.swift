@@ -1,6 +1,6 @@
 // MainWindowSizingTests.swift
 //
-// Startgröße neuer Fenster (Daniel-Wunsch 2026-08-06): Ein neues Fenster
+// Startgröße neuer Fenster: Ein neues Fenster
 // soll den Bildschirm in der Höhe wirklich nutzen; kleiner ziehen darf der
 // Nutzer danach jederzeit. Die Rechnung bleibt hier pur und damit ohne
 // echten Bildschirm prüfbar.
@@ -13,8 +13,8 @@ import Testing
 @Suite("Fenster-Startgröße")
 struct MainWindowSizingTests {
 
-    /// Nutzbarer Bereich eines 15-Zoll-MacBook-Pro-Bildschirms (Punkte,
-    /// abzüglich Menüleiste) — der Fall aus dem Befund.
+    /// Nutzbarer Bereich eines 15-Zoll-MacBook-Pro-Bildschirms in Punkten,
+    /// abzüglich Menüleiste.
     private let notebook = CGRect(x: 0, y: 0, width: 1512, height: 945)
 
     @Test("Neues Fenster nutzt mindestens 80 % der nutzbaren Bildschirmhöhe")
@@ -22,7 +22,7 @@ struct MainWindowSizingTests {
         let size = MainWindowSizing.newWindowSize(inVisibleScreen: notebook.size)
         #expect(size.height >= notebook.height * 0.8)
         #expect(size.height <= notebook.height)
-        // Die alte feste Starthöhe war der eigentliche Befund.
+        // Feste Starthöhe als Regressionserwartung prüfen.
         #expect(size.height > MainWindowSizing.defaultHeight)
     }
 
@@ -63,9 +63,9 @@ struct MainWindowSizingTests {
     }
 
     /// Die einmalige Korrektur läuft erst, wenn die Sitzungswiederherstellung
-    /// ALLE Dokumente geladen hat. Bis dahin stehen die Fenster längst
+    /// alle Dokumente geladen hat. Bis dahin stehen die Fenster längst
     /// sichtbar da: Zieht der Nutzer eines davon bewusst kleiner, darf die
-    /// Korrektur es danach nicht wieder aufziehen (Review 2026-08-06).
+    /// Korrektur es danach nicht wieder aufziehen.
     @Test("Ein selbst gezogenes Fenster ist von der einmaligen Korrektur ausgenommen")
     @MainActor
     func userResizedWindowIsExcluded() {

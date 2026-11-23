@@ -12,10 +12,8 @@ import FastraDiffProtocol
 @Suite("External diff service", .serialized)
 // Echte IPC-Fristen dürfen nicht mit schweren Editor-Tests um Main konkurrieren.
 struct ExternalDiffServiceSerialRunnerIntegrationTests {
-    /// Zwei echte Dateien: `validate()` öffnet die Pfade. Der Ordner gehört
-    /// zum Ergebnis, damit jeder Test ihn per `defer` wieder abräumt — bis
-    /// 2026-09-17 blieb er nach jedem Aufruf liegen, 168 Reste im Benutzer-Temp
-    /// (CodeQA-Fund test-temp-leaks).
+    /// `validate()` öffnet zwei echte Dateien. Den zugehörigen Ordner mit
+    /// zurückgeben, damit jeder Test ihn per `defer` entfernt.
     private struct RequestFixture {
         let request: DiffWireRequest
         let directory: URL

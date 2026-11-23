@@ -5,6 +5,7 @@ type Done = Box<dyn FnOnce(bool)>;
 pub(super) struct Record {
     pub receipt: Receipt,
     pub visible: bool,
+    undo_permission_denied: bool,
     pending_owner: Option<asset_flow::Lease>,
 }
 struct RetainedCommit {
@@ -33,6 +34,21 @@ fn write_allowed(editor:&RichEditor) -> bool {
     let Some(ui)=editor.ui.upgrade()else{return false;};
     if crate::git_pull::write_allowed(&ui) {true}else{editor.status.set_text(&ui.status.text());false}
 }
+fn publication_error_detail(lang: crate::Language, error: &fastra_io::Error) -> String {
+    match error {
+        fastra_io::Error::RecoveryRequired(path) => format!(
+            "{}\n{}",
+            lang.text(
+                "Prüfe den Wiederherstellungsort und bewahre vorhandene Dateien auf.",
+                "Inspect the recovery location and keep any files found there.",
+            ),
+            crate::project_view::display(path),
+        ),
+        fastra_io::Error::Io(cause) => cause.to_string(),
+        _ => error.to_string(),
+    }
+}
+
 pub(super) fn receive(editor: Rc<RichEditor>, transfer: transfer::Transfer, key: String) {
     if let transfer::Transfer::Markdown { source, images, .. } = &transfer {
         if images.is_empty() && !transfer::has_images(source) {
@@ -315,17 +331,35 @@ fn preview(
             crate::asset_io::background(move||{let result=plan.apply(&owner,&worker_cancel);#[cfg(debug_assertions)] test_pause("apply");Ok(result)},move|result|{
                 let pending_publication=publication;
                 committing.set(false);let Some(editor)=weak.upgrade()else{if let Ok(Ok(receipt))=result{compensate_commit(None,receipt,lease.clone(),status.clone());}return;};
-                let receipt=match result{Ok(Ok(receipt))=>receipt,other=>{status.set_text(&format!("{} {}",lang.text("Nicht eingefügt; Wiederherstellungsort beachten:","Not inserted; inspect recovery location:"),match other{Ok(Err(error))=>error.to_string(),Err(error)=>error,_=>String::new()}));editor.busy.set(false);return;}};
+                let result = result.and_then(|published| {
+                    published.map_err(|error| publication_error_detail(lang, &error))
+                });
+                let receipt = match result {
+                    Ok(receipt) => receipt,
+                    Err(detail) => {
+                        status.set_text(&format!(
+                            "{}\n{detail}",
+                            lang.text("Bilder konnten nicht eingefügt werden.", "Could not insert images."),
+                        ));
+                        editor.busy.set(false);
+                        return;
+                    }
+                };
                 if !may_insert(&cancel, lease.current(&editor)) {
                     discard(&editor,&verify_key);
                     compensate_commit(Some(editor),receipt,lease.clone(),status.clone());return;
                 }
-                let added=prepared.pictures.iter().map(|p|p.bytes.len()).sum::<usize>();let id=glib::uuid_string_random().to_string();editor.assets.borrow_mut().bytes+=added;editor.assets.borrow_mut().records.insert(id.clone(),Record{receipt,visible:true,pending_owner:Some(lease.clone())});
+                let added=prepared.pictures.iter().map(|p|p.bytes.len()).sum::<usize>();let id=glib::uuid_string_random().to_string();editor.assets.borrow_mut().bytes+=added;editor.assets.borrow_mut().records.insert(id.clone(),Record{receipt,visible:true,undo_permission_denied:false,pending_owner:Some(lease.clone())});
                 editor.images.borrow_mut().images.append(&mut prepared.cache.images);
                 let sources=prepared.sources.0.values().filter_map(|source|editor.images.borrow().uri(&source.token)).collect::<Vec<_>>();
                 let page=match page_images(&prepared.snippet,&glib::uuid_string_random(),false,lang.0,Some(&prepared.sources)){Ok(page)=>page,Err(_)=>{editor.fail("Bildinhalt überschreitet die Rich-Grenze. Rücknahmedaten bleiben erhalten.","Image content exceeds rich limits. Recovery data is retained.");rollback_insertion(editor,id);return;}};
                 let before=editor.expected.borrow().clone();completed.set(true);if let Some(window)=window.upgrade(){window.close();}editor.view.grab_focus();
-                let code=format!("const ok=fastraVisual.insertBookmarked({},{},{},{},{},false);return JSON.stringify({{ok,...fastraVisual.clipboardState()}});",json!(verify_key),json!(editor.images.borrow().versioned_html(&page.fragment)),page.configuration["opaqueSources"],json!(id),json!(sources));
+                let image_ending = match fastra_core::encoding::LineEnding::detect(&before) {
+                    fastra_core::encoding::LineEnding::CrLf => Some("crlf"),
+                    fastra_core::encoding::LineEnding::Cr => Some("cr"),
+                    fastra_core::encoding::LineEnding::Lf => None,
+                };
+                let code=format!("const ok=fastraVisual.insertBookmarked({},{},{},{},{},false,{});return JSON.stringify({{ok,...fastraVisual.clipboardState()}});",json!(verify_key),json!(editor.images.borrow().versioned_html(&page.fragment)),page.configuration["opaqueSources"],json!(id),json!(sources),json!(image_ending));
                 let weak=Rc::downgrade(&editor);let pending=prepared.opens;let insertion_lease=lease.clone();editor.evaluate(&code,move|result|{
                     let _pending_publication=pending_publication;
                     let Some(editor)=weak.upgrade()else{return;};
@@ -572,6 +606,27 @@ pub(super) fn mark_accepted(editor: &RichEditor, value: &Value) {
         }
     }
 }
+fn pending_undo(editor: &RichEditor) -> bool {
+    editor
+        .assets
+        .borrow()
+        .records
+        .values()
+        .any(|record| record.undo_permission_denied)
+}
+fn image_status(editor: &RichEditor) {
+    editor.status.set_text(if pending_undo(editor) {
+        editor.text(
+            "Bildrücknahme unvollständig: Bilddateien bleiben im images-Ordner. Schreibrechte prüfen und im Bildmenü unter Rücknahmedaten erneut versuchen.",
+            "Image cleanup incomplete: image files remain in images. Check write permissions, then retry in Image menu → recovery files.",
+        )
+    } else {
+        editor.text(
+            "Rich-Markdown · Bilder mit Dateivorschau · Rücknahmedaten im Bildmenü",
+            "Rich Markdown · image file preview · recovery files in Image menu",
+        )
+    });
+}
 pub(super) fn finish_image(editor: &Rc<RichEditor>, revision: u64) {
     let weak = Rc::downgrade(editor);
     let operation = editor.operation.get();
@@ -588,10 +643,7 @@ pub(super) fn finish_image(editor: &Rc<RichEditor>, revision: u64) {
                     && editor.assets.borrow().running.is_none()
             }) {
                 editor.busy.set(false);
-                editor.status.set_text(editor.text(
-                    "Rich-Markdown · Bilder mit Dateivorschau · Rücknahmedaten im Bildmenü",
-                    "Rich Markdown · image file preview · recovery files in Image menu",
-                ));
+                image_status(&editor);
             }
         },
     );
@@ -691,7 +743,11 @@ fn restore_changes(
         }
     }
     for (id, visible) in prior {
-        records.get_mut(id).unwrap().visible = *visible;
+        let record = records.get_mut(id).unwrap();
+        record.visible = *visible;
+        if *visible {
+            record.undo_permission_denied = false;
+        }
     }
     failure
 }
@@ -717,6 +773,8 @@ fn complete_reconcile(
                 "Image action held; inspect recovery data:"
             )
         ));
+    } else if ok {
+        image_status(editor);
     }
     for callback in callbacks {
         callback(ok);
@@ -843,9 +901,19 @@ fn reconcile_inner(editor: Rc<RichEditor>, value: &Value, saved: bool, done: Don
                                 failure = Some(format!("Recovery required: {}", path.display()));
                                 break;
                             }
+                            Err(fastra_io::Error::Io(error))
+                                if error.kind() == std::io::ErrorKind::PermissionDenied =>
+                            {
+                                // Der Dateikern hat erfolgte Umbenennungen bereits zurückgebaut.
+                                // Text-Undo bleibt möglich, die ausstehende Dateirücknahme sichtbar.
+                                record.undo_permission_denied = true;
+                            }
                             Err(_) => {} // Fremdgeänderte Bilder behalten wie am Mac ihren sichtbaren Namen.
                         }
                     }
+                }
+                if visible || !record.receipt.is_applied() {
+                    record.undo_permission_denied = false;
                 }
                 record.visible = visible;
             }
@@ -944,6 +1012,29 @@ fn materialize_rtf(editor: Rc<RichEditor>, lease: asset_flow::Lease, bytes: Vec<
     );
 }
 
+fn retry_undo(editor: Rc<RichEditor>) {
+    if !editor.ready.get() || editor.busy.get() || editor.failed.get() || !pending_undo(&editor) {
+        return;
+    }
+    let Some(lease) = asset_flow::Lease::capture(&editor) else {
+        return;
+    };
+    let weak = Rc::downgrade(&editor);
+    editor.evaluate("return JSON.stringify(fastraVisual.clipboardState());", move |value| {
+        let Some(editor) = weak.upgrade() else { return; };
+        if !lease.current(&editor) || editor.busy.get() || editor.failed.get() {
+            return;
+        }
+        if let Some(value) = value.filter(|value| {
+            value["revision"].as_u64() == Some(editor.input_revision.get())
+                && value["markdown"].as_str() == Some(editor.expected.borrow().as_str())
+        }) {
+            // Derselbe Schutz und dieselbe Revision wie beim Aufräumen nach Speichern.
+            reconcile_saved(editor, &value, Box::new(|_| {}));
+        }
+    });
+}
+
 pub(super) fn recovery(editor: &Rc<RichEditor>) {
     let Some(ui) = editor.ui.upgrade() else {
         return;
@@ -958,6 +1049,18 @@ pub(super) fn recovery(editor: &Rc<RichEditor>) {
     root.append(&crate::git_view::label(ui.lang.text("Diese Dateien bleiben absichtlich erhalten, auch wenn ein anderes Programm noch einen offenen Bild-Handle besitzt. Sie werden nicht automatisch gelöscht. Kopieren Sie benötigte Dateien zuerst an einen eigenen Ort. Fremdgeänderte Bilder oder Kollisionen werden niemals überschrieben.","These files are retained deliberately, including when another application still holds an image handle. They are never deleted automatically. Copy needed files to your own location first. Changed images and collisions are never overwritten.")));
     let mut text = String::new();
     for record in editor.assets.borrow().records.values() {
+        if record.undo_permission_denied {
+            text.push_str(ui.lang.text(
+                "Bildrücknahme ausstehend. Diese Dateien konnten wegen fehlender Schreibrechte nicht verschoben werden:\n",
+                "Image cleanup pending. These files could not be moved because write permission was denied:\n",
+            ));
+            if let Some(parent) = editor.document.upgrade().and_then(|doc| doc.disk_path()).and_then(|path| path.parent().map(std::path::Path::to_path_buf)) {
+                for entry in record.receipt.preview() {
+                    text.push_str(&format!("{}\n", parent.join(&entry.relative).display()));
+                }
+            }
+            text.push('\n');
+        }
         for (original, current) in record.receipt.recovery_paths() {
             text.push_str(&format!(
                 "{}\n→ {}\n\n",
@@ -978,6 +1081,23 @@ pub(super) fn recovery(editor: &Rc<RichEditor>) {
         text=ui.lang.text("Für dieses Dokument sind keine Rücknahmedateien bekannt. Nach dem Schließen einer Ansicht bleiben bereits erhaltene Dateien im images-Ordner unter .fastra-image-undo-… vorhanden.","No recovery files are known for this document. After a view is closed, already retained files remain in images under .fastra-image-undo-….").into();
     }
     root.append(&text_page(&text));
+    if pending_undo(editor) {
+        let retry = gtk::Button::with_label(ui.lang.text(
+            "Bildrücknahme erneut versuchen",
+            "Retry image cleanup",
+        ));
+        let owner = Rc::downgrade(editor);
+        let window = window.downgrade();
+        retry.connect_clicked(move |_| {
+            if let Some(window) = window.upgrade() {
+                window.close();
+            }
+            if let Some(editor) = owner.upgrade() {
+                retry_undo(editor);
+            }
+        });
+        root.append(&retry);
+    }
     let close = gtk::Button::with_label(ui.lang.text("Schließen", "Close"));
     let weak = window.downgrade();
     close.connect_clicked(move |_| {
@@ -1085,6 +1205,26 @@ pub(super) fn for_source(editor: Rc<RichEditor>, done: Box<dyn FnOnce(bool)>) {
 #[cfg(test)]
 mod completion_tests {
     use super::*;
+    #[test]
+    fn publication_error_names_the_recovery_location_in_both_languages() {
+        let path = std::path::PathBuf::from("/project/Größe/images");
+        let error = fastra_io::Error::RecoveryRequired(path);
+        assert_eq!(
+            publication_error_detail(crate::Language(true), &error),
+            "Prüfe den Wiederherstellungsort und bewahre vorhandene Dateien auf.\n/project/Größe/images"
+        );
+        assert_eq!(
+            publication_error_detail(crate::Language(false), &error),
+            "Inspect the recovery location and keep any files found there.\n/project/Größe/images"
+        );
+
+        let cause = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "test access denied");
+        assert_eq!(
+            publication_error_detail(crate::Language(false), &fastra_io::Error::Io(cause)),
+            "test access denied"
+        );
+    }
+
     #[test]
     fn cancel_after_successful_apply_compensates_without_inserting() {
         use fastra_io::markdown_assets::{Input, Owner, Plan};

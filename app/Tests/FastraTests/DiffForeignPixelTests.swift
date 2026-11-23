@@ -5,10 +5,10 @@ import Testing
 /// `diffForeignPixelFraction` entscheidet im `diffnowrap`-Selbsttest, ob die
 /// linke Diff-Spalte in die rechte hineinragt. Die Funktion war von keinem
 /// Test aufgerufen — und sie hatte einen Rechenfehler, der nur an bestimmten
-/// Hintergrundfarben auffällt: Der Bezugswert kam aus der UNTERGRENZE des
+/// Hintergrundfarben auffällt: Der Bezugswert kam aus der Untergrenze des
 /// häufigsten 5-Bit-Eimers, und ein Eimer ist mit 1/31 ≈ 0,0323 breiter als
 /// die Toleranz von 0,03. Lag ein Kanal im oberen Teil seines Eimers, galt
-/// jeder Bildpunkt einer EINFARBIGEN Fläche als fremd — der Selbsttest meldete
+/// jeder Bildpunkt einer einfarbigen Fläche als fremd — der Selbsttest meldete
 /// „100 % fremde Schrift" auf leerem Grund.
 @Suite("Fremde Bildpunkte im Diff-Ausschnitt")
 struct DiffForeignPixelTests {
@@ -38,7 +38,7 @@ struct DiffForeignPixelTests {
     /// 0,0322 landet nach der 8-Bit-Rundung auf 8/255 = 0,03137. Mal 31 sind
     /// das 0,9725 — der Wert liegt also fast am oberen Rand seines Eimers,
     /// dessen Untergrenze 0 ist. Der Abstand 0,0314 ist größer als die
-    /// Toleranz 0,03: GENAU dieser Wert ließ die alte Rechnung jeden Punkt
+    /// Toleranz 0,03: genau dieser Wert ließ die alte Rechnung jeden Punkt
     /// als fremd zählen.
     @Test("Eine einfarbige Fläche zählt keine fremden Punkte — auch am Eimerrand",
           arguments: [0.0322, 0.999, 0.9679, 0.5162, 0.0])

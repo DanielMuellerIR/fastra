@@ -15,43 +15,43 @@ struct SettingsView: View {
     /// (`AppearanceSetting.rawValue`) — gleicher Schlüssel wie
     /// `AppearanceSetting.current(defaults:)`, das der AppDelegate beim Start
     /// liest.
-    @AppStorage(AppearanceSetting.defaultsKey, store: SelfTest.workspaceDefaults())
+    @AppStorage(AppearanceSetting.defaultsKey, store: AppDefaults.store)
     private var appearanceRaw = AppearanceSetting.system.rawValue
-    @AppStorage(UIZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var uiZoomLevel = 0
-    @AppStorage(DocumentZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var documentZoomLevel = 0
-    @AppStorage(EditorFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var editorFontName = EditorFonts.systemMonospacedName
-    @AppStorage(SessionRestorationPreferences.enabledKey, store: SelfTest.workspaceDefaults())
+    @AppStorage(UIZoom.defaultsKey, store: AppDefaults.store) private var uiZoomLevel = 0
+    @AppStorage(DocumentZoom.defaultsKey, store: AppDefaults.store) private var documentZoomLevel = 0
+    @AppStorage(EditorFonts.defaultsKey, store: AppDefaults.store) private var editorFontName = EditorFonts.systemMonospacedName
+    @AppStorage(SessionRestorationPreferences.enabledKey, store: AppDefaults.store)
     private var restoreLastSession = true
-    @AppStorage(MarkdownEditingMode.defaultsKey, store: SelfTest.workspaceDefaults()) private var markdownVisualDefault = false
-    @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showMarkdownPreview = true
-    @AppStorage(PreviewFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var previewFontName = PreviewFonts.systemName
+    @AppStorage(MarkdownEditingMode.defaultsKey, store: AppDefaults.store) private var markdownVisualDefault = false
+    @AppStorage("markdown.integratedPreview", store: AppDefaults.store) private var showMarkdownPreview = true
+    @AppStorage(PreviewFonts.defaultsKey, store: AppDefaults.store) private var previewFontName = PreviewFonts.systemName
     // Druckeinstellungen. Die Voreinstellungen hier müssen mit
     // `PrintPreferences` übereinstimmen: Beide lesen denselben Schlüssel, und
     // ein nie gesetzter Schlüssel liefert bei `bool(forKey:)` immer `false`.
-    @AppStorage(PrintPreferences.Keys.lineNumbers, store: SelfTest.workspaceDefaults())
+    @AppStorage(PrintPreferences.Keys.lineNumbers, store: AppDefaults.store)
     private var printLineNumbers = PrintPreferences.defaultLineNumbers
-    @AppStorage(PrintPreferences.Keys.headerFooter, store: SelfTest.workspaceDefaults())
+    @AppStorage(PrintPreferences.Keys.headerFooter, store: AppDefaults.store)
     private var printHeaderFooter = PrintPreferences.defaultHeaderFooter
-    @AppStorage(PrintPreferences.Keys.syntaxColors, store: SelfTest.workspaceDefaults())
+    @AppStorage(PrintPreferences.Keys.syntaxColors, store: AppDefaults.store)
     private var printSyntaxColors = PrintPreferences.defaultSyntaxColors
-    @AppStorage(PrintPreferences.Keys.fontSize, store: SelfTest.workspaceDefaults())
+    @AppStorage(PrintPreferences.Keys.fontSize, store: AppDefaults.store)
     private var printFontSize = PrintPreferences.defaultFontSize
-    @AppStorage(GitPreferencesStore.Keys.decision, store: SelfTest.workspaceDefaults())
+    @AppStorage(GitPreferencesStore.Keys.decision, store: AppDefaults.store)
     private var gitFetchDecision = GitAutomaticFetchDecision.ask.rawValue
-    @AppStorage(GitPreferencesStore.Keys.interval, store: SelfTest.workspaceDefaults())
+    @AppStorage(GitPreferencesStore.Keys.interval, store: AppDefaults.store)
     private var gitFetchInterval = GitPreferences.defaultFetchInterval
-    @AppStorage(GitPreferencesStore.Keys.fetchOnActivation, store: SelfTest.workspaceDefaults())
+    @AppStorage(GitPreferencesStore.Keys.fetchOnActivation, store: AppDefaults.store)
     private var gitFetchOnActivation = true
-    @AppStorage(GitPreferencesStore.Keys.remoteScope, store: SelfTest.workspaceDefaults())
+    @AppStorage(GitPreferencesStore.Keys.remoteScope, store: AppDefaults.store)
     private var gitRemoteScope = GitRemoteScope.relevant.rawValue
-    @AppStorage(GitPreferencesStore.Keys.prune, store: SelfTest.workspaceDefaults()) private var gitFetchPrune = false
-    @AppStorage(GitPreferencesStore.Keys.pullStrategy, store: SelfTest.workspaceDefaults())
+    @AppStorage(GitPreferencesStore.Keys.prune, store: AppDefaults.store) private var gitFetchPrune = false
+    @AppStorage(GitPreferencesStore.Keys.pullStrategy, store: AppDefaults.store)
     private var gitPullStrategy = GitPullStrategy.unselected.rawValue
     // 4D-Werkzeuge: gemerkter tool4d-Pfad (derselbe Schlüssel, den auch
     // „Hilfe → tool4d finden…" pflegt) und das Makro-Engine-Projekt.
-    @AppStorage(Tool4DAssist.rememberedPathKey, store: SelfTest.workspaceDefaults())
+    @AppStorage(Tool4DAssist.rememberedPathKey, store: AppDefaults.store)
     private var tool4dPath = ""
-    @AppStorage(FourDMacroEngineSettings.projectPathKey, store: SelfTest.workspaceDefaults())
+    @AppStorage(FourDMacroEngineSettings.projectPathKey, store: AppDefaults.store)
     private var macroEngineProjectPath = ""
     /// Einmal beim Öffnen ermittelter Discovery-Fund als Platzhaltertext —
     /// nicht bei jedem Tastendruck neu suchen.
@@ -61,57 +61,50 @@ struct SettingsView: View {
     /// das fertige Ergebnis gelesen.
     @State private var tool4dPathProblem: String?
     @State private var macroEngineProblem: String?
-    // Auch dieser Speicher gehört in die Selbsttest-Suite: Sein `init`
-    // migriert und schreibt beim ersten Zugriff. Mit `.standard` hätte ein
-    // Einstellungs-Selbsttest die echten Editor-Profile des Nutzers
-    // verändert (Review 2026-08-06). Im Normalbetrieb liefert
-    // `SelfTest.workspaceDefaults()` `.standard` — Verhalten unverändert.
+    // Die Migration schreibt bereits beim ersten Zugriff und muss deshalb
+    // denselben Prozess-Store wie die AppStorage-Wrapper verwenden.
     @StateObject private var editorProfiles =
-        SoftWrapProfileStore(defaults: SelfTest.workspaceDefaults())
+        SoftWrapProfileStore(defaults: AppDefaults.store)
 
     init() {
         // AppStorage kennt die typisierte Migration/Intervallbegrenzung nicht.
         // Die geladenen Werte dienen deshalb als Initialwerte, solange der
         // jeweilige neue Schlüssel noch nicht existiert.
         //
-        // WICHTIG: Diese sechs Wrapper werden hier NEU gebaut und ersetzen die
-        // oben deklarierten. Ohne `store:` läge der Ersatz auf `.standard` —
-        // ein Selbsttest hätte damit die echten Git-Einstellungen des Nutzers
-        // gelesen UND überschrieben, obwohl `SelfTest.workspaceDefaults()`
-        // genau das verhindern soll (Review 2026-08-02). Im normalen Betrieb
-        // liefert diese Funktion `.standard`, das Verhalten bleibt also gleich.
+        // Auch neu gebaute Wrapper benötigen den expliziten Store; sonst
+        // greifen sie trotz isoliertem Prozess auf `.standard` zu.
         let preferences = GitPreferencesStore(
-            defaults: SelfTest.workspaceDefaults()
+            defaults: AppDefaults.store
         ).load()
         _gitFetchDecision = AppStorage(
             wrappedValue: preferences.automaticFetchDecision.rawValue,
             GitPreferencesStore.Keys.decision,
-            store: SelfTest.workspaceDefaults()
+            store: AppDefaults.store
         )
         _gitFetchInterval = AppStorage(
             wrappedValue: preferences.fetchIntervalSeconds,
             GitPreferencesStore.Keys.interval,
-            store: SelfTest.workspaceDefaults()
+            store: AppDefaults.store
         )
         _gitFetchOnActivation = AppStorage(
             wrappedValue: preferences.fetchOnActivation,
             GitPreferencesStore.Keys.fetchOnActivation,
-            store: SelfTest.workspaceDefaults()
+            store: AppDefaults.store
         )
         _gitRemoteScope = AppStorage(
             wrappedValue: preferences.remoteScope.rawValue,
             GitPreferencesStore.Keys.remoteScope,
-            store: SelfTest.workspaceDefaults()
+            store: AppDefaults.store
         )
         _gitFetchPrune = AppStorage(
             wrappedValue: preferences.prune,
             GitPreferencesStore.Keys.prune,
-            store: SelfTest.workspaceDefaults()
+            store: AppDefaults.store
         )
         _gitPullStrategy = AppStorage(
             wrappedValue: preferences.pullStrategy.rawValue,
             GitPreferencesStore.Keys.pullStrategy,
-            store: SelfTest.workspaceDefaults()
+            store: AppDefaults.store
         )
     }
 
@@ -234,7 +227,7 @@ struct SettingsView: View {
                     gitFetchDecision = GitAutomaticFetchDecision.ask.rawValue
                     // Gleiche Isolation wie im `init()`: im Selbsttest darf auch
                     // dieses Zurücksetzen nur die Testablage treffen.
-                    GitPreferencesStore(defaults: SelfTest.workspaceDefaults())
+                    GitPreferencesStore(defaults: AppDefaults.store)
                         .clearAutomaticFetchPromptDeferral()
                     gitPreferencesChanged()
                 }
@@ -270,16 +263,16 @@ struct SettingsView: View {
         // Über, dieser Dialog) wechseln live; die dynamischen Theme-Farben
         // und das Editor-Theme ziehen automatisch mit.
         .onChange(of: appearanceRaw) {
-            // Gelesen wird aus DERSELBEN Suite, in die der Picker oben
+            // Gelesen wird aus derselben Suite, in die der Picker oben
             // geschrieben hat. Mit `.standard` läse ein Selbsttest den echten
-            // Wert des Nutzers und wendete den falschen an (Review 2026-08-06).
-            AppearanceSetting.current(defaults: SelfTest.workspaceDefaults()).apply()
+            // Wert des Nutzers und wendete den falschen an.
+            AppearanceSetting.current(defaults: AppDefaults.store).apply()
         }
         .onChange(of: restoreLastSession) {
             if !restoreLastSession {
                 // Ohne die Suite löschte ein Selbsttest den echten
                 // wiederherstellbaren Sitzungszustand des Nutzers.
-                SessionStateStore.clear(in: SelfTest.workspaceDefaults())
+                SessionStateStore.clear(in: AppDefaults.store)
             }
         }
         .onAppear {

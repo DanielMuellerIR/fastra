@@ -33,20 +33,22 @@
   });
   td.addRule('spaces',{filter:n=>n.hasAttribute('data-md-spaces'),replacement:(_,n)=>'&nbsp;'.repeat(Number(n.dataset.mdSpaces))});
   function randomToken(prefix) { return prefix+Array.from(crypto.getRandomValues(new Uint32Array(4)),n=>n.toString(16)).join('')+'END'; }
-  function toMarkdown(html) {
+  function toMarkdown(html,lineEnding='\n') {
     const holder=document.createElement('div');holder.innerHTML=html;
     holder.querySelectorAll('[data-md-edit-boundary]').forEach(n=>n.remove());
-    // Nur registrierte Rich-Formeln nach der allgemeinen Leerraum-/Listen-
-    // Normalisierung restaurieren; deren Original-TeX bleibt dabei bytegleich.
-    const mathAtoms=[],mathNodes=holder.querySelectorAll('[data-md-math-source]');let mathNamespace='';
-    if(mathNodes.length){
-      const mathInput=holder.innerHTML+'\0'+Object.values(opaqueSources).join('\0');mathNamespace=randomToken('FASTRARICHMATH');
-      for(let attempt=0;mathInput.includes(mathNamespace);attempt++){if(attempt===16)throw new Error('Math token collision limit');mathNamespace=randomToken('FASTRARICHMATH');}
+    // Die Zeilenenden geschützter Originale bleiben auch bei einem Bildblock
+    // mit neuen Absatzumbrüchen erhalten.
+    const sources=[],mathNodes=holder.querySelectorAll('[data-md-math-source]');
+    const protectOpaque=lineEnding!=='\n' && holder.querySelector('[data-md-opaque]');
+    let namespace='';
+    if(mathNodes.length || protectOpaque){
+      const input=holder.innerHTML+'\0'+Object.values(opaqueSources).join('\0');namespace=randomToken('FASTRARICHSOURCE');
+      for(let attempt=0;input.includes(namespace);attempt++){if(attempt===16)throw new Error('Rich source token collision limit');namespace=randomToken('FASTRARICHSOURCE');}
     }
+    function protect(source){const token=namespace+sources.length+'END';sources.push(source);return token;}
     mathNodes.forEach(node=>{
       const source=opaqueSources[node.dataset.mdMathSource];if(typeof source!=='string')return;
-      const token=mathNamespace+mathAtoms.length+'END';
-      mathAtoms.push([token,source]);
+      const token=protect(source);
       if(node.tagName==='DIV'){const block=document.createElement('div');block.textContent=token;node.replaceWith(block);}
       else node.replaceWith(document.createTextNode(token));
     });
@@ -107,18 +109,28 @@
       }
       n.replaceWith(lines);
     });
-    let markdown=td.turndown(holder.innerHTML);
+    let markdown;
+    const previousOpaqueSourceToken=opaqueSourceToken;
+    if(protectOpaque)opaqueSourceToken=protect;
+    try { markdown=td.turndown(holder.innerHTML); }
+    finally { opaqueSourceToken=previousOpaqueSourceToken; }
+    if(lineEnding!=='\n')markdown=markdown.replace(/\r\n?|\n/g,lineEnding);
     for(const [token,spaces] of tableSpaces)markdown=markdown.replace(token,()=>spaces);
     for(const token of blanks)markdown=markdown.replace(token,'  ');
-    if(mathAtoms.length)markdown=markdown.replace(new RegExp(mathNamespace+'(\\d+)END','g'),(token,index)=>mathAtoms[Number(index)]?.[1] ?? token);
+    if(sources.length)markdown=markdown.replace(new RegExp(namespace+'(\\d+)END','g'),(token,index)=>sources[Number(index)] ?? token);
     return markdown;
   }
   const commonEscape=td.escape.bind(td);
   // Einzelne = sind gewöhnlicher Text. Nur benachbarte = können Fastras
   // Textmarker auslösen; Turndown schützt bereits = am Textanfang.
   td.escape=text=>commonEscape(text.replace(/&/g,'&amp;').replace(/</g,'&lt;')).replace(/^(\d+)\) /,'$1\\) ').replace(/[$~]|(?<!\\)=(?==)|(?<==)=/g,'\\$&');
-  let opaqueSources={};
-  td.addRule('opaque',{filter:n=>n.hasAttribute('data-md-opaque'),replacement:(_,n)=>opaqueSources[n.dataset.mdOpaque] || ''});
+  let opaqueSources={},opaqueSourceToken=null;
+  function opaqueMarkdown(node,tableCell=false) {
+    const source=opaqueSources[node.dataset.mdOpaque] || '';
+    const markdown=tableCell?source.replace(/\|/g,'\\|'):source;
+    return markdown && opaqueSourceToken?opaqueSourceToken(markdown):markdown;
+  }
+  td.addRule('opaque',{filter:n=>n.hasAttribute('data-md-opaque'),replacement:(_,n)=>opaqueMarkdown(n)});
   function adjacentCharacter(node,forward) {
     while(node && !/^(DIV|P|H[1-6]|LI|TD|TH|BLOCKQUOTE)$/.test(node.nodeName)) {
       const sibling=forward?node.nextSibling:node.previousSibling;
@@ -185,7 +197,7 @@
       clone.querySelectorAll('img[data-md-src]').forEach(image=>image.setAttribute('src',image.dataset.mdSrc));
       clone.querySelectorAll('[data-md-opaque]').forEach(atom=>{
         const token=randomToken('FASTRATABLEATOM');
-        atoms.push([token,opaqueSources[atom.dataset.mdOpaque] || '']);atom.replaceWith(document.createTextNode(token));
+        atoms.push([token,opaqueMarkdown(atom)]);atom.replaceWith(document.createTextNode(token));
       });
       clone.querySelectorAll('[data-tex]').forEach(math=>{
         const token=randomToken('FASTRATABLEMATH');
@@ -221,7 +233,7 @@
       clone.querySelectorAll('[data-tex],[data-md-opaque]').forEach(atom=>{
         if(!clone.contains(atom))return;
         const token=randomToken('FASTRATABLECELL');
-        const source=atom.hasAttribute('data-tex')?mathMarkdown(atom):(opaqueSources[atom.dataset.mdOpaque] || '').replace(/\|/g,'\\|');
+        const source=atom.hasAttribute('data-tex')?mathMarkdown(atom):opaqueMarkdown(atom,true);
         atoms.push([token,source]);atom.replaceWith(document.createTextNode(token));
       });
       let source=toMarkdown(clone.innerHTML).replace(/\n+/g,'<br>').replace(/\|/g,'\\|');
@@ -270,7 +282,8 @@
     sourceContextBytes+=new TextEncoder().encode(node.outerHTML).length;
   }
   let copiedHTML=null;
-  let actionFenced=false, clipboardBookmark=null, imageFenceRevision=null, lastImageTransactions="[]";
+  const nativeActionIDs=new Set();
+  let initializing=false, actionFenced=false, clipboardBookmark=null, imageFenceRevision=null, lastImageTransactions="[]";
   let clipboardLimit=0, clipboardSelectionGeneration=0, observedClipboardSelection=null;
   function clipboardSelectionState(){
     const live=getSelection();
@@ -311,7 +324,7 @@
     outlineHeadings().forEach((heading,i)=>{if(heading.contains(element) || heading===element || (heading.compareDocumentPosition(element)&Node.DOCUMENT_POSITION_FOLLOWING))index=i;});
     return index;
   }
-  function updateFence(){fenced=actionFenced || clipboardBookmark!==null || imageFenceRevision!==null;root.contentEditable=fenced?'false':'true';}
+  function updateFence(){fenced=initializing || actionFenced || nativeActionIDs.size>0 || clipboardBookmark!==null || imageFenceRevision!==null;root.contentEditable=fenced?'false':'true';}
   function normalized(node) {
     const clone=node.cloneNode(true);
     clone.querySelectorAll('[contenteditable]').forEach(n=>n.removeAttribute('contenteditable'));
@@ -351,6 +364,12 @@
       if(known)activateSourceContext(known.context);
     }
     const used=new Set();let output='';
+    const imageEndings=new Map();
+    for(const image of root.querySelectorAll('img[data-md-image-transaction][data-md-image-ending]')){
+      let owner=image;
+      while(owner.parentNode!==root)owner=owner.parentNode;
+      imageEndings.set(owner.getAttribute('data-md-block') ?? owner,image.dataset.mdImageEnding==='crlf'?'\r\n':'\r');
+    }
     const visible=Array.from(root.children).filter(n=>!n.hasAttribute('data-md-edit-boundary'));
     // Nach Select-All/Delete bleibt WebKits einzelner Cursorabsatz übrig.
     // Verdeckte Referenzdefinitionen erhalten; gelöschte Leerzeilen nicht anhängen.
@@ -366,6 +385,7 @@
       if(node.nodeType===Node.TEXT_NODE && !node.textContent.trim())continue;
       const id=node.nodeType===Node.ELEMENT_NODE ? node.getAttribute('data-md-block') : null;
       const original=id===null ? null : originals.get(id);
+      const ending=imageEndings.get(id ?? node) ?? '\n';
       if(original && !used.has(id)) {
         hiddenBefore(id);used.add(id);
         const snapshot=normalized(node);
@@ -374,15 +394,15 @@
           // Text- und Inline-Änderungen behalten die vorhandenen Zeilenenden.
           // Neue Blockarten brauchen dagegen eine sichere Absatztrennung:
           // Eine Überschrift vor Fließtext darf nicht mit ihm verschmelzen.
-          const suffix=blockStructure(snapshot)===original.structure ? original.source.match(/[\r\n]*$/)[0] : '\n\n';
-          output+=toMarkdown(node.innerHTML)+suffix;
+          const suffix=blockStructure(snapshot)===original.structure ? original.source.match(/[\r\n]*$/)[0] : ending+ending;
+          output+=toMarkdown(node.innerHTML,ending)+suffix;
         }
       } else if(node.nodeType===Node.ELEMENT_NODE && node.hasAttribute('data-md-empty') && !node.textContent.length && !node.querySelector('img')) {
         continue;
       } else {
         const holder=document.createElement('div');holder.append(node.cloneNode(true));
-        const value=toMarkdown(holder.innerHTML);
-        output+=value ? value+'\n\n' : '\n';
+        const value=toMarkdown(holder.innerHTML,ending);
+        output+=value ? value+ending+ending : ending;
       }
     }
     // Verdeckte Definitionen müssen auch dann erhalten bleiben, wenn ihr
@@ -794,8 +814,15 @@
       return true;
     },
     async start(configuration) {
+      // Erst nach Aufbau und verlustfreier Übernahme der Quelle darf WebKit Eingaben annehmen.
+      initializing=true;
+      if(session!==configuration.session)nativeActionIDs.clear();
+      session=configuration.session;root=document.getElementById('fastra-visual');updateFence();
       const until=Date.now()+5000;
-      while(!document.documentElement.hasAttribute('data-fastra-enhanced') && Date.now()<until)await new Promise(r=>setTimeout(r,10));
+      while(!document.documentElement.hasAttribute('data-fastra-enhanced')){
+        if(Date.now()>=until)return false;
+        await new Promise(r=>setTimeout(r,10));
+      }
       clipboardLimit=configuration.clipboardLimit || 0;
       root=document.getElementById('fastra-visual');blocks=configuration.blocks;base=configuration.markdown;session=configuration.session;opaqueSources=configuration.opaqueSources || {};
       // Verdeckte Definitionen einmal ihrem nächsten sichtbaren Block zuordnen.
@@ -808,7 +835,7 @@
       trailingHidden=new Set(preceding.map(b=>b.id));
       root.querySelectorAll('img').forEach(image=>{const token=image.getAttribute('src')?.split('/').pop(),id=configuration.imageTransactions?.[token];if(id)image.dataset.mdImageTransaction=id;});
       lastImageTransactions=JSON.stringify(imageTransactions().slice().sort());
-      root.contentEditable='true';root.setAttribute('role','textbox');root.setAttribute('aria-multiline','true');
+      updateFence();root.setAttribute('role','textbox');root.setAttribute('aria-multiline','true');
       root.querySelectorAll('input[type=checkbox]').forEach(n=>{n.removeAttribute('disabled');n.contentEditable='false';});
       root.querySelectorAll('[data-tex],.mermaid-render').forEach(n=>n.contentEditable='false');
       for(const b of blocks) {
@@ -979,9 +1006,11 @@
       for(const type of ['wheel','pointerdown','keydown'])window.addEventListener(type,()=>{
         viewportGeneration++;viewportRestoring=false;
       },{passive:true});
-      root.focus();
       await restoreViewport(configuration.viewport);
-      return serialize()===base;
+      if(serialize()!==base)return false;
+      initializing=false;updateFence();
+      root.focus({preventScroll:true});
+      return true;
     },
     command(command,value) {
       if(fenced)return false;
@@ -1072,14 +1101,16 @@
     validateClipboardBookmark(key){const saved=bookmarks.get(key);return !!saved && saved.base===serialize() && root.contains(saved.range.commonAncestorContainer) && currentClipboardSelection(saved);},
     clipboardState(){return {markdown:serialize(),revision,imageTransactions:imageTransactions()};},
     discardBookmark(key){return bookmarks.delete(key);},
-    insertBookmarked(key,html,atoms,transaction,imageSources,singleLine=false){
+    insertBookmarked(key,html,atoms,transaction,imageSources,singleLine=false,imageEnding=null){
       if(fenced)return false;
       const saved=bookmarks.get(key);bookmarks.delete(key);
       if(!saved || saved.base!==serialize() || !root.contains(saved.range.commonAncestorContainer) || !currentClipboardSelection(saved))return false;
       Object.assign(opaqueSources,atoms || {});
       const template=document.createElement('template');template.innerHTML=html;
       if(transaction)template.content.querySelectorAll('img').forEach(n=>{
-        if(imageSources.includes(n.getAttribute('src')))n.dataset.mdImageTransaction=transaction;
+        if(!imageSources.includes(n.getAttribute('src')))return;
+        n.dataset.mdImageTransaction=transaction;
+        if(imageEnding==='crlf' || imageEnding==='cr')n.dataset.mdImageEnding=imageEnding;
       });
       template.content.querySelectorAll('[data-tex]').forEach(n=>n.textContent=n.dataset.tex);
       // WebKit muss neue Atome zunächst als editierbare Einfügung verbuchen,
@@ -1161,20 +1192,32 @@
       document.body.style.setProperty('--fastra-copy-background',dark?'#333333':'#ECECEC');
       let sheet=document.getElementById('fastra-visual-style');if(!sheet){sheet=document.createElement('style');sheet.id='fastra-visual-style';document.head.append(sheet);}
       const family=font==='System'?'-apple-system, BlinkMacSystemFont, sans-serif':JSON.stringify(font)+', -apple-system, sans-serif';
-      sheet.textContent=`body{font-family:${family};font-size:${size}px;color:${dark?'#F2F2F2':'#363636'};background:${dark?'#171717':'#FFFFFF'}}h1,h2,h3,h4,h5,h6{color:inherit}blockquote,pre.mermaid-error::before{color:${dark?'#A8A8A8':'#737373'}}a{color:${dark?'#8BB7F2':'#3F69A8'}}code,pre,blockquote,th{background:${dark?'#333333':'#ECECEC'}}td,th,blockquote,hr{border-color:${dark?'#484848':'#D7D7D7'}}mark{background:${dark?'#665200':'#FFEE9A'};color:inherit}`;
+      sheet.textContent=`body{font-family:${family};font-size:${size}px;color:${dark?'#F2F2F2':'#363636'};background:${dark?'#171717':'#FFFFFF'}}h1,h2,h3,h4,h5,h6{color:inherit}blockquote,pre.mermaid-error::before{color:${dark?'#A8A8A8':'#737373'}}a{color:${dark?'#8BB7F2':'#3F69A8'}}code,pre{background:${dark?'#333333':'#ECECEC'}}td,th,blockquote,hr{border-color:${dark?'#484848':'#D7D7D7'}}mark{background:${dark?'#665200':'#FFEE9A'};color:inherit}`;
       window.fastraMarkdownPresentation?.update();
       await window.fastraUpdateMarkdownTheme?.(root,dark);
       window.fastraMarkdownPresentation?.update();
     },
-    prepareAction(){
+    prepareAction(expectedSession,actionID){
+      const native=arguments.length!==0;
+      if(native && (arguments.length!==2 || expectedSession!==session || typeof actionID!=='string' || !actionID.length || nativeActionIDs.has(actionID)))return null;
       if(composing)return {composing:true};
-      actionFenced=true;
+      if(native)nativeActionIDs.add(actionID);else actionFenced=true;
       // Eine Dokumentaktion übernimmt den aktuellen Stand. Ein noch nicht
       // bestätigter Cut darf ihn danach nicht mehr verändern; die Kopie bleibt.
       if(clipboardBookmark!==null){bookmarks.delete(clipboardBookmark);clipboardBookmark=null;}
-      updateFence();changed();return {markdown:serialize(),revision,imageTransactions:imageTransactions(),inputType:lastInputType,viewport:viewportPosition()};
+      updateFence();changed();
+      const snapshot={markdown:serialize(),revision,imageTransactions:imageTransactions(),inputType:lastInputType,viewport:viewportPosition()};
+      if(native){snapshot.session=session;snapshot.actionID=actionID;}
+      return snapshot;
     },
-    completeAction(expectedSession){if(expectedSession!==session)return;actionFenced=false;updateFence();},
+    completeAction(expectedSession,actionID){
+      if(expectedSession!==session)return;
+      if(arguments.length===1)actionFenced=false;
+      else {
+        if(arguments.length!==2 || typeof actionID!=='string' || !actionID.length || !nativeActionIDs.delete(actionID))return;
+      }
+      updateFence();
+    },
     completeImageAction(expectedSession,expectedRevision){
       if(expectedSession!==session || expectedRevision!==imageFenceRevision)return;
       imageFenceRevision=null;updateFence();

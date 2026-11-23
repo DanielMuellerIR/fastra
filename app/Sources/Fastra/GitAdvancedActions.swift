@@ -84,7 +84,7 @@ extension Workspace {
     func gitContinueOperation() {
         guard let operation = gitOperationState else { return }
         guard let arguments = GitAdvancedArguments.operation(operation, action: .continue) else {
-            Self.presentGitErrorText(
+            self.gitInteraction.presentGitErrorText(
                 label: "Git-Vorgang",
                 text: L10n.string("Bisect wird in diesem Ausbau nicht automatisch fortgesetzt. Öffne dafür das Terminal im Projektordner."))
             return
@@ -174,7 +174,7 @@ extension Workspace {
         guard !gitOperationsAreBusy else { return }
         if let commitHash,
            !gitLog.contains(where: { $0.hash == commitHash }) {
-            Self.presentGitErrorText(label: "Neuer Branch",
+            self.gitInteraction.presentGitErrorText(label: "Neuer Branch",
                                      text: L10n.string("Der ausgewählte Commit ist nicht mehr im aktuellen Graph enthalten."))
             return
         }
@@ -191,9 +191,9 @@ extension Workspace {
                 guard let self, context.isCurrent(in: self) else { return }
                 guard case .completed(let result) = outcome, result.ok else {
                     if case .completed(let result) = outcome {
-                        Self.presentGitError(label: "Branchname", result: result)
+                        self.gitInteraction.presentGitError(label: "Branchname", result: result)
                     } else {
-                        Self.presentGitExecutionFailure(label: "Branchname", outcome: outcome)
+                        self.gitInteraction.presentGitExecutionFailure(label: "Branchname", outcome: outcome)
                     }
                     return
                 }
@@ -262,7 +262,7 @@ extension Workspace {
     private func runSelectedCommitMutation(hash: String, command: String,
                                            action: GitActionText) {
         guard let commit = gitLog.first(where: { $0.hash == hash }) else {
-            Self.presentGitErrorText(label: action.labelKey,
+            self.gitInteraction.presentGitErrorText(label: action.labelKey,
                                      text: L10n.string("Der ausgewählte Commit ist nicht mehr im aktuellen Graph enthalten."))
             return
         }
@@ -360,7 +360,7 @@ extension Workspace {
                     guard let configuration = self.gitIdentityPromptHandler(snapshot) else { return }
                     self.writeGitIdentity(configuration, context: context, then: nil)
                 case .failure(let failure):
-                    Self.presentGitExecutionFailure(label: "Git-Identität", outcome: failure)
+                    self.gitInteraction.presentGitExecutionFailure(label: "Git-Identität", outcome: failure)
                 case .cancelled:
                     break
                 }
@@ -385,7 +385,7 @@ extension Workspace {
                     guard let configuration = self.gitIdentityPromptHandler(snapshot) else { return }
                     self.writeGitIdentity(configuration, context: context, then: then)
                 case .failure(let failure):
-                    Self.presentGitExecutionFailure(label: "Git-Identität", outcome: failure)
+                    self.gitInteraction.presentGitExecutionFailure(label: "Git-Identität", outcome: failure)
                 case .cancelled:
                     break
                 }
@@ -425,26 +425,26 @@ extension Workspace {
                     if contextIsCurrent { then?(context) }
                 case .failure(let failure):
                     if case .completed(let result) = failure {
-                        Self.presentGitError(label: "Git-Identität", result: result)
+                        self.gitInteraction.presentGitError(label: "Git-Identität", result: result)
                     } else {
-                        Self.presentGitExecutionFailure(label: "Git-Identität", outcome: failure)
+                        self.gitInteraction.presentGitExecutionFailure(label: "Git-Identität", outcome: failure)
                     }
                 case .rollbackFailed(let original, let rollback):
                     let originalText = Self.gitExecutionFailureText(original)
                         ?? L10n.string("Das Schreiben der Git-Identität ist fehlgeschlagen.")
                     let rollbackText = Self.gitExecutionFailureText(rollback)
                         ?? L10n.string("Auch das Wiederherstellen der vorherigen Identität ist fehlgeschlagen.")
-                    Self.presentGitErrorText(
+                    self.gitInteraction.presentGitErrorText(
                         label: "Git-Identität",
                         text: originalText + "\n\n" + rollbackText
                     )
                 case .verificationFailed:
-                    Self.presentGitErrorText(
+                    self.gitInteraction.presentGitErrorText(
                         label: "Git-Identität",
                         text: L10n.string("Git meldet nach dem Schreiben andere Identitätswerte.")
                     )
                 case .invalidOrUnconfirmed:
-                    Self.presentGitErrorText(label: "Git-Identität",
+                    self.gitInteraction.presentGitErrorText(label: "Git-Identität",
                         text: L10n.string("Name und E-Mail müssen nichtleer und einzeilig sein. Eine globale Änderung braucht eine separate Bestätigung."))
                 case .cancelled:
                     break
@@ -453,58 +453,7 @@ extension Workspace {
         }
     }
 
-    static func defaultGitIdentityPrompt(_ snapshot: GitIdentitySnapshot?)
-        -> GitIdentityConfiguration? {
-        guard presentGitDialogs else { return nil }
-        let alert = NSAlert()
-        alert.messageText = L10n.string("Git-Identität konfigurieren")
-        alert.informativeText = (snapshot?.sourceDescription ?? L10n.string("Noch nicht gelesen"))
-            + "\n" + L10n.string("Git benötigt Name und E-Mail für Commits. Standardmäßig speichert Fastra beide Werte nur in diesem Repository.")
-        alert.addButton(withTitle: L10n.string("Speichern"))
-        alert.addButton(withTitle: L10n.string("Abbrechen"))
 
-        let name = NSTextField(string: snapshot?.effectiveName ?? "")
-        name.placeholderString = L10n.string("Name")
-        name.setAccessibilityLabel(L10n.string("Git-Name"))
-        let email = NSTextField(string: snapshot?.effectiveEmail ?? "")
-        email.placeholderString = L10n.string("E-Mail")
-        email.setAccessibilityLabel(L10n.string("Git-E-Mail"))
-        let global = NSButton(checkboxWithTitle: L10n.string("Global für alle Repositories speichern"),
-                              target: nil, action: nil)
-        global.state = .off
-        let stack = NSStackView(views: [name, email, global])
-        stack.orientation = .vertical
-        stack.spacing = 8
-        stack.frame = NSRect(x: 0, y: 0, width: 360, height: 84)
-        alert.accessoryView = stack
-        alert.window.initialFirstResponder = name
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        let scope: GitIdentityScope = global.state == .on ? .global : .repository
-        var globalConfirmed = false
-        if scope == .global {
-            let confirmation = NSAlert()
-            confirmation.alertStyle = .warning
-            confirmation.messageText = L10n.string("Git-Identität wirklich global ändern?")
-            confirmation.informativeText = L10n.string("Name und E-Mail gelten danach als Standard für alle Git-Repositories dieses Benutzerkontos. Repository-lokale Werte haben weiterhin Vorrang.")
-            confirmation.addButton(withTitle: L10n.string("Global speichern"))
-            confirmation.addButton(withTitle: L10n.string("Abbrechen"))
-            globalConfirmed = confirmation.runModal() == .alertFirstButtonReturn
-            if !globalConfirmed { return nil }
-        }
-        return GitIdentityConfiguration(name: name.stringValue, email: email.stringValue,
-                                        scope: scope, globalConfirmed: globalConfirmed)
-    }
-
-    static func defaultGitMutationConfirmation(_ confirmation: GitMutationConfirmation) -> Bool {
-        guard presentGitDialogs else { return false }
-        let alert = NSAlert()
-        alert.messageText = confirmation.title
-        alert.informativeText = confirmation.explanation
-        alert.alertStyle = confirmation.isDestructive ? .warning : .informational
-        alert.addButton(withTitle: confirmation.confirmTitle)
-        alert.addButton(withTitle: L10n.string("Abbrechen"))
-        return alert.runModal() == .alertFirstButtonReturn
-    }
 
     static func defaultGitBranchNamePrompt(commitHash: String?) -> String? {
         promptForText(

@@ -162,6 +162,7 @@ run_swift_test_phase() {
     local phase_status=0
     local cleanup_failed=0
     local phase_arguments=()
+    local phase_defaults_suite
     PHASE_ENVIRONMENT_ERROR=0
 
     if [ "$phase" = "fast" ]; then
@@ -203,6 +204,18 @@ run_swift_test_phase() {
         phase_arguments+=("${SWIFT_TEST_ARGUMENTS[@]}")
     fi
 
+    # CFFIXED_USER_HOME allein wählt AppDefaults nicht vom Produktstore weg.
+    # Jede Phase erhält vor dem Prozessstart ihre eigene registrierte Suite;
+    # ein geerbtes Profil des Aufrufers bleibt damit unangetastet.
+    if ! phase_defaults_suite="Fastra-$(/usr/bin/uuidgen)" \
+        || ! fastra_test_defaults_domain_is_safe "$phase_defaults_suite" \
+        || ! printf '%s\n' "$phase_defaults_suite" >> "$FASTRA_TEST_DEFAULTS_REGISTRY"; then
+        PHASE_ENVIRONMENT_ERROR=1
+        echo "Unit-Tests: Einstellungen der Testphase '$phase' konnten nicht isoliert werden." >&2
+        echo "FASTRA_TEST_PHASE phase=$phase event=end status=environment exit=2 elapsed_seconds=$((SECONDS - started_seconds))"
+        return 2
+    fi
+
     echo "FASTRA_TEST_PHASE phase=$phase event=start parallel=$phase_parallel"
     # HOME bleibt unverändert, damit SwiftPM- und Git-Caches wiederverwendet
     # werden. Beide Phasen teilen sich dieselbe private Test-Sandbox.
@@ -210,6 +223,7 @@ run_swift_test_phase() {
     CFFIXED_USER_HOME="$FASTRA_TEST_CF_HOME" \
     CFPREFERENCES_AVOID_DAEMON=1 \
     FASTRA_TEST_DEFAULTS_REGISTRY="$FASTRA_TEST_DEFAULTS_REGISTRY" \
+    FASTRA_SELFTEST_DEFAULTS_SUITE="$phase_defaults_suite" \
     fastra_test_start_new_session swift test "${phase_arguments[@]}"; then
         PHASE_ENVIRONMENT_ERROR=1
         echo "Unit-Tests: Testphase '$phase' ließ sich nicht sicher starten." >&2

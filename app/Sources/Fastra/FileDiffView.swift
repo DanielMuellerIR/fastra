@@ -1,10 +1,10 @@
 // FileDiffView.swift
 //
-// Datei-Vergleichs-Tab (Etappe 1 Wunschpaket 2026-07c) auf dem gemeinsamen
+// Datei-Vergleichs-Tab auf dem gemeinsamen
 // Dual-Pane-Renderer (`DualPaneDiffView`, Etappe 2): Diese View besitzt nur
 // noch die Zustände des Datei-Vergleichs (Laden, Grenzen, „identisch",
-// Kopfzeile mit Dateinamen + Optionen) und übersetzt das `FileDiff`-Modell
-// in das gemeinsame Anzeige-Modell.
+// Kopfzeile mit Dateinamen + Optionen) und übersetzt das `FileDiff`-Modell in
+// das gemeinsame Anzeige-Modell.
 
 import SwiftUI
 
@@ -227,7 +227,7 @@ struct FileDiffView: View {
 
     // MARK: - Sonderzustände
 
-    /// Identische Dateien werden AUSDRÜCKLICH gemeldet — inklusive der
+    /// Identische Dateien werden ausdrücklich gemeldet — inklusive der
     /// aktiven Optionen, damit „identisch unter diesen Regeln" nie wie
     /// „byte-identisch" wirkt.
     private func identicalView(_ result: FileDiff.Result) -> some View {

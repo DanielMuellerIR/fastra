@@ -78,6 +78,14 @@ pub(super) fn run(ui: Rc<Ui>) {
             phase.set(5);
             return glib::ControlFlow::Continue;
         }
+        if phase.get() == 130 {
+            if response.borrow_mut().take() != Some(Value::Bool(true)) {
+                return glib::ControlFlow::Continue;
+            }
+            editor.command("deleteImage");
+            phase.set(14);
+            return glib::ControlFlow::Continue;
+        }
         let Some(value) = response.borrow_mut().take() else {
             if !in_flight.replace(true) {
                 let reply = response.clone();
@@ -174,7 +182,33 @@ pub(super) fn run(ui: Rc<Ui>) {
                 assert_eq!(doc.revision.get(), revision.get());
                 assert!(buffer_text(&doc.buffer).contains("wordsx"));
                 assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
-                println!("PASS native local image refresh: decoded images, initially missing file recovery, atomic replacement, missing/reappearing files, symlink target ABA, invalid image recovery, typing/caret/scroll/source unchanged and native Undo/Redo preserved");
+                let reply = response.clone();
+                editor.evaluate("const root=document.getElementById('fastra-visual'),image=root.querySelector('img'),range=document.createRange();range.selectNode(image);getSelection().removeAllRanges();getSelection().addRange(range);root.focus();return JSON.stringify(true);",move|value|*reply.borrow_mut()=value);
+                phase.set(130);
+            }
+            14 if !buffer_text(&doc.buffer).contains("![External image](image.png)") => {
+                std::fs::remove_file(&image).unwrap();
+                phase.set(15);
+            }
+            15 if editor.images.borrow().images.values().any(|image| image.source.raw == "image.png" && image.version.is_empty())
+                && editor.status.text() != editor.text("Ein lokales Bild fehlt oder konnte nicht sicher aktualisiert werden. Der Quellverweis bleibt erhalten.", "A local image is missing or could not be refreshed safely. Its source reference is retained.") =>
+            {
+                assert_eq!(editor.images.borrow().images.len(), 2, "Undo images must remain cached");
+                assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
+                editor.command("undo");
+                phase.set(16);
+            }
+            16 if width == 0 && value["src"] == "image.png"
+                && editor.status.text() == editor.text("Ein lokales Bild fehlt oder konnte nicht sicher aktualisiert werden. Der Quellverweis bleibt erhalten.", "A local image is missing or could not be refreshed safely. Its source reference is retained.") =>
+            {
+                assert!(buffer_text(&doc.buffer).contains("![External image](image.png)"));
+                std::os::unix::fs::symlink(root.join("target-one.png"), &image).unwrap();
+                phase.set(17);
+            }
+            17 if width == 1 && value["missingWidth"] == 2 => {
+                assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
+                assert!(buffer_text(&doc.buffer).contains("wordsx"));
+                println!("PASS native local image refresh: decoded images, initially missing file recovery, atomic replacement, missing/reappearing files, symlink target ABA, invalid image recovery, typing/caret/scroll/source unchanged, retained Undo images without false warnings and missing-reference warning restored by native Undo");
                 crate::git_view::finish(ui.window.clone().upcast(), ui.clone(), "rich-image-watch");
                 return glib::ControlFlow::Break;
             }

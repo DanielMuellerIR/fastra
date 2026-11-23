@@ -147,8 +147,7 @@ struct ProcessIdentity: Equatable {
 /// Injizierbare Prozess-Operationen für Gruppensignale und die
 /// SIGKILL-Eskalation. Im Produkt echte Kernel-Aufrufe (sysctl/kill); Tests
 /// ersetzen sie durch Attrappen und spielen so die Wiedervergabe einer
-/// Prozessgruppen-ID ohne echte Prozesse deterministisch durch
-/// (Reviewfund 2026-08-19).
+/// Prozessgruppen-ID ohne echte Prozesse deterministisch durch.
 struct ProcessGroupOperations {
     /// Alle Mitglieder einer Prozessgruppe samt Startzeit.
     var groupSnapshot: (pid_t) -> [ProcessIdentity]
@@ -268,7 +267,7 @@ final class GitCancellationToken: @unchecked Sendable {
     }
 
     func attach(_ process: Process, processGroupID: pid_t?) {
-        // Startzeit des Leiters VOR dem Speichern lesen: Der Prozess ist hier
+        // Startzeit des Leiters vor dem Speichern lesen: Der Prozess ist hier
         // unser noch nicht abgeräumtes Kind, seine Identität also sicher.
         recordLeaderStartToken(processGroupID.flatMap { operations.startToken($0) })
         lock.lock()
@@ -322,7 +321,7 @@ final class GitCancellationToken: @unchecked Sendable {
     /// Liefert die Mitglieder der Gruppe, wenn sie nachweislich noch unsere
     /// ist — sonst `nil`. Leitgedanke wie im Test-Runner-Helfer
     /// (`test-process-tree.sh`): Solange irgendein Mitglied lebt, kann der
-    /// Kernel die Nummer nicht als NEUE Gruppe vergeben. Fremd wird sie erst
+    /// Kernel die Nummer nicht als neue Gruppe vergeben. Fremd wird sie erst
     /// nach vollständigem Ende aller Mitglieder — dann ist der Schnappschuss
     /// leer, oder die als Gruppen-ID wiedervergebene Leiter-PID trägt eine
     /// andere Startzeit als der beim Attach gemerkte Git-Prozess.
@@ -343,7 +342,7 @@ final class GitCancellationToken: @unchecked Sendable {
         lock.unlock()
         // Ohne beim Attach sicher gelesene Leiter-Startzeit gibt es keinen
         // Anker für die Eigentumsprüfung. Dann gilt die Gruppe ausdrücklich
-        // NICHT als unsere: Ein nichtleerer Schnappschuss allein könnte auch
+        // nicht als unsere: Ein nichtleerer Schnappschuss allein könnte auch
         // eine unter derselben Nummer neu angelegte fremde Gruppe sein, und
         // Signale gingen an Prozesse, die Fastra nie gestartet hat.
         guard let recorded else { return nil }
@@ -372,20 +371,15 @@ final class GitCancellationToken: @unchecked Sendable {
         }
     }
 
-    /// Plant den SIGKILL-Nachschlag für eine Prozessgruppe. Der Nachschlag
-    /// schießt NIE auf die nackte Gruppen-ID: Bis zum Ablauf der Frist kann
-    /// die Gruppe enden und ihre ID neu vergeben werden — `kill(-gruppe, …)`
-    /// träfe dann eine fremde Gruppe, selbst mit vorheriger Existenzprobe
-    /// (Reviewfund 2026-08-19). Stattdessen merkt er sich die JETZT bekannten
-    /// Mitglieder und beendet später jedes einzeln, erst nach erneuter
-    /// Prüfung seiner Startzeit. Eine wiedervergebene PID wird dadurch nie
-    /// getroffen; ein nach dem Schnappschuss geborener Enkelprozess kann dem
-    /// Nachschlag entgehen — lieber ein verwaister Helfer als ein Schuss auf
-    /// Unbeteiligte.
-    /// Liefert `false`, wenn die Gruppe leer oder nicht mehr unsere ist —
-    /// der Aufrufer darf dann auch keine Signale mehr an sie schicken.
-    /// Internal ist dieser Bool-Wrapper ausschließlich als Testnaht; der
-    /// Produktpfad verwendet die Mitglieder liefernde Variante darunter.
+    /// Plant die SIGKILL-Eskalation für bekannte Mitglieder einer Prozessgruppe.
+    /// Bis zum Fristablauf könnte die Gruppen-ID neu vergeben sein; ein späteres
+    /// `kill(-gruppe, …)` wäre deshalb unsicher. Stattdessen jedes zuvor erfasste
+    /// Mitglied einzeln beenden, nachdem seine Startzeit erneut geprüft wurde.
+    /// Später entstandene Enkelprozesse können dabei entgehen.
+    ///
+    /// `false` bedeutet: Die Gruppe ist leer oder nicht mehr als eigene belegbar;
+    /// der Aufrufer darf keine weiteren Gruppensignale senden. Der Bool-Wrapper
+    /// ist eine Testnaht, der Produktpfad nutzt die Variante mit Mitgliederliste.
     @discardableResult
     func scheduleGroupKillEscalation(_ group: pid_t) -> Bool {
         scheduleGroupKillEscalationMembers(group) != nil
@@ -427,7 +421,7 @@ final class GitCancellationToken: @unchecked Sendable {
         let group = processGroupID
         lock.unlock()
         guard let runningProcess, !runningProcess.isRunning, let group else { return }
-        // Registrierung VOR den Signalen: Sie prüft zugleich, ob die Gruppe
+        // Registrierung vor den Signalen: Sie prüft zugleich, ob die Gruppe
         // überhaupt noch lebt und noch unsere ist, und liefert die Mitglieder,
         // die jetzt beendet werden dürfen.
         guard let members = scheduleGroupKillEscalationMembers(group) else { return }
@@ -452,12 +446,9 @@ final class GitCancellationToken: @unchecked Sendable {
             // SIGTERM noch ausführen dürfen, damit Git seine Lockdateien räumt.
             signalSnapshotMembers(members, SIGCONT)
         } else {
-            // Kein sicher als unsere belegbarer Gruppen-Schnappschuss — etwa
-            // weil die Leiter-Startzeit beim Attach nicht lesbar war oder die
-            // Gruppenabfrage scheiterte. Dann bleibt der bekannte direkte
-            // Kindprozess: Ihn NICHT zu beenden, hätte die abgebrochene oder
-            // abgelaufene Git-Aktion dauerhaft hängen lassen und ihren Slot
-            // blockiert (Reviewfund 2026-08-20).
+            // Ohne sicher zuordenbaren Gruppenschnappschuss den bekannten direkten
+            // Kindprozess beenden, damit die abgebrochene oder abgelaufene Aktion ihren
+            // Slot freigibt. Die Gruppen-ID darf in diesem Fall kein Signal erhalten.
             terminateDirectProcess(process)
         }
     }
@@ -648,16 +639,11 @@ private final class GitLockDecision: @unchecked Sendable {
     }
 }
 
-/// Einmalige, thread-sichere Auflösung eines Wertes auf einer eigenen
-/// Hintergrund-Queue. Warum so umständlich statt „beim ersten Zugriff einfach
-/// berechnen"? Die Berechnung kann einen Kindprozess starten (xcode-select),
-/// und `Process.waitUntilExit` dreht den RunLoop des aufrufenden Threads.
-/// Auf dem Main-Thread feuern dadurch SwiftUI-UpdateCycle-Observer mitten im
-/// Layout reentrant, und die App stürzt mit SIGSEGV ab (Befund 2026-07-17,
-/// Pfad: FileTreeSidebar.onAppear → refreshGitOperationState → GitRunner).
-/// Dieser Resolver rechnet deshalb IMMER auf seiner eigenen Queue. Wer das
-/// Ergebnis vor Abschluss braucht, wartet nur per `DispatchGroup.wait` —
-/// das blockiert den Thread, dreht aber nie dessen RunLoop.
+/// Einmalige, threadsichere Auflösung auf einer eigenen Hintergrund-Queue.
+/// Die Berechnung kann einen Kindprozess starten. `Process.waitUntilExit`
+/// dreht den aufrufenden RunLoop und könnte auf dem Main-Thread während
+/// eines SwiftUI-Layouts erneut Update-Observer ausführen.
+/// `DispatchGroup.wait` wartet auf das Ergebnis, ohne den RunLoop zu drehen.
 final class BackgroundOnceResolver<Value>: @unchecked Sendable {
     private enum State {
         case unresolved
@@ -758,7 +744,7 @@ enum GitRunner {
     /// Eine einzelne Git-eigene verify-only-Reftransaktion. Beim beobachteten
     /// files-ref-Backend sperrt `verify refs/heads/...` auch jeden symbolischen
     /// Worktree-HEAD, der auf diesen Branch zeigt. Fastra verlangt deshalb nach
-    /// `prepare` ausdrücklich Branch- UND eigenen Worktree-HEAD-Lock. Fehlt der
+    /// `prepare` ausdrücklich Branch- und eigenen Worktree-HEAD-Lock. Fehlt der
     /// zweite Lock bei einem anderen Backend, scheitert der Ablauf fail-closed.
     private final class PreparedRefTransaction {
         let process: Process
@@ -907,8 +893,8 @@ enum GitRunner {
         }
     }
 
-    /// Kandidaten-Pfade für ein NUTZBARES git-Binary, in Prioritätsreihenfolge.
-    /// Bewusst NICHT `/usr/bin/git`: das ist unter macOS ein Shim, der bei
+    /// Kandidaten-Pfade für ein nutzbares git-Binary, in Prioritätsreihenfolge.
+    /// Bewusst nicht `/usr/bin/git`: das ist unter macOS ein Shim, der bei
     /// fehlenden Command Line Tools einen modalen Installations-Dialog öffnet.
     /// Das echte CLT-git liegt unter `/Library/Developer/...` und wird direkt
     /// angesprochen; Homebrew-git (Apple Silicon / Intel) hat Vorrang, falls da.
@@ -956,7 +942,7 @@ enum GitRunner {
     }
 
     /// Der aktive Xcode-Developer-Ordner (Fallback-Quelle für git). `xcode-select`
-    /// liegt fest unter `/usr/bin` und löst KEINEN Installations-Dialog aus — es
+    /// liegt fest unter `/usr/bin` und löst keinen Installations-Dialog aus — es
     /// meldet bei fehlenden Tools nur einen Fehler. Als Closure gehalten, damit
     /// Tests die reine Pfad-Auswahl ohne echten Prozess prüfen können.
     static var developerDirProvider: () -> String? = Self.queryXcodeSelect
@@ -1061,7 +1047,7 @@ enum GitRunner {
                                     postSubmitTimeout: TimeInterval = 5,
                                     // Frist zwischen SIGTERM und SIGKILL. Der Produktwert bleibt
                                     // bewusst knapp (0,5 s). Tests, die einen laufenden Git-Prozess
-                                    // per Timeout/Abbruch beenden und danach auf das VON GIT SELBST
+                                    // per Timeout/Abbruch beenden und danach auf das von Git selbst
                                     // durchgeführte Lock-Aufräumen warten, brauchen eine längere
                                     // Frist: Wird git unter Volllast vor seinem SIGTERM-Handler hart
                                     // gekillt, bleibt sein Lock dauerhaft liegen — das ist die
@@ -1499,7 +1485,7 @@ enum GitRunner {
                 }
             }
 
-            // stdout und stderr MÜSSEN gleichzeitig geleert werden. Schreibt ein
+            // stdout und stderr müssen gleichzeitig geleert werden. Schreibt ein
             // Prozess in beide vollen Pipe-Puffer, würde serielles Lesen trotz
             // Hintergrundthread blockieren.
             let stdoutCapture = PipeCapture()
@@ -1724,14 +1710,11 @@ enum GitRunner {
         return result
     }
 
-    /// Fragt den aktiven Developer-Ordner über `xcode-select -p` ab (dialogfrei).
-    /// WICHTIG: bewusst OHNE `waitUntilExit` — das dreht den RunLoop des
-    /// aufrufenden Threads, und auf dem Main-Thread feuern dadurch SwiftUI-
-    /// Update-Observer reentrant mitten im Layout (SIGSEGV, Befund 2026-07-17).
-    /// `readDataToEndOfFile` ist ein blockierendes read(2) bis EOF und die
-    /// Semaphore wartet nur auf den terminationHandler — beides dreht keinen
-    /// RunLoop. Intern statt privat, damit der Regressionstest genau diese
-    /// Eigenschaft direkt prüfen kann.
+    /// Fragt den aktiven Developer-Ordner dialogfrei über `xcode-select -p` ab.
+    /// `readDataToEndOfFile` und die Semaphore für den terminationHandler warten,
+    /// ohne den RunLoop zu drehen. `waitUntilExit` könnte dagegen auf dem
+    /// Main-Thread SwiftUI-Updates während eines laufenden Layouts auslösen.
+    /// Intern sichtbar, damit der Regressionstest diesen Pfad direkt prüft.
     static func queryXcodeSelect() -> String? {
         let path = "/usr/bin/xcode-select"
         guard FileManager.default.isExecutableFile(atPath: path) else { return nil }

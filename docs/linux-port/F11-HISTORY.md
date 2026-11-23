@@ -51,7 +51,8 @@ ab und schließt das Kindfenster; alte Completions übernehmen nichts.
   stderr-Ausgabe bleiben im scrollbaren Berichtsreiter sichtbar.
 - Die Historie ist ein begrenzter Lesestand. Weitere Commits erfordern derzeit
   das Git-CLI; es gibt keine Pagination über200, keinen graphischen Eigenbau,
-  Pickaxe-/Dateihistorienfilter oder Commit-/Refmutation. Commit bleibt gesperrt.
+  Pickaxe-/Dateihistorienfilter oder Commit-/Refmutation. In „Git · Lesen“
+  führt „Commit erstellen …“ zum separaten [Commit-Dialog](F11-GIT-COMMIT.md).
 
 ## Ausgeführte Prüfung
 

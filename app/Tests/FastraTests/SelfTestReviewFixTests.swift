@@ -3,17 +3,17 @@
 // Wächter über drei Aufräumregeln der Selbsttests. Sie lassen sich nicht am
 // laufenden Fenstertest prüfen: Die Tests beenden den Prozess über `exit()`,
 // und was sie dabei liegen lassen — eine überschriebene Zwischenablage, eine
-// zusätzliche Preferences-Domain —, sieht man erst der UMGEBUNG an. Geprüft
+// zusätzliche Preferences-Domain —, sieht man erst der Umgebung an. Geprüft
 // wird deshalb die Quelle selbst, nach dem Vorbild von
 // `AppStorageIsolationTests`.
-// Die Clipboard-Nachkontrolle und `finish` laufen zusätzlich unverändert in
-// einem isolierten Kindprozess gegen eine Zwischenablage-Attrappe.
+// Die reguläre Clipboard-Session und Abschlussauswertung laufen zusätzlich
+// in einem isolierten Kindprozess gegen eine Zwischenablage-Attrappe.
 // Der Systemtastentreiber wird zusätzlich mit echten Antwortdateien geprüft.
 //
-// Hintergrund (Code-Review 2026-08-10):
+// Hintergrund:
 //
 // 1. `finish` verlässt den Prozess über `exit()`. Der Swift-Stack wird dabei
-//    NICHT abgewickelt — ein `defer` zum Aufräumen läuft also nie.
+//    nicht abgewickelt — ein `defer` zum Aufräumen läuft also nie.
 // 2. Eine Sicherung der Zwischenablage darf nur zurückgeschrieben werden,
 //    solange der Inhalt noch der test-eigene ist. Hat der Nutzer während des
 //    Laufs selbst kopiert, würde das blinde Zurückschreiben seine frische
@@ -24,7 +24,7 @@ import Testing
 @testable import Fastra
 
 @Test("Der Systemtastentreiber wartet trotz alter oder unvollständiger Antwort auf die aktuelle Nonce", arguments: [false, true])
-@MainActor func systemHistoryIgnoresStaleResponse(_ malformed: Bool) async throws {
+@MainActor func systemHistoryIgnoresStaleResponseSerialRunnerIntegration(_ malformed: Bool) async throws {
     let directory = testTemporaryDirectory().appendingPathComponent("history-response-\(UUID())")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -57,9 +57,9 @@ private let selfTestSourceURL = URL(fileURLWithPath: #filePath)
 ///
 /// Gesucht wird die Zeile mit der Deklaration; ab deren erster `{` werden die
 /// Klammern gezählt, bis die Tiefe wieder null erreicht. Zeichenketten und
-/// Kommentare werden bewusst nicht ausgeklammert — für die hier geprüften
-/// Rümpfe reicht die einfache Zählung, und ein Fehlschnitt fiele sofort als
-/// roter Test auf.
+/// Kommentare werden bewusst nicht ausgeklammert. Dieser Bindungsaudit ist
+/// weder ein Swift-Parser noch ein Ausführungsbeleg; zusätzliche Klammern
+/// können auch einen Ausschnitt liefern, der die gesuchten Literale enthält.
 private func functionBody(named declaration: String, in source: String) throws -> String {
     let lines = source.components(separatedBy: .newlines)
     guard let start = lines.firstIndex(where: { $0.contains(declaration) }) else {
@@ -85,85 +85,125 @@ private func functionBody(named declaration: String, in source: String) throws -
     return body
 }
 
-@Test("Fremdzugriff während der Clipboard-Nachkontrolle bleibt bis zum Prozessabschluss ENV")
+@Test("Clipboard-Session und Abschluss laufen regulär im isolierten Prozess")
 func pasteboardCaptureSerialRunnerIntegration() throws {
-    let source = try String(contentsOf: selfTestSourceURL, encoding: .utf8)
     let directory = testTemporaryDirectory().appendingPathComponent("clipboard-race-\(UUID())")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    // Die privaten Originalfunktionen laufen unverändert mit einer Attrappe.
-    // So sind auch `finish`/exit und das Rettungsjournal Teil der Gegenprobe,
-    // ohne jemals die Systemzwischenablage anzusprechen.
-    let declarations = try ["enum SelfTestOutcome:", "enum SelfTestPasteboardMutationRouting"].map {
-        try functionBody(named: $0, in: source)
-    }.joined(separator: "\n")
-    let methods = try [
-        "private struct SoakPasteboardBackup", "private enum SelfTestPasteboardCleanup",
-        "func noteSelfTestPasteboardMutation(", "func abandonSelfTestPasteboardBackup()",
-        "func finishSelfTestPasteboardMutation()", "func selfTestPasteboardOutcome(for",
-        "func finish(_ outcome: SelfTestOutcome,"
-    ].map { try functionBody(named: $0, in: source) }.joined(separator: "\n")
-    let fixture = """
+    // Ganze reguläre Quelldateien statt ausgeschnittener privater Funktionen.
+    // Die Attrappe besitzt nur Backendinhalt und Journal, kein AppKit-Objekt.
+    let fixture = #"""
         import Foundation
         import Darwin
-        \(declarations)
-        final class NSPasteboard {
-            static let general = NSPasteboard()
-            var changeCount = 7
-        }
-        enum SelfTest {
-            typealias StoredPasteboardItems = [[String: Data]]
-            static let testLabel = "clipboard-capture-race"
-            static let testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
-            static var selfTestPasteboardBackupURL: URL? { URL(fileURLWithPath: CommandLine.arguments[2]) }
-            private static var selfTestPasteboardBackup: SoakPasteboardBackup? = .init(
-                items: [["original": Data([1])]], ownedChangeCount: 7, mutationConfirmed: false)
-            static func capturePasteboardItems() throws -> StoredPasteboardItems {
+
+        @main struct ClipboardProcess {
+            static func main() {
                 let mode = CommandLine.arguments[1]
-                if mode.hasPrefix("foreign") { NSPasteboard.general.changeCount += 1 }
-                if mode.hasSuffix("unreadable") {
-                    throw NSError(domain: "FastraSelfTestPasteboard", code: 4)
-                }
-                return [["foreign": Data([3])]]
-            }
-            private static func persistSelfTestPasteboardBackup(_ backup: SoakPasteboardBackup) throws {}
-            static func preparedPasteboardItems(_ items: StoredPasteboardItems) throws -> StoredPasteboardItems { items }
-            static func writePreparedPasteboardItems(_ items: StoredPasteboardItems) throws { fatalError("fremden Inhalt überschrieben") }
-            static func pasteboardIsStillOwned(since count: Int) -> Bool { count == NSPasteboard.general.changeCount }
-            static func cleanupScreenshotFixtures() {}
-            static func cleanupFixtureDirectories() {}
-            \(methods)
-            static func run() {
-                _ = testStartedNanoseconds
+                let initialForeign = mode.hasPrefix("initial-foreign")
+                let journal = URL(fileURLWithPath: CommandLine.arguments[2])
+                var count = 6
+                var items: SelfTestPasteboardBackup.Items = [["original": Data([1])]]
+                var checking = false
+                let expected: SelfTestPasteboardBackup.Items = [["test": Data([2])]]
+                let session = SelfTestPasteboardSession<SelfTestPasteboardBackup.Items>(backend: .init(
+                    currentChangeCount: { count },
+                    captureItems: {
+                        if initialForeign && !checking {
+                            let captured = items
+                            count += 1
+                            items = [["foreign": Data([3])]]
+                            if mode.hasSuffix("unreadable") {
+                                throw NSError(domain: "FastraSelfTestPasteboard", code: 4)
+                            }
+                            return captured
+                        }
+                        if checking {
+                            if mode.hasPrefix("foreign") {
+                                count += 1
+                                items = [["foreign": Data([3])]]
+                            }
+                            if mode.hasSuffix("unreadable") {
+                                throw NSError(domain: "FastraSelfTestPasteboard", code: 4)
+                            }
+                            if mode != "roundtrip" && mode != "abandon" {
+                                items = [["foreign": Data([3])]]
+                            }
+                        }
+                        return items
+                    },
+                    persistBackup: { backup in
+                        let data = try PropertyListSerialization.data(fromPropertyList: [
+                            "items": backup.items,
+                            "ownedChangeCount": backup.ownedChangeCount,
+                            "mutationConfirmed": backup.mutationConfirmed
+                        ], format: .binary, options: 0)
+                        try data.write(to: journal, options: .atomic)
+                    },
+                    abandonBackup: { try? FileManager.default.removeItem(at: journal) },
+                    prepareRestore: { $0 },
+                    writeRestore: { restored in
+                        guard mode == "roundtrip" else { fatalError("fremden Inhalt überschrieben") }
+                        count += 1
+                        items = restored
+                    }
+                ))
+                var outcome = SelfTestOutcome.pass
                 do {
-                    try noteSelfTestPasteboardMutation(expectedItems: [["test": Data([2])]])
-                    finish(.pass, "unerwartet bestätigt")
-                } catch { finish(selfTestPasteboardOutcome(for: error), "Nachkontrolle") }
+                    try session.prepare()
+                    count += 1
+                    items = expected
+                    checking = true
+                    try session.note(expectedItems: expected)
+                    if mode == "abandon" { session.abandon() }
+                } catch {
+                    outcome = SelfTestPasteboardSession<SelfTestPasteboardBackup.Items>.outcome(for: error)
+                }
+                let result = SelfTestCompletion.resolve(
+                    outcome: outcome, message: "Nachkontrolle", pasteboardCleanup: session.finish()
+                )
+                if mode == "roundtrip" && items != [["original": Data([1])]] { exit(90) }
+                if mode.contains("foreign") && items != [["foreign": Data([3])]] { exit(91) }
+                if initialForeign && count != 7 { exit(92) }
+                FileHandle.standardError.write(Data((
+                    "SELFTEST-RESULT v=1 test=clipboard-capture-race status=\(result.outcome.protocolStatus)\n"
+                    + "SELFTEST clipboard-capture-race: \(result.outcome.protocolStatus) — \(result.message)\n"
+                ).utf8))
+                exit(result.outcome == .pass ? 0 : 1)
             }
         }
-        SelfTest.run()
-        """
+        """#
     let script = directory.appendingPathComponent("fixture.swift")
     let binary = directory.appendingPathComponent("fixture")
     try fixture.write(to: script, atomically: true, encoding: .utf8)
+    let sourceDirectory = selfTestSourceURL.deletingLastPathComponent()
     let compiler = try runTestProcess("/usr/bin/xcrun", arguments: [
         "swiftc", "-swift-version", "5", "-module-cache-path",
-        directory.appendingPathComponent("cache").path, script.path, "-o", binary.path
+        directory.appendingPathComponent("cache").path,
+        sourceDirectory.appendingPathComponent("SelfTestPasteboardSession.swift").path,
+        sourceDirectory.appendingPathComponent("SelfTestCompletion.swift").path,
+        script.path, "-o", binary.path
     ])
     try #require(compiler.status == 0, Comment(rawValue: compiler.output))
-    for mode in ["foreign-unreadable", "foreign-readable", "own-unreadable", "own-mismatch"] {
+    for mode in ["foreign-unreadable", "foreign-readable", "own-unreadable", "own-mismatch", "roundtrip", "abandon", "initial-foreign-readable", "initial-foreign-unreadable"] {
         let journal = directory.appendingPathComponent(mode + ".plist")
-        try Data([1]).write(to: journal)
         let process = try runTestProcess(binary.path, arguments: [mode, journal.path], timeout: 10)
-        let foreign = mode.hasPrefix("foreign")
-        #expect(process.status == 1, Comment(rawValue: process.output))
-        #expect(process.output.contains("test=clipboard-capture-race status=\(foreign ? "ENV" : "FAIL")"), Comment(rawValue: process.output))
-        #expect(FileManager.default.fileExists(atPath: journal.path) == !foreign)
+        let foreign = mode.contains("foreign")
+        let passed = mode == "roundtrip" || mode == "abandon"
+        #expect(process.status == (passed ? 0 : 1), Comment(rawValue: process.output))
+        #expect(process.output.contains("test=clipboard-capture-race status=\(passed ? "PASS" : foreign ? "ENV" : "FAIL")"), Comment(rawValue: process.output))
+        #expect(FileManager.default.fileExists(atPath: journal.path) == (!foreign && !passed))
+        if !foreign && !passed {
+            let data = try Data(contentsOf: journal)
+            let backup = try #require(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+            #expect(backup["items"] as? SelfTestPasteboardBackup.Items == [["original": Data([1])]])
+            #expect(backup["ownedChangeCount"] as? Int == 7)
+            #expect(backup["mutationConfirmed"] as? Bool == false)
+        }
     }
 }
 
-@Test("pasteindent nutzt die zentrale, absturzfeste Zwischenablage-Sicherung")
-func pasteIndentRestoresPasteboardOnEveryExit() throws {
+@Test("pasteindent ist an die zentrale Zwischenablage-Sicherung angebunden")
+func pasteIndentUsesCentralPasteboardAdapter() throws {
     let source = try String(contentsOf: selfTestSourceURL, encoding: .utf8)
     let body = try functionBody(named: "func runPasteMatchIndentationTest()", in: source)
 
@@ -173,8 +213,8 @@ func pasteIndentRestoresPasteboardOnEveryExit() throws {
         """)
 }
 
-@Test("Zwischenablage wird nur zurückgeschrieben, solange sie test-eigen ist")
-func pasteboardRestorePathsCheckOwnership() throws {
+@Test("Private Clipboard-Adapter behalten ihre Sicherheitsbindungen")
+func pasteboardAdaptersKeepSafetyBindings() throws {
     let source = try String(contentsOf: selfTestSourceURL, encoding: .utf8)
 
     let soakRestore = try functionBody(
@@ -189,58 +229,26 @@ func pasteboardRestorePathsCheckOwnership() throws {
         automatisch über eine mögliche Nutzerkopie geschrieben werden.
         """)
 
+    // Reguläre Sessiontests prüfen Besitz und Übergänge. Dieser Audit prüft
+    // private Aufrufbindungen und den angeforderten atomaren Schreibmodus,
+    // nicht dessen tatsächliche Ausführung oder die Wiederaufnahme nach Crash.
     let selfTestFinish = try functionBody(
         named: "func finishSelfTestPasteboardMutation(", in: source)
-    #expect(selfTestFinish.contains("pasteboardIsStillOwned("), """
-        Der zentrale Selbsttest-Abschluss prüft den Besitzstand nicht mehr und \
-        würde eine neuere Kopie des Nutzers überschreiben.
-        """)
+    #expect(selfTestFinish.contains("selfTestPasteboardSession.finish()"))
+    let completion = try functionBody(named: "func finish(_ outcome: SelfTestOutcome,", in: source)
+    #expect(completion.contains("finishSelfTestPasteboardMutation()"))
+    #expect(completion.contains("SelfTestCompletion.resolve("))
     let persistence = try functionBody(
         named: "func persistSelfTestPasteboardBackup(", in: source)
-    #expect(persistence.contains(".atomic"), """
-        Die Crash-Sicherung der Zwischenablage wird nicht mehr atomar geschrieben.
-        """)
-    let prepare = try functionBody(
-        named: "func prepareSelfTestPasteboardMutation()", in: source)
-    #expect(prepare.contains("ownedChangeCount &+= 1"))
-    #expect(prepare.contains("mutationConfirmed = false"), """
-        Ein vorab journalisierter Zählerschritt muss bis zur Nachkontrolle als \
-        unbestätigt gelten. Sonst könnte nach einem Crash genau eine Nutzerkopie \
-        fälschlich als Testinhalt zurückgeschrieben werden.
-        """)
-    #expect(prepare.contains("persistSelfTestPasteboardBackup(backup)"), """
-        Der erwartete Besitzstand muss VOR der Pasteboard-Änderung atomar auf \
-        Platte stehen; eine nachträgliche Blindübernahme öffnet das Crash-Fenster.
-        """)
-    let note = try functionBody(
-        named: "func noteSelfTestPasteboardMutation(", in: source)
-    #expect(note.contains("mutationConfirmed = true"))
-    #expect(note.contains("capturePasteboardItems() == expectedItems"), """
-        Ein passender Zähler allein beweist nicht, dass der Test geschrieben \
-        hat; vor der Bestätigung müssen Items, Typen und Daten vollständig dem \
-        erwarteten Testinhalt entsprechen.
-        """)
-    #expect(note.contains("actualItems.map { $0 == expectedItems }"), """
-        Bei unerwartetem Zähler muss der aktuelle Inhalt entscheiden: Fremder
-        Inhalt ist Umgebung, erwarteter Testinhalt mit falschem Zähler ein
-        echter Fehler.
-        """)
-    #expect(note.contains("abandonSelfTestPasteboardBackup()"), """
-        Nach einem belegten Fremdeingriff darf `finish` die alte Sicherung
-        weder wiederherstellen noch den Umgebungsstatus zu FAIL hochstufen.
-        """)
-    #expect(note.contains("persistSelfTestPasteboardBackup(backup)"), """
-        Erst die geprüfte Änderung darf das Crash-Journal als automatisch \
-        wiederherstellbar bestätigen.
-        """)
-    #expect(selfTestFinish.contains("guard backup.mutationConfirmed"), """
-        Eine nur vorbereitete Änderung darf nach einem Crash keinen möglicherweise \
-        neueren Nutzerinhalt überschreiben.
-        """)
+    #expect(persistence.contains(".atomic"), "Crash-Sicherung muss atomar geschrieben werden")
+    let prepare = try functionBody(named: "func prepareSelfTestPasteboardMutation()", in: source)
+    #expect(prepare.contains("selfTestPasteboardSession.prepare()"))
+    let note = try functionBody(named: "func noteSelfTestPasteboardMutation(", in: source)
+    #expect(note.contains("selfTestPasteboardSession.note(expectedItems: expectedItems)"))
 }
 
-@Test("Selbsttest-Suiten mit UUID werden am Prozessende wirklich entfernt")
-func windowHeightSuiteIsRegisteredForPurge() throws {
+@Test("Fensterhöhen-Test behält seine Purge-Registrierungsbindung")
+func windowHeightKeepsPurgeRegistrationBinding() throws {
     let source = try String(contentsOf: selfTestSourceURL, encoding: .utf8)
 
     let body = try functionBody(named: "func runWindowHeightTest()", in: source)
@@ -250,30 +258,16 @@ func windowHeightSuiteIsRegisteredForPurge() throws {
         `defer` nie — die Preferences-Domain bliebe nach jedem Lauf liegen.
         """)
 
-    // Die Anmeldung nützt nur mit dem passenden Aufräumschritt am Prozessende:
-    // `purgeStale` allein fasst frische Suiten (unter einer Stunde) nicht an.
-    let launcher = try functionBody(named: "func runIfRequested()", in: source)
-    #expect(launcher.contains("TestDefaultsPurge.purgeRegistered()"), """
-        Der Selbsttest-Start meldet `purgeRegistered()` nicht mehr per `atexit` \
-        an. Registrierte UUID-Suiten blieben dann liegen, denn `purgeStale` \
-        räumt erst Domains ab, die älter als eine Stunde sind.
-        """)
+
 }
 
-/// `finish` endet in `exit()`, und `exit()` wickelt den Swift-Stack nicht ab:
-/// Ein `defer` in einer Funktion, die nur über `finish` endet, läuft NIE. Das
-/// ist keine graue Theorie — genau so blieben Aufräumschritte für ein
-/// Temp-Verzeichnis, eine persistente Umbruchwahl und ein gemerktes
-/// Teilungsverhältnis liegen (Code-Review 2026-09-10, vier Fundstellen).
-///
-/// Der Test führt deshalb die erlaubten `defer`-Blöcke namentlich und
-/// weist jeden weiteren zurück. Ein neuer `defer` ist damit kein Versehen mehr,
-/// sondern eine bewusste Entscheidung samt Begründung — dieselbe Mechanik wie
-/// bei den Soft-Wrap-Werkseinstellungen, wo ein neues Format den Test bricht,
-/// bis jemand die Klasse festlegt.
-@Test("Jeder defer in SelfTest.swift ist ausdrücklich begründet")
+/// `exit()` wickelt den Swift-Stack nicht ab; `defer` läuft dort nicht.
+/// Der Test erlaubt nur namentlich begründete `defer`-Blöcke in Pfaden, die
+/// über `finish` enden, damit nötiges Aufräumen nicht unbemerkt entfällt.
+@Test("Jeder defer im gesamten Harness ist ausdrücklich begründet")
 func everyDeferInSelfTestIsAccountedFor() throws {
-    let source = try String(contentsOf: selfTestSourceURL, encoding: .utf8)
+    let sources = try selfTestHarnessSources(in: selfTestSourceURL
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent())
 
     // Erlaubt, weil die umgebende Closure regulär zurückkehrt (kein `finish`):
     // die Aufräumzeile der Bildschirmaufnahme.
@@ -288,6 +282,9 @@ func everyDeferInSelfTestIsAccountedFor() throws {
     // Der getrackte Menühilfsaufruf beendet sich regulär oder wirft; der äußere
     // Selbsttest ruft erst danach finish auf. Seine Observer müssen immer weg.
     let trackedMenuCleanup = "defer { // trackedHistoryFromEditMenu kehrt vor dem äußeren finish regulär zurück oder wirft."
+    // Derselbe enge Lebensdauervertrag gilt für den frischen Hauptmenüaufruf:
+    // kein finish im Helfer, Observer/Timer enden vor dem äußeren Abschluss.
+    let trackedMainMenuCleanup = "defer { // trackedMainMenuItem kehrt vor dem äußeren finish regulär zurück oder wirft."
     // exercise() räumt vor seinem regulären Ergebnis bzw. Fehler auf; erst
     // die äußere Task ruft finish auf. Die Fixture ist zusätzlich registriert.
     let jsonFixtureCleanup = "defer { try? FileManager.default.removeItem(at: base) }"
@@ -297,114 +294,57 @@ func everyDeferInSelfTestIsAccountedFor() throws {
     // wirft. Aktivität und ursprünglicher Fensterrahmen werden dabei immer
     // zurückgesetzt; der Helfer beendet den Prozess selbst nicht.
     let indicatorCleanup = "defer { ws.documentTransformationActivity = nil; window.setFrame(originalFrame, display: true) }"
-    let allowed = [screenshotCleanup, defaultsDomainCleanup, focusMonitorCleanup,
-                   trackedMenuCleanup, jsonFixtureCleanup, jsonFileHandleCleanup, indicatorCleanup]
-
-    // Nur echte Anweisungen zählen, keine Kommentare über `defer`.
-    let statements = source
-        .components(separatedBy: .newlines)
-        .map { $0.trimmingCharacters(in: .whitespaces) }
-        .filter { $0.hasPrefix("defer") }
-
-    #expect(statements.count == allowed.count, """
-        SelfTest.swift enthält \(statements.count) defer-Anweisungen, erlaubt sind \
-        \(allowed.count): \(statements)
+    // Der native Shortcut-Helfer wirft oder kehrt vor finish zurück; der
+    // zentrale Abschluss entfernt denselben Monitor zusätzlich bei exit.
+    let shortcutMonitorCleanup = "defer { // deliverSoftWrapShortcut kehrt vor dem äußeren finish regulär zurück oder wirft."
+    let main = "Sources/Fastra/SelfTest.swift"
+    // Jede Ausnahme bindet Datei, Anweisung und deren konkrete Lebensdauer.
+    let allowed: [(file: String, statement: String, reason: String)] = [
+        (main, screenshotCleanup, "Aufnahme-Closure kehrt regulär zurück und entfernt ihre Bilddatei."),
+        (main, defaultsDomainCleanup, "Nur regulärer Rückkehrweg; bei exit räumt die zusätzlich registrierte Purge auf."),
+        (main, focusMonitorCleanup, "focusEditor entfernt seinen Mausmonitor vor Rückkehr oder throw."),
+        (main, trackedMenuCleanup, "trackedHistoryFromEditMenu entfernt Observer vor äußerem finish."),
+        (main, trackedMainMenuCleanup, "trackedMainMenuItem beendet Observer und Timer vor äußerem finish."),
+        (main, jsonFixtureCleanup, "exercise entfernt die registrierte Fixture vor Ergebnis oder Fehler."),
+        (main, jsonFileHandleCleanup, "Datei-Worker schließt sein Handle vor Übergabe der fertigen Fixture."),
+        (main, indicatorCleanup, "delayedIndicator setzt Aktivität und Fensterrahmen vor Rückkehr oder throw zurück."),
+        (main, shortcutMonitorCleanup, "Shortcut-Helfer entfernt Monitor vor Rückkehr oder throw; finish sichert exit zusätzlich."),
+        ("Sources/Fastra/SelfTestMenuRootExchange.swift", "defer { close(fd) }",
+         "read schließt den nur für diesen regulär zurückkehrenden oder werfenden Leseaufruf geöffneten Deskriptor."),
+        ("Sources/Fastra/SelfTestMenuRootExchange.swift", "defer { close(fd); unlinkat(descriptor, temporary, 0) }",
+         "write schließt seinen Deskriptor und entfernt den temporären Namen nach Rückkehr oder throw."),
+        ("Sources/Fastra/SoakTest.swift", "defer { try? handle.close() }",
+         "append schließt sein lokales Berichtshandle vor Rückkehr oder throw."),
+        ("Sources/Fastra/SoakTest.swift", "defer { try? handle.close() }",
+         "appendReport schließt sein lokales Berichtshandle vor Rückkehr oder throw."),
+    ]
+    // Nur echte Anweisungszeilen zählen, keine Kommentare über `defer`.
+    let statements = sources.flatMap { source in
+        source.source.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.hasPrefix("defer") }
+            .map { source.path + ": " + $0 }
+    }
+    let expected = allowed.map { $0.file + ": " + $0.statement }
+    #expect(statements.sorted() == expected.sorted(), """
+        Harness-defer weichen von den begründeten Ausnahmen ab. Tatsächlich: \(statements).
+        Erlaubt: \(allowed). Bei finish/exit läuft defer nie; dort ausdrücklich aufräumen.
         """)
-    for allowedStatement in allowed {
-        #expect(statements.contains(allowedStatement), """
-            Der begründete defer „\(allowedStatement)" steht nicht mehr in \
-            SelfTest.swift — entweder wurde er entfernt oder umformuliert; dann \
-            gehört dieser Wächter mit angepasst.
-            """)
-    }
-    for statement in statements where !allowed.contains(statement) {
-        Issue.record("""
-            Neuer defer in SelfTest.swift: „\(statement)". Endet die umgebende \
-            Funktion über `finish`, läuft er nie — dann vor jedem `finish` \
-            ausdrücklich aufräumen. Kehrt sie regulär zurück, gehört der Block \
-            hier in die Liste der begründeten Ausnahmen.
-            """)
-    }
+
 }
 
-/// Der `default:`-Zweig der Selbsttest-Auswahl zählt die bekannten Namen in
-/// einer Zeichenkette auf. Sie stand von Hand neben dem `switch` und lief
-/// auseinander: Am 2026-09-10 fehlten 53 von 127 Namen, darunter `print`,
-/// `soak`, `gototarget`, `diffsplit` und sämtliche Diagnose-Aufnahmen. Wer
-/// sich vertippte, bekam eine Liste, die 42 Prozent der echten Tests
-/// verschwieg — und schloss daraus, der gesuchte Test existiere nicht.
-@Test("Die Liste der bekannten Selbsttests passt zu den Fällen der Auswahl")
+/// Die Abfrage baut dieselbe Registrierung wie der reale Caller auf; doppelte
+/// Namen würden bereits dort fehlschlagen, ohne Testaktionen auszuführen.
+@Test("Die echte Selbsttest-Registrierung ist vollständig und eindeutig")
 func knownSelfTestNamesMatchDispatch() throws {
-    let source = try String(contentsOf: selfTestSourceURL, encoding: .utf8)
-    let lines = source.components(separatedBy: .newlines)
-
-    guard let switchLine = lines.firstIndex(where: {
-        $0.trimmingCharacters(in: .whitespaces) == "switch name {"
-            && $0.contains("        switch name {")
-    }) else {
-        Issue.record("Die Auswahl `switch name {` steht nicht mehr in SelfTest.swift")
-        return
-    }
-    guard let messageLine = lines.firstIndex(where: {
-        $0.contains("unbekannter Selbsttest-Name")
-    }), messageLine > switchLine else {
-        Issue.record("Der default-Zweig mit der Namensliste fehlt")
-        return
-    }
-
-    // `case "a":` und `case "a", "b":` — beides kommt vor.
-    var dispatched: [String] = []
-    for line in lines[switchLine..<messageLine] {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard trimmed.hasPrefix("case \""), let colon = trimmed.lastIndex(of: ":") else {
-            continue
-        }
-        let labels = trimmed[trimmed.startIndex..<colon]
-        var name = ""
-        var inside = false
-        for character in labels {
-            if character == "\"" {
-                if inside, !name.isEmpty { dispatched.append(name) }
-                name = ""
-                inside.toggle()
-            } else if inside {
-                name.append(character)
-            }
-        }
-    }
-    #expect(dispatched.count > 100, "Die Fall-Erkennung greift nicht mehr")
-
-    guard let listed = lines[messageLine...].prefix(3)
-        .compactMap({ line -> String? in
-            guard let open = line.range(of: "(bekannt: "),
-                  let close = line.range(of: ")\"", range: open.upperBound..<line.endIndex)
-            else { return nil }
-            return String(line[open.upperBound..<close.lowerBound])
-        }).first else {
-        Issue.record("Die Namensliste (bekannt: ...) ist nicht mehr auffindbar")
-        return
-    }
-    let known = Set(listed.components(separatedBy: ",")
-        .map { $0.trimmingCharacters(in: .whitespaces) })
-
-    let missing = dispatched.filter { !known.contains($0) }
-    #expect(missing.isEmpty, """
-        Diese Selbsttests sind auswählbar, fehlen aber in der Fehlermeldung: \
-        \(missing.joined(separator: ", "))
-        """)
-    let unknown = known.subtracting(dispatched)
-    #expect(unknown.isEmpty, """
-        Diese Namen stehen in der Fehlermeldung, aber es gibt keinen Fall dafür: \
-        \(unknown.sorted().joined(separator: ", "))
-        """)
+    let descriptors = try SelfTest.launchDescriptors()
+    let names = descriptors.map(\.name)
+    #expect(names.count == 172)
+    #expect(Set(names).count == names.count)
 }
 
-/// Ein Zwischenablage-Fehler des Selbsttests muss die Ursache treffen: Hat der
-/// Nutzer während des Laufs selbst kopiert oder liefert ein fremder Besitzer
-/// einen zugesagten Typ nicht, ist das die UMGEBUNG. Als FAIL gemeldet
-/// behauptete der Test einen Produktfehler, den es nicht gibt — beobachtet am
-/// 2026-09-10 im Gesamtlauf an `public.utf16-external-plain-text`, isoliert
-/// grün.
+/// Fremdes Kopieren oder nicht gelieferte zugesagte Zwischenablage-Typen
+/// sind Umgebungsfehler; sie dürfen keinen Produkt-FAIL ergeben.
 @Test("Zwischenablage-Ursachen werden richtig eingestuft")
 func pasteboardFailuresAreClassifiedByCause() {
     func outcome(_ code: Int) -> SelfTestOutcome {

@@ -1,12 +1,12 @@
 // WildcardPatternTests.swift
 //
-// Sichert die reine Platzhalter-Übersetzung (Feature J, v0.10) ab, BEVOR
+// Sichert die reine Platzhalter-Übersetzung (Feature J, v0.10) ab, bevor
 // sie in Schritt 2 in die Such-Engines verdrahtet wird. Zwei Test-Ebenen:
 //
-//   * STRUKTUR — das erzeugte Pattern/Template stimmt buchstäblich
+//   * Struktur — das erzeugte Pattern/Template stimmt buchstäblich
 //     (Escaping korrekt, gierige Gruppen / `$N` an den richtigen Stellen).
-//   * VERHALTEN — das Pattern wird in eine echte `NSRegularExpression`
-//     gepackt (case-insensitiv, OHNE `.dotMatchesLineSeparators`, genau wie
+//   * Verhalten — das Pattern wird in eine echte `NSRegularExpression`
+//     gepackt (case-insensitiv, ohne `.dotMatchesLineSeparators`, genau wie
 //     der spätere Plain-Modus-Aufrufer) und gegen echten Text laufen
 //     gelassen. Nur so ist „gierig", „nur innerhalb einer Zeile" und der
 //     Filmtitel-Fall wirklich belegt — eine reine String-Prüfung des
@@ -15,11 +15,12 @@
 import Testing
 import Foundation
 @testable import Fastra
+@testable import FastraPatternSyntax
 
 // MARK: - Test-Helfer
 
 /// Baut die `NSRegularExpression` exakt so, wie es der Plain-Modus später
-/// tut: case-insensitiv (Punkt 4 der Semantik) und OHNE
+/// tut: case-insensitiv (Punkt 4 der Semantik) und ohne
 /// `.dotMatchesLineSeparators` (Punkt 2 — `*` bleibt in einer Zeile).
 private func wildcardRegex(_ find: String) -> NSRegularExpression {
     let compiled = WildcardPattern.compileFind(find)
@@ -49,7 +50,7 @@ private func wildcardReplace(find: String, replace: String, in text: String) -> 
 @Test("Ohne `*` ist das Find-Pattern exakt der alte escapedPattern-Pfad")
 func find_noWildcard_equalsEscapedPattern() {
     // Genau diese Äquivalenz garantiert, dass Schritt 2 (Engine-Umstellung)
-    // das Verhalten für sternlose Eingaben NICHT verändert.
+    // das Verhalten für sternlose Eingaben nicht verändert.
     for input in ["hello", "a.b.c", "preis: $5 (netto)", "C:\\temp\\*x"] where !input.contains("*") {
         let compiled = WildcardPattern.compileFind(input)
         #expect(compiled.regexPattern == NSRegularExpression.escapedPattern(for: input))
@@ -67,7 +68,7 @@ func replace_noWildcard_equalsEscapedTemplate() {
 
 @Test("`$5.00` im Replace bleibt literal (kein leerer Backref auf Gruppe 5)")
 func replace_dollarAmount_staysLiteral() {
-    // Ohne Stern darf ein getipptes `$5` NICHT als Rückreferenz wirken.
+    // Ohne Stern darf ein getipptes `$5` nicht als Rückreferenz wirken.
     let out = wildcardReplace(find: "X", replace: "$5.00", in: "X")
     #expect(out == "$5.00")
 }
@@ -120,9 +121,8 @@ func find_starOffsets_areUTF16() {
 
 @Test("`**` ist EINE zeilenübergreifende Gruppe (Semantik #6, v1.2)")
 func find_adjacentStars_multilineGroup() {
-    // Geändert 2026-07-10 (Daniel): vorher war `**` ein entartetes
-    // `(.+)(.+)` (zwei Gruppen). Jetzt ist ein Lauf aus 2+ Sternen EINE
-    // Gruppe, die dank \s\S-Klasse auch Zeilenumbrüche fängt.
+    // Ein Lauf aus mindestens zwei Sternen bildet genau eine Fanggruppe.
+    // Die `\s\S`-Klasse erfasst darin auch Zeilenumbrüche.
     let compiled = WildcardPattern.compileFind("a**b")
     #expect(compiled.regexPattern == #"a([\s\S]+)b"#)
     #expect(compiled.starCount == 1)
@@ -166,10 +166,38 @@ func starRunCount_countsRuns() {
     #expect(WildcardPattern.starRunCount("**a***") == 2)
 }
 
+@Test("Überzählige Ersetzungssterne bleiben auch ab Position zehn leer", arguments: [1, 9, 10])
+func extraWildcardRunsStayEmpty(groupCount: Int) {
+    let find = Array(repeating: "*", count: groupCount).joined(separator: ":")
+    let text = (1...groupCount).map { "G\($0)" }.joined(separator: ":")
+    let replacement = Array(repeating: "[*]", count: 11).joined(separator: " ")
+    let expected = (1...11).map { $0 <= groupCount ? "[G\($0)]" : "[]" }.joined(separator: " ")
+    #expect(wildcardReplace(find: find, replace: replacement, in: text) == expected)
+}
+
+@Test("Ein leerer Sternlauf hängt eine literale Ziffer nicht an die Gruppennummer")
+func emptyWildcardRunPreservesLiteralDigitAfterExplicitReference() {
+    let find = Array(repeating: "*", count: 10).joined(separator: ":")
+    let text = (1...10).map { "G\($0)" }.joined(separator: ":")
+    let replacement = Array(repeating: "*", count: 10).joined(separator: "|") + "|$1*7|**9"
+    let expected = (1...10).map { "G\($0)" }.joined(separator: "|") + "|G17|9"
+    #expect(wildcardReplace(find: find, replace: replacement, in: text) == expected)
+    #expect(wildcardReplace(find: find,
+                            replace: replacement.replacingOccurrences(of: "*7", with: "*7\u{0301}"),
+                            in: text) == expected.replacingOccurrences(of: "G17", with: "G17\u{0301}"))
+}
+
+@Test("Expliziter zweistelliger Gruppenverweis behält einen folgenden Akzent")
+func wildcardPreservesExplicitReferenceWithCombiningMark() {
+    let find = Array(repeating: "*", count: 12).joined(separator: ":")
+    let text = (1...12).map { "G\($0)" }.joined(separator: ":")
+    #expect(wildcardReplace(find: find, replace: "$12\u{0301}", in: text) == "G12\u{0301}")
+}
+
 @Test("End-to-End: `**` sammelt mehrzeiligen Block zwischen Markern ein")
 func endToEnd_doubleStar_multilineBlock() throws {
     // Der Kern-Anwendungsfall: alles zwischen zwei Marker-Zeilen (inkl.
-    // Umbrüchen) in EINEM Rutsch umstellen.
+    // Umbrüchen) in einem Rutsch umstellen.
     let find = "BEGIN**END"
     let replace = "<<*>>"
     let compiled = WildcardPattern.compileFind(find)
@@ -190,7 +218,7 @@ func behavior_articleAtEnd_basic() {
     let regex = wildcardRegex("*, the")
     let text = "ring, The"
     let m = regex.firstMatch(in: text, options: [], range: NSRange(location: 0, length: (text as NSString).length))!
-    // Gruppe 1 = das, was `*` gefangen hat. Der Anker „, The" ist NICHT drin.
+    // Gruppe 1 = das, was `*` gefangen hat. Der Anker „, The" ist nicht drin.
     let group1 = (text as NSString).substring(with: m.range(at: 1))
     #expect(group1 == "ring")
 }
@@ -201,7 +229,7 @@ func behavior_greedy_takesLastAnchor() {
     let text = "Hello, There, The"
     let m = regex.firstMatch(in: text, options: [], range: NSRange(location: 0, length: (text as NSString).length))!
     let group1 = (text as NSString).substring(with: m.range(at: 1))
-    // Gierig → „Hello, There" (bis zum LETZTEN „, the"), nicht nur „Hello".
+    // Gierig → „Hello, There" (bis zum letzten „, the"), nicht nur „Hello".
     #expect(group1 == "Hello, There")
 }
 
@@ -224,7 +252,7 @@ func behavior_doesNotCrossNewlines() {
     let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: ns.length))
     // Zwei getrennte Treffer (je Zeile einer), nicht ein zeilenübergreifender.
     #expect(matches.count == 2)
-    // Erster Treffer-Group endet VOR dem `\n`.
+    // Erster Treffer-Group endet vor dem `\n`.
     let g1 = ns.substring(with: matches[0].range(at: 1))
     #expect(g1 == "Hello")
     #expect(!g1.contains("\n"))
@@ -291,9 +319,9 @@ func endToEnd_explicitPillsReorderNames() {
     let out = wildcardReplace(
         find: "*, *",
         replace: "$2 $1",
-        in: "Müller, Daniel"
+        in: "Müller, Markus"
     )
-    #expect(out == "Daniel Müller")
+    #expect(out == "Markus Müller")
 }
 
 @Test("Mehrzeilig End-to-End: jede Zeile wird einzeln umgestellt")

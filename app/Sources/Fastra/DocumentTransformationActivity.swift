@@ -33,3 +33,27 @@ struct DocumentTransformationIndicator: View {
         }
     }
 }
+
+struct DocumentTransformationNotice: View {
+    let message: String
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.circle")
+                .accessibilityHidden(true)
+            Text(verbatim: message)
+                .fastraFont(.small)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Schließen")
+        }
+        .padding(12)
+        .frame(maxWidth: 360, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .padding(12)
+    }
+}

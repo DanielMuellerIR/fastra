@@ -1,18 +1,10 @@
 // TestTemporaryDirectory.swift
 //
-// Wegwerf-Wurzel aller Test-Fixtures.
-//
-// `FileManager.default.temporaryDirectory` ignoriert auf macOS die
-// Umgebungsvariable `TMPDIR` und liefert immer den Benutzer-Temp-Ordner
-// (`getconf DARWIN_USER_TEMP_DIR`; belegt 2026-09-17 mit einem kleinen
-// Prüfprogramm unter gesetztem TMPDIR). `test.sh` lenkt `TMPDIR` aber genau
-// deshalb in seine Wegwerf-Sandbox um, damit liegengebliebene Fixtures mit der
-// Sandbox verschwinden. Weil Foundation die Umlenkung nicht sah, lagen am
-// 2026-09-17 rund 250 Fixture-Ordner früherer Läufe im echten Temp
-// (CodeQA-Fund test-temp-leaks). Dieser Helfer liest `TMPDIR` selbst; ohne
-// Sandbox (nacktes `swift test`) bleibt es beim Foundation-Pfad. Ein
-// Quelltext-Wächter (`TestTemporaryDirectoryTests`) hält die Testsuite auf
-// diesem Helfer.
+// Wegwerf-Wurzel aller Test-Fixtures. Foundation kann auf macOS trotz
+// umgeleitetem TMPDIR den Benutzer-Temp-Ordner liefern. Hier TMPDIR selbst
+// lesen, damit Fixtures innerhalb der Runner-Sandbox bleiben und nach Timeout
+// mit ihr verschwinden. Ohne Sandbox gilt der Foundation-Pfad.
+// `TestTemporaryDirectoryTests` schützt die Verwendung dieses Helfers.
 
 import Foundation
 

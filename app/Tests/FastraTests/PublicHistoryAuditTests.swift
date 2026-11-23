@@ -1,15 +1,10 @@
 // PublicHistoryAuditTests.swift
 //
-// Tests für app/public-history-audit.sh gegen TEMPORÄRE Fixture-Repos (nie das
-// echte Arbeitsrepo). Geprüft werden die beiden Lücken aus dem Review
-// 2026-08-02:
-//
-//   1. Der Audit sah nur den Netto-Diff `Basis..HEAD`. Eine interne Angabe, die
-//      ein Zwischen-Commit hinzufügt und ein späterer wieder entfernt, fehlte
-//      dort — nach dem Push bleibt sie über die SHA des Zwischen-Commits aber
-//      dauerhaft erreichbar.
-//   2. `grep … || true` machte aus einem unanwendbaren Muster ein „nichts
-//      gefunden". Eine kaputte private Musterdatei täuschte damit PASS vor.
+// `app/public-history-audit.sh` gegen temporäre Repos prüfen:
+// 1. Jeden ausgehenden Commit erfassen. Eine später gelöschte interne Angabe
+//    bleibt über den Zwischen-Commit öffentlich erreichbar; der Netto-Diff reicht nicht.
+// 2. Ungültige private Muster als Fehler melden. `grep … || true` würde
+//    sie mit „keine Treffer“ verwechseln.
 
 import Foundation
 import Testing
@@ -59,7 +54,7 @@ private func fixtureGit(_ arguments: [String], in root: URL) throws -> HistoryAu
 }
 
 /// Baut ein temporäres Repo im Fastra-Layout. Das Skript arbeitet immer
-/// relativ zu SEINEM eigenen Ort (`cd "$(dirname "$0")/.."`), deshalb wird es
+/// relativ zu seinem eigenen Ort (`cd "$(dirname "$0")/.."`), deshalb wird es
 /// in das `app/`-Verzeichnis des Fixtures kopiert.
 private func makeHistoryFixtureRepo() throws -> URL {
     let root = testTemporaryDirectory()

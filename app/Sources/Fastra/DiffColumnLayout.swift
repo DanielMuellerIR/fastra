@@ -2,18 +2,10 @@ import CoreGraphics
 
 /// Spaltenbreite der zweispaltigen Diff-Ansicht.
 ///
-/// Vorher bekamen beide Zellen `maxWidth: .infinity` und teilten sich damit die
-/// sichtbare Breite, während der Text darin auf seiner vollen Idealbreite
-/// bestand (`fixedSize`). Ergebnis: Jede Zeile, die breiter als eine halbe
-/// Fensterbreite war, wurde über die Spaltengrenze hinaus gezeichnet und
-/// überschrieb die andere Seite (Daniel-Befund 2026-07-30 am Gesamt-Diff).
-///
-/// Beide Spalten teilen sich seither die sichtbare Fläche, und die Trennlinie
-/// ist über alle Zeilen gerade. Seit 2026-09-09 ist die Teilung nicht mehr
-/// starr halbe-halbe, sondern ein vom Nutzer gezogenes Verhältnis: Wer links
-/// lange Zeilen liest, gibt der linken Seite mehr Platz, ohne das Fenster zu
-/// verbreitern. Die Rechnung liegt bewusst hier und nicht in der Ansicht —
-/// so ist sie ohne Fenster prüfbar.
+/// Beide Spalten teilen die sichtbare Fläche nach dem vom Nutzer gezogenen
+/// Verhältnis. Text darf die gemeinsame Trennlinie nicht überzeichnen.
+/// Die Berechnung liegt unabhängig von der Ansicht, damit sie ohne Fenster
+/// prüfbar ist.
 enum DiffColumnLayout {
     /// Breite der Zeilennummern-Spalte innerhalb einer Zelle.
     static let numberWidth: CGFloat = 44
@@ -28,14 +20,14 @@ enum DiffColumnLayout {
     /// Untergrenze wie bisher — ein schmales Fenster soll die Spalten nicht
     /// unlesbar zusammenquetschen, dann wird die Fläche horizontal scrollbar.
     static let minimumColumnWidth: CGFloat = 459
-    /// Untergrenze EINER Spalte beim Ziehen des Splitters. Sie ist bewusst
+    /// Untergrenze einer Spalte beim Ziehen des Splitters. Sie ist bewusst
     /// viel kleiner als `minimumColumnWidth`: Wer den Trenner selbst zieht,
     /// will eine Seite absichtlich schmal machen — sie darf nur nicht ganz
     /// verschwinden, sonst wäre der Trenner nicht mehr zurückzuholen.
     static let minimumPaneWidth: CGFloat = 96
     /// Werksteilung: exakt halbe-halbe wie vor dem Splitter.
     static let defaultRatio: CGFloat = 0.5
-    /// Schlüssel der gemerkten Teilung. Sie gilt bewusst für ALLE Vergleiche:
+    /// Schlüssel der gemerkten Teilung. Sie gilt bewusst für alle Vergleiche:
     /// Wer sich die Aufteilung einmal eingestellt hat, will sie im nächsten
     /// Diff wiederfinden, nicht je Tab neu ziehen.
     static let splitRatioDefaultsKey = "diff.splitRatio"
@@ -54,7 +46,7 @@ enum DiffColumnLayout {
         max(0, contentWidth - dividerWidth)
     }
 
-    /// Breite der LINKEN Spalte bei gegebenem Teilungsverhältnis.
+    /// Breite der linken Spalte bei gegebenem Teilungsverhältnis.
     /// Bewusst ungerundet: Bei `defaultRatio` müssen beide Seiten auf den
     /// Punkt gleich breit sein, sonst stünde die Trennlinie schief.
     static func leadingWidth(contentWidth: CGFloat, ratio: CGFloat) -> CGFloat {
@@ -65,7 +57,7 @@ enum DiffColumnLayout {
         return min(max(raw, minimumPaneWidth), usable - minimumPaneWidth)
     }
 
-    /// Breite der RECHTEN Spalte — der Rest, damit beide Spalten plus Trenner
+    /// Breite der rechten Spalte — der Rest, damit beide Spalten plus Trenner
     /// exakt die Gesamtfläche ergeben und rechts kein Streifen frei bleibt.
     static func trailingWidth(contentWidth: CGFloat, ratio: CGFloat) -> CGFloat {
         usableWidth(contentWidth: contentWidth)
@@ -83,7 +75,7 @@ enum DiffColumnLayout {
         return min(max(width / usable, 0), 1)
     }
 
-    /// Anteil der linken Spalte in Prozent, wie er WIRKLICH zu sehen ist.
+    /// Anteil der linken Spalte in Prozent, wie er wirklich zu sehen ist.
     /// `ratio` allein taugt dafür nicht: Es ist nur auf 0…1 begrenzt, die
     /// Mindestbreite von 96 pt setzt erst `leadingWidth` durch. Ein Zug bis an
     /// den Anschlag merkt sich also 0, sichtbar bleiben aber rund 10 Prozent.
@@ -94,9 +86,9 @@ enum DiffColumnLayout {
         return Int((leading / usable * 100).rounded())
     }
 
-    /// Verhältnis nach EINEM Schritt der VoiceOver-Bedienung.
+    /// Verhältnis nach einem Schritt der VoiceOver-Bedienung.
     ///
-    /// Gerechnet wird vom SICHTBAREN Stand aus und im sichtbaren Bereich
+    /// Gerechnet wird vom sichtbaren Stand aus und im sichtbaren Bereich
     /// geklemmt. Vom gespeicherten Rohwert aus liefe die Bedienung sonst in
     /// eine Totzone: Ein Zug bis an den Anschlag merkt sich 0, sichtbar bleiben
     /// aber 96 pt (rund 10 Prozent) — die ersten zwei Schritte „mehr Platz

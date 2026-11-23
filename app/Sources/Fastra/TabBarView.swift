@@ -10,8 +10,8 @@ struct TabBarView: View {
     @EnvironmentObject var workspace: Workspace
     @Environment(\.uiScale) private var uiScale
 
-    @AppStorage("editor.sidebarVisible", store: SelfTest.workspaceDefaults()) private var showSidebar = true
-    @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showPreview = true
+    @AppStorage("editor.sidebarVisible", store: AppDefaults.store) private var showSidebar = true
+    @AppStorage("markdown.integratedPreview", store: AppDefaults.store) private var showPreview = true
 
     private let sidebarMinWidth = SidebarLayout.minimumSidebarWidth
     private let sidebarMaxWidth = SidebarLayout.maximumSidebarWidth
@@ -28,7 +28,7 @@ struct TabBarView: View {
 
     // Die Seitenleisten-Breite liegt pro Fenster auf dem `workspace`, damit der
     // Titelleisten-Vorlauf exakt mit der Seitenleiste darunter fluchtet und der
-    // Splitter nur dieses Fenster verändert (Daniel-Befund 2026-07-20).
+    // Splitter nur dieses Fenster verändert.
     private var effectiveSidebarWidth: CGFloat {
         let maximum = contentWidth > 0
             ? SplitterSizing.leadingMaximum(
@@ -254,8 +254,8 @@ private extension TabBarView {
         }
     }
 
-    /// Tab-Übersicht neben der Leiste (Daniel-Wunsch 2026-09-01): Die Kapsel
-    /// zeigt die Anzahl der offenen Tabs DIESES Fensters; ein Klick öffnet
+    /// Tab-Übersicht neben der Leiste: Die Kapsel
+    /// zeigt die Anzahl der offenen Tabs dieses Fensters; ein Klick öffnet
     /// ein Menü mit allen Tabs zum direkten Springen. Nützlich, sobald die
     /// scrollende Leiste nicht mehr alle Tabs gleichzeitig zeigt.
     private var tabCountMenu: some View {
@@ -468,10 +468,10 @@ private struct TabPill: View {
         .highPriorityGesture(
             TapGesture().modifiers(.shift).onEnded(onExtendSelection)
         )
-        // Cmd-Klick zeigt das Pfadmenü der Tab-Datei (Etappe 1 Wunschpaket
-        // 2026-07b). `highPriorityGesture`, damit der Cmd-Klick NICHT
-        // zusätzlich als normaler Tab-Klick durchschlägt. Ungespeicherte
-        // Tabs haben keinen Pfad → dort wählt der Cmd-Klick nur den Tab.
+        // Cmd-Klick zeigt das Pfadmenü der Tab-Datei. `highPriorityGesture`,
+        // damit der Cmd-Klick nicht zusätzlich als normaler Tab-Klick
+        // durchschlägt. Ungespeicherte Tabs haben keinen Pfad → dort wählt der
+        // Cmd-Klick nur den Tab.
         .highPriorityGesture(
             TapGesture().modifiers(.command).onEnded {
                 if let url = tab.url {

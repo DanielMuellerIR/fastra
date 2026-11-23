@@ -2,7 +2,7 @@
 //
 // Minimaler ZIP-Leser für 4D-Komponentenarchive (`.4DZ`). Fastra braucht aus
 // so einem Archiv nur wenige kleine Textdateien (Methodenquellen und
-// Metadaten-JSON) — dafür wird das Archiv NICHT vollständig entpackt,
+// Metadaten-JSON) — dafür wird das Archiv nicht vollständig entpackt,
 // sondern nur das zentrale Verzeichnis gelesen und der jeweils angefragte
 // Eintrag einzeln dekomprimiert.
 //
@@ -129,7 +129,7 @@ enum FourDZipArchive {
         guard let file = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? file.close() }
 
-        // Der lokale Header wiederholt Name und Extra-Feld mit EIGENEN
+        // Der lokale Header wiederholt Name und Extra-Feld mit eigenen
         // Längen (die vom zentralen Verzeichnis abweichen dürfen).
         guard let header = read(file, offset: UInt64(entry.localHeaderOffset),
                                 count: 30),

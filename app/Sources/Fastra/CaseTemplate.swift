@@ -1,26 +1,17 @@
 // CaseTemplate.swift
 //
-// BBEdit-Grep-Feature „Case Transformations" im Ersetzungsmuster
-// (BBEdit User Manual 16.0.1, Kap. 8 S. 216): Die Operatoren
+// BBEdit-Grep „Case Transformations“ (User Manual 16.0.1, Kap. 8, S. 216):
+//   \u / \l ändern das nächste Zeichen,
+//   \U / \L alle folgenden bis \E.
+// Die Operatoren wirken nach Expansion der `$N`-Backrefs auf den Ersatztext.
+// Beispiel: `(\w+), (\w+)` mit `\U$2\E $1` ergibt aus
+// „Müller, Markus“ den Text „MARKUS Müller“.
 //
-//   \u  → nächstes Zeichen groß        \U  → alles Folgende groß …
-//   \l  → nächstes Zeichen klein       \L  → alles Folgende klein …
-//   \E  → … bis hier (beendet \U/\L)
-//
-// wirken auf den ERSETZTEN Text (also NACH dem Einsetzen der $N-Backrefs).
-// Beispiel: Suchen `(\w+), (\w+)` · Ersetzen `\U$2\E $1` macht aus
-// „Müller, Daniel" → „DANIEL Müller".
-//
-// NSRegularExpression kennt diese Operatoren NICHT — sein Template-Vertrag
-// behandelt nur `$N` und `\`-Escapes. Wir zerlegen das Template deshalb in
-// Segmente ZWISCHEN den Operatoren, lassen NSRegularExpression jedes Segment
-// einzeln expandieren (Backrefs bleiben dessen Job — eine Wahrheit) und
-// wenden anschließend die Groß-/Kleinschreibung per Zustandsmaschine an.
-//
-// Gilt nur im RegEx-Modus: Im Plain-/Platzhalter-Modus escapt
-// `ApplyEngine.replacementTemplate` alle Backslashes (`\U` → `\\U`), der
-// Parser erkennt dann KEINEN Operator — literale Eingaben bleiben literal,
-// ganz ohne Modus-Weiche an den Call-Sites.
+// NSRegularExpression expandiert Backrefs und Escapes, kennt diese Operatoren
+// aber nicht. Deshalb das Template in Segmente zerlegen, einzeln expandieren
+// und anschließend die Groß-/Kleinschreibung anwenden.
+// Im Plain-/Platzhalter-Modus maskiert `ApplyEngine.replacementTemplate` alle
+// Backslashes; literale Eingaben bleiben dadurch ohne eigene Modusprüfung literal.
 
 import Foundation
 
@@ -41,7 +32,7 @@ enum CaseTemplate {
 
     /// Zerlegt ein Replacement-Template in Operator- und Text-Stücke.
     /// Escape-Regel wie im NSRegularExpression-Template: `\` schützt das
-    /// Folgezeichen — `\\U` ist also KEIN Operator, sondern der literale
+    /// Folgezeichen — `\\U` ist also kein Operator, sondern der literale
     /// Backslash gefolgt von `U`. Solche Paare bleiben unangetastet im
     /// Text-Stück (NSRegularExpression löst sie beim Expandieren auf).
     static func pieces(of template: String) -> [Piece] {
@@ -97,10 +88,10 @@ enum CaseTemplate {
     /// Dauerhafter Case-Zustand (durch `\U`/`\L` gesetzt, durch `\E` beendet).
     private enum Mode { case none, upper, lower }
 
-    /// Einmal-Zustand für GENAU ein Ausgabezeichen (durch `\u`/`\l` gesetzt).
+    /// Einmal-Zustand für genau ein Ausgabezeichen (durch `\u`/`\l` gesetzt).
     private enum OneShot { case upper, lower }
 
-    /// Ersetzungstext für EINEN Treffer — Gegenstück zu
+    /// Ersetzungstext für einen Treffer — Gegenstück zu
     /// `regex.replacementString(for:in:offset:template:)`, aber mit
     /// Case-Operator-Unterstützung. Ohne Operatoren im Template wird
     /// direkt an NSRegularExpression durchgereicht (Fast Path).
@@ -127,7 +118,7 @@ enum CaseTemplate {
             case .upperNext: oneShot = .upper
             case .lowerNext: oneShot = .lower
             case .text(let segment):
-                // Backrefs im Segment expandieren lassen — DANN erst die
+                // Backrefs im Segment expandieren lassen — dann erst die
                 // Schreibweise anwenden (BBEdit: Operatoren wirken auf das
                 // Ergebnis, nicht auf das Muster).
                 let expanded = regex.replacementString(for: result, in: text,
@@ -136,7 +127,7 @@ enum CaseTemplate {
 
                 var rest = expanded
                 if let shot = oneShot {
-                    // Genau EIN Zeichen (Graphem — Umlaute/Emoji bleiben heil).
+                    // Genau ein Zeichen (Graphem — Umlaute/Emoji bleiben heil).
                     let first = rest.removeFirst()
                     out.append(shot == .upper ? String(first).uppercased()
                                               : String(first).lowercased())

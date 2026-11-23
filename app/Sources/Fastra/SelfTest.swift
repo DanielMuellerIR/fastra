@@ -1,8 +1,8 @@
 // SelfTest.swift
 //
-// In-App-Smoke-Test für die Bug-Klasse, die reine Unit-Tests NICHT fangen:
+// In-App-Smoke-Test für die Bug-Klasse, die reine Unit-Tests nicht fangen:
 // App-weites Event-Routing und die LIFO-Reihenfolge der CMD+F-Monitore
-// (Zombie-Find-Bar). Läuft im ECHTEN App-Prozess mit den ECHTEN Monitoren.
+// (Zombie-Find-Bar). Läuft im echten App-Prozess mit den echten Monitoren.
 //
 // Aufruf: bevorzugt `./selftest.sh findbar`, direkt
 // `Fastra -selftest findbar -ApplePersistenceIgnoreState YES`. Der Test postet
@@ -12,7 +12,7 @@
 // Find-Panel aufgetaucht ist. Gibt `SELFTEST findbar: PASS/FAIL` aus und
 // beendet die App mit Exit-Code 0/1 — so im CI/Skript auswertbar.
 //
-// Bewusst KEIN Accessibility/System-Events nötig: das Event wird intern
+// Bewusst kein Accessibility/System-Events nötig: das Event wird intern
 // gepostet, nicht über die Systemsteuerung simuliert.
 
 import AppKit
@@ -25,7 +25,7 @@ import PDFKit
 import WebKit
 import CodeEditSourceEditor
 // Echte Editor-Klasse von CodeEditSourceEditor (Modul CodeEditTextView).
-// Wird gebraucht, um im Sprung-Selbsttest die TATSÄCHLICHE Selektion des
+// Wird gebraucht, um im Sprung-Selbsttest die tatsächliche Selektion des
 // Editors (`TextView.selectedRange()` + `.string`) zurückzulesen.
 import CodeEditTextView
 // Sprach-Registry — für die FAIL-Diagnose des Highlight-Selbsttests
@@ -56,48 +56,6 @@ enum SelfTestCaptureRouting {
     }
 }
 
-/// Maschinenlesbares Ergebnis eines In-App-Selbsttests. Die Reihenfolge
-/// bestimmt, welches Ergebnis gewinnt, wenn beim Aufräumen noch ein Fehler
-/// hinzukommt: Ein Funktionsfehler darf nie als Skip oder Umgebungsproblem
-/// erscheinen.
-enum SelfTestOutcome: Int, Comparable {
-    case pass = 0
-    case skip = 1
-    case environment = 2
-    case fail = 3
-
-    static func < (lhs: SelfTestOutcome, rhs: SelfTestOutcome) -> Bool {
-        lhs.rawValue < rhs.rawValue
-    }
-
-    var protocolStatus: String {
-        switch self {
-        case .pass: "PASS"
-        case .skip: "SKIP"
-        case .environment: "ENV"
-        case .fail: "FAIL"
-        }
-    }
-
-    /// Verknüpft einen späteren Abschlussgrund mit bereits beobachteten
-    /// Funktionsfehlern. Die Fehler bleiben sowohl im Status als auch in der
-    /// Diagnose sichtbar; ein späterer Fokusverlust darf sie nicht verdecken.
-    static func resolving(
-        recordedFailures: [String],
-        requestedOutcome: SelfTestOutcome,
-        message: String
-    ) -> (outcome: SelfTestOutcome, message: String) {
-        guard !recordedFailures.isEmpty else {
-            return (requestedOutcome, message)
-        }
-        let recordedMessage = recordedFailures.joined(separator: "; ")
-        return (
-            .fail,
-            message == recordedMessage ? message : recordedMessage + "; " + message
-        )
-    }
-}
-
 /// Trennt einen von außen verlorenen Fensterfokus von einem Editor, der im
 /// weiterhin aktiven Fenster den First-Responder-Status ablehnt. Nur der erste
 /// Fall ist ein Umgebungsproblem.
@@ -111,32 +69,6 @@ enum SelfTestFocusRouting {
     }
 }
 
-/// Normale Produktaufrufe und manuelle Selbsttest-Starts dürfen Fastra
-/// unverändert nach vorn holen. Der Runner kann Aktivierung für ausdrücklich
-/// hintergrundfähige Tests sperren; diese können dann auch produktive
-/// Fenster-Helfer verwenden, ohne die gerade benutzte App zu verdrängen.
-enum SelfTestActivationPolicy {
-    static func allowsActivation(
-        isSelfTestRun: Bool,
-        environment: [String: String]
-    ) -> Bool {
-        guard isSelfTestRun else { return true }
-        return environment["FASTRA_SELFTEST_ALLOW_ACTIVATION"] != "0"
-    }
-}
-
-/// Ein abweichender Zähler zusammen mit fremdem Inhalt belegt einen externen
-/// Zwischenablagezugriff. Bleibt dagegen genau der erwartete Testinhalt liegen
-/// oder ist er nicht lesbar, hat der Test seinen eigenen Schreibvorgang nicht
-/// wie vereinbart ausgeführt.
-enum SelfTestPasteboardMutationRouting {
-    static func unexpectedCountOutcome(
-        contentMatchesExpected: Bool?
-    ) -> SelfTestOutcome {
-        contentMatchesExpected == false ? .environment : .fail
-    }
-}
-
 enum MarkdownImportFixtureError: Error { case png }
 
 enum SelfTestFixtureOutcome {
@@ -146,112 +78,130 @@ enum SelfTestFixtureOutcome {
 }
 
 enum SelfTest {
-    @MainActor private static var diffExportTestDestination: URL?
-
-    @MainActor static func configureDiffExportPanel(_ panel: NSSavePanel) {
-        guard requestedTest == "diffexport", let destination = diffExportTestDestination else { return }
-        panel.directoryURL = destination.deletingLastPathComponent()
-        panel.nameFieldStringValue = destination.lastPathComponent
-    }
-    @MainActor private static var snippetExportDestination: URL?
-    @MainActor private static var snippetImportDirectory: URL?
-    @MainActor private static weak var snippetFilePanel: NSSavePanel?
-
-    @MainActor static func configureTextSnippetPanel(_ panel: NSSavePanel, importing: Bool) {
-        guard requestedTest == "snippetfiles" else { return }
-        snippetFilePanel = panel
-        if importing { panel.directoryURL = snippetImportDirectory }
-        else if let destination = snippetExportDestination {
-            panel.directoryURL = destination.deletingLastPathComponent()
-            panel.nameFieldStringValue = destination.lastPathComponent
-        }
-    }
-
-    /// Pro Selbsttest-Prozess genau eine isolierte Defaults-Suite. Mehrere
-    /// Dokumentfenster müssen dieselbe Suite teilen; würde jeder Aufruf sie
-    /// erneut leeren, hielte sich auch das zweite Fenster fälschlich für den
-    /// allerersten App-Start und bekäme den Demo-Inhalt statt eines Leer-Tabs.
-    private static var cachedWorkspaceDefaults: UserDefaults?
     /// Hält die beiden produktiven Suchfenster des `multisearch`-Tests bis
     /// zum Prozessende stark am Leben, analog zu `ContentView.searchPanel`.
     private static var retainedSearchPanels: [SearchPanelController] = []
+    /// Kurzlebiger Zustellnachweis für ⇧⌘L; auch finish/exit räumt ihn auf.
+    private static var commandOwnerKeyMonitor: Any?
     /// Hält den asynchronen echten tool4d-Lauf bis zu seiner Completion am
     /// Leben. Ohne diese Referenz könnte ARC den Testlauf vor der TCP-Antwort
     /// freigeben und einen scheinbaren Netzwerkfehler erzeugen.
     private static var retainedTool4DValidation: Tool4DLSPValidation?
-    /// Fixture der echten Start-Sitzungswiederherstellung. Sie wird noch vor
-    /// dem ersten Workspace angelegt und unmittelbar vor dem Test-Exit
-    /// entfernt.
-    private static var sessionRestoreFixtureDirectory: URL?
-    private static var sessionRestoreSetupError: String?
-    /// Kombiniertes Kaltstart-Fixture: LaunchServices liefert eine ausdrücklich
-    /// geöffnete Datei, während im isolierten Store eine andere alte Sitzung
-    /// liegt. Genau diese Konkurrenz hat die Finder-Datei bisher verdrängt.
-    private static var coldOpenFixtureDirectory: URL?
-    private static var coldOpenExternalURL: URL?
-    private static var coldOpenRestoredURLs: [URL] = []
-    private static var coldOpenRestoredProjectURLs: [URL] = []
-    private static var coldOpenSetupError: String?
-    /// Eigenes Kaltstart-Fixture für den Auswahl-Scrolltest. Es benutzt
-    /// denselben produktiven SessionStateStore wie ein normaler App-Start.
-    private static var selectionScrollFixtureDirectory: URL?
-    private static var selectionScrollFixtureURL: URL?
-    private static var selectionScrollSetupError: String?
-    /// Reproduziert im `windows`-Test den gemeldeten Vorderfenster-Zustand:
-    /// Ordner in der Seitenleiste, aber nur ein leerer Willkommen-Tab.
-    private static var windowRoutingFixtureDirectory: URL?
-    /// Echte gespeicherte Datei des Mehrfenster-Scrolltests. Das Sichern im
-    /// Vorderfenster ist der gemeldete Auslöser, nicht nur eine künstliche
-    /// SwiftUI-Neubewertung.
-    private static var backgroundScrollFixtureDirectory: URL?
+    /// Derselbe Besitzer bereitet Startfixtures vor und hält sie bis zum
+    /// zentralen Cleanup; die Runtime liest Defaults und UI erst beim Aufruf.
+    private static let sessionRestorationTests = SelfTestSessionRestoration(runtime: .init(
+        defaults: { workspaceDefaults() },
+        waitFor: { waitFor(budget: $0, pause: $1, condition: $2, onTimeout: $3, then: $4) },
+        finish: { finish($0, $1) },
+        windowsSummary: { windowsSummary() },
+        verifyNativeWindowTabSelection: {
+            verifyNativeWindowTabSelection(workspace: $0, window: $1,
+                                           requireTabChange: $2, completion: $3)
+        },
+        selectionScrollWorkspace: { Workspace.shared },
+        selectionScrollMissingWorkspaceMessage: { "Workspace.shared ist nil (Test-Hook fehlt)" },
+        selectionScrollWindows: { NSApp.windows },
+        markdownWebView: { markdownWebView(in: $0) },
+        editorTextView: { editorTextView(in: $0) },
+        sourceEditorController: { sourceEditorController(for: $0) },
+        markerViewExists: { markerViewExists(id: $0, in: $1) },
+        typeScrollLayerSnapshot: { typeScrollLayerSnapshot(window: $0) }
+    ))
+    /// Ein prozesslanger Besitzer; AppKit und Workspace werden von diesen
+    /// Closures erst an den ursprünglichen Ablaufstellen ausgewertet.
+    private static let windowRoutingTests = SelfTestWindowRouting(runtime: .init(
+        currentWorkspace: { Workspace.shared },
+        windows: { NSApp.windows },
+        waitFor: { waitFor(budget: $0, pause: $1, condition: $2, onTimeout: $3, then: $4) },
+        finish: { finish($0, $1) },
+        windowsSummary: { windowsSummary() },
+        activateApplication: { activateApplication(ignoringOtherApps: $0) },
+        menuItem: { menuItem(forKeyEquivalent: $0, in: $1) },
+        postCmd: { postCmd($0, keyCode: $1, windowNumber: $2) },
+        editorTextView: { editorTextView(in: $0) },
+        writeSolidPNG: { try writeSolidPNG(to: $0, width: $1, height: $2) },
+        verifyNativeWindowTabSelection: {
+            verifyNativeWindowTabSelection(workspace: $0, window: $1,
+                                           requireTabChange: $2, completion: $3)
+        },
+        typeScrollCapture: { typeScrollCapture(window: $0, completion: $1) }
+    ))
+    /// Die Closures lesen Workspace und Fenster erst an den ursprünglichen
+    /// Ablaufstellen; auch der Abschluss holt seinen Workspace erneut.
+    private static let fourDCompletionTests = SelfTestFourDCompletion(runtime: .init(
+        currentWorkspace: { Workspace.shared },
+        windows: { NSApp.windows },
+        missingWorkspaceMessage: { "Workspace.shared ist nil (Test-Hook fehlt)" },
+        waitFor: { waitFor(budget: $0, pause: $1, condition: $2, onTimeout: $3, then: $4) },
+        finish: { finish($0, $1) },
+        postKey: { postKey($0, keyCode: $1, windowNumber: $2) },
+        editorTextView: { editorTextView(in: $0) },
+        fourDComponentMethodExpectedColor: { fourDComponentMethodExpectedColor(dark: $0) },
+        storageSubstringHasColor: { storageSubstringHasColor($0, in: $1, r: $2, g: $3, b: $4) },
+        storageSubstringHasStyle: { storageSubstringHasStyle($0, in: $1, bold: $2, italic: $3) }
+    ))
+    /// Der Besitzer hält nur Ablaufzustand; Workspace, Fenster und Dienste
+    /// werden durch die Closures erst an den ursprünglichen Stellen gelesen.
+    private static let typeScrollTests = SelfTestTypeScroll(runtime: .init(
+        currentWorkspace: { Workspace.shared },
+        windows: { NSApp.windows },
+        mainWindowForAXChecks: { mainWindowForAXChecks() },
+        workspaceDefaults: { workspaceDefaults() },
+        activateApplication: { activateApplication(ignoringOtherApps: $0) },
+        emojiSplitFixtureContent: { emojiSplitFixtureContent() },
+        editorTextView: { editorTextView(in: $0) },
+        waitFor: { waitFor(budget: $0, pause: $1, condition: $2, onTimeout: $3, then: $4) },
+        finish: { finish($0, $1) },
+        postCmd: { postCmd($0, keyCode: $1, windowNumber: $2) },
+        typeScrollCapture: { typeScrollCapture(window: $0, completion: $1) }
+    ))
+    /// Der Besitzer hält nur Ablaufzustand; Workspace, Fenster und Dienste
+    /// werden durch die Closures erst an den ursprünglichen Stellen gelesen.
+    private static let backgroundScrollTests = SelfTestBackgroundScroll(runtime: .init(
+        currentWorkspace: { Workspace.shared },
+        windows: { NSApp.windows },
+        workspaceDefaults: { workspaceDefaults() },
+        activateApplication: { activateApplication(ignoringOtherApps: $0) },
+        editorTextView: { editorTextView(in: $0) },
+        sourceEditorController: { sourceEditorController(for: $0) },
+        waitFor: { waitFor(budget: $0, pause: $1, condition: $2, onTimeout: $3, then: $4) },
+        finish: { finish($0, $1) }
+    ))
 
-    /// Name des angeforderten Selbsttests („findbar", „cmdw", …) oder `nil`.
+    /// Ein Besitzer für die drei Graph-/Dateiverlauf-Routen; die Closures
+    /// lesen den gemeinsamen Rootzustand erst an den bisherigen Ablaufstellen.
+    private static let gitHistoryTests = SelfTestGitHistory(runtime: .init(
+        currentWorkspace: { Workspace.shared },
+        missingWorkspaceMessage: { "Workspace.shared ist nil" },
+        mainWindowForAXChecks: { mainWindowForAXChecks() },
+        markerViewExists: { markerViewExists(id: $0, in: $1) },
+        markerView: { markerView(id: $0, in: $1) },
+        sendMouseClick: { sendMouseClick(at: $0, in: $1, modifiers: $2, viaApp: $3) },
+        waitFor: { waitFor(budget: $0, pause: $1, condition: $2, onTimeout: $3, then: $4) },
+        finish: { finish($0, $1) },
+        runGitSequence: { runGitSequence($0, in: $1, $2) },
+        makeScreenshotFixtureDirectory: { makeScreenshotFixtureDirectory() },
+        prepareRemoteBadgeShot: { prepareRemoteBadgeShot(repository: $0, workspace: $1, completion: $2) },
+        dumpMainWindowThenExit: { dumpMainWindowThenExit(prefix: $0) }
+    ))
+
+    /// Name des Selbsttests („findbar“, „cmdw“, …) oder `nil`.
     ///
-    /// Zwei gleichwertige Aufruf-Wege:
-    ///   FASTRA_SELFTEST=findbar …/Fastra            (Umgebungsvariable)
-    ///   …/Fastra -selftest findbar                  (NSArgumentDomain)
+    /// Gleichwertige Aufrufe:
+    ///   FASTRA_SELFTEST=findbar …/Fastra
+    ///   …/Fastra -selftest findbar
     ///
-    /// WICHTIG (Root Cause „kein Hauptfenster", 2026-06-11): bewusst KEIN
-    /// positionales `--selftest-…`-Argument mehr. AppKit interpretiert
-    /// unbekannte positionale Argumente als „zu öffnende Datei" — die App
-    /// durchläuft dann den Open-File-Launchpfad statt
-    /// `applicationOpenUntitledFile`, und SwiftUI erzeugt das WindowGroup-
-    /// Hauptfenster NIE (empirisch belegt: jedes beliebige `--flag` führt
-    /// zu `NSApp.windows == []`, Main-Thread idle). `-Key Value`-Argumente
-    /// landen dagegen im NSArgumentDomain von UserDefaults und sind
-    /// unschädlich. Dass die Fenster-Tests früher grün waren, lag an der
-    /// Fenster-Restauration aus dem Saved State — die seit 2026-06-11
-    /// empfohlene `-ApplePersistenceIgnoreState YES` schaltete genau diese
-    /// Krücke ab und machte den Bug sichtbar.
-    static var requestedTest: String? {
-        if let env = ProcessInfo.processInfo.environment["FASTRA_SELFTEST"],
-           !env.isEmpty {
-            return env
-        }
-        // `-selftest findbar` → NSArgumentDomain hat in `.standard` die
-        // höchste Priorität, der Wert ist hier direkt lesbar.
-        if let arg = UserDefaults.standard.string(forKey: "selftest"),
-           !arg.isEmpty {
-            return arg
-        }
-        return nil
-    }
+    /// AppKit behandelt unbekannte positionale `--selftest-…`-Argumente als zu
+    /// öffnende Dateien und kann dadurch den normalen Hauptfensteraufbau
+    /// überspringen. `-Key Value` landet dagegen im NSArgumentDomain von
+    /// UserDefaults. Gespeicherte Fenster dürfen diesen Aufruffehler nicht
+    /// verdecken; der Runner verwendet `-ApplePersistenceIgnoreState YES`.
+    static var requestedTest: String? { AppDefaults.launch.requestedSelfTest }
 
-    /// `true`, wenn der Prozess als Selbsttest läuft. Wird u.a. genutzt,
-    /// um den Selbsttests eine ISOLIERTE UserDefaults-Suite zu geben
-    /// (siehe `workspaceDefaults()`).
-    static var isSelfTestRun: Bool {
-        requestedTest != nil
-    }
-
-    /// Einziger Aktivierungspfad für Produktfenster und Selbsttests. Der
-    /// Runner sperrt ihn nur für ausdrücklich hintergrundfähige Tests.
+    /// Gemeinsamer policygebundener Aktivierungspfad für Selbsttests.
+    /// Der neutrale Besitzer erhält die Aktivierungssperre des Runners.
     static func activateApplication(ignoringOtherApps: Bool) {
-        guard SelfTestActivationPolicy.allowsActivation(
-            isSelfTestRun: isSelfTestRun,
-            environment: ProcessInfo.processInfo.environment
-        ) else { return }
-        NSApp.activate(ignoringOtherApps: ignoringOtherApps)
+        ApplicationActivation.activate(ignoringOtherApps: ignoringOtherApps)
     }
 
     /// Diagnose: AppKit-`hitTest`-Kette des letzten synthetischen Klicks —
@@ -287,241 +237,20 @@ enum SelfTest {
         }
         if let sidebar { setEnvironment("FASTRA_SIDEBAR", sidebar) }
         if name == "sessionrestore" || name == "externaldiffcold" {
-            prepareSessionRestoreFixture()
+            sessionRestorationTests.prepareSessionRestoreFixture()
         } else if name == "coldopen" || name == "coldopenoff" {
-            prepareColdOpenFixture(restoreEnabled: name == "coldopen")
+            sessionRestorationTests.prepareColdOpenFixture(restoreEnabled: name == "coldopen")
         } else if name == "selectionscroll" {
-            prepareSelectionScrollFixture()
+            sessionRestorationTests.prepareSelectionScrollFixture()
         }
     }
 
-    /// Legt den Codable-Snapshot VOR `FastraApp` seinen ersten Workspace
-    /// erzeugt in der isolierten Selbsttest-Suite ab. So prüft der spätere
-    /// Test den echten Kaltstartpfad statt nur Workspace-Methoden direkt
-    /// aufzurufen.
-    private static func prepareSessionRestoreFixture() {
-        let directory = selfTestTemporaryDirectory()
-            .appendingPathComponent(
-                "fastra-selftest-session-\(UUID().uuidString)",
-                isDirectory: true
-            )
-        do {
-            try FileManager.default.createDirectory(
-                at: directory, withIntermediateDirectories: true
-            )
-            let first = directory.appendingPathComponent("eins.txt")
-            let second = directory.appendingPathComponent("zwei.txt")
-            let third = directory.appendingPathComponent("drei.txt")
-            try Data("eins\n".utf8).write(to: first)
-            try Data("zwei\n".utf8).write(to: second)
-            try Data("drei\n".utf8).write(to: third)
-            let states = [
-                RestorableWindowState(
-                    projectPath: directory.path,
-                    documentPaths: [first.path, second.path],
-                    activeDocumentPath: first.path,
-                    frame: nil
-                ),
-                RestorableWindowState(
-                    projectPath: nil,
-                    documentPaths: [third.path],
-                    activeDocumentPath: third.path,
-                    frame: nil
-                ),
-            ]
-            SessionStateStore.save(
-                RestorableSessionState(windows: states),
-                to: workspaceDefaults()
-            )
-            sessionRestoreFixtureDirectory = directory
-        } catch {
-            sessionRestoreSetupError = error.localizedDescription
-            try? FileManager.default.removeItem(at: directory)
-        }
-    }
 
-    /// Der Runner legt die externe Datei VOR dem Launch an und reicht ihren
-    /// Pfad über eine prozesslokale Umgebungsvariable weiter. Parallel entsteht
-    /// hier eine abweichende gespeicherte Sitzung in derselben isolierten
-    /// Defaults-Suite, die der produktive AppDelegate beim Start liest.
-    private static func prepareColdOpenFixture(restoreEnabled: Bool) {
-        let directory = selfTestTemporaryDirectory()
-            .appendingPathComponent(
-                "fastra-selftest-coldopen-\(UUID().uuidString)",
-                isDirectory: true
-            )
-        do {
-            guard let externalPath = ProcessInfo.processInfo
-                .environment["FASTRA_COLDOPEN_FILE"],
-                  !externalPath.isEmpty else {
-                throw NSError(
-                    domain: "FastraSelfTest", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey:
-                        "FASTRA_COLDOPEN_FILE fehlt"]
-                )
-            }
-            let externalURL = URL(fileURLWithPath: externalPath).canonicalFileURL
-            guard FileManager.default.fileExists(atPath: externalURL.path) else {
-                throw NSError(
-                    domain: "FastraSelfTest", code: 2,
-                    userInfo: [NSLocalizedDescriptionKey:
-                        "externe LaunchServices-Datei fehlt"]
-                )
-            }
-            try FileManager.default.createDirectory(
-                at: directory, withIntermediateDirectories: true
-            )
-            let firstProject = directory.appendingPathComponent(
-                "erstes-projekt", isDirectory: true
-            )
-            let secondProject = directory.appendingPathComponent(
-                "zweites-projekt", isDirectory: true
-            )
-            try FileManager.default.createDirectory(
-                at: firstProject, withIntermediateDirectories: true
-            )
-            try FileManager.default.createDirectory(
-                at: secondProject, withIntermediateDirectories: true
-            )
-            let firstRestored = firstProject.appendingPathComponent("alt-eins.md")
-            let secondRestored = secondProject.appendingPathComponent("alt-zwei.md")
-            try Data("Erste gespeicherte Sitzung\n".utf8).write(to: firstRestored)
-            try Data("Zweite gespeicherte Sitzung\n".utf8).write(to: secondRestored)
-            SessionStateStore.save(
-                RestorableSessionState(windows: [
-                    RestorableWindowState(
-                        projectPath: firstProject.path,
-                        documentPaths: [firstRestored.path],
-                        activeDocumentPath: firstRestored.path,
-                        frame: nil
-                    ),
-                    RestorableWindowState(
-                        projectPath: secondProject.path,
-                        documentPaths: [secondRestored.path],
-                        activeDocumentPath: secondRestored.path,
-                        frame: nil
-                    ),
-                ]),
-                to: workspaceDefaults()
-            )
-            workspaceDefaults().set(
-                restoreEnabled,
-                forKey: SessionRestorationPreferences.enabledKey
-            )
-            coldOpenFixtureDirectory = directory
-            coldOpenExternalURL = externalURL
-            coldOpenRestoredURLs = [firstRestored, secondRestored]
-                .map(\.canonicalFileURL)
-            coldOpenRestoredProjectURLs = [firstProject, secondProject]
-                .map(\.canonicalFileURL)
-        } catch {
-            coldOpenSetupError = error.localizedDescription
-            try? FileManager.default.removeItem(at: directory)
-        }
-    }
-
-    private static func prepareSelectionScrollFixture() {
-        let directory = selfTestTemporaryDirectory()
-            .appendingPathComponent(
-                "fastra-selftest-selectionscroll-\(UUID().uuidString)",
-                isDirectory: true
-            )
-        do {
-            try FileManager.default.createDirectory(
-                at: directory, withIntermediateDirectories: true
-            )
-            let document = directory.appendingPathComponent("wiederhergestellt.md")
-            try Data(selectionScrollContent().utf8).write(to: document)
-            SessionStateStore.save(
-                RestorableSessionState(windows: [
-                    RestorableWindowState(
-                        projectPath: nil,
-                        documentPaths: [document.path],
-                        activeDocumentPath: document.path,
-                        frame: nil
-                    ),
-                ]),
-                to: workspaceDefaults()
-            )
-            workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
-            selectionScrollFixtureDirectory = directory
-            selectionScrollFixtureURL = document
-        } catch {
-            selectionScrollSetupError = error.localizedDescription
-            try? FileManager.default.removeItem(at: directory)
-        }
-    }
-
-    private static func selectionScrollContent() -> String {
-        (1...2_200).map { line in
-            // Stark wechselnde Absatzlängen zwingen das faule Layout, seine
-            // Höhenschätzungen weit unten im Dokument laufend zu korrigieren.
-            let repeats = line.isMultiple(of: 7)
-                ? 30
-                : (line.isMultiple(of: 3) ? 8 : 2)
-            let tail = String(
-                repeating: " langer Markdown-Absatz mit mehreren Woertern",
-                count: repeats
-            )
-            return "Auswahlzeile \(line)\(tail)"
-        }.joined(separator: "\n")
-    }
-
-    /// UserDefaults für den Workspace des laufenden Prozesses.
-    ///
-    /// Normalbetrieb: die echten App-Defaults (`.standard`).
-    /// Selbsttest-Lauf: eine eigene Suite, die bei JEDEM Lauf frisch
-    /// geleert wird. Zwei Gründe:
-    /// 1. Determinismus — jeder Selbsttest startet im selben Zustand
-    ///    („erster Start": Demo-Tab + vorbelegtes Pattern), egal wie oft
-    ///    er vorher lief.
-    /// 2. Keine Nebenwirkung — ein Selbsttest darf NICHT das echte
-    ///    Erststart-Flag der App verbrauchen, sonst sieht der Nutzer das
-    ///    Demo beim ersten richtigen Start nie.
-    ///
-    /// VERBINDLICH für `@AppStorage`: JEDE Deklaration muss diese Suite
-    /// ausdrücklich als `store:` mitgeben. Ohne `store:` liest SwiftUI
-    /// `UserDefaults.standard`, also die ECHTEN Einstellungen des Nutzers —
-    /// die Isolierung oben greift für diesen Schlüssel dann nicht. Realer
-    /// Befund 2026-07-27: ein im normalen Betrieb ausgeblendetes
-    /// `editor.sidebarVisible = false` ließ den Selbsttest-Prozess die
-    /// komplette Seitenleiste gar nicht erst aufbauen; `gitstagefolder` und
-    /// `gitpushbutton` fielen dadurch reproduzierbar aus — ohne jeden
-    /// Produktfehler. `AppStorageIsolationTests` hält die Regel fest.
-    static func workspaceDefaults() -> UserDefaults {
-        guard isSelfTestRun else { return .standard }
-        if let cachedWorkspaceDefaults { return cachedWorkspaceDefaults }
-        let suiteName = ProcessInfo.processInfo.environment[
-            "FASTRA_SELFTEST_DEFAULTS_SUITE"
-        ] ?? "Fastra-\(UUID().uuidString)"
-        guard TestDefaultsPurge.isTestDomain(suiteName) else {
-            finish(false, "Name der Test-Einstellungen ist nicht sicher")
-        }
-        let defaults = UserDefaults(suiteName: suiteName)!
-        // Normalerweise startet jeder Selbsttest auf einem leeren Stand.
-        // Der Dauertest ist die Ausnahme: Er läuft über mehrere App-Starts,
-        // und seine Phasen ab 2 prüfen gerade das, was die
-        // Sitzungswiederherstellung aus der vorigen Phase mitbringt. Würde
-        // hier geleert, gäbe es nichts wiederherzustellen — der Test
-        // übersähe genau die Fehler, für die er gebaut wurde.
-        let soakPhase = UserDefaults.standard.integer(forKey: "soakPhase")
-        if soakPhase <= 1 {
-            defaults.removePersistentDomain(forName: suiteName)
-        }
-        // Normale Selbsttests räumen ihre vom Runner benannte Suite beim
-        // Prozessende sofort ab. Die drei Soak-Prozesse teilen den Zustand
-        // dagegen absichtlich; dort übernimmt der Runner nach Phase 3.
-        if !(requestedTest?.hasPrefix("soak") ?? false) {
-            guard TestDefaultsPurge.register(suiteName) else {
-                finish(false, "Test-Einstellungen konnten nicht sicher registriert werden")
-            }
-        }
-        cachedWorkspaceDefaults = defaults
-        return defaults
-    }
+    /// Testinterner Zugriff auf denselben neutralen Store wie die Produktansichten.
+    static func workspaceDefaults() -> UserDefaults { AppDefaults.store }
 
     /// Startet den passenden Test, falls einer angefordert ist (siehe
-    /// `requestedTest`). Fensterbasierte Tests WARTEN per Polling auf ihr
+    /// `requestedTest`). Fensterbasierte Tests warten per Polling auf ihr
     /// Fenster, statt nach fixer Frist zu guarden — der erste SwiftUI-
     /// Render eines Debug-Builds kann mehrere Sekunden dauern, und die
     /// Tests sollen die Funktion messen, nicht die Startzeit.
@@ -541,364 +270,335 @@ enum SelfTest {
         guard let name = requestedTest else { return }
         testLabel = name
         testStartedNanoseconds = DispatchTime.now().uptimeNanoseconds
-        // Am Prozessende liegengebliebene Test-Domains früherer,
-        // abgestürzter Läufe abräumen (nur älter als eine Stunde — aktive
-        // Suiten eines parallel laufenden `swift test` bleiben unberührt).
-        // Registriert nur im Selbsttest-Modus; ein normaler App-Start räumt
-        // nichts weg (Roadmap 2026-07-28: 3713 liegengebliebene Test-Plists
-        // brachten cfprefsd aus dem Tritt).
+        // Liegengebliebene Test-Domains am Prozessende entfernen, wenn sie älter
+        // als eine Stunde sind. Aktive parallele Testsuiten bleiben erhalten.
+        // Nur im Selbsttest-Modus registriert; normale Starts räumen nichts auf.
         atexit {
-            // Zuerst die eigenen Suiten DIESES Laufs (Registry), dann die
+            // Zuerst die eigenen Suiten dieses Laufs (Registry), dann die
             // Reste früherer Läufe. Ohne den Registry-Schritt bliebe jede
             // frisch angelegte UUID-Suite eines Selbsttests liegen: Für den
             // Stale-Aufräumer ist sie mit unter einer Stunde noch zu jung.
             TestDefaultsPurge.purgeRegistered()
             TestDefaultsPurge.purgeStale()
         }
-        switch name {
-        case "findbar":   waitForMainWindow { runFindBarTest() }
-        case "newwindow": waitForMainWindow { runNewWindowTest() }
-        case "finderreopen": waitForMainWindow { runFinderReopenTest() }
-        case "windowchrome": waitForMainWindow { runWindowChromeTest() }
-        case "welcomenew": waitForMainWindow { runWelcomeNewTabTest() }
-        case "sessionrestore": DispatchQueue.main.async { runSessionRestoreTest() }
-        case "coldopen": DispatchQueue.main.async { runColdOpenTest(restoreEnabled: true) }
-        case "coldopenoff": DispatchQueue.main.async { runColdOpenTest(restoreEnabled: false) }
-        case "multisearch": waitForMainWindow { runMultiWindowSearchJumpTest() }
-        case "bgscroll": waitForMainWindow { runBackgroundScrollTest() }
-        case "cmdw":      waitForMainWindow { openSearchThen { runCmdWTest() } }
-        case "fields":    waitForMainWindow { openSearchThen { runFieldsTest() } }
-        case "searchoptions": waitForMainWindow { openSearchThen { runSearchOptionsTest() } }
-        case "searchlayout": waitForMainWindow { openSearchThen { runSearchLayoutTest() } }
-        case "searchapproval": waitForMainWindow { openSearchThen { runSearchApprovalTest() } }
-        case "searchapprovalclose": waitForMainWindow { openSearchThen { runSearchApprovalTest(closeOnly: true) } }
-        case "searchfocus": waitForMainWindow { openSearchThen { runSearchFocusTest() } }
-        case "dialoglayout": waitForMainWindow { openSearchThen { runDialogLayoutTest() } }
-        case "projectinput": waitForMainWindow { openSearchThen { runProjectInputTest() } }
-        case "tabswitch": waitForMainWindow { runTabSwitchTest() }
-        case "tabclosehit": waitForMainWindow { runTabCloseHitTest() }
-        case "tabfiledrag": waitForMainWindow { runTabFileDragTest() }
-        case "tabcommitfocus": waitForMainWindow { runTabCommitFocusTest() }
-        case "diffexport": waitForMainWindow { runDiffExportTest() }
-        case "sourceprovenance": waitForMainWindow { runSourceProvenanceTest() }
-        case "tabvisibility": waitForMainWindow { runTabVisibilityTest() }
-        case "tabcompare": waitForMainWindow { runTabComparisonTest() }
-        case "softwrapprofiles": waitForMainWindow { runSoftWrapProfilesTest() }
-        case "softwrapindent": waitForMainWindow { runSoftWrapIndentTest() }
-        case "softwrapindentcore": waitForMainWindow { runSoftWrapIndentCoreTest() }
-        case "softwrapmodes": waitForMainWindow { runSoftWrapModesTest() }
-        case "softwrapanchor": waitForMainWindow { runSoftWrapAnchorTest() }
-        case "selectionscroll": waitForMainWindow { runSelectionScrollTest() }
-        case "highlight": waitForMainWindow { runHighlightTest() }
-        case "highlight4d": waitForMainWindow { runFourDHighlightTest() }
-        case "completion4d": waitForMainWindow { runFourDCompletionTest() }
-        case "xpath": waitForMainWindow { runXPathTest() }
-        case "leakscenario": waitForMainWindow { runLeakScenario() }
-        case "previewrender": waitForMainWindow { runPreviewRenderTest() }
-        case "print": waitForMainWindow { runPrintTest() }
-        case "markdown":  waitForMainWindow { runMarkdownRenderTest() }
-        case "markdownblanklines": waitForMainWindow { runMarkdownVisibleBlankLinesTest() }
-        case "markdownjump": waitForMainWindow { runMarkdownJumpTest() }
-        case "markdownappearance": waitForMainWindow { runMarkdownAppearanceTest() }
-        case "mdvisual": waitForMainWindow { runMarkdownVisualTest() }
-        case "mdoutline": waitForMainWindow { runMarkdownOutlineTest() }
-        case "sourcesplit": waitForMainWindow { runSourceSplitTest() }
-        case "snippets": waitForMainWindow { runTextSnippetTest() }
-        case "snippetfiles": waitForMainWindow { runTextSnippetFilesTest() }
-        case "codeoutline": waitForMainWindow { runCodeOutlineTest() }
-        case "mdvisualfind": waitForMainWindow { runMarkdownVisualFindTest() }
-        case "mdtable": waitForMainWindow { runMarkdownTableTest() }
-        case "mdtableinteraction": waitForMainWindow { runMarkdownTableTest(interactionOnly: true) }
-        case "mdtableinput": waitForMainWindow { runMarkdownTableTest(inputOnly: true) }
-        case "mdcomfort": waitForMainWindow { runMarkdownComfortTest() }
-        case "mdblocks": waitForMainWindow { runMarkdownBlocksTest() }
-        case "mdsearchnavigation": waitForMainWindow { runMarkdownSearchNavigationTest() }
-        case "jump":      waitForMainWindow { runJumpTest() }
-        case "ghosttext": waitForMainWindow { runGhostTextTest() }
-        case "wordclick": waitForMainWindow { runWordDoubleClickTest() }
-        case "bracketselection": waitForMainWindow { runBracketSelectionTest() }
-        case "jsonstress": waitForMainWindow { runStructuredJSONTest() }
-        case "rightedge": waitForMainWindow { runRightEdgeClickTest() }
-        case "selshort": waitForMainWindow { runShortSelectionScrollTest() }
-        case "dragscroll": waitForMainWindow { runDragScrollTest() }
-        case "dragnoscroll": waitForMainWindow { runDragNoScrollTest() }
-        case "soak": waitForMainWindow { MainActor.assumeIsolated { runSoakTest() } }
-        case "soakpasteboardrestore": DispatchQueue.main.async {
-            MainActor.assumeIsolated { runSoakPasteboardRestore() }
-        }
-        case "soakdefaultspurge": DispatchQueue.main.async {
-            runSoakDefaultsPurge()
-        }
-        case "searchundo": waitForMainWindow {
-            Task { @MainActor in
-                testLabel = "searchundo"
-                guard let workspace = Workspace.shared, let window = mainWindowForAXChecks() else {
-                    finish(false, "Workspace oder Fenster fehlt")
-                }
-                let result = await SearchUndoGUIProbe.run(workspace: workspace, window: window)
-                finish(result.0, result.1)
+        do {
+            let catalog = try makeLaunchCatalog()
+            if !catalog.start(named: name, using: launchDriver) {
+                finish(false, catalog.unknownNameMessage(for: name))
             }
+        } catch {
+            finish(false, "ungültiger Selbsttest-Startkatalog: \(error)")
         }
-        case "dirtyundo": waitForMainWindow { runDirtyUndoTest() }
-        case "emojisplit": waitForMainWindow { runEmojiSplitTest() }
-        case "emojipaste": waitForMainWindow { runEmojiPasteTest() }
-        case "emojipreview": waitForMainWindow { runEmojiPreviewTest() }
-        case "tabscroll": waitForMainWindow { runTabScrollTest() }
-        case "tabsearchmemory": waitForMainWindow { runTabSearchMemoryTest() }
-        case "typescroll": waitForMainWindow { runTypeScrollTest() }
-        case "emojishot": waitForMainWindow { runEmojiShot() }
-        case "comment4d": waitForMainWindow { runFourDCommentEditTest() }
-        case "sighelp4d": waitForMainWindow { runFourDSignatureHelpTest() }
-        case "sighelpshot": waitForMainWindow { runFourDSignatureHelpShot() }
-        case "replaceall": DispatchQueue.main.async { runReplaceAllTest() }
-        case "pilldrop":  waitForMainWindow { openSearchThen { runPillDropTest() } }
-        case "navmatch":  waitForMainWindow { openSearchThen { runNavMatchTest() } }
-        case "scrolljump": waitForMainWindow { runScrollJumpTest() }
-        case "hscroll":   waitForMainWindow { runHScrollTest() }
-        case "crjump":    waitForMainWindow { runCRJumpTest() }
-        case "textop":    waitForMainWindow { runTextOpTest() }
-        case "saveexisting": waitForMainWindow { runExistingFileSaveTest() }
-        case "textworkflow": waitForMainWindow { runTextWorkflowTest() }
-        case "textworkflowmulti": waitForMainWindow { runTextWorkflowMultiTest() }
-        case "textworkflowonesided": waitForMainWindow { runTextWorkflowMultiTest(onlyOneSided: true) }
-        case "joinundo":  waitForMainWindow { runJoinUndoTest() }
-        case "colsel":    waitForMainWindow { runColumnSelectionTest() }
-        case "colselwrap": waitForMainWindow { runWrappedColumnSelectionTest() }
-        case "colpaste":  waitForMainWindow { runColumnPasteTest() }
-        case "gutterdim": waitForMainWindow { runGutterDimmingTest() }
-        case "codefolding": waitForMainWindow {
-            Task { @MainActor in
-                testLabel = "codefolding"
-                let outcome = await CodeFoldingGUIProbe.run { textView, expected in
-                    guard let original = try? capturePasteboardItems() else { return false }
-                    textView.selectionManager.setSelectedRanges([textView.documentRange])
-                    textView.copy(NSObject())
-                    let owned = NSPasteboard.general.changeCount
-                    let copied = NSPasteboard.general.string(forType: .string)
-                    if pasteboardIsStillOwned(since: owned) { try? writePasteboardItems(original) }
-                    return copied == expected
+    }
+
+    /// Metadaten der tatsächlichen privaten Registrierung, ohne einen Teststart.
+    static func launchDescriptors() throws -> [SelfTestLaunchCatalog.Descriptor] {
+        try makeLaunchCatalog().descriptors
+    }
+
+    private static func makeLaunchCatalog() throws -> SelfTestLaunchCatalog {
+        try SelfTestLaunchCatalog(entries: [
+            .init(name: "findbar", route: .mainWindow { runFindBarTest() }),
+            .init(name: "newwindow", route: .mainWindow { runNewWindowTest() }),
+            .init(name: "finderreopen", route: .mainWindow { runFinderReopenTest() }),
+            .init(name: "windowchrome", route: .mainWindow { runWindowChromeTest() }),
+            .init(name: "welcomenew", route: .mainWindow { runWelcomeNewTabTest() }),
+            .init(name: "sessionrestore", route: .mainQueue { runSessionRestoreTest() }),
+            .init(name: "coldopen", route: .mainQueue { runColdOpenTest(restoreEnabled: true) }),
+            .init(name: "coldopenoff", route: .mainQueue { runColdOpenTest(restoreEnabled: false) }),
+            .init(name: "multisearch", route: .mainWindow { runMultiWindowSearchJumpTest() }),
+            .init(name: "bgscroll", route: .mainWindow { runBackgroundScrollTest() }),
+            .init(name: "cmdw", route: .mainWindowAndSearch { runCmdWTest() }),
+            .init(name: "fields", route: .mainWindowAndSearch { runFieldsTest() }),
+            .init(name: "searchoptions", route: .mainWindowAndSearch { runSearchOptionsTest() }),
+            .init(name: "searchlayout", route: .mainWindowAndSearch { runSearchLayoutTest() }),
+            .init(name: "searchapproval", route: .mainWindowAndSearch { runSearchApprovalTest() }),
+            .init(name: "searchapprovalclose", route: .mainWindowAndSearch { runSearchApprovalTest(closeOnly: true) }),
+            .init(name: "searchfocus", route: .mainWindowAndSearch { runSearchFocusTest() }),
+            .init(name: "dialoglayout", route: .mainWindowAndSearch { runDialogLayoutTest() }),
+            .init(name: "projectinput", route: .mainWindowAndSearch { runProjectInputTest() }),
+            .init(name: "tabswitch", route: .mainWindow { runTabSwitchTest() }),
+            .init(name: "tabcommitfocus", route: .mainWindow { runTabCommitFocusTest() }),
+            .init(name: "tabclosehit", route: .mainWindow { runTabCloseHitTest() }),
+            .init(name: "tabfiledrag", route: .mainWindow { runTabFileDragTest() }),
+            .init(name: "diffexport", route: .mainWindow { runDiffExportTest() }),
+            .init(name: "sourceprovenance", route: .mainWindow { runSourceProvenanceTest() }),
+            .init(name: "tabvisibility", route: .mainWindow { runTabVisibilityTest() }),
+            .init(name: "tabcompare", route: .mainWindow { runTabComparisonTest() }),
+            .init(name: "softwrapprofiles", route: .mainWindow { runSoftWrapProfilesTest() }),
+            .init(name: "softwrapmodes", route: .mainWindow { runSoftWrapModesTest() }),
+            .init(name: "softwrapindent", route: .mainWindow { runSoftWrapIndentTest() }),
+            .init(name: "softwrapindentcore", route: .mainWindow { runSoftWrapIndentCoreTest() }),
+            .init(name: "softwrapanchor", route: .mainWindow { runSoftWrapAnchorTest() }),
+            .init(name: "selectionscroll", route: .mainWindow { runSelectionScrollTest() }),
+            .init(name: "highlight", route: .mainWindow { runHighlightTest() }),
+            .init(name: "highlight4d", route: .mainWindow { runFourDHighlightTest() }),
+            .init(name: "completion4d", route: .mainWindow { runFourDCompletionTest() }),
+            .init(name: "xpath", route: .mainWindow { runXPathTest() }),
+            .init(name: "leakscenario", route: .mainWindow { runLeakScenario() }),
+            .init(name: "previewrender", route: .mainWindow { runPreviewRenderTest() }),
+            .init(name: "print", route: .mainWindow { runPrintTest() }),
+            .init(name: "markdown", route: .mainWindow { runMarkdownRenderTest() }),
+            .init(name: "markdownblanklines", route: .mainWindow { runMarkdownVisibleBlankLinesTest() }),
+            .init(name: "markdownjump", route: .mainWindow { runMarkdownJumpTest() }),
+            .init(name: "markdownappearance", route: .mainWindow { runMarkdownAppearanceTest() }),
+            .init(name: "mdvisual", route: .mainWindow { runMarkdownVisualTest() }),
+            .init(name: "mdoutline", route: .mainWindow { runMarkdownOutlineTest() }),
+            .init(name: "codeoutline", route: .mainWindow { runCodeOutlineTest() }),
+            .init(name: "sourcesplit", route: .mainWindow { runSourceSplitTest() }),
+            .init(name: "snippets", route: .mainWindow { runTextSnippetTest() }),
+            .init(name: "snippetfiles", route: .mainWindow { runTextSnippetFilesTest() }),
+            .init(name: "mdvisualfind", route: .mainWindow { runMarkdownVisualFindTest() }),
+            .init(name: "mdtable", route: .mainWindow { runMarkdownTableTest() }),
+            .init(name: "mdtableinteraction", route: .mainWindow { runMarkdownTableTest(interactionOnly: true) }),
+            .init(name: "mdtableinput", route: .mainWindow { runMarkdownTableTest(inputOnly: true) }),
+            .init(name: "mdcomfort", route: .mainWindow { runMarkdownComfortTest() }),
+            .init(name: "mdblocks", route: .mainWindow { runMarkdownBlocksTest() }),
+            .init(name: "mdsearchnavigation", route: .mainWindow { runMarkdownSearchNavigationTest() }),
+            .init(name: "jump", route: .mainWindow { runJumpTest() }),
+            .init(name: "ghosttext", route: .mainWindow { runGhostTextTest() }),
+            .init(name: "wordclick", route: .mainWindow { runWordDoubleClickTest() }),
+            .init(name: "bracketselection", route: .mainWindow { runBracketSelectionTest() }),
+            .init(name: "jsonstress", route: .mainWindow { runStructuredJSONTest() }),
+            .init(name: "rightedge", route: .mainWindow { runRightEdgeClickTest() }),
+            .init(name: "selshort", route: .mainWindow { runShortSelectionScrollTest() }),
+            .init(name: "dragscroll", route: .mainWindow { runDragScrollTest() }),
+            .init(name: "dragnoscroll", route: .mainWindow { runDragNoScrollTest() }),
+            .init(name: "soak", route: .mainWindow { MainActor.assumeIsolated { runSoakTest() } }),
+            .init(name: "soakpasteboardrestore", route: .mainQueue { MainActor.assumeIsolated { runSoakPasteboardRestore() } }),
+            .init(name: "soakdefaultspurge", route: .mainQueue { runSoakDefaultsPurge() }),
+            .init(name: "searchundo", route: .mainWindow {
+                Task { @MainActor in
+                    testLabel = "searchundo"
+                    guard let workspace = Workspace.shared, let window = mainWindowForAXChecks() else {
+                        finish(false, "Workspace oder Fenster fehlt")
+                    }
+                    let result = await SearchUndoGUIProbe.run(workspace: workspace, window: window)
+                    finish(result.0, result.1)
                 }
-                finish(outcome.0, outcome.1)
-            }
-        }
-        case "gitremotedialogs": waitForMainWindow { runGitRemoteDialogsTest() }
-        case "sidebarheader": waitForMainWindow { runSidebarHeaderTest() }
-        case "editoroptions": waitForMainWindow { runEditorOptionsTest() }
-        case "footerfit": waitForMainWindow { runFooterFitTest() }
-        case "windowheight": waitForMainWindow { runWindowHeightTest() }
-        case "mdformat": waitForMainWindow { runMarkdownFormatSwitchTest() }
-        case "sidebarfilter": waitForMainWindow { runSidebarFilterTest() }
-        case "tabflood": waitForMainWindow { runTabFloodTest() }
-        case "sidebartoggle": waitForMainWindow { runSidebarToggleTest() }
-        case "sidebarstate": waitForMainWindow { runSidebarStateTest() }
-        case "githistory": waitForMainWindow { runGitHistoryTest() }
-        case "filediff": waitForMainWindow { runFileDiffTest() }
-        case "filedifftransfer": waitForMainWindow { runFileDiffTransferTest() }
-        case "foldercompare": waitForMainWindow { runFolderComparisonTest() }
-        case "mdreferences": waitForMainWindow { runMarkdownReferencesTest() }
-        case "externaldiff": waitForMainWindow { MainActor.assumeIsolated { runExternalDiffTest() } }
-        case "externaldiffcold": waitForMainWindow { MainActor.assumeIsolated { pollExternalDiffCold() } }
-        case "controlhost":
-            // Externe CLI-/AppleEvent-Prüfung bedient diese isolierte Instanz;
-            // kein direkt aufgerufener Handler ersetzt dabei einen AppleEvent.
-            let controlDeadline = ProcessInfo.processInfo.systemUptime + 120
-            waitForMainWindow {
-                MainActor.assumeIsolated {
-                    ControlTestHost.start(deadline: controlDeadline) { ok in finish(ok, "externer Steuerungstest: normale Fenster und Einstellungen geschützt") }
+            }),
+            .init(name: "dirtyundo", route: .mainWindow { runDirtyUndoTest() }),
+            .init(name: "emojisplit", route: .mainWindow { runEmojiSplitTest() }),
+            .init(name: "emojipaste", route: .mainWindow { runEmojiPasteTest() }),
+            .init(name: "emojipreview", route: .mainWindow { runEmojiPreviewTest() }),
+            .init(name: "tabscroll", route: .mainWindow { runTabScrollTest() }),
+            .init(name: "tabsearchmemory", route: .mainWindow { runTabSearchMemoryTest() }),
+            .init(name: "typescroll", route: .mainWindow { runTypeScrollTest() }),
+            .init(name: "emojishot", route: .mainWindow { runEmojiShot() }),
+            .init(name: "comment4d", route: .mainWindow { runFourDCommentEditTest() }),
+            .init(name: "sighelp4d", route: .mainWindow { runFourDSignatureHelpTest() }),
+            .init(name: "sighelpshot", route: .mainWindow { runFourDSignatureHelpShot() }),
+            .init(name: "replaceall", route: .mainQueue { runReplaceAllTest() }),
+            .init(name: "pilldrop", route: .mainWindowAndSearch { runPillDropTest() }),
+            .init(name: "navmatch", route: .mainWindowAndSearch { runNavMatchTest() }),
+            .init(name: "scrolljump", route: .mainWindow { runScrollJumpTest() }),
+            .init(name: "hscroll", route: .mainWindow { runHScrollTest() }),
+            .init(name: "crjump", route: .mainWindow { runCRJumpTest() }),
+            .init(name: "textop", route: .mainWindow { runTextOpTest() }),
+            .init(name: "saveexisting", route: .mainWindow { runExistingFileSaveTest() }),
+            .init(name: "textworkflow", route: .mainWindow { runTextWorkflowTest() }),
+            .init(name: "textworkflowmulti", route: .mainWindow { runTextWorkflowMultiTest() }),
+            .init(name: "textworkflowonesided", route: .mainWindow { runTextWorkflowMultiTest(onlyOneSided: true) }),
+            .init(name: "joinundo", route: .mainWindow { runJoinUndoTest() }),
+            .init(name: "colsel", route: .mainWindow { runColumnSelectionTest() }),
+            .init(name: "colselwrap", route: .mainWindow { runWrappedColumnSelectionTest() }),
+            .init(name: "colpaste", route: .mainWindow { runColumnPasteTest() }),
+            .init(name: "gutterdim", route: .mainWindow { runGutterDimmingTest() }),
+            .init(name: "codefolding", route: .mainWindow {
+                Task { @MainActor in
+                    testLabel = "codefolding"
+                    let outcome = await CodeFoldingGUIProbe.run { textView, expected in
+                        guard let original = try? capturePasteboardItems() else { return false }
+                        textView.selectionManager.setSelectedRanges([textView.documentRange])
+                        textView.copy(NSObject())
+                        let owned = NSPasteboard.general.changeCount
+                        let copied = NSPasteboard.general.string(forType: .string)
+                        if pasteboardIsStillOwned(since: owned) { try? writePasteboardItems(original) }
+                        return copied == expected
+                    }
+                    finish(outcome.0, outcome.1)
                 }
-            }
-        case "macro4d": waitForMainWindow { runFourDMacroSelfTest() }
-        case "macro4dengine": DispatchQueue.main.async { runFourDMacroEngineTest() }
-        case "tool4dhint": waitForMainWindow { runTool4DHintTest() }
-        case "tool4dlsp": DispatchQueue.main.async {
-            runTool4DLSPIntegrationTest()
-        }
-        case "gototarget": waitForMainWindow { runGoToTargetTest() }
-        case "gototargetwin": waitForMainWindow { runGoToTargetTwoWindowTest() }
-        case "searchmark": waitForMainWindow { openSearchThen { runSearchMarkTest() } }
-        case "help": waitForMainWindow { runHelpTest() }
-        case "mdassist": waitForMainWindow { runMarkdownAssistTest() }
-        case "mdimagequit": waitForMainWindow { MainActor.assumeIsolated { runMarkdownImageQuitTest() } }
-        case "mdindent": waitForMainWindow { runMarkdownIndentTest() }
-        case "mddropcursor": waitForMainWindow { runMarkdownDropCursorTest() }
-        case "mdimagewatch": waitForMainWindow { runMarkdownImageWatchTest() }
-        case "pasteindent": waitForMainWindow { runPasteMatchIndentationTest() }
-        case "filemodes":
+            }),
+            .init(name: "gitremotedialogs", route: .mainWindow { runGitRemoteDialogsTest() }),
+            .init(name: "sidebarheader", route: .mainWindow { runSidebarHeaderTest() }),
+            .init(name: "editoroptions", route: .mainWindow { runEditorOptionsTest() }),
+            .init(name: "footerfit", route: .mainWindow { runFooterFitTest() }),
+            .init(name: "windowheight", route: .mainWindow { runWindowHeightTest() }),
+            .init(name: "mdformat", route: .mainWindow { runMarkdownFormatSwitchTest() }),
+            .init(name: "sidebarfilter", route: .mainWindow { runSidebarFilterTest() }),
+            .init(name: "tabflood", route: .mainWindow { runTabFloodTest() }),
+            .init(name: "sidebartoggle", route: .mainWindow { runSidebarToggleTest() }),
+            .init(name: "sidebarstate", route: .mainWindow { runSidebarStateTest() }),
+            .init(name: "githistory", route: .mainWindow { runGitHistoryTest() }),
+            .init(name: "filediff", route: .mainWindow { runFileDiffTest() }),
+            .init(name: "filedifftransfer", route: .mainWindow { runFileDiffTransferTest() }),
+            .init(name: "foldercompare", route: .mainWindow { runFolderComparisonTest() }),
+            .init(name: "mdreferences", route: .mainWindow { runMarkdownReferencesTest() }),
+            .init(name: "externaldiff", route: .mainWindow { MainActor.assumeIsolated { runExternalDiffTest() } }),
+            .init(name: "externaldiffcold", route: .mainWindow { MainActor.assumeIsolated { pollExternalDiffCold() } }),
+            .init(name: "controlhost", route: .workflowControlled {
+                // Externe CLI-/AppleEvent-Prüfung bedient diese isolierte Instanz;
+                // kein direkt aufgerufener Handler ersetzt dabei einen AppleEvent.
+                let controlDeadline = ProcessInfo.processInfo.systemUptime + 120
+                waitForMainWindow {
+                    MainActor.assumeIsolated {
+                        ControlTestHost.start(deadline: controlDeadline) { ok in finish(ok, "externer Steuerungstest: normale Fenster und Einstellungen geschützt") }
+                    }
+                }
+            }),
+            .init(name: "macro4d", route: .mainWindow { runFourDMacroSelfTest() }),
+            .init(name: "macro4dengine", route: .mainQueue { runFourDMacroEngineTest() }),
+            .init(name: "tool4dhint", route: .mainWindow { runTool4DHintTest() }),
+            .init(name: "tool4dlsp", route: .mainQueue { runTool4DLSPIntegrationTest() }),
+            .init(name: "gototarget", route: .mainWindow { runGoToTargetTest() }),
+            .init(name: "gototargetwin", route: .mainWindow { runGoToTargetTwoWindowTest() }),
+            .init(name: "searchmark", route: .mainWindowAndSearch { runSearchMarkTest() }),
+            .init(name: "help", route: .mainWindow { runHelpTest() }),
+            .init(name: "mdassist", route: .mainWindow { runMarkdownAssistTest() }),
+            .init(name: "mdimagequit", route: .mainWindow { MainActor.assumeIsolated { runMarkdownImageQuitTest() } }),
+            .init(name: "mdindent", route: .mainWindow { runMarkdownIndentTest() }),
+            .init(name: "mddropcursor", route: .mainWindow { runMarkdownDropCursorTest() }),
+            .init(name: "mdimagewatch", route: .mainWindow { runMarkdownImageWatchTest() }),
+            .init(name: "pasteindent", route: .mainWindow { runPasteMatchIndentationTest() }),
             // Fensterlos — echte Dateien durch den Workspace-Ladepfad routen:
             // Null-Bytes → Hex, große Textdatei → abschnittsweise.
-            waitForWorkspace { runFileModesTest() }
-        case "search":
+            .init(name: "filemodes", route: .workspace { runFileModesTest() }),
             // Fensterlos — braucht nur Workspace + den in dessen Initializer
             // vollständig erzeugten SearchRunner.
-            waitForWorkspace { runSearchTest() }
-        case "project":
+            .init(name: "search", route: .workspace { runSearchTest() }),
             // Fensterlos — Projekt- & Git-Ausbau Etappe 1 (Willkommen-
             // Bedingung, Projekt öffnen, Dateibaum, Repo-Erkennung).
-            waitForWorkspace { runProjectTest() }
-        case "searchperf":
-            testLabel = "searchperf"
-            DispatchQueue.global(qos: .userInitiated).async {
+            .init(name: "project", route: .workspace { runProjectTest() }),
+            .init(name: "searchperf", route: .background {
                 do { finish(true, try SearchPerformanceProbe.run()) }
                 catch { finish(false, "Suchmessung fehlgeschlagen: \(error.localizedDescription)") }
-            }
-        case "projectperf":
+            }),
             // Bewusst nicht in ALL_TESTS: benötigt einen ausdrücklich per
             // FASTRA_PROJECT_PERF_ROOT übergebenen, nur gelesenen Realbestand.
-            DispatchQueue.global(qos: .userInitiated).async {
-                runProjectPerformanceTest()
-            }
-        case "projectopenperf":
+            .init(name: "projectperf", route: .background { runProjectPerformanceTest() }),
             // Separater echter Workspace-/Editor-Ladepfad für folders.json;
             // bleibt getrennt von der Suchmessung, damit Ursachen nicht
             // vermischt werden.
-            waitForMainWindow { runProjectOpenPerformanceTest() }
-        case "markdownimport":
+            .init(name: "projectopenperf", route: .mainWindow { runProjectOpenPerformanceTest() }),
             // Fensterlos — echte Umwandlung über das installierte
             // `poormans-text`: Formatkatalog, flache Datei, Ordner mit Bildern
             // und Kollisionsschutz an echten Dateien. Der Katalogabruf wartet
             // selbst auf den schon gestarteten Hintergrundprozess.
-            DispatchQueue.main.async { runMarkdownImportTest() }
-        case "markdowncollections":
-            waitForMainWindow { runMarkdownCollectionsTest() }
-        case "markdownimportui":
-            waitForMainWindow { runMarkdownImportUITest() }
-        case "localization":
+            .init(name: "markdownimport", route: .mainQueue { runMarkdownImportTest() }),
+            .init(name: "markdowncollections", route: .mainWindow { runMarkdownCollectionsTest() }),
+            .init(name: "markdownimportui", route: .mainWindow { runMarkdownImportUITest() }),
             // Fensterlos — prüft zusätzlich zum Unit-Test das fertig gepackte
             // Haupt-App-Bundle. Genau dort sucht SwiftUI statische Schlüssel.
-            DispatchQueue.main.async { runLocalizationTest() }
-        case "updates":
-            // Fensterlos — SwiftUI baut die App-Menüleiste spät um. Der Test
-            // wartet auf den echten Menüpunkt samt fertigem Target und Action.
-            waitForUpdatesMenu()
-        case "git":
-            // Fensterlos — Git-Status end-to-end (Etappe 2): echtes Temp-Repo,
+            .init(name: "localization", route: .mainQueue { runLocalizationTest() }),
+            .init(name: "updates", route: .workflowControlled {
+                // Fensterlos — SwiftUI baut die App-Menüleiste spät um. Der Test
+                // wartet auf den echten Menüpunkt samt fertigem Target und Action.
+                waitForUpdatesMenu()
+            }),
+            // Fensterlos — Git-Status end-to-end: echtes Temp-Repo,
             // Datei-Zustände, Branch, Ordner-Rollup, dialogfreie git-Auflösung.
-            waitForWorkspace { runGitTest() }
-        case "gitactions":
+            .init(name: "git", route: .workspace { runGitTest() }),
             // Fensterlos — kuratierte Git-Aktionen end-to-end mit bare-Remote
             // (Push/Pull-FF/Amend/Switch/Pickaxe), Etappe 2 Schritt 4.
-            waitForWorkspace { runGitActionsTest() }
-        case "gitstagefolder":
+            .init(name: "gitactions", route: .workspace { runGitActionsTest() }),
             // Echter Fensterklick auf den Hover-Knopf einer von Git
             // zusammengefassten unversionierten Ordnerzeile.
-            waitForMainWindow { runGitStageFolderTest() }
-        case "gitpushbutton":
+            .init(name: "gitstagefolder", route: .mainWindow { runGitStageFolderTest() }),
             // Echter Fensterklick auf den transparent beschrifteten Push-Knopf:
             // erster Config-Remote statt alphabetischem `github`.
-            waitForMainWindow { runGitPushButtonTest() }
-        case "gitstickyheader":
+            .init(name: "gitpushbutton", route: .mainWindow { runGitPushButtonTest() }),
             // Bleibt der Abschnittskopf samt Sammel-Knöpfen beim Scrollen oben?
-            waitForMainWindow { runGitStickyHeaderTest() }
-        case "gitmultidiscard":
+            .init(name: "gitstickyheader", route: .mainWindow { runGitStickyHeaderTest() }),
             // Echte Fensterklicks: Klick + Shift-Klick + Cmd-Klick markieren
             // mehrere Änderungszeilen, Verwerfen wirkt auf die ganze Auswahl.
-            waitForMainWindow { runGitMultiDiscardTest() }
-        case "openscope":
+            .init(name: "gitmultidiscard", route: .mainWindow { runGitMultiDiscardTest() }),
             // Fensterlos — Such-Scope „Geöffnet" end-to-end über Workspace +
             // SearchRunner (Multi-Tab-Suche + Alle-ersetzen über alle Tabs).
-            waitForWorkspace { runOpenScopeTest() }
-        case "selsearch":
+            .init(name: "openscope", route: .workspace { runOpenScopeTest() }),
             // Fensterlos — „Nur in Auswahl" (K3) end-to-end über Workspace +
             // SearchRunner (eingefrorene Selektions-Range begrenzt die Suche).
-            waitForWorkspace { runSelSearchTest() }
-        case "wildcard":
-            // Fensterlos — Platzhalter-Suche `*` (Feature J) end-to-end über
+            .init(name: "selsearch", route: .workspace { runSelSearchTest() }),
+            // Fensterlos — Platzhalter-Suche `*` end-to-end über
             // Workspace + SearchRunner (RegEx aus, Mini-Schalter wechselt
             // Platzhalter ⇄ literal).
-            waitForWorkspace { runWildcardTest() }
-        case "loadperf":
+            .init(name: "wildcard", route: .workspace { runWildcardTest() }),
             // Misst den vollständigen Workspace-/Editor-Ladepfad. Ohne
             // Vorgabe erzeugt der Test eine synthetische 4,36-MB-Megazeile.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { runLoadPerfTest() }
-        case "contrast":  waitForMainWindow { runContrastTest() }
-        case "wildcardshot":
+            .init(name: "loadperf", route: .mainAfter(2.5, { runLoadPerfTest() })),
+            .init(name: "contrast", route: .mainWindow { MainActor.assumeIsolated { runContrastTest() } }),
             // Diagnose (kein PASS/FAIL-Funktionstest): bringt den Suchdialog in
             // den Platzhalter-Zustand (Pillen + Inline-Live-Vorschau, Feature J)
             // und hält ihn offen, damit ein fenstergezielter Screenshot
             // (`screencapture -l <nr>`) die neuen Oberflächen festhalten kann.
-            waitForMainWindow { openSearchThen { runWildcardShot() } }
-        case "searchshot":
-            // Diagnose wie `wildcardshot`, aber mit LEEREN Feldern — für
+            .init(name: "wildcardshot", route: .mainWindowAndSearch { runWildcardShot() }),
+            // Diagnose wie `wildcardshot`, aber mit leeren Feldern — für
             // Screenshots der Suchmaske im Ausgangszustand (z.B. Placeholder).
-            waitForMainWindow { openSearchThen { runSearchShot() } }
-        case "regexshot":
+            .init(name: "searchshot", route: .mainWindowAndSearch { runSearchShot() }),
             // Diagnose wie `wildcardshot`, aber im RegEx-Modus — gefüllte
             // Felder mit Capture Groups und Token-Highlighting, für
             // README-Screenshots des RegEx-Zustands.
-            waitForMainWindow { openSearchThen { runRegexShot() } }
-        case "welcomeshot":
+            .init(name: "regexshot", route: .mainWindowAndSearch { runRegexShot() }),
             // Diagnose: Willkommensbildschirm mit gefüllter Projektliste
-            // fürs fenstergezielte Capture (Projekt- & Git-Ausbau, Etappe 1).
-            waitForMainWindow { runWelcomeShot() }
-        case "welcometabshot":
-            // Diagnose: ⌘T-Tab in einem Fenster MIT geladenem Projekt — der
-            // frische Tab muss die Starthilfe zeigen (Daniel-Befund
-            // 2026-07-30: Projekt-Sperre hatte sie unterdrückt).
-            waitForMainWindow { runWelcomeTabShot() }
-        case "projectshot":
+            // fürs fenstergezielte Capture.
+            .init(name: "welcomeshot", route: .mainWindow { runWelcomeShot() }),
+            // Diagnose: Ein frischer ⌘T-Tab zeigt auch mit geladenem Projekt die Starthilfe.
+            .init(name: "welcometabshot", route: .mainWindow { runWelcomeTabShot() }),
             // Diagnose: Projekt-Dateibaum in der Seitenleiste + geladene
             // Datei fürs fenstergezielte Capture.
-            waitForMainWindow { runProjectShot() }
-        case "diffwide":
+            .init(name: "projectshot", route: .mainWindow { runProjectShot() }),
             // Geometrie der zweispaltigen Diff-Ansicht: gleich breite Spalten,
             // Umbruch statt Überlauf bei sehr langen Zeilen.
-            waitForMainWindow { runDiffWideTest() }
-        case "diffnowrap":
-            // Soft Wrap AUS im Vergleich: echte einzeilige Zeilen, die am
+            .init(name: "diffwide", route: .mainWindow { runDiffWideTest() }),
+            // Soft Wrap aus im Vergleich: echte einzeilige Zeilen, die am
             // Spaltenrand abgeschnitten werden statt in die andere Seite zu
             // ragen.
-            waitForMainWindow { runDiffNoWrapTest() }
-        case "diffselection": waitForMainWindow { MainActor.assumeIsolated { runDiffSelectionTest() } }
-        case "diffselectionbackground": waitForMainWindow { MainActor.assumeIsolated { runDiffSelectionTest(background: true) } }
-        case "diffsplit":
+            .init(name: "diffnowrap", route: .mainWindow { runDiffNoWrapTest() }),
             // Ziehbarer Trenner zwischen den beiden Vergleichsspalten.
-            waitForMainWindow { runDiffSplitTest() }
-        case "gitstickyshot":
+            .init(name: "diffsplit", route: .mainWindow { runDiffSplitTest() }),
+            .init(name: "diffselection", route: .mainWindow { MainActor.assumeIsolated { runDiffSelectionTest() } }),
+            .init(name: "diffselectionbackground", route: .mainWindow { MainActor.assumeIsolated { runDiffSelectionTest(background: true) } }),
             // Diagnose: gescrollte Änderungen-Liste für die Sichtprüfung des
             // festgepinnten Abschnittskopfs.
-            waitForMainWindow { runGitStickyShot() }
-        case "filesgitshot":
+            .init(name: "gitstickyshot", route: .mainWindow { runGitStickyShot() }),
             // Diagnose: Dateien-Tab eines Git-Projekts — Sichtprüfung von
             // Kopfzeile (Name + Filterfeld) und zweizeiligem Branch-Bereich.
-            waitForMainWindow { runFilesGitShot() }
-        case "diffwideshot":
+            .init(name: "filesgitshot", route: .mainWindow { runFilesGitShot() }),
             // Diagnose: zweispaltiger Diff mit überlangen Zeilen — belegt die
             // Spaltengrenze visuell.
-            waitForMainWindow { runDiffWideShot() }
-        case "aboutshot":
+            .init(name: "diffwideshot", route: .mainWindow { runDiffWideShot() }),
             // Diagnose: Über-Dialog für die visuelle Kontrolle von Icon,
             // Wortmarke, Version und Textabständen.
-            Task { @MainActor in runAboutShot() }
-        case "markdownshot":
+            .init(name: "aboutshot", route: .mainActorTask { runAboutShot() }),
             // Diagnose: Markdown-Datei mit integrierter Rich-Text-Vorschau.
             // Dient der visuellen Kontrolle von Chrome, Splitter und Typografie.
-            waitForMainWindow { runMarkdownShot() }
-        case "gitshot":
+            .init(name: "markdownshot", route: .mainWindow { runMarkdownShot() }),
             // Diagnose: Git-Seitenleiste (Branch-Zeile + eingefärbte Dateien)
-            // mit echtem Repo fürs fenstergezielte Capture (Etappe 2).
-            waitForMainWindow { runGitShot() }
-        case "historyshot":
+            // mit echtem Repo fürs fenstergezielte Capture.
+            .init(name: "gitshot", route: .mainWindow { runGitShot() }),
             // Diagnose: Verlauf einer einzelnen Datei in der Seitenleiste —
             // Sichtprüfung von Kopfzeile und Knopf „Ganze Historie".
             // Setzt FASTRA_SIDEBAR=graph voraus.
-            waitForMainWindow { runGitHistoryShot() }
-        case "graphshot":
+            .init(name: "historyshot", route: .mainWindow { runGitHistoryShot() }),
             // Diagnose: Git-Graph-Seitenleiste (Multi-Lane-Verzweigung + Merge)
             // mit echtem Branch/Merge-Repo fürs fenstergezielte Capture (Phase 3).
             // Setzt FASTRA_SIDEBAR=graph voraus (Seitenleisten-Vorwahl).
-            waitForMainWindow { runGraphShot() }
-        case "windows": DispatchQueue.main.async { runWindowsDump() }
-        default:
-            // Die Liste muss zu den Fällen dieses `switch` passen. Sie stand
-            // hier von Hand und war am 2026-09-10 um 53 von 127 Namen im
-            // Rückstand — darunter `print`, `soak`, `gototarget`, `diffsplit`
-            // und sämtliche Diagnose-Aufnahmen. Wer sich vertippte, bekam eine
-            // Liste, die 42 Prozent der echten Tests verschwieg. Der Wächter
-            // `knownSelfTestNamesMatchDispatch` in SelfTestReviewFixTests
-            // vergleicht beide Seiten und schlägt bei Abweichung fehl.
-            finish(false, "unbekannter Selbsttest-Name \"\(name)\" "
-                + "(bekannt: findbar, newwindow, finderreopen, windowchrome, welcomenew, sessionrestore, coldopen, coldopenoff, multisearch, bgscroll, cmdw, fields, searchoptions, searchlayout, searchapproval, searchapprovalclose, searchfocus, dialoglayout, projectinput, tabswitch, tabcommitfocus, tabclosehit, tabfiledrag, diffexport, sourceprovenance, tabvisibility, tabcompare, softwrapprofiles, softwrapmodes, softwrapindent, softwrapindentcore, softwrapanchor, selectionscroll, highlight, highlight4d, completion4d, xpath, leakscenario, previewrender, print, markdown, markdownblanklines, markdownjump, markdownappearance, mdvisual, mdoutline, codeoutline, sourcesplit, snippets, snippetfiles, mdvisualfind, mdtable, mdtableinteraction, mdtableinput, mdcomfort, mdblocks, mdsearchnavigation, jump, ghosttext, wordclick, bracketselection, jsonstress, rightedge, selshort, dragscroll, dragnoscroll, soak, soakpasteboardrestore, soakdefaultspurge, searchundo, dirtyundo, emojisplit, emojipaste, emojipreview, tabscroll, tabsearchmemory, typescroll, emojishot, comment4d, sighelp4d, sighelpshot, replaceall, pilldrop, navmatch, scrolljump, hscroll, crjump, textop, saveexisting, textworkflow, textworkflowmulti, textworkflowonesided, joinundo, colsel, colselwrap, colpaste, gutterdim, codefolding, gitremotedialogs, sidebarheader, editoroptions, footerfit, windowheight, mdformat, sidebarfilter, tabflood, sidebartoggle, sidebarstate, githistory, filediff, filedifftransfer, foldercompare, mdreferences, externaldiff, externaldiffcold, controlhost, macro4d, macro4dengine, tool4dhint, tool4dlsp, gototarget, gototargetwin, searchmark, help, mdassist, mdimagequit, mdindent, mddropcursor, mdimagewatch, pasteindent, filemodes, search, project, searchperf, projectperf, projectopenperf, markdownimport, markdowncollections, markdownimportui, localization, updates, git, gitactions, gitstagefolder, gitpushbutton, gitstickyheader, gitmultidiscard, openscope, selsearch, wildcard, loadperf, contrast, wildcardshot, searchshot, regexshot, welcomeshot, welcometabshot, projectshot, diffwide, diffnowrap, diffsplit, diffselection, diffselectionbackground, gitstickyshot, filesgitshot, diffwideshot, aboutshot, markdownshot, gitshot, historyshot, graphshot, windows)")
-        }
+            .init(name: "graphshot", route: .mainWindow { runGraphShot() }),
+            .init(name: "windows", route: .mainQueue { runWindowsDump() }),
+        ])
+    }
+
+    private static var launchDriver: SelfTestLaunchCatalog.Driver {
+        .init(
+            waitForMainWindow: { waitForMainWindow(then: $0) },
+            openSearch: { openSearchThen($0) },
+            waitForWorkspace: { waitForWorkspace(then: $0) },
+            mainQueue: { DispatchQueue.main.async(execute: $0) },
+            background: { DispatchQueue.global(qos: .userInitiated).async(execute: $0) },
+            mainActorTask: { action in Task { @MainActor in action() } },
+            mainAfter: { delay, action in
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
+            }
+        )
     }
 
     private static func runUpdatesTest() {
@@ -966,7 +666,7 @@ enum SelfTest {
                 then: { runUpdatesTest() })
     }
 
-    /// Pollt (max. ~15 s, 50-ms-Takt), bis ein SICHTBARES Hauptfenster
+    /// Pollt (max. ~15 s, 50-ms-Takt), bis ein sichtbares Hauptfenster
     /// existiert, lässt die UI dann 0,5 s setteln und ruft `body`.
     /// Erscheint binnen 15 s keines → FAIL mit Fenster-Dump (das ist dann
     /// ein echter Befund, kein Timing-Artefakt mehr).
@@ -999,8 +699,8 @@ enum SelfTest {
         guard let root = window.contentView else {
             finish(false, "Hauptfenster ohne contentView")
         }
-        // Seit dem Platzhalter-Umbau (2026-07-30) ist der Editor auch im
-        // Willkommens-Zustand montiert — es gibt nichts mehr wegzuklicken.
+        // Auch im Willkommens-Zustand ist der Editor montiert; es ist kein
+        // vorheriger Klick nötig.
         var editor: TextView?
         waitFor(budget: 5, pause: 0.05,
                 condition: {
@@ -1016,25 +716,17 @@ enum SelfTest {
                 })
     }
 
-    /// Wie `waitForEditor`, wartet zusätzlich auf einen Ankertext im Editor
-    /// und liefert dessen Bereich mit.
-    ///
-    /// `waitForEditor` meldet den Editor schon, sobald er MONTIERT ist — der
-    /// Dateiinhalt kann dann noch fehlen. Ein ungeprüftes `range(of:)` liefert
-    /// in diesem Moment `NSNotFound`. Als Selektionsbereich weitergereicht
-    /// bringt das die ganze App zum Absturz: Der Attachment-Beobachter von
-    /// CodeEditTextView baut aus jeder Selektion ein `IndexSet`, und
-    /// `IndexSet.insert(range:)` trappt bei `NSNotFound` als Untergrenze
-    /// (zweimal beobachtet am 2026-08-07 unter Last). Ein Test darf die App
-    /// nicht abschießen, wenn er nur zu früh hinsieht — also warten statt
-    /// raten und im Zweifel ehrlich scheitern.
+    /// Wie `waitForEditor`, wartet zusätzlich auf Ankertext und liefert dessen
+    /// Bereich. Ein montierter Editor kann noch leer sein; `range(of:)` würde
+    /// `NSNotFound` liefern. Diese Range darf nicht als Selektion in den
+    /// CodeEditTextView-Attachment-Beobachter und dessen `IndexSet` gelangen.
     private static func waitForEditorShowing(
         window: NSWindow,
         text needle: String,
         onTimeout: @escaping () -> Void,
         then body: @escaping (NSView, TextView, NSRange) -> Void
     ) {
-        // Je Durchlauf wird der Editor NEU gesucht (er kann zwischenzeitlich
+        // Je Durchlauf wird der Editor neu gesucht (er kann zwischenzeitlich
         // umgebaut worden sein); deshalb die asynchrone Variante.
         var shown: (root: NSView, textView: TextView, range: NSRange)?
         waitForAsync(
@@ -1058,7 +750,7 @@ enum SelfTest {
 
     /// Öffnet die Suchmaske (exakt wie CMD+F) und wartet, bis sie sichtbar
     /// ist, dann `body`. Nötig, seit `showSearchDialog` per Default `false`
-    /// startet (die Maske öffnet NICHT mehr automatisch beim Start). Vorher
+    /// startet (die Maske öffnet nicht mehr automatisch beim Start). Vorher
     /// muss das Hauptfenster da sein (ContentView appeared → onReceive aktiv),
     /// deshalb wird dieser Helfer aus `waitForMainWindow { … }` heraus gerufen
     /// — gleiches Muster wie der contrast-Test.
@@ -1067,10 +759,9 @@ enum SelfTest {
         waitForSearchWindow(then: body)
     }
 
-    /// Wie `waitForMainWindow`, aber für die Suchmaske. Sie öffnet seit
-    /// 2026-06-22 NICHT mehr automatisch beim Start (`showSearchDialog`
-    /// startet `false`) — die Aufrufer (cmdw/fields) öffnen sie vorher selbst
-    /// über `openSearchThen` (postet `.fastraShowSearchFile`).
+    /// Wie `waitForMainWindow`, aber für die Suchmaske. Sie startet geschlossen;
+    /// Aufrufer wie cmdw/fields öffnen sie zuvor über `openSearchThen`
+    /// (`.fastraShowSearchFile`).
     private static func waitForSearchWindow(then body: @escaping () -> Void) {
         waitFor(budget: 15, pause: 0.05,
                 condition: {
@@ -1096,11 +787,9 @@ enum SelfTest {
         }.joined(separator: " · ")
     }
 
-    /// Diagnose (`-selftest windows`): dumpt alle Fenster alle 0,5 s, bis
-    /// ein sichtbares Hauptfenster auftaucht (→ PASS mit Zeitangabe) oder
-    /// ~10 s um sind (→ FAIL mit letztem Dump). Kein Funktionstest — ein
-    /// Messinstrument (führte 2026-06-11 zum Root Cause des
-    /// „kein Hauptfenster"-Bugs).
+    /// Diagnose (`-selftest windows`): Alle 0,5 s Fenster ausgeben, bis ein
+    /// sichtbares Hauptfenster erscheint (PASS mit Zeitangabe) oder rund 10 s
+    /// verstrichen sind (FAIL mit letztem Dump).
     private static func runWindowsDump() {
         testLabel = "windows"
         var polls = 0
@@ -1127,406 +816,20 @@ enum SelfTest {
                 })
     }
 
-    // MARK: - ⌘N / unabhängiges Dokumentfenster
-
-    /// Führt den ECHTEN Menüpunkt mit ⌘N aus und prüft danach zwei Dinge, die
-    /// ein reiner Unit-Test nicht sehen kann: Es erscheint ein zweites Fenster,
-    /// und dessen neuer Workspace teilt seinen Inhalt nicht mit dem ersten.
-    // MARK: - Finder-Öffnen nach rotem Schließen-Knopf (Befund 2026-09-04)
-
-    /// Nachstellung des Befunds vom 2026-09-04 (v1.117.2): Eine Markdown-
-    /// Datei war im Hauptfenster offen, der Nutzer schloss alle Fenster und
-    /// öffnete dieselbe Datei per Finder-Doppelklick erneut — sie erschien in
-    /// ZWEI Fenstern unterschiedlicher Größe. Der Test fährt genau diesen
-    /// Weg, aber ohne Finder: Das Öffnen-Ereignis (`odoc`) und das
-    /// Reopen-Ereignis (`rapp`, Dock-Klick) gehen an `NSApp.delegate` — an
-    /// SwiftUIs Delegate, wie AppKit es nach dem Apple-Event auch tut. Eine
-    /// App-Aktivierung braucht der Test nicht.
     private static func runFinderReopenTest() {
-        guard let original = Workspace.shared else {
-            finish(false, "kein aktiver Ausgangs-Workspace")
-        }
-        // Fenster und Workspace gehören zusammen: Das Fenster kommt über
-        // denselben Registry-Weg wie im Produkt (`CommandTargeting`), nicht
-        // aus `NSApp.windows` — die Liste ist nicht nach Vordergrund
-        // sortiert, und bei zwei Dokumentfenstern hätte der Test sonst den
-        // roten Knopf eines Fensters gedrückt, dessen Tabs in einem anderen
-        // Workspace liegen (Review-Fund 2026-09-05).
-        guard let mainWindow = MainActor.assumeIsolated({
-            CommandTargeting.documentWindow(for: original)
-        }) else {
-            finish(false, "kein sichtbares Dokumentfenster zum Ausgangs-Workspace")
-        }
-        guard WorkspaceWindowRegistry.workspace(for: mainWindow) === original else {
-            finish(false, "Hauptfenster und Ausgangs-Workspace gehören nicht zusammen")
-        }
-        let folder = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-selftest-finderreopen-\(getpid())")
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try "# Wieder geöffnet\n\nInhalt.\n".write(
-                to: folder.appendingPathComponent("Notiz.md"), atomically: true, encoding: .utf8)
-        } catch {
-            finish(false, "Fixture fehlt: \(error.localizedDescription)")
-        }
-        windowRoutingFixtureDirectory = folder
-        // Erst NACH dem Anlegen kanonisieren: `/var` wird sonst nicht zu
-        // `/private/var` aufgelöst, und der Vergleich mit dem Tab schlägt fehl.
-        let file = folder.appendingPathComponent("Notiz.md").canonicalFileURL
-
-        guard let closeButton = mainWindow.standardWindowButton(.closeButton) else {
-            finish(false, "Hauptfenster hat keinen Schließen-Knopf")
-        }
-        // Derselbe Ladeweg wie beim Öffnen per Finder; die Completion sagt,
-        // wann der Tab wirklich steht.
-        original.loadFile(at: file) { ok in
-            guard ok, let index = original.tabs.firstIndex(where: {
-                $0.url?.canonicalFileURL.path == file.path
-            }) else {
-                finish(false, "Datei kam nicht im Hauptfenster an (ok=\(ok), Tabs: "
-                    + "\(original.tabs.map { $0.url?.path ?? "–" }))")
-            }
-            // Erste Probe: ungesicherte Änderung plus roter Knopf. Der Knopf
-            // muss dieselbe Rückfrage stellen wie ⌘W; „Abbrechen" lässt das
-            // Fenster stehen. Ohne Umleitung schloss SwiftUI ungefragt.
-            original.tabs[index].content += "\nungesichert"
-            original.tabs[index].isDirty = true
-            var confirmations = 0
-            let defaultHandler = original.confirmCloseHandler
-            original.confirmCloseHandler = { _ in
-                confirmations += 1
-                return .cancel
-            }
-            closeButton.performClick(nil)
-            var problems: [String] = []
-            if confirmations != 1 || !mainWindow.isVisible {
-                problems.append("roter Knopf bei ungesichertem Tab: Rückfragen=\(confirmations), "
-                    + "Fenster sichtbar=\(mainWindow.isVisible) (erwartet 1 und sichtbar)")
-            }
-            // Zweite Probe: „Nicht sichern" — jetzt darf das Fenster zu.
-            original.confirmCloseHandler = { _ in .dontSave }
-            closeButton.performClick(nil)
-            original.confirmCloseHandler = defaultHandler
-            waitUntilSelfTest(limit: 100, failure: "Hauptfenster schloss nicht "
-                + "(\(problems.joined(separator: "; ")))") {
-                !mainWindow.isVisible
-            } then: {
-                // Ein geschlossenes Fenster darf seine Datei nicht behalten —
-                // sonst bringt es sie beim nächsten Anzeigen ungefragt zurück.
-                // Der Befund wird gesammelt, nicht sofort gemeldet: Die
-                // folgenden Phasen zeigen, welche sichtbare Folge er hat.
-                let leftover = original.tabs.compactMap { $0.url?.lastPathComponent }
-                if !original.isWelcomeScreen
-                    || original.tabs.contains(where: { $0.url?.canonicalFileURL.path == file.path }) {
-                    problems.append("geschlossenes Hauptfenster behielt seine Tabs: "
-                        + "\(leftover), Willkommen=\(original.isWelcomeScreen)")
-                }
-                print("finderreopen: Delegate des Hauptfensters = "
-                    + "\(mainWindow.delegate.map { String(describing: type(of: $0)) } ?? "nil")")
-                deliverOpenDocumentsEvent(for: file)
-                waitUntilSelfTest(limit: 100,
-                                  failure: "Öffnen-Ereignis zeigte die Datei in keinem Fenster") {
-                    documentWindows(showing: file).count >= 1
-                } then: {
-                    // Ein wieder angezeigtes Hauptfenster muss in der Registry
-                    // stehen — der Rückfall über die Titelbrücke (v1.118.3)
-                    // ist eine Reparatur, keine Registrierung. Ohne Eintrag
-                    // zählte das Fenster in v1.117.2 nicht als Dokumentfenster,
-                    // und die Datei bekam ein zweites Fenster.
-                    let registered = WorkspaceWindowRegistry.registeredWindows()
-                        .contains { $0 === mainWindow }
-                    print("finderreopen: Hauptfenster sichtbar=\(mainWindow.isVisible) "
-                        + "registriert=\(registered)")
-                    if mainWindow.isVisible, !registered {
-                        problems.append("wieder angezeigtes Hauptfenster fehlt in der Fenster-Registry")
-                    }
-                    // Ein zweites Fenster kann erst nach dem ersten erscheinen
-                    // (SwiftUI zeigt seine Szene asynchron). Bewusst warten.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        let showing = documentWindows(showing: file)
-                        if showing.count != 1 {
-                            problems.append("Öffnen-Ereignis zeigte die Datei in "
-                                + "\(showing.count) Fenstern (Größen: "
-                                + "\(showing.map { "\(Int($0.frame.width))×\(Int($0.frame.height))" }))")
-                        }
-                        verifyReopenWithoutWindows(file: file, problems: problems)
-                    }
-                }
-            }
-        }
+        windowRoutingTests.runFinderReopenTest()
     }
 
-    /// Zweite Hälfte: Alle Fenster zu, dann Dock-Klick (`rapp`). Danach darf
-    /// genau EIN Dokumentfenster stehen — nicht eines von AppKit und eines von
-    /// SwiftUI — und die zuvor geschlossene Datei darf darin nicht ungefragt
-    /// wieder auftauchen: Genau das war in v1.117.2 die sichtbare Folge der
-    /// stehen gebliebenen Tabs.
-    private static func verifyReopenWithoutWindows(file: URL, problems: [String]) {
-        var problems = problems
-        for window in MainActor.assumeIsolated({ DocumentWindowController.visibleDocumentWindows() }) {
-            if let workspace = WorkspaceWindowRegistry.workspace(for: window) {
-                workspace.tabs.indices.forEach { workspace.tabs[$0].isDirty = false }
-            }
-            window.performClose(nil)
-        }
-        waitUntilSelfTest(limit: 100, failure: "Dateifenster schlossen nicht") {
-            MainActor.assumeIsolated { DocumentWindowController.visibleDocumentWindows().isEmpty }
-        } then: {
-            deliverReopenEvent()
-            waitUntilSelfTest(limit: 100, failure: "Reopen zeigte kein Fenster") {
-                MainActor.assumeIsolated { !DocumentWindowController.visibleDocumentWindows().isEmpty }
-            } then: {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    let windows = MainActor.assumeIsolated {
-                        DocumentWindowController.visibleDocumentWindows()
-                    }
-                    if windows.count != 1 {
-                        problems.append("Reopen ohne Fenster zeigte \(windows.count) Fenster (Größen: "
-                            + "\(windows.map { "\(Int($0.frame.width))×\(Int($0.frame.height))" }))")
-                    }
-                    let resurrected = documentWindows(showing: file)
-                    if !resurrected.isEmpty {
-                        problems.append("Reopen ohne Fenster brachte die geschlossene Datei "
-                            + "\(file.lastPathComponent) in \(resurrected.count) Fenster(n) zurück")
-                    }
-                    guard problems.isEmpty else {
-                        finish(false, problems.joined(separator: "; "))
-                    }
-                    finish(true, "Datei nach rotem Schließen genau einmal wieder geöffnet, "
-                        + "Reopen ohne Fenster zeigt genau ein Fenster")
-                }
-            }
-        }
-    }
-
-    /// Alle sichtbaren Dokumentfenster, deren Workspace die Datei zeigt.
-    private static func documentWindows(showing file: URL) -> [NSWindow] {
-        MainActor.assumeIsolated {
-            DocumentWindowController.visibleDocumentWindows().filter { window in
-                WorkspaceWindowRegistry.workspace(for: window)?.tabs
-                    .contains { $0.url?.canonicalFileURL.path == file.path } ?? false
-            }
-        }
-    }
-
-    /// Stellt ein externes Ereignis so zu, wie AppKit es nach einem
-    /// Apple-Event von Finder (`odoc`) oder Dock (`rapp`) tut: an
-    /// `NSApp.delegate`. Das ist SwiftUIs eigener App-Delegate, der zuerst
-    /// sein Szenenfenster für das externe Ereignis aktiviert und danach an den
-    /// `AppDelegate` von Fastra weiterreicht — genau diese Reihenfolge
-    /// erzeugte das doppelte Fenster.
-    ///
-    /// Ein echtes Apple-Event an den eigenen Prozess taugt dafür nicht: Vom
-    /// Main-Thread gesendet läuft es in errAETimeout (-1712), von einem
-    /// Hintergrund-Thread aus stellt der Apple-Event-Manager es direkt in
-    /// diesem Thread zu, und AppKit stürzt beim Fensteraufbau ab.
-    ///
-    /// Die beiden Ereignisse sind bewusst getrennte Funktionen: Eine
-    /// gemeinsame Hilfsfunktion mit Event-ID-Parameter hatte die ID gar nicht
-    /// ausgewertet und nur nach „Datei-URL vorhanden?" entschieden
-    /// (Review-Fund 2026-09-05).
-    private static func externalEventDelegate() -> NSApplicationDelegate {
-        guard let delegate = NSApp.delegate else {
-            finish(false, "NSApp.delegate fehlt")
-        }
-        return delegate
-    }
-
-    /// `odoc`: Finder-Doppelklick auf eine Datei.
-    private static func deliverOpenDocumentsEvent(for fileURL: URL) {
-        deliverOpenDocumentsEvent(for: [fileURL])
-    }
-
-    private static func deliverOpenDocumentsEvent(for fileURLs: [URL]) {
-        let delegate = externalEventDelegate()
-        guard delegate.responds(to: #selector(NSApplicationDelegate.application(_:open:))) else {
-            finish(false, "App-Delegate beantwortet application(_:open:) nicht")
-        }
-        delegate.application?(NSApp, open: fileURLs)
-    }
-
-    /// Misst neben dem Property auch AppKits tatsächlich sichtbares Titelfeld.
-    /// Ein grünes `titleVisibility` allein übersieht einen hängen gebliebenen Titel.
     private static func runWindowChromeTest() {
-        Task { @MainActor in
-            let directory = selfTestTemporaryDirectory().appendingPathComponent("window-chrome-\(UUID().uuidString)")
-            windowRoutingFixtureDirectory = directory
-            var failures: [String] = []
-            func inspect(_ window: NSWindow, _ phase: String) {
-                var nativeTitles: [String] = []
-                func visit(_ view: NSView) {
-                    guard view !== window.contentView else { return }
-                    if let field = view as? NSTextField,
-                       !field.isHiddenOrHasHiddenAncestor, field.alphaValue > 0,
-                       field.stringValue == window.title {
-                        nativeTitles.append(field.stringValue)
-                    }
-                    view.subviews.forEach(visit)
-                }
-                if let frameView = window.contentView?.superview { visit(frameView) }
-                FileHandle.standardError.write(Data("WINDOW_CHROME \(phase) hidden=\(window.titleVisibility == .hidden) nativeTitles=\(nativeTitles.count) title=\(window.title)\n".utf8))
-                if window.titleVisibility != .hidden || !nativeTitles.isEmpty {
-                    failures.append("\(phase): native Titel sichtbar (\(nativeTitles.count)), hidden=\(window.titleVisibility == .hidden)")
-                }
-                if !window.styleMask.contains(.fullSizeContentView) || !window.titlebarAppearsTransparent {
-                    failures.append("\(phase): eigener Fenster-Chrome fehlt")
-                }
-            }
-            func settle() async { try? await Task.sleep(for: .milliseconds(300)) }
-            do {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                let paths = ["Erste lange gemeinsam geöffnete Textdatei.txt", "Zweite lange gemeinsam geöffnete Textdatei.txt"].map { directory.appendingPathComponent($0) }
-                for file in paths { try "Eigener Prüfinhalt\n".write(to: file, atomically: true, encoding: .utf8) }
-                let files = paths.map(\.canonicalFileURL)
-                guard let original = Workspace.shared,
-                      let main = CommandTargeting.documentWindow(for: original) else {
-                    finish(false, "Ausgangsfenster fehlt")
-                }
-                // Ein belegtes Fenster erzwingt den zusätzlichen AppKit-Fensterpfad.
-                original.openNewTab()
-                if let index = original.tabs.firstIndex(where: { $0.id == original.activeTabID }) {
-                    original.tabs[index].content = "Ausgangsfenster bleibt belegt"
-                    original.tabs[index].isDirty = true
-                }
-                await settle()
-                inspect(main, "main")
-                deliverOpenDocumentsEvent(for: files)
-                var target: NSWindow?
-                for _ in 0..<100 {
-                    target = DocumentWindowController.visibleDocumentWindows().first { window in
-                        guard let ws = WorkspaceWindowRegistry.workspace(for: window) else { return false }
-                        return files.allSatisfy { file in ws.tabs.contains { $0.url?.canonicalFileURL == file } }
-                    }
-                    if target != nil { break }
-                    try? await Task.sleep(for: .milliseconds(50))
-                }
-                guard let target, target !== main,
-                      let workspace = WorkspaceWindowRegistry.workspace(for: target) else {
-                    let actual = DocumentWindowController.visibleDocumentWindows().map { window in
-                        "\(window.identifier?.rawValue ?? "main") visible=\(window.isVisible): \(WorkspaceWindowRegistry.workspace(for: window)?.tabs.compactMap { $0.url?.path } ?? [])"
-                    }
-                    finish(false, "Gemeinsam geöffnete Dateien fehlen im zusätzlichen Fenster; erwartet=\(files.map(\.path)), tatsächlich=\(actual)")
-                }
-                await settle()
-                inspect(target, "multi-open")
-                for file in files + files.reversed() {
-                    deliverOpenDocumentsEvent(for: file)
-                    await settle()
-                    inspect(target, "reopen-\(file.lastPathComponent)")
-                }
-                target.setContentSize(NSSize(width: MainWindowSizing.minimumWidth, height: MainWindowSizing.minimumHeight))
-                await settle()
-                inspect(target, "resize")
-                guard workspace.tabs.filter({ $0.url != nil }).count == 2 else {
-                    finish(false, "Wiederholtes Öffnen dupliziert Tabs")
-                }
-                let restored = DocumentWindowController.openRestoredDocument(RestorableWindowState(
-                    projectPath: directory.path, documentPaths: files.map(\.path),
-                    activeDocumentPath: files[1].path, frame: nil))
-                for _ in 0..<100 {
-                    if restored.tabs.filter({ $0.url != nil }).count == 2 { break }
-                    try? await Task.sleep(for: .milliseconds(50))
-                }
-                await settle()
-                guard let restoredWindow = CommandTargeting.documentWindow(for: restored) else {
-                    finish(false, "Wiederhergestelltes Fenster fehlt")
-                }
-                inspect(restoredWindow, "restore")
-                if let output = ProcessInfo.processInfo.environment["FASTRA_WINDOWCHROME_DIR"] {
-                    let folder = URL(fileURLWithPath: output)
-                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                    for (name, window) in [("main", main), ("additional", target), ("restored", restoredWindow)] {
-                        let snapshot: TypeScrollSnapshot? = await withCheckedContinuation { done in
-                            typeScrollCapture(window: window) { done.resume(returning: $0) }
-                        }
-                        if let snapshot {
-                            try snapshot.data.write(to: folder.appendingPathComponent(name + ".png"))
-                            print("WINDOW_CHROME_CAPTURE \(name) \(snapshot.source)")
-                        }
-                    }
-                }
-                finish(failures.isEmpty, failures.isEmpty ? "Haupt-, Mehrdatei- und Restorefenster ohne nativen Titel; Wiederöffnen, Tabwechsel und Resize geprüft" : failures.joined(separator: "; "))
-            } catch { finish(false, error.localizedDescription) }
-        }
-    }
-
-    /// `rapp`: Dock-Klick ohne sichtbares Fenster.
-    private static func deliverReopenEvent() {
-        let delegate = externalEventDelegate()
-        guard delegate.responds(to: #selector(
-            NSApplicationDelegate.applicationShouldHandleReopen(_:hasVisibleWindows:)
-        )) else {
-            finish(false, "App-Delegate beantwortet applicationShouldHandleReopen nicht")
-        }
-        _ = delegate.applicationShouldHandleReopen?(NSApp, hasVisibleWindows: false)
-    }
-
-    /// Kleines Polling für diesen Test: 50-ms-Takt bis `condition` gilt,
-    /// sonst nach `limit` Takten bedienter Zeit ehrlicher FAIL.
-    private static func waitUntilSelfTest(
-        limit: Int, failure: String,
-        condition: @escaping () -> Bool, then body: @escaping () -> Void
-    ) {
-        waitFor(budget: Double(limit) * 0.05, pause: 0.05,
-                condition: condition,
-                onTimeout: { book in finish(false, "\(failure) — \(book.summary)") },
-                then: body)
+        windowRoutingTests.runWindowChromeTest()
     }
 
     private static func runNewWindowTest(focusedCommandRouting: Bool = false) {
-        guard let original = Workspace.shared else {
-            finish(false, "kein aktiver Ausgangs-Workspace")
-        }
-        // Im reinen Willkommenszustand wirkt ⌘N inzwischen bewusst wie ⌘T
-        // (Wunschpaket 2026-07 Etappe 1, eigener Selbsttest `welcomenew`).
-        // Für den Fenster-Test daher zuerst einen normalen Editor-Tab
-        // öffnen — danach ist ⌘N wieder das Fenster-Kommando.
-        if original.isWelcomeScreen { original.openNewTab() }
-        guard let originalID = original.activeTabID,
-              let originalIndex = original.tabs.firstIndex(where: { $0.id == originalID }) else {
-            finish(false, "kein aktiver Ausgangs-Workspace")
-        }
-
-        let marker = "Inhalt nur im ersten Fenster"
-        original.tabs[originalIndex].content = marker
-
-        guard let mainMenu = NSApp.mainMenu,
-              menuItem(forKeyEquivalent: "n", in: mainMenu) != nil else {
-            finish(false, "kein Menüpunkt mit ⌘N gefunden")
-        }
-        guard let mainWindow = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName && $0.isVisible
-        }) else {
-            finish(false, "kein Ausgangsfenster für ⌘N gefunden")
-        }
-        mainWindow.makeKeyAndOrderFront(nil)
-
-        // Eine absichtlich kleinere, aber weiterhin unterstützte Größe macht
-        // den Fehler sichtbar: Der Test liest später den echten NSWindow-
-        // Rahmen des neuen Fensters, nicht die gemeinsame Berechnungsfunktion.
-        let requestedSize = NSSize(
-            width: MainWindowSizing.minimumWidth + 153,
-            height: MainWindowSizing.minimumHeight + 157
-        )
-        mainWindow.setFrame(
-            NSRect(origin: mainWindow.frame.origin, size: requestedSize),
-            display: true
-        )
-        let expectedSize = mainWindow.frame.size
-        postCmd("n", keyCode: 45, windowNumber: mainWindow.windowNumber)
-        pollForNewWindow(
-            original: original,
-            originalWindow: mainWindow,
-            marker: marker,
-            expectedSize: expectedSize,
-            focusedCommandRouting: focusedCommandRouting
-        )
+        windowRoutingTests.runNewWindowTest(focusedCommandRouting: focusedCommandRouting)
     }
 
-    /// ⌘N im reinen Startzustand (Wunschpaket 2026-07 Etappe 1; Platzhalter-
-    /// Modell 2026-07-30): Es darf KEIN zweites Fenster entstehen; dasselbe
-    /// Fenster bekommt wie bei ⌘T einen zweiten leeren Tab. Der bisherige
-    /// Start-Tab bleibt daneben erhalten.
+    /// ⌘N im Startzustand erzeugt wie ⌘T einen zweiten leeren Tab im selben
+    /// Fenster. Der bisherige Start-Tab bleibt erhalten.
     private static func runWelcomeNewTabTest() {
         guard let ws = Workspace.shared else {
             finish(false, "kein aktiver Workspace")
@@ -1569,7 +872,7 @@ enum SelfTest {
                     guard windowsNow == windowsBefore else {
                         finish(false, "⌘N im Startzustand öffnete trotzdem ein zweites Fenster")
                     }
-                    // Der NEUE Tab ist aktiv — als frischer leerer Tab zeigt auch er
+                    // Der neue Tab ist aktiv — als frischer leerer Tab zeigt auch er
                     // den Willkommens-Platzhalter (Firefox-Muster).
                     guard let active = ws.activeTab, active.id != originalTabID,
                           active.content.isEmpty else {
@@ -1586,91 +889,7 @@ enum SelfTest {
 
     private static func runSessionRestoreTest() {
         testLabel = "sessionrestore"
-        if let sessionRestoreSetupError {
-            finish(false, "Fixture konnte nicht angelegt werden: \(sessionRestoreSetupError)")
-        }
-        guard let directory = sessionRestoreFixtureDirectory else {
-            finish(false, "Fixture-Verzeichnis fehlt")
-        }
-        var windows: [NSWindow] = []
-        var workspaces: [Workspace] = []
-        waitFor(budget: 10, pause: 0.05,
-                condition: {
-                    windows = MainActor.assumeIsolated {
-                        DocumentWindowController.visibleDocumentWindows()
-                    }
-                    workspaces = windows.compactMap {
-                        WorkspaceWindowRegistry.workspace(for: $0)
-                    }
-                    let loading = workspaces.contains { workspace in
-                        workspace.tabs.contains(where: \.isLoading)
-                    }
-                    return windows.count == 2 && workspaces.count == 2 && !loading
-                },
-                onTimeout: { book in
-                    try? FileManager.default.removeItem(at: directory)
-                    finish(false, "Sitzung nicht vollständig — \(book.summary) — \(windowsSummary())")
-                },
-                then: {
-                    let namesByWindow = workspaces.map {
-                        $0.tabs.compactMap(\.url).map(\.lastPathComponent)
-                    }
-                    guard namesByWindow.contains(["eins.txt", "zwei.txt"]),
-                          namesByWindow.contains(["drei.txt"]) else {
-                        try? FileManager.default.removeItem(at: directory)
-                        finish(false, "falsche wiederhergestellte Tabs: \(namesByWindow)")
-                    }
-                    guard let projectWorkspace = workspaces.first(where: {
-                        $0.projectURL?.canonicalFileURL == directory.canonicalFileURL
-                    }),
-                          projectWorkspace.activeTab?.url?.lastPathComponent == "eins.txt" else {
-                        try? FileManager.default.removeItem(at: directory)
-                        finish(false, "Projekt oder aktiver Tab wurde nicht wiederhergestellt")
-                    }
-                    guard workspaces.allSatisfy({
-                        $0.tabs.allSatisfy { $0.url != nil }
-                    }) else {
-                        try? FileManager.default.removeItem(at: directory)
-                        finish(false, "ein unbenannter Tab wurde fälschlich wiederhergestellt")
-                    }
-                    // Fenster-Menü nach der Wiederherstellung: pro Fenster genau
-                    // unser Tab-Untermenü-Eintrag, kein doppelter AppKit-Eintrag.
-                    // Genau dieser Startpfad war am 2026-09-01 kaputt: Beim ersten
-                    // Titelsetzen existiert `NSApp.windowsMenu` noch nicht, und ein
-                    // nur an Titeländerungen gebundener Aufbau kam nie wieder zum
-                    // Zug — das Menü zeigte nur AppKits eigenen Eintrag ohne Tabs.
-                    let duplicatePlainEntries = MainActor.assumeIsolated { () -> [String] in
-                        (NSApp.windowsMenu?.items ?? [])
-                            .filter { $0.submenu == nil && ["eins.txt", "drei.txt"].contains($0.title) }
-                            .map(\.title)
-                    }
-                    guard duplicatePlainEntries.isEmpty else {
-                        try? FileManager.default.removeItem(at: directory)
-                        finish(false, "Fenster-Menü führt Dokumentfenster doppelt "
-                            + "(AppKit-Eintrag ohne Untermenü: \(duplicatePlainEntries))")
-                    }
-                    guard let projectWindow = windows.first(where: {
-                        WorkspaceWindowRegistry.workspace(for: $0) === projectWorkspace
-                    }), let otherWindow = windows.first(where: { $0 !== projectWindow }),
-                          let otherWorkspace = WorkspaceWindowRegistry.workspace(for: otherWindow) else {
-                        try? FileManager.default.removeItem(at: directory)
-                        finish(false, "wiederhergestellte Fenster nicht ihren Workspaces zugeordnet")
-                    }
-                    verifyNativeWindowTabSelection(workspace: projectWorkspace, window: projectWindow) { ok, detail in
-                        guard ok else {
-                            try? FileManager.default.removeItem(at: directory)
-                            finish(false, "Projektfenster nach Wiederherstellung: " + detail)
-                        }
-                        // Das zweite wiederhergestellte Fenster besitzt absichtlich
-                        // nur einen Tab. Auch sein Untermenü muss real geöffnet werden.
-                        verifyNativeWindowTabSelection(workspace: otherWorkspace, window: otherWindow,
-                                                       requireTabChange: false) { ok, detail in
-                            try? FileManager.default.removeItem(at: directory)
-                            finish(ok, "zwei Fenster, drei gespeicherte Tabs, Projekt und aktiver Tab "
-                                + "wiederhergestellt; beide nativen Tab-Untermenüs bedient: " + detail)
-                        }
-                    }
-                })
+        sessionRestorationTests.runSessionRestoreTest()
     }
 
     /// Prüft den echten LaunchServices-Kaltstart mit einer gespeicherten Sitzung
@@ -1679,576 +898,27 @@ enum SelfTest {
     /// bleiben; bei deaktivierter darf ausschließlich die Finder-Datei öffnen.
     private static func runColdOpenTest(restoreEnabled: Bool) {
         testLabel = restoreEnabled ? "coldopen" : "coldopenoff"
-        if let coldOpenSetupError {
-            finish(false, "Fixture konnte nicht angelegt werden: \(coldOpenSetupError)")
-        }
-        guard let externalURL = coldOpenExternalURL,
-              coldOpenRestoredURLs.count == 2,
-              coldOpenRestoredProjectURLs.count == 2 else {
-            finish(false, "Kaltstart-Fixture fehlt")
-        }
-        // Ab dem ersten korrekten Zustand weitere 20 Abfragen (mindestens
-        // eine Sekunde) beobachten. Ein verspäteter Restore oder Finder-Aufruf
-        // setzt diese Ruhephase zurück; die Gesamtfrist bleibt bestehen.
-        var polls = 0
-        var stableSincePoll: Int?
-        var openedNames: [String] = []
-        waitFor(budget: 10, pause: 0.05,
-                condition: {
-                let windows = MainActor.assumeIsolated {
-                    DocumentWindowController.visibleDocumentWindows()
-                }
-                let workspaces = windows.compactMap {
-                    WorkspaceWindowRegistry.workspace(for: $0)
-                }
-                let openedURLs = workspaces.flatMap { workspace in
-                    workspace.tabs.compactMap(\.url).map(\.canonicalFileURL)
-                }
-                let stillLoading = workspaces.contains { workspace in
-                    workspace.tabs.contains(where: \.isLoading)
-                }
-                let expectedURLs = restoreEnabled
-                    ? Set(coldOpenRestoredURLs + [externalURL])
-                    : Set([externalURL])
-                let externalWorkspace = workspaces.first { workspace in
-                    workspace.tabs.contains {
-                        $0.url?.canonicalFileURL == externalURL
-                    }
-                }
-                let restoredProjectsArePresent = coldOpenRestoredProjectURLs.allSatisfy {
-                    projectURL in
-                    workspaces.contains {
-                        $0.projectURL?.canonicalFileURL == projectURL
-                    }
-                }
-                let expectedWindowCount = restoreEnabled ? 3 : 1
-                let expectedState = windows.count == expectedWindowCount
-                    && workspaces.count == expectedWindowCount
-                    && !stillLoading
-                    && openedURLs.count == expectedURLs.count
-                    && Set(openedURLs) == expectedURLs
-                    && externalWorkspace?.activeTab?.url?.canonicalFileURL == externalURL
-                    && workspaces.allSatisfy { workspace in
-                        // Neben wiederhergestellten Dateien darf kein übrig
-                        // gebliebener leerer Start-Tab stehen.
-                        workspace.tabs.allSatisfy { !$0.isPristineScratch }
-                    }
-                    && (restoreEnabled
-                        ? restoredProjectsArePresent
-                        : !openedURLs.contains(where: coldOpenRestoredURLs.contains))
-
-                    openedNames = openedURLs.map(\.lastPathComponent)
-                    let stable = coldOpenStateIsStable(expectedState: expectedState, tick: polls,
-                                                       stableSinceTick: &stableSincePoll)
-                    polls += 1
-                    return stable
-                },
-                onTimeout: { book in
-                    cleanupColdOpenFixture()
-                    finish(false, "Kaltstartzustand nicht vollständig "
-                        + "(Restore: \(restoreEnabled), Dateien: \(openedNames)) — \(book.summary) — \(windowsSummary())")
-                },
-                then: {
-                    cleanupColdOpenFixture()
-                    finish(
-                        true,
-                        restoreEnabled
-                            ? "zwei Projektfenster wiederhergestellt; Finder-Datei zusätzlich geöffnet"
-                            : "Wiederherstellung aus; ausschließlich Finder-Datei geöffnet"
-                    )
-                })
+        sessionRestorationTests.runColdOpenTest(restoreEnabled: restoreEnabled)
     }
 
     /// Prüft die Ruhephase anhand der tatsächlich beobachteten Zustandsfolge.
     static func coldOpenStateIsStable(
         expectedState: Bool, tick: Int, stableSinceTick: inout Int?
     ) -> Bool {
-        guard expectedState else {
-            stableSinceTick = nil
-            return false
-        }
-        if stableSinceTick == nil { stableSinceTick = tick }
-        return tick - (stableSinceTick ?? tick) >= 20
+        SelfTestSessionRestoration.coldOpenStateIsStable(
+            expectedState: expectedState, tick: tick, stableSinceTick: &stableSinceTick
+        )
     }
 
-    private static func cleanupColdOpenFixture() {
-        if let coldOpenFixtureDirectory {
-            try? FileManager.default.removeItem(at: coldOpenFixtureDirectory)
-        }
-    }
 
-    private static func pollForNewWindow(
-        original: Workspace,
-        originalWindow: NSWindow,
-        marker: String,
-        expectedSize: NSSize,
-        focusedCommandRouting: Bool
-    ) {
-        // Zwei Stufen in EINER Frist: erst Fenster samt Workspace, dann der
-        // stabile Rahmen.
-        var stage = 0
-        var found: (workspace: Workspace, window: NSWindow)?
-        waitFor(budget: 5, pause: 0.05,
-                condition: {
-                    let newWorkspace = Workspace.allLive.first { $0 !== original }
-                    let newWindow = NSApp.windows.first {
-                        $0 !== originalWindow
-                            && $0.identifier?.rawValue == "Fastra.DocumentWindow"
-                            && $0.isVisible
-                    }
-                    guard let newWorkspace, let newWindow else {
-                        stage = 0
-                        return false
-                    }
-                    guard newWorkspace.tabs.count == 1,
-                          let newTab = newWorkspace.activeTab,
-                          newTab.title == Workspace.untitledBaseName,
-                          newTab.content.isEmpty else {
-                        finish(false, "zweites Fenster enthält kein einzelnes leeres neues Dokument")
-                    }
-                    // Platzhalter-Modell (2026-07-30, ersetzt „nie mehr als ein
-                    // Willkommen" vom 2026-07-12): Der frische leere Tab des neuen
-                    // Fensters zeigt wie in Firefox die Starthilfe über dem Editor —
-                    // das ist jetzt der korrekte Zustand, kein Fehler.
-                    guard newWorkspace.isWelcomeScreen else {
-                        finish(false, "⌘N-Fenster zeigt keinen Willkommens-Platzhalter über dem leeren Tab")
-                    }
-                    // Das ist die sichtbare Produktwirkung: Das neue AppKit-Fenster
-                    // muss denselben tatsächlichen Rahmen wie das zuvor benutzte
-                    // Fenster haben. SwiftUI darf seine fitting size im ersten Layout
-                    // noch kurz melden; wir warten deshalb auf den stabilen Rahmen,
-                    // statt genau in diesem Übergang voreilig fehlzuschlagen.
-                    stage = 1
-                    found = (newWorkspace, newWindow)
-                    return abs(newWindow.frame.width - expectedSize.width) < 0.5
-                        && abs(newWindow.frame.height - expectedSize.height) < 0.5
-                },
-                onTimeout: { book in
-                    if stage == 0 {
-                        finish(false, "kein zweites Dokumentfenster — \(book.summary) — \(windowsSummary())")
-                    }
-                    let frame = found?.window.frame ?? .zero
-                    finish(false, "⌘N-Fenster übernimmt Größe nicht "
-                        + "(erwartet \(expectedSize.width)×\(expectedSize.height), "
-                        + "erhalten \(frame.width)×\(frame.height)) — \(book.summary)")
-                },
-                then: {
-                    guard let found else { finish(false, "zweites Fenster nach Erfolg verschwunden") }
-                    // Nicht bloß den Modellzustand prüfen: Direkt nach dem echten ⌘N
-                    // muss die echte CodeEdit-TextView vorhanden sein und einen
-                    // gültigen Einfügepunkt besitzen. Den First-Responder- und
-                    // Befehlsrouting-Teil prüft der fokuspflichtige `cmdw`-Lauf.
-                    pollForNewWindowEditorFocus(
-                        original: original,
-                        originalWindow: originalWindow,
-                        marker: marker,
-                        newWorkspace: found.workspace,
-                        newWindow: found.window,
-                        focusedCommandRouting: focusedCommandRouting
-                    )
-                })
-    }
-
-    private static func pollForNewWindowEditorFocus(
-        original: Workspace,
-        originalWindow: NSWindow,
-        marker: String,
-        newWorkspace: Workspace,
-        newWindow: NSWindow,
-        focusedCommandRouting: Bool
-    ) {
-        var editor: TextView?
-        waitFor(budget: 3, pause: 0.03,
-                condition: {
-                    editor = newWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
-                    let validSelection = editor?.selectionManager.textSelections.map(\.range)
-                        == [NSRange(location: 0, length: 0)]
-                    let focusReady = !focusedCommandRouting
-                        || (newWindow.isKeyWindow && newWindow.firstResponder === editor)
-                    return editor != nil && validSelection && focusReady
-                },
-                onTimeout: { book in
-                    if focusedCommandRouting, !newWindow.isKeyWindow {
-                        finish(.environment, "⌘N-Fenster wurde nie Key-Window (Umgebungsproblem; \(book.summary))")
-                    }
-                    finish(false, "⌘N-Fenster hat keinen verwendbaren Editor "
-                        + "(Editor=\(editor != nil), FirstResponder="
-                        + "\(String(describing: newWindow.firstResponder)), "
-                        + "Selektionen=\(editor?.selectionManager.textSelections.map(\.range) ?? [])) — \(book.summary)")
-                },
-                then: {
-                    newWorkspace.activeTabContent.wrappedValue = "Inhalt nur im zweiten Fenster"
-                    guard original.activeTab?.content == marker else {
-                        finish(false, "Dokumentinhalt wird zwischen den Fenstern geteilt")
-                    }
-                    if focusedCommandRouting, Workspace.shared !== newWorkspace {
-                        finish(false, "neues Fenster ist sichtbar, aber nicht aktiver Workspace")
-                    }
-                    guard originalWindow.isVisible else {
-                        finish(false, "erstes Dokumentfenster nach ⌘N nicht mehr sichtbar")
-                    }
-                    guard WorkspaceWindowRegistry.workspace(for: originalWindow) === original else {
-                        finish(false, "erstes Fenster ist keinem oder dem falschen Workspace zugeordnet")
-                    }
-                    guard WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace else {
-                        finish(false, "zweites Fenster ist keinem oder dem falschen Workspace zugeordnet")
-                    }
-                    guard focusedCommandRouting else {
-                        finish(true, "⌘N erzeugt im Hintergrund ein passend großes Fenster mit "
-                            + "unabhängigem Workspace und gültigem Editor-Einfügepunkt")
-                    }
-
-                    // Fokus zurück ins erste Fenster und dort den ECHTEN ⌘T-Shortcut
-                    // auslösen. So prüft `cmdw` zusätzlich, dass globale Commands
-                    // nach einem Fensterwechsel nicht weiter im zweiten Workspace
-                    // landen.
-                    let originalTabCount = original.tabs.count
-                    originalWindow.makeKeyAndOrderFront(nil)
-                    pollForOriginalWindowActivation(
-                        original: original,
-                        originalWindow: originalWindow,
-                        originalTabCount: originalTabCount,
-                        newWorkspace: newWorkspace,
-                        newWindow: newWindow
-                    )
-                })
-    }
-
-    /// Fensterfokus ist unter macOS kooperativ: Ein im Hintergrund gestarteter
-    /// Testprozess darf `makeKeyAndOrderFront` verweigert bekommen. Der Runner
-    /// aktiviert die App deshalb von außen; hier warten wir auf den echten
-    /// Key-Status und trennen Umgebungsausfall vom Routing-Fehler.
-    private static func pollForOriginalWindowActivation(
-        original: Workspace,
-        originalWindow: NSWindow,
-        originalTabCount: Int,
-        newWorkspace: Workspace,
-        newWindow: NSWindow
-    ) {
-        var polls = 0
-        waitFor(budget: 3, pause: 0.03,
-                condition: {
-                    if originalWindow.isKeyWindow { return true }
-                    if polls % 10 == 9 {
-                        activateApplication(ignoringOtherApps: true)
-                        originalWindow.makeKeyAndOrderFront(nil)
-                    }
-                    polls += 1
-                    return false
-                },
-                onTimeout: { book in
-                    finish(.environment, "erstes Fenster wurde nie Key-Window (Umgebungsproblem, kein Routing-Fehler; \(book.summary))")
-                },
-                then: {
-                    guard Workspace.shared === original else {
-                        finish(false, "Fokus zurück ins erste Fenster aktiviert falschen Workspace")
-                    }
-                    postCmd("t", keyCode: 17, windowNumber: originalWindow.windowNumber)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        guard original.tabs.count == originalTabCount + 1,
-                              newWorkspace.tabs.count == 1 else {
-                            finish(false, "⌘T nach Fensterwechsel landete im falschen Workspace")
-                        }
-                        newWindow.makeKeyAndOrderFront(nil)
-                        pollForNewWindowReactivation(
-                            original: original,
-                            originalWindow: originalWindow,
-                            newWorkspace: newWorkspace,
-                            newWindow: newWindow
-                        )
-                    }
-                })
-    }
-
-    private static func pollForNewWindowReactivation(
-        original: Workspace,
-        originalWindow: NSWindow,
-        newWorkspace: Workspace,
-        newWindow: NSWindow
-    ) {
-        var polls = 0
-        waitFor(budget: 3, pause: 0.03,
-                condition: {
-                    if newWindow.isKeyWindow { return true }
-                    if polls % 10 == 9 {
-                        newWindow.makeKeyAndOrderFront(nil)
-                    }
-                    polls += 1
-                    return false
-                },
-                onTimeout: { book in
-                    finish(.environment, "zweites Fenster wurde nie wieder Key-Window (Umgebungsproblem, kein Routing-Fehler; \(book.summary))")
-                },
-                then: {
-                    guard Workspace.shared === newWorkspace else {
-                        finish(false, "Fokus zurück ins zweite Fenster aktiviert falschen Workspace")
-                    }
-                    guard let activeID = newWorkspace.activeTabID,
-                          let activeIndex = newWorkspace.tabs.firstIndex(where: { $0.id == activeID }) else {
-                        finish(false, "zweites Fenster hat vor dem ⌘W-Test keinen aktiven Tab")
-                    }
-                    // Den letzten Tab sauber/leergeleert machen: ⌘W muss nun ohne
-                    // Dialog das GESAMTE zweite Fenster schließen. Zusätzlich bekommt
-                    // das Fenster einen echten Ordner in der Seitenleiste, während der
-                    // Tab unberührt/leer bleibt — exakt der gemeldete Arbeitszustand.
-                    newWorkspace.tabs[activeIndex].content = ""
-                    newWorkspace.tabs[activeIndex].isDirty = false
-                    let folder = selfTestTemporaryDirectory()
-                        .appendingPathComponent("fastra-selftest-windows-folder-\(getpid())")
-                        .canonicalFileURL
-                    do {
-                        try FileManager.default.createDirectory(
-                            at: folder, withIntermediateDirectories: true
-                        )
-                    } catch {
-                        finish(false, "Ordner-Fixture für den ⌘W-Test fehlt: \(error.localizedDescription)")
-                    }
-                    windowRoutingFixtureDirectory = folder
-                    // Nicht direkt am Workspace öffnen: Der gemeldete Zustand entstand
-                    // über Finder/Dock. Dieser produktive Router muss dasselbe bereits
-                    // aktive Fenster wählen und anschließend wieder nach vorn holen.
-                    MainActor.assumeIsolated {
-                        DocumentWindowController.openFinderItems([folder])
-                    }
-                    let commandTargetIsNewWindow = MainActor.assumeIsolated {
-                        CommandTargeting.targetDocumentWindow() === newWindow
-                            && CommandTargeting.targetWorkspace() === newWorkspace
-                    }
-                    // Pfadvergleich statt URL-Vergleich: Der Workspace hält den Ordner
-                    // als Verzeichnis-URL (mit Schrägstrich), die Fixture-URL ohne —
-                    // unter der /tmp-Sandbox des Runners fiel der URL-Vergleich daran
-                    // (belegt 2026-09-17), obwohl beide denselben Ordner meinen.
-                    guard newWorkspace.projectURL?.resolvingSymlinksInPath().path
-                            == folder.resolvingSymlinksInPath().path,
-                          newWorkspace.isWelcomeScreen,
-                          newWindow.isKeyWindow,
-                          commandTargetIsNewWindow,
-                          WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace else {
-                        finish(false, "Vorderfenster erreichte nicht den Zustand "
-                            + "Ordner plus leerer Willkommen-Tab mit eindeutiger Fensterbindung "
-                            + "(Projekt=\(newWorkspace.projectURL?.path ?? "nil"), "
-                            + "erwartet=\(folder.path), Willkommen=\(newWorkspace.isWelcomeScreen), "
-                            + "Key=\(newWindow.isKeyWindow), Ziel=\(commandTargetIsNewWindow), "
-                            + "Registry=\(WorkspaceWindowRegistry.workspace(for: newWindow) === newWorkspace))")
-                    }
-                    let originalTabIDs = original.tabs.map(\.id)
-                    let originalTabContents = original.tabs.map(\.content)
-                    postCmd("w", keyCode: 13, windowNumber: newWindow.windowNumber)
-                    pollForLastTabWindowClose(
-                        original: original,
-                        originalWindow: originalWindow,
-                        originalTabIDs: originalTabIDs,
-                        originalTabContents: originalTabContents,
-                        closedWorkspace: newWorkspace,
-                        closedWindow: newWindow
-                    )
-                })
-    }
-
-    private static func pollForLastTabWindowClose(
-        original: Workspace,
-        originalWindow: NSWindow,
-        originalTabIDs: [UUID],
-        originalTabContents: [String],
-        closedWorkspace: Workspace,
-        closedWindow: NSWindow
-    ) {
-        waitFor(budget: 3, pause: 0.03,
-                condition: {
-                    guard !closedWindow.isVisible else { return false }
-                    // `prepareToCloseWindow` fährt den Workspace bewusst in den
-                    // Willkommens-Zustand zurück (genau ein frischer Scratch-Tab) und
-                    // gerade NICHT in eine leere Tab-Liste: SwiftUI kann dieselbe Szene
-                    // später wieder anzeigen, und ohne Tab stünde dann ein Fenster mit
-                    // Editorfläche ohne Ziel da. Erwartet wird deshalb genau dieser
-                    // Zustand — die frühere Forderung `tabs.isEmpty` ließ den Test bei
-                    // korrektem Produktverhalten immer scheitern (Review 2026-08-02).
-                    guard closedWorkspace.isWelcomeScreen,
-                          closedWorkspace.tabs.count == 1,
-                          closedWorkspace.tabs.allSatisfy({ $0.url == nil && !$0.isDirty }) else {
-                        finish(false, "Fenster schloss, aber der Workspace steht nicht im "
-                            + "Willkommens-Zustand: \(closedWorkspace.tabs.count) Tab(s), "
-                            + "welcome=\(closedWorkspace.isWelcomeScreen)")
-                    }
-                    guard originalWindow.isVisible else {
-                        finish(false, "⌘W auf dem Zweitfenster schloss auch das erste Fenster")
-                    }
-                    guard original.tabs.map(\.id) == originalTabIDs,
-                          original.tabs.map(\.content) == originalTabContents else {
-                        finish(false, "⌘W auf dem Zweitfenster veränderte Tabs oder Inhalt "
-                            + "des Hintergrundfensters")
-                    }
-                    // Erst wenn auch der aktive Workspace zurückgewechselt ist.
-                    return Workspace.shared === original
-                },
-                onTimeout: { book in
-                    finish(false, "⌘W schloss das Zweitfenster nicht oder aktivierte den falschen Workspace — \(book.summary)")
-                },
-                then: {
-                    verifyPrimaryWindowRecoveryAndClose(
-                        workspace: original,
-                        window: originalWindow
-                    )
-                })
-    }
-
-    /// Letzte Phase des Mehrfenster-⌘W-Tests: Der bisherige Test schloss nur
-    /// das zusätzliche AppKit-Fenster. Der Live-Fehler vom 2026-09-03 betraf
-    /// dagegen das ursprüngliche SwiftUI-Hauptfenster, nachdem alle anderen
-    /// Fenster geschlossen waren. Wir entfernen dessen zentrale Zuordnung
-    /// gezielt, lassen Fenster-Menü und Tastaturrouting sie aus der weiterhin
-    /// montierten Titelbrücke reparieren und schließen dann per echtem ⌘W.
-    private static func verifyPrimaryWindowRecoveryAndClose(
-        workspace: Workspace,
-        window: NSWindow
-    ) {
-        guard window.isVisible, window.isKeyWindow else {
-            finish(.environment, "ursprüngliches Fenster wurde nach dem Schließen "
-                + "des Zweitfensters nicht Key-Window")
-        }
-
-        exerciseMarkdownImageUndo(workspace: workspace, window: window) {
-            continuePrimaryWindowRecoveryAndClose(workspace: workspace, window: window)
-        }
-    }
-
-    private static func continuePrimaryWindowRecoveryAndClose(workspace: Workspace, window: NSWindow) {
-        let recovery: (Bool, Int) = MainActor.assumeIsolated {
-            WorkspaceWindowRegistry.unregister(window)
-            WindowsMenuTabs.shared.synchronizeWithCurrentWindowsMenu()
-            let workspaceWasRestored = WorkspaceWindowRegistry.workspace(for: window) === workspace
-            let windowEntries = (NSApp.windowsMenu?.items ?? []).filter {
-                $0.submenu?.delegate === WindowsMenuTabs.shared
-            }
-            return (workspaceWasRestored, windowEntries.count)
-        }
-        guard recovery.0 else {
-            finish(false, "sichtbares Hauptfenster reparierte seine verlorene "
-                + "Workspace-Zuordnung nicht")
-        }
-        guard recovery.1 == 1 else {
-            finish(false, "Fenster-Menü baute den verlorenen Eintrag des "
-                + "verbliebenen Hauptfensters nicht wieder auf "
-                + "(Dokument-Untermenüs: \(recovery.1))")
-        }
-        verifyNativeWindowTabSelection(workspace: workspace, window: window) { ok, detail in
-            guard ok else { finish(false, "Fenstermenü nach Registry-Recovery: " + detail) }
-            closeRecoveredPrimaryWindow(workspace: workspace, window: window)
-        }
-    }
-
-    /// Erst nach dem echten Menüwechsel folgt die zweite Verlustprobe über ⌘W.
-    private static func closeRecoveredPrimaryWindow(workspace: Workspace, window: NSWindow) {
-        // Ein einzelner sauberer Tab bildet den gemeldeten Endzustand. Die
-        // älteren Testschritte haben mehrere Tabs nur für ihre Schutzproben
-        // angelegt; sie sind synthetisch und dürfen hier ohne Dialog weg.
-        guard let remainingID = workspace.activeTabID else {
-            finish(false, "Hauptfenster besitzt vor dem letzten ⌘W keinen aktiven Tab")
-        }
-        for index in workspace.tabs.indices {
-            workspace.tabs[index].isDirty = false
-        }
-        workspace.closeOtherTabs(keeping: remainingID)
-        guard workspace.tabs.count == 1 else {
-            finish(false, "Hauptfenster ließ sich nicht auf einen Test-Tab reduzieren")
-        }
-
-        // Zweite Verlustprobe: Diesmal muss der echte Tastaturweg die Bindung
-        // noch während desselben Events reparieren und genau dieses Fenster
-        // schließen. Ohne Fix fällt das Event ins SwiftUI-Menü und endet mit
-        // dem vom Nutzer gehörten Systemton.
-        WorkspaceWindowRegistry.unregister(window)
-        postCmd("w", keyCode: 13, windowNumber: window.windowNumber)
-        pollForPrimaryWindowClose(window)
-    }
-
-    /// Bild-Link, Text und die von Fastra kopierte Datei gemeinsam
-    /// zurücknehmen — derselbe Ablauf, der dem Live-Fehler unmittelbar
-    /// vorausging. Die Datei läuft durch die echte Undo-Nebenwirkung; danach
-    /// müssen Fensterbindung und Schließen-Handler unverändert vorhanden sein.
-    private static func exerciseMarkdownImageUndo(
-        workspace: Workspace,
-        window: NSWindow,
-        completion: @escaping () -> Void
-    ) {
-        guard let root = window.contentView,
-              let textView = editorTextView(in: root) as? TextView,
-              textView.string.isEmpty else {
-            finish(false, "kein leerer Editor für die Markdown-Bild-Undo-Probe")
-        }
-        let fixture = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-cmdw-image-undo-\(getpid())", isDirectory: true)
-        let documentDirectory = fixture.appendingPathComponent("dokument", isDirectory: true)
-        let document = documentDirectory.appendingPathComponent("Notizen.md")
-        let source = fixture.appendingPathComponent("quelle.png")
-        do {
-            try FileManager.default.createDirectory(
-                at: documentDirectory, withIntermediateDirectories: true
-            )
-            try "".write(to: document, atomically: true, encoding: .utf8)
-            try writeSolidPNG(to: source, width: 8, height: 8)
-            let stored = try MarkdownImageStore.storeImageFile(
-                source, documentURL: document
-            )
-            textView.replaceCharacters(in: NSRange(location: 0, length: 0),
-                                       with: stored.link)
-            MainActor.assumeIsolated {
-                MarkdownImageUndo.register(
-                    textView: textView, insertion: stored.link,
-                    storedImages: [stored]
-                )
-            }
-            textView.undoManager?.endUndoGrouping()
-            let end = (textView.string as NSString).length
-            textView.replaceCharacters(in: NSRange(location: end, length: 0),
-                                       with: "\nText danach")
-            textView.undoManager?.endUndoGrouping()
-
-            func undoStep(_ count: Int) {
-                guard count < 4, !textView.string.isEmpty, textView.undoManager?.canUndo == true else {
-                    guard textView.string.isEmpty,
-                          !FileManager.default.fileExists(atPath: stored.fileURL.path),
-                          WorkspaceWindowRegistry.workspace(for: window) === workspace,
-                          workspace.closeWindowHandler != nil else {
-                        try? FileManager.default.removeItem(at: fixture)
-                        finish(false, "Markdown-Bild-Undo beschädigte Text-, Datei- oder Fensterzustand")
-                    }
-                    try? FileManager.default.removeItem(at: fixture)
-                    completion()
-                    return
-                }
-                textView.undoManager?.undo()
-                waitFor(budget: 5, pause: 0.02,
-                    condition: { textView.undoManager?.isUndoing != true },
-                    onTimeout: { _ in
-                        try? FileManager.default.removeItem(at: fixture)
-                        finish(false, "Markdown-Bild-Undo schloss seine Dateiphase nicht ab")
-                    }, then: { undoStep(count + 1) })
-            }
-            undoStep(0)
-        } catch {
-            try? FileManager.default.removeItem(at: fixture)
-            finish(false, "Markdown-Bild-Undo-Fixture scheiterte: \(error.localizedDescription)")
-        }
-    }
-
-    private static func pollForPrimaryWindowClose(_ window: NSWindow) {
-        waitFor(budget: 3, pause: 0.03,
-                condition: { !window.isVisible },
-                onTimeout: { book in
-                    finish(false, "⌘W schloss das wieder angebundene Hauptfenster nicht — \(book.summary)")
-                },
-                then: {
-                    finish(true, "⌘W schließt Suchmaske, Hilfe, Zweitfenster und das "
-                        + "Hauptfenster nach Bild-Undo; Fensterbindung und -Menü repariert")
-                })
-    }
 
     // MARK: - unabhängige Suchdialoge in mehreren Dokumentfenstern
 
     /// Reproduziert den gemeldeten Befund mit zwei Dokumentfenstern und je einer
     /// eigenen Suchmaske: Ein Trefferklick im zweiten Suchdialog darf weder
-    /// Selektion noch Scrollziel des ersten Editors verändern.
+    /// Selektion noch Scrollziel des ersten Editors verändern. Danach müssen
+    /// Speichern und Formatieren den Besitzer der Key-Suche treffen, obwohl
+    /// das andere Dokument in AppKits Fensterreihenfolge davor steht.
     private static func runMultiWindowSearchJumpTest() {
         testLabel = "multisearch"
         guard let firstWorkspace = Workspace.shared,
@@ -2425,374 +1095,433 @@ enum SelfTest {
                            + "Viewport=\(secondTV.visibleRect)) — \(book.summary)")
                 },
                 then: {
-                    finish(true, "subagent wurde nur im zweiten Editor selektiert und sichtbar; "
-                        + "zweite Suchmaske blieb Key, erster Editor unverändert")
+                    runMultiWindowCommandOwnerChecks(firstWindow: firstWindow,
+                                                     secondWindow: secondWindow)
                 })
     }
 
-    // MARK: - -selftest bgscroll
-
-    /// Hintergrundfenster dürfen bei prozessweiten SwiftUI-Neubewertungen nie
-    /// ungefragt scrollen (Dauertest-Befund 2026-08-09).
-    ///
-    /// Hintergrund: Der Treffer-Sprung schreibt eine `CursorPosition` mit
-    /// `range == .notFound` in den Editor-State; der CESE-Coordinator verwirft
-    /// die aufgelöste Rückmeldung im `isUpdatingFromRepresentable`-Fenster —
-    /// State und Controller konvergieren danach nie. Der 4c-Patch in build.sh
-    /// (`updateControllerWithState`) feuerte deshalb bei JEDER Neubewertung
-    /// erneut `setCursorPositions(..., scrollToVisible: true)`: Sobald eine
-    /// prozessweite Einstellung (hier: UI-Zoom) alle EditorViews neu bewertete,
-    /// scrollte auch ein nie angefasstes HINTERGRUND-Fenster zurück zu seinem
-    /// alten Sprungziel. Der Fix bindet das Scrollen ans Key-Window; dieser
-    /// Test stellt genau das Szenario nach und misst, dass der Ausschnitt des
-    /// hinteren Fensters stehen bleibt.
-    private static func runBackgroundScrollTest() {
-        testLabel = "bgscroll"
-        guard let frontWorkspace = Workspace.shared,
-              let frontWindow = NSApp.windows.first(where: {
-                  !SearchWindow.isSearchWindow($0)
-                      && WorkspaceWindowRegistry.workspace(for: $0) === frontWorkspace
-                      && $0.isVisible
-              }) else {
-            finish(false, "kein erstes Dokumentfenster mit Workspace-Zuordnung")
-        }
-        // Zweites Fenster öffnen — es wird nach dem präparierten Sprung das
-        // HINTERGRUND-Fenster (siehe `MainActor.assumeIsolated` in multisearch).
-        let backWorkspace = MainActor.assumeIsolated {
-            DocumentWindowController.openNewDocument(defaults: workspaceDefaults())
-        }
-        guard let backWindow = NSApp.windows.first(where: {
-            !SearchWindow.isSearchWindow($0)
-                && WorkspaceWindowRegistry.workspace(for: $0) === backWorkspace
-                && $0.isVisible
-        }) else {
-            finish(false, "kein zweites Dokumentfenster mit Workspace-Zuordnung")
-        }
-
-        // Langer Inhalt in beiden Fenstern; der Treffer liegt weit unten,
-        // damit der Sprung im hinteren Fenster sichtbar scrollen MUSS.
-        var backLines = (1...200).map { "Hinteres Fenster, Zeile \($0): leer" }
-        backLines[169] = "Hinteres Fenster, Zeile 170: bgscrolltreffer"
-        let frontContent = (1...200)
-            .map { "Vorderes Fenster, Zeile \($0)" }.joined(separator: "\n")
-        let fixtureDirectory = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-bgscroll-\(UUID().uuidString)",
-                                    isDirectory: true)
-        let fixtureURL = fixtureDirectory.appendingPathComponent("vorn.txt")
-        do {
-            try FileManager.default.createDirectory(
-                at: fixtureDirectory, withIntermediateDirectories: false
-            )
-            try frontContent.write(to: fixtureURL, atomically: true,
-                                   encoding: .utf8)
-            guard let index = frontWorkspace.tabs.firstIndex(where: {
-                $0.id == frontWorkspace.activeTabID
-            }) else {
-                finish(false, "aktiver Vorderfenster-Tab fehlt")
+    /// Der Treffer-Sprung bleibt die erste Phase. Danach konkurriert die echte
+    /// Suche A mit dem davor einsortierten Dokument B um globale Menübefehle.
+    private static func runMultiWindowCommandOwnerChecks(firstWindow: NSWindow,
+                                                         secondWindow: NSWindow) {
+        Task { @MainActor in
+            guard let first = WorkspaceWindowRegistry.workspace(for: firstWindow),
+                  let second = WorkspaceWindowRegistry.workspace(for: secondWindow),
+                  let search = NSApp.windows.first(where: {
+                      SearchWindow.isSearchWindow($0)
+                          && WorkspaceWindowRegistry.workspace(for: $0) === first
+                  }) else { finish(false, "Dokumente oder Suche A für Menü-Zielprüfung fehlen") }
+            let base = selfTestTemporaryDirectory()
+                .appendingPathComponent("fastra-command-owner-\(UUID().uuidString)")
+            shortSearchFixtureDirectory = base
+            let firstURL = base.appendingPathComponent("owner-a.json")
+            let secondURL = base.appendingPathComponent("owner-b.json")
+            let firstOriginal = #"{"owner":"A","value":1}"#
+            let firstEdited = #"{"owner":"A","value":2}"#
+            let secondOriginal = #"{"owner":"B","value":10}"#
+            let secondEdited = #"{"owner":"B","value":20}"#
+            do {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+                try Data(firstOriginal.utf8).write(to: firstURL)
+                try Data(secondOriginal.utf8).write(to: secondURL)
+                var firstLoaded = false, secondLoaded = false
+                first.loadFile(at: firstURL) { firstLoaded = $0 }
+                second.loadFile(at: secondURL) { secondLoaded = $0 }
+                try await awaitCommandOwnerState("JSON-Editoren geladen") {
+                    firstLoaded && secondLoaded
+                        && CommandTargeting.editorTextView(for: first)?.string == firstOriginal
+                        && CommandTargeting.editorTextView(for: second)?.string == secondOriginal
+                }
+                guard let firstEditor = CommandTargeting.editorTextView(for: first),
+                      let secondEditor = CommandTargeting.editorTextView(for: second) else {
+                    finish(false, "JSON-Editoren nach dem Laden verschwunden")
+                }
+                firstEditor.insertText(firstEdited,
+                    replacementRange: NSRange(location: 0, length: firstEditor.length))
+                secondEditor.insertText(secondEdited,
+                    replacementRange: NSRange(location: 0, length: secondEditor.length))
+                firstEditor.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
+                let secondSelection = NSRange(location: 0, length: secondEditor.length)
+                secondEditor.selectionManager.setSelectedRange(secondSelection)
+                try await awaitCommandOwnerState("beide JSON-Dokumente ungespeichert") {
+                    first.activeTab?.content == firstEdited && first.activeTab?.isDirty == true
+                        && second.activeTab?.content == secondEdited && second.activeTab?.isDirty == true
+                }
+                // Nur der Aufbau setzt Fenster explizit. Die Suche wird zuletzt
+                // Key, ohne ihr eigenes Dokument vor B zu holen.
+                firstWindow.makeKeyAndOrderFront(nil)
+                secondWindow.makeKeyAndOrderFront(nil)
+                search.makeKeyAndOrderFront(nil)
+                func ownerOrderIsIntact() -> Bool {
+                    let documents = NSApp.orderedWindows.filter {
+                        $0.isVisible && ($0 === firstWindow || $0 === secondWindow)
+                    }
+                    return search.isKeyWindow && documents.count == 2
+                        && documents[0] === secondWindow && documents[1] === firstWindow
+                }
+                func secondIsUntouched() -> Bool {
+                    second.activeTab?.content == secondEdited && second.activeTab?.isDirty == true
+                        && secondEditor.string == secondEdited
+                        && secondEditor.fastraSafeSelectedRange == secondSelection
+                        && (try? Data(contentsOf: secondURL)) == Data(secondOriginal.utf8)
+                }
+                try await awaitCommandOwnerState("Suche A Key, Dokument B vor A") { ownerOrderIsIntact() }
+                guard let main = NSApp.mainMenu,
+                      let save = menuItem(forExactKeyEquivalent: "s", modifiers: .command, in: main) else {
+                    finish(false, "echter Speichern-Menüeintrag fehlt")
+                }
+                try await performCommandOwnerMenuItem(save)
+                try await awaitCommandOwnerState("Menü speichert ausschließlich A") {
+                    first.activeTab?.isDirty == false
+                        && (try? Data(contentsOf: firstURL)) == Data(firstEdited.utf8)
+                }
+                guard ownerOrderIsIntact(), secondIsUntouched(),
+                      let format = findMenuItem(titled: L10n.string("Dokument formatieren"), in: NSApp.mainMenu) else {
+                    finish(false, "Speichern veränderte B oder die Such-/Dokumentreihenfolge")
+                }
+                try await performCommandOwnerMenuItem(format)
+                try await awaitCommandOwnerState("Menü formatiert ausschließlich A") {
+                    first.documentTransformationActivity == nil && firstEditor.string.contains("\n")
+                        && first.activeTab?.content == firstEditor.string && first.activeTab?.isDirty == true
+                }
+                let parsed = try JSONSerialization.jsonObject(with: Data(firstEditor.string.utf8)) as? NSDictionary
+                guard parsed == ["owner": "A", "value": 2] as NSDictionary,
+                      ownerOrderIsIntact(), secondIsUntouched(),
+                      (try? Data(contentsOf: firstURL)) == Data(firstEdited.utf8) else {
+                    finish(false, "Formatieren traf fremde Daten, speicherte ungefragt oder änderte den Fensterbesitz")
+                }
+                // Ein normaler Klick ist der bewusste Wechsel zum Undo-Ziel,
+                // keine Reparatur einer behaupteten automatischen Fokusrückgabe.
+                search.orderOut(nil)
+                let visible = firstEditor.visibleRect
+                let point = firstEditor.convert(NSPoint(x: visible.minX + min(80, visible.width / 2),
+                    y: visible.minY + min(20, visible.height / 2)), to: nil)
+                guard sendMouseClick(at: point, in: firstWindow, modifiers: [], viaApp: true) else {
+                    finish(false, "Editorklick für Undo in A nicht erzeugbar")
+                }
+                try await awaitCommandOwnerState("Maus fokussiert A für natives Undo") {
+                    firstWindow.isKeyWindow && firstWindow.firstResponder === firstEditor
+                        && firstEditor.undoManager?.canUndo == true
+                }
+                try await undoFromEditMenu()
+                try await awaitCommandOwnerState("Undo nimmt nur Formatierung A zurück") {
+                    firstEditor.string == firstEdited && first.activeTab?.content == firstEdited
+                }
+                guard secondIsUntouched(),
+                      (try? Data(contentsOf: firstURL)) == Data(firstEdited.utf8) else {
+                    finish(false, "Undo in A veränderte B oder gespeicherte Bytes")
+                }
+                finish(true, "Treffer-Sprung nur in B; Suche A bei Dokument B vor A: "
+                    + "Menü-Speichern und -Formatieren nur in A, natives Undo in A; B samt Bytes, Modell und Auswahl unverändert")
+            } catch {
+                finish(error is SelfTestMenuRootExchange.EnvironmentFailure ? .environment
+                    : ((error as NSError).domain == "SelfTestTrackedMainMenu" || NSApp.isActive ? .fail : .environment),
+                       "Mehrfenster-Menüprüfung: \(error.localizedDescription)")
             }
-            var tab = frontWorkspace.tabs[index]
-            tab.title = fixtureURL.lastPathComponent
-            tab.path = fixtureURL.path
-            tab.url = fixtureURL
-            tab.content = frontContent
-            tab.diskSnapshot = FileSnapshot(data: Data(frontContent.utf8),
-                                             at: fixtureURL)
-            tab.recordSavedContentBaseline()
-            frontWorkspace.tabs[index] = tab
-            backgroundScrollFixtureDirectory = fixtureDirectory
-        } catch {
-            try? FileManager.default.removeItem(at: fixtureDirectory)
-            finish(false, "Speicher-Fixture konnte nicht angelegt werden: \(error)")
         }
-        backWorkspace.activeTabContent.wrappedValue = backLines.joined(separator: "\n")
-        // CESE übernimmt programmatische Binding-Änderungen nicht live; der
-        // produktive Reload-Zähler remountet beide Editoren mit dem Testinhalt.
-        frontWorkspace.editorReloadNonce += 1
-        backWorkspace.editorReloadNonce += 1
-
-        activateApplication(ignoringOtherApps: true)
-        pollBackgroundScrollEditors(frontWindow: frontWindow,
-                                    backWorkspace: backWorkspace,
-                                    backWindow: backWindow)
     }
 
-    /// Wartet, bis beide Editoren montiert sind und der hintere den Testinhalt
-    /// wirklich zeigt, und löst dann den echten Treffer-Sprung aus (derselbe
-    /// Weg wie Suchtreffer-Klick und ⌘G, siehe `postMatchJump`).
-    private static func pollBackgroundScrollEditors(frontWindow: NSWindow,
-                                                    backWorkspace: Workspace,
-                                                    backWindow: NSWindow) {
-        // Der hintere Editor muss über drei Durchläufe dieselbe View bleiben.
-        var previousBackTV: TextView?
-        var stableTicks = 0
-        var frontTV: TextView?
-        var backTV: TextView?
-        waitFor(budget: 5, pause: 0.05,
-                condition: {
-                    frontTV = frontWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
-                    backTV = backWindow.contentView.flatMap { editorTextView(in: $0) as? TextView }
-                    stableTicks = backTV === previousBackTV ? stableTicks + 1 : 0
-                    previousBackTV = backTV
-                    guard let backTV, frontTV != nil,
-                          sourceEditorController(for: backTV) != nil,
-                          (backTV.string as NSString).range(of: "bgscrolltreffer").location != NSNotFound,
-                          stableTicks >= 3 else { return false }
-                    return true
-                },
-                onTimeout: { book in
-                    finish(false, "Editoren mit Testinhalt wurden nicht bereit "
-                           + "(vorderer=\(frontTV != nil), hinterer=\(backTV != nil), "
-                           + "Controller=\(backTV.map { sourceEditorController(for: $0) != nil } ?? false), "
-                           + "stabil=\(stableTicks)) — \(book.summary)")
-                },
-                then: {
-                    guard let backTV else { finish(false, "hinterer Editor nach Erfolg verschwunden") }
-                    pollBackgroundScrollReadyForJump(frontWindow: frontWindow,
-                                                     backWorkspace: backWorkspace,
-                                                     backWindow: backWindow,
-                                                     backTV: backTV)
-                })
+    @MainActor private static func awaitCommandOwnerState(
+        _ label: String, condition: @escaping () -> Bool
+    ) async throws {
+        let failure: String? = await withCheckedContinuation { continuation in
+            waitFor(budget: 2, pause: 0.03, condition: condition,
+                    onTimeout: { book in continuation.resume(returning: label + " — " + book.summary) },
+                    then: { continuation.resume(returning: nil) })
+        }
+        if let failure {
+            throw NSError(domain: "SelfTestCommandOwner", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: failure])
+        }
     }
 
-    /// Stellt vor dem einmaligen Treffer-Sprung denselben Zustand her, den ein
-    /// Nutzer durch den Wechsel in das zweite Fenster erzeugt. Ein gerade neu
-    /// montierter CESE-Editor kann schon Inhalt und Controller besitzen, aber
-    /// noch keine Auswahl. Trifft der Sprung genau in diesen ersten
-    /// Abgleich, wird die Zeile gescrollt, während die Auswahl `NSNotFound`
-    /// bleibt. Passives Warten heilt diesen verlorenen Abgleich nicht.
-    private static func pollBackgroundScrollReadyForJump(frontWindow: NSWindow,
-                                                         backWorkspace: Workspace,
-                                                         backWindow: NSWindow,
-                                                         backTV: TextView) {
-        var previousSelection: NSRange?
-        var stableTicks = 0
-        var selection = NSRange(location: NSNotFound, length: 0)
-        var acceptedFirstResponder = false
-        waitFor(budget: 5, pause: 0.05,
-                condition: {
-                    let mountedBackTV = backWindow.contentView.flatMap {
-                        editorTextView(in: $0) as? TextView
-                    }
-                    guard mountedBackTV === backTV else {
-                        finish(false, "hinterer Editor wurde vor dem Treffer-Sprung neu aufgebaut")
-                    }
-                    activateApplication(ignoringOtherApps: true)
-                    backWindow.makeKeyAndOrderFront(nil)
-                    acceptedFirstResponder = backWindow.makeFirstResponder(backTV)
-                    if backTV.selectionManager.textSelections.isEmpty {
-                        // Entspricht `EditorView.focusActiveEditor`: Erst die echte
-                        // Anfangsauswahl anlegen, dann auf CESEs Rückmeldung warten.
-                        backTV.selectionManager.setSelectedRange(
-                            NSRange(location: 0, length: 0)
-                        )
-                    }
-                    selection = backTV.selectedRange()
-                    let validSelection = selection.location != NSNotFound
-                        && NSMaxRange(selection) <= (backTV.string as NSString).length
-                    let sameSelection = previousSelection.map {
-                        NSEqualRanges($0, selection)
-                    } ?? false
-                    stableTicks = sameSelection ? stableTicks + 1 : 0
-                    previousSelection = validSelection ? selection : nil
-                    return NSApp.isActive && backWindow.isKeyWindow
-                        && backWindow.firstResponder === backTV
-                        && acceptedFirstResponder && validSelection
-                        && backWorkspace.cursorLine != nil
-                        && stableTicks >= 2
-                },
-                onTimeout: { book in
-                    // Ein fremdes Vordergrundprogramm verhindert den Fokusnachweis.
-                    // Ein falsches eigenes Key-Fenster bei aktiver App bleibt ein Fehler.
-                    finish(NSApp.isActive ? .fail : .environment, "hinterer Editor wurde vor dem Treffer-Sprung nicht eingabebereit "
-                           + "(App aktiv=\(NSApp.isActive), Fenster key=\(backWindow.isKeyWindow), "
-                           + "First Responder=\(backWindow.firstResponder === backTV), "
-                           + "Fokus angenommen=\(acceptedFirstResponder), Auswahl=\(selection), "
-                           + "Cursorzeile=\(backWorkspace.cursorLine.map(String.init) ?? "nil"), "
-                           + "stabil=\(stableTicks)) — \(book.summary)")
-                },
-                then: {
-                    let result = BufferSearch.find(
-                        in: backWorkspace.activeTab?.content ?? "",
-                        options: SearchOptions(find: "bgscrolltreffer", replace: "",
-                                               isRegex: false, caseSensitive: true)
-                    )
-                    guard let target = result.matches.first, target.line == 170 else {
-                        finish(false, "bgscrolltreffer-Testtreffer auf Zeile 170 fehlt")
-                    }
-                    // Der Sprung hinterlässt im Editor-State des hinteren Fensters die
-                    // nie konvergierende `.notFound`-CursorPosition — genau der
-                    // Zustand, in dem der alte 4c-Patch bei jeder Neubewertung erneut
-                    // scrollte.
-                    NotificationCenter.default.postMatchJump(target, for: backWorkspace)
-                    pollBackgroundScrollJump(frontWindow: frontWindow,
-                                             backWindow: backWindow, backTV: backTV)
-                })
+    @MainActor private static func performCommandOwnerMenuItem(
+        _ item: NSMenuItem, ticks: Int = 66, pause: TimeInterval = 0.03,
+        expectsEnabled: Bool = true, expectedState: NSControl.StateValue? = nil
+    ) async throws {
+        guard let main = NSApp.mainMenu, var branch = item.menu else {
+            throw NSError(domain: "SelfTestCommandOwnerMenu", code: 1)
+        }
+        while let parent = branch.supermenu, parent !== main { branch = parent }
+        guard let root = main.items.first(where: { $0.submenu === branch }) else {
+            throw NSError(domain: "SelfTestCommandOwnerMenu", code: 2)
+        }
+        let title = item.title, key = item.keyEquivalent, modifiers = item.keyEquivalentModifierMask
+        try await trackedMainMenuItem(rootTitle: root.title, label: title, ticks: ticks, pause: pause,
+                                      expectsEnabled: expectsEnabled, expectedState: expectedState) { menu in
+            guard let fresh = findMenuItem(titled: title, in: menu),
+                  fresh.keyEquivalent == key, fresh.keyEquivalentModifierMask == modifiers else { return nil }
+            return fresh
+        }
     }
 
-    /// Wartet, bis der Sprung im hinteren Fenster Auswahl UND sichtbares
-    /// Scrollen bewirkt hat — der Beleg, dass das Sprungziel weit unten liegt.
-    ///
-    /// Zusätzlich muss die Scrollposition drei Ticks lang STILLSTEHEN: Der
-    /// Sprung scrollt konvergierend über mehrere Runloop-Durchläufe
-    /// (`convergeScroll`); ein zu frühes Zurückscrollen an den Anfang würde
-    /// sonst mit dessen letzten Iterationen kollidieren und den Test flaky
-    /// machen.
-    private static func pollBackgroundScrollJump(frontWindow: NSWindow,
-                                                 backWindow: NSWindow,
-                                                 backTV: TextView) {
-        var lastY: CGFloat = -1
-        var stableTicks = 0
-        var selection = NSRange(location: NSNotFound, length: 0)
-        var scrolledY: CGFloat = 0
-        waitFor(budget: 5, pause: 0.05,
-                condition: {
-                    selection = backTV.selectedRange()
-                    let clip = backTV.enclosingScrollView?.contentView
-                    scrolledY = clip?.bounds.origin.y ?? 0
-                    let isStable = scrolledY == lastY
-                    let mountedBackTV = backWindow.contentView.flatMap {
-                        editorTextView(in: $0) as? TextView
-                    }
-                    guard mountedBackTV === backTV else {
-                        finish(false, "hinterer Editor wurde während des Treffer-Sprungs neu aufgebaut")
-                    }
-                    let arrived = selection.location != NSNotFound && selection.length > 0
-                        && NSMaxRange(selection) <= (backTV.string as NSString).length
-                        && (backTV.string as NSString).substring(with: selection) == "bgscrolltreffer"
-                        && scrolledY > 300 && isStable && stableTicks >= 2
-                    lastY = scrolledY
-                    stableTicks = isStable ? stableTicks + 1 : 0
-                    return arrived
-                },
-                onTimeout: { book in
-                    finish(false, "Sprung im hinteren Fenster kam nicht ruhig an "
-                           + "(selection=\(selection), y=\(Int(scrolledY)), stabil=\(stableTicks)) — \(book.summary)")
-                },
-                then: {
-                    // ERST den Fensterwechsel: Solange das hintere Fenster selbst Key
-                    // ist, darf auch der reparierte Patch dort scrollen — das
-                    // Zurückscrollen an den Anfang passiert deshalb erst, wenn das
-                    // vordere Fenster sicher Key ist.
-                    frontWindow.makeKeyAndOrderFront(nil)
-                    // Gezielte Negativprobe: Die Vorbereitung braucht eine aktive App.
-                    // Erst hier die Test-App regulär ausblenden. So verlieren ihre
-                    // Fenster über AppKit den Fokus, ohne einen Zustand zu simulieren.
-                    if ProcessInfo.processInfo.environment[
-                        "FASTRA_SELFTEST_DEACTIVATE_BEFORE_BGSCROLL_SWITCH"
-                    ] == "1" {
-                        guard NSApp.isActive, frontWindow.isKeyWindow else {
-                            finish(false, "Fokusprobe begann ohne aktive App und vorderes Key-Fenster")
+    /// Ein Aufruf besitzt genau eine native Menüphase: erst frischen Beginn
+    /// belegen, dann das Item auflösen; Erfolg erst nach Ende und AX-Rückkehr.
+    /// performActionForItem beendet Tracking nicht selbst, deshalb schließt
+    /// cancelTracking die ausgewählte Phase wie im bestehenden History-Helfer.
+    @MainActor private static func trackedMainMenuItem(
+        rootTitle: String, label: String, ticks: Int, pause: TimeInterval,
+        expectsEnabled: Bool = true, expectedState: NSControl.StateValue? = nil,
+        find: @escaping @MainActor (NSMenu) -> NSMenuItem?
+    ) async throws {
+        guard let main = NSApp.mainMenu,
+              let root = main.items.first(where: { $0.title == rootTitle }), root.submenu != nil else {
+            throw NSError(domain: "SelfTestTrackedMainMenu", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Menüwurzel fehlt: " + rootTitle])
+        }
+        let external = SelfTestMenuRootExchange.tests.contains(testLabel)
+        let exchange: SelfTestMenuRootExchange?
+        if external {
+            guard let path = ProcessInfo.processInfo.environment["FASTRA_SELFTEST_MENU_ROOT_DIR"], !path.isEmpty else {
+                throw SelfTestMenuRootExchange.EnvironmentFailure(reason: "privater Runnerkanal fehlt")
+            }
+            exchange = try SelfTestMenuRootExchange(directory: path, test: testLabel)
+        } else { exchange = nil }
+        var preInputFailure: SelfTestMenuRootExchange.EnvironmentFailure?
+        var failureState = ""
+        let call = String(UUID().uuidString.prefix(8)), started = ProcessInfo.processInfo.systemUptime
+        var entered = false, rootReturned = false, rootAccepted = false
+        var began = false, ended = false, selected = false, actionReturned = false, concluded = false
+        var beginCount = 0, endCount = 0
+        var lastGuard = "noch kein frischer Beginn"
+        var lastItemGuard = ""
+        var selectedMenu: NSMenu? = root.submenu
+        var timer: Timer?
+        @MainActor func diagnostic(_ event: String) {
+            let key = NSApp.keyWindow
+            let owner = key.flatMap { WorkspaceWindowRegistry.workspace(for: $0) }
+            let target = CommandTargeting.targetWorkspace()
+            let documents = NSApp.orderedWindows.filter { $0.isVisible }.compactMap { window -> String? in
+                guard let workspace = WorkspaceWindowRegistry.workspace(for: window) else { return nil }
+                return "\(window.windowNumber):\(ObjectIdentifier(workspace)):\(workspace.activeDocumentFormat.id.rawValue):\(String(describing: workspace.activeDocumentFormattingID))"
+            }
+            let line = "MENU_LIFECYCLE test=\(testLabel) call=\(call) item=\(label) event=\(event) ms=\(Int((ProcessInfo.processInfo.systemUptime - started) * 1000))"
+                + " main=\(ObjectIdentifier(main)) root=\(rootTitle):\(ObjectIdentifier(root)) began=\(beginCount) ended=\(endCount)"
+                + " rootReturn=\(rootReturned) rootAccepted=\(rootAccepted) selected=\(selected) actionReturn=\(actionReturned)"
+                + " active=\(NSApp.isActive) key=\(key?.windowNumber ?? -1):\(key.map { String(describing: type(of: $0)) } ?? "nil")"
+                + " owner=\(owner.map { String(describing: ObjectIdentifier($0)) } ?? "nil") target=\(target.map { String(describing: ObjectIdentifier($0)) } ?? "nil")"
+                + " format=\(target?.activeDocumentFormat.id.rawValue ?? "nil") formatting=\(String(describing: target?.activeDocumentFormattingID))"
+                + " documents=\(documents) guard=\(lastGuard)\n"
+            FileHandle.standardError.write(Data(line.utf8))
+        }
+        let beginObserver = NotificationCenter.default.addObserver(
+            forName: NSMenu.didBeginTrackingNotification, object: main, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                guard entered, !concluded else { return }
+                beginCount += 1
+                began = true
+                ended = false
+                diagnostic("begin")
+            }
+        }
+        let endObserver = NotificationCenter.default.addObserver(
+            forName: NSMenu.didEndTrackingNotification, object: main, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                guard began, endCount < beginCount else { return }
+                endCount += 1
+                ended = beginCount == endCount
+                diagnostic("end")
+            }
+        }
+        defer { // trackedMainMenuItem kehrt vor dem äußeren finish regulär zurück oder wirft.
+            timer?.invalidate()
+            NotificationCenter.default.removeObserver(beginObserver)
+            NotificationCenter.default.removeObserver(endObserver)
+            if !ended { selectedMenu?.cancelTracking(); main.cancelTracking() }
+        }
+        let success: Bool = await withCheckedContinuation { continuation in
+            @MainActor func conclude(_ success: Bool) {
+                guard !concluded else { return }
+                concluded = true
+                timer?.invalidate(); timer = nil
+                // Der ursprüngliche Zustand muss vor cancelTracking feststehen.
+                // Ein Cleanup-Ende darf den fehlenden regulären Endbeleg nicht ersetzen.
+                if !success {
+                    failureState = "Beginn=\(began), Ende=\(ended), AX-Rückkehr=\(rootReturned), AX-Annahme=\(rootAccepted), Auswahl=\(selected), Action-Rückkehr=\(actionReturned); \(lastGuard)"
+                }
+                diagnostic(success ? "resume-success" : "resume-failure-before-cleanup")
+                if !success { selectedMenu?.cancelTracking(); main.cancelTracking() }
+                DispatchQueue.main.async { continuation.resume(returning: success) }
+            }
+            @MainActor func completeIfReady() {
+                if began && ended && rootReturned && rootAccepted && selected && actionReturned {
+                    conclude(true)
+                }
+            }
+            var count = 0
+            @MainActor func tick() {
+                guard !concluded else { return }
+                count += 1
+                if let exchange {
+                    do {
+                        if !entered, try exchange.requestIfReady(rootTitle: rootTitle) {
+                            entered = true
+                            diagnostic("root-request")
                         }
-                        NSApp.hide(nil)
-                        pollBackgroundScrollFocusLoss(frontWindow: frontWindow,
-                                                      backWindow: backWindow, backTV: backTV)
+                        if !rootReturned, let reply = exchange.reply() {
+                            switch reply {
+                            case let .actionReturned(error):
+                                rootReturned = true
+                                rootAccepted = error == 0
+                                lastGuard = "externalAX=\(error)"
+                                diagnostic("root-return")
+                            case let .environment(reason):
+                                preInputFailure = .init(reason: reason)
+                                lastGuard = "preInput=\(reason)"
+                                conclude(false)
+                                return
+                            }
+                        }
+                    } catch {
+                        lastGuard = "exchange=\(error.localizedDescription)"
+                        conclude(false)
                         return
                     }
-                    pollBackgroundScrollKeyWindow(frontWindow: frontWindow,
-                                                  backWindow: backWindow, backTV: backTV)
-                })
-    }
-
-    /// AppKit bestätigt das Ausblenden erst in späteren Runloop-Durchläufen.
-    /// Danach läuft die unveränderte eigentliche Timeout-Prüfung.
-    private static func pollBackgroundScrollFocusLoss(frontWindow: NSWindow,
-                                                       backWindow: NSWindow,
-                                                       backTV: TextView) {
-        waitFor(budget: 2, pause: 0.05,
-                condition: { NSApp.isHidden && !NSApp.isActive && !frontWindow.isKeyWindow },
-                onTimeout: { book in
-                    finish(false, "Fokusprobe konnte AppKit-Fokus nicht entziehen "
-                           + "(hidden=\(NSApp.isHidden), active=\(NSApp.isActive), "
-                           + "frontKey=\(frontWindow.isKeyWindow)) — \(book.summary)")
-                },
-                then: {
-                    pollBackgroundScrollKeyWindow(frontWindow: frontWindow,
-                                                  backWindow: backWindow, backTV: backTV)
-                })
-    }
-
-    /// Wartet, bis das vordere Fenster wirklich Key ist und das hintere nicht,
-    /// und scrollt das hintere Fenster DANN an den Dateianfang — so, wie ein
-    /// Nutzer es dort zuletzt stehen gelassen hätte.
-    private static func pollBackgroundScrollKeyWindow(frontWindow: NSWindow,
-                                                      backWindow: NSWindow,
-                                                      backTV: TextView) {
-        waitFor(budget: 5, pause: 0.05,
-                condition: { frontWindow.isKeyWindow && !backWindow.isKeyWindow },
-                onTimeout: { book in
-                    // Ein fremdes Vordergrundprogramm verhindert den Fokusnachweis.
-                    // Ein falsches eigenes Key-Fenster bei aktiver App bleibt ein Fehler.
-                    finish(NSApp.isActive ? .fail : .environment, "vorderes Fenster wurde nicht Key "
-                           + "(App aktiv=\(NSApp.isActive), frontKey=\(frontWindow.isKeyWindow), "
-                           + "backKey=\(backWindow.isKeyWindow)) — \(book.summary)")
-                },
-                then: {
-                    // Regulärer AppKit-Weg statt synthetischer Scroll-Events (siehe
-                    // AGENTS.md, Scrollen in Fenster-Selbsttests).
-                    guard let scrollView = backTV.enclosingScrollView else {
-                        finish(false, "keine ScrollView am hinteren Editor")
+                }
+                completeIfReady()
+                guard !concluded else { return }
+                if count >= ticks { conclude(false); return }
+                guard began, !ended, !selected else { return }
+                let freshRoot = main.items.first(where: { $0.title == rootTitle })
+                let menu = freshRoot?.submenu
+                let item = menu.flatMap(find)
+                let itemMenu = item?.menu
+                var itemRoot = itemMenu
+                while let parent = itemRoot?.supermenu { itemRoot = parent }
+                let index = item.flatMap { itemMenu?.index(of: $0) } ?? -1
+                let binding = NSApp.mainMenu === main && freshRoot === root && root.menu === main
+                    && itemRoot === main && index >= 0
+                let guardDescription = "binding=\(binding) item=\(item.map { String(describing: ObjectIdentifier($0)) } ?? "nil")"
+                    + " index=\(index) enabled=\(String(describing: item?.isEnabled)) action=\(item?.action.map(NSStringFromSelector) ?? "nil")"
+                    + " target=\(item?.target.map { String(describing: type(of: $0)) } ?? "nil") view=\(item?.view.map { String(describing: type(of: $0)) } ?? "nil") state=\(String(describing: item?.state.rawValue))"
+                if guardDescription != lastItemGuard {
+                    lastItemGuard = guardDescription
+                    lastGuard = guardDescription
+                    if testLabel == "softwrapprofiles", let item {
+                        var path = [String](), branch: NSMenuItem? = item
+                        while let current = branch, let parent = current.menu {
+                            path.insert("\(parent.title)[\(parent.index(of: current))]:\(current.title)", at: 0)
+                            branch = parent.supermenu?.items.first { $0.submenu === parent }
+                        }
+                        let target = item.target as? NSObject
+                        lastGuard += " path=\(path) role=\(String(describing: item.accessibilityRole())) subrole=\(String(describing: item.accessibilitySubrole()))"
+                            + " submenu=\(item.submenu?.title ?? "nil") children=\(item.submenu?.items.count ?? -1)"
+                            + " targetID=\(target.map { String(describing: ObjectIdentifier($0)) } ?? "nil") responds=\(item.action.map { target?.responds(to: $0) == true } ?? false)"
+                            + " key=\(item.keyEquivalent) modifiers=\(item.keyEquivalentModifierMask.rawValue)"
                     }
-                    let clip = scrollView.contentView
-                    clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: 0))
-                    scrollView.reflectScrolledClipView(clip)
-                    pollBackgroundScrollTop(backWindow: backWindow, backTV: backTV)
-                })
+                    diagnostic("guard")
+                }
+                guard binding, let item, let itemMenu,
+                      item.isEnabled == expectsEnabled,
+                      expectedState.map({ item.state == $0 }) ?? true,
+                      !expectsEnabled || item.action != nil else { return }
+                selected = true
+                selectedMenu = itemMenu
+                if expectsEnabled {
+                    diagnostic("action-enter")
+                    itemMenu.performActionForItem(at: index)
+                    actionReturned = true
+                    diagnostic("action-return")
+                } else {
+                    // Der normale AX-Versuch darf keinen Profilwechsel auslösen.
+                    // Die AX-Rückgabe wird protokolliert; die Hilfsfensterprobe
+                    // belegt unveränderte Profile vor dem folgenden Shortcut.
+                    diagnostic("disabled-press-enter")
+                    let accepted = item.accessibilityPerformPress()
+                    actionReturned = true
+                    lastGuard += " disabledAX=\(accepted)"
+                    diagnostic("disabled-press-return")
+                }
+                itemMenu.cancelTracking(); main.cancelTracking()
+                completeIfReady()
+            }
+            timer = Timer(timeInterval: pause, repeats: true) { _ in
+                MainActor.assumeIsolated { tick() }
+            }
+            if let timer { RunLoop.main.add(timer, forMode: .common); RunLoop.main.add(timer, forMode: .eventTracking) }
+            DispatchQueue.main.async {
+                guard !concluded else { return }
+                if exchange != nil { return }
+                entered = true
+                diagnostic("root-enter")
+                rootAccepted = root.accessibilityPerformPress()
+                rootReturned = true
+                diagnostic("root-return")
+                completeIfReady()
+            }
+        }
+        guard success else {
+            if let preInputFailure { throw preInputFailure }
+            throw NSError(domain: "SelfTestTrackedMainMenu", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Echtes Menü \(label): \(failureState)"])
+        }
     }
 
-    /// Wartet, bis der Ausschnitt des hinteren Fensters oben angekommen ist
-    /// (Beleg, DASS gescrollt wurde), und startet dann die eigentliche Messung.
-    private static func pollBackgroundScrollTop(backWindow: NSWindow,
-                                                backTV: TextView) {
-        var y: CGFloat = -1
-        waitFor(budget: 5, pause: 0.05,
-                condition: {
-                    y = backTV.enclosingScrollView?.contentView.bounds.origin.y ?? -1
-                    return y == 0
-                },
-                onTimeout: { book in
-                    finish(false, "Rückscrollen an den Anfang kam nicht an (y=\(Int(y))) — \(book.summary)")
-                },
-                then: {
-                    observeBackgroundScroll(backWindow: backWindow, backTV: backTV)
-                })
+    /// Wie postHistoryKey übernimmt diese Probe Zeichen und Shift-Vertrag
+    /// aus dem aktiven nativen Tastaturlayout statt ein kleines „l“ zu erfinden.
+    @MainActor private static func deliverSoftWrapShortcut(to window: NSWindow) async throws {
+        guard commandOwnerKeyMonitor == nil,
+              let code = (UInt16(0)..<128).first(where: { code in
+                  guard let key = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true) else { return false }
+                  key.flags = .maskCommand
+                  return NSEvent(cgEvent: key)?.charactersIgnoringModifiers?.lowercased() == "l"
+              }),
+              let key = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true) else {
+            throw NSError(domain: "SelfTestSoftWrapShortcut", code: 1)
+        }
+        key.flags = [.maskCommand, .maskShift]
+        guard let native = NSEvent(cgEvent: key),
+              let characters = native.characters,
+              let ignoringModifiers = native.charactersIgnoringModifiers else {
+            throw NSError(domain: "SelfTestSoftWrapShortcut", code: 2)
+        }
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        var events: [NSEvent] = []
+        for (type, flags, keyCode, text, ignoring) in [
+            (NSEvent.EventType.flagsChanged, native.modifierFlags, UInt16(55), "", ""),
+            (.keyDown, native.modifierFlags, code, characters, ignoringModifiers),
+            (.keyUp, native.modifierFlags, code, characters, ignoringModifiers),
+            (.flagsChanged, [], UInt16(55), "", "")
+        ] {
+            guard let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags,
+                timestamp: timestamp, windowNumber: window.windowNumber, context: nil,
+                characters: text, charactersIgnoringModifiers: ignoring, isARepeat: false, keyCode: keyCode) else {
+                throw NSError(domain: "SelfTestSoftWrapShortcut", code: 3)
+            }
+            events.append(event)
+        }
+        var downCount = 0, upCount = 0, keyUpProcessed = false
+        commandOwnerKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { event in
+            guard event.timestamp == timestamp, event.windowNumber == window.windowNumber,
+                  event.keyCode == code else { return event }
+            if event.type == .keyDown { downCount += 1 }
+            if event.type == .keyUp {
+                upCount += 1
+                // Der nächste Main-Durchlauf folgt auf die Verarbeitung dieses
+                // Key-up; damit ist auch das vorher eingereihte Key-down vorbei.
+                DispatchQueue.main.async { keyUpProcessed = true }
+            }
+            return event
+        }
+        defer { // deliverSoftWrapShortcut kehrt vor dem äußeren finish regulär zurück oder wirft.
+            if let commandOwnerKeyMonitor { NSEvent.removeMonitor(commandOwnerKeyMonitor) }
+            commandOwnerKeyMonitor = nil
+        }
+        guard commandOwnerKeyMonitor != nil else {
+            throw NSError(domain: "SelfTestSoftWrapShortcut", code: 4)
+        }
+        for event in events { NSApp.postEvent(event, atStart: false) }
+        try await awaitCommandOwnerState("⇧⌘L zugestellt und Eventdurchlauf abgeschlossen") {
+            downCount == 1 && upCount == 1 && keyUpProcessed
+        }
+        FileHandle.standardError.write(Data(("SOFTWRAP_SHORTCUT delivered_down=\(downCount) delivered_up=\(upCount) processed=\(keyUpProcessed)\n").utf8))
     }
 
-    /// Die eigentliche Prüfung speichert im Vorderfenster eine echte Datei.
-    /// Dessen Workspace-/Git-Neubewertungen dürfen den alten Cursorstand im
-    /// hinteren Editor nicht erneut sichtbar scrollen.
-    private static func observeBackgroundScroll(backWindow: NSWindow,
-                                                backTV: TextView,
-                                                tick: Int = 0) {
-        let y = backTV.enclosingScrollView?.contentView.bounds.origin.y ?? -1
-        // Toleranz für Reflow-Rauschen beim Zoomwechsel; der Fehlerfall liegt
-        // um Größenordnungen darüber (Sprungziel Zeile 170).
-        if y > 40 {
-            finish(false, "Hintergrundfenster scrollte ungefragt (y=\(Int(y)))")
-        }
-        if tick == 5 {
-            let (frontWorkspace, registeredBackWorkspace) = MainActor.assumeIsolated {
-                (CommandTargeting.targetWorkspace(),
-                 WorkspaceWindowRegistry.workspace(for: backWindow))
-            }
-            guard let workspace = frontWorkspace,
-                  workspace !== registeredBackWorkspace,
-                  let tabID = workspace.activeTabID else {
-                finish(false, "Vorderfenster-Workspace zum Speichern fehlt")
-            }
-            workspace.activeTabContent.wrappedValue += "\nSpeicher-Auslöser"
-            workspace.saveTab(id: tabID)
-            guard workspace.activeTab?.isDirty == false else {
-                finish(false, "Vorderfenster-Datei blieb nach saveTab ungespeichert")
-            }
-        }
-        if tick >= 50 {
-            finish(true, "Ausschnitt des Hintergrundfensters blieb nach echtem "
-                   + "Speichern im Vorderfenster stehen (y=\(Int(y)))")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-            observeBackgroundScroll(backWindow: backWindow, backTV: backTV,
-                                    tick: tick + 1)
-        }
+    private static func runBackgroundScrollTest() {
+        testLabel = "bgscroll"
+        backgroundScrollTests.runBackgroundScrollTest()
     }
 
     /// Rekursive Suche, weil SwiftUI den Datei-Menüpunkt in interne Untermenüs
@@ -2819,7 +1548,6 @@ enum SelfTest {
     /// `defer` in der Prüfmethode lief nie, weil `finish` per `exit()` endet
     /// und den Swift-Stack nicht abwickelt — jeder direkte `-selftest
     /// tabflood`-Lauf ließ ein `fastra-tabflood-*`-Verzeichnis zurück
-    /// (Review 2026-09-02).
     private static var tabFloodFixtureDirectory: URL?
 
 
@@ -2832,60 +1560,50 @@ enum SelfTest {
         finish(ok ? .pass : .fail, msg)
     }
 
-    /// Alle temporären Fixture-Ordner eines Selbsttestlaufs an EINER Stelle
-    /// abräumen. Vorher stand jeder Ordner in einem eigenen `if let`-Block und
-    /// ein neu hinzugekommener wurde leicht vergessen — genau so blieb
-    /// `sidebarToggleFixtureDirectory` ganz ohne Aufräumung (Review-Fund
-    /// 2026-09-20). Wer eine neue Fixture anlegt, trägt sie hier ein.
-    ///
-    /// Aufräumen hier ist sicher: Jeder Testprozess legt sein eigenes
-    /// UUID-Verzeichnis an, und kein Test liest es über einen Neustart hinweg —
-    /// ein zweiter Start (etwa `externaldiffcold` je Helfer) legt wieder ein
-    /// eigenes an. Die Testrümpfe räumen nur auf ihren regulären Wegen ab;
-    /// endete ein Lauf vorher (etwa Frist in `waitForMainWindow`), blieb der
-    /// Ordner sonst liegen (Review-Fund 2026-09-18).
+    /// Temporäre Fixture-Ordner zentral aufräumen. Neue Fixtures hier eintragen,
+    /// damit sie auch bei frühem Testabbruch entfernt werden.
+    /// Jeder Prozess besitzt ein eigenes UUID-Verzeichnis; kein Test verwendet
+    /// die Fixtures über einen Neustart hinweg. Auch `externaldiffcold` legt
+    /// für jeden Helfer eigene Fixtures an.
     private static func cleanupFixtureDirectories() {
+        if let commandOwnerKeyMonitor {
+            NSEvent.removeMonitor(commandOwnerKeyMonitor)
+            self.commandOwnerKeyMonitor = nil
+        }
         let directories = [shortSearchFixtureDirectory,
                            tabSearchFixtureDirectory,
-                           windowRoutingFixtureDirectory,
-                           backgroundScrollFixtureDirectory,
+                           windowRoutingTests.fixtureDirectory,
+                           backgroundScrollTests.fixtureDirectory,
                            printFixtureDirectory,
                            tabFloodFixtureDirectory,
-                           sidebarToggleFixtureDirectory,
-                           sessionRestoreFixtureDirectory,
-                           coldOpenFixtureDirectory,
-                           selectionScrollFixtureDirectory]
+                           sidebarToggleFixtureDirectory]
+            + sessionRestorationTests.fixtureDirectories
         for directory in directories.compactMap({ $0 }) {
             try? FileManager.default.removeItem(at: directory)
         }
         shortSearchFixtureDirectory = nil
         tabSearchFixtureDirectory = nil
-        windowRoutingFixtureDirectory = nil
-        backgroundScrollFixtureDirectory = nil
+        windowRoutingTests.clearFixtureDirectoryReference()
+        backgroundScrollTests.clearFixtureDirectoryReference()
         printFixtureDirectory = nil
         tabFloodFixtureDirectory = nil
         sidebarToggleFixtureDirectory = nil
-        sessionRestoreFixtureDirectory = nil
-        coldOpenFixtureDirectory = nil
-        selectionScrollFixtureDirectory = nil
+        sessionRestorationTests.clearFixtureDirectoryReferences()
     }
 
     private static func finish(_ outcome: SelfTestOutcome, _ msg: String) -> Never {
         cleanupScreenshotFixtures()
         cleanupFixtureDirectories()
-        var finalOutcome = outcome
-        var finalMessage = msg
+        let pasteboardCleanup: SelfTestCompletion.PasteboardCleanup
         switch finishSelfTestPasteboardMutation() {
-        case .none, .restored:
-            break
-        case .keptNewerContent:
-            finalOutcome = max(finalOutcome, .environment)
-            finalMessage += " (Zwischenablage inzwischen anderweitig beschrieben — "
-                + "neuerer Inhalt behalten)"
-        case .failed(let error):
-            finalOutcome = max(finalOutcome, .fail)
-            finalMessage += " — Zwischenablage nicht zurückgegeben (\(error))"
+        case .none: pasteboardCleanup = .none
+        case .restored: pasteboardCleanup = .restored
+        case .keptNewerContent: pasteboardCleanup = .keptNewerContent
+        case .failed(let error): pasteboardCleanup = .failed(error)
         }
+        let (finalOutcome, finalMessage) = SelfTestCompletion.resolve(
+            outcome: outcome, message: msg, pasteboardCleanup: pasteboardCleanup
+        )
         let elapsed = DispatchTime.now().uptimeNanoseconds - testStartedNanoseconds
         let appMilliseconds = elapsed / 1_000_000
         let output = "SELFTEST-METRIC test=\(testLabel) app_ms=\(appMilliseconds)\n"
@@ -2943,169 +1661,9 @@ enum SelfTest {
         )
     }
 
-    /// CMD+W bei vorderer Suchmaske → Maske schließt sich.
-    ///
-    /// War flaky: nach dem CMD+W-Post wurde der Fenster-Zustand EINMAL nach
-    /// fixen 0,6 s geprüft. Schließt das Fenster minimal später (Release-
-    /// Timing weicht von Debug ab), meldete der Test fälschlich FAIL, obwohl
-    /// die Funktion intakt ist. Jetzt mit demselben Muster wie der Findbar-
-    /// Test: App aktivieren, Fenster sicher nach vorn, setteln lassen, CMD+W
-    /// posten und dann ENGMASCHIG POLLEN — PASS, sobald das Fenster
-    /// unsichtbar wird; FAIL nur, wenn es das ganze Beobachtungsfenster über
-    /// sichtbar bleibt.
     private static func runCmdWTest() {
         testLabel = "cmdw"
-        guard let searchWindow = NSApp.windows.first(where: {
-            $0.frameAutosaveName == SearchWindow.frameAutosaveName
-        }) else {
-            finish(false, "Suchfenster nicht gefunden")
-        }
-        guard searchWindow.isVisible else {
-            finish(false, "Suchfenster startet nicht sichtbar")
-        }
-        // App nach vorn holen UND Fenster key machen — CMD+W routet nur an
-        // das vordere Key-Window. Ohne aktive App lief das Event früher
-        // gelegentlich ins Leere (Mit-Ursache der Flakiness).
-        activateApplication(ignoringOtherApps: true)
-        searchWindow.makeKeyAndOrderFront(nil)
-
-        // NICHT blind nach fixem Delay posten: Unter macOS 14 (kooperative
-        // Aktivierung) kann `NSApp.activate` verweigert/verzögert werden —
-        // besonders, wenn kurz vorher eine andere Fastra-Selbsttest-Instanz
-        // lief (reproduziert 2026-06-11: 1 FAIL in 9 Läufen, nur direkt
-        // nach einem vorherigen Selbsttest). Deshalb erst pollen, bis das
-        // Fenster WIRKLICH key ist, und periodisch re-aktivieren. Klappt
-        // die Aktivierung gar nicht, ist das ein Umgebungsproblem — der
-        // FAIL-Text unterscheidet das klar vom echten Funktionsfehler.
-        pollForKeyThenPost(searchWindow)
-    }
-
-    /// Pollt bis zu ~8 s darauf, dass die Suchmaske Key-Window ist (mit
-    /// Re-Aktivierung alle ~0,3 s), und postet erst DANN CMD+W. So messen
-    /// wir die Funktion (CMD+W schließt) getrennt von der Umgebung
-    /// (App-Aktivierung wurde vom System verweigert).
-    ///
-    /// 8 s statt 1,5 s (2026-06-11): Unter macOS 26 verweigert die
-    /// kooperative Aktivierung einem im Hintergrund gestarteten Prozess
-    /// `NSApp.activate` KOMPLETT (isActive bleibt false). Der Test-Runner
-    /// muss die App daher EXTERN nach vorn holen (System Events:
-    /// `set frontmost of process "Fastra" to true`) — und das braucht
-    /// Zeit, bis der Prozess für System Events sichtbar ist. Das lange
-    /// Fenster gibt dem Runner die Chance; bei Erfolg endet das Polling
-    /// sofort.
-    private static func pollForKeyThenPost(_ window: NSWindow) {
-        var polls = 0
-        waitFor(budget: 8.1, pause: 0.03,   // 270 × 30 ms ≈ 8 s
-                condition: {
-                    if window.isKeyWindow { return true }
-                    // Alle ~10 Durchläufe erneut um Aktivierung bitten — einzelne
-                    // Aufrufe verpuffen unter kooperativer Aktivierung gelegentlich.
-                    if polls % 10 == 9 {
-                        activateApplication(ignoringOtherApps: true)
-                        window.makeKeyAndOrderFront(nil)
-                    }
-                    polls += 1
-                    return false
-                },
-                onTimeout: { book in
-                    // Diagnose mitliefern: Ist die App überhaupt aktiv? Welches
-                    // Fenster IST stattdessen Key? Unterscheidet „System verweigert
-                    // Aktivierung" von „anderes Fenster klaut den Key-Status".
-                    let keyDesc = NSApp.keyWindow.map {
-                        "[\(type(of: $0))] \"\($0.title)\" autosave=\"\($0.frameAutosaveName)\""
-                    } ?? "keins"
-                    finish(.environment, "Aktivierung fehlgeschlagen — Suchmaske wurde nie Key-Window "
-                        + "(Umgebungsproblem, kein CMD+W-Funktionsfehler; "
-                        + "NSApp.isActive=\(NSApp.isActive), keyWindow=\(keyDesc), "
-                        + "panel: visible=\(window.isVisible) canBecomeKey=\(window.canBecomeKey); "
-                        + "\(book.summary))")
-                },
-                then: {
-                    postCmd("w", keyCode: 13, windowNumber: window.windowNumber)
-                    pollForClose(window)
-                })
-    }
-
-    /// Pollt engmaschig, ob die Suchmaske nach CMD+W unsichtbar wird. Sobald
-    /// sie verschwindet → PASS. Bleibt sie über das ganze Fenster sichtbar
-    /// → FAIL. Ersetzt die frühere Einzel-Messung mit fixem Delay (flaky).
-    private static func pollForClose(_ window: NSWindow) {
-        waitFor(budget: 1.5, pause: 0.03,   // ≈ 1,5 s Beobachtungsfenster
-                condition: { !window.isVisible },
-                onTimeout: { book in
-                    finish(false, "Suchmaske nach CMD+W noch sichtbar — \(book.summary)")
-                },
-                then: { runCmdWHelpPhase() })
-    }
-
-    /// Zweite `cmdw`-Phase: Ein echtes ⌘W muss das vordere Hilfe-Fenster
-    /// schließen, ohne die Dokument-Tabs dahinter zu verändern. Danach folgt
-    /// im selben fokuspflichtigen Prozess das fensterübergreifende Routing.
-    private static func runCmdWHelpPhase() {
-        guard let workspace = Workspace.shared else {
-            finish(false, "kein Dokument-Workspace für den Hilfe-⌘W-Test")
-        }
-        while workspace.tabs.count < 2 { workspace.openNewTab() }
-        let tabSnapshot = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
-        MainActor.assumeIsolated { HelpWindow.show() }
-        guard let helpWindow = NSApp.windows.first(where: HelpWindow.isHelpWindow) else {
-            finish(false, "Hilfe-Fenster für den ⌘W-Test nicht auffindbar")
-        }
-        helpWindow.makeKeyAndOrderFront(nil)
-        pollForCmdWHelpKey(
-            helpWindow,
-            workspace: workspace,
-            tabSnapshot: tabSnapshot
-        )
-    }
-
-    private static func pollForCmdWHelpKey(
-        _ helpWindow: NSWindow,
-        workspace: Workspace,
-        tabSnapshot: [String]
-    ) {
-        var polls = 0
-        waitFor(budget: 8.1, pause: 0.03,
-                condition: {
-                    if helpWindow.isKeyWindow { return true }
-                    if polls % 10 == 9 {
-                        activateApplication(ignoringOtherApps: true)
-                        helpWindow.makeKeyAndOrderFront(nil)
-                    }
-                    polls += 1
-                    return false
-                },
-                onTimeout: { book in
-                    finish(.environment, "Hilfe-Fenster wurde nie Key-Window für ⌘W "
-                        + "(Umgebungsproblem; \(book.summary))")
-                },
-                then: {
-                    postCmd("w", keyCode: 13, windowNumber: helpWindow.windowNumber)
-                    pollForCmdWHelpClose(
-                        helpWindow,
-                        workspace: workspace,
-                        tabSnapshot: tabSnapshot
-                    )
-                })
-    }
-
-    private static func pollForCmdWHelpClose(
-        _ helpWindow: NSWindow,
-        workspace: Workspace,
-        tabSnapshot: [String]
-    ) {
-        waitFor(budget: 1.5, pause: 0.03,
-                condition: { !helpWindow.isVisible },
-                onTimeout: { book in
-                    finish(false, "⌘W ließ das Hilfe-Fenster offen — \(book.summary)")
-                },
-                then: {
-                    let currentTabs = workspace.tabs.map { "\($0.id.uuidString)|\($0.content)" }
-                    guard currentTabs == tabSnapshot else {
-                        finish(false, "⌘W an der Hilfe veränderte einen Dokument-Tab")
-                    }
-                    runNewWindowTest(focusedCommandRouting: true)
-                })
+        windowRoutingTests.runCmdWTest()
     }
 
     /// Postet ein echtes „CMD+<char>" (flagsChanged + keyDown) in die Queue.
@@ -3289,7 +1847,7 @@ enum SelfTest {
 
     private static func runFindBarTest() {
         testLabel = "findbar"
-        // Hauptfenster = sichtbares Fenster, das NICHT die Suchmaske ist.
+        // Hauptfenster = sichtbares Fenster, das nicht die Suchmaske ist.
         guard let workspace = Workspace.shared,
               let mainWindow = NSApp.windows.first(where: {
             $0.frameAutosaveName != SearchWindow.frameAutosaveName
@@ -3311,7 +1869,7 @@ enum SelfTest {
         textView: TextView
     ) {
         // Voraussetzung, damit der Editor-eigene CMD+F-Monitor überhaupt
-        // triggern WÜRDE: Hauptfenster Key + Editor ist First Responder.
+        // triggern würde: Hauptfenster Key + Editor ist First Responder.
         // (Genau die Situation, in der der Zombie früher auftrat.)
         // Ein bereits offenes Suchfenster darf den späteren Erfolg nicht vortäuschen.
         workspace.showSearchDialog = false
@@ -3356,18 +1914,18 @@ enum SelfTest {
             // In die Queue posten → durchläuft die lokalen Monitore.
             NSApp.postEvent(event, atStart: false)
 
-            // WICHTIG: NICHT nur den Endzustand prüfen. Der „Zombie" blitzt
+            // Wichtig: Nicht nur den Endzustand prüfen. Der „Zombie" blitzt
             // kurz auf (showFindPanel animiert 0,15 s ein) und wird dann vom
             // Reconcile wieder geschlossen — bei einer Einzel-Messung nach
             // 0,6 s ist er längst weg und der Test wäre fälschlich grün.
-            // Deshalb POLLEN wir über ~1,2 s engmaschig und schlagen an,
-            // sobald das Panel AUCH NUR EINMAL sichtbar war.
+            // Deshalb pollen wir über ~1,2 s engmaschig und schlagen an,
+            // sobald das Panel auch nur einmal sichtbar war.
             pollForFlash(in: root, workspace: workspace, firstResponder: isFR)
         }
     }
 
-    /// Pollt engmaschig, ob das Editor-Find-Panel im Verlauf AUCH NUR
-    /// KURZ sichtbar wird (Flash). Sobald es einmal auftaucht → FAIL.
+    /// Pollt engmaschig, ob das Editor-Find-Panel im Verlauf auch nur
+    /// kurz sichtbar wird (Flash). Sobald es einmal auftaucht → FAIL.
     /// Nach Ablauf muss zusätzlich Fastras eigene Suche sichtbar geöffnet sein.
     private static func pollForFlash(in root: NSView, workspace: Workspace,
                                      firstResponder isFR: Bool, tick: Int = 0) {
@@ -3404,7 +1962,7 @@ enum SelfTest {
         }
     }
 
-    /// Prüft, ob Suchen- UND Ersetzen-Feld echte, editierbare Texteingaben
+    /// Prüft, ob Suchen- und Ersetzen-Feld echte, editierbare Texteingaben
     /// sind. Beweist die gemeldeten Bugs (Find-Feld war statisches `Text`,
     /// Replace „nicht änderbar") deterministisch im echten App-Prozess.
     ///
@@ -3427,10 +1985,10 @@ enum SelfTest {
             guard let root = searchWindow.contentView else {
                 finish(false, "Suchfenster ohne contentView")
             }
-            // Seit v0.7 sind Suchen- und Ersetzen-Feld KEINE SwiftUI-
+            // Seit v0.7 sind Suchen- und Ersetzen-Feld keine SwiftUI-
             // TextFields (NSTextField) mehr, sondern NSTextView-basierte
             // RegexFieldTextViews (Inline-Token-Highlighting). Der Test
-            // sammelt deshalb BEIDE Arten ein — fällt eine der beiden
+            // sammelt deshalb beide Arten ein — fällt eine der beiden
             // Umstellungen je zurück, bleibt der Test trotzdem scharf.
             var fields: [NSView] = []
             collectTypeableFields(in: root, into: &fields)
@@ -3464,13 +2022,10 @@ enum SelfTest {
         }
     }
 
-    /// Prüft das Optionslayout im ECHTEN Suchfenster (Layout-Umbau
-    /// 2026-09-15): In einem breiten Fenster stehen alle Schalter in EINER
-    /// Zeile, in einem schmalen rückt der zweite Block linksbündig unter
-    /// RegEx. Marker an den linken Toggle-Kanten messen das unabhängig vom
-    /// Modell; der zustandskodierte Marker belegt, dass „∗ wörtlich" sichtbar
-    /// bleibt und nach Pattern-/RegEx-Wechseln im gerenderten Baum
-    /// aktualisiert wird.
+    /// Optionslayout im echten Suchfenster prüfen: Breit stehen alle Schalter
+    /// nebeneinander, schmal der zweite Block linksbündig unter RegEx. Kantenmarker
+    /// messen das Layout; ein Zustandsmarker prüft, dass „∗ wörtlich“ nach
+    /// Pattern-/RegEx-Wechseln im gerenderten Baum aktualisiert wird.
     private static func runSearchOptionsTest() {
         testLabel = "searchoptions"
         guard let ws = Workspace.shared,
@@ -3571,10 +2126,8 @@ enum SelfTest {
              // Über den echten Menüpunkt (⌘,): Der Selector der Settings-Szene
              // ist je macOS-Version anders benannt; der Menüeintrag kennt ihn.
              open: {
-                 // KEIN Ersatz-Selector: Ein Rückfall auf das Über-Fenster
-                 // hätte einen ganz anderen Dialog vermessen und damit den
-                 // echten Befund („⌘, ohne Action") als grünes Ergebnis
-                 // verdeckt (Review-Fund 2026-09-17).
+                 // Kein Ersatz-Selector: Ein anderer Dialog würde den fehlgeschlagenen
+                 // Aufruf der Einstellungen verdecken, statt dessen Layout zu prüfen.
                  guard let item = NSApp.mainMenu?.items.first?.submenu?.items
                      .first(where: { $0.keyEquivalent == "," }) else {
                      findings.append("settings: Menüeintrag ⌘, fehlt")
@@ -3671,7 +2224,7 @@ enum SelfTest {
     }
 
     /// Sichtbare Bedienelemente ohne Ausdehnung — das Bild eines Pickers,
-    /// den SwiftUI bei Platzmangel auf null Breite drückt (Befund 2026-09-15).
+    /// den SwiftUI bei Platzmangel auf null Breite drückt.
     private static func collectCollapsedControls(in view: NSView, into result: inout [String]) {
         if view.isHidden { return }
         if view is NSControl, view.frame.width < 1 || view.frame.height < 1 {
@@ -3682,13 +2235,9 @@ enum SelfTest {
 
     // MARK: - searchfocus: Suchfeld hat nach jedem Öffnen den Fokus
 
-    /// Befund 2026-09-15 (Arbeitsbetrieb): Nach aktivem Schließen der Maske
-    /// stand der Cursor beim nächsten ⌘F/⇧⌘F im Feld „Ausschlüsse" oder
-    /// nirgends. Das Fenster wird beim Schließen nur ausgeblendet, und AppKit
-    /// vergibt beim Wiederanzeigen den Fokus an das erste Feld der
-    /// Tab-Reihenfolge. Der Test schließt und öffnet die Maske in allen drei
-    /// Bereichen und verlangt jedes Mal das Suchfeld als First Responder —
-    /// auch nachdem zuvor bewusst in „Ausschlüsse" geklickt wurde.
+    /// Die Maske in allen drei Bereichen schließen und neu öffnen. Jedes Mal
+    /// muss das Suchfeld First Responder sein, auch wenn vorher „Ausschlüsse“
+    /// fokussiert war. AppKits Tab-Reihenfolge allein genügt dafür nicht.
     private static func runSearchFocusTest() {
         testLabel = "searchfocus"
         guard let ws = Workspace.shared,
@@ -3735,12 +2284,9 @@ enum SelfTest {
             }
             let (label, name, expectedScope) = steps[index]
             index += 1
-            // Vorbereitung: Bei Schritt 3 UND 4 vorher bewusst „Ausschlüsse"
-            // fokussieren. Schritt 4 holt die offene Maske nur nach vorn —
-            // ohne diesen Wechsel läge der Fokus noch vom Ende des dritten
-            // Schritts im Suchfeld, und der Schritt bestünde, ohne dass der
-            // Menüweg überhaupt etwas getan hätte (Review-Fund 2026-09-17).
-            // Deshalb auch prüfen, dass der Fokus wirklich dort ankam.
+            // Vor Schritt 3 und 4 „Ausschlüsse“ fokussieren und den Fokus bestätigen.
+            // Schritt 4 holt die bereits offene Maske nur vor; ohne diesen Vorzustand
+            // könnte der Test mit dem Suchfokus aus Schritt 3 unverdient bestehen.
             if index >= 3 {
                 guard let exclusions = editableTextField(id: "fastra.projectExclusions", in: root),
                       searchWindow.makeFirstResponder(exclusions),
@@ -3774,14 +2320,9 @@ enum SelfTest {
         runStep()
     }
 
-    /// Taktbasiert (20 Durchläufe à 0,1 s), nicht nach Wanduhr: Eine
-    /// absolute Frist wäre nach einer längeren Main-Thread-Belegung schon
-    /// beim ersten echten Prüflauf abgelaufen, obwohl die Maske im nächsten
-    /// Durchlauf korrekt verschwindet (Review-Fund 2026-09-16).
-    /// Zählt nur bediente Durchläufe (20 à 0,1 s), nicht die Wanduhr: Eine
-    /// absolute Frist wäre nach einer längeren Main-Thread-Belegung schon
-    /// beim ersten echten Prüflauf abgelaufen, obwohl die Maske im nächsten
-    /// Durchlauf korrekt verschwindet (Review-Fund 2026-09-16).
+    /// Nur bediente Durchläufe zählen (20 à 0,1 s). Eine absolute Wanduhrfrist
+    /// kann durch fremde Main-Thread-Arbeit verstreichen, ohne dass der Test
+    /// überhaupt prüfen konnte.
     private static func pollSearchHidden(_ window: NSWindow,
                                          completion: @escaping (Bool) -> Void) {
         waitFor(budget: 2, pause: 0.1,
@@ -3803,10 +2344,9 @@ enum SelfTest {
                     guard ws.scope == expectedScope else {
                         finish(false, "\(label): Bereich \(ws.scope.rawValue), erwartet \(expectedScope.rawValue)")
                     }
-                    // Erst im nächsten Durchlauf weiter: Setzte der Test direkt im
-                    // selben Durchlauf `showSearchDialog = false`, sähe SwiftUI
-                    // true→false als „unverändert", `onChange` feuerte nicht, und die
-                    // Maske bliebe trotz Modell „geschlossen" sichtbar (2026-09-15).
+                    // Erst im nächsten Durchlauf schließen. `showSearchDialog` direkt wieder
+                    // auf `false` zu setzen würde SwiftUI zu true→false zusammenfassen;
+                    // `onChange` sähe keine Änderung und ließe die Maske sichtbar.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { next() }
                 })
     }
@@ -3875,7 +2415,7 @@ enum SelfTest {
                 }
                 guard let snapshot, snapshot.source == "screen" else {
                     cleanup()
-                    finish(.environment, "Echte Fensteraufnahme fehlt; prüfe die Bildschirmaufnahme-Berechtigung: " + name)
+                    finish(.environment, "Echte Fensteraufnahme fehlt; Aufnahmediagnose im Testlog: " + name)
                 }
                 let output = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
                 try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -4187,29 +2727,19 @@ enum SelfTest {
 
     // MARK: - searchlayout: Geometrie der Suchmaske je Bereich und Breite
 
-    /// Vermisst die Suchmaske in JEDEM Bereich (Datei, Geöffnet, Ordner, Projekt) bei
-    /// Mindestbreite und bei 1000 pt. Entstanden nach dem Befund vom
-    /// 2026-09-15: Der Layout-Umbau war nur im Datei-Bereich angesehen worden,
-    /// im Projekt-Bereich bei 500 pt brachen die Tab-Beschriftungen um, der
-    /// Datei-Set-Picker hatte null Breite und der Dateitypen-Picker ragte aus
-    /// dem Fenster. Geprüft wird pro Kombination:
-    ///   1. Jede Tab-Beschriftung ist einzeilig (Höhe unter 30 pt).
-    ///   2. Kein Bedienelement liegt außerhalb des Fensterinhalts.
-    ///   3. Die Trefferliste bekommt mindestens 25 % der Fensterhöhe; hat
-    ///      die Optionszeile umgebrochen, um die Höhe dieser zweiten Reihe
-    ///      weniger (`wrappedOptionsRowHeight`).
-    /// Jede Kombination läuft in drei Varianten (Review-Fund 2026-09-16):
-    ///   - `plain`: leeres Muster, Standardnamen.
-    ///   - `regexGroups`: acht fangende Gruppen, eine eigene Vorlage mit
-    ///     60 Zeichen Namen ist gewählt, ein Datei-Set mit 70 Zeichen Namen aktiv.
-    ///   - `wildcards`: acht Sterne im Klartext-Muster, dieselben langen Namen.
-    ///   Zusätzlich geprüft: Suchen- und Ersetzen-Feld behalten mindestens
-    ///   100 pt Breite, und die Pillenreihe steht genau auf ihrer Obergrenze
-    ///   `PillTrayLayout.maxWidth` — sie scrollt also, statt zu wachsen, und
-    ///   ist zugleich nicht auf null Punkte zusammengefallen.
-    /// Steht `FASTRA_SEARCHLAYOUT_DIR`, legt der Test je Kombination ein PNG
-    /// des Fensterinhalts dort ab (`search-<bereich>-<breite>[-variante].png`)
-    /// — für die Sichtprüfung VOR der Abgabe, nicht nur für den Automaten.
+    /// Vermisst Datei, Geöffnet, Ordner und Projekt bei Mindestbreite und
+    /// 1000 pt. Pro Kombination prüfen: einzeilige Tab-Beschriftungen unter
+    /// 30 pt Höhe, alle Controls innerhalb des Fensters, mindestens 25 % Höhe
+    /// für die Trefferliste abzüglich `wrappedOptionsRowHeight` bei Umbruch.
+    ///
+    /// Varianten: `plain` mit leeren Standardwerten; `regexGroups` mit acht
+    /// fangenden Gruppen; `wildcards` mit acht Sternen. Die letzten beiden
+    /// verwenden einen 60 Zeichen langen Vorlagen- und 70 Zeichen langen
+    /// Datei-Set-Namen. Eingabefelder müssen mindestens 100 pt breit bleiben;
+    /// die acht Pillen erreichen genau `PillTrayLayout.maxWidth` und scrollen.
+    ///
+    /// Mit `FASTRA_SEARCHLAYOUT_DIR` je Kombination ein PNG zur Sichtprüfung
+    /// ablegen: `search-<bereich>-<breite>[-variante].png`.
     private static func runSearchLayoutTest() {
         testLabel = "searchlayout"
         guard let ws = Workspace.shared,
@@ -4298,11 +2828,9 @@ enum SelfTest {
             guard index < combinations.count else {
                 apply(.plain)
                 MainActor.assumeIsolated { library.delete(id: longTemplateID) }
-                // exit() durchläuft AppKits Beenden-Hooks nicht, und die
-                // Bibliothek schreibt nur in die Test-Einstellungen. Ohne
-                // synchronize() bliebe die 60-Zeichen-Vorlage für die
-                // folgenden Tests desselben Laufs stehen (Review-Fund
-                // 2026-09-17; Muster wie in runSoakRounds).
+                // Test-Einstellungen vor `exit()` synchronisieren: AppKits Beenden-Hooks
+                // laufen dabei nicht. Sonst kann die temporäre Vorlage für folgende Tests
+                // erhalten bleiben (wie in `runSoakRounds`).
                 workspaceDefaults().synchronize()
                 finish(findings.isEmpty,
                        findings.isEmpty
@@ -4341,13 +2869,9 @@ enum SelfTest {
                 if variant != .plain {
                     if let tray = markerView(id: "pillTray", in: root) {
                         let rect = tray.convert(tray.bounds, to: root)
-                        // Der Marker misst die Reihe selbst (Rahmen der PillTray).
-                        // Beide Nicht-plain-Varianten erzeugen acht Pillen; die
-                        // sind zusammen breiter als die Obergrenze, die Reihe
-                        // muss also genau an ihrer Grenze stehen. Ohne
-                        // Untergrenze bestand auch eine auf null Punkte
-                        // gedrückte Reihe, und die 240 von Hand gingen an der
-                        // echten Konstante vorbei (Review-Fund 2026-09-17).
+                        // Rahmen der PillTray gegen die echte Obergrenze prüfen. Acht Pillen
+                        // sind zusammen breiter als diese; die Reihe muss sie erreichen, statt auf
+                        // null Breite zusammenzufallen.
                         if rect.width > pillLimit + 2 {
                             findings.append("\(label): Pillenreihe \(Int(rect.width)) pt breit "
                                 + "statt höchstens \(Int(pillLimit))")
@@ -4375,15 +2899,9 @@ enum SelfTest {
                 }
                 if let list = markerView(id: "hitList", in: root) {
                     let rect = list.convert(list.bounds, to: root)
-                    // 25 %: Der Ordner-Bereich trägt zusätzlich die Liste der
-                    // gemerkten Ordner; bei 700 pt bleiben der Trefferliste dort
-                    // rund 200 pt (etwa neun Zeilen). Bricht die Optionszeile um
-                    // (`ViewThatFits` setzt „∗ wörtlich" bei Mindestbreite unter
-                    // die erste Reihe), kostet das genau eine Schalterzeile — um
-                    // diese gemessene Höhe sinkt die Anforderung. Ohne diesen
-                    // Abzug lieferte Ordner@520 dauerhaft 172 statt 175 pt
-                    // (Befund 2026-09-16, auch auf 7f8e1de rot): Die Zeile ist
-                    // keine Fehlfunktion, sondern der dokumentierte Umbruch.
+                    // Im Ordner-Bereich beanspruchen gemerkte Ordner zusätzliche Höhe.
+                    // Der Trefferliste stehen mindestens 25 % der Fensterhöhe zu, abzüglich
+                    // der tatsächlich gemessenen zweiten Optionszeile bei Umbruch.
                     let wrapped = wrappedOptionsRowHeight(in: root)
                     let required = root.bounds.height * 0.25 - wrapped
                     if rect.height < required {
@@ -4547,12 +3065,9 @@ enum SelfTest {
                     catch { finish(false, "Suchfenster-PNG konnte nicht gespeichert werden") }
                 }
                 let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
-                // Über die echte Event-Queue: Seit dem Layout-Umbau 2026-09-15
-                // (Knopfzeile in `ViewThatFits`) steht hinter „Suchen" ein
-                // AppKit-NSButton. Dessen Maus-Tracking wartet in einer
-                // eigenen Schleife auf das Mouse-up aus der Queue;
-                // `window.sendEvent` liefert es erst nach der Rückkehr des
-                // Mouse-down — der Test hing dann bis zum Runner-Timeout.
+                // Über die echte Event-Queue zustellen: Der AppKit-NSButton wartet beim
+                // Mouse-down in seiner Tracking-Schleife auf das Mouse-up. Ein synchrones
+                // `window.sendEvent` könnte dieses erst nach Rückkehr liefern und blockieren.
                 guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
                     finish(false, "Mausklick auf Suchen nicht zustellbar")
                 }
@@ -4635,7 +3150,7 @@ enum SelfTest {
                 then: completion)
     }
 
-    /// Prüft den gemeldeten Alt-Treffer-Zustand am ECHTEN Projekt-Filterfeld:
+    /// Prüft den gemeldeten Alt-Treffer-Zustand am echten Projekt-Filterfeld:
     /// Ein AppKit-Einfügevorgang muss die gebundene Konfiguration ohne
     /// Debounce ändern. Noch im selben Main-Thread-Umlauf verschwinden die
     /// Treffer der vorherigen Semantik; Navigation, Vorschau und Apply bleiben
@@ -4669,11 +3184,9 @@ enum SelfTest {
         ws.findPattern = "ALT"
         ws.useRegex = false
 
-        // Die Konfigurationsänderungen oben dürfen erst auslaufen; danach
-        // injizieren wir bewusst eine vollständige alte Trefferbasis. Das
-        // Feld wird in bis zu 20 Prüfläufen gesucht: Eine einzelne Prüfung
-        // nach 0,4 s fiel am 2026-09-15 im Sammellauf einmal aus, weil der
-        // Bereichswechsel unter Last noch nicht ausgelegt war.
+        // Konfigurationsänderungen auslaufen lassen, dann bewusst die alte
+        // Trefferbasis injizieren. Bis zu 20 Mal auf das ausgelegte Feld warten,
+        // damit ein verzögerter Bereichswechsel nicht als fehlendes Feld gilt.
         pollProjectExclusionsField(root: root) { found in
             guard let field = found else {
                 ws.closeProject()
@@ -4690,8 +3203,12 @@ enum SelfTest {
                 skipped: nil, snapshot: nil, searchOptions: options
             )]
             ws.folderTotalMatches = 1
-            ws.folderSearching = false
-            ws.folderNeedsSearch = false
+            MainActor.assumeIsolated {
+                if let token = ws.beginSearchResultRun() {
+                    ws.commitSearchResult(token, publication: .folder(.init(
+                        perFile: ws.folderResults, invalidPatternMessage: nil, wasCapped: false)))
+                }
+            }
             guard ws.navMatches.count == 1 else {
                 ws.closeProject()
                 try? fm.removeItem(at: projectRoot)
@@ -4742,8 +3259,7 @@ enum SelfTest {
     }
 
     /// Zählt nur bediente Durchläufe (20 à 0,1 s) wie `pollSearchHidden`:
-    /// Fremdlast auf dem Main-Thread verbraucht die Frist nicht
-    /// (Review-Fund 2026-09-16).
+    /// Fremdlast auf dem Main-Thread verbraucht die Frist nicht.
     private static func pollProjectExclusionsField(root: NSView,
                                                    completion: @escaping (NSTextField?) -> Void) {
         var field: NSTextField?
@@ -4775,8 +3291,8 @@ enum SelfTest {
 
     /// Prüft, dass ein Tab-Wechsel (wie nach einem Datei-Drop) den Editor-
     /// Inhalt tatsächlich austauscht. Hintergrund: CodeEditSourceEditor setzt
-    /// seinen Text NUR in `makeNSViewController` — Binding-Änderungen werden
-    /// NICHT zurück in die TextView geschoben. Deshalb koppeln wir die View
+    /// seinen Text nur in `makeNSViewController` — Binding-Änderungen werden
+    /// nicht zurück in die TextView geschoben. Deshalb koppeln wir die View
     /// per `.id(activeTab.id)` an die Tab-ID, damit sie beim Tab-Wechsel neu
     /// erzeugt wird. Dieser Test belegt die Neuerzeugung über die Objekt-
     /// Identität der TextView (vorher ≠ nachher) und prüft, dass der aktive
@@ -4817,7 +3333,7 @@ enum SelfTest {
         catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
 
         // Temp-Datei-Löschung in die Completion verschoben (war vorher sofort
-        // nach loadFile — jetzt erst NACH dem Laden, damit der Hintergrund-Task
+        // nach loadFile — jetzt erst nach dem Laden, damit der Hintergrund-Task
         // die Datei noch lesen kann).
         ws.loadFile(at: tmp) { ok in
             try? FileManager.default.removeItem(at: tmp)
@@ -5059,135 +3575,16 @@ enum SelfTest {
         }
     }
 
-    /// Bedient den sichtbaren Exportknopf und den echten Speicherdialog in
-    /// einem eigenen Vergleichsfenster. Das Hauptfenster darf kein Sheet erhalten.
     private static func runDiffExportTest() {
         testLabel = "diffexport"
-        Task { @MainActor in
-            let base = selfTestTemporaryDirectory().appendingPathComponent("diff-export-\(UUID().uuidString)")
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 620),
-                                  styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            window.isReleasedWhenClosed = false
-            window.title = L10n.string("Diff-Liste exportieren…")
-            let mainWindow = Workspace.shared.flatMap { CommandTargeting.registeredWindow(for: $0) }
-            func require(_ value: Bool, _ message: String) throws {
-                if !value { throw NSError(domain: "DiffExportSelfTest", code: 1,
-                                           userInfo: [NSLocalizedDescriptionKey: message]) }
+        SelfTestDiffExport.run(runtime: .init(
+            mainWindow: { Workspace.shared.flatMap { CommandTargeting.registeredWindow(for: $0) } },
+            finish: finish,
+            sendMouseClick: { sendMouseClick(at: $0, in: $1, modifiers: $2, viaApp: $3, clickCount: $4) },
+            capture: { window, completion in
+                typeScrollCapture(window: window) { completion($0?.data) }
             }
-            func wait(_ condition: () -> Bool) async throws {
-                for _ in 0..<160 {
-                    if condition() { return }
-                    try await Task.sleep(nanoseconds: 50_000_000)
-                }
-                throw NSError(domain: "DiffExportSelfTest", code: 2,
-                              userInfo: [NSLocalizedDescriptionKey: "Exportzustand wurde nicht bereit"])
-            }
-            func findButton(_ view: NSView) -> NSButton? {
-                if let button = view as? NSButton, button.identifier?.rawValue == "diffExport" { return button }
-                return view.subviews.lazy.compactMap(findButton).first
-            }
-            @MainActor func openPanel(to destination: URL) async throws -> NSSavePanel {
-                diffExportTestDestination = destination
-                guard let root = window.contentView, let button = findButton(root) else {
-                    throw NSError(domain: "DiffExportSelfTest", code: 3)
-                }
-                try require(button.isEnabled && button.visibleRect.width >= 20 && button.visibleRect.height >= 20,
-                            "Exportknopf fehlt oder hat keine treffbare Fläche")
-                window.makeKeyAndOrderFront(nil)
-                try require(sendMouseClick(at: button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil),
-                                           in: window, modifiers: [], viaApp: true), "Exportknopf konnte nicht geklickt werden")
-                try await wait { window.attachedSheet is NSSavePanel }
-                try require(mainWindow?.attachedSheet == nil, "Export öffnete einen Dialog am Hauptfenster")
-                return window.attachedSheet as! NSSavePanel
-            }
-            func capture(_ name: String, from target: NSWindow) async throws {
-                guard let directory = ProcessInfo.processInfo.environment["FASTRA_DIFFEXPORT_DIR"], !directory.isEmpty else { return }
-                let url = URL(fileURLWithPath: directory).appendingPathComponent(name + ".png")
-                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                let data = await withCheckedContinuation { continuation in
-                    typeScrollCapture(window: target) { continuation.resume(returning: $0?.data) }
-                }
-                guard let data else { throw NSError(domain: "DiffExportSelfTest", code: 4) }
-                try data.write(to: url)
-            }
-            var inputStep = 0
-            @MainActor func panelKey(_ code: UInt16, panel: NSSavePanel) async throws {
-                guard let directory = ProcessInfo.processInfo.environment["FASTRA_DIFFEXPORT_INPUT_DIR"], !directory.isEmpty else {
-                    throw NSError(domain: "DiffExportSelfTest", code: 7,
-                                  userInfo: [NSLocalizedDescriptionKey: "Speicherdialog benötigt den externen Tasten-Treiber"])
-                }
-                panel.makeKeyAndOrderFront(nil)
-                let root = URL(fileURLWithPath: directory)
-                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-                let command: [String: Any] = ["pid": ProcessInfo.processInfo.processIdentifier, "keyCode": code]
-                // Das macOS-Sheet enthält einen fremden Open/Save-Panel-Service.
-                // NSApp.postEvent erreicht dessen Eingabefelder nicht verlässlich.
-                try JSONSerialization.data(withJSONObject: command).write(to: root.appendingPathComponent("key-\(inputStep).json"), options: .atomic)
-                inputStep += 1
-            }
-            do {
-                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-                let leftURL = base.appendingPathComponent("Links #1 🇩🇪.txt")
-                let rightURL = base.appendingPathComponent("Rechts é.txt")
-                let left = "GLEICH  \nalt 🇩🇪\nmitte\nende\n"
-                let right = "gleich\nneu é\nzusatz\nmitte\nschluss\n"
-                try left.write(to: leftURL, atomically: true, encoding: .utf8)
-                try right.write(to: rightURL, atomically: true, encoding: .utf8)
-                let options = FileDiffOptions(ignoreTrailingWhitespace: true, ignoreCase: true)
-                guard case .result(let result) = FileDiff.compare(left: left, right: right, options: options) else {
-                    throw NSError(domain: "DiffExportSelfTest", code: 5)
-                }
-                let fileRequest = FileDiffRequest(left: .file(leftURL), right: .file(rightURL), options: options)
-                let gitRequest = GitDiffRequest(repositoryPath: base.path, source: .workingTree(path: nil))
-                let patch = "diff --git a/eins.txt b/eins.txt\n--- a/eins.txt\n+++ b/eins.txt\n@@ -1,3 +1,3 @@\n-alt\n+neu\n mitte\n-ende\n+schluss\n\\ No newline at end of file\ndiff --git a/zwei.bin b/zwei.bin\nBinary files a/zwei.bin and b/zwei.bin differ\n"
-                let gitDocument = GitDiffParser.parse(Data(patch.utf8))
-                guard case .result(let identical) = FileDiff.compare(left: left, right: left, options: options) else {
-                    throw NSError(domain: "DiffExportSelfTest", code: 6)
-                }
-                let identicalRequest = FileDiffRequest(left: .file(leftURL), right: .file(leftURL), options: options)
-                let variants: [(String, AnyView, DiffExportSnapshot)] = [
-                    ("file", AnyView(FileDiffView(request: fileRequest, document: .success(result))), .file(fileRequest, result)),
-                    ("git", AnyView(GitDualPaneDiffView(request: gitRequest, document: gitDocument, fallbackText: "")), .git(gitRequest, gitDocument)),
-                    ("identical", AnyView(FileDiffView(request: identicalRequest, document: .success(identical))), .file(identicalRequest, identical))
-                ]
-                activateApplication(ignoringOtherApps: true)
-                for (name, view, snapshot) in variants {
-                    window.contentView = NSHostingView(rootView: view)
-                    for width: CGFloat in [760, 1100] {
-                        window.setContentSize(NSSize(width: width, height: 620))
-                        window.makeKeyAndOrderFront(nil)
-                        try await Task.sleep(nanoseconds: 350_000_000)
-                        try require(window.contentView.flatMap(findButton) != nil, "Export fehlt bei \(name), \(width) pt")
-                        try await capture("\(name)-\(Int(width))", from: window)
-                    }
-                    if name == "identical" { continue }
-                    let target = base.appendingPathComponent("\(name)-Bericht.txt")
-                    let cancelled = try await openPanel(to: target)
-                    try await Task.sleep(nanoseconds: 350_000_000)
-                    try await capture("\(name)-save-panel", from: cancelled)
-                    try await panelKey(53, panel: cancelled)
-                    try await wait { window.attachedSheet == nil }
-                    try require(!FileManager.default.fileExists(atPath: target.path), "Abbruch schrieb einen Bericht")
-                    let panel = try await openPanel(to: target)
-                    try await Task.sleep(nanoseconds: 500_000_000)
-                    try await panelKey(36, panel: panel)
-                    try await wait { window.attachedSheet == nil && FileManager.default.fileExists(atPath: target.path) }
-                    try require(try String(contentsOf: target, encoding: .utf8) == snapshot.report(), "Gespeicherter Bericht weicht von der fertigen Vergleichsbasis ab")
-                    try require(try String(contentsOf: leftURL, encoding: .utf8) == left
-                                && String(contentsOf: rightURL, encoding: .utf8) == right, "Export änderte eine Vergleichsquelle")
-                }
-                window.close()
-                diffExportTestDestination = nil
-                try? FileManager.default.removeItem(at: base)
-                finish(true, "Datei- und Git-Diff: echter Exportknopf, Fensterbezug, Abbruch und UTF-8-Speicherung; Quellen bleiben unverändert; Ansichten bei 760/1100 pt")
-            } catch {
-                if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .cancel) }
-                window.close()
-                diffExportTestDestination = nil
-                try? FileManager.default.removeItem(at: base)
-                finish(false, error.localizedDescription)
-            }
-        }
+        ))
     }
 
     private static func runSourceProvenanceTest() {
@@ -5664,19 +4061,15 @@ enum SelfTest {
         clip.scroll(to: origin)
         scrollView.reflectScrolledClipView(clip)
         // Ohne erzwungenes Layout misst der Aufrufer gleich darauf noch die
-        // Position VOR dem Scrollen und klickt daneben.
+        // Position vor dem Scrollen und klickt daneben.
         scrollView.window?.layoutIfNeeded()
         return true
     }
 
-    /// Klickt mittig auf einen Tab-Marker. Rückgabe `nil` = geklickt, sonst der
-    /// Fehlertext.
-    ///
-    /// Der Klickpunkt muss zwingend IN der sichtbaren Tab-Leiste liegen: Ein
-    /// weggescrollter Tab behält seine NSView im Baum, sein Mittelpunkt liegt
-    /// dann aber neben der Leiste. Ein blind gesendeter Klick traf dort am
-    /// 2026-08-16 den Home-Knopf der Titelleiste, der prompt beide Fixture-Tabs
-    /// verwarf — der Test meldete „Tabs verschwunden" statt „danebengeklickt".
+    /// Klickt mittig auf einen Tab-Marker; `nil` bedeutet Erfolg, sonst folgt
+    /// der Fehlertext. Der Punkt muss innerhalb der sichtbaren Tab-Leiste liegen:
+    /// Weggescrollte Tabs behalten ihre NSView, deren Mittelpunkt andere Controls
+    /// treffen könnte.
     private static func sendTabClick(
         on view: NSView,
         in window: NSWindow,
@@ -5697,21 +4090,10 @@ enum SelfTest {
         return nil
     }
 
-    /// Wartet, bis der Ziel-Tab sichtbar gescrollt, das Layout zur Ruhe
-    /// gekommen und der Klickpunkt nachweislich von der Tab-Leiste getroffen
-    /// wird — und sendet dann EINEN einzigen Shift-Klick.
-    ///
-    /// Bewusst keine Klick-Wiederholung: Würde der Test nach einer Frist
-    /// einfach erneut klicken, bestünde er auch dann, wenn ein Produktfehler
-    /// den ersten echten Nutzerklick verwirft — geprüft wäre dann nur noch
-    /// „irgendeiner von mehreren Klicks wirkt“. Stattdessen stellt diese
-    /// Wartephase alle Vorbedingungen her, die vorher eine Wiederholung
-    /// nötig machten: Der Klickpunkt muss IN der sichtbaren Leiste liegen
-    /// (ein weggescrollter Tab behält seine NSView, sein Mittelpunkt zeigte
-    /// am 2026-08-16 auf den Home-Knopf der Titelleiste) und der Hit-Test
-    /// muss die Leiste treffen. Geprüft und geklickt wird im selben
-    /// synchronen Durchlauf — nur so können die Koordinaten zwischen
-    /// Messung und Zustellung nicht veralten (siehe Kommentar unten).
+    /// Den Ziel-Tab sichtbar scrollen und den Klickpunkt per Hit-Test bestätigen,
+    /// dann genau einen Shift-Klick senden. Vorbedingungen und Klick liegen im
+    /// selben synchronen Durchlauf. Keine Klickwiederholung: Sie könnte verdecken,
+    /// dass das Produkt den ersten Nutzerklick verwirft.
     private static func armSingleShiftClick(
         _ id: UUID,
         in window: NSWindow,
@@ -5719,15 +4101,10 @@ enum SelfTest {
         directory: URL,
         completion: @escaping () -> Void
     ) {
-        // Messung, Prüfungen und Klick passieren in EINEM synchronen
-        // Main-Thread-Durchlauf: `window.sendEvent` stellt sofort zu,
-        // dazwischen kann sich keine View bewegen. Eine tick-übergreifende
-        // „Ruhe“-Forderung wäre hier dagegen unerfüllbar — SwiftUIs
-        // ScrollView stellt bei jedem Re-Render ihren eigenen gespeicherten
-        // Offset wieder her und pendelte im Gesamtlauf dauerhaft gegen den
-        // Test-Scroll (beobachtet 2026-08-17: Klickpunkt sprang je Tick
-        // zwischen x≈278 und x≈776). Deshalb liegt auch der Klick selbst in
-        // der Bedingung der Warteschleife, nicht erst in ihrer Fortsetzung.
+        // Messen, prüfen und klicken in einem Main-Thread-Durchlauf:
+        // `window.sendEvent` stellt synchron zu. Eine tickübergreifende Ruheprüfung
+        // kann mit SwiftUIs gespeichertem Scroll-Offset pendeln; der Klick liegt
+        // deshalb in der Bedingung der Warteschleife, nicht in deren Fortsetzung.
         var lastBlocker = ""
         waitFor(budget: 10, pause: 0.05,
                 condition: {
@@ -5869,10 +4246,10 @@ enum SelfTest {
                     // Der eine gesendete Shift-Klick blieb ohne Wirkung — das ist
                     // jetzt ein echter Befund: Alle Vorbedingungen (sichtbar, stabil,
                     // Hit-Test trifft die Leiste) hat `armSingleShiftClick` vor dem
-                    // Ereignis hergestellt. Bewusst KEINE Klick-Wiederholung, sonst
+                    // Ereignis hergestellt. Bewusst keine Klick-Wiederholung, sonst
                     // bestünde der Test auch, wenn das Produkt den ersten echten
                     // Nutzerklick verwirft.
-                    // Diagnose VOR dem Aufräumen erheben — der Test löscht den
+                    // Diagnose vor dem Aufräumen erheben — der Test löscht den
                     // Fixture-Ordner selbst, danach misst jede Prüfung nur noch
                     // die eigene Aufräumarbeit.
                     let fixtureExists = FileManager.default
@@ -6005,7 +4382,8 @@ enum SelfTest {
     /// sofortiger CESE-Reconcile ohne Inhalts-/Selektions-/Dirty-/Undo-
     /// Änderung, Vererbung an einen neuen 4D-Tab und appweite Rückschaltung
     /// beider offenen 4D-Tabs. Zusätzlich muss der checkbare Hauptmenüpunkt
-    /// jeden Zustand spiegeln.
+    /// jeden Zustand spiegeln. Echte Hilfsfenster sperren anschließend den
+    /// Menüpunkt und Shortcut, ohne Profile oder letzten Kontext zu ändern.
     private static func runSoftWrapProfilesTest() {
         testLabel = "softwrapprofiles"
         guard let ws = Workspace.shared else {
@@ -6021,6 +4399,7 @@ enum SelfTest {
         waitForEditor(window: mainWindow) { root, _ in
             let base = selfTestTemporaryDirectory()
                 .appendingPathComponent("fastra-softwrap-\(UUID().uuidString)")
+            shortSearchFixtureDirectory = base
             let textURL = base.appendingPathComponent("notizen.txt")
             let jsonInTextURL = base.appendingPathComponent("daten-json.txt")
             let markdownURL = base.appendingPathComponent("notizen.md")
@@ -6121,60 +4500,65 @@ enum SelfTest {
                 let dirty = ws.activeTab?.isDirty
                 let canUndo = textView.undoManager?.canUndo
 
-                guard let mainMenu = NSApp.mainMenu,
-                      let menuItem = findMenuItem(titled: "Soft Wrap", in: mainMenu),
-                      menuItem.isEnabled, menuItem.action != nil else {
-                    try? FileManager.default.removeItem(at: base)
-                    finish(false, "Hauptmenüpunkt „Soft Wrap“ nicht bedienbar")
-                }
-                // Nicht den Store direkt aufrufen: Dieser Klick belegt, dass
-                // das bestehende Hauptmenü wirklich dieselbe Action schaltet.
-                guard NSApp.sendAction(
-                    menuItem.action!,
-                    to: menuItem.target,
-                    from: menuItem
-                ) else {
-                    try? FileManager.default.removeItem(at: base)
-                    finish(false, "Hauptmenü-Action „Soft Wrap“ nicht ausführbar")
-                }
-                pollSoftWrapState(
-                    ws: ws, root: root, expectedFormat: .fourD,
-                    expectedWrap: true, label: "4D live eingeschaltet") {
-                    guard let reconciled = editorTextView(in: root) as? TextView,
-                          ObjectIdentifier(reconciled) == viewID,
-                          reconciled.string == content,
-                          reconciled.selectedRange() == selection,
-                          ws.activeTab?.isDirty == dirty,
-                          reconciled.undoManager?.canUndo == canUndo else {
-                        try? FileManager.default.removeItem(at: base)
-                        finish(false, "Soft-Wrap-Umschalten veränderte "
-                            + "TextView-Identität, Inhalt, Auswahl, Dirty- oder Undo-Zustand")
-                    }
-
-                    ws.loadFile(at: secondURL) { ok in
-                        guard ok else {
-                            try? FileManager.default.removeItem(at: base)
-                            finish(false, "zweite 4D-Fixture nicht ladbar")
+                Task { @MainActor in
+                    do {
+                        guard let menuItem = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu) else {
+                            throw NSError(domain: "SelfTestSoftWrapMenu", code: 1)
                         }
+                        guard let window = root.window else {
+                            throw NSError(domain: "SelfTestSoftWrapMenu", code: 2)
+                        }
+                        activateApplication(ignoringOtherApps: true)
+                        window.makeKeyAndOrderFront(nil)
+                        try await awaitCommandOwnerState("erstes Soft-Wrap-Dokument ist Befehlsziel") {
+                            NSApp.isActive && window.isKeyWindow
+                                && WorkspaceWindowRegistry.workspace(for: window) === ws
+                        }
+                        try await performCommandOwnerMenuItem(menuItem, ticks: 80, pause: 0.1)
                         pollSoftWrapState(
                             ws: ws, root: root, expectedFormat: .fourD,
-                            expectedWrap: true, label: "neuer 4D-Tab übernimmt Profil") {
-                            guard let secondTabID = ws.activeTabID,
-                                  secondTabID != firstTabID else {
+                            expectedWrap: true, label: "4D live eingeschaltet") {
+                            guard let reconciled = editorTextView(in: root) as? TextView,
+                                  ObjectIdentifier(reconciled) == viewID,
+                                  reconciled.string == content,
+                                  reconciled.selectedRange() == selection,
+                                  ws.activeTab?.isDirty == dirty,
+                                  reconciled.undoManager?.canUndo == canUndo else {
                                 try? FileManager.default.removeItem(at: base)
-                                finish(false, "zweite 4D-Datei erzeugte keinen eigenen Tab")
+                                finish(false, "Soft-Wrap-Umschalten veränderte "
+                                    + "TextView-Identität, Inhalt, Auswahl, Dirty- oder Undo-Zustand")
                             }
-                            ws.toggleSoftWrap()
-                            pollSoftWrapState(
-                                ws: ws, root: root, expectedFormat: .fourD,
-                                expectedWrap: false, label: "zweiter 4D-Tab schaltet aus") {
-                                verifyBothFourDTabsAreUnwrapped(
-                                    ws: ws, root: root, base: base,
-                                    firstTabID: firstTabID,
-                                    secondTabID: secondTabID
-                                )
+
+                            ws.loadFile(at: secondURL) { ok in
+                                guard ok else {
+                                    try? FileManager.default.removeItem(at: base)
+                                    finish(false, "zweite 4D-Fixture nicht ladbar")
+                                }
+                                pollSoftWrapState(
+                                    ws: ws, root: root, expectedFormat: .fourD,
+                                    expectedWrap: true, label: "neuer 4D-Tab übernimmt Profil") {
+                                    guard let secondTabID = ws.activeTabID,
+                                          secondTabID != firstTabID else {
+                                        try? FileManager.default.removeItem(at: base)
+                                        finish(false, "zweite 4D-Datei erzeugte keinen eigenen Tab")
+                                    }
+                                    ws.toggleSoftWrap()
+                                    pollSoftWrapState(
+                                        ws: ws, root: root, expectedFormat: .fourD,
+                                        expectedWrap: false, label: "zweiter 4D-Tab schaltet aus") {
+                                        verifyBothFourDTabsAreUnwrapped(
+                                            ws: ws, root: root, base: base,
+                                            firstTabID: firstTabID,
+                                            secondTabID: secondTabID
+                                        )
+                                    }
+                                }
                             }
                         }
+                    } catch {
+                        try? FileManager.default.removeItem(at: base)
+                        finish(error is SelfTestMenuRootExchange.EnvironmentFailure ? .environment : .fail,
+                               "Hauptmenü Soft Wrap: \(error.localizedDescription)")
                     }
                 }
             }
@@ -6193,11 +4577,127 @@ enum SelfTest {
             pollSoftWrapState(
                 ws: ws, root: root, expectedFormat: .fourD,
                 expectedWrap: false, label: "zweiter offener 4D-Tab bleibt synchron") {
-                try? FileManager.default.removeItem(at: base)
-                finish(true, "TXT und als JSON gemerkte TXT an/Fensterrand; "
-                    + "Markdown an; 4D aus; "
-                    + "Live-Reconcile zustandstreu; neuer und beide offene "
-                    + "4D-Tabs samt Hauptmenü synchron")
+                runSoftWrapAuxiliaryWindowChecks(ws: ws, root: root, base: base)
+            }
+        }
+    }
+
+    /// Hilfsfenster behalten den Settingskontext, dürfen das zuletzt bediente
+    /// Dokumentprofil aber weder per Menü noch per Tastenkürzel verändern.
+    private static func runSoftWrapAuxiliaryWindowChecks(ws: Workspace, root: NSView, base: URL) {
+        Task { @MainActor in
+            guard let firstWindow = root.window else { finish(false, "4D-Dokumentfenster fehlt") }
+            let second = DocumentWindowController.openNewDocument(defaults: workspaceDefaults())
+            guard let secondWindow = CommandTargeting.documentWindow(for: second) else {
+                finish(false, "zweites Dokumentfenster für Soft-Wrap-Zielprüfung fehlt")
+            }
+            do {
+                var loaded = false
+                second.loadFile(at: base.appendingPathComponent("notizen.txt")) { loaded = $0 }
+                try await awaitCommandOwnerState("verschiedene Soft-Wrap-Dokumentprofile bereit") {
+                    loaded && ws.activeDocumentFormat.id == .fourD && !ws.softWrapEnabled
+                        && second.activeDocumentFormat.id == .plainText && second.softWrapEnabled
+                        && CommandTargeting.editorTextView(for: second)?.wrapLines == true
+                }
+                // Bewusste Dokumentwechsel gehören zum Aufbau, nicht zur
+                // Rückgabe aus einem Hilfsfenster. Beide Haken müssen sichtbar stimmen.
+                for (window, expected) in [(firstWindow, false), (secondWindow, true)] {
+                    window.makeKeyAndOrderFront(nil)
+                    try await awaitCommandOwnerState("Dokument-Haken vor Hilfsfenster") {
+                        NSApp.mainMenu?.update()
+                        let item = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu)
+                        return window.isKeyWindow && item?.isEnabled == true
+                            && item?.state == (expected ? .on : .off)
+                    }
+                }
+                let profilesBeforeShortcut = try JSONDecoder().decode(
+                    SoftWrapProfileStore.Payload.self,
+                    from: workspaceDefaults().data(forKey: "editor.formatProfiles") ?? Data()
+                )
+                let revisionBeforeShortcut = second.softWrapProfiles.revision
+                try await deliverSoftWrapShortcut(to: secondWindow)
+                try await awaitCommandOwnerState("positiver ⇧⌘L-Kontrolllauf schaltet genau einmal aus") {
+                    !second.softWrapEnabled && !ws.softWrapEnabled
+                        && second.softWrapProfiles.revision == revisionBeforeShortcut &+ 1
+                }
+                try await deliverSoftWrapShortcut(to: secondWindow)
+                try await awaitCommandOwnerState("zweiter ⇧⌘L stellt das Profil genau einmal zurück") {
+                    second.softWrapEnabled && !ws.softWrapEnabled
+                        && second.softWrapProfiles.revision == revisionBeforeShortcut &+ 2
+                        && (try? JSONDecoder().decode(SoftWrapProfileStore.Payload.self,
+                            from: workspaceDefaults().data(forKey: "editor.formatProfiles") ?? Data())) == profilesBeforeShortcut
+                }
+                let firstRevision = ws.softWrapProfiles.revision
+                let secondRevision = second.softWrapProfiles.revision
+                let storedProfiles = workspaceDefaults().data(forKey: "editor.formatProfiles")
+                func profilesAreUntouched() -> Bool {
+                    !ws.softWrapEnabled && second.softWrapEnabled
+                        && ws.softWrapProfiles.revision == firstRevision
+                        && second.softWrapProfiles.revision == secondRevision
+                        && workspaceDefaults().data(forKey: "editor.formatProfiles") == storedProfiles
+                }
+                typealias Auxiliary = (label: String, item: () -> NSMenuItem?, matches: (NSWindow?) -> Bool)
+                let auxiliaries: [Auxiliary] = [
+                    ("Hilfe", { findMenuItem(titled: L10n.string("Fastra-Hilfe"), in: NSApp.mainMenu) },
+                     HelpWindow.isHelpWindow),
+                    ("Einstellungen", { menuItem(forExactKeyEquivalent: ",", modifiers: .command,
+                                                  in: NSApp.mainMenu) },
+                     SettingsWindowConfiguration.isSettingsWindow),
+                    ("Über", { findMenuItem(titled: L10n.string("Über Fastra"), in: NSApp.mainMenu) },
+                     AboutWindow.isAboutWindow)
+                ]
+                for auxiliary in auxiliaries {
+                    guard let openingItem = auxiliary.item() else {
+                        finish(false, auxiliary.label + ": echter Menüeintrag fehlt")
+                    }
+                    try await performCommandOwnerMenuItem(openingItem)
+                    try await awaitCommandOwnerState(auxiliary.label + " Key und Soft Wrap deaktiviert") {
+                        NSApp.mainMenu?.update()
+                        let item = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu)
+                        return auxiliary.matches(NSApp.keyWindow) && item?.isEnabled == false
+                            && item?.state == .off
+                    }
+                    guard let auxiliaryWindow = NSApp.keyWindow,
+                          ActiveDocumentContext.shared.workspace === second,
+                          profilesAreUntouched(),
+                          let wrapItem = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu) else {
+                        finish(false, auxiliary.label + ": Dokumentkontext oder Profil vor Bedienung verändert")
+                    }
+                    try await performCommandOwnerMenuItem(wrapItem, ticks: 80, pause: 0.1,
+                                                          expectsEnabled: false, expectedState: .off)
+                    guard auxiliary.matches(NSApp.keyWindow), profilesAreUntouched(),
+                          ActiveDocumentContext.shared.workspace === second,
+                          CommandTargeting.targetWorkspace() == nil else {
+                        finish(false, auxiliary.label + ": deaktivierte Menüprobe änderte Profil, Key oder Dokumentkontext")
+                    }
+                    try await deliverSoftWrapShortcut(to: auxiliaryWindow)
+                    guard auxiliary.matches(NSApp.keyWindow), profilesAreUntouched(),
+                          ActiveDocumentContext.shared.workspace === second,
+                          CommandTargeting.targetWorkspace() == nil else {
+                        finish(false, auxiliary.label + ": Soft Wrap änderte Hintergrundprofil oder Settingskontext")
+                    }
+                    auxiliaryWindow.close()
+                    // Den Rückweg nicht mit makeKey/makeFirstResponder reparieren.
+                    try await awaitCommandOwnerState(auxiliary.label + " gibt letzten Dokumentkontext frei") {
+                        NSApp.mainMenu?.update()
+                        let item = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu)
+                        return secondWindow.isKeyWindow && item?.isEnabled == true && item?.state == .on
+                    }
+                }
+                firstWindow.makeKeyAndOrderFront(nil)
+                try await awaitCommandOwnerState("4D-Haken nach Hilfsfenstern weiterhin aus") {
+                    NSApp.mainMenu?.update()
+                    let item = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu)
+                    return firstWindow.isKeyWindow && item?.isEnabled == true && item?.state == .off
+                        && profilesAreUntouched()
+                }
+                finish(true, "bestehende Formatprofilkette synchron; Hilfe, Einstellungen und Über "
+                    + "sperren natives Soft-Wrap-Menü und Shortcut ohne Profiländerung; "
+                    + "letzter Dokumentkontext und getrennte Dokument-Haken erhalten")
+            } catch {
+                finish(error is SelfTestMenuRootExchange.EnvironmentFailure ? .environment
+                    : ((error as NSError).domain == "SelfTestTrackedMainMenu" || NSApp.isActive ? .fail : .environment),
+                       "Soft-Wrap-Hilfsfenster: \(error.localizedDescription)")
             }
         }
     }
@@ -6215,8 +4715,8 @@ enum SelfTest {
         waitFor(budget: 8, pause: 0.1,
                 condition: {
                     textView = editorTextView(in: root) as? TextView
-                    // Entspricht dem Öffnen eines nativen Hauptmenüs: AppKit fragt die
-                    // SwiftUI-Command-Validierung ab, bevor der Haken sichtbar wird.
+                    // Der Poll beobachtet den Haken; die tatsächliche Bedienung
+                    // öffnet und validiert das Menü getrennt im Tracking-Helfer.
                     NSApp.mainMenu?.update()
                     menuItem = findMenuItem(titled: "Soft Wrap", in: NSApp.mainMenu)
                     let menuMatches = menuItem?.state == (expectedWrap ? .on : .off)
@@ -6788,7 +5288,7 @@ enum SelfTest {
             ws.loadFile(at: tmp) { ok in
                 try? FileManager.default.removeItem(at: tmp)
                 guard ok else { finish(false, "Markdown-Fixture nicht ladbar") }
-                // Bewusst der STABILE Editor: Sonst merkt der Test die Identität
+                // Bewusst der stabile Editor: Sonst merkt der Test die Identität
                 // einer TextView, die gleich planmäßig ersetzt wird (isLoading-
                 // Flip), und vergleicht später gegen ein totes Objekt.
                 pollForStableSoftWrapEditor(ws: ws, root: root) { textView, _ in
@@ -6884,12 +5384,11 @@ enum SelfTest {
                                             wrapColumn: 55, guideColumn: 55,
                                             minimumConfiguredWidth: pageGuideWidth,
                                             label: "Font-Zoom") { _ in
-                                            // Jede Bedingung EINZELN melden. Vorher
+                                            // Jede Bedingung einzeln melden. Vorher
                                             // fasste eine Sammelmeldung sechs
                                             // Zusagen zusammen; ein Fehlschlag sagte
-                                            // dann nicht, WAS sich geändert hatte,
+                                            // dann nicht, was sich geändert hatte,
                                             // und war nicht diagnostizierbar
-                                            // (Befund 2026-07-28).
                                             guard let current =
                                                     editorTextView(in: root) as? TextView else {
                                                 finish(false, "Editor-TextView nach dem Zoom "
@@ -7070,205 +5569,12 @@ enum SelfTest {
     /// bewegte Range-Kante selbst und nicht CodeEdits Scroll-Hilfsfunktion.
     private static func runSelectionScrollTest() {
         testLabel = "selectionscroll"
-        if let selectionScrollSetupError {
-            finishSelectionScroll(
-                false,
-                "Kaltstart-Fixture nicht anlegbar: \(selectionScrollSetupError)"
-            )
-        }
-        guard let ws = Workspace.shared else {
-            finishSelectionScroll(
-                false,
-                "Workspace.shared ist nil (Test-Hook fehlt)"
-            )
-        }
-        guard let mainWindow = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                && $0.contentView != nil && $0.isVisible
-        }), let root = mainWindow.contentView else {
-            finishSelectionScroll(false, "kein Hauptfenster gefunden")
-        }
-        pollForMarkdownSelectionScrollEditor(
-            ws: ws, mainWindow: mainWindow, root: root)
+        sessionRestorationTests.runSelectionScrollTest()
     }
 
-    /// Wartet ausdrücklich auf BEIDE Hälften des Markdown-Splits. So kann ein
-    /// TextView-only-Test nicht erneut die entscheidende Produktansicht
-    /// umgehen, in der der Nutzer den fehlenden Scroll beobachtet hat.
-    private static func pollForMarkdownSelectionScrollEditor(
-        ws: Workspace, mainWindow: NSWindow, root: NSView
-    ) {
-        var textView: TextView?
-        waitFor(budget: 10, pause: 0.1,
-                condition: {
-                    let markdownReady = ws.activeTab?.isLoading == false
-                        && ws.activeTab?.url?.canonicalFileURL
-                            == selectionScrollFixtureURL?.canonicalFileURL
-                        && markdownWebView(in: root) != nil
-                    guard markdownReady,
-                          let candidate = editorTextView(in: root) as? TextView,
-                          sourceEditorController(for: candidate) != nil else { return false }
-                    textView = candidate
-                    return true
-                },
-                onTimeout: { book in
-                    finishSelectionScroll(
-                        false,
-                        "Markdown-Split mit linkem Editor nicht bereit — \(book.summary)"
-                    )
-                },
-                then: {
-                    guard let textView else { finish(false, "linker Editor nach Erfolg verschwunden") }
-                    exerciseMarkdownSelectionScroll(
-                        textView: textView, mainWindow: mainWindow
-                    )
-                })
-    }
 
-    /// Sendet echte Shift+↓-Events an den fokussierten linken Editor. Zwischen
-    /// den einzelnen Tastenläufen liegt jeweils ein Runloop-Durchlauf wie bei
-    /// mehreren echten Tastendrücken; erst danach wird der Viewport gemessen.
-    private static func exerciseMarkdownSelectionScroll(
-        textView: TextView, mainWindow: NSWindow
-    ) {
-        guard let scrollView = textView.enclosingScrollView else {
-            finishSelectionScroll(false, "Editor-ScrollView fehlt")
-        }
-        textView.layoutManager.layoutLines()
-        let source = textView.string as NSString
-        let middleOffset = source.range(of: "Auswahlzeile 1600").location
-        guard middleOffset != NSNotFound,
-              let middleRect = textView.layoutManager.rectForOffset(
-                  middleOffset
-              ) else {
-            finishSelectionScroll(false, "mittlere Fixture-Zeile nicht layoutbar")
-        }
-        scrollView.contentView.scroll(
-            to: CGPoint(x: 0, y: middleRect.minY)
-        )
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-        textView.updatedViewport(scrollView.documentVisibleRect)
-        let visibleBefore = scrollView.documentVisibleRect
-        textView.layoutManager.layoutLines(in: visibleBefore)
-        guard visibleBefore.minY > 0,
-              let firstRect = textView.layoutManager.rectForOffset(0),
-              let cursorOffset = textView.layoutManager.textOffsetAtPoint(
-                  CGPoint(
-                      x: visibleBefore.minX + 140,
-                      y: visibleBefore.maxY - firstRect.height * 2
-                  )
-              ) else {
-            finishSelectionScroll(
-                false,
-                "Startposition im mittleren Viewport nicht bestimmbar"
-            )
-        }
-        textView.selectionManager.setSelectedRange(
-            NSRange(location: cursorOffset, length: 0)
-        )
-        let initialTop = visibleBefore.minY
 
-        guard mainWindow.makeFirstResponder(textView) else {
-            finishSelectionScroll(
-                false,
-                "linker Markdown-Editor wurde nicht First Responder"
-            )
-        }
-        if let flags = NSEvent.keyEvent(
-            with: .flagsChanged, location: .zero,
-            modifierFlags: .shift,
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: mainWindow.windowNumber, context: nil,
-            characters: "", charactersIgnoringModifiers: "",
-            isARepeat: false, keyCode: 56
-        ) {
-            NSApp.postEvent(flags, atStart: false)
-        }
-        sendMarkdownSelectionScrollKey(
-            textView: textView,
-            scrollView: scrollView,
-            mainWindow: mainWindow,
-            initialTop: initialTop,
-            step: 0
-        )
-    }
 
-    private static func sendMarkdownSelectionScrollKey(
-        textView: TextView,
-        scrollView: NSScrollView,
-        mainWindow: NSWindow,
-        initialTop: CGFloat,
-        step: Int
-    ) {
-        guard let key = NSEvent.keyEvent(
-            with: .keyDown, location: .zero,
-            modifierFlags: .shift,
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: mainWindow.windowNumber, context: nil,
-            characters: "\u{F701}",
-            charactersIgnoringModifiers: "\u{F701}",
-            isARepeat: false, keyCode: 125
-        ) else {
-            finishSelectionScroll(
-                false,
-                "konnte Shift+Pfeil-nach-unten nicht bauen"
-            )
-        }
-        // Durch die NSApplication-Queue laufen lassen, damit dieselben lokalen
-        // Event-Monitore wie bei der physischen Tastatur beteiligt sind.
-        NSApp.postEvent(key, atStart: false)
-
-        if step < 5 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                sendMarkdownSelectionScrollKey(
-                    textView: textView,
-                    scrollView: scrollView,
-                    mainWindow: mainWindow,
-                    initialTop: initialTop,
-                    step: step + 1
-                )
-            }
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                let range = textView.selectedRange()
-                guard range.length > 0,
-                      let activeRect = textView.layoutManager.rectForOffset(
-                          NSMaxRange(range)
-                      ) else {
-                    finishSelectionScroll(
-                        false,
-                        "bewegte Auswahlkante nicht layoutbar"
-                    )
-                }
-                let visibleRect = scrollView.documentVisibleRect
-                guard visibleRect.minY > initialTop,
-                      visibleRect.contains(activeRect) else {
-                    finishSelectionScroll(
-                        false,
-                        "bewegte Kante außerhalb: Auswahl=\(range), "
-                            + "Viewport=\(visibleRect), Kante=\(activeRect)"
-                    )
-                }
-                finishSelectionScroll(
-                    true,
-                    "Shift-Auswahl scrollte von y=\(Int(initialTop)) auf "
-                        + "y=\(Int(visibleRect.minY)); bewegte Kante sichtbar"
-                )
-            }
-        }
-    }
-
-    private static func finishSelectionScroll(
-        _ ok: Bool,
-        _ message: String
-    ) -> Never {
-        if let directory = selectionScrollFixtureDirectory {
-            try? FileManager.default.removeItem(at: directory)
-        }
-        selectionScrollFixtureDirectory = nil
-        selectionScrollFixtureURL = nil
-        finish(ok, message)
-    }
 
     /// Scrollt iterativ, bis die Zielzeile wirklich oben liegt. Ein einmalig
     /// aus `rectForOffset` berechneter Wert wäre bei noch nicht ausgelegten
@@ -7420,7 +5726,7 @@ enum SelfTest {
         return gutter.visibleLineIndicesForDrawing.first
     }
 
-    /// Liest, ab welcher Zeile der Gutter zuletzt WIRKLICH gezeichnet hat —
+    /// Liest, ab welcher Zeile der Gutter zuletzt wirklich gezeichnet hat —
     /// aus dem Zeichenprotokoll des echten draw-Laufs, nicht aus der
     /// Vorberechnung derselben Zeilenauswahl. Nur so fällt auch eine falsche
     /// Y-Umrechnung der gezeichneten Nummern auf.
@@ -7560,8 +5866,8 @@ enum SelfTest {
     /// Wartet auf einen Editor, der sich nicht mehr ändert — Voraussetzung
     /// dafür, seine Identität als Vergleichsbasis zu merken.
     ///
-    /// Hintergrund (Befund 2026-07-28): `EditorView` erzeugt den SourceEditor
-    /// bewusst NEU, sobald `isLoading` auf false kippt (siehe Kommentar an
+    /// Hintergrund: `EditorView` erzeugt den SourceEditor
+    /// bewusst neu, sobald `isLoading` auf false kippt (siehe Kommentar an
     /// `sourceEditor` — nur so übernimmt CodeEditSourceEditor den geladenen
     /// Inhalt). `pollForSoftWrapEditor` liefert aber schon die TextView davor.
     /// Wer dort die Identität merkt, vergleicht später gegen einen Editor, der
@@ -7569,7 +5875,7 @@ enum SelfTest {
     /// Lauf rot, ohne dass am Produkt etwas defekt war.
     ///
     /// Zwei Bedingungen, beide nötig: Der Tab meldet sich als fertig geladen,
-    /// UND dieselbe TextView überlebt drei aufeinanderfolgende Prüfungen.
+    /// und dieselbe TextView überlebt drei aufeinanderfolgende Prüfungen.
     private static func pollForStableSoftWrapEditor(
         ws: Workspace, root: NSView,
         completion: @escaping (TextView, TextViewController) -> Void
@@ -7744,11 +6050,11 @@ enum SelfTest {
         return nil
     }
 
-    /// Belegt END-TO-END, dass der Editor Syntax-Highlighting wirklich FÄRBT:
+    /// Belegt end-to-end, dass der Editor Syntax-Highlighting wirklich färbt:
     /// eine Python-Datei mit Keyword/String/Kommentar wird in einen Tab
-    /// geladen; danach müssen im ECHTEN Editor-TextStorage mehrere
-    /// VERSCHIEDENE Vordergrundfarben stehen. Fängt die Bug-Klasse „Sprache
-    /// erkannt, aber alles monochrom" (Daniel-Befund 2026-07-10) — Unit-Tests
+    /// geladen; danach müssen im echten Editor-TextStorage mehrere
+    /// verschiedene Vordergrundfarben stehen. Fängt die Bug-Klasse „Sprache
+    /// erkannt, aber alles monochrom" — Unit-Tests
     /// sehen die nicht, weil der Pfad CodeLanguage → TreeSitterClient →
     /// Query-Bundle → Attribut-Anwendung nur im echten App-Prozess läuft.
     /// Tree-sitter arbeitet asynchron → engmaschig pollen statt Einmal-Messung.
@@ -7765,702 +6071,24 @@ enum SelfTest {
         }
         _ = mainWindow
 
-        let tmp = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-highlight-\(UUID().uuidString).py")
-        let code = """
-        # Kommentar in eigener Farbe
-        def greet(name):
-            count = 42
-            return "Hallo " + name + str(count)
-        """
-        do { try code.write(to: tmp, atomically: true, encoding: .utf8) }
-        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
-
-        ws.loadFile(at: tmp) { ok in
-            guard ok else {
-                try? FileManager.default.removeItem(at: tmp)
-                finish(false, "loadFile schlug fehl (completion false)")
-            }
-            pollHighlightColors(root: root, url: tmp)
-        }
+        SelfTestHighlighting(
+            workspace: ws, root: root, waitFor: waitFor, finish: finish,
+            editorTextView: editorTextView,
+            fourDExpectedColors: fourDExpectedColors,
+            fourDComponentMethodExpectedColor: fourDComponentMethodExpectedColor,
+            storageSubstringHasColor: storageSubstringHasColor,
+            storageSubstringHasStyle: storageSubstringHasStyle
+        ).runHighlightTest()
     }
 
-    /// Pollt (max. 10 s, 0,25-s-Takt), bis der Editor-TextStorage ≥ 2
-    /// verschiedene Vordergrundfarben trägt. Timeout → FAIL inkl. Diagnose
-    /// (erkannte Sprache, tree-sitter-Grammatik vorhanden?, Query-Pfad).
-    private static func pollHighlightColors(root: NSView, url: URL) {
-        var farben = 0
-        waitFor(budget: 10, pause: 0.25,
-                condition: {
-                    farben = distinctForegroundColors(in: root)
-                    return farben >= 2
-                },
-                onTimeout: { book in
-                    let lang = CodeLanguage.detectLanguageFrom(url: url)
-                    let query = lang.queryURL
-                    let queryExists = query.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
-                    try? FileManager.default.removeItem(at: url)
-                    finish(false, "monochrom (\(farben) Farbe(n)) — \(book.summary) — "
-                        + "Sprache=\(lang.id.rawValue), "
-                        + "tsLanguage=\(lang.language != nil ? "ok" : "NIL"), "
-                        + "queryURL=\(query?.path ?? "nil") existiert=\(queryExists)")
-                },
-                then: {
-                    try? FileManager.default.removeItem(at: url)
-                    finish(true, "Editor färbt: \(farben) verschiedene Vordergrundfarben im TextStorage")
-                })
-    }
+    // MARK: - 4D-Vervollständigung
 
-    // MARK: - 4D-Vervollständigung (Etappe 6 Wunschpaket 2026-07c)
-
-    /// Zustand für den mehrstufigen Completion-Selbsttest. Die Prüfschritte
-    /// sammeln ihre Befunde, damit ein defektes Auto-Popup die unabhängige
-    /// Prüfung von ⌃Leertaste, Pfeil und Maus nicht überspringt.
-    private final class FourDCompletionTestState {
-        let projectRoot: URL
-        let fileURL: URL
-        let initialText: String
-        let componentMethod = "ZZF_ComponentShared"
-        var failures: [String] = []
-
-        init(projectRoot: URL, fileURL: URL, initialText: String) {
-            self.projectRoot = projectRoot
-            self.fileURL = fileURL
-            self.initialText = initialText
-        }
-    }
-
-    /// Reproduziert die 4D-Vervollständigung am LAUFENDEN
-    /// CodeEditSourceEditor: Eine echte `.4dm` wird geladen, `A` und `L`
-    /// gehen über die öffentliche TextView-Eingabe hinein, anschließend öffnet
-    /// ⌃Leertaste die gleiche Liste. Gemessen wird nicht die Delegate-Logik, sondern das
-    /// sichtbare CESE-Fenster mit seiner echten `NSTableView`.
-    ///
-    /// Danach muss ↓ die Auswahl bewegen, ein gezielter Mausklick die Auswahl
-    /// ändern und ein Doppelklick die erste 4D-Vervollständigung übernehmen.
-    /// Damit schützt der Test genau die Anbindung, die reine Unit-Tests nicht
-    /// sehen: Text-Delegate, Event-Monitore, Fenster und Hit-Testing.
     private static func runFourDCompletionTest() {
         testLabel = "completion4d"
-        guard let ws = Workspace.shared else {
-            finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
-        }
-        guard let mainWindow = NSApp.windows.first(where: {
-            $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                && $0.contentView != nil && $0.isVisible
-        }), let root = mainWindow.contentView else {
-            finish(false, "kein Hauptfenster gefunden")
-        }
-
-        // Echtes temporäres 4D-Projekt: Die geteilte Methode muss durch den
-        // produktiven Komponentenindex in den produktiven Completion-Provider
-        // gelangen. Das leere Aufruferdokument erzeugt danach nur die
-        // ausdrücklich eingegebenen Präfixe.
-        let projectRoot = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-completion4d-\(UUID().uuidString)")
-        let methods = projectRoot.appendingPathComponent(
-            "Project/Sources/Methods", isDirectory: true
-        )
-        let componentMethods = projectRoot.appendingPathComponent(
-            "Components/FastraTools.4dbase/Project/Sources/Methods",
-            isDirectory: true
-        )
-        let url = methods.appendingPathComponent("Aufrufer.4dm")
-        // `Workspace.loadFile` kanonisiert `/var` zu `/private/var`. Der Test
-        // muss dieselbe URL-Form speichern, sonst würde er einen korrekt
-        // geladenen 4D-Tab fälschlich nie als aktiv erkennen.
-        let fixtureText = "// Completion-Selbsttest\n"
-        let state = FourDCompletionTestState(
-            projectRoot: projectRoot.canonicalFileURL,
-            fileURL: url.canonicalFileURL,
-            initialText: fixtureText
-        )
-        do {
-            try FileManager.default.createDirectory(
-                at: methods, withIntermediateDirectories: true
-            )
-            try FileManager.default.createDirectory(
-                at: componentMethods, withIntermediateDirectories: true
-            )
-            try fixtureText.write(to: url, atomically: true, encoding: .utf8)
-            try "//%attributes = {\"shared\":true}\n".write(
-                to: componentMethods.appendingPathComponent("\(state.componentMethod).4dm"),
-                atomically: true, encoding: .utf8
-            )
-        } catch {
-            try? FileManager.default.removeItem(at: projectRoot)
-            finish(false, "Completion-Fixture nicht schreibbar: \(error.localizedDescription)")
-        }
-
-        NSApp.appearance = NSAppearance(named: .aqua)
-        ws.openProject(at: state.projectRoot)
-        pollForFourDCompletionComponentIndex(
-            ws: ws, mainWindow: mainWindow, root: root, state: state
-        )
+        fourDCompletionTests.runFourDCompletionTest()
     }
 
-    private static func pollForFourDCompletionComponentIndex(
-        ws: Workspace,
-        mainWindow: NSWindow,
-        root: NSView,
-        state: FourDCompletionTestState
-    ) {
-        waitFor(budget: 6, pause: 0.05,
-                condition: { ws.fourDComponentMethods[state.componentMethod.lowercased()] != nil },
-                onTimeout: { book in
-                    finishFourDCompletionTest(
-                        state, ok: false,
-                        message: "Shared-Component-Methode nicht indiziert — \(book.summary)"
-                    )
-                },
-                then: {
-                    ws.loadFile(at: state.fileURL) { ok in
-                        guard ok else {
-                            finishFourDCompletionTest(state, ok: false,
-                                                      message: "loadFile (.4dm) schlug fehl")
-                        }
-                        pollForFourDCompletionEditor(
-                            ws: ws, mainWindow: mainWindow, root: root, state: state
-                        )
-                    }
-                })
-    }
-
-    /// Wartet auf die neu gemountete TextView der `.4dm`-Datei. Ein
-    /// gewöhnlicher Delay wäre hier unscharf: Der Tab-Wechsel erzeugt den
-    /// SourceEditor neu, und erst diese Instanz trägt den 4D-Delegate.
-    private static func pollForFourDCompletionEditor(
-        ws: Workspace,
-        mainWindow: NSWindow,
-        root: NSView,
-        state: FourDCompletionTestState
-    ) {
-        // Zwei Stufen in EINER Frist: erst der montierte `.4dm`-Editor, dann
-        // das Key-Fenster.
-        var stage = 0
-        var textView: TextView?
-        waitFor(budget: 6, pause: 0.05,
-                condition: {
-                    // Die vom Workspace kanonisierte URL kann auf macOS einen anderen
-                    // Pfad-Alias tragen. Für diese Test-Fixture ist die aktive, geladene
-                    // `.4dm`-Endung die robuste und zugleich produktrelevante Bedingung.
-                    let isFourDTab = ws.activeTab?.isLoading == false
-                        && ws.activeTab?.url?.pathExtension.lowercased() == "4dm"
-                    guard isFourDTab,
-                          let candidate = completionEditorTextView(in: root, window: mainWindow,
-                                                                   expectedText: state.initialText) else {
-                        stage = 0
-                        return false
-                    }
-                    textView = candidate
-                    stage = 1
-                    // Der CESE-Monitor reagiert nur im Key-Window. Der Runner holt
-                    // die Test-App dafür nach vorn; verliert der Nutzer oder macOS
-                    // diesen Fokus, wäre ein fehlendes Popup kein Produktbefund.
-                    return mainWindow.isKeyWindow
-                },
-                onTimeout: { book in
-                    if stage == 0 {
-                        finishFourDCompletionTest(state, ok: false,
-                                                  message: "`.4dm`-Editor nicht aktiv/montiert — \(book.summary)")
-                    }
-                    finishFourDCompletionTest(state, outcome: .environment,
-                                              message: "Umgebungsproblem: 4D-Editor wurde nicht Key-Window (\(book.summary))")
-                },
-                then: {
-                    guard let textView else {
-                        finishFourDCompletionTest(state, ok: false, message: "4D-Editor nach Erfolg verschwunden")
-                    }
-                    guard mainWindow.makeFirstResponder(textView) else {
-                        finishFourDCompletionTest(state, ok: false,
-                                                  message: "4D-Editor wurde nicht First Responder")
-                    }
-                    // Zwei Einfügungen am laufenden TextView. Diese öffentliche
-                    // AppKit-Eingabemethode läuft durch dieselbe CESE-Textmutation und
-                    // deren Delegate wie eine getippte Taste; ein Queue-`keyDown` kann
-                    // in der bewusst nicht aktivierten Selbsttest-App dagegen schon im
-                    // System-Input-Context enden, bevor die TextView ihn sieht.
-                    textView.selectionManager.setSelectedRange(
-                        NSRange(location: (textView.string as NSString).length, length: 0)
-                    )
-                    guard insertCompletionCharacter("A", into: textView) else {
-                        finishFourDCompletionTest(state, ok: false,
-                                                  message: "konnte A für 4D-Editor nicht einfügen")
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        guard insertCompletionCharacter("L", into: textView) else {
-                            finishFourDCompletionTest(state, ok: false,
-                                                      message: "konnte L für 4D-Editor nicht einfügen")
-                        }
-                        pollForAutomaticFourDCompletion(mainWindow: mainWindow,
-                                                        textView: textView, state: state)
-                    }
-                })
-    }
-
-    /// Beobachtet das automatisch geöffnete CESE-Fenster nach der produktiven
-    /// TextView-Eingabe. Die Textprüfung verhindert, dass ein fehlendes Routing
-    /// fälschlich als Completion-Fehler gezählt wird.
-    private static func pollForAutomaticFourDCompletion(
-        mainWindow: NSWindow,
-        textView: TextView,
-        state: FourDCompletionTestState
-    ) {
-        var popup: NSWindow?
-        waitFor(budget: 4, pause: 0.05,   // 4 s für CESE-Task + Layout
-                condition: {
-                    popup = fourDCompletionWindow(attachedTo: mainWindow)
-                    return popup != nil
-                },
-                onTimeout: { _ in
-                    let expectedText = state.initialText + "AL"
-                    if textView.string != expectedText {
-                        let selections = textView.selectionManager.textSelections.map(\.range)
-                        finishFourDCompletionTest(state, ok: false,
-                                                  message: "Testeingabe kam nicht im Editor an "
-                                                    + "(Text=\"\(textView.string)\", editable=\(textView.isEditable), "
-                                                    + "delegate=\(String(describing: textView.delegate)), "
-                                                    + "Selektionen=\(selections))")
-                    }
-                    state.failures.append("automatisches Popup blieb nach der Eingabe von „AL“ aus")
-                    startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
-                },
-                then: {
-                    guard let popup else { finish(false, "Auto-Popup nach Erfolg verschwunden") }
-                    guard let table = completionTable(in: popup), table.numberOfRows > 1 else {
-                        state.failures.append("automatisches Popup hat keine auswertbare Vorschlagsliste")
-                        closeAutomaticCompletionThenStartManual(mainWindow: mainWindow,
-                                                                 textView: textView, state: state)
-                        return
-                    }
-                    closeAutomaticCompletionThenStartManual(mainWindow: mainWindow,
-                                                             textView: textView, state: state)
-                })
-    }
-
-    /// Schließt ein vorhandenes Auto-Popup mit einem echten Escape-Event.
-    /// Der Fallback räumt nur für den folgenden, unabhängigen ⌃Leertaste-Test
-    /// auf; der Fehler bleibt vorher im Befund erhalten.
-    private static func closeAutomaticCompletionThenStartManual(
-        mainWindow: NSWindow,
-        textView: TextView,
-        state: FourDCompletionTestState
-    ) {
-        postKey("\u{1b}", keyCode: 53, windowNumber: mainWindow.windowNumber)
-        waitFor(budget: 1.5, pause: 0.05,
-                condition: { fourDCompletionWindow(attachedTo: mainWindow) == nil },
-                onTimeout: { _ in
-                    state.failures.append("automatisches Popup ließ sich nicht mit Escape schließen")
-                    fourDCompletionWindow(attachedTo: mainWindow)?.close()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
-                    }
-                },
-                then: {
-                    startManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
-                })
-    }
-
-    /// Öffnet die Liste ausschließlich über den produktiven CESE-Shortcut
-    /// ⌃Leertaste. Der Test ruft bewusst NICHT den Delegate oder Controller
-    /// direkt auf, damit ein kaputtes Event-Routing sichtbar bleibt.
-    private static func startManualFourDCompletion(
-        mainWindow: NSWindow,
-        textView: TextView,
-        state: FourDCompletionTestState
-    ) {
-        guard mainWindow.isKeyWindow else {
-            finishFourDCompletionTest(state, outcome: .environment,
-                                      message: "Umgebungsproblem: Fokus vor ⌃Leertaste verloren")
-        }
-        guard mainWindow.makeFirstResponder(textView) else {
-            finishFourDCompletionTest(state, ok: false,
-                                      message: "4D-Editor verlor vor ⌃Leertaste den First Responder")
-        }
-        guard let event = NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: .control,
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: mainWindow.windowNumber, context: nil,
-            characters: " ", charactersIgnoringModifiers: " ",
-            isARepeat: false, keyCode: 49
-        ) else {
-            finishFourDCompletionTest(state, ok: false,
-                                      message: "konnte ⌃Leertaste-Event nicht bauen")
-        }
-        NSApp.postEvent(event, atStart: false)
-        pollForManualFourDCompletion(mainWindow: mainWindow, textView: textView, state: state)
-    }
-
-    /// Wartet auf die über ⌃Leertaste geöffnete Liste und beginnt erst dann
-    /// die Eingabeprüfung. Das trennt „Popup erscheint nicht“ sauber von
-    /// „sichtbares Popup ist nicht bedienbar“.
-    private static func pollForManualFourDCompletion(
-        mainWindow: NSWindow,
-        textView: TextView,
-        state: FourDCompletionTestState
-    ) {
-        var found: (popup: NSWindow, table: NSTableView)?
-        waitFor(budget: 4, pause: 0.05,
-                condition: {
-                    guard mainWindow.isKeyWindow else {
-                        finishFourDCompletionTest(state, outcome: .environment,
-                                                  message: "Umgebungsproblem: Fokus während ⌃Leertaste verloren")
-                    }
-                    guard let popup = fourDCompletionWindow(attachedTo: mainWindow),
-                          let table = completionTable(in: popup), table.numberOfRows > 1 else { return false }
-                    found = (popup, table)
-                    return true
-                },
-                onTimeout: { _ in
-                    state.failures.append("mit ⌃Leertaste geöffnetes Popup erschien nicht")
-                    finishFourDCompletionTest(state, ok: false,
-                                              message: state.failures.joined(separator: "; "))
-                },
-                then: {
-                    guard let found else {
-                        finishFourDCompletionTest(state, ok: false, message: "Popup nach Erfolg verschwunden")
-                    }
-                    // `items` wird in CESE über einen asynchronen Publisher in die
-                    // Tabelle geschrieben. Erst nach dessen letztem Reload ist die
-                    // Auswahl stabil; ein sofort geposteter Pfeil könnte sonst korrekt
-                    // wirken und gleich wieder auf Zeile 0 zurückgesetzt werden.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        testFourDCompletionArrow(mainWindow: mainWindow, popup: found.popup,
-                                                 textView: textView, table: found.table, state: state)
-                    }
-                })
-    }
-
-    /// Ein Pfeil-Event muss die SELEKTION der echten Vorschlagstabelle von
-    /// Zeile 0 auf Zeile 1 verschieben. Das ist unabhängig davon beobachtbar,
-    /// ob ein Fenster zufällig bloß gezeichnet wird.
-    private static func testFourDCompletionArrow(
-        mainWindow: NSWindow,
-        popup: NSWindow,
-        textView: TextView,
-        table: NSTableView,
-        state: FourDCompletionTestState
-    ) {
-        guard mainWindow.isKeyWindow else {
-            finishFourDCompletionTest(state, outcome: .environment,
-                                      message: "Umgebungsproblem: Fokus vor Pfeiltaste verloren")
-        }
-        guard table.selectedRow == 0 else {
-            state.failures.append("Vorschlagsliste startet nicht mit Zeile 0 (Ist: \(table.selectedRow))")
-            testFourDCompletionClick(mainWindow: mainWindow, popup: popup,
-                                     textView: textView, table: table, state: state)
-            return
-        }
-        // NSDownArrowFunctionKey beschreibt das Event vollständig; CESE selbst
-        // entscheidet aber bewusst über den Hardware-Keycode 125.
-        postKey("\u{F701}", keyCode: 125, windowNumber: mainWindow.windowNumber)
-        pollForFourDCompletionArrow(mainWindow: mainWindow, popup: popup,
-                                    textView: textView, table: table, state: state)
-    }
-
-    private static func pollForFourDCompletionArrow(
-        mainWindow: NSWindow,
-        popup: NSWindow,
-        textView: TextView,
-        table: NSTableView,
-        state: FourDCompletionTestState
-    ) {
-        waitFor(budget: 1.2, pause: 0.03,
-                condition: { table.selectedRow == 1 },
-                onTimeout: { _ in
-                    state.failures.append("↓ bewegte die Vorschlagsauswahl nicht (Zeile blieb \(table.selectedRow))")
-                    testFourDCompletionClick(mainWindow: mainWindow, popup: popup,
-                                             textView: textView, table: table, state: state)
-                },
-                then: {
-                    testFourDCompletionClick(mainWindow: mainWindow, popup: popup,
-                                             textView: textView, table: table, state: state)
-                })
-    }
-
-    /// Klickt gezielt in die jeweils ANDERE sichtbare Tabellenzeile. Damit
-    /// kann der Test eine echte Mausreaktion auch dann beobachten, wenn die
-    /// Pfeiltaste zuvor schon ausgefallen ist.
-    private static func testFourDCompletionClick(
-        mainWindow: NSWindow,
-        popup: NSWindow,
-        textView: TextView,
-        table: NSTableView,
-        state: FourDCompletionTestState
-    ) {
-        guard mainWindow.isKeyWindow else {
-            finishFourDCompletionTest(state, outcome: .environment,
-                                      message: "Umgebungsproblem: Fokus vor Mausklick verloren")
-        }
-        let targetRow = table.selectedRow == 0 ? 1 : 0
-        guard postCompletionMouseClick(in: table, row: targetRow, window: popup, clickCount: 1) else {
-            finishFourDCompletionTest(state, ok: false,
-                                      message: "konnte gezielten Klick in Vorschlagsliste nicht bauen")
-        }
-        pollForFourDCompletionClick(mainWindow: mainWindow, popup: popup,
-                                    textView: textView, table: table, targetRow: targetRow,
-                                    state: state)
-    }
-
-    private static func pollForFourDCompletionClick(
-        mainWindow: NSWindow,
-        popup: NSWindow,
-        textView: TextView,
-        table: NSTableView,
-        targetRow: Int,
-        state: FourDCompletionTestState
-    ) {
-        waitFor(budget: 1.2, pause: 0.03,
-                condition: { table.selectedRow == targetRow },
-                onTimeout: { _ in
-                    state.failures.append("gezielter Klick änderte die Vorschlagsauswahl nicht (Zeile blieb \(table.selectedRow))")
-                    finishFourDCompletionTest(state, ok: false,
-                                              message: state.failures.joined(separator: "; "))
-                },
-                then: {
-                    // Der erste Treffer für „AL“ ist die generierte 4D-Anweisung
-                    // `ALERT`. Ein Doppelklick muss sie über den normalen CESE-Pfad
-                    // übernehmen — das beweist neben Hit-Testing auch die Aktivierung.
-                    guard postCompletionMouseClick(in: table, row: 0, window: popup, clickCount: 2) else {
-                        finishFourDCompletionTest(state, ok: false,
-                                                  message: "konnte Doppelklick in Vorschlagsliste nicht bauen")
-                    }
-                    pollForFourDCompletionApply(mainWindow: mainWindow, textView: textView, state: state)
-                })
-    }
-
-    private static func pollForFourDCompletionApply(
-        mainWindow: NSWindow,
-        textView: TextView,
-        state: FourDCompletionTestState
-    ) {
-        waitFor(budget: 1.2, pause: 0.03,
-                condition: { textView.string == state.initialText + "ALERT" },
-                onTimeout: { _ in
-                    state.failures.append("Doppelklick übernahm den ersten Vorschlag nicht (Text=\"\(textView.string)\")")
-                    finishFourDCompletionTest(state, ok: false,
-                                              message: state.failures.joined(separator: "; "))
-                },
-                then: {
-                    guard let root = mainWindow.contentView else {
-                        finishFourDCompletionTest(
-                            state, ok: false, message: "Hauptfenster verlor contentView"
-                        )
-                    }
-                    startFourDComponentCompletion(
-                        mainWindow: mainWindow, root: root, textView: textView, state: state
-                    )
-                })
-    }
-
-    /// Zweite, problembezogene Phase: Eine eindeutig benannte geteilte
-    /// Komponentenmethode wird real getippt, im echten Popup übernommen und
-    /// danach unabhängig im TextStorage auf Farbe und Schrift geprüft.
-    private static func startFourDComponentCompletion(
-        mainWindow: NSWindow,
-        root: NSView,
-        textView: TextView,
-        state: FourDCompletionTestState
-    ) {
-        // Die erste Anwendung muss ihr Fenster vollständig geschlossen haben,
-        // bevor der neue Präfix eingegeben wird. 6 s wie die übrigen
-        // Warteschleifen dieses Tests: Mit 2 s meldete er auf belasteter
-        // Maschine etwa jeden dritten Lauf einen Fehler, obwohl das Fenster
-        // nur später schloss (Befund 2026-07-27).
-        waitFor(budget: 6, pause: 0.05,
-                condition: { fourDCompletionWindow(attachedTo: mainWindow) == nil },
-                onTimeout: { book in
-                    finishFourDCompletionTest(
-                        state, ok: false,
-                        message: "ALERT-Popup blieb vor der Component-Phase geöffnet — \(book.summary)"
-                    )
-                },
-                then: {
-                    if let outcome = SelfTestFocusRouting.outcome(
-                        isKeyWindow: mainWindow.isKeyWindow,
-                        makeFirstResponder: { mainWindow.makeFirstResponder(textView) }
-                    ) {
-                        finishFourDCompletionTest(
-                            state, outcome: outcome,
-                            message: outcome == .environment
-                                ? "Umgebungsproblem: Fokus vor Component-Typeahead verloren"
-                                : "4D-Editor wurde vor Component-Typeahead nicht First Responder"
-                        )
-                    }
-                    textView.selectionManager.setSelectedRange(
-                        NSRange(location: (textView.string as NSString).length, length: 0)
-                    )
-                    guard insertCompletionCharacter("\nZ", into: textView) else {
-                        finishFourDCompletionTest(
-                            state, ok: false, message: "konnte ersten Component-Präfix nicht eingeben"
-                        )
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        guard insertCompletionCharacter("Z", into: textView) else {
-                            finishFourDCompletionTest(
-                                state, ok: false, message: "konnte zweiten Component-Präfix nicht eingeben"
-                            )
-                        }
-                        pollForFourDComponentPopup(
-                            mainWindow: mainWindow, root: root, textView: textView, state: state
-                        )
-                }
-                })
-    }
-
-    private static func pollForFourDComponentPopup(
-        mainWindow: NSWindow,
-        root: NSView,
-        textView: TextView,
-        state: FourDCompletionTestState
-    ) {
-        var found: (popup: NSWindow, table: NSTableView)?
-        waitFor(budget: 4, pause: 0.05,
-                condition: {
-                    guard let popup = fourDCompletionWindow(attachedTo: mainWindow),
-                          let table = completionTable(in: popup), table.numberOfRows > 0 else { return false }
-                    found = (popup, table)
-                    return true
-                },
-                onTimeout: { book in
-                    finishFourDCompletionTest(
-                        state, ok: false,
-                        message: "Component-Typeahead-Popup blieb nach „ZZ“ aus — \(book.summary)"
-                    )
-                },
-                then: {
-                    guard let found else {
-                        finishFourDCompletionTest(state, ok: false, message: "Component-Popup nach Erfolg verschwunden")
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        guard postCompletionMouseClick(
-                            in: found.table, row: 0, window: found.popup, clickCount: 2
-                        ) else {
-                            finishFourDCompletionTest(
-                                state, ok: false,
-                                message: "konnte Component-Vorschlag nicht doppelklicken"
-                            )
-                        }
-                        pollForFourDComponentApply(
-                            mainWindow: mainWindow, root: root,
-                            textView: textView, state: state
-                        )
-                    }
-                })
-    }
-
-    private static func pollForFourDComponentApply(
-        mainWindow: NSWindow,
-        root: NSView,
-        textView: TextView,
-        state: FourDCompletionTestState
-    ) {
-        let expected = state.initialText + "ALERT\n" + state.componentMethod
-        waitFor(budget: 3, pause: 0.05,
-                condition: { textView.string == expected },
-                onTimeout: { book in
-                    finishFourDCompletionTest(
-                        state, ok: false,
-                        message: "Component-Doppelklick übernahm nicht den erwarteten Namen "
-                            + "(Text=\"\(textView.string)\") — \(book.summary)"
-                    )
-                },
-                then: {
-                    pollForAppliedFourDComponentStyle(root: root, state: state)
-                })
-    }
-
-    private static func pollForAppliedFourDComponentStyle(
-        root: NSView,
-        state: FourDCompletionTestState
-    ) {
-        let color = fourDComponentMethodExpectedColor(dark: false)
-        var colored = false
-        var styled = false
-        waitFor(budget: 6, pause: 0.1,
-                condition: {
-                    colored = storageSubstringHasColor(
-                        state.componentMethod, in: root,
-                        r: color.0, g: color.1, b: color.2
-                    )
-                    styled = storageSubstringHasStyle(
-                        state.componentMethod, in: root, bold: true, italic: false
-                    )
-                    return colored && styled
-                },
-                onTimeout: { book in
-                    finishFourDCompletionTest(
-                        state, ok: false,
-                        message: "übernommene Component-Methode falsch gerendert "
-                            + "(Farbe=\(colored), fett/nicht-kursiv=\(styled)) — \(book.summary)"
-                    )
-                },
-                then: { startManualOneCharCompletion(root: root, state: state) })
-    }
-
-    /// Manueller Ein-Zeichen-Aufruf (Review 2026-08-02): Nach einer neuen
-    /// Zeile mit nur EINEM Buchstaben darf das automatische Popup nicht
-    /// erscheinen (Mindestlänge 2), ⌃Leertaste muss die Liste aber öffnen —
-    /// das prüft den CESE-Patch `fastra.completion.manualTrigger` am echten
-    /// Event-Weg.
-    private static func startManualOneCharCompletion(
-        root: NSView,
-        state: FourDCompletionTestState
-    ) {
-        guard let mainWindow = root.window,
-              let textView = editorTextView(in: root) as? TextView else {
-            finishFourDCompletionTest(state, ok: false,
-                                      message: "Editor-TextView für Ein-Zeichen-Phase nicht gefunden")
-        }
-        if let outcome = SelfTestFocusRouting.outcome(
-            isKeyWindow: mainWindow.isKeyWindow,
-            makeFirstResponder: { mainWindow.makeFirstResponder(textView) }
-        ) {
-            finishFourDCompletionTest(
-                state, outcome: outcome,
-                message: outcome == .environment
-                    ? "Umgebungsproblem: Fokus vor Ein-Zeichen-Phase verloren"
-                    : "4D-Editor wurde vor Ein-Zeichen-Phase nicht First Responder"
-            )
-        }
-        // Ein noch offenes Popup der Komponenten-Phase zuerst schließen —
-        // sonst gilt legitim die Ein-Zeichen-Filterung des OFFENEN Fensters
-        // und die Phase misst nicht den Auto-Trigger.
-        closeCompletionPopupIfNeeded(mainWindow: mainWindow) { closed in
-            guard closed else {
-                finishFourDCompletionTest(
-                    state, outcome: mainWindow.isKeyWindow ? .fail : .environment,
-                    message: mainWindow.isKeyWindow
-                        ? "Vorschlagsfenster wurde vor der Ein-Zeichen-Phase nicht stabil geschlossen"
-                        : "Fokus während des Schließens der Vorschläge verloren"
-                )
-            }
-            startManualOneCharTyping(mainWindow: mainWindow, root: root,
-                                     textView: textView, state: state)
-        }
-    }
-
-    /// Schließt ein eventuell offenes Vorschlagsfenster per Esc und wartet,
-    /// bis es stabil weg ist (Fallback nach 1,5 s: hartes close()). Eine noch
-    /// laufende Vorschlagsanforderung kann das Fenster kurz nach dem Schließen
-    /// erneut öffnen; erst sechs Abfragen über mindestens 0,3 s ohne Fenster
-    /// starten die nächste Phase. Nach insgesamt 60 Abfragen endet der Versuch.
-    private static func closeCompletionPopupIfNeeded(
-        mainWindow: NSWindow, then continuation: @escaping (Bool) -> Void
-    ) {
-        waitForCompletionPopupClosure(
-            isVisible: { fourDCompletionWindow(attachedTo: mainWindow) != nil },
-            escape: { postKey("\u{1b}", keyCode: 53, windowNumber: mainWindow.windowNumber) },
-            forceClose: { fourDCompletionWindow(attachedTo: mainWindow)?.close() },
-            schedule: { delay, action in
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
-            },
-            completion: continuation
-        )
-    }
-
-    /// Der echte Warteablauf erhält Fensterzugriff und Zeitplanung von außen,
-    /// damit Wiederöffnen und erfolgloses Schließen ohne GUI prüfbar bleiben.
+    /// Behält den regulären Testeingang bei, ohne den Runtimebesitzer aufzubauen.
     static func waitForCompletionPopupClosure(
         isVisible: @escaping () -> Bool,
         escape: @escaping () -> Void,
@@ -8468,289 +6096,15 @@ enum SelfTest {
         schedule: @escaping (Double, @escaping () -> Void) -> Void,
         completion: @escaping (Bool) -> Void
     ) {
-        func poll(tick: Int, quietSince: Int?, sentEscape: Bool, forcedClose: Bool) {
-            let visible = isVisible()
-            let nextQuietSince = visible ? nil : (quietSince ?? tick)
-            if let nextQuietSince, tick - nextQuietSince >= 6 {
-                completion(true)
-                return
-            }
-            // Wiederöffnen setzt nur die Ruhephase zurück, nie die Gesamtfrist.
-            if tick >= 60 {
-                completion(false)
-                return
-            }
-            var nextSentEscape = sentEscape
-            var nextForcedClose = forcedClose
-            if visible {
-                if !sentEscape { escape(); nextSentEscape = true }
-                if tick >= 30 && !forcedClose {
-                    forceClose()
-                    nextForcedClose = true
-                }
-            }
-            // Auch nach close() erst erneut beobachten: Der Aufruf allein
-            // beweist weder ein verschwundenes noch ein dauerhaft ruhiges Popup.
-            schedule(0.05) {
-                poll(tick: tick + 1, quietSince: nextQuietSince,
-                     sentEscape: nextSentEscape, forcedClose: nextForcedClose)
-            }
-        }
-        poll(tick: 0, quietSince: nil, sentEscape: false, forcedClose: false)
-    }
-
-    private static func startManualOneCharTyping(
-        mainWindow: NSWindow, root: NSView, textView: TextView,
-        state: FourDCompletionTestState
-    ) {
-        textView.selectionManager.setSelectedRange(
-            NSRange(location: (textView.string as NSString).length, length: 0)
-        )
-        guard insertCompletionCharacter("\nA", into: textView) else {
-            finishFourDCompletionTest(state, ok: false,
-                                      message: "konnte Ein-Zeichen-Präfix nicht eingeben")
-        }
-        // 0.6 s Karenz: In dieser Zeit dürfte ein (falsches) Auto-Popup
-        // längst da sein — die produktive CESE-Task-Kette braucht < 0,2 s.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            if fourDCompletionWindow(attachedTo: mainWindow) != nil {
-                state.failures.append("Auto-Popup erschien schon bei EINEM Zeichen")
-            }
-            guard let event = NSEvent.keyEvent(
-                with: .keyDown, location: .zero, modifierFlags: .control,
-                timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: mainWindow.windowNumber, context: nil,
-                characters: " ", charactersIgnoringModifiers: " ",
-                isARepeat: false, keyCode: 49
-            ) else {
-                finishFourDCompletionTest(state, ok: false,
-                                          message: "konnte ⌃Leertaste-Event (Ein-Zeichen) nicht bauen")
-            }
-            NSApp.postEvent(event, atStart: false)
-            pollForManualOneCharCompletion(mainWindow: mainWindow, root: root,
-                                           textView: textView, state: state)
-        }
-    }
-
-    private static func pollForManualOneCharCompletion(
-        mainWindow: NSWindow,
-        root: NSView,
-        textView: TextView,
-        state: FourDCompletionTestState
-    ) {
-        waitFor(budget: 4, pause: 0.05,
-                condition: {
-                    guard let popup = fourDCompletionWindow(attachedTo: mainWindow),
-                          let table = completionTable(in: popup), table.numberOfRows >= 1 else { return false }
-                    return true
-                },
-                onTimeout: { _ in
-                    state.failures.append("⌃Leertaste öffnete bei EINEM Zeichen keine Liste")
-                    startCommentSuppressedCompletion(mainWindow: mainWindow, root: root,
-                                                     textView: textView, state: state)
-                },
-                then: {
-                    // Popup wieder schließen (Esc), dann die Kommentar-Phase.
-                    postKey("\u{1b}", keyCode: 53, windowNumber: mainWindow.windowNumber)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        fourDCompletionWindow(attachedTo: mainWindow)?.close()
-                        startCommentSuppressedCompletion(mainWindow: mainWindow,
-                                                         root: root, textView: textView,
-                                                         state: state)
-                    }
-                })
-    }
-
-    /// In Kommentaren gibt es keine Vorschläge (Review 2026-08-02): Weder das
-    /// automatische Tipp-Popup noch ⌃Leertaste dürfen hinter `// ` etwas
-    /// öffnen.
-    private static func startCommentSuppressedCompletion(
-        mainWindow: NSWindow,
-        root: NSView,
-        textView: TextView,
-        state: FourDCompletionTestState
-    ) {
-        if let outcome = SelfTestFocusRouting.outcome(
-            isKeyWindow: mainWindow.isKeyWindow,
-            makeFirstResponder: { mainWindow.makeFirstResponder(textView) }
-        ) {
-            finishFourDCompletionTest(
-                state, outcome: outcome,
-                message: outcome == .environment
-                    ? "Umgebungsproblem: Fokus vor Kommentar-Phase verloren"
-                    : "4D-Editor wurde vor Kommentar-Phase nicht First Responder"
-            )
-        }
-        textView.selectionManager.setSelectedRange(
-            NSRange(location: (textView.string as NSString).length, length: 0)
-        )
-        guard insertCompletionCharacter("\n// A", into: textView) else {
-            finishFourDCompletionTest(state, ok: false,
-                                      message: "konnte Kommentarzeile nicht eingeben")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            guard insertCompletionCharacter("L", into: textView) else {
-                finishFourDCompletionTest(state, ok: false,
-                                          message: "konnte zweiten Kommentar-Buchstaben nicht eingeben")
-            }
-            // Gleiche Karenz wie oben — diesmal MUSS es still bleiben.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                if fourDCompletionWindow(attachedTo: mainWindow) != nil {
-                    state.failures.append("Auto-Popup erschien im Kommentar")
-                }
-                guard let event = NSEvent.keyEvent(
-                    with: .keyDown, location: .zero, modifierFlags: .control,
-                    timestamp: ProcessInfo.processInfo.systemUptime,
-                    windowNumber: mainWindow.windowNumber, context: nil,
-                    characters: " ", charactersIgnoringModifiers: " ",
-                    isARepeat: false, keyCode: 49
-                ) else {
-                    finishFourDCompletionTest(state, ok: false,
-                                              message: "konnte ⌃Leertaste-Event (Kommentar) nicht bauen")
-                }
-                NSApp.postEvent(event, atStart: false)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    if fourDCompletionWindow(attachedTo: mainWindow) != nil {
-                        state.failures.append("⌃Leertaste öffnete im Kommentar eine Liste")
-                        fourDCompletionWindow(attachedTo: mainWindow)?.close()
-                    }
-                    finishFourDCompletionTest(
-                        state, ok: state.failures.isEmpty,
-                        message: state.failures.isEmpty
-                            ? "Auto/⌃Leertaste/Pfeil/Maus funktionieren; Shared-Component "
-                                + "real übernommen und orange/fett gerendert; manueller "
-                                + "Ein-Zeichen-Aufruf öffnet, Kommentar bleibt still"
-                            : state.failures.joined(separator: "; ")
-                    )
-                }
-            }
-        }
-    }
-
-    /// Das CESE-Fenster ist intern; der Test beobachtet es deshalb über die
-    /// öffentliche AppKit-Form: sichtbares Child-Window mit `NSTableView`.
-    /// So bleibt der Wächter beim echten Fenster-/Hit-Test-Pfad statt an einer
-    /// nur für Tests geöffneten Upstream-API hängen.
-    private static func fourDCompletionWindow(attachedTo mainWindow: NSWindow) -> NSWindow? {
-        (mainWindow.childWindows ?? []).first { candidate in
-            candidate.isVisible && completionTable(in: candidate) != nil
-        }
-    }
-
-    private static func completionTable(in window: NSWindow) -> NSTableView? {
-        guard let root = window.contentView else { return nil }
-        return completionTable(in: root)
-    }
-
-    private static func completionTable(in view: NSView) -> NSTableView? {
-        if let table = view as? NSTableView { return table }
-        for child in view.subviews {
-            if let table = completionTable(in: child) { return table }
-        }
-        return nil
-    }
-
-    /// Der SwiftUI-Remount kann auslaufende Editor-Views kurz im View-Baum
-    /// lassen. Für einen Eingabetest zählt deshalb nur die editierbare View
-    /// des aktuellen Hauptfensters mit dem geladenen Fixture-Text.
-    private static func completionEditorTextView(
-        in view: NSView,
-        window: NSWindow,
-        expectedText: String
-    ) -> TextView? {
-        if let textView = view as? TextView,
-           textView.window === window,
-           textView.isEditable,
-           textView.string == expectedText,
-           textView.frame.height > 50 {
-            return textView
-        }
-        for child in view.subviews {
-            if let found = completionEditorTextView(in: child, window: window,
-                                                     expectedText: expectedText) {
-                return found
-            }
-        }
-        return nil
-    }
-
-    /// Erzeugt Down und Up mit derselben Fenster-Koordinate. Die Ereignisse
-    /// gehen durch AppKit-Hit-Testing; ein direkter `tableView`-Methodenaufruf
-    /// wäre hier wertlos, weil er den gemeldeten Fensterfehler umgehen würde.
-    private static func postCompletionMouseClick(
-        in table: NSTableView,
-        row: Int,
-        window: NSWindow,
-        clickCount: Int
-    ) -> Bool {
-        guard row >= 0, row < table.numberOfRows else { return false }
-        table.layoutSubtreeIfNeeded()
-        let rowRect = table.rect(ofRow: row)
-        guard !rowRect.isEmpty else { return false }
-        let pointInTable = NSPoint(x: rowRect.midX, y: rowRect.midY)
-        let pointInWindow = table.convert(pointInTable, to: nil)
-        let timestamp = ProcessInfo.processInfo.systemUptime
-        guard let down = NSEvent.mouseEvent(
-            with: .leftMouseDown, location: pointInWindow, modifierFlags: [],
-            timestamp: timestamp, windowNumber: window.windowNumber, context: nil,
-            eventNumber: 1, clickCount: clickCount, pressure: 1
-        ), let up = NSEvent.mouseEvent(
-            with: .leftMouseUp, location: pointInWindow, modifierFlags: [],
-            timestamp: timestamp + 0.01, windowNumber: window.windowNumber, context: nil,
-            eventNumber: 1, clickCount: clickCount, pressure: 0
-        ) else {
-            return false
-        }
-        NSApp.postEvent(down, atStart: false)
-        NSApp.postEvent(up, atStart: false)
-        return true
-    }
-
-    /// Fügt einen Buchstaben über die öffentliche Benutzer-Eingabe der
-    /// produktiven TextView ein. Ein nicht aktiver Selbsttest-Prozess besitzt
-    /// keinen System-Input-Context für `keyDown`; der explizite Range hält den
-    /// gleichen CESE-Mutations-/Delegate-Pfad aber ohne dessen leere Cursor-
-    /// Liste zuverlässig fest.
-    private static func insertCompletionCharacter(
-        _ character: String,
-        into textView: TextView
-    ) -> Bool {
-        guard !character.isEmpty else { return false }
-        let insertionPoint = (textView.string as NSString).length
-        textView.insertText(character as NSString,
-                            replacementRange: NSRange(location: insertionPoint, length: 0))
-        return true
-    }
-
-    private static func finishFourDCompletionTest(
-        _ state: FourDCompletionTestState,
-        ok: Bool,
-        message: String
-    ) -> Never {
-        finishFourDCompletionTest(
-            state, outcome: ok ? .pass : .fail, message: message
+        SelfTestFourDCompletion.waitForCompletionPopupClosure(
+            isVisible: isVisible, escape: escape, forceClose: forceClose,
+            schedule: schedule, completion: completion
         )
     }
 
-    private static func finishFourDCompletionTest(
-        _ state: FourDCompletionTestState,
-        outcome: SelfTestOutcome,
-        message: String
-    ) -> Never {
-        Workspace.shared?.closeProject()
-        NSApp.appearance = nil
-        try? FileManager.default.removeItem(at: state.projectRoot)
-        let resolved = SelfTestOutcome.resolving(
-            recordedFailures: state.failures,
-            requestedOutcome: outcome,
-            message: message
-        )
-        finish(resolved.outcome, resolved.message)
-    }
+    // MARK: - 4D-Highlighting
 
-    // MARK: - 4D-Highlighting (Etappe 4 Wunschpaket 2026-07)
-
-    /// Beobachtet die ECHTEN 4D-Vordergrundfarben im gepackten Bundle —
+    /// Beobachtet die echten 4D-Vordergrundfarben im gepackten Bundle —
     /// erst im hellen, dann im dunklen Erscheinungsbild (die 4D-Themes sind
     /// pro Dokument aktiv und stammen aus light.json/dark.json). Prüft je
     /// Modus Befehl, Schlüsselwort, lokale und Prozessvariable, Tabelle,
@@ -8767,219 +6121,14 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        // Selbst geschriebene exportierte 4D-Fixture (nichts aus der
-        // 4D-Doku). Der zweite Methodenname muss nur im Projektindex stehen,
-        // damit der Test die Unterscheidung von Prozessvariablen beobachtet.
-        let code = """
-        // Prüfsumme neu berechnen
-        If (True)
-        \t$summe:=$summe+1
-        \tAbr_init
-        \tABR_LISTE_LB_AB:=1
-        \tNachtrag
-        \tComponent_Shared
-        \tQUERY([Auftraege:1]; [Auftraege:1]Nummer=42)
-        \tALERT("fertig")
-        End if
-        """
-        let projectRoot = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-highlight4d-\(UUID().uuidString)")
-        let methods = projectRoot.appendingPathComponent("Project/Sources/Methods",
-                                                          isDirectory: true)
-        let componentMethods = projectRoot.appendingPathComponent(
-            "Components/FastraTools.4dbase/Project/Sources/Methods",
-            isDirectory: true
-        )
-        let tmp = methods.appendingPathComponent("Highlight.4dm")
-        do {
-            try FileManager.default.createDirectory(at: methods, withIntermediateDirectories: true)
-            try FileManager.default.createDirectory(
-                at: componentMethods, withIntermediateDirectories: true
-            )
-            try code.write(to: tmp, atomically: true, encoding: .utf8)
-            try "// Projektindex-Fixture\n".write(
-                to: methods.appendingPathComponent("Abr_init.4dm"), atomically: true,
-                encoding: .utf8
-            )
-            try "//%attributes = {\"shared\":true}\n".write(
-                to: componentMethods.appendingPathComponent("Component_Shared.4dm"),
-                atomically: true, encoding: .utf8
-            )
-        } catch {
-            try? FileManager.default.removeItem(at: projectRoot)
-            finish(false, "4D-Projekt-Fixture nicht schreibbar: \(error.localizedDescription)")
-        }
-
-        // Erst hell erzwingen — der Test darf nicht vom System-Modus abhängen.
-        NSApp.appearance = NSAppearance(named: .aqua)
-        ws.openProject(at: projectRoot)
-        pollFourDProjectMethodIndex(ws: ws, root: root, projectRoot: projectRoot,
-                                    file: tmp, code: code)
-    }
-
-    private static func pollFourDProjectMethodIndex(ws: Workspace, root: NSView,
-                                                    projectRoot: URL, file: URL,
-                                                    code: String) {
-        waitFor(budget: 10, pause: 0.25,
-                condition: {
-                    ws.fourDProjectMethodNames.contains("abr_init")
-                        && ws.fourDComponentMethods["component_shared"] != nil
-                },
-                onTimeout: { book in
-                    ws.closeProject()
-                    try? FileManager.default.removeItem(at: projectRoot)
-                    finish(false, "4D-Indizes enthalten Abr_init/Component_Shared "
-                        + "nicht — \(book.summary)")
-                },
-                then: {
-                    ws.loadFile(at: file) { ok in
-                        guard ok else {
-                            ws.closeProject()
-                            try? FileManager.default.removeItem(at: projectRoot)
-                            finish(false, "loadFile (.4dm) schlug fehl")
-                        }
-                        pollFourDColors(
-                            root: root, url: file, dark: false,
-                            indexedMethod: "Abr_init", componentMethod: "Component_Shared") {
-                            // Hell bestanden → dunkel umschalten und erneut beobachten.
-                            NSApp.appearance = NSAppearance(named: .darkAqua)
-                            pollFourDColors(
-                                root: root, url: file, dark: true,
-                                indexedMethod: "Abr_init", componentMethod: "Component_Shared") {
-                                runFourDDynamicProjectMethodIndexTest(
-                                    ws: ws, root: root, projectRoot: projectRoot, file: file, code: code
-                                )
-                            }
-                        }
-                }
-                })
-    }
-
-    /// Ergänzt nach dem tatsächlichen Öffnen nur die Indexdatei einer Methode.
-    /// `Nachtrag` steht schon im sichtbaren Text: Er muss zuerst die Farbe
-    /// einer Prozessvariablen haben und wechselt dann ohne Textmutation zur
-    /// Projektmethodenfarbe. So prüft der Test ausschließlich den Index-
-    /// Refresh und nicht eine nebenbei ausgelöste Editor-Neuerstellung.
-    private static func runFourDDynamicProjectMethodIndexTest(
-        ws: Workspace, root: NSView, projectRoot: URL, file: URL, code: String
-    ) {
-        pollFourDProcessVariableColor(root: root, url: file, dark: true,
-                                      name: "Nachtrag") {
-            beginFourDProjectMethodIndexRefresh(
-                ws: ws, root: root, projectRoot: projectRoot, file: file, code: code
-            )
-        }
-    }
-
-    private static func beginFourDProjectMethodIndexRefresh(
-        ws: Workspace, root: NSView, projectRoot: URL, file: URL, code: String
-    ) {
-        guard let textView = editorTextView(in: root) as? TextView else {
-            ws.closeProject()
-            try? FileManager.default.removeItem(at: projectRoot)
-            finish(false, "4D-Index-Refresh ohne sichtbare TextView")
-        }
-        let identity = ObjectIdentifier(textView)
-        let selection = textView.selectedRange()
-        let visibleOrigin = textView.visibleRect.origin
-        let addedMethod = projectRoot.appendingPathComponent("Project/Sources/Methods/Nachtrag.4dm")
-        do {
-            try "// nachträglich angelegte Projektmethode\n".write(
-                to: addedMethod, atomically: true, encoding: .utf8
-            )
-        } catch {
-            ws.closeProject()
-            try? FileManager.default.removeItem(at: projectRoot)
-            finish(false, "4D-Index-Fixture nicht ergänzbar: \(error.localizedDescription)")
-        }
-        pollFourDAddedMethod(
-            ws: ws, root: root, projectRoot: projectRoot, file: file, code: code,
-            textViewIdentity: identity, selection: selection, visibleOrigin: visibleOrigin)
-    }
-
-    private static func pollFourDAddedMethod(
-        ws: Workspace, root: NSView, projectRoot: URL, file: URL, code: String,
-        textViewIdentity: ObjectIdentifier, selection: NSRange, visibleOrigin: NSPoint
-    ) {
-        waitFor(budget: 10, pause: 0.25,
-                condition: { ws.fourDProjectMethodNames.contains("nachtrag") },
-                onTimeout: { book in
-                    ws.closeProject()
-                    try? FileManager.default.removeItem(at: projectRoot)
-                    finish(false, "4D-Index aktualisiert die nachträglich angelegte Methode nicht — \(book.summary)")
-                },
-                then: {
-                    pollFourDColors(root: root, url: file, dark: true, indexedMethod: "Nachtrag") {
-                        guard let textView = editorTextView(in: root) as? TextView,
-                              ObjectIdentifier(textView) == textViewIdentity,
-                              textView.selectedRange() == selection,
-                              abs(textView.visibleRect.origin.x - visibleOrigin.x) < 1,
-                              abs(textView.visibleRect.origin.y - visibleOrigin.y) < 1 else {
-                            ws.closeProject()
-                            try? FileManager.default.removeItem(at: projectRoot)
-                            finish(false, "4D-Index-Refresh veränderte TextView, Selektion oder Scrollposition")
-                        }
-                        ws.closeProject()
-                        guard ws.projectURL == nil, ws.fourDProjectMethodNames.isEmpty else {
-                            try? FileManager.default.removeItem(at: projectRoot)
-                            finish(false, "4D-Methodenindex blieb nach Projekt-Schließen aktiv")
-                        }
-                        NSApp.appearance = NSAppearance(named: .aqua)
-                        try? FileManager.default.removeItem(at: projectRoot)
-                        // Etappe 3 Wunschpaket 2026-07b: 4D ist auch MANUELL
-                        // wählbar — an einer Nicht-.4dm-Datei prüfen.
-                        runFourDManualOverridePhase(ws: ws, root: root, code: code)
-                }
-                })
-    }
-
-    /// Manueller 4D-Override end-to-end: eine .txt-Datei mit 4D-Inhalt zeigt
-    /// zunächst KEINE 4D-Farben; nach `setCustomLanguageOverride(.fourD)`
-    /// erscheinen sie; „Automatisch“ entfernt sie wieder. Beobachtet wird
-    /// jeweils der echte Editor-TextStorage (wie in den Phasen davor).
-    private static func runFourDManualOverridePhase(ws: Workspace, root: NSView,
-                                                    code: String) {
-        let txt = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-highlight4d-\(UUID().uuidString).txt")
-        do { try code.write(to: txt, atomically: true, encoding: .utf8) }
-        catch { finish(false, "(override) Temp-Datei nicht schreibbar") }
-        ws.loadFile(at: txt) { ok in
-            guard ok else {
-                try? FileManager.default.removeItem(at: txt)
-                finish(false, "(override) loadFile (.txt) schlug fehl")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                // Vorbedingung: als Plaintext KEINE 4D-Befehlsfarbe.
-                let cmd = fourDExpectedColors(dark: false)[0]
-                guard !storageContainsColor(in: root, r: cmd.1, g: cmd.2, b: cmd.3) else {
-                    try? FileManager.default.removeItem(at: txt)
-                    finish(false, "(override) .txt zeigt 4D-Farben schon OHNE Override")
-                }
-                ws.setCustomLanguageOverride(CustomLanguageRegistry.fourD)
-                pollFourDColors(root: root, url: txt, dark: false) {
-                    // Zurück auf Automatik → Farben müssen verschwinden.
-                    ws.setLanguageOverride(nil)
-                    pollFourDColorsGone(ws: ws, root: root, url: txt)
-                }
-            }
-        }
-    }
-
-    private static func pollFourDColorsGone(ws: Workspace, root: NSView, url: URL) {
-        let cmd = fourDExpectedColors(dark: false)[0]
-        waitFor(budget: 10, pause: 0.25,
-                condition: { !storageContainsColor(in: root, r: cmd.1, g: cmd.2, b: cmd.3) },
-                onTimeout: { book in
-                    NSApp.appearance = nil
-                    try? FileManager.default.removeItem(at: url)
-                    finish(false, "(override) 4D-Farben bleiben nach Rückkehr zur Automatik — \(book.summary)")
-                },
-                then: {
-                    NSApp.appearance = nil   // zurück zum Systemmodus
-                    try? FileManager.default.removeItem(at: url)
-                    finish(true, "4D-Farben hell + dunkel beobachtet; manueller Override "
-                        + "färbt .txt und „Automatisch“ räumt wieder")
-                })
+        SelfTestHighlighting(
+            workspace: ws, root: root, waitFor: waitFor, finish: finish,
+            editorTextView: editorTextView,
+            fourDExpectedColors: fourDExpectedColors,
+            fourDComponentMethodExpectedColor: fourDComponentMethodExpectedColor,
+            storageSubstringHasColor: storageSubstringHasColor,
+            storageSubstringHasStyle: storageSubstringHasStyle
+        ).runFourDHighlightTest()
     }
 
     /// Erwartete 4D-Vordergrundfarben aus den öffentlichen Test-Fixtures.
@@ -8997,89 +6146,8 @@ enum SelfTest {
                ("Kommentar", 0x7F, 0x7E, 0x80)]
     }
 
-    private static func fourDMethodExpectedColor(dark: Bool) -> (Int, Int, Int) {
-        dark ? (0x0F, 0x93, 0x0A) : (0x00, 0x00, 0x88)
-    }
-
     private static func fourDComponentMethodExpectedColor(dark: Bool) -> (Int, Int, Int) {
         dark ? (0xFF, 0x9D, 0x3F) : (0xB3, 0x47, 0x00)
-    }
-
-    private static func pollFourDColors(root: NSView, url: URL, dark: Bool,
-                                        indexedMethod: String? = nil,
-                                        componentMethod: String? = nil,
-                                        then next: @escaping () -> Void) {
-        let expected = fourDExpectedColors(dark: dark)
-        var missing: [(String, Int, Int, Int)] = []
-        waitFor(budget: 10, pause: 0.25,
-                condition: {
-                    // Jede Kategorie wird an ihrem eigenen 4D-Substring geprüft. Das ist
-                    // strenger als „irgendein Pixel hat diese Farbe“ und verhindert etwa,
-                    // dass eine Zeichenkette versehentlich durch eine andere Kategorie
-                    // als vorhanden gilt.
-                    let expectedSubstrings = [
-                        (expected[0], "QUERY"),
-                        (expected[1], "If"),
-                        (expected[2], "$summe"),
-                        (expected[3], "ABR_LISTE_LB_AB"),
-                        (expected[4], "[Auftraege:1]"),
-                        (expected[5], "Nummer"),
-                        (expected[6], "\"fertig\""),
-                        (expected[7], "// Prüfsumme neu berechnen"),
-                    ]
-                    missing = expectedSubstrings.compactMap { expected, substring in
-                        storageSubstringHasColor(substring, in: root,
-                                                 r: expected.1, g: expected.2, b: expected.3)
-                            ? nil : expected
-                    }
-                    let methodColor = fourDMethodExpectedColor(dark: dark)
-                    if let indexedMethod, (!storageSubstringHasColor(
-                        indexedMethod, in: root, r: methodColor.0, g: methodColor.1, b: methodColor.2
-                    ) || !storageSubstringHasStyle(indexedMethod, in: root, bold: true, italic: true)) {
-                        missing.append(("Projektmethode \(indexedMethod)", methodColor.0,
-                                        methodColor.1, methodColor.2))
-                    }
-                    let componentColor = fourDComponentMethodExpectedColor(dark: dark)
-                    if let componentMethod, (!storageSubstringHasColor(
-                        componentMethod, in: root, r: componentColor.0,
-                        g: componentColor.1, b: componentColor.2
-                    ) || !storageSubstringHasStyle(
-                        componentMethod, in: root, bold: true, italic: false
-                    )) {
-                        missing.append(("Komponentenmethode \(componentMethod)", componentColor.0,
-                                        componentColor.1, componentColor.2))
-                    }
-                    return missing.isEmpty
-                },
-                onTimeout: { book in
-                    try? FileManager.default.removeItem(at: url)
-                    NSApp.appearance = nil
-                    finish(false, "\(dark ? "dunkel" : "hell"): Farben fehlen: "
-                        + missing.map(\.0).joined(separator: ", ") + " — \(book.summary)")
-                },
-                then: next)
-    }
-
-    /// Wartet, bis der bereits sichtbare Name die Prozessvariablenfarbe hat.
-    /// Erst danach wird die neue `.4dm`-Datei angelegt, damit der spätere
-    /// Vergleich wirklich dieselbe Textstelle vor und nach dem Indexwechsel
-    /// betrachtet.
-    private static func pollFourDProcessVariableColor(
-        root: NSView, url: URL, dark: Bool, name: String,
-        then next: @escaping () -> Void
-    ) {
-        let expected = fourDExpectedColors(dark: dark)[3]
-        waitFor(budget: 10, pause: 0.25,
-                condition: {
-                    storageSubstringHasColor(name, in: root,
-                                             r: expected.1, g: expected.2, b: expected.3)
-                },
-                onTimeout: { book in
-                    try? FileManager.default.removeItem(at: url)
-                    NSApp.appearance = nil
-                    finish(false, "Prozessvariable \(name) hat nicht die erwartete Farbe — \(book.summary)")
-                },
-                then: next)
     }
 
     /// Prüft die Farbe genau am Namen der indizierten Projektmethode. Ein
@@ -9115,45 +6183,7 @@ enum SelfTest {
         return traits.contains(.boldFontMask) == bold && traits.contains(.italicFontMask) == italic
     }
 
-    /// Sucht eine konkrete sRGB-Farbe unter den `.foregroundColor`-Attributen
-    /// des echten Editor-TextStorage (Toleranz ~1,5/255 je Kanal).
-    private static func storageContainsColor(in root: NSView,
-                                             r: Int, g: Int, b: Int) -> Bool {
-        guard let tv = editorTextView(in: root) as? TextView,
-              let storage = tv.textStorage, storage.length > 0 else { return false }
-        var found = false
-        storage.enumerateAttribute(.foregroundColor,
-                                   in: NSRange(location: 0, length: storage.length)) { value, _, stop in
-            guard let color = (value as? NSColor)?.usingColorSpace(.sRGB) else { return }
-            let tolerance = 1.5 / 255.0
-            if abs(color.redComponent - Double(r) / 255) < tolerance,
-               abs(color.greenComponent - Double(g) / 255) < tolerance,
-               abs(color.blueComponent - Double(b) / 255) < tolerance {
-                found = true
-                stop.pointee = true
-            }
-        }
-        return found
-    }
-
-    /// Zählt die verschiedenen `.foregroundColor`-Attribute im echten
-    /// Editor-TextStorage (sRGB-normalisiert, damit gleiche Farben in
-    /// unterschiedlichen Colorspaces nicht doppelt zählen).
-    private static func distinctForegroundColors(in root: NSView) -> Int {
-        guard let tv = editorTextView(in: root) as? TextView,
-              let storage = tv.textStorage, storage.length > 0 else { return 0 }
-        var seen = Set<String>()
-        storage.enumerateAttribute(.foregroundColor,
-                                   in: NSRange(location: 0, length: storage.length)) { value, _, _ in
-            guard let color = value as? NSColor,
-                  let srgb = color.usingColorSpace(.sRGB) else { return }
-            seen.insert(String(format: "%.3f/%.3f/%.3f",
-                               srgb.redComponent, srgb.greenComponent, srgb.blueComponent))
-        }
-        return seen.count
-    }
-
-    // MARK: - Leaks-Szenario (Wunschpaket 2026-07, Abschlussprüfung)
+    // MARK: - Leaks-Szenario
 
     /// Diagnose-Szenario für den `leaks`-Durchlauf: übt Bildvorschau, PDF-
     /// Vorschau, Hex-Ansicht und XPath-Leiste je einmal aus, schließt die
@@ -9322,17 +6352,17 @@ enum SelfTest {
         try? FileManager.default.removeItem(at: base)
         FileHandle.standardError.write(Data(
             "LEAKSCENARIO READY \(ProcessInfo.processInfo.processIdentifier)\n".utf8))
-        // KEIN finish(): Der Prozess bleibt für den leaks-Angriff am Leben
+        // Kein finish(): Der Prozess bleibt für den leaks-Angriff am Leben
         // und beendet sich nach 60 s selbst (SELFTEST-Zeile für den Runner).
         DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
             finish(true, "Leak-Szenario ausgeübt (Bild/PDF/Hex/XPath)")
         }
     }
 
-    // MARK: - XPath-Leiste (Etappe 5 Wunschpaket 2026-07)
+    // MARK: - XPath-Leiste
 
     /// Öffnet die echte XPath-Leiste über die Menü-Notification und prüft,
-    /// dass eine getippte Query den Editor WIRKLICH zur Fundstelle springen
+    /// dass eine getippte Query den Editor wirklich zur Fundstelle springen
     /// lässt (tatsächliche Selektion in der CodeEdit-TextView, nicht nur
     /// Modellzustand) — Panel-Öffnen + Springen End-to-End.
     private static func runXPathTest() {
@@ -9347,11 +6377,11 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
 
-        // Selbst geschriebene Fixture mit Multibyte-Inhalt VOR dem Ziel.
+        // Selbst geschriebene Fixture mit Multibyte-Inhalt vor dem Ziel.
         //
         // Bewusst groß: Der XPath-Index entsteht asynchron. Bei einer winzigen
         // Datei ist er manchmal schon fertig, bevor der Test tippt — dann liefe
-        // der Test am eigentlichen Risiko vorbei (Tippen VOR fertigem Index)
+        // der Test am eigentlichen Risiko vorbei (Tippen vor fertigem Index)
         // und wäre je nach Systemlast mal grün, mal rot. Die Füllelemente
         // machen den Bau lang genug, dass der Fall zuverlässig eintritt.
         var filler = ""
@@ -9380,7 +6410,7 @@ enum SelfTest {
                 try? FileManager.default.removeItem(at: tmp)
                 finish(false, "XPath für .xml nicht verfügbar (activeTabSupportsXPath=false)")
             }
-            // Panel über den ECHTEN Menü-Pfad öffnen.
+            // Panel über den echten Menü-Pfad öffnen.
             NotificationCenter.default.post(name: .fastraShowXPathBar, object: nil)
             pollXPathPanel(ws: ws, root: root, xml: xml, tmp: tmp)
         }
@@ -9407,7 +6437,7 @@ enum SelfTest {
                 },
                 then: {
                     guard let model else { finish(false, "XPath-Panel nach Erfolg verschwunden") }
-                    // Festhalten, ob der Index beim Tippen schon stand. Nur wenn NICHT,
+                    // Festhalten, ob der Index beim Tippen schon stand. Nur wenn nicht,
                     // prüft der Lauf den eigentlich riskanten Fall.
                     let indexWasReady = MainActor.assumeIsolated { model.index != nil }
                     // Query in das echte Modell tippen (Live-Springen).
@@ -9452,9 +6482,9 @@ enum SelfTest {
                 })
     }
 
-    // MARK: - Ansichts-Umschalter + Vorschau (Etappe 2 Wunschpaket 2026-07)
+    // MARK: - Ansichts-Umschalter + Vorschau
 
-    /// Prüft die Read-only-Vorschau mit ECHTER Beobachtung (Muster
+    /// Prüft die Read-only-Vorschau mit echter Beobachtung (Muster
     /// `highlight`): Ein rotes PNG muss als tatsächlich dekodiertes Bild in
     /// der View-Hierarchie ankommen (Pixelfarbe wird gesampelt, nicht nur
     /// Modellzustand), der Umschalter muss die Ansicht real wechseln, und
@@ -9631,24 +6661,12 @@ enum SelfTest {
         context.closePDF()
     }
 
-    /// Belegt den Offset-Fix beim Treffer-Sprung END-TO-END: ein Sprung zu
-    /// einem Treffer auf einer SPÄTEN Zeile muss im Editor GENAU den Treffer-
-    /// Text selektieren.
-    ///
-    /// Hintergrund: Der Sprung läuft über Zeile/Spalte (Start+Ende), NICHT
-    /// über die absolute NSRange (siehe `NotificationCenter.postMatchJump`).
-    /// Die absolute Range driftet, sobald frühere Zeilen im Editor-Storage
-    /// anders lang sind als in der Such-Vorlage (Encoding/Line-Ending/BOM/
-    /// CESE-interne Aufbereitung) — der Cursor landete dann daneben
-    /// („Müller" statt „Daniel"). Reine Unit-Tests fangen das NICHT, weil sie
-    /// CodeEditSourceEditors Zeile/Spalte→Selektion-Mapping nicht durchlaufen.
-    ///
-    /// Vorgehen: Inhalt mit unterschiedlich langen Vorzeilen (inkl. Umlauten
-    /// und einem Emoji als UTF-16-Surrogatpaar — genau die Offset-Falle) in
-    /// einen Tab laden, das eindeutige Zielwort auf der letzten Zeile per
-    /// echter Such-Engine finden, exakt wie die GUI den Sprung posten und
-    /// danach die TATSÄCHLICHE Editor-Selektion zurücklesen. Selektierter
-    /// Text == Treffer-Text → der Sprung landete punktgenau.
+    /// Prüft den Treffer-Sprung bis zur tatsächlichen Editor-Selektion auf einer
+    /// späten Zeile. Unterschiedlich lange Vorzeilen mit Umlaut und Emoji decken
+    /// UTF-16- und Normalisierungsabweichungen auf. Die Such-Engine findet das
+    /// Zielwort; `postMatchJump` verwendet wie die GUI Zeile und Spalte.
+    /// Der zurückgelesene selektierte Text muss dem Treffer entsprechen, damit
+    /// auch CESEs Zeile/Spalte-Mapping geprüft ist.
     private static func runJumpTest() {
         testLabel = "jump"
         guard let ws = Workspace.shared else {
@@ -9667,13 +6685,9 @@ enum SelfTest {
         activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
-        // Vorzeilen bewusst unterschiedlich lang + Umlaut/Emoji weit oben.
-        // Zielwort eindeutig (taucht nur einmal auf) auf der letzten Zeile —
-        // so ist ein Daneben-Landen am selektierten Text klar erkennbar.
-        // ZWEI Fälle nacheinander: LF-Datei UND reine CR-Datei (klassisches
-        // Mac / 4D-Log). Der CR-Fall ist die Regression aus Daniels Test —
-        // der Klick auf einen Treffer sprang ins Leere, weil die Zeilen-
-        // Zählung nur LF kannte. Gleiche Struktur, nur der Trenner wechselt.
+        // Unterschiedlich lange Vorzeilen mit Umlaut/Emoji und eindeutigem
+        // Zielwort auf der letzten Zeile. Nacheinander LF und reines CR prüfen;
+        // eine LF-only-Zeilenzählung würde den CR-Fall falsch zuordnen.
         let baseLines = ["Müller wohnt in der Beispielstraße zwölf 😀", "x",
                          "mittellange dritte Zeile zum Variieren der Länge", "ZIELWORT"]
         let lfContent = baseLines.joined(separator: "\n")
@@ -9689,7 +6703,7 @@ enum SelfTest {
         }
     }
 
-    /// Führt EINEN Jump-Fall aus (LF oder CR): Datei laden, ZIELWORT über die
+    /// Führt einen Jump-Fall aus (LF oder CR): Datei laden, Zielwort über die
     /// echte Such-Engine bestimmen, exakt wie die GUI über postMatchJump
     /// springen und die zurückgelesene Editor-Selektion prüfen. Bei Erfolg
     /// `onPass()`, bei Fehler sofortiger FAIL (mit Fall-Label).
@@ -9714,7 +6728,7 @@ enum SelfTest {
                 // u.U. nicht im selectionManager (wie im Findbar-Test).
                 _ = mainWindow.makeFirstResponder(tv)
 
-                // Treffer über die ECHTE Such-Engine (gleicher Pfad wie die GUI-
+                // Treffer über die echte Such-Engine (gleicher Pfad wie die GUI-
                 // Trefferliste), damit Zeile/Spalte konsistent sind.
                 let opts = SearchOptions(find: "ZIELWORT", replace: "",
                                          isRegex: false, caseSensitive: true)
@@ -9762,7 +6776,7 @@ enum SelfTest {
 
     // MARK: - -selftest ghosttext
 
-    /// Sichert gegen den „Text-Geist" (Daniel-Befund 2026-07-12): Der
+    /// Sichert gegen den „Text-Geist": Der
     /// CodeEditTextView-Typesetter verwendete den absoluten Endindex eines
     /// Zeilenumbruchs als `NSRange.length`. Ab dem zweiten Umbruchfragment
     /// überlappten die gezeichneten CoreText-Bereiche dadurch immer stärker →
@@ -9772,7 +6786,7 @@ enum SelfTest {
     /// Subview der `TextView`. Der Test lädt sehr lange Zeilen, erzwingt einen
     /// Breitenwechsel und prüft nach jedem Settle drei Invarianten:
     ///   (a) CoreText-Nutzlast und `documentRange` sind gleich lang,
-    ///   (b) bei Umbruch AN ist keine Fragment-View breiter als die Grenze,
+    ///   (b) bei Umbruch an ist keine Fragment-View breiter als die Grenze,
     ///   (c) keine zwei Live-Views belegen denselben Dokumentbereich.
     /// Genau diese Render-Fehlerklasse entgeht reinen Modell-Tests: Der
     /// gespeicherte Text war auch beim Geist jederzeit korrekt.
@@ -9790,9 +6804,8 @@ enum SelfTest {
         activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
-        // Mehrere SEHR lange Zeilen (deutlich breiter als jedes Testfenster) —
-        // so greift der Umbruch zwingend und ein zu breites Rest-Fragment fällt
-        // sofort auf. Das Wort aus Daniels Screenshot bewusst wiederholt.
+        // Mehrere Zeilen deutlich breiter als das Testfenster erzwingen Umbruch;
+        // das wiederholte Wort macht ein überbreites Restfragment sichtbar.
         let long = String(repeating: "Willkommensbildschirm ", count: 40)
         let content = (1...6).map { "Zeile \($0): \(long)" }.joined(separator: "\n")
         let tmp = selfTestTemporaryDirectory()
@@ -9803,12 +6816,9 @@ enum SelfTest {
         ws.loadFile(at: tmp) { ok in
             try? FileManager.default.removeItem(at: tmp)
             guard ok else { finish(false, "loadFile schlug fehl (completion false)") }
-            // Breiten-Sequenz: jeder Schritt ändert die Umbruch-Breite und ist
-            // damit eine Gelegenheit für einen stehenbleibenden Geist. Nach
-            // jedem Settle wird die Invariante geprüft.
-            // Realistischer Fall (wie Daniels Paste): frischer Editor, langer
-            // Inhalt, nach dem Settle einmal prüfen. Danach ein Fenster-Resize
-            // als zusätzlicher Auslöser (der Geist entsteht schon ohne).
+            // Nach Einfügen langen Inhalts in einen frischen Editor und nach jeder
+            // Breitenänderung die Zeicheninvariante prüfen. Beide Wege können veraltete
+            // Umbruchfragmente sichtbar machen.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                 if let violation = ghostViolation(in: root) {
                     finish(false, "Text-Geist nach Laden: \(violation)")
@@ -9842,7 +6852,7 @@ enum SelfTest {
         }
         collect(tv)
 
-        // Nur LIVE-Fragmente: geparkte Reuse-Views sind versteckt / auf .zero.
+        // Nur Live-Fragmente: geparkte Reuse-Views sind versteckt / auf .zero.
         let live = fragments.filter {
             !$0.isHidden && $0.frame != .zero && $0.lineFragment != nil
         }
@@ -9864,7 +6874,7 @@ enum SelfTest {
                     + "Umbruchfragmente überlappen intern"
             }
         }
-        // (b) Überlauf: bei endlicher Umbruch-Breite (Umbruch AN) darf KEIN
+        // (b) Überlauf: bei endlicher Umbruch-Breite (Umbruch an) darf kein
         // sichtbares Fragment breiter als diese Breite sein. Ein zu breites
         // Fragment ist die überlaufende „Willkommensb"-Rest-View aus dem Screenshot.
         if wrapWidth.isFinite {
@@ -9878,7 +6888,7 @@ enum SelfTest {
         // (a) Überlappung: zwei sichtbare Fragmente, deren documentRange sich
         // schneidet → derselbe Text ist zweimal ausgelegt (Geist + korrekte
         // Umbruch-Version nebeneinander). Benachbarte Umbruch-Fragmente einer
-        // Zeile haben lückenlose, NICHT überlappende Ranges → kein Fehlalarm.
+        // Zeile haben lückenlose, nicht überlappende Ranges → kein Fehlalarm.
         for i in 0..<live.count {
             let a = live[i].lineFragment!.documentRange
             guard a.location != NSNotFound else { continue }
@@ -10800,18 +7810,16 @@ enum SelfTest {
 
     // MARK: - -selftest rightedge
 
-    /// Reproduziert die gemeldete Nutzergeometrie vom 2026-07-24: Markdown-
-    /// Datei mit sehr langen Zeilen, integrierte Vorschau daneben, sichtbare
-    /// Seitenleiste, System-Scrollbalken „immer einblenden“. Prüft, dass
-    /// Klicks und Doppelklicks bis unmittelbar vor den vertikalen Scrollbalken
-    /// den Cursor setzen bzw. das ganze Wort markieren.
+    /// Markdown mit langen Zeilen, integrierter Vorschau, Seitenleiste und
+    /// ständig sichtbaren System-Scrollbalken prüfen: Klick und Doppelklick müssen
+    /// bis unmittelbar vor den vertikalen Scrollbalken Cursor bzw. Wort treffen.
     private static func runRightEdgeClickTest() {
         testLabel = "rightedge"
         guard let ws = Workspace.shared,
               let window = mainWindowForAXChecks() else {
             finish(false, "Workspace oder Hauptfenster fehlt")
         }
-        // Exakte Geometrie aus dem Fehlerbericht (Defaults des Nutzers).
+        // Feste Fenster- und Seitenleistengeometrie für den Rand-Klick-Test.
         ws.sidebarWidth = 216.13671875
         ws.markdownPreviewWidth = 332.3515625
         workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
@@ -11153,7 +8161,7 @@ enum SelfTest {
     }
 
     /// 64 echte Shift+↓ — deutlich mehr als die Datei visuelle Zeilen hat,
-    /// damit die Kante sicher bis ans Dateiende läuft. Nach JEDEM Tastendruck
+    /// damit die Kante sicher bis ans Dateiende läuft. Nach jedem Tastendruck
     /// (plus Runloop-Takt) muss die bewegte Kante im Viewport liegen.
     private static func sendShortSelectionKey(
         textView: TextView, scrollView: NSScrollView,
@@ -11262,7 +8270,7 @@ enum SelfTest {
             finish(false, "Workspace oder Hauptfenster fehlt")
         }
         SoakTest.reset()
-        // Ab hier wandert jeder Befund SOFORT ins gemeinsame Protokoll. Wird
+        // Ab hier wandert jeder Befund sofort ins gemeinsame Protokoll. Wird
         // die Phase abgeschossen — etwa von der Frist des Runners —, bleibt
         // alles Beobachtete erhalten; vorher war es restlos weg.
         SoakTest.beginReport(at: logURL)
@@ -11275,7 +8283,7 @@ enum SelfTest {
         do {
             try backupSoakPasteboard(to: pasteboardBackupURL)
         } catch {
-            finish(false, "Zwischenablage nicht sicherbar: "
+            finish(selfTestPasteboardOutcome(for: error), "Zwischenablage nicht sicherbar: "
                    + error.localizedDescription)
         }
 
@@ -11288,13 +8296,13 @@ enum SelfTest {
             // Erstes Dokument ins vorhandene Fenster, für die übrigen je ein
             // eigenes Fenster — so entsteht die Mehrfenster-Lage, in der die
             // gemeldeten Fehler auftraten. Ins erste Fenster kommt zusätzlich
-            // ein Text-Tab: Erst ein Nicht-Markdown-DOKUMENT (kein leerer
+            // ein Text-Tab: Erst ein Nicht-Markdown-Dokument (kein leerer
             // Tab, der nur die Startansicht zeigt) kann eine
             // stehengebliebene Markdown-Vorschau überhaupt aufdecken.
             workspace.loadFile(at: documents[0]) { _ in
                 workspace.loadFile(at: textDocument) { _ in
                     // Fensteraufbau und Rundenstart als Fortsetzung, weil
-                    // davor optional noch ein ECHTES Markdown-Dokument als
+                    // davor optional noch ein echtes Markdown-Dokument als
                     // weiterer Tab ins erste Fenster kommt.
                     let openWindowsThenRun = {
                         for document in documents.dropFirst() {
@@ -11303,7 +8311,7 @@ enum SelfTest {
                         }
                         waitForSoakWindows(expected: 3, tick: 0) {
                             // Ein optional bereitgestelltes echtes
-                            // RTFD-Bundle wird NACH dem Fensteraufbau über
+                            // RTFD-Bundle wird nach dem Fensteraufbau über
                             // den echten Öffnen-Pfad umgewandelt und sofort
                             // weiterbearbeitet; erst danach starten die
                             // Runden. (Die Umwandlung schreibt ihr Ergebnis
@@ -11348,7 +8356,7 @@ enum SelfTest {
                       !methodPath.isEmpty,
                       FileManager.default.fileExists(atPath: methodPath) else {
                     // Die Methode (längste git-saubere) wählt das Skript aus;
-                    // ohne diese Angabe bewusst NICHT selbst wählen, sondern
+                    // ohne diese Angabe bewusst nicht selbst wählen, sondern
                     // das Szenario überspringen.
                     SoakTest.note("4D-Szenario übersprungen: -soak4DMethod "
                                   + "fehlt oder zeigt auf keine Datei")
@@ -11373,7 +8381,7 @@ enum SelfTest {
     /// Kombination aus Typ-Name und Daten. Bewusst nur aus Zeichenketten und
     /// Daten gebaut, damit sie sich unverändert als Property-List speichern
     /// lässt.
-    private typealias StoredPasteboardItems = [[String: Data]]
+    private typealias StoredPasteboardItems = SelfTestPasteboardBackup.Items
 
     /// Liest alle Items der allgemeinen Zwischenablage itemgetreu aus.
     private static func capturePasteboardItems() throws -> StoredPasteboardItems {
@@ -11457,8 +8465,8 @@ enum SelfTest {
     }
 
     /// Besitznachweis über `NSPasteboard.changeCount`. Der Zähler steigt
-    /// systemweit bei JEDEM Schreiben. Merkt sich ein Test den Stand direkt
-    /// NACH seiner eigenen Änderung, erkennt er später sicher, ob der Inhalt
+    /// systemweit bei jedem Schreiben. Merkt sich ein Test den Stand direkt
+    /// nach seiner eigenen Änderung, erkennt er später sicher, ob der Inhalt
     /// noch der eigene ist: Ist der Zähler weitergelaufen, hat inzwischen
     /// jemand anders kopiert — meist der Nutzer selbst. Dann darf keine
     /// Sicherung zurückgeschrieben werden, sonst verschwindet dessen frische
@@ -11470,14 +8478,27 @@ enum SelfTest {
     }
 
     /// Kurze Selbsttests mit Copy/Paste sichern die Nutzer-Zwischenablage im
-    /// Speicher. VOR jeder test-eigenen Änderung werden der erwartete nächste
+    /// Speicher. Vor jeder test-eigenen Änderung werden der erwartete nächste
     /// Zählerstand und der Zustand „noch unbestätigt“ atomar persistiert. Erst
     /// die Nachkontrolle bestätigt den Testbesitz. Ein Absturz dazwischen
     /// bewahrt die private Sicherung, schreibt sie aber nicht automatisch über
     /// einen möglicherweise inzwischen kopierten Nutzerinhalt.
-    private static var selfTestPasteboardBackup: SoakPasteboardBackup?
+    private static let selfTestPasteboardSession = SelfTestPasteboardSession(
+        backend: SelfTestPasteboardSession<[NSPasteboardItem]>.Backend(
+            currentChangeCount: { NSPasteboard.general.changeCount },
+            captureItems: { try capturePasteboardItems() },
+            persistBackup: { try persistSelfTestPasteboardBackup($0) },
+            abandonBackup: {
+                if let url = selfTestPasteboardBackupURL {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            },
+            prepareRestore: { try preparedPasteboardItems($0) },
+            writeRestore: { try writePreparedPasteboardItems($0) }
+        )
+    )
 
-    /// Der Runner gibt einen Pfad IN seiner Wegwerf-Sandbox vor. Die Datei
+    /// Der Runner gibt einen Pfad in seiner Wegwerf-Sandbox vor. Die Datei
     /// überlebt einen Absturz des App-Prozesses, sodass der Runner die
     /// Zwischenablage anschließend zurückgeben kann. Ein direkter Aufruf ohne
     /// Runner bleibt im Speicher abgesichert und erzeugt keine lose Datei.
@@ -11504,99 +8525,21 @@ enum SelfTest {
         try data.write(to: url, options: .atomic)
     }
 
-    /// Muss unmittelbar VOR jeder eigenen Änderung aufgerufen werden. Hat der
+    /// Muss unmittelbar vor jeder eigenen Änderung aufgerufen werden. Hat der
     /// Nutzer seit der vorigen Teständerung selbst kopiert, endet der Test als
     /// Umgebungsfehler, statt den neueren Inhalt nochmals zu überschreiben.
     private static func prepareSelfTestPasteboardMutation() throws {
-        var backup: SoakPasteboardBackup
-        if let existing = selfTestPasteboardBackup {
-            guard pasteboardIsStillOwned(since: existing.ownedChangeCount) else {
-                throw NSError(
-                    domain: "FastraSelfTestPasteboard", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey:
-                        "Umgebungsproblem: Zwischenablage wurde während des Tests benutzt"]
-                )
-            }
-            backup = existing
-        } else {
-            backup = SoakPasteboardBackup(
-                items: try capturePasteboardItems(),
-                ownedChangeCount: NSPasteboard.general.changeCount,
-                mutationConfirmed: true
-            )
-        }
-        backup.ownedChangeCount &+= 1
-        backup.mutationConfirmed = false
-        // Das Journal MUSS vor der Änderung auf Platte stehen. Danach darf
-        // auch SIGKILL die Rückgabe nicht mehr vom alten Zähler abkoppeln.
-        try persistSelfTestPasteboardBackup(backup)
-        selfTestPasteboardBackup = backup
+        try selfTestPasteboardSession.prepare()
     }
 
     private static func noteSelfTestPasteboardMutation(
         expectedItems: StoredPasteboardItems
     ) throws {
-        guard var backup = selfTestPasteboardBackup else { return }
-        let actual = NSPasteboard.general.changeCount
-        guard actual == backup.ownedChangeCount else {
-            let actualItems = try? capturePasteboardItems()
-            let outcome = SelfTestPasteboardMutationRouting
-                .unexpectedCountOutcome(
-                    contentMatchesExpected: actualItems.map { $0 == expectedItems }
-                )
-            if outcome == .environment {
-                // Ein fremder Inhalt ist neuer als unsere Sicherung. Der Test
-                // gibt den Besitz auf, damit `finish` ihn nicht zurückschreibt.
-                abandonSelfTestPasteboardBackup()
-            }
-            throw NSError(
-                domain: "FastraSelfTestPasteboard",
-                code: outcome == .environment ? 5 : 10,
-                userInfo: [NSLocalizedDescriptionKey:
-                    outcome == .environment
-                        ? "Umgebungsproblem: Zwischenablage wurde während des Tests benutzt"
-                        : "Teständerung der Zwischenablage verwendete einen unerwarteten "
-                            + "Zählerschritt (erwartet \(backup.ownedChangeCount), "
-                            + "erhalten \(actual))"]
-            )
-        }
-        do {
-            guard try capturePasteboardItems() == expectedItems else {
-                throw NSError(
-                    domain: "FastraSelfTestPasteboard", code: 9,
-                    userInfo: [NSLocalizedDescriptionKey:
-                        "Zwischenablage-Zähler passte, der Inhalt stammt aber nicht vom Test"]
-                )
-            }
-            guard NSPasteboard.general.changeCount == actual else {
-                throw NSError(domain: "FastraSelfTestPasteboard", code: 5)
-            }
-        } catch {
-            // Auch ein zugesagter Datentyp kann erst während des Lesens durch
-            // eine fremde Kopie verschwinden. Vor `finish` den Besitz abgeben.
-            if NSPasteboard.general.changeCount != actual {
-                abandonSelfTestPasteboardBackup()
-                throw NSError(domain: "FastraSelfTestPasteboard", code: 5,
-                              userInfo: [NSLocalizedDescriptionKey:
-                                "Umgebungsproblem: Zwischenablage wurde während der Nachkontrolle benutzt"])
-            }
-            throw error
-        }
-        backup.mutationConfirmed = true
-        try persistSelfTestPasteboardBackup(backup)
-        selfTestPasteboardBackup = backup
+        try selfTestPasteboardSession.note(expectedItems: expectedItems)
     }
 
-    private static func abandonSelfTestPasteboardBackup() {
-        selfTestPasteboardBackup = nil
-        if let url = selfTestPasteboardBackupURL {
-            try? FileManager.default.removeItem(at: url)
-        }
-    }
-
-    /// Ersetzt die allgemeine Zwischenablage mit genau EINER AppKit-
-    /// Schreiboperation. `clearContents` plus `setString` wären zwei getrennte
-    /// globale Änderungen und ließen dazwischen ein Crash-/Fremdkopie-Fenster.
+    /// Schreibt genau ein vorbereitetes Test-Item über `clearContents`/`setData`.
+    /// Die Nachkontrolle bestätigt den vorbereiteten Zähler und Inhalt.
     private static func writeSelfTestPasteboardItem(_ item: NSPasteboardItem) {
         var expectedItem: [String: Data] = [:]
         for type in item.types {
@@ -11607,13 +8550,20 @@ enum SelfTest {
         }
         prepareSelfTestPasteboardMutationOrFinish()
         let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
+        let clearReturnedChangeCount = pasteboard.clearContents()
         for type in item.types {
             guard let data = item.data(forType: type),
                   pasteboard.setData(data, forType: type) else {
                 finish(false, "Testinhalt wurde von der Zwischenablage nicht angenommen")
             }
         }
+        fputs(
+            "SELFTEST-PASTEBOARD-PHASE test=\(testLabel) "
+                + "expected-session=\(selfTestPasteboardSession.expectedChangeCount.map(String.init) ?? "nil") "
+                + "clear-returned=\(clearReturnedChangeCount) "
+                + "fixture-types=\(expectedItem.keys.sorted().joined(separator: ","))\n",
+            stderr
+        )
         noteSelfTestPasteboardMutationOrFinish(expectedItems: [expectedItem])
     }
 
@@ -11655,71 +8605,16 @@ enum SelfTest {
         }
     }
 
-    /// Welche Zwischenablage-Fehler sind UMGEBUNG und welche echte Fehler?
-    ///
-    /// Code 1 und 5: Der Nutzer hat während des Laufs selbst kopiert.
-    /// Code 4: Ein Typ der fremden Zwischenablage ließ sich nicht lesen. Das
-    /// passiert bei zugesagten („promised") Inhalten, deren Besitzer sie nicht
-    /// liefert, und wenn sich die Zwischenablage zwischen Typliste und
-    /// Datenzugriff ändert — beobachtet am 2026-09-10 im Gesamtlauf neben
-    /// einem arbeitenden Nutzer an `public.utf16-external-plain-text`, isoliert
-    /// grün. Beides ist der Zustand der Maschine, kein Fastra-Fehler; als FAIL
-    /// gemeldet behauptete der Test einen Produktfehler, den es nicht gibt.
+    /// Zwischenablagefehler unterscheiden: Code 1/5 bedeutet fremdes Kopieren
+    /// während des Laufs. Code 4 bedeutet, dass ein zugesagter Inhalt nicht
+    /// lesbar war oder sich die Zwischenablage zwischen Typliste und Zugriff
+    /// änderte. Diese Umgebungsfälle belegen keinen Produktfehler.
     static func selfTestPasteboardOutcome(for error: Error) -> SelfTestOutcome {
-        let error = error as NSError
-        guard error.domain == "FastraSelfTestPasteboard" else { return .fail }
-        switch error.code {
-        case 1, 4, 5: return .environment
-        default: return .fail
-        }
+        SelfTestPasteboardSession<[NSPasteboardItem]>.outcome(for: error)
     }
 
-    private enum SelfTestPasteboardCleanup {
-        case none
-        case restored
-        case keptNewerContent
-        case failed(String)
-    }
-
-    private static func finishSelfTestPasteboardMutation() -> SelfTestPasteboardCleanup {
-        guard var backup = selfTestPasteboardBackup else { return .none }
-        guard backup.mutationConfirmed else {
-            return .failed("vorbereitete Zwischenablage-Änderung wurde nicht bestätigt; "
-                           + "Sicherung bleibt zur manuellen Rettung erhalten")
-        }
-        guard pasteboardIsStillOwned(since: backup.ownedChangeCount) else {
-            selfTestPasteboardBackup = nil
-            if let url = selfTestPasteboardBackupURL {
-                try? FileManager.default.removeItem(at: url)
-            }
-            return .keptNewerContent
-        }
-        do {
-            let items = try preparedPasteboardItems(backup.items)
-            // Auch die RÜCKGABE ist ein globaler Schreibvorgang. Den nächsten
-            // Zähler vorab journalisieren, damit ein fehlgeschlagener
-            // `writeObjects`-Versuch die einzige Plattensicherung nicht für
-            // jeden späteren Rettungsversuch unbrauchbar macht.
-            backup.ownedChangeCount &+= 1
-            backup.mutationConfirmed = false
-            try persistSelfTestPasteboardBackup(backup)
-            selfTestPasteboardBackup = backup
-            try writePreparedPasteboardItems(items)
-            guard NSPasteboard.general.changeCount == backup.ownedChangeCount else {
-                throw NSError(domain: "FastraSelfTestPasteboard", code: 6,
-                              userInfo: [NSLocalizedDescriptionKey:
-                                "Zwischenablage-Rückgabe änderte den Zähler unerwartet"])
-            }
-            backup.mutationConfirmed = true
-            try persistSelfTestPasteboardBackup(backup)
-            selfTestPasteboardBackup = nil
-            if let url = selfTestPasteboardBackupURL {
-                try? FileManager.default.removeItem(at: url)
-            }
-            return .restored
-        } catch {
-            return .failed(error.localizedDescription)
-        }
+    private static func finishSelfTestPasteboardMutation() -> SelfTestCompletion.PasteboardCleanup {
+        selfTestPasteboardSession.finish()
     }
 
     /// Der Dauertest kopiert selbst in die Zwischenablage. Fremder Inhalt wird
@@ -11728,18 +8623,9 @@ enum SelfTest {
     /// oder Timeout wiederherstellen. Mitgesichert wird der `changeCount`-Stand
     /// nach der letzten test-eigenen Änderung — er entscheidet beim
     /// Wiederherstellen darüber, ob die Zwischenablage überhaupt noch dem Test
-    /// gehört. Der Stand gehört deshalb auch in die DATEI: Nach einem Absturz
+    /// gehört. Der Stand gehört deshalb auch in die Datei: Nach einem Absturz
     /// spielt ein frischer Prozess die Sicherung ein und hat kein Gedächtnis.
-    private struct SoakPasteboardBackup {
-        var items: StoredPasteboardItems
-        var ownedChangeCount: Int
-        /// `false` heißt: Der erwartete Zähler wurde VOR einer Änderung
-        /// journalisiert, die App konnte ihren Abschluss aber noch nicht
-        /// bestätigen. Dieser Zustand darf nach einem Crash nie automatisch
-        /// zurückgeschrieben werden: Genau eine Nutzerkopie könnte denselben
-        /// Zählerschritt erzeugt haben.
-        var mutationConfirmed: Bool
-    }
+    private typealias SoakPasteboardBackup = SelfTestPasteboardBackup
     private static var soakPasteboardBackup: SoakPasteboardBackup?
     private static var soakPasteboardBackupFileURL: URL?
     private static let soakPasteboardItemsKey = "items"
@@ -11758,9 +8644,10 @@ enum SelfTest {
         SoakTest.confirmedCopy = nil
         // Vor der ersten eigenen Änderung ist der aktuelle Zählerstand der
         // eigene Bezugspunkt: Solange er gilt, hat niemand anders geschrieben.
-        let backup = SoakPasteboardBackup(items: try capturePasteboardItems(),
-                                          ownedChangeCount: NSPasteboard.general.changeCount,
-                                          mutationConfirmed: true)
+        let backup = try SoakPasteboardBackup.capture(
+            currentChangeCount: { NSPasteboard.general.changeCount },
+            captureItems: { try capturePasteboardItems() }
+        )
         soakPasteboardBackupFileURL = backupURL
         try writeSoakPasteboardBackup(backup, to: backupURL)
     }
@@ -11779,7 +8666,7 @@ enum SelfTest {
         soakPasteboardBackup = backup
     }
 
-    /// Journaliert VOR dem echten ⌘C den exakt erwarteten nächsten Zähler als
+    /// Journaliert vor dem echten ⌘C den exakt erwarteten nächsten Zähler als
     /// unbestätigt. Erst die Nachkontrolle macht ihn wiederherstellbar. Bei
     /// einem Absturz in der Lücke bleibt die Sicherung für eine manuelle
     /// Rettung erhalten, ohne möglicherweise fremden Inhalt zu überschreiben.
@@ -12002,7 +8889,7 @@ enum SelfTest {
         }
     }
 
-    /// Führt die Runden mit Pausen aus — bewusst NICHT in einer engen
+    /// Führt die Runden mit Pausen aus — bewusst nicht in einer engen
     /// Schleife: Zwischen den Aktionen müssen Layout, Vorschau und
     /// Hintergrundarbeit tatsächlich laufen, sonst prüft der Test einen
     /// Zustand, den es im Betrieb nie gibt.
@@ -12050,7 +8937,7 @@ enum SelfTest {
         // Aktivierung und Key-Window-Wechsel sind asynchron. Ein sofortiges
         // ⌘Z/⌘C/⌘V würde sonst gelegentlich noch an die vorherige App
         // beziehungsweise gar keinen Responder gehen. Das wäre ein Fehler des
-        // Testtreibers: Ein echter Mausklick liefert seine Aktion erst NACH dem
+        // Testtreibers: Ein echter Mausklick liefert seine Aktion erst nach dem
         // Fokuswechsel. Bis zu zwei Sekunden auf vollständigen Editoraufbau
         // und Fokus warten; ein Fenster allein genügt nicht als Aktionsziel.
         if let issue = SoakTest.prepareFrontWindowForAction() {
@@ -12073,7 +8960,7 @@ enum SelfTest {
             return
         }
         let pending = SoakTest.startRound()
-        // Erst einen Runloop-Durchlauf setzen lassen, DANN den tatsächlichen
+        // Erst einen Runloop-Durchlauf setzen lassen, dann den tatsächlichen
         // View-Zustand abwarten: Unter Last braucht SwiftUI für den Abbau der
         // Vorschau gelegentlich mehrere Transaktionen. Eine starre 100-ms-
         // Annahme meldete dann den alten View-Baum als Produktfehler. Nach
@@ -12130,23 +9017,10 @@ enum SelfTest {
         }
     }
 
-    /// Gegenstück zu `dragscroll`: Ein Drag INNERHALB des sichtbaren
-    /// Ausschnitts darf die Ansicht NICHT bewegen.
-    ///
-    /// Der Fehler dahinter (Fehlerbericht aus dem Arbeitsbetrieb,
-    /// 2026-08-07): Beim Markieren mit der Maus kroch das Fenster langsam
-    /// immer weiter nach unten — auch dann, wenn die Markierung nach OBEN
-    /// wanderte. `dragscroll` hat das nie bemerkt, weil er nur die
-    /// Gegenrichtung prüft: Zieht man unter den Fensterrand, SOLL gescrollt
-    /// werden. Genau deshalb braucht ein Autoscroll zwei Tests — einen, der
-    /// belegt, dass es scrollt, und einen, der belegt, dass es das sonst
-    /// bleiben lässt.
-    ///
-    /// Bewusst MIT eingeschalteter Markdown-Vorschau: Genau so trat der
-    /// Fehler im Arbeitsbetrieb auf, und die Vorschau bringt eine zweite
-    /// Scroll-Quelle ins Spiel (Editor meldet der Vorschau seine Zeile). In
-    /// einer reinen Textdatei ohne Vorschau war das Verhalten unauffällig —
-    /// diese Konstellation ist also die aussagekräftige.
+    /// Gegenstück zu `dragscroll`: Drag innerhalb des sichtbaren Ausschnitts
+    /// darf nicht scrollen. Mit Markdown-Vorschau prüfen, weil die Kopplung der
+    /// Editorzeile eine zweite Scrollquelle einführt. Zusammen belegen beide
+    /// Tests erforderliches Autoscroll außerhalb und Ruhe innerhalb des Viewports.
     private static func runDragNoScrollTest() {
         testLabel = "dragnoscroll"
         guard let ws = Workspace.shared,
@@ -12191,7 +9065,7 @@ enum SelfTest {
                     finish(false, "Editor wird nicht First Responder")
                 }
                 textView.layoutManager.layoutLines()
-                // In die Mitte des Dokuments scrollen, damit nach oben UND
+                // In die Mitte des Dokuments scrollen, damit nach oben und
                 // unten Platz zum (fälschlichen) Scrollen bleibt.
                 scrollView.contentView.scroll(
                     to: NSPoint(x: 0, y: max(0, textView.frame.height / 2))
@@ -12209,7 +9083,7 @@ enum SelfTest {
         textView: TextView, scrollView: NSScrollView, window: NSWindow
     ) {
         let visible = scrollView.documentVisibleRect
-        // Startpunkt klar INNERHALB: 120 Punkte unter der Oberkante des
+        // Startpunkt klar innerhalb: 120 Punkte unter der Oberkante des
         // sichtbaren Ausschnitts, waagerecht in der Textspalte.
         let startInView = NSPoint(x: visible.minX + 200, y: visible.minY + 120)
         let startInWindow = textView.convert(startInView, to: nil)
@@ -12229,12 +9103,12 @@ enum SelfTest {
         )
     }
 
-    /// Zieht die Maus SCHRITTWEISE nach oben — jeder Schritt zwei Punkte,
+    /// Zieht die Maus schrittweise nach oben — jeder Schritt zwei Punkte,
     /// alle klar innerhalb des sichtbaren Ausschnitts.
     ///
     /// Die Bewegung ist wesentlich: Ein Drag, der immer wieder denselben Punkt
     /// meldet, ändert die Auswahl nur einmal. Der Fehler entsteht aber erst
-    /// durch die FORTLAUFENDE Änderung — sie schreibt über SwiftUI eine
+    /// durch die fortlaufende Änderung — sie schreibt über SwiftUI eine
     /// jeweils veraltete Cursorposition zurück, und deren Anzeige zieht die
     /// Ansicht mit. Ein Test mit stehendem Zielpunkt übersieht das (erst so
     /// bemerkt: die erste Fassung dieses Tests bestand trotz des Fehlers).
@@ -12395,7 +9269,7 @@ enum SelfTest {
             finish(false, "Maus-Down nicht erzeugbar")
         }
         textView.mouseDown(with: down)
-        // Zielpunkt 40 Punkte UNTER dem Fenster (Fensterkoordinaten sind
+        // Zielpunkt 40 Punkte unter dem Fenster (Fensterkoordinaten sind
         // unten-basiert, also negativ).
         let dragLocation = NSPoint(x: startInWindow.x, y: -40)
         continueDragScroll(
@@ -12468,7 +9342,7 @@ enum SelfTest {
 
     // MARK: - -selftest dirtyundo
 
-    /// Punkt im Tab über den ECHTEN Editorpfad: Einfügen macht dirty,
+    /// Punkt im Tab über den echten Editorpfad: Einfügen macht dirty,
     /// Rückgängig auf den exakten Ladezustand macht wieder sauber, Redo
     /// wieder dirty, und manuelles Löschen der Einfügung (ohne Undo) räumt
     /// den Punkt ebenfalls ab.
@@ -12503,7 +9377,7 @@ enum SelfTest {
                 guard ws.activeTab?.isDirty == false else {
                     finish(false, "Tab ist direkt nach dem Laden dirty")
                 }
-                // Wie im Fehlerbericht: zwei Leerzeilen ans Ende anhängen.
+                // Zwei Leerzeilen ans Ende anhängen.
                 tv.selectionManager.setSelectedRange(NSRange(
                     location: (content as NSString).length, length: 0
                 ))
@@ -12557,361 +9431,9 @@ enum SelfTest {
 
     // MARK: - -selftest typescroll
 
-    /// Tippen muss den Cursor IMMER in den Sichtbereich holen (Daniel-Befund
-    /// 2026-07-25, BBEdit-Referenzverhalten): 1) Return am Dateiende scrollt
-    /// zur neuen Zeile. 2) Auch wenn der Nutzer von Hand weggescrollt hat,
-    /// holt das nächste getippte Zeichen die Cursorzeile zurück. 3) Ein per
-    /// Palette eingefügtes Emoji ist sofort vollständig ausgelegt. 4) Shift+←
-    /// erweitert die Auswahl über das Emoji.
     private static func runTypeScrollTest() {
         testLabel = "typescroll"
-        typeScrollEnvironmentNotes = []
-        guard let ws = Workspace.shared,
-              let window = mainWindowForAXChecks(),
-              let root = window.contentView else {
-            finish(false, "Workspace oder Hauptfenster fehlt")
-        }
-        // Der Tipp-/Zeichentest braucht ein aktives Fenster; ein Direktstart
-        // garantiert das nicht. Die Runner-Sperre bleibt dabei wirksam.
-        activateApplication(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        // Gleiche Konstellation wie Daniels Repro-Datei (2026-07-25): wenige,
-        // sehr lange, weich umbrochene Markdown-Zeilen ohne End-Umbruch —
-        // der umbrochene Inhalt ist höher als das Fenster. Seitenleiste und
-        // integrierte Vorschau machen den Editor schmal (wie emojisplit).
-        ws.sidebarWidth = 216.13671875
-        ws.markdownPreviewWidth = 332.3515625
-        workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
-        window.setContentSize(NSSize(width: 1100, height: 500))
-        // FASTRA_TYPESCROLL_FIXTURE erlaubt die Diagnose mit einer realen
-        // Datei (Kopie!); der normale Lauf nutzt das neutrale Abbild.
-        let text: String
-        if let path = ProcessInfo.processInfo
-            .environment["FASTRA_TYPESCROLL_FIXTURE"],
-           let fixture = try? String(contentsOfFile: path, encoding: .utf8) {
-            text = fixture
-        } else {
-            text = emojiSplitFixtureContent()
-        }
-        let url = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-typescroll-\(UUID().uuidString).md")
-        do { try text.write(to: url, atomically: true, encoding: .utf8) }
-        catch { finish(false, "Fixture nicht schreibbar: \(error.localizedDescription)") }
-        ws.loadFile(at: url.canonicalFileURL) { ok in
-            guard ok else {
-                try? FileManager.default.removeItem(at: url)
-                finish(false, "Fixture lädt nicht")
-            }
-            // Wie in Daniels realem Ablauf: Die Datei wird nach dem Öffnen
-            // EXTERN geändert (v2-Kopie, andere Agenten) — der Editor lädt
-            // still neu. Erst der Zustand NACH diesem Reload wird geprüft.
-            typeScrollStageExternalChange(window: window, root: root,
-                                          url: url, originalText: text)
-        }
-    }
-
-    /// Ändert die geöffnete Datei auf der Platte und wartet auf den stillen
-    /// Reload des sauberen Tabs. Danach laufen die Tipp-Stufen auf dem
-    /// neu geladenen Editorzustand.
-    private static func typeScrollStageExternalChange(
-        window: NSWindow, root: NSView, url: URL, originalText: String
-    ) {
-        let changed = originalText + "\nextern ergänzte Zeile ohne Umbruch danach"
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            do { try changed.write(to: url, atomically: true, encoding: .utf8) }
-            catch {
-                try? FileManager.default.removeItem(at: url)
-                finish(false, "externe Änderung nicht schreibbar: \(error.localizedDescription)")
-            }
-            // Im echten Ablauf stößt die App-Aktivierung die Prüfung an; im
-            // Selbsttest bleibt die App durchgehend aktiv → direkt aufrufen.
-            Workspace.shared?.checkExternalChanges()
-            pollTypeScrollReloaded(window: window, root: root, url: url,
-                                   expectedText: changed)
-        }
-    }
-
-    /// Bleibt bis zum Testende liegen: Die Zweitfenster-Stufe öffnet dieselbe
-    /// Datei erneut (Daniels Repro-Ablauf 2026-07-24: ⌘N, dann ⌘O derselben
-    /// Datei, während das erste Fenster sie im Hintergrund offen behält).
-    private static var typeScrollFixtureURL: URL?
-    /// Unvollständige Prüfbedingungen bleiben getrennt von echten
-    /// Funktionsfehlern. `finishTypeScroll` lässt einen vorhandenen echten
-    /// Fehler immer gewinnen.
-    private static var typeScrollEnvironmentNotes: [String] = []
-
-    private static func pollTypeScrollReloaded(
-        window: NSWindow, root: NSView, url: URL, expectedText: String
-    ) {
-        waitFor(budget: 10, pause: 0.1,
-                condition: { (editorTextView(in: root) as? TextView)?.string == expectedText },
-                onTimeout: { book in
-                    try? FileManager.default.removeItem(at: url)
-                    finish(false, "stiller Reload nach externer Änderung kam nicht — \(book.summary)")
-                },
-                then: {
-                    typeScrollFixtureURL = url
-                    pollTypeScrollEditorReady(window: window, root: root,
-                                              expectedText: expectedText)
-                })
-    }
-
-    private static func pollTypeScrollEditorReady(
-        window: NSWindow, root: NSView, expectedText: String
-    ) {
-        var textView: TextView?
-        waitFor(budget: 10, pause: 0.1,
-                condition: {
-                    guard let candidate = editorTextView(in: root) as? TextView,
-                          candidate.string == expectedText else { return false }
-                    textView = candidate
-                    return true
-                },
-                onTimeout: { book in finish(false, "Editor nicht bereit — \(book.summary)") },
-                then: {
-                    guard let textView else { finish(false, "Editor nach Erfolg verschwunden") }
-                    window.makeFirstResponder(textView)
-                    // Ans Dateiende, Cursor hinter das letzte Zeichen.
-                    let length = (textView.string as NSString).length
-                    textView.selectionManager.setSelectedRange(
-                        NSRange(location: length, length: 0)
-                    )
-                    textView.scrollSelectionToVisible()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        typeScrollStageReturn(textView: textView, failures: []) { failures in
-                            typeScrollStageManualScroll(textView: textView,
-                                                        failures: failures)
-                        }
-                    }
-                })
-    }
-
-    /// Ist der Cursor (Kollaps-Selektion) im sichtbaren Bereich der TextView?
-    private static func typeScrollCaretVisible(_ textView: TextView) -> Bool {
-        guard let selection = textView.selectionManager.textSelections.first,
-              let rect = textView.layoutManager.rectForOffset(selection.range.max)
-        else { return false }
-        return textView.visibleRect.intersects(rect)
-    }
-
-    /// Stufe 1: MEHRERE Returns am Dateiende — jede neue Zeile muss sichtbar
-    /// bleiben. Ein einzelnes Return kann noch in den Sichtbereichs-Rest
-    /// unterhalb des Cursors passen; erst die Wiederholung ist streng.
-    /// `label` kennzeichnet Befunde der Zweitfenster-Wiederholung;
-    /// `then` übernimmt die gesammelten Befunde. `failures` hat absichtlich
-    /// keinen Standardwert: Ein neuer Abschnitt muss den bisherigen Stand
-    /// weitergeben, statt bereits gefundene Fehler versehentlich zu verlieren.
-    private static func typeScrollStageReturn(
-        textView: TextView, iteration: Int = 0, failures: [String],
-        label: String = "", then: @escaping ([String]) -> Void
-    ) {
-        var failures = failures
-        if iteration >= 6 {
-            // Stufe 1b: Weitertippen auf der (womöglich unsichtbaren) Zeile
-            // muss die Zeile ebenfalls sichtbar machen.
-            textView.insertText("nachgetippt")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                if !typeScrollCaretVisible(textView) {
-                    failures.append(label + "Tippen auf unsichtbarer Zeile scrollt nicht nach")
-                }
-                then(failures)
-            }
-            return
-        }
-        // ECHTER Tastenpfad: keyDown-Event durchs Fenster (interpretKeyEvents,
-        // Input-Context, TextFormation-Filter) — nicht der Direktselektor.
-        // Fällt das Event-Bauen fehl, bleibt der Selektor das Fallback.
-        if let window = textView.window,
-           let event = NSEvent.keyEvent(
-               with: .keyDown, location: .zero, modifierFlags: [],
-               timestamp: ProcessInfo.processInfo.systemUptime,
-               windowNumber: window.windowNumber, context: nil,
-               characters: "\r", charactersIgnoringModifiers: "\r",
-               isARepeat: false, keyCode: 36
-           ) {
-            window.sendEvent(event)
-        } else {
-            textView.insertNewline(nil)
-        }
-        // Unmittelbar nach dem Tastendruck ein unabhängiges SwiftUI-Update
-        // erzwingen — wie es im echten Betrieb die Fußzeile (Zeile/Spalte)
-        // auslöst. Genau dieses Update ließ den CESE-State-Reconcile mit
-        // veralteter Scroll-Position den frischen Tipp-Scroll zurückdrehen
-        // (Daniel-Repro 2026-07-24, Call-Stack via Scroll-Spy).
-        Workspace.shared?.objectWillChange.send()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            if !typeScrollCaretVisible(textView) {
-                let visible = textView.visibleRect
-                let caret = textView.selectionManager.textSelections.first
-                    .flatMap { textView.layoutManager.rectForOffset($0.range.max) }
-                failures.append(label + "Return \(iteration + 1) am Dateiende scrollt "
-                    + "nicht zur neuen Zeile (sichtbar bis y=\(Int(visible.maxY)), "
-                    + "Cursor bei y=\(caret.map { Int($0.minY) } ?? -1), "
-                    + "Inhaltshöhe \(Int(textView.frame.height)))")
-            }
-            typeScrollStageReturn(textView: textView, iteration: iteration + 1,
-                                  failures: failures, label: label, then: then)
-        }
-    }
-
-    /// Stufe 2: Von Hand nach oben scrollen, dann ein Zeichen tippen — die
-    /// Cursorzeile muss zurück in den Sichtbereich kommen (BBEdit-Verhalten).
-    private static func typeScrollStageManualScroll(
-        textView: TextView, failures: [String]
-    ) {
-        var failures = failures
-        textView.enclosingScrollView?.contentView.scroll(to: .zero)
-        textView.enclosingScrollView.map {
-            $0.reflectScrolledClipView($0.contentView)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            if typeScrollCaretVisible(textView) {
-                typeScrollEnvironmentNotes.append(
-                    "manuelles Wegscrollen wirkte nicht"
-                )
-            }
-            textView.insertText("x")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                if !typeScrollCaretVisible(textView) {
-                    failures.append("Tippen nach manuellem Wegscrollen holt die "
-                        + "Cursorzeile nicht zurück")
-                }
-                typeScrollStageEmoji(textView: textView, failures: failures)
-            }
-        }
-    }
-
-    /// Stufe 3+4: Emoji wie über die macOS-Palette einfügen (insertText mit
-    /// replacementRange) — Auslegung sofort vollständig; Shift+← erweitert
-    /// die Auswahl um das komplette Emoji.
-    private static func typeScrollStageEmoji(
-        textView: TextView, failures: [String]
-    ) {
-        let ns = textView.string as NSString
-        textView.selectionManager.setSelectedRange(
-            NSRange(location: ns.length, length: 0)
-        )
-        textView.insertText("🤢", replacementRange: NSRange(location: NSNotFound, length: 0))
-        // Die Cursorzeile muss das Emoji vollständig ausgelegt haben:
-        // Fragmente der Zeile decken die gesamte Zeilenlänge ab. Geprüft wird
-        // das in einer kurzen Warteschleife statt nach EINER festen Pause.
-        // Grund: Die feste Viertelsekunde maß nicht die Auslegung, sondern die
-        // Startlast. Direkt nach einem anderen Fenstertest brauchte derselbe
-        // Testprozess rund 8 s statt 1 s bis zur Prüfstelle, und die Zeile war
-        // dann noch nicht ausgelegt — der Test meldete „0 von 14", isoliert
-        // war er grün (belegt am 2026-09-09 mit `tabscroll typescroll`).
-        // Die Aussage bleibt dieselbe: Die Auslegung muss ohne weitere
-        // Eingabe von selbst vollständig werden.
-        typeScrollAwaitEmojiLayout(textView: textView) { layoutFailure in
-            var failures = failures
-            let after = textView.string as NSString
-            if !(after as String).hasSuffix("🤢") {
-                failures.append("Palette-Emoji fehlt im Text")
-            }
-            if let layoutFailure { failures.append(layoutFailure) }
-            // Zweites Emoji wie im Repro, dann Shift+← zweimal.
-            textView.insertText("🤮", replacementRange: NSRange(location: NSNotFound, length: 0))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                textView.moveLeftAndModifySelection(nil)
-                let firstExtension = textView.selectionManager
-                    .textSelections.first?.range.length ?? 0
-                if firstExtension != 2 {
-                    failures.append("Shift+← markiert hinter Emoji "
-                        + "\(firstExtension) statt 2 UTF-16-Einheiten")
-                }
-                textView.moveLeftAndModifySelection(nil)
-                let secondExtension = textView.selectionManager
-                    .textSelections.first?.range.length ?? 0
-                if secondExtension != 4 {
-                    failures.append("Zweites Shift+← markiert "
-                        + "\(secondExtension) statt 4 UTF-16-Einheiten")
-                }
-                typeScrollStagePixels(textView: textView, failures: failures)
-            }
-        }
-    }
-
-    /// Wartet, bis die Cursorzeile vollständig ausgelegt ist. Liefert `nil`
-    /// bei Erfolg, sonst die fertige Fehlermeldung mit allen Messwerten.
-    ///
-    /// CodeEditTextView legt Zeilen nur für den GEZEICHNETEN Bereich aus. Die
-    /// Auslegung hängt damit am Zeichnen, und das planen AppKit und der
-    /// Fenstermanager unter Last später ein — im Gesamtlauf neben einem
-    /// arbeitenden Nutzer meldete der Test deshalb „0 von 14" bei sichtbarem
-    /// Fenster und aktiver App, isoliert war er grün (2026-09-10). Jeder
-    /// Durchlauf stößt das Zeichnen deshalb ausdrücklich an, statt darauf zu
-    /// warten, dass jemand anderes es tut; das ist genau das, was die laufende
-    /// App ohnehin dauernd macht.
-    ///
-    /// 200 Durchläufe statt 60: Gezählt werden Main-Queue-Durchläufe, nicht
-    /// Wanduhrzeit — eine wirklich unterbliebene Auslegung läuft unverändert in
-    /// den Fehler, nur eben mit mehr Gelegenheiten.
-    private static func typeScrollAwaitEmojiLayout(
-        textView: TextView,
-        completion: @escaping (String?) -> Void
-    ) {
-        var diagnosis = "Cursorzeile nach dem Emoji nicht auffindbar"
-        waitFor(budget: 10, pause: 0.05,
-                condition: {
-                    // Zeichnen anstoßen: Erst dadurch legt CodeEditTextView die Zeile aus.
-                    // `reflectScrolledClipView` gehört dazu — der reguläre AppKit-Weg, auf
-                    // dem die Textansicht ihren sichtbaren Bereich neu bestimmt. Ohne ihn
-                    // blieb die Zeile am UNTEREN Rand des Sichtfensters ohne ein einziges
-                    // Fragment stehen, obwohl ihr yPos im sichtbaren Bereich lag
-                    // (gemessen 2026-09-10: yPos 734,9 + Höhe 18,4 in sichtbar 348…756,
-                    // Fragmente 0). Dieselbe Lehre wie beim Scrollen in Fenstertests
-                    // (AGENTS.md).
-                    if let scrollView = textView.enclosingScrollView {
-                        // Die Zeile darf nicht bündig am UNTEREN Rand kleben: Gemessen am
-                        // 2026-09-10 stand sie mit yPos 734,9 und Höhe 18,4 in einem
-                        // Sichtfenster bis 756 — also drin — und blieb trotzdem ohne ein
-                        // einziges Fragment. CodeEditTextView legt offenbar einen etwas
-                        // kleineren Bereich aus als `visibleRect` meldet. Ein bisschen
-                        // weiter scrollen stellt die Vorbedingung her, statt sie zu erben;
-                        // die Zusage „Tippen scrollt den Cursor sichtbar" prüft eine
-                        // eigene, frühere Stufe.
-                        if let line = textView.layoutManager.textLineForOffset(
-                            max((textView.string as NSString).length - 1, 0)) {
-                            let margin: CGFloat = 24
-                            let bottom = line.yPos + line.height + margin
-                            let visible = textView.visibleRect
-                            if bottom > visible.maxY {
-                                var origin = scrollView.contentView.bounds.origin
-                                origin.y += bottom - visible.maxY
-                                scrollView.contentView.scroll(to: origin)
-                            }
-                        }
-                        scrollView.reflectScrolledClipView(scrollView.contentView)
-                    }
-                    textView.needsDisplay = true
-                    textView.window?.displayIfNeeded()
-                    let text = textView.string as NSString
-                    guard text.length > 0,
-                          let line = textView.layoutManager.textLineForOffset(text.length - 1)
-                    else {
-                        // Noch keine Zeile: weiter warten, nicht stillschweigend bestehen.
-                        diagnosis = "Cursorzeile nach dem Emoji nicht auffindbar"
-                        return false
-                    }
-                    let covered = line.data.lineFragments.map(\.range.length).reduce(0, +)
-                    if covered >= line.range.length - 1 {   // -1: Umbruchzeichen
-                        return true
-                    }
-                    let lineRect = textView.layoutManager
-                        .rectsFor(range: line.range).first
-                    diagnosis = "Emoji-Zeile unvollständig ausgelegt: "
-                        + "\(covered) von \(line.range.length), "
-                        + "Zeile=\(line.range), Zeilenrechteck=\(lineRect.map { "\($0)" } ?? "keins"), "
-                        + "yPos=\(line.yPos), Hoehe=\(line.height), "
-                        + "Fragmente=\(line.data.lineFragments.count), "
-                        + "sichtbar=\(textView.visibleRect), "
-                        + "Cursor sichtbar=\(typeScrollCaretVisible(textView)), "
-                        + "Fenster sichtbar=\(textView.window?.isVisible ?? false), "
-                        + "App aktiv=\(NSApp.isActive)"
-                    return false
-                },
-                onTimeout: { book in completion(diagnosis + " — \(book.summary)") },
-                then: { completion(nil) })
+        typeScrollTests.runTypeScrollTest()
     }
 
     /// Fensterinhalt als PNG aufnehmen. Bevorzugt `screencapture` (echte
@@ -12930,8 +9452,13 @@ enum SelfTest {
     private static func typeScrollCapture(window: NSWindow,
                                           completion: @escaping (TypeScrollSnapshot?) -> Void) {
         let frame = NSRect(origin: .zero, size: window.frame.size)
+        let screenCaptureAllowed = CGPreflightScreenCaptureAccess()
+        FileHandle.standardError.write(Data((
+            "SELFTEST_CAPTURE preflight=\(screenCaptureAllowed) window=\(window.windowNumber)"
+                + " visible=\(window.isVisible) key=\(window.isKeyWindow)\n"
+        ).utf8))
         SelfTestCaptureRouting.capture(
-            screenCaptureAllowed: CGPreflightScreenCaptureAccess(),
+            screenCaptureAllowed: screenCaptureAllowed,
             systemCapture: { callback in
                 typeScrollSystemCapture(windowNumber: window.windowNumber) { data in
                     callback(data.map { TypeScrollSnapshot(data: $0, windowRect: frame, source: "screen") })
@@ -12947,54 +9474,12 @@ enum SelfTest {
         )
     }
 
-    /// Vergleicht dekodierte Pixel ausschließlich im Zielbereich. Cursor und
-    /// frühere Auswahlflächen werden in beiden Aufnahmen vollständig ausgespart.
     static func typeScrollPixelEvaluation(before: TypeScrollSnapshot,
                                           after: TypeScrollSnapshot,
                                           region: NSRect, excluded: [NSRect])
         -> (outcome: SelfTestOutcome, info: String) {
-        guard before.source == after.source, before.windowRect == after.windowRect,
-              let left = NSBitmapImageRep(data: before.data),
-              let right = NSBitmapImageRep(data: after.data),
-              left.pixelsWide == right.pixelsWide, left.pixelsHigh == right.pixelsHigh,
-              left.pixelsWide > 0, left.pixelsHigh > 0,
-              before.windowRect.width > 0, before.windowRect.height > 0,
-              before.windowRect.contains(region), !region.isEmpty else {
-            return (.environment, "Pixel-Aufnahmen oder Zielbereich nicht vergleichbar")
-        }
-        let bounds = before.windowRect
-        let scaleX = CGFloat(left.pixelsWide) / bounds.width
-        let scaleY = CGFloat(left.pixelsHigh) / bounds.height
-        guard abs(scaleX - scaleY) < 0.01 else {
-            return (.environment, "Pixel-Aufnahme besitzt unerwartetes Seitenverhältnis")
-        }
-        let x0 = max(0, Int(floor((region.minX - bounds.minX) * scaleX)))
-        let x1 = min(left.pixelsWide, Int(ceil((region.maxX - bounds.minX) * scaleX)))
-        let y0 = max(0, Int(floor((bounds.maxY - region.maxY) * scaleY)))
-        let y1 = min(left.pixelsHigh, Int(ceil((bounds.maxY - region.minY) * scaleY)))
-        var compared = 0
-        var changed = 0
-        for y in y0..<y1 {
-            for x in x0..<x1 {
-                let point = NSPoint(x: bounds.minX + (CGFloat(x) + 0.5) / scaleX,
-                                    y: bounds.maxY - (CGFloat(y) + 0.5) / scaleY)
-                guard region.contains(point), !excluded.contains(where: { $0.contains(point) }) else { continue }
-                guard let a = left.colorAt(x: x, y: y)?.usingColorSpace(.sRGB),
-                      let b = right.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else {
-                    return (.environment, "Pixel-Farben nicht auswertbar")
-                }
-                compared += 1
-                if abs(a.redComponent - b.redComponent) > 1.0 / 255
-                    || abs(a.greenComponent - b.greenComponent) > 1.0 / 255
-                    || abs(a.blueComponent - b.blueComponent) > 1.0 / 255
-                    || abs(a.alphaComponent - b.alphaComponent) > 1.0 / 255 {
-                    changed += 1
-                }
-            }
-        }
-        guard compared > 0 else { return (.environment, "Keine Textpixel außerhalb der Ausschlussflächen") }
-        return (changed > 0 ? .pass : .fail,
-                "\(changed) von \(compared) Textpixeln außerhalb von Cursor und Auswahl verändert")
+        SelfTestTypeScroll.typeScrollPixelEvaluation(before: before, after: after,
+                                                     region: region, excluded: excluded)
     }
 
     private static func typeScrollSystemCapture(windowNumber: Int,
@@ -13012,9 +9497,38 @@ enum SelfTest {
             completionQueue: .global(qos: .userInitiated)
         ) { outcome in
             defer { try? FileManager.default.removeItem(at: url) }
+            let diagnostic: String
+            switch outcome {
+            case .completed(let result):
+                diagnostic = "completed exit=\(result.exitCode) stderr=\(String(reflecting: result.stderrForDisplay))"
+            case .startFailed(let failure):
+                diagnostic = "startFailed reason=\(String(reflecting: failure))"
+            case .cancelled:
+                diagnostic = "cancelled"
+            case .timedOut:
+                diagnostic = "timedOut"
+            case .captureFailed(let failure):
+                diagnostic = "captureFailed exit=\(failure.partialResult.exitCode)"
+                    + " stdoutError=\(String(reflecting: failure.stdoutError))"
+                    + " stderrError=\(String(reflecting: failure.stderrError))"
+                    + " stderr=\(String(reflecting: failure.partialResult.stderrForDisplay))"
+            }
+            FileHandle.standardError.write(Data((
+                "SELFTEST_CAPTURE window=\(windowNumber) outcome=\(diagnostic)\n"
+            ).utf8))
             let data: Data?
             if case .completed(let result) = outcome, result.ok {
-                data = try? Data(contentsOf: url)
+                do {
+                    data = try Data(contentsOf: url)
+                } catch {
+                    let readError = error as NSError
+                    FileHandle.standardError.write(Data((
+                        "SELFTEST_CAPTURE window=\(windowNumber) pngReadFailed"
+                            + " domain=\(readError.domain) code=\(readError.code)"
+                            + " reason=\(String(reflecting: readError.localizedDescription))\n"
+                    ).utf8))
+                    data = nil
+                }
             } else {
                 data = nil
             }
@@ -13050,241 +9564,6 @@ enum SelfTest {
         return rep.representation(using: .png, properties: [:])
     }
 
-    /// Stufe 5 (Pixel-Wahrheit): Tippen muss den SICHTBAREN Fensterinhalt
-    /// ändern. Layout-Rects können stimmen, während das Zeichnen veraltet —
-    /// genau das ist die Klasse der Daniel-Befunde vom 2026-07-25.
-    private static func typeScrollStagePixels(
-        textView: TextView, failures: [String]
-    ) {
-        guard let window = textView.window else {
-            typeScrollEnvironmentNotes.append("Pixel-Stufe übersprungen: kein Fenster")
-            finishTypeScroll(failures: failures, note: "")
-            return
-        }
-        // Die Emoji-Stufe hinterlässt eine Auswahl. Ihre verschwindende
-        // Markierung darf später nicht als frisch gezeichneter Text zählen.
-        let oldSelection = textView.fastraSafeSelectedRange
-        let insertion = NSRange(location: oldSelection.location, length: 0)
-        textView.selectionManager.setSelectedRange(insertion)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            guard textView.selectedRange() == insertion else {
-                typeScrollEnvironmentNotes.append(
-                    "Pixel-Stufe übersprungen: Einfügeposition vor Aufnahme nicht stabil"
-                )
-                finishTypeScroll(failures: failures, note: "")
-                return
-            }
-            typeScrollCapture(window: window) { before in
-                guard let before else {
-                    typeScrollEnvironmentNotes.append(
-                        "Pixel-Stufe übersprungen: keine Bildschirmaufnahme"
-                    )
-                    finishTypeScroll(failures: failures, note: "")
-                    return
-                }
-                guard textView.selectedRange() == insertion else {
-                    typeScrollEnvironmentNotes.append(
-                        "Pixel-Stufe abgebrochen: Einfügeposition während Aufnahme verändert"
-                    )
-                    finishTypeScroll(failures: failures, note: "")
-                    return
-                }
-                let viewport = textView.visibleRect
-                let editorRect = textView.convert(viewport, to: nil)
-                // Die alte Auswahl kann noch in einem Backing-Store stehen.
-                // Ihre Glyphzellen deshalb zusätzlich zur Einfügemarke maskieren.
-                let maskedOffsets = Array(oldSelection.location..<oldSelection.upperBound) + [insertion.location]
-                let beforeMasks = maskedOffsets.compactMap { offset in
-                    textView.layoutManager.rectForOffset(offset).map {
-                        textView.convert($0.insetBy(dx: -2, dy: -2), to: nil)
-                    }
-                }
-                guard beforeMasks.count == maskedOffsets.count else {
-                    typeScrollEnvironmentNotes.append("Pixel-Stufe: Cursor-/Auswahlflächen nicht vollständig messbar")
-                    typeScrollStageSecondWindow(failures: failures, note: "")
-                    return
-                }
-                textView.insertText("PIXELPROBE", replacementRange: NSRange(location: NSNotFound, length: 0))
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    typeScrollCapture(window: window) { after in
-                        guard let after else {
-                            typeScrollEnvironmentNotes.append(
-                                "Pixel-Stufe abgebrochen: keine Bildschirmaufnahme"
-                            )
-                            finishTypeScroll(failures: failures, note: "")
-                            return
-                        }
-                        var failures = failures
-                        let probe = NSRange(location: insertion.location, length: 10)
-                        let source = textView.string as NSString
-                        guard probe.upperBound <= source.length,
-                              source.substring(with: probe) == "PIXELPROBE" else {
-                            failures.append("PIXELPROBE fehlt an der Einfügeposition")
-                            typeScrollStageSecondWindow(failures: failures, note: "")
-                            return
-                        }
-                        let rects = (probe.location..<probe.upperBound).compactMap {
-                            textView.layoutManager.rectForOffset($0)
-                        }
-                        guard textView.selectedRange() == NSRange(location: probe.upperBound, length: 0),
-                              textView.visibleRect == viewport,
-                              textView.convert(viewport, to: nil) == editorRect,
-                              rects.count == probe.length, let first = rects.first,
-                              rects.allSatisfy({ abs($0.minY - first.minY) < 0.5 }),
-                              let caret = textView.layoutManager.rectForOffset(probe.upperBound) else {
-                            typeScrollEnvironmentNotes.append("Pixel-Stufe: Scroll-/Zeilengeometrie nicht vergleichbar")
-                            typeScrollStageSecondWindow(failures: failures, note: "")
-                            return
-                        }
-                        let region = textView.convert(rects.reduce(first) { $0.union($1) }, to: nil)
-                        guard editorRect.contains(region) else {
-                            typeScrollEnvironmentNotes.append("Pixel-Stufe: Probe nicht vollständig im sichtbaren Editor")
-                            typeScrollStageSecondWindow(failures: failures, note: "")
-                            return
-                        }
-                        let result = typeScrollPixelEvaluation(before: before, after: after,
-                            region: region, excluded: beforeMasks + [
-                                textView.convert(caret.insetBy(dx: -2, dy: -2), to: nil)
-                            ])
-                        if result.outcome == .fail { failures.append(result.info) }
-                        if result.outcome == .environment { typeScrollEnvironmentNotes.append(result.info) }
-                        typeScrollStageSecondWindow(failures: failures, note: "")
-                    }
-                }
-            }
-        }
-    }
-
-
-    /// Stufe 6 (Daniels Repro-Ablauf 2026-07-24): ⌘N öffnet ein ZWEITES
-    /// Fenster, dort wird DIESELBE Datei erneut geladen, während das erste
-    /// Fenster sie im Hintergrund offen behält. Die Return-Serie muss auch
-    /// im Zweitfenster sichtbar scrollen.
-    private static func typeScrollStageSecondWindow(
-        failures: [String], note: String
-    ) {
-        guard let url = typeScrollFixtureURL,
-              let firstWorkspace = Workspace.shared,
-              let firstWindow = NSApp.windows.first(where: {
-                  !SearchWindow.isSearchWindow($0) && $0.isVisible
-                      && WorkspaceWindowRegistry.workspace(for: $0) != nil
-              }) else {
-            finishTypeScroll(
-                failures: failures + ["Zweitfenster-Stufe: Ausgangszustand fehlt"],
-                note: note
-            )
-            return
-        }
-        firstWindow.makeKeyAndOrderFront(nil)
-        postCmd("n", keyCode: 45, windowNumber: firstWindow.windowNumber)
-        pollTypeScrollSecondWindow(firstWorkspace: firstWorkspace,
-                                   firstWindow: firstWindow, url: url,
-                                   failures: failures, note: note)
-    }
-
-    private static func pollTypeScrollSecondWindow(
-        firstWorkspace: Workspace, firstWindow: NSWindow, url: URL,
-        failures: [String], note: String
-    ) {
-        // Das neue Fenster hat einen EIGENEN Workspace (Registry-Muster wie
-        // im newwindow-Selbsttest).
-        var found: (workspace: Workspace, window: NSWindow, root: NSView)?
-        waitFor(budget: 10, pause: 0.1,
-                condition: {
-                    guard let secondWindow = NSApp.windows.first(where: {
-                              !SearchWindow.isSearchWindow($0) && $0.isVisible
-                                  && $0 !== firstWindow
-                                  && WorkspaceWindowRegistry.workspace(for: $0) != nil
-                                  && WorkspaceWindowRegistry.workspace(for: $0) !== firstWorkspace
-                          }),
-                          let secondWorkspace = WorkspaceWindowRegistry.workspace(for: secondWindow),
-                          let secondRoot = secondWindow.contentView else { return false }
-                    found = (secondWorkspace, secondWindow, secondRoot)
-                    return true
-                },
-                onTimeout: { book in
-                    finishTypeScroll(failures: failures
-                        + ["Zweitfenster erschien nicht nach ⌘N — \(book.summary)"], note: note)
-                },
-                then: {
-                    guard let found else {
-                        finishTypeScroll(failures: failures + ["Zweitfenster nach Erfolg verschwunden"],
-                                         note: note)
-                        return
-                    }
-                    found.workspace.loadFile(at: url.canonicalFileURL) { ok in
-                        guard ok else {
-                            finishTypeScroll(failures: failures + ["Zweitfenster: Datei lädt nicht"],
-                                             note: note)
-                            return
-                        }
-                        pollTypeScrollSecondEditor(root: found.root, window: found.window,
-                                                   failures: failures, note: note)
-                    }
-                })
-    }
-
-    private static func pollTypeScrollSecondEditor(
-        root: NSView, window: NSWindow, failures: [String], note: String
-    ) {
-        var textView: TextView?
-        waitFor(budget: 10, pause: 0.1,
-                condition: {
-                    guard let candidate = editorTextView(in: root) as? TextView,
-                          !candidate.string.isEmpty else { return false }
-                    textView = candidate
-                    return true
-                },
-                onTimeout: { book in
-                    finishTypeScroll(failures: failures
-                        + ["Zweitfenster-Editor nicht bereit — \(book.summary)"], note: note)
-                },
-                then: {
-                    guard let textView else {
-                        finishTypeScroll(failures: failures + ["Zweitfenster-Editor nach Erfolg verschwunden"],
-                                         note: note)
-                        return
-                    }
-                    window.makeFirstResponder(textView)
-                    let length = (textView.string as NSString).length
-                    textView.selectionManager.setSelectedRange(
-                        NSRange(location: length, length: 0)
-                    )
-                    textView.scrollSelectionToVisible()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        typeScrollStageReturn(textView: textView, failures: failures,
-                                              label: "Zweitfenster: ") {
-                            finishTypeScroll(failures: $0, note: note)
-                        }
-                    }
-                })
-    }
-
-    private static func finishTypeScroll(failures: [String], note: String) {
-        if let url = typeScrollFixtureURL {
-            try? FileManager.default.removeItem(at: url)
-            typeScrollFixtureURL = nil
-        }
-        let environmentNote = typeScrollEnvironmentNotes.isEmpty
-            ? ""
-            : "; unvollständig: " + typeScrollEnvironmentNotes.joined(separator: " ;; ")
-        let outcome: SelfTestOutcome
-        if !failures.isEmpty {
-            outcome = .fail
-        } else if !typeScrollEnvironmentNotes.isEmpty {
-            outcome = .environment
-        } else {
-            outcome = .pass
-        }
-        finish(
-            outcome,
-            failures.isEmpty
-                ? "Tippen scrollt den Cursor sichtbar und zeichnet sichtbar; "
-                    + "Emoji sofort ausgelegt; Shift+← erweitert über Emojis"
-                    + note + environmentNote
-                : failures.joined(separator: " ;; ") + note + environmentNote
-        )
-    }
 
     // MARK: - -selftest emojisplit
 
@@ -13507,12 +9786,9 @@ enum SelfTest {
 
     // MARK: - -selftest emojipaste
 
-    /// Ein per ⌘V eingefügtes Emoji mit Variantenselektor (⏸️ = U+23F8 U+FE0F)
-    /// muss SOFORT als Farb-Emoji ausgelegt werden. Daniel-Befund 2026-07-27:
-    /// direkt nach dem Einfügen erschien die schmale Textform (⏸), und erst
-    /// ein Tab-Wechsel hin und zurück zeigte das richtige Symbol. Der Test
-    /// prüft deshalb nicht den Speicherinhalt (der war immer korrekt), sondern
-    /// die tatsächlich getypesetteten Glyphen der Zeile.
+    /// Ein per ⌘V eingefügtes ⏸️ (U+23F8 U+FE0F) muss sofort als Farb-Emoji
+    /// ausgelegt sein. Die getypesetteten Glyphen prüfen, nicht nur den korrekten
+    /// Textspeicher; ein Tab-Wechsel darf zum Aktualisieren nicht nötig sein.
     private static func runEmojiPasteTest() {
         testLabel = "emojipaste"
         guard let ws = Workspace.shared,
@@ -13523,7 +9799,7 @@ enum SelfTest {
             .appendingPathComponent(
                 "fastra-emojipaste-\(UUID().uuidString)", isDirectory: true
             )
-        // Mit integrierter Vorschau prüfen — genau Daniels Arbeitsaufbau.
+        // Mit integrierter Vorschau prüfen.
         workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
         window.setContentSize(NSSize(width: 1100, height: 800))
         let tmp = directory.appendingPathComponent("paste.md")
@@ -13708,7 +9984,7 @@ enum SelfTest {
         }
     }
 
-    /// Meldet, wenn die Emoji-Sequenz nicht als EIN Glyph aus einer Emoji-
+    /// Meldet, wenn die Emoji-Sequenz nicht als ein Glyph aus einer Emoji-
     /// Schrift gesetzt wird. Genau daran unterscheidet sich die schmale
     /// Textform (zwei Runs bzw. Monospace-Schrift) vom Farb-Emoji.
     private static func emojiPresentationProblems(
@@ -13761,22 +10037,14 @@ enum SelfTest {
 
     // MARK: - -selftest emojipreview
 
-    /// Hält die gemessene Grenze zwischen Editor und Vorschau fest.
-    ///
-    /// Daniel-Befund 2026-07-27: Ein Sprechskript enthielt 61-mal das nackte
-    /// `⏸` (U+23F8 OHNE Variantenselektor, so in der Datei und über die ganze
-    /// Git-Historie). Der Editor zeigt dafür ein Farb-Emoji, weil CoreText das
-    /// Zeichen in keiner Textschrift findet und auf Apple Color Emoji
-    /// zurückfällt. WebKit entscheidet die Präsentation VOR der Schriftwahl und
-    /// zeigt darum die Textform — wie Browser, GitHub und Keynote es auch tun.
-    /// Fastra wandelt dabei nichts um; erst der Variantenselektor macht aus dem
-    /// Zeichen überall ein Emoji.
-    ///
-    /// Der Test fotografiert vier Fälle in der WebView (nackt/vollständig,
-    /// Inline-Code/Fließtext) und prüft die Farbe der Pixel: Eine
-    /// Emoji-Schrift in der CSS-Kaskade ändert daran nachweislich nichts, und
-    /// ein global erzwungenes `font-variant-emoji` würde auch Pfeile und
-    /// Häkchen kippen. Beide Abweichungen schlagen hier an.
+    /// Prüft die Präsentationsgrenze zwischen Editor und Vorschau. Ohne U+FE0F
+    /// kann CoreText für `⏸` auf Apple Color Emoji zurückfallen, während WebKit
+    /// vor der Schriftwahl die Textpräsentation bestimmt. Fastra verändert die
+    /// Quelldaten dabei nicht.
+    /// Vier WebView-Fälle nach Pixel-Farbe prüfen: Basiszeichen und vollständige
+    /// Emoji-Sequenz, jeweils als Inline-Code und Fließtext. Eine Emoji-Schrift
+    /// allein darf die Textform nicht ändern; globales `font-variant-emoji` würde
+    /// auch Pfeile und Häkchen verändern.
     private static func runEmojiPreviewTest() {
         testLabel = "emojipreview"
         guard let ws = Workspace.shared,
@@ -13790,9 +10058,8 @@ enum SelfTest {
                 "fastra-emojipreview-\(UUID().uuidString)", isDirectory: true
             )
         let tmp = directory.appendingPathComponent("preview.md")
-        // Erste Zeile: nacktes Basiszeichen als Inline-Code — genau die Form aus
-        // Daniels Skript. Zweite Zeile: vollständige Emoji-Sequenz als
-        // Kontrollfall.
+        // Erste Zeile: Basiszeichen als Inline-Code. Zweite Zeile: vollständige
+        // Emoji-Sequenz als Kontrollfall.
         let text = "Code nackt `\u{23F8}` Ende\n\nCode voll `\u{23F8}\u{FE0F}` Ende\n\n"
             + "Fließtext nackt **\u{23F8}** Ende\n\nFließtext voll *\u{23F8}\u{FE0F}* Ende\n"
         do {
@@ -13846,7 +10113,7 @@ enum SelfTest {
             }.joined(separator: "; ")
             let full = results.filter { $0.label.hasSuffix("voll") }
             let bare = results.filter { $0.label.hasSuffix("nackt") }
-            // Mit Variantenselektor MUSS die Vorschau farbig zeichnen.
+            // Mit Variantenselektor muss die Vorschau farbig zeichnen.
             if full.contains(where: { $0.coloredPixels == 0 }) {
                 finish(false, "⏸️ mit U+FE0F wird in der Vorschau nicht farbig "
                     + "gezeichnet: \(details)")
@@ -13909,11 +10176,9 @@ enum SelfTest {
 
     // MARK: - -selftest tabscroll
 
-    /// Der sichtbare Ausschnitt eines Tabs muss den Tab-Wechsel überleben.
-    /// Daniel-Befund 2026-07-27: Nach Wechsel und Rückwechsel stand die
-    /// Cursorzeile plötzlich in der obersten Bildschirmzeile, weil der neu
-    /// erzeugte Editor am Dateianfang startet und CESE nur die Einfügemarke
-    /// sichtbar macht.
+    /// Der sichtbare Ausschnitt muss den Tab-Wechsel überleben. CESEs bloßes
+    /// Sichtbarmachen der Einfügemarke ersetzt nicht die Wiederherstellung des
+    /// vorherigen Viewports.
     private static func runTabScrollTest() {
         testLabel = "tabscroll"
         guard let ws = Workspace.shared,
@@ -14022,12 +10287,13 @@ enum SelfTest {
         var selections: [NSRange] = []
         var offsets: [CGFloat] = []
         var restoreTrace: [String] = []
-        EditorView.scrollRestoreObserver = { message in
+        let diagnostics = ws.scrollRestoreDiagnostics
+        diagnostics.observer = { message in
             restoreTrace.append(message)
             if restoreTrace.count > 200 { restoreTrace.removeFirst() }
         }
         func done(_ ok: Bool, _ message: String) -> Never {
-            EditorView.scrollRestoreObserver = nil
+            diagnostics.observer = nil
             if !ok {
                 FileHandle.standardError.write(Data((restoreTrace.joined(separator: "\n") + "\n").utf8))
             }
@@ -14476,7 +10742,7 @@ enum SelfTest {
                         + "gesehen: \(seen.prefix(300))")
                 },
                 then: {
-                    // Verschachtelter Aufruf: Cursor in die Klammern der INNEREN
+                    // Verschachtelter Aufruf: Cursor in die Klammern der inneren
                     // Methode, die selbst Argument der äußeren ist.
                     let ns = textView.string as NSString
                     let inner = ns.range(of: "\"Du\"")
@@ -14494,7 +10760,7 @@ enum SelfTest {
                 })
     }
 
-    /// Im verschachtelten Aufruf muss die INNERE Methode angezeigt werden.
+    /// Im verschachtelten Aufruf muss die innere Methode angezeigt werden.
     private static func pollFourDSignatureNestedInner(
         ws: Workspace, window: NSWindow, textView: TextView,
         projectRoot: URL
@@ -14518,7 +10784,7 @@ enum SelfTest {
                         + "gesehen: \(seen.prefix(300))")
                 },
                 then: {
-                    // Cursor HINTER die innere schließende Klammer (vor `;80`):
+                    // Cursor hinter die innere schließende Klammer (vor `;80`):
                     // jetzt gilt wieder der äußere Aufruf, aktiver Parameter 0.
                     let ns = textView.string as NSString
                     let closing = ns.range(of: "\"Du\";1)")
@@ -14575,8 +10841,8 @@ enum SelfTest {
                 })
     }
 
-    /// Die geteilte Komponentenmethode zeigt Signatur und Kommentarkopf wie
-    /// eine Projektmethode (Komponentenmethoden-Auftrag 2026-07-24).
+    /// Geteilte Komponentenmethoden zeigen wie Projektmethoden Signatur und
+    /// Kommentarkopf.
     private static func pollFourDSignatureComponent(
         ws: Workspace, window: NSWindow, textView: TextView,
         projectRoot: URL
@@ -14698,23 +10964,14 @@ enum SelfTest {
 
     // MARK: - -selftest replaceall
 
-    /// Sichert die Regression aus dem Präsentations-Build (2026-06-24):
-    /// „Alle ersetzen" ließ den SICHTBAREN Editor-Text unverändert, obwohl das
-    /// Modell korrekt ersetzt wurde — CodeEditSourceEditor übernimmt
-    /// Binding-Änderungen nicht von selbst (Text fließt nur TextView → Binding).
-    /// `applyAllInActiveBuffer` zählt deshalb `editorReloadNonce` hoch und
-    /// erzwingt eine Editor-Neuerzeugung. Dieser Test liest den ECHTEN
-    /// Editor-`.string` zurück und belegt, dass er nach dem Replace den
-    /// ersetzten Text zeigt — nicht mehr den Vor-Replace-Text.
-    ///
-    /// Genau die Bug-Klasse, die reine Unit-Tests NICHT fangen: das Modell war
-    /// korrekt, nur die View hing hinterher.
+    /// Nach „Alle ersetzen“ den tatsächlichen Editor-Text prüfen, nicht nur
+    /// das Modell. CodeEditSourceEditor übernimmt Binding-Änderungen nicht von
+    /// selbst; `applyAllInActiveBuffer` erhöht deshalb `editorReloadNonce` und
+    /// erzeugt den Editor neu.
     private static func runReplaceAllTest() {
         testLabel = "replaceall"
-        // Fenster und Workspace ausschließlich als Registry-Paar holen:
-        // `NSApp.windows.first` wäre bei mehreren Dokumentfenstern ein
-        // zufälliges Fenster, dessen Editor nicht zu `Workspace.shared`
-        // gehört (Nacht-Review-Fund 2026-08-17).
+        // Fenster und Workspace als Registry-Paar holen. Eine eigene Fenstersuche
+        // könnte bei mehreren Dokumenten den falschen Editor prüfen.
         pollSharedWorkspaceWindow { ws, mainWindow, root in
             runReplaceAllTestBody(ws: ws, mainWindow: mainWindow, root: root)
         }
@@ -14745,7 +11002,7 @@ enum SelfTest {
                 guard let tvView = editorTextView(in: root), let tv = tvView as? TextView else {
                     finish(false, "Editor-TextView nicht erreichbar")
                 }
-                // Vorbedingung: Editor zeigt VOR dem Replace den Original-Text.
+                // Vorbedingung: Editor zeigt vor dem Replace den Original-Text.
                 guard (tv.string as NSString).contains("Mustermann, Max") else {
                     finish(false, "Editor zeigt vor dem Replace nicht den Original-Text "
                         + "(string-Anfang: \(String(tv.string.prefix(40))))")
@@ -14792,7 +11049,7 @@ enum SelfTest {
                 })
     }
 
-    /// Pollt den ECHTEN Editor-`.string` (jedes Mal frisch aus der View-
+    /// Pollt den echten Editor-`.string` (jedes Mal frisch aus der View-
     /// Hierarchie geholt, weil der Editor neu erzeugt wird), bis er den
     /// vollständig ersetzten Text zeigt. Eine einzelne richtige Ersetzung
     /// genügt nicht: Auch die übrigen Ersetzungen und Dokumentteile zählen.
@@ -14812,15 +11069,10 @@ enum SelfTest {
 
     // MARK: - -selftest pilldrop
 
-    /// Belegt headless, dass das Ersetzen-Feld einen gedraggten Gruppen-String
-    /// AUCH dann annimmt, wenn es bereits den Fokus hat (Daniel-Befund
-    /// 2026-06-24: vorher musste man erst ein anderes Feld anklicken, sonst
-    /// verpuffte der Drop). Echtes Maus-Dragging ist nicht automatisierbar —
-    /// wir treiben stattdessen die Drag-Destination-Methoden des ÄUSSEREN
-    /// `RegexFieldScrollView` nahe seinem unteren Rand mit einem
-    /// `NSDraggingInfo`-Mock, der „$1" trägt. So deckt derselbe Test sowohl den
-    /// Fokus-Bug als auch Daniels Befund vom 2026-07-10 ab, dass nur der obere
-    /// Teil der sichtbaren Zeile zuverlässig als Drop-Ziel reagierte.
+    /// Gruppen-Drop bei bereits fokussiertem Ersetzen-Feld und nahe dessen
+    /// unterem Rand prüfen. Ein `NSDraggingInfo`-Mock mit „$1“ treibt die
+    /// Drag-Destination-Methoden des äußeren `RegexFieldScrollView`; echtes
+    /// Maus-Dragging wird damit nicht geprüft.
     private static func runPillDropTest() {
         testLabel = "pilldrop"
         guard let searchWindow = NSApp.windows.first(where: {
@@ -14836,7 +11088,7 @@ enum SelfTest {
             guard let replaceField = findReplaceField(in: root) else {
                 finish(false, "Ersetzen-Feld (fastra.replaceField) nicht gefunden")
             }
-            // Feld leeren + FOKUSSIEREN — genau die Bug-Bedingung (fokussiertes Feld).
+            // Feld leeren + fokussieren — genau die Bug-Bedingung (fokussiertes Feld).
             replaceField.string = ""
             guard searchWindow.makeFirstResponder(replaceField),
                   replaceField.window?.firstResponder === replaceField else {
@@ -14934,12 +11186,9 @@ enum SelfTest {
 
     // MARK: - -selftest navmatch
 
-    /// Reproduziert den REALEN Bedienfall, den `jump` bisher umging: die
-    /// schwebende Suchmaske ist Key-Window (der Nutzer klickt dort einen
-    /// Treffer / drückt CMD+G), und der Sprung MUSS trotzdem im Editor sichtbar
-    /// ankommen. `jump` machte künstlich das Hauptfenster Key+FirstResponder —
-    /// dadurch fiel nicht auf, dass Treffer-Navigation aus der Maske heraus
-    /// nichts bewirkt (Daniel-Befund 2026-06-13: Liste „nicht klickbar", CMD+G tot).
+    /// Navigation bei aktiver Suchmaske prüfen: Trefferklick oder ⌘G muss den
+    /// Sprung im Editor sichtbar machen, während die Maske Key-Window bleibt.
+    /// Anders als `jump` wird das Hauptfenster nicht künstlich vorab aktiviert.
     private static func runNavMatchTest() {
         testLabel = "navmatch"
         guard let ws = Workspace.shared else {
@@ -14966,9 +11215,9 @@ enum SelfTest {
                 guard let tvView = editorTextView(in: root), let tv = tvView as? TextView else {
                     finish(false, "Editor-TextView nicht erreichbar")
                 }
-                // REALISTISCH: die Suchmaske nach vorn holen + zum Key-Window
+                // Realistisch: die Suchmaske nach vorn holen + zum Key-Window
                 // machen — so wie es ist, wenn der Nutzer dort einen Treffer
-                // anklickt. NICHT das Hauptfenster aktivieren (das war der
+                // anklickt. Nicht das Hauptfenster aktivieren (das war der
                 // unrealistische Trick des jump-Tests).
                 guard let searchWin = NSApp.windows.first(where: {
                     $0.frameAutosaveName == SearchWindow.frameAutosaveName && $0.isVisible
@@ -15042,16 +11291,9 @@ enum SelfTest {
                         finish(false, "(navmatch) Sprung selektierte \"\(selectedText)\", erwartet \"TREFFER\"")
                     }
                     guard searchWindow.isKeyWindow else {
-                        // Zwei völlig verschiedene Lagen, die vorher beide als
-                        // Funktionsfehler galten (Befund 2026-07-28: Der Test war rot,
-                        // weil jemand am Mac arbeitete — und verdeckte damit in
-                        // derselben Zusammenfassung einen echten Fehler):
-                        //
-                        // a) Die App ist gar nicht mehr aktiv → eine FREMDE App hat den
-                        //    Fokus geholt. Das sagt nichts über Fastra aus und ist ein
-                        //    Umgebungsproblem (Exit-Code 2, wie bei `completion4d`).
-                        // b) Die App IST aktiv, aber ein anderes EIGENES Fenster ist
-                        //    Key → genau der Fehler, den dieser Test sucht.
+                        // Zwei Fälle unterscheiden: Eine fremde aktive App verhindert den Test
+                        // (Umgebung, Exit 2); bei aktiver Fastra ist ein falsches eigenes Key-Window
+                        // der hier geprüfte Produktfehler.
                         let keyDesc = NSApp.keyWindow.map {
                             "[\(type(of: $0))] \"\($0.title)\""
                         } ?? "keins"
@@ -15092,13 +11334,13 @@ enum SelfTest {
     /// unter Last gelegentlich noch einmal ans Suchfeld und prüfte damit einen
     /// zweiten „ersten Treffer“ statt Navigation in der Trefferliste.
     ///
-    /// Geprüft wird mit PFEIL-RUNTER statt Return: Der Button „Nächster"
+    /// Geprüft wird mit Pfeil-runter statt Return: Der Button „Nächster"
     /// besitzt in Nicht-Ordner-Bereichen einen fensterweiten Return-Shortcut
-    /// und würde ein Return auch OHNE Listenfokus zum zweiten Treffer
+    /// und würde ein Return auch ohne Listenfokus zum zweiten Treffer
     /// weiterreichen — der Test bestünde dann trotz defekter Fokusübergabe.
     /// Pfeiltasten verarbeitet ausschließlich die fokussierte Trefferliste
     /// (`onMoveCommand`); bleibt der Sprung aus, ist der Listenfokus wirklich
-    /// defekt (Review 2026-08-31).
+    /// defekt.
     private static func pollNavListFocusThenReturn(
         _ ws: Workspace,
         tv: TextView,
@@ -15125,21 +11367,10 @@ enum SelfTest {
                 })
     }
 
-    /// Pollt engmaschig, bis der Editor eine Selektion hat, und prüft dann,
-    /// ob ihr Text exakt dem erwarteten Treffer entspricht. Sobald eine
-    /// gültige Selektion da ist → `onPass()` bei Gleichheit, sonst FAIL mit
-    /// dem daneben-selektierten Text. Bleibt über das ganze Beobachtungs-
-    /// fenster GAR keine Selektion → FAIL (Sprung wirkte nicht).
-    ///
-    /// Die Editor-View wird bewusst in JEDEM Tick neu aus der Hierarchie
-    /// aufgelöst statt einmal eingefangen: Unter Gesamtlauf-Last kann der
-    /// Editor nach der Bereitschaftsprüfung erneut eingehängt werden — der
-    /// Sprung selektiert dann in der NEUEN View, während eine eingefangene
-    /// alte View für immer `NSNotFound` meldet (dieselbe Fallenklasse wie
-    /// „ein weggescrollter Tab behält seine NSView"; so ausgelöst am
-    /// 2026-08-19 als jump-FAIL nur im weemac-Gesamtlauf, standalone 3/3
-    /// grün). Ticks zählen nur wirklich bediente Durchläufe — Fremdlast
-    /// verbraucht das Fenster nicht.
+    /// Auf eine Selektion warten und ihren Text mit dem Treffer vergleichen.
+    /// Eine falsche Selektion oder ihr Ausbleiben ist ein Fehler.
+    /// Die TextView je Durchlauf neu auflösen: Ein Remount kann die zuvor erfasste
+    /// View ersetzen. Nur bediente Durchläufe zählen, keine fremde Main-Thread-Last.
     private static func pollForSelection(in root: NSView, expected: String,
                                          expectedContent: String,
                                          label: String,
@@ -15183,20 +11414,10 @@ enum SelfTest {
 
     // MARK: - -selftest scrolljump
 
-    /// Sichert den Treffer-SPRUNG-SCROLL bei GROSSEN Dokumenten ab (Daniel-
-    /// Befund 2026-06-22: Treffer wurde markiert, aber das Dokument scrollte in
-    /// einer 41k-Zeilen-Datei NICHT hin — und mein erster Fix-Versuch scrollte
-    /// sogar an den Datei-Anfang, weil er die Selektion zu früh zurücklas).
-    /// Zugleich Daten-Reihenfolge-Wächter für die Trefferliste (Befund: Liste
-    /// schien verkehrt herum sortiert).
-    ///
-    /// Vorgehen: großes Dokument (2500 Zeilen) laden, mit der ECHTEN Such-
-    /// Engine alle Treffer finden, prüfen dass `bufferMatches` AUFSTEIGEND nach
-    /// Zeile sortiert ist, dann zu einem Treffer WEIT UNTEN (ab Zeile 1900)
-    /// springen und über `rectForOffset` + `visibleRect` belegen, dass der
-    /// Treffer wirklich in den sichtbaren Bereich gescrollt wurde (nicht an den
-    /// Datei-Anfang). Reine Unit-Tests fangen das nicht — die CESE-Layout-/
-    /// Scroll-Mechanik wird nur im laufenden Editor durchlaufen.
+    /// Treffersortierung und Scrollen im laufenden Editor prüfen: 2500 Zeilen
+    /// laden, echte Suche ausführen, aufsteigende Trefferfolge verlangen und zu
+    /// einem Treffer ab Zeile 1900 springen. `rectForOffset` und `visibleRect`
+    /// müssen belegen, dass der Treffer im sichtbaren Bereich liegt.
     private static func runScrollJumpTest() {
         testLabel = "scrolljump"
         guard let ws = Workspace.shared else {
@@ -15237,7 +11458,7 @@ enum SelfTest {
                 guard !lineSeq.isEmpty else {
                     finish(false, "keine Treffer gefunden (Inhalt nicht geladen?)")
                 }
-                // Befund #2: Reihenfolge der Treffer-Daten MUSS aufsteigend sein.
+                // Treffer müssen aufsteigend sortiert sein.
                 if lineSeq != lineSeq.sorted() {
                     finish(false, "bufferMatches NICHT aufsteigend nach Zeile — erste: \(lineSeq.prefix(8))")
                 }
@@ -15294,7 +11515,7 @@ enum SelfTest {
     }
 
     /// Sammelt beide Arten betippbarer Eingabefelder ein: klassische
-    /// editierbare `NSTextField` UND die `RegexFieldTextView`s der
+    /// editierbare `NSTextField` und die `RegexFieldTextView`s der
     /// Suchmaske (NSTextView-Subklasse, seit v0.7 — Token-Highlighting).
     private static func collectTypeableFields(in view: NSView, into out: inout [NSView]) {
         if let tf = view as? NSTextField, tf.isEditable, tf.isEnabled {
@@ -15327,15 +11548,10 @@ enum SelfTest {
 
     // MARK: - -selftest hscroll
 
-    /// Diagnose + Wächter für den horizontalen Scrollbalken bei „Umbruch aus"
-    /// (Daniel-Befund 2026-06-23: ohne Umbruch war langer Text unerreichbar —
-    /// KEIN H-Scrollbalken; ein statischer Screenshot kann das nicht beweisen).
-    /// Lädt sehr lange Zeilen und liest die ECHTEN ScrollView-Maße aus dem
-    /// laufenden Editor: ist `documentView` breiter als der sichtbare Bereich
-    /// UND `hasHorizontalScroller` gesetzt → horizontal scrollbar. Dumpt die
-    /// Werte IMMER (auch bei PASS), damit die Ursache sichtbar ist.
-    /// Der Test schaltet das Plain-Text-Profil selbst aus, damit er unabhängig
-    /// von echten Nutzer-Defaults und dem migrierten Altschlüssel bleibt.
+    /// Horizontalen Scrollbereich bei ausgeschaltetem Umbruch prüfen:
+    /// `documentView` muss für lange Zeilen breiter als der Viewport und
+    /// `hasHorizontalScroller` gesetzt sein. Messwerte auch bei Erfolg ausgeben.
+    /// Das Plain-Text-Profil unabhängig von Nutzer-Defaults und Altschlüssel setzen.
     private static func runHScrollTest() {
         testLabel = "hscroll"
         guard let ws = Workspace.shared else {
@@ -15399,15 +11615,10 @@ enum SelfTest {
 
     // MARK: - -selftest crjump
 
-    /// Reproduziert + diagnostiziert den Tief-Zeilen-Sprung-Scroll-Bug bei
-    /// REINEN CR-Zeilenenden (Daniel-Befund 2026-06-23: Klick auf Treffer in
-    /// hoher Zeile scrollt im Hauptfenster falsch, Fehler wächst mit der Tiefe;
-    /// Datei ist eine 4D-Log mit CR-Zeilenenden). UNABHÄNGIGER Check: nach dem
-    /// Sprung wird über `textLineForPosition(visibleRect.midY)` ausgelesen,
-    /// welche Zeile TATSÄCHLICH sichtbar ist — NICHT über `rectForOffset`, das
-    /// derselbe (evtl. fehlerhafte) Schätz-Mechanismus ist wie der Sprung selbst
-    /// (deshalb sah `scrolljump` mit LF nichts). Dumpt alle Indizes, damit die
-    /// Ursache (Zeilenindex-Divergenz vs. Höhen-Schätzung) sichtbar wird.
+    /// Tiefe Treffer-Sprünge bei reinen CR-Zeilenenden prüfen. Nach dem Sprung
+    /// mit `textLineForPosition(visibleRect.midY)` die tatsächlich sichtbare Zeile
+    /// bestimmen. Das ist unabhängig von `rectForOffset`, dessen Höhenschätzung
+    /// auch der Sprung selbst verwendet. Indizes zur Diagnose ausgeben.
     private static func runCRJumpTest() {
         testLabel = "crjump"
         guard let ws = Workspace.shared else {
@@ -15422,13 +11633,9 @@ enum SelfTest {
         activateApplication(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
 
-        // 41000 SEHR LANGE Zeilen (~280 Zeichen, wie Daniels echte 4D-Log mit
-        // ~41k Zeilen), REINE CR-Zeilenenden (\r), Marke TIEF auf Zeile 40000.
-        // Lange Zeilen, weil der Bug mit kurzen Zeilen NICHT reproduzierte
-        // (bei Umbruch an wrappen sie auf mehrere Zeilen → variable Höhen →
-        // Schätzfehler). Die große Tiefe ist Absicht: der Sprung-Fehler wuchs
-        // PROPORTIONAL zur Zeilen-Tiefe (1256→485), erst die echte 41k-Tiefe
-        // belegt, dass `convergeScroll` auch ganz unten konvergiert.
+        // 41000 lange Zeilen mit reinen CR-Trennern und Ziel auf Zeile 40000.
+        // Rund 280 Zeichen pro Zeile erzeugen bei Umbruch variable Höhen; große
+        // Tiefe macht kumulierte Schätzfehler in `convergeScroll` erkennbar.
         let tail = String(repeating: "gg.4DProject.M[2568][Web021] WebDebugLog SendFile ", count: 5)
         var lines: [String] = []
         for i in 1...41000 { lines.append("Zeile \(i) \(tail) \(i == 40000 ? "ZIELMARKE" : "ende")") }
@@ -15456,7 +11663,7 @@ enum SelfTest {
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     NotificationCenter.default.postMatchJump(match, for: ws)
-                    // Settle lassen, dann UNABHÄNGIG prüfen, welche Zeile sichtbar ist.
+                    // Settle lassen, dann unabhängig prüfen, welche Zeile sichtbar ist.
                     // 2,0 s statt 1,3 s — convergeScroll iteriert bei Tiefe 40000
                     // länger bis zur Konvergenz.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -15484,10 +11691,10 @@ enum SelfTest {
 
     // MARK: - -selftest textop
 
-    /// Verifiziert den MENÜLEISTEN-Pfad der BBEdit-„Text"-Operationen
+    /// Verifiziert den Menüleisten-Pfad der BBEdit-„Text"-Operationen
     /// end-to-end: Buffer laden, `.fastraTextOp` (uppercase) und danach beide
     /// `.fastraSortLines`-Richtungen posten — exakt wie es das „Text"-Menü tut.
-    /// Geprüft wird jeweils der ECHTE Editor-Inhalt. Deckt Observer
+    /// Geprüft wird jeweils der echte Editor-Inhalt. Deckt Observer
     /// (AppDelegate) → EditorContextMenu → native TextView → Undo-fähige
     /// Ersetzung ab.
     private static func runTextWorkflowMultiTest(onlyOneSided: Bool = false) {
@@ -16019,17 +12226,18 @@ enum SelfTest {
             let menus = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { notification in
                 if let menu = notification.object as? NSMenu {
                     trackingMenus.insert(ObjectIdentifier(menu))
-                    diagnostics.append("Menü beginnt: \(menu.title), Einträge=\(menu.items.prefix(5).map { "\($0.title) [\($0.state.rawValue)]" })")
+                    diagnostics.append("Menü beginnt \(ObjectIdentifier(menu)): \(menu.title), Einträge=\(menu.items.prefix(5).map { "\($0.title) [\($0.state.rawValue)]" })")
                 }
             }
             let menusEnded = NotificationCenter.default.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { notification in
                 if let menu = notification.object as? NSMenu {
                     trackingMenus.remove(ObjectIdentifier(menu))
-                    diagnostics.append("Menü endet: \(menu.title)")
+                    diagnostics.append("Menü endet \(ObjectIdentifier(menu)): \(menu.title)")
                 }
             }
             @MainActor func diagnose(_ label: String) {
                 let editor = CommandTargeting.editorTextView(for: ws)
+                diagnostics.append("Fensterbindung: Key=\(NSApp.keyWindow?.windowNumber ?? -1), Dokument=\(window.windowNumber), Sheet-Keys=\(window.sheets.map { "\($0.windowNumber):\($0.isKeyWindow)" }), offene Menüs=\(trackingMenus.map { String(describing: $0) }.sorted())")
                 if let session = ws.textWorkflowSession {
                     diagnostics.append("Modell: Vorschau=\(session.selectedPreview), canApply=\(session.canApply), dirty=\(session.dirty), busy=\(session.isBusy), diff=\(session.diffDocument != nil), revision=\(session.snapshot.revision)/\(ws.activeTab?.contentRevision ?? 0)")
                     diagnostics.append("Ablaufname: \(String(reflecting: session.definition.name)); gespeicherte Namen: \(session.saved.map { String(reflecting: $0.name) }); Store: \((try? TextWorkflowStore().load().map { String(reflecting: $0.name) }) ?? [])")
@@ -16070,27 +12278,10 @@ enum SelfTest {
                 }
             }
             @MainActor func openMenu() async throws {
-                guard let main = NSApp.mainMenu, let root = main.items.first(where: { $0.title == L10n.string("Text") }), let menu = root.submenu else { throw NSError(domain: "TextWorkflowSelfTest", code: 2) }
-                let selected: Bool = await withCheckedContinuation { continuation in
-                    var timer: Timer?, ticks = 0
-                    timer = Timer(timeInterval: 0.05, repeats: true) { _ in
-                        ticks += 1
-                        if let item = menu.items.first(where: { $0.title == L10n.string("Gespeicherte Textabläufe…") }), item.isEnabled {
-                            timer?.invalidate(); timer = nil
-                            _ = item.accessibilityPerformPress()
-                            continuation.resume(returning: true)
-                        } else if ticks >= 100 {
-                            timer?.invalidate(); timer = nil; menu.cancelTracking(); main.cancelTracking()
-                            continuation.resume(returning: false)
-                        }
-                    }
-                    if let timer { RunLoop.main.add(timer, forMode: .common); RunLoop.main.add(timer, forMode: .eventTracking) }
-                    // Ein Timer feuert während seines eigenen Callbacks nicht
-                    // erneut. Das Öffnen darf daher in einer modalen Menüschleife
-                    // nicht den Timer für die anschließende Auswahl festhalten.
-                    DispatchQueue.main.async { _ = root.accessibilityPerformPress() }
+                try await trackedMainMenuItem(rootTitle: L10n.string("Text"),
+                    label: L10n.string("Gespeicherte Textabläufe…"), ticks: 100, pause: 0.05) { menu in
+                    menu.items.first { $0.title == L10n.string("Gespeicherte Textabläufe…") }
                 }
-                try require(selected, "Textabläufe-Menü nicht bedienbar")
             }
             do {
                 try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
@@ -16176,12 +12367,14 @@ enum SelfTest {
                 try require(click("textWorkflowApply", in: sheet), "Apply fehlt")
                 try await wait { ws.textWorkflowSession == nil && ws.activeTab?.content == expected }
                 try require((try? String(contentsOf: file, encoding: .utf8)) == source, "Apply schreibt ungefragt auf Platte")
+                stage = "Dokument: normalen Editorfokus nach Sheet prüfen"
+                try await wait {
+                    guard window.sheets.isEmpty, window.isKeyWindow,
+                          let editor = CommandTargeting.editorTextView(for: ws) else { return false }
+                    return window.firstResponder === editor && editor.string == expected
+                }
                 guard let editor = CommandTargeting.editorTextView(for: ws) else { throw NSError(domain: "TextWorkflowSelfTest", code: 4) }
-                stage = "Dokument: Editor nach Sheet fokussieren"
-                try await wait { window.sheets.isEmpty && window.isKeyWindow }
-                try require(window.makeFirstResponder(editor), "Editor nahm nach dem Sheet keinen Fokus an")
-                try await wait { window.firstResponder === editor }
-                diagnose("Vor nativem Undo")
+                diagnose("Vor nativem Undo ohne Fokuskorrektur")
                 stage = "Dokument: natives Undo"
                 postHistoryKey(windowNumber: window.windowNumber)
                 try await wait { ws.activeTab?.content == source }
@@ -16201,11 +12394,20 @@ enum SelfTest {
                 try await wait { ws.textWorkflowSession?.definition.name == "Native Workflow 😀" && !window.sheets.isEmpty }
                 try require(ws.textWorkflowSession?.definition.steps.count == 2, "Gespeicherte Schritte fehlen")
                 stage = "Gespeicherten Ablauf schließen"
-                try await wait { trackingMenus.isEmpty && window.sheets.first?.isKeyWindow == true }
+                diagnose("Vor Schließbereitschaft")
+                try await wait {
+                    stage = trackingMenus.isEmpty
+                        ? "Gespeicherten Ablauf schließen: Sheet-Key"
+                        : "Gespeicherten Ablauf schließen: Menüende"
+                    return trackingMenus.isEmpty && window.sheets.first?.isKeyWindow == true
+                }
                 try require(window.sheets[0].contentView.map { markerViewExists(id: "textWorkflowClose", in: $0) } == true, "Schließen fehlt")
                 // Das sichtbare Schließen-Kürzel prüft den nativen Cancel-Pfad;
                 // ein synthetischer Mausklick konnte hier noch die Menüanimation treffen.
+                stage = "Gespeicherten Ablauf schließen: Escape senden"
+                diagnose("Vor Escape")
                 postKey("\u{1b}", keyCode: 53, windowNumber: window.sheets[0].windowNumber, modifiers: [])
+                stage = "Gespeicherten Ablauf schließen: Escape abgeschlossen"
                 try await wait { ws.textWorkflowSession == nil && window.sheets.isEmpty && window.isKeyWindow }
                 stage = "Datei schließen und erneut öffnen"
                 let closedID = ws.activeTabID!
@@ -16274,7 +12476,8 @@ enum SelfTest {
                 NotificationCenter.default.removeObserver(menus)
                 NotificationCenter.default.removeObserver(menusEnded)
                 await capture("workflow-failure", in: window.sheets.first ?? window)
-                finish(false, "Textabläufe [\(stage)]: \(error.localizedDescription); Fehler=\(ws.textWorkflowSession?.error ?? "keiner")")
+                finish(error is SelfTestMenuRootExchange.EnvironmentFailure ? .environment : .fail,
+                       "Textabläufe [\(stage)]: \(error.localizedDescription); Fehler=\(ws.textWorkflowSession?.error ?? "keiner")")
             }
         }
     }
@@ -16343,10 +12546,9 @@ enum SelfTest {
         }
     }
 
-    /// Letzter Schritt von `textop`: Die neue Unicode-Operation
-    /// „Emoji-Darstellung erzwingen" muss über denselben Menüweg im echten
-    /// Editor ankommen — und ihr Rückweg auch. Geprüft wird an Daniels Fall
-    /// (nacktes `⏸`) samt einem Zeichen, das unangetastet bleiben muss.
+    /// Letzter `textop`-Schritt: „Emoji-Darstellung erzwingen“ und Undo über den
+    /// Menüweg am echten Editor prüfen. `⏸` soll geändert werden, das Kontrollzeichen
+    /// bleibt unangetastet.
     private static func checkEmojiPresentationTextOp(tv: TextView) {
         let source = "Pause \u{23F8} und \u{00A9} 2026\n"
         tv.selectionManager.setSelectedRange(
@@ -17001,12 +13203,9 @@ enum SelfTest {
         return nil
     }
 
-    /// Protokolliert, ob die Editor-TextView noch dieselbe ist wie zu Beginn.
-    /// Diagnosehilfe für den sporadischen Editor-Neuaufbau beim Resize
-    /// (Roadmap „Bekannte Fehler", Befund 2026-07-28): Erst wenn an mehreren
-    /// Punkten desselben Ablaufs protokolliert wird, zeigt sich, WELCHER
-    /// Schritt die View austauscht. Schreibt nach stderr, damit die Zeile im
-    /// Testlog steht, ohne das maschinenlesbare SELFTEST-Ergebnis zu stören.
+    /// TextView-Identität an mehreren Schritten protokollieren, um einen
+    /// Neuaufbau beim Resize zuzuordnen. Ausgabe nach stderr hält das
+    /// maschinenlesbare SELFTEST-Ergebnis unverändert.
     private static func logEditorIdentity(_ step: String, root: NSView,
                                           expected: ObjectIdentifier) {
         let live = editorTextView(in: root) as? TextView
@@ -17019,7 +13218,7 @@ enum SelfTest {
     }
 
     /// Zählt die Editor-TextViews im Baum. Diagnose für den Fall, dass die
-    /// Suchheuristik oben eine ANDERE TextView liefert als erwartet: Steht hier
+    /// Suchheuristik oben eine andere TextView liefert als erwartet: Steht hier
     /// 2, hängt der alte Editor noch im Baum, während der neue schon da ist —
     /// dann ist der Editor tatsächlich neu aufgebaut worden. Steht hier 1,
     /// zeigt die Abweichung auf etwas anderes.
@@ -17053,27 +13252,8 @@ enum SelfTest {
         return view.subviews.contains { findPanelVisible(in: $0) }
     }
 
-    // MARK: - Selbsttest search
-
-    /// Treibt Workspace + SearchRunner END-TO-END in drei Teilprüfungen:
-    ///
-    /// a) Buffer-Scope: Bekannten Text laden, Pattern mit exakt N Treffern
-    ///    setzen, aufs Debounce pollen (120 ms Buffer-Debounce), prüfen, dass
-    ///    `bufferMatches.count == N` und Zeile/Spalte des ersten Treffers stimmen.
-    ///
-    /// b) Live-Ordner-Scope: Temp-Ordner mit 2 Textdateien anlegen, Scope auf
-    ///    `.folder` wechseln, Pattern ≥ 3 Zeichen (Live-Schwelle) setzen, den
-    ///    Temp-Ordner als einzigen aktivierten Ordner eintragen, auf das Folder-
-    ///    Debounce pollen (~0,42 s + async), prüfen, dass `folderTotalMatches`
-    ///    gleich der erwarteten Summe ist. Danach Temp-Ordner aufräumen.
-    ///
-    /// c) Negativ-Pfad (Buffer-Scope): Pattern das nichts matcht → 0 Treffer
-    ///    nach Debounce-Wartezeit.
-    ///
-    /// PASS nur wenn alle drei Teilprüfungen bestehen. FAIL benennt den
-    /// konkreten Teilschritt und gibt Soll- vs. Ist-Wert aus.
     /// Fensterloser End-to-End-Test des Geöffnet-Scopes (BBEdit „Open text
-    /// documents"): drei In-Memory-Tabs, Live-Suche über den ECHTEN
+    /// documents"): drei In-Memory-Tabs, Live-Suche über den echten
     /// SearchRunner-Pfad (Combine-Trigger + Task.detached), dann
     /// „Alle ersetzen" über alle Tabs. Prüft genau die Verdrahtung, die
     /// die reinen Unit-Tests umgehen (Runner-Async-Pfad).
@@ -17085,7 +13265,7 @@ enum SelfTest {
         // Der Produkt-Runner arbeitet bewusst nur bei offener Suchmaske.
         // Dieser fensterlose Test setzt deshalb denselben aktiven Zustand.
         ws.showSearchDialog = true
-        // Tabs direkt setzen — der Geöffnet-Scope sucht Tab-INHALTE
+        // Tabs direkt setzen — der Geöffnet-Scope sucht Tab-Inhalte
         // (auch ungespeicherte), keine Dateien. Genau das testen wir.
         ws.tabs = [
             EditorTab(title: "open-a.txt", path: "—",
@@ -17230,13 +13410,13 @@ enum SelfTest {
         } catch { finish(false, "Fixture für Bild-Undo beim Beenden: \(error.localizedDescription)") }
     }
 
-    // MARK: - Selbsttest mdassist (Etappe 5 Wunschpaket 2026-07b)
+    // MARK: - Selbsttest mdassist
 
     /// End-to-End-Prüfung des assistierten Markdown-Schreibens:
     /// (a) Markdown-Toolbar ist für den Markdown-Tab real layoutet.
     /// (b) ⌘V-Pfad mit programmatisch befülltem Pasteboard (PNG): Datei
     ///     entsteht im images-Unterordner, relativer Link steht im Editor,
-    ///     die Vorschau rendert das Bild UND scrollt zur Einfügestelle.
+    ///     die Vorschau rendert das Bild und scrollt zur Einfügestelle.
     /// (c) Undo/Redo entfernt und restauriert Link und erzeugte Datei.
     /// (d) Drop-Abgrenzung: Bilddatei wird eingefügt, Textdatei geöffnet.
     private static func runMarkdownAssistTest() {
@@ -17254,7 +13434,7 @@ enum SelfTest {
         let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-mdassist-\(UUID().uuidString)")
         let doc = base.appendingPathComponent("Notizen.md")
-        // WIRKLICH außerhalb des Dokumentordners — sonst greift die
+        // Wirklich außerhalb des Dokumentordners — sonst greift die
         // „schon im Dokumentbaum → nur verlinken“-Regel statt der Kopie.
         let outside = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-mdassist-src-\(UUID().uuidString)")
@@ -17286,7 +13466,7 @@ enum SelfTest {
                     finish(false, "(a) Markdown-Toolbar fehlt für den Markdown-Tab")
                 }
                 // (b) Paste-Pfad: Fenster + Editor fokussieren, PNG ins
-                // Pasteboard, dann der ECHTE ⌘V-Interceptions-Pfad. Der
+                // Pasteboard, dann der echte ⌘V-Interceptions-Pfad. Der
                 // Key-Status kommt asynchron — deshalb mit Wiederholungen.
                 tv.selectionManager.setSelectedRange(
                     NSRange(location: (tv.string as NSString).length, length: 0))
@@ -17382,7 +13562,7 @@ enum SelfTest {
         )
     }
 
-    /// (c) Undo/Redo umfasst Link UND ausschließlich die von Fastra gerade
+    /// (c) Undo/Redo umfasst Link und ausschließlich die von Fastra gerade
     /// erzeugte Datei. Der Dateiname wird nicht aus dem Link neu geraten,
     /// sondern stammt aus der beobachteten images-Ablage.
     private static func runMarkdownPasteUndoPhase(_ ws: Workspace, tv: TextView,
@@ -17650,10 +13830,10 @@ enum SelfTest {
                 })
     }
 
-    // MARK: - Selbsttest help (Etappe 4 Wunschpaket 2026-07b)
+    // MARK: - Selbsttest help
 
     /// End-to-End-Prüfung der Hilfe:
-    /// (a) Beide Sprachdateien laden aus dem GEPACKTEN Bundle.
+    /// (a) Beide Sprachdateien laden aus dem gepackten Bundle.
     /// (b) Das Hilfe-Fenster rendert echte Überschriften (DOM-Beobachtung
     ///     in der WKWebView, analog zum `markdown`-Selbsttest).
     /// (c) „Hilfe öffnen bei Anker X“ scrollt real zum Abschnitt.
@@ -17763,12 +13943,12 @@ enum SelfTest {
                 })
     }
 
-    // MARK: - Selbsttest searchmark (Etappe 2 Wunschpaket 2026-07b)
+    // MARK: - Selbsttest searchmark
 
     /// Zählt die Emphasis-Layer der Live-Trefferanzeige in der Editor-
-    /// TextView — ECHTE Beobachtung des gerenderten Layer-Baums (analog
+    /// TextView — echte Beobachtung des gerenderten Layer-Baums (analog
     /// `highlight`, das echte Vordergrundfarben beobachtet). Unsere Layer
-    /// sind CAShapeLayer im Outline-Stil: Border 0,5 pt UND Füllfarbe.
+    /// sind CAShapeLayer im Outline-Stil: Border 0,5 pt und Füllfarbe.
     private static func searchEmphasisLayerCount(in tv: TextView) -> Int {
         (tv.layer?.sublayers ?? []).filter { layer in
             guard let shape = layer as? CAShapeLayer else { return false }
@@ -17789,12 +13969,12 @@ enum SelfTest {
         }
     }
 
-    /// End-to-End-Prüfung der Live-Trefferanzeige (Etappe 2):
+    /// End-to-End-Prüfung der Live-Trefferanzeige:
     /// (a) 120 Treffer im Datei-Scope → Emphasis-Layer real in der TextView
-    ///     (nur der AUSGELEGTE Bereich bekommt Layer, daher > 0 und ≤ 120),
+    ///     (nur der ausgelegte Bereich bekommt Layer, daher > 0 und ≤ 120),
     ///     Tab bleibt sauber (reine Anzeige, kein Dirty).
     /// (b) Navigation ans Listenende → die NSTableView der Trefferliste
-    ///     scrollt real mit UND der Editor zeigt am Sprungziel markierte
+    ///     scrollt real mit und der Editor zeigt am Sprungziel markierte
     ///     Treffer (Scroll-Relay zeichnet neu ausgelegte Zeilen nach).
     /// (c) Dialog schließen → alle Emphasis-Layer sind geräumt.
     private static func runSearchMarkTest() {
@@ -17809,7 +13989,7 @@ enum SelfTest {
             finish(false, "kein Hauptfenster gefunden")
         }
         // 120 Zeilen mit je einem Treffer — genug, damit die Trefferliste
-        // scrollen MUSS und die Layer-Zahl aussagekräftig ist.
+        // scrollen muss und die Layer-Zahl aussagekräftig ist.
         let content = (1...120).map { "zeile \($0) MARKTREFFER ende" }
             .joined(separator: "\n")
         let tmp = selfTestTemporaryDirectory()
@@ -17853,7 +14033,7 @@ enum SelfTest {
                         finish(false, "(a) Live-Markierung machte den Tab dirty — sie muss reine Anzeige sein")
                     }
                     // (b) Tief ins Dokument navigieren: genug, damit die Liste sicher
-                    // scrollt, aber mit ausreichend Zeilen UNTER dem Ziel für eine
+                    // scrollt, aber mit ausreichend Zeilen unter dem Ziel für eine
                     // geometrisch mögliche Editor-Zentrierung. Ein Treffer neun
                     // Zeilen vor Dokumentende kann naturgemäß nicht mittig stehen.
                     NotificationCenter.default.post(name: .fastraGotoFirstMatch, object: nil)
@@ -18003,7 +14183,7 @@ enum SelfTest {
         show(0)
     }
 
-    // MARK: - Selbsttest sidebarheader (Etappe 1 Wunschpaket 2026-07b)
+    // MARK: - Selbsttest sidebarheader
 
     /// Sucht eine `SelfTestMarker`-NSView (per Accessibility-Identifier) im
     /// NSView-Baum des Fensters. SwiftUI erzeugt die Marker-View nur, wenn
@@ -18029,11 +14209,11 @@ enum SelfTest {
             $0.frameAutosaveName != SearchWindow.frameAutosaveName
                 && $0.isVisible && $0.contentView != nil
         }
-        // `NSApp.windows` ist NICHT nach Vordergrund sortiert (siehe
+        // `NSApp.windows` ist nicht nach Vordergrund sortiert (siehe
         // AGENTS.md). Hat ein früherer Test im selben Lauf zwei Fenster
         // wiederhergestellt, liefert `first` irgendeines davon — die Prüfung
         // sucht die Tabs aus `Workspace.shared` dann in der Ansicht eines
-        // FREMDEN Fensters und findet dort keinen einzigen Marker. Genau so
+        // fremden Fensters und findet dort keinen einzigen Marker. Genau so
         // fiel `tabcompare` nur im Gesamtlauf aus, einzeln nie. Deshalb
         // zuerst das Fenster nehmen, das wirklich zu `Workspace.shared`
         // gehört; ohne Zuordnung bleibt es beim bisherigen Verhalten.
@@ -18044,7 +14224,7 @@ enum SelfTest {
             return bound
         }
         // Ist (noch) keine Registry-Bindung da, entscheidet die nach
-        // Vordergrund SORTIERTE Fensterliste — nie `candidates.first` aus
+        // Vordergrund sortierte Fensterliste — nie `candidates.first` aus
         // `NSApp.windows`: Bei mehreren Dokumentfenstern wäre das ein
         // zufälliges, womöglich fremdes Fenster (siehe AGENTS.md).
         return NSApp.orderedWindows.first {
@@ -18053,7 +14233,7 @@ enum SelfTest {
         }
     }
 
-    /// Liefert `Workspace.shared` und SEIN über die Registry gebundenes,
+    /// Liefert `Workspace.shared` und sein über die Registry gebundenes,
     /// sichtbares Fenster als Paar — und pollt, bis diese Bindung wirklich
     /// steht. Bewusst kein Rückfall auf irgendein anderes Fenster: Wer den
     /// Inhalt aus `Workspace.shared` liest, aber einen getrennt gesuchten
@@ -18119,7 +14299,7 @@ enum SelfTest {
                             postKey("\u{F701}", keyCode: 125, windowNumber: window.windowNumber)
                         }
                     } else if NSPasteboard.general.string(forType: .string) == expected,
-                              NSPasteboard.general.changeCount == selfTestPasteboardBackup?.ownedChangeCount {
+                              NSPasteboard.general.changeCount == selfTestPasteboardSession.expectedChangeCount {
                         timer?.invalidate(); timer = nil; done = true
                     }
                     if ticks >= 100 { timer?.invalidate(); menu.cancelTracking(); done = true }
@@ -18137,7 +14317,7 @@ enum SelfTest {
             if selected {
                 for _ in 0..<200 {
                     if NSPasteboard.general.string(forType: .string) == expected,
-                       NSPasteboard.general.changeCount == selfTestPasteboardBackup?.ownedChangeCount { break }
+                       NSPasteboard.general.changeCount == selfTestPasteboardSession.expectedChangeCount { break }
                     try await Task.sleep(for: .milliseconds(25))
                 }
             }
@@ -18150,13 +14330,12 @@ enum SelfTest {
         }
     }
 
-    /// Prüft im ECHTEN Fenster (Etappe 1 Wunschpaket 2026-07b):
-    /// (a) Nach dem Projekt-Öffnen erscheint der gemeinsame Seitenleisten-
-    ///     Kopf (`sidebarProjectHeader`) im Accessibility-Baum.
-    /// (b) Der Ansichts-Umschalter (`viewModePicker`) liegt in der Fußzeile,
-    ///     sobald die geladene Datei mehr als eine Ansicht bietet.
+    /// Prüft im echten Fenster: (a) Nach dem Projekt-Öffnen erscheint der
+    /// gemeinsame Seitenleisten- Kopf (`sidebarProjectHeader`) im
+    /// Accessibility-Baum. (b) Der Ansichts-Umschalter (`viewModePicker`) liegt
+    /// in der Fußzeile, sobald die geladene Datei mehr als eine Ansicht bietet.
     /// (c) Für einen ungespeicherten Tab (nur Text-Ansicht) verschwindet der
-    ///     Umschalter wieder.
+    /// Umschalter wieder.
     private static func runSidebarHeaderTest() {
         testLabel = "sidebarheader"
         guard let ws = Workspace.shared else {
@@ -18509,11 +14688,11 @@ enum SelfTest {
         }
     }
 
-    // MARK: - Selbsttest footerfit (Daniel-Befund 2026-08-06)
+    // MARK: - Selbsttest footerfit
 
     /// Liegt die Fußzeile vollständig im Fenster?
     ///
-    /// Sie hatte eine FESTE Höhe von 24 Punkten. Sobald der Ansichts-
+    /// Sie hatte eine feste Höhe von 24 Punkten. Sobald der Ansichts-
     /// Umschalter dazukam — er erscheint nur für eine gespeicherte Datei und
     /// ist als Segmentregler höher als reiner Text —, wuchs ihr Inhalt über
     /// diesen Rahmen hinaus, und der Fensterrand schnitt ihn unten ab. Genau
@@ -18547,7 +14726,7 @@ enum SelfTest {
     }
 
     private static func pollFooterFit(root: NSView, base: URL) {
-        // Erst messen, wenn die Fußzeile steht UND der Umschalter wirklich
+        // Erst messen, wenn die Fußzeile steht und der Umschalter wirklich
         // drin liegt — er ist der Grund, aus dem sie höher wird.
         var footer: NSView?
         waitFor(budget: 10, pause: 0.25,
@@ -18566,7 +14745,7 @@ enum SelfTest {
                 then: {
                     guard let footer else { finish(false, "Fußzeile nach Erfolg verschwunden") }
                     let frame = footer.convert(footer.bounds, to: root)
-                    // SwiftUIs AppKit-Views sind GEFLIPPT: y wächst nach unten, die
+                    // SwiftUIs AppKit-Views sind geflippt: y wächst nach unten, die
                     // Unterkante ist `maxY`. Vor der Zusage trotzdem nachfragen.
                     let overflow = root.isFlipped
                         ? frame.maxY - root.bounds.maxY
@@ -18587,12 +14766,12 @@ enum SelfTest {
                 })
     }
 
-    // MARK: - Selbsttest windowheight (Daniel-Wunsch 2026-08-06)
+    // MARK: - Selbsttest windowheight
 
     /// Wächst ein zu flach gespeichertes Fenster wirklich auf eine praktische
     /// Höhe — und bleibt die Korrektur danach einmalig?
     ///
-    /// Gemessen wird am ECHTEN Fenster mit einer eigenen Defaults-Suite; die
+    /// Gemessen wird am echten Fenster mit einer eigenen Defaults-Suite; die
     /// Merkmarke des Nutzers bleibt dadurch unberührt.
     private static func runWindowHeightTest() {
         testLabel = "windowheight"
@@ -18621,7 +14800,7 @@ enum SelfTest {
 
         let visible = screen.visibleFrame
         let expected = MainWindowSizing.newWindowSize(inVisibleScreen: visible.size).height
-        // Absichtlich flach — der Zustand aus dem Befund.
+        // Absichtlich flache Fenstergeometrie.
         let flat = NSRect(x: visible.minX + 40, y: visible.maxY - 460,
                           width: MainWindowSizing.defaultWidth, height: 420)
         window.setFrame(flat, display: true)
@@ -18665,15 +14844,15 @@ enum SelfTest {
         ))
     }
 
-    // MARK: - Selbsttest mdformat (Daniel-Befund 2026-08-06)
+    // MARK: - Selbsttest mdformat
 
     /// Folgt die Markdown-Vorschau der Formatwahl aus der Fußzeile?
     ///
-    /// Geprüft wird an einer Datei OHNE Markdown-Endung:
+    /// Geprüft wird an einer Datei ohne Markdown-Endung:
     /// (a) Vor der Wahl gibt es keine Vorschau.
     /// (b) Wahl „Markdown" öffnet sie wirklich (echte WKWebView im Layout).
     /// (c) Wahl eines anderen Formats schließt sie wieder.
-    /// (d) Die Wahl ist danach für diese DATEI gemerkt.
+    /// (d) Die Wahl ist danach für diese Datei gemerkt.
     private static func runMarkdownFormatSwitchTest() {
         testLabel = "mdformat"
         guard let ws = Workspace.shared else {
@@ -18748,12 +14927,12 @@ enum SelfTest {
                 })
     }
 
-    // MARK: - Selbsttest sidebarfilter (Etappe 3 Wunschpaket 2026-07c)
+    // MARK: - Selbsttest sidebarfilter
 
-    /// Prüft den Dateinamens-Filter der Projekt-Seitenleiste im ECHTEN
+    /// Prüft den Dateinamens-Filter der Projekt-Seitenleiste im echten
     /// Fenster:
     /// (a) Ausgangslage: Datei der obersten Ebene gerendert, Datei im
-    ///     EINGEKLAPPTEN Unterordner nicht.
+    ///     eingeklappten Unterordner nicht.
     /// (b) Filter tippen (case-insensitiv) → Treffer-Datei erscheint samt
     ///     aufgeklapptem Elternordner, Nicht-Treffer verschwinden, der
     ///     Zähler „1 von 3 Dateien" ist real gerendert.
@@ -18927,23 +15106,16 @@ enum SelfTest {
             })
     }
 
-    // MARK: - Selbsttest tabflood (Layout-Invariante, 2026-09-01)
+    // MARK: - Selbsttest tabflood (Layout-Invariante)
 
-    /// Regressionstest zum Befund vom 2026-09-01: Die frühere „GEÖFFNET"-
-    /// Liste wuchs als ungebremster `ForEach` mit jedem offenen Tab und
-    /// drückte erst den Dateibaum, dann Tab-Leiste und Seitenleisten-Kopf aus
-    /// dem sichtbaren Fenster. Die Invariante ist allgemein: Feste
-    /// Seitenleisten-Elemente (Kopf oben, „Datei öffnen…"-Knopf unten)
-    /// müssen auch mit VIELEN offenen Tabs im sichtbaren Fensterbereich
-    /// bleiben. Der Test öffnet ein Projekt, flutet das Fenster mit 40 Tabs
-    /// und prüft danach die tatsächliche Geometrie beider Marker.
+    /// Feste Seitenleisten-Elemente müssen mit 40 offenen Tabs im Fenster
+    /// bleiben. Die tatsächliche Geometrie von Kopf und „Datei öffnen…“-Knopf
+    /// prüfen; bloße Existenz im View-Baum erkennt verdrängte Views nicht.
     // MARK: - Seitenleiste: ohne Projekt keine, Umschalten schnell und ohne Wachstum
 
-    /// Änderungswunsch 2026-09-06: Auf dem Willkommensbildschirm und ohne
-    /// geöffneten Ordner/Repo gibt es keine Seitenleiste (auch mit weiteren
-    /// Tabs nicht). Mit Projekt erscheint sie; das Aus-/Einblenden baut den
-    /// Dateibaum nicht neu auf, bleibt schnell und lässt den Speicher über
-    /// hunderte Umschaltungen nicht wachsen.
+    /// Ohne Projekt keine Seitenleiste, auch bei weiteren Tabs. Mit Projekt
+    /// bleibt sie beim Ausblenden montiert. Hunderte Umschaltungen prüfen Dauer
+    /// und Speicherentwicklung ohne erneuten Dateibaumaufbau.
     private static var sidebarToggleFixtureDirectory: URL?
 
     private static func runSidebarToggleTest() {
@@ -19276,7 +15448,7 @@ enum SelfTest {
         }
     }
 
-    // MARK: - Selbsttests tool4d (Wunschpaket 2026-07c)
+    // MARK: - Selbsttests tool4d
 
     /// Prüft den echten localhost-TCP-/LSP-Start gegen ein bereits lokal
     /// installiertes tool4d und eine ausdrücklich übergebene sichere
@@ -19363,7 +15535,7 @@ enum SelfTest {
         }
         // Untokenisierter, var-basierter Methodencode: genau die Form, die
         // die Engine nach dem Detokenisieren übergibt. Klassische
-        // C_XXX-Deklarationen verträgt das Makro nicht (Befund 2026-08-19).
+        // C_XXX-Deklarationen verträgt das Makro nicht.
         let code = "// Probemethode für den Engine-Selbsttest\n"
             + "var $text : Text\n"
             + "var $laenge : Integer\n"
@@ -19399,7 +15571,7 @@ enum SelfTest {
     /// Beweist die Kette „Discovery → XML-Parse → Katalog → natives
     /// Text-Makro": Ein Fixture-Projekt bringt eine Komponente mit eigener
     /// „Macros v2"-XML mit; nach dem Öffnen der `.4dm` muss der Katalog das
-    /// Makro kennen, der Kürzel-Aufruf fügt den gerenderten Text als EINEN
+    /// Makro kennen, der Kürzel-Aufruf fügt den gerenderten Text als einen
     /// Undo-Schritt ein und setzt den Cursor an die `<caret/>`-Marke.
     private static func runFourDMacroSelfTest() {
         testLabel = "macro4d"
@@ -19443,7 +15615,7 @@ enum SelfTest {
 
     /// Wartet auf den asynchron gescannten Katalog und führt dann das Makro aus.
     private static func pollFourDMacroCatalog(_ ws: Workspace, base: URL) {
-        // Zwei Stufen in EINER Frist: erst der Katalog, dann der Editor.
+        // Zwei Stufen in einer Frist: erst der Katalog, dann der Editor.
         var stage = 0
         var found: (window: NSWindow, textView: TextView)?
         waitFor(budget: 6, pause: 0.05,
@@ -19504,13 +15676,13 @@ enum SelfTest {
                 })
     }
 
-    // MARK: - Selbsttest tool4dhint (Etappe 4 Wunschpaket 2026-07c)
+    // MARK: - Selbsttest tool4dhint
 
-    /// Prüft den 4D-Erst-Kontakt-Hinweis im ECHTEN Fenster:
+    /// Prüft den 4D-Erst-Kontakt-Hinweis im echten Fenster:
     /// (a) Erste `.4dm`-Datei → Hinweis-Leiste erscheint.
     /// (b) Echter Klick auf „Einrichtung anzeigen" → Hilfe-Fenster öffnet
     ///     (Anker „4D & tool4d"), Leiste verschwindet, Flag gesetzt.
-    /// (c) Zweite `.4dm`-Datei → Hinweis erscheint NICHT erneut
+    /// (c) Zweite `.4dm`-Datei → Hinweis erscheint nicht erneut
     ///     („einmal pro Nutzer"). Die Defaults sind die isolierte
     ///     Selbsttest-Suite — das echte Nutzer-Flag bleibt unberührt.
     private static func runTool4DHintTest() {
@@ -19608,7 +15780,7 @@ enum SelfTest {
                         + "Flag=\(Tool4DAssist.firstContactHintShown) — \(book.summary)")
                 },
                 then: {
-                    // (c) Zweite 4D-Datei — der Hinweis darf NICHT wiederkommen.
+                    // (c) Zweite 4D-Datei — der Hinweis darf nicht wiederkommen.
                     ws.loadFile(at: second) { ok in
                         guard ok else {
                             try? FileManager.default.removeItem(at: base)
@@ -19630,9 +15802,9 @@ enum SelfTest {
                 })
     }
 
-    // MARK: - Selbsttest gototarget (Etappe 7 Wunschpaket 2026-07c)
+    // MARK: - Selbsttest gototarget
 
-    /// Prüft Alt-Doppelklick „Gehe zum Ziel" mit ECHTEN synthetischen
+    /// Prüft Alt-Doppelklick „Gehe zum Ziel" mit echten synthetischen
     /// Mausereignissen (über die App-Event-Queue, damit der lokale Monitor
     /// sie sieht):
     /// (a) 4D: Klick auf einen Methodennamen öffnet die Projektmethode.
@@ -19745,7 +15917,7 @@ enum SelfTest {
                     guard let found else { finish(false, "Editor nach Erfolg verschwunden") }
                     let (window, textView, rect) = found
                     // Punkt in Fenster-Koordinaten; Events über die App-Queue posten,
-                    // damit der lokale Monitor (GoToTargetGesture) sie WIRKLICH sieht.
+                    // damit der lokale Monitor (GoToTargetGesture) sie wirklich sieht.
                     let windowPoint = textView.convert(NSPoint(x: rect.midX, y: rect.midY),
                                                        to: nil)
                     let time = ProcessInfo.processInfo.systemUptime
@@ -19780,10 +15952,10 @@ enum SelfTest {
                 then: completion)
     }
 
-    // MARK: - Selbsttest gototargetwin (Befund aus dem Dauertest 2026-08-08)
+    // MARK: - Selbsttest gototargetwin
 
-    /// Alt-Doppelklick „Gehe zum Ziel" bei ZWEI offenen Fenstern: Die Geste
-    /// muss im FENSTER DES KLICKS wirken — auch wenn `Workspace.shared`
+    /// Alt-Doppelklick „Gehe zum Ziel" bei zwei offenen Fenstern: Die Geste
+    /// muss im Fenster des Klicks wirken — auch wenn `Workspace.shared`
     /// gerade auf das andere Fenster zeigt.
     ///
     /// Der Fehler dahinter: `GoToTargetGesture` holte Workspace und Tab aus
@@ -19792,9 +15964,9 @@ enum SelfTest {
     /// Dokumente — der Methodensprung landete im falschen Fenster (dieselbe
     /// Fehlerklasse wie die mit v1.64.0 behobenen Menübefehle).
     ///
-    /// `Workspace.shared` zeigt im echten Betrieb regelmäßig NICHT auf das
+    /// `Workspace.shared` zeigt im echten Betrieb regelmäßig nicht auf das
     /// geklickte Fenster: Der lokale Maus-Monitor sieht den Doppelklick,
-    /// BEVOR das hintere Fenster durch den Klick Key wird (erst danach
+    /// bevor das hintere Fenster durch den Klick Key wird (erst danach
     /// aktualisiert die Aktivierungsbrücke `shared`), und nach einer
     /// Sitzungswiederherstellung zeigt `shared` auf den zuletzt erzeugten
     /// Workspace. Der Test stellt diese Lage deshalb gezielt her.
@@ -19808,8 +15980,8 @@ enum SelfTest {
               }) else {
             finish(false, "kein erstes Dokumentfenster mit Workspace-Zuordnung")
         }
-        // Zwei GETRENNTE 4D-Projekte mit gleichnamiger Methode: Nur so ist
-        // sichtbar, WESSEN Methode der Sprung öffnet.
+        // Zwei getrennte 4D-Projekte mit gleichnamiger Methode: Nur so ist
+        // sichtbar, wessen Methode der Sprung öffnet.
         let fm = FileManager.default
         let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-gototargetwin-\(UUID().uuidString)")
@@ -19854,7 +16026,7 @@ enum SelfTest {
                     try? fm.removeItem(at: base)
                     finish(false, "(setup) Aufrufer.4dm lädt nicht")
                 }
-                // Teil 1: Klick ins HINTERE Fenster, während das vordere die
+                // Teil 1: Klick ins hintere Fenster, während das vordere die
                 // Tastatur hat und `Workspace.shared` auf das vordere zeigt.
                 firstWindow.makeKeyAndOrderFront(nil)
                 goToTargetTwoWindowClick(
@@ -19867,7 +16039,7 @@ enum SelfTest {
                     cleanup: base,
                     label: "hinteres Fenster"
                 ) {
-                    // Teil 2: Klick ins VORDERE Fenster, während `shared` —
+                    // Teil 2: Klick ins vordere Fenster, während `shared` —
                     // wie nach einer Sitzungswiederherstellung — auf das
                     // hintere zeigt.
                     goToTargetTwoWindowClick(
@@ -19891,10 +16063,10 @@ enum SelfTest {
     }
 
     /// Synthetisiert einen Alt-Doppelklick auf `needle` im Fenster `clicked`
-    /// und prüft anschließend BEIDE Fenster: Das geklickte muss
+    /// und prüft anschließend beide Fenster: Das geklickte muss
     /// `expectedTarget` öffnen, das andere bei `otherStaysAt` bleiben.
     /// `sharedPointsTo` stellt vor dem Klick den globalen Zustand her, der
-    /// den Fehler auslöste: `Workspace.shared` zeigt auf das ANDERE Fenster.
+    /// den Fehler auslöste: `Workspace.shared` zeigt auf das andere Fenster.
     private static func goToTargetTwoWindowClick(
         clicked: (workspace: Workspace, window: NSWindow),
         other: (workspace: Workspace, window: NSWindow),
@@ -19913,21 +16085,11 @@ enum SelfTest {
                 finish(false, "(\(label)) Editor zeigt „\(needle)“ nicht binnen 5 s")
             }
         ) { _, textView, range in
-            // VORBEDINGUNG SELBST HERSTELLEN: Ein Fenster, das nie vorn war,
-            // hat seine SwiftUI-Geometrie noch nicht endgültig ausgelegt. Die
-            // Textansicht meldet dann eine Layout-Position, die im FENSTER
-            // hinter der 200 pt breiten Seitenleiste liegt — der synthetische
-            // Klick landete dort und nicht im Text. Genau daran scheiterte
-            // dieser Test reproduzierbar (nachgemessen am 2026-09-10: der
-            // Klickpunkt lag bei x = 71, die Textansicht antwortete auf
-            // `hitTest` erst ab x = 215). Dieselbe Falle wie bei `tabcompare`
-            // (AGENTS.md): ein aus einer unsichtbaren Geometrie berechneter
-            // Klick trifft ein ganz anderes Bedienelement.
-            //
-            // Deshalb: Das geklickte Fenster einmal nach vorn holen, damit
-            // AppKit und SwiftUI auslegen — und erst danach messen. Der
-            // Fensterstapel wird gleich wieder hergestellt, die Prüfabsicht
-            // („Klick ins hintere Fenster") bleibt also unberührt.
+            // Das Klickfenster zunächst vorholen, damit AppKit und SwiftUI seine
+            // endgültige Geometrie auslegen. Danach den Fensterstapel wiederherstellen
+            // und erst messen/klicken: Eine zuvor nie sichtbare TextView kann noch
+            // Koordinaten innerhalb der Seitenleiste melden. Der geprüfte Klick ins
+            // hintere Fenster bleibt dadurch erhalten.
             clicked.window.makeKeyAndOrderFront(nil)
             clicked.window.layoutIfNeeded()
             clicked.window.displayIfNeeded()
@@ -19938,7 +16100,7 @@ enum SelfTest {
                 finish(false, "(\(label)) keine Layout-Position für „\(needle)“")
             }
             // Punkt in Fenster-Koordinaten; Events über die App-Queue posten,
-            // damit der lokale Monitor (GoToTargetGesture) sie WIRKLICH sieht.
+            // damit der lokale Monitor (GoToTargetGesture) sie wirklich sieht.
             let windowPoint = textView.convert(NSPoint(x: rect.midX, y: rect.midY),
                                                to: nil)
             // Und der Beweis, dass der Punkt wirklich im Text landet: Der
@@ -19964,7 +16126,7 @@ enum SelfTest {
                     + "\(contentView.hitTest(contentPoint).map { String(describing: type(of: $0)) } ?? "nichts")"
                     + " — die gemessene Geometrie gehört nicht zum sichtbaren Fenster")
             }
-            // Erst JETZT den Stapel und `Workspace.shared` in die Prüflage
+            // Erst jetzt den Stapel und `Workspace.shared` in die Prüflage
             // bringen: Der Klick geht ins hintere Fenster, während das andere
             // die Tastatur hat.
             other.window.makeKeyAndOrderFront(nil)
@@ -20015,8 +16177,8 @@ enum SelfTest {
                 },
                 onTimeout: { book in
                     try? FileManager.default.removeItem(at: base)
-                    // Für die Diagnose zeigen, WO die Datei stattdessen landete —
-                    // beim ursprünglichen Fehler öffnete das ANDERE Fenster seine
+                    // Für die Diagnose zeigen, wo die Datei stattdessen landete —
+                    // beim ursprünglichen Fehler öffnete das andere Fenster seine
                     // gleichnamige Methode.
                     finish(false, "(\(label)) Sprung blieb im geklickten Fenster aus "
                         + "(dort aktiv: \(clickedPath ?? "kein Pfad"), "
@@ -20034,7 +16196,7 @@ enum SelfTest {
                 })
     }
 
-    // MARK: - Selbsttest filediff (Etappe 1 Wunschpaket 2026-07c)
+    // MARK: - Selbsttest filediff
 
     /// Liefert die Marker-NSView selbst (nicht nur ihre Existenz) — für
     /// Positionsermittlung beim synthetischen Klick.
@@ -20051,69 +16213,7 @@ enum SelfTest {
     @MainActor
     private static func pollExternalDiffCold() {
         testLabel = "externaldiffcold"
-        let expected = Int(ProcessInfo.processInfo.environment["FASTRA_DIFF_COLD_COUNT"] ?? "1") ?? 1
-        var windows = ExternalDiffWindow.openWindows
-        var ready = false
-        var polls = 0
-        // Ausgewertet wird in beiden Ausgängen: Erfolg und abgelaufene Frist
-        // führen in dieselbe Prüfung, die `ready` selbst bewertet.
-        func evaluate() {
-            // `prepareLaunchEnvironment` legt auch für diesen Test die
-            // Sitzungs-Fixture an. Bis 2026-09-17 räumte sie niemand ab; weil
-            // der Treiber die App über LaunchServices startet und macOS dabei
-            // das übergebene TMPDIR ersetzt, blieb je Kaltstart ein Ordner im
-            // echten Benutzer-Temp liegen (CodeQA-Fund test-temp-leaks).
-            if let directory = sessionRestoreFixtureDirectory {
-                try? FileManager.default.removeItem(at: directory)
-            }
-            let active = NSApp.isActive
-            let key = windows.contains { $0.window.isKeyWindow }
-            var passed = ready
-            if let directory = ProcessInfo.processInfo.environment["FASTRA_DIFF_COLD_SCREENSHOTS"] {
-                // Aufnahmen aus den tatsächlich gezeichneten Fenster-Layern. Dafür
-                // ist keine neue Bildschirmaufnahme-Berechtigung erforderlich.
-                let root = URL(fileURLWithPath: directory, isDirectory: true)
-                let normal = DocumentWindowController.visibleDocumentWindows().first
-                if let diff = windows.first, let normal,
-                   let diffImage = typeScrollLayerSnapshot(window: diff.window),
-                   let normalImage = typeScrollLayerSnapshot(window: normal) {
-                    do {
-                        try diffImage.write(to: root.appendingPathComponent("external-diff.png"))
-                        try normalImage.write(to: root.appendingPathComponent("normal-window.png"))
-                    } catch { passed = false }
-                } else { passed = false }
-                passed = passed && active && key
-            }
-            for controller in windows {
-                controller.window.makeKeyAndOrderFront(nil)
-                passed = passed && CommandTargeting.targetWorkspace() == nil
-                passed = passed && CommandTargeting.targetEditorTextView() == nil
-            }
-            if let path = ProcessInfo.processInfo.environment["FASTRA_DIFF_COLD_RESULT"] {
-                let result = "SELFTEST-RESULT v=1 test=externaldiffcold status=\(passed ? "PASS" : "FAIL")\n"
-                    + "windows=\(windows.count) rendered=\(ready) writableTarget=false\n"
-                    + "active=\(active) key=\(key)\n"
-                do { try result.write(toFile: path, atomically: true, encoding: .utf8) }
-                catch { finish(false, "Kaltstart-Testbericht konnte nicht geschrieben werden") }
-            }
-            NSApp.hide(nil)
-            for controller in windows { controller.window.close() }
-            finish(passed, "Kaltstart über Helfer: \(windows.count) Diff-Fenster, erwartet \(expected)")
-        }
-        waitFor(budget: 15, pause: 0.1,
-                condition: {
-                    windows = ExternalDiffWindow.openWindows
-                    ready = windows.count == expected && windows.allSatisfy { controller in
-                        controller.model.document?.result?.blocks.count == 1
-                            && controller.window.contentView.map { markerViewExists(id: "diffState-b1-c0", in: $0) } == true
-                    }
-                    polls += 1
-                    // Mindestens eine Sekunde beobachten, damit unmittelbar doppelte
-                    // Zustellungen nicht erst nach dem erfolgreichen Test sichtbar werden.
-                    return ready && polls > 10
-                },
-                onTimeout: { _ in evaluate() },
-                then: { evaluate() })
+        sessionRestorationTests.pollExternalDiffCold()
     }
 
     /// Echte Helferprozesse und Mach-Nachrichten, danach gerenderte Fenster
@@ -21212,97 +17312,8 @@ enum SelfTest {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
 
-        // ── Testprojekt im Temp-Ordner bauen: repo/.git + Dateien ─────────
-        let fm = FileManager.default
-        let base = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-selftest-project-\(UUID().uuidString)")
-        let repo = base.appendingPathComponent("repo")
-        do {
-            try fm.createDirectory(at: repo.appendingPathComponent(".git"),
-                                   withIntermediateDirectories: true)
-            try fm.createDirectory(at: repo.appendingPathComponent("sub"),
-                                   withIntermediateDirectories: true)
-            try "PROJEKTTEST-A".write(to: repo.appendingPathComponent("a.txt"),
-                                      atomically: true, encoding: .utf8)
-            try "PROJEKTTEST-B".write(to: repo.appendingPathComponent("sub/b.txt"),
-                                      atomically: true, encoding: .utf8)
-        } catch {
-            finish(.environment, "Umgebungsproblem: (setup) Testprojekt nicht anlegbar: \(error)")
-        }
-
-        // ── (a) Willkommens-Bedingung ─────────────────────────────────────
-        // Tab mit Inhalt → Platzhalter verborgen. Danach den Startzustand
-        // simulieren (ein unberührter leerer Tab, kein Projekt) → sichtbar.
-        ws.tabs = [EditorTab(title: "contacts.md", path: "Demo", content: "Demo-Inhalt")]
-        ws.activeTabID = ws.tabs[0].id
-        if ws.isWelcomeScreen {
-            finish(false, "(a) Willkommen sichtbar, obwohl der aktive Tab Inhalt trägt")
-        }
-        ws.tabs = [Workspace.makeScratchTab()]
-        ws.activeTabID = ws.tabs[0].id
-        ws.projectURL = nil
-        guard ws.isWelcomeScreen else {
-            finish(false, "(a) Willkommen verborgen trotz unberührtem leeren Tab ohne Projekt")
-        }
-
-        // ── (b) Projekt öffnen ────────────────────────────────────────────
-        // openProject/loadFile kanonisieren URLs (`/var` → `/private/var`,
-        // via canonicalPathKey) — die Erwartungswerte entsprechend auch.
-        let resolved = repo.canonicalFileURL
-        ws.openProject(at: repo)
-        guard ws.projectURL == resolved else {
-            finish(false, "(b) projectURL=\(String(describing: ws.projectURL)) statt \(resolved.path)")
-        }
-        // Der unberührte Start-Tab bleibt beim Projektöffnen stehen und zeigt
-        // weiterhin die Starthilfe — bewusst OHNE Projekt-Sperre (2026-07-30).
-        guard ws.tabs.count == 1, ws.tabs[0].isPristineScratch else {
-            finish(false, "(b) openProject muss den unberührten Start-Tab stehen lassen")
-        }
-        guard ws.recentProjects.first?.url.path == resolved.path else {
-            finish(false, "(b) Projekt nicht oben in recentProjects: \(ws.recentProjects.map(\.path))")
-        }
-
-        // ── (c) Dateibaum-Ebene: Ordner zuerst, .git übersprungen ─────────
-        let children = FileTree.children(of: repo)
-        guard children.map(\.name) == ["sub", "a.txt"] else {
-            finish(false, "(c) Dateibaum-Ebene falsch: \(children.map(\.name))")
-        }
-
-        // ── (d) Datei „aus dem Baum" laden + stille Repo-Erkennung ────────
-        ws.loadFile(at: repo.appendingPathComponent("a.txt")) { ok in
-            guard ok else {
-                finish(false, "(d) loadFile scheiterte")
-            }
-            guard ws.activeTab?.content == "PROJEKTTEST-A" else {
-                finish(false, "(d) Tab-Inhalt falsch: \(ws.activeTab?.content ?? "nil")")
-            }
-            // Der Tab muss die NORMALISIERTE URL tragen — sonst schlüge die
-            // Aktiv-Markierung im Projektbaum fehl (Listing liefert
-            // `/private/…`-Form).
-            guard ws.activeTab?.url == resolved.appendingPathComponent("a.txt") else {
-                finish(false, "(d) Tab-URL nicht normalisiert: \(ws.activeTab?.url?.path ?? "nil")")
-            }
-            // Die Repo-Erkennung in noteRecentFile darf KEIN Duplikat neben
-            // dem openProject-Eintrag anlegen (gleiche Pfad-Normalisierung).
-            let matches = ws.recentProjects.filter { $0.url.path == resolved.path }
-            guard matches.count == 1, ws.recentProjects.first?.url.path == resolved.path else {
-                finish(false, "(d) Projektliste falsch (Duplikat?): \(ws.recentProjects.map(\.path))")
-            }
-
-            // ── (e) Projekt-Scope mit gespeichertem Datei-Set ────────────
-            // Die Projektwurzel enthält zwei Trefferdateien; „sub" wird
-            // ausgeschlossen, daher darf nur a.txt im Ergebnis stehen.
-            let set = ProjectFileSet(name: "Nur Quellen", paths: ["."])
-            ws.projectSearchConfiguration = ProjectSearchConfiguration(
-                fileSets: [set], activeSetID: set.id, fileTypeFilter: .knownText,
-                excludePatternsText: "sub"
-            )
-            ws.scope = .project
-            ws.findPattern = "PROJEKTTEST"
-            ws.useRegex = false
-            ws.runFolderSearchNow()
-            pollProjectScope(ws, base: base)
-        }
+        SelfTestProjectLifecycle(workspace: ws, waitFor: waitFor,
+                                 finish: finish, finishOutcome: finish).runProjectTest()
     }
 
     /// Stellt sicher, dass die Build-Verpackung die englischen SwiftUI- und
@@ -21332,289 +17343,28 @@ enum SelfTest {
         finish(true, "englische Tabellen + lokale Markdown-Renderbibliotheken im App-Bundle")
     }
 
-    private static func pollProjectScope(_ ws: Workspace, base: URL) {
-        // Bisher 200 × 30 ms = 6 s.
-        waitFor(budget: 6, pause: 0.03,
-                condition: { !ws.folderSearching && !ws.folderNeedsSearch },
-                onTimeout: { book in
-                    finish(false, "(e) Timeout der Projekt-Suche — \(book.summary)")
-                }) {
-            let urls = ws.folderResults.filter { !$0.matches.isEmpty }.map(\.url.lastPathComponent)
-            guard ws.folderTotalMatches == 1, urls == ["a.txt"] else {
-                finish(false, "(e) Projekt-Scope missachtet Datei-Set/Ausschluss: "
-                    + "total=\(ws.folderTotalMatches), Dateien=\(urls)")
-            }
-            try? FileManager.default.removeItem(at: base)
-            finish(true, "Willkommen, Projekt öffnen, Dateibaum, Datei-Laden, "
-                + "Repo-Dedup + Projekt-Datei-Set/Ausschluss ok")
-        }
-    }
 
-    // MARK: - Reale Projekt-Performance (nur explizit über Umgebungsvariable)
-
-    private struct PerformanceResourceSnapshot {
-        let userSeconds: Double
-        let systemSeconds: Double
-        let maximumRSSMiB: Double
-    }
-
-    private static func performanceResourceSnapshot() -> PerformanceResourceSnapshot {
-        var usage = rusage()
-        guard getrusage(RUSAGE_SELF, &usage) == 0 else {
-            return PerformanceResourceSnapshot(
-                userSeconds: 0, systemSeconds: 0, maximumRSSMiB: 0
-            )
-        }
-        func seconds(_ value: timeval) -> Double {
-            Double(value.tv_sec) + Double(value.tv_usec) / 1_000_000
-        }
-        return PerformanceResourceSnapshot(
-            userSeconds: seconds(usage.ru_utime),
-            systemSeconds: seconds(usage.ru_stime),
-            // Auf Darwin ist ru_maxrss die maximale Resident-Menge in Bytes.
-            maximumRSSMiB: Double(usage.ru_maxrss) / 1_048_576
-        )
-    }
-
-    private static func projectPerformanceRoot() -> URL? {
-        guard let path = ProcessInfo.processInfo.environment["FASTRA_PROJECT_PERF_ROOT"],
-              !path.isEmpty else { return nil }
-        let url = URL(fileURLWithPath: path).canonicalFileURL
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(
-            atPath: url.path, isDirectory: &isDirectory
-        ), isDirectory.boolValue else { return nil }
-        return url
-    }
-
-    /// Ein Warm-up plus drei echte Läufe durch denselben FolderSearch-Pfad,
-    /// den die Projekt-Suche verwendet. Dieser Diagnosemodus schreibt nichts
-    /// ins übergebene Projekt und liegt absichtlich außerhalb von ALL_TESTS.
     private static func runProjectPerformanceTest() {
         testLabel = "projectperf"
-        guard let root = projectPerformanceRoot() else {
-            // Fehlender Realbestand ist ein Umgebungsproblem, kein
-            // Funktionsfehler — gleiche Klassifizierung wie bei `tool4dlsp`
-            // (Roadmap „Bekannte Fehler", 2026-07-30): Der Runner zählt die
-            // Zeile damit als Exit 2 statt als echten FAIL.
-            finish(.environment, "Umgebungsproblem: FASTRA_PROJECT_PERF_ROOT fehlt oder ist kein Ordner")
-        }
-        let exclusions = [".json", "userPreferences.*", "DerivedData"]
-        let matcher = PathExclusion.Matcher(patterns: exclusions, relativeTo: root)
-        let allFiles: [URL]
-        let ripgrepFiltered: [URL]
-        do {
-            allFiles = try RipgrepFileEnumerator.files(in: root)
-            ripgrepFiltered = try RipgrepFileEnumerator.files(
-                in: root, excludedPatterns: exclusions
-            )
-        } catch {
-            finish(false, "Kandidatenliste fehlgeschlagen: \(error)")
-        }
-        let candidates = ripgrepFiltered.filter { !matcher.matches($0) }
-        let textCandidates = candidates.filter {
-            FolderSearch.passesFilter(url: $0, filter: .knownText)
-        }
-        func hasDerivedData(_ url: URL) -> Bool {
-            url.pathComponents.contains("DerivedData")
-        }
-        let jsonCount = allFiles.filter { $0.pathExtension == "json" }.count
-        let preferencesCount = allFiles.filter {
-            $0.pathComponents.contains {
-                $0.hasPrefix("userPreferences.")
-            }
-        }.count
-        let derivedDataCount = allFiles.filter(hasDerivedData).count
-        let leakedJSON = candidates.contains { $0.pathExtension == "json" }
-        let leakedPreferences = candidates.contains {
-            $0.pathComponents.contains {
-                $0.hasPrefix("userPreferences.")
-            }
-        }
-        let leakedDerivedData = candidates.contains(where: hasDerivedData)
-        guard !allFiles.isEmpty, candidates.count < allFiles.count,
-              jsonCount > 0, preferencesCount > 0, derivedDataCount > 0,
-              !leakedJSON, !leakedPreferences, !leakedDerivedData else {
-            finish(false, "Ausschlussinventar fehlerhaft: alle=\(allFiles.count), "
-                + "Kandidaten=\(candidates.count), json=\(jsonCount), "
-                + "userPreferences=\(preferencesCount), DerivedData=\(derivedDataCount), "
-                + "Leaks=\(leakedJSON)/\(leakedPreferences)/\(leakedDerivedData)")
-        }
-
-        let inventory = String(
-            format: "PROJECTPERF inventory all=%d candidates=%d text_candidates=%d "
-                + "search_filter=all "
-                + "json_excluded=%d user_preferences_excluded=%d "
-                + "derived_data_excluded=%d\n",
-            allFiles.count, candidates.count, textCandidates.count, jsonCount,
-            preferencesCount, derivedDataCount
-        )
-        FileHandle.standardError.write(Data(inventory.utf8))
-
-        let options = SearchOptions(
-            find: "util_*", replace: "", isRegex: false,
-            caseSensitive: false, wholeWord: false,
-            treatWildcardLiterally: false
-        )
-        let warmupError: String? = autoreleasepool {
-            FolderSearch.find(
-                in: [root], filter: .all, options: options,
-                excludedPatterns: exclusions, relativeTo: root
-            ).invalidPatternMessage
-        }
-        guard warmupError == nil else {
-            finish(false, "Warm-up fehlgeschlagen: \(warmupError ?? "")")
-        }
-
-        var wallTimes: [Double] = []
-        var lastMatches = 0
-        for run in 1...3 {
-            let measurement = autoreleasepool { () -> (
-                wall: Double, matches: Int, capped: Bool, error: String?,
-                userCPU: Double, systemCPU: Double, maximumRSSMiB: Double
-            ) in
-                let resourcesBefore = performanceResourceSnapshot()
-                let started = ProcessInfo.processInfo.systemUptime
-                let result = FolderSearch.find(
-                    in: [root], filter: .all, options: options,
-                    excludedPatterns: exclusions, relativeTo: root
-                )
-                let wall = ProcessInfo.processInfo.systemUptime - started
-                let resourcesAfter = performanceResourceSnapshot()
-                return (
-                    wall, result.totalMatches, result.wasCapped,
-                    result.invalidPatternMessage,
-                    resourcesAfter.userSeconds - resourcesBefore.userSeconds,
-                    resourcesAfter.systemSeconds - resourcesBefore.systemSeconds,
-                    resourcesAfter.maximumRSSMiB
-                )
-            }
-            guard measurement.error == nil else {
-                finish(false, "Lauf \(run) fehlgeschlagen: "
-                    + (measurement.error ?? "unbekannt"))
-            }
-            wallTimes.append(measurement.wall)
-            lastMatches = measurement.matches
-            let line = String(
-                format: "PROJECTPERF run=%d candidates=%d matches=%d capped=%@ "
-                    + "wall_s=%.4f user_cpu_s=%.4f system_cpu_s=%.4f "
-                    + "max_rss_mib=%.1f\n",
-                run, candidates.count, measurement.matches,
-                measurement.capped ? "yes" : "no", measurement.wall,
-                measurement.userCPU, measurement.systemCPU,
-                measurement.maximumRSSMiB
-            )
-            FileHandle.standardError.write(Data(line.utf8))
-        }
-        let median = wallTimes.sorted()[1]
-        guard median < 1.5 else {
-            finish(false, String(
-                format: "Median %.4f s verfehlt Ziel <1,5 s "
-                    + "(Kandidaten=%d, Treffer=%d)",
-                median, candidates.count, lastMatches
-            ))
-        }
-        finish(true, String(
-            format: "3 warme Realprojekt-Läufe, Median %.4f s (<1,5 s), "
-                + "%d Kandidaten, %d Treffer; Ausschlüsse leakfrei",
-            median, candidates.count, lastMatches
-        ))
+        SelfTestProjectPerformance(finish: finish, editorTextView: editorTextView(in:))
+            .runSearch()
     }
 
-    /// Misst `folders.json` unabhängig vom Suchlauf vom Workspace-Aufruf bis
-    /// zum tatsächlich montierten Editor-Text. Ein schneller Befund belegt,
-    /// dass die beobachtete Wartezeit aus dem Suchscan statt aus FileLoader/
-    /// Editor stammt; nur eine eigenständig langsame Messung rechtfertigt hier
-    /// einen zusätzlichen Ladepfad-Fix.
     private static func runProjectOpenPerformanceTest() {
         testLabel = "projectopenperf"
-        guard let ws = Workspace.shared else {
+        guard let workspace = Workspace.shared else {
             finish(false, "Workspace fehlt")
         }
-        guard let root = projectPerformanceRoot() else {
-            finish(.environment, "Umgebungsproblem: FASTRA_PROJECT_PERF_ROOT "
-                   + "fehlt oder ist kein Ordner")
-        }
-        guard let mainWindow = NSApp.windows.first(where: {
-                  $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                      && $0.contentView != nil && $0.isVisible
-              }),
-              let view = mainWindow.contentView else {
-            finish(false, "sichtbares Hauptfenster mit contentView fehlt")
-        }
-        let file = root.appendingPathComponent("Project/Sources/folders.json")
-            .canonicalFileURL
-        guard let expected = try? String(contentsOf: file, encoding: .utf8) else {
-            finish(false, "Project/Sources/folders.json ist nicht UTF-8-lesbar")
-        }
-
-        ws.openProject(at: root)
-        let resourcesBefore = performanceResourceSnapshot()
-        let started = ProcessInfo.processInfo.systemUptime
-        ws.loadFile(at: file) { ok in
-            let callbackSeconds = ProcessInfo.processInfo.systemUptime - started
-            guard ok else {
-                ws.closeProject()
-                finish(false, "Workspace.loadFile meldete Fehler")
+        SelfTestProjectPerformance(finish: finish, editorTextView: editorTextView(in:))
+            .runOpen(workspace: workspace) {
+                NSApp.windows.first(where: {
+                    $0.frameAutosaveName != SearchWindow.frameAutosaveName
+                        && $0.contentView != nil && $0.isVisible
+                })?.contentView
             }
-            pollProjectOpenPerformance(
-                ws: ws, root: view, expected: expected, file: file,
-                started: started, callbackSeconds: callbackSeconds,
-                resourcesBefore: resourcesBefore, tick: 0
-            )
-        }
     }
 
-    private static func pollProjectOpenPerformance(
-        ws: Workspace,
-        root: NSView,
-        expected: String,
-        file: URL,
-        started: TimeInterval,
-        callbackSeconds: TimeInterval,
-        resourcesBefore: PerformanceResourceSnapshot,
-        tick: Int
-    ) {
-        if ws.activeTab?.url == file, ws.activeTab?.isLoading == false,
-           let textView = editorTextView(in: root) as? TextView,
-           textView.string == expected {
-            let renderedSeconds = ProcessInfo.processInfo.systemUptime - started
-            let resourcesAfter = performanceResourceSnapshot()
-            let line = String(
-                format: "PROJECTOPEN file_bytes=%d load_callback_s=%.4f "
-                    + "editor_rendered_s=%.4f user_cpu_s=%.4f "
-                    + "system_cpu_s=%.4f max_rss_mib=%.1f\n",
-                expected.utf8.count, callbackSeconds, renderedSeconds,
-                resourcesAfter.userSeconds - resourcesBefore.userSeconds,
-                resourcesAfter.systemSeconds - resourcesBefore.systemSeconds,
-                resourcesAfter.maximumRSSMiB
-            )
-            FileHandle.standardError.write(Data(line.utf8))
-            ws.closeProject()
-            guard renderedSeconds < 1.5 else {
-                finish(false, String(
-                    format: "folders.json brauchte bis zum Editor %.4f s", renderedSeconds
-                ))
-            }
-            finish(true, String(
-                format: "folders.json separat: Load %.4f s, Editor %.4f s (<1,5 s)",
-                callbackSeconds, renderedSeconds
-            ))
-        }
-        if tick >= 200 {
-            ws.closeProject()
-            finish(false, "folders.json nach 5 s nicht im Editor montiert")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.025) {
-            pollProjectOpenPerformance(
-                ws: ws, root: root, expected: expected, file: file,
-                started: started, callbackSeconds: callbackSeconds,
-                resourcesBefore: resourcesBefore, tick: tick + 1
-            )
-        }
-    }
-
-    /// Fensterlos — Git-Status end-to-end (Projekt- & Git-Ausbau, Etappe 2):
+    /// Fensterlos — Git-Status end-to-end:
     /// echtes Temp-Repo via `git init`, Datei-Zustände (untracked/modified/
     /// staged), Branch-Anzeige, Ordner-Rollup und die dialogfreie git-Auflösung.
     /// Braucht ein installiertes git — sonst ausgewiesener SKIP (kein FAIL).
@@ -21713,7 +17463,7 @@ enum SelfTest {
     /// öffnet ihn per `openGitCommit` (git show), dann weiter zum Diff.
     private static func pollGitLog(_ ws: Workspace, repo: URL, fm: FileManager) {
         // Bisher 100 × 30 ms ≈ 3 s.
-        // Wie bisher: der ERSTE Tab dieser Art, und der muss schon
+        // Wie bisher: der erste Tab dieser Art, und der muss schon
         // Inhalt haben. Ein späterer gefüllter Tab zählt nicht.
         func logTab() -> EditorTab? {
             guard let tab = ws.tabs.first(where: { $0.gitKind == .log }),
@@ -21750,7 +17500,7 @@ enum SelfTest {
     /// Wartet auf den Commit-Tab (git show) und prüft, dass er den Diff enthält.
     private static func pollGitCommit(_ ws: Workspace, repo: URL, fm: FileManager, hash: String) {
         // Bisher 100 × 30 ms ≈ 3 s.
-        // Wie bisher: der ERSTE Tab dieser Art, und der muss schon
+        // Wie bisher: der erste Tab dieser Art, und der muss schon
         // Inhalt haben. Ein späterer gefüllter Tab zählt nicht.
         func commitTab() -> EditorTab? {
             guard let tab = ws.tabs.first(where: { $0.gitKind == .commit }),
@@ -21779,7 +17529,7 @@ enum SelfTest {
     /// tracked.txt drinsteht — plus die Dedup-Garantie (kein zweiter Diff-Tab).
     private static func pollGitDiff(_ ws: Workspace, repo: URL, fm: FileManager) {
         // Bisher 100 × 30 ms ≈ 3 s.
-        // Wie bisher: der ERSTE Tab dieser Art, und der muss schon
+        // Wie bisher: der erste Tab dieser Art, und der muss schon
         // Inhalt haben. Ein späterer gefüllter Tab zählt nicht.
         func diffTab() -> EditorTab? {
             guard let tab = ws.tabs.first(where: { $0.gitKind == .diff }),
@@ -21814,7 +17564,7 @@ enum SelfTest {
         }
     }
 
-    // MARK: - Selbsttest: Git-Aktionen (Etappe 2, Schritt 4)
+    // MARK: - Selbsttest: Git-Aktionen
 
     /// Führt eine Kette von git-Kommandos seriell aus (Setup-Helfer). Bricht bei
     /// erstem Fehler ab und meldet ihn über den Completion (`false`, Fehlertext).
@@ -21843,7 +17593,7 @@ enum SelfTest {
         guard GitRunner.isAvailable else {
             finish(.skip, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
         }
-        Workspace.presentGitDialogs = false
+        ws.gitInteraction.presentsDialogs = false
 
         let fm = FileManager.default
         let base = selfTestTemporaryDirectory()
@@ -21893,7 +17643,7 @@ enum SelfTest {
     /// und klickt deren Plus über AppKits Fenster-Hit-Testing.
     private static func pollGitStageFolderRow(_ ws: Workspace, base: URL,
                                               repo: URL, material: URL) {
-        // Zwei Stufen in EINER Frist (wie zuvor der gemeinsame Tick-Zähler):
+        // Zwei Stufen in einer Frist (wie zuvor der gemeinsame Tick-Zähler):
         // erst die zusammengefasste Zeile, dann ihre Hover-Knöpfe.
         var stage = 0
         var found: (window: NSWindow, content: NSView, stage: NSView, discard: NSView)?
@@ -21998,229 +17748,18 @@ enum SelfTest {
         )
     }
 
-    // MARK: - Selbsttest githistory (Verlauf einer einzelnen Datei)
-
-    /// Prüft den auf eine Datei eingeschränkten Verlauf im ECHTEN Fenster:
-    /// (a) Ausgangslage: Der Graph-Tab zeigt alle vier Commits des Fixtures.
-    /// (b) „Git-Historie anzeigen" schaltet auf den Graph-Tab und zeigt nur
-    ///     die DREI Commits, die `alpha.txt` geändert haben.
-    /// (c) Ein Wechsel auf den Dateien-Tab und zurück lässt die Einschränkung
-    ///     stehen — genau das ging vorher verloren.
-    /// (d) Ein echter Mausklick auf „Ganze Historie" bringt alle vier zurück.
     private static func runGitHistoryTest() {
         testLabel = "githistory"
-        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        guard GitRunner.isAvailable else {
-            finish(.skip, "git nicht verfügbar — Verlaufsansicht bleibt erwartungsgemäß verborgen")
-        }
-        Workspace.presentGitDialogs = false
-
-        let fm = FileManager.default
-        let base = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-githistory-\(UUID().uuidString)")
-        let repo = base.appendingPathComponent("working-copy")
-        let alpha = repo.appendingPathComponent("alpha.txt")
-        let beta = repo.appendingPathComponent("beta.txt")
-        do {
-            try fm.createDirectory(at: repo, withIntermediateDirectories: true)
-            try "alpha 1\n".write(to: alpha, atomically: true, encoding: .utf8)
-            try "beta 1\n".write(to: beta, atomically: true, encoding: .utf8)
-        } catch {
-            finish(false, "(setup) \(error.localizedDescription)")
-        }
-        // Vier Commits, von denen nur drei alpha.txt anfassen. Die Zahlen
-        // 4 und 3 sind der eigentliche Beweis: Eine Ansicht, die den Filter
-        // ignoriert, zeigt vier Zeilen.
-        let steps: [[String]] = [
-            ["init", "-b", "main"],
-            ["config", "user.email", "t@t"],
-            ["config", "user.name", "T"],
-            ["add", "-A"],
-            ["commit", "-m", "beide angelegt"],
-        ]
-        runGitSequence(steps, in: repo) { ok, error in
-            guard ok else {
-                try? fm.removeItem(at: base)
-                finish(false, "(setup git) \(error)")
-            }
-            do {
-                try "alpha 2\n".write(to: alpha, atomically: true, encoding: .utf8)
-            } catch {
-                try? fm.removeItem(at: base)
-                finish(false, "(alpha 2) \(error.localizedDescription)")
-            }
-            runGitSequence([["add", "-A"], ["commit", "-m", "alpha zwei"]], in: repo) { ok2, error2 in
-                guard ok2 else {
-                    try? fm.removeItem(at: base)
-                    finish(false, "(commit alpha zwei) \(error2)")
-                }
-                do {
-                    try "beta 2\n".write(to: beta, atomically: true, encoding: .utf8)
-                } catch {
-                    try? fm.removeItem(at: base)
-                    finish(false, "(beta 2) \(error.localizedDescription)")
-                }
-                runGitSequence([["add", "-A"], ["commit", "-m", "beta zwei"]], in: repo) { ok3, error3 in
-                    guard ok3 else {
-                        try? fm.removeItem(at: base)
-                        finish(false, "(commit beta zwei) \(error3)")
-                    }
-                    do {
-                        try "alpha 3\n".write(to: alpha, atomically: true, encoding: .utf8)
-                    } catch {
-                        try? fm.removeItem(at: base)
-                        finish(false, "(alpha 3) \(error.localizedDescription)")
-                    }
-                    runGitSequence([["add", "-A"], ["commit", "-m", "alpha drei"]], in: repo) { ok4, error4 in
-                        guard ok4 else {
-                            try? fm.removeItem(at: base)
-                            finish(false, "(commit alpha drei) \(error4)")
-                        }
-                        DispatchQueue.main.async {
-                            ws.openProject(at: repo)
-                            ws.sidebarMode = .graph
-                            pollGitHistoryFull(ws, base: base, alpha: alpha)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// (a) Ganze Historie: vier gerenderte Zeilen, keine Kopfzeile.
-    private static func pollGitHistoryFull(_ ws: Workspace, base: URL, alpha: URL) {
-        waitFor(budget: 8, pause: 0.05,
-                condition: {
-                    let content = mainWindowForAXChecks()?.contentView
-                    return content.map { markerViewExists(id: "gitGraphRows-4", in: $0) } ?? false
-                },
-                onTimeout: { book in
-                    try? FileManager.default.removeItem(at: base)
-                    finish(false, "Ganze Historie zeigt keine vier Commits "
-                        + "(Modell: \(ws.gitLog.count)) — \(book.summary)")
-                },
-                then: {
-                    ws.showGitHistory(for: alpha)
-                    pollGitHistoryFiltered(ws, base: base, alpha: alpha, phase: 0)
-                })
-    }
-
-    /// (b) und (c): eingeschränkte Ansicht, danach dieselbe Prüfung nach
-    /// einem Ausflug auf den Dateien-Tab.
-    private static func pollGitHistoryFiltered(_ ws: Workspace, base: URL, alpha: URL,
-                                               phase: Int) {
-        var header = false
-        var threeRows = false
-        var onGraph = false
-        waitFor(budget: 8, pause: 0.05,
-                condition: {
-                    let content = mainWindowForAXChecks()?.contentView
-                    header = content.map {
-                        markerViewExists(id: "gitHistoryFile-alpha.txt", in: $0)
-                    } ?? false
-                    threeRows = content.map { markerViewExists(id: "gitGraphRows-3", in: $0) } ?? false
-                    onGraph = ws.sidebarMode == .graph
-                    return header && threeRows && onGraph
-                },
-                onTimeout: { book in
-                    try? FileManager.default.removeItem(at: base)
-                    finish(false, "Dateiverlauf (Durchgang \(phase + 1)) falsch: "
-                        + "Kopfzeile=\(header), drei Zeilen=\(threeRows), Graph-Tab=\(onGraph), "
-                        + "Modell: \(ws.gitFileHistory.count) Commits — \(book.summary)")
-                },
-                then: {
-                    if phase == 0 {
-                        // Reiner Tab-Wechsel — er darf die Einschränkung nicht
-                        // zurücksetzen.
-                        ws.sidebarMode = .files
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            ws.sidebarMode = .graph
-                            pollGitHistoryFiltered(ws, base: base, alpha: alpha, phase: 1)
-                        }
-                        return
-                    }
-                    clickGitHistoryFullButton(ws, base: base)
-                })
-    }
-
-    /// (d) Echter Mausklick auf „Ganze Historie".
-    private static func clickGitHistoryFullButton(_ ws: Workspace, base: URL) {
-        guard let window = mainWindowForAXChecks(),
-              let content = window.contentView,
-              let marker = markerView(id: "gitHistoryFullButton", in: content) else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Knopf „Ganze Historie“ fehlt")
-        }
-        window.layoutIfNeeded()
-        let point = marker.convert(NSPoint(x: marker.bounds.midX,
-                                           y: marker.bounds.midY), to: nil)
-        guard sendMouseClick(at: point, in: window, modifiers: [], viaApp: true) else {
-            try? FileManager.default.removeItem(at: base)
-            finish(false, "Klick auf „Ganze Historie“ nicht erzeugbar")
-        }
-        pollGitHistoryRestored(ws, base: base)
-    }
-
-    private static func pollGitHistoryRestored(_ ws: Workspace, base: URL) {
-        var fourRows = false
-        var headerGone = false
-        waitFor(budget: 5, pause: 0.05,
-                condition: {
-                    let content = mainWindowForAXChecks()?.contentView
-                    fourRows = content.map { markerViewExists(id: "gitGraphRows-4", in: $0) } ?? false
-                    headerGone = content.map {
-                        !markerViewExists(id: "gitHistoryFile-alpha.txt", in: $0)
-                    } ?? false
-                    return fourRows && headerGone && ws.gitHistoryFile == nil
-                },
-                onTimeout: { book in
-                    try? FileManager.default.removeItem(at: base)
-                    finish(false, "Nach dem Klick auf „Ganze Historie“: vier Zeilen=\(fourRows), "
-                        + "Kopfzeile weg=\(headerGone), Filter=\(String(describing: ws.gitHistoryFile)) "
-                        + "— \(book.summary)")
-                },
-                then: {
-                    func done() {
-                        try? FileManager.default.removeItem(at: base)
-                        finish(true, "Dateiverlauf zeigt 3 von 4 Commits, überlebt den Tab-Wechsel, "
-                            + "und „Ganze Historie“ stellt alle 4 wieder her")
-                    }
-                    guard let directory = ProcessInfo.processInfo.environment["FASTRA_GITHISTORY_REVIEW_DIR"] else {
-                        done(); return
-                    }
-                    let review = URL(fileURLWithPath: directory)
-                    let repo = base.appendingPathComponent("working-copy")
-                    ws.loadFile(at: repo.appendingPathComponent("beta.txt")) { loaded in
-                        guard loaded, let window = mainWindowForAXChecks() else { finish(false, "History-Fixture nicht bereit") }
-                        window.title = "fastra-githistory-\(UUID().uuidString)"
-                        do {
-                            try FileManager.default.createDirectory(at: review, withIntermediateDirectories: true)
-                            try Data(repo.path.utf8).write(to: review.appendingPathComponent("fixture-repo"))
-                            try Data("ready\n".utf8).write(to: review.appendingPathComponent("ready"))
-                        } catch { finish(.environment, "History-Abnahmemarker nicht schreibbar") }
-                        waitFor(budget: 300, pause: 0.1, condition: {
-                            FileManager.default.fileExists(atPath: review.appendingPathComponent("continue").path)
-                        }, onTimeout: { _ in
-                            try? FileManager.default.removeItem(at: base)
-                            finish(.environment, "Manuelle History-Abnahme nicht freigegeben")
-                        }, then: {
-                            guard ws.activeTab?.url?.lastPathComponent == "alpha.txt",
-                                  ws.activeTab?.content == "alpha 3\n" else {
-                                finish(false, "History-Menü öffnete nicht die aktuelle normale Datei")
-                            }
-                            done()
-                        })
-                    }
-                })
+        gitHistoryTests.runGitHistoryTest()
     }
 
     // MARK: - Selbsttest sidebarstate (Zustand über den Tab-Wechsel)
 
     /// Prüft, dass ein Wechsel des Seitenleisten-Tabs die Arbeit im
-    /// Dateien-Tab nicht wegwirft (Daniel-Befund 2026-08-24):
+    /// Dateien-Tab nicht wegwirft:
     /// (a) Filter tippen → gefilterte Liste samt Zähler ist gerendert.
     /// (b) In der echten NSScrollView weit nach unten scrollen.
-    /// (c) Auf den Graph-Tab und zurück — Zähler UND Scrollposition müssen
+    /// (c) Auf den Graph-Tab und zurück — Zähler und Scrollposition müssen
     ///     wieder da sein.
     private static func runSidebarStateTest() {
         testLabel = "sidebarstate"
@@ -22228,7 +17767,7 @@ enum SelfTest {
         guard GitRunner.isAvailable else {
             finish(.skip, "git nicht verfügbar — der Tab-Umschalter erscheint erwartungsgemäß nicht")
         }
-        Workspace.presentGitDialogs = false
+        ws.gitInteraction.presentsDialogs = false
         // Ein flaches Fenster virtualisiert die erste Dateizeile nach dem
         // Scrollen. Die spätere Messung muss auch ohne deren Marker gelingen.
         if let window = mainWindowForAXChecks() {
@@ -22392,11 +17931,9 @@ enum SelfTest {
         return nil
     }
 
-    /// Daniel-Wunsch 2026-07-30: Der Abschnittskopf „ÄNDERUNGEN" samt
-    /// Sammel-Knöpfen muss beim Scrollen oben stehen bleiben. Der Test füllt
-    /// ein echtes Repo mit so vielen Änderungen, dass die Liste sicher
-    /// scrollt, scrollt die echte NSScrollView der Seitenleiste und prüft
-    /// danach, dass Kopf und Knöpfe weiter an der Oberkante sichtbar sind.
+    /// Der Abschnittskopf „ÄNDERUNGEN“ mit Sammelknöpfen bleibt beim Scrollen
+    /// oben sichtbar. Ein echtes Repo ausreichend füllen, die NSScrollView
+    /// scrollen und danach die Geometrie von Kopf und Knöpfen prüfen.
     private static func runGitStickyHeaderTest() {
         testLabel = "gitstickyheader"
         guard ProcessInfo.processInfo.environment["FASTRA_SIDEBAR"] == "changes" else {
@@ -22406,7 +17943,7 @@ enum SelfTest {
         guard GitRunner.isAvailable else {
             finish(.skip, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
         }
-        Workspace.presentGitDialogs = false
+        ws.gitInteraction.presentsDialogs = false
 
         let fm = FileManager.default
         let base = selfTestTemporaryDirectory()
@@ -22573,7 +18110,7 @@ enum SelfTest {
                     + "(Knopf \(Int(button.minY))–\(Int(button.maxY)), "
                     + "Kopf \(Int(after.minY))–\(Int(after.maxY)))")
             }
-            // (e) Auch der letzte Knopf ist VOLLSTÄNDIG sichtbar. In einer
+            // (e) Auch der letzte Knopf ist vollständig sichtbar. In einer
             // schmalen Seitenleiste schnitt der Titel ihn vorher ab, weil er
             // auf seiner Idealbreite bestand.
             guard let stageNow = markerView(id: "gitHeaderStageAll",
@@ -22597,13 +18134,10 @@ enum SelfTest {
         }
     }
 
-    /// Daniel-Wunsch 2026-07-30: Mehrere Dateizeilen der Änderungen-Ansicht
-    /// per Klick + Shift-/Cmd-Klick markieren und auf einen Schlag verwerfen.
-    /// Der Test klickt echte Fensterzeilen: Klick wählt die M-Zeile, Shift-
-    /// Klick spannt den Bereich bis zur letzten Zeile auf, Cmd-Klick nimmt
-    /// die untracked Datei wieder heraus. Verwerfen über den Hover-Knopf der
-    /// markierten Zeile muss dann GENAU die zwei getrackten Dateien
-    /// zurücksetzen und die abgewählte untracked Datei stehen lassen.
+    /// Mehrfachauswahl über echte Zeilenklicks prüfen: Klick auf die M-Zeile,
+    /// Shift-Klick bis zur letzten Zeile, Cmd-Klick zum Abwählen der unversionierten
+    /// Datei. Verwerfen über den Hover-Knopf soll nur die zwei gewählten
+    /// versionierten Dateien zurücksetzen.
     private static func runGitMultiDiscardTest() {
         testLabel = "gitmultidiscard"
         guard ProcessInfo.processInfo.environment["FASTRA_SIDEBAR"] == "changes" else {
@@ -22613,7 +18147,7 @@ enum SelfTest {
         guard GitRunner.isAvailable else {
             finish(.skip, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
         }
-        Workspace.presentGitDialogs = false
+        ws.gitInteraction.presentsDialogs = false
         // Der erste Klick soll ausdrücklich von flach nach Baum wechseln.
         workspaceDefaults().set(GitChangesLayoutMode.flat.rawValue, forKey: "git.changesLayout")
 
@@ -23101,7 +18635,7 @@ enum SelfTest {
                 })
     }
 
-    /// Kopf-Aktionen der ÄNDERUNGEN-Sektion (Daniel-Wunsch 2026-07-30):
+    /// Kopf-Aktionen der ÄNDERUNGEN-Sektion:
     /// Der Diff-Knopf öffnet den Gesamt-Diff-Tab (`git diff HEAD`), der
     /// Verwerfen-Knopf verwirft die komplette Sektion — hier die letzte
     /// verbliebene untracked Datei.
@@ -23197,7 +18731,7 @@ enum SelfTest {
         guard GitRunner.isAvailable else {
             finish(.skip, "git nicht verfügbar — Git-Ansicht bleibt erwartungsgemäß verborgen")
         }
-        Workspace.presentGitDialogs = false
+        ws.gitInteraction.presentsDialogs = false
 
         let fm = FileManager.default
         let base = selfTestTemporaryDirectory()
@@ -23295,7 +18829,7 @@ enum SelfTest {
             + "\(expectedPrimary.displayAddress.hashValue)"
         let githubAddressID = "gitPrimaryPushAddress-github-"
             + "\(expectedGithub.displayAddress.hashValue)"
-        // Zwei Stufen in EINER Frist: erst beide Flächen samt Adressen, dann
+        // Zwei Stufen in einer Frist: erst beide Flächen samt Adressen, dann
         // das Key-Fenster für den Klick.
         var stage = 0
         var found: (window: NSWindow, button: NSView)?
@@ -23616,7 +19150,7 @@ enum SelfTest {
         }
         // Fehler-Dialoge unterdrücken, damit ein unerwarteter Fehler den Lauf
         // nicht an einem modalen NSAlert aufhängt.
-        Workspace.presentGitDialogs = false
+        ws.gitInteraction.presentsDialogs = false
 
         let fm = FileManager.default
         let base = selfTestTemporaryDirectory().appendingPathComponent("fastra-gitactions-\(UUID().uuidString)")
@@ -23774,12 +19308,9 @@ enum SelfTest {
         }
     }
 
-    /// WORKTREE-SPERRE: Ein zweites Arbeitsverzeichnis checkt einen Branch aus.
-    /// Git verbietet denselben Branch danach im Hauptverzeichnis (Exit 128).
-    /// Fastra muss diese Absage kennen, sie in Nutzersprache erklären und den
-    /// Weg zum anderen Verzeichnis anbieten — statt die git-Rohmeldung
-    /// „Schwerwiegend: … wird bereits von Arbeitsverzeichnis … verwendet" zu
-    /// zeigen. Realer Bedienfall aus dem Arbeitsbetrieb (2026-09-09).
+    /// Ein in einem zweiten Worktree ausgecheckter Branch ist im Hauptworktree
+    /// gesperrt (Git-Exit 128). Fastra muss die Sperre erklären und den Weg zum
+    /// anderen Arbeitsverzeichnis anbieten.
     private static func gitActionsWorktreeBlock(_ ws: Workspace, repo: URL, bare: URL,
                                                 base: URL, fm: FileManager) {
         let linked = base.appendingPathComponent("zweitkopie")
@@ -23796,7 +19327,7 @@ enum SelfTest {
                           var block: GitBranchWorktreeBlock?
                           ws.gitBranchWorktreeBlockHandler = { seen in
                               block = seen
-                              // `false`: Das andere Verzeichnis NICHT öffnen —
+                              // `false`: Das andere Verzeichnis nicht öffnen —
                               // der Projektwechsel würde die restlichen Stufen
                               // dieses Laufs entwerten.
                               return false
@@ -23818,7 +19349,7 @@ enum SelfTest {
 
     /// Bewertet die Absage getrennt von der Warteschleife: richtiger Branch,
     /// richtiges Verzeichnis, und das Hauptverzeichnis steht unverändert auf
-    /// `main` — ein Wechsel darf hier gerade NICHT stattgefunden haben.
+    /// `main` — ein Wechsel darf hier gerade nicht stattgefunden haben.
     private static func gitActionsWorktreeBlockVerdict(
         _ ws: Workspace, block: GitBranchWorktreeBlock?, repo: URL, bare: URL,
         base: URL, fm: FileManager, linked: URL
@@ -23828,11 +19359,11 @@ enum SelfTest {
                   == linked.resolvingSymlinksInPath().path,
               block.worktreeExists,
               block.informativeText.contains(block.worktree) else {
-            ws.gitBranchWorktreeBlockHandler = Workspace.defaultGitBranchWorktreeBlock
+            ws.gitBranchWorktreeBlockHandler = ws.gitInteraction.defaultGitBranchWorktreeBlock
             try? fm.removeItem(at: base)
             finish(false, "(worktree-absage) unerwartet: \(String(describing: block))")
         }
-        ws.gitBranchWorktreeBlockHandler = Workspace.defaultGitBranchWorktreeBlock
+        ws.gitBranchWorktreeBlockHandler = ws.gitInteraction.defaultGitBranchWorktreeBlock
         GitRunner.run(["branch", "--show-current"], in: repo) { r in
             let current = r?.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
             guard current == "main" else {
@@ -23844,18 +19375,10 @@ enum SelfTest {
         }
     }
 
-    /// ZWEITE STUFE derselben Sperre: Der Ordner des fremden
-    /// Arbeitsverzeichnisses ist GELÖSCHT, git weiß aber noch nichts davon —
-    /// `git switch` scheitert weiterhin mit Exit 128, und
-    /// `FileManager.fileExists` meldet `false`.
-    ///
-    /// Vor der Korrektur (2026-09-10) blieb genau hier alles aus: Der
-    /// Rückgabewert des Dialogs lautete
-    /// `block.worktreeExists && alert.runModal() == …`, und `&&` wertet die
-    /// rechte Seite nach einem `false` gar nicht mehr aus. Es erschien also
-    /// kein Dialog, keine Meldung, kein Wechsel — der Nutzer klickte den
-    /// Branch beliebig oft an, und nichts geschah. Der Rat „Melde ihn mit
-    /// `git worktree prune` ab" erreichte niemanden.
+    /// Dieselbe Branch-Sperre bei gelöschtem Worktree-Ordner prüfen: Git kennt
+    /// die Zuordnung noch, obwohl `fileExists` false liefert. Der Dialog mit dem
+    /// Hinweis auf `git worktree prune` muss trotzdem erscheinen; seine Ausführung
+    /// darf nicht am Existenztest kurzgeschlossen werden.
     private static func gitActionsWorktreeGone(_ ws: Workspace, repo: URL, bare: URL,
                                                base: URL, fm: FileManager, linked: URL) {
         do {
@@ -23876,7 +19399,7 @@ enum SelfTest {
                   cond: { block != nil },
                   next: {
                       ws.gitBranchWorktreeBlockHandler =
-                          Workspace.defaultGitBranchWorktreeBlock
+                          ws.gitInteraction.defaultGitBranchWorktreeBlock
                       guard let block, block.branch == "belegt",
                             !block.worktreeExists,
                             block.informativeText.contains("prune") else {
@@ -23905,7 +19428,7 @@ enum SelfTest {
         }
     }
 
-    /// Neuer Branch OHNE Upstream: `gitPush()` legt den Remote-Ref an, lässt
+    /// Neuer Branch ohne Upstream: `gitPush()` legt den Remote-Ref an, lässt
     /// die lokale Upstream-Konfiguration aber bewusst unberührt.
     private static func gitActionsAutoUpstream(_ ws: Workspace, repo: URL, bare: URL, base: URL, fm: FileManager) {
         runGitSequence([["switch", "-c", "ohne-upstream"]], in: repo) { ok, e in
@@ -23937,7 +19460,7 @@ enum SelfTest {
         }
     }
 
-    /// WORKTREE ÖFFNEN: Die Absage bietet an, das blockierende
+    /// Worktree öffnen: Die Absage bietet an, das blockierende
     /// Arbeitsverzeichnis als Projekt zu öffnen — dort liegt der gesuchte
     /// Stand ja bereits. Diese Stufe belegt, dass der Knopf das auch tut; sie
     /// steht am Ende, weil sie das Projekt des Laufs bewusst wechselt.
@@ -23966,7 +19489,7 @@ enum SelfTest {
                                     },
                                     next: {
                                         ws.gitBranchWorktreeBlockHandler =
-                                            Workspace.defaultGitBranchWorktreeBlock
+                                            ws.gitInteraction.defaultGitBranchWorktreeBlock
                                         try? fm.removeItem(at: base)
                                         finish(true, "Git-Aktionen: Push (ahead→0), Pull-FF (Remote-Datei da), "
                                             + "Amend (Datei in Commit, Zahl gleich), Branch-Liste + Auswahl, "
@@ -23986,13 +19509,9 @@ enum SelfTest {
             && gitConfigValueIsAbsent(mergeConfig)
     }
 
-    /// Wartet, bis der Git-Koordinator frei ist, bevor die nächste Workspace-
-    /// Aktion ausgelöst wird. Die echte UI deaktiviert die Aktions-Menüpunkte
-    /// während `gitOperationsAreBusy`; ein Test-Aufruf im Freigabe-Fenster der
-    /// Vorgänger-Aktion verpufft dagegen still (Befund 2026-07-17: „(amend)
-    /// Timeout" — busy=true im Aufrufmoment, die Ground-Truth-Datei des Pulls
-    /// war schon auf der Platte, der exklusive Slot aber noch nicht wieder
-    /// freigegeben). Der Test wartet deshalb wie ein Nutzer auf das aktive Menü.
+    /// Vor der nächsten Workspace-Aktion auf Freigabe des Git-Koordinators
+    /// warten. Die echte UI deaktiviert Aktionen während `gitOperationsAreBusy`;
+    /// ein direkter Testaufruf soll dieselbe Vorbedingung einhalten.
     private static func gitActionsWhenIdle(_ ws: Workspace, base: URL, fm: FileManager,
                                            label: String,
                                            then action: @escaping () -> Void) {
@@ -24009,7 +19528,7 @@ enum SelfTest {
     /// Kleiner Poll-Helfer: ruft `cond` alle 30 ms, bei `true` → `next`; ist
     /// die Frist aufgebraucht → FAIL mit Label. Räumt bei Timeout das
     /// Basis-Verzeichnis ab. `budget` ist die frühere Tick-Zahl mal Pause —
-    /// 4,5 s für 150 Ticks, 9,0 s für 300 —, zählt aber nur BEDIENTE Zeit
+    /// 4,5 s für 150 Ticks, 9,0 s für 300 —, zählt aber nur bediente Zeit
     /// (Begründung in `SelfTestPolling.swift`).
     private static func pollUntil(budget: TimeInterval, base: URL, fm: FileManager, label: String,
                                   cond: @escaping () -> Bool, next: @escaping () -> Void) {
@@ -24022,7 +19541,7 @@ enum SelfTest {
                 then: next)
     }
 
-    /// Wie `pollUntil`, aber mit ASYNCHRONER Bedingung (`check` liefert das
+    /// Wie `pollUntil`, aber mit asynchroner Bedingung (`check` liefert das
     /// Ergebnis über einen Callback) — für Ground-Truth-Checks, die selbst git
     /// aufrufen. Vermeidet den Race mit dem lokalen Status-Cache.
     private static func pollAsync(budget: TimeInterval, base: URL, fm: FileManager, label: String,
@@ -24042,244 +19561,23 @@ enum SelfTest {
         guard let ws = Workspace.shared else {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
-
-        // ── Teiltest a: Buffer-Scope ──────────────────────────────────────
-        //
-        // Eindeutiger Inhalt mit genau 3 Vorkommen von „TESTMARKER".
-        // Variiert die Zeilenlängen bewusst, damit Zeile/Spalte-Logik
-        // nicht zufällig durch gleich lange Zeilen trivial klappt.
-        // Inhalt mit genau 3 „TESTMARKER"-Vorkommen (Erwartungswerte stehen in
-        // `runSearchTestAfterLoad` — ausgelagert wegen asynchronem loadFile).
-        let bufferContent = "erste Zeile ohne Treffer\n"
-            + "zweite Zeile TESTMARKER hier\n"
-            + "kurz\n"
-            + "TESTMARKER am Zeilenbeginn\n"
-            + "eine mittellange vierte Zeile, dann TESTMARKER am Ende"
-
-        // Temp-Datei für den Buffer-Test — Workspace.loadFile ist der
-        // offizielle Weg, Inhalt in einen Tab zu bringen (gleicher Pfad
-        // wie der Tab-Wechsel-Test).
-        let tmpBuf = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-search-buf-\(UUID().uuidString).txt")
-        do { try bufferContent.write(to: tmpBuf, atomically: true, encoding: .utf8) }
-        catch { finish(false, "(a) Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
-
-        // loadFile ist jetzt asynchron (v0.9) — Temp-Datei-Löschung UND
-        // Folge-Schritte in der Completion, damit der Inhalt beim Prüfen
-        // wirklich im Tab steht und die Datei beim Hintergrund-Read existiert.
-        ws.loadFile(at: tmpBuf) { ok in
-            // Temp-Datei erst nach erfolgtem Lesen löschen.
-            try? FileManager.default.removeItem(at: tmpBuf)
-            guard ok else { finish(false, "(a) loadFile schlug fehl (completion false)") }
-            runSearchTestAfterLoad(ws)
-        }
+        SelfTestSearchSemantics(workspace: ws, waitFor: waitFor, finish: finish).runSearchTest()
     }
 
-    /// Folge-Schritte von `runSearchTest` nach erfolgreichem Datei-Laden.
-    /// Ausgelagert, damit runSearchTest übersichtlich bleibt.
-    private static func runSearchTestAfterLoad(_ ws: Workspace) {
-        // Erwartungswerte: identisch mit den lokalen Konstanten in runSearchTest.
-        let expectedBufferCount = 3
-        let expectedFirstLine   = 2
-        let expectedFirstCol    = 14
-
-        // Die Live-Suche arbeitet nur bei sichtbarer Suchmaske. Das ist der
-        // reale Nutzerpfad und verhindert ungefragte Volltextläufe beim
-        // bloßen Öffnen großer Dateien.
-        ws.showSearchDialog = true
-
-        // Scope sicher auf .file setzen. SearchRunner erkennt den Wechsel
-        // über seinen Combine-Trigger und sucht im Buffer neu.
-        ws.scope = .file
-        ws.useRegex = false          // Plain-Text → kein Regex-Syntax-Fehler möglich
-        ws.caseSensitive = true
-        ws.findPattern = "TESTMARKER"
-
-        // Buffer-Debounce = 120 ms; wir pollen bis zu 2 Sekunden engmaschig
-        // und gehen erst weiter, wenn die erwartete Trefferanzahl erreicht ist
-        // oder das Fenster abgelaufen ist.
-        pollForBufferMatches(ws,
-                             expectedCount: expectedBufferCount,
-                             expectedFirstLine: expectedFirstLine,
-                             expectedFirstCol: expectedFirstCol)
-    }
-
-    /// Pollt auf `bufferMatches.count == expectedCount`. Läuft max. ~2 s.
-    /// Bei Erfolg → Teiltest b starten. Bei Timeout oder falschen Werten → FAIL.
-    private static func pollForBufferMatches(
-        _ ws: Workspace,
-        expectedCount: Int,
-        expectedFirstLine: Int,
-        expectedFirstCol: Int
-    ) {
-        // Bisher 67 Ticks × 30 ms ≈ 2 Sekunden Beobachtungsfenster.
-        waitFor(budget: 2.01, pause: 0.03,
-                condition: { ws.bufferMatches.count == expectedCount },
-                onTimeout: { book in
-                    finish(false,
-                        "(a) Buffer-Matches: \(ws.bufferMatches.count), "
-                        + "erwartet \(expectedCount) "
-                        + "(Pattern=\"\(ws.findPattern)\", "
-                        + "searchError=\(ws.searchError ?? "nil"), "
-                        + "visible=\(ws.showSearchDialog), scope=\(ws.scope), "
-                        + "searching=\(ws.bufferSearching), "
-                        + "optionsCurrent=\(ws.visibleBufferResultsOptions == ws.currentSearchOptions), "
-                        + "tabs=\(ws.tabs.count), loading=\(ws.activeTab?.isLoading ?? false), "
-                        + "textUTF16=\((ws.activeTab?.content ?? "").utf16.count), "
-                        + "selectionOnly=\(ws.searchInSelectionOnly), "
-                        + "range=\(String(describing: ws.activeSearchRange))) "
-                        + "— \(book.summary)")
-                }) {
-            // Richtige Anzahl → Zeile/Spalte des ersten Treffers prüfen.
-            let first = ws.bufferMatches[0]
-            if first.line != expectedFirstLine || first.column != expectedFirstCol {
-                finish(false,
-                    "(a) Treffer-Anzahl \(ws.bufferMatches.count) korrekt, aber erster Treffer "
-                    + "an Z\(first.line)/S\(first.column), erwartet "
-                    + "Z\(expectedFirstLine)/S\(expectedFirstCol)")
-            }
-            // Teiltest a bestanden → weiter mit b.
-            runSearchTestPartB(ws)
-        }
-    }
-
-    // MARK: - „Nur in Auswahl" (K3) — fensterlos
-
-    /// Lädt einen Buffer mit drei „foo"-Treffern (je einer pro Zeile), friert
-    /// eine Selektion auf Zeile 2 ein und prüft, dass die Suche NUR den
-    /// Treffer in der Auswahl liefert — mit ABSOLUTER Zeilennummer (2).
-    /// Danach „Nur in Auswahl" wieder aus → alle drei Treffer.
     private static func runSelSearchTest() {
         testLabel = "selsearch"
         guard let ws = Workspace.shared else {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
-        ws.showSearchDialog = true
-        // Zeilen je 11 Zeichen: „xxx foo yyy". foo-Offsets: 4 (Z1), 16 (Z2), 28 (Z3).
-        let content = "aaa foo bbb\nccc foo ddd\neee foo fff"
-        let tmp = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-selsearch-\(UUID().uuidString).txt")
-        do { try content.write(to: tmp, atomically: true, encoding: .utf8) }
-        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
-
-        ws.loadFile(at: tmp) { ok in
-            try? FileManager.default.removeItem(at: tmp)
-            guard ok else { finish(false, "loadFile schlug fehl (completion false)") }
-
-            ws.scope = .file
-            ws.useRegex = false
-            ws.caseSensitive = false
-            ws.findPattern = "foo"
-            // Selektion auf Zeile 2 („ccc foo ddd", Offset 12, Länge 11)
-            // einfrieren → nur der mittlere Treffer darf zählen.
-            ws.selectionRange = NSRange(location: 12, length: 11)
-            ws.setSearchInSelectionOnly(true)
-            pollSelSearchRestricted(ws)
-        }
+        SelfTestSearchSemantics(workspace: ws, waitFor: waitFor, finish: finish).runSelSearchTest()
     }
 
-    /// Pollt auf genau 1 Treffer (in der Auswahl), Zeile 2 / Spalte 5.
-    private static func pollSelSearchRestricted(_ ws: Workspace) {
-        // Bisher 67 × 30 ms ≈ 2 s.
-        waitFor(budget: 2.01, pause: 0.03,
-                condition: { ws.bufferMatches.count == 1 },
-                onTimeout: { book in
-                    finish(false, "(restricted) bufferMatches=\(ws.bufferMatches.count), erwartet 1 "
-                        + "(searchError=\(ws.searchError ?? "nil")) — \(book.summary)")
-                }) {
-            let m = ws.bufferMatches[0]
-            // foo in Zeile 2 beginnt an Offset 16 → Spalte 16−12+1 = 5.
-            if m.line != 2 || m.column != 5 {
-                finish(false, "(restricted) Treffer an Z\(m.line)/S\(m.column), erwartet Z2/S5")
-            }
-            // Phase 2: „Nur in Auswahl" aus → wieder alle drei Treffer.
-            ws.setSearchInSelectionOnly(false)
-            pollSelSearchFull(ws)
-        }
-    }
-
-    /// Pollt auf alle 3 Treffer, nachdem „Nur in Auswahl" abgeschaltet wurde.
-    private static func pollSelSearchFull(_ ws: Workspace) {
-        // Bisher 67 × 30 ms ≈ 2 s.
-        waitFor(budget: 2.01, pause: 0.03,
-                condition: { ws.bufferMatches.count == 3 },
-                onTimeout: { book in
-                    finish(false, "(full) bufferMatches=\(ws.bufferMatches.count) nach Abschalten, "
-                        + "erwartet 3 — \(book.summary)")
-                }) {
-            finish(true, "Nur-in-Auswahl: 1 Treffer (Z2/S5) in Auswahl, 3 ohne Auswahl")
-        }
-    }
-
-    // MARK: - Platzhalter-Suche `*` (Feature J) — fensterlos
-
-    /// Lädt „ring, The", sucht im Plain-Modus mit `*, the` (Platzhalter →
-    /// 1 Treffer über die ganze Zeile) und schaltet dann den Mini-Schalter
-    /// „* wörtlich" ein (→ 0 Treffer, weil der literale Text „*, the" fehlt).
-    /// Belegt die Verdrahtung UND den Live-Trigger des Schalters.
     private static func runWildcardTest() {
         testLabel = "wildcard"
         guard let ws = Workspace.shared else {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
-        ws.showSearchDialog = true
-        let tmp = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-wildcard-\(UUID().uuidString).txt")
-        do { try "ring, The".write(to: tmp, atomically: true, encoding: .utf8) }
-        catch { finish(false, "Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
-
-        ws.loadFile(at: tmp) { ok in
-            try? FileManager.default.removeItem(at: tmp)
-            guard ok else { finish(false, "loadFile schlug fehl (completion false)") }
-            ws.scope = .file
-            ws.useRegex = false
-            ws.treatWildcardLiterally = false
-            // Ersetzen-Seite VOR dem Find setzen, damit die erste Such-Runde
-            // schon den aufgelösten `replacedText` trägt — genau dieser speist
-            // die Inline-Live-Vorschau (Feature J, todo 3). `The *` → `The $1`.
-            ws.replacePattern = "The *"
-            ws.findPattern = "*, the"
-            pollWildcardPlaceholder(ws)
-        }
-    }
-
-    /// Phase 1: Platzhalter aktiv → genau 1 Treffer (greift über die ganze Zeile).
-    private static func pollWildcardPlaceholder(_ ws: Workspace) {
-        // Bisher 67 × 30 ms ≈ 2 s.
-        waitFor(budget: 2.01, pause: 0.03,
-                condition: { ws.bufferMatches.count == 1 && ws.searchError == nil },
-                onTimeout: { book in
-                    finish(false, "(platzhalter) bufferMatches=\(ws.bufferMatches.count), erwartet 1 "
-                        + "(searchError=\(ws.searchError ?? "nil")) — \(book.summary)")
-                }) {
-            let m = ws.bufferMatches[0]
-            // Der Treffer deckt „ring, The" ab (gierige Gruppe + Anker „, the").
-            if m.matchText != "ring, The" {
-                finish(false, "(platzhalter) Treffer-Text \"\(m.matchText)\", erwartet \"ring, The\"")
-            }
-            // Ersetzen-Seite END-TO-END: der Platzhalter-Replace „The *" muss in
-            // der LIVE-Suche bereits zu „The ring" aufgelöst sein. Genau dieser
-            // `replacedText` ist die Datenquelle der Inline-Vorschau — der Check
-            // sichert den Vorschau-Pfad ohne fragiles View-Tree-Abtasten ab.
-            if m.replacedText != "The ring" {
-                finish(false, "(platzhalter) replacedText \"\(m.replacedText)\", erwartet \"The ring\"")
-            }
-            ws.treatWildcardLiterally = true   // → literal, Live-Trigger
-            pollWildcardLiteral(ws)
-        }
-    }
-
-    /// Phase 2: Mini-Schalter „wörtlich" an → 0 Treffer (literaler „*, the" fehlt).
-    private static func pollWildcardLiteral(_ ws: Workspace) {
-        // Bisher 67 × 30 ms ≈ 2 s.
-        waitFor(budget: 2.01, pause: 0.03,
-                condition: { hasCompletedEmptyBufferSearch(ws) },
-                onTimeout: { book in
-                    finish(false, "(literal) bufferMatches=\(ws.bufferMatches.count), "
-                        + "erwartet 0 — \(book.summary)")
-                }) {
-            finish(true, "Platzhalter: 1 Treffer (ring, The) -> ersetzt zu The ring; literal: 0 Treffer")
-        }
+        SelfTestSearchSemantics(workspace: ws, waitFor: waitFor, finish: finish).runWildcardTest()
     }
 
     private static var screenshotFixtureDirectories: [URL] = []
@@ -24320,12 +19618,12 @@ enum SelfTest {
     // MARK: - Screenshot-Setup für Platzhalter-Pillen + Live-Vorschau (Diagnose)
 
     /// Diagnose-Setup für einen fenstergezielten Screenshot der neuen
-    /// Platzhalter-Oberflächen (Feature J): nummerierte Pillen + inline
+    /// Platzhalter-Oberflächen: nummerierte Pillen + inline
     /// Live-Vorschau. Lädt mehrzeiligen Demo-Text, schaltet RegEx aus, setzt
-    /// `*, the` / `The *`, wartet auf die LIVE-Treffer (damit Pillen UND
+    /// `*, the` / `The *`, wartet auf die Live-Treffer (damit Pillen und
     /// Vorschau Daten haben) und dumpt dann die Fenster-Nummer der Suchmaske
     /// für `screencapture -l <nr>`. Hält die Maske ~12 s offen, dann `exit(0)`.
-    /// KEIN PASS/FAIL-Funktionstest — die Funktion deckt der `wildcard`-Test ab.
+    /// Kein PASS/FAIL-Funktionstest — die Funktion deckt der `wildcard`-Test ab.
     private static func runWildcardShot() {
         testLabel = "wildcardshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
@@ -24405,7 +19703,7 @@ enum SelfTest {
                 })
     }
 
-    /// Diagnose (`-selftest searchshot`): Suchmaske im LEEREN Ausgangszustand
+    /// Diagnose (`-selftest searchshot`): Suchmaske im leeren Ausgangszustand
     /// nach vorn holen und die Fenster-Nummer ausgeben (für `screencapture -l`),
     /// nach 12 s Selbst-Exit. Kein Funktionstest — ein Screenshot-Helfer wie
     /// `wildcardshot`, nur ohne Feld-Befüllung (Placeholder sichtbar).
@@ -24446,11 +19744,9 @@ enum SelfTest {
         dumpMainWindowThenExit(prefix: "WELCOMESHOT-WINDOW")
     }
 
-    /// Diagnose (`-selftest welcometabshot`): Daniels Alltagsfall vom
-    /// 2026-07-30 — Fenster mit geladenem Projekt und geöffneter Datei, dann
-    /// ⌘T. Der frische Tab muss die Starthilfe über dem Editor zeigen (keine
-    /// Projekt-Sperre). Kein Funktionstest — die Logik decken die Unit-Tests
-    /// und der `project`-Selbsttest ab; hier zählt die sichtbare Wirkung.
+    /// Diagnose (`-selftest welcometabshot`): Projekt mit offener Datei und
+    /// frischem ⌘T-Tab. Die Aufnahme zeigt die Starthilfe über dem Editor ohne
+    /// Projekt-Sperre. Logik prüfen die Unit-Tests und der `project`-Selbsttest.
     private static func runWelcomeTabShot() {
         testLabel = "welcometabshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
@@ -24475,12 +19771,9 @@ enum SelfTest {
         }
     }
 
-    /// Prüft am echten Fenster, was Daniel am 2026-07-30 im Gesamt-Diff sah:
-    /// Zeilen, die breiter als eine Spalte sind, liefen über die Spaltengrenze
-    /// und überschrieben die andere Seite. Messgrößen an den Zell-Frames:
-    /// beide Spalten gleich breit, rechte Spalte hinter der linken, und die
-    /// lange Zeile ist MEHRZEILIG hoch — nur dann bricht der Text in seiner
-    /// Spalte um, statt darüber hinaus gezeichnet zu werden.
+    /// Am echten Fenster breite Diff-Zeilen auf Spaltenüberlauf prüfen:
+    /// Spalten gleich breit, rechte hinter der linken und lange Textzeile
+    /// mehrzeilig. So muss der Text umbrechen statt die Nachbarspalte zu überzeichnen.
     @MainActor
     private static func runDiffSelectionTest(background: Bool = false) {
         testLabel = background ? "diffselectionbackground" : "diffselection"
@@ -24751,8 +20044,8 @@ enum SelfTest {
                         finish(false, "Die Spalten überlappen "
                             + "(links endet \(Int(left.maxX)), rechts beginnt \(Int(right.minX)))")
                     }
-                    // (d) Kern des Befunds: Der lange Text bricht in seiner Spalte um.
-                    // Bei Überlauf bliebe die Zeile einzeilig (22 pt).
+                    // (d) Langer Text muss in seiner Spalte umbrechen; einzeilige Höhe (22 pt)
+                    // würde Überlauf zulassen.
                     guard left.height > short.height * 2 else {
                         cleanUp()
                         finish(false, "Die lange Zeile ist nur \(Int(left.height)) pt hoch "
@@ -24829,24 +20122,19 @@ enum SelfTest {
         return pairs
     }
 
-    /// Anteil der Bildpunkte in einem Ausschnitt, die NICHT die dort
-    /// vorherrschende Farbe tragen.
-    ///
-    /// Auf „dunkle Punkte" zu zählen wäre zu grob: Übergelaufener Text der
-    /// linken Seite liegt UNTER dem halbdurchlässigen Hintergrund der rechten
-    /// Zelle und ist dadurch blass, aber unübersehbar da (belegt am
-    /// 2026-09-09 an einer Aufnahme des Fehlerbilds). Ein leerer Zellbereich
-    /// ist dagegen einfarbig — jede Abweichung von der häufigsten Farbe ist
-    /// also Schrift.
+    /// Anteil von Bildpunkten, die von der vorherrschenden Farbe abweichen.
+    /// Übergelaufener Text kann unter dem halbdurchlässigen Nachbarhintergrund
+    /// blass sein; ausschließlich dunkle Pixel zu zählen würde ihn übersehen.
+    /// Ein leerer Zellbereich bleibt dagegen einfarbig.
     static func diffForeignPixelFraction(_ bitmap: NSBitmapImageRep,
                                          tolerance: CGFloat = 0.03) -> Double {
         // Je Eimer wird nicht nur gezählt, sondern auch summiert. Der
-        // Bezugswert ist dann der MITTELWERT der Bildpunkte im häufigsten
+        // Bezugswert ist dann der Mittelwert der Bildpunkte im häufigsten
         // Eimer — nicht dessen Untergrenze. Das ist keine Feinheit: Ein Eimer
-        // ist 1/31 ≈ 0,0323 breit und damit BREITER als die Toleranz von 0,03.
+        // ist 1/31 ≈ 0,0323 breit und damit breiter als die Toleranz von 0,03.
         // Läge ein Kanal des einfarbigen Hintergrunds im oberen Teil seines
         // Eimers, wäre der Abstand zur Untergrenze größer als die Toleranz und
-        // JEDER Bildpunkt gälte als fremd — der Test meldete „100 % Fremdtext"
+        // jeder Bildpunkt gälte als fremd — der Test meldete „100 % Fremdtext"
         // auf einer leeren Fläche.
         var counts: [Int: Int] = [:]
         var sums: [Int: (CGFloat, CGFloat, CGFloat)] = [:]
@@ -24883,9 +20171,9 @@ enum SelfTest {
         return Double(foreign.count) / Double(colors.count)
     }
 
-    /// Soft Wrap AUS: Der Vergleich zeigt die ECHTEN Zeilen (einzeilig hoch),
+    /// Soft Wrap aus: Der Vergleich zeigt die echten Zeilen (einzeilig hoch),
     /// und was nicht in die Spalte passt, wird abgeschnitten statt in die
-    /// andere Seite gezeichnet (Daniel-Wunsch 2026-09-09). Gemessen wird
+    /// andere Seite gezeichnet. Gemessen wird
     /// beides: die Zeilenhöhe an den Zell-Frames und die Schrift im rechten
     /// Spaltenbereich an echten Bildpunkten.
     private static func runDiffNoWrapTest() {
@@ -24905,10 +20193,10 @@ enum SelfTest {
     }
 
     /// `longOrdinal` ist die in Phase 0 ermittelte Zeilennummer der überlangen
-    /// linken Zeile. Ohne sie wäre sie in Phase 1 nicht mehr auffindbar: OHNE
+    /// linken Zeile. Ohne sie wäre sie in Phase 1 nicht mehr auffindbar: Ohne
     /// Umbruch sind alle Zeilen gleich hoch, und „die höchste Zeile" trifft
     /// dann irgendeine — der Test maß so eine harmlose Zeile mit leerer
-    /// rechter Seite und bestand auch ohne Beschneidung (Befund 2026-09-09).
+    /// rechter Seite und bestand auch ohne Beschneidung.
     private static func pollDiffNoWrap(_ ws: Workspace, base: URL, phase: Int,
                                        longOrdinal: Int,
                                        wrappedHeight: CGFloat) {
@@ -24936,7 +20224,7 @@ enum SelfTest {
                         foundPhase0 = (tallest.before.height, tallest.ordinal)
                         return true
                     }
-                    // Phase 1: ohne Umbruch sind ALLE Zeilen gleich einzeilig hoch.
+                    // Phase 1: ohne Umbruch sind alle Zeilen gleich einzeilig hoch.
                     guard let long = pairs.first(where: { $0.ordinal == longOrdinal }),
                           long.before.height < wrappedHeight / 2 else { return false }
                     foundLong = long
@@ -25128,7 +20416,7 @@ enum SelfTest {
                                             beforeRight: CGFloat,
                                             distance: CGFloat) {
         // Die Teilung ist persistent, das Verzeichnis liegt im Temp-Ordner:
-        // Beides muss vor JEDEM Ausgang weg. Kein `defer` — `finish` endet in
+        // Beides muss vor jedem Ausgang weg. Kein `defer` — `finish` endet in
         // `exit()` und wickelt den Stack nicht ab.
         func cleanUp() {
             SelfTest.workspaceDefaults()
@@ -25179,7 +20467,7 @@ enum SelfTest {
                     // Zweite Stufe: Doppelklick auf den Griff stellt die Werksteilung
                     // wieder her. Ohne diesen Rückweg träfe man die exakte Hälfte nach dem
                     // ersten Zug nur noch zufällig — und zwar dauerhaft, weil die Teilung
-                    // für ALLE Vergleiche gemerkt wird.
+                    // für alle Vergleiche gemerkt wird.
                     guard let handle = markerView(id: "diffSplitter", in: content) else {
                         cleanUp()
                         finish(false, "Splitter-Griff ist nach dem Zug verschwunden")
@@ -25197,7 +20485,7 @@ enum SelfTest {
     }
 
     /// Doppelklick auf dem Griff: zwei Down/Up-Paare, das zweite mit
-    /// `clickCount: 2`. `HandleView` liest die Klickzahl aus DIESEM Ereignis —
+    /// `clickCount: 2`. `HandleView` liest die Klickzahl aus diesem Ereignis —
     /// `NSApp.currentEvent` wäre bei `sendEvent` gar nicht gesetzt (AGENTS.md).
     private static func sendSplitterDoubleClick(at point: NSPoint,
                                                 in window: NSWindow) -> Bool {
@@ -25265,7 +20553,7 @@ enum SelfTest {
     private static func runGitStickyShot() {
         testLabel = "gitstickyshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        Workspace.presentGitDialogs = false
+        ws.gitInteraction.presentsDialogs = false
         let fm = FileManager.default
         let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-gitstickyshot-\(UUID().uuidString)")
@@ -25329,15 +20617,14 @@ enum SelfTest {
                 })
     }
 
-    /// Diagnose (`-selftest filesgitshot`): Öffnet ein frisches Git-Projekt im
-    /// Dateien-Tab und gibt die Fenster-Nummer für `screencapture -l` aus —
-    /// Sichtprüfung der Kopfzeile (Projektname + kompaktes Filterfeld) und des
-    /// zweizeiligen Branch-Bereichs (Daniel-Wunschpaket 2026-09-01).
+    /// Diagnose (`-selftest filesgitshot`): Frisches Git-Projekt im Dateien-Tab
+    /// öffnen und Fensternummer für `screencapture -l` ausgeben. Die Aufnahme dient
+    /// der Sichtprüfung von Projektkopf, Filterfeld und zweizeiligem Branch-Bereich.
     private static func runFilesGitShot() {
         testLabel = "filesgitshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
         guard GitRunner.isAvailable else { finish(.environment, "git nicht verfügbar") }
-        Workspace.presentGitDialogs = false
+        ws.gitInteraction.presentsDialogs = false
         let fm = FileManager.default
         let base = selfTestTemporaryDirectory()
             .appendingPathComponent("fastra-filesgitshot-\(UUID().uuidString)")
@@ -25409,10 +20696,9 @@ enum SelfTest {
                 })
     }
 
-    /// Diagnose (`-selftest diffwideshot`): Zweispaltiger Diff mit Zeilen, die
-    /// deutlich breiter als eine Spalte sind — die Aufnahme zeigt, ob der linke
-    /// Text an der Spaltengrenze endet oder in die rechte Spalte hineinläuft
-    /// (Daniel-Befund 2026-07-30 am Gesamt-Diff).
+    /// Diagnose (`-selftest diffwideshot`): Diff mit überbreiten Zeilen aufnehmen,
+    /// um Abschneiden an der Spaltengrenze statt Zeichnung in der Nachbarspalte
+    /// sichtbar zu prüfen.
     private static func runDiffWideShot() {
         testLabel = "diffwideshot"
         guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
@@ -25521,18 +20807,14 @@ enum SelfTest {
         ProcessInfo.processInfo.environment["FASTRA_SCREENSHOT_LANGUAGE"] == "en"
     }
 
-    /// Prüft die echte WebKit-Vorschau samt gebündelten Bibliotheken. Anders als
-    /// ein String-Test beobachtet dieser Pfad das fertige DOM: Bild dekodiert,
-    /// KaTeX-MathML erzeugt, Mermaid-SVG gezeichnet und Code hervorgehoben.
-    /// Ein extern am gleichen Pfad ausgetauschtes Bild muss in der OFFENEN
-    /// Vorschau erscheinen (Roadmap „Nacharbeit 2026-08-06"): Der
-    /// FSEvents-Bildwächter spielt generationengesichert ein frisches
-    /// Fragment ein; der Bild-Token (Pfad+Datum+Größe) umgeht WebKits Cache.
-    /// Geprüft wird am ECHTEN Vorschau-Pfad über `naturalWidth` — erst 1 px
-    /// (Original), nach dem Austausch 2 px.
-    /// „Einfügen und Einrückung angleichen" (Etappe 4) am ECHTEN Befehlsweg:
-    /// Clipboard setzen, Notification wie aus dem Menü posten, Ergebnis und
-    /// die EINE Undo-Aktion prüfen.
+    /// Echte WebKit-Vorschau samt Bundle-Bibliotheken am DOM prüfen:
+    /// Bilddekodierung, KaTeX-MathML, Mermaid-SVG und Syntaxhervorhebung.
+    /// Externen Bildaustausch am gleichen Pfad über `naturalWidth` nachweisen
+    /// (1 px → 2 px). FSEvents und dateigebundener Bild-Token müssen auch die
+    /// bereits offene Vorschau aktualisieren.
+    ///
+    /// „Einfügen und Einrückung angleichen“ über den echten Befehlsweg prüfen:
+    /// Zwischenablage setzen, Menü-Notification posten, Ergebnis und Undo prüfen.
     private static func runPasteMatchIndentationTest() {
         testLabel = "pasteindent"
         guard let ws = Workspace.shared else {
@@ -25573,7 +20855,7 @@ enum SelfTest {
                     guard textView.string == expected else {
                         finishPasteIndent(false, "Einfügung falsch: \(textView.string.debugDescription) statt \(expected.debugDescription)")
                     }
-                    // Genau EINE Undo-Aktion stellt den Ausgangstext her.
+                    // Genau eine Undo-Aktion stellt den Ausgangstext her.
                     textView.undoManager?.undo()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         guard textView.string == original else {
@@ -25627,7 +20909,7 @@ enum SelfTest {
             guard ok else { finish(false, "Markdown-Datei konnte nicht geladen werden") }
             pollImageWatchWidth(expected: 1, directory: directory) {
                 do {
-                    // Austausch am GLEICHEN Pfad — atomar, wie es externe
+                    // Austausch am gleichen Pfad — atomar, wie es externe
                     // Werkzeuge tun. Markdown und Stil bleiben unverändert;
                     // nur der Wächter kann die Vorschau aktualisieren.
                     try replacement.write(to: image, options: .atomic)
@@ -25644,7 +20926,7 @@ enum SelfTest {
     }
 
     /// Wartet, bis das erste Vorschau-Bild die erwartete natürliche Breite
-    /// zeigt — der Beweis, dass WIRKLICH die neue Datei gerendert ist.
+    /// zeigt — der Beweis, dass wirklich die neue Datei gerendert ist.
     private static func pollImageWatchWidth(expected: Int, directory: URL,
                                             then continuation: @escaping () -> Void) {
         waitForAsync(
@@ -25837,7 +21119,7 @@ enum SelfTest {
         let file = directory.appendingPathComponent("Listen-Leerzeilen.md")
         let blankLines = Array(repeating: "  ", count: 6).joined(separator: "\n")
         // Dieser Aufbau entspricht dem gemeldeten Fall: Die Leerraumzeilen
-        // liegen direkt NACH der Liste, aber noch in deren cmark-Quellbereich.
+        // liegen direkt nach der Liste, aber noch in deren cmark-Quellbereich.
         let demo = """
         ***Getestet:***
 
@@ -25931,7 +21213,7 @@ enum SelfTest {
 
     /// Prüft beide Klick-Sprünge zwischen Vorschau und Editor am echten DOM.
     ///
-    /// Der interessante Fall ist ein Klick MITTEN in einen Absatz: Der Block
+    /// Der interessante Fall ist ein Klick mitten in einen Absatz: Der Block
     /// kennt nur seine erste Zeile, die restlichen löst das Vorschau-JS über
     /// die Zeilenumbrüche im gerenderten Text auf. Ein String-Test kann das
     /// nicht abdecken — dafür muss echtes WebKit den Klick verarbeiten.
@@ -25941,7 +21223,7 @@ enum SelfTest {
         let directory = selfTestTemporaryDirectory()
             .appendingPathComponent("Fastra-Sprung-Selbsttest-\(UUID().uuidString)")
         let file = directory.appendingPathComponent("Sprung.md")
-        // Zeile 3/4/5 bilden EINEN Absatz — genau das, was Blockpositionen
+        // Zeile 3/4/5 bilden einen Absatz — genau das, was Blockpositionen
         // allein nicht auflösen können.
         let sections = (1...120).map { number in
             """
@@ -26079,7 +21361,7 @@ enum SelfTest {
     }
 
     /// Gegenrichtung: Vorschau erst nach ganz oben setzen, dann im weit unten
-    /// liegenden Quelltext einen ECHTEN AppKit-Klick senden. Der Test liest
+    /// liegenden Quelltext einen echten AppKit-Klick senden. Der Test liest
     /// anschließend WebKits tatsächliche Scrollposition und Blockgeometrie.
     private static func beginMarkdownSourceRevealTest(
         workspace: Workspace,
@@ -26122,22 +21404,16 @@ enum SelfTest {
         }
     }
 
-    /// Wartet nicht auf eine geschätzte Zielposition, sondern bis die
-    /// Zielzeile wirklich im sichtbaren TextView-Ausschnitt liegt — UND die
-    /// Geometrie zur Ruhe gekommen ist. Ohne die Ruhe-Prüfung klickte der
-    /// Test unter Volllast mitten in die noch laufende Scroll-/Layout-
-    /// Bewegung des langen Dokuments: Zwischen Koordinatenberechnung und
-    /// Event-Zustellung verschob sich der Text, und der Klick traf eine
-    /// Nachbarzeile (beobachtet 2026-08-16 im Gesamtlauf: Cursor auf 254
-    /// statt 246). `lastSettledY` trägt dafür die Messung des vorigen
-    /// Poll-Durchgangs: Erst wenn zwei Durchgänge dieselbe Position sehen,
-    /// gilt die Bewegung als beendet.
+    /// Vor asynchroner Event-Zustellung auf sichtbare Zielzeile und stabile
+    /// Geometrie warten. Zwischen Messung und Zustellung könnte laufendes Layout
+    /// den Klick sonst auf eine Nachbarzeile verschieben. `lastSettledY` verlangt
+    /// dieselbe Position in zwei Poll-Durchläufen.
     private static func pollMarkdownSourceClickReady(
         workspace: Workspace,
         directory: URL,
         targetLine: Int
     ) {
-        // Drei Stufen in EINER Frist: Zielzeile layoutbar, sichtbar, und die
+        // Drei Stufen in einer Frist: Zielzeile layoutbar, sichtbar, und die
         // Geometrie zwei Durchläufe lang unverändert.
         var stage = 0
         var lastSettled: (scrollY: CGFloat, lineMidY: CGFloat)?
@@ -26206,7 +21482,7 @@ enum SelfTest {
     }
 
     /// Erfolg nur, wenn die Vorschau nachweislich von oben weggescrollt ist,
-    /// den Zielblock gefunden hat UND dieser ungefähr in der Mitte liegt.
+    /// den Zielblock gefunden hat und dieser ungefähr in der Mitte liegt.
     private static func pollMarkdownPreviewReveal(
         workspace: Workspace,
         directory: URL,
@@ -27200,384 +22476,35 @@ enum SelfTest {
         }
     }
 
+    @MainActor private static func textSnippetTests() -> SelfTestTextSnippets {
+        SelfTestTextSnippets(
+            workspace: { Workspace.shared }, finishBody: finish,
+            activateApplicationBody: activateApplication,
+            nativeUIWaitBody: nativeUIWait,
+            stableMarkerClickBody: { try await stableMarkerClick($0, in: $1, stage: $2) },
+            markerViewBody: { markerView(id: $0, in: $1) },
+            sendMouseClickBody: { sendMouseClick(at: $0, in: $1, modifiers: $2, viaApp: $3) },
+            collectEditableFieldsBody: { collectEditableFields(in: $0, into: &$1) },
+            postKeyBody: { postKey($0, keyCode: $1, windowNumber: $2, modifiers: $3) },
+            postHistoryKeyBody: { postHistoryKey(windowNumber: $0) },
+            redoFromEditMenu: redoFromEditMenu,
+            captureBody: { window, completion in
+                typeScrollCapture(window: window) { completion($0?.data) }
+            }
+        )
+    }
+
     private static func runTextSnippetFilesTest() {
         testLabel = "snippetfiles"
         Task { @MainActor in
-            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws),
-                  let path = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { finish(.environment, "Dateidialog-Test benötigt den vorhandenen externen Tastenpfad") }
-            let output = URL(fileURLWithPath: path)
-            guard FileManager.default.fileExists(atPath: output.appendingPathComponent("panel-driver-ready").path) else { finish(.environment, "Externer Dateidialog-Treiber fehlt") }
-            let base = selfTestTemporaryDirectory().appendingPathComponent("fastra-snippet-files-\(UUID())")
-            let exported = base.appendingPathComponent("Export/Sammlung.json")
-            let bulk = base.appendingPathComponent("Bulk/Sammlung.json")
-            let invalid = base.appendingPathComponent("Invalid/Sammlung.json")
-            let source = "Dokument bleibt unverändert 😀\n"
-            let store = TextSnippetStore()
-            let originalAppearance = NSApp.appearance
-            var stage = "Fixture", keyIndex = 0, panelTimer: Timer?, panelError: String?
-            func require(_ ok: Bool, _ message: String) throws {
-                if !ok { throw NSError(domain: "SnippetFiles", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
-            }
-            @MainActor func wait(_ detail: String, _ condition: @MainActor () -> Bool) async throws { try await nativeUIWait(stage + " / " + detail, condition) }
-            @MainActor func request(_ code: Int?, capture: String? = nil, window: NSWindow? = nil) throws {
-                var value: [String: Any] = ["pid": ProcessInfo.processInfo.processIdentifier, "nonce": UUID().uuidString]
-                if let code { value["keyCode"] = code }
-                if let capture, let window { value["capture"] = capture; value["windowID"] = window.windowNumber }
-                try JSONSerialization.data(withJSONObject: value).write(to: output.appendingPathComponent("panel-key-\(keyIndex).json"), options: .atomic)
-                keyIndex += 1
-            }
-            @MainActor func confirmationList(in view: NSView) -> NSTextView? {
-                if let text = view as? NSTextView, !text.isEditable, text.enclosingScrollView != nil { return text }
-                return view.subviews.lazy.compactMap { confirmationList(in: $0) }.first
-            }
-            @MainActor func button(_ title: String, in view: NSView) -> NSButton? {
-                if let button = view as? NSButton, button.title == title { return button }
-                return view.subviews.lazy.compactMap { button(title, in: $0) }.first
-            }
-            @MainActor func startPanel(importing file: URL? = nil, names: [String]? = nil, capture: String) {
-                panelTimer?.invalidate(); snippetFilePanel = nil; panelError = nil
-                var step = 0, next = Date.distantPast, topCaptureIndex: Int?, captureIndex = 0
-                let appearances: [(NSAppearance.Name, Bool, String)] = [
-                    (.aqua, false, "light-top"), (.darkAqua, false, "dark-top"),
-                    (.aqua, true, "light-end"), (.darkAqua, true, "dark-end")
-                ]
-                let timer = Timer(timeInterval: 0.05, repeats: true) { _ in
-                    do {
-                        if step == 0, let panel = snippetFilePanel {
-                            guard panel.directoryURL?.canonicalFileURL == (file?.deletingLastPathComponent() ?? exported.deletingLastPathComponent()).canonicalFileURL else { return }
-                            if file != nil { try request(124); next = Date().addingTimeInterval(0.3); step = 1 }
-                            else { try request(36); panelTimer?.invalidate(); step = 6 }
-                        } else if step == 1, Date() >= next, let panel = snippetFilePanel {
-                            guard panel.directoryURL?.canonicalFileURL == file?.deletingLastPathComponent().canonicalFileURL else { throw NSError(domain: "SnippetFiles", code: 2, userInfo: [NSLocalizedDescriptionKey: "Dateidialog verließ die Fixture"]) }
-                            try request(125); step = 7
-                        } else if step == 7, let panel = snippetFilePanel as? NSOpenPanel,
-                                  panel.urls.count == 1, panel.urls.first?.canonicalFileURL == file?.canonicalFileURL {
-                            try request(36); step = 2
-                            if names == nil { panelTimer?.invalidate(); step = 6 }
-                        } else if step == 2, let alert = NSApp.modalWindow, !(alert is NSSavePanel),
-                                  let root = alert.contentView, button(L10n.string("Importieren"), in: root) != nil,
-                                  let names, let list = confirmationList(in: root), list.string == names.joined(separator: "\n") {
-                            guard let scroll = list.enclosingScrollView, scroll.frame.height > 0 else { return }
-                            try require(scroll.frame.height <= 180, "Importnamen sind nicht in begrenzter Scrollansicht")
-                            step = 3
-                        } else if step == 3, let alert = NSApp.modalWindow, let root = alert.contentView,
-                                  let list = confirmationList(in: root) {
-                            let appearance = appearances[captureIndex]
-                            NSApp.appearance = NSAppearance(named: appearance.0)
-                            list.scrollRangeToVisible(NSRange(location: appearance.1 ? list.string.utf16.count : 0, length: 0))
-                            next = Date().addingTimeInterval(0.2); step = 4
-                        } else if step == 4, Date() >= next, let alert = NSApp.modalWindow {
-                            topCaptureIndex = keyIndex
-                            try request(nil, capture: capture + "-" + appearances[captureIndex].2, window: alert); step = 5
-                        } else if step == 5, let index = topCaptureIndex,
-                                  FileManager.default.fileExists(atPath: output.appendingPathComponent("panel-response-\(index).json").path) {
-                            let reply = try Data(contentsOf: output.appendingPathComponent("panel-response-\(index).json"))
-                            let replyObject = try JSONSerialization.jsonObject(with: reply) as? [String: Any]
-                            try require(replyObject?["ok"] as? Bool == true, "Native Aufnahme wurde nicht bestätigt")
-                            captureIndex += 1
-                            if captureIndex < appearances.count { step = 3 }
-                            else {
-                                NSApp.appearance = originalAppearance
-                                try request(36); panelTimer?.invalidate(); step = 6
-                            }
-                        }
-                    } catch {
-                        panelError = error.localizedDescription; panelTimer?.invalidate(); snippetFilePanel?.cancel(nil)
-                    }
-                }
-                panelTimer = timer; RunLoop.main.add(timer, forMode: .common); RunLoop.main.add(timer, forMode: .modalPanel)
-            }
-            @MainActor func cleanup() {
-                panelTimer?.invalidate(); snippetFilePanel?.cancel(nil); snippetFilePanel = nil
-                snippetExportDestination = nil; snippetImportDirectory = nil
-                NSApp.appearance = originalAppearance
-                ws.textSnippetSession?.close()
-                try? Data("done".utf8).write(to: output.appendingPathComponent("panel-driver-done"))
-                try? FileManager.default.removeItem(at: base)
-            }
-            do {
-                for directory in [exported, bulk, invalid].map({ $0.deletingLastPathComponent() }) { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
-                let original = try store.save(TextSnippetDefinition(name: "Roundtrip 😀", template: "Hallo {{Name}}\n{{Name}}"), expectedRevision: nil)
-                let incoming = (0..<48).map { TextSnippetDefinition(name: String(format: "%02d ", $0) + String(repeating: "Langer Unicode-Name 😀 ", count: 3), template: "{{Name}}") }
-                let bulkData = try TextSnippetArchive.encode(incoming)
-                try bulkData.write(to: bulk, options: .atomic); try Data("kein JSON".utf8).write(to: invalid)
-                let tab = EditorTab(title: "SnippetFiles.txt", path: "", content: source)
-                ws.tabs = [tab]; ws.activeTabID = tab.id
-                window.setContentSize(NSSize(width: 1100, height: 700))
-                activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
-                try await wait("Editor bereit") { CommandTargeting.editorTextView(for: ws)?.string == source }
-                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
-                try await wait("Picker offen") { ws.textSnippetSession != nil && !window.sheets.isEmpty }
-                guard let session = ws.textSnippetSession, let picker = window.sheets.first else { throw NSError(domain: "SnippetFiles", code: 3) }
-                snippetExportDestination = exported
-                stage = "Sammlung über echten Speicherdialog exportieren"
-                startPanel(capture: "export")
-                try await stableMarkerClick("snippetExport", in: picker, stage: stage)
-                try await wait("Exportdatei und UI-Rückgabe") { FileManager.default.fileExists(atPath: exported.path) && !session.isBusy && snippetFilePanel?.isVisible != true }
-                try require(panelError == nil && session.error == nil, panelError ?? session.error ?? "Exportfehler")
-                let exportedData = try FileSnapshot.read(from: exported, byteLimit: UInt64(TextSnippetArchive.maximumBytes)).data
-                try require(try TextSnippetArchive.decode(exportedData) == [original], "Export enthält andere Definitionen")
-                stage = "Exportdatei über echten Öffnendialog importieren"
-                snippetImportDirectory = exported.deletingLastPathComponent()
-                let roundtripNames = try store.previewImport(exportedData).map(\.name)
-                startPanel(importing: exported, names: roundtripNames, capture: "import-roundtrip")
-                try await stableMarkerClick("snippetImport", in: picker, stage: stage)
-                try await wait("Import und Konfliktumbenennung") { session.saved.count == 2 && !session.isBusy }
-                try require(panelError == nil && session.error == nil && session.saved.first == original, "Import überschreibt Original oder meldet Fehler")
-                try require(session.saved[1].name == "Roundtrip 😀 (2)" && session.saved[1].id != original.id, "Importkonflikt nicht getrennt")
-                stage = "Lange vollständige Importliste"
-                snippetImportDirectory = bulk.deletingLastPathComponent()
-                let names = try store.previewImport(bulkData).map(\.name)
-                startPanel(importing: bulk, names: names, capture: "import-bulk")
-                try await stableMarkerClick("snippetImport", in: picker, stage: stage)
-                try await wait("Alle 48 Definitionen übernommen") { session.saved.count == 50 && !session.isBusy }
-                try require(panelError == nil && session.error == nil && session.saved.first == original, "Großimport verändert vorhandene Daten")
-                stage = "Ungültige Datei vollständig abweisen"
-                snippetImportDirectory = invalid.deletingLastPathComponent()
-                let before = try store.load()
-                startPanel(importing: invalid, capture: "import-invalid")
-                try await stableMarkerClick("snippetImport", in: picker, stage: stage)
-                try await wait("Importfehler sichtbar") { session.error != nil && !session.isBusy }
-                try require(try store.load() == before && ws.activeTab?.content == source, "Ungültiger Import verändert Daten")
-                try require(panelError == nil, panelError ?? "Dialogfehler")
-                let finalResponse = output.appendingPathComponent("panel-response-\(keyIndex - 1).json")
-                try await wait("Letzte native Eingabe bestätigt") { FileManager.default.fileExists(atPath: finalResponse.path) }
-                let finalReply = try JSONSerialization.jsonObject(with: Data(contentsOf: finalResponse)) as? [String: Any]
-                try require(finalReply?["ok"] as? Bool == true, "Letzte native Eingabe meldet einen Fehler")
-                panelTimer?.invalidate()
-                try await stableMarkerClick("snippetClose", in: picker, stage: stage)
-                try await wait("Picker geschlossen") { ws.textSnippetSession == nil && window.sheets.isEmpty }
-                cleanup()
-                finish(true, "Echter Export/Import über macOS-Dateidialoge mit nativen Systemtasten, unveränderte Originale, Konfliktumbenennung, vollständige begrenzte 48-Namen-Vorschau, 50er-Grenze und ungültige JSON-Datei")
-            } catch {
-                let detail = "Textbaustein-Dateien [\(stage)]: \(error.localizedDescription); Panel=\(panelError ?? "nil"), UI=\(ws.textSnippetSession?.error ?? "nil")"
-                cleanup(); finish(false, detail)
-            }
+            await textSnippetTests().runTextSnippetFilesTest()
         }
     }
 
     private static func runTextSnippetTest() {
         testLabel = "snippets"
         Task { @MainActor in
-            guard let ws = Workspace.shared, let window = CommandTargeting.registeredWindow(for: ws) else { finish(false, "Dokumentfenster fehlt") }
-            let base = selfTestTemporaryDirectory().appendingPathComponent("fastra-snippets-\(UUID())")
-            let file = base.appendingPathComponent("Snippet.txt")
-            let source = "vor OLD nach\r\nUnberührt 😀\n"
-            let originalAppearance = NSApp.appearance
-            var stage = "Fixture"
-            func require(_ ok: Bool, _ message: String) throws {
-                if !ok { throw NSError(domain: "TextSnippetSelfTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
-            }
-            @MainActor func wait(_ detail: String, _ condition: @MainActor () -> Bool) async throws { try await nativeUIWait(stage + " / " + detail, condition) }
-            @MainActor func sheet() throws -> NSWindow {
-                guard let sheet = window.sheets.first else { throw NSError(domain: "TextSnippetSelfTest", code: 2) }; return sheet
-            }
-            @MainActor func input(_ id: String, in target: NSWindow) -> NSTextView? {
-                func find(_ view: NSView) -> NSTextView? {
-                    if let text = view as? NSTextView, text.accessibilityIdentifier() == id { return text }
-                    for child in view.subviews { if let found = find(child) { return found } }; return nil
-                }
-                return target.contentView.flatMap(find)
-            }
-            @MainActor func fill(_ id: String, _ value: String, in target: NSWindow) async throws {
-                try await wait("Textfeld montiert: " + id) { input(id, in: target)?.window === target && input(id, in: target)?.isEditable == true }
-                guard let text = input(id, in: target), target.makeFirstResponder(text) else { throw NSError(domain: "TextSnippetSelfTest", code: 3, userInfo: [NSLocalizedDescriptionKey: "Textfeld fehlt: " + id]) }
-                try await wait("Textfeld fokussiert: " + id) { target.firstResponder === text }
-                text.selectAll(nil); text.insertText(value, replacementRange: text.selectedRange())
-                try await wait("Native Eingabe übernommen: " + id) { input(id, in: target)?.string.utf8.elementsEqual(value.utf8) == true }
-            }
-            @MainActor func matrix(_ name: String, in target: NSWindow) async throws {
-                guard let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] else { return }
-                for (mode, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                    NSApp.appearance = NSAppearance(named: appearance)
-                    for width in [760, 1100] {
-                        target.setContentSize(NSSize(width: width, height: width == 760 ? 650 : 740))
-                        try await Task.sleep(for: .milliseconds(300))
-                        guard let root = target.contentView else { continue }
-                        for id in ["snippetSave", "snippetClose", "snippetInsert"] {
-                            guard let marker = markerView(id: id, in: root) else { try require(false, "Control fehlt: " + id); continue }
-                            let rect = marker.convert(marker.bounds, to: root)
-                            try require(root.bounds.contains(NSPoint(x: rect.midX, y: rect.midY)), "Control abgeschnitten: " + id)
-                        }
-                        let url = URL(fileURLWithPath: output).appendingPathComponent("\(name)-\(mode)-\(width).png")
-                        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
-                            typeScrollCapture(window: target) { snapshot in try? snapshot?.data.write(to: url); done.resume() }
-                        }
-                    }
-                }
-            }
-            @MainActor func cleanup() {
-                ws.textSnippetSession?.close(); NSApp.appearance = originalAppearance
-                try? FileManager.default.removeItem(at: base)
-            }
-            do {
-                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-                try source.write(to: file, atomically: true, encoding: .utf8)
-                var loaded = false; ws.loadFile(at: file) { loaded = $0 }
-                window.setContentSize(NSSize(width: 1100, height: 700))
-                activateApplication(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
-                try await wait("Quelle bereit") { loaded && CommandTargeting.editorTextView(for: ws)?.string == source }
-                guard let editor = CommandTargeting.editorTextView(for: ws) else { throw NSError(domain: "TextSnippetSelfTest", code: 4) }
-                try require(window.makeFirstResponder(editor), "Editor nimmt Fokus nicht an")
-                editor.selectionManager.setSelectedRange((source as NSString).range(of: "OLD"))
-                stage = "Sichtbaren Befehl öffnen"
-                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
-                try await wait("Sheet geöffnet") { ws.textSnippetSession != nil && !window.sheets.isEmpty }
-                guard let session = ws.textSnippetSession else { throw NSError(domain: "TextSnippetSelfTest", code: 5) }
-                let picker = try sheet()
-                await Task.yield()
-                stage = "Neue Vorlage tatsächlich bearbeiten"
-                try await stableMarkerClick("snippetName", in: picker, stage: stage)
-                func nameEditor() -> NSTextView? {
-                    guard let root = picker.contentView else { return nil }
-                    var fields: [NSTextField] = []; collectEditableFields(in: root, into: &fields)
-                    guard let field = fields.first(where: { $0.placeholderString == L10n.string("Name des Textbausteins") }),
-                          let editor = field.currentEditor() as? NSTextView, picker.firstResponder === editor else { return nil }
-                    return editor
-                }
-                try await wait("Namensfeld besitzt konkreten Editor") { nameEditor() != nil }
-                guard let name = nameEditor() else { throw NSError(domain: "TextSnippetSelfTest", code: 6) }
-                name.selectAll(nil); name.insertText("Brief 😀", replacementRange: name.selectedRange())
-                try await fill("snippetTemplateInput", "{{Name}} / {{Ort}} / {{Name}}", in: picker)
-                try await wait("Vorlage übernommen") { session.definition.name == "Brief 😀" && session.placeholders == ["Name", "Ort"] }
-                try await stableMarkerClick("snippetSave", in: picker, stage: stage)
-                try await wait("Vorlage gespeichert") { !session.dirty && session.saved.count == 1 }
-                let savedID = session.definition.id
-                try await fill("snippetValue-0", "Hallo 😀\ne\u{301}", in: picker)
-                let first = input("snippetValue-0", in: picker)
-                postKey("\t", keyCode: 48, windowNumber: picker.windowNumber)
-                try await wait("Tab erreicht zweites Feld") { picker.firstResponder === input("snippetValue-1", in: picker) }
-                try await fill("snippetValue-1", "{{Name}} Köln", in: picker)
-                postKey("\u{19}", keyCode: 48, windowNumber: picker.windowNumber, modifiers: .shift)
-                try await wait("Umschalt-Tab erreicht erstes Feld") { picker.firstResponder === first }
-                let replacement = "Hallo 😀\ne\u{301} / {{Name}} Köln / Hallo 😀\ne\u{301}"
-                try await wait("Vorschau vollständig") { session.preview?.utf8.elementsEqual(replacement.utf8) == true && session.canInsert }
-                try require(input("snippetPreviewInput", in: picker)?.string.utf8.elementsEqual(replacement.utf8) == true, "Sichtbare Vorschau weicht ab")
-                try require(ws.activeTab?.content == source && (try String(contentsOf: file, encoding: .utf8)) == source, "Vorlage oder Vorschau schreibt ins Dokument")
-                try await matrix("snippets-values", in: picker)
-                stage = "Vorlagenfehler sichtbar"
-                try await fill("snippetTemplateInput", "{{offen", in: picker)
-                try await wait("Fehler blockiert Einfügen") { session.validationMessage != nil && !session.canInsert && !session.canSave }
-                try await matrix("snippets-invalid", in: picker)
-                try await fill("snippetTemplateInput", "{{Name}} / {{Ort}} / {{Name}}", in: picker)
-                try await wait("Vorlage wieder sauber") { !session.dirty }
-                try await fill("snippetValue-0", "Hallo 😀\ne\u{301}", in: picker)
-                try await fill("snippetValue-1", "{{Name}} Köln", in: picker)
-                stage = "Auswahl einfügen, Undo und Redo"
-                try await stableMarkerClick("snippetInsert", in: picker, stage: stage)
-                let expected = (source as NSString).replacingOccurrences(of: "OLD", with: replacement)
-                try await wait("Einfügung fertig") { ws.textSnippetSession == nil && window.sheets.isEmpty && ws.activeTab?.content.utf8.elementsEqual(expected.utf8) == true }
-                try require((try String(contentsOf: file, encoding: .utf8)) == source, "Einfügen speichert ungefragt")
-                try await wait("Dokumentfenster nach Sheet bereit") { window.sheets.isEmpty && window.isKeyWindow }
-                try require(window.makeFirstResponder(editor), "Dokumentfokus nach Sheet fehlt")
-                try await wait("Dokument besitzt Fokus") { window.firstResponder === editor }
-                postHistoryKey(windowNumber: window.windowNumber)
-                try await wait("Ein Undo stellt Quelle wieder her") { ws.activeTab?.content.utf8.elementsEqual(source.utf8) == true }
-                try await wait("Redo verfügbar") { editor.undoManager?.canRedo == true }
-                try await redoFromEditMenu()
-                try await wait("Redo") { ws.activeTab?.content.utf8.elementsEqual(expected.utf8) == true }
-                postHistoryKey(windowNumber: window.windowNumber)
-                try await wait("Original wieder da") { ws.activeTab?.content == source }
-                stage = "Erneut öffnen und Abbrechen"
-                editor.selectionManager.setSelectedRange(NSRange(location: 0, length: 0))
-                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
-                try await wait("Gespeicherter Baustein") { ws.textSnippetSession?.definition.id == savedID && !window.sheets.isEmpty }
-                let reopened = try sheet()
-                try await matrix("snippets-reopened", in: reopened)
-                try await stableMarkerClick("snippetClose", in: reopened, stage: stage)
-                try await wait("Abgebrochen") { ws.textSnippetSession == nil && window.sheets.isEmpty }
-                try require(ws.activeTab?.content == source, "Abbrechen verändert Quelle")
-                stage = "Duplizieren und Löschen"
-                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
-                try await wait("Verwaltung offen") { ws.textSnippetSession != nil && !window.sheets.isEmpty }
-                let management = try sheet()
-                guard let managed = ws.textSnippetSession else { throw NSError(domain: "TextSnippetSelfTest", code: 8) }
-                try await stableMarkerClick("snippetDuplicate", in: management, stage: stage)
-                try await wait("Unabhängige Kopie") { managed.dirty && managed.definition.id != savedID }
-                let duplicateID = managed.definition.id
-                try await stableMarkerClick("snippetSave", in: management, stage: stage)
-                try await wait("Kopie gespeichert") { !managed.dirty && managed.saved.count == 2 }
-                try require(managed.definition.template == "{{Name}} / {{Ort}} / {{Name}}", "Duplikat verliert Vorlage")
-                try await matrix("snippets-management", in: management)
-                try await stableMarkerClick("snippetDelete", in: management, stage: stage)
-                func deleteButton(_ view: NSView) -> NSButton? {
-                    if let button = view as? NSButton, button.title == L10n.string("Löschen") { return button }
-                    return view.subviews.lazy.compactMap { deleteButton($0) }.first
-                }
-                var confirmation: (NSWindow, NSButton)?
-                try await wait("Sichtbare Löschbestätigung") {
-                    for alert in management.sheets + window.sheets {
-                        if let root = alert.contentView, let button = deleteButton(root) { confirmation = (alert, button); return true }
-                    }
-                    return false
-                }
-                if let (alert, button) = confirmation {
-                    try require(sendMouseClick(at: button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil), in: alert, modifiers: [], viaApp: true), "Löschbestätigung nicht bedienbar")
-                }
-                try await wait("Nur Kopie gelöscht") { managed.saved.count == 1 && !managed.saved.contains(where: { $0.id == duplicateID }) && managed.definition.id == savedID }
-                try await wait("Löschbestätigung vollständig geschlossen") { management.sheets.isEmpty && management.isKeyWindow }
-                stage = "Exportdialog abbrechen"
-                var exportPanelSeen = false
-                var panelTimer: Timer?
-                panelTimer = Timer(timeInterval: 0.05, repeats: true) { _ in
-                    guard let panel = NSApp.modalWindow as? NSSavePanel else { return }
-                    exportPanelSeen = true; panelTimer?.invalidate(); panelTimer = nil; panel.cancel(nil)
-                }
-                if let panelTimer { RunLoop.main.add(panelTimer, forMode: .common); RunLoop.main.add(panelTimer, forMode: .modalPanel) }
-                try await stableMarkerClick("snippetExport", in: management, stage: stage)
-                try await wait("Exportpanel abgebrochen") { exportPanelSeen && NSApp.modalWindow == nil }
-                panelTimer?.invalidate(); panelTimer = nil
-                try require(managed.saved.count == 1 && ws.activeTab?.content == source, "Exportabbruch verändert Daten")
-                try await stableMarkerClick("snippetClose", in: management, stage: stage)
-                try await wait("Verwaltung geschlossen") { ws.textSnippetSession == nil && window.sheets.isEmpty }
-                stage = "WYSIWYG-Einfügen"
-                var markdown = EditorTab(title: "Snippet.md", path: "", content: "# Kopf\n\nOLD\n\nUnberührt  _Original_ 😀\n")
-                markdown.markdownVisualOverride = true
-                ws.tabs.append(markdown); ws.activeTabID = markdown.id
-                try await wait("WebKit bereit") { ws.visualMarkdownEditor?.ready == true }
-                guard let web = ws.visualMarkdownEditor?.web else { throw NSError(domain: "TextSnippetSelfTest", code: 7) }
-                _ = try await web.evaluateJavaScript("const p=Array.from(document.querySelectorAll('p')).find(p=>p.textContent==='OLD'),r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'));void 0;")
-                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
-                try await wait("Visueller Picker") { ws.textSnippetSession != nil && !window.sheets.isEmpty }
-                let visualPicker = try sheet()
-                try await fill("snippetValue-0", "Visuell 😀\nzweite Zeile", in: visualPicker)
-                try await fill("snippetValue-1", "Köln", in: visualPicker)
-                try await matrix("snippets-visual", in: visualPicker)
-                try await stableMarkerClick("snippetInsert", in: visualPicker, stage: stage)
-                try await wait("Visuelle Einfügung") { ws.textSnippetSession == nil && window.sheets.isEmpty && ws.activeTab?.content.contains("Visuell 😀") == true }
-                try require(ws.activeTab?.content.hasPrefix("# Kopf\n\n") == true && ws.activeTab?.content.hasSuffix("Unberührt  _Original_ 😀\n") == true && ws.activeTab?.content.contains("OLD") == false, "Fremde Markdown-Blöcke wurden verändert")
-                try await wait("Visuelles Dokumentfenster nach Sheet bereit") { window.sheets.isEmpty && window.isKeyWindow }
-                try require(window.makeFirstResponder(web), "WebKit-Fokus nach Sheet fehlt")
-                try await wait("WebKit besitzt Fokus") { window.firstResponder === web }
-                postHistoryKey(windowNumber: window.windowNumber)
-                try await wait("Visuelles Undo") { ws.activeTab?.content.utf8.elementsEqual(markdown.content.utf8) == true }
-                stage = "Veraltetes Ziel"
-                try await stableMarkerClick("snippetOpen", in: window, stage: stage)
-                try await wait("Picker erneut offen") { ws.textSnippetSession != nil && !window.sheets.isEmpty }
-                let stalePicker = try sheet()
-                ws.tabs[ws.tabs.firstIndex(where: { $0.id == markdown.id })!].content = "Extern neuer Inhalt\n"
-                try await wait("Stale blockiert") { ws.textSnippetSession?.targetIsCurrent == false && ws.textSnippetSession?.canInsert == false }
-                try await matrix("snippets-stale", in: stalePicker)
-                try await stableMarkerClick("snippetClose", in: stalePicker, stage: stage)
-                try await wait("Stale geschlossen") { ws.textSnippetSession == nil && window.sheets.isEmpty }
-                try require(ws.activeTab?.content == "Extern neuer Inhalt\n", "Stale-Abbruch überschreibt Dokument")
-                cleanup()
-                finish(true, "Sichtbarer Picker, Vorlage speichern, wiederholte Unicode-/Mehrzeilenwerte, Tab/Shift-Tab, vollständige Vorschau, echte Quelle-/WYSIWYG-Einfügung und natives Undo, Abbruch und stale Ziel; DE/EN-Layoutmatrix")
-            } catch {
-                fputs("SNIPPET-DIAG stage=\(stage) error=\(error.localizedDescription) session=\(String(describing: ws.textSnippetSession?.error)) responder=\(String(describing: window.sheets.first?.firstResponder))\n", stderr)
-                if let session = ws.textSnippetSession {
-                    fputs("SNIPPET-MODEL name=\(String(reflecting: session.definition.name)) template=\(String(reflecting: session.definition.template)) placeholders=\(session.placeholders) values=\(session.values)\n", stderr)
-                }
-                if let output = ProcessInfo.processInfo.environment["FASTRA_TEXT_WORKFLOW_DIR"] {
-                    let url = URL(fileURLWithPath: output).appendingPathComponent("snippets-failure.png")
-                    try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
-                        typeScrollCapture(window: window.sheets.first ?? window) { snapshot in try? snapshot?.data.write(to: url); done.resume() }
-                    }
-                }
-                cleanup(); finish(false, "Textbausteine [\(stage)]: \(error.localizedDescription)")
-            }
+            await textSnippetTests().runTextSnippetTest()
         }
     }
 
@@ -28131,7 +23058,7 @@ enum SelfTest {
                     guard let web = ws.visualMarkdownEditor?.web else { throw NSError(domain: "fixture", code: 1) }
                     _ = try await web.evaluateJavaScript("""
                         const prepare=fastraVisual.prepareAction;
-                        fastraVisual.prepareAction=()=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare());});
+                        fastraVisual.prepareAction=(...args)=>new Promise(resolve=>{window.releasePrepare=()=>resolve(prepare(...args));});
                         void 0;
                         """)
                     if route == "Tastatur" {
@@ -28609,7 +23536,7 @@ enum SelfTest {
 
         let original = NSApp.appearance
         workspaceDefaults().set(true, forKey: "markdown.integratedPreview")
-        // Bewusst dunkel STARTEN und später wechseln — nur so entsteht der
+        // Bewusst dunkel starten und später wechseln — nur so entsteht der
         // Zustand, in dem die Farbe veraltet zurückbleiben konnte.
         NSApp.appearance = NSAppearance(named: .darkAqua)
         ws.loadFile(at: file) { ok in
@@ -28820,99 +23747,19 @@ enum SelfTest {
         }
     }
 
-    /// Baut ein kleines Repo MIT Verzweigung und Merge, öffnet es und hält das
-    /// Fenster fürs Graph-Capture. Der Graph-Modus wird über FASTRA_SIDEBAR=graph
-    /// vorgewählt (Test-Hook in EditorView).
     private static func runGraphShot() {
         testLabel = "graphshot"
-        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        guard GitRunner.isAvailable else { finish(.environment, "git nicht verfügbar") }
-        let fm = FileManager.default
-        let repo = makeScreenshotFixtureDirectory().appendingPathComponent("GraphDemo")
-        try? fm.createDirectory(at: repo, withIntermediateDirectories: true)
+        gitHistoryTests.runGraphShot()
+    }
 
-        let id = ["-c", "user.email=t@t", "-c", "user.name=Demo"]
-        // Kette von git-Aufrufen, die eine echte Verzweigung + Merge erzeugt.
-        func write(_ name: String, _ text: String) {
-            try? text.write(to: repo.appendingPathComponent(name), atomically: true, encoding: .utf8)
-        }
-        func step(_ args: [String], _ next: @escaping () -> Void) {
-            GitRunner.run(id + args, in: repo) { r in
-                guard let r, r.ok else { finish(false, "(git \(args.first ?? "")) \(r?.stderr ?? "")") }
-                next()
-            }
-        }
-
-        write("f.txt", "a\n")
-        step(["-c", "init.defaultBranch=main", "init"]) {
-        step(["add", "."]) { step(["commit", "-m", "Erster Commit"]) {
-        write("f.txt", "a\nb\n"); step(["commit", "-am", "Zweiter Commit"]) {
-        step(["tag", "v0.1"]) {
-        step(["checkout", "-b", "feature"]) {
-        write("f.txt", "a\nb\nfeat\n"); step(["commit", "-am", "Feature: Teil 1"]) {
-        write("f.txt", "a\nb\nfeat\nfeat2\n"); step(["commit", "-am", "Feature: Teil 2"]) {
-        step(["checkout", "main"]) {
-        write("g.txt", "main\n"); step(["add", "."]) { step(["commit", "-m", "Main: Fix nebenher"]) {
-        step(["merge", "--no-ff", "feature", "-m", "Merge feature in main"]) {
-        step(["checkout", "-b", "hotfix", "HEAD~1"]) {
-        write("h.txt", "hot\n"); step(["add", "."]) { step(["commit", "-m", "Hotfix offen"]) {
-        step(["checkout", "main"]) {
-            prepareRemoteBadgeShot(repository: repo, workspace: ws) {
-                ws.openProject(at: repo)
-                // Nach dem Öffnen ist der Graph über FASTRA_SIDEBAR=graph aktiv.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    dumpMainWindowThenExit(prefix: "GRAPHSHOT-WINDOW")
-                }
-            }
-        } } } } } } } } } } } } } } } }
+    private static func runGitHistoryShot() {
+        testLabel = "historyshot"
+        gitHistoryTests.runGitHistoryShot()
     }
 
     /// Gemeinsames Shot-Finale: größtes sichtbares Fenster (= Hauptfenster)
     /// nach vorn ordnen, Fenster-Nummer auf stderr ausgeben, nach 12 s
     /// Selbst-Exit — gleiche Mechanik wie die Suchmasken-Shots.
-    /// Diagnose-Modus für die Sichtprüfung des Dateiverlaufs: dasselbe
-    /// Demo-Repo wie `graphshot`, danach die Ansicht auf `f.txt`
-    /// eingeschränkt. Zeigt Kopfzeile, Commit-Zahl und den Knopf
-    /// „Ganze Historie" in echter Fenstergröße.
-    private static func runGitHistoryShot() {
-        testLabel = "historyshot"
-        guard let ws = Workspace.shared else { finish(false, "Workspace.shared ist nil") }
-        guard GitRunner.isAvailable else { finish(.environment, "git nicht verfügbar") }
-        let fm = FileManager.default
-        let repo = makeScreenshotFixtureDirectory().appendingPathComponent("HistoryDemo")
-        try? fm.createDirectory(at: repo, withIntermediateDirectories: true)
-
-        let id = ["-c", "user.email=t@t", "-c", "user.name=Demo"]
-        func write(_ name: String, _ text: String) {
-            try? text.write(to: repo.appendingPathComponent(name), atomically: true,
-                            encoding: .utf8)
-        }
-        func step(_ args: [String], _ next: @escaping () -> Void) {
-            GitRunner.run(id + args, in: repo) { r in
-                guard let r, r.ok else {
-                    finish(false, "(git \(args.first ?? "")) \(r?.stderr ?? "")")
-                }
-                next()
-            }
-        }
-
-        write("f.txt", "a\n")
-        step(["-c", "init.defaultBranch=main", "init"]) {
-        step(["add", "."]) { step(["commit", "-m", "Erster Commit"]) {
-        write("f.txt", "a\nb\n"); step(["commit", "-am", "Zweite Fassung von f.txt"]) {
-        write("g.txt", "x\n"); step(["add", "."]) { step(["commit", "-m", "Nur g.txt"]) {
-        write("f.txt", "a\nb\nc\n"); step(["commit", "-am", "Dritte Fassung von f.txt"]) {
-        write("g.txt", "y\n"); step(["commit", "-am", "Wieder nur g.txt"]) {
-            ws.openProject(at: repo)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                ws.showGitHistory(for: repo.appendingPathComponent("f.txt"))
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    dumpMainWindowThenExit(prefix: "HISTORYSHOT-WINDOW")
-                }
-            }
-        } } } } } } } }
-    }
-
     private static func dumpMainWindowThenExit(prefix: String) {
         if let value = ProcessInfo.processInfo.environment["FASTRA_SIDEBAR_SCREENSHOT_WIDTH"],
            let width = Double(value), (SidebarLayout.minimumSidebarWidth...500).contains(width),
@@ -28958,128 +23805,6 @@ enum SelfTest {
                 })
     }
 
-    /// Teiltest b: Live-Ordner-Suche mit einem echten Temp-Ordner.
-    private static func runSearchTestPartB(_ ws: Workspace) {
-        // Temp-Ordner mit eindeutigem Namen anlegen (die Sandbox-Wurzel der
-        // Selbsttests; die App hat dort Schreibrecht).
-        let tmpDir = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-search-folder-\(UUID().uuidString)").path
-        do {
-            try FileManager.default.createDirectory(
-                atPath: tmpDir,
-                withIntermediateDirectories: true,
-                attributes: nil
-            )
-        } catch {
-            finish(false, "(b) Temp-Ordner nicht anlegbar: \(error.localizedDescription)")
-        }
-
-        // Datei 1: 2 Treffer. Datei 2: 1 Treffer → Summe 3.
-        let file1 = (tmpDir as NSString).appendingPathComponent("a.txt")
-        let file2 = (tmpDir as NSString).appendingPathComponent("b.txt")
-        let folderPattern = "ORDNERMARKER"   // ≥ 3 Zeichen → Live-Schwelle OK
-        let expectedFolderTotal = 3
-
-        do {
-            try "Zeile 1\nORDNERMARKER erste\nORDNERMARKER zweite\n"
-                .write(toFile: file1, atomically: true, encoding: .utf8)
-            try "Keine Zeile davor\nORDNERMARKER dritte\n"
-                .write(toFile: file2, atomically: true, encoding: .utf8)
-        } catch {
-            try? FileManager.default.removeItem(atPath: tmpDir)
-            finish(false, "(b) Testdatei nicht schreibbar: \(error.localizedDescription)")
-        }
-
-        // Scope wechseln und Temp-Ordner als einzigen aktivierten Eintrag
-        // setzen. Alle anderen Einträge deaktivieren, damit kein alter
-        // Ordner die Trefferzahl verfälscht.
-        ws.recentSearchFolders = ws.recentSearchFolders.map { entry in
-            var e = entry; e.enabled = false; return e
-        }
-        ws.recentSearchFolders.insert(
-            SearchFolderEntry(path: tmpDir, enabled: true),
-            at: 0
-        )
-        ws.scope = .folder
-        ws.useRegex = false
-        ws.caseSensitive = true
-        // Pattern zuletzt setzen → Combine-Trigger feuert und startet
-        // den SearchRunner-Debounce-Zyklus.
-        ws.findPattern = folderPattern
-
-        // Folder-Debounce: ~0,42 s nach dem Trigger (120 ms Pipeline-
-        // Debounce + 300 ms Extra-Debounce in SearchRunner). Dann läuft
-        // FolderSearch async via Task.detached. Wir pollen bis zu 3 s.
-        pollForFolderMatches(ws,
-                             expectedTotal: expectedFolderTotal,
-                             tmpDir: tmpDir)
-    }
-
-    /// Pollt auf `folderTotalMatches == expectedTotal`. Läuft max. ~3 s.
-    /// Bei Erfolg → Aufräumen + Teiltest c. Bei Timeout → FAIL + Aufräumen.
-    private static func pollForFolderMatches(
-        _ ws: Workspace,
-        expectedTotal: Int,
-        tmpDir: String
-    ) {
-        // Bisher 100 Ticks × 30 ms = 3 Sekunden Beobachtungsfenster.
-        //
-        // Der FRÜHE Abbruch braucht weiterhin einen Durchlaufzähler: Eine
-        // abgeschlossene Suche mit falschem Ergebnis ist erst nach dem
-        // Mindest-Debounce (~14 × 30 ms = 420 ms) ein Befund, vorher könnte der
-        // SearchRunner noch im Extra-Debounce stehen. Der Helfer ruft
-        // `condition` je Durchlauf GENAU EINMAL und nie zusätzlich im
-        // Timeout-Zweig — deshalb zählt die Bedingung hier selbst mit, und
-        // `polls` entspricht exakt dem früheren `tick`.
-        var polls = 0
-        waitFor(budget: 3, pause: 0.03,
-                condition: {
-                    let tick = polls
-                    polls += 1
-                    // Suche noch aktiv → warten (kein vorzeitiges FAIL bei 0
-                    // Treffern mitten in einem laufenden Folder-Lauf).
-                    if ws.folderSearching { return false }
-                    if ws.folderTotalMatches == expectedTotal { return true }
-                    if !ws.folderNeedsSearch, tick >= 14 {
-                        try? FileManager.default.removeItem(atPath: tmpDir)
-                        finish(false,
-                            "(b) folderTotalMatches=\(ws.folderTotalMatches), "
-                            + "erwartet \(expectedTotal) "
-                            + "(folderNeedsSearch=\(ws.folderNeedsSearch), "
-                            + "folderSearching=\(ws.folderSearching), "
-                            + "searchError=\(ws.searchError ?? "nil"))")
-                    }
-                    return false
-                },
-                onTimeout: { book in
-                    try? FileManager.default.removeItem(atPath: tmpDir)
-                    if ws.folderSearching {
-                        finish(false,
-                            "(b) Folder-Suche noch aktiv — kein Ergebnis — \(book.summary)")
-                    }
-                    finish(false,
-                        "(b) Folder-Treffer: \(ws.folderTotalMatches), "
-                        + "erwartet \(expectedTotal) — \(book.summary)")
-                }) {
-            // Teiltest b bestanden → Aufräumen und weiter mit c.
-            try? FileManager.default.removeItem(atPath: tmpDir)
-            runSearchTestPartC(ws)
-        }
-    }
-
-    /// Teiltest c: Negativ-Pfad — Pattern, das nichts matcht → 0 Treffer.
-    private static func runSearchTestPartC(_ ws: Workspace) {
-        // Zurück auf Buffer-Scope mit dem Tab aus Teiltest a.
-        ws.scope = .file
-        ws.useRegex = false
-        ws.caseSensitive = true
-        // Pattern, das im TESTMARKER-Inhalt definitiv nicht vorkommt.
-        ws.findPattern = "GIBTESNICHT_XYZ_9999"
-
-        // Buffer-Debounce (120 ms) abwarten, dann Ergebnis prüfen.
-        pollForZeroMatches(ws)
-    }
-
     /// Leere Treffer allein können noch vom vorherigen Suchbereich stammen.
     /// Erst eine abgeschlossene Suche mit den aktuellen Optionen ist ein Beleg.
     static func hasCompletedEmptyBufferSearch(_ ws: Workspace) -> Bool {
@@ -29087,289 +23812,25 @@ enum SelfTest {
             && ws.visibleBufferResultsOptions == ws.currentSearchOptions
     }
 
-    /// Pollt auf eine abgeschlossene Negativsuche. Max. ~1 s.
-    private static func pollForZeroMatches(_ ws: Workspace) {
-        // Bisher 34 Ticks × 30 ms ≈ 1 Sekunde Beobachtungsfenster.
-        waitFor(budget: 1.02, pause: 0.03,
-                condition: { hasCompletedEmptyBufferSearch(ws) },
-                onTimeout: { book in
-                    finish(false,
-                        "(c) bufferMatches.count=\(ws.bufferMatches.count), "
-                        + "erwartet 0 (Pattern=\"\(ws.findPattern)\") — \(book.summary)")
-                }) {
-            // Teiltest c bestanden → weiter mit d (Cap/Async).
-            runSearchTestPartD(ws)
-        }
-    }
-
-    /// Teiltest d: Großer Buffer + kurzes Pattern → Cap greift, echte
-    /// Gesamtzahl bleibt ehrlich, Suche läuft async (kein Beachball). Treibt
-    /// die v0.10-Pipeline (async Buffer-Suche + Cap) END-TO-END über
-    /// Workspace + SearchRunner — genau die Klasse, die der Crash-Report vom
-    /// 2026-06-13 aufdeckte (nicht-lazy Riesenliste → AttributeGraph-Overflow).
-    private static func runSearchTestPartD(_ ws: Workspace) {
-        // 5000 Zeilen mit je einem „1" → 5000 Treffer, Cap = 2000.
-        let bigContent = String(repeating: "marker1zeile\n", count: 5000)
-        let tmpBig = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-search-big-\(UUID().uuidString).txt")
-        do { try bigContent.write(to: tmpBig, atomically: true, encoding: .utf8) }
-        catch { finish(false, "(d) Temp-Datei nicht schreibbar: \(error.localizedDescription)") }
-
-        ws.loadFile(at: tmpBig) { ok in
-            try? FileManager.default.removeItem(at: tmpBig)
-            guard ok else { finish(false, "(d) loadFile schlug fehl (completion false)") }
-            ws.scope = .file
-            ws.useRegex = false
-            ws.caseSensitive = true
-            ws.findPattern = "1"
-            pollForCappedBuffer(ws)
-        }
-    }
-
-    /// Pollt, bis die async Buffer-Suche fertig ist (`!bufferSearching`), und
-    /// prüft Cap + echte Gesamtzahl. Max. ~3 s.
-    private static func pollForCappedBuffer(_ ws: Workspace) {
-        let expectedTotal = 5000
-        let expectedCap = BufferSearch.defaultMaxMatches
-        // Bisher 100 × 30 ms = 3 s — EIN Zähler für beide Zweige („noch am
-        // Suchen" und „fertig, aber falsche Zahl"), das bleibt so. Dass dieser
-        // Poll überhaupt drankommt, belegt zugleich: die Suche läuft async,
-        // der Main-Thread tickt weiter.
-        waitFor(budget: 3, pause: 0.03,
-                condition: { !ws.bufferSearching && ws.bufferTotalMatches == expectedTotal },
-                onTimeout: { book in
-                    if ws.bufferSearching {
-                        finish(false, "(d) Buffer-Suche noch aktiv — \(book.summary)")
-                    }
-                    finish(false,
-                        "(d) bufferTotalMatches=\(ws.bufferTotalMatches), "
-                        + "erwartet \(expectedTotal) (searchError=\(ws.searchError ?? "nil")) "
-                        + "— \(book.summary)")
-                }) {
-            guard ws.bufferMatches.count == expectedCap else {
-                finish(false,
-                    "(d) bufferMatches.count=\(ws.bufferMatches.count), "
-                    + "erwartet Cap \(expectedCap)")
-            }
-            guard ws.bufferResultsWereCapped else {
-                finish(false, "(d) bufferResultsWereCapped=false, erwartet true")
-            }
-            // Alles bestanden — Gesamt-PASS.
-            finish(true,
-                "(a) Buffer-Treffer + Zeile/Spalte korrekt, "
-                + "(b) Folder-Treffer korrekt, "
-                + "(c) Negativ-Pfad korrekt (0 Treffer), "
-                + "(d) Cap greift: \(expectedCap) gelistet / \(expectedTotal) gezählt, async")
-        }
-    }
-
     // MARK: - Selbsttest contrast
 
-    /// Wächter gegen weiß-auf-weiß (und analoge unsichtbare Farb-Kombos):
-    ///
-    /// 1. Suchmaske öffnen (via .fastraShowSearchFile — gleicher Weg wie CMD+F).
-    /// 2. Im Suchfenster UND im Hauptfenster alle NSTextField-Instanzen
-    ///    rekursiv einsammeln (sichtbar, nicht versteckt — Labels sind in
-    ///    SwiftUI ebenfalls als NSTextField gebrückt).
-    /// 3. Für jedes sichtbare Feld: Textfarbe gegen den effektiven Fensterhinter-
-    ///    grund nach sRGB konvertieren, relative Luminanz per WCAG-Formel
-    ///    berechnen, Kontrastverhältnis bestimmen. Verhältnis < 2.0 → FAIL.
-    /// 4. PASS: kein Feld unter der Schwelle. FAIL bei 0 geprüften Feldern
-    ///    (dann ist die Einsammel-Logik kaputt — soll auffallen).
-    ///
-    /// Schwelle 2.0 ist absichtlich niedrig (WCAG AA für Fließtext wäre 4.5).
-    /// Ziel: klares „weiß auf weiß" fangen, ohne bei leicht gedämpften
-    /// Sekundärfarben (z.B. Platzhalter auf hellem Hintergrund) zu klagen.
+    @MainActor
     private static func runContrastTest() {
         testLabel = "contrast"
-
-        // Suchmaske öffnen — exakt der Weg, den CMD+F auch geht.
-        NotificationCenter.default.post(name: .fastraShowSearchFile, object: nil)
-
-        // SwiftUI/AppKit Zeit geben, das Fenster zu rendern. Ohne die
-        // Verzögerung sind viele Subviews noch nicht in der View-Hierarchie
-        // (lazy SwiftUI body rendering).
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            var allFields: [NSTextField] = []
-
-            // Alle NSTextField aus dem Suchfenster einsammeln.
-            if let searchWindow = NSApp.windows.first(where: {
-                $0.frameAutosaveName == SearchWindow.frameAutosaveName
-            }), let root = searchWindow.contentView {
-                collectAllTextFields(in: root, into: &allFields)
-            }
-
-            // Alle NSTextField aus dem Hauptfenster einsammeln.
-            if let mainWindow = NSApp.windows.first(where: {
-                $0.frameAutosaveName != SearchWindow.frameAutosaveName
-                    && $0.contentView != nil && $0.isVisible
-            }), let root = mainWindow.contentView {
-                collectAllTextFields(in: root, into: &allFields)
-            }
-
-            // Mindestens 1 Feld muss gefunden worden sein — sonst ist der
-            // Test selbst kaputt (und würde sonst fälschlich PASS liefern).
-            guard !allFields.isEmpty else {
-                finish(false, "0 NSTextField gefunden — View-Hierarchie nicht traversierbar")
-            }
-
-            // Hintergrundfarbe des Suchfensters als Standard-Fallback. Die
-            // Suchmaske hat einen expliziten hellen Hintergrund (Theme.surfaceRaised),
-            // NSWindow.backgroundColor spiegelt das systemseitig wider.
-            // Für Felder ohne eigenen definierten Hintergrund ist das der
-            // beste Proxy, den wir ohne vollständiges CALayer-Traversal haben.
-            let searchWin = NSApp.windows.first(where: {
-                $0.frameAutosaveName == SearchWindow.frameAutosaveName
-            })
-            // Konservativer Fallback: reines Weiß — ist das Suchfenster
-            // nicht auffindbar, bleibt die Prüfung auf der sicheren Seite
-            // (Textfarbe wird gegen Weiß verglichen, genau die Bug-Klasse).
-            let windowBg = searchWin?.backgroundColor ?? NSColor.white
-
-            let evaluation = contrastEvaluation(fields: allFields, windowBackground: windowBg)
-            finish(evaluation.outcome, evaluation.message)
-        }
+        SelfTestContrast(windows: { NSApp.windows }, finish: finish).runContrastTest()
     }
 
-    /// Wertet die tatsächlich messbaren Textfelder aus; separat aufrufbar,
-    /// damit die Nachweisgrenzen ohne sichtbares Fenster geprüft werden können.
+    /// Erhält den internen Testzugang zur actorisolierten Kontrastauswertung.
+    @MainActor
     static func contrastEvaluation(
         fields allFields: [NSTextField], windowBackground windowBg: NSColor
     ) -> (outcome: SelfTestOutcome, message: String) {
-        var failDescriptions: [String] = []
-        var checkedCount = 0
-        var unmeasurableCount = 0
-
-        for field in allFields {
-            // Versteckte oder transparent gerenderte Felder überspringen —
-            // sie sind für den Nutzer nicht sichtbar.
-            guard !field.isHidden, field.alphaValue > 0.05 else { continue }
-            // Felder ohne window-Kontext sind noch nicht auf dem Schirm.
-            guard field.window != nil else { continue }
-            // Leere Felder überspringen: SwiftUIs `Menu` (.borderlessButton)
-            // legt intern ein leeres NSTextField-Hilfsfeld an (stringValue
-            // ""), das fg≈bg hat (contrast ~1.07). Da es KEINEN Text zeigt,
-            // ist es per Definition kein „weiß-auf-weiß"-Lesbarkeitsproblem —
-            // der Test zielt auf SICHTBAREN Text (Dark-Mode-Bug-Klasse).
-            guard !field.stringValue.isEmpty else { continue }
-
-            // Textfarbe des Felds — SwiftUI setzt `.textColor` auf dem
-            // gebrückten NSTextField. Fehlt sie, gilt die System-Label-Farbe.
-            let rawText = field.textColor ?? NSColor.labelColor
-
-            // Hintergrundfarbe: wenn das Feld selbst einen definierten,
-            // nicht-transparenten Hintergrund hat, nehmen wir den.
-            // Sonst Fensterhintergrund als Fallback.
-            let rawBg: NSColor = {
-                if field.drawsBackground,
-                   let bg = field.backgroundColor,
-                   bg.alphaComponent > 0.05 {
-                    return bg
-                }
-                return windowBg
-            }()
-
-            // Musterfarben besitzen beispielsweise keinen einzelnen sRGB-Wert.
-            // Ohne Messwert darf dieses Feld weder als geprüft zählen noch
-            // eine unvollständige Messung als erfolgreicher Test enden.
-            guard
-                let textSRGB = rawText.usingColorSpace(.sRGB),
-                let bgSRGB   = rawBg.usingColorSpace(.sRGB)
-            else {
-                unmeasurableCount += 1
-                continue
-            }
-
-            checkedCount += 1
-            let ratio = contrastRatio(textSRGB, bgSRGB)
-            if ratio < 2.0 {
-                // Beschreibung enthält genug Info, um das Feld im UI
-                // zu identifizieren: Platzhalter + Wert-Präfix + Frame.
-                let valuePreview = String(field.stringValue.prefix(20))
-                let desc = "ph=\"\(field.placeholderString ?? "")\" "
-                    + "value=\"\(valuePreview)\" "
-                    + "frame=\(field.frame) "
-                    + "contrast=\(String(format: "%.2f", ratio))"
-                failDescriptions.append(desc)
-            }
-        }
-
-        // Ein tatsächlich gemessener Fehler hat Vorrang vor fehlenden Werten.
-        // Auch eine teilweise messbare Oberfläche liefert sonst nur ENV.
-        if failDescriptions.isEmpty && unmeasurableCount > 0 {
-            return (.environment,
-                "\(checkedCount) Felder geprüft, \(unmeasurableCount) Farben nicht nach sRGB konvertierbar")
-        }
-
-        if checkedCount == 0 {
-            // Alle Felder waren versteckt oder ohne window-Kontext —
-            // verdächtig, könnte aber beim Erst-Start kurz auftreten.
-            return (.fail,
-                "0 sichtbare NSTextField geprüft "
-                + "(von \(allFields.count) insgesamt gefunden)")
-        }
-
-        if failDescriptions.isEmpty {
-            return (.pass,
-                "\(checkedCount) Felder geprüft, keins unter Kontrast 2.0")
-        } else {
-            return (.fail,
-                "\(failDescriptions.count) Feld(er) unter Kontrast 2.0 "
-                + "(von \(checkedCount) geprüft):\n"
-                + failDescriptions.joined(separator: "\n")
-                + "\n\(unmeasurableCount) Felder ohne messbaren Farbwert")
-        }
-    }
-
-    /// Sammelt ALLE `NSTextField` (editierbar UND Labels) rekursiv ein.
-    /// Im Gegensatz zu `collectEditableFields` werden auch nicht-editierbare
-    /// Labels erfasst — in SwiftUI sind `Text`-Views als `NSTextField` mit
-    /// `isEditable=false` gebrückt und können genauso unsichtbar sein
-    /// (weiß auf weiß war exakt dieser Fall, s. Commit-Historie).
-    private static func collectAllTextFields(in view: NSView, into out: inout [NSTextField]) {
-        if let tf = view as? NSTextField {
-            out.append(tf)
-        }
-        for sub in view.subviews {
-            collectAllTextFields(in: sub, into: &out)
-        }
-    }
-
-    /// Berechnet das WCAG-Kontrastverhältnis zweier Farben.
-    ///
-    /// Formel: (L_hell + 0.05) / (L_dunkel + 0.05), wobei L die
-    /// relative Luminanz nach WCAG 2.1 Appendix A ist. Ergebnis liegt
-    /// zwischen 1.0 (kein Kontrast, identische Farben) und 21.0
-    /// (maximaler Kontrast: schwarz auf weiß). Beide Farben müssen im
-    /// sRGB-Farbraum vorliegen — das stellt der Aufrufer sicher.
-    private static func contrastRatio(_ a: NSColor, _ b: NSColor) -> Double {
-        let la = relativeLuminance(a)
-        let lb = relativeLuminance(b)
-        // Die hellere Farbe kommt in den Zähler.
-        let lighter = max(la, lb)
-        let darker  = min(la, lb)
-        return (lighter + 0.05) / (darker + 0.05)
-    }
-
-    /// Relative Luminanz einer sRGB-Farbe nach WCAG 2.1 (linearisierter
-    /// Gamma-Wert, gewichtet nach menschlicher Empfindlichkeit).
-    private static func relativeLuminance(_ color: NSColor) -> Double {
-        // WCAG-Linearisierung: Werte ≤ 0.04045 werden linear skaliert,
-        // höhere Werte über eine Potenzfunktion (Gamma ≈ 2.2).
-        func linearize(_ c: Double) -> Double {
-            c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
-        }
-        // `redComponent` etc. sind im sRGB-Farbraum im Bereich 0…1.
-        let r = linearize(Double(color.redComponent))
-        let g = linearize(Double(color.greenComponent))
-        let b = linearize(Double(color.blueComponent))
-        // ITU-R BT.709 Gewichtung (WCAG-Standard).
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+        SelfTestContrast.contrastEvaluation(fields: allFields, windowBackground: windowBg)
     }
 
     // MARK: - -selftest loadperf
 
-    /// Misst, ob das asynchrone Datei-Laden den Main-Runloop NICHT blockiert.
+    /// Misst, ob das asynchrone Datei-Laden den Main-Runloop nicht blockiert.
     ///
     /// Vorgehen:
     /// 1. Heartbeat-Timer (10-ms-Takt) auf Main starten — misst die größte
@@ -29380,7 +23841,7 @@ enum SelfTest {
     /// 3. Phase 1 = bis Completion (I/O + Encoding-Erkennung, Hintergrund).
     /// 4. Phase 2 reicht bis zum echten Editor-Mount und eine weitere Sekunde
     ///    über Layout, Statistik und eine etwaige Syntaxanalyse hinweg. Der
-    ///    Herzschlag läuft absichtlich durch BEIDE Phasen: Der frühere Test
+    ///    Herzschlag läuft absichtlich durch beide Phasen: Der frühere Test
     ///    stoppte ihn im Lade-Callback und übersah damit genau den teuren
     ///    Editoraufbau, den er eigentlich absichern sollte.
     ///
@@ -29437,7 +23898,7 @@ enum SelfTest {
         }
         // Der reale Problemfall trägt `.txt`, wurde aber zuvor bewusst auf
         // JSON gestellt. Diese Wahl überlebt das Schließen und entscheidet
-        // beim erneuten Öffnen über Grammatik UND Soft-Wrap-Profil.
+        // beim erneuten Öffnen über Grammatik und Soft-Wrap-Profil.
         ws.languageChoices.setChoiceID(
             LanguageMenuSupport.Entry.grammar(.json).id,
             for: fileURL
@@ -29626,465 +24087,17 @@ enum SelfTest {
     private static func runMarkdownCollectionsTest() {
         testLabel = "markdowncollections"
         Task { @MainActor in
-            do {
-                guard let path = ProcessInfo.processInfo.environment["FASTRA_COLLECTION_REVIEW_DIR"],
-                      let ws = Workspace.shared else {
-                    finish(.environment, "Sammlungsfixture oder Workspace fehlt")
-                }
-                let root = URL(fileURLWithPath: path)
-                let reopen = FileManager.default.fileExists(atPath: root.appendingPathComponent("reopen").path)
-                for name in ["mail.mbox", "notes.enex"] {
-                    let source = root.appendingPathComponent(name)
-                    let stem = source.deletingPathExtension().lastPathComponent
-                    let index = root.appendingPathComponent(stem + "-2/index.md")
-                    if !reopen {
-                        let result: URL? = await withCheckedContinuation { continuation in
-                            MarkdownImportService.shared.convert(source, owner: ws) {
-                                continuation.resume(returning: $0)
-                            }
-                        }
-                        guard result?.standardizedFileURL == index.standardizedFileURL else {
-                            finish(false, "Falscher Sammlungspfad: \(String(describing: result)); \(markdownImportFailureText())")
-                        }
-                    }
-                    let files = try FileManager.default.subpathsOfDirectory(
-                        atPath: index.deletingLastPathComponent().path).filter { $0.hasSuffix(".md") }
-                    guard files.count == 3 else { finish(false, "Sammlung unvollständig: \(files)") }
-                    for relative in files {
-                        let file = index.deletingLastPathComponent().appendingPathComponent(relative)
-                        let expected = try String(contentsOf: file, encoding: .utf8)
-                        let loaded: Bool = await withCheckedContinuation { continuation in
-                            ws.loadFile(at: file) { continuation.resume(returning: $0) }
-                        }
-                        guard loaded, ws.activeTab?.content == expected else {
-                            finish(false, "Sammlungsdatei nicht im Editor geöffnet: \(relative)")
-                        }
-                    }
-                    let loaded: Bool = await withCheckedContinuation { continuation in
-                        ws.loadFile(at: index) { continuation.resume(returning: $0) }
-                    }
-                    guard loaded else { finish(false, "Übersicht nicht erneut geöffnet") }
-                }
-                finish(true, reopen ? "MBOX/ENEX nach Prozessende im Editor erneut geöffnet" : "MBOX/ENEX mit Kollision vollständig übernommen und im Editor geöffnet")
-            } catch { finish(false, error.localizedDescription) }
+            await SelfTestMarkdownImport(waitFor: waitFor, finish: finish, finishOutcome: finish,
+                                         resolveWorkspace: { Workspace.shared }).runMarkdownCollectionsTest()
         }
     }
 
     // MARK: - markdownimport (Umwandlung nach Markdown über poormans-text)
 
-    /// End-to-end gegen das ECHTE `poormans-text`: Formatkatalog, eine
-    /// Umwandlung ohne Bilder, eine mit Bildern und der Kollisionsschutz.
-    ///
-    /// Ein Unit-Test kann hier nur die Zerlegung der Antworten prüfen. Ob das
-    /// Werkzeug wirklich gefunden wird, ob `--formats` von diesem Stand
-    /// verstanden wird und ob das Ergebnis tatsächlich neben der Quelle landet,
-    /// zeigt sich erst mit echten Dateien und einem echten Prozess.
     private static func runMarkdownImportTest() {
         testLabel = "markdownimport"
-        guard MarkdownImportTool.locate() != nil else {
-            finish(.environment, "Umgebungsproblem: poormans-text ist nicht installiert "
-                + "(oder \(MarkdownImportTool.overrideEnvironmentKey) zeigt ins Leere)")
-        }
-        MarkdownImportService.shared.withCatalog { catalog in
-            guard let catalog else {
-                finish(.environment, "Umgebungsproblem: dieser poormans-text-Stand kennt "
-                    + "--formats nicht — Werkzeug aktualisieren")
-            }
-            checkMarkdownImportCatalog(catalog)
-        }
-    }
-
-    private static func checkMarkdownImportCatalog(_ catalog: MarkdownImportCatalog) {
-        guard let rtf = catalog.availableFormat(forExtension: "rtf") else {
-            finish(.environment, "Katalog meldet RTF nicht als benutzbar — Pandoc installiert?")
-        }
-        guard !rtf.isPackage else {
-            finish(false, "RTF darf kein Ordner-Paket sein")
-        }
-        // Fehlt die Paketkennzeichnung, öffnet ein Dokument still als Projekt.
-        guard catalog.availableFormat(forExtension: "rtfd")?.isPackage == true else {
-            finish(false, "RTFD wird nicht als Ordner-Paket gemeldet")
-        }
-
-        // Zweiter Abruf muss SYNCHRON aus dem Zwischenspeicher kommen, sonst
-        // startet jedes Öffnen einer Datei einen neuen Prozess.
-        var servedSynchronously = false
-        MarkdownImportService.shared.withCatalog { _ in servedSynchronously = true }
-        guard servedSynchronously else {
-            finish(false, "Formatkatalog wird nicht zwischengespeichert")
-        }
-
-        let base: URL
-        do {
-            base = try makeMarkdownImportFixtures()
-        } catch {
-            finish(
-                SelfTestFixtureOutcome.markdownImport(for: error),
-                "Fixtures nicht erzeugbar: \(error.localizedDescription)"
-            )
-        }
-        convertPlainMarkdownImportFixture(in: base)
-    }
-
-    /// Legt drei Quellen an: eine schlichte RTF, eine RTF mit eingebettetem
-    /// PNG und eine bereits belegte `Belegt.md`, die nicht überschrieben
-    /// werden darf.
-    private static func makeMarkdownImportFixtures() throws -> URL {
-        let base = selfTestTemporaryDirectory()
-            .appendingPathComponent("fastra-markdownimport-\(UUID().uuidString)",
-                                    isDirectory: true)
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-
-        try Data(#"{\rtf1\ansi Schlichter Text ohne Bild.}"#.utf8)
-            .write(to: base.appendingPathComponent("Schlicht.rtf"), options: .atomic)
-
-        // Bereits belegter Zielname — die Umwandlung muss auf `-2` ausweichen
-        // und diesen Inhalt unangetastet lassen.
-        try Data("bereits da\n".utf8)
-            .write(to: base.appendingPathComponent("Belegt.md"), options: .atomic)
-        try Data(#"{\rtf1\ansi Zweites Dokument.}"#.utf8)
-            .write(to: base.appendingPathComponent("Belegt.rtf"), options: .atomic)
-
-        guard let png = markdownImportPNG() else { throw MarkdownImportFixtureError.png }
-        let hex = png.map { String(format: "%02x", $0) }.joined()
-        let withPicture = "{\\rtf1\\ansi Mit Bild: "
-            + "{\\pict\\pngblip\\picw8\\pich8\\picwgoal120\\pichgoal120\n\(hex)\n}}"
-        try Data(withPicture.utf8)
-            .write(to: base.appendingPathComponent("MitBild.rtf"), options: .atomic)
-        return base
-    }
-
-    private static func markdownImportPNG() -> Data? {
-        guard let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: 8, pixelsHigh: 8,
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-        ) else { return nil }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        NSColor.systemTeal.setFill()
-        NSRect(x: 0, y: 0, width: 8, height: 8).fill()
-        NSGraphicsContext.restoreGraphicsState()
-        return rep.representation(using: .png, properties: [:])
-    }
-
-    /// Schritt 1: RTF ohne Bilder → `Schlicht.md` direkt neben der Quelle.
-    private static func convertPlainMarkdownImportFixture(in base: URL) {
-        let source = base.appendingPathComponent("Schlicht.rtf")
-        let sourceBytes = try? Data(contentsOf: source)
-        MarkdownImportService.shared.convert(source) { markdownFile in
-            guard let markdownFile else {
-                finishMarkdownImport(base, false,
-                                     "schlichte RTF nicht umgewandelt: "
-                                        + markdownImportFailureText())
-            }
-            guard markdownFile.path == base.appendingPathComponent("Schlicht.md").path else {
-                finishMarkdownImport(base, false,
-                                     "falscher Zielname: \(markdownFile.lastPathComponent)")
-            }
-            let markdown = (try? String(contentsOf: markdownFile, encoding: .utf8)) ?? ""
-            guard markdown.contains("Schlichter Text") else {
-                finishMarkdownImport(base, false, "Markdown ohne Quelltext: \(markdown.prefix(80))")
-            }
-            // Die Quelle darf die Umwandlung bytegleich überstehen.
-            guard (try? Data(contentsOf: source)) == sourceBytes else {
-                finishMarkdownImport(base, false, "die Quelldatei wurde verändert")
-            }
-            // Kein Zwischenverzeichnis darf liegen bleiben.
-            let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: base.path))?
-                .filter { $0.hasPrefix(".fastra-markdown-") } ?? []
-            guard leftovers.isEmpty else {
-                finishMarkdownImport(base, false, "Zwischenverzeichnis blieb liegen: \(leftovers)")
-            }
-            routeFileMarkdownImportFixture(in: base)
-        }
-    }
-
-    private static func routeFileMarkdownImportFixture(in base: URL) {
-        Task { @MainActor in
-            guard let workspace = Workspace.shared else {
-                finishMarkdownImport(base, false, "Workspace fehlt")
-            }
-            let source = base.appendingPathComponent("Direkt.RTF")
-            let expected = base.appendingPathComponent("Direkt.md")
-            let bytes = Data(#"{\rtf1\ansi Direkt geoeffnet.\par Zweiter Absatz.}"#.utf8)
-            do { try bytes.write(to: source) }
-            catch { finishMarkdownImport(base, .environment, "RTF-Fixture nicht erzeugbar") }
-            let before = workspace.tabs.map(\.id)
-            var asked = 0
-            Workspace.markdownImportFileChoiceProvider = { url, format in
-                asked += 1
-                guard url == source, format.identifier == "rtf" else {
-                    finishMarkdownImport(base, false, "RTF-Rückfrage betrifft falsche Quelle")
-                }
-                return .cancel
-            }
-            workspace.openFileOrFolder(at: source)
-            guard asked == 1, workspace.tabs.map(\.id) == before,
-                  !FileManager.default.fileExists(atPath: expected.path) else {
-                finishMarkdownImport(base, false, "RTF-Abbruch öffnet oder schreibt trotzdem")
-            }
-            Workspace.markdownImportFileChoiceProvider = { _, _ in asked += 1; return .convert }
-            workspace.openFileOrFolder(at: source)
-            for _ in 0..<200 {
-                if workspace.activeTab?.url == expected.canonicalFileURL,
-                   workspace.activeTab?.isLoading == false { break }
-                try? await Task.sleep(nanoseconds: 50_000_000)
-            }
-            guard asked == 2, workspace.activeTab?.url == expected.canonicalFileURL,
-                  workspace.activeTab?.content.contains("Direkt geoeffnet.") == true,
-                  !workspace.tabs.contains(where: { $0.url == source.canonicalFileURL }),
-                  (try? Data(contentsOf: source)) == bytes else {
-                finishMarkdownImport(base, false, "RTF-Öffnen liefert keinen Markdown-Tab oder verändert die Quelle")
-            }
-            Workspace.markdownImportFileChoiceProvider = { _, _ in asked += 1; return .openAsText }
-            workspace.openFileOrFolder(at: source)
-            for _ in 0..<200 {
-                if workspace.activeTab?.url == source.canonicalFileURL,
-                   workspace.activeTab?.isLoading == false { break }
-                try? await Task.sleep(nanoseconds: 50_000_000)
-            }
-            guard asked == 3, workspace.activeTab?.url == source.canonicalFileURL,
-                  workspace.activeTab?.content == String(decoding: bytes, as: UTF8.self) else {
-                finishMarkdownImport(base, false, "RTF lässt sich nicht ausdrücklich als Quelltext öffnen")
-            }
-            Workspace.markdownImportFileChoiceProvider = nil
-            await routeAllMarkdownImportFormats(in: base, workspace: workspace)
-        }
-    }
-
-    @MainActor
-    private static func routeAllMarkdownImportFormats(in base: URL, workspace: Workspace) async {
-        guard let catalog = MarkdownImportService.shared.cachedCatalog else {
-            finishMarkdownImport(base, false, "Formatkatalog fehlt")
-        }
-        let originalTabs = workspace.tabs.map(\.id), originalProject = workspace.projectURL
-        var asked = 0, expectedSource: URL?, expectedFormat = ""
-        Workspace.markdownImportFileChoiceProvider = { url, format in
-            guard url == expectedSource, format.identifier == expectedFormat else {
-                finishMarkdownImport(base, false, "Dateirückfrage betrifft falsches Format")
-            }
-            asked += 1
-            return .cancel
-        }
-        Workspace.markdownImportPackageChoiceProvider = { url, format in
-            guard url == expectedSource, format.identifier == expectedFormat else {
-                finishMarkdownImport(base, false, "Paketrückfrage betrifft falsches Format")
-            }
-            asked += 1
-            return .cancel
-        }
-        do {
-            // Alle Aliasse und Container des echten Katalogs müssen VOR dem
-            // Lesen erreichbar sein. Die Attrappen werden immer abgebrochen.
-            for format in catalog.formats {
-                for ext in format.fileExtensions {
-                    for directory in [false, true] where format.supportsContainer(isDirectory: directory) {
-                        let source = base.appendingPathComponent("Katalog-\(asked).\(ext.uppercased())")
-                        if directory {
-                            try FileManager.default.createDirectory(at: source, withIntermediateDirectories: false)
-                        } else {
-                            try Data("Katalogprobe".utf8).write(to: source)
-                        }
-                        expectedSource = source; expectedFormat = format.identifier
-                        let before = asked
-                        workspace.openFileOrFolder(at: source)
-                        guard asked == before + 1, workspace.tabs.map(\.id) == originalTabs,
-                              workspace.projectURL == originalProject else {
-                            finishMarkdownImport(base, false, "Öffnen/Abbruch umgeht den Dialog für \(ext)")
-                        }
-                        try FileManager.default.removeItem(at: source)
-                    }
-                }
-            }
-            Workspace.markdownImportPackageChoiceProvider = nil
-            let source = base.appendingPathComponent("Office.DOCX")
-            let text = NSAttributedString(string: "DOCX Direktimport äöü.\nZweiter Absatz.")
-            let bytes = try text.data(from: NSRange(location: 0, length: text.length),
-                                      documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML])
-            try bytes.write(to: source)
-            Workspace.markdownImportFileChoiceProvider = { url, format in
-                guard url == source, format.identifier == "docx" else {
-                    finishMarkdownImport(base, false, "DOCX-Rückfrage fehlt")
-                }
-                return .convert
-            }
-            workspace.openFileOrFolder(at: source)
-            let expected = base.appendingPathComponent("Office.md")
-            for _ in 0..<240 {
-                if workspace.activeTab?.url == expected.canonicalFileURL, workspace.activeTab?.isLoading == false { break }
-                try? await Task.sleep(nanoseconds: 50_000_000)
-            }
-            guard workspace.activeTab?.url == expected.canonicalFileURL,
-                  workspace.activeTab?.content.contains("DOCX Direktimport äöü.") == true,
-                  !workspace.tabs.contains(where: { $0.url == source.canonicalFileURL }),
-                  try Data(contentsOf: source) == bytes else {
-                finishMarkdownImport(base, false, "DOCX-Direktimport fehlgeschlagen: "
-                    + "Zustand=\(MarkdownImportService.shared.state), "
-                    + "Tab=\(workspace.activeTab?.url?.path ?? "kein Tab"), "
-                    + "Text=\(workspace.activeTab?.content.prefix(160) ?? ""), "
-                    + "Quelle unverändert=\((try? Data(contentsOf: source)) == bytes), "
-                    + "Ziel vorhanden=\(FileManager.default.fileExists(atPath: expected.path))")
-            }
-            print("MARKDOWNIMPORT-KATALOG: \(asked) Endungs-/Containerkombinationen mit unverändertem Zustand abgebrochen; DOCX real konvertiert")
-        } catch {
-            finishMarkdownImport(base, false, "Formatprobe fehlgeschlagen: \(error.localizedDescription)")
-        }
-        Workspace.markdownImportFileChoiceProvider = nil
-        convertCollidingMarkdownImportFixture(in: base)
-    }
-
-    /// Schritt 2: Zielname ist belegt → `-2`, ohne das Vorhandene anzufassen.
-    private static func convertCollidingMarkdownImportFixture(in base: URL) {
-        let occupied = base.appendingPathComponent("Belegt.md")
-        MarkdownImportService.shared.convert(base.appendingPathComponent("Belegt.rtf")) { file in
-            guard let file else {
-                finishMarkdownImport(base, false,
-                                     "Kollisionsfall nicht umgewandelt: "
-                                        + markdownImportFailureText())
-            }
-            guard file.lastPathComponent == "Belegt-2.md" else {
-                finishMarkdownImport(base, false,
-                                     "Kollision falsch aufgelöst: \(file.lastPathComponent)")
-            }
-            let kept = (try? String(contentsOf: occupied, encoding: .utf8)) ?? ""
-            guard kept == "bereits da\n" else {
-                finishMarkdownImport(base, false, "bestehende Datei wurde überschrieben")
-            }
-            convertPictureMarkdownImportFixture(in: base)
-        }
-    }
-
-    /// Schritt 3: RTF mit Bild → Ordner `MitBild` samt `MitBild.md` und Bild.
-    private static func convertPictureMarkdownImportFixture(in base: URL) {
-        MarkdownImportService.shared.convert(base.appendingPathComponent("MitBild.rtf")) { file in
-            guard let file else {
-                finishMarkdownImport(base, false,
-                                     "Bild-RTF nicht umgewandelt: " + markdownImportFailureText())
-            }
-            let expected = base.appendingPathComponent("MitBild/MitBild.md")
-            guard file.path == expected.path else {
-                finishMarkdownImport(base, false, "Ordnerfall falsch benannt: \(file.path)")
-            }
-            var isDirectory: ObjCBool = false
-            let folder = base.appendingPathComponent("MitBild")
-            guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory),
-                  isDirectory.boolValue,
-                  FileManager.default.fileExists(atPath: file.path) else {
-                finishMarkdownImport(base, false, "Ordner oder Markdown fehlt")
-            }
-            let contents = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-            guard contents.contains("images") else {
-                finishMarkdownImport(base, false, "Bildordner fehlt: \(contents)")
-            }
-            routePackageMarkdownImportFixture(in: base)
-        }
-    }
-
-    /// Schritt 4: Ein `.rtfd` ist auf der Platte ein ORDNER. Fastra darf es
-    /// deshalb nicht still als Projekt öffnen, sondern muss die Rückfrage
-    /// anbieten und danach wirklich umwandeln. Genau das ging beim ersten
-    /// Anlauf im Dateibaum verloren (Daniel-Befund 2026-07-26).
-    private static func routePackageMarkdownImportFixture(in base: URL) {
-        let package = base.appendingPathComponent("Paket.rtfd", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: package,
-                                                    withIntermediateDirectories: true)
-            try Data(#"{\rtf1\ansi\ansicpg1252 Inhalt eines RTFD-Pakets.\par \'95 Suchfeld = OK\par \'95 Art = OK\par Schluss eins\par Schluss zwei\par}"#.utf8)
-                .write(to: package.appendingPathComponent("TXT.rtf"), options: .atomic)
-        } catch {
-            finishMarkdownImport(base, .environment, "RTFD-Fixture nicht erzeugbar")
-        }
-
-        // Der Katalog muss das Paket als Paket erkennen — sonst landet es im
-        // Ordnerzweig und wird als Projekt geöffnet.
-        guard let workspace = Workspace.shared else {
-            finishMarkdownImport(base, false, "Workspace fehlt")
-        }
-        guard let format = workspace.markdownImportPackageFormat(at: package) else {
-            finishMarkdownImport(base, false,
-                                 "RTFD wird nicht als Dokumentpaket erkannt — "
-                                    + "ein Klick würde es nur aufklappen")
-        }
-        guard format.identifier == "rtfd" else {
-            finishMarkdownImport(base, false, "falsches Paketformat: \(format.identifier)")
-        }
-        // Ein echter Ordner darf davon unberührt bleiben.
-        guard workspace.markdownImportPackageFormat(at: base) == nil else {
-            finishMarkdownImport(base, false, "gewöhnlicher Ordner gilt fälschlich als Dokument")
-        }
-
-        // Die Rückfrage ist modal und würde einen fensterlosen Lauf anhalten;
-        // der Testhaken beantwortet sie mit „umwandeln".
-        var asked = 0
-        Workspace.markdownImportPackageChoiceProvider = { _, _ in
-            asked += 1
-            return .convert
-        }
-        workspace.openFileOrFolder(at: package)
-        pollPackageMarkdownImport(base: base, package: package, asked: { asked })
-    }
-
-    private static func pollPackageMarkdownImport(base: URL, package: URL,
-                                                  asked: @escaping () -> Int) {
-        let expected = base.appendingPathComponent("Paket.md")
-        // Bisher 100 × 100 ms = 10 s. Eigener Timeout-Zweig: Der Testhaken der
-        // Rückfrage muss in JEDEM Ausgang zurückgesetzt werden.
-        waitFor(budget: 10, pause: 0.1,
-                condition: { FileManager.default.fileExists(atPath: expected.path) },
-                onTimeout: { book in
-                    Workspace.markdownImportPackageChoiceProvider = nil
-                    finishMarkdownImport(base, false,
-                                         "RTFD-Paket nicht umgewandelt (Rückfragen: \(asked()), "
-                                            + "Zustand: " + markdownImportFailureText()
-                                            + ") — " + book.summary)
-                }) {
-            Workspace.markdownImportPackageChoiceProvider = nil
-            guard asked() == 1 else {
-                finishMarkdownImport(base, false,
-                                     "Rückfrage \(asked())-mal statt einmal gestellt")
-            }
-            // Das Paket selbst muss unangetastet bleiben.
-            guard FileManager.default.fileExists(
-                atPath: package.appendingPathComponent("TXT.rtf").path
-            ) else {
-                finishMarkdownImport(base, false, "das RTFD-Paket wurde verändert")
-            }
-            let markdown = (try? String(contentsOf: expected, encoding: .utf8)) ?? ""
-            let lines = markdown.components(separatedBy: "\n")
-            guard let field = lines.firstIndex(where: { $0.hasPrefix("- ") && $0.contains("Suchfeld = OK") }),
-                  field + 1 < lines.count,
-                  lines[field + 1].hasPrefix("- "), lines[field + 1].contains("Art = OK"),
-                  !markdown.contains("•"),
-                  markdown.contains("Schluss eins\n\nSchluss zwei") else {
-                finishMarkdownImport(base, false,
-                                     "RTFD-Aufzählung oder Absatzgrenzen falsch: \(markdown)")
-            }
-            guard Workspace.shared?.projectURL != package.canonicalFileURL else {
-                finishMarkdownImport(base, false, "das Paket wurde als Projekt geöffnet")
-            }
-            finishMarkdownImport(base, true,
-                                 "Formatkatalog, Zwischenspeicher, flache Umwandlung, "
-                                    + "alle Format-Aliasse und Container, echter DOCX-Import, RTF-Öffnen/Abbruch/Quelltext, Kollisionsschutz, Bilder und RTFD-Absatzgrenzen ok")
-        }
-    }
-
-    private static func markdownImportFailureText() -> String {
-        if case .failed(let message) = MarkdownImportService.shared.state { return message }
-        return "kein Grund gemeldet"
-    }
-
-    private static func finishMarkdownImport(_ base: URL, _ ok: Bool, _ message: String) -> Never {
-        finishMarkdownImport(base, ok ? .pass : .fail, message)
-    }
-
-    private static func finishMarkdownImport(
-        _ base: URL, _ outcome: SelfTestOutcome, _ message: String
-    ) -> Never {
-        Workspace.markdownImportFileChoiceProvider = nil
-        Workspace.markdownImportPackageChoiceProvider = nil
-        try? FileManager.default.removeItem(at: base)
-        finish(outcome, message)
+        SelfTestMarkdownImport(waitFor: waitFor, finish: finish, finishOutcome: finish,
+                               resolveWorkspace: { Workspace.shared }).runMarkdownImportTest()
     }
 
     /// Ein kontrolliertes CLI hält den Lauf an der Ausgabegrenze fest. So
@@ -30093,800 +24106,33 @@ enum SelfTest {
     private static func runMarkdownImportUITest() {
         testLabel = "markdownimportui"
         Task { @MainActor in
-            guard let ws = Workspace.shared,
-                  let window = CommandTargeting.registeredWindow(for: ws) else {
-                finish(false, "Workspace oder Fenster fehlt")
-            }
-            let service = MarkdownImportService.shared
-            let oldLocate = service.locateTool
-            let base = selfTestTemporaryDirectory().appendingPathComponent("markdown-ui-\(UUID().uuidString)")
-            let tool = base.appendingPathComponent("converter")
-            let gate = base.appendingPathComponent("release")
-            let warnings = [
-                "Schriftarten, Farben und genaue Seitenumbrüche werden in Markdown nicht erhalten. Tabellen mit verbundenen Zellen können vereinfacht werden. Bitte das Ergebnis mit dem Original vergleichen, bevor es weitergegeben wird.",
-                "Doppelte Warnung bleibt sichtbar.", "Doppelte Warnung bleibt sichtbar.",
-            ]
-            @MainActor func require(_ value: Bool, _ message: String) throws {
-                if !value { throw NSError(domain: "MarkdownImportUI", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
-            }
-            @MainActor func wait(_ condition: () -> Bool) async throws {
-                for _ in 0..<300 {
-                    if condition() { return }
-                    try await Task.sleep(nanoseconds: 50_000_000)
-                }
-                try require(condition(), "Umwandlungszustand wurde nicht bereit")
-            }
-            @MainActor func capture(_ state: String) async throws {
-                for width: CGFloat in [650, 1100] {
-                    window.setContentSize(NSSize(width: width, height: 680))
-                    try await Task.sleep(nanoseconds: 250_000_000)
-                    guard let root = window.contentView,
-                          let bar = markerView(id: "markdownImportBar", in: root) else {
-                        throw NSError(domain: "MarkdownImportUI", code: 2)
-                    }
-                    try require(!bar.isHidden, "Umwandlungsleiste fehlt")
-                    if let directory = ProcessInfo.processInfo.environment["FASTRA_MARKDOWN_IMPORT_UI_DIR"] {
-                        let destination = URL(fileURLWithPath: directory).appendingPathComponent("\(state)-\(Int(width)).png")
-                        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-                        let saved = await withCheckedContinuation { continuation in
-                            typeScrollCapture(window: window) { snapshot in
-                                let ok = snapshot.map { (try? $0.data.write(to: destination)) != nil } ?? false
-                                continuation.resume(returning: ok)
-                            }
-                        }
-                        try require(saved, "Fensteraufnahme fehlt")
-                    }
-                }
-            }
-            @MainActor func checkOpeningDialogs() throws {
-                func buttons(in view: NSView) -> [NSButton] {
-                    (view as? NSButton).map { [$0] } ?? view.subviews.flatMap { buttons(in: $0) }
-                }
-                for identifier in ["rtf", "docx"] {
-                    let source = base.appendingPathComponent("Beispiel.\(identifier)")
-                    for available in [true, false] {
-                        let format = MarkdownImportFormat(identifier: identifier, fileExtensions: [identifier],
-                            isPackage: false, isAvailable: available,
-                            unavailableReason: available ? nil : "missing required tool: pandoc")
-                        let choices: [(String, Workspace.MarkdownImportFileChoice)] = available
-                            ? [("In Markdown umwandeln", .convert), ("Als Quelltext öffnen", .openAsText), ("Abbrechen", .cancel)]
-                            : [("Als Quelltext öffnen", .openAsText), ("Abbrechen", .cancel)]
-                        for (index, choice) in choices.enumerated() {
-                            var failure: String?
-                            var clicked = false
-                            let deadline = Date().addingTimeInterval(5)
-                            let timer = Timer(timeInterval: 0.1, repeats: true) { timer in
-                                MainActor.assumeIsolated {
-                                    guard let dialog = NSApp.modalWindow, let content = dialog.contentView else {
-                                        if Date() > deadline {
-                                            failure = "Dokument-Rückfrage erscheint nicht"
-                                            timer.invalidate()
-                                            NSApp.abortModal()
-                                        }
-                                        return
-                                    }
-                                    timer.invalidate()
-                                    let controls = buttons(in: content).filter { !$0.title.isEmpty }
-                                    guard choices.allSatisfy({ expected in
-                                        controls.contains { $0.title == L10n.string(expected.0) && $0.isEnabled }
-                                    }), let button = controls.first(where: { $0.title == L10n.string(choice.0) }),
-                                          available || !controls.contains(where: { $0.title == L10n.string("In Markdown umwandeln") }) else {
-                                        failure = "Dokument-Rückfrage bietet falsche oder deaktivierte Knöpfe"
-                                        NSApp.abortModal()
-                                        return
-                                    }
-                                    if index == 0,
-                                       let directory = ProcessInfo.processInfo.environment["FASTRA_MARKDOWN_IMPORT_UI_DIR"] {
-                                        let path = URL(fileURLWithPath: directory)
-                                            .appendingPathComponent(available ? "\(identifier)-open.png" : "\(identifier)-unavailable.png")
-                                        if let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
-                                            content.cacheDisplay(in: content.bounds, to: bitmap)
-                                            let data = bitmap.representation(using: .png, properties: [:])
-                                            do {
-                                                try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-                                                try data?.write(to: path)
-                                                if data == nil { failure = "Dokument-Dialogaufnahme ist leer" }
-                                            } catch { failure = error.localizedDescription }
-                                        } else { failure = "Dokument-Dialogaufnahme fehlt" }
-                                    }
-                                    clicked = true
-                                    button.performClick(nil)
-                                }
-                            }
-                            RunLoop.main.add(timer, forMode: .modalPanel)
-                            let result = Workspace.askMarkdownImportFileChoice(for: source, format: format)
-                            timer.invalidate()
-                            try require(failure == nil && clicked && result == choice.1,
-                                        failure ?? "Dokument-Dialog liefert die falsche Auswahl")
-                        }
-                    }
-                }
-            }
-            do {
-                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-                try checkOpeningDialogs()
-                let script = """
-                #!/bin/sh
-                output=''
-                while [ "$#" -gt 0 ]; do
-                  case "$1" in
-                    --output) output="$2"; shift 2 ;;
-                    --) source="$2"; break ;;
-                    *) shift ;;
-                  esac
-                done
-                name="$(basename "$source")"
-                printf 'Progress: %s: converting page 2/8\\n' "$name" >&2
-                while [ ! -f '\(gate.path)' ]; do sleep 0.1; done
-                case "$name" in
-                  Fehler.rtf) cat '\(base.path)/error.json'; exit 65 ;;
-                esac
-                mkdir "$output"
-                printf '# Ergebnis\\n' > "$output/converted.md"
-                sed "s|OUTPUT|$output|g" '\(base.path)/success.json'
-                """
-                try script.write(to: tool, atomically: true, encoding: .utf8)
-                try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: tool.path)
-                try JSONSerialization.data(withJSONObject: ["ok": true, "markdownFile": "OUTPUT/converted.md", "assets": [], "warnings": warnings])
-                    .write(to: base.appendingPathComponent("success.json"))
-                try JSONSerialization.data(withJSONObject: ["ok": false, "error": "Das Dokument ist beschädigt. Die Quelle bleibt unverändert."])
-                    .write(to: base.appendingPathComponent("error.json"))
-                service.locateTool = { tool }
-                workspaceDefaults().set(false, forKey: MarkdownEditingMode.defaultsKey)
-                workspaceDefaults().set(true, forKey: MarkdownAssist.firstUseDefaultsKey)
-                for mode in ["Erfolg", "Abbruch", "Fehler"] {
-                    let source = base.appendingPathComponent(mode + ".rtf")
-                    try "Original".write(to: source, atomically: true, encoding: .utf8)
-                    var loaded = false
-                    ws.loadFile(at: source) { loaded = $0 }
-                    try await wait { loaded }
-                    service.clearState()
-                    ws.convertToMarkdown(source)
-                    try await wait { service.progress?.completed == 2 && service.isRunning }
-                    if mode == "Erfolg" { try await capture("running") }
-                    if mode == "Abbruch" {
-                        try await wait {
-                            window.contentView.flatMap {
-                                markerView(id: "markdownImportCancelButton", in: $0)
-                            } != nil
-                        }
-                        guard let root = window.contentView,
-                              let button = markerView(id: "markdownImportCancelButton", in: root) else {
-                            throw NSError(domain: "MarkdownImportUI", code: 3)
-                        }
-                        try require(sendMouseClick(at: button.convert(CGPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil),
-                                                   in: window, modifiers: [], viaApp: true), "Abbruchknopf nicht bedienbar")
-                    } else {
-                        try Data().write(to: gate)
-                    }
-                    try await wait { !service.isRunning }
-                    try require(try String(contentsOf: source, encoding: .utf8) == "Original", "Quelle verändert")
-                    if mode == "Erfolg" {
-                        guard case .finished(let file, let actual) = service.state else {
-                            throw NSError(domain: "MarkdownImportUI", code: 4)
-                        }
-                        try require(actual == warnings && FileManager.default.fileExists(atPath: file.path), "Warnungen oder Ausgabe fehlen")
-                        try await wait { ws.activeTab?.url?.resolvingSymlinksInPath() == file.resolvingSymlinksInPath() }
-                        try await capture("finished")
-                    } else if mode == "Abbruch" {
-                        try require(service.state == .cancelled, "Klick hat nicht abgebrochen")
-                        try require(!FileManager.default.fileExists(atPath: base.appendingPathComponent("Abbruch.md").path), "Abbruch veröffentlichte Ausgabe")
-                        try await capture("cancelled")
-                    } else {
-                        guard case .failed = service.state else { throw NSError(domain: "MarkdownImportUI", code: 5) }
-                        try await capture("failed")
-                    }
-                    try? FileManager.default.removeItem(at: gate)
-                    let leftovers = try FileManager.default.contentsOfDirectory(atPath: base.path)
-                        .filter { $0.hasPrefix(".fastra-markdown-") }
-                    try require(leftovers.isEmpty, "Arbeitsordner blieb liegen")
-                }
-                service.locateTool = oldLocate
-                if let directory = ProcessInfo.processInfo.environment["FASTRA_MARKDOWN_IMPORT_REVIEW_DIR"] {
-                    let review = URL(fileURLWithPath: directory)
-                    try FileManager.default.createDirectory(at: review, withIntermediateDirectories: true)
-                    service.state = .idle
-                    ws.openNewTab()
-                    try Data("ready\n".utf8).write(to: review.appendingPathComponent("ready"))
-                    let deadline = Date().addingTimeInterval(300)
-                    while !FileManager.default.fileExists(atPath: review.appendingPathComponent("continue").path),
-                          Date() < deadline {
-                        try await Task.sleep(nanoseconds: 100_000_000)
-                    }
-                    try require(Date() < deadline, "Manuelle Importabnahme nicht abgeschlossen")
-                }
-                try? FileManager.default.removeItem(at: base)
-                finish(true, "RTF-/DOCX-Rückfragen mit/ohne Pandoc, alle Dialogknöpfe, laufende Seitenzählung, echter Abbruchknopf, Verlustwarnungen und Fehler; schmal/breit")
-            } catch {
-                service.cancelConversion()
-                try? await wait { !service.isRunning }
-                service.locateTool = oldLocate
-                try? FileManager.default.removeItem(at: base)
-                finish(false, error.localizedDescription)
-            }
+            await SelfTestMarkdownImport(waitFor: waitFor, finish: finish, finishOutcome: finish,
+                                         resolveWorkspace: { Workspace.shared }).runMarkdownImportUITest(
+                findMarker: { markerView(id: $0, in: $1) },
+                captureWindow: { window, completion in
+                    typeScrollCapture(window: window) { completion($0?.data) }
+                },
+                click: { sendMouseClick(at: $0, in: $1, modifiers: [], viaApp: true, clickCount: 1) }
+            )
         }
     }
 
     // MARK: - Drucken
 
-    /// Beweist den vollständigen Druckweg, ohne einen Drucker zu brauchen:
-    /// Jeder Auftrag läuft mit `jobDisposition = .save` in eine PDF-Datei, und
-    /// geprüft wird danach am ERGEBNIS — Seitenzahl und wirklich enthaltener
-    /// Text. Ein Test, der nur „kein Fehler geworfen" prüft, würde einen leeren
-    /// oder einseitigen Ausdruck durchgehen lassen.
-    ///
-    /// Vier Teile: langer Quelltext (mehrseitig, Kopf-/Fußzeile,
-    /// Zeilennummern), Markdown-Vorschau (gerendert), dieselbe Markdown-Datei
-    /// als Quelltext (die Wahl muss wirklich etwas ändern) und der Hex-Abzug
-    /// des sichtbaren Abschnitts.
     private static func runPrintTest() {
         testLabel = "print"
         guard let ws = Workspace.shared else {
             finish(false, "Workspace.shared ist nil (Test-Hook fehlt)")
         }
-        // Die erzeugten PDFs sind das eigentliche Ergebnis dieses Tests. Wer
-        // sie ansehen will (Sichtprüfung von Umbruch, Kopf- und Fußzeile),
-        // setzt FASTRA_PRINT_TEST_OUTPUT_DIR — dann bleiben sie liegen.
-        let keepDirectory = ProcessInfo.processInfo.environment[
-            "FASTRA_PRINT_TEST_OUTPUT_DIR"
-        ]
-        // NIE direkt in den angegebenen Ordner schreiben: Der Test legt dort
-        // feste Namen wie quelltext.txt oder bild.png an, teils atomar
-        // überschreibend — gleichnamige vorhandene Nutzerdateien wären weg
-        // (Reviewfund 2026-08-18). Deshalb immer ein frischer Unterordner.
-        let base = (keepDirectory.map { URL(fileURLWithPath: $0) }
-            ?? selfTestTemporaryDirectory())
-            .appendingPathComponent("fastra-print-\(UUID().uuidString)")
-        do {
-            try FileManager.default.createDirectory(at: base,
-                                                    withIntermediateDirectories: true)
-        } catch {
-            finish(false, "Testordner nicht anlegbar: \(error.localizedDescription)")
-        }
-        if keepDirectory == nil { printFixtureDirectory = base }
-
-        let txt = base.appendingPathComponent("quelltext.txt")
-        // 400 Zeilen: sicher mehr als eine Seite, und die letzte Zeile ist ein
-        // Beleg dafür, dass die Seitenaufteilung nichts verschluckt.
-        let content = (1...400).map { "Zeile \($0): abcdefghijklmnop" }
-            .joined(separator: "\n")
-        do { try content.write(to: txt, atomically: true, encoding: .utf8) }
-        catch { finish(false, "Quelltext-Fixture nicht schreibbar") }
-
-        ws.loadFile(at: txt) { ok in
-            guard ok else { finish(false, "loadFile (Quelltext) schlug fehl") }
-            guard let document = ws.printableDocument else {
-                finish(false, "Textdatei meldet keine Druckvorlage")
-            }
-            guard PrintRouting.defaultTarget(document) == .source else {
-                finish(false, "⌘P nimmt bei einer Textdatei nicht den Quelltext")
-            }
-            printToPDF(target: .source, ws: ws, base: base, name: "quelltext") { pdf, text in
-                guard pdf.pageCount >= 2 else {
-                    finish(false, "400 Zeilen ergeben nur \(pdf.pageCount) Seite(n)")
-                }
-                guard text.contains("Zeile 1:"), text.contains("Zeile 400:") else {
-                    finish(false, "erste oder letzte Zeile fehlt im Ausdruck")
-                }
-                guard text.contains("quelltext.txt") else {
-                    finish(false, "Kopfzeile ohne Dokumentnamen")
-                }
-                guard text.contains(PrintDecoration.footerRight(page: 1, of: pdf.pageCount))
-                        || text.contains(PrintDecoration.footerRight(page: 1, of: nil)) else {
-                    finish(false, "Fußzeile ohne Seitenzahl")
-                }
-                runPrintSyntaxColorPart(ws: ws, base: base)
-            }
-        }
+        SelfTestPrint(waitFor: waitFor, finish: finish, windows: { NSApp.windows },
+                      menuItem: menuItem(forExactKeyEquivalent:modifiers:in:),
+                      writeSolidPNG: writeSolidPNG, writeSinglePagePDF: writeSinglePagePDF,
+                      windowsSummary: windowsSummary,
+                      registerFixtureDirectory: { printFixtureDirectory = $0 })
+            .runPrintTest(ws: ws)
     }
 
-    /// Syntaxfarben (Folgeauftrag 2026-09-05): Ein mehrseitiger Swift-Quelltext
-    /// druckt echte Tokenfarben auf JEDER Seite — auch auf der zweiten, die im
-    /// Editor nie sichtbar war. Mit ausgeschalteter Einstellung bleibt derselbe
-    /// Ausdruck einfarbig, und Text, Seitenzahl und Kopfzeile bleiben gleich.
-    private static func runPrintSyntaxColorPart(ws: Workspace, base: URL) {
-        let swift = base.appendingPathComponent("farben.swift")
-        let code = (1...400).map {
-            "let wert\($0) = \"Text \($0)\" // Kommentar \($0)"
-        }.joined(separator: "\n")
-        do { try code.write(to: swift, atomically: true, encoding: .utf8) }
-        catch { finish(false, "Swift-Fixture nicht schreibbar") }
-        let defaults = ws.preferencesStore
-        defaults.set(true, forKey: PrintPreferences.Keys.syntaxColors)
-        ws.loadFile(at: swift) { ok in
-            guard ok else { finish(false, "loadFile (Swift) schlug fehl") }
-            printToPDF(target: .source, ws: ws, base: base, name: "farben") { colored, coloredText in
-                guard colored.pageCount >= 2 else {
-                    finish(false, "400 Swift-Zeilen ergeben nur \(colored.pageCount) Seite(n)")
-                }
-                for page in 0..<colored.pageCount
-                where !pageHasPixel(colored, page: page, matching: isSaturatedColor) {
-                    finish(false, "Seite \(page + 1) des Farbausdrucks trägt keine Tokenfarbe")
-                }
-                guard coloredText.contains("wert400"), coloredText.contains("farben.swift") else {
-                    finish(false, "letzte Swift-Zeile oder Kopfzeile fehlt im Farbausdruck")
-                }
-                defaults.set(false, forKey: PrintPreferences.Keys.syntaxColors)
-                printToPDF(target: .source, ws: ws, base: base, name: "farben-einfarbig") { mono, monoText in
-                    defaults.set(true, forKey: PrintPreferences.Keys.syntaxColors)
-                    guard mono.pageCount == colored.pageCount else {
-                        finish(false, "einfarbiger Ausdruck hat \(mono.pageCount) statt "
-                               + "\(colored.pageCount) Seiten")
-                    }
-                    for page in 0..<mono.pageCount
-                    where pageHasPixel(mono, page: page, matching: isSaturatedColor) {
-                        finish(false, "Seite \(page + 1) des einfarbigen Ausdrucks trägt Farbe")
-                    }
-                    guard monoText == coloredText else {
-                        finish(false, "Farben verändern den gedruckten Text")
-                    }
-                    runPrintMarkdownPart(ws: ws, base: base)
-                }
-            }
-        }
-    }
-
-    /// Eine Tokenfarbe ist bunt (Rot-, Grün- oder Blauanteil weichen deutlich
-    /// voneinander ab); Schwarz, Weiß und Grau sind es nicht.
-    private static func isSaturatedColor(_ color: NSColor) -> Bool {
-        guard let rgb = color.usingColorSpace(.sRGB) else { return false }
-        let channels = [rgb.redComponent, rgb.greenComponent, rgb.blueComponent]
-        return (channels.max() ?? 0) - (channels.min() ?? 0) > 0.2
-    }
-
-    /// Rendert eine Seite als Bitmap und sucht in einem dichten Raster nach
-    /// einem Pixel, das die Bedingung erfüllt. Dicht, weil Glyphen nur wenige
-    /// Pixel hoch sind und ein grobes Raster sie verfehlen kann.
-    private static func pageHasPixel(
-        _ pdf: PDFDocument, page index: Int, matching predicate: (NSColor) -> Bool
-    ) -> Bool {
-        guard let page = pdf.page(at: index) else { return false }
-        let bounds = page.bounds(for: .mediaBox)
-        guard bounds.width > 0, bounds.height > 0 else { return false }
-        let image = page.thumbnail(of: bounds.size, for: .mediaBox)
-        guard let tiff = image.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff) else { return false }
-        for y in stride(from: 0, to: rep.pixelsHigh, by: 3) {
-            for x in stride(from: 0, to: rep.pixelsWide, by: 3) {
-                if let color = rep.colorAt(x: x, y: y), predicate(color) {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
-    /// Markdown: erst die gerenderte Vorschau, dann derselbe Text als
-    /// Quelltext. Die beiden Ausdrucke müssen sich nachweisbar unterscheiden —
-    /// sonst wäre die Wahl im Menü ohne Wirkung.
-    private static func runPrintMarkdownPart(ws: Workspace, base: URL) {
-        let markdown = base.appendingPathComponent("bericht.md")
-        // Formel und Diagramm gehören ausdrücklich dazu: Sie entstehen erst im
-        // Dokument (KaTeX, Mermaid) und beweisen damit, dass der Ausdruck auf
-        // das fertige Rendern wartet statt das halbfertige Dokument zu drucken.
-        let text = """
-        # Druckprobe
-
-        Ein Absatz mit **Fettung** und der Formel $E = mc^2$.
-
-        | Spalte | Wert |
-        | --- | --- |
-        | Messung | Tabellenwert |
-
-        - erster Punkt
-        - zweiter Punkt
-
-        ```mermaid
-        graph LR
-          Anfangsknoten --> Endknoten
-        ```
-        """
-        do { try text.write(to: markdown, atomically: true, encoding: .utf8) }
-        catch { finish(false, "Markdown-Fixture nicht schreibbar") }
-
-        ws.loadFile(at: markdown) { ok in
-            guard ok else { finish(false, "loadFile (Markdown) schlug fehl") }
-            guard let document = ws.printableDocument else {
-                finish(false, "Markdown meldet keine Druckvorlage")
-            }
-            guard PrintRouting.availableTargets(document).contains(.markdownPreview),
-                  PrintRouting.availableTargets(document).contains(.source) else {
-                finish(false, "Markdown bietet nicht beide Fassungen an")
-            }
-            printToPDF(target: .markdownPreview, ws: ws, base: base,
-                       name: "vorschau") { previewPDF, previewText in
-                guard previewPDF.pageCount >= 1 else {
-                    finish(false, "Vorschau-Ausdruck hat keine Seite")
-                }
-                guard previewText.contains("Druckprobe"),
-                      previewText.contains("Tabellenwert") else {
-                    finish(false, "Vorschau-Ausdruck ohne gerenderten Inhalt")
-                }
-                // Das Diagramm steht als echter SVG-Text im PDF, wenn Mermaid
-                // fertig geworden ist. Fehlt der Knotenname oder steht statt
-                // des Diagramms die Fehlermeldung da, wurde zu früh gedruckt.
-                guard previewText.contains("Anfangsknoten"),
-                      previewText.contains("Endknoten") else {
-                    finish(false, "Vorschau-Ausdruck ohne gerendertes Diagramm")
-                }
-                guard !previewText.contains(
-                    L10n.string("Diagramm konnte nicht gerendert werden.")) else {
-                    finish(false, "Diagramm im Ausdruck als Fehler gemeldet")
-                }
-                guard !previewText.contains("```mermaid") else {
-                    finish(false, "Diagramm im Ausdruck als roher Codeblock")
-                }
-                // Die Formel gehört ebenfalls geprüft: Gerendert (KaTeX) sind
-                // die TeX-Zeichen weg. Steht „mc^2" im PDF, wurde entweder
-                // roher Quelltext gedruckt oder KaTeX ist gescheitert und hat
-                // seine Fehlerdarstellung (den TeX-Quelltext) ausgegeben.
-                guard !previewText.contains("mc^2") else {
-                    finish(false, "Formel im Ausdruck nicht gerendert (TeX-Quelltext sichtbar)")
-                }
-                // Positivnachweis dazu: Die GERENDERTE Formel muss im PDF
-                // stehen. KaTeX setzt die Formel mit Mathe-Schriften, deren
-                // Glyphen die PDF-Textauslese als MATHEMATISCHE
-                // Kursivzeichen liefert (nachgemessen 2026-08-19): ohne
-                // Leerraum gelesen „𝐸=𝑚𝑐2" (U+1D438, U+1D45A, U+1D450).
-                // Das weist zugleich nach, dass wirklich die gerenderte
-                // Fassung im Ausdruck steht — roher Quelltext enthielte
-                // gewöhnliche Buchstaben. Eine Regression, die die Formel
-                // ganz entfernt, bestünde die Negativprüfung oben auch
-                // (Reviewfund 2026-08-19).
-                let compactPreview = String(previewText.filter { !$0.isWhitespace })
-                guard compactPreview.contains("𝐸=𝑚𝑐2") else {
-                    finish(false, "gerenderte Formel fehlt im Ausdruck "
-                           + "(erwartet „𝐸=𝑚𝑐2\" im leerraumfreien PDF-Text) — "
-                           + "Text: \(compactPreview.prefix(500))")
-                }
-                // Gerendert heißt: Die Auszeichnungszeichen sind weg. Stünden
-                // „# " oder die Tabellenstriche im PDF, wäre versehentlich der
-                // Quelltext gedruckt worden.
-                guard !previewText.contains("# Druckprobe"),
-                      !previewText.contains("| --- |") else {
-                    finish(false, "Vorschau-Ausdruck enthält rohes Markdown")
-                }
-                printToPDF(target: .source, ws: ws, base: base,
-                           name: "md-quelltext") { _, sourceText in
-                    guard sourceText.contains("# Druckprobe") else {
-                        finish(false, "Quelltext-Ausdruck ohne Markdown-Auszeichnung")
-                    }
-                    runPrintHexPart(ws: ws, base: base)
-                }
-            }
-        }
-    }
-
-    /// Hex: Gedruckt wird der sichtbare Abschnitt. Der Test wartet deshalb
-    /// darauf, dass die Hex-Ansicht ihren geladenen Abschnitt gemeldet hat.
-    private static func runPrintHexPart(ws: Workspace, base: URL) {
-        let binary = base.appendingPathComponent("daten.bin")
-        var bytes = Data()
-        for index in 0..<2048 { bytes.append(UInt8(index % 251)) }
-        // Ein Nullbyte macht die Datei für den Loader eindeutig binär.
-        bytes[0] = 0
-        do { try bytes.write(to: binary) }
-        catch { finish(false, "Binär-Fixture nicht schreibbar") }
-
-        ws.loadFile(at: binary) { ok in
-            guard ok else { finish(false, "loadFile (Binärdatei) schlug fehl") }
-            guard ws.activeViewMode == .hex else {
-                finish(false, "Binärdatei öffnet nicht in der Hex-Ansicht")
-            }
-            pollPrintHexPage(ws: ws, base: base)
-        }
-    }
-
-    private static func pollPrintHexPage(ws: Workspace, base: URL) {
-        waitFor(budget: 15, pause: 0.25,
-                condition: {
-                    guard let page = ws.visiblePrintPage else { return false }
-                    return !page.text.isEmpty
-                },
-                onTimeout: { book in
-                    finish(false, "Hex-Ansicht meldet keinen geladenen Abschnitt — \(book.summary)")
-                },
-                then: {
-                    guard let document = ws.printableDocument,
-                          PrintRouting.defaultTarget(document) == .hexDump else {
-                        finish(false, "⌘P nimmt in der Hex-Ansicht nicht den Abzug")
-                    }
-                    printToPDF(target: .hexDump, ws: ws, base: base, name: "hex") { pdf, text in
-                        guard pdf.pageCount >= 1 else {
-                            finish(false, "Hex-Ausdruck hat keine Seite")
-                        }
-                        guard text.contains("000000000000"), text.contains("|") else {
-                            finish(false, "Hex-Ausdruck ohne Adressspalte oder ASCII-Spalte")
-                        }
-                        // Jede Rasterzeile muss VOLLSTÄNDIG auf einer Druckzeile
-                        // stehen: Adresse, Bytes und die ASCII-Spalte bis zum
-                        // schließenden Strich. Bricht die Zeile um, ist der Abzug
-                        // unlesbar — genau das passierte, solange die Druckschrift
-                        // nicht an die Seitenbreite angepasst wurde.
-                        let addressRows = text.split(separator: "\n").filter { row in
-                            row.count >= 12 && row.prefix(12).allSatisfy { $0.isHexDigit }
-                        }
-                        guard addressRows.count >= 16 else {
-                            finish(false, "Hex-Ausdruck enthält nur \(addressRows.count) "
-                                   + "Rasterzeilen")
-                        }
-                        // Geprüft wird auf die beiden senkrechten Striche der
-                        // ASCII-Spalte, nicht auf das Zeilenende: Die Textauslese des
-                        // PDFs hängt an die letzte Zeile einer Seite die Fußzeile an.
-                        // Eine umgebrochene Rasterzeile bricht dagegen VOR oder IN der
-                        // ASCII-Spalte ab und hat damit weniger als zwei Striche.
-                        if let wrapped = addressRows.first(where: {
-                            $0.filter { $0 == "|" }.count < 2
-                        }) {
-                            finish(false, "Hex-Rasterzeile umgebrochen: \(wrapped)")
-                        }
-                        runPrintImageAndPDFPart(ws: ws, base: base,
-                                                hexPages: pdf.pageCount)
-                    }
-                })
-    }
-
-    /// Bild und PDF: Beides sind Vorschau-Ansichten ohne Editor-Text. Sie
-    /// beweisen, dass „Drucken" nicht am Texteditor hängt.
-    private static func runPrintImageAndPDFPart(ws: Workspace, base: URL,
-                                               hexPages: Int) {
-        let png = base.appendingPathComponent("bild.png")
-        do { try writeSolidPNG(to: png, width: 64, height: 32) }
-        catch { finish(false, "PNG-Fixture nicht schreibbar") }
-
-        ws.loadFile(at: png) { ok in
-            guard ok else { finish(false, "loadFile (PNG) schlug fehl") }
-            guard let document = ws.printableDocument,
-                  PrintRouting.defaultTarget(document) == .image else {
-                finish(false, "⌘P nimmt bei einem Bild nicht die Bildvorschau")
-            }
-            // Gedruckt wird das gemeldete Objekt der Vorschau, kein Neuladen
-            // von der Platte — der Test wartet deshalb wie beim Hex-Abzug,
-            // bis die Ansicht ihren Snapshot gemeldet hat (Reviewfund
-            // 2026-08-19).
-            pollPreviewSnapshot(ws: ws, label: "Bild") {
-            printToPDF(target: .image, ws: ws, base: base, name: "bild") { imagePDF, imageText in
-                guard imagePDF.pageCount == 1 else {
-                    finish(false, "Bildausdruck hat \(imagePDF.pageCount) Seiten "
-                           + "statt einer")
-                }
-                guard imageText.contains("bild.png") else {
-                    finish(false, "Bildausdruck ohne Kopfzeile")
-                }
-                // Die Seite muss das Bild wirklich zeigen: Das Fixture ist
-                // vollflächig rot. Eine leere Seite mit Kopfzeile bestand die
-                // reine Textprüfung vorher auch (Reviewfund 2026-08-18).
-                // Dominanz statt fester Werte: Die Farbraum-Wandlung des
-                // Druckwegs verschiebt reines Rot z. B. auf sRGB 0.9/0.3/0.2.
-                guard firstPageHasPixel(imagePDF, matching: { color in
-                    color.redComponent > 0.6
-                        && color.redComponent
-                            - max(color.greenComponent, color.blueComponent) > 0.25
-                }) else {
-                    finish(false, "Bildausdruck zeigt das rote Fixture-Bild nicht")
-                }
-                // Zusage «gedruckt wird, was zu sehen ist»: Die Datei wird auf
-                // der Platte durch ein BLAUES Bild ersetzt, das Fenster zeigt
-                // aber weiter den roten Snapshot. Der nächste Ausdruck muss
-                // ROT bleiben — lüde er neu von der Platte, wäre er blau
-                // (Reviewfund 2026-08-19).
-                do {
-                    try writeSolidPNG(to: png, width: 64, height: 32,
-                                      color: NSColor(srgbRed: 0, green: 0,
-                                                     blue: 1, alpha: 1))
-                } catch { finish(false, "Blaues Ersatz-PNG nicht schreibbar") }
-                printToPDF(target: .image, ws: ws, base: base,
-                           name: "bild-ersetzt") { replacedPDF, _ in
-                guard firstPageHasPixel(replacedPDF, matching: { color in
-                    color.redComponent > 0.6
-                        && color.redComponent
-                            - max(color.greenComponent, color.blueComponent) > 0.25
-                }) else {
-                    finish(false, "Bildausdruck lädt von der Platte neu, statt "
-                           + "den sichtbaren Vorschau-Stand zu drucken")
-                }
-                let sourcePDF = base.appendingPathComponent("vorlage.pdf")
-                do { try writeSinglePagePDF(to: sourcePDF) }
-                catch { finish(false, "PDF-Fixture nicht schreibbar") }
-                ws.loadFile(at: sourcePDF) { pdfLoaded in
-                    guard pdfLoaded else { finish(false, "loadFile (PDF) schlug fehl") }
-                    guard let pdfDocument = ws.printableDocument,
-                          PrintRouting.defaultTarget(pdfDocument) == .pdf else {
-                        finish(false, "⌘P nimmt bei einem PDF nicht das PDF")
-                    }
-                    // Auch das PDF druckt sein gemeldetes Vorschau-Objekt.
-                    pollPreviewSnapshot(ws: ws, label: "PDF") {
-                    printToPDF(target: .pdf, ws: ws, base: base,
-                               name: "pdf-druck") { printed, _ in
-                        guard printed.pageCount == 1 else {
-                            finish(false, "PDF-Ausdruck hat \(printed.pageCount) "
-                                   + "Seiten statt einer")
-                        }
-                        // Auch hier den Inhalt nachweisen: Das Vorlagen-PDF
-                        // trägt ein blaues Rechteck. Eine leere Seite bestand
-                        // die reine Seitenzahl-Prüfung vorher auch
-                        // (Reviewfund 2026-08-18).
-                        // Dominanz statt fester Werte — gleiche Begründung
-                        // wie beim roten Bild-Fixture.
-                        guard firstPageHasPixel(printed, matching: { color in
-                            color.blueComponent > 0.6
-                                && color.blueComponent
-                                    - max(color.redComponent, color.greenComponent) > 0.25
-                        }) else {
-                            finish(false, "PDF-Ausdruck zeigt das blaue Fixture-Rechteck nicht")
-                        }
-                        runPrintPanelPart(ws: ws, base: base, hexPages: hexPages)
-                    }
-                    }
-                }
-                }
-            }
-            }
-        }
-    }
-
-    /// Wartet, bis die Bild-/PDF-Vorschau ihr geladenes Objekt an den
-    /// Workspace gemeldet hat — genau dieses Objekt ist die Druckvorlage
-    /// (Reviewfund 2026-08-19; Muster wie `pollPrintHexPage`).
-    private static func pollPreviewSnapshot(ws: Workspace, label: String,
-                                            then: @escaping () -> Void) {
-        waitFor(budget: 15, pause: 0.25,
-                condition: {
-                    guard let tab = ws.activeTab else { return false }
-                    return ws.visiblePreviewSnapshot(for: tab) != nil
-                },
-                onTimeout: { book in
-                    finish(false, "\(label)-Vorschau meldet kein geladenes "
-                           + "Druckobjekt — \(book.summary)")
-                },
-                then: then)
-    }
-
-    /// Der Menüweg: Zum Abschluss prüft der Test die ⌘P-/⌥⌘P-/⇧⌘P-Menüpunkte
-    /// strukturell und löst dann den Druckbefehl aus (siehe
-    /// `runPrintPanelStage`); daraufhin muss das System-Druckfenster als
-    /// Blatt am Dokumentfenster erscheinen — Fenster-Zielwahl und Rückmeldung
-    /// des Systemdialogs inklusive. Vorher kommt die Rückfrage vor einem sehr
-    /// großen Ausdruck an die Reihe; ihr Prüfgegenstand ist das
-    /// Rückfrage-Blatt.
-    private static func runPrintPanelPart(ws: Workspace, base: URL, hexPages: Int) {
-        // Zuerst der große Ausdruck: Über zwei Megabyte Text fragt Fastra
-        // vorher nach, weil das Aufteilen in Seiten den Main-Thread belegt.
-        // Geprüft wird am echten Blatt, dass diese Frage wirklich kommt — die
-        // Schätzung selbst deckt der Unit-Test ab.
-        let large = base.appendingPathComponent("gross.txt")
-        let block = String(repeating: "Eine Zeile mit etwas Text zum Drucken.\n",
-                           count: 60_000)
-        do { try block.write(to: large, atomically: true, encoding: .utf8) }
-        catch { finish(false, "Großes Fixture nicht schreibbar") }
-        guard block.utf8.count > PrintVolume.confirmationThresholdBytes else {
-            finish(false, "Großes Fixture ist unter der Rückfrage-Schwelle")
-        }
-        ws.loadFile(at: large) { ok in
-            guard ok else { finish(false, "loadFile (großes Dokument) schlug fehl") }
-            MainActor.assumeIsolated { DocumentPrinting.printVisibleDocument() }
-            pollLargePrintWarning(ws: ws, base: base, hexPages: hexPages)
-        }
-    }
-
-    /// Wartet auf das Rückfrage-Blatt und schließt es mit „Abbrechen" wieder.
-    private static func pollLargePrintWarning(ws: Workspace, base: URL,
-                                             hexPages: Int) {
-        var sheet: NSWindow?
-        waitFor(budget: 15, pause: 0.25,
-                condition: {
-                    sheet = NSApp.windows.compactMap({ $0.attachedSheet }).first
-                    return sheet != nil
-                },
-                onTimeout: { book in
-                    finish(false, "über zwei Megabyte Text fragen nicht nach — \(book.summary)")
-                },
-                then: {
-                    guard let sheet else { finish(false, "Rückfrage-Blatt nach Erfolg verschwunden") }
-                    let texts = sheetTexts(in: sheet)
-                    guard texts.contains(where: { $0.contains(L10n.string("Großer Ausdruck")) }) else {
-                        finish(false, "Blatt vor dem großen Ausdruck ist nicht die Rückfrage: "
-                               + texts.joined(separator: " / "))
-                    }
-                    // Die Seitenschätzung muss eine Zahl nennen, nicht bloß Text.
-                    guard texts.contains(where: { $0.contains(where: \.isNumber) }) else {
-                        finish(false, "Rückfrage nennt keine geschätzte Seitenzahl")
-                    }
-                    // Abbrechen ist die zweite Taste. Erst wenn das Blatt wirklich weg
-                    // ist, geht der Test weiter: Sonst könnte die anschließende Prüfung
-                    // „⌘P öffnet ein Blatt" versehentlich noch dieses hier sehen.
-                    MainActor.assumeIsolated {
-                        sheet.sheetParent?.endSheet(sheet, returnCode: .alertSecondButtonReturn)
-                    }
-                    pollSheetGone(ws: ws, base: base, hexPages: hexPages)
-                })
-    }
-
-    private static func pollSheetGone(ws: Workspace, base: URL, hexPages: Int) {
-        waitFor(budget: 10, pause: 0.25,
-                condition: { NSApp.windows.allSatisfy({ $0.attachedSheet == nil }) },
-                onTimeout: { book in
-                    finish(false, "die Rückfrage zum großen Ausdruck schließt nicht — \(book.summary)")
-                },
-                then: {
-                    // Abgebrochen heißt abgebrochen: Der große Ausdruck darf jetzt
-                    // nicht doch laufen.
-                    runPrintPanelStage(ws: ws, base: base, hexPages: hexPages)
-                })
-    }
-
-    /// Sichtbare Beschriftungen eines Blattes — für die Prüfung, WELCHE
-    /// Rückfrage erscheint. Neben Textfeldern zählen auch Button-Titel:
-    /// Die Druckdialog-Optionen (Checkboxen) sind nur so auffindbar.
-    private static func sheetTexts(in sheet: NSWindow) -> [String] {
-        var texts: [String] = []
-        func walk(_ view: NSView) {
-            if let field = view as? NSTextField, !field.stringValue.isEmpty {
-                texts.append(field.stringValue)
-            }
-            if let button = view as? NSButton, !button.title.isEmpty {
-                texts.append(button.title)
-            }
-            view.subviews.forEach(walk)
-        }
-        if let content = sheet.contentView { walk(content) }
-        return texts
-    }
-
-    private static func runPrintPanelStage(ws: Workspace, base: URL, hexPages: Int) {
-        ws.loadFile(at: base.appendingPathComponent("quelltext.txt")) { ok in
-            guard ok else { finish(false, "loadFile (Quelltext, zweiter Lauf) schlug fehl") }
-            // Menü-Bindung strukturell prüfen, dann denselben Befehl aufrufen,
-            // den der Menüpunkt auslöst, und das echte Blatt prüfen.
-            //
-            // Warum kein synthetisches ⌘P: SwiftUI-Menüpunkte tragen KEIN
-            // klassisches Target/Action (nachgemessen 2026-08-18:
-            // action=keine, target=nil, `performActionForItem` läuft ins
-            // Leere), und die SwiftUI-Shortcut-Zustellung springt für per
-            // `NSApp.postEvent` erzeugte ⌘-Events nicht an — auch bei aktiver
-            // App mit Key-Window nicht. Ein ECHTER Tastendruck funktioniert
-            // (per System-Events-Probe am 2026-08-18 belegt: das Druckblatt
-            // öffnet sich), lässt sich aus dem Testprozess aber nicht ohne
-            // zusätzliche Berechtigungen erzeugen. Deshalb: Verschwindet der
-            // Menüpunkt oder verliert er sein Kürzel, fällt der Test über die
-            // Strukturprüfung; den Blatt-Weg beweist der direkte Aufruf
-            // (Reviewfund 2026-08-18).
-            // Nicht bloß IRGENDEIN Punkt mit passendem Kürzel: Auch der Titel
-            // muss stimmen, sonst bestünde der Test mit einem fremden, nur
-            // zufällig auf „p" gebundenen Menüpunkt (Reviewfund 2026-08-19).
-            // Bei geladenem reinem Quelltext gibt es genau eine Druckfassung,
-            // der ⌘P-Punkt heißt dann schlicht „Drucken…".
-            guard let printItem = menuItem(forExactKeyEquivalent: "p",
-                                           modifiers: [.command],
-                                           in: NSApp.mainMenu),
-                  printItem.title == L10n.string("Drucken…") else {
-                finish(false, "kein ⌘P-Menüpunkt mit Titel „Drucken…\"")
-            }
-            guard let sourceItem = menuItem(forExactKeyEquivalent: "p",
-                                            modifiers: [.command, .option],
-                                            in: NSApp.mainMenu),
-                  sourceItem.title == L10n.string("Quelltext drucken…"),
-                  let layoutItem = menuItem(forExactKeyEquivalent: "p",
-                                            modifiers: [.command, .shift],
-                                            in: NSApp.mainMenu),
-                  layoutItem.title == L10n.string("Papierformat…") else {
-                finish(false, "⌥⌘P- (Quelltext drucken…) oder ⇧⌘P-Menüpunkt "
-                       + "(Papierformat…) fehlt oder trägt den falschen Titel")
-            }
-            // Das Druckblatt muss am DOKUMENTFENSTER hängen — dem Fenster,
-            // das der Befehl über CommandTargeting trifft. Ein Blatt an einem
-            // beliebigen anderen Fenster zählt nicht (Reviewfund 2026-08-19).
-            guard let expectedWindow = MainActor.assumeIsolated({
-                CommandTargeting.targetDocument()?.window
-            }) else {
-                finish(false, "kein Dokumentfenster für den Druckbefehl")
-            }
-            MainActor.assumeIsolated { DocumentPrinting.printVisibleDocument() }
-            pollPrintPanel(expectedWindow: expectedWindow, hexPages: hexPages)
-        }
-    }
-
-    /// Wie `menuItem(forKeyEquivalent:)`, aber mit EXAKTEM Modifier-Vergleich:
+    /// Wie `menuItem(forKeyEquivalent:)`, aber mit exaktem Modifier-Vergleich:
     /// ⌘P, ⌥⌘P und ⇧⌘P tragen alle das Key-Equivalent „p" — für den
     /// Druck-Test zählt genau der Punkt mit ausschließlich ⌘.
     private static func menuItem(forExactKeyEquivalent key: String,
@@ -30908,106 +24154,4 @@ enum SelfTest {
         return nil
     }
 
-    private static func pollPrintPanel(expectedWindow: NSWindow, hexPages: Int) {
-        // Nur das Blatt am erwarteten Dokumentfenster zählt — nicht irgendein
-        // Blatt in irgendeinem Fenster (Reviewfund 2026-08-19).
-        var sheet: NSWindow?
-        waitFor(budget: 15, pause: 0.25,
-                condition: {
-                    sheet = expectedWindow.attachedSheet
-                    return sheet != nil
-                },
-                onTimeout: { book in
-                    finish(false, "der Druckbefehl öffnet kein Druckfenster am "
-                        + "Dokumentfenster — \(book.summary) — " + windowsSummary())
-                },
-                then: {
-                    guard let sheet else { finish(false, "Druck-Blatt nach Erfolg verschwunden") }
-                    // Das Blatt muss auch die Fastra-Optionen tragen: Ohne die
-                    // Checkboxen wäre das Zubehörfeld still verloren gegangen
-                    // (beauftragt 2026-08-18). Zugleich weist das ein Fehler- oder
-                    // Warn-Blatt ab: Ein NSAlert trägt diese Checkboxen nie.
-                    let texts = sheetTexts(in: sheet)
-                    guard texts.contains(L10n.string("Kopf- und Fußzeile drucken")),
-                          texts.contains(L10n.string("Zeilennummern drucken")) else {
-                        finish(false, "Blatt am Dokumentfenster ist kein Druckdialog "
-                               + "mit Fastra-Optionen (Kopf-/Fußzeile, Zeilennummern) "
-                               + "— gefunden: " + texts.joined(separator: " / "))
-                    }
-                    finish(true, "mehrseitiger Quelltext mit Kopf-/Fußzeile, Syntaxfarben "
-                           + "auf jeder Seite eines Swift-Ausdrucks (einfarbig per Einstellung), "
-                           + "gerenderte Markdown-Vorschau (Formel + Diagramm), Markdown-Quelltext, "
-                           + "Hex-Abzug ohne Umbruch (\(hexPages) Seiten), Bild- und "
-                           + "PDF-Ausdruck im PDF geprüft (Bild bleibt nach "
-                           + "Platten-Ersetzung der sichtbare Stand); großer Text fragt "
-                           + "mit Seitenschätzung nach; ⌘P öffnet das System-Druckfenster "
-                           + "am Dokumentfenster mit den Fastra-Optionen")
-                })
-    }
-
-    /// Druckt in eine PDF-Datei und liefert Dokument plus extrahierten Text.
-    ///
-    /// Die Datei entsteht über die Druck-Warteschlange; sie kann deshalb einen
-    /// Moment nach der Rückmeldung des Auftrags noch wachsen. Der Test wartet
-    /// darauf, statt eine halb geschriebene Datei zu lesen.
-    private static func printToPDF(target: PrintTarget, ws: Workspace, base: URL,
-                                   name: String,
-                                   then: @escaping (PDFDocument, String) -> Void) {
-        let output = base.appendingPathComponent("\(name).pdf")
-        // Die Selbsttest-Ketten laufen alle auf dem Main-Thread (jede Stufe
-        // hängt an `DispatchQueue.main`); der Compiler weiß das hier nur nicht.
-        MainActor.assumeIsolated {
-            DocumentPrinting.run(target: target, workspace: ws, window: nil,
-                                 savingTo: output) { outcome in
-                guard outcome == .printed else {
-                    finish(false, "Druck „\(name)\" endete mit \(outcome)")
-                }
-                pollPrintedPDF(at: output, name: name, then: then)
-            }
-        }
-    }
-
-    private static func pollPrintedPDF(at url: URL, name: String,
-                                       then: @escaping (PDFDocument, String) -> Void) {
-        var document: PDFDocument?
-        waitFor(budget: 20, pause: 0.25,
-                condition: {
-                    guard let candidate = PDFDocument(url: url), candidate.pageCount > 0 else { return false }
-                    document = candidate
-                    return true
-                },
-                onTimeout: { book in
-                    finish(false, "PDF „\(name)\" ist nicht lesbar — \(book.summary)")
-                },
-                then: {
-                    guard let document else { finish(false, "PDF „\(name)\" nach Erfolg nicht mehr lesbar") }
-                    then(document, document.string ?? "")
-                })
-    }
-
-    /// Rendert die erste Seite eines PDFs als Bitmap und sucht in einem
-    /// Abtastraster nach einem Pixel, das die Bedingung erfüllt. Damit weisen
-    /// Bild- und PDF-Ausdruck ihre markante Fixture-Fläche nach — die Lage auf
-    /// der Seite (Einpassung, Zentrierung) muss der Test dafür nicht kennen.
-    private static func firstPageHasPixel(
-        _ pdf: PDFDocument, matching predicate: (NSColor) -> Bool
-    ) -> Bool {
-        guard let page = pdf.page(at: 0) else { return false }
-        let bounds = page.bounds(for: .mediaBox)
-        guard bounds.width > 0, bounds.height > 0 else { return false }
-        let image = page.thumbnail(of: bounds.size, for: .mediaBox)
-        guard let tiff = image.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff) else { return false }
-        let strideX = max(1, rep.pixelsWide / 48)
-        let strideY = max(1, rep.pixelsHigh / 48)
-        for x in stride(from: 0, to: rep.pixelsWide, by: strideX) {
-            for y in stride(from: 0, to: rep.pixelsHigh, by: strideY) {
-                if let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB),
-                   predicate(color) {
-                    return true
-                }
-            }
-        }
-        return false
-    }
 }

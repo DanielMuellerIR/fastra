@@ -46,6 +46,12 @@ erneut geprüft. Ein geschlossenes Vorschaufenster hebt eine laufende Freigabe a
 Die Übernahme ist eine Undo-Aktion; neuer Originaltext, Codec und Snapshot werden
 gemeinsam übernommen. Ein späteres Save bleibt an diesen Snapshot gebunden.
 
+Übernehmen Apply, die Rücknahme einer Dateitransaktion oder ihre Wiederaufnahme
+den geprüften Plattenstand in einen unveränderten Quelltexttab, endet dessen
+bisheriger Watch-Hinweis. Offene Freigaben und verspätete Ergebnisse der
+bisherigen Basis sind damit ungültig. Die nächste Prüfung liest bei Bedarf
+erneut, auch wenn Apply und Undo denselben Inode zurückgebracht haben.
+
 „Editor behalten“ ersetzt weder Text noch Originalsnapshot. Ein Save gegen eine
 extern geänderte Basis scheitert weiter sicher. Fehlende/umbenannte Quellen
 werden sichtbar gemeldet; der Watcher folgt keiner erratenen Rename-Zieladresse.

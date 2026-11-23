@@ -16,7 +16,7 @@
 
 import Foundation
 
-enum ReplacementReferences {
+package enum ReplacementReferences {
     /// Wie viele Ziffern Foundation nach einem `$` höchstens als
     /// Gruppennummer liest: so viele, wie `groupCount` selbst hat.
     /// Ohne Gruppen bleibt es bei einer Ziffer.
@@ -36,9 +36,9 @@ enum ReplacementReferences {
     /// Text bleibt unangetastet.
     ///
     /// - Parameters:
-    ///   - groupCount: Anzahl fangender Gruppen VOR der Änderung. Sie
+    ///   - groupCount: Anzahl fangender Gruppen vor der Änderung. Sie
     ///     bestimmt, wie das vorhandene Template gelesen wird.
-    ///   - newGroupCount: Anzahl DANACH. Sie bestimmt, wie geschrieben
+    ///   - newGroupCount: Anzahl danach. Sie bestimmt, wie geschrieben
     ///     werden muss — beim Sprung von 9 auf 10 Gruppen wächst das
     ///     Ziffernbudget, und eine literale Ziffer hinter der Referenz
     ///     würde sonst plötzlich zur Gruppennummer gehören.
@@ -88,7 +88,7 @@ enum ReplacementReferences {
     /// - Parameter groupCount: Anzahl fangender Gruppen im zugehörigen
     ///   Suchausdruck; sie entscheidet, wie viele Ziffern zur Nummer
     ///   gehören (siehe `maxReferenceDigits(forGroupCount:)`).
-    static func scan(in replacement: String,
+    package static func scan(in replacement: String,
                      groupCount: Int,
                      _ handler: (Int, Range<String.Index>) -> Void) {
         let scalars = replacement.unicodeScalars
@@ -155,31 +155,37 @@ enum ReplacementReferences {
 extension ReplacementReferences {
     /// Wie eine Gruppenaktion die Nummerierung verschiebt.
     ///
-    /// Bewusst EIN Wert für beides — das Umschreiben und die Gegenprüfung.
+    /// Bewusst ein Wert für beides — das Umschreiben und die Gegenprüfung.
     /// Zwei getrennte Fassungen derselben Regel könnten auseinanderlaufen, und
     /// die Prüfung bestätigte dann eine andere Zusage als die, die tatsächlich
     /// geschrieben wurde.
-    struct Renumbering {
-        /// Fangende Gruppen VOR der Aktion. Sie bestimmt, wie das vorhandene
+    package struct Renumbering {
+        /// Fangende Gruppen vor der Aktion. Sie bestimmt, wie das vorhandene
         /// Template gelesen wird.
         let groupCount: Int
-        /// Fangende Gruppen DANACH. Sie bestimmt, wie geschrieben werden muss.
+        /// Fangende Gruppen danach. Sie bestimmt, wie geschrieben werden muss.
         let newGroupCount: Int
-        /// Wohin eine VORHANDENE Gruppennummer (`0…groupCount`) wandert.
+        /// Wohin eine vorhandene Gruppennummer (`0…groupCount`) wandert.
         /// `$0` ist immer der ganze Treffer und bleibt `0`.
         let move: (Int) -> Int
+
+        package init(groupCount: Int, newGroupCount: Int, move: @escaping (Int) -> Int) {
+            self.groupCount = groupCount
+            self.newGroupCount = newGroupCount
+            self.move = move
+        }
     }
 
     /// Schreibt das Template um. Reine Umschreibung ohne Gegenprüfung — für
     /// den Produktpfad ist `rewritten(_:by:)` zuständig.
-    static func rewriteText(_ replacement: String,
+    package static func rewriteText(_ replacement: String,
                             by renumbering: Renumbering) -> String {
         rewrite(in: replacement,
                 groupCount: renumbering.groupCount,
                 newGroupCount: renumbering.newGroupCount) { number in
             guard number > renumbering.groupCount else {
                 // Vorhandene Gruppe: Sie wandert mit. Bleibt die Nummer
-                // gleich, gibt `nil` die ursprüngliche SCHREIBWEISE frei —
+                // gleich, gibt `nil` die ursprüngliche Schreibweise frei —
                 // eine führende Null soll dann erhalten bleiben.
                 let moved = renumbering.move(number)
                 return moved == number ? nil : moved
@@ -188,10 +194,10 @@ extension ReplacementReferences {
         }
     }
 
-    /// Schreibt das Template um UND prüft am Ergebnis nach. `nil` bedeutet:
+    /// Schreibt das Template um und prüft am Ergebnis nach. `nil` bedeutet:
     /// Diese Eingabe lässt sich nicht gleichbedeutend abbilden — der Aufrufer
     /// muss die Aktion verweigern, statt still anderen Text zu erzeugen.
-    static func rewritten(_ replacement: String,
+    package static func rewritten(_ replacement: String,
                           by renumbering: Renumbering) -> String? {
         let text = rewriteText(replacement, by: renumbering)
         guard rewriteKeepsMeaning(original: replacement,
@@ -268,17 +274,17 @@ extension ReplacementReferences {
         return result
     }
 
-    /// Erzeugt das umgeschriebene Template GENAU denselben Text wie vorher —
+    /// Erzeugt das umgeschriebene Template genau denselben Text wie vorher —
     /// nur eben aus den umnummerierten Gruppen?
     ///
-    /// Die Prüfung misst am ERGEBNIS statt am Ziffernbudget. Das schließt zwei
+    /// Die Prüfung misst am Ergebnis statt am Ziffernbudget. Das schließt zwei
     /// Fallen zugleich: eine ins Leere zeigende Referenz, die nach der Änderung
     /// plötzlich auf eine echte Gruppe fällt (`$3` bei zwei Gruppen, danach
     /// drei), und eine Schreibweise, die unter dem neuen, kleineren
     /// Ziffernbudget anders gelesen wird (`$11` bei zehn Gruppen, danach neun:
     /// Foundation liest daraus Gruppe 1 plus das Literal „1").
     ///
-    /// - Parameter mapping: Wohin eine VORHANDENE Gruppennummer wandert.
+    /// - Parameter mapping: Wohin eine vorhandene Gruppennummer wandert.
     static func rewriteKeepsMeaning(original: String, groupCount: Int,
                                     rewritten: String, newGroupCount: Int,
                                     mapping: (Int) -> Int) -> Bool {

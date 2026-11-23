@@ -70,7 +70,7 @@ func cachedSearchRemainders(separator: String) {
         for match in result.matches {
             var contentEnd = 0
             let afterMatch = NSMaxRange(match.range)
-            // Unabhängige Foundation-Abfrage bei JEDEM Treffer wie vor der
+            // Unabhängige Foundation-Abfrage bei jedem Treffer wie vor der
             // Optimierung; damit fallen falsche Wiederverwendungen auf.
             ns.getLineStart(nil, end: nil, contentsEnd: &contentEnd,
                             for: NSRange(location: afterMatch, length: 0))

@@ -1,17 +1,10 @@
 // DiffTabState.swift
 //
-// Zusammengehörige Felder eines Vergleichs-Tabs als kleine Typen
-// (Folgeauftrag „EditorTab-Felder bündeln", 2026-09-05, kleinste Etappe).
-//
-// Vorher trug `EditorTab` für den Datei-Vergleich drei lose Optionale
-// (`fileDiffRequest`, `fileDiffDocument`, `fileDiffLoadGeneration`) und für
-// den Git-Diff zwei (`gitDiffRequest`, `gitDiffDocument`). Ein Dokument ohne
-// Auftrag oder eine Generation ohne Auftrag war damit als Zustand
-// darstellbar, auch wenn ihn nie jemand herstellen sollte. Hier hängt das
-// Dokument AM Auftrag: Ohne Auftrag gibt es beim Kompilieren keinen Platz für
-// ein Dokument. Workspace und Ansichten lesen weiter `fileDiffRequest`,
-// `fileDiffDocument`, `gitDiffRequest` und `gitDiffDocument` — als
-// berechnete Nur-Lese-Eigenschaften auf `EditorTab`.
+// Zusammengehörige Felder eines Vergleichs-Tabs. Dokument und
+// Ladegeneration gehören zum Auftrag; ohne Auftrag ist kein Dokument
+// speicherbar. `EditorTab` stellt `fileDiffRequest`, `fileDiffDocument`,
+// `gitDiffRequest` und `gitDiffDocument` als berechnete Nur-Lese-Eigenschaften
+// bereit.
 
 import Foundation
 

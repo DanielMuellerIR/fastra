@@ -4,7 +4,7 @@ ARG RUST_VERSION=1.99.1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ca-certificates curl pkg-config python3 file binutils \
     libgtk-4-dev libgtksourceview-5-dev libwebkitgtk-6.0-dev dpkg-dev xz-utils xvfb xauth dbus-x11 \
-    bubblewrap util-linux imagemagick librsvg2-bin poppler-utils \
+    bubblewrap util-linux imagemagick librsvg2-bin librsvg2-common poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo
 RUN curl --proto '=https' --tlsv1.2 -fsS https://sh.rustup.rs -o /tmp/rustup-init.sh \

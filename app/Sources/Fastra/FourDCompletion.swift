@@ -1,17 +1,14 @@
 // FourDCompletion.swift
 //
-// 4D-Vervollständigung mit Signatur-Hilfe (Etappe 6 Wunschpaket 2026-07c).
-//
-// Nutzt das CodeSuggestion-System von CodeEditSourceEditor (0.15.2): Fastra
-// liefert nur den Delegate — Popup, Tastatur (↑/↓, Return/Tab übernimmt,
-// Esc schließt) und Filter-Lebenszyklus kommen aus CESE und verhalten sich
-// wie macOS-üblich (Esc bzw. ⌃Leertaste öffnen die Vorschläge manuell).
-// Aktiv NUR bei aktiver 4D-Sprache: der Delegate wird in `EditorView`
-// ausschließlich für 4D-Tabs an den `SourceEditor` gereicht.
-//
-// Unaufdringlich: Vorschläge erscheinen erst ab zwei getippten Zeichen
-// (manuelles Öffnen zeigt auch kürzere Präfixe), und der Delegate liefert
-// `nil`, sobald kein sinnvolles Präfix unter dem Cursor liegt.
+// 4D-Vervollständigung mit Signatur-Hilfe. Nutzt das
+// CodeSuggestion-System von CodeEditSourceEditor (0.15.2): Fastra liefert nur
+// den Delegate — Popup, Tastatur (↑/↓, Return/Tab übernimmt, Esc schließt) und
+// Filter-Lebenszyklus kommen aus CESE und verhalten sich wie macOS-üblich (Esc
+// bzw. ⌃Leertaste öffnen die Vorschläge manuell). Aktiv nur bei aktiver
+// 4D-Sprache: der Delegate wird in `EditorView` ausschließlich für 4D-Tabs an
+// den `SourceEditor` gereicht. Unaufdringlich: Vorschläge erscheinen erst ab
+// zwei getippten Zeichen (manuelles Öffnen zeigt auch kürzere Präfixe), und der
+// Delegate liefert `nil`, sobald kein sinnvolles Präfix unter dem Cursor liegt.
 
 import SwiftUI
 import CodeEditSourceEditor
@@ -44,7 +41,7 @@ enum FourDCompletionLogic {
     /// Obergrenze der Liste — mehr hilft niemandem.
     static let maximumMatches = 200
 
-    /// Das aktuell getippte Wort RÜCKWÄRTS vom Cursor: Wortzeichen plus
+    /// Das aktuell getippte Wort rückwärts vom Cursor: Wortzeichen plus
     /// einzelne Leerzeichen zwischen Wörtern (4D-Befehle sind mehrwortig,
     /// „OBJECT SET …"). `nil`, wenn unter dem Cursor kein sinnvolles
     /// Befehls-/Konstanten-Präfix liegt (z. B. direkt hinter `$`, `.`,
@@ -70,7 +67,7 @@ enum FourDCompletionLogic {
                 index -= 1
                 continue
             }
-            // EIN Leerzeichen gehört zur Phrase, wenn davor ein Wortzeichen
+            // Ein Leerzeichen gehört zur Phrase, wenn davor ein Wortzeichen
             // steht — auch als letztes getipptes Zeichen („OBJECT SET “),
             // damit mehrwortige Befehle beim Weitertippen gefiltert bleiben.
             if c == " ", let before = char(index - 1), isWordChar(before) {
@@ -119,8 +116,7 @@ enum FourDCompletionLogic {
                                 isConstant: false, isProjectMethod: true))
             if result.count >= limit { return result }
         }
-        // Bei Namensgleichheit gewinnt die Projektmethode
-        // (Produktentscheidung 2026-07-24): nur ein Eintrag pro Name.
+        // Bei Namensgleichheit gewinnt die Projektmethode: nur ein Eintrag pro Name.
         let projectNames = Set(projectMethods.map { $0.lowercased() })
         for entry in componentMethods
         where entry.name.lowercased().hasPrefix(needle)
@@ -196,20 +192,18 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
     /// Liste auch unter der automatischen Mindestlänge weiterfiltern.
     private var windowIsOpen = false
 
-    /// Vom CESE-Patch (`build.sh` 4b-2) per Notification gesetzt: Der nächste
-    /// Vorschlags-Request stammt aus dem manuellen Aufruf (Esc/⌃Leertaste)
-    /// und darf schon ab EINEM Zeichen liefern. Beim Lesen verbraucht und
-    /// zusätzlich zeitlich begrenzt — eine verirrte Scharfschaltung ohne
-    /// folgenden Request darf nicht Minuten später ein Tipp-Popup bei einem
-    /// Zeichen auslösen (Selbsttestbefund completion4d, 2026-08-09).
+    /// Der CESE-Patch (`build.sh` 4b-2) markiert per Notification einen manuellen
+    /// Vorschlagsaufruf (Esc/⌃Leertaste), der ab einem Zeichen liefern darf.
+    /// Beim Lesen verbrauchen und zeitlich begrenzen, damit ein ausgebliebener
+    /// Request keinen späteren Tipp-Aufruf versehentlich als manuell behandelt.
     private var manualTriggerArmedAt: Date?
     private static let manualTriggerLifetime: TimeInterval = 0.5
     private var manualTriggerObserver: NSObjectProtocol?
     /// Der Editor-Controller, der den manuellen Aufruf ausgelöst hat. Die
     /// Notification läuft prozessweit; ohne diese Zuordnung schaltet ein
-    /// ⌃Leertaste in Fenster A auch die Delegates ALLER anderen 4D-Fenster
+    /// ⌃Leertaste in Fenster A auch die Delegates aller anderen 4D-Fenster
     /// scharf, und dort erschiene beim nächsten getippten Zeichen ein
-    /// ungewolltes Popup (Review 2026-08-10). Schwach gehalten: Der
+    /// ungewolltes Popup. Schwach gehalten: Der
     /// Controller hält seinerseits den Delegate.
     private weak var manualTriggerController: TextViewController?
 
@@ -247,7 +241,6 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
         guard cursorPosition.range.length == 0,
               // In Kommentaren und String-Literalen sind Methodennamen-
               // Vorschläge sinnlos und stören beim Prosa-Tippen
-              // (Review 2026-08-02).
               !FourDSignatureHelpLogic.isInsideCommentOrString(
                   in: text, utf16Location: cursorPosition.range.location),
               let range = FourDCompletionLogic.prefixRange(
@@ -269,10 +262,10 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
         cursorPosition: CursorPosition
     ) async -> (windowPosition: CursorPosition, items: [CodeSuggestionEntry])? {
         // Beim manuellen Öffnen (Esc/⌃Leertaste, vom CESE-Patch gemeldet)
-        // genügt EIN Zeichen; das automatische Tipp-Popup bleibt
+        // genügt ein Zeichen; das automatische Tipp-Popup bleibt
         // unaufdringlich (ab zwei Zeichen). Ein offenes Fenster filtert
         // ebenfalls ab einem Zeichen weiter. Verbraucht wird die
-        // Scharfschaltung nur vom Request DESSELBEN Editors — sonst reichte
+        // Scharfschaltung nur vom Request desselben Editors — sonst reichte
         // ein manueller Aufruf in einem Fenster in alle anderen hinüber.
         let manual = manualTriggerController === textView
             && (manualTriggerArmedAt.map {
@@ -317,7 +310,7 @@ final class FourDCompletionDelegate: ObservableObject, CodeSuggestionDelegate {
         guard let suggestion = item as? FourDSuggestion,
               let cursorPosition else { return }
         let text = textView.textView.string
-        // Das getippte Teilwort wird ERSETZT (nicht angehängt) — ein
+        // Das getippte Teilwort wird ersetzt (nicht angehängt) — ein
         // normaler, mit ⌘Z widerrufbarer Textedit.
         let replaceRange = FourDCompletionLogic.prefixRange(
             in: text, utf16CursorLocation: cursorPosition.range.location

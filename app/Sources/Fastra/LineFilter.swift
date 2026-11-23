@@ -1,23 +1,23 @@
 // LineFilter.swift
 //
 // „Process Lines Containing" (BBEdit, Kap. 5): ein RegEx-basierter
-// Zeilen-Filter. Behält oder löscht GANZE Zeilen, je nachdem ob ein
+// Zeilen-Filter. Behält oder löscht ganze Zeilen, je nachdem ob ein
 // RegEx-Muster in der Zeile einen Treffer hat. Zwei Spielarten, gesteuert
 // über `keepMatching`:
 //
-//   • keepMatching == true  → nur Zeilen MIT Treffer bleiben übrig
+//   • keepMatching == true  → nur Zeilen mit Treffer bleiben übrig
 //     (BBEdits „Process Lines Containing → Copy to new document" /
 //      „Delete others" — hier: das gefilterte Resultat ersetzt den Block).
-//   • keepMatching == false → Zeilen MIT Treffer werden GELÖSCHT, nur die
+//   • keepMatching == false → Zeilen mit Treffer werden gelöscht, nur die
 //     treffer-freien Zeilen bleiben stehen.
 //
-// `pattern` ist bewusst ein REGEX (kein Klartext): Fastra IST ein
+// `pattern` ist bewusst ein RegEx (kein Klartext): Fastra ist ein
 // RegEx-Werkzeug, ein Plain-Text-Filter wäre hier die schwächere Variante.
 // Standardmäßig case-insensitiv — wie der Such-Default des Editors; über
 // `caseInsensitive: false` lässt sich exakt nach Groß-/Kleinschreibung filtern.
 //
 // Vertrag wie `LineOperations`/`TextOperations`: liefert ein
-// `LineOperations.Result` (kompletter neuer Text + ersetzter Bereich im ALTEN
+// `LineOperations.Result` (kompletter neuer Text + ersetzter Bereich im alten
 // Text) oder `nil`, wenn nichts zu tun ist (Aufrufer gibt dann einen Beep).
 // Zeilen-Scope: die Selektion wird auf ganze Zeilen ausgeweitet
 // (`LineOperations.expandToFullLines`); ohne Selektion gilt die ganze Datei —
@@ -31,17 +31,17 @@ import Foundation
 enum LineFilter {
     /// Behält oder löscht ganze Zeilen nach einem RegEx-Muster (BBEdit
     /// „Process Lines Containing").
-    /// - `keepMatching == true`  → nur Zeilen MIT Treffer bleiben übrig.
-    /// - `keepMatching == false` → Zeilen MIT Treffer werden gelöscht (nur
+    /// - `keepMatching == true`  → nur Zeilen mit Treffer bleiben übrig.
+    /// - `keepMatching == false` → Zeilen mit Treffer werden gelöscht (nur
     ///   treffer-freie bleiben).
-    /// `pattern` ist ein REGEX (Fastra ist ein RegEx-Werkzeug). `caseInsensitive`
+    /// `pattern` ist ein RegEx (Fastra ist ein RegEx-Werkzeug). `caseInsensitive`
     /// per Default `true` (wie der Such-Default des Editors).
     ///
     /// Liefert `nil` bei:
     ///   • leerem oder ungültigem Muster,
     ///   • weniger als einer Inhaltszeile,
     ///   • wenn sich nichts ändert,
-    ///   • ODER wenn das Ergebnis den GANZEN Inhalt löschen würde (leeres
+    ///   • oder wenn das Ergebnis den ganzen Inhalt löschen würde (leeres
     ///     Resultat). Ein voller Dokument-Wipe per Menüklick wäre überraschend
     ///     und destruktiv (Produkt-DNA „keine unsichtbaren destruktiven
     ///     Aktionen") — dann lieber `nil` → Beep.
@@ -68,7 +68,7 @@ enum LineFilter {
     static func filter(in text: String, selection: NSRange, keepMatching: Bool,
                        matching: (String) throws -> Bool) rethrows -> LineOperations.Result? {
         // Wirkbereich: Selektion auf ganze Zeilen ausgeweitet, ohne Selektion
-        // der ganze Text. `range` ist im ALTEN Text und wird am Ende ersetzt.
+        // der ganze Text. `range` ist im alten Text und wird am Ende ersetzt.
         let range = LineOperations.expandToFullLines(in: text, selection: selection)
         let ns = text as NSString
         let block = ns.substring(with: range)
@@ -76,7 +76,7 @@ enum LineFilter {
 
         // Phantom-Leerzeile am Ende: Im Ganz-Text-Fall behält
         // `expandToFullLines` das abschließende `\n`, sodass `splitLines` ein
-        // leeres Schluss-Element liefert — das ist KEIN echter Inhalt, sondern
+        // leeres Schluss-Element liefert — das ist kein echter Inhalt, sondern
         // nur das Datei-End-Newline. Wie in `addLineNumbers` behandeln: für die
         // Filter-Analyse weglassen und am Ende wieder anhängen, damit das
         // Datei-End-Newline erhalten bleibt.
@@ -87,11 +87,11 @@ enum LineFilter {
         guard realLines.count >= 1 else { return nil }
 
         // Behalte genau die Zeilen, deren Treffer-Status zu `keepMatching` passt:
-        //   keepMatching == true  → behalte Zeilen MIT Treffer  (matches == true)
-        //   keepMatching == false → behalte Zeilen OHNE Treffer (matches == false)
+        //   keepMatching == true  → behalte Zeilen mit Treffer  (matches == true)
+        //   keepMatching == false → behalte Zeilen ohne Treffer (matches == false)
         let kept = try realLines.filter { try matching($0) == keepMatching }
 
-        // Voller Dokument-Wipe vermeiden: würde der Filter ALLE Inhaltszeilen
+        // Voller Dokument-Wipe vermeiden: würde der Filter alle Inhaltszeilen
         // entfernen, lieber nil → Beep (siehe Vertrag oben). So löscht ein
         // versehentlicher Menüklick nie unbemerkt den gesamten Inhalt.
         if kept.isEmpty { return nil }
@@ -107,7 +107,7 @@ enum LineFilter {
         guard newBlock != block else { return nil }
 
         let newText = ns.replacingCharacters(in: range, with: newBlock)
-        // lineCount = Anzahl der ECHTEN Inhaltszeilen, die übrig bleiben (ohne
+        // lineCount = Anzahl der echten Inhaltszeilen, die übrig bleiben (ohne
         // die Phantom-Leerzeile).
         return LineOperations.Result(newText: newText, affectedRange: range, lineCount: kept.count)
     }

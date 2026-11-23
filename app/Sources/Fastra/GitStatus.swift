@@ -22,7 +22,7 @@ enum GitFileState: Equatable {
         }
     }
 
-    /// Erklärender Tooltip zum Badge (Daniel-Wunsch 2026-07-12): das Kürzel
+    /// Erklärender Tooltip zum Badge: das Kürzel
     /// allein sagt Nicht-Git-Profis wenig.
     var tooltip: String {
         switch self {
@@ -38,7 +38,7 @@ enum GitFileState: Equatable {
 
 /// Eine Datei mit getrenntem Index- (gestaged) und Working-Tree-Zustand
 /// (ungestaged) — die Grundlage der VS-Code-artigen Änderungen-Ansicht. Eine
-/// Datei kann gleichzeitig gestaged UND ungestaged geändert sein (z.B. Porcelain
+/// Datei kann gleichzeitig gestaged und ungestaged geändert sein (z.B. Porcelain
 /// „MM"): dann ist sie in beiden Abschnitten sichtbar.
 struct GitChange: Equatable, Identifiable {
     /// Repo-relativer Anzeigepfad. Bei ungültigem UTF-8 enthält er sichtbare
@@ -87,7 +87,7 @@ struct GitChange: Equatable, Identifiable {
 }
 
 /// Zusammenfassung von `git status` für die UI: Branch, Ahead/Behind-Zähler
-/// und der Zustand je Datei (Pfad RELATIV zum Repo-Root, wie git ihn liefert).
+/// und der Zustand je Datei (Pfad relativ zum Repo-Root, wie git ihn liefert).
 struct GitStatusSummary: Equatable {
     var branch: String?
     /// `true`, wenn HEAD direkt auf einen Commit statt auf einen Branch zeigt.
@@ -248,7 +248,7 @@ enum GitStatusParser {
                          staged: sideState(x), unstaged: sideState(y))
     }
 
-    /// Bildet EIN Porcelain-Zeichen (einer Spalte) auf unseren Zustand ab.
+    /// Bildet ein Porcelain-Zeichen (einer Spalte) auf unseren Zustand ab.
     /// Leerzeichen = nichts an dieser Stelle.
     private static func sideState(_ c: Character) -> GitFileState? {
         switch c {

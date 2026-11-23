@@ -44,7 +44,7 @@ struct EditorCursorMemory {
 /// wird: Er startet am Dateianfang und CESE macht anschließend nur die
 /// wiederhergestellte Einfügemarke sichtbar. Damit landete die Cursorzeile in
 /// der obersten Bildschirmzeile, statt dass der Ausschnitt von vorher
-/// zurückkam (Daniel-Befund 2026-07-27). Ein Wert von `nil` heißt „für diesen
+/// zurückkam. Ein Wert von `nil` heißt „für diesen
 /// Tab ist noch nichts bekannt" — dann bleibt CESEs Verhalten unverändert.
 struct EditorScrollMemory {
     private var offsetsByTab: [UUID: CGPoint] = [:]
@@ -74,16 +74,16 @@ struct EditorScrollMemory {
 struct EditorView: View {
     @EnvironmentObject var workspace: Workspace
     @Environment(\.uiScale) private var uiScale
-    /// Erst-Nutzungs-Hinweis des Markdown-Assistenten (Etappe 5 Wunschpaket
-    /// 2026-07b): einmal bestätigt → dauerhaft aus (AppStorage-Flag).
-    @AppStorage(MarkdownAssist.firstUseDefaultsKey, store: SelfTest.workspaceDefaults())
+    /// Erst-Nutzungs-Hinweis des Markdown-Assistenten: einmal bestätigt →
+    /// dauerhaft aus (AppStorage-Flag).
+    @AppStorage(MarkdownAssist.firstUseDefaultsKey, store: AppDefaults.store)
     private var markdownAssistHintShown = false
     @State private var showMarkdownAssistHint = false
 
-    /// Erst-Kontakt-Hinweis für 4D/tool4d (Etappe 4 Wunschpaket 2026-07c):
-    /// erscheint beim ersten Öffnen einer `.4dm`-/`.4DProject`-Datei, bis er
-    /// über einen der beiden Buttons quittiert ist (Persistenz in
-    /// `Tool4DAssist.firstContactHintShown`, Mechanik wie Markdown-Assist).
+    /// Erst-Kontakt-Hinweis für 4D/tool4d: erscheint beim ersten Öffnen einer
+    /// `.4dm`-/`.4DProject`-Datei, bis er über einen der beiden Buttons
+    /// quittiert ist (Persistenz in `Tool4DAssist.firstContactHintShown`,
+    /// Mechanik wie Markdown-Assist).
     @State private var showTool4DHint = false
 
     /// Treibt die Markdown-Umwandlungsleiste: Ein Zustandswechsel (läuft,
@@ -91,28 +91,28 @@ struct EditorView: View {
     @ObservedObject private var markdownImportService = MarkdownImportService.shared
 
     /// Rechter Vorschau-Streifen (CESE-Minimap) an/aus. App-weit und persistent,
-    /// umschaltbar über „Darstellung → Minimap anzeigen". Default AUS
-    /// (Daniel-Befund 2026-07-12): Die Minimap verdeckte rechts Text, bis ein
+    /// umschaltbar über „Darstellung → Minimap anzeigen". Default aus
+    ///: Die Minimap verdeckte rechts Text, bis ein
     /// Relayout griff, und stand im Verdacht, über eine Exception im
     /// Minimap-Layout-Pfad die Editor-Darstellung einfrieren zu lassen. Wie
     /// das Soft-Wrap-Profil reconciled CESE die Änderung live.
-    @AppStorage("editor.showMinimap", store: SelfTest.workspaceDefaults()) private var showMinimap = false
-    @AppStorage(DocumentZoom.defaultsKey, store: SelfTest.workspaceDefaults()) private var documentZoomLevel = 0
-    @AppStorage(EditorFonts.defaultsKey, store: SelfTest.workspaceDefaults()) private var editorFontName = EditorFonts.systemMonospacedName
-    @AppStorage("markdown.integratedPreview", store: SelfTest.workspaceDefaults()) private var showMarkdownPreview = true
-    @AppStorage(MarkdownEditingMode.defaultsKey, store: SelfTest.workspaceDefaults())
+    @AppStorage("editor.showMinimap", store: AppDefaults.store) private var showMinimap = false
+    @AppStorage(DocumentZoom.defaultsKey, store: AppDefaults.store) private var documentZoomLevel = 0
+    @AppStorage(EditorFonts.defaultsKey, store: AppDefaults.store) private var editorFontName = EditorFonts.systemMonospacedName
+    @AppStorage("markdown.integratedPreview", store: AppDefaults.store) private var showMarkdownPreview = true
+    @AppStorage(MarkdownEditingMode.defaultsKey, store: AppDefaults.store)
     private var markdownVisualDefault = false
     @State private var asksMarkdownEditingMode = false
 
     /// Direkter Seitenleisten-Schalter im Fenster-Chrome, wie in Codex.
     /// AppStorage hält alle Dokumentfenster und den Menüpunkt synchron.
-    @AppStorage("editor.sidebarVisible", store: SelfTest.workspaceDefaults()) private var showSidebar = true
+    @AppStorage("editor.sidebarVisible", store: AppDefaults.store) private var showSidebar = true
 
     // Die Breite der linken Seitenleiste und der rechten Markdown-Vorschau
-    // liegen jetzt PRO FENSTER auf dem `workspace` (siehe
+    // liegen jetzt pro Fenster auf dem `workspace` (siehe
     // `Workspace.sidebarWidth`/`markdownPreviewWidth`). Vorher teilte ein
-    // prozessweiter `@AppStorage`-Wert den Splitter über alle Fenster
-    // (Daniel-Befund 2026-07-20). Geklemmt wird weiterhin hier in der Ansicht.
+    // prozessweiter `@AppStorage`-Wert den Splitter über alle Fenster.
+    // Geklemmt wird weiterhin hier in der Ansicht.
 
     /// Grenzen der Seitenleisten-Breite beim Ziehen des Splitters.
     private let sidebarMinWidth = CGFloat(SidebarLayout.minimumSidebarWidth)
@@ -127,7 +127,7 @@ struct EditorView: View {
     /// Ein Ordner oder Repo ist offen — nur dann gibt es die Seitenleiste.
     private var hasProject: Bool { workspace.projectURL != nil }
 
-    /// Sichtbar = Projekt offen UND Nutzerschalter an.
+    /// Sichtbar = Projekt offen und Nutzerschalter an.
     private var sidebarVisible: Bool {
         SidebarVisibility.isVisible(userWantsSidebar: showSidebar, hasProject: hasProject)
     }
@@ -150,7 +150,7 @@ struct EditorView: View {
             // dem Willkommensbildschirm mit seiner eigenen Marke). Mit Projekt
             // bleibt sie eingehängt und wird beim Ausblenden nur auf Breite 0
             // gezogen — Umschalten baut den Dateibaum nicht neu auf
-            // (`SidebarVisibility`, Änderungswunsch 2026-09-06).
+            // (`SidebarVisibility`).
             if SidebarVisibility.isMounted(hasProject: hasProject) {
                 VStack(spacing: 0) {
                     // Wie in Codex gehört die Marke zur Seitenleiste, nicht zu
@@ -242,24 +242,23 @@ struct EditorView: View {
             ) else { return }
             if !markdownAssistHintShown { showMarkdownAssistHint = true }
         }
-        // Erstes Öffnen einer 4D-Datei → tool4d-Erst-Kontakt-Hinweis
-        // (Etappe 4 Wunschpaket 2026-07c).
+        // Erstes Öffnen einer 4D-Datei → tool4d-Erst-Kontakt-Hinweis.
         .onChange(of: workspace.activeTabID) { checkTool4DFirstContact() }
         .onAppear { checkTool4DFirstContact(); checkMarkdownEditingMode() }
         .onChange(of: workspace.activeTabIsMarkdown) { checkMarkdownEditingMode() }
         .onChange(of: workspace.activeTab?.isLoading) { checkMarkdownEditingMode() }
         .onChange(of: markdownVisualDefault) {
-            if SelfTest.workspaceDefaults().object(forKey: MarkdownEditingMode.defaultsKey) != nil { asksMarkdownEditingMode = false }
+            if AppDefaults.store.object(forKey: MarkdownEditingMode.defaultsKey) != nil { asksMarkdownEditingMode = false }
         }
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
-            if SelfTest.workspaceDefaults().object(forKey: MarkdownEditingMode.defaultsKey) != nil { asksMarkdownEditingMode = false }
+            if AppDefaults.store.object(forKey: MarkdownEditingMode.defaultsKey) != nil { asksMarkdownEditingMode = false }
         }
         .onDisappear {
             if MarkdownEditingMode.choiceOwner == ObjectIdentifier(workspace) { MarkdownEditingMode.choiceOwner = nil }
         }
         .sheet(isPresented: $asksMarkdownEditingMode) {
             MarkdownEditingModeChoice { visual in
-                SelfTest.workspaceDefaults().set(visual, forKey: MarkdownEditingMode.defaultsKey)
+                AppDefaults.store.set(visual, forKey: MarkdownEditingMode.defaultsKey)
                 markdownVisualDefault = visual
                 MarkdownEditingMode.choiceOwner = nil
                 asksMarkdownEditingMode = false
@@ -274,8 +273,8 @@ struct EditorView: View {
         let owner = ObjectIdentifier(workspace)
         let eligible = workspace.activeTabIsMarkdown
             && workspace.activeTab?.isLoading == false
-            && (SelfTest.requestedTest == nil || SelfTest.requestedTest == "mdvisual")
-            && SelfTest.workspaceDefaults().object(forKey: MarkdownEditingMode.defaultsKey) == nil
+            && (AppDefaults.launch.requestedSelfTest == nil || AppDefaults.launch.requestedSelfTest == "mdvisual")
+            && AppDefaults.store.object(forKey: MarkdownEditingMode.defaultsKey) == nil
         if eligible, MarkdownEditingMode.choiceOwner == nil || MarkdownEditingMode.choiceOwner == owner {
             MarkdownEditingMode.choiceOwner = owner
             asksMarkdownEditingMode = true
@@ -301,22 +300,21 @@ struct EditorView: View {
         workspace.markdownImportOffer(for: workspace.activeTab?.url)
     }
 
-    /// Gehört der aktuelle Umwandlungszustand DIESEM Fenster? Ein fensterloser
-    /// Testlauf (`ownerID == nil`) ist ausdrücklich in KEINEM Fenster sichtbar.
+    /// Gehört der aktuelle Umwandlungszustand diesem Fenster? Ein fensterloser
+    /// Testlauf (`ownerID == nil`) ist ausdrücklich in keinem Fenster sichtbar.
     private var markdownImportStateIsOurs: Bool {
         markdownImportService.isOwned(by: workspace)
     }
 
-    /// Sichtbar bei einem offenen Angebot ODER solange eine Umwandlung DIESES
+    /// Sichtbar bei einem offenen Angebot oder solange eine Umwandlung dieses
     /// Fensters läuft, gemeldet oder fehlgeschlagen ist. Ohne diese Bindung
-    /// zeigte JEDES offene Fenster die Laufanzeige (Review 2026-08-02).
+    /// zeigte jedes offene Fenster die Laufanzeige.
     ///
     /// Ein fremder Nicht-Idle-Zustand zählt hier wie Idle: Die Leiste zeigt
-    /// dann höchstens das EIGENE Angebot dieses Fensters. Fortschritt, Erfolg
+    /// dann höchstens das eigene Angebot dieses Fensters. Fortschritt, Erfolg
     /// oder Fehler aus Fenster A — samt dessen „Im Finder zeigen"-Knopf auf
     /// eine hier nie geöffnete Datei — erscheinen in Fenster B nie; dafür
     /// bekommt `MarkdownImportBar` unten den fenstereigenen `effectiveState`
-    /// (Code-Review 2026-08-10).
     private var markdownImportBarIsVisible: Bool {
         if markdownImportService.state != .idle, markdownImportStateIsOurs {
             return true
@@ -324,7 +322,7 @@ struct EditorView: View {
         return markdownImportOffer != nil
     }
 
-    /// Zustand, den die Leiste in DIESEM Fenster zeichnen darf: der globale
+    /// Zustand, den die Leiste in diesem Fenster zeichnen darf: der globale
     /// Dienstzustand nur, wenn er diesem Fenster gehört — sonst Idle.
     private var markdownImportEffectiveState: MarkdownImportState {
         markdownImportStateIsOurs ? markdownImportService.state : .idle
@@ -336,7 +334,7 @@ struct EditorView: View {
         showTool4DHint = false
     }
 
-    /// Dezenter, NICHT-modaler 4D-Erst-Kontakt-Hinweis mit Sprung in den
+    /// Dezenter, nicht-modaler 4D-Erst-Kontakt-Hinweis mit Sprung in den
     /// Hilfe-Abschnitt „4D & tool4d" (Anker-API der Hilfe).
     private var tool4dHintBar: some View {
         HStack(spacing: 8) {
@@ -376,7 +374,7 @@ struct EditorView: View {
     }
 
     /// Kompakte Markdown-Toolbar: dieselben Befehle wie Menüleiste und
-    /// Rechtsklickmenü, die häufigsten direkt klickbar (Etappe 5).
+    /// Rechtsklickmenü, die häufigsten direkt klickbar.
     private var markdownToolbar: some View {
         HStack(spacing: 0) {
             DocumentOutlineControls(workspace: workspace, outline: workspace.documentOutline)
@@ -406,8 +404,8 @@ struct EditorView: View {
 
         var body: some View {
             // Horizontal scrollbar: In einem schmalen Editor (Markdown-Split!)
-            // würde ein überlaufender HStack von SwiftUI ZENTRIERT und vom
-            // `.clipped()` der Spalte BEIDSEITIG beschnitten — ausgerechnet
+            // würde ein überlaufender HStack von SwiftUI zentriert und vom
+            // `.clipped()` der Spalte beidseitig beschnitten — ausgerechnet
             // Fett/Kursiv (vorn) und Link/Tabelle (hinten) verschwänden.
             // Im ScrollView bleiben alle Befehle erreichbar.
             ScrollView(.horizontal, showsIndicators: false) {
@@ -448,7 +446,7 @@ struct EditorView: View {
         }
     }
 
-    /// Dezenter, NICHT-modaler Erst-Nutzungs-Hinweis (Etappe 5 Punkt 6):
+    /// Dezenter, nicht-modaler Erst-Nutzungs-Hinweis (Etappe 5 Punkt 6):
     /// erscheint einmalig beim ersten Formatbefehl bzw. Bild-Einfügen und
     /// springt über die Anker-API der Hilfe in den Markdown-Abschnitt.
     private var markdownAssistHintBar: some View {
@@ -487,20 +485,28 @@ struct EditorView: View {
 
     /// Editor-Spalte mit ihren Layout-Modifikatoren (herausgezogen, damit
     /// der Markdown-Drop-Bereich sie bedingt umhüllen kann).
-    /// Zum `.clipped()`: Gutter-Durchschuss-Fix (Daniel-Befund 2026-06-22) —
-    /// CESEs Gutter ist ein FLOATING-Subview des ScrollViews und zeichnet
+    /// Zum `.clipped()`: Gutter-Durchschuss-Fix —
+    /// CESEs Gutter ist ein Floating-Subview des ScrollViews und zeichnet
     /// sonst über den oberen Rand des Editor-Bereichs hinaus ins Tab-/
     /// Header-Band; `.clipped()` begrenzt die Darstellung hart auf den
     /// eigenen Rahmen, der bereits unter der Tab-Leiste liegt.
     private var sourceEditorColumn: some View {
-        sourceEditor
-            .frame(minWidth: 0, maxWidth: .infinity)
-            .layoutPriority(1)
-            .background(Theme.surfaceRaised)
-            .clipped()
+        VStack(spacing: 0) {
+            if let notice = workspace.documentTransformationNotice {
+                DocumentTransformationNotice(message: notice) {
+                    workspace.documentTransformationNotice = nil
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            sourceEditor
+        }
+        .frame(minWidth: 0, maxWidth: .infinity)
+        .layoutPriority(1)
+        .background(Theme.surfaceRaised)
+        .clipped()
     }
 
-    /// Aktiver Tab ist ein Markdown-Dokument (Etappe 5 Wunschpaket 2026-07b)?
+    /// Aktiver Tab ist ein Markdown-Dokument?
     private var activeTabIsMarkdown: Bool {
         MarkdownAssist.isMarkdownTabActive(in: workspace)
     }
@@ -529,7 +535,7 @@ struct EditorView: View {
             effectiveSidebarMaximum)
     }
 
-    /// Obergrenze der Vorschau (Daniel-Befund 2026-07-16): Früher war hier eine
+    /// Obergrenze der Vorschau: Früher war hier eine
     /// feste Breite von 760 pt verdrahtet. Auf einem breiten Fenster ließ sich
     /// der Editor deshalb per Splitter nicht schmal ziehen — die Vorschau
     /// konnte den freiwerdenden Platz gar nicht übernehmen, obwohl dasselbe
@@ -609,15 +615,14 @@ struct EditorView: View {
                     .onAppear { workspace.refreshFileDiffOnReturn(tabID: tab.id, requestID: request.id) }
             } else if let tab = workspace.activeTab,
                let request = tab.gitDiffRequest {
-                // Git-Diff auf dem GEMEINSAMEN Dual-Pane-Renderer
-                // (Etappe 2 Wunschpaket 2026-07c).
+                // Git-Diff auf dem gemeinsamen Dual-Pane-Renderer.
                 GitDualPaneDiffView(request: request,
                                     document: tab.gitDiffDocument,
                                     fallbackText: tab.content,
                                     softWrapEnabled: workspace.softWrapEnabled)
                     .id(tab.id)
             } else if let kind = workspace.activeTab?.gitKind {
-                // Git-Text-Tab (Etappe 2): read-only Verlauf/Diff statt CESE.
+                // Git-Text-Tab: read-only Verlauf/Diff statt CESE.
                 GitTextView(kind: kind, content: workspace.activeTab?.content ?? "")
                     .id(workspace.activeTab?.id)
             } else if let tab = workspace.activeTab,
@@ -654,7 +659,7 @@ struct EditorView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Theme.surfaceRaised)
                 // ID an die Tab-ID koppeln — wenn isLoading wechselt, ändert
-                // sich die Tab-ID NICHT, aber die `Group`-Verzweigung wechselt.
+                // sich die Tab-ID nicht, aber die `Group`-Verzweigung wechselt.
                 // Das `.id` hier ist nur Sicherheitsnetz für den Editor unten.
                 .id(workspace.activeTab?.id)
             } else {
@@ -677,15 +682,14 @@ struct EditorView: View {
                         }
                         Divider().opacity(0.3)
                     }
-                    // tool4d-Erst-Kontakt-Hinweis (Etappe 4 Wunschpaket
-                    // 2026-07c) — nur solange der aktive Tab 4D zeigt.
+                    // tool4d-Erst-Kontakt-Hinweis — nur solange der aktive Tab
+                    // 4D zeigt.
                     if showTool4DHint {
                         tool4dHintBar
                         Divider().opacity(0.3)
                     }
-                    // Markdown-Toolbar (Etappe 5 Wunschpaket 2026-07b):
-                    // Formatierungsbefehle auf den Quelltext, nur für
-                    // Markdown-Tabs in der Text-Ansicht.
+                    // Markdown-Toolbar: Formatierungsbefehle auf den Quelltext,
+                    // nur für Markdown-Tabs in der Text-Ansicht.
                     if !activeTabIsMarkdown, workspace.activeViewMode == .text, workspace.activeTab?.isOrdinaryTextDocument == true {
                         DocumentNavigationBar(workspace: workspace, outline: workspace.documentOutline)
                     }
@@ -702,7 +706,7 @@ struct EditorView: View {
                         }
                     }
                     // Der Ansichts-Umschalter (Text/Vorschau/Hex) sitzt seit
-                    // Etappe 1 Wunschpaket 2026-07b in der Fußzeile
+                    // In der Fußzeile
                     // (`StatusBarView`) — hier kostete er eine eigene Zeile.
                     switch workspace.activeViewMode {
                     case .preview:
@@ -846,10 +850,10 @@ struct EditorView: View {
     }
 
     /// Stabile, hashbare Editor-Identität aus Tab-ID + Reload-Nonce. Ändert
-    /// sich die Tab-ID (Tab-Wechsel) ODER der Nonce (programmatischer Buffer-
+    /// sich die Tab-ID (Tab-Wechsel) oder der Nonce (programmatischer Buffer-
     /// Replace), erzeugt SwiftUI den Editor neu — der einzige Weg, auf dem
     /// CodeEditSourceEditor frischen Inhalt übernimmt. Pur → unit-testbar.
-    // codereview-ok: doppelter Identitätswechsel bei isLoading-Flip + Nonce-Inkrement ist bewusstes Design (Editor-Neuerzeugung ist der einzige Reload-Weg); kein sichtbares Fehlverhalten (2026-07-06)
+    // codereview-ok: doppelter Identitätswechsel bei isLoading-Flip + Nonce-Inkrement ist bewusstes Design (Editor-Neuerzeugung ist der einzige Reload-Weg); kein sichtbares Fehlverhalten
     static func editorIdentity(tabID: UUID?, reloadNonce: Int) -> String {
         "\(tabID?.uuidString ?? "none")#\(reloadNonce)"
     }
@@ -888,10 +892,10 @@ struct EditorView: View {
         return clipView.bounds.origin
     }
 
-    /// Storniert die laufende Ausschnitt-Wiederherstellung EINES Fensters.
+    /// Storniert die laufende Ausschnitt-Wiederherstellung eines Fensters.
     /// Die Generation lebt am Workspace statt prozessweit: Ein Sprung in
-    /// Fenster A darf die Wiederherstellung in Fenster B nicht anhalten
-    /// (Review 2026-08-02). Der Sprung im eigenen Fenster gewinnt weiterhin
+    /// Fenster A darf die Wiederherstellung in Fenster B nicht anhalten.
+    /// Der Sprung im eigenen Fenster gewinnt weiterhin
     /// immer.
     static func cancelScrollRestore(in workspace: Workspace) {
         workspace.scrollRestoreGeneration += 1
@@ -907,7 +911,7 @@ struct EditorView: View {
     ///
     /// `documentID` ist das Dokument, für das der Ausschnitt gilt. Ohne diese
     /// Bindung liefen die verzögerten Nachzieh-Versuche eines verlassenen Tabs
-    /// auf der inzwischen montierten ScrollView des NEUEN Tabs weiter — der
+    /// auf der inzwischen montierten ScrollView des neuen Tabs weiter — der
     /// sprang dann an den Ausschnitt des vorherigen (die Generation allein
     /// reicht nicht: ein Tabwechsel erhöht sie nicht).
     static func restoreScrollOffset(_ offset: CGPoint, in workspace: Workspace,
@@ -921,17 +925,17 @@ struct EditorView: View {
         // sonst nach unten scrollen.
         DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0.05 : 0.03)) {
             guard generation == workspace.scrollRestoreGeneration else {
-                scrollRestoreDebug("attempt=\(attempt) abgebrochen: Generation überholt")
+                workspace.scrollRestoreDiagnostics.emit("attempt=\(attempt) abgebrochen: Generation überholt")
                 completion(); return
             }
             guard workspace.activeDocumentID == documentID else {
-                scrollRestoreDebug("attempt=\(attempt) abgebrochen: anderes Dokument aktiv")
+                workspace.scrollRestoreDiagnostics.emit("attempt=\(attempt) abgebrochen: anderes Dokument aktiv")
                 completion(); return
             }
             guard let root = editorWindow(for: workspace)?.contentView,
                   let textView = pane.flatMap { workspace.sourcePanes.view(for: $0, documentID: workspace.activeDocumentID) } ?? firstEditorTextView(in: root) as? CodeEditTextView.TextView,
                   let scrollView = textView.enclosingScrollView else {
-                scrollRestoreDebug("attempt=\(attempt) abgebrochen: "
+                workspace.scrollRestoreDiagnostics.emit("attempt=\(attempt) abgebrochen: "
                     + "window=\(editorWindow(for: workspace) != nil) "
                     + "textView=\(editorWindow(for: workspace)?.contentView.flatMap { firstEditorTextView(in: $0) } != nil)")
                 completion()
@@ -940,16 +944,10 @@ struct EditorView: View {
             // Auslegen anstoßen, damit die Dokumenthöhe zum Ziel aufwächst.
             scrollView.layoutSubtreeIfNeeded()
             textView.layoutManager.layoutLines()
-            // NSClipView begrenzt ein programmatisches Scrollziel NICHT selbst:
-            // Ein Ziel jenseits der (direkt nach dem Mount noch zu kleinen)
-            // Dokumenthöhe wird scheinbar übernommen — der Rücklese-Wert zeigt
-            // das volle Ziel —, und erst das nächste AppKit-Layout schnappt
-            // auf den gültigen Bereich zurück, also an den Dokumentanfang.
-            // Genau so verlor der Gesamtlauf unter Last den Ausschnitt
-            // (tabscroll-Flaky, belegt 2026-08-19: „ist=5235" bei nur 533 pt
-            // Dokumenthöhe, danach y=0). Deshalb selbst aufs Erreichbare
-            // begrenzen und Erfolg nur melden, wenn das Ziel wirklich im
-            // schon ausgelegten Dokument liegt.
+            // NSClipView begrenzt programmatische Scrollziele nicht sofort. Nach dem
+            // Mount kann die Dokumenthöhe noch zu klein sein; ein scheinbar übernommenes
+            // Ziel springt beim nächsten Layout zurück. Deshalb auf die bereits
+            // ausgelegte Dokumenthöhe begrenzen und erst dann Erfolg melden.
             let clipHeight = scrollView.contentView.bounds.height
             let clipWidth = scrollView.contentView.bounds.width
             let documentHeight = scrollView.documentView?.frame.height
@@ -973,7 +971,7 @@ struct EditorView: View {
             scrollView.reflectScrolledClipView(scrollView.contentView)
             let reached = offset.y <= reachableMax + 1
                 && abs(scrollView.contentView.bounds.origin.y - offset.y) < 1
-            scrollRestoreDebug("attempt=\(attempt) ziel=\(Int(offset.y)) "
+            workspace.scrollRestoreDiagnostics.emit("attempt=\(attempt) ziel=\(Int(offset.y)) "
                 + "ist=\(Int(scrollView.contentView.bounds.origin.y)) "
                 + "dokHöhe=\(Int(documentHeight)) reached=\(reached)")
             // Begrenzte Nachzieh-Versuche: erreicht, oder das Dokument ist
@@ -990,28 +988,13 @@ struct EditorView: View {
         }
     }
 
-    // Der Fenstertest sammelt die Reihenfolge ohne laufende I/O und gibt sie
-    // nur bei einem Fehler aus. Im normalen Betrieb bleibt der Empfänger nil.
-    static var scrollRestoreObserver: ((String) -> Void)?
-
-    /// Diagnose für die Ausschnitt-Wiederherstellung (Untersuchung des
-    /// tabscroll-Flakys). Nur mit gesetzter Umgebungsvariable
-    /// `FASTRA_SCROLLRESTORE_DEBUG=1` oder einem Test-Empfänger aktiv; die
-    /// `@autoclosure` vermeidet Meldungstexte im Normalbetrieb.
-    static func scrollRestoreDebug(_ message: @autoclosure () -> String) {
-        if let observer = scrollRestoreObserver { observer(message()) }
-        guard ProcessInfo.processInfo.environment["FASTRA_SCROLLRESTORE_DEBUG"] == "1"
-        else { return }
-        FileHandle.standardError.write(Data("SCROLLRESTORE \(message())\n".utf8))
-    }
-
     /// Das Dokumentfenster dieses Workspace (ohne die schwebende Suchmaske).
     private static func editorWindow(for workspace: Workspace) -> NSWindow? {
         CommandTargeting.documentWindow(for: workspace)
     }
 
     /// Scrollt den Editor sichtbar zum Suchtreffer, ohne dem Suchfenster den
-    /// Tastaturfokus zu entreißen. Die TextView darf dabei ausdrücklich NICHT
+    /// Tastaturfokus zu entreißen. Die TextView darf dabei ausdrücklich nicht
     /// First Responder werden: Sonst landet das nächste Return unbemerkt im
     /// Dokument. Leicht verzögert (`async`), damit CESE die neue Cursor-
     /// Position schon übernommen hat, bevor wir scrollen.
@@ -1019,7 +1002,7 @@ struct EditorView: View {
                                            targetLine: Int?, fallbackRange: NSRange?,
                                            cursorPositions: [CursorPosition]? = nil) {
         // Ein gezielter Sprung schlägt die noch laufende Ausschnitt-
-        // Wiederherstellung DIESES Fensters (Treffer in einer anderen Datei
+        // Wiederherstellung dieses Fensters (Treffer in einer anderen Datei
         // wechselt den Tab).
         cancelScrollRestore(in: workspace)
         let documentID = workspace.activeDocumentID
@@ -1031,23 +1014,13 @@ struct EditorView: View {
                   let root = mainWindow.contentView,
                   let tv = firstEditorTextView(in: root) else { return }
             guard let textView = tv as? CodeEditTextView.TextView else { return }
-            // Robust zum Treffer scrollen (Daniel-Befund 2026-06-22: Treffer
-            // markiert, aber Dokument scrollte in einer 41k-Zeilen-Datei NICHT
-            // hin). CESEs `setCursorPositions(scrollToVisible:)` ruft
-            // `scrollSelectionToVisible()`, das bei großen Dokumenten versagt:
-            // ist die Ziel-Zeile noch nicht ausgelegt, ist der Selektions-
-            // `boundingRect` == .zero und die innere `while`-Schleife läuft gar
-            // nicht erst an (Henne-Ei). `scrollToRange(_:)` umgeht das über
-            // `rectForOffset` (schätzt die y-Position auch ungelegter Zeilen).
+            // Bei noch nicht ausgelegten Zeilen liefert die Selektionsgeometrie
+            // `.zero`; CESEs `scrollSelectionToVisible()` scrollt dann nicht.
+            // `scrollToRange(_:)` verwendet `rectForOffset`, das ihre y-Position schätzt.
             //
-            // WICHTIG: Ziel aus der ZEILENNUMMER rechnen, NICHT aus
-            // `selectedRange()`. Der CESE-Reconcile, der die Selektion aus
-            // Zeile/Spalte setzt, ist zu diesem async-Zeitpunkt NICHT garantiert
-            // durch — ein zu früher `selectedRange()`-Read lieferte (0,0) und
-            // scrollte an den Datei-Anfang (genau der Regressions-Bug aus der
-            // Vorrunde). `textLineForIndex` kennt die Zeile aus dem Line-Storage
-            // (samt geschätzter y-Position), auch wenn sie noch nicht ausgelegt
-            // ist — unabhängig vom Selektions-Timing.
+            // Das Ziel aus der Zeilennummer berechnen: CESE kann die Selektion erst
+            // später abgleichen, sodass `selectedRange()` hier noch `(0,0)` liefert.
+            // `textLineForIndex` hängt nicht von diesem Selektions-Timing ab.
             let target: NSRange
             if let targetLine, targetLine > 0,
                let linePos = textView.layoutManager.textLineForIndex(targetLine - 1) {
@@ -1070,10 +1043,10 @@ struct EditorView: View {
                     responder = current.nextResponder
                 }
             }
-            // Konvergierend scrollen statt one-shot (Daniel-Befund 2026-06-23):
+            // Konvergierend scrollen statt one-shot:
             // bei Umbruch wrappen lange Zeilen mehrzeilig → variable Höhen. Die
             // y-Position aus `rectForOffset` summiert für noch nicht ausgelegte
-            // Zeilen die GESCHÄTZTE 1-Zeilen-Höhe → der Sprung landet zu kurz
+            // Zeilen die geschätzte 1-Zeilen-Höhe → der Sprung landet zu kurz
             // (Fehler wächst mit der Tiefe; Treffer in Zeile 1256 landete bei
             // ~485). Jeder Scroll legt den neu sichtbaren Bereich aus (echte
             // Höhen), wodurch die Ziel-Schätzung nach unten wandert; iteratives
@@ -1088,7 +1061,7 @@ struct EditorView: View {
 
     /// Beobachtet das Scrollen der Editor-TextView und zeichnet die Live-
     /// Trefferanzeige gedrosselt nach. Nötig, weil der EmphasisManager nur
-    /// für bereits AUSGELEGTE Zeilen einen Pfad bekommt — Treffer außerhalb
+    /// für bereits ausgelegte Zeilen einen Pfad bekommt — Treffer außerhalb
     /// des gelayouteten Bereichs hätten sonst dauerhaft keine Markierung.
     /// Der Relay hängt als Associated Object an der TextView und stirbt mit
     /// ihr (deinit meldet den Observer ab).
@@ -1263,16 +1236,14 @@ struct EditorView: View {
         )
     }
 
-    /// Zeichnet die Live-Trefferanzeige neu (Etappe 2 Wunschpaket 2026-07b):
-    /// erst die eigene Emphasis-Gruppe räumen, dann — falls die pure
-    /// Sichtbarkeitsbedingung (`SearchEmphasis.shouldShow`) gilt — die
-    /// aktuellen Buffer-Treffer als flache Markierungen setzen.
-    ///
-    /// Läuft bewusst einen Tick später (`async`): Der `$bufferMatches`-
-    /// Publisher feuert zum willSet-Zeitpunkt (Property noch alt), und nach
-    /// einem Tab-Wechsel muss die frisch montierte TextView erst in der
-    /// Hierarchie hängen. Reine Anzeige: kein Undo, kein Dirty, kein Einfluss
-    /// auf Ersetzen oder die Vorschau-Trefferbasis.
+    /// Zeichnet die Live-Trefferanzeige neu: erst die eigene Emphasis-Gruppe
+    /// räumen, dann — falls die pure Sichtbarkeitsbedingung
+    /// (`SearchEmphasis.shouldShow`) gilt — die aktuellen Buffer-Treffer als
+    /// flache Markierungen setzen. Läuft bewusst einen Tick später (`async`):
+    /// Der `$bufferMatches`- Publisher feuert zum willSet-Zeitpunkt (Property
+    /// noch alt), und nach einem Tab-Wechsel muss die frisch montierte TextView
+    /// erst in der Hierarchie hängen. Reine Anzeige: kein Undo, kein Dirty,
+    /// kein Einfluss auf Ersetzen oder die Vorschau-Trefferbasis.
     static func updateSearchEmphasis(in workspace: Workspace) {
         DispatchQueue.main.async {
             guard let mainWindow = CommandTargeting.documentWindow(for: workspace),
@@ -1310,34 +1281,24 @@ struct EditorView: View {
             let documentLength = textView.textStorage?.length ?? 0
             let safeRanges = plan.ranges.filter { NSMaxRange($0) <= documentLength }
             guard !safeRanges.isEmpty else { return }
-            // Der EmphasisManager kann nur AUSGELEGTE Zeilen zeichnen —
+            // Der EmphasisManager kann nur ausgelegte Zeilen zeichnen —
             // beim Scrollen legt CESE weitere Zeilen aus, der Relay zeichnet
             // dann gedrosselt nach (sonst blieben Treffer unter dem sichtbaren
             // Bereich dauerhaft unmarkiert).
             installEmphasisScrollRelay(on: textView, workspace: workspace)
-            // Der Edit-Wächter räumt diese Markierungen beim ersten Textedit
-            // sofort wieder — sie wären veraltet und zeichneten an falschen
-            // Stellen (Absturzursache im Crash-Report vom 2026-08-28).
+            // Beim ersten Textedit diese Markierungen entfernen: Ihre Positionen
+            // sind dann veraltet und könnten außerhalb des Textes liegen.
             installEmphasisEditGuard(on: textView)
             manager.addEmphases(SearchEmphasis.makeEmphases(for: safeRanges),
                                 for: SearchEmphasis.groupID)
         }
     }
 
-    /// Macht die Editor-TextView des Hauptfensters zum First Responder, sobald ein
-    /// (neuer) Editor erscheint — neuer Tab (⌘T), Tab-Wechsel, abgeschlossenes
-    /// Laden oder ein programmatischer Reload (jeweils ein `.id`-Remount des
-    /// SourceEditors). Ohne das blieb nach ⌘T der Editor unfokussiert, und ein
-    /// sofortiges ⌘V verpuffte, bis man einmal in den Text klickte (Daniel-Befund
-    /// 2026-06-25).
-    ///
-    /// Anders als `scrollEditorForVisibleJump` wird diese Methode nur beim
-    /// normalen Editor-Aufbau verwendet:
-    /// Ist gerade die schwebende Suchmaske vorne (der Nutzer tippt dort), darf der
-    /// Editor ihr den Tastaturfokus NICHT entreißen — wir fokussieren nur, wenn das
-    /// Hauptfenster ohnehin schon Key ist (der Normalfall direkt nach ⌘T/Tab-Klick).
-    /// Leicht verzögert (`async` + kleiner Delay), damit die frisch erzeugte
-    /// TextView schon in der View-Hierarchie hängt, bevor wir sie fokussieren.
+    /// Fokussiert die Editor-TextView nach neuem Tab, Tab-Wechsel oder
+    /// Ladeabschluss, damit etwa direktes ⌘V den Texteditor erreicht.
+    /// Nur das bereits aktive Hauptfenster fokussieren; die Suchmaske darf ihren
+    /// Tastaturfokus behalten. Der verzögerte Aufruf wartet, bis die neu erzeugte
+    /// TextView in der View-Hierarchie hängt.
     static func focusActiveEditor(in workspace: Workspace) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             guard let mainWindow = CommandTargeting.documentWindow(for: workspace),
@@ -1395,8 +1356,8 @@ struct EditorView: View {
             max(documentHeight - viewportHeight, 0))
     }
 
-    /// Scrollt iterativ zur Ziel-Zeile, bis die TATSÄCHLICH zentrierte Zeile
-    /// (unabhängig über `textLineForPosition` gemessen, NICHT über die
+    /// Scrollt iterativ zur Ziel-Zeile, bis die tatsächlich zentrierte Zeile
+    /// (unabhängig über `textLineForPosition` gemessen, nicht über die
     /// `rectForOffset`-Schätzung) nahe genug am Ziel ist. Nötig, weil
     /// `scrollToRange` bei mehrzeilig gewrappten Zeilen wegen geschätzter
     /// Zeilenhöhen zu kurz scrollt; jeder Lauf legt mehr Zeilen aus und
@@ -1409,7 +1370,7 @@ struct EditorView: View {
         guard visibleJumpScrollState(for: tv).generation == generation else {
             return
         }
-        // Ziel-Offset bei jedem Lauf NEU aus der Zeile bestimmen (die
+        // Ziel-Offset bei jedem Lauf neu aus der Zeile bestimmen (die
         // ausgelegten Höhen ändern die Position nicht, aber so bleibt es robust).
         let targetRange: NSRange
         if let targetLine, targetLine > 0,
@@ -1484,37 +1445,24 @@ struct EditorView: View {
         return nil
     }
 
-    /// Konfiguration stabil halten — sonst wird der SourceEditor bei jedem Render
-    /// neu konfiguriert, was Layout-Pass-Reentry und einen QuartzCore-Crash auslösen kann.
+    /// Konfiguration stabil halten: Unnötige CESE-Neukonfiguration kann
+    /// Layout-Pässe erneut betreten und einen QuartzCore-Absturz auslösen.
     ///
-    /// `layout.contentInsets` explizit auf 0 setzen (2026-06-22): Ohne gesetzte
-    /// `contentInsets` schaltet CodeEditSourceEditor seinen ScrollView auf
-    /// `automaticallyAdjustsContentInsets = true` (siehe CESE
-    /// `TextViewController+StyleViews.swift`). In unserem Fenster mit
-    /// `.windowStyle(.hiddenTitleBar)` meldet AppKit dann einen Titelleisten-
-    /// Top-Inset (~28 pt) als Phantom-Polsterung über dem Text — den wollen wir
-    /// nicht, weil der Editor ohnehin schon unter unserer Tab-Leiste sitzt; mit
-    /// 0-Inset starten Gutter und Text bündig am oberen Editor-Rand.
-    /// HINWEIS: Anfangs als Ursache für den Gutter-Durchschuss ins Header-Band
-    /// vermutet — war es NICHT (der Überstand blieb mit 0-Inset unverändert).
-    /// Den behebt das `.clipped()` oben in `body`. Der 0-Inset bleibt als
-    /// sinnvolle Konfig für den versteckten Titelleisten-Modus.
+    /// `layout.contentInsets = 0` verhindert den automatischen Titelleisten-Inset
+    /// bei `.hiddenTitleBar`; Text und Gutter beginnen unter der Tab-Leiste.
     /// `additionalTextInsets` bleibt beim CESE-Default (1 pt oben/unten).
-    /// Instanz-Property (nicht mehr `static`), damit der Zeilenumbruch
-    /// reaktiv aus dem Formatprofil kommt. Stabilität bleibt gewahrt: CESEs
-    /// `paramsAreEqual` vergleicht die `configuration` per `==`
-    /// (Equatable) — ein wertgleicher Neuaufbau pro Render löst KEINEN
-    /// Reload aus (kein Layout-Reentry/QuartzCore-Crash). Nur eine echte
-    /// Soft-Wrap-Änderung erzeugt eine ungleiche Config → CESE-Reconcile
-    /// setzt Umbruch + `hasHorizontalScroller` live.
-    /// Aktive Eigen-Sprache des Tabs (Registry, Etappe 3 Wunschpaket
-    /// 2026-07b) — steuert Theme und Highlight-Provider. Rangfolge:
-    /// 1. Manuelle Eigen-Sprachen-Wahl (Footer-Menü) gewinnt immer.
-    /// 2. Eine manuelle GRAMMATIK-Wahl schaltet die Eigen-Sprache ab
-    ///    (der Nutzer hat sich ausdrücklich anders entschieden).
-    /// 3. Sonst Endungs-Automatik (Titel zählt mit, damit auch „Speichern
-    ///    unter…“-Kandidaten ohne URL richtig eingefärbt werden).
-    /// Pure Funktion → unit-testbar.
+    /// Das Abschneiden von Zeichnung oberhalb des Editors übernimmt `.clipped()`.
+    ///
+    /// Die Instanz-Property übernimmt reaktiv den Zeilenumbruch des Formatprofils.
+    /// CESE vergleicht Konfigurationen per `==`: Ein wertgleicher Neuaufbau löst
+    /// keinen Reload aus, eine Soft-Wrap-Änderung aktualisiert Umbruch und
+    /// `hasHorizontalScroller`.
+    ///
+    /// Rangfolge der Eigen-Sprache für Theme und Highlight-Provider:
+    /// 1. Manuelle Eigen-Sprachen-Wahl im Footer.
+    /// 2. Manuelle Grammatik-Wahl schaltet Eigen-Sprachen ab.
+    /// 3. Sonst Endungs-Automatik, auch anhand eines Titels ohne Datei-URL.
+    /// Die Auswahl ist als pure Funktion ohne Ansicht prüfbar.
     static func customLanguage(for tab: EditorTab?) -> CustomLanguage? {
         DocumentFormatResolver.resolve(tab: tab).customLanguage
     }
@@ -1536,7 +1484,7 @@ struct EditorView: View {
                                         scale: DocumentZoom.scale(for: documentZoomLevel)),
                 wrapLines: workspace.softWrapEnabled,
                 // Tab-Darstellungsbreite aus dem Einrückungsprofil des
-                // Formats (Etappe 4); Werkstandard bleibt 4.
+                // Formats; Werkstandard bleibt 4.
                 tabWidth: workspace.activeIndentationProfile.tabWidth
             ),
             behavior: .init(
@@ -1568,13 +1516,12 @@ struct EditorView: View {
         workspace.activeDocumentFormat.grammar
     }
 
-    /// Endungs-Sonderfälle, die keine eigene Grammatik besitzen:
-    /// - XML-artige → HTML-Grammatik (CodeEditLanguages bündelt kein XML;
-    ///   HTML zeichnet Tags/Attribute/Strings verlustfrei auch für XML).
-    /// - 4D-Projektdateien (Etappe 4): .4DProject/.4DForm sind JSON,
-    ///   .4DCatalog/.4DSettings sind XML (echte JSON-/XML-Dateien — bewusst
-    ///   KEINE Eigen-Sprache; .4dm läuft seit Etappe 3 Wunschpaket 2026-07b
-    ///   über die `CustomLanguageRegistry`).
+    /// Endungs-Sonderfälle, die keine eigene Grammatik besitzen: - XML-artige →
+    /// HTML-Grammatik (CodeEditLanguages bündelt kein XML; HTML zeichnet
+    /// Tags/Attribute/Strings verlustfrei auch für XML). - 4D-Projektdateien
+    ///: .4DProject/.4DForm sind JSON, .4DCatalog/.4DSettings sind
+    /// XML (echte JSON-/XML-Dateien — bewusst keine Eigen-Sprache; .4dm läuft
+    /// über die `CustomLanguageRegistry`).
     static func grammarForSpecialExtension(_ fileExtension: String) -> CodeLanguage? {
         guard let format = DocumentFormatResolver.formatForSpecialExtension(fileExtension),
               format.customLanguage == nil else {
@@ -1621,7 +1568,7 @@ struct EditorView: View {
     /// Anzahl der Dateien mit Änderungen (Index und Working Tree zusammen,
     /// jede Datei nur einmal gezählt). Sie erscheint als Badge direkt auf dem
     /// Änderungen-Tab, damit man sie auch vom Dateien- oder Graph-Tab aus
-    /// sieht (Daniel-Wunsch 2026-09-01).
+    /// sieht.
     private var changedFileCount: Int {
         guard let status = workspace.gitStatus else { return 0 }
         // `rawPath` statt Anzeigename: kollisionsfrei auch bei Umbenennungen
@@ -1664,7 +1611,7 @@ struct EditorView: View {
 
     /// Seitenleisten-Inhalt des Dateien-Tabs: der Projekt-Dateibaum (falls
     /// geladen) plus der „Datei öffnen…"-Knopf unten. Die frühere
-    /// „GEÖFFNET"-Liste der offenen Tabs ist entfernt (Daniel 2026-09-01):
+    /// „GEÖFFNET"-Liste der offenen Tabs ist entfernt:
     /// Sie wuchs als ungebremster `ForEach` mit jedem Tab weiter, verdrängte
     /// erst den Dateibaum und drückte schließlich Tab-Leiste und Kopf aus dem
     /// Fenster. Tabs erreichbar bleiben sie über die Tab-Leiste und die neuen
@@ -1672,12 +1619,12 @@ struct EditorView: View {
     private var filesSidebar: some View {
         VStack(alignment: .leading, spacing: 1) {
             if let projectURL = workspace.projectURL {
-                FileTreeSidebar(rootURL: projectURL)
+                FileTreeSidebar(rootURL: projectURL, defaults: workspace.preferencesStore)
                     .frame(maxHeight: .infinity)
                     // Projektwechsel = neue Sidebar-Identität: FSEvents-
                     // Wächter, Verzeichnis-Cache und Aufklappzustand hängen
                     // als @StateObject/@State am Root — ohne `.id` überlebten
-                    // sie den Wechsel und zeigten bzw. beobachteten das ALTE
+                    // sie den Wechsel und zeigten bzw. beobachteten das alte
                     // Projekt (der Wächter bekäme neue Dateien im neuen
                     // Projekt nie mit).
                     .id(projectURL)
@@ -1830,14 +1777,14 @@ extension EditorView {
         invisibles:     .init(color: rgb(0x36, 0x36, 0x36, 0.45)),
         background:     rgb(0xFF, 0xFF, 0xFF),
         lineHighlight:  rgb(0xAA, 0xC7, 0xE2, 0.98),
-        // Im hellen Theme liegt die Auswahl bewusst HELLER auf dem blauen
+        // Im hellen Theme liegt die Auswahl bewusst heller auf dem blauen
         // Zeilenband. Zwei ähnlich dunkle Blautöne ließen sich bei einer
         // Auswahl innerhalb der aktuellen Zeile nur schwer unterscheiden.
         selection:      rgb(0xD4, 0xE8, 0xF8, 0.96),
         keywords:   .init(color: rgb(0xA3, 0x39, 0x2A), bold: true),
         // commands/values/characters: Seit dem EditorTheme-Patch (build.sh,
         // Etappe 4) bedienen diese Slots .function/.method, .variableBuiltin
-        // und .property. Damit alle BESTEHENDEN Sprachen exakt gleich
+        // und .property. Damit alle bestehenden Sprachen exakt gleich
         // aussehen wie vor dem Patch, tragen die Slots hier genau die Farben
         // ihrer früheren Sammel-Slots (variables bzw. keywords). Eigene
         // Farben nutzt nur das 4D-Theme unten.
@@ -1857,7 +1804,7 @@ extension EditorView {
     /// = `Theme.surfaceRaised` (dunkel), damit Editor und umgebendes UI wie
     /// im Light-Mode dieselbe erhöhte Fläche teilen. Die Selektion verwendet
     /// denselben gedämpften Blauton wie das übrige UI.
-    /// Bewusst STATISCHE sRGB-Farben, keine dynamischen Provider-Farben —
+    /// Bewusst statische sRGB-Farben, keine dynamischen Provider-Farben —
     /// CESEs Minimap ruft `brightnessComponent` auf (siehe Kommentar oben);
     /// die Umschaltung passiert in `editorConfiguration` über `colorScheme`.
     static let fastraThemeDark: EditorTheme = EditorTheme(
@@ -1880,29 +1827,25 @@ extension EditorView {
         comments:   .init(color: rgb(0x9A, 0x9A, 0x9A), italic: true)
     )
 
-    // MARK: - 4D-Themes (Etappe 4 Wunschpaket 2026-07)
-    //
-    // Statische Themes für .4dm-Dokumente. Die Referenzwerte liegen als
-    // öffentliche Test-Fixtures unter Tests/FastraTests/Support/Fixtures/
-    // FourDTheme (nur Vordergrundfarben; Hintergrund-/Auswahlfarben und
-    // Fonts kommen bewusst aus den Fastra-Standardthemes). Underline (4D-Konstanten)
-    // kennt CESEs Attribut-Modell nicht — Konstanten erhalten nur die Farbe.
-    //
-    // Slot-Belegung (nach dem EditorTheme-Patch in build.sh):
-    //   text       ← plain_text          keywords ← keywords (bold)
-    //   commands   ← commands (bold)   methods ← Projektmethoden (bold/italic)
-    //   componentMethods ← Component-Methoden (orange/bold)
-    //   values     ← constants           variables ← local_variables (+$1…)
-    //   characters ← process_variables (auch <>interprozess — dark.json
-    //                kennt ohnehin keine eigene Interprozess-Farbe)
-    //   types      ← tables              attributes ← fields
-    //   numbers    ← plain_text (4D färbt Zahlen nicht ein)
-    //   strings    ← Fastra-Fallback für echte 4D-Strings (die Vorgabe
-    //                definiert keine String-Farbe); sie bleiben bewusst ein
-    //                eigener Slot und werden nie für Methoden umgenutzt.
-    //   member `.x` bleibt plain; `.f()` nutzt den commands-Slot.
-    //   errors/plug_ins aus den JSONs entfallen (kein Fehler-Parsing,
-    //   Plugin-Befehle nicht unterscheidbar) — dokumentierter Verzicht.
+    // MARK: - 4D-Themes Statische Themes für .4dm-Dokumente. Die Referenzwerte
+    // liegen als öffentliche Test-Fixtures unter
+    // Tests/FastraTests/Support/Fixtures/ FourDTheme (nur Vordergrundfarben;
+    // Hintergrund-/Auswahlfarben und Fonts kommen bewusst aus den
+    // Fastra-Standardthemes). Underline (4D-Konstanten) kennt CESEs
+    // Attribut-Modell nicht — Konstanten erhalten nur die Farbe. Slot-Belegung
+    // (nach dem EditorTheme-Patch in build.sh): text       ← plain_text
+    // keywords ← keywords (bold) commands   ← commands (bold)   methods ←
+    // Projektmethoden (bold/italic) componentMethods ← Component-Methoden
+    // (orange/bold) values     ← constants           variables ←
+    // local_variables (+$1…) characters ← process_variables (auch
+    // <>interprozess — dark.json kennt ohnehin keine eigene Interprozess-Farbe)
+    // types      ← tables              attributes ← fields numbers    ←
+    // plain_text (4D färbt Zahlen nicht ein) strings    ← Fastra-Fallback für
+    // echte 4D-Strings (die Vorgabe definiert keine String-Farbe); sie bleiben
+    // bewusst ein eigener Slot und werden nie für Methoden umgenutzt. member
+    // `.x` bleibt plain; `.f()` nutzt den commands-Slot. errors/plug_ins aus
+    // den JSONs entfallen (kein Fehler-Parsing, Plugin-Befehle nicht
+    // unterscheidbar) — dokumentierter Verzicht.
 
     static let fourDTheme: EditorTheme = EditorTheme(
         text:           .init(color: rgb(0x00, 0x00, 0x00)),

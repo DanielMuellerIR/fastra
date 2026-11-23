@@ -206,19 +206,8 @@ enum HexEditing {
     }
 
     private static func writeAll(_ data: Data, to descriptor: Int32) throws {
-        try data.withUnsafeBytes { rawBuffer in
-            guard let base = rawBuffer.baseAddress else { return }
-            var written = 0
-            while written < rawBuffer.count {
-                let result = Darwin.write(
-                    descriptor, base.advanced(by: written), rawBuffer.count - written)
-                if result < 0 {
-                    if errno == EINTR { continue }
-                    throw currentPOSIXError()
-                }
-                guard result > 0 else { throw POSIXError(.EIO) }
-                written += result
-            }
+        try data.withUnsafeBytes { bytes in
+            try POSIXBufferWriter.writeAll(bytes, to: descriptor)
         }
     }
 
@@ -346,7 +335,7 @@ struct HexEditSession: Equatable, Hashable, Sendable {
         guard !isSaving, hasChanges else { return nil }
         let operation = HexSaveOperation(id: UUID(), changes: preview)
         // Ab hier gehört jede Rückmeldung eindeutig zu dieser Save-Basis.
-        // Vorher von SwiftUI kopierte Sessions dürfen nach Erfolg ODER Fehler
+        // Vorher von SwiftUI kopierte Sessions dürfen nach Erfolg oder Fehler
         // keine inzwischen neueren ungespeicherten Änderungen überschreiben.
         editingLineageID = UUID()
         saveOperationID = operation.id
@@ -394,11 +383,8 @@ struct HexEditSession: Equatable, Hashable, Sendable {
         editingLineageID = UUID()
     }
 
-    /// Der Seiteninhalt mit allen noch nicht gespeicherten Änderungen — die
-    /// EINE Bytequelle für Anzeige UND Drucksnapshot. Vorher las die
-    /// schreibgeschützte Hex-Zeile die rohen Bytes, der Ausdruck aber die
-    /// geänderten: Auf dem Papier standen Bytes, die auf dem Bildschirm nicht
-    /// zu sehen waren (Reviewfund 2026-08-18).
+    /// Seiteninhalt einschließlich ungespeicherter Änderungen als gemeinsame
+    /// Bytequelle für Anzeige und Drucksnapshot.
     func applied(to data: Data, baseOffset: UInt64) -> Data {
         var page = data
         for (offset, change) in changes {

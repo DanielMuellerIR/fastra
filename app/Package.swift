@@ -23,7 +23,7 @@ let package = Package(
         // Grammatik für reguläre Ausdrücke. Exakt gepinnt — die Grammatik
         // definiert unsere Token-Typen (node-types.json), ein stiller Bump
         // könnte das Mapping in RegexTokenizer brechen. Achtung Tag-Falle:
-        // v1.0.0 ist ein ALTES Tag von 2023 OHNE Swift-Binding; die aktuelle
+        // v1.0.0 ist ein altes Tag von 2023 ohne Swift-Binding; die aktuelle
         // Release-Linie ist 0.2x (v0.25.0 = 2025-09, mit Package.swift).
         .package(url: "https://github.com/tree-sitter/tree-sitter-regex", exact: "0.25.0"),
         // Transitiv schon via CodeEditSourceEditor im Graph (ChimeHQ, 0.25.0
@@ -41,6 +41,7 @@ let package = Package(
     targets: [
         .target(name: "FastraDiffProtocol"),
         .target(name: "FastraControlProtocol"),
+        .target(name: "FastraPatternSyntax"),
         .executableTarget(name: "FastraControlCLI", dependencies: ["FastraControlProtocol", "FastraDiffProtocol"]),
         .executableTarget(name: "FastraDiffCLI", dependencies: ["FastraDiffProtocol"]),
         // Kleine lokale cmark-Inline-Erweiterung für `==Textmarker==`.
@@ -60,6 +61,7 @@ let package = Package(
                 "FastraMarkdownMark",
                 "FastraDiffProtocol",
                 "FastraControlProtocol",
+                "FastraPatternSyntax",
                 .product(name: "CodeEditSourceEditor", package: "CodeEditSourceEditor"),
                 .product(name: "CodeEditLanguages",    package: "CodeEditLanguages"),
                 .product(name: "CodeEditTextView",     package: "CodeEditTextView"),
@@ -88,7 +90,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FastraTests",
-            dependencies: ["Fastra", "FastraDiffProtocol", "FastraControlProtocol"],
+            dependencies: ["Fastra", "FastraDiffProtocol", "FastraControlProtocol", "FastraPatternSyntax"],
             resources: [
                 .copy("Support/Fixtures/FourDTheme")
             ]

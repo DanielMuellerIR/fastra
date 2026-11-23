@@ -88,7 +88,7 @@ struct GitCommit: Equatable, Identifiable {
     }
 }
 
-/// Eine gezeichnete Linie innerhalb EINER Graph-Zeile. Die Zeile ist ein festes
+/// Eine gezeichnete Linie innerhalb einer Graph-Zeile. Die Zeile ist ein festes
 /// Rechteck; `y` läuft von 0 (Oberkante) bis 1 (Unterkante), der Knoten sitzt bei
 /// `y = 0.5`. Weil benachbarte Zeilen dieselbe Spaltenbreite nutzen, stoßen die
 /// Segmente an den Zell-Kanten exakt zusammen → optisch durchgehende Linien.
@@ -323,10 +323,10 @@ enum GitGraph {
     /// Weist jedem Commit eine Spalte zu und beschreibt die Verzweigungslinien.
     ///
     /// Verfahren (der Standard-Algorithmus, wie ihn gitk/VS Code nutzen):
-    /// Wir führen eine Liste offener „Lanes". Jede Lane merkt sich, WELCHER Commit
+    /// Wir führen eine Liste offener „Lanes". Jede Lane merkt sich, welcher Commit
     /// als Nächstes (weiter unten) in ihr erwartet wird, plus eine feste Farbe.
     /// Für jeden Commit von oben nach unten:
-    ///   • Alle Lanes, die genau DIESEN Commit erwarten, laufen hier zusammen
+    ///   • Alle Lanes, die genau diesen Commit erwarten, laufen hier zusammen
     ///     („incoming"-Linien). Die linkeste wird zur Knotenspalte.
     ///   • Danach zeigt die Haupt-Lane auf den ersten Eltern-Commit; jeder weitere
     ///     Eltern-Commit (Merge) bekommt eine eigene Lane oder trifft eine bereits
@@ -377,7 +377,7 @@ enum GitGraph {
                 nodeColor = nextColor()
             }
 
-            // 3. Linien-Schnappschuss VOR dem Umbelegen der Lanes aufnehmen.
+            // 3. Linien-Schnappschuss vor dem Umbelegen der Lanes aufnehmen.
             var lines: [GraphLine] = []
             for i in lanes.indices {
                 guard let lane = lanes[i] else { continue }

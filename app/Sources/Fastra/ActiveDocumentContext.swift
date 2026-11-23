@@ -21,13 +21,10 @@ final class ActiveDocumentContext: ObservableObject {
 
     private weak var activeWorkspace: Workspace?
     private var workspaceObservation: AnyCancellable?
-    /// Im Produkt wechselt der Fokus nur auf dem Main-Thread. Die parallele
-    /// Testsuite erzeugt dagegen gleichzeitig Workspaces aus mehreren Threads,
-    /// und `Workspace.shared` reicht jede Erzeugung hierher weiter. Zwei
-    /// gleichzeitige Zuweisungen würden dieselbe alte Referenz freigeben —
-    /// beobachtet am 2026-07-26 als SIGSEGV in `objc_destructInstance`. Deshalb
-    /// jeden Zugriff auf die beiden Referenzen kurz serialisieren, analog zur
-    /// `liveWorkspaces`-Registry in `Workspace`.
+    /// Im Produkt wechselt der Fokus auf dem Main-Thread. Die parallele
+    /// Testsuite erzeugt Workspaces auch auf anderen Threads; `Workspace.shared`
+    /// reicht sie hierher weiter. Die Zugriffe werden serialisiert, damit
+    /// konkurrierende Zuweisungen dieselbe alte Referenz nicht doppelt freigeben.
     private let lock = NSLock()
 
     var workspace: Workspace? { lock.withLock { activeWorkspace } }
@@ -48,6 +45,12 @@ final class ActiveDocumentContext: ObservableObject {
                 }
             }
         }
+        publishChange()
+    }
+
+    /// Hilfsfenster behalten den letzten Dokumentkontext für Einstellungen,
+    /// sperren aber Dokumentbefehle. Auch ohne Referenzwechsel neu auswerten.
+    func commandTargetDidChange() {
         publishChange()
     }
 

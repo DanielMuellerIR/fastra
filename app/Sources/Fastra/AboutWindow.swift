@@ -34,14 +34,14 @@ enum AboutWindow {
         if let existing = window {
             // Fenster existiert noch — nach vorne bringen.
             existing.makeKeyAndOrderFront(nil)
-            SelfTest.activateApplication(ignoringOtherApps: false)
+            ApplicationActivation.activate(ignoringOtherApps: false)
             return
         }
 
         // Fenstergröße: ca. 320 × 360 pt, passend für Icon + Texte.
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 360),
-            styleMask: [.titled, .closable],   // bewusst KEIN .resizable
+            styleMask: [.titled, .closable],   // bewusst kein .resizable
             backing: .buffered,
             defer: false
         )
@@ -53,7 +53,7 @@ enum AboutWindow {
         // `isReleasedWhenClosed` ist bei programmatisch erzeugten
         // NSWindows standardmäßig `true`, also explizit bestätigen.
         w.isReleasedWhenClosed = false   // wir halten die weak-Ref; ARC kümmert sich
-        // codereview-ok: weak window → ARC gibt das Fenster nach Close frei, weak-Ref wird nil, nächster show() baut korrekt neu; kein Leak (2026-07-01)
+        // codereview-ok: weak window → ARC gibt das Fenster nach Close frei, weak-Ref wird nil, nächster show() baut korrekt neu; kein Leak
 
         // SwiftUI-Inhalt einhängen.
         let host = NSHostingController(rootView: AboutView().fastraScalingRoot())
@@ -71,7 +71,7 @@ enum AboutWindow {
 
         self.window = w
         w.makeKeyAndOrderFront(nil)
-        SelfTest.activateApplication(ignoringOtherApps: false)
+        ApplicationActivation.activate(ignoringOtherApps: false)
     }
 }
 

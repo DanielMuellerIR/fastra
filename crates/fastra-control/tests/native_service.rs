@@ -4,15 +4,36 @@ use std::{
     fs,
     os::unix::fs::{symlink, PermissionsExt},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     time::{Duration, Instant},
 };
 const SYSTEM: &str = "11111111-1111-4111-8111-111111111111";
 const NATIVE: &str = "22222222-2222-4222-8222-222222222222";
-fn wait_for(mut f: impl FnMut() -> bool) {
+struct TestDriver(Option<Child>);
+impl TestDriver {
+    fn finish(mut self) {
+        let output = self.0.take().unwrap().wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "{status}: {stdout}{stderr}",
+            status = output.status,
+            stdout = String::from_utf8_lossy(&output.stdout),
+            stderr = String::from_utf8_lossy(&output.stderr),
+        );
+    }
+}
+impl Drop for TestDriver {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+fn wait_for(timeout: Duration, mut f: impl FnMut() -> bool) {
     let start = Instant::now();
     while !f() {
-        assert!(start.elapsed() < Duration::from_secs(4));
+        assert!(start.elapsed() < timeout);
         std::thread::sleep(Duration::from_millis(10));
     }
 }
@@ -42,7 +63,13 @@ fn native_driver() {
         "ready",
     )
     .unwrap();
-    let delivery = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    // Die vorab gestarteten Dienste gehören dem Eltern-Test. Sie müssen auch
+    // während der Negativfälle erreichbar sein, selbst wenn deren CLI langsam läuft.
+    let delivery = if std::env::var_os("FASTRA_SERVICE_TEST_PRESTARTED").is_some() {
+        rx.recv().unwrap()
+    } else {
+        rx.recv_timeout(Duration::from_secs(5)).unwrap()
+    };
     Request::decode(&delivery.request).unwrap();
     delivery
         .reply
@@ -50,8 +77,9 @@ fn native_driver() {
             UUID::parse(if native { NATIVE } else { SYSTEM }).unwrap(),
         )))
         .unwrap();
-    // Der Worker überträgt die bereits angenommene Antwort vor dem Serverdrop.
-    std::thread::sleep(Duration::from_millis(80));
+    let received = root.join(if native { "native-received" } else { "system-received" });
+    // Erst die CLI bestätigt, dass der Transport die Antwort geschrieben hat.
+    wait_for(Duration::from_secs(15), || received.exists());
     fs::write(
         root.join(if native { "native-done" } else { "system-done" }),
         "done",
@@ -106,6 +134,7 @@ fn command(root: &Path, native: bool) -> Command {
         .arg(root.join("request.json"))
         .env_remove("FASTRA_NATIVE_RUNTIME")
         .env_remove("FASTRA_NATIVE_SHADOW_MANIFEST")
+        .env_remove("FASTRA_SERVICE_TEST_PRESTARTED")
         .env("XDG_RUNTIME_DIR", root.join("run"));
     cmd
 }
@@ -152,6 +181,7 @@ fn parallel_targets_loader_anchor_manifest_and_native_coldstart() {
         let mut c = Command::new(std::env::current_exe().unwrap());
         c.args(["--exact", "native_driver", "--nocapture"])
             .env("FASTRA_SERVICE_TEST_ROOT", root)
+            .env("FASTRA_SERVICE_TEST_PRESTARTED", "1")
             .env(
                 "FASTRA_SERVICE_TEST_ROLE",
                 if native { "native" } else { "system" },
@@ -165,14 +195,17 @@ fn parallel_targets_loader_anchor_manifest_and_native_coldstart() {
             c.env_remove("FASTRA_NATIVE_RUNTIME")
                 .env_remove("FASTRA_NATIVE_SHADOW_MANIFEST");
         }
-        c.stdout(Stdio::piped())
+        let child = c.stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .unwrap()
+            .unwrap();
+        TestDriver(Some(child))
     };
     let system = server(false);
     let native = server(true);
-    wait_for(|| root.join("system-ready").exists() && root.join("native-ready").exists());
+    wait_for(Duration::from_secs(4), || {
+        root.join("system-ready").exists() && root.join("native-ready").exists()
+    });
     let bad = command(root, false)
         .env("FASTRA_INTERNAL_NATIVE_SERVICE", "invalid")
         .output()
@@ -238,17 +271,21 @@ fn parallel_targets_loader_anchor_manifest_and_native_coldstart() {
     let sys = command(root, false).output().unwrap();
     assert!(sys.status.success());
     assert_eq!(reply(sys)["runtimeID"], SYSTEM);
+    fs::write(root.join("system-received"), "received").unwrap();
     let nat = command(root, true).output().unwrap();
     assert!(
         nat.status.success(),
-        "{}",
+        "{}{}",
+        String::from_utf8_lossy(&nat.stdout),
         String::from_utf8_lossy(&nat.stderr)
     );
     assert_eq!(reply(nat)["runtimeID"], NATIVE);
+    fs::write(root.join("native-received"), "received").unwrap();
     assert!(!root.join("launched").exists());
-    assert!(system.wait_with_output().unwrap().status.success());
-    assert!(native.wait_with_output().unwrap().status.success());
+    system.finish();
+    native.finish();
     fs::remove_file(root.join("native-done")).unwrap();
+    fs::remove_file(root.join("native-received")).unwrap();
     let cold = command(root, true)
         .env("FASTRA_SERVICE_TEST_ROOT", root)
         .env("FASTRA_SERVICE_TEST_ROLE", "native")
@@ -261,15 +298,17 @@ fn parallel_targets_loader_anchor_manifest_and_native_coldstart() {
         .unwrap();
     assert!(
         cold.status.success(),
-        "{}",
+        "{}{}",
+        String::from_utf8_lossy(&cold.stdout),
         String::from_utf8_lossy(&cold.stderr)
     );
     assert_eq!(reply(cold)["runtimeID"], NATIVE);
+    fs::write(root.join("native-received"), "received").unwrap();
     assert_eq!(
         fs::read_to_string(root.join("launched")).unwrap().trim(),
         "--local-control-service"
     );
-    wait_for(|| root.join("native-done").exists());
+    wait_for(Duration::from_secs(4), || root.join("native-done").exists());
     fs::remove_file(&launcher).unwrap();
     let no = command(root, true).output().unwrap();
     assert_eq!(reply(no)["error"]["code"], "delivery");

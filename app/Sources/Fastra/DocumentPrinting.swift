@@ -33,7 +33,7 @@ enum PrintOutcome: Equatable {
 }
 
 /// Übersetzt AppKits mehrdeutiges Bool-Ergebnis in eine verständliche
-/// Rückmeldung. `false` bedeutet laut AppKit entweder Abbruch ODER Fehler;
+/// Rückmeldung. `false` bedeutet laut AppKit entweder Abbruch oder Fehler;
 /// nur `jobDisposition == .cancel` weist den bewussten Abbruch aus.
 @MainActor
 enum PrintOperationOutcome {
@@ -120,7 +120,7 @@ enum DocumentPrinting {
                     window: NSWindow?,
                     savingTo: URL? = nil,
                     completion: @escaping (PrintOutcome) -> Void = { _ in }) {
-        // EIN Abschlussweg für synchrone und asynchrone Fehler. Insbesondere
+        // Ein Abschlussweg für synchrone und asynchrone Fehler. Insbesondere
         // WebKit-Fehler kamen vorher nur in der standardmäßig leeren Completion
         // an und blieben beim normalen Menübefehl unsichtbar.
         let deliver: (PrintOutcome) -> Void = { [weak window] outcome in
@@ -251,7 +251,7 @@ enum DocumentPrinting {
                     highlights: highlights,
                     theme: theme
                 )
-                // WICHTIG: `operation.printInfo` ist eine KOPIE des übergebenen
+                // Wichtig: `operation.printInfo` ist eine Kopie des übergebenen
                 // PrintInfo. Das Zubehörfeld muss auf die Kopie schreiben — nur
                 // sie liest die Seitenaufteilung des laufenden Auftrags.
                 execute(operation, window: window, savingTo: savingTo,
@@ -359,7 +359,7 @@ enum DocumentPrinting {
         execute(operation, window: window, savingTo: savingTo,
                 // Ohne Zeilennummern-Option — der Abzug trägt seine Adressen
                 // selbst; umschaltbar bleibt die Kopf-/Fußzeile. Auch hier
-                // gilt: auf die PrintInfo-KOPIE des Auftrags schreiben.
+                // gilt: auf die PrintInfo-Kopie des Auftrags schreiben.
                 accessory: PrintOptionsAccessoryController(
                     printInfo: operation.printInfo, defaults: defaults,
                     offersLineNumbers: false),
@@ -383,7 +383,7 @@ enum DocumentPrinting {
         if let fixedColumns {
             // Text mit festem Raster (Hex): Schrift so verkleinern, dass eine
             // ganze Zeile auf die Seite passt. Sonst bricht jede Zeile um und
-            // das Raster ist unlesbar (gesehen am 2026-08-17).
+            // das Raster ist unlesbar.
             let characterWidth = ("0" as NSString)
                 .size(withAttributes: [.font: font]).width
             let fitted = PrintTextFit.fittedFontSize(
@@ -399,12 +399,12 @@ enum DocumentPrinting {
         let showsLineNumbers = !forcesLineNumbersOff
             && PrintPreferences.showsLineNumbers(defaults)
         // Anfangswerte der Dialog-Optionen in den Auftrag legen: Das
-        // Zubehörfeld und die Seitenaufteilung lesen BEIDE von hier — eine
+        // Zubehörfeld und die Seitenaufteilung lesen beide von hier — eine
         // Quelle, kein Auseinanderlaufen (siehe PrintPanelAccessory.swift).
         printInfo.dictionary()[PrintDialogOption.headerFooter] =
             PrintPreferences.showsHeaderFooter(defaults)
         printInfo.dictionary()[PrintDialogOption.lineNumbers] = showsLineNumbers
-        // Syntaxfarben nur, wenn die Analyse welche geliefert hat UND die
+        // Syntaxfarben nur, wenn die Analyse welche geliefert hat und die
         // Einstellung sie will; die Checkbox im Dialog kann beides umschalten.
         let showsSyntaxColors = !highlights.isEmpty
             && PrintPreferences.showsSyntaxColors(defaults)
@@ -418,7 +418,7 @@ enum DocumentPrinting {
         let content = contentSize(of: printInfo)
 
         // TextKit 1 mit ausdrücklich erzeugtem Container: Seine Breite ist
-        // FEST. Das ist wichtig, weil die Kopf-/Fußzeile die View kurzzeitig
+        // fest. Das ist wichtig, weil die Kopf-/Fußzeile die View kurzzeitig
         // auf Seitengröße zieht — mit mitwachsendem Container würde der Text
         // dabei neu umbrechen und die Seitenaufteilung mitten im Druck
         // verschieben.
@@ -564,10 +564,8 @@ enum DocumentPrinting {
         job.start(markdown: tab.content, documentURL: tab.url,
                   fontName: defaults.string(forKey: PreviewFonts.defaultsKey)
                       ?? PreviewFonts.systemName,
-                  // Dieselbe Schriftgrößen-Einstellung wie beim Textdruck
-                  // (Einstellungen → Drucken). Vorher stand hier eine feste
-                  // 11 — die Einstellung war für Markdown wirkungslos
-                  // (Reviewfund 2026-08-18).
+                  // Dieselbe Schriftgrößen-Einstellung wie beim Textdruck verwenden
+                  // (Einstellungen → Drucken), damit sie auch für Markdown gilt.
                   fontSize: CGFloat(PrintPreferences.fontSize(defaults)))
     }
 
@@ -580,10 +578,10 @@ enum DocumentPrinting {
                                    window: NSWindow?,
                                    savingTo: URL?,
                                    completion: @escaping (PrintOutcome) -> Void) {
-        // Gedruckt wird das Objekt, das die Vorschau ZEIGT — nie ein Neuladen
+        // Gedruckt wird das Objekt, das die Vorschau zeigt — nie ein Neuladen
         // von der Platte: Zwischen Vorschauaufbau und Druckbefehl kann die
         // Datei ersetzt worden sein, und der Ausdruck muss dem sichtbaren,
-        // vom Nutzer geprüften Stand entsprechen (Reviewfund 2026-08-19).
+        // vom Nutzer geprüften Stand entsprechen.
         // Das erspart zugleich jedes erneute Dekodieren: Der Weg bleibt
         // synchron, blockiert nichts und braucht kein festgehaltenes Fenster.
         guard let url = tab.url,
@@ -604,7 +602,7 @@ enum DocumentPrinting {
         view.footerLeftText = PrintDecoration.footerLeft(path: url.path)
         // Eine einzige Lesung der Einstellung für Randreservierung
         // (makePrintInfo), Dialog-Anfangswert und Zeichnen — sonst könnten
-        // Druckfläche und Dekoration auseinanderlaufen (Reviewfund 2026-08-19).
+        // Druckfläche und Dekoration auseinanderlaufen.
         view.drawsDecoration = showsHeaderFooter
         view.topMargin = printInfo.topMargin
         view.bottomMargin = printInfo.bottomMargin
@@ -614,7 +612,7 @@ enum DocumentPrinting {
         let operation = NSPrintOperation(view: view, printInfo: printInfo)
         operation.jobTitle = title
         execute(operation, window: window, savingTo: savingTo,
-                // Auf die PrintInfo-KOPIE des Auftrags schreiben
+                // Auf die PrintInfo-Kopie des Auftrags schreiben
                 // (siehe Quelltext-Weg).
                 accessory: PrintOptionsAccessoryController(
                     printInfo: operation.printInfo, defaults: defaults,
@@ -630,7 +628,7 @@ enum DocumentPrinting {
                                  savingTo: URL?,
                                  completion: @escaping (PrintOutcome) -> Void) {
         // Wie beim Bilddruck: Gedruckt wird das Dokumentobjekt der sichtbaren
-        // Vorschau, kein Neuladen von der Platte (Reviewfund 2026-08-19).
+        // Vorschau, kein Neuladen von der Platte.
         guard let snapshot = workspace.visiblePreviewSnapshot(for: tab),
               case .pdf(let document) = snapshot.content,
               document.pageCount > 0 else {
@@ -695,7 +693,7 @@ enum DocumentPrinting {
             alert.addButton(withTitle: L10n.string("OK"))
             if let window {
                 alert.beginSheetModal(for: window) { _ in }
-            } else if !SelfTest.isSelfTestRun {
+            } else if !AppDefaults.launch.isSelfTestRun {
                 alert.runModal()
             }
         }
@@ -705,19 +703,13 @@ enum DocumentPrinting {
 
 // MARK: - Rückmeldung des Systemdialogs
 
-/// Hält sich selbst am Leben, bis der Druckauftrag fertig ist.
+/// Hält sich bis zum Abschluss des Druckauftrags am Leben.
 ///
-/// `runModal(for:delegate:didRun:contextInfo:)` erwartet ein Objective-C-Ziel
-/// mit einer bestimmten Methode. Ohne diesen Umweg gibt es kein Blatt am
-/// Fenster, sondern nur einen anwendungsmodalen Dialog.
-///
-/// **AppKit ruft diese Rückmeldung in einem EIGENEN Thread.** Ein modaler
-/// Druckauftrag läuft nicht auf dem Main-Thread, und die Meldung kommt von dort
-/// zurück, wo er lief. Deshalb geht hier ausdrücklich alles auf die Main-Queue:
-/// Am 2026-08-17 brach die Anwendung mit SIGTRAP in WebKits
-/// `WKWindowVisibilityObserver` ab, weil der Abbau der Druck-WebView aus diesem
-/// fremden Thread lief. Von außen sah das wie ein hängender Druckauftrag aus —
-/// der Prozess war einfach weg.
+/// `runModal(for:delegate:didRun:contextInfo:)` braucht ein Objective-C-Ziel
+/// mit passender Rückmeldung, damit der Dialog als Blatt am Fenster erscheint.
+/// AppKit liefert die Rückmeldung auf dem Thread des Druckauftrags. Den
+/// Abbau der Druck-WebView deshalb auf die Main-Queue verschieben; WebKit
+/// verlangt ihn auf dem Main-Thread.
 final class PrintCompletionRelay: NSObject, @unchecked Sendable {
     @MainActor private static var active: [PrintCompletionRelay] = []
     private let completion: (PrintOutcome) -> Void
@@ -780,7 +772,7 @@ final class PrintDocumentTextView: NSTextView {
     // Linker und rechter Rand getrennt: Ein Drucker kann asymmetrische
     // Systemränder melden, und die Kopf-/Fußzeile muss sich an beiden
     // orientieren — sonst liefe die rechte Angabe in den unbedruckbaren
-    // Bereich (Reviewfund 2026-08-18).
+    // Bereich.
     var leftMargin: CGFloat = 40
     var rightMargin: CGFloat = 40
     // Grundlage für das Umschalten der Zeilennummern im Druckdialog: Aus dem
@@ -808,7 +800,7 @@ final class PrintDocumentTextView: NSTextView {
         return true
     }
 
-    /// Übernimmt die im Druckdialog umgeschalteten Optionen des LAUFENDEN
+    /// Übernimmt die im Druckdialog umgeschalteten Optionen des laufenden
     /// Auftrags (siehe PrintPanelAccessory.swift). Zeilennummern und Syntax-
     /// attribute verändern den Textaufbau und gegebenenfalls die Aufteilung;
     /// die Kopf-/Fußzeile wird beim Zeichnen der Seitenränder frisch gelesen.
@@ -843,13 +835,10 @@ final class PrintDocumentTextView: NSTextView {
         return pageRects[page - 1]
     }
 
-    /// Teilt das Dokument in Seiten, deren Grenzen immer zwischen zwei Zeilen
-    /// liegen. Eine volle Seite endet dabei GENAU an der Oberkante der ersten
-    /// Zeile, die nicht mehr passt — nicht bei ihrer nominellen vollen Höhe.
-    /// Mit voller Höhe überlappten sich die Druckbereiche: Die Grenzzeile
-    /// wurde unten auf der alten Seite angeschnitten gezeichnet UND auf der
-    /// Folgeseite noch einmal ganz (Reviewfund 2026-08-18). Die etwas kürzere
-    /// Seite lässt stattdessen nur unten etwas Weißraum.
+    /// Seitengrenzen liegen zwischen zwei Textzeilen. Eine volle Seite endet
+    /// an der Oberkante der ersten nicht mehr passenden Zeile. Die nominelle
+    /// Seitenhöhe könnte diese Grenzzeile anschneiden und auf der Folgeseite
+    /// nochmals ausgeben.
     private func computePageRects() {
         pageRects = []
         guard let layoutManager, let textContainer, pageContentSize.height > 0 else {
@@ -894,7 +883,7 @@ final class PrintDocumentTextView: NSTextView {
             PrintDialogOption.headerFooter,
             in: NSPrintOperation.current?.printInfo) ?? drawsDecoration
         guard decorated else { return }
-        // Kopf- und Fußzeile liegen im Seitenrand, also AUSSERHALB der
+        // Kopf- und Fußzeile liegen im Seitenrand, also außerhalb der
         // Textfläche. AppKit erlaubt das Zeichnen dort nur, solange die View
         // für diesen Moment so groß ist wie die ganze Seite. Der Textcontainer
         // hat eine feste Breite (siehe `makeTextPrintOperation`) — die
@@ -989,12 +978,9 @@ enum PrintPageDecoration {
 
     /// Zeichnet Kopf- und Fußzeile einer Seite.
     ///
-    /// **Der Zeichenraum von `drawPageBorder` ist das PAPIER, und sein
-    /// Nullpunkt liegt unten links — y wächst nach OBEN.** Das gilt auch für
-    /// eine geflippte View wie `NSTextView`: Ihre eigene Zeilenrichtung spielt
-    /// hier keine Rolle. Nachgemessen am 2026-08-17 an einem erzeugten PDF; die
-    /// erste Fassung rechnete mit der Flippung der View und setzte die Kopfzeile
-    /// dadurch unten und die Fußzeile oben auf die Seite.
+    /// `drawPageBorder` verwendet den Zeichenraum des Papiers: Nullpunkt unten
+    /// links, y wächst nach oben. Das gilt auch bei geflippten Views wie
+    /// `NSTextView`; deren eigene Zeilenrichtung ist hier unerheblich.
     static func draw(headerLeft: String, headerRight: String, footerLeft: String,
                      pageSize: NSSize, topMargin: CGFloat, bottomMargin: CGFloat,
                      leftMargin: CGFloat, rightMargin: CGFloat) {
@@ -1012,8 +998,8 @@ enum PrintPageDecoration {
         let footerY = bottomMargin - lineHeight - 6
 
         // Linke und rechte Angabe bekommen je eine eigene Hälfte der Zeile.
-        // In EINEM gemeinsamen Rechteck lief ein langer Dateipfad sonst unter
-        // die rechts stehende Seitenzahl (gesehen am 2026-08-17).
+        // In einem gemeinsamen Rechteck lief ein langer Dateipfad sonst unter
+        // die rechts stehende Seitenzahl.
         let leftWidth = width * 0.62
         let rightWidth = width - leftWidth - 8
         let rightX = leftMargin + leftWidth + 8
@@ -1055,7 +1041,7 @@ enum PrintPageDecoration {
 /// Dokument und druckt sie, sobald Formeln, Diagramme und Code-Einfärbung
 /// fertig sind.
 ///
-/// Der Umweg über WebKit ist Absicht: Die Vorschau IST ein WebKit-Dokument.
+/// Der Umweg über WebKit ist Absicht: Die Vorschau ist ein WebKit-Dokument.
 /// Ein zweiter, eigener Textsatz derselben Markdown-Quelle würde anders
 /// aussehen als das, was der Nutzer neben dem Editor sieht.
 @MainActor
@@ -1065,7 +1051,7 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
     ) -> Void
 
     /// Gesamtfrist ab dem Start. Die bestehende Acht-Sekunden-Frist beginnt
-    /// erst NACH einer fertigen Navigation; ohne diese zweite Grenze hielten
+    /// erst nach einer fertigen Navigation; ohne diese zweite Grenze hielten
     /// ein festhängender Renderer oder Webprozess den Auftrag unbegrenzt.
     private static let preparationTimeout: Duration = .seconds(30)
 
@@ -1108,7 +1094,7 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
 
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
-        // Der Scheme-Handler MUSS vor dem Erzeugen der View gesetzt werden:
+        // Der Scheme-Handler muss vor dem Erzeugen der View gesetzt werden:
         // WKWebView kopiert seine Konfiguration, spätere Änderungen daran
         // erreichen die View nicht mehr.
         configuration.setURLSchemeHandler(
@@ -1140,7 +1126,7 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
         hostWindow.ignoresMouseEvents = true
         hostWindow.isExcludedFromWindowsMenu = true
         hostWindow.contentView = webView
-        // Das Fenster wird ABSICHTLICH nie eingeordnet (kein `orderFront`,
+        // Das Fenster wird absichtlich nie eingeordnet (kein `orderFront`,
         // kein `orderBack`). Es hat zwei Aufgaben, und für beide muss es nicht
         // sichtbar sein: Es gibt der WebView ein Zuhause, damit WebKit das
         // Dokument setzt, und es ist der Anker für den modalen Druckauftrag,
@@ -1215,11 +1201,9 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
                 return
             }
             if (value as? Bool) == true {
-                // NICHT direkt aus dieser Closure drucken: Sie ist eine
-                // WebKit-Rückmeldung. Der Druckvorgang von WebKit dreht selbst
-                // den RunLoop und wartet auf den Webprozess — mitten in dessen
-                // eigener Rückmeldung aufgerufen, blockiert er dauerhaft
-                // (beobachtet am 2026-08-17: der Auftrag kam nie zurück).
+                // Drucken erst nach dieser WebKit-Rückmeldung anstoßen. WebKits
+                // Druckvorgang dreht den RunLoop und wartet auf den Webprozess; innerhalb
+                // der eigenen Rückmeldung aufgerufen kann er dauerhaft blockieren.
                 DispatchQueue.main.async { self.startPrinting() }
                 return
             }
@@ -1240,7 +1224,7 @@ final class MarkdownPrintJob: NSObject, WKNavigationDelegate {
         // Ohne Dialogweg (Selbsttest, Druck in eine Datei) gilt der Auftrag
         // als gescheitert: Ein unfertiger Ausdruck darf nicht als Erfolg
         // durchgehen.
-        guard savingTo == nil, !SelfTest.isSelfTestRun else {
+        guard savingTo == nil, !AppDefaults.launch.isSelfTestRun else {
             finish(.failed(L10n.string(
                 "Die Vorschau wurde nicht rechtzeitig fertig gerendert.")))
             return
@@ -1361,7 +1345,7 @@ extension Workspace {
         guard let tab = activeTab, !tab.isLoading else { return nil }
         // Derselbe Schlüssel, den `EditorView` für den Vorschau-Streifen liest.
         // Von hier gibt es keinen Weg in die View, und die Voreinstellung ist
-        // AN — ein nie gesetzter Schlüssel bedeutet also „Vorschau sichtbar".
+        // an — ein nie gesetzter Schlüssel bedeutet also „Vorschau sichtbar".
         let previewVisible = preferencesStore
             .object(forKey: "markdown.integratedPreview") as? Bool ?? true
         return PrintableDocument(
@@ -1377,7 +1361,7 @@ extension Workspace {
     }
 
     /// Der sichtbare Abschnitt einer seitenweisen Ansicht — nur, wenn er
-    /// wirklich zu DIESEM Tab gehört.
+    /// wirklich zu diesem Tab gehört.
     func visiblePrintPage(for tab: EditorTab) -> VisiblePrintPage? {
         guard let page = visiblePrintPage, let url = tab.url,
               page.url == url else { return nil }
@@ -1385,7 +1369,7 @@ extension Workspace {
     }
 
     /// Das geladene Objekt der Bild-/PDF-Vorschau — nur, wenn es wirklich zu
-    /// DIESEM Tab gehört (gleiche Absicherung wie `visiblePrintPage(for:)`).
+    /// diesem Tab gehört (gleiche Absicherung wie `visiblePrintPage(for:)`).
     func visiblePreviewSnapshot(for tab: EditorTab) -> VisiblePreviewSnapshot? {
         guard let snapshot = visiblePreviewSnapshot, let url = tab.url,
               snapshot.url == url else { return nil }

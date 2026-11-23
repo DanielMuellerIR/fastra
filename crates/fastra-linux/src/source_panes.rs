@@ -12,6 +12,13 @@ mod delete_gate;
 mod autoindent_gate;
 mod primary;
 mod view;
+
+pub(super) fn bind_completion_popover(view: &sourceview5::View, popup: &gtk::Popover) {
+    view.downcast_ref::<view::View>()
+        .expect("4D completion belongs to a source pane")
+        .bind_completion_popover(popup);
+}
+
 fn native_input_enabled() -> bool {
     std::env::var_os("FASTRA_NATIVE_RUNTIME").is_some()
         && fastra_process::host::is_active().unwrap_or(false)
@@ -654,8 +661,15 @@ pub(super) fn bind_view(view: &sourceview5::View, buffer: &impl IsA<gtk::TextBuf
     }
 }
 
-pub(super) fn new_buffer(table:Option<&gtk::TextTagTable>)->sourceview5::Buffer {
-    if native_input_enabled() && commit_query::available(){byte_buffer::Buffer::new(table).upcast()}else{sourceview5::Buffer::new(table)}
+pub(super) fn new_buffer(table: Option<&gtk::TextTagTable>) -> sourceview5::Buffer {
+    let buffer = if native_input_enabled() && commit_query::available() {
+        byte_buffer::Buffer::new(table).upcast()
+    } else {
+        sourceview5::Buffer::new(table)
+    };
+    // Zeichenmarkierungen sollen nur tatsächlich vorhandene Zeilenenden zeigen.
+    buffer.set_implicit_trailing_newline(false);
+    buffer
 }
 
 pub(super) fn bind_folding(view: &sourceview5::View, folds: &Rc<folding::Folds>, index: usize) {

@@ -19,10 +19,6 @@ final class SearchRunner {
     /// während des Tippens nicht zwei Suchen gleichzeitig fertig werden
     /// und die Ergebnisse durcheinanderbringen.
     private var folderTask: Task<Void, Never>?
-    /// Monotoner Lauf-Schlüssel. Er schließt das enge Race, in dem ein alter
-    /// Task direkt vor `cancel()` fertig wird und sein Main-Actor-Update erst
-    /// nach dem neuen Lauf zustellt.
-    private var folderRunID = 0
     /// Ein manueller Start entwertet bereits wartende Live-Auslöser.
     private let explicitSearchLock = NSLock()
     private var explicitSearchGeneration = 0
@@ -40,25 +36,21 @@ final class SearchRunner {
         explicitSearchLock.unlock()
     }
     /// Aktive Buffer-Suche (Datei-/Geöffnet-Scope). Läuft async, damit ein
-    /// großer Buffer + kurzes Pattern den Main-Thread NIE blockiert; wird
+    /// großer Buffer + kurzes Pattern den Main-Thread nie blockiert; wird
     /// beim nächsten Tastendruck/Toggle abgebrochen (kein Auflaufen veralteter
     /// Läufe). Vorher lief die Buffer-Suche synchron → Beachball.
     private var bufferTask: Task<Void, Never>?
-    /// Derselbe Completion-Guard wie für Folder-Läufe. `cancel()` allein
-    /// schließt das Race zwischen letzter Abbruchprüfung und MainActor-Update
-    /// nicht; nur der aktuelle Lauf darf Treffer oder Spinner publizieren.
-    private var bufferRunID = 0
-    /// Extra-Debounce-Timer NUR für die Live-Ordner-Suche. Liegt zusätzlich
+    /// Extra-Debounce-Timer nur für die Live-Ordner-Suche. Liegt zusätzlich
     /// zum 120-ms-Pipeline-Debounce, damit die (teure) Ordner-Suche erst
     /// ~0,4 s nach dem letzten Tastendruck startet (siehe `rerun`).
     private var folderDebounce: DispatchWorkItem?
 
-    /// Mindestlänge des Suchausdrucks, ab der der Ordner-Scope LIVE beim
+    /// Mindestlänge des Suchausdrucks, ab der der Ordner-Scope live beim
     /// Tippen sucht. Kürzere Pattern (1–2 Zeichen) träfen in großen Repos
     /// zehntausende Stellen und würden die App beim Live-Tippen lahmlegen —
     /// darunter sucht der Ordner-Scope erst auf expliziten „Suchen"/Return.
     static let minFolderLiveChars = 3
-    /// Zusätzliche Verzögerung (ms) der Live-Ordner-Suche, ON TOP des
+    /// Zusätzliche Verzögerung (ms) der Live-Ordner-Suche, on top des
     /// 120-ms-Pipeline-Debounce → ~0,42 s nach dem letzten Tastendruck.
     static let folderLiveExtraDebounceMs = 300
 
@@ -111,7 +103,7 @@ final class SearchRunner {
         self.workspace = workspace
 
         // Alle Such-Inputs in einen Trigger-Stream zusammenführen. Wir
-        // brauchen die konkreten Werte hier NICHT — beim Re-Run lesen
+        // brauchen die konkreten Werte hier nicht — beim Re-Run lesen
         // wir sie direkt vom Workspace. Combine erlaubt CombineLatest
         // nur bis Arity 4, deshalb über MergeMany.
         let triggers: [AnyPublisher<SearchInput, Never>] = [
@@ -120,7 +112,7 @@ final class SearchRunner {
             workspace.$useRegex.dropFirst().map { _ in SearchInput.options }.eraseToAnyPublisher(),
             workspace.$caseSensitive.dropFirst().map { _ in SearchInput.options }.eraseToAnyPublisher(),
             workspace.$wholeWord.dropFirst().map { _ in SearchInput.options }.eraseToAnyPublisher(),
-            // Mini-Schalter „* wörtlich nehmen" (Feature J) → Such-Semantik
+            // Mini-Schalter „* wörtlich nehmen" → Such-Semantik
             // ändert sich (Platzhalter ⇄ literal) → neu suchen.
             workspace.$treatWildcardLiterally.dropFirst().map { _ in SearchInput.options }.eraseToAnyPublisher(),
             // „Nur in Auswahl" (K3) umschalten → Buffer-Suche neu laufen
@@ -162,22 +154,14 @@ final class SearchRunner {
         // Navigation, Vorschau und Apply sehen damit nie einen Altstand.
         triggerStream
             .sink { [weak self] input in
-                // Combine liefert synchron auf dem Thread, der den Suchinput
-                // geschrieben hat. Im Produkt ist das immer der Main-Thread —
-                // dort MUSS die Invalidierung auch synchron bleiben, damit
-                // Navigation, Vorschau und Apply nie einen Altstand sehen.
-                // Die parallele Testsuite schreibt Inputs dagegen von eigenen
-                // Threads: Liefe die Invalidierung dort, beschrieben zwei
-                // Threads gleichzeitig dieselben starken Referenzen
-                // (`folderTask`, `folderDebounce`, `visibleBufferResults-
-                // Options`) — das alte Objekt würde doppelt freigegeben,
-                // beobachtet am 2026-08-09 als Heap-Korruption (SIGSEGV mit
-                // Müll-Adressen). Von fremden Threads zieht die Invalidierung
-                // deshalb auf die Main-Queue um; dort serialisiert sie sich
-                // mit `rerun()`. (Regressionstest:
-                // WorkspaceParallelStressTests.)
+                // Combine liefert auf dem schreibenden Thread. Auf Main muss die
+                // Invalidierung synchron bleiben, damit Navigation, Vorschau und Apply
+                // keinen Altstand sehen. Fremde Threads der parallelen Testsuite wechseln
+                // auf die Main-Queue: Gleichzeitige Änderungen starker Referenzen wie
+                // `folderTask` und `folderDebounce` könnten sonst dasselbe Objekt doppelt
+                // freigeben. Regressionstest: `WorkspaceParallelStressTests`.
                 if Thread.isMainThread {
-                    self?.searchInputsDidChange(input)
+                    MainActor.assumeIsolated { self?.searchInputsDidChange(input) }
                 } else {
                     DispatchQueue.main.async { self?.searchInputsDidChange(input) }
                 }
@@ -212,7 +196,7 @@ final class SearchRunner {
                 } else if Thread.isMainThread {
                     // Schließen muss laufende Arbeit dagegen sofort stoppen;
                     // dafür reicht der mitgelieferte neue Wert.
-                    self?.searchVisibilityDidChange(false)
+                    MainActor.assumeIsolated { self?.searchVisibilityDidChange(false) }
                 } else {
                     DispatchQueue.main.async {
                         self?.searchVisibilityDidChange(false)
@@ -223,10 +207,10 @@ final class SearchRunner {
 
         // Initial einmal prüfen. Die Maske startet normalerweise geschlossen;
         // `rerun()` beendet sich dann ohne Volltextarbeit.
-        // Dieser Dispatch ist der FRÜHESTE Weg, auf dem ein frisch
+        // Dieser Dispatch ist der früheste Weg, auf dem ein frisch
         // erzeugter Workspace die Main-Queue erreicht — noch vor
         // `Workspace.shared`. `Workspace.init` muss deshalb alle
-        // @Published-Speicher anlegen, BEVOR es den SearchRunner erzeugt
+        // @Published-Speicher anlegen, bevor es den SearchRunner erzeugt
         // (siehe dort, Vorwärm-Kommentar).
         DispatchQueue.main.async { [weak self] in self?.rerun() }
     }
@@ -237,16 +221,11 @@ final class SearchRunner {
         bufferTask?.cancel()
     }
 
-    static func completionBelongsToCurrentRun(_ completedRunID: Int,
-                                              currentRunID: Int) -> Bool {
-        completedRunID == currentRunID
-    }
-
-    /// Entscheidet, ob ein Such-Input (Tippen, Options-Toggle) BEDINGUNGSLOS
-    /// SOFORT eine Suche auslösen darf. Buffer-Scopes (Datei/Geöffnet) liegen
+    /// Entscheidet, ob ein Such-Input (Tippen, Options-Toggle) bedingungslos
+    /// sofort eine Suche auslösen darf. Buffer-Scopes (Datei/Geöffnet) liegen
     /// im RAM — Live-Suche ist günstig, daher immer live. Der Ordner-Scope
-    /// sucht NICHT bedingungslos live (kann tausende Dateien betreffen);
-    /// er sucht live nur OBERHALB einer Mindestlänge + mit längerem Debounce
+    /// sucht nicht bedingungslos live (kann tausende Dateien betreffen);
+    /// er sucht live nur oberhalb einer Mindestlänge + mit längerem Debounce
     /// (siehe `shouldRunFolderLive` / `rerun`). Pur + statisch → unit-testbar.
     static func runsLive(for scope: Workspace.SearchScope) -> Bool {
         switch scope {
@@ -255,7 +234,7 @@ final class SearchRunner {
         }
     }
 
-    /// Entscheidet, ob der Ordner-Scope für dieses Pattern LIVE beim Tippen
+    /// Entscheidet, ob der Ordner-Scope für dieses Pattern live beim Tippen
     /// sucht. Schutz vor Freeze in großen Repos: erst ab `minFolderLiveChars`
     /// nicht-leeren Zeichen. Darunter wartet der Ordner-Scope auf den
     /// expliziten „Suchen"/Return-Trigger (der diese Schwelle bewusst
@@ -272,271 +251,151 @@ final class SearchRunner {
         catch { return (error as NSError).localizedDescription }
     }
 
-    private func cancelPendingWork() {
-        workspace?.searchApproval.invalidate()
+    /// Nur fremde Testthreads stellen asynchron zu. Main-Eingaben entwerten
+    /// synchron, auch während @Published seinen neuen Wert erst ankündigt.
+    private func onMain(_ action: @escaping @MainActor (SearchRunner) -> Void) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { action(self) }
+        } else {
+            DispatchQueue.main.async { [weak self] in if let self { action(self) } }
+        }
+    }
+
+    @MainActor private func cancelPendingWork() {
         folderTask?.cancel()
         folderTask = nil
-        folderRunID &+= 1
         bufferTask?.cancel()
         bufferTask = nil
-        bufferRunID &+= 1
         folderDebounce?.cancel()
         folderDebounce = nil
     }
 
-    private func searchVisibilityDidChange(_ isVisible: Bool) {
+    @MainActor private func searchVisibilityDidChange(_ isVisible: Bool) {
         guard let ws = workspace else { return }
+        ws.invalidateSearchResults(.visibility, next: isVisible ? .empty : .closed, error: ws.searchError)
         cancelPendingWork()
         guard isVisible else {
             ws.discardPendingOpenReplaceNavigation()
-            ws.bufferSearching = false
-            ws.folderSearching = false
-            // Treffer sind außerhalb der Maske weiterhin über Statuszeile und
-            // ⌘G-Navigation erreichbar. Deshalb nicht nur Apply sperren,
-            // sondern die gesamte navigierbare Vorschau verwerfen. Spätere
-            // Dokumentänderungen bleiben dann billig, ohne auf alte Ranges zu
-            // zeigen; beim erneuten Öffnen startet ohnehin ein frischer Lauf.
             Self.clearAllPreview(ws)
             return
         }
-        rerun()
+        rerunOnMain()
     }
 
-    /// Verwirft die sichtbare Ordner-/Projekt-Trefferbasis.
-    ///
-    /// `invalidatingJumps`: `true` entwertet zugleich alle offenen
-    /// Sprungaufträge (`Workspace.invalidateMatchJumps`). Ein Trefferklick in
-    /// einer noch ladenden Funddatei postet seinen Sprung erst in der
-    /// Lade-Completion; kommt die nach einer Sucheingabe an, gehört der
-    /// Treffer zu einer Liste, die es nicht mehr gibt — ohne Entwertung sprang
-    /// der Editor dann zum alten Treffer und übernahm den alten Index in die
-    /// neue Trefferbasis (Review 2026-08-22). Nur `false`, wenn der Aufrufer
-    /// weiß, dass die Aufträge weiterhin gültig sind.
-    private static func clearFolderPreview(_ ws: Workspace,
-                                           invalidatingJumps: Bool) {
-        ws.folderResultsAreStale = false
+    @MainActor private static func clearFolderPreview(_ ws: Workspace) {
         ws.folderResults = []
         ws.folderTotalMatches = 0
         ws.folderResultsWereCapped = false
         ws.activeMatchIndex = 0
-        if invalidatingJumps { ws.invalidateMatchJumps() }
     }
 
-    private static func clearAllPreview(_ ws: Workspace) {
-        clearFolderPreview(ws, invalidatingJumps: true)
+    @MainActor private static func clearAllPreview(_ ws: Workspace) {
+        clearFolderPreview(ws)
         ws.bufferMatches = []
         ws.bufferTotalMatches = 0
         ws.bufferResultsWereCapped = false
         ws.openResults = []
         ws.openTotalMatches = 0
         ws.openResultsWereCapped = false
-        ws.visibleBufferResultsOptions = nil
         ws.activeMatchIndex = 0
     }
 
-    /// Unmittelbare Invalidierung vor beiden Debounce-Stufen.
-    private func searchInputsDidChange(_: SearchInput) {
+    @MainActor private func searchInputsDidChange(_: SearchInput) {
         guard let ws = workspace else { return }
-        cancelPendingWork()
-        // Muster, Optionen, Inhalt, Scope oder Quellen: Die navigierbare
-        // Trefferbasis ist weg, offene Sprungaufträge mit ihr. Ein reiner
-        // Tabwechsel im Geöffnet-Scope erreicht diesen Pfad nicht: Er ändert
-        // die über alle Tabs gebildete Trefferbasis nicht und wird bereits in
-        // `inputAffectsSearch` ausgefiltert. So behält ein Sprung über eine
-        // Tabgrenze seinen Index und erzeugt keinen redundanten Suchlauf.
-        Self.clearFolderPreview(ws, invalidatingJumps: true)
-        // Die sichtbaren Buffer-/Geöffnet-Treffer bleiben absichtlich stehen
-        // (sonst blinkte die Trefferzahl bei jedem Tastendruck auf 0), ihre
-        // Freigabe für „Alle ersetzen" gilt aber ab sofort nicht mehr: Sie
-        // gehören noch zum alten Muster. Erst der Neulauf unten setzt sie
-        // wieder — dann passen Vorschau und Ersetzung wieder zusammen.
-        ws.visibleBufferResultsOptions = nil
-
-        guard ws.scope.isFolderLike else {
-            ws.folderSearching = false
-            ws.folderNeedsSearch = false
-            return
+        // Wie zuvor bestimmen die noch gespeicherten willSet-Werte den
+        // sofortigen Warte-/Spinnerzustand. Erst der verzögerte Start erfasst
+        // die neuen Werte als Suchbasis; gültig ist die alte Basis ab jetzt nie.
+        let error = ws.scope.isFolderLike
+            ? Self.validationError(for: ws.currentSearchOptions) : ws.searchError
+        let next: SearchPhase
+        if ws.scope.isFolderLike {
+            let willRunLive = Self.shouldRunFolderLive(for: ws.findPattern)
+                && !ws.currentSearchOptions.isEmpty && error == nil
+                && !ws.activeMultiFileSearchURLs.isEmpty
+            next = willRunLive ? .debouncing : .waiting
+        } else {
+            next = .debouncing
         }
-
-        let options = ws.currentSearchOptions
-        ws.searchError = Self.validationError(for: options)
-        let willRunLive = Self.shouldRunFolderLive(for: ws.findPattern)
-            && !options.isEmpty
-            && ws.searchError == nil
-            && !ws.activeMultiFileSearchURLs.isEmpty
-        ws.folderSearching = willRunLive
-        ws.folderNeedsSearch = !willRunLive
-    }
-
-    /// Verwirft die sichtbaren Ordner-/Projekt-Treffer, weil FASTRA SELBST die
-    /// Dateien auf der Platte verändert hat (Ordner-Apply, Rückgängig).
-    ///
-    /// Das ist bewusst kein Combine-Trigger: Ein Tabwechsel oder das Öffnen
-    /// einer Funddatei darf eine fertige Ordnersuche weder leeren noch neu
-    /// starten (siehe `inputAffectsSearch`). Nach einem eigenen
-    /// Mehrdatei-Schreibgang stimmt die Trefferbasis dagegen nachweislich
-    /// nicht mehr: Trefferzahl, Navigation und Sprungziele zeigten sonst auf
-    /// Text, den es so nicht mehr gibt (Review 2026-08-06). Die Maske fragt
-    /// danach über `folderNeedsSearch` nach einem neuen Such-Lauf, statt
-    /// ungefragt eine teure Ordnersuche zu starten.
-    func folderResultsBecameStale() {
-        guard let ws = workspace, ws.scope.isFolderLike else { return }
+        ws.invalidateSearchResults(.inputs, next: next, error: error)
         cancelPendingWork()
-        Self.clearFolderPreview(ws, invalidatingJumps: true)
-        ws.folderSearching = false
-        ws.folderNeedsSearch = true
-        ws.folderResultsAreStale = true
+        Self.clearFolderPreview(ws)
     }
 
-    /// Reagiert auf einen Live-Trigger (Tippen, Options-Toggle, Tab- oder
-    /// Scope-Wechsel). Buffer-Scopes (Datei/Geöffnet) suchen sofort. Der
-    /// Ordner-Scope sucht gesteuert live: erst ab `minFolderLiveChars` Zeichen
-    /// und mit zusätzlichem Debounce (`folderLiveExtraDebounceMs`), damit
-    /// kurze Pattern in großen Repos die App nicht einfrieren. Darunter werden
-    /// alte Ergebnisse verworfen und ein expliziter Such-Lauf vorgemerkt
-    /// (`folderNeedsSearch`). Auch von außen aufrufbar (Tests / Refresh nach
-    /// Einzel-Ersetzen).
-    func rerun() {
+    /// Eigene Apply-/Undo-Schreibgänge verlangen einen ausdrücklichen Neulauf;
+    /// Trefferöffnen und Hintergrundfenster sind dagegen keine Entwertungsgründe.
+    func folderResultsBecameStale() {
+        onMain { runner in
+            guard let ws = runner.workspace, ws.scope.isFolderLike else { return }
+            ws.invalidateSearchResults(.ownMutation, next: .stale, error: ws.searchError)
+            runner.cancelPendingWork()
+            Self.clearFolderPreview(ws)
+        }
+    }
+
+    func rerun() { onMain { $0.rerunOnMain() } }
+
+    @MainActor private func rerunOnMain() {
         guard let ws = workspace else { return }
         ws.folderNavigationNotice = nil
-
-        // Laufende Folder- UND Buffer-Suche + armierten Live-Timer immer
-        // abbrechen — entweder weil der Scope wechselt oder weil sich die
-        // Eingaben geändert haben (frischer Tastendruck → alles neu starten).
+        let next: SearchPhase = ws.showSearchDialog
+            ? (ws.scope.isFolderLike ? .empty : .debouncing) : .closed
+        ws.invalidateSearchResults(.rescan, next: next, error: ws.searchError)
         cancelPendingWork()
-
-        // `rerun()` ist auch ein interner Live-Trigger. Eine explizite Suche
-        // aus dem Suchdialog geht dagegen direkt über `runFolderSearch()`.
-        // So kann das bloße Öffnen oder Bearbeiten eines Dokuments niemals
-        // im Hintergrund einen Volltextlauf starten.
         guard ws.showSearchDialog else {
             ws.discardPendingOpenReplaceNavigation()
-            ws.bufferSearching = false
-            ws.folderSearching = false
             return
         }
-
         if SearchRunner.runsLive(for: ws.scope) {
-            if ws.scope == .open {
-                runOpenSearch(ws)
-            } else {
+            if ws.scope == .open { runOpenSearch(ws) }
+            else {
                 ws.discardPendingOpenReplaceNavigation()
                 runBufferSearch(ws)
             }
             return
         }
-
         ws.discardPendingOpenReplaceNavigation()
-
-        // Ordner-Scope. Buffer-/Geöffnet-Treffer verwerfen (kein stale Rest
-        // beim Zurückwechseln) und Pattern sofort validieren (roter Streifen).
-        ws.openResults = []
-        ws.openTotalMatches = 0
-        ws.openResultsWereCapped = false
-        ws.bufferMatches = []
-        ws.bufferTotalMatches = 0
-        ws.bufferResultsWereCapped = false
-        ws.visibleBufferResultsOptions = nil
-        // Den Buffer-Spinner ausdrücklich mit ausschalten. `cancelPendingWork()`
-        // hat den laufenden Buffer-Task oben abgebrochen; ein abgebrochener Task
-        // kehrt vor seinem Main-Actor-Update zurück und schaltet den Spinner
-        // deshalb NIE selbst aus. Ohne diese Zeile blieb er hängen, sobald der
-        // Ordner-Lauf danach am Guard scheitert (kurzes Pattern, kein Ordner) —
-        // dann setzt ihn auch kein späterer `runFolderSearch` mehr zurück.
-        ws.bufferSearching = false
-        ws.searchError = SearchRunner.validationError(for: ws.currentSearchOptions)
-        Self.clearFolderPreview(ws, invalidatingJumps: true)
-
-        // Live nur oberhalb der Mindestlänge UND mit gültigem Pattern UND
-        // mindestens einem aktivierten Ordner. Sonst: alte Ergebnisse weg,
-        // expliziten Such-Lauf vormerken (Prompt in der leeren Liste).
-        guard SearchRunner.shouldRunFolderLive(for: ws.findPattern),
-              !ws.currentSearchOptions.isEmpty,
-              !ws.activeMultiFileSearchURLs.isEmpty else {
-            ws.folderResults = []
-            ws.folderTotalMatches = 0
-            ws.folderResultsWereCapped = false
-            ws.folderSearching = false
-            ws.folderNeedsSearch = true
-            return
-        }
-
-        // Mindestlänge erreicht → nach kurzem Extra-Debounce live suchen.
-        // (Der 120-ms-Pipeline-Debounce + diese ~300 ms ergeben ~0,42 s nach
-        // dem letzten Tastendruck.) `runFolderSearch` läuft async (Task.
-        // detached) → kein Main-Thread-Freeze; ein vorheriger Lauf wird oben
-        // bereits abgebrochen.
+        Self.clearAllPreview(ws)
+        let options = ws.currentSearchOptions
+        let error = Self.validationError(for: options)
+        let willRunLive = Self.shouldRunFolderLive(for: ws.findPattern)
+            && !options.isEmpty && !ws.activeMultiFileSearchURLs.isEmpty
+        ws.invalidateSearchResults(.rescan, next: willRunLive ? .debouncing : .waiting, error: error)
+        guard willRunLive else { return }
         let work = DispatchWorkItem { [weak self] in self?.runFolderSearch() }
         folderDebounce = work
-        ws.folderSearching = true
-        ws.folderNeedsSearch = false
         DispatchQueue.main.asyncAfter(
-            deadline: .now() + .milliseconds(SearchRunner.folderLiveExtraDebounceMs),
-            execute: work)
+            deadline: .now() + .milliseconds(Self.folderLiveExtraDebounceMs), execute: work)
     }
 
-    /// Asynchroner Such-Lauf auf dem aktiven Buffer (Datei-/Geöffnet-Scope).
-    /// Läuft via `Task.detached` im Hintergrund + ist abbrechbar — der
-    /// Main-Thread bleibt immer flüssig, auch bei kurzem Pattern in einem
-    /// riesigen Buffer (kein Beachball, kein „sucht sich tot").
-    private func runBufferSearch(_ ws: Workspace) {
-        bufferTask?.cancel()
-        bufferRunID &+= 1
-        let runID = bufferRunID
+    /// Gemeinsamer echter Completion-Eingang, auch für gezielt verspätete Tests.
+    @MainActor @discardableResult
+    static func publish(_ publication: SearchResultPublication,
+                        for token: SearchResultSession.RunToken, in workspace: Workspace) -> Bool {
+        workspace.commitSearchResult(token, publication: publication)
+    }
 
-        // Folder-/Geöffnet-Reste leeren, sonst zeigt die Maske beim
-        // Zurückwechseln noch alte Treffer des anderen Scopes.
-        ws.folderResults = []
-        ws.folderTotalMatches = 0
-        ws.folderResultsWereCapped = false
-        ws.folderSearching = false
-        ws.folderNeedsSearch = false
+    @MainActor private func runBufferSearch(_ ws: Workspace) {
+        Self.clearFolderPreview(ws)
         ws.openResults = []
         ws.openTotalMatches = 0
         ws.openResultsWereCapped = false
-
         let options = ws.currentSearchOptions
         let text = ws.activeTab?.content ?? ""
-        // „Nur in Auswahl" (K3): eingefrorene Selektions-Range mitnehmen
-        // (nil, wenn die Option aus ist → ganzer Text).
         let searchRange = ws.activeSearchRange
-
-        // Leeres Pattern → sofort leeren, ohne Hintergrund-Lauf/Spinner
-        // (vermeidet Geflacker beim Tippen bis auf 0 Zeichen).
         guard !options.isEmpty else {
-            bufferTask = nil
             ws.bufferMatches = []
             ws.bufferTotalMatches = 0
             ws.bufferResultsWereCapped = false
-            ws.visibleBufferResultsOptions = nil
-            ws.searchError = nil
-            ws.bufferSearching = false
+            ws.invalidateSearchResults(.rescan, next: .empty)
             return
         }
-
-        // Spinner an; eigentliche Suche im Hintergrund.
-        ws.bufferSearching = true
-        bufferTask = Task.detached(priority: .userInitiated) { [weak self, weak ws] in
-            // `Task.isCancelled` deckt beides ab: der nächste Tastendruck
-            // cancelt diesen Task → find() bricht mitten im Scan ab.
-            let result = BufferSearch.find(in: text, options: options,
-                                           searchRange: searchRange,
+        guard let token = ws.beginSearchResultRun() else { return }
+        bufferTask = Task.detached(priority: .userInitiated) { [weak ws] in
+            let result = BufferSearch.find(in: text, options: options, searchRange: searchRange,
                                            shouldCancel: { Task.isCancelled })
             if Task.isCancelled { return }
-            await MainActor.run { [weak self, weak ws] in
-                guard let self,
-                      Self.completionBelongsToCurrentRun(
-                        runID, currentRunID: self.bufferRunID),
-                      let ws else { return }
-                ws.bufferMatches = result.matches
-                ws.bufferTotalMatches = result.totalMatches
-                ws.bufferResultsWereCapped = result.wasCapped
-                // Sichtbare Vorschau und ihre Optionen gehören zusammen und
-                // werden deshalb im selben Schritt gesetzt.
-                ws.visibleBufferResultsOptions = options
-                ws.searchError = result.invalidPatternMessage
-                ws.bufferSearching = false
-                ws.publishSearchApprovals()
+            await MainActor.run { [weak ws] in
+                guard let ws, Self.publish(.buffer(result), for: token, in: ws) else { return }
                 if ws.activeMatchIndex >= result.matches.count {
                     ws.activeMatchIndex = max(0, result.matches.count - 1)
                 }
@@ -544,149 +403,68 @@ final class SearchRunner {
         }
     }
 
-    /// Asynchroner Such-Lauf über ALLE offenen Tabs (Geöffnet-Scope,
-    /// BBEdit „Open text documents"). Gleiche Async-/Abbruch-Mechanik wie
-    /// `runBufferSearch` — die Tabs liegen im RAM, Live-Suche ist günstig.
-    /// Der Tab-Snapshot entsteht auf dem Main-Thread (Workspace-Zugriff),
-    /// die eigentliche Suche läuft detached.
-    private func runOpenSearch(_ ws: Workspace) {
-        bufferTask?.cancel()
-        bufferRunID &+= 1
-        let runID = bufferRunID
-
-        // Reste der anderen Scopes leeren (gleiches Muster wie Buffer-Pfad).
-        ws.folderResults = []
-        ws.folderTotalMatches = 0
-        ws.folderResultsWereCapped = false
-        ws.folderSearching = false
-        ws.folderNeedsSearch = false
+    @MainActor private func runOpenSearch(_ ws: Workspace) {
+        Self.clearFolderPreview(ws)
         ws.bufferMatches = []
         ws.bufferTotalMatches = 0
         ws.bufferResultsWereCapped = false
-        ws.visibleBufferResultsOptions = nil
-
         let options = ws.currentSearchOptions
-        // Lade-Tabs überspringen: deren `content` ist noch leer/halb —
-        // Treffer darin wären Phantome.
+        // Lade-Tabs behalten ihre Identität in der Basis, werden wie bisher
+        // vom eigentlichen Suchalgorithmus aber noch nicht durchsucht.
         let inputs = ws.tabs.filter { !$0.isLoading }.map {
             OpenTabsSearch.TabInput(id: $0.id, title: $0.title, content: $0.content)
         }
-
         guard !options.isEmpty else {
-            bufferTask = nil
             ws.discardPendingOpenReplaceNavigation()
             ws.openResults = []
             ws.openTotalMatches = 0
             ws.openResultsWereCapped = false
-            ws.visibleBufferResultsOptions = nil
-            ws.searchError = nil
-            ws.bufferSearching = false
+            ws.invalidateSearchResults(.rescan, next: .empty)
             return
         }
-
-        ws.bufferSearching = true
-        bufferTask = Task.detached(priority: .userInitiated) { [weak self, weak ws] in
+        guard let token = ws.beginSearchResultRun() else { return }
+        bufferTask = Task.detached(priority: .userInitiated) { [weak ws] in
             let result = OpenTabsSearch.find(tabs: inputs, options: options,
-                                             shouldCancel: { Task.isCancelled })
+                                            shouldCancel: { Task.isCancelled })
             if Task.isCancelled { return }
-            await MainActor.run { [weak self, weak ws] in
-                guard let self,
-                      Self.completionBelongsToCurrentRun(
-                        runID, currentRunID: self.bufferRunID),
-                      let ws else { return }
-                ws.openResults = result.perTab
-                ws.openTotalMatches = result.totalMatches
-                ws.openResultsWereCapped = result.wasCapped
-                // Sichtbare Vorschau und ihre Optionen gehören zusammen und
-                // werden deshalb im selben Schritt gesetzt (wie im Datei-Scope).
-                ws.visibleBufferResultsOptions = options
-                ws.searchError = result.invalidPatternMessage
-                ws.bufferSearching = false
-                ws.publishSearchApprovals()
-                let materialized = result.perTab.reduce(0) { $0 + $1.matches.count }
-                if ws.activeMatchIndex >= materialized {
-                    ws.activeMatchIndex = max(0, materialized - 1)
-                }
+            await MainActor.run { [weak ws] in
+                guard let ws, Self.publish(.open(result), for: token, in: ws) else { return }
+                let count = result.perTab.reduce(0) { $0 + $1.matches.count }
+                if ws.activeMatchIndex >= count { ws.activeMatchIndex = max(0, count - 1) }
                 ws.finishPendingOpenReplaceNavigation(for: options)
             }
         }
     }
 
-    /// Explizite Ordner-Suche — wird NUR auf den „Suchen"-Klick / Enter
-    /// ausgelöst (Konzept Abschnitt C). Läuft asynchron via `Task.detached`
-    /// und bricht eine schon laufende Suche ab.
-    func runFolderSearch() {
+    func runFolderSearch() { onMain { $0.runFolderSearchOnMain() } }
+
+    @MainActor private func runFolderSearchOnMain() {
         guard let ws = workspace, ws.scope.isFolderLike else { return }
         ws.folderNavigationNotice = nil
         invalidatePendingLiveTrigger()
+        ws.invalidateSearchResults(.rescan, next: .empty)
         cancelPendingWork()
-        Self.clearFolderPreview(ws, invalidatingJumps: true)
-        folderRunID &+= 1
-        let runID = folderRunID
-
+        Self.clearAllPreview(ws)
         let options = ws.currentSearchOptions
-        // Buffer-Zustand VOLLSTÄNDIG zurücksetzen, nicht nur die Trefferliste —
-        // sonst zeigen Footer/Statuszeile nach dem Scope-Wechsel stale Werte
-        // aus der letzten Buffer-Suche (Review 2026-07-03).
-        ws.bufferMatches = []
-        ws.bufferTotalMatches = 0
-        ws.bufferResultsWereCapped = false
-        ws.bufferSearching = false
-        ws.visibleBufferResultsOptions = nil
-        ws.folderNeedsSearch = false
-
-        guard !options.isEmpty else {
-            ws.searchError = nil
-            ws.folderResults = []
-            ws.folderTotalMatches = 0
-            ws.folderResultsWereCapped = false
-            ws.folderSearching = false
-            return
-        }
-        // Der Plan validiert das Pattern sofort und wandert anschließend
-        // unverändert in den Hintergrundlauf. So bleibt die Fehlermeldung
-        // direkt sichtbar, ohne dort ein zweites Mal zu kompilieren.
+        guard !options.isEmpty else { return }
         let searchPlan: SearchPlan
-        do {
-            searchPlan = try SearchPlan(options: options)
-        } catch {
-            ws.searchError = (error as NSError).localizedDescription
-            ws.folderResults = []
-            ws.folderTotalMatches = 0
-            ws.folderResultsWereCapped = false
-            ws.folderSearching = false
+        do { searchPlan = try SearchPlan(options: options) }
+        catch {
+            ws.invalidateSearchResults(.rescan, next: .empty, error: (error as NSError).localizedDescription)
             return
         }
-
         let urls = ws.activeMultiFileSearchURLs
         let filter = ws.activeMultiFileFilter
-        let exclusions = ws.scope == .project
-            ? ws.projectSearchConfiguration.excludePatterns : []
+        let exclusions = ws.scope == .project ? ws.projectSearchConfiguration.excludePatterns : []
         let projectRoot = ws.scope == .project ? ws.projectURL : nil
-        ws.folderSearching = !options.isEmpty && !urls.isEmpty
-        ws.folderNeedsSearch = false
-        ws.searchError = nil
-        folderTask = Task.detached(priority: .userInitiated) { [weak self, weak ws] in
+        guard let token = ws.beginSearchResultRun() else { return }
+        folderTask = Task.detached(priority: .userInitiated) { [weak ws] in
             let result = FolderSearch.find(in: urls, filter: filter, plan: searchPlan,
-                                           excludedPatterns: exclusions,
-                                           relativeTo: projectRoot,
-                                           shouldCancel: { Task.isCancelled })
+                excludedPatterns: exclusions, relativeTo: projectRoot, shouldCancel: { Task.isCancelled })
             if Task.isCancelled { return }
-            await MainActor.run { [weak self, weak ws] in
-                guard let self,
-                      Self.completionBelongsToCurrentRun(
-                        runID, currentRunID: self.folderRunID
-                      ),
-                      let ws else { return }
-                ws.folderResults = result.perFile
-                ws.folderTotalMatches = result.totalMatches
-                // Cap-Flag durchreichen — die Maske zeigt darauf basierend
-                // einen Hinweis, damit klar ist, dass nicht alle Treffer
-                // angezeigt werden (keine silent truncation).
-                ws.folderResultsWereCapped = result.wasCapped
-                ws.searchError = result.invalidPatternMessage
-                ws.folderSearching = false
-                ws.publishSearchApprovals()
+            await MainActor.run { [weak ws] in
+                guard let ws else { return }
+                Self.publish(.folder(result), for: token, in: ws)
             }
         }
     }

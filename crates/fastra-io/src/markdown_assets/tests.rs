@@ -360,7 +360,11 @@ fn undo_directory_sync_failure_restores_live_names_and_receipt_state() {
         .apply(&owner(), &Cancellation::default())
         .unwrap();
     FAIL_UNDO_SYNC.with(|flag| flag.set(true));
-    assert!(receipt.undo(&owner(), &Cancellation::default()).is_err());
+    let error = receipt.undo(&owner(), &Cancellation::default()).unwrap_err();
+    assert!(
+        matches!(&error, Error::Io(cause) if cause.raw_os_error() == Some(libc::EIO)),
+        "Ursprünglicher Syncfehler muss EIO bleiben: {error:?}"
+    );
     assert!(receipt.is_applied());
     assert!(receipt.recovery_paths().is_empty());
     assert_eq!(

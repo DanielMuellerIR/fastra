@@ -18,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 
-# Seiten in commands*/, die KEINE Befehle beschreiben (Index-/Themenseiten).
+# Seiten in commands*/, die keine Befehle beschreiben (Index-/Themenseiten).
 EXCLUDED_IDS = {
     "command-index",   # „Commands by name" — Index
     "constant-list",   # Konstantenliste (separat verarbeitet)
@@ -156,7 +156,7 @@ def main() -> int:
     # Detailzeilen „Name\tNummer\tSignatur" als schlichte String-Liste —
     # riesige Dictionary-Literale würden den Swift-Typecheck ausbremsen;
     # das Parsen übernimmt FourDSymbols zur Laufzeit (lazy). Der Tab steht
-    # als \\t-ESCAPE im Swift-Quelltext (literale Tabs in String-Literalen
+    # als \\t-Escape im Swift-Quelltext (literale Tabs in String-Literalen
     # lehnt der Compiler als „unprintable ASCII" ab).
     def escape(field: str) -> str:
         return field.replace("\\", "\\\\").replace('"', '\\"')

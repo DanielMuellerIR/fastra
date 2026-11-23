@@ -1,8 +1,8 @@
 // FourDMacroPreviewSheet.swift
 //
-// Diff-Vorschau eines 4D-Makrolaufs (Idee #28, 2026-08-19): Links der
+// Diff-Vorschau eines 4D-Makrolaufs : Links der
 // aktuelle Puffer, rechts das Makro-Ergebnis, gerendert über den gemeinsamen
-// Datei-Vergleich (`FileDiffView`). „Anwenden" schreibt NIE direkt — es geht
+// Datei-Vergleich (`FileDiffView`). „Anwenden" schreibt nie direkt — es geht
 // über `Workspace.applyFourDMacroPreview()`, das Tab und Inhaltsgeneration
 // gegen den Stand der Vorschau prüft (Produktinvariante: Apply wirkt nur auf
 // die sichtbare Trefferbasis).
