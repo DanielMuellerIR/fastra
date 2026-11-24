@@ -72,8 +72,6 @@
 .view-segments .selected { background: @fastra_surface; border: 1px solid @fastra_line; border-radius: 5px; padding: 0 5px; margin: 1px; }
 .document-status .view-segments button { padding: 0 6px; }
 .fastra-search .titlebar { padding: 0; margin: 0; border-bottom: 1px solid @fastra_line; min-height: 28px; }
-.search-titlebar { min-height: 28px; background: @fastra_surface; }
-.search-titlebar > label { font-size: 13px; font-weight: 600; }
 .search-content { padding: 16px; }
 .search-scopes { padding-bottom: 4px; }
 .fastra-search.fastra-tool .scope-tab { border: 0; box-shadow: none; background: transparent; padding: 0 10px; border-radius: 7px; min-height: 24px; font-size: 12px; }

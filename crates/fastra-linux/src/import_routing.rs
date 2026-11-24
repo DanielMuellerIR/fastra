@@ -200,13 +200,13 @@ pub(crate) fn route_open_completed(
             let import_ui = Rc::downgrade(&ui);
             let import_path = path.clone();
             let import_guard = guard.clone();
-            let import_window = window.clone();
+            let import_window = window.downgrade();
             import.connect_clicked(move |_| {
                 let Some(ui) = import_ui
                     .upgrade()
                     .filter(|ui| ui.window.is_visible() && import_guard() && owner(ui) == expected)
                 else {
-                    import_window.close();
+                    if let Some(window) = import_window.upgrade() { window.close(); }
                     return;
                 };
                 let state = super::open(&ui);
@@ -217,10 +217,10 @@ pub(crate) fn route_open_completed(
                 if let Some(parent) = import_path.parent() {
                     set_path(&state.destination, parent, &state.status, lang);
                 }
-                import_window.close();
+                if let Some(window) = import_window.upgrade() { window.close(); }
             });
             let source_ui = Rc::downgrade(&ui);
-            let source_window = window.clone();
+            let source_window = window.downgrade();
             let validate = std::cell::RefCell::new(validate);
             let completed = std::cell::RefCell::new(completed);
             source.connect_clicked(move |_| {
@@ -228,7 +228,7 @@ pub(crate) fn route_open_completed(
                     .upgrade()
                     .filter(|ui| ui.window.is_visible() && guard())
                 else {
-                    source_window.close();
+                    if let Some(window) = source_window.upgrade() { window.close(); }
                     return;
                 };
                 if choice.directory {
@@ -242,10 +242,12 @@ pub(crate) fn route_open_completed(
                         completed.borrow_mut().take(),
                     );
                 }
-                source_window.close();
+                if let Some(window) = source_window.upgrade() { window.close(); }
             });
-            let close = window.clone();
-            cancel.connect_clicked(move |_| close.close());
+            let close = window.downgrade();
+            cancel.connect_clicked(move |_| {
+                if let Some(window) = close.upgrade() { window.close(); }
+            });
             window.present();
         },
     );

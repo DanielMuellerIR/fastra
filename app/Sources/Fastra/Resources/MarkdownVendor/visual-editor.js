@@ -32,6 +32,30 @@
     }
   });
   td.addRule('spaces',{filter:n=>n.hasAttribute('data-md-spaces'),replacement:(_,n)=>'&nbsp;'.repeat(Number(n.dataset.mdSpaces))});
+  td.addRule('consecutiveBreaks',{filter:n=>n.hasAttribute('data-md-literal-break'),replacement:()=>'<br>'});
+  function protectConsecutiveBreaks(holder) {
+    for (const paragraph of holder.querySelectorAll('p,li,blockquote')) {
+      if (paragraph.closest('td,th,pre,[data-md-opaque],[data-tex]')) continue;
+      let breaks=[];
+      function finishRun() {
+        // Eine Leerzeile aus zwei Leerzeichen würde cmark aus dem Absatz lösen.
+        if(breaks.length>1)for(const br of breaks)br.dataset.mdLiteralBreak='';
+        breaks=[];
+      }
+      function visit(parent) {
+        for(const n of parent.childNodes){
+          if(n.nodeName==='BR')breaks.push(n);
+          else if(n.nodeType===Node.TEXT_NODE){if(/[^ \t\r\n\f]/.test(n.data))finishRun();}
+          else if(n.nodeType===Node.ELEMENT_NODE){
+            if(n.matches('p,div,li,ul,ol,blockquote,h1,h2,h3,h4,h5,h6,pre,table,img,input,[data-tex],[data-md-opaque]'))finishRun();
+            else visit(n);
+          }
+        }
+      }
+      visit(paragraph);
+      finishRun();
+    }
+  }
   function randomToken(prefix) { return prefix+Array.from(crypto.getRandomValues(new Uint32Array(4)),n=>n.toString(16)).join('')+'END'; }
   function toMarkdown(html,lineEnding='\n') {
     const holder=document.createElement('div');holder.innerHTML=html;
@@ -109,6 +133,7 @@
       }
       n.replaceWith(lines);
     });
+    protectConsecutiveBreaks(holder);
     let markdown;
     const previousOpaqueSourceToken=opaqueSourceToken;
     if(protectOpaque)opaqueSourceToken=protect;
@@ -131,30 +156,51 @@
     return markdown && opaqueSourceToken?opaqueSourceToken(markdown):markdown;
   }
   td.addRule('opaque',{filter:n=>n.hasAttribute('data-md-opaque'),replacement:(_,n)=>opaqueMarkdown(n)});
-  function adjacentCharacter(node,forward) {
+  function adjacentText(node,forward) {
     while(node && !/^(DIV|P|H[1-6]|LI|TD|TH|BLOCKQUOTE)$/.test(node.nodeName)) {
       const sibling=forward?node.nextSibling:node.previousSibling;
-      if(sibling){const text=Array.from(sibling.textContent);if(text.length)return forward?text[0]:text.at(-1);node=sibling;}
-      else node=node.parentNode;
+      if(sibling){
+        if(sibling.nodeType===Node.TEXT_NODE && sibling.length)return sibling;
+        const walker=document.createTreeWalker(sibling,NodeFilter.SHOW_TEXT);
+        if(!forward)walker.currentNode=sibling;
+        let text;
+        if(forward){while((text=walker.nextNode()))if(text.length)return text;}
+        else {
+          while(walker.lastChild()){}
+          const last=walker.currentNode;
+          if(last!==sibling && last.length)return last;
+          while((text=walker.previousNode()))if(text!==sibling && text.length)return text;
+        }
+        if(sibling.nodeName==='BR' || sibling.nodeName==='IMG')return null;
+        node=sibling;
+      } else node=node.parentNode;
     }
-    return '';
+    return null;
   }
   function inlineFormat(content,node,tag,delimiter) {
     const edge=delimiter[0]==='*'?content.trim().replace(/^\*+|\*+$/g,''):content.trim();
     const text=Array.from(edge),first=text[0] || '',last=text.at(-1) || '';
     const punctuation=c=>/[\p{P}\p{S}]/u.test(c),space=c=>!c || /\s/u.test(c);
-    const before=adjacentCharacter(node,false),after=adjacentCharacter(node,true);
+    const preceding=adjacentText(node,false),following=adjacentText(node,true);
+    const before=Array.from(preceding?.data || '').at(-1),after=Array.from(following?.data || '')[0];
     // CommonMark erkennt z. B. a**!**b nicht als Auszeichnung. Inline-HTML
     // erhält solche Grenzen. Verschachtelte Sternchen gehören zum selben
     // Delimiterlauf und dürfen normale Markdown-Kombinationen nicht verhindern.
-    const unsafe=(punctuation(first) && !space(before) && !punctuation(before))
+    const selector={'*':'strong,b,em,i','=':'mark','~':'del,s,strike'}[delimiter[0]];
+    function touchesFormat(text,character) {
+      const neighbor=text?.parentElement?.closest(selector);
+      return !space(character) && neighbor && !node.contains(neighbor) && !neighbor.contains(node);
+    }
+    const joined=touchesFormat(preceding,before) || touchesFormat(following,after)
+      || (delimiter==='==' && [before,after,first,last].includes('='));
+    const unsafe=joined || (punctuation(first) && !space(before) && !punctuation(before))
       || (punctuation(last) && !space(after) && !punctuation(after));
     return unsafe?'<'+tag+'>'+content+'</'+tag+'>':delimiter+content+delimiter;
   }
   td.addRule('strong',{filter:['strong','b'],replacement:(c,n)=>inlineFormat(c,n,'strong','**')});
   td.addRule('emphasis',{filter:['em','i'],replacement:(c,n)=>inlineFormat(c,n,'em','*')});
   td.addRule('highlight', {filter:'mark', replacement:(c,n)=>n.parentElement?.closest('mark')?c:(c.trim()?inlineFormat(c.trim(),n,'mark','=='):'')});
-  td.addRule('strike', {filter:['del','s','strike'], replacement:c => '~~'+c+'~~'});
+  td.addRule('strike', {filter:['del','s','strike'], replacement:(c,n)=>inlineFormat(c,n,'del','~~')});
   // Entitäten zählen für CommonMarks Trennzeichen als Quellzeichen. HTML
   // bleibt nur nötig, wenn die tatsächlichen Nachbarzeichen Markdown verhindern.
   td.addRule('styledSpaces', {
@@ -358,6 +404,93 @@
     }
     return Array.from(holder.childNodes,signature).join('');
   }
+  function emptyDocumentPlaceholder(container) {
+    const children=Array.from(container.children).filter(n=>!n.hasAttribute('data-md-edit-boundary'));
+    if(children.length!==1)return null;
+    const node=children[0];
+    if(!node.hasAttribute('data-md-empty') || node.childNodes.length!==1 || node.firstChild.nodeName!=='BR'
+       || Array.from(container.childNodes).some(n=>n.nodeType===Node.TEXT_NODE && n.data.trim()))return null;
+    return node;
+  }
+  function deletedDocumentPlaceholder(container,inputType) {
+    if(!inputType.startsWith('delete'))return null;
+    const visible=Array.from(container.children).filter(n=>!n.hasAttribute('data-md-edit-boundary'));
+    return visible.length===1 && !visible[0].textContent.length
+      && !Array.from(container.childNodes).some(n=>n.nodeType===Node.TEXT_NODE && n.data.trim())
+      && visible[0].querySelectorAll('br').length<=1
+      && !visible[0].querySelector('img,input,hr,table,pre,code,[data-md-opaque],[data-tex]') ? visible[0] : null;
+  }
+  function saveAppearance(container,inputType='') {
+    const placeholder=emptyDocumentPlaceholder(container) || deletedDocumentPlaceholder(container,inputType);
+    const blocks=/^(DIV|P|SECTION|H[1-6]|UL|OL|LI|BLOCKQUOTE|TABLE|THEAD|TBODY|TFOOT|TR|TD|TH|PRE|HR)$/;
+    const tags={B:1,STRONG:1,I:2,EM:2,MARK:4,DEL:8,S:8,STRIKE:8,CODE:16};
+    let text='',space=false,pendingBreaks=0,totalBreaks=0;
+    const formats=[],breaks=[];
+    function recordBreaks(count) {
+      if(!count)return;
+      if(breaks.at(-1)?.[0]===text.length)breaks.at(-1)[1]+=count;
+      else breaks.push([text.length,count]);
+      totalBreaks+=count;
+    }
+    function boundary() {
+      // WebKit hängt am Absatzende ein BR als Cursor-Platzhalter an.
+      recordBreaks(Math.max(0,pendingBreaks-1));pendingBreaks=0;space=!!text;
+    }
+    function addText(value,style) {
+      for(const word of value.replace(/\u200b/g,'').match(/[^ \t\r\n\f]+|[ \t\r\n\f]+/g) || []){
+        if(/^[ \t\r\n\f]/.test(word)){space=!!text;continue;}
+        if(pendingBreaks){recordBreaks(pendingBreaks);pendingBreaks=0;space=!!text;}
+        if(space){text+=' ';space=false;}
+        const start=text.length;
+        text+=word;
+        if(style){
+          const previous=formats.at(-1);
+          if(previous?.[1]===start && previous[2]===style)previous[1]=text.length;
+          else formats.push([start,text.length,style]);
+        }
+      }
+    }
+    function visit(node,style,tableCell=false) {
+      if(node.nodeType===Node.TEXT_NODE){
+        // pre-wrap-Zellen zeigen WebKits Text-Newlines wie gerenderte BRs.
+        if(tableCell)node.data.split(/\r\n?|\n/).forEach((part,index)=>{
+          if(index)pendingBreaks++;
+          addText(part,style);
+        });
+        else addText(node.data,style);
+        return;
+      }
+      if(node.nodeType!==Node.ELEMENT_NODE || node===placeholder || node.hasAttribute('data-md-edit-boundary'))return;
+      const tag=node.tagName,block=blocks.test(tag);
+      if(tag==='BR'){pendingBreaks++;return;}
+      if(block)boundary();
+      const before=text.length,breakCount=totalBreaks;
+      if(tag==='IMG' || node.hasAttribute('data-tex')
+         || (node.hasAttribute('data-md-opaque') && (tag!=='SECTION' || node.matches(':has(.mermaid-render, code.language-mermaid)')))){
+        addText('\ufffc',style);
+      }else{
+        style|=tags[tag] || 0;
+        if(tag==='SPAN' || tag==='FONT'){
+          const css=node.style;
+          if(css.fontWeight==='bold' || Number(css.fontWeight)>=600)style|=1;
+          if(css.fontStyle==='italic' || css.fontStyle==='oblique')style|=2;
+          if(css.backgroundColor && css.backgroundColor!=='transparent' && css.backgroundColor!=='rgba(0, 0, 0, 0)')style|=4;
+          if(css.textDecorationLine.includes('line-through'))style|=8;
+        }
+        const preWrap=tableCell || ((tag==='TD' || tag==='TH') && !!node.closest('table[data-md-table=gfm]'));
+        for(const child of node.childNodes)visit(child,style,preWrap);
+      }
+      if(block){
+        if(text.length===before && totalBreaks===breakCount && pendingBreaks){
+          recordBreaks(pendingBreaks);pendingBreaks=0;
+        }
+        boundary();
+      }
+    }
+    for(const node of container.childNodes)visit(node,0);
+    boundary();
+    return {text,formats,breaks};
+  }
   function serialize() {
     if(sourceContexts.size){
       const known=Array.from(root.children).map(n=>originals.get(n.dataset.mdBlock)).find(original=>original?.context);
@@ -370,11 +503,10 @@
       while(owner.parentNode!==root)owner=owner.parentNode;
       imageEndings.set(owner.getAttribute('data-md-block') ?? owner,image.dataset.mdImageEnding==='crlf'?'\r\n':'\r');
     }
-    const visible=Array.from(root.children).filter(n=>!n.hasAttribute('data-md-edit-boundary'));
+    const placeholder=emptyDocumentPlaceholder(root);
     // Nach Select-All/Delete bleibt WebKits einzelner Cursorabsatz übrig.
     // Verdeckte Referenzdefinitionen erhalten; gelöschte Leerzeilen nicht anhängen.
-    if(lastInputType.startsWith('delete') && visible.length===1 && !root.textContent.length
-       && !visible[0].querySelector('img,input,hr,table,pre,code,[data-md-opaque],[data-tex]')) {
+    if(deletedDocumentPlaceholder(root,lastInputType)) {
       return blocks.filter(b=>b.hidden && b.source.trim()).map(b=>b.source).join('');
     }
     function hiddenBefore(id) {
@@ -397,7 +529,7 @@
           const suffix=blockStructure(snapshot)===original.structure ? original.source.match(/[\r\n]*$/)[0] : ending+ending;
           output+=toMarkdown(node.innerHTML,ending)+suffix;
         }
-      } else if(node.nodeType===Node.ELEMENT_NODE && node.hasAttribute('data-md-empty') && !node.textContent.length && !node.querySelector('img')) {
+      } else if(node===placeholder) {
         continue;
       } else {
         const holder=document.createElement('div');holder.append(node.cloneNode(true));
@@ -1209,6 +1341,16 @@
       const snapshot={markdown:serialize(),revision,imageTransactions:imageTransactions(),inputType:lastInputType,viewport:viewportPosition()};
       if(native){snapshot.session=session;snapshot.actionID=actionID;}
       return snapshot;
+    },
+    compareSaveAppearance(expectedSession,actionID,expectedRevision,html){
+      if(expectedSession!==session || !nativeActionIDs.has(actionID) || revision!==expectedRevision)return null;
+      // Vorschau-HTML im Template bleibt inert, auch bei lokalen Bildern.
+      const candidate=document.createElement('template');candidate.innerHTML=html;
+      const live=saveAppearance(root,lastInputType),saved=saveAppearance(candidate.content);
+      if(live.text!==saved.text)return 'text';
+      if(JSON.stringify(live.formats)!==JSON.stringify(saved.formats))return 'format';
+      if(JSON.stringify(live.breaks)!==JSON.stringify(saved.breaks))return 'breaks';
+      return 'ok';
     },
     completeAction(expectedSession,actionID){
       if(expectedSession!==session)return;

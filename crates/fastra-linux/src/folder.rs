@@ -587,45 +587,39 @@ impl FolderWindow {
         self.status.set_text(&message);
     }
     fn apply_error(&self, error: &fastra_search::Error) {
-        if self.discard_stale_apply_preview(error) {
-            return;
-        }
-        let limit = matches!(error, fastra_search::Error::File(fastra_io::Error::Limit));
-        if limit
-            || matches!(
-                error,
-                fastra_search::Error::File(fastra_io::Error::RecoveryRequired(_))
-            )
-        {
-            // Nach verlorener Dateibasis oder Teiltausch gilt die alte Freigabe nicht mehr.
-            // Erst entwerten, dann den Fehler samt Wiederherstellungspfad anzeigen/registrieren.
-            self.invalidate();
-        }
-        self.error(error);
-        self.status.set_visible(true);
-        if limit {
-            self.status.set_text(&format!(
-                "{}\n{}",
-                self.status.text(),
-                self.host.lang.text(
-                    "Erstelle eine neue Vorschau und gib sie erneut frei.",
-                    "Create a new preview and approve it again.",
-                )
-            ));
+        if !self.invalidate_apply_preview(error) {
+            self.error(error);
+            self.status.set_visible(true);
         }
     }
-    fn discard_stale_apply_preview(&self, error: &fastra_search::Error) -> bool {
+    fn invalidate_apply_preview(&self, error: &fastra_search::Error) -> bool {
         use fastra_search::Error;
-        if !matches!(error, Error::Stale | Error::File(fastra_io::Error::Stale)) {
+        let stale = matches!(error, Error::Stale | Error::File(fastra_io::Error::Stale));
+        let limit = matches!(error, Error::File(fastra_io::Error::Limit));
+        if !stale && !limit && !matches!(error, Error::File(fastra_io::Error::RecoveryRequired(_))) {
             return false;
         }
         self.transaction_paths.borrow_mut().clear();
         self.invalidate();
         self.status.set_visible(true);
-        self.status.set_text(self.host.lang.text(
-            "Die Dateibasis hat sich geändert. Erstelle eine neue Vorschau und gib sie erneut frei.",
-            "The file basis changed. Create a new preview and approve it again.",
-        ));
+        if stale {
+            self.status.set_text(self.host.lang.text(
+                "Die Dateibasis hat sich geändert. Erstelle eine neue Vorschau und gib sie erneut frei.",
+                "The file basis changed. Create a new preview and approve it again.",
+            ));
+        } else {
+            self.error(error);
+            if limit {
+                self.status.set_text(&format!(
+                    "{}\n{}",
+                    self.status.text(),
+                    self.host.lang.text(
+                        "Erstelle eine neue Vorschau und gib sie erneut frei.",
+                        "Create a new preview and approve it again.",
+                    )
+                ));
+            }
+        }
         true
     }
     fn overlaps_dirty(
@@ -742,11 +736,8 @@ impl FolderWindow {
                     // Eine bereits als ungültig erkannte Freigabe bleibt nach Abbrechen ungültig.
                     match &result {
                         Ok(Err(WorkError::ProjectUnavailable)) => state.project_stale(),
-                        Ok(Err(WorkError::Search(error @ fastra_search::Error::File(
-                            fastra_io::Error::Limit | fastra_io::Error::RecoveryRequired(_)
-                        )))) => state.apply_error(error),
                         Ok(Err(WorkError::Search(error))) => {
-                            state.discard_stale_apply_preview(error);
+                            state.invalidate_apply_preview(error);
                         }
                         _ => {}
                     }

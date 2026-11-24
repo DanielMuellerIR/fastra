@@ -120,12 +120,21 @@ struct MarkdownSaveAsTests {
         #expect(!FileManager.default.fileExists(atPath: target.path))
     }
 
-    @Test("Speichern unter führt den Einzeldatei-Ordner zum neuen Ziel mit")
+    @Test("Speichern unter übernimmt den neuen Ordner und kopiert verwendete Bilder")
     @MainActor
     func saveAsFollowsSingleFileDirectory() async throws {
         let (root, source, target) = try fixture()
         defer { try? FileManager.default.removeItem(at: root) }
-        try "Inhalt\n".write(to: source, atomically: true, encoding: .utf8)
+        let content = "![A](images/1.png)\n\n![B](images/2.png)\n"
+        let sourceImages = source.deletingLastPathComponent().appendingPathComponent("images")
+        let targetImages = target.deletingLastPathComponent().appendingPathComponent("images")
+        try FileManager.default.removeItem(at: targetImages)
+        let imageBytes = ["1.png": Data("first".utf8), "2.png": Data("second".utf8)]
+        for (name, bytes) in imageBytes {
+            try bytes.write(to: sourceImages.appendingPathComponent(name))
+        }
+        try Data("unused".utf8).write(to: sourceImages.appendingPathComponent("unused.png"))
+        try content.write(to: source, atomically: true, encoding: .utf8)
         let workspace = Workspace()
         var loaded = false
         workspace.loadFile(at: source) { loaded = $0 }
@@ -135,8 +144,14 @@ struct MarkdownSaveAsTests {
         try #require(await waitUntil { saved != nil })
         #expect(saved == true)
         #expect(await waitUntil { workspace.projectURL == target.deletingLastPathComponent().canonicalFileURL })
-        #expect(workspace.activeTab?.url == target)
-        #expect(try String(contentsOf: target, encoding: .utf8) == "Inhalt\n")
+        #expect(workspace.activeTab?.url == target.canonicalFileURL)
+        #expect(try String(contentsOf: target, encoding: .utf8) == content)
+        #expect(try String(contentsOf: source, encoding: .utf8) == content)
+        #expect(Set(try FileManager.default.contentsOfDirectory(atPath: targetImages.path)) == Set(imageBytes.keys))
+        for (name, bytes) in imageBytes {
+            #expect(try Data(contentsOf: targetImages.appendingPathComponent(name)) == bytes)
+            #expect(try Data(contentsOf: sourceImages.appendingPathComponent(name)) == bytes)
+        }
     }
 
     private func fixture() throws -> (URL, URL, URL) {

@@ -12,7 +12,7 @@
 //    nach dem nächsten App-Start bekannt.
 // 2. Die Quelle wird nie verändert. Das Werkzeug schreibt in ein verstecktes
 //    Zwischenverzeichnis; erst das fertige Ergebnis wandert unter seinen
-//    endgültigen Namen. Bricht etwas ab, bleibt neben der Quelle nichts liegen.
+//    endgültigen Namen. Bricht etwas ab, bleibt am Ziel nichts liegen.
 
 import Foundation
 import AppKit
@@ -42,6 +42,7 @@ final class MarkdownImportService: ObservableObject {
     @Published private(set) var isCancelling = false
     private var conversionToken: GitCancellationToken?
     private var conversionID: UUID?
+    private var isChoosingDestination = false
     private var supportsProgress = false
     /// Schwache Referenz nur für Diagnose/Kompatibilität. Für die eigentliche
     /// Besitzentscheidung zählt `ownerID`: Schließt das auslösende Fenster,
@@ -144,15 +145,21 @@ final class MarkdownImportService: ObservableObject {
 
     // MARK: - Umwandlung
 
-    /// Wandelt `sourceURL` um und legt das Ergebnis daneben ab.
+    func convert(_ sourceURL: URL, owner: Workspace? = nil,
+                 completion: ((URL?) -> Void)? = nil) {
+        convert(sourceURL, owner: owner, chooseDestination: nil, completion: completion)
+    }
+
+    /// Legt das Ergebnis neben `sourceURL` oder in einem gewählten Ordner ab.
     ///
     /// - Parameter completion: `markdownFile` bei Erfolg, sonst `nil`. Der
     ///   sichtbare Zustand (`state`) trägt Warnungen beziehungsweise Fehlertext.
     func convert(_ sourceURL: URL, owner: Workspace? = nil,
+                 chooseDestination: (() -> URL?)?,
                  completion: ((URL?) -> Void)? = nil) {
         // Eine Umwandlung nach der anderen: zwei gleichzeitige Läufe könnten
         // denselben freien Zielnamen wählen.
-        if case .running = state {
+        guard !isRunning, !isChoosingDestination else {
             NSSound.beep()
             completion?(nil)
             return
@@ -161,33 +168,44 @@ final class MarkdownImportService: ObservableObject {
         ownerID = owner?.instanceID
         progress = nil
         isCancelling = false
-        beginConversion(sourceURL, completion: completion)
-    }
-
-    private func beginConversion(_ sourceURL: URL, completion: ((URL?) -> Void)?) {
         guard let executable = locateTool() else {
             fail(L10n.string("„Poor Man's Text“ ist nicht installiert."), completion)
             return
         }
+        beginConversion(sourceURL, executable: executable,
+                        directory: sourceURL.deletingLastPathComponent(),
+                        chooseDestination: chooseDestination, completion: completion)
+    }
 
-        let parent = sourceURL.deletingLastPathComponent()
-        guard FileManager.default.isWritableFile(atPath: parent.path) else {
-            fail(L10n.format("Der Ordner „%@“ ist nicht beschreibbar.",
-                             parent.lastPathComponent), completion)
-            return
-        }
-
-        // Das Zwischenverzeichnis liegt bewusst neben der Quelle und nicht in
-        // /tmp: Nur so ist das abschließende Umbenennen ein echtes Rename auf
-        // demselben Volume. Aus /tmp wäre es ein Kopiervorgang, bei dem ein
-        // Abbruch ein halbes Ergebnis neben der Quelle hinterlassen könnte.
-        let staging = parent.appendingPathComponent(
+    private func beginConversion(_ sourceURL: URL, executable: URL, directory: URL,
+                                 chooseDestination: (() -> URL?)?, completion: ((URL?) -> Void)?) {
+        // Arbeitsverzeichnis und Ziel liegen auf demselben Volume, damit die
+        // fertige Ausgabe durch Umbenennen in einem Schritt übernommen wird.
+        let staging = directory.appendingPathComponent(
             ".fastra-markdown-\(UUID().uuidString)", isDirectory: true
         )
         let output = staging.appendingPathComponent("out", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: staging,
                                                     withIntermediateDirectories: false)
+        } catch let error as CocoaError where error.code == .fileWriteNoPermission
+            || error.code == .fileWriteVolumeReadOnly {
+            guard let chooseDestination else {
+                fail(L10n.format("Der Ordner „%@“ ist nicht beschreibbar.",
+                                 directory.lastPathComponent), completion)
+                return
+            }
+            isChoosingDestination = true
+            let destination = chooseDestination()
+            isChoosingDestination = false
+            guard let destination else {
+                state = .cancelled
+                completion?(nil)
+                return
+            }
+            beginConversion(sourceURL, executable: executable, directory: destination,
+                            chooseDestination: nil, completion: completion)
+            return
         } catch {
             fail(error.localizedDescription, completion)
             return
@@ -225,7 +243,7 @@ final class MarkdownImportService: ObservableObject {
             // Bekanntermaßen unvollständige Ausgabe wird nicht gelesen. Ein
             // abgeschnittenes, aber zufällig noch lesbares JSON mit `ok: true`
             // wäre sonst als gültiges Ergebnis durchgegangen und hätte eine
-            // halbe Umwandlung neben die Quelle gelegt.
+            // halbe Umwandlung am Ziel abgelegt.
             guard outcome.outputIsComplete else {
                 self.fail(L10n.string("Die Umwandlung hat eine unvollständige Antwort geliefert. Es wurde nichts übernommen."),
                           completion)
@@ -244,7 +262,7 @@ final class MarkdownImportService: ObservableObject {
             }
 
             self.publish(produced, output: output, staging: staging,
-                         sourceURL: sourceURL, completion: completion)
+                         sourceURL: sourceURL, directory: directory, completion: completion)
         }
         // Injizierte Testprozesse können synchron fertig werden.
         if conversionID == id { conversionToken = token }
@@ -252,7 +270,7 @@ final class MarkdownImportService: ObservableObject {
 
     /// Verschiebt das fertige Ergebnis unter seinen endgültigen Namen.
     private func publish(_ produced: MarkdownImportOutput, output: URL, staging: URL,
-                         sourceURL: URL, completion: ((URL?) -> Void)?) {
+                         sourceURL: URL, directory: URL, completion: ((URL?) -> Void)?) {
         let producesAssets = !produced.assets.isEmpty
 
         // Der gemeldete Pfad wird gleich verschoben. Er muss deshalb wirklich
@@ -268,6 +286,7 @@ final class MarkdownImportService: ObservableObject {
         }
 
         let target = MarkdownImportNaming.availableTarget(forSource: sourceURL,
+                                                          in: directory,
                                                           producesAssets: producesAssets)
         do {
             // `moveItem` scheitert, wenn am Ziel doch schon etwas liegt. Genau
@@ -300,7 +319,7 @@ final class MarkdownImportService: ObservableObject {
     }
 
     func clearState() {
-        guard !isRunning else { return }
+        guard !isRunning, !isChoosingDestination else { return }
         state = .idle
         progress = nil
         owner = nil

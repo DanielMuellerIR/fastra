@@ -174,7 +174,7 @@ def native_quit_probe():
     def document(xid):return next(w for w in windows() if w['xid']==xid)['documents'][-1]
     def choose(label):
      xid=click(label)
-     wait(lambda:not SOCKET.exists() or not any(w['xid']==xid for w in state()['native']),'dialog dismissed')
+     wait(lambda:not SOCKET.exists() or not controls(label,xid=xid),'decision dismissed')
     def abort_settled(n):wait(lambda:len(windows())==n and all(not w['closeActive'] for w in windows()),'abort settled')
     def start(service=True):
      for name in ['state.json','shutdown.json']:(ROOT/name).unlink(missing_ok=True)
@@ -206,8 +206,17 @@ def native_quit_probe():
     wait(lambda:request('status',jobID=job['id'])['job']['state']=='ready','snapshot')
     assert any(o.get('sessionID')==job['sessionID'] for o in request()['objects'])
     capture(wa,'main-quit');capture(wb,'main-quit-b')
+    key(wb,'ctrl+f')
+    search_title=L('Suchen & Ersetzen','Search & Replace')
+    search=wait(lambda:next((w for w in state()['native'] if w['title']==search_title),None),'independent search window')
+    search_xid=search['xid']
+    search_inputs=lambda: controls(kind='entry',xid=search_xid)
+    wait(lambda:any(b['sensitive'] for _,b in search_inputs()),'search initially interactive')
     key(wa,'ctrl+shift+q')
     first_dialog=wait(lambda:next((w for w,b in controls(D)),None),'first decision')
+    wait(lambda:search_inputs() and not any(b['sensitive'] for _,b in search_inputs()),'quit disables search window')
+    key(search_xid,'ctrl+alt+shift+d')
+    assert not any(w['title']==L('Dateien vergleichen','Compare files') for w in state()['native'])
     key(first_dialog['xid'],'ctrl+shift+q');time.sleep(.1)
     assert len(windows())==2 and len(controls(D))==1
     choose(D)
@@ -216,7 +225,10 @@ def native_quit_probe():
     choose(C);abort_settled(2)
     assert [document(wid) for wid in [wa,wb]]==prior
     assert request()['runtimeID']==runtime and p.poll() is None
-    print('PASS A Discard then B Cancel retains both exact documents/revisions + service/snapshot',flush=True)
+    wait(lambda:any(b['sensitive'] for _,b in search_inputs()),'cancel reenables search')
+    key(search_xid,'Escape')
+    wait(lambda:not any(w['xid']==search_xid for w in state()['native']),'search closed')
+    print('PASS Quit holds the independent search window; A Discard then B Cancel restores input and retains both documents',flush=True)
     # Ctrl+Q still means only the focused window and leaves all state on Cancel.
     key(wa,'ctrl+q');choose(C);abort_settled(2);assert len(windows())==2
     print('PASS plain CtrlQ remains window close',flush=True)
@@ -352,7 +364,7 @@ def native_asset_io_probe():
     def document(xid):return next(w for w in windows() if w['xid']==xid)['documents'][-1]
     def choose(label):
      xid=click(label)
-     wait(lambda:not SOCKET.exists() or not any(w['xid']==xid for w in state()['native']),'dialog dismissed')
+     wait(lambda:not SOCKET.exists() or not controls(label,xid=xid),'decision dismissed')
     def abort_settled(n):wait(lambda:len(windows())==n and all(not w['closeActive'] for w in windows()),'abort settled')
     def start(service=True):
      for name in ['state.json','shutdown.json']:(ROOT/name).unlink(missing_ok=True)
@@ -491,7 +503,7 @@ def native_folder_quit_probe():
     def document(xid):return next(w for w in windows() if w['xid']==xid)['documents'][-1]
     def choose(label):
      xid=click(label)
-     wait(lambda:not SOCKET.exists() or not any(w['xid']==xid for w in state()['native']),'dialog dismissed')
+     wait(lambda:not SOCKET.exists() or not controls(label,xid=xid),'decision dismissed')
     def abort_settled(n):wait(lambda:len(windows())==n and all(not w['closeActive'] for w in windows()),'abort settled')
     def start(service=True):
      for name in ['state.json','shutdown.json']:(ROOT/name).unlink(missing_ok=True)

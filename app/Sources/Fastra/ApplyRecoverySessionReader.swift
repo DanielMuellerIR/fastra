@@ -204,12 +204,11 @@ enum ApplyRecoverySessionReader {
         }
 
         func bindDirectory(name: String?, parent: Int?, resource: Resource) throws -> Int {
-            let flags = O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC
             let descriptor: Int32
             if let parent, let name {
-                descriptor = openat(directories[parent].descriptor, name, flags)
+                descriptor = openat(directories[parent].descriptor, name, ApplyFileSystem.childDirectoryReadFlags)
             } else {
-                descriptor = open(root.path, flags)
+                descriptor = open(root.path, ApplyFileSystem.rootDirectoryReadFlags)
             }
             guard descriptor >= 0 else { throw openFailure(resource) }
             var info = stat()
@@ -227,7 +226,7 @@ enum ApplyRecoverySessionReader {
 
         func bindFile(name: String, parent: Int, resource: Resource) throws -> BoundFile {
             let descriptor = openat(directories[parent].descriptor, name,
-                O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+                ApplyFileSystem.childFileReadFlags)
             guard descriptor >= 0 else { throw openFailure(resource) }
             var info = stat()
             guard fstat(descriptor, &info) == 0 else {
@@ -363,32 +362,10 @@ enum ApplyRecoverySessionReader {
         guard info.st_mode & S_IFMT == type else { throw Failure.invalid(resource, .fileType) }
         guard info.st_uid == getuid() else { throw Failure.invalid(resource, .owner) }
         guard info.st_mode & 0o022 == 0 else { throw Failure.invalid(resource, .writableByOthers) }
-        guard let access = acl_get_fd_np(descriptor, ACL_TYPE_EXTENDED) else {
-            if errno == ENOENT { return }
-            throw Failure.system(resource, errno)
-        }
-        defer { acl_free(UnsafeMutableRawPointer(access)) }
-        guard acl_valid(access) == 0 else { throw Failure.system(resource, errno) }
-        var entry: acl_entry_t?
-        // Leserechte und Deny-ACLs heben den Besitzschutz nicht auf. Zusätzliche
-        // Änderungsrechte werden ohne weiteren Herkunftsnachweis abgewiesen.
-        var selector = Int32(ACL_FIRST_ENTRY.rawValue)
-        while acl_get_entry(access, selector, &entry) == 0 {
-            var tag = ACL_UNDEFINED_TAG
-            guard acl_get_tag_type(entry, &tag) == 0 else { throw Failure.system(resource, errno) }
-            if tag == ACL_EXTENDED_ALLOW {
-                var permissions: acl_permset_t?
-                guard acl_get_permset(entry, &permissions) == 0 else { throw Failure.system(resource, errno) }
-                for permission in [ACL_WRITE_DATA, ACL_APPEND_DATA, ACL_DELETE, ACL_DELETE_CHILD,
-                                   ACL_WRITE_ATTRIBUTES, ACL_WRITE_EXTATTRIBUTES, ACL_WRITE_SECURITY, ACL_CHANGE_OWNER] {
-                    let granted = acl_get_perm_np(permissions, permission)
-                    guard granted >= 0 else { throw Failure.system(resource, errno) }
-                    guard granted == 0 else { throw Failure.invalid(resource, .extendedACL) }
-                }
-            }
-            selector = Int32(ACL_NEXT_ENTRY.rawValue)
-        }
-        guard errno == EINVAL else { throw Failure.system(resource, errno) }
+        let mutatingACL: Bool
+        do { mutatingACL = try ApplyFileSystem.hasMutatingExtendedACL(descriptor) }
+        catch let error as POSIXError { throw Failure.system(resource, error.code.rawValue) }
+        guard !mutatingACL else { throw Failure.invalid(resource, .extendedACL) }
     }
 
     private static func component(_ value: String) -> Bool {

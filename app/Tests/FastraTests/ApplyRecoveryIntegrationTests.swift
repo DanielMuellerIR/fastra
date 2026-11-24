@@ -139,6 +139,38 @@ struct ApplyRecoveryIntegrationTests {
         model.close()
     }
 
+    @Test("Ordner-Rückgängig sperrt die betroffenen Editoren bis zum geprüften Reload")
+    @MainActor func serialRunnerIntegrationFolderUndoReloadLifetime() async throws {
+        let fixture = try RecoveryIntegrationFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let domain = "fastra-test-folder-undo-" + UUID().uuidString
+        let defaults = testSuiteDefaults(named: domain)
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let ws = try fixture.workspace(defaults)
+        ws.lastApplySession = fixture.session
+        let target = fixture.targets[0]
+        let aliased = target.standardizedFileURL
+        ws.tabs[0].url = aliased
+        let gate = RecoveryReadGate()
+        defer { gate.release.signal() }
+        ws.reloadFileLoader = { url in
+            if url == aliased { gate.wait() }
+            return try FileLoader.load(url: url)
+        }
+
+        let undo = Task { await ws.undoLastFolderApply() }
+        try #require(await recoveryWait { gate.didStart })
+        #expect(ws.diskMutationIsActive && ws.fileMutationIsInFlight(for: target))
+        #expect(!ws.textEditingIsAllowed(for: ws.tabs[0]))
+        #expect(ws.tabs[0].content.contains("blau"))
+        #expect(try Data(contentsOf: target) == fixture.original)
+        gate.release.signal()
+        #expect(await undo.value)
+        #expect(ws.lastApplySession == nil && !ws.diskMutationIsActive)
+        #expect(!ws.fileMutationIsInFlight(for: target))
+        #expect(ws.tabs[0].content == "rot\r\nzweite Zeile\r\n")
+    }
+
     @Test("Abbruch, neue Quellen und spätere Dateiversion entziehen die historische Freigabe", arguments: [0, 1, 2, 3])
     @MainActor func serialRunnerIntegrationRevokedApproval(_ kind: Int) async throws {
         let fixture = try RecoveryIntegrationFixture()

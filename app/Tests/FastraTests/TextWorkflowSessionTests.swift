@@ -398,10 +398,10 @@ struct TextWorkflowSessionTests {
             let mutation = try ws.beginTextWorkflowDiskMutation(urls: partial.undoResourceURLs())
             var conflict: String?
             ws.folderPreviewConflictHandler = { conflict = $0 }
-            #expect(!ws.undoLastFolderApply() && conflict != nil)
+            #expect(!(await ws.undoLastFolderApply()) && conflict != nil)
             #expect(try FileSnapshot.readSnapshotOnly(from: pending.url) == pending.snapshot)
             ws.finishTextWorkflowDiskMutation(mutation, changedURLs: [], session: nil)
-            #expect(ws.undoLastFolderApply() && ws.lastApplySession == nil)
+            #expect(await ws.undoLastFolderApply() && ws.lastApplySession == nil)
             for url in pending.cleanupResourceURLs { #expect(!FileManager.default.fileExists(atPath: url.path)) }
 
             let value = try session(ws, window, defaults)

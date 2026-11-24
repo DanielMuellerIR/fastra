@@ -7,6 +7,29 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.242.87] — 2026-11-24
+
+### Behoben
+
+- WYSIWYG erhält angrenzende oder überlappende Inline-Auszeichnungen, harte Umbrüche am Absatzende und führende Leerzeilen beim Speichern und Wiederöffnen.
+- macOS: Vor dem Speichern aus WYSIWYG prüft Fastra den erzeugten Markdown-Text. Bei sichtbaren Abweichungen bleiben die Eingaben im Editor und eine Diagnose ohne Dokumentinhalt lässt sich kopieren.
+
+## [v1.242.86] — 2026-11-24
+
+### Behoben
+
+- macOS: Beim Umwandeln von Dokumenten aus einem nicht beschreibbaren Ordner, etwa Anhängen aus Apple Mail, lässt sich ein Zielordner für Markdown und Bilder wählen.
+
+## [v1.242.85] — 2026-11-23
+
+### Behoben
+
+- macOS: Ordner-Rückgängig prüft ungesicherte Änderungen in offenen Editoren und lässt die Oberfläche während der Dateiprüfung bedienbar. Betroffene Tabs bleiben bis zum geprüften Neuladen geschützt.
+- macOS: Die Dateiwiederherstellung berücksichtigt unterbrochene Ersetzungen in Einzeldatei-Sets und lädt offene Tabs auch bei gleichwertigen Pfadformen neu. Die Altersbereinigung lässt ungewöhnliche oder beschädigte Manifeste liegen.
+- macOS: Ein wiederholtes Einfügen hebt die vorgemerkte Bildlöschung auf. Bei großen Ordnerersetzungen zählt die Bestätigung nur freigegebene Dateien.
+- Linux: Eine offene Schließrückfrage sperrt bereits sichtbare Werkzeugfenster. Startanfragen für dieselbe noch ladende Datei teilen sich den Ladeauftrag.
+- Linux: Die Bildrücknahme bewahrt bei abgebrochenen Aktionen den bisherigen Zustand und entfernt überholte Berechtigungswarnungen. C- und POSIX-Locale zeigen die englische Oberfläche.
+
 ## [v1.242.84] — 2026-11-23
 
 ### Behoben

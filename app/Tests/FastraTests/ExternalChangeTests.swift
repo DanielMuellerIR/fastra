@@ -996,7 +996,7 @@ func workspace_folderApplyRunsAsynchronously() async throws {
 
 @Test("Rückgängig verwirft die sichtbare Ordner-Trefferbasis")
 @MainActor
-func workspace_folderUndoInvalidatesVisibleResults() async throws {
+func workspace_serialRunnerIntegrationFolderUndoInvalidatesVisibleResults() async throws {
     let url = try writeTmpUTF8("foo sichtbar\n")
     defer { try? FileManager.default.removeItem(at: url) }
     let (defaults, _) = makeFreshDefaults()
@@ -1037,7 +1037,7 @@ func workspace_folderUndoInvalidatesVisibleResults() async throws {
     publishPreparedSearchResults(ws)
     #expect(!visible.matches.isEmpty)
 
-    try #require(ws.undoLastFolderApply())
+    try #require(await ws.undoLastFolderApply())
 
     #expect(try Data(contentsOf: url) == Data("foo sichtbar\n".utf8))
     #expect(ws.folderResults.isEmpty,

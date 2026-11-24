@@ -346,6 +346,62 @@ struct SelfTestMarkdownImport {
             guard contents.contains("images") else {
                 finishMarkdownImport(base, false, "Bildordner fehlt: \(contents)", decisions: decisions)
             }
+            convertReadOnlyMarkdownImportFixture(in: base, workspace: workspace, decisions: decisions)
+        }
+    }
+
+    private func convertReadOnlyMarkdownImportFixture(in base: URL, workspace: Workspace,
+                                                      decisions: MarkdownImportDecisions) {
+        let files = FileManager.default
+        let readOnly = base.appendingPathComponent("Anhang", isDirectory: true)
+        let destination = base.appendingPathComponent("Ablage", isDirectory: true)
+        let source = readOnly.appendingPathComponent("MitBild.rtf")
+        let occupied = destination.appendingPathComponent("MitBild", isDirectory: true)
+        let original: Data
+        do {
+            original = try Data(contentsOf: base.appendingPathComponent("MitBild.rtf"))
+            try files.createDirectory(at: readOnly, withIntermediateDirectories: false)
+            try files.createDirectory(at: occupied, withIntermediateDirectories: true)
+            try original.write(to: source)
+            try files.setAttributes([.posixPermissions: 0o555], ofItemAtPath: readOnly.path)
+        } catch {
+            finishMarkdownImport(base, .environment, "Schreibgeschützte Quelle nicht erzeugbar: \(error)", decisions: decisions)
+        }
+
+        var asked = 0
+        decisions.destinationProvider = { asked += 1; return nil }
+        let tabsBefore = workspace.tabs.map(\.id)
+        workspace.convertToMarkdown(source)
+        guard asked == 1, MarkdownImportService.shared.state == .cancelled,
+              workspace.tabs.map(\.id) == tabsBefore,
+              (try? files.contentsOfDirectory(atPath: destination.path)) == ["MitBild"] else {
+            try? files.setAttributes([.posixPermissions: 0o755], ofItemAtPath: readOnly.path)
+            finishMarkdownImport(base, false, "Abgebrochene Zielwahl öffnet oder schreibt trotzdem", decisions: decisions)
+        }
+
+        decisions.destinationProvider = { asked += 1; return destination }
+        workspace.convertToMarkdown(source)
+        let expected = destination.appendingPathComponent("MitBild-2/MitBild.md")
+        waitFor(budget: 12, pause: 0.05) {
+            workspace.activeTab?.url == expected.canonicalFileURL && workspace.activeTab?.isLoading == false
+        } onTimeout: { _ in
+            try? files.setAttributes([.posixPermissions: 0o755], ofItemAtPath: readOnly.path)
+            finishMarkdownImport(base, false, "Markdown am gewählten Ort fehlt: "
+                                 + markdownImportFailureText(), decisions: decisions)
+        } then: {
+            try? files.setAttributes([.posixPermissions: 0o755], ofItemAtPath: readOnly.path)
+            let markdown = workspace.activeTab?.content ?? ""
+            let imageFolder = expected.deletingLastPathComponent().appendingPathComponent("images")
+            let images = (try? files.contentsOfDirectory(atPath: imageFolder.path)) ?? []
+            guard asked == 2, (try? Data(contentsOf: source)) == original,
+                  (try? files.contentsOfDirectory(atPath: readOnly.path)) == ["MitBild.rtf"],
+                  (try? files.contentsOfDirectory(atPath: occupied.path)) == [],
+                  Set((try? files.contentsOfDirectory(atPath: destination.path)) ?? []) == ["MitBild", "MitBild-2"],
+                  images.contains(where: { markdown.contains("](images/\($0))") }) else {
+                finishMarkdownImport(base, false, "Zielwahl bewahrt Quelle, Bildverweis oder belegten Namen nicht", decisions: decisions)
+            }
+            decisions.destinationProvider = nil
+            print("MARKDOWNIMPORT-ZIEL: Abbruch, schreibgeschützte Quelle, Zielkollision, relativer Bildverweis und geöffneter Tab ok")
             routePackageMarkdownImportFixture(in: base, workspace: workspace, decisions: decisions)
         }
     }
@@ -449,6 +505,7 @@ struct SelfTestMarkdownImport {
     ) -> Never {
         decisions?.fileChoiceProvider = nil
         decisions?.packageChoiceProvider = nil
+        decisions?.destinationProvider = nil
         try? FileManager.default.removeItem(at: base)
         finish(outcome, message)
     }

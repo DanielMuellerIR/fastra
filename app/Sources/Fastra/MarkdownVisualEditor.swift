@@ -221,6 +221,25 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     }
 
     private var activeActionIDs: Set<String> = []
+    enum SaveCheck: String {
+        case ok, text, format, breaks, unavailable
+    }
+    private struct VerifiedAppearance {
+        let generation: UInt64
+        let documentID: UUID
+        let revision: UInt64
+        let candidate: String
+        let outcome: SaveCheck
+    }
+    private var saveChecks: [String: VerifiedAppearance] = [:]
+
+    func saveCheck(for tab: EditorTab, candidate: String) -> SaveCheck? {
+        guard ready, tabID == tab.id, loadedDocumentID == tab.documentID else { return nil }
+        return saveChecks.values.first {
+            $0.generation == generation && $0.documentID == tab.documentID && $0.revision == tab.contentRevision
+                && $0.candidate.utf8.elementsEqual(candidate.utf8)
+        }?.outcome
+    }
     let assets = MarkdownPreviewSchemeHandler()
     private var imageSources: [String: String] = [:]
     var markdown = ""
@@ -371,8 +390,8 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             let referenceRejections = changes.compactMapValues { $0.effect.referenceRejectionID }
             let invalidations = MarkdownImageUndoBuffer.shared.takeInvalidations()
             DispatchQueue.main.async { [self] in
-                var awaitingRetirement = false
-                defer { if !awaitingRetirement { MarkdownImageUndoSideEffect.pendingIO.leave() } }
+                var awaitingFileFinalization = false
+                defer { if !awaitingFileFinalization { MarkdownImageUndoSideEffect.pendingIO.leave() } }
                 let finish: (Bool) -> Void = { [self] accepted in
                     reconcilingImages = false
                     let waiters = imageReconciliationWaiters
@@ -404,6 +423,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                     // Warnungen können einen modalen RunLoop betreten. Erst danach
                     // dürfen genau diese Sitzung und ihre Basis den Text annehmen.
                     guard requestIsCurrent(), accept() else { finish(false); return }
+                    let redone = changes.filter { visible.contains($0.key) }.map { $0.value.effect }
                     if !refreshedImages.addresses.isEmpty {
                         assets.addImageURLs(refreshedImages.urls)
                         imageSources.merge(refreshedImages.sources) { _, new in new }
@@ -434,13 +454,16 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                                                             warningHandler: workspace?.saveSafetyWarningHandler)
                         })
                     }
-                    if referenceCheck.isStale, reported, !referenceRejections.isEmpty {
-                        // pendingIO und die Eingabesperre gehören bis zum Mainfinale
-                        // weiter diesem Vorgang; die Phase verändert nur Speicher.
-                        awaitingRetirement = true
+                    let retireRejections = referenceCheck.isStale && reported
+                    if !redone.isEmpty || (retireRejections && !referenceRejections.isEmpty) {
+                        // Eingaben erst freigeben, wenn der Dateizustand zum angenommenen Text passt.
+                        awaitingFileFinalization = true
                         queue.async {
-                            for (id, rejectionID) in referenceRejections {
-                                changes[id]?.effect.retireReferenceRejection(rejectionID)
+                            for effect in redone { effect.commitRedo() }
+                            if retireRejections {
+                                for (id, rejectionID) in referenceRejections {
+                                    changes[id]?.effect.retireReferenceRejection(rejectionID)
+                                }
                             }
                             DispatchQueue.main.async {
                                 defer { MarkdownImageUndoSideEffect.pendingIO.leave() }
@@ -749,7 +772,8 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         synchronize(holdingInput: false) { succeeded, _ in completion(succeeded) }
     }
 
-    func synchronize(holdingInput: Bool, _ completion: @escaping (Bool, ActionHold?) -> Void) {
+    func synchronize(holdingInput: Bool, checkingSave: Bool = false, relocatedMarkdown: String? = nil,
+                     _ completion: @escaping (Bool, ActionHold?) -> Void) {
         if reconcilingImages {
             let request = generation, capturedSession = session
             imageReconciliationWaiters.append { [weak self] originGeneration, originSession, accepted in
@@ -761,7 +785,8 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                     completion(false, nil)
                     return
                 }
-                synchronize(holdingInput: holdingInput, completion)
+                synchronize(holdingInput: holdingInput, checkingSave: checkingSave,
+                            relocatedMarkdown: relocatedMarkdown, completion)
             }
             return
         }
@@ -824,8 +849,34 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 }
                 completeImageAction(revision: revision, session: requestSession, generation: request)
                 hold.prepared = accepted && current
-                respond(accepted && current)
+                guard hold.prepared, checkingSave else { respond(hold.prepared); return }
+                guard let tab = workspace.tabs.first(where: { $0.id == tabID }),
+                      tab.content.utf8.elementsEqual(content.utf8) else { respond(false); return }
+                checkSaveAppearance(tab: tab, candidate: tab.textForSaving(relocatedMarkdown ?? content),
+                                    inputRevision: revision, hold: hold, completion: respond)
             })
+        }
+    }
+
+    private func checkSaveAppearance(tab: EditorTab, candidate: String, inputRevision: Int,
+                                     hold: ActionHold, completion: @escaping (Bool) -> Void) {
+        let url = tab.url, documentID = tab.documentID, contentRevision = tab.contentRevision
+        DispatchQueue.global(qos: .userInitiated).async {
+            let html = MarkdownVisualDocument.render(candidate, documentURL: url).fragment.html
+            DispatchQueue.main.async { [self] in
+                guard hold.isCurrent(for: self), let web else { completion(false); return }
+                web.callAsyncJavaScript("return window.fastraVisual.compareSaveAppearance(session, actionID, revision, html);",
+                    arguments: ["session": hold.session, "actionID": hold.id, "revision": inputRevision, "html": html],
+                    in: nil, in: .page) { [self] result in
+                        guard hold.isCurrent(for: self), acceptedInputRevision == inputRevision,
+                              workspace?.tabs.contains(where: { $0.documentID == documentID && $0.contentRevision == contentRevision }) == true
+                        else { completion(false); return }
+                        let outcome = ((try? result.get()) as? String).flatMap(SaveCheck.init(rawValue:)) ?? .unavailable
+                        saveChecks[hold.id] = VerifiedAppearance(generation: hold.generation, documentID: documentID, revision: contentRevision,
+                                                                 candidate: candidate, outcome: outcome)
+                        completion(true)
+                    }
+            }
         }
     }
 
@@ -849,6 +900,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
 
     private func finishAction(_ hold: ActionHold) {
         guard activeActionIDs.remove(hold.id) != nil else { return }
+        saveChecks.removeValue(forKey: hold.id)
         // ready=false lässt den alten DOM bis zum wirklichen Ersatz gesperrt.
         // Bei Relocate derselben bereiten Session darf nur dieses Token enden.
         guard ready, session == hold.session else { return }

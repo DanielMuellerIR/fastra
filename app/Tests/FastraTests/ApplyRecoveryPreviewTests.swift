@@ -110,6 +110,42 @@ private func recoveryPreviewExactProjectFiles() throws {
     }
 }
 
+@Test("Pending-Manifest erlaubt den vorbereiteten Zwilling nur neben seiner gewählten Einzeldatei")
+private func recoveryPreviewPendingProjectFiles() throws {
+    let fixture = try RecoveryPreviewFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    var pending: ApplySession?
+    _ = try fixture.apply { candidate in
+        if pending == nil, candidate.entries.contains(where: { $0.state == .pending }) {
+            pending = candidate
+        }
+        try ApplyEngine.writeManifest(candidate)
+    }
+    let session = try #require(pending)
+    try #require(!session.retainedPendingFiles.isEmpty)
+    try fixture.original.write(to: fixture.targets[0], options: .atomic)
+    try ApplyEngine.writeManifest(session)
+    let preview = try fixture.preview(session, roots: [fixture.targets[0]])
+    #expect(preview.targets.map(\.state) == [.originalAlreadyPresent])
+    let cleanupOnly = ApplySession(timestamp: session.timestamp, sessionDirectory: session.sessionDirectory,
+                                    entries: [], retainedPendingFiles: session.retainedPendingFiles)
+    try ApplyEngine.writeManifest(cleanupOnly)
+    #expect(throws: RecoveryPreview.Failure.self) {
+        try fixture.preview(cleanupOnly, roots: [fixture.targets[0]])
+    }
+}
+
+@Test("Zu groß gewordene Zieldatei meldet die feste Lesegrenze")
+private func recoveryPreviewReportsTargetReadLimit() throws {
+    let fixture = try RecoveryPreviewFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    let session = try fixture.apply()
+    let handle = try FileHandle(forWritingTo: fixture.targets[0])
+    try handle.truncate(atOffset: FileSnapshot.maximumReadBytes + 1)
+    try handle.close()
+    #expect(throws: RecoveryPreview.Failure.limit) { try fixture.preview(session) }
+}
+
 @Test("Wurzelgrenzen vergleichen Komponenten und lehnen fremde Quellen ab")
 private func recoveryPreviewRejectsPathPrefix() throws {
     let fixture = try RecoveryPreviewFixture()

@@ -270,6 +270,7 @@ einem RegEx wie `foo|bar`. Die Nummern vorhandener Capture-Gruppen bleiben gleic
 - Ändert sich die Dateibasis, verwirft Fastra die Freigaben der betroffenen Suche. Suche erneut, prüfe die aktuellen Treffer und gib sie frei, bevor du eine neue Vorschau anwendest.
 - Unter Linux verschwindet ein früherer Fremdänderungshinweis, sobald Apply, Rückgängig oder die Dateiwiederherstellung den bestätigten Dateistand in einen offenen, unveränderten Editor übernimmt. Weitere Fremdänderungen werden erneut gemeldet.
 - Planung, Backup und Schreiben laufen mit Fortschritt im Hintergrund. „Apply abbrechen“ stoppt vor der Schreibphase ohne Zieldateiänderung. Eine bereits begonnene Schreibphase wird sicher beendet. Fastra schreibt **atomar pro Datei** und legt automatisch Sicherungen an. Eine Mehrdateiänderung kann bei Fehlern teilweise erfolgt sein. „Rückgängig“ restauriert tatsächlich angewendete Dateien bitgenau und stoppt bei späteren Änderungen oder fehlenden Rechten für die Wiederherstellung.
+- Unter macOS wartet „Rückgängig“ auf den letzten Eingabestand der offenen visuellen Editoren. Sind betroffene Dokumente ungesichert oder werden sie noch geladen, wird die Rücknahme abgelehnt. Die Dateiprüfung läuft im Hintergrund. Betroffene Editoren sind bis zum geprüften Neuladen geschützt.
 - Wird die Sicherungsablage während einer Dateiübernahme unter macOS ausgetauscht, hält Fastra an und nennt bestätigte Dateiänderungen und noch erreichbare Sicherungen. Fastra bietet Rückgängig oder Aufräumen für diesen Vorgang nur bei bestätigter Wiederherstellungsbasis an. Das gilt auch für Textabläufe auf Dateien.
 - Eine inzwischen ausgetauschte Datei bleibt auch bei gleichem Text vor Rückgängig geschützt. Fehlt eine Sicherung, wird ihr Lesezugriff verweigert oder weicht ihr Inhalt vom Original ab, nennt Fastra die zugehörige Datei, die Ursache und den vollständigen Sicherungspfad. Bewahre bei Sicherungs- und Aufräumfehlern die genannten Dateien auf, bis die Ursache geklärt ist.
 - Vor dem ersten Dateitausch prüft und synchronisiert Fastra die Original-Sicherungen. Erkennt Fastra beim Abbruch in dieser Vorbereitung eine ausgetauschte Sicherungsablage, meldet es den Fehler und lässt die vorhandenen Ordner stehen. Auch der gespeicherte Sitzungsfortschritt wird geprüft und synchronisiert.
@@ -942,6 +943,11 @@ um weiterzuschreiben.
 Wo Markdown-Trennzeichen eine gewählte Formatierung nicht eindeutig ausdrücken
 können, verwendet Fastra erlaubte HTML-Auszeichnungen im Quelltext, damit die
 Darstellung beim Speichern und Wiederöffnen erhalten bleibt.
+Auf dem Mac prüft Fastra vor dem Speichern aus der WYSIWYG-Ansicht den
+sichtbaren Text, Inline-Formatierungen und absichtliche Umbrüche im erzeugten
+Markdown. Wenn die Prüfung eine Abweichung feststellt, bleiben deine Eingaben
+im offenen Editor. Kopiere mit **Diagnose kopieren** die Fastra-Version und
+Fehlerart für eine Meldung. Die Diagnose enthält keinen Dokumentinhalt.
 Geschützte HTML- und Formelbereiche lassen sich im WYSIWYG-Modus nicht
 formatieren. Fastra erklärt dies vor der Änderung; bearbeite solche Bereiche
 im Markdown-Quelltext.
@@ -1190,7 +1196,10 @@ fragt beim Öffnen und in der Projekt-Seitenleiste, ob es sie umwandeln oder
 **Als Ordner öffnen** soll. Ein Format kann sowohl Dateien als auch Pakete
 unterstützen; maßgeblich ist der Katalog des installierten Werkzeugs.
 
-**Wo das Ergebnis landet:** direkt neben dem Original. Entstand nur Text, als
+**Wo das Ergebnis landet:** normalerweise direkt neben dem Original. Kann Fastra
+dort nichts speichern, etwa bei einem Anhang aus Apple Mail, öffnet sich
+**Markdown speichern unter …**. Wähle dort den Zielordner für Markdown und Bilder.
+Mit **Abbrechen** wird kein Ergebnis gespeichert. Entstand nur Text, liegt er als
 `Name.md`. Wurden Bilder mit herausgelöst, als Ordner `Name` mit `Name.md` und
 einem Unterordner `images`. Ist der Name schon belegt — zum Beispiel weil
 `Bericht.rtf` und `Bericht.docx` nebeneinanderliegen —, weicht Fastra auf

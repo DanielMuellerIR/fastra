@@ -119,13 +119,14 @@ def type_source(xid, text):
 
 def quit_all(xid):
     key(xid, "ctrl+shift+q")
+    label = L("Ohne Speichern schließen", "Close without saving")
     deadline = time.monotonic() + 20
     while process.poll() is None and time.monotonic() < deadline:
-        discard = [(window, control) for window in state()["native"] for control in window["widgets"]
-                   if control["sensitive"] and (control["label"] or "").replace("_", "") == L("Ohne Speichern schließen", "Close without saving")]
-        if discard:
-            old = click(label=L("Ohne Speichern schließen", "Close without saving"))
-            wait(lambda: process.poll() is not None or all(window["xid"] != old for window in state()["native"]), "discard dialog closes")
+        discard = next((window for window in state()["native"] for control in window["widgets"]
+                        if control["sensitive"] and (control["label"] or "").replace("_", "") == label), None)
+        if discard is not None:
+            # Mehrere Rückfragen können nacheinander im selben Fenster erscheinen.
+            click(label=label, xid=discard["xid"])
         time.sleep(.05)
     assert process.wait(3) == 0
     assert json.loads((OBSERVE / "shutdown.json").read_text()) == {"registryEmpty": True, "holdReleased": True}
@@ -305,9 +306,12 @@ def scenario():
             print("FASTRA_STARTUP_OK pending peer generation captured before file loading; user text and actual window focus retained")
             return
         if MODE == "open":
+            extra_alias = ROOT / "new-file-alias"
+            extra_alias.symlink_to(extra)
             remote(a, extra)
+            remote(extra_alias)
             remote(extra_two)
-            wait(lambda: state()["startup"]["queued"] == 3, "cold and in-flight Open queued once")
+            wait(lambda: state()["startup"]["queued"] == 4, "restored, new and duplicate Open requests queued")
             assert len(state()["windows"]) == 2
             hold.unlink()
             current = wait(lambda: ready(4) if sum(len(paths(w)) for w in state()["windows"]) == 5 else None, "reuse restored tabs and open each new file once")

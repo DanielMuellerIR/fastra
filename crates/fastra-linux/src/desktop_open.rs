@@ -2,7 +2,12 @@
 use super::project_view;
 use super::{git_view, Ui};
 use gtk::{gio, prelude::*};
-use std::{cell::Cell, collections::HashSet, path::PathBuf, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+    rc::{Rc, Weak},
+};
 
 const MAX_ITEMS: usize = 32;
 struct Items {
@@ -34,7 +39,39 @@ fn inspect(paths: Vec<PathBuf>) -> Result<Items, String> {
     }
     Ok(items)
 }
-fn open_items(ui: &Rc<Ui>, items: Items, current: impl Fn() -> bool + Clone + 'static) {
+// Der Ladeauftrag hält das Ticket bis zur Übernahme, Ablehnung oder zum
+// Abbruch. Währenddessen kann das Dokument im Fenster noch keinen Pfad melden.
+#[derive(Default)]
+pub(super) struct StartupLoads(RefCell<HashMap<PathBuf, (Weak<Ui>, Weak<()>)>>);
+impl StartupLoads {
+    pub(super) fn active(&self) -> bool {
+        let mut paths = self.0.borrow_mut();
+        paths.retain(|_, (ui, ticket)| {
+            ticket.strong_count() > 0 && ui.upgrade().is_some_and(|ui| ui.window.is_visible())
+        });
+        !paths.is_empty()
+    }
+
+    pub(super) fn clear(&self) {
+        self.0.borrow_mut().clear();
+    }
+
+    fn contains(&self, path: &Path) -> bool {
+        self.0.borrow().contains_key(path)
+    }
+
+    fn track(&self, path: &Path, ui: &Rc<Ui>) -> Rc<()> {
+        let ticket = Rc::new(());
+        self.0.borrow_mut().insert(path.to_path_buf(), (Rc::downgrade(ui), Rc::downgrade(&ticket)));
+        ticket
+    }
+}
+fn open_items(
+    ui: &Rc<Ui>,
+    items: Items,
+    current: impl Fn() -> bool + Clone + 'static,
+    startup: Option<&StartupLoads>,
+) {
     ui.status.set_text(ui.lang.text(
         "Geprüfte Auswahl öffnen; Dateien erhalten eigene Tabs, ein Ordner den Projektbaum.",
         "Opening checked selection; files use separate tabs and a folder uses the project tree.",
@@ -43,7 +80,12 @@ fn open_items(ui: &Rc<Ui>, items: Items, current: impl Fn() -> bool + Clone + 's
         super::import_view::route_open(ui, path, None, Rc::new(current.clone()), None);
     }
     for path in items.files {
-        ui.load_path_owned(path, Rc::new(current.clone()));
+        let ticket = startup.map(|startup| startup.track(&path, ui));
+        let current = current.clone();
+        ui.load_path_owned(path, Rc::new(move || {
+            let _ticket = &ticket;
+            current()
+        }));
     }
 }
 struct State {
@@ -91,7 +133,7 @@ impl State {
                     return;
                 };
                 match result {
-                Ok(items) => open_items(&ui, items, move || state.generation.get() == generation),
+                Ok(items) => open_items(&ui, items, move || state.generation.get() == generation, None),
                 Err(error) => ui.status.set_text(&format!("{} {error}", ui.lang.text("Öffnen abgewiesen; reguläre Dateien und höchstens ein Ordner erforderlich:", "Open refused; regular files and at most one folder required:"))),
             }
             },
@@ -119,7 +161,8 @@ pub(super) fn open_files(ui: &Rc<Ui>, files: &[gio::File]) {
 }
 pub(super) fn open_after_restore(
     files: Vec<gio::File>,
-    current: impl FnOnce() -> bool + 'static,
+    startup: Rc<StartupLoads>,
+    current: impl Fn() -> bool + 'static,
     create: impl FnOnce() -> Rc<Ui> + 'static,
     done: impl FnOnce() + 'static,
 ) {
@@ -139,6 +182,7 @@ pub(super) fn open_after_restore(
             // Bei einer gemeinsamen Ordner-/Dateiauswahl gehören die Tabs in
             // das neue Projektfenster.
             if items.project.is_none() {
+                startup.active();
                 let windows = super::application_lifecycle::ordinary_windows().unwrap_or_default();
                 items.files.retain(|path| {
                     for ui in windows.iter().filter(|ui| ui.window.is_visible()) {
@@ -151,7 +195,7 @@ pub(super) fn open_after_restore(
                             return false;
                         }
                     }
-                    true
+                    !startup.contains(path)
                 });
             }
             if items.project.is_none() && items.files.is_empty() {
@@ -164,7 +208,8 @@ pub(super) fn open_after_restore(
                 let ui = create();
                 let owner = state(&ui);
                 let generation = owner.generation.get();
-                open_items(&ui, items, move || owner.generation.get() == generation);
+                let current = Rc::new(current);
+                open_items(&ui, items, move || current() && owner.generation.get() == generation, Some(&startup));
             }
             done();
         },

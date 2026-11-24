@@ -246,6 +246,123 @@ struct MarkdownVisualTests {
         #expect(try await freshWeb.evaluateJavaScript("getComputedStyle(document.querySelector('mark') || document.body).backgroundColor") as? String == "rgb(255, 238, 154)")
     }
 
+    @Test("Angrenzende Formatierungen und sichtbare Leerzeilen überstehen Speichern, Schließen und Öffnen",
+          arguments: ["marker", "marker-end", "marker-inside", "adjacent", "mixed", "hard-break", "hard-break-list", "leading-blanks"])
+    @MainActor
+    func reportedFormatAndBreaksSaveReopen(_ example: String) async throws {
+        let source: String, edit: String, reopened: String
+        switch example {
+        case "marker":
+            source = "abc=def\n"
+            edit = "select(paragraph().firstChild,4,6);fastraVisual.command('highlight');"
+            reopened = "document.querySelector('mark')?.textContent==='de' && paragraph().textContent==='abc=def'"
+        case "marker-end":
+            source = "a= b\n"
+            edit = "select(paragraph().firstChild,0,2);fastraVisual.command('highlight');"
+            reopened = "document.querySelector('mark')?.textContent==='a=' && paragraph().textContent==='a= b'"
+        case "marker-inside":
+            source = "a \\=\\= b\n"
+            edit = "select(paragraph().firstChild,0,paragraph().textContent.length);fastraVisual.command('highlight');"
+            reopened = "document.querySelector('mark')?.textContent==='a == b' && paragraph().textContent==='a == b'"
+        case "adjacent":
+            source = "rotgelb\n"
+            edit = """
+                select(paragraph().firstChild,0,3);fastraVisual.command('highlight');
+                const next=paragraph().lastChild;
+                select(next,0,next.length);fastraVisual.command('highlight');
+                """
+            reopened = "Array.from(document.querySelectorAll('mark'),n=>n.textContent).join('')==='rotgelb' && paragraph().textContent==='rotgelb'"
+        case "mixed":
+            source = "ab *cd* ef\n"
+            edit = """
+                const r=document.createRange();r.setStart(paragraph().firstChild,0);r.setEnd(document.querySelector('em').firstChild,1);
+                getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('bold');
+                """
+            reopened = "document.querySelector('strong')?.textContent==='ab c' && paragraph().textContent==='ab cd ef'"
+        case "hard-break":
+            source = "A\r\n\r\nB\r\n"
+            edit = "select(paragraph().firstChild,1,1);fastraVisual.command('hardBreak');fastraVisual.command('hardBreak');"
+            reopened = "paragraph().querySelectorAll('br').length===3 && paragraph().textContent==='A'"
+        case "hard-break-list":
+            source = "- A B\n- C\n"
+            edit = "select(document.querySelector('li').firstChild,1,1);fastraVisual.command('hardBreak');fastraVisual.command('hardBreak');"
+            reopened = "document.querySelectorAll('li').length===2 && document.querySelector('li').querySelectorAll('br').length===2"
+        default:
+            source = ""
+            edit = """
+                select(paragraph(),0,0);for(let i=0;i<4;i++)document.execCommand('insertParagraph');
+                document.execCommand('insertText',false,'B');
+                """
+            reopened = "document.querySelectorAll('.fastra-visible-blank-line').length===4 && paragraph().textContent==='B'"
+        }
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-save-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("fixture.md")
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: file)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
+        var failure: MarkdownVisualCoordinator.SaveCheck?
+        workspace.markdownSaveWarningHandler = { failure = $0 }
+        let paragraph = "const paragraph=()=>document.querySelector('#fastra-visual p:not([data-md-edit-boundary])');"
+        _ = try await web.evaluateJavaScript("""
+            (()=>{\(paragraph)
+            function select(n,a,b){const r=document.createRange();r.setStart(n,a);r.setEnd(n,b);getSelection().removeAllRanges();getSelection().addRange(r);}
+            \(edit)})()
+            """)
+        workspace.saveActiveTab()
+        try #require(await waitUntil { failure != nil || (workspace.activeTab?.isDirty == false && (try? String(contentsOf: file, encoding: .utf8)) != source) })
+        try #require(failure == nil, Comment(rawValue: String(describing: failure)))
+        let saved = try Data(contentsOf: file)
+        let tabID = try #require(workspace.activeTabID)
+        workspace.closeTab(id: tabID)
+        try #require(await waitUntil { !workspace.tabs.contains { $0.id == tabID } })
+        let (_, newCoordinator, freshWeb, freshWindow) = try await reopenEditor(at: file, savedBytes: saved)
+        defer { freshWeb.configuration.userContentController.removeAllScriptMessageHandlers(); freshWindow.close(); withExtendedLifetime(newCoordinator) {} }
+        #expect(try await freshWeb.evaluateJavaScript("(()=>{\(paragraph)return \(reopened);})()") as? Bool == true,
+                Comment(rawValue: String(decoding: saved, as: UTF8.self)))
+    }
+
+    @Test("Speicherprüfung hält eine sichtbar verlustreiche Fassung und das Schließen mit Speichern an")
+    @MainActor
+    func saveAppearanceRejectsLossEvenWithCleanModel() async throws {
+        let file = testTemporaryDirectory().appendingPathComponent("visual-save-check-\(UUID().uuidString).md")
+        let source = "Ergebnis\n"
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: file)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
+        var warnings: [MarkdownVisualCoordinator.SaveCheck] = []
+        var writes = 0
+        workspace.markdownSaveWarningHandler = { warnings.append($0) }
+        workspace.saveBeforeCoordinateHandler = { _ in writes += 1 }
+        let tabID = try #require(workspace.activeTabID)
+        _ = try await web.evaluateJavaScript("""
+            (()=>{const p=document.querySelector('#fastra-visual p'),r=document.createRange();
+            r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('highlight');
+            const prepare=fastraVisual.prepareAction;
+            fastraVisual.prepareAction=(...args)=>({...prepare(...args),markdown:'Ergebnis\\n'});})()
+            """)
+        workspace.saveActiveTab()
+        try #require(await waitUntil { warnings.count == 1 || writes > 0 })
+        #expect(warnings == [.format])
+        #expect(writes == 0)
+        #expect(workspace.tabs[0].isDirty == false)
+        #expect(try String(contentsOf: file, encoding: .utf8) == source)
+        #expect(try await web.evaluateJavaScript("document.querySelector('mark')?.textContent") as? String == "Ergebnis")
+        workspace.confirmCloseHandler = { _ in .save }
+        workspace.closeTab(id: tabID)
+        try #require(await waitUntil { warnings.count == 2 || !workspace.tabs.contains { $0.id == tabID } })
+        #expect(warnings == [.format, .format])
+        #expect(workspace.activeTabID == tabID)
+        workspace.confirmCloseHandler = { _ in .dontSave }
+        workspace.closeTab(id: tabID)
+        try #require(await waitUntil { !workspace.tabs.contains { $0.id == tabID } })
+        #expect(writes == 0)
+    }
+
     @Test("Alle Markdown-Werkzeuge erhalten ihre sichtbare Wirkung nach Speichern und Wiederöffnen",
           arguments: MarkdownFormatCommand.allCases, [false, true])
     @MainActor
@@ -1496,6 +1613,38 @@ struct MarkdownVisualTests {
         }
     }
 
+    @Test("Ordner-Rückgängig schützt noch nicht übernommene Eingaben im visuellen Editor")
+    @MainActor
+    func folderUndoSynchronizesVisualMarkdown() async throws {
+        let folder = testTemporaryDirectory().appendingPathComponent("visual-folder-undo-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let doc = folder.appendingPathComponent("note.md").canonicalFileURL
+        try Data("original\n".utf8).write(to: doc)
+        let session = try ApplyEngine.apply(plan: ApplyEngine.plan(files: [doc],
+            options: SearchOptions(find: "original", replace: "applied", isRegex: false)),
+            backupRoot: folder.appendingPathComponent("backups"), cleanupOlderThan: nil)
+        let (workspace, coordinator, web, window) = try await editor("applied\n", documentURL: doc)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: doc)
+        workspace.tabs[0].recordSavedContentBaseline()
+        workspace.lastApplySession = session
+        var blocked: [String]?
+        workspace.folderApplyConflictHandler = { blocked = $0 }
+        _ = try await web.evaluateJavaScript("""
+            const paragraph=document.querySelector('#fastra-visual p');
+            paragraph.textContent = 'ungesichert';
+            true;
+            """)
+        #expect(workspace.activeTab?.content == "applied\n")
+        #expect(!(await workspace.undoLastFolderApply()))
+        #expect(blocked?.count == 1)
+        #expect(workspace.activeTab?.content == "ungesichert\n" && workspace.activeTab?.hasUnsavedChanges == true)
+        #expect(try Data(contentsOf: doc) == Data("applied\n".utf8))
+        #expect(workspace.lastApplySession == session)
+        withExtendedLifetime(coordinator) {}
+    }
+
     @Test("Bild-Redo-Kollision nimmt den Browser-Link trotz Eingabesperre vollständig zurück")
     @MainActor
     func imageRedoCollisionRollsBackBrowser() async throws {
@@ -2311,6 +2460,9 @@ struct MarkdownVisualTests {
         WorkspaceWindowRegistry.register(workspace, for: window)
         var error: String?
         workspace.saveSafetyWarningHandler = { title, text in error = title + text }
+        workspace.markdownSaveWarningHandler = { check in
+            Issue.record(Comment(rawValue: "WYSIWYG-Speicherprüfung: \(check.rawValue)"))
+        }
         coordinator.load(tab.content, documentURL: tab.url, fontName: PreviewFonts.systemName,
                          fontSize: 14, darkMode: darkMode, style: "test")
         let ready = await waitUntil(timeout: 12) { coordinator.ready || error != nil }
@@ -5636,7 +5788,6 @@ extension MarkdownVisualTests {
         let endSession = try await currentWeb.evaluateJavaScript("fastraVisual.outlineSnapshot().session") as? String
         let editable = try await currentWeb.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool
         let model = try #require(workspace.activeTab?.content)
-        print("R06 SIDEBAR completed=\(String(describing: completed)) path=\(String(describing: current.documentURL?.lastPathComponent)) sameSession=\(initialSession==endSession) editable=\(String(describing: editable)) DOM=\(String(describing: browserContent)) model=\(model.debugDescription) imageOnDisk=\(manager.fileExists(atPath: fixture.first.path)) warnings=\(fixture.warnings)")
         #expect(workspace.activeTab?.id == tabID && workspace.activeTab?.documentID == documentID)
         #expect(current.documentURL?.path == moved.path && editable == true && browserContent == model)
         #expect(!manager.fileExists(atPath: old.path) && (try? Data(contentsOf: moved)) == original)

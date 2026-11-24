@@ -1867,21 +1867,6 @@ struct FloatingSearchDialog: View {
 
     // MARK: - Action-Zeile
 
-    /// `true`, wenn die sichtbaren Buffer-/Geöffnet-Treffer wirklich zum
-    /// aktuell eingegebenen Muster gehören.
-    ///
-    /// Direkt nach einem Tastendruck stimmt das für rund 120 ms nicht: Die
-    /// alte Trefferzahl bleibt absichtlich stehen (sonst blinkte sie bei jedem
-    /// Zeichen auf 0), die Ersetzen-Pfade im Workspace lehnen den Aufruf aber
-    /// still ab. Ohne diese Bedingung sähen Vorschau, „Ersetzen" und „Alle
-    /// ersetzen" in diesem Fenster aktiv aus und täten nichts.
-    /// Im Ordner-/Projekt-Bereich gilt sie nicht — dort
-    /// sperren `folderSearching`/`folderNeedsSearch` bereits.
-    private var visibleResultsMatchCurrentSearch: Bool {
-        workspace.scope.isFolderLike
-            || workspace.visibleBufferResultsOptions == workspace.currentSearchOptions
-    }
-
     // Zweizeilige Aufteilung nach Absicht: Die erste Zeile navigiert durch
     // Treffer, die zweite schließt die Maske bzw. ersetzt. So passen die sechs
     // Buttons auch bei minimaler Fensterbreite.
@@ -2003,7 +1988,9 @@ struct FloatingSearchDialog: View {
                 // Im Folder-Scope und nach einem erfolgreichen Apply gibt es
                 // eine Rückgängig-Möglichkeit aus dem Backup-Ordner.
                 if workspace.scope.isFolderLike, workspace.lastApplySession != nil {
-                    Button(workspace.lastApplySession?.isCleanupOnly == true ? L10n.string("Aufräumen") : L10n.string("Rückgängig")) { workspace.undoLastFolderApply() }
+                    Button(workspace.lastApplySession?.isCleanupOnly == true ? L10n.string("Aufräumen") : L10n.string("Rückgängig")) {
+                        Task { await workspace.undoLastFolderApply() }
+                    }
                         .disabled(workspace.diskMutationIsActive)
                         .help(workspace.lastApplySession?.isCleanupOnly == true
                             ? L10n.string("Entfernt Fastras verbliebene temporäre Dateien. Die Zieldateien bleiben unverändert.")

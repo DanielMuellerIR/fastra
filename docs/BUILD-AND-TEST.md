@@ -2025,6 +2025,11 @@ speicherbaren Zellformate, `tableRejectsBlockFormats` die erklärte, unveränder
 Abweisung von Blockformaten. Eine Prüfung des vorhandenen DOM allein reicht
 für diese Fälle nicht. Der Fensterlauf `mdvisual` setzt zusätzlich neue
 Inline-Formate bis zum Absatzende über echte Toolbar-Klicks und prüft ihre Speicherrundreise.
+`reportedFormatAndBreaksSaveReopen` prüft kollidierende Auszeichnungen,
+abschließende harte Umbrüche und führende Leerabsätze vom Editieren bis zum
+Wiederöffnen der tatsächlich geschriebenen Datei. `saveAppearanceRejectsLossEvenWithCleanModel`
+belegt, dass die Speicherprüfung bei abweichendem DOM auch einen laut Modell
+unveränderten Tab vor Schreiben und Schließen mit „Sichern“ schützt.
 `blockFormatKeepsSelection` tippt nach Listen-/Zitatformatierung weiter und
 prüft Cursor sowie Teilauswahl. `protectedHTMLRejectsFormatting` verhindert
 vorübergehende Auszeichnungen in unveränderlich erhaltenen HTML-Bereichen.

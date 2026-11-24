@@ -738,13 +738,27 @@ struct SerialRunnerIntegrationSoakCleanupTests {
         mkdir "$FASTRA_TEST_SANDBOX/product-saved-state"
         release_fastra_test_sandbox
         [ ! -e "$2/fastra-soak-run.success" ] || exit 94
-        for kind in unit-tests selftest-run; do
+        directory="$SOAK_FIXTURE_PARENT/fastra-unit-tests.old"
+        mkdir "$directory"
+        touch -t 199901010101 "$directory"
+        purge_stale_fastra_test_sandboxes unit-tests
+        [ ! -e "$directory" ] || exit 95
+        for kind in soak-run selftest-run; do
             directory="$SOAK_FIXTURE_PARENT/fastra-$kind.old"
-            mkdir "$directory"
-            printf 'diagnostic' > "$directory/product-defaults.plist"
+            mkdir -p "$directory/selftest-pasteboard"
+            printf 'snapshot' > "$directory/product-defaults.plist"
             touch -t 199901010101 "$directory"
             purge_stale_fastra_test_sandboxes "$kind"
-            [ ! -e "$directory" ] || exit 95
+            [ "$(cat "$directory/product-defaults.plist")" = snapshot ] || exit 96
+            /bin/rm -- "$directory/product-defaults.plist"
+            printf 'clipboard' > "$directory/selftest-pasteboard/pasteboard-backup.plist"
+            touch -t 199901010101 "$directory"
+            purge_stale_fastra_test_sandboxes "$kind"
+            [ "$(cat "$directory/selftest-pasteboard/pasteboard-backup.plist")" = clipboard ] || exit 97
+            /bin/rm -- "$directory/selftest-pasteboard/pasteboard-backup.plist"
+            touch -t 199901010101 "$directory"
+            purge_stale_fastra_test_sandboxes "$kind"
+            [ ! -e "$directory" ] || exit 98
         done
         """#
         let result = try runTestProcess("/bin/bash", arguments: [

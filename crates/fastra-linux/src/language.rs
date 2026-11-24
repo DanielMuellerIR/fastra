@@ -15,14 +15,20 @@ impl Language {
     }
 
     fn from_locales(preferences: Option<&str>, locale: Option<&str>) -> Self {
+        fn language_code(value: &str) -> &str {
+            value.trim().split(['_', '-', '.', '@']).next().unwrap_or("")
+        }
+        if matches!(locale.map(language_code), Some("C" | "POSIX")) {
+            return Self(false);
+        }
         let german = preferences
             .into_iter()
             .flat_map(|value| value.split(':'))
             .chain(locale)
             .find_map(
-                |value| match value.trim().split(['_', '-', '.', '@']).next()? {
+                |value| match language_code(value) {
                     "de" => Some(true),
-                    "en" => Some(false),
+                    "en" | "C" | "POSIX" => Some(false),
                     _ => None,
                 },
             );
@@ -52,6 +58,14 @@ mod tests {
             Language::from_locales(None, Some("en_GB.UTF-8")).text("DE", "EN"),
             "EN"
         );
+    }
+
+    #[test]
+    fn c_locale_and_language_fallback_use_english() {
+        for locale in ["C", "POSIX", "C.UTF-8"] {
+            assert_eq!(Language::from_locales(Some("de"), Some(locale)).text("DE", "EN"), "EN");
+        }
+        assert_eq!(Language::from_locales(Some("fr:C:de"), Some("de_DE")).text("DE", "EN"), "EN");
     }
 
     #[test]

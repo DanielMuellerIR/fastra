@@ -1021,7 +1021,7 @@ struct HexEditLifecycleTests {
     }
 
     @Test("Ordner-Apply und Rückgängig schützen Hex-Tabs in allen Fenstern")
-    @MainActor func folderApplyAndUndoProtectAllWorkspaces() async throws {
+    @MainActor func serialRunnerIntegrationFolderApplyAndUndoProtectAllWorkspaces() async throws {
         let directory = testTemporaryDirectory()
             .appendingPathComponent("fastra-hex-folder-\(UUID().uuidString)",
                                     isDirectory: true)
@@ -1094,11 +1094,11 @@ struct HexEditLifecycleTests {
         #expect(!otherWorkspace.fileMutationIsInFlight(for: file))
 
         otherWorkspace.tabs[0].hexEditSession = editedSession()
-        #expect(!workspace.undoLastFolderApply())
+        #expect(!(await workspace.undoLastFolderApply()))
         #expect(try Data(contentsOf: file) == Data("bar sichtbar\n".utf8))
 
         otherWorkspace.tabs[0].hexEditSession.discard()
-        #expect(workspace.undoLastFolderApply())
+        #expect(await workspace.undoLastFolderApply())
         #expect(try Data(contentsOf: file) == Data("foo sichtbar\n".utf8))
         #expect(await waitUntil {
             !otherWorkspace.tabs[0].isLoading

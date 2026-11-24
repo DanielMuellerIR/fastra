@@ -2649,7 +2649,7 @@ enum SelfTest {
                         to: URL(fileURLWithPath: directory).appendingPathComponent("disk-undo-readiness.json"), options: .atomic)
                 }
                 try click("searchApprovalDiskUndo", in: search)
-                try await wait { !ws.folderApplying && (try? Data(contentsOf: a)) == diskOriginal }
+                try await wait { !ws.diskMutationIsActive && (try? Data(contentsOf: a)) == diskOriginal }
                 stage = "Veraltetes Sheet und reale neue Suchoption"
                 try await ready(.file)
                 try await approve(ws.navMatches[0].id)

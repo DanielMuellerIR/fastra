@@ -33,18 +33,18 @@ struct ApplyPendingFile: Codable, Equatable {
         static func create(nextTo source: URL) throws -> CleanupDirectory {
             let parent = source.deletingLastPathComponent()
             let parentFD = open(parent.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-            guard parentFD >= 0 else { throw posixError() }
+            guard parentFD >= 0 else { throw ApplyFileSystem.posixError() }
             defer { close(parentFD) }
             let name = ".fastra-pending-work-\(UUID().uuidString)"
-            guard mkdirat(parentFD, name, mode_t(0o700)) == 0 else { throw posixError() }
+            guard mkdirat(parentFD, name, mode_t(0o700)) == 0 else { throw ApplyFileSystem.posixError() }
             let workURL = parent.appendingPathComponent(name, isDirectory: true)
             do {
                 let descriptor = openat(parentFD, name,
-                                        O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
-                guard descriptor >= 0 else { throw posixError() }
+                                        ApplyFileSystem.childDirectoryReadFlags)
+                guard descriptor >= 0 else { throw ApplyFileSystem.posixError() }
                 defer { close(descriptor) }
                 var info = stat()
-                guard fstat(descriptor, &info) == 0 else { throw posixError() }
+                guard fstat(descriptor, &info) == 0 else { throw ApplyFileSystem.posixError() }
                 let result = CleanupDirectory(url: workURL,
                                               identity: FileIdentity(stat: info), preparedURL: source)
                 guard info.st_uid == getuid(), info.st_mode & mode_t(0o777) == mode_t(0o700) else {
@@ -53,7 +53,7 @@ struct ApplyPendingFile: Codable, Equatable {
                 // mkdir erbt unter macOS auch Allow-ACLs. Nur den eigenen neuen
                 // Ordner am gebundenen FD bereinigen; Modusbits allein sind nicht privat.
                 try removeExtendedACL(from: descriptor)
-                guard fsync(descriptor) == 0, fsync(parentFD) == 0 else { throw posixError() }
+                guard fsync(descriptor) == 0, fsync(parentFD) == 0 else { throw ApplyFileSystem.posixError() }
                 return result
             } catch {
                 // Ohne bestätigte Privatheit existiert nur ein Diagnosepfad,
@@ -64,8 +64,8 @@ struct ApplyPendingFile: Codable, Equatable {
         }
 
         func openBound() throws -> Int32 {
-            let descriptor = open(url.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
-            guard descriptor >= 0 else { throw posixError() }
+            let descriptor = open(url.path, ApplyFileSystem.childDirectoryReadFlags)
+            guard descriptor >= 0 else { throw ApplyFileSystem.posixError() }
             var info = stat()
             guard fstat(descriptor, &info) == 0,
                   FileIdentity(stat: info) == identity,
@@ -85,24 +85,14 @@ struct ApplyPendingFile: Codable, Equatable {
         }
 
         private static func removeExtendedACL(from descriptor: Int32) throws {
-            guard let empty = acl_init(0) else { throw posixError() }
+            guard let empty = acl_init(0) else { throw ApplyFileSystem.posixError() }
             defer { acl_free(UnsafeMutableRawPointer(empty)) }
-            guard acl_set_fd_np(descriptor, empty, ACL_TYPE_EXTENDED) == 0 else { throw posixError() }
+            guard acl_set_fd_np(descriptor, empty, ACL_TYPE_EXTENDED) == 0 else { throw ApplyFileSystem.posixError() }
             guard try hasNoExtendedACL(descriptor) else { throw POSIXError(.EACCES) }
         }
 
         private static func hasNoExtendedACL(_ descriptor: Int32) throws -> Bool {
-            guard let access = acl_get_fd_np(descriptor, ACL_TYPE_EXTENDED) else {
-                if errno == ENOENT { return true }
-                throw posixError()
-            }
-            defer { acl_free(UnsafeMutableRawPointer(access)) }
-            guard acl_valid(access) == 0 else { throw posixError() }
-            var entry: acl_entry_t?
-            if acl_get_entry(access, Int32(ACL_FIRST_ENTRY.rawValue), &entry) == 0 { return false }
-            // Darwin liefert für das Ende einer zuvor validierten ACL EINVAL.
-            guard errno == EINVAL else { throw posixError() }
-            return true
+            try !ApplyFileSystem.hasExtendedACL(descriptor) { _ in true }
         }
 
         func finish(snapshot: FileSnapshot?) throws {
@@ -110,31 +100,10 @@ struct ApplyPendingFile: Codable, Equatable {
             do { descriptor = try openBound() }
             catch let error as POSIXError where error.code == .ENOENT { return }
             defer { close(descriptor) }
-            // Die Aufzählung benutzt den gebundenen FD. Ein umbenannter oder
-            // ersetzter öffentlicher Ordnername kann keine fremden Kinder liefern.
-            let duplicate = dup(descriptor)
-            guard duplicate >= 0 else { throw posixError() }
-            guard let stream = fdopendir(duplicate) else {
-                let failure = posixError()
-                close(duplicate)
-                throw failure
+            let (remaining, limited) = try ApplyFileSystem.scanChildren(descriptor, limit: 3)
+            guard !limited else {
+                throw AtomicFileCommit.Failure.recoveryRequired(target: url, displaced: url)
             }
-            defer { closedir(stream) }
-            var remaining: [String] = []
-            errno = 0
-            while let item = readdir(stream) {
-                let name = withUnsafePointer(to: &item.pointee.d_name) {
-                    $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXNAMLEN) + 1) {
-                        String(cString: $0)
-                    }
-                }
-                if name != "." && name != ".." { remaining.append(name) }
-                guard remaining.count <= 3 else {
-                    throw AtomicFileCommit.Failure.recoveryRequired(target: url, displaced: url)
-                }
-                errno = 0
-            }
-            guard errno == 0 else { throw posixError() }
             if !remaining.isEmpty {
                 // Ein anderer eigener Auftrag desselben Bereichs darf bis zu
                 // seinem späteren Cleanup weiterleben, auch als Crash-Claim.
@@ -158,7 +127,7 @@ struct ApplyPendingFile: Codable, Equatable {
             }
             let parentFD = open(url.deletingLastPathComponent().path,
                                 O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-            guard parentFD >= 0 else { throw posixError() }
+            guard parentFD >= 0 else { throw ApplyFileSystem.posixError() }
             defer { close(parentFD) }
             var current = stat()
             guard fstatat(parentFD, url.lastPathComponent, &current, AT_SYMLINK_NOFOLLOW) == 0,
@@ -168,7 +137,7 @@ struct ApplyPendingFile: Codable, Equatable {
             // rmdir entfernt ausschließlich einen leeren Ordner. Das ist kein
             // rekursiver Cleanup fremder Inhalte und keine Same-UID-Abwehr.
             guard unlinkat(parentFD, url.lastPathComponent, AT_REMOVEDIR) == 0,
-                  fsync(parentFD) == 0 else { throw posixError() }
+                  fsync(parentFD) == 0 else { throw ApplyFileSystem.posixError() }
         }
     }
 
@@ -193,7 +162,7 @@ struct ApplyPendingFile: Codable, Equatable {
         let descriptor = open(url.path, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
                               mode_t(0o600))
         guard descriptor >= 0 else {
-            let failure = posixError()
+            let failure = ApplyFileSystem.posixError()
             do {
                 try work.finish(snapshot: nil)
                 if (try? lstatExists(work.url)) != false {
@@ -211,7 +180,7 @@ struct ApplyPendingFile: Codable, Equatable {
         do {
             try bytes.withUnsafeBytes { try POSIXBufferWriter.writeAll($0, to: descriptor) }
             var info = stat()
-            guard fstat(descriptor, &info) == 0 else { throw posixError() }
+            guard fstat(descriptor, &info) == 0 else { throw ApplyFileSystem.posixError() }
             return ApplyPendingFile(url: url,
                 snapshot: FileSnapshot(data: bytes, identity: FileIdentity(stat: info)), cleanupDirectory: work)
         } catch {
@@ -219,7 +188,7 @@ struct ApplyPendingFile: Codable, Equatable {
             let partial: FileSnapshot
             do {
                 var info = stat()
-                guard fstat(descriptor, &info) == 0 else { throw posixError() }
+                guard fstat(descriptor, &info) == 0 else { throw ApplyFileSystem.posixError() }
                 partial = try FileSnapshot.readSnapshotOnly(descriptor: descriptor, fileStat: info)
             } catch {
                 throw PreparationFailure(cause: failure, cleanupCause: error,
@@ -258,7 +227,7 @@ struct ApplyPendingFile: Codable, Equatable {
         let file = ApplyPendingFile(url: anchor, snapshot: snapshot, cleanupDirectory: work)
         // Der Zielname gehört zum gebundenen privaten Ordner. Die Quelle wird
         // danach nochmals gegen den vom Standardcommitter gehaltenen FD geprüft.
-        guard linkat(AT_FDCWD, preparedURL.path, workFD, "anchor", 0) == 0 else { throw posixError() }
+        guard linkat(AT_FDCWD, preparedURL.path, workFD, "anchor", 0) == 0 else { throw ApplyFileSystem.posixError() }
         onCreate?(file)
         var bound = stat()
         guard fstat(descriptor, &bound) == 0,
@@ -272,7 +241,7 @@ struct ApplyPendingFile: Codable, Equatable {
         guard let work = cleanupDirectory else { throw recoveryFailure() }
         let descriptor = try work.openBound()
         defer { close(descriptor) }
-        guard fsync(descriptor) == 0 else { throw Self.posixError() }
+        guard fsync(descriptor) == 0 else { throw ApplyFileSystem.posixError() }
     }
 
     var isValid: Bool {
@@ -298,11 +267,11 @@ struct ApplyPendingFile: Codable, Equatable {
         }
         defer { close(workFD) }
         let sourceFD = open(url.deletingLastPathComponent().path,
-                            O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
-        guard sourceFD >= 0 else { throw Self.posixError() }
+                            ApplyFileSystem.childDirectoryReadFlags)
+        guard sourceFD >= 0 else { throw ApplyFileSystem.posixError() }
         defer { close(sourceFD) }
         let claim = claimURL.lastPathComponent
-        let flags = UInt32(RENAME_EXCL) | UInt32(RENAME_NOFOLLOW_ANY) | UInt32(RENAME_RESOLVE_BENEATH)
+        let flags = ApplyFileSystem.exclusiveRenameFlags
         // Vorhandene Claims gehören zu einem unterbrochenen Aufruf. Kein
         // erneutes Rename darf sie überschreiben oder einen Fremdstand löschen.
         let resumingClaim = try Self.childExists(in: workFD, name: claim)
@@ -312,7 +281,7 @@ struct ApplyPendingFile: Codable, Equatable {
                 return
             }
             guard renameatx_np(sourceFD, url.lastPathComponent, workFD, claim, flags) == 0 else {
-                throw Self.posixError()
+                throw ApplyFileSystem.posixError()
             }
         }
         try afterClaim?(claimURL)
@@ -324,7 +293,7 @@ struct ApplyPendingFile: Codable, Equatable {
             throw recoveryFailure(displaced: restored ? url : claimURL)
         }
         guard unlinkat(workFD, claim, 0) == 0, fsync(workFD) == 0,
-              fsync(sourceFD) == 0 else { throw Self.posixError() }
+              fsync(sourceFD) == 0 else { throw ApplyFileSystem.posixError() }
         try work.finish(snapshot: snapshot)
     }
 
@@ -335,7 +304,7 @@ struct ApplyPendingFile: Codable, Equatable {
     private static func readSnapshot(in directoryFD: Int32, name: String,
                                      expected: FileSnapshot) throws -> FileSnapshot {
         let descriptor = openat(directoryFD, name, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)
-        guard descriptor >= 0 else { throw posixError() }
+        guard descriptor >= 0 else { throw ApplyFileSystem.posixError() }
         defer { close(descriptor) }
         var info = stat()
         guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
@@ -348,17 +317,13 @@ struct ApplyPendingFile: Codable, Equatable {
         var info = stat()
         if fstatat(directoryFD, name, &info, AT_SYMLINK_NOFOLLOW) == 0 { return true }
         if errno == ENOENT { return false }
-        throw posixError()
+        throw ApplyFileSystem.posixError()
     }
 
     private static func lstatExists(_ url: URL) throws -> Bool {
         var info = stat()
         if lstat(url.path, &info) == 0 { return true }
         if errno == ENOENT { return false }
-        throw posixError()
-    }
-
-    private static func posixError() -> POSIXError {
-        POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        throw ApplyFileSystem.posixError()
     }
 }

@@ -11,8 +11,8 @@ pub(super) struct Boot {
     loaded: Cell<bool>,
     started: Cell<bool>,
     restoring: Cell<bool>,
-    restored: Cell<bool>,
     routing_open: Cell<bool>,
+    startup_loads: Rc<crate::desktop_open::StartupLoads>,
     generation: Cell<u64>,
     requests: RefCell<VecDeque<Request>>,
     windows: RefCell<VecDeque<store::Window>>,
@@ -26,7 +26,8 @@ pub(super) fn open(state: &Rc<State>, app: &gtk::Application, files: Vec<gio::Fi
         files,
         during_start: !state.boot.started.get()
             || state.boot.restoring.get()
-            || state.boot.routing_open.get(),
+            || state.boot.routing_open.get()
+            || state.boot.startup_loads.active(),
     });
 }
 pub(super) fn request(state: &Rc<State>, app: &gtk::Application, request: Request) {
@@ -100,7 +101,7 @@ fn begin(state: &Rc<State>, app: &gtk::Application) {
         let request = state.boot.requests.borrow_mut().pop_front();
         let Some(request) = request else { break };
         if let Request::Open { files, during_start } = request {
-            if during_start && state.boot.restored.get() {
+            if during_start {
                 open_after_restore(state, app, files);
                 return;
             }
@@ -122,6 +123,7 @@ fn open_after_restore(state: &Rc<State>, app: &gtk::Application, files: Vec<gio:
     let hold = app.hold();
     crate::desktop_open::open_after_restore(
         files,
+        state.boot.startup_loads.clone(),
         move || current.boot.generation.get() == generation,
         move || create(&owner, &window_app),
         move || {
@@ -138,6 +140,7 @@ pub(super) fn cancel(state: &Rc<State>) {
         .set(state.boot.generation.get().wrapping_add(1));
     state.boot.restoring.set(false);
     state.boot.routing_open.set(false);
+    state.boot.startup_loads.clear();
     state.boot.started.set(true);
     state.boot.requests.borrow_mut().clear();
     state.boot.windows.borrow_mut().clear();
@@ -174,7 +177,6 @@ fn next_window(state: &Rc<State>, generation: u64) {
     }) = prepared
     else {
         state.boot.restoring.set(false);
-        state.boot.restored.set(true);
         state.boot.hold.borrow_mut().take();
         if let Some(app) = state.app.borrow().upgrade() {
             begin(state, &app);

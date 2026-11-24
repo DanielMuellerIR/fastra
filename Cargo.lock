@@ -400,7 +400,7 @@ dependencies = [
 
 [[package]]
 name = "fastra-linux"
-version = "1.242.84"
+version = "1.242.87"
 dependencies = [
  "fastra-core",
  "fastra-diff",

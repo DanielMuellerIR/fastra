@@ -257,6 +257,7 @@ a regex such as `foo|bar`. Existing capture group numbers stay the same.
 - When a file changes, Fastra clears approvals for the affected search. Search again, review the current matches, and approve them before applying a new preview.
 - On Linux, an earlier external-change notice clears when Apply, Undo or file recovery updates an open editor without unsaved changes to the verified disk version. Fastra reports subsequent external changes as they occur.
 - Planning, backups and writes run in the background with progress feedback. “Cancel Apply” stops before the write phase without changing targets. A write phase that has already started finishes safely. Writes are **atomic per file** and create backups automatically. A failed operation across several files may have partially completed. “Undo” restores files actually changed byte for byte and stops on later changes or missing permissions for the restore.
+- On macOS, Undo waits for the latest edits from open visual editors. Unsaved changes or ongoing loads in affected documents block the operation. File verification runs in the background. Affected editors remain protected until their contents have been reloaded and verified.
 - If the backup location changes during a file operation on macOS, Fastra stops and reports confirmed file changes and reachable backups. Undo or Clean Up is available for that operation only when Fastra can verify the recovery data. This also applies to text workflows that operate on files.
 - Undo also protects a file that has since been replaced, even when its text is identical. If a backup is missing, read access is denied or its contents differ from the original, Fastra reports the affected file, the cause and the full backup path. Keep the listed files until any backup or cleanup error is resolved.
 - Before the first file replacement, Fastra verifies and synchronizes the original backups. If Fastra detects that the backup directory was replaced when you cancel during preparation, it reports the error and leaves the directories in place. Saved session progress is also verified and synchronized.
@@ -890,6 +891,11 @@ continue typing.
 When Markdown delimiters cannot express the selected formatting unambiguously,
 Fastra uses allowed HTML tags in the source so that saving and reopening preserve
 its appearance.
+On Mac, Fastra checks the visible text, inline formatting, and intentional
+line breaks in the generated Markdown before saving from WYSIWYG. If the check
+finds a difference, your edits stay in the open editor. Use **Copy Diagnostic**
+to include the Fastra version and the type of difference in a report. The
+diagnostic contains no document content.
 Protected HTML and math content cannot be formatted in WYSIWYG mode. Fastra
 explains this before making changes; edit these parts in the Markdown source.
 
@@ -1125,9 +1131,12 @@ them, including from the project sidebar, Fastra offers conversion or **Open as
 Folder**. A format may support both files and packages; the installed tool's
 catalog determines which are recognized.
 
-**Where the result goes:** right next to the original. If only text was
-produced, as `Name.md`. If images were extracted as well, as a folder `Name`
-containing `Name.md` and an `images` subfolder. If that name is already taken —
+**Where the result goes:** usually right next to the original. If Fastra can’t
+save there, for example with an Apple Mail attachment, **Save Markdown As …**
+prompts you to choose a folder for the Markdown and images. **Cancel** saves
+nothing. A text-only result is saved as `Name.md`. If images were extracted as
+well, the result is a folder `Name` containing `Name.md` and an `images`
+subfolder. If that name is already taken —
 for example because `Report.rtf` and `Report.docx` sit side by side — Fastra
 falls back to `Report-2`. Existing files are never overwritten, and the original
 document stays unchanged.

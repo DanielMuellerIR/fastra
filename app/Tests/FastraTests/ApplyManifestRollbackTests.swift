@@ -535,6 +535,32 @@ private func backupRotationSkipsClaimedSession(hasManifest: Bool) throws {
     #expect(try Data(contentsOf: fixture.target) == Data("bar".utf8))
 }
 
+@Test("Altersbereinigung bewahrt ungewöhnliche Manifeste und läuft weiter", arguments: ["link", "large"])
+private func backupRotationSkipsInvalidManifest(kind: String) throws {
+    let fixture = try makePendingIdentityFixture()
+    let fm = FileManager.default
+    defer { try? fm.removeItem(at: fixture.directory) }
+    let session = try ApplyEngine.apply(plan: fixture.plan, backupRoot: fixture.backups, cleanupOlderThan: nil)
+    let directory = session.sessionDirectory
+    let manifest = directory.appendingPathComponent("manifest.json")
+    let backup = directory.appendingPathComponent(try #require(session.entries.first).backupRelativePath)
+    let before = try FileSnapshot.readSnapshotOnly(from: backup)
+    let foreign = fixture.directory.appendingPathComponent("manifest-copy")
+    if kind == "link" {
+        try fm.moveItem(at: manifest, to: foreign)
+        try fm.createSymbolicLink(at: manifest, withDestinationURL: foreign)
+    } else {
+        let handle = try FileHandle(forWritingTo: manifest)
+        try handle.truncate(atOffset: UInt64(ApplyRecoverySessionReader.maximumManifestBytes) + 1)
+        try handle.close()
+    }
+    try fm.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000_000)],
+                         ofItemAtPath: directory.path)
+    try ApplyEngine.cleanupBackups(maxAge: 86_400, in: fixture.backups)
+    #expect(try FileSnapshot.readSnapshotOnly(from: backup) == before)
+    if kind == "link" { #expect(try fm.destinationOfSymbolicLink(atPath: manifest.path) == foreign.path) }
+}
+
 @Test("Sichere bisherige Applied-Manifeste bleiben ohne Anker rückgängig")
 private func pendingIdentityKeepsExistingAppliedManifestCompatible() throws {
     let fixture = try makePendingIdentityFixture()

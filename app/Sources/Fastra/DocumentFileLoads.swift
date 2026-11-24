@@ -443,13 +443,14 @@ final class DocumentFileLoads {
                                 loader: () -> (@Sendable (URL) throws -> FileLoader.LoadedFile),
                                 completion: (([URL]) -> Void)? = nil) {
         let changed = Set(changedURLs.map { $0.standardizedFileURL.path })
-        let targets = adapter.targetsForReload(changedPaths: changed)
+        let targets = adapter.targetsForReload(changedPaths: changed).compactMap { target in
+            target.url.map { (target, $0) }
+        }
         let loader = loader()
         var remaining = targets.count
         var failed: [URL] = []
         guard remaining > 0 else { completion?([]); return }
-        for target in targets {
-            guard let url = target.url else { continue }
+        for (target, url) in targets {
             let read = beginReload(target: target, policy: .afterDiskMutation, completion: { accepted in
                 if !accepted { failed.append(url) }
                 remaining -= 1

@@ -50,13 +50,13 @@ final class ApplyPersistenceBarriers {
         // nicht zuverlässig auf. Deshalb nur den vorhandenen Teil auflösen.
         while lstat(existing.path, &info) != 0 {
             guard errno == ENOENT, existing.path != "/" else {
-                throw Failure(primary: Self.posixError(), closeErrors: [])
+                throw Failure(primary: ApplyFileSystem.posixError(), closeErrors: [])
             }
             missing.insert(existing.lastPathComponent, at: 0)
             existing.deleteLastPathComponent()
         }
         guard let resolved = realpath(existing.path, nil) else {
-            throw Failure(primary: Self.posixError(), closeErrors: [])
+            throw Failure(primary: ApplyFileSystem.posixError(), closeErrors: [])
         }
         defer { free(resolved) }
         let anchor = URL(fileURLWithPath: String(cString: resolved), isDirectory: true)
@@ -79,20 +79,20 @@ final class ApplyPersistenceBarriers {
                 break
             }
             guard errno == ENOENT, anchor.path != "/" else {
-                throw Failure(primary: Self.posixError(), closeErrors: [])
+                throw Failure(primary: ApplyFileSystem.posixError(), closeErrors: [])
             }
             missing.insert(anchor.lastPathComponent, at: 0)
             anchor.deleteLastPathComponent()
         }
         missingComponents = missing
-        let descriptor = open(anchor.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        let descriptor = open(anchor.path, ApplyFileSystem.childDirectoryReadFlags)
         guard descriptor >= 0 else {
-            throw Failure(primary: Self.posixError(), closeErrors: [])
+            throw Failure(primary: ApplyFileSystem.posixError(), closeErrors: [])
         }
         var info = stat()
         guard fstat(descriptor, &info) == 0 else {
-            let primary = Self.posixError()
-            let closeErrors = close(descriptor) == 0 ? [] : [Self.posixError()]
+            let primary = ApplyFileSystem.posixError()
+            let closeErrors = close(descriptor) == 0 ? [] : [ApplyFileSystem.posixError()]
             throw Failure(primary: primary, closeErrors: closeErrors)
         }
         directories = [Directory(url: anchor, descriptor: descriptor,
@@ -115,7 +115,7 @@ final class ApplyPersistenceBarriers {
             try validateDirectories()
             let parent = directories.count - 1
             if mkdirat(directories[parent].descriptor, component, mode_t(0o700)) != 0 {
-                guard errno == EEXIST, index < missingComponents.count - 1 else { throw Self.posixError() }
+                guard errno == EEXIST, index < missingComponents.count - 1 else { throw ApplyFileSystem.posixError() }
             }
             try appendDirectory(component, parent: parent)
         }
@@ -123,7 +123,7 @@ final class ApplyPersistenceBarriers {
         self.sessionIndex = sessionIndex
         for name in ["files", "staged"] {
             try validateDirectories()
-            guard mkdirat(directories[sessionIndex].descriptor, name, mode_t(0o700)) == 0 else { throw Self.posixError() }
+            guard mkdirat(directories[sessionIndex].descriptor, name, mode_t(0o700)) == 0 else { throw ApplyFileSystem.posixError() }
             try appendDirectory(name, parent: sessionIndex)
             if name == "files" { filesIndex = directories.count - 1 }
             else { stagedIndex = directories.count - 1 }
@@ -135,12 +135,12 @@ final class ApplyPersistenceBarriers {
         try validateDirectories()
         let parentDirectory = directories[parent]
         let descriptor = openat(parentDirectory.descriptor, name,
-            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-        guard descriptor >= 0 else { throw Self.posixError() }
+            ApplyFileSystem.childDirectoryReadFlags)
+        guard descriptor >= 0 else { throw ApplyFileSystem.posixError() }
         var info = stat()
         guard fstat(descriptor, &info) == 0 else {
-            let primary = Self.posixError()
-            let closeErrors = close(descriptor) == 0 ? [] : [Self.posixError()]
+            let primary = ApplyFileSystem.posixError()
+            let closeErrors = close(descriptor) == 0 ? [] : [ApplyFileSystem.posixError()]
             throw Failure(primary: primary, closeErrors: closeErrors)
         }
         directories.append(Directory(url: parentDirectory.url.appendingPathComponent(name),
@@ -169,12 +169,12 @@ final class ApplyPersistenceBarriers {
                                  synchronize: Bool = true, requiringIdentity: Bool = false) throws -> stat {
         try validateDirectories()
         let descriptor = openat(directory.descriptor, name,
-            O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-        guard descriptor >= 0 else { throw Self.posixError() }
+            ApplyFileSystem.childFileReadFlags)
+        guard descriptor >= 0 else { throw ApplyFileSystem.posixError() }
         var failure: Error?
         var before = stat()
         do {
-            guard fstat(descriptor, &before) == 0 else { throw Self.posixError() }
+            guard fstat(descriptor, &before) == 0 else { throw ApplyFileSystem.posixError() }
             guard (before.st_mode & S_IFMT) == S_IFREG else {
                 throw FileSnapshotReadError.notRegularFile
             }
@@ -197,7 +197,7 @@ final class ApplyPersistenceBarriers {
             }
             try validateDirectories()
         } catch { failure = error }
-        let closeError: Error? = close(descriptor) == 0 ? nil : Self.posixError()
+        let closeError: Error? = close(descriptor) == 0 ? nil : ApplyFileSystem.posixError()
         if let failure {
             throw Failure(primary: failure, closeErrors: closeError.map { [$0] } ?? [])
         }
@@ -211,7 +211,7 @@ final class ApplyPersistenceBarriers {
         var named = stat()
         guard fstat(descriptor, &current) == 0,
               fstatat(directory.descriptor, name, &named, AT_SYMLINK_NOFOLLOW) == 0 else {
-            throw Self.posixError()
+            throw ApplyFileSystem.posixError()
         }
         guard (named.st_mode & S_IFMT) == S_IFREG,
               FileSnapshot.describesSameOpenedVersion(version, current),
@@ -232,7 +232,7 @@ final class ApplyPersistenceBarriers {
                 && (includingFiles || index != filesIndex) {
             var opened = stat()
             var named = stat()
-            guard fstat(directory.descriptor, &opened) == 0 else { throw Self.posixError() }
+            guard fstat(directory.descriptor, &opened) == 0 else { throw ApplyFileSystem.posixError() }
             let result: Int32
             if let parent = directory.parentIndex {
                 result = fstatat(directories[parent].descriptor, directory.url.lastPathComponent,
@@ -240,7 +240,7 @@ final class ApplyPersistenceBarriers {
             } else {
                 result = lstat(directory.url.path, &named)
             }
-            guard result == 0 else { throw Self.posixError() }
+            guard result == 0 else { throw ApplyFileSystem.posixError() }
             guard (opened.st_mode & S_IFMT) == S_IFDIR,
                   (named.st_mode & S_IFMT) == S_IFDIR,
                   FileIdentity(stat: opened) == directory.identity,
@@ -257,7 +257,7 @@ final class ApplyPersistenceBarriers {
         directories.removeAll()
         var closeErrors: [Error] = []
         for descriptor in closing {
-            if close(descriptor) != 0 { closeErrors.append(Self.posixError()) }
+            if close(descriptor) != 0 { closeErrors.append(ApplyFileSystem.posixError()) }
         }
         return closeErrors
     }
@@ -287,18 +287,18 @@ final class ApplyPersistenceBarriers {
         let directory = directories[index]
         let descriptor = openat(directory.descriptor, name,
             O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, mode_t(0o600))
-        guard descriptor >= 0 else { throw Self.posixError() }
+        guard descriptor >= 0 else { throw ApplyFileSystem.posixError() }
         var failure: Error?
         do {
             try data.withUnsafeBytes { try POSIXBufferWriter.writeAll($0, to: descriptor) }
             var info = stat()
-            guard fstat(descriptor, &info) == 0 else { throw Self.posixError() }
+            guard fstat(descriptor, &info) == 0 else { throw ApplyFileSystem.posixError() }
             artifacts.append(Artifact(directoryIndex: index, name: name,
                 snapshot: FileSnapshot(data: data, identity: FileIdentity(stat: info)), birthtime: info.st_birthtimespec))
             try validateFile(descriptor, named: name, in: directory, version: info)
             try validateDirectories()
         } catch { failure = error }
-        let closeErrors = close(descriptor) == 0 ? [] : [Self.posixError()]
+        let closeErrors = close(descriptor) == 0 ? [] : [ApplyFileSystem.posixError()]
         if let failure { throw Failure(primary: failure, closeErrors: closeErrors) }
         if let first = closeErrors.first { throw Failure(primary: first, closeErrors: []) }
     }
@@ -309,7 +309,7 @@ final class ApplyPersistenceBarriers {
         try validateDirectories()
         let directory = directories[filesIndex]
         var named = stat()
-        guard fstatat(directory.descriptor, name, &named, AT_SYMLINK_NOFOLLOW) == 0 else { throw Self.posixError() }
+        guard fstatat(directory.descriptor, name, &named, AT_SYMLINK_NOFOLLOW) == 0 else { throw ApplyFileSystem.posixError() }
         if let verified = backupVersions[name], named.st_mode & S_IFMT == S_IFREG,
            !requiringIdentity || (expected.identity != nil && FileIdentity(stat: named) == expected.identity),
            FileSnapshot.describesSameOpenedVersion(verified, named),
@@ -329,13 +329,13 @@ final class ApplyPersistenceBarriers {
         try validateDirectories()
         let directory = directories[stagedIndex]
         let descriptor = openat(directory.descriptor, name,
-            O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-        guard descriptor >= 0 else { throw Self.posixError() }
+            ApplyFileSystem.childFileReadFlags)
+        guard descriptor >= 0 else { throw ApplyFileSystem.posixError() }
         var failure: Error?
         var bytes = Data()
         do {
             var info = stat()
-            guard fstat(descriptor, &info) == 0 else { throw Self.posixError() }
+            guard fstat(descriptor, &info) == 0 else { throw ApplyFileSystem.posixError() }
             guard info.st_mode & S_IFMT == S_IFREG else { throw FileSnapshotReadError.notRegularFile }
             guard info.st_size == expected.byteCount else { throw CocoaError(.fileReadCorruptFile) }
             let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
@@ -351,7 +351,7 @@ final class ApplyPersistenceBarriers {
             try validateFile(descriptor, named: name, in: directory, version: info)
             try validateDirectories()
         } catch { failure = error }
-        let closeErrors = close(descriptor) == 0 ? [] : [Self.posixError()]
+        let closeErrors = close(descriptor) == 0 ? [] : [ApplyFileSystem.posixError()]
         if let failure { throw Failure(primary: failure, closeErrors: closeErrors) }
         if let first = closeErrors.first { throw Failure(primary: first, closeErrors: []) }
         return bytes
@@ -376,7 +376,7 @@ final class ApplyPersistenceBarriers {
                 if fstatat(directory.descriptor, "manifest.json", &info, AT_SYMLINK_NOFOLLOW) == 0 {
                     throw FileSnapshotReadError.changedDuringRead
                 }
-                guard errno == ENOENT else { throw Self.posixError() }
+                guard errno == ENOENT else { throw ApplyFileSystem.posixError() }
             }
         }
         do {
@@ -389,7 +389,7 @@ final class ApplyPersistenceBarriers {
             try validateBinding?()
             try validatePreviousManifest()
             guard renameat(directory.descriptor, temporary, directory.descriptor, "manifest.json") == 0 else {
-                throw Self.posixError()
+                throw ApplyFileSystem.posixError()
             }
             let written = artifacts.removeLast()
             artifacts.removeAll { $0.directoryIndex == sessionIndex && $0.name == "manifest.json" }
@@ -409,14 +409,14 @@ final class ApplyPersistenceBarriers {
         guard let sessionIndex else { throw POSIXError(.ENOENT) }
         try validateDirectories()
         let directory = directories[sessionIndex]
-        let descriptor = openat(directory.descriptor, "manifest.json", O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        let descriptor = openat(directory.descriptor, "manifest.json", ApplyFileSystem.childFileReadFlags)
         if descriptor < 0 {
             if errno == ENOENT { return }
-            throw Self.posixError()
+            throw ApplyFileSystem.posixError()
         }
         defer { close(descriptor) }
         var info = stat()
-        guard fstat(descriptor, &info) == 0 else { throw Self.posixError() }
+        guard fstat(descriptor, &info) == 0 else { throw ApplyFileSystem.posixError() }
         guard info.st_mode & S_IFMT == S_IFREG else { throw FileSnapshotReadError.notRegularFile }
         let snapshot = try FileSnapshot.readSnapshotOnly(descriptor: descriptor, fileStat: info,
             byteLimit: UInt64(data.count))
@@ -445,16 +445,16 @@ final class ApplyPersistenceBarriers {
     private func remove(_ artifact: Artifact, afterClaim: ((URL) throws -> Void)?) throws {
         let directory = directories[artifact.directoryIndex]
         let claim = ".cleanup-\(UUID().uuidString)"
-        let flags = UInt32(RENAME_EXCL) | UInt32(RENAME_NOFOLLOW_ANY) | UInt32(RENAME_RESOLVE_BENEATH)
+        let flags = ApplyFileSystem.exclusiveRenameFlags
         guard renameatx_np(directory.descriptor, artifact.name, directory.descriptor, claim, flags) == 0 else {
             if errno == ENOENT { return }
-            throw Self.posixError()
+            throw ApplyFileSystem.posixError()
         }
         if let afterClaim {
             let currentDirectory = reachablePath(of: directory).map { URL(fileURLWithPath: $0) } ?? directory.url
             try afterClaim(currentDirectory.appendingPathComponent(claim))
         }
-        let descriptor = openat(directory.descriptor, claim, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        let descriptor = openat(directory.descriptor, claim, ApplyFileSystem.childFileReadFlags)
         var verified = false
         if descriptor >= 0 {
             var info = stat()
@@ -473,7 +473,7 @@ final class ApplyPersistenceBarriers {
             _ = renameatx_np(directory.descriptor, claim, directory.descriptor, artifact.name, flags)
             throw FileSnapshotReadError.changedDuringRead
         }
-        guard unlinkat(directory.descriptor, claim, 0) == 0 else { throw Self.posixError() }
+        guard unlinkat(directory.descriptor, claim, 0) == 0 else { throw ApplyFileSystem.posixError() }
         try FileDurability.synchronizeDirectory(directory.descriptor)
     }
 
@@ -482,9 +482,9 @@ final class ApplyPersistenceBarriers {
         guard let parent = directory.parentIndex else { throw POSIXError(.EINVAL) }
         let parentFD = directories[parent].descriptor
         let claim = ".cleanup-\(UUID().uuidString)"
-        let flags = UInt32(RENAME_EXCL) | UInt32(RENAME_NOFOLLOW_ANY) | UInt32(RENAME_RESOLVE_BENEATH)
+        let flags = ApplyFileSystem.exclusiveRenameFlags
         guard renameatx_np(parentFD, directory.url.lastPathComponent, parentFD, claim, flags) == 0 else {
-            throw Self.posixError()
+            throw ApplyFileSystem.posixError()
         }
         var info = stat()
         guard fstatat(parentFD, claim, &info, AT_SYMLINK_NOFOLLOW) == 0,
@@ -493,7 +493,7 @@ final class ApplyPersistenceBarriers {
             throw FileSnapshotReadError.changedDuringRead
         }
         guard unlinkat(parentFD, claim, AT_REMOVEDIR) == 0 else {
-            let failure = Self.posixError()
+            let failure = ApplyFileSystem.posixError()
             _ = renameatx_np(parentFD, claim, parentFD, directory.url.lastPathComponent, flags)
             throw failure
         }
@@ -525,7 +525,7 @@ final class ApplyPersistenceBarriers {
         let directory = directories[filesIndex]
         guard let path = reachablePath(of: directory) else { return [] }
         return artifacts.filter { $0.directoryIndex == filesIndex }.compactMap { artifact in
-            let descriptor = openat(directory.descriptor, artifact.name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+            let descriptor = openat(directory.descriptor, artifact.name, ApplyFileSystem.childFileReadFlags)
             guard descriptor >= 0 else { return nil }
             defer { close(descriptor) }
             var info = stat()
@@ -638,9 +638,5 @@ final class ApplyPersistenceBarriers {
             try binding.writeManifest(data, allowingExistingManifest: true)
             try binding.finish()
         } catch { try binding.finish(after: Failure(primary: error, closeErrors: [])) }
-    }
-
-    private static func posixError() -> POSIXError {
-        POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }
 }

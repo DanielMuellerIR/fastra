@@ -892,6 +892,51 @@ func savedImageDeletionWaitsForSave() throws {
     }
 }
 
+@Test("Bestätigtes Wiederholen hebt die vorgemerkte Bildlöschung auf")
+func acceptedOnDiskRedoClearsPendingSavedCleanup() throws {
+    try withTempDir { directory in
+        let stored = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"),
+                                                          documentURL: directory.appendingPathComponent("test.md"))
+        let effect = MarkdownImageUndoSideEffect(images: [stored], alreadySaved: true)
+        try #require(effect.undo())
+        try #require(effect.redo())
+        try #require(effect.documentSaved(visible: false))
+        #expect(try Data(contentsOf: stored.fileURL) == tinyPNG())
+    }
+}
+
+@Test("Der Quelltext-Redo erhält ein schon gespeichertes Bild nach manuellem Entfernen des Verweises")
+@MainActor
+func sourceRedoKeepsSavedImageSerialRunnerIntegration() async throws {
+    try await withImageUndoDirectory { directory in
+        let document = directory.appendingPathComponent("test.md")
+        let image = try MarkdownImageStore.storePastedData(.init(data: tinyPNG(), fileExtension: "png"),
+                                                         documentURL: document)
+        let textView = TextView(string: "")
+        textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: image.link)
+        MarkdownImageUndo.register(textView: textView, insertion: image.link,
+                                   storedImages: [image], documentURL: document)
+        let manager = try #require(textView.undoManager as? CEUndoManager)
+        try Data(image.link.utf8).write(to: document)
+        manager.fastraDocumentSaved(image.link, at: document)
+        try await awaitImageHistory(textView)
+
+        manager.undo()
+        try await awaitImageHistory(textView)
+        #expect(textView.string.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: image.fileURL.path))
+        manager.redo()
+        try await awaitImageHistory(textView)
+        try #require(textView.string == image.link)
+
+        textView.replaceCharacters(in: NSRange(location: 0, length: (image.link as NSString).length), with: "")
+        try Data().write(to: document)
+        manager.fastraDocumentSaved(textView.string, at: document)
+        try await awaitImageHistory(textView)
+        #expect(try Data(contentsOf: image.fileURL) == tinyPNG())
+    }
+}
+
 @Test("Ein vorhandenes Redo-Bild bewahrt den ausstehenden Cleanup bis zur tatsächlichen Textannahme")
 func onDiskRedoKeepsPendingSavedCleanup() throws {
     try withTempDir { directory in

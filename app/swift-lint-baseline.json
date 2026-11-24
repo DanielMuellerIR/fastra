@@ -733,7 +733,7 @@
     },
     {
       "file": "app/Sources/Fastra/Workspace.swift",
-      "line": 6656,
+      "line": 6671,
       "character": 46,
       "rule": "force_unwrapping",
       "reason": "Force unwrapping should be avoided",
@@ -1045,7 +1045,7 @@
     },
     {
       "file": "app/Sources/Fastra/ApplyEngine.swift",
-      "line": 378,
+      "line": 348,
       "character": 55,
       "rule": "force_unwrapping",
       "reason": "Force unwrapping should be avoided",
@@ -1365,7 +1365,7 @@
     },
     {
       "file": "app/Sources/Fastra/ApplyEngine.swift",
-      "line": 917,
+      "line": 889,
       "character": 77,
       "rule": "force_unwrapping",
       "reason": "Force unwrapping should be avoided",
@@ -1509,7 +1509,7 @@
     },
     {
       "file": "app/Sources/Fastra/MarkdownImageUndo.swift",
-      "line": 182,
+      "line": 186,
       "character": 89,
       "rule": "force_unwrapping",
       "reason": "Force unwrapping should be avoided",
@@ -1533,7 +1533,7 @@
     },
     {
       "file": "app/Sources/Fastra/ApplyEngine.swift",
-      "line": 376,
+      "line": 346,
       "character": 9,
       "rule": "force_try",
       "reason": "Force tries should be avoided",

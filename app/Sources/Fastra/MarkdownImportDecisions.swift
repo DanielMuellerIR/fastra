@@ -1,9 +1,24 @@
 import AppKit
 import Foundation
 
-/// Datei- und Paketentscheidungen eines Workspace, einschließlich ihrer Dialoge.
+/// Entscheidungen und Dialoge zur Markdown-Umwandlung eines Workspace.
 /// Konstruktion ist fensterlos; Aufrufe erfolgen im Main-Vertrag des Workspace.
 final class MarkdownImportDecisions {
+    var destinationProvider: (() -> URL?)?
+
+    func askDestination() -> URL? {
+        if let destinationProvider { return destinationProvider() }
+
+        let panel = NSOpenPanel()
+        panel.title = L10n.string("Markdown speichern unter …")
+        panel.message = L10n.string("Fastra kann im Ordner des Originals nichts speichern. Wähle einen Ordner für das Markdown-Dokument und eventuell extrahierte Bilder.")
+        panel.prompt = L10n.string("Hier speichern")
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
     enum FileChoice {
         case convert
         case openAsText

@@ -39,8 +39,8 @@ final class ApplyRecoveryDirectoryClaim {
         // die Symlinknamen /var und /tmp verkürzen und No-follow verletzen.
         rootURL = root
         self.sessionName = sessionName
-        let rootFD = open(rootURL.path, Self.openFlags | O_NOFOLLOW_ANY)
-        guard rootFD >= 0 else { throw Self.posixError() }
+        let rootFD = open(rootURL.path, ApplyFileSystem.rootDirectoryReadFlags)
+        guard rootFD >= 0 else { throw ApplyFileSystem.posixError() }
         var sessionFD: Int32?
         do {
             let rootInfo = try Self.protectedDirectory(rootFD)
@@ -48,8 +48,8 @@ final class ApplyRecoveryDirectoryClaim {
             if let expectedRootIdentity, expectedRootIdentity != actualRootIdentity {
                 throw Rejection.changedDirectory
             }
-            let descriptor = openat(rootFD, sessionName, Self.openFlags | O_NOFOLLOW)
-            guard descriptor >= 0 else { throw Self.posixError() }
+            let descriptor = openat(rootFD, sessionName, ApplyFileSystem.childDirectoryReadFlags)
+            guard descriptor >= 0 else { throw ApplyFileSystem.posixError() }
             sessionFD = descriptor
             let sessionInfo = try Self.protectedDirectory(descriptor)
             let actualSessionIdentity = FileIdentity(stat: sessionInfo)
@@ -58,7 +58,7 @@ final class ApplyRecoveryDirectoryClaim {
             }
             // Kein Warten und kein eigenes Lockfile: getrennte FDs und Prozesse
             // konkurrieren um genau diese geöffnete Verzeichnisdatei.
-            guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else { throw Self.posixError() }
+            guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else { throw ApplyFileSystem.posixError() }
             rootIdentity = actualRootIdentity
             sessionIdentity = actualSessionIdentity
         } catch {
@@ -86,14 +86,14 @@ final class ApplyRecoveryDirectoryClaim {
         }
         // Erneutes No-follow-Öffnen erkennt auch einen nachträglich eingefügten
         // Elternsymlink. lstat allein würde solche Zwischenkomponenten folgen.
-        let namedRoot = open(rootURL.path, Self.openFlags | O_NOFOLLOW_ANY)
-        guard namedRoot >= 0 else { throw Self.posixError() }
+        let namedRoot = open(rootURL.path, ApplyFileSystem.rootDirectoryReadFlags)
+        guard namedRoot >= 0 else { throw ApplyFileSystem.posixError() }
         var failure: Error?
         do {
             let info = try Self.protectedDirectory(namedRoot)
             var namedSession = stat()
             guard fstatat(rootDescriptor, sessionName, &namedSession, AT_SYMLINK_NOFOLLOW) == 0 else {
-                throw Self.posixError()
+                throw ApplyFileSystem.posixError()
             }
             try Self.requireProtectedDirectory(namedSession)
             guard FileIdentity(stat: info) == rootIdentity,
@@ -104,6 +104,67 @@ final class ApplyRecoveryDirectoryClaim {
         let errors = Self.closeDescriptors([namedRoot])
         if !errors.isEmpty { throw CloseFailure(primary: failure, closeErrors: errors) }
         if let failure { throw failure }
+    }
+
+    func isOlder(than cutoff: Date) throws -> Bool {
+        try validateBinding()
+        guard let sessionDescriptor else { throw Rejection.closed }
+        let time = try Self.protectedDirectory(sessionDescriptor).st_mtimespec
+        return Double(time.tv_sec) + Double(time.tv_nsec) / 1_000_000_000 < cutoff.timeIntervalSince1970
+    }
+
+    func readManifestForCleanup() throws -> (data: Data, version: stat)? {
+        guard let sessionDescriptor else { throw Rejection.closed }
+        let descriptor = openat(sessionDescriptor, "manifest.json", ApplyFileSystem.childFileReadFlags)
+        guard descriptor >= 0 else {
+            if errno == ENOENT { return nil }
+            throw ApplyFileSystem.posixError()
+        }
+        defer { close(descriptor) }
+        var version = stat()
+        guard fstat(descriptor, &version) == 0 else { throw ApplyFileSystem.posixError() }
+        guard version.st_mode & S_IFMT == S_IFREG else { throw FileSnapshotReadError.notRegularFile }
+        let result = try FileSnapshot.read(descriptor: descriptor, fileStat: version,
+            byteLimit: UInt64(ApplyRecoverySessionReader.maximumManifestBytes), isCancelled: { false })
+        try validateCleanupManifest(version)
+        return (result.data, version)
+    }
+
+    private func validateCleanupManifest(_ expected: stat?) throws {
+        guard let sessionDescriptor else { throw Rejection.closed }
+        var named = stat()
+        guard fstatat(sessionDescriptor, "manifest.json", &named, AT_SYMLINK_NOFOLLOW) == 0 else {
+            if errno == ENOENT, expected == nil { return }
+            throw ApplyFileSystem.posixError()
+        }
+        guard let expected, FileSnapshot.describesSameOpenedVersion(expected, named),
+              named.st_mode & S_IFMT == S_IFREG else { throw Rejection.changedDirectory }
+    }
+
+    func removeExpiredDirectory(olderThan cutoff: Date, expectedManifest: stat?) throws {
+        guard try isOlder(than: cutoff) else { return }
+        try validateCleanupManifest(expectedManifest)
+        guard let rootDescriptor else { throw Rejection.closed }
+        let claimedName = ".cleanup-\(UUID().uuidString)"
+        let flags = ApplyFileSystem.exclusiveRenameFlags
+        guard renameatx_np(rootDescriptor, sessionName, rootDescriptor, claimedName, flags) == 0 else {
+            throw ApplyFileSystem.posixError()
+        }
+        do {
+            var named = stat()
+            guard fstatat(rootDescriptor, claimedName, &named, AT_SYMLINK_NOFOLLOW) == 0,
+                  FileIdentity(stat: named) == sessionIdentity, named.st_mode & S_IFMT == S_IFDIR else {
+                throw Rejection.changedDirectory
+            }
+            try validateCleanupManifest(expectedManifest)
+            // Rekursiv nur unter dem exklusiven Claim am bereits gebundenen Root.
+            guard removefileat(rootDescriptor, claimedName, nil, UInt32(REMOVEFILE_RECURSIVE)) == 0 else {
+                throw ApplyFileSystem.posixError()
+            }
+        } catch {
+            _ = renameatx_np(rootDescriptor, claimedName, rootDescriptor, sessionName, flags)
+            throw error
+        }
     }
 
     /// Close gibt flock frei. Nummern vor dem Schließen abgeben, damit weder
@@ -124,13 +185,13 @@ final class ApplyRecoveryDirectoryClaim {
         throw primary
     }
 
-    // Darwin weist die Kombination O_NOFOLLOW_ANY | O_NOFOLLOW mit EINVAL ab.
-    private static let openFlags = O_RDONLY | O_DIRECTORY | O_NONBLOCK | O_CLOEXEC
-
     private static func protectedDirectory(_ descriptor: Int32) throws -> stat {
         var info = stat()
-        guard fstat(descriptor, &info) == 0 else { throw posixError() }
+        guard fstat(descriptor, &info) == 0 else { throw ApplyFileSystem.posixError() }
         try requireProtectedDirectory(info)
+        guard try !ApplyFileSystem.hasMutatingExtendedACL(descriptor) else {
+            throw Rejection.unprotectedDirectory
+        }
         return info
     }
 
@@ -145,12 +206,8 @@ final class ApplyRecoveryDirectoryClaim {
     private static func closeDescriptors(_ descriptors: [Int32]) -> [Error] {
         var errors: [Error] = []
         for descriptor in descriptors {
-            if close(descriptor) != 0 { errors.append(posixError()) }
+            if close(descriptor) != 0 { errors.append(ApplyFileSystem.posixError()) }
         }
         return errors
-    }
-
-    private static func posixError() -> POSIXError {
-        POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }
 }

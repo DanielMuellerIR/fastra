@@ -56,8 +56,6 @@ struct ApplyRecoveryPreview {
         let root: DirectoryMetadata
         let directory: DirectoryMetadata
         var id: String { sessionName }
-        var rootIdentity: FileIdentity { root.identity }
-        var directoryIdentity: FileIdentity { directory.identity }
         var birthSeconds: Int64 { directory.birthSeconds }
         var birthNanoseconds: Int64 { directory.birthNanoseconds }
 
@@ -249,16 +247,21 @@ struct ApplyRecoveryPreview {
                                   current: current, backup: backup))
         }
         var cleanup: [ApplyPendingFile] = []
+        var singleFileWork: [URL: ApplyPendingFile.CleanupDirectory] = [:]
         for entry in observation.session.entries {
             guard let pending = entry.pendingFile else { continue }
             let target = URL(fileURLWithPath: entry.originalPath)
             let siblingAllowed = roots[target] == false
                 && pending.cleanupDirectory?.url.deletingLastPathComponent() == target.deletingLastPathComponent()
             try authorize(pending, covered: covered, siblingAllowed: siblingAllowed)
+            if siblingAllowed, let work = pending.cleanupDirectory {
+                singleFileWork[work.url] = work
+            }
             cleanup.append(pending)
         }
         for pending in observation.session.retainedPendingFiles {
-            try authorize(pending, covered: covered, siblingAllowed: false)
+            let siblingAllowed = pending.cleanupDirectory.map { singleFileWork[$0.url] == $0 } ?? false
+            try authorize(pending, covered: covered, siblingAllowed: siblingAllowed)
             cleanup.append(pending)
         }
         var groupedCleanup: [URL: [ApplyPendingFile]] = [:]
@@ -539,7 +542,7 @@ struct ApplyRecoveryPreview {
             let directory = info.st_mode & S_IFMT == S_IFDIR
             guard directory || info.st_mode & S_IFMT == S_IFREG else { throw Failure.invalidResource(url) }
             let descriptor = openat(parent, name,
-                O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC | (directory ? O_DIRECTORY : 0))
+                ApplyFileSystem.childFileReadFlags | (directory ? O_DIRECTORY : 0))
             guard descriptor >= 0 else { throw system(url) }
             descriptors.append(descriptor)
             var opened = stat()
@@ -551,8 +554,14 @@ struct ApplyRecoveryPreview {
             if directory || !hashContents { snapshot = nil }
             else {
                 guard byteLimit >= 0, opened.st_size <= byteLimit else { throw Failure.limit }
-                snapshot = try FileSnapshot.readSnapshotOnly(descriptor: descriptor, fileStat: opened,
-                    byteLimit: UInt64(min(byteLimit, Int(FileSnapshot.maximumReadBytes))), isCancelled: isCancelled)
+                do {
+                    snapshot = try FileSnapshot.readSnapshotOnly(descriptor: descriptor, fileStat: opened,
+                        byteLimit: UInt64(min(byteLimit, Int(FileSnapshot.maximumReadBytes))), isCancelled: isCancelled)
+                } catch FileSnapshotReadError.tooLarge {
+                    throw Failure.limit
+                } catch FileSnapshotReadError.changedDuringRead {
+                    throw Failure.changed(url)
+                }
             }
             var named = stat()
             guard fstatat(parent, name, &named, AT_SYMLINK_NOFOLLOW) == 0,
@@ -595,7 +604,7 @@ struct ApplyRecoveryPreview {
 
     private static func openDirectory(_ url: URL) throws -> Int32 {
         try requirePath(url)
-        let descriptor = open(url.path, O_RDONLY | O_DIRECTORY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW_ANY)
+        let descriptor = open(url.path, ApplyFileSystem.rootDirectoryReadFlags)
         guard descriptor >= 0 else { throw system(url) }
         return descriptor
     }
@@ -608,37 +617,18 @@ struct ApplyRecoveryPreview {
 
     private static func scanChildren(_ descriptor: Int32, at url: URL, limit: Int,
                                      isCancelled: () -> Bool = { false }) throws -> (names: [String], limited: Bool) {
-        // dup teilt den Verzeichnisoffset. Ein eigenes openat beginnt jede
-        // Prüfung erneut am Anfang und bleibt an demselben Ordner gebunden.
-        let duplicate = openat(descriptor, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
-        guard duplicate >= 0 else { throw system(url) }
-        guard let stream = fdopendir(duplicate) else {
-            let failure = system(url)
-            close(duplicate)
-            throw failure
+        do {
+            let result = try ApplyFileSystem.scanChildren(descriptor, limit: limit, isCancelled: isCancelled)
+            return (result.names.sorted(), result.limited)
+        } catch let error as POSIXError {
+            throw Failure.system(url, error.code.rawValue)
         }
-        defer { closedir(stream) }
-        var names: [String] = []
-        errno = 0
-        while let entry = readdir(stream) {
-            if isCancelled() { throw CancellationError() }
-            let name = withUnsafePointer(to: &entry.pointee.d_name) {
-                $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXNAMLEN) + 1) { String(cString: $0) }
-            }
-            if name != "." && name != ".." {
-                if names.count == limit { return (names.sorted(), true) }
-                names.append(name)
-            }
-            errno = 0
-        }
-        guard errno == 0 else { throw system(url) }
-        return (names.sorted(), false)
     }
 
     private func readBytes(_ url: URL, expected: FileSnapshot,
                            isCancelled: () -> Bool) throws -> Data {
         if isCancelled() { throw CancellationError() }
-        let descriptor = open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW_ANY)
+        let descriptor = open(url.path, ApplyFileSystem.fileReadFlags | O_NOFOLLOW_ANY)
         guard descriptor >= 0 else { throw Self.system(url) }
         defer { close(descriptor) }
         var before = stat()

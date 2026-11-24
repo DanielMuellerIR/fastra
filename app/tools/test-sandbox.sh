@@ -54,15 +54,16 @@ purge_stale_fastra_test_sandboxes() {
                 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || true)
             [ "$current_started" = "$owner_started" ] && continue
         fi
-        if [ "$kind" = soak-run ]; then
-            # Diese Namen enthalten ursprüngliche Einstellungen/Fensterdaten.
+        if [ "$kind" = soak-run ] || [ "$kind" = selftest-run ]; then
+            # Diese Namen enthalten ursprüngliche Einstellungen, Fensterdaten
+            # oder Zwischenablage-Inhalte.
             # Auch ältere Runner hinterließen sie bei gescheitertem Restore
             # ohne separaten Marker. Bis zur manuellen Klärung nicht rotieren;
             # Links und Lesefehler belegen ebenfalls keine sichere Abwesenheit.
             [ -r "$directory" ] && [ -x "$directory" ] || continue
-            backup=$(find "$directory" -mindepth 1 -maxdepth 1 \
-                \( -name 'product-defaults.plist' -o -name 'product-saved-state' \) \
-                -print 2>/dev/null) || continue
+            backup=$(find "$directory" -mindepth 1 -maxdepth 2 \
+                \( -name 'product-defaults.plist' -o -name 'product-saved-state' \
+                -o -name 'pasteboard-backup.plist' \) -print -quit 2>/dev/null) || continue
             [ -z "$backup" ] || continue
         fi
         rm -rf -- "$directory"

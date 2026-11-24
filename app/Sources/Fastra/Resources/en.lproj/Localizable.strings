@@ -1,5 +1,13 @@
 /* Fastra — English user interface */
 
+"WYSIWYG-Dokument wurde nicht gespeichert" = "WYSIWYG document could not be saved";
+"Nach dem Öffnen würde der sichtbare Text abweichen." = "The visible text would change when reopened.";
+"Nach dem Öffnen würde die Formatierung abweichen." = "The formatting would change when reopened.";
+"Nach dem Öffnen würden Umbrüche oder Leerzeilen abweichen." = "Line breaks or blank lines would change when reopened.";
+"Fastra konnte die gespeicherte Darstellung nicht prüfen." = "Fastra could not check how the saved document would look.";
+"Deine Eingaben bleiben im offenen Editor. Bitte melde den Fehler mit der Diagnose und den Schritten davor." = "Your edits are still in the open editor. Please report the problem with the diagnostic and the steps leading up to it.";
+"Diagnose kopieren" = "Copy Diagnostic";
+
 "Geschützter Markdown-Bereich" = "Protected Markdown content";
 "Dieser Bereich kann im WYSIWYG-Modus nicht bearbeitet werden. Bitte zum Ändern in den Markdown-Quelltext wechseln. Es wurde nichts verändert." = "This content cannot be edited in WYSIWYG mode. Switch to the Markdown source to change it. Nothing was changed.";
 
@@ -1375,6 +1383,9 @@
 "Die Umwandlung hat eine unvollständige Antwort geliefert. Es wurde nichts übernommen." = "The conversion returned an incomplete response. Nothing was imported.";
 "Die Umwandlung hat eine Datei außerhalb ihres Arbeitsordners gemeldet. Es wurde nichts verschoben." = "The conversion reported a file outside its own working folder. Nothing was moved.";
 "Der Ordner „%@“ ist nicht beschreibbar." = "The folder “%@” is not writable.";
+"Markdown speichern unter …" = "Save Markdown As …";
+"Fastra kann im Ordner des Originals nichts speichern. Wähle einen Ordner für das Markdown-Dokument und eventuell extrahierte Bilder." = "Fastra can’t save in the original document’s folder. Choose a folder for the Markdown document and any extracted images.";
+"Hier speichern" = "Save Here";
 "„Poor Man's Text“ ist nicht installiert." = "“Poor Man's Text” is not installed.";
 "Das Remote hat mehrere Push-Adressen. Fastra überträgt erst, wenn genau ein sichtbares Ziel konfiguriert ist." = "The remote has multiple push addresses. Fastra transfers only when exactly one visible target is configured.";
 "Git-URL-Umschreibregeln machen das Push-Ziel mehrdeutig. Entferne insteadOf/pushInsteadOf oder pushe bewusst im Terminal." = "Git URL rewrite rules make the push target ambiguous. Remove insteadOf/pushInsteadOf or push deliberately in Terminal.";

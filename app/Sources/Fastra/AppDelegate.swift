@@ -822,7 +822,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 var holds: [MarkdownVisualCoordinator.ActionHold] = []
                 for editor in editors {
                     group.enter()
-                    editor.synchronize(holdingInput: true) { succeeded, hold in
+                    editor.synchronize(holdingInput: true, checkingSave: true) { succeeded, hold in
                         successful = successful && succeeded
                         if let hold { holds.append(hold) }
                         group.leave()

@@ -258,8 +258,8 @@ enum MarkdownImportOutputGuard {
 
 // MARK: - Zielname neben der Quelle
 
-/// Bestimmt den Ergebnisnamen neben der Ursprungsdatei. Reines Markdown
-/// liegt als `Name.md` neben der Quelle; mit zusätzlichen Bildern liegt das
+/// Bestimmt den Ergebnisnamen im Zielordner. Reines Markdown
+/// liegt als `Name.md` direkt dort; mit zusätzlichen Bildern liegt das
 /// Ergebnis im Ordner `Name` ohne Dateiendung.
 enum MarkdownImportNaming {
 
@@ -269,10 +269,11 @@ enum MarkdownImportNaming {
     /// `Dokument-2.md`.
     static func availableTarget(
         forSource sourceURL: URL,
+        in directory: URL? = nil,
         producesAssets: Bool,
         exists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }
     ) -> URL {
-        let directory = sourceURL.deletingLastPathComponent()
+        let directory = directory ?? sourceURL.deletingLastPathComponent()
         let stem = sourceURL.deletingPathExtension().lastPathComponent
         let fileExtension = producesAssets ? nil : "md"
 

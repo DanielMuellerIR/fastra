@@ -12,7 +12,7 @@ struct SearchApprovalFilePreviewTests {
 
     @Test("Ordner- und Projekt-Apply brauchen nach geänderten Textquellen eine neue Freigabe",
           arguments: [false, true], SourceChange.allCases)
-    func completeFolderBasis(_ project: Bool, _ change: SourceChange) async throws {
+    func serialRunnerIntegrationCompleteFolderBasis(_ project: Bool, _ change: SourceChange) async throws {
         let root = testTemporaryDirectory().appendingPathComponent("approval-basis-\(UUID().uuidString)").canonicalFileURL
         let sources = root.appendingPathComponent("sources")
         let backups = root.appendingPathComponent("undo")
@@ -88,7 +88,7 @@ struct SearchApprovalFilePreviewTests {
             try #require(workspace.lastApplySession?.entries.count == 2)
             #expect(try Data(contentsOf: hit) == Data("bar\r\n🙂\r\n".utf8))
             #expect(try Data(contentsOf: changed) == Data("bar extern\r\n".utf8))
-            try #require(workspace.undoLastFolderApply())
+            try #require(await workspace.undoLastFolderApply())
             #expect(try Data(contentsOf: hit) == original)
             #expect(try Data(contentsOf: changed) == foreign)
         }

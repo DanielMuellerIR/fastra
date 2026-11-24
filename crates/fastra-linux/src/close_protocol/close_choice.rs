@@ -31,15 +31,18 @@ impl Prompt {
             .into_iter()
             .flatten()
             .collect();
-        if let Some(app) = ui.window.application() {
-            for window in app.windows().into_iter().filter(|window| {
-                window != ui.window.upcast_ref::<gtk::Window>()
-            }) {
-                if let Some(widget) = gtk::prelude::GtkWindowExt::focus(&window) {
-                    focus.push(widget.downgrade());
-                }
-                blocked.extend([window.child(), window.titlebar()].into_iter().flatten());
+        let toplevels = gtk::Window::toplevels();
+        for index in 0..toplevels.n_items() {
+            let Some(window) = toplevels.item(index).and_downcast::<gtk::Window>() else {
+                continue;
+            };
+            if !window.is_visible() || &window == ui.window.upcast_ref::<gtk::Window>() {
+                continue;
             }
+            if let Some(widget) = gtk::prelude::GtkWindowExt::focus(&window) {
+                focus.push(widget.downgrade());
+            }
+            blocked.extend([window.child(), window.titlebar()].into_iter().flatten());
         }
         // Die Sitzungsverwaltung kann ein Fenster nach einem Schreibvorgang freigeben.
         // Die Rückfrage sperrt deshalb dessen Inhalt und Titelleiste eigenständig.

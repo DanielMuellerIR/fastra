@@ -562,7 +562,7 @@ func serialRunnerIntegrationApplyPersistenceCallerOffersOnlyReachableRecovery(un
     workflow.restoreDisk()
     if unavailable {
         #expect(!workflow.isBusy)
-        #expect(!workspace.undoLastFolderApply())
+        #expect(!(await workspace.undoLastFolderApply()))
         #expect(try Data(contentsOf: fixture.target) == Data("bar original".utf8))
         let directory = try #require(moved)
         #expect(try Data(contentsOf: directory.appendingPathComponent("files/0.bin")) == fixture.original)
@@ -760,7 +760,7 @@ func serialRunnerIntegrationApplyPersistenceCleanupOnlyOriginalSession(kind: Str
     #expect(workflow.error?.contains(unchangedMessage) == true)
     if workflowButton {
         workflow.restoreDisk(); #expect(await waitUntil { !workflow.isBusy })
-    } else { #expect(workspace.undoLastFolderApply() == (kind != "session")) }
+    } else { #expect(await workspace.undoLastFolderApply() == (kind != "session")) }
     #expect(try FileSnapshot.readSnapshotOnly(from: fixture.target) == initial)
     if let source = exchanged {
         // Vor dem Fix überschreibt der echte Aufräum-Entrypoint hier den

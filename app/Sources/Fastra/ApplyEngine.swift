@@ -218,15 +218,6 @@ struct ReplacePlan: Equatable {
     var totalMatches: Int { files.reduce(0) { $0 + $1.matches.count } }
 }
 
-/// Bereits stabil gelesene Dateibasis. Die Ordner-Vorschau kann damit aus
-/// exakt den Bytes planen, deren Snapshot der Nutzer gesehen hat, ohne das
-/// Ziel zwischen Vorschauprüfung und Planbildung ein zweites Mal zu öffnen.
-struct ReplacePlanInput {
-    let url: URL
-    let data: Data
-    let snapshot: FileSnapshot
-}
-
 /// Unveränderlicher Vertrag zwischen sichtbarer Ordner-Vorschau und dem
 /// schreibenden Hintergrundlauf. Die Vorschau liefert Snapshot + exakte
 /// Treffer; `execute` liest und plant immer nur eine Datei gleichzeitig und
@@ -341,27 +332,6 @@ enum ApplyEngine {
             }
         }
         return ReplacePlan(files: planned, options: options)
-    }
-
-    /// Plan aus einer bereits stabil gelesenen Vorschau-Basis. Dieser Pfad
-    /// ist die Sicherheitsbrücke zwischen sichtbarer Ordnersuche und Apply.
-    static func plan(inputs: [ReplacePlanInput], options: SearchOptions) -> ReplacePlan {
-        guard !options.isEmpty else { return ReplacePlan(files: [], options: options) }
-        let searchPlan: SearchPlan
-        do {
-            searchPlan = try SearchPlan(options: options)
-        } catch {
-            return ReplacePlan(files: inputs.map { input in
-                PlannedFileChange(url: input.url, originalSnapshot: input.snapshot,
-                                  encoding: nil, bom: Data(),
-                                  originalBytes: input.data, newBytes: input.data,
-                                  matches: [], skipped: .invalidPattern("\(error)"))
-            }, options: options)
-        }
-        return ReplacePlan(files: inputs.map {
-            planSingle(url: $0.url, data: $0.data, snapshot: $0.snapshot,
-                       searchPlan: searchPlan)
-        }, options: options)
     }
 
     // MARK: - Einzeldatei
@@ -884,7 +854,9 @@ struct ApplySession: Codable, Equatable {
     }
 }
 
-enum ApplyError: Error, Equatable {
+enum ApplyError: LocalizedError, Equatable {
+    var errorDescription: String? { TextWorkflowFailure.message(self) }
+
     /// Plan enthält invalide Patterns oder Skip-Gründe in geänderten Dateien.
     case planNotApplyable(String)
     /// Backup-Schritt fehlgeschlagen — es wurde nichts geschrieben.
@@ -1024,12 +996,14 @@ extension ApplyEngine {
         let bom: Data
     }
 
-    private static func readForComparison(
-        from url: URL, byteLimit: UInt64 = FileSnapshot.maximumReadBytes,
-        conflictMessage: String, failure: (String) -> ApplyError
-    ) throws -> (data: Data, snapshot: FileSnapshot) {
+    private static func readForComparison<Value>(
+        from url: URL, conflictMessage: String, failure: (String) -> ApplyError,
+        read: () throws -> Value
+    ) throws -> Value {
         do {
-            return try FileSnapshot.read(from: url, byteLimit: byteLimit)
+            return try read()
+        } catch is CancellationError {
+            throw ApplyError.cancelled
         } catch FileSnapshotReadError.tooLarge,
                 FileSnapshotReadError.changedDuringRead,
                 FileSnapshotReadError.notRegularFile {
@@ -1391,8 +1365,9 @@ extension ApplyEngine {
                     "„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert.",
                     url.lastPathComponent)
                 let current = try readForComparison(
-                    from: url, byteLimit: UInt64(max(0, snapshot.byteCount)),
-                    conflictMessage: conflictMessage, failure: ApplyError.conflict)
+                    from: url, conflictMessage: conflictMessage, failure: ApplyError.conflict) {
+                    try FileSnapshot.read(from: url, byteLimit: UInt64(max(0, snapshot.byteCount)), isCancelled: shouldCancel)
+                }
                 guard current.snapshot == snapshot else {
                     throw ApplyError.conflict(conflictMessage)
                 }
@@ -1476,9 +1451,11 @@ extension ApplyEngine {
                     "„%@“ wurde seit der Vorschau geändert. Es wurde nichts verändert.",
                     item.url.lastPathComponent)
                 let current = try readForComparison(
-                    from: item.url, byteLimit: UInt64(max(0, item.snapshot.byteCount)),
-                    conflictMessage: conflictMessage, failure: ApplyError.conflict)
-                guard current.snapshot == item.snapshot else {
+                    from: item.url, conflictMessage: conflictMessage, failure: ApplyError.conflict) {
+                    try FileSnapshot.readSnapshotOnly(from: item.url, byteLimit: UInt64(max(0, item.snapshot.byteCount)),
+                                                      isCancelled: shouldCancel)
+                }
+                guard current == item.snapshot else {
                     throw ApplyError.conflict(conflictMessage)
                 }
             }
@@ -1743,9 +1720,10 @@ extension ApplyEngine {
     static func undo(_ session: ApplySession,
                      beforeAtomicReplace: ((URL) throws -> Void)? = nil,
                      atomicReplace: ((Data, URL, URL) throws -> Void)? = nil,
-                     manifestWriter: ((ApplySession) throws -> Void)? = nil) throws -> ApplySession {
+                     manifestWriter: ((ApplySession) throws -> Void)? = nil,
+                     verifiedOriginal: ((URL, FileSnapshot) -> Void)? = nil) throws -> ApplySession {
         try undoSession(session, beforeAtomicReplace: beforeAtomicReplace,
-                        atomicReplace: atomicReplace, manifestWriter: manifestWriter)
+                        atomicReplace: atomicReplace, manifestWriter: manifestWriter, verifiedOriginal: verifiedOriginal)
     }
 
     /// Nur für die erneut bestätigte historische Sitzung. Der Caller hält den
@@ -1846,7 +1824,9 @@ extension ApplyEngine {
                 "„%@“ wurde nach dem Apply geändert. Rückgängig wurde abgebrochen.",
                 target.lastPathComponent)
             let current = try readForComparison(
-                from: target, conflictMessage: conflictMessage, failure: conflictError)
+                from: target, conflictMessage: conflictMessage, failure: conflictError) {
+                try FileSnapshot.read(from: target)
+            }
             guard let expectedApplied = entry.appliedSnapshot else {
                 throw conflictError(conflictMessage)
             }
@@ -2043,26 +2023,19 @@ extension ApplyEngine {
                     sessionName: url.lastPathComponent) else { continue }
             defer { try? claim.finish() }
             do {
-                // Eine bestätigte Rücknahme kann seit der Auflistung aktiv
-                // gewesen sein und das Manifest samt Verzeichniszeit erneuert haben.
-                let sessionURL = root.appendingPathComponent(claim.sessionName, isDirectory: true)
-                let refreshed = try sessionURL.resourceValues(forKeys: [.contentModificationDateKey])
-                guard let modified = refreshed.contentModificationDate, modified < cutoff else { continue }
-                let manifest = sessionURL.appendingPathComponent("manifest.json")
-                if !fm.fileExists(atPath: manifest.path) {
-                    try claim.validateBinding()
-                    try fm.removeItem(at: sessionURL)
-                    continue
+                // Nach der Auflistung kann eine Rücknahme die Verzeichniszeit erneuert haben.
+                guard try claim.isOlder(than: cutoff) else { continue }
+                let manifest = try claim.readManifestForCleanup()
+                if let manifest {
+                    let session = try JSONDecoder().decode(ApplySession.self, from: manifest.data)
+                    guard !session.entries.contains(where: { $0.state == .pending }) else { continue }
+                    let pendingFiles = session.retainedPendingFiles + session.entries.compactMap(\.pendingFile)
+                    for file in pendingFiles {
+                        try claim.validateBinding()
+                        try file.remove()
+                    }
                 }
-                guard let session = try? loadSession(at: sessionURL),
-                      !session.entries.contains(where: { $0.state == .pending }) else { continue }
-                let pendingFiles = session.retainedPendingFiles + session.entries.compactMap(\.pendingFile)
-                for file in pendingFiles {
-                    try claim.validateBinding()
-                    try file.remove()
-                }
-                try claim.validateBinding()
-                try fm.removeItem(at: sessionURL)
+                try claim.removeExpiredDirectory(olderThan: cutoff, expectedManifest: manifest?.version)
             } catch {
                 // Ein ungeklärter Anker behält sein Manifest samt Backup.
                 continue

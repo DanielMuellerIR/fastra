@@ -1257,7 +1257,8 @@ final class Workspace: ObservableObject {
     @Published var folderApplying: Bool = false
     @Published var fileRecoverySession: ApplyRecoverySession?
     @Published var fileRecoveryApplying = false
-    var diskMutationIsActive: Bool { folderApplying || fileRecoveryApplying }
+    @Published private(set) var folderUndoing = false
+    var diskMutationIsActive: Bool { folderApplying || fileRecoveryApplying || folderUndoing }
     @Published var folderApplyProgressText: String? = nil
     private var folderApplyTask: Task<Void, Never>?
     private var folderApplyGeneration = 0
@@ -1813,7 +1814,8 @@ final class Workspace: ObservableObject {
     private var performingVisualAction = false
 
     @discardableResult
-    func synchronizeVisualMarkdownBefore(_ action: @escaping () -> Void, onFailure: (() -> Void)? = nil) -> Bool {
+    func synchronizeVisualMarkdownBefore(_ action: @escaping () -> Void, onFailure: (() -> Void)? = nil,
+                                         checkingSave: Bool = false, relocatedMarkdown: String? = nil) -> Bool {
         // Auch Quelltext-Bild-Undo besitzt eine kurze asynchrone Dateiphase.
         // Speichern, Schließen und Ansichtswechsel warten auf deren Abschluss.
         if let history = tabs.first(where: { $0.undoHistory.isPerformingAction })?.undoHistory {
@@ -1821,7 +1823,7 @@ final class Workspace: ObservableObject {
             return true
         }
         guard !performingVisualAction, let editor = visualMarkdownEditor, editor.ready else { return false }
-        editor.synchronize(holdingInput: true) { [weak self] succeeded, hold in
+        editor.synchronize(holdingInput: true, checkingSave: checkingSave, relocatedMarkdown: relocatedMarkdown) { [weak self] succeeded, hold in
             defer { hold?.finish() }
             guard succeeded, let self else { onFailure?(); return }
             self.performingVisualAction = true
@@ -2335,7 +2337,9 @@ final class Workspace: ObservableObject {
     /// Entspricht der Verlustprüfung des normalen Schließen-Pfads. Ein leerer,
     /// unbenannter Tab enthält auch dann nichts zu sichern, wenn er nach
     /// Tippen und Löschen technisch noch als geändert markiert ist.
-    private static func requiresSaveBeforeClosing(_ tab: EditorTab) -> Bool {
+    private func requiresSaveBeforeClosing(_ tab: EditorTab) -> Bool {
+        if let check = visualMarkdownEditor?.saveCheck(for: tab, candidate: tab.textForSaving(tab.content)),
+           check != .ok { return true }
         let isEmptyUntitled = tab.url == nil && tab.content.isEmpty
         return tab.hexEditSession.hasChanges || (tab.isDirty && !isEmptyUntitled)
     }
@@ -2344,7 +2348,7 @@ final class Workspace: ObservableObject {
     /// Der Beenden-Pfad nutzt exakt dieselbe Verlustprüfung wie `mayCloseTab`,
     /// damit er nur dann das zugehörige Fenster nach vorn holt.
     var hasTabsRequiringSaveBeforeClosing: Bool {
-        tabs.contains(where: Self.requiresSaveBeforeClosing)
+        tabs.contains(where: requiresSaveBeforeClosing)
     }
 
     /// Vorschau und laufender Schreibauftrag sind die Fortsetzung der Aktion
@@ -2371,7 +2375,7 @@ final class Workspace: ObservableObject {
         // könnte — selbst wenn es durch Tippen + Löschen noch `isDirty` ist.
         // Eine gespeicherte, nun leere Datei bleibt dagegen rückfragepflichtig:
         // dort würde Schließen das Löschen des bisherigen Disk-Inhalts verwerfen.
-        guard Self.requiresSaveBeforeClosing(tab) else {
+        guard requiresSaveBeforeClosing(tab) else {
             return true
         }
         // Vor der Rückfrage den betroffenen Tab aktivieren, damit der Nutzer den
@@ -2398,7 +2402,7 @@ final class Workspace: ObservableObject {
             saveActiveTab()
             // Erfolg = der Tab ist jetzt nicht mehr dirty (Panel/Schreiben ok).
             if let i = tabs.firstIndex(where: { $0.id == id }) {
-                return !tabs[i].hasUnsavedChanges
+                return !tabs[i].hasUnsavedChanges && !requiresSaveBeforeClosing(tabs[i])
             }
             return true
         }
@@ -2408,7 +2412,8 @@ final class Workspace: ObservableObject {
     /// BBEdit-Rückfrage (`mayCloseTab`). Zentrale Schließen-Logik für ⌘W, das
     /// Tab-X und „Andere Tabs schließen". „Abbrechen" lässt alles unverändert.
     func closeTab(id: UUID) {
-        if synchronizeVisualMarkdownBefore({ self.closeTab(id: id) }) { return }
+        if synchronizeVisualMarkdownBefore({ self.closeTab(id: id) },
+                                            checkingSave: visualMarkdownEditor?.tabID == id || tabs.count == 1) { return }
         // Der letzte Tab repräsentiert das Dokumentfenster selbst. Nach der
         // üblichen Sicherungsentscheidung nicht einen leeren Fensterrahmen
         // zurücklassen, sondern das Fenster schließen. Der gemeinsame Pfad
@@ -2491,7 +2496,8 @@ final class Workspace: ObservableObject {
     /// offen ist. Wird auch vom roten Schließen-Knopf zusätzlicher Fenster
     /// verwendet. `false` bedeutet: Nutzer hat abgebrochen, Fenster bleibt.
     func prepareToCloseWindow() -> Bool {
-        if synchronizeVisualMarkdownBefore({ if self.prepareToCloseWindow() { self.closeWindowHandler?() } }) { return false }
+        if synchronizeVisualMarkdownBefore({ if self.prepareToCloseWindow() { self.closeWindowHandler?() } },
+                                            checkingSave: true) { return false }
         guard !diskMutationIsActive else { return false }
         let previousActive = activeTabID
         for id in tabs.map(\.id) {
@@ -2527,7 +2533,8 @@ final class Workspace: ObservableObject {
     /// wird pro Tab mit ungespeicherten Änderungen gefragt; „Abbrechen" bricht die
     /// gesamte Aktion ab (es wird dann kein Tab geschlossen).
     func closeOtherTabs(keeping id: UUID) {
-        if synchronizeVisualMarkdownBefore({ self.closeOtherTabs(keeping: id) }) { return }
+        if synchronizeVisualMarkdownBefore({ self.closeOtherTabs(keeping: id) },
+                                            checkingSave: visualMarkdownEditor?.tabID != id) { return }
         guard tabs.contains(where: { $0.id == id }) else { return }
         let previousActive = activeTabID
         for otherID in tabs.map(\.id) where otherID != id {
@@ -2604,13 +2611,13 @@ final class Workspace: ObservableObject {
     /// beim abgebrochenen App-Beenden gespeichert.
     @discardableResult
     func returnToWelcome() -> Bool {
-        if synchronizeVisualMarkdownBefore({ _ = self.returnToWelcome() }) { return false }
+        if synchronizeVisualMarkdownBefore({ _ = self.returnToWelcome() }, checkingSave: true) { return false }
         guard !diskMutationIsActive else { return false }
-        if projectURL == nil, tabs.count == 1, tabs[0].isPristineScratch {
+        if projectURL == nil, tabs.count == 1, tabs[0].isPristineScratch, !requiresSaveBeforeClosing(tabs[0]) {
             return true
         }
 
-        let dirtyIDs = tabs.filter(Self.requiresSaveBeforeClosing).map(\.id)
+        let dirtyIDs = tabs.filter(requiresSaveBeforeClosing).map(\.id)
         guard dirtyIDs.isEmpty || confirmReturnToWelcomeHandler() else {
             return false
         }
@@ -2618,7 +2625,7 @@ final class Workspace: ObservableObject {
         let previousActive = activeTabID
         for id in dirtyIDs {
             guard let index = tabs.firstIndex(where: { $0.id == id }),
-                  Self.requiresSaveBeforeClosing(tabs[index]) else { continue }
+                  requiresSaveBeforeClosing(tabs[index]) else { continue }
             guard confirmSaveForWelcomeHandler(tabs[index].title) else {
                 restoreActiveTab(afterCancelledWelcomeTransition: previousActive)
                 return false
@@ -2630,7 +2637,7 @@ final class Workspace: ObservableObject {
             }
             saveActiveTab()
             guard let savedIndex = tabs.firstIndex(where: { $0.id == id }),
-                  !tabs[savedIndex].hasUnsavedChanges else {
+                  !tabs[savedIndex].hasUnsavedChanges, !requiresSaveBeforeClosing(tabs[savedIndex]) else {
                 restoreActiveTab(afterCancelledWelcomeTransition: previousActive)
                 return false
             }
@@ -3215,7 +3222,11 @@ final class Workspace: ObservableObject {
     func convertToMarkdown(_ url: URL, expectedGitContext: GitActionContext? = nil,
                            onFileOpened: ((URL) -> Void)? = nil) {
         guard expectedGitContext?.isCurrent(in: self) != false else { return }
-        markdownImportService.convert(url, owner: self) { [weak self] markdownFile in
+        markdownImportService.convert(url, owner: self, chooseDestination: {
+            let directory = self.markdownImportDecisions.askDestination()
+            guard expectedGitContext?.isCurrent(in: self) != false else { return nil }
+            return directory
+        }) { [weak self] markdownFile in
             guard let self, let markdownFile,
                   expectedGitContext?.isCurrent(in: self) != false else { return }
             self.dismissedMarkdownImports.insert(url)
@@ -3417,7 +3428,8 @@ final class Workspace: ObservableObject {
     /// auch ein Hintergrunddokument sichern, ohne dafür still den sichtbaren
     /// Editor umzuschalten.
     func saveTab(id: UUID) {
-        if synchronizeVisualMarkdownBefore({ self.saveTab(id: id) }) { return }
+        if synchronizeVisualMarkdownBefore({ self.saveTab(id: id) },
+                                            checkingSave: visualMarkdownEditor?.tabID == id) { return }
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
         // Git-Text-Tabs (Verlauf/Diff) und Datei-Vergleichs-Tabs sind
         // read-only — ⌘S tut nichts.
@@ -3449,7 +3461,8 @@ final class Workspace: ObservableObject {
     }
 
     private func saveTabAs(id tabID: UUID) {
-        if synchronizeVisualMarkdownBefore({ self.saveTabAs(id: tabID) }) { return }
+        if synchronizeVisualMarkdownBefore({ self.saveTabAs(id: tabID) },
+                                            checkingSave: visualMarkdownEditor?.tabID == tabID) { return }
         guard let idx = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         // Read-only Git- und Vergleichs-Tabs lassen sich nicht „speichern unter".
         if tabs[idx].gitKind != nil || tabs[idx].fileDiffRequest != nil
@@ -3472,6 +3485,7 @@ final class Workspace: ObservableObject {
         }
         guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
         guard !tabs[idx].isLoading else { NSSound.beep(); return }
+        guard approvesVisualMarkdownSave(tabs[idx], candidate: tabs[idx].textForSaving(tabs[idx].content)) else { return }
         let panel = NSSavePanel()
         let stateCapture = SavePanelStateCapture()
         panel.delegate = stateCapture
@@ -3519,7 +3533,7 @@ final class Workspace: ObservableObject {
         if synchronizeVisualMarkdownBefore({
             self.saveTabAs(id: tabID, to: url, expectedTargetState: expectedTargetState,
                            isMarkdown: isMarkdown, completion: completion)
-        }, onFailure: { completion?(false) }) { return }
+        }, onFailure: { completion?(false) }, checkingSave: visualMarkdownEditor?.tabID == tabID) { return }
         guard let tab = tabs.first(where: { $0.id == tabID }) else { completion?(false); return }
         var pendingImages = false
         var completed = false
@@ -3536,7 +3550,7 @@ final class Workspace: ObservableObject {
         func finish(_ prepared: MarkdownSaveAs.Prepared) {
             if synchronizeVisualMarkdownBefore({ finish(prepared) }, onFailure: {
                 rollback(prepared)
-            }) { return }
+            }, checkingSave: visualMarkdownEditor?.tabID == tabID, relocatedMarkdown: prepared.content) { return }
             var committed = false
             guard let index = tabs.firstIndex(where: { $0.id == tabID }),
                   tabs[index].documentID == tab.documentID,
@@ -3585,7 +3599,8 @@ final class Workspace: ObservableObject {
     ///
     /// Bewusst eine eigene Methode: Der Zustandswechsel nach dem Schreiben
     /// ist damit ohne den modalen Speichern-Dialog prüfbar.
-    func adoptSavedTarget(_ url: URL, forTabAt idx: Int) {
+    func adoptSavedTarget(_ target: URL, forTabAt idx: Int) {
+        let url = target.canonicalFileURL
         let previousURL = tabs[idx].url
         let changesMarkdownDirectory = previousURL != nil
             && previousURL?.deletingLastPathComponent().canonicalFileURL != url.deletingLastPathComponent().canonicalFileURL
@@ -3629,6 +3644,34 @@ final class Workspace: ObservableObject {
     var saveBeforeAtomicReplaceHandler: ((URL) -> Void)? = nil
     var saveSafetyWarningHandler: (String, String) -> Void = { title, text in
         NSAlert.runWarning(title: title, text: text)
+    }
+    var markdownSaveWarningHandler: (MarkdownVisualCoordinator.SaveCheck) -> Void = { check in
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.string("WYSIWYG-Dokument wurde nicht gespeichert")
+        let detail: String
+        switch check {
+        case .text: detail = L10n.string("Nach dem Öffnen würde der sichtbare Text abweichen.")
+        case .format: detail = L10n.string("Nach dem Öffnen würde die Formatierung abweichen.")
+        case .breaks: detail = L10n.string("Nach dem Öffnen würden Umbrüche oder Leerzeilen abweichen.")
+        case .unavailable: detail = L10n.string("Fastra konnte die gespeicherte Darstellung nicht prüfen.")
+        case .ok: return
+        }
+        alert.informativeText = detail + "\n\n" + L10n.string("Deine Eingaben bleiben im offenen Editor. Bitte melde den Fehler mit der Diagnose und den Schritten davor.")
+        alert.addButton(withTitle: L10n.string("OK"))
+        alert.addButton(withTitle: L10n.string("Diagnose kopieren"))
+        if alert.runModal() == .alertSecondButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString("Fastra \(AppInfo.version) · WYSIWYG save · \(check.rawValue)", forType: .string)
+        }
+    }
+
+    private func approvesVisualMarkdownSave(_ tab: EditorTab, candidate: String) -> Bool {
+        guard let editor = visualMarkdownEditor, editor.ready, editor.tabID == tab.id else { return true }
+        let outcome = editor.saveCheck(for: tab, candidate: candidate) ?? .unavailable
+        guard outcome != .ok else { return true }
+        markdownSaveWarningHandler(outcome)
+        return false
     }
 
     static func defaultSaveConflictConfirmation(_ title: String) -> Bool {
@@ -3678,6 +3721,7 @@ final class Workspace: ObservableObject {
             // Nur eine ausdrücklich geänderte Zeilenendenwahl vereinheitlicht.
             // Normales Speichern erhält auch gemischte Umbrüche bytegenau.
             let savedContent = tab.textForSaving(relocatedMarkdown ?? tab.content)
+            guard approvesVisualMarkdownSave(tab, candidate: savedContent) else { return false }
             guard let out = FileLoader.encodedData(
                 content: savedContent, encoding: tab.encoding,
                 bom: tab.bom, lineEnding: tab.lineEnding, preservingLineEndings: true
@@ -6493,7 +6537,12 @@ final class Workspace: ObservableObject {
     }
 
     @MainActor func beginTextWorkflowDiskMutation(urls: [URL]) throws -> TextWorkflowDiskMutation {
-        guard !diskMutationIsActive, let id = WorkspacePathOperationRegistry.begin(paths: urls, exclusive: true) else {
+        guard !diskMutationIsActive else { throw ApplyError.conflict(TextWorkflowFailure.busy) }
+        return try reserveTextWorkflowDiskMutation(urls: urls)
+    }
+
+    @MainActor private func reserveTextWorkflowDiskMutation(urls: [URL]) throws -> TextWorkflowDiskMutation {
+        guard let id = WorkspacePathOperationRegistry.begin(paths: urls, exclusive: true) else {
             throw ApplyError.conflict(TextWorkflowFailure.busy)
         }
         let workspaces = fileTreeMutationWorkspaces()
@@ -6529,7 +6578,10 @@ final class Workspace: ObservableObject {
 
     @MainActor func reloadRecoveryDocuments(_ mutation: TextWorkflowDiskMutation,
                                             expectedSnapshots: [URL: FileSnapshot]) async -> [URL] {
+        guard !expectedSnapshots.isEmpty else { return [] }
         let changedURLs = Array(expectedSnapshots.keys)
+        let snapshotsByPath = Dictionary(grouping: expectedSnapshots, by: { $0.key.standardizedFileURL.path })
+            .mapValues { Set($0.map(\.value)) }
         let workspaces = fileTreeMutationWorkspaces(including: mutation.workspaces)
         for workspace in workspaces { workspace.searchRunner?.folderResultsBecameStale() }
         return await withCheckedContinuation { continuation in
@@ -6542,7 +6594,8 @@ final class Workspace: ObservableObject {
                     loads.reloadAfterDiskMutation(changedURLs: changedURLs, loader: {
                         { url in
                             let loaded = try loader(url)
-                            guard loaded.diskSnapshot == expectedSnapshots[url] else {
+                            guard let snapshot = loaded.diskSnapshot,
+                                  snapshotsByPath[url.standardizedFileURL.path] == [snapshot] else {
                                 throw FileSnapshotReadError.changedDuringRead
                             }
                             return loaded
@@ -6660,11 +6713,12 @@ final class Workspace: ObservableObject {
                     })
             }
         }
-        let urls = inputs.filter { $0.approvedRanges?.isEmpty != true }.map(\.url)
+        let approvedInputs = inputs.filter { $0.approvedRanges?.isEmpty != true }
+        let urls = approvedInputs.map(\.url)
 
         // Die Warnung kommt vor jedem Voll-Read. `byteCount` stammt aus dem
         // stabilen Vorschau-Snapshot und ist damit zugleich billig und exakt.
-        let totalBytes = inputs.reduce(0) { $0 + $1.snapshot.byteCount }
+        let totalBytes = approvedInputs.reduce(0) { $0 + $1.snapshot.byteCount }
         let checkedGeneration = searchApproval.generation
         if totalBytes > Workspace.folderApplyWarnBytes {
             let alert = NSAlert()
@@ -6672,7 +6726,7 @@ final class Workspace: ObservableObject {
             alert.informativeText = L10n.format(
                 "Insgesamt %@ in %ld Dateien. Trotzdem ausführen?",
                 ByteCountFormatter.string(fromByteCount: Int64(totalBytes), countStyle: .file),
-                inputs.count
+                approvedInputs.count
             )
             alert.addButton(withTitle: L10n.string("Ausführen"))
             alert.addButton(withTitle: L10n.string("Abbrechen"))
@@ -6821,77 +6875,77 @@ final class Workspace: ObservableObject {
     }
 
     /// Macht die letzte Folder-Apply-Session bit-exakt rückgängig.
-    @discardableResult
-    func undoLastFolderApply() -> Bool {
+    @MainActor @discardableResult
+    func undoLastFolderApply() async -> Bool {
         guard !diskMutationIsActive, let session = lastApplySession else { return false }
-        let urls = session.undoResourceURLs()
-        let targetURLs = session.entries.map { URL(fileURLWithPath: $0.originalPath) }
-        let mutationWorkspaces = fileTreeMutationWorkspaces()
-        let blockedTabs = blockedTabsForFileMutation(
-            urls: urls, workspaces: mutationWorkspaces
-        )
-        guard blockedTabs.isEmpty else {
-            reportFolderFileMutationConflict(blockedTabs)
+        folderUndoing = true
+        defer { folderUndoing = false }
+
+        let (succeeded, holds) = await synchronizeTextWorkflowDiskDocuments()
+        defer { for hold in holds { hold.finish() } }
+        guard succeeded, textWorkflowDiskEditorsAreHeld(holds), lastApplySession == session else {
+            folderPreviewConflictHandler(TextWorkflowFailure.workspaceChanged)
             return false
         }
-        guard let mutationID = WorkspacePathOperationRegistry.begin(paths: urls) else {
-            folderPreviewConflictHandler(L10n.string(
-                "Eine andere Dateioperation verändert bereits mindestens eine Zieldatei. Warte auf ihren Abschluss und versuche Rückgängig danach erneut."))
+
+        let urls = session.undoResourceURLs(includingRestoredTargets: false)
+        let blocked = blockedTabsForFileMutation(urls: urls, workspaces: fileTreeMutationWorkspaces())
+        guard blocked.isEmpty else {
+            reportFolderFileMutationConflict(blocked)
             return false
         }
-        noteFileMutationChange(in: mutationWorkspaces)
-        defer {
-            WorkspacePathOperationRegistry.finish(mutationID)
-            noteFileMutationChange(in: fileTreeMutationWorkspaces(
-                including: mutationWorkspaces
-            ))
+        let mutation: TextWorkflowDiskMutation
+        do { mutation = try reserveTextWorkflowDiskMutation(urls: urls) }
+        catch {
+            folderPreviewConflictHandler(TextWorkflowFailure.message(error))
+            return false
         }
-        do {
-            try ApplyEngine.undo(session)
-            // Rückgängig schreibt die Dateien erneut — dieselbe Lage wie nach
-            // dem Apply: Die sichtbaren Treffer gehören zu einem alten Stand.
-            searchRunner?.folderResultsBecameStale()
-            reloadOpenTabsAcrossWorkspaces(
-                for: targetURLs, capturedWorkspaces: mutationWorkspaces
-            )
+        let (result, snapshots) = await Task.detached(priority: .userInitiated) { [self] in
+            var snapshots: [URL: FileSnapshot] = [:]
+            let result = Result {
+                try mutation.preflight(in: self)
+                return try ApplyEngine.undo(session, beforeAtomicReplace: { _ in
+                    try mutation.preflight(in: self)
+                }, verifiedOriginal: { snapshots[$0] = $1 })
+            }
+            return (result, snapshots)
+        }.value
+        let reloadFailures = await reloadRecoveryDocuments(mutation, expectedSnapshots: snapshots)
+        finishTextWorkflowDiskMutation(mutation, changedURLs: [], session: nil)
+        for hold in holds { hold.finish() }
+
+        let failure: Error?
+        switch result {
+        case .success:
             lastApplySession = nil
-            return true
-        } catch ApplyError.undoConflict(let message) {
+            failure = nil
+        case .failure(let error):
+            if case ApplyError.undoFailed(let partial, _) = error { lastApplySession = partial }
+            failure = error
+        }
+        if !reloadFailures.isEmpty {
+            NSAlert.runWarning(title: L10n.string("Rückgängig-Konflikt"),
+                text: L10n.format("Die Dateien wurden bearbeitet, aber diese offenen Dokumente konnten nicht bestätigt neu geladen werden:\n%@",
+                                  reloadFailures.map(\.path).sorted().joined(separator: "\n")))
+        }
+        guard let failure else { return true }
+        switch failure {
+        case ApplyError.undoConflict(let message):
             NSAlert.runWarning(title: L10n.string("Rückgängig-Konflikt"), text: message)
-            return false
-        } catch ApplyError.legacySession(let message) {
+        case ApplyError.conflict(let message):
+            folderPreviewConflictHandler(message)
+        case ApplyError.legacySession(let message), ApplyError.backupFailed(let message):
             NSAlert.runWarning(title: L10n.string("Rückgängig abgelehnt"), text: message)
-            return false
-        } catch ApplyError.undoFailed(let partial, let message) {
-            lastApplySession = partial
-            NSAlert.runWarning(
-                title: partial.isCleanupOnly ? L10n.string("Aufräumen fehlgeschlagen") : L10n.string("Rückgängig teilweise fehlgeschlagen"),
-                text: partial.isCleanupOnly
-                    ? L10n.format("%@\nDie eigenen temporären Dateien konnten noch nicht vollständig aufgeräumt werden. Behebe die Ursache und wiederhole „Aufräumen“.", message)
-                    : L10n.format("%@\n\nDer bereits gespeicherte Fortschritt kann mit Rückgängig fortgesetzt werden.", message))
-            searchRunner?.folderResultsBecameStale()
-            reloadOpenTabsAcrossWorkspaces(
-                for: partial.entries.filter { $0.state == .restored }
-                    .map { URL(fileURLWithPath: $0.originalPath) },
-                capturedWorkspaces: mutationWorkspaces
-            )
-            return false
-        } catch ApplyError.backupFailed(let message) {
-            // Beschädigte oder manipulierte Sicherung: Der sichere Abbruch ist
-            // beabsichtigt. Die bereits lokalisierte Hash-/Backup-Ursache muss
-            // als Nutzermeldung erscheinen, nicht als rohe Enum-Beschreibung.
-            NSAlert.runWarning(title: L10n.string("Rückgängig abgelehnt"),
-                               text: message)
-            return false
-        } catch {
+        default:
             if session.isCleanupOnly {
                 NSAlert.runWarning(title: L10n.string("Aufräumen fehlgeschlagen"),
-                    text: L10n.format("%@\nDie eigenen temporären Dateien konnten noch nicht vollständig aufgeräumt werden. Behebe die Ursache und wiederhole „Aufräumen“.", error.localizedDescription))
+                    text: L10n.format("%@\nDie eigenen temporären Dateien konnten noch nicht vollständig aufgeräumt werden. Behebe die Ursache und wiederhole „Aufräumen“.", failure.localizedDescription))
             } else {
-                NSAlert(error: error).runModal()
+                NSAlert.runWarning(title: L10n.string("Rückgängig teilweise fehlgeschlagen"),
+                                   text: failure.localizedDescription)
             }
-            return false
         }
+        return false
     }
 
     /// Lädt geöffnete Tabs neu von der Platte, wenn ihre URL in der

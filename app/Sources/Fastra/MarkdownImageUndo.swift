@@ -77,7 +77,9 @@ final class MarkdownImageUndoSideEffect: @unchecked Sendable {
 
     @discardableResult
     func redo(hooks: MarkdownImagePublication.Hooks = .init()) -> Bool {
-        prepareRedo(hooks: hooks) != .failed
+        guard prepareRedo(hooks: hooks) != .failed else { return false }
+        commitRedo()
+        return true
     }
 
     enum RedoPreparation { case alreadyOnDisk, restoredFromMemory, failed }
@@ -86,9 +88,11 @@ final class MarkdownImageUndoSideEffect: @unchecked Sendable {
         if fileState == .onDisk { return files.checkOnDiskImages() ? .alreadyOnDisk : .failed }
         guard fileState == .inMemory, files.restoreFromMemory(hooks: hooks) else { return .failed }
         fileState = .onDisk
-        removalPending = false
         return .restoredFromMemory
     }
+
+    // Erst die angenommene Textänderung beendet die vorgemerkte Rücknahme.
+    func commitRedo() { removalPending = false }
 
     @discardableResult
     func documentSaved(visible: Bool, gate: (() -> Bool) -> Bool = { $0() }) -> Bool {
@@ -304,7 +308,9 @@ enum MarkdownImageUndo {
             }
         }
         _ = manager.fastraRegisterSideEffectForLatestUndo(
-            undo: {}, redo: {},
+            undo: {}, redo: {
+                MarkdownImageUndoSideEffect.perform({ effect.commitRedo() }, buffer: buffer, completion: { _ in })
+            },
             undoAsync: { [weak manager] content, completion in
                 performWithReferences(excluding: manager, buffer: buffer, work: { opened, gate in
                     guard let saved = effect.savedReferences(documentURL: documentURL, opened: opened) else { return .capture(true, effects: [effect]) }

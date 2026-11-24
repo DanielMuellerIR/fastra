@@ -727,7 +727,7 @@ fn rollback_insertion(editor: Rc<RichEditor>, id: String) {
 fn restore_changes(
     records: &mut BTreeMap<String, Record>,
     changed: &[(String, bool)],
-    prior: &BTreeMap<String, bool>,
+    prior: &BTreeMap<String, (bool, bool)>,
     owner: &fastra_io::markdown_assets::Owner,
 ) -> Option<String> {
     let mut failure = None;
@@ -742,14 +742,19 @@ fn restore_changes(
             failure = Some(error.to_string());
         }
     }
-    for (id, visible) in prior {
-        let record = records.get_mut(id).unwrap();
-        record.visible = *visible;
-        if *visible {
-            record.undo_permission_denied = false;
-        }
-    }
+    restore_record_states(records, prior);
     failure
+}
+
+fn restore_record_states(
+    records: &mut BTreeMap<String, Record>,
+    prior: &BTreeMap<String, (bool, bool)>,
+) {
+    for (id, &(visible, permission_denied)) in prior {
+        let record = records.get_mut(id).unwrap();
+        record.visible = visible;
+        record.undo_permission_denied = permission_denied;
+    }
 }
 fn complete_reconcile(
     editor: &Rc<RichEditor>,
@@ -850,7 +855,7 @@ fn reconcile_inner(editor: Rc<RichEditor>, value: &Value, saved: bool, done: Don
     let records = std::mem::take(&mut state.records);
     let prior = records
         .iter()
-        .map(|(id, record)| (id.clone(), record.visible))
+        .map(|(id, record)| (id.clone(), (record.visible, record.undo_permission_denied)))
         .collect::<BTreeMap<_, _>>();
     state.running = Some((revision, desired.clone()));
     state.waiters.push(done);
@@ -908,7 +913,8 @@ fn reconcile_inner(editor: Rc<RichEditor>, value: &Value, saved: bool, done: Don
                                 // Text-Undo bleibt möglich, die ausstehende Dateirücknahme sichtbar.
                                 record.undo_permission_denied = true;
                             }
-                            Err(_) => {} // Fremdgeänderte Bilder behalten wie am Mac ihren sichtbaren Namen.
+                            // Fremdgeänderte Bilder behalten wie am Mac ihren sichtbaren Namen.
+                            Err(_) => record.undo_permission_denied = false,
                         }
                     }
                 }
@@ -965,6 +971,9 @@ fn reconcile_inner(editor: Rc<RichEditor>, value: &Value, saved: bool, done: Don
                     },
                 );
             } else if let Some(editor) = weak.upgrade() {
+                if !owner_current {
+                    restore_record_states(&mut records, &prior);
+                }
                 let ok = owner_current && failure.is_none();
                 complete_reconcile(&editor, records, old_busy, ok, failure);
             }
