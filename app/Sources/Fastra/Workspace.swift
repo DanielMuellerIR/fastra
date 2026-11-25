@@ -1803,6 +1803,7 @@ final class Workspace: ObservableObject {
     let markdownReferences = MarkdownReferenceController()
     let markdownVisualFind = MarkdownVisualFindController()
     let markdownTable = MarkdownTableController()
+    let markdownVisualDiagnostics = MarkdownVisualDiagnosticsController()
 
     var activeMarkdownIsVisual: Bool {
         activeTabIsMarkdown && activeViewMode == .text
@@ -1858,6 +1859,7 @@ final class Workspace: ObservableObject {
     func toggleMarkdownEditingMode() {
         if synchronizeVisualMarkdownBefore({ self.toggleMarkdownEditingMode() }) { return }
         guard activeTabIsMarkdown, let index = activeTabIndex else { return }
+        if Thread.isMainThread { MainActor.assumeIsolated { markdownVisualDiagnostics.clear() } }
         tabs[index].markdownVisualOverride = !activeMarkdownIsVisual
         setViewMode(.text)
     }
@@ -2201,6 +2203,7 @@ final class Workspace: ObservableObject {
         }
 
         comparisonTabID = nil
+        if activeTabID != id, Thread.isMainThread { MainActor.assumeIsolated { markdownVisualDiagnostics.clear() } }
         activeTabID = id
         // Anders als ein globaler `activeTabID.didSet` läuft dieser Hook erst
         // nach einer endgültigen Nutzerauswahl. Ein Save-Dialog darf Tabs für
@@ -2564,6 +2567,7 @@ final class Workspace: ObservableObject {
         tabs.removeAll { $0.id != id }
         recentlyActiveTabIDs.removeAll { $0 != id }
         comparisonTabID = nil
+        if activeTabID != id, Thread.isMainThread { MainActor.assumeIsolated { markdownVisualDiagnostics.clear() } }
         activeTabID = id
         synchronizeProjectWithActiveTabIfNeeded()
     }
@@ -3645,24 +3649,43 @@ final class Workspace: ObservableObject {
     var saveSafetyWarningHandler: (String, String) -> Void = { title, text in
         NSAlert.runWarning(title: title, text: text)
     }
-    var markdownSaveWarningHandler: (MarkdownVisualCoordinator.SaveCheck) -> Void = { check in
+    private var customMarkdownSaveWarningHandler: ((MarkdownVisualCoordinator.SaveCheck) -> Void)?
+    var markdownSaveWarningHandler: (MarkdownVisualCoordinator.SaveCheck) -> Void {
+        get {
+            customMarkdownSaveWarningHandler ?? { [weak self] check in
+                self?.presentVisualMarkdownSaveWarning(check)
+            }
+        }
+        set {
+            customMarkdownSaveWarningHandler = newValue
+        }
+    }
+
+    private func presentVisualMarkdownSaveWarning(_ check: MarkdownVisualCoordinator.SaveCheck) {
+        guard check != .ok else { return }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = L10n.string("WYSIWYG-Dokument wurde nicht gespeichert")
-        let detail: String
-        switch check {
-        case .text: detail = L10n.string("Nach dem Öffnen würde der sichtbare Text abweichen.")
-        case .format: detail = L10n.string("Nach dem Öffnen würde die Formatierung abweichen.")
-        case .breaks: detail = L10n.string("Nach dem Öffnen würden Umbrüche oder Leerzeilen abweichen.")
-        case .unavailable: detail = L10n.string("Fastra konnte die gespeicherte Darstellung nicht prüfen.")
-        case .ok: return
-        }
-        alert.informativeText = detail + "\n\n" + L10n.string("Deine Eingaben bleiben im offenen Editor. Bitte melde den Fehler mit der Diagnose und den Schritten davor.")
+        alert.messageText = MarkdownVisualSaveMessages.title
+        alert.informativeText = MarkdownVisualSaveMessages.detail(for: check)
+            + "\n\n" + MarkdownVisualSaveMessages.saveFailureInfo
         alert.addButton(withTitle: L10n.string("OK"))
+        alert.addButton(withTitle: L10n.string("Protokoll sichern…"))
         alert.addButton(withTitle: L10n.string("Diagnose kopieren"))
-        if alert.runModal() == .alertSecondButtonReturn {
+        switch alert.runModal() {
+        case .alertSecondButtonReturn:
+            MainActor.assumeIsolated {
+                markdownVisualDiagnostics.saveFullReport(from: self)
+            }
+        case .alertThirdButtonReturn:
+            let redacted = visualMarkdownEditor?.lastSaveDiagnosticRedacted
+                ?? MainActor.assumeIsolated { markdownVisualDiagnostics.activeWarning?.frozenReportRedacted }
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString("Fastra \(AppInfo.version) · WYSIWYG save · \(check.rawValue)", forType: .string)
+            NSPasteboard.general.setString(
+                redacted ?? "Fastra \(AppInfo.version) · WYSIWYG save · \(check.rawValue)",
+                forType: .string
+            )
+        default:
+            break
         }
     }
 

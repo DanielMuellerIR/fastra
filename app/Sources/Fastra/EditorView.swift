@@ -267,6 +267,7 @@ struct EditorView: View {
         .sheet(item: $workspace.fileDiffTransferPreview) { preview in
             FileDiffTransferPreviewSheet(workspace: workspace, preview: preview)
         }
+        .background(MarkdownVisualDiagnosticPresentation(workspace: workspace, controller: workspace.markdownVisualDiagnostics))
     }
 
     private func checkMarkdownEditingMode() {
@@ -387,6 +388,7 @@ struct EditorView: View {
                     .help("Im formatierten Text suchen (⌘F)")
                     .accessibilityLabel("Im formatierten Text suchen")
                     .background(SelfTestMarker(id: "markdownVisualFindButton").frame(width: 0, height: 0))
+                MarkdownVisualDiagnosticToolbarButton(workspace: workspace, diagnostics: workspace.markdownVisualDiagnostics)
             }
             Divider().frame(height: 16).opacity(0.5)
             markdownFormattingButtons
@@ -699,6 +701,7 @@ struct EditorView: View {
                         if workspace.activeMarkdownIsVisual {
                             MarkdownVisualFindBar(workspace: workspace, find: workspace.markdownVisualFind)
                             MarkdownTableBar(workspace: workspace, table: workspace.markdownTable)
+                            MarkdownVisualDiagnosticBanner(workspace: workspace, diagnostics: workspace.markdownVisualDiagnostics)
                         }
                         if showMarkdownAssistHint {
                             markdownAssistHintBar

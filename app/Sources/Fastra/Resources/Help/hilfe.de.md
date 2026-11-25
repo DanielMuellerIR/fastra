@@ -943,11 +943,14 @@ um weiterzuschreiben.
 Wo Markdown-Trennzeichen eine gewählte Formatierung nicht eindeutig ausdrücken
 können, verwendet Fastra erlaubte HTML-Auszeichnungen im Quelltext, damit die
 Darstellung beim Speichern und Wiederöffnen erhalten bleibt.
-Auf dem Mac prüft Fastra vor dem Speichern aus der WYSIWYG-Ansicht den
-sichtbaren Text, Inline-Formatierungen und absichtliche Umbrüche im erzeugten
-Markdown. Wenn die Prüfung eine Abweichung feststellt, bleiben deine Eingaben
-im offenen Editor. Kopiere mit **Diagnose kopieren** die Fastra-Version und
-Fehlerart für eine Meldung. Die Diagnose enthält keinen Dokumentinhalt.
+Auf dem Mac prüft Fastra sowohl laufend eine Sekunde nach der letzten Eingabe als
+auch vor dem Speichern aus der WYSIWYG-Ansicht den sichtbaren Text,
+Inline-Formatierungen und absichtliche Umbrüche im erzeugten Markdown. Wenn eine
+Abweichung oder Störung auftritt, bleiben deine Eingaben im offenen Editor
+erhalten. Über das Stethoskop-Symbol in der Werkzeugleiste, das Warnbanner oder
+**Markdown → WYSIWYG-Diagnoseprotokoll…** lässt sich jederzeit eine anonymisierte
+Diagnose ohne Dokumentinhalt kopieren oder ein vollständiges Protokoll für eine
+Fehlermeldung sichern.
 Geschützte HTML- und Formelbereiche lassen sich im WYSIWYG-Modus nicht
 formatieren. Fastra erklärt dies vor der Änderung; bearbeite solche Bereiche
 im Markdown-Quelltext.

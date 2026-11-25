@@ -718,6 +718,10 @@ struct FastraApp: App {
                 Button("Lokale Verweise prüfen…") {
                     if let workspace = commandWorkspace { workspace.markdownReferences.present(in: workspace) }
                 }
+                Button("WYSIWYG-Diagnoseprotokoll…") {
+                    if let workspace = commandWorkspace { workspace.markdownVisualDiagnostics.present(in: workspace) }
+                }
+                .disabled(commandWorkspace?.activeMarkdownIsVisual != true)
             }
             .disabled(!activeTabIsMarkdown)
         }

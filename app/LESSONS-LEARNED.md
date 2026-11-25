@@ -105,6 +105,16 @@ aus Abhängigkeiten. Eine solche Probe sieht wie „nicht neu übersetzt" aus.
 Die `rm`-Zeilen bleiben für Toolchains vor 6.4 und `--build-system native`
 stehen.
 
+### A.7 Unveränderte Vendor-Bundles und `git diff --check` (2026-07-14)
+
+**Beobachtung:** Das offizielle minifizierte Mermaid-Bundle (11.16.0) enthält
+nachgestellte Leerzeichen, teilweise innerhalb eingebetteter Template-Strings,
+sodass `git diff --check` daran abbricht.
+
+**Konsequenz:** Die Upstream-Datei muss wegen ihrer Hash-Bindung im JS-Inventar
+bytegleich bleiben; Whitespace-Prüfungen vor dem Commit gezielt auf eigene
+Projektdateien beschränken.
+
 ## F · CodeEdit-Build-Realität und Checkout-Patches
 
 Mehrere voneinander unabhängige Probleme der gepinnten Abhängigkeiten treffen
@@ -1128,3 +1138,37 @@ geteilten Renderer für Git-, Datei- und eingebettete Übernahmevergleiche.
 Textbereich gegen den Zellrahmen im vollständigen Dokumentfenster. Die bisherige
 Messung nur an `NSTextView.bounds` bestand trotz des Fehlers: Eine hohe native
 Textansicht kann in einer zu niedrigen SwiftUI-Zelle liegen.
+
+## Suchfenster behält Tastaturfokus bei Treffersprüngen (2026-07-14)
+
+Wird beim Treffersprung das Dokumentfenster zum Key Window gemacht, während das
+schwebende Suchfenster sichtbar im Vordergrund bleibt, ersetzt ein zweites
+Return den selektierten Treffer im Dokument. Solange das Suchfenster geöffnet
+ist, behält es den Tastaturfokus; die Treffernavigation scrollt und selektiert
+nur im Dokument, abgesichert durch die Selbsttests `navmatch` und `multisearch`.
+
+## SwiftUI-Hosting überschreibt ⌘N-Fensterrahmen nach Layout (2026-07-17)
+
+Bei macOS-Dokumentfenstern mit SwiftUI-Hosting genügt
+`NSHostingController.sizingOptions = []` allein nicht, um den für ⌘N
+übernommenen Fensterrahmen gegen SwiftUIs spätes Zurücksetzen auf die fitting
+size zu schützen. Den vorgesehenen `NSWindow.frame` nach dem ersten
+Key-/Layout-Zyklus einmalig wiederherstellen und im gepackten App-Bundle über
+`-selftest newwindow` prüfen.
+
+## Schließen-Button in SwiftUI-Tabs nicht verschachteln (2026-07-20)
+
+In SwiftUI-Tabs darf der Schließen-Button nicht in den Tab-Auswahlbutton
+verschachtelt werden, weil sonst der Hover-Zustand abbrechen kann, während der
+Zeiger auf dem sichtbaren X steht. Auswahl- und Schließen-Fläche als Geschwister
+mit mindestens 22×22 pt Klickfläche und eigenem Hover-Zustand anlegen;
+`tabclosehit` prüft das Schließen inaktiver Tabs per Randklick ohne Wechsel des
+aktiven Tabs.
+
+## cmark-Quellbereich hinter Markdown-Listen (2026-07-21)
+
+cmark dehnt den Quellbereich des letzten Listenabsatzes über nachfolgende reine
+ASCII-Leerzeichenzeilen aus. Sichtbare Leerzeilen nach einer Liste müssen in
+Quellreihenfolge hinter dem gesamten Listenblock eingefügt werden, damit sie
+weder verschluckt werden noch einen leeren Aufzählungspunkt erzeugen;
+WKWebView-Tests müssen die Zeilenhöhe gezielt hinter einer Liste messen.

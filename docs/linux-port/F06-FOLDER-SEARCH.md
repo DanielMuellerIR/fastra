@@ -87,6 +87,10 @@ und Inhalt geprüft. Sie werden weder geschrieben noch Teil der Rücknahme.
 
 Der reguläre Transaktionsadapter akzeptiert ausschließlich ext4/Btrfs
 auf einem gemeinsamen Dateisystem; siehe [Dateitransaktionen](F03-TRANSACTIONS.md).
+Anders als unter macOS darf Fastra unter Linux eine ausdrücklich freigegebene,
+lesbare Datei mit Modus `0400` in einem beschreibbaren Ordner atomar ersetzen.
+Die ursprünglichen Dateirechte bleiben erhalten; ändern sich die Dateirechte
+nach der Vorschau, schlägt der Preflight fehl und verlangt eine neue Prüfung.
 
 Neun Backendtests prüfen selektive Ersetzung und Undo über Verzeichnisgrenzen,
 UTF-8-/UTF-16-BOM und CRLF, externe Änderungen auch in nichttreffenden oder

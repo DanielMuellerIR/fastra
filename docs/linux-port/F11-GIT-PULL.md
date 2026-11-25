@@ -63,3 +63,9 @@ Sie umfassen echte 129-/1024-Datei-Pulls, Stale- und Budgetablehnung vor Dispatc
 Konflikte, Cancel/Ownerverlust, gehaltenen Main-Receipt und gegenseitige
 Source-/Hex-/Folder-/PNG-Publikationsgates. Das ersetzt keine vollständige
 physische Desktop-/IME-Abnahme oder plattformübergreifende Mac-Abnahme.
+
+Temporäre ausführbare Git-Hilfsskripte dürfen in multithreaded Linux-Tests nicht
+direkt im laufenden Testprozess geschrieben und anschließend ausgeführt werden,
+weil ein nebenläufig geforkter Kindprozess den offenen Schreibdeskriptor bis zum
+`exec` erben und sporadisch `ETXTBSY` (`Text file busy`) auslösen kann. Solche
+Hilfsskripte deshalb in einem separaten Prozess erzeugen.

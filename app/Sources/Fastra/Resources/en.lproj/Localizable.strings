@@ -1,12 +1,37 @@
 /* Fastra — English user interface */
 
-"WYSIWYG-Dokument wurde nicht gespeichert" = "WYSIWYG document could not be saved";
-"Nach dem Öffnen würde der sichtbare Text abweichen." = "The visible text would change when reopened.";
-"Nach dem Öffnen würde die Formatierung abweichen." = "The formatting would change when reopened.";
-"Nach dem Öffnen würden Umbrüche oder Leerzeilen abweichen." = "Line breaks or blank lines would change when reopened.";
-"Fastra konnte die gespeicherte Darstellung nicht prüfen." = "Fastra could not check how the saved document would look.";
-"Deine Eingaben bleiben im offenen Editor. Bitte melde den Fehler mit der Diagnose und den Schritten davor." = "Your edits are still in the open editor. Please report the problem with the diagnostic and the steps leading up to it.";
+"Dokument konnte nicht gespeichert werden" = "Document could not be saved";
+"Beim Speichern aus der formatierten Ansicht (WYSIWYG) würde sich der Text verändern." = "Saving from the formatted view (WYSIWYG) would alter the text.";
+"Beim Speichern aus der formatierten Ansicht (WYSIWYG) würden Formatierungen verloren gehen oder sich verändern." = "Saving from the formatted view (WYSIWYG) would lose or alter formatting.";
+"Beim Speichern aus der formatierten Ansicht (WYSIWYG) würden Zeilenumbrüche oder Leerzeilen verloren gehen oder sich verändern." = "Saving from the formatted view (WYSIWYG) would lose or alter line breaks or blank lines.";
+"Fastra konnte vor dem Speichern nicht prüfen, ob die formatierte Ansicht (WYSIWYG) unverändert gespeichert würde." = "Fastra could not verify before saving that the formatted view (WYSIWYG) would be saved without changes.";
+"Deine Änderungen bleiben im offenen Editor erhalten. Du kannst das Diagnoseprotokoll sichern oder kopieren, um den Fehler zu melden, oder in die Quelltext-Ansicht wechseln." = "Your changes remain in the open editor. You can save or copy the diagnostic log to report the issue, or switch to source view.";
 "Diagnose kopieren" = "Copy Diagnostic";
+"Protokoll sichern…" = "Save Log…";
+"Diagnose…" = "Diagnostic…";
+"Quelltext öffnen" = "Open Source";
+"Fastra hat bei der letzten Bearbeitung eine ungültige Blockgrenze abgefangen und sichtbaren Text geschützt." = "Fastra caught an invalid block boundary during the last edit and protected visible text.";
+"Bei einem Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) hat sich die sichtbare Textlänge unerwartet verändert." = "A formatting command in the formatted view (WYSIWYG) unexpectedly changed the visible text length.";
+"Bei der letzten Bearbeitung in der formatierten Ansicht (WYSIWYG) ist ein unerwarteter Zustand aufgetreten." = "An unexpected state occurred during the last edit in the formatted view (WYSIWYG).";
+"Abweichung in der WYSIWYG-Ansicht erkannt" = "Difference detected in WYSIWYG view";
+"Unerwartete WYSIWYG-Bearbeitung erkannt" = "Unexpected WYSIWYG edit detected";
+"Das Diagnoseprotokoll ist derzeit nicht verfügbar." = "The diagnostic log is currently unavailable.";
+"Vollständiges Diagnoseprotokoll in die Zwischenablage kopiert." = "Full diagnostic log copied to the clipboard.";
+"Anonymisierte Diagnose in die Zwischenablage kopiert." = "Anonymized diagnostic copied to the clipboard.";
+"Diagnoseprotokoll gespeichert: %@" = "Diagnostic log saved: %@";
+"WYSIWYG-Diagnoseprotokoll" = "WYSIWYG Diagnostic Log";
+"Aktualisieren" = "Refresh";
+"Das anonymisierte Protokoll enthält nur Aktionsarten, Strukturdaten und Abweichungsstellen ohne Dokumenttext. Das vollständige Protokoll enthält zusätzlich den aktuellen HTML- und Markdown-Stand zur Fehleranalyse." = "The anonymized log contains only action types, structural data, and mismatch locations without document text. The full log also includes the current HTML and Markdown state for debugging.";
+"Keine Diagnose-Einträge vorhanden." = "No diagnostic entries recorded yet.";
+"Diagnose ohne Dokumentinhalt kopieren" = "Copy Diagnostic Without Content";
+"Vollständiges Protokoll kopieren" = "Copy Full Log";
+"Vollständiges Protokoll sichern…" = "Save Full Log…";
+"Live-Prüfung: Keine Abweichungen erkannt" = "Live check: No differences detected";
+"Live-Prüfung aktiv (1 Sekunde nach Eingaben)" = "Live check active (1 second after edits)";
+"Protokollierte Schritte: %lld" = "Recorded steps: %lld";
+"WYSIWYG-Abweichung erkannt — Diagnoseprotokoll öffnen" = "WYSIWYG difference detected — open diagnostic log";
+"WYSIWYG-Diagnoseprotokoll…" = "WYSIWYG Diagnostic Log…";
+"WYSIWYG-Diagnoseprotokoll öffnen" = "Open WYSIWYG Diagnostic Log";
 
 "Geschützter Markdown-Bereich" = "Protected Markdown content";
 "Dieser Bereich kann im WYSIWYG-Modus nicht bearbeitet werden. Bitte zum Ändern in den Markdown-Quelltext wechseln. Es wurde nichts verändert." = "This content cannot be edited in WYSIWYG mode. Switch to the Markdown source to change it. Nothing was changed.";

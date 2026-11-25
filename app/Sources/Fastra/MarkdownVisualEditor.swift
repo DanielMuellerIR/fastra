@@ -269,6 +269,151 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     private var currentFontName = PreviewFonts.systemName
     private var currentFontSize: CGFloat = 14
     private var currentDarkMode = false
+    /// Wartezeit nach der letzten Eingabe vor der automatischen Live-Prüfung.
+    var liveCheckDelay: TimeInterval = 1.0
+    private var liveCheckWorkItem: DispatchWorkItem?
+    private var lastLiveCheckedState: (generation: UInt64, revision: Int)?
+    private var swiftDiagnosticEvents: [[String: Any]] = []
+    private(set) var lastSaveCheckOutcome: SaveCheck?
+    private(set) var lastSaveDiagnosticRedacted: String?
+    private(set) var lastSaveDiagnosticFull: String?
+
+    private func recordSwiftEvent(_ kind: String, details: [String: Any] = [:]) {
+        var entry: [String: Any] = [
+            "ts": ISO8601DateFormatter().string(from: Date()),
+            "kind": kind,
+            "generation": generation,
+            "revision": acceptedInputRevision
+        ]
+        for (key, value) in details { entry[key] = value }
+        swiftDiagnosticEvents.append(entry)
+        if swiftDiagnosticEvents.count > 80 { swiftDiagnosticEvents.removeFirst() }
+    }
+
+    func scheduleLiveAppearanceCheck() {
+        liveCheckWorkItem?.cancel()
+        liveCheckWorkItem = nil
+        guard ready, liveCheckDelay >= 0 else { return }
+        let request = generation
+        let requestSession = session
+        let expectedRevision = acceptedInputRevision
+        let item = DispatchWorkItem { [weak self] in
+            self?.runLiveAppearanceCheck(generation: request, session: requestSession, revision: expectedRevision)
+        }
+        liveCheckWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + liveCheckDelay, execute: item)
+    }
+
+    private func runLiveAppearanceCheck(generation request: UInt64, session requestSession: String, revision expectedRevision: Int) {
+        guard ready, generation == request, session == requestSession,
+              acceptedInputRevision == expectedRevision,
+              !reconcilingImages, activeActionIDs.isEmpty,
+              let workspace, workspace.activeTabID == tabID,
+              let tab = workspace.tabs.first(where: { $0.id == tabID }),
+              tab.documentID == loadedDocumentID,
+              tab.content.utf8.elementsEqual(markdown.utf8),
+              let web else { return }
+        if let last = lastLiveCheckedState, last.generation == request, last.revision == expectedRevision {
+            return
+        }
+        let candidate = tab.textForSaving(tab.content)
+        let url = tab.url
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let html = MarkdownVisualDocument.render(candidate, documentURL: url).fragment.html
+            DispatchQueue.main.async {
+                guard let self, self.ready, self.generation == request, self.session == requestSession,
+                      self.acceptedInputRevision == expectedRevision,
+                      self.activeActionIDs.isEmpty, !self.reconcilingImages,
+                      let workspace = self.workspace,
+                      workspace.tabs.contains(where: { $0.id == self.tabID && $0.documentID == self.loadedDocumentID && $0.content.utf8.elementsEqual(self.markdown.utf8) })
+                else { return }
+                web.callAsyncJavaScript(
+                    "return window.fastraVisual.inspectAppearance(session, revision, html);",
+                    arguments: ["session": requestSession, "revision": expectedRevision, "html": html],
+                    in: nil, in: .page
+                ) { [weak self] result in
+                    guard let self, self.ready, self.generation == request, self.session == requestSession,
+                          self.acceptedInputRevision == expectedRevision else { return }
+                    guard case .success(let value) = result, let body = value as? [String: Any],
+                          let rawOutcome = body["outcome"] as? String,
+                          let outcome = SaveCheck(rawValue: rawOutcome) else { return }
+                    self.lastLiveCheckedState = (request, expectedRevision)
+                    self.recordSwiftEvent("liveCheck", details: ["outcome": outcome.rawValue])
+                    if outcome == .ok {
+                        self.collectDiagnosticReport(includeContent: false) { redacted, eventCount in
+                            MainActor.assumeIsolated {
+                                workspace.markdownVisualDiagnostics.recordLiveCheck(
+                                    outcome: outcome, revision: expectedRevision,
+                                    eventCount: eventCount ?? 0,
+                                    redactedReport: redacted, fullReport: nil
+                                )
+                            }
+                        }
+                    } else {
+                        self.captureFrozenDiagnostics { redacted, full, eventCount in
+                            MainActor.assumeIsolated {
+                                workspace.markdownVisualDiagnostics.recordLiveCheck(
+                                    outcome: outcome, revision: expectedRevision,
+                                    eventCount: eventCount,
+                                    redactedReport: redacted, fullReport: full
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func captureFrozenDiagnostics(completion: @escaping (String?, String?, Int) -> Void) {
+        collectDiagnosticReport(includeContent: false) { [weak self] redacted, countRedacted in
+            guard let self else { completion(redacted, nil, countRedacted ?? 0); return }
+            self.collectDiagnosticReport(includeContent: true) { full, countFull in
+                completion(redacted, full, countFull ?? countRedacted ?? 0)
+            }
+        }
+    }
+
+    func collectDiagnosticReport(includeContent: Bool, completion: @escaping (String?, Int?) -> Void) {
+        let swiftLog = swiftDiagnosticEvents
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        let contextInfo: [String: Any] = [
+            "appVersion": AppInfo.version,
+            "build": build,
+            "osVersion": ProcessInfo.processInfo.operatingSystemVersionString,
+            "includeContent": includeContent,
+            "generation": generation,
+            "acceptedInputRevision": acceptedInputRevision,
+            "markdownLength": markdown.count,
+            "hasDocumentURL": documentURL != nil
+        ]
+        guard let web else {
+            let payload: [String: Any] = ["fastra": contextInfo, "swiftEvents": swiftLog]
+            completion(Self.prettyJSONString(payload), swiftLog.count)
+            return
+        }
+        web.callAsyncJavaScript(
+            "return window.fastraVisual?.diagnosticReport ? window.fastraVisual.diagnosticReport(includeContent) : null;",
+            arguments: ["includeContent": includeContent],
+            in: nil, in: .page
+        ) { result in
+            var payload: [String: Any] = ["fastra": contextInfo, "swiftEvents": swiftLog]
+            var eventCount = swiftLog.count
+            if case .success(let value) = result, let jsReport = value as? [String: Any] {
+                payload["editor"] = jsReport
+                if let events = jsReport["events"] as? [Any] { eventCount += events.count }
+            }
+            completion(Self.prettyJSONString(payload), eventCount)
+        }
+    }
+
+    private static func prettyJSONString(_ object: Any) -> String? {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
 
     @discardableResult
     private static func reportImageRemovalFailures(_ result: MarkdownImageUndo.ReferenceWorkResult,
@@ -295,7 +440,10 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         })
     }
 
-    deinit { discardImageUndo() }
+    deinit {
+        liveCheckWorkItem?.cancel()
+        discardImageUndo()
+    }
 
     /// Der Browser hält Bildaktionen kurz an, bis die Dateiseite abgeschlossen
     /// ist. Text und Dateien werden dadurch in derselben Reihenfolge bestätigt.
@@ -553,8 +701,31 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         })
     }
 
+    private func clearDiagnostics(deferred: Bool = false) {
+        let workspace = self.workspace
+        let request = generation
+        let tab = tabID
+        if deferred || !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self, weak workspace] in
+                guard let workspace else { return }
+                if let self, self.generation != request { return }
+                if let tab, workspace.activeTabID != tab { return }
+                MainActor.assumeIsolated { workspace.markdownVisualDiagnostics.clear() }
+            }
+        } else {
+            MainActor.assumeIsolated { workspace?.markdownVisualDiagnostics.clear() }
+        }
+    }
+
     func load(_ source: String, documentURL: URL?, fontName: String,
               fontSize: CGFloat, darkMode: Bool, style: String) {
+        liveCheckWorkItem?.cancel()
+        liveCheckWorkItem = nil
+        lastLiveCheckedState = nil
+        lastSaveCheckOutcome = nil
+        lastSaveDiagnosticRedacted = nil
+        lastSaveDiagnosticFull = nil
+        clearDiagnostics()
         discardImageUndo()
         currentFontName = fontName
         currentFontSize = fontSize
@@ -567,6 +738,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         let request = generation
         session = UUID().uuidString
         ready = false
+        recordSwiftEvent("load", details: ["length": source.count, "hasURL": documentURL != nil])
         scheduleTableReset()
         pending = nil
         currentNavigation = nil
@@ -625,6 +797,8 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 guard let self, self.generation == request, self.documentIdentityMatches else { return }
                 if case .success(let value) = result, value as? Bool == true {
                     self.ready = true
+                    self.recordSwiftEvent("ready")
+                    self.scheduleLiveAppearanceCheck()
                     self.reportOutlinePosition()
                     self.reportTableContext()
                     Task { @MainActor [weak self] in
@@ -694,10 +868,24 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 markdown = value
                 acceptedInputRevision = revision
                 reportTableContext()
+                scheduleLiveAppearanceCheck()
                 return true
             }, completion: { [self] _ in
                 completeImageAction(revision: revision, session: capturedSession, generation: request)
             })
+        case "diagnosticAnomaly":
+            let code = body["code"] as? String ?? "unknown"
+            let summary = body["summary"] as? String ?? ""
+            let rev = body["revision"] as? Int ?? acceptedInputRevision
+            recordSwiftEvent("anomaly", details: ["code": code, "summary": summary])
+            captureFrozenDiagnostics { redacted, full, eventCount in
+                MainActor.assumeIsolated {
+                    workspace.markdownVisualDiagnostics.recordAnomaly(
+                        code: code, revision: rev, eventCount: eventCount,
+                        redactedReport: redacted, fullReport: full
+                    )
+                }
+            }
         case "imageMenu":
             guard let web, let x = body["x"] as? Double, let y = body["y"] as? Double else { return }
             let menu = NSMenu()
@@ -874,7 +1062,24 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                         let outcome = ((try? result.get()) as? String).flatMap(SaveCheck.init(rawValue:)) ?? .unavailable
                         saveChecks[hold.id] = VerifiedAppearance(generation: hold.generation, documentID: documentID, revision: contentRevision,
                                                                  candidate: candidate, outcome: outcome)
-                        completion(true)
+                        lastSaveCheckOutcome = outcome
+                        recordSwiftEvent("saveCheck", details: ["outcome": outcome.rawValue])
+                        if outcome == .ok {
+                            completion(true)
+                        } else {
+                            captureFrozenDiagnostics { redacted, full, eventCount in
+                                self.lastSaveDiagnosticRedacted = redacted
+                                self.lastSaveDiagnosticFull = full
+                                MainActor.assumeIsolated {
+                                    self.workspace?.markdownVisualDiagnostics.recordLiveCheck(
+                                        outcome: outcome, revision: inputRevision,
+                                        eventCount: eventCount,
+                                        redactedReport: redacted, fullReport: full
+                                    )
+                                }
+                                completion(true)
+                            }
+                        }
                     }
             }
         }
@@ -911,6 +1116,10 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     /// Nach einem neuen Speicherziel darf der alte DOM nicht wieder Eingaben
     /// annehmen, während seine Bildpfade und Dokumentbasis ersetzt werden.
     func invalidateForSourceReplacement() {
+        liveCheckWorkItem?.cancel()
+        liveCheckWorkItem = nil
+        recordSwiftEvent("invalidate")
+        clearDiagnostics(deferred: true)
         discardImageUndo()
         ready = false
         scheduleTableReset()
@@ -960,8 +1169,11 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     }
 
     func execute(_ command: String, value: String) {
+        recordSwiftEvent("execute", details: ["command": command])
         web?.callAsyncJavaScript("window.fastraVisual.command(command, value);",
-                                 arguments: ["command": command, "value": value], in: nil, in: .page) { _ in }
+                                 arguments: ["command": command, "value": value], in: nil, in: .page) { [weak self] _ in
+            self?.scheduleLiveAppearanceCheck()
+        }
     }
 
     func reportTableContext() {

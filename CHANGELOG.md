@@ -7,6 +7,18 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.242.88] — 2026-11-25
+
+### Hinzugefügt
+
+- macOS: Der WYSIWYG-Modus protokolliert Bearbeitungsschritte lokal im Arbeitsspeicher und prüft 1 Sekunde nach der letzten Eingabe automatisch ohne Eingabesperre, ob die Darstellung beim Speichern erhalten bleibt. Ein Werkzeugleisten-Button, ein Menüpunkt und ein nicht-modales Warnbanner erlauben jederzeit den Export eines anonymisierten oder vollständigen Diagnoseprotokolls.
+
+### Behoben
+
+- WYSIWYG: Überschriften- und Listenbefehle teilen mehrzeilige Absätze an harten Umbrüchen (`Shift+Return`) sauber auf, statt Block-Elemente illegal zu verschachteln; damit gehen bei nachfolgenden Formatierungen (`⌘B`) und beim Rückgängigmachen (`⌘Z`) keine Zeilen mehr verloren.
+- WYSIWYG: Geschützte Edit-Grenzen ziehen keine sichtbaren Inhalte mehr ein und werden vor jedem Serialisieren auf unerwarteten Inhalt geprüft; leere Hüllen und WebKit-Inline-Stil-Spans werden konsistent normalisiert.
+- macOS: Verständlichere deutsche und englische Meldungen im WYSIWYG-Speicherwarndialog mit direkter Möglichkeit, das Diagnoseprotokoll zu sichern oder zu kopieren.
+
 ## [v1.242.87] — 2026-11-24
 
 ### Behoben

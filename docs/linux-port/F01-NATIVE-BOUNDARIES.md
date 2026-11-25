@@ -66,6 +66,21 @@ Quellen: [GTK-Commit und Preedit](https://github.com/GNOME/gtk/blob/4.14.5/gtk/g
 [GTK-Textgeschichte](https://github.com/GNOME/gtk/blob/4.14.5/gtk/gtktexthistory.c)
 und [IM-Commitvertrag](https://docs.gtk.org/gtk4/signal.IMContext.commit.html).
 
+### Wayland-/IBus-Prüfumgebung
+
+Für IBus-Hangul-Prüfungen unter Wayland müssen reguläre Linux-Tastencodes
+gesendet werden; abweichende synthetische Testcodes liefern zwar
+Tastaturereignisse, lösen aber keine IBus-Komposition aus. Im visuellen
+Markdown-Editor (WebKitGTK) fehlt der sichtbar komponierte Text in der
+Wayland-AT-SPI-Abfrage und muss stattdessen über Kopieren und Speichern gegen
+die geschriebenen Bytes geprüft werden.
+
+Eine sichtbare IBus-Hanja-Kandidatenliste benötigt in der Wayland-Prüfumgebung
+eine private GNOME-Wayland-Sitzung; in minimalen Wayland-Compositors bleibt das
+Kandidatenfenster selbst in unabhängigen GTK-Kontrollfeldern unsichtbar, obwohl
+IBus Hanja übernimmt. Die Prüfung muss berücksichtigen, dass Escape die
+Kandidatenliste schließt und die Hangul-Vorkomposition stehen lässt.
+
 ## Produktgrenze
 
 Ein dauerhafter eigener Toolkitstand verändert den bisherigen Vertrag mit

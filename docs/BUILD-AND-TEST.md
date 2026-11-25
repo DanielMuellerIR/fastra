@@ -2570,7 +2570,11 @@ Beenden über das Menü.
 Diese Tests verwenden ausschließlich ihre privaten Homes, Dateisystem-Fixtures
 und Xvfb-Anzeigen. Dateitransaktionen brauchen das vom normalen Runner vorbereitete
 unterstützte Dateisystem; ein gewöhnliches Container-Overlay oder TMPFS ist kein
-Ersatz. Nach einer im Test absichtlich geänderten Projektwahl wartet der nächste
+Ersatz. Für die vollständige Linux-Testsuite müssen sowohl `TMPDIR` als auch
+`FASTRA_IO_TEST_ROOT` auf ein unterstütztes ext4- oder Btrfs-Verzeichnis zeigen:
+`TMPDIR` allein genügt nicht, weil die Transaktionstests in `fastra-io` ohne
+`FASTRA_IO_TEST_ROOT` auf `/tmp` beziehungsweise `/var/tmp` zurückfallen und auf
+`tmpfs` fehlschlagen. Nach einer im Test absichtlich geänderten Projektwahl wartet der nächste
 unabhängige Speicherfall auf deren frischen gebundenen Baum. Eine korrekt
 abgewiesene veraltete Vorschau darf nicht als fehlgeschlagene Speicherung mit
 unverändert gültiger Basis ausgegeben werden.

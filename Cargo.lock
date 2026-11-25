@@ -298,10 +298,10 @@ name = "fastra-core"
 version = "0.1.0"
 dependencies = [
  "flate2",
- "sha2",
  "roxmltree",
  "serde",
  "serde_json",
+ "sha2",
  "unicode-normalization",
 ]
 
@@ -400,7 +400,7 @@ dependencies = [
 
 [[package]]
 name = "fastra-linux"
-version = "1.242.87"
+version = "1.242.88"
 dependencies = [
  "fastra-core",
  "fastra-diff",

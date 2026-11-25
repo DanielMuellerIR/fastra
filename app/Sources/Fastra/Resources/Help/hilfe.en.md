@@ -892,10 +892,11 @@ When Markdown delimiters cannot express the selected formatting unambiguously,
 Fastra uses allowed HTML tags in the source so that saving and reopening preserve
 its appearance.
 On Mac, Fastra checks the visible text, inline formatting, and intentional
-line breaks in the generated Markdown before saving from WYSIWYG. If the check
-finds a difference, your edits stay in the open editor. Use **Copy Diagnostic**
-to include the Fastra version and the type of difference in a report. The
-diagnostic contains no document content.
+line breaks in the generated Markdown both one second after your last edit and
+before saving from WYSIWYG. If a difference or editor issue occurs, your edits
+stay in the open editor. Use the stethoscope button in the toolbar, the warning
+banner, or **Markdown → WYSIWYG Diagnostic Log…** at any time to copy an
+anonymized diagnostic without document content or save a full log for reporting.
 Protected HTML and math content cannot be formatted in WYSIWYG mode. Fastra
 explains this before making changes; edit these parts in the Markdown source.
 

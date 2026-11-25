@@ -51,6 +51,13 @@ Der Workspace bleibt der fenstereigene Aggregationspunkt mit breiter
 Viewbeobachtung. Daraus folgt keine gemessene UI-Verzögerung. Modelltests und
 Fensterselbsttests ersetzen keine Abnahme zusammenhängender normaler Bedienwege.
 
+SwiftUI kann Kontextmenübefehle verzögert nach einem zwischenzeitlichen
+Tabwechsel ausführen (beobachtet rund 435 ms später). Aktionen wie
+„Duplizieren“, die Folgeverhalten an den ursprünglichen Bedienkontext binden,
+müssen Tab- und Projektkontext bereits beim Öffnen des Kontextmenüs erfassen,
+nicht erst im Action-Closure; die Dateioperation läuft am ursprünglichen Ziel
+weiter, ein automatisches Öffnen erfolgt nur bei unverändertem Kontext.
+
 ## Worker und Antworten
 
 Dateilesen, Suche, Git-Prozesse und Parser laufen außerhalb Main mit kopierten Eingaben. Dateiladen und externe Änderungsprüfung übernehmen Ergebnisse erst Main nach erneuter Dokument-/Pfad-/Generationsprüfung. `FileLoadAcceptance` ist eine Main-Freigabeclosure: ihre Aufrufer müssen sie auch beim synchronen Start der Lademethode Main ausführen. `TextWorkflowDiskMutation` darf UI-Referenzen bis zum Abschluss halten; der Worker verwendet die eingefrorenen Dateidaten und fragt aktuellen Modellzustand synchron Main ab. Sein `preflight` darf deshalb nicht Main ausgeführt werden.

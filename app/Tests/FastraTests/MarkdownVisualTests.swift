@@ -5984,4 +5984,320 @@ extension MarkdownVisualTests {
             _ = try await fixture.web.evaluateJavaScript("fastraVisual.prepareAction=window.__renamePrepareOriginal;true;")
         }
     }
+
+    @Test("Überschrift auf weich umgebrochener Zeile trennt sauber, sodass nachfolgendes Fett keine Zeilen verliert")
+    @MainActor
+    func headingSplitThenBoldPreservesFollowingLinesAndSaves() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-split-bold-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("protocol.md")
+        try "".write(to: file, atomically: true, encoding: .utf8)
+        let (workspace, coordinator, web, window) = try await editor("", documentURL: file)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
+        var saveWarnings: [MarkdownVisualCoordinator.SaveCheck] = []
+        workspace.markdownSaveWarningHandler = { saveWarnings.append($0) }
+
+        _ = try await web.evaluateJavaScript("""
+            (() => {
+              const root = document.getElementById('fastra-visual');
+              root.focus();
+              const r = document.createRange();
+              r.selectNodeContents(root.firstChild); r.collapse(true);
+              getSelection().removeAllRanges(); getSelection().addRange(r);
+              document.execCommand('insertText', false, 'Fehler');
+              fastraVisual.command('hardBreak');
+              document.execCommand('insertText', false, 'Fehler 1');
+              fastraVisual.command('hardBreak');
+              document.execCommand('insertText', false, '—');
+              fastraVisual.command('hardBreak');
+              document.execCommand('insertText', false, 'Bild 1a');
+              document.execCommand('insertParagraph');
+              document.execCommand('insertParagraph');
+              document.execCommand('insertText', false, 'Fehler 2');
+              function sel(t) {
+                const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n;
+                while ((n = w.nextNode())) {
+                  const i = n.data.indexOf(t);
+                  if (i >= 0) {
+                    const range = document.createRange();
+                    range.setStart(n, i); range.setEnd(n, i + t.length);
+                    getSelection().removeAllRanges(); getSelection().addRange(range);
+                    return true;
+                  }
+                }
+                return false;
+              }
+              sel('Fehler');
+              fastraVisual.command('heading2');
+              sel('Fehler 1');
+              fastraVisual.command('bold');
+              return true;
+            })()
+            """)
+
+        let liveHTML = try #require(try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML") as? String)
+        #expect(try await web.evaluateJavaScript("document.querySelector('#fastra-visual h2')?.textContent") as? String == "Fehler", Comment(rawValue: liveHTML))
+        #expect(try await web.evaluateJavaScript("document.querySelector('#fastra-visual strong')?.textContent") as? String == "Fehler 1", Comment(rawValue: liveHTML))
+        let visibleText = try #require(try await web.evaluateJavaScript("(() => { const c = document.getElementById('fastra-visual').cloneNode(true); c.querySelectorAll('[data-md-edit-boundary]').forEach(n => n.remove()); return c.textContent.replace(/[\\s\\u200b]+/g, ''); })()") as? String)
+        #expect(visibleText == "FehlerFehler1—Bild1aFehler2", Comment(rawValue: liveHTML))
+
+        // Undo macht genau den Fettdruck rückgängig, ohne Zeilen zu entfernen oder alles zu markieren.
+        _ = try await web.evaluateJavaScript("document.execCommand('undo'); fastraVisual.flush();")
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual strong').length") as? Int == 0)
+        let afterUndoText = try #require(try await web.evaluateJavaScript("(() => { const c = document.getElementById('fastra-visual').cloneNode(true); c.querySelectorAll('[data-md-edit-boundary]').forEach(n => n.remove()); return c.textContent.replace(/[\\s\\u200b]+/g, ''); })()") as? String)
+        #expect(afterUndoText == "FehlerFehler1—Bild1aFehler2")
+
+        // Erneut fett formatieren und regulär speichern + wiederöffnen.
+        _ = try await web.evaluateJavaScript("""
+            (() => {
+              const root = document.getElementById('fastra-visual');
+              const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n;
+              while ((n = w.nextNode())) {
+                const i = n.data.indexOf('Fehler 1');
+                if (i >= 0) {
+                  const range = document.createRange();
+                  range.setStart(n, i); range.setEnd(n, i + 'Fehler 1'.length);
+                  getSelection().removeAllRanges(); getSelection().addRange(range);
+                  fastraVisual.command('bold');
+                  break;
+                }
+              }
+            })()
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("**Fehler 1**") == true })
+        workspace.saveActiveTab()
+        try #require(await waitUntil { !saveWarnings.isEmpty || workspace.activeTab?.isDirty == false })
+        #expect(saveWarnings.isEmpty)
+        let saved = try Data(contentsOf: file)
+        let (_, freshCoordinator, freshWeb, freshWindow) = try await reopenEditor(at: file, savedBytes: saved)
+        defer { freshWeb.configuration.userContentController.removeAllScriptMessageHandlers(); freshWindow.close(); withExtendedLifetime(freshCoordinator) {} }
+        #expect(try await freshWeb.evaluateJavaScript("document.querySelector('#fastra-visual h2')?.textContent") as? String == "Fehler")
+        #expect(try await freshWeb.evaluateJavaScript("document.querySelector('#fastra-visual strong')?.textContent") as? String == "Fehler 1")
+        #expect(try await freshWeb.evaluateJavaScript("document.getElementById('fastra-visual').innerText.includes('Bild 1a')") as? Bool == true)
+    }
+
+    @Test("Block- und Inline-Formatierungen verhindern illegale Verschachtelung und Grenzverlust")
+    @MainActor
+    func blockAndInlineFormattingPreventIllegalNestingAndBoundaryLoss() async throws {
+        let (_, coordinator, web, window) = try await editor("")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let report = try #require(try await web.evaluateJavaScript("""
+            (() => {
+              const root = document.getElementById('fastra-visual');
+              root.focus();
+              const r0 = document.createRange(); r0.selectNodeContents(root.firstChild); r0.collapse(true);
+              getSelection().removeAllRanges(); getSelection().addRange(r0);
+              for (const line of ['Alpha', 'Beta', 'Gamma', 'Delta']) {
+                document.execCommand('insertText', false, line);
+                if (line !== 'Delta') document.execCommand('insertParagraph');
+              }
+              function sel(t) {
+                const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n;
+                while ((n = w.nextNode())) {
+                  const i = n.data.indexOf(t);
+                  if (i >= 0) {
+                    const range = document.createRange();
+                    range.setStart(n, i); range.setEnd(n, i + t.length);
+                    getSelection().removeAllRanges(); getSelection().addRange(range);
+                    return true;
+                  }
+                }
+                return false;
+              }
+              // 1. Liste im neuen Dokument: kein <p><ul>...</ul></p>
+              sel('Alpha'); fastraVisual.command('bulletList');
+              const illegalPList = !!root.querySelector('p ul, p ol');
+
+              // 2. Überschrift auf Listeneintrag: kein <h1><ul>...</ul></h1>
+              sel('Alpha'); fastraVisual.command('heading1');
+              const illegalHList = !!root.querySelector('h1 ul, h2 ul, ul h1');
+
+              // 3. Inline-Format über bestehende Edit-Boundary hinweg + Triple-Click bis Offset 0 des Folgeblocks
+              sel('Beta'); fastraVisual.command('bold');
+              const ps = Array.from(root.querySelectorAll('p:not([data-md-edit-boundary])'));
+              const triple = document.createRange();
+              triple.setStart(ps[0].firstChild, 0);
+              triple.setEnd(ps[1], 0);
+              getSelection().removeAllRanges(); getSelection().addRange(triple);
+              fastraVisual.command('italic');
+
+              // 4. WebKit-Inline-Style-Span in toMarkdown + leeres <p></p>
+              const livePs = Array.from(root.querySelectorAll('p:not([data-md-edit-boundary])'));
+              const targetP = livePs.at(-1);
+              const span = document.createElement('span');
+              span.style.fontWeight = 'bold';
+              span.textContent = 'Styled';
+              const emptyP = document.createElement('p');
+              targetP.append(span);
+              root.append(emptyP);
+              fastraVisual.flush();
+              const md = fastraVisual.markdown();
+              const badBoundary = Array.from(root.querySelectorAll('[data-md-edit-boundary]'))
+                .some(b => b.textContent !== '\\u200b' || b.childNodes.length !== 1 || b.firstChild.nodeType !== 3);
+              return JSON.stringify({
+                illegalPList, illegalHList, badBoundary,
+                hasStyledBold: md.includes('**Styled**'),
+                emptyRemoved: !/(?:^|\\n)  (?:\\n|$)/.test(md),
+                text: root.cloneNode(true).textContent.replace(/[\\s\\u200b]+/g, '')
+              });
+            })()
+            """) as? String)
+        let data = try #require(report.data(using: .utf8))
+        let parsed = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(parsed["illegalPList"] as? Bool == false, Comment(rawValue: report))
+        #expect(parsed["illegalHList"] as? Bool == false, Comment(rawValue: report))
+        #expect(parsed["badBoundary"] as? Bool == false, Comment(rawValue: report))
+        #expect(parsed["hasStyledBold"] as? Bool == true, Comment(rawValue: report))
+        #expect(parsed["emptyRemoved"] as? Bool == true, Comment(rawValue: report))
+    }
+
+    @Test("Deterministische Abfolge von 60 WYSIWYG-Bearbeitungen bewahrt Text, DOM-Grenzen und Speicherparität",
+          arguments: [false, true])
+    @MainActor
+    func randomizedVisualFormatRoundtripInvariants(_ startFromMarkdown: Bool) async throws {
+        let initial = startFromMarkdown
+            ? "## Fehler\n\nFehler 1  \n—  \nBild 1a\n\n  \n\nFehler 2\n"
+            : ""
+        let (workspace, coordinator, web, window) = try await editor(initial)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+
+        if !startFromMarkdown {
+            _ = try await web.evaluateJavaScript("""
+                (() => {
+                  const root = document.getElementById('fastra-visual');
+                  root.focus();
+                  const r = document.createRange(); r.selectNodeContents(root.firstChild); r.collapse(true);
+                  getSelection().removeAllRanges(); getSelection().addRange(r);
+                  document.execCommand('insertText', false, 'Fehler');
+                  fastraVisual.command('hardBreak');
+                  document.execCommand('insertText', false, 'Fehler 1');
+                  fastraVisual.command('hardBreak');
+                  document.execCommand('insertText', false, '—');
+                  document.execCommand('insertParagraph');
+                  document.execCommand('insertParagraph');
+                  document.execCommand('insertText', false, 'Bild 1a');
+                  document.execCommand('insertParagraph');
+                  document.execCommand('insertText', false, 'Fehler 2');
+                })()
+                """)
+        }
+
+        let initialText = try #require(try await web.evaluateJavaScript(
+            "(() => { const c = document.getElementById('fastra-visual').cloneNode(true); c.querySelectorAll('[data-md-edit-boundary]').forEach(n => n.remove()); return c.textContent.replace(/[\\s\\u200b]+/g, ''); })()"
+        ) as? String)
+        let cmds = ["bold", "italic", "highlight", "heading1", "heading2", "heading3", "plainParagraph", "bulletList", "orderedList", "quote"]
+        var seed: UInt32 = startFromMarkdown ? 4242 : 1337
+        func next(_ n: Int) -> Int {
+            seed = seed &* 1664525 &+ 1013904223
+            return Int(seed % UInt32(n))
+        }
+
+        for step in 0..<60 {
+            let cmd = cmds[next(cmds.count)]
+            let selMode = next(4)
+            let idxSeed = next(1000)
+            let stepResult = try #require(try await web.evaluateJavaScript("""
+                (() => {
+                  const root = document.getElementById('fastra-visual');
+                  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                  const texts = []; let n;
+                  while ((n = w.nextNode())) {
+                    if (!n.parentElement?.closest('[data-md-edit-boundary]') && n.data.replace(/\\u200b/g, '').length > 0) texts.push(n);
+                  }
+                  if (!texts.length) return JSON.stringify({ok:false, reason:'no-texts'});
+                  const a = texts[\(idxSeed) % texts.length];
+                  const r = document.createRange();
+                  if (\(selMode) === 0) { r.setStart(a, 0); r.setEnd(a, a.length); }
+                  else if (\(selMode) === 1 && a.parentElement) { r.selectNodeContents(a.parentElement); }
+                  else if (\(selMode) === 2 && a.parentElement?.nextElementSibling) { r.setStart(a, 0); r.setEnd(a.parentElement.nextElementSibling, 0); }
+                  else { r.setStart(a, 0); r.setEnd(a, Math.max(1, Math.min(a.length, 3))); }
+                  getSelection().removeAllRanges(); getSelection().addRange(r);
+                  fastraVisual.command('\(cmd)');
+                  const clone = root.cloneNode(true);
+                  clone.querySelectorAll('[data-md-edit-boundary]').forEach(b => b.remove());
+                  const text = clone.textContent.replace(/[\\s\\u200b]+/g, '');
+                  const badBoundary = Array.from(root.querySelectorAll('[data-md-edit-boundary]')).some(b => b.childNodes.length !== 1 || b.firstChild.nodeType !== 3 || b.textContent !== '\\u200b');
+                  const illegalNesting = !!root.querySelector('p ul, p ol, h1 ul, h2 ul, h3 ul');
+                  const state = fastraVisual.prepareAction();
+                  fastraVisual.completeAction(state.session || undefined);
+                  return JSON.stringify({ok:true, text, badBoundary, illegalNesting, markdown: state.markdown, revision: state.revision});
+                })()
+                """) as? String)
+            let parsed = try #require(try JSONSerialization.jsonObject(with: Data(stepResult.utf8)) as? [String: Any])
+            #expect(parsed["ok"] as? Bool == true, Comment(rawValue: "Step \(step): \(stepResult)"))
+            #expect(parsed["text"] as? String == initialText, Comment(rawValue: "Step \(step) \(cmd): \(stepResult)"))
+            #expect(parsed["badBoundary"] as? Bool == false, Comment(rawValue: "Step \(step) \(cmd)"))
+            #expect(parsed["illegalNesting"] as? Bool == false, Comment(rawValue: "Step \(step) \(cmd)"))
+            let md = try #require(parsed["markdown"] as? String)
+            let rev = try #require(parsed["revision"] as? Int)
+            let renderedHTML = MarkdownVisualDocument.render(md, documentURL: nil).fragment.html
+            let sessionValue = try #require(try await web.evaluateJavaScript("fastraVisual.diagnosticReport(false).session") as? String)
+            let appearance = try await web.callAsyncJavaScript(
+                "return window.fastraVisual.inspectAppearance(session, revision, html);",
+                arguments: ["session": sessionValue, "revision": rev, "html": renderedHTML],
+                in: nil, contentWorld: .page
+            ) as? [String: Any]
+            #expect(appearance?["outcome"] as? String == "ok", Comment(rawValue: "Step \(step) \(cmd): \(String(describing: appearance)) | md=\(md)"))
+            if step % 5 == 4 {
+                _ = try await web.evaluateJavaScript("document.execCommand('undo'); fastraVisual.flush();")
+            }
+        }
+        _ = workspace
+    }
+
+    @Test("Live-Prüfung erkennt Abweichungen ohne Eingabesperre und liefert anonymisiertes sowie vollständiges Protokoll")
+    @MainActor
+    func liveAppearanceCheckAndDiagnosticExport() async throws {
+        let secret = "SECRET_DIAGNOSTIC_TOKEN_XYZ"
+        let (workspace, coordinator, web, window) = try await editor("Hallo \(secret)\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        coordinator.liveCheckDelay = 0.05
+
+        // Zunächst saubere Live-Prüfung nach dem Öffnen.
+        coordinator.scheduleLiveAppearanceCheck()
+        try #require(await waitUntil(timeout: 5) { workspace.markdownVisualDiagnostics.lastCheckPassed == true })
+        #expect(workspace.markdownVisualDiagnostics.activeWarning == nil)
+
+        // Simulierte Verlust-Serialisierung löst die 50ms-Live-Prüfung aus, ohne die Eingabe zu sperren.
+        _ = try await web.evaluateJavaScript("""
+            (() => {
+              const p = document.querySelector('#fastra-visual p'), r = document.createRange();
+              r.selectNodeContents(p); getSelection().removeAllRanges(); getSelection().addRange(r);
+              fastraVisual.command('highlight');
+              const orig = fastraVisual.inspectAppearance;
+              fastraVisual.inspectAppearance = (s, rev, html) => ({outcome:'format', diff:{test:true}, revision:rev, anomalies:[]});
+              window.__origInspect = orig;
+              document.execCommand('insertText', false, '!');
+              fastraVisual.flush();
+            })()
+            """)
+        try #require(await waitUntil(timeout: 5) { workspace.markdownVisualDiagnostics.activeWarning != nil })
+        #expect(workspace.markdownVisualDiagnostics.showsBanner == true)
+        #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
+
+        // Anonymisiertes Protokoll darf keinen Dokumentinhalt enthalten; vollständiges Protokoll enthält ihn.
+        var redacted: String?
+        var full: String?
+        workspace.markdownVisualDiagnostics.resolveReport(includeContent: false, from: workspace) { redacted = $0 }
+        workspace.markdownVisualDiagnostics.resolveReport(includeContent: true, from: workspace) { full = $0 }
+        try #require(await waitUntil { redacted != nil && full != nil })
+        #expect(redacted?.contains(secret) == false)
+        #expect(redacted?.contains("domSkeleton") == true)
+        #expect(full?.contains(secret) == true)
+
+        // Nach Korrektur (Original-Prüfung wiederhergestellt) räumt die nächste Live-Prüfung die Warnung auf.
+        _ = try await web.evaluateJavaScript("""
+            (() => {
+              if (window.__origInspect) fastraVisual.inspectAppearance = window.__origInspect;
+              document.execCommand('insertText', false, '?');
+              fastraVisual.flush();
+            })()
+            """)
+        try #require(await waitUntil(timeout: 5) {
+            workspace.markdownVisualDiagnostics.lastCheckPassed == true
+                && workspace.markdownVisualDiagnostics.activeWarning == nil
+        })
+    }
 }

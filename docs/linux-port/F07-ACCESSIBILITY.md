@@ -23,3 +23,11 @@ dieser GTK-Umgebung nicht hinreichend verfügbar. Die funktionierende normale
 Maus-/Tastaturbedienung und der lesende Textzugriff ersetzen daher keine
 vollständige Screenreader-Abnahme. Kandidatenfenster-IME und physische
 Wayland-/Accessibility-Abnahme bleiben separat offen.
+
+## Wayland-Screenreader-Prüfumgebung
+
+In isolierten Wayland-Testumgebungen scheitert Orca 46.1 ohne X11-Anzeige,
+obwohl die getestete App nativ unter Wayland läuft. Ein separater virtueller
+X-Server für Orcas Tastaturbelegung ermöglicht dort die Sprachausgabeprüfung;
+Orca 51.1 liefert die Ansagen in einer eigenen Wayland-Sitzung direkt ohne
+X-Server.
