@@ -7,6 +7,12 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.242.89] — 2026-11-25
+
+### Behoben
+
+- WYSIWYG: Zeilenumbrüche auf genau zwei konsistente Arten vereinheitlicht (`Return` für Absätze bzw. sichtbare `  `-Leerzeilen, `Shift+Return` / `Alt+Return` / `Alt+Shift+Return` sowie Menü „Harter Zeilenumbruch“ für einfache harte Umbrüche mit zwei Leerzeichen). Wiederholte harte Umbrüche im Fließtext erzeugen im Markdown nun ebenfalls saubere `  `-Leerzeilen statt `<br><br>`-HTML (`<br>` bleibt auf Überschriften, Tabellenzellen und Listenpunkte beschränkt).
+
 ## [v1.242.88] — 2026-11-25
 
 ### Hinzugefügt

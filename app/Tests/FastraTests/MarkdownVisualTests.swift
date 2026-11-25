@@ -282,7 +282,7 @@ struct MarkdownVisualTests {
         case "hard-break":
             source = "A\r\n\r\nB\r\n"
             edit = "select(paragraph().firstChild,1,1);fastraVisual.command('hardBreak');fastraVisual.command('hardBreak');"
-            reopened = "paragraph().querySelectorAll('br').length===3 && paragraph().textContent==='A'"
+            reopened = "document.querySelectorAll('#fastra-visual .fastra-visible-blank-line').length===2 && paragraph().textContent==='A'"
         case "hard-break-list":
             source = "- A B\n- C\n"
             edit = "select(document.querySelector('li').firstChild,1,1);fastraVisual.command('hardBreak');fastraVisual.command('hardBreak');"
@@ -315,6 +315,11 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { failure != nil || (workspace.activeTab?.isDirty == false && (try? String(contentsOf: file, encoding: .utf8)) != source) })
         try #require(failure == nil, Comment(rawValue: String(describing: failure)))
         let saved = try Data(contentsOf: file)
+        if example == "hard-break" {
+            let savedText = String(decoding: saved, as: UTF8.self)
+            #expect(!savedText.contains("<br"), Comment(rawValue: savedText))
+            #expect(savedText.contains("\r\n  \r\n"), Comment(rawValue: savedText))
+        }
         let tabID = try #require(workspace.activeTabID)
         workspace.closeTab(id: tabID)
         try #require(await waitUntil { !workspace.tabs.contains { $0.id == tabID } })
@@ -2554,12 +2559,30 @@ struct MarkdownVisualTests {
         let (_, coordinator, web, window) = try await editor(source)
         defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
         let allowed = try await web.evaluateJavaScript("""
-            [{},{shiftKey:true,metaKey:true},{shiftKey:true,altKey:true},{shiftKey:true,ctrlKey:true},{shiftKey:true,isComposing:true}]
+            [{},{shiftKey:true,metaKey:true},{shiftKey:true,ctrlKey:true},{shiftKey:true,isComposing:true}]
             .every(flags=>document.getElementById('fastra-visual').dispatchEvent(new KeyboardEvent('keydown',
               {key:'Enter',bubbles:true,cancelable:true,...flags})))
             """) as? Bool
         #expect(allowed == true)
         #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        let intercepted = try await web.evaluateJavaScript("""
+            (() => {
+              const root=document.getElementById('fastra-visual'),p=root.querySelector('p'),r=document.createRange();
+              r.setStart(p.firstChild,2);r.collapse(true);root.focus();getSelection().removeAllRanges();getSelection().addRange(r);
+              const altAllowed=root.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',altKey:true,bubbles:true,cancelable:true}));
+              document.execCommand('insertText',false,'X');
+              const altShiftAllowed=root.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',altKey:true,shiftKey:true,bubbles:true,cancelable:true}));
+              fastraVisual.flush();
+              return JSON.stringify({altAllowed,altShiftAllowed,markdown:fastraVisual.markdown()});
+            })()
+            """) as? String
+        let jsonData = try #require(intercepted?.data(using: .utf8))
+        let parsed = try #require(try JSONSerialization.jsonObject(with: jsonData) as? [String: Any])
+        #expect(parsed["altAllowed"] as? Bool == false, Comment(rawValue: intercepted ?? ""))
+        #expect(parsed["altShiftAllowed"] as? Bool == false, Comment(rawValue: intercepted ?? ""))
+        let md = try #require(parsed["markdown"] as? String)
+        #expect(!md.contains("<br"), Comment(rawValue: md))
+        #expect(md.contains("Te  \nX"), Comment(rawValue: md))
         withExtendedLifetime(coordinator) {}
     }
 
@@ -6299,5 +6322,175 @@ extension MarkdownVisualTests {
             workspace.markdownVisualDiagnostics.lastCheckPassed == true
                 && workspace.markdownVisualDiagnostics.activeWarning == nil
         })
+    }
+
+    @Test("Vereinheitlichte Umbrüche erzeugen sauberes HTML-freies Markdown im Fließtext und bewahren Struktur-BRs")
+    @MainActor
+    func unifiedHardBreaksProduceHtmlFreeMarkdown() async throws {
+        // 1. 1× Shift-Return am Absatzende -> zwei Leerzeichen als sichtbare Leerzeile ohne <br>
+        do {
+            let (workspace, coordinator, web, window) = try await editor("Alpha\n")
+            defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+            let md = try #require(try await web.evaluateJavaScript("""
+                (() => {
+                  const root = document.getElementById('fastra-visual'), p = root.querySelector('p'), r = document.createRange();
+                  r.setStart(p.firstChild, 5); r.collapse(true); root.focus();
+                  getSelection().removeAllRanges(); getSelection().addRange(r);
+                  root.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', shiftKey:true, bubbles:true, cancelable:true}));
+                  fastraVisual.flush();
+                  return fastraVisual.markdown();
+                })()
+                """) as? String)
+            #expect(!md.contains("<br"), Comment(rawValue: md))
+            #expect(md.contains("Alpha\n\n  "), Comment(rawValue: md))
+            let renderedHTML = MarkdownVisualDocument.render(md, documentURL: nil).fragment.html
+            let sessionValue = try #require(try await web.evaluateJavaScript("fastraVisual.diagnosticReport(false).session") as? String)
+            let rev = try #require(try await web.evaluateJavaScript("fastraVisual.diagnosticReport(false).revision") as? Int)
+            let check = try await web.callAsyncJavaScript(
+                "return window.fastraVisual.inspectAppearance(session, revision, html);",
+                arguments: ["session": sessionValue, "revision": rev, "html": renderedHTML],
+                in: nil, contentWorld: .page
+            ) as? [String: Any]
+            #expect(check?["outcome"] as? String == "ok", Comment(rawValue: String(describing: check)))
+            _ = workspace
+        }
+
+        // 2. 2× Shift-Return in Absatz & Zitat -> saubere Leerzeile ohne <br>, Undo + Speichern + Wiederöffnen
+        for source in ["AlphaBeta\n", "> AlphaBeta\n"] {
+            let directory = testTemporaryDirectory().appendingPathComponent("visual-unified-break-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let file = directory.appendingPathComponent("fixture.md")
+            try source.write(to: file, atomically: true, encoding: .utf8)
+            let (workspace, coordinator, web, window) = try await editor(source, documentURL: file)
+            defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+            workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
+            var warnings: [MarkdownVisualCoordinator.SaveCheck] = []
+            workspace.markdownSaveWarningHandler = { warnings.append($0) }
+
+            _ = try await web.evaluateJavaScript("""
+                (() => {
+                  const root = document.getElementById('fastra-visual'), w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                  let n; while ((n = w.nextNode())) { if (n.data.includes('AlphaBeta')) break; }
+                  const r = document.createRange();
+                  r.setStart(n, n.data.indexOf('AlphaBeta') + 5); r.collapse(true); root.focus();
+                  getSelection().removeAllRanges(); getSelection().addRange(r);
+                  root.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', shiftKey:true, bubbles:true, cancelable:true}));
+                  root.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', shiftKey:true, bubbles:true, cancelable:true}));
+                  fastraVisual.flush();
+                })()
+                """)
+            let md = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
+            #expect(!md.contains("<br"), Comment(rawValue: md))
+            #expect(md.contains("Alpha") && md.contains("Beta"), Comment(rawValue: md))
+            if source.hasPrefix("> ") {
+                #expect(md.contains(">   "), Comment(rawValue: md))
+            } else {
+                #expect(md.contains("Alpha\n\n  \n\nBeta"), Comment(rawValue: md))
+            }
+
+            // Ein Undo stellt den einzelnen harten Umbruch vor der Leerzeile sauber her.
+            _ = try await web.evaluateJavaScript("document.execCommand('undo'); fastraVisual.flush();")
+            let afterUndo = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
+            #expect(!afterUndo.contains("<br"), Comment(rawValue: afterUndo))
+            #expect(afterUndo.contains("Alpha  \n") && afterUndo.contains("Beta"), Comment(rawValue: afterUndo))
+
+            // Redo + echtes Speichern + Wiederöffnen
+            _ = try await web.evaluateJavaScript("document.execCommand('redo'); fastraVisual.flush();")
+            try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+            workspace.saveActiveTab()
+            try #require(await waitUntil { !warnings.isEmpty || workspace.activeTab?.isDirty == false })
+            #expect(warnings.isEmpty, Comment(rawValue: String(describing: warnings)))
+            let saved = try Data(contentsOf: file)
+            let savedText = String(decoding: saved, as: UTF8.self)
+            #expect(!savedText.contains("<br"), Comment(rawValue: savedText))
+            let (_, freshCoordinator, freshWeb, freshWindow) = try await reopenEditor(at: file, savedBytes: saved)
+            defer { freshWeb.configuration.userContentController.removeAllScriptMessageHandlers(); freshWindow.close(); withExtendedLifetime(freshCoordinator) {} }
+            #expect(try await freshWeb.evaluateJavaScript("document.querySelectorAll('#fastra-visual .fastra-visible-blank-line').length") as? Int == 1)
+            if source.hasPrefix("> ") {
+                #expect(try await freshWeb.evaluateJavaScript("document.querySelectorAll('#fastra-visual blockquote').length") as? Int == 1)
+            }
+        }
+
+        // 3. Überschrift & Tabellenzelle behalten <br>; bestehendes <br><br> im Absatz bleibt erhalten.
+        do {
+            let (workspace, coordinator, web, window) = try await editor("# KopfZeile\n\nAlt<br><br>Neu\n\n| Spalte |\n| --- |\n| EinsZwei |\n")
+            defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+            let md = try #require(try await web.evaluateJavaScript("""
+                (() => {
+                  const root = document.getElementById('fastra-visual');
+                  function breakAt(token, offset) {
+                    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n;
+                    while ((n = w.nextNode())) {
+                      const idx = n.data.indexOf(token);
+                      if (idx >= 0) {
+                        const r = document.createRange();
+                        r.setStart(n, idx + offset); r.collapse(true); root.focus();
+                        getSelection().removeAllRanges(); getSelection().addRange(r);
+                        root.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', shiftKey:true, bubbles:true, cancelable:true}));
+                        return true;
+                      }
+                    }
+                    return false;
+                  }
+                  breakAt('KopfZeile', 4);
+                  breakAt('EinsZwei', 4);
+                  fastraVisual.flush();
+                  return fastraVisual.markdown();
+                })()
+                """) as? String)
+            #expect(md.contains("# Kopf<br>Zeile"), Comment(rawValue: md))
+            #expect(md.contains("Alt<br><br>Neu"), Comment(rawValue: md))
+            #expect(md.contains("| Eins<br>Zwei |"), Comment(rawValue: md))
+            _ = workspace
+        }
+
+        // 4. Bestehendes A<br><br>|B sowie Inline-Grenzen (A<br><strong>|B</strong> + leeres <em>)
+        do {
+            let (workspace, coordinator, web, window) = try await editor("A<br><br>B\n")
+            defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+            let md = try #require(try await web.evaluateJavaScript("""
+                (() => {
+                  const root = document.getElementById('fastra-visual'), p = root.querySelector('p');
+                  const r = document.createRange();
+                  const brs = p.querySelectorAll('br');
+                  r.setStartAfter(brs[1]); r.collapse(true); root.focus();
+                  getSelection().removeAllRanges(); getSelection().addRange(r);
+                  root.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', shiftKey:true, bubbles:true, cancelable:true}));
+                  fastraVisual.flush();
+                  return fastraVisual.markdown();
+                })()
+                """) as? String)
+            #expect(!md.contains("<br"), Comment(rawValue: md))
+            let blankCount = md.components(separatedBy: "\n").filter { $0 == "  " }.count
+            #expect(blankCount == 2, Comment(rawValue: md))
+            _ = workspace
+        }
+
+        do {
+            let (workspace, coordinator, web, window) = try await editor("Alpha\n")
+            defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+            let md = try #require(try await web.evaluateJavaScript("""
+                (() => {
+                  const root = document.getElementById('fastra-visual'), p = root.querySelector('p');
+                  p.innerHTML = 'A<br><strong>B</strong>';
+                  const strong = p.querySelector('strong'), r = document.createRange();
+                  r.setStart(strong.firstChild, 0); r.collapse(true); root.focus();
+                  getSelection().removeAllRanges(); getSelection().addRange(r);
+                  root.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', shiftKey:true, bubbles:true, cancelable:true}));
+                  const trailing = root.querySelector('p:not([data-md-edit-boundary])');
+                  if (trailing && trailing.textContent === 'A') {
+                    const extra = document.createElement('p');
+                    extra.innerHTML = 'X<br><br><em></em>';
+                    root.append(extra);
+                  }
+                  fastraVisual.flush();
+                  return fastraVisual.markdown();
+                })()
+                """) as? String)
+            #expect(!md.contains("<br"), Comment(rawValue: md))
+            #expect(md.contains("A\n\n  \n\n**B**") || md.contains("A\n\n  \n\nB"), Comment(rawValue: md))
+            _ = workspace
+        }
     }
 }

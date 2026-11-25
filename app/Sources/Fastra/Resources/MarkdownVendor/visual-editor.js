@@ -133,6 +133,38 @@
       }
       text.replaceWith(fragment);
     }
+    // Am Absatzende gesammelte <br>-Läufe in saubere sichtbare Leerzeilen
+    // statt <br><br>-HTML umwandeln; Listen, Tabellen und Inline-Überschriften ausnehmen.
+    const peelTrailingBreaks=container=>{
+      const removed=[];
+      while(container.lastChild){
+        const tail=container.lastChild;
+        if(tail.nodeType===3 && !tail.data.replace(/[\u200b \t\r\n\f]/g,'').length){tail.remove();continue;}
+        if(tail.nodeName==='BR'){tail.remove();removed.push(tail);continue;}
+        if(tail.nodeType===1 && INLINE_WRAP_TAGS.has(tail.tagName) && !tail.hasAttribute('data-md-spaces')){
+          const inner=peelTrailingBreaks(tail);
+          if(!tail.childNodes.length){tail.remove();removed.push(...inner);continue;}
+          if(inner.length){removed.push(...inner);}
+        }
+        break;
+      }
+      return removed;
+    };
+    holder.querySelectorAll('p').forEach(p=>{
+      if(p.closest('li,td,th,pre,code,[data-md-opaque],[data-tex]')
+          || p.querySelector('p,div,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,table,pre,hr'))return;
+      if(!p.textContent.replace(/\u200b/g,'').length && !p.querySelector('img,input,[data-tex],[data-md-opaque]'))return;
+      const clone=p.cloneNode(true), trailing=peelTrailingBreaks(clone);
+      if(trailing.length<2)return;
+      p.replaceWith(clone);
+      const frag=document.createDocumentFragment();
+      for(let i=0;i<trailing.length-1;i++){
+        const blank=document.createElement('p');
+        blank.append(document.createElement('br'));
+        frag.append(blank);
+      }
+      clone.after(frag);
+    });
     // Leere editierbare Absätze sind sichtbare Zeilen. Platzhalter schützen
     // sie vor Turndowns Leerraum-Kürzung, auch am Dokumentanfang und -ende.
     const blanks=[];
@@ -615,7 +647,8 @@
       if(node.nodeType===Node.TEXT_NODE && !node.textContent.trim())continue;
       const id=node.nodeType===Node.ELEMENT_NODE ? node.getAttribute('data-md-block') : null;
       const original=id===null ? null : originals.get(id);
-      const ending=imageEndings.get(id ?? node) ?? '\n';
+      const sourceEnding=original?.source.includes('\r\n')?'\r\n':original?.source.includes('\r')?'\r':'\n';
+      const ending=imageEndings.get(id ?? node) ?? sourceEnding;
       if(original && !used.has(id)) {
         hiddenBefore(id);used.add(id);
         const snapshot=normalized(node);
@@ -1152,6 +1185,74 @@
     holder.append(bq);
     replaceVisualBlocks(interval,holder.innerHTML);
   }
+  function hardBreakCommand() {
+    restoreSelection();const s=getSelection();if(!s.rangeCount)return;
+    const r=s.getRangeAt(0);
+    const anchorEl=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement;
+    const p=anchorEl?.closest?.('p');
+    if(!r.collapsed || !p || !root.contains(p)
+        || p.closest('li,td,th,pre,code,[data-md-opaque],[data-tex]')
+        || p.hasAttribute('data-md-edit-boundary') || p.hasAttribute('data-md-empty')
+        || (!p.textContent.replace(/\u200b/g,'').length && !p.querySelector('img,input,[data-tex],[data-md-opaque]'))){
+      exec('insertLineBreak');return;
+    }
+    const beforeRange=document.createRange();
+    beforeRange.selectNodeContents(p);
+    beforeRange.setEnd(r.startContainer,r.startOffset);
+    function inspectEnd(container) {
+      const children=Array.from(container.childNodes);
+      for(let i=children.length-1;i>=0;i--){
+        const n=children[i];
+        if(n.nodeType===3 && !n.data.replace(/[\u200b \t\r\n\f]/g,'').length)continue;
+        if(n.nodeType===1 && (n.hasAttribute('data-md-selection-start') || n.hasAttribute('data-md-selection-end')))continue;
+        if(n.nodeName==='BR')return true;
+        if(n.nodeType===1 && INLINE_WRAP_TAGS.has(n.tagName) && !n.hasAttribute('data-md-spaces')){
+          const inner=inspectEnd(n);
+          if(inner!==null)return inner;
+          continue;
+        }
+        return false;
+      }
+      return null;
+    }
+    if(inspectEnd(beforeRange.cloneContents())!==true){exec('insertLineBreak');return;}
+    // Zweiter weicher Umbruch direkt nach einem <br> im Fließtext: statt
+    // <br><br>-HTML sauber in Absatz + sichtbare Leerzeile aufspalten.
+    const ctx=cloneIntervalWithMarkers(r);
+    if(!ctx){exec('insertLineBreak');return;}
+    const clonedP=ctx.start.closest('p');
+    if(!clonedP){exec('insertLineBreak');return;}
+    splitInlineBreaks(clonedP);
+    let topChild=ctx.start;
+    while(topChild && topChild.parentNode!==clonedP)topChild=topChild.parentNode;
+    if(topChild && topChild!==ctx.start){
+      const preRange=document.createRange();
+      preRange.setStartBefore(topChild);preRange.setEndBefore(ctx.start);
+      const preFrag=preRange.extractContents();
+      if(nodesHaveSemanticContent(Array.from(preFrag.childNodes)))topChild.before(preFrag);
+    }
+    const direct=Array.from(clonedP.childNodes), splitIdx=direct.indexOf(topChild);
+    if(splitIdx<0){exec('insertLineBreak');return;}
+    const beforeNodes=direct.slice(0,splitIdx), afterNodes=direct.slice(splitIdx);
+    let poppedBreaks=0;
+    while(beforeNodes.length){
+      const tail=beforeNodes.at(-1);
+      if(tail.nodeType===3 && !tail.data.replace(/[\u200b \t\r\n\f]/g,'').length){beforeNodes.pop();continue;}
+      if(tail.nodeName==='BR'){beforeNodes.pop();poppedBreaks++;continue;}
+      if(tail.nodeType===1 && INLINE_WRAP_TAGS.has(tail.tagName) && !tail.hasAttribute('data-md-spaces') && !nodesHaveSemanticContent([tail])){beforeNodes.pop();continue;}
+      break;
+    }
+    const blankCount=Math.max(1,poppedBreaks);
+    const frag=document.createDocumentFragment();
+    if(nodesHaveSemanticContent(beforeNodes)){const first=document.createElement('p');first.append(...beforeNodes);frag.append(first);}
+    for(let i=0;i<blankCount;i++){const blank=document.createElement('p');blank.append(document.createElement('br'));frag.append(blank);}
+    const tailP=document.createElement('p');tailP.append(...afterNodes);
+    const tailHasContent=tailP.textContent.replace(/\u200b/g,'').length>0 || !!tailP.querySelector('br,img,input,[data-tex],[data-md-opaque]');
+    if(!tailHasContent)tailP.append(document.createElement('br'));
+    frag.append(tailP);
+    clonedP.replaceWith(frag);
+    replaceVisualBlocks(ctx.interval,ctx.holder.innerHTML);
+  }
   function selectedItems() {
     restoreSelection();const range=getSelection().getRangeAt(0);
     const element=range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement;
@@ -1591,7 +1692,7 @@
       root.addEventListener('dragover',e=>e.preventDefault());
       root.addEventListener('keydown',e=>{
         tables.inspect(null);
-        if(e.key==='Enter' && e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing && !composing && !fenced){
+        if(e.key==='Enter' && (e.shiftKey || e.altKey) && !e.ctrlKey && !e.metaKey && !e.isComposing && !composing && !fenced){
           e.preventDefault();
           window.fastraVisual.command('hardBreak');
           return;
@@ -1680,7 +1781,7 @@
         case 'orderedList':listCommand(true);break;
         case 'taskList':taskList();break;
         case 'quote':quoteCommand();break;
-        case 'hardBreak':exec('insertLineBreak');break;
+        case 'hardBreak':hardBreakCommand();break;
         case 'link':exec('createLink',value);break;
         case 'insertTable':exec('insertHTML',value);break;
         case 'insertHTML':exec('insertHTML',value);break;

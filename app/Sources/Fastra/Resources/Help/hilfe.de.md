@@ -790,8 +790,10 @@ Codeblöcken gilt die Erweiterung nicht. Beim Kopieren wird die sichtbare
 Leerzeile als normaler Zeilenumbruch übernommen.
 
 In Zitaten stehen die Leerzeichen hinter dem Zitatmarker (`>   `). Mehrere
-harte Umbrüche in einem leeren WYSIWYG-Absatz bleiben auch nach dem Speichern
-und erneuten Öffnen als mehrere sichtbare Leerzeilen erhalten.
+harte Umbrüche im Fließtext oder in einem leeren WYSIWYG-Absatz bleiben als
+saubere sichtbare Leerzeilen aus zwei Leerzeichen (`  `) erhalten, ohne
+HTML-`<br>`-Tags einzufügen; `<br>` bleibt auf Überschriften, Tabellenzellen
+und mehrfache Umbrüche innerhalb von Listenpunkten beschränkt.
 
 **Textmarker:** Text zwischen zwei Gleichheitszeichen-Paaren wird mit einem
 festen, zum hellen oder dunklen Erscheinungsbild passenden Hintergrund
@@ -1032,11 +1034,13 @@ Code (⇧⌘K),
 (⇧⌘8), nummerierte Liste (⇧⌘7), Zitat (⇧⌘9), Link (⌘K) und
 „Tabelle einfügen…“ (⌥⇧⌘T; kleiner Dialog: Spalten, Kopfzeile ja/nein).
 
-Der Toolbar-Befehl **Harter Zeilenumbruch** (⌥⌘↩) fügt am Ende der Auswahl zwei
-normale Leerzeichen und anschließend einen normalen Zeilenumbruch ein. Steht
-der Cursor bereits direkt vor einem Zeilenumbruch, ergänzt bzw. vereinheitlicht
-er nur die zwei Leerzeichen. So bleibt die zugrunde liegende Markdown-
-Schreibweise im Quelltextmodus sichtbar und mit ⌘Z widerrufbar.
+Der Toolbar-Befehl **Harter Zeilenumbruch** (⌥⌘↩, im WYSIWYG-Modus auch ⇧↩,
+⌥↩ oder ⌥⇧↩) fügt im Quelltext am Ende der Auswahl — im WYSIWYG an der
+Einfügemarke bzw. unter Ersatz einer aktiven Auswahl — zwei normale
+Leerzeichen und einen Zeilenumbruch ein. Wiederholtes Drücken im Fließtext
+erzeugt im WYSIWYG-Modus eine sichtbare Leerzeile (`  `) statt `<br><br>`.
+So bleibt die zugrunde liegende Markdown-Schreibweise im Quelltextmodus sauber,
+HTML-frei und mit ⌘Z widerrufbar.
 
 **Formatiert als Markdown einfügen** (⇧⌘V) wandelt HTML- oder RTF-Inhalt aus
 Browsern und Office-Programmen mit dem separat installierten Werkzeug

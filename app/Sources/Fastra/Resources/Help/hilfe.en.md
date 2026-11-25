@@ -747,9 +747,11 @@ breaks. The extension does not apply inside indented code blocks or code
 fences made from backticks or tildes. Copying carries the visible blank line
 over as a normal newline.
 
-In blockquotes, the spaces follow the quote marker (`>   `). Multiple hard
-breaks in an empty WYSIWYG paragraph remain multiple visible blank lines
-after saving and reopening the document.
+In blockquotes, the spaces follow the quote marker (`>   `). Repeated hard
+breaks in body prose or in an empty WYSIWYG paragraph are stored as clean
+two-space (`  `) visible blank lines without inserting HTML `<br>` tags;
+`<br>` stays limited to headings, table cells, and repeated breaks inside
+list items.
 
 **Text marker:** Text between pairs of two equals signs is highlighted with a
 fixed background that adapts to the light or dark appearance, for example
@@ -971,11 +973,12 @@ plain text (⌘⌥0), bulleted list (⇧⌘8), numbered list (⇧⌘7), quote
 (⇧⌘9), link (⌘K), and “Insert table…” (⌥⇧⌘T; a small dialog: columns, header
 yes/no).
 
-The toolbar's **Hard Line Break** (⌥⌘↩) command inserts two ordinary spaces at the
-end of the selection followed by an ordinary line break. If the cursor is
-already directly before a line break, it only adds or normalizes the two
-spaces. In source mode, the underlying Markdown stays visible and the edit remains undoable
-with ⌘Z.
+The toolbar's **Hard Line Break** (⌥⌘↩, and in WYSIWYG mode also ⇧↩, ⌥↩ or
+⌥⇧↩) command inserts two ordinary spaces followed by a line break — in source
+mode at the end of the selection, and in WYSIWYG at the caret or replacing an
+active selection. Repeating a hard break in WYSIWYG body prose inserts a clean
+two-space visible blank line (`  `) instead of `<br><br>`. In source mode, the
+underlying Markdown stays clean, HTML-free, and undoable with ⌘Z.
 
 **Paste Formatted as Markdown** (⇧⌘V) converts HTML or RTF content from
 browsers and office apps through the separately installed `md-clip` tool.
