@@ -941,14 +941,14 @@ in der formatierten Ansicht oder mit Quelltext und Vorschau arbeiten möchtest.
 Im WYSIWYG-Modus bleiben Markdown-Kürzel verborgen. Die Format-Toolbar funktioniert
 in beiden Modi. Tippen, Formatieren und Rückgängig erfolgen direkt im Dokument.
 Auch die freie Fläche unter einem kurzen Text gehört zum Editor: Klicke dort,
-um weiterzuschreiben.
+um weiterzuschreiben. Bewusst sichtbare Leerzeilen lassen sich genauso per Tastaturkürzel oder Toolbar direkt in eine Überschrift, Liste oder ein Zitat umwandeln.
 Wo Markdown-Trennzeichen eine gewählte Formatierung nicht eindeutig ausdrücken
 können, verwendet Fastra erlaubte HTML-Auszeichnungen im Quelltext, damit die
 Darstellung beim Speichern und Wiederöffnen erhalten bleibt.
 Auf dem Mac prüft Fastra sowohl laufend eine Sekunde nach der letzten Eingabe als
-auch vor dem Speichern aus der WYSIWYG-Ansicht den sichtbaren Text,
+auch vor dem Speichern aus der WYSIWYG-Ansicht den sichtbaren Text, Blocktypen (Überschriften, Listen, Zitate),
 Inline-Formatierungen und absichtliche Umbrüche im erzeugten Markdown. Wenn eine
-Abweichung oder Störung auftritt, bleiben deine Eingaben im offenen Editor
+Abweichung, ein wirkungsloser Befehl oder eine Störung auftritt, bleiben deine Eingaben im offenen Editor
 erhalten. Über das Stethoskop-Symbol in der Werkzeugleiste, das Warnbanner oder
 **Markdown → WYSIWYG-Diagnoseprotokoll…** lässt sich jederzeit eine anonymisierte
 Diagnose ohne Dokumentinhalt kopieren oder ein vollständiges Protokoll für eine

@@ -445,3 +445,34 @@ private func recoveryPreviewListKeepsNewestCandidates() throws {
     #expect(listed.reachedLimit)
     #expect(!listed.scanWasLimited)
 }
+
+@Test("Einzeldatei-Wiederherstellung verweigert Geschwister-Tempnamen eines anderen Ziels")
+private func recoveryPreviewRejectsSiblingPreparedURLForDifferentTarget() throws {
+    let fixture = try RecoveryPreviewFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    var pending: ApplySession?
+    _ = try fixture.apply { candidate in
+        if pending == nil, candidate.entries.contains(where: { $0.state == .pending }) {
+            pending = candidate
+        }
+        try ApplyEngine.writeManifest(candidate)
+    }
+    let session = try #require(pending)
+    try fixture.original.write(to: fixture.targets[0], options: .atomic)
+    let manifest = session.sessionDirectory.appendingPathComponent("manifest.json")
+    var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: manifest)) as? [String: Any])
+    var entries = try #require(json["entries"] as? [[String: Any]])
+    var pendingJSON = try #require(entries[0]["pendingFile"] as? [String: Any])
+    var work = try #require(pendingJSON["cleanupDirectory"] as? [String: Any])
+    let forgedPrepared = fixture.targets[0].deletingLastPathComponent()
+        .appendingPathComponent(".\(fixture.targets[1].lastPathComponent).fastra-apply-\(UUID().uuidString).tmp")
+    work["preparedURL"] = forgedPrepared.absoluteString
+    pendingJSON["cleanupDirectory"] = work
+    entries[0]["pendingFile"] = pendingJSON
+    json["entries"] = entries
+    try JSONSerialization.data(withJSONObject: json).write(to: manifest, options: .atomic)
+
+    #expect(throws: ApplyRecoverySessionReader.Failure.invalid(.manifest, .cleanupReference)) {
+        try fixture.observe(session)
+    }
+}

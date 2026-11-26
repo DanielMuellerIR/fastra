@@ -46,7 +46,7 @@ fn reveal(widget: &impl IsA<gtk::Widget>) {
     }
 }
 fn inspect(view: &webkit6::WebView, reply: Rc<RefCell<Option<serde_json::Value>>>) {
-    view.call_async_javascript_function(r#"await document.fonts.ready;const s=getComputedStyle(document.body),c=document.createElement('canvas').getContext('2d');const width=family=>{c.font=`${s.fontStyle} ${s.fontWeight} ${s.fontSize} ${family}`;return c.measureText('iiiiMMMMWWW readable café').width;};return JSON.stringify({applied:window.fastraReadingFontApplied,font:s.fontFamily,size:s.fontSize,weight:s.fontWeight,style:s.fontStyle,width:width(s.fontFamily),fallback:width('"Fastra UI",sans-serif'),fonts:[...document.fonts].filter(f=>f.status==='loaded').map(f=>f.family),image:document.querySelector('img')?.getBoundingClientRect().width,token:document.documentElement.dataset.fastraRender,scroll:scrollY,selection:getSelection().toString(),undo:document.queryCommandEnabled('undo'),source:window.fastraVisual?.markdown()});"#,None,None,None,None::<&gio::Cancellable>,move|value|{*reply.borrow_mut()=Some(value.ok().and_then(|value|serde_json::from_str(&value.to_str()).ok()).unwrap_or_default());});
+    view.call_async_javascript_function(r#"await document.fonts.ready;const s=getComputedStyle(document.body),c=document.createElement('canvas').getContext('2d');const width=family=>{c.font=`${s.fontStyle} ${s.fontWeight} ${s.fontSize} ${family}`;return c.measureText('iiiiMMMMWWW readable café').width;};return JSON.stringify({applied:window.fastraReadingFontApplied,font:s.fontFamily,size:s.fontSize,weight:s.fontWeight,style:s.fontStyle,width:width(s.fontFamily),fallback:width('"Fastra UI",sans-serif'),fonts:[...document.fonts].filter(f=>f.status==='loaded').map(f=>f.family),image:document.querySelector('img')?.getBoundingClientRect().width,token:document.documentElement.dataset.fastraRender,scroll:scrollY,selection:getSelection().toString(),undo:(typeof window.fastraVisual?.canUndo==='function'?window.fastraVisual.canUndo():document.queryCommandEnabled('undo')),source:window.fastraVisual?.markdown()});"#,None,None,None,None::<&gio::Cancellable>,move|value|{*reply.borrow_mut()=Some(value.ok().and_then(|value|serde_json::from_str(&value.to_str()).ok()).unwrap_or_default());});
 }
 pub(super) fn run(ui: Rc<Ui>) {
     if RUNNING.with(|running| running.replace(true)) {
@@ -491,7 +491,7 @@ pub(super) fn run(ui: Rc<Ui>) {
                     settings(&app).close();
                     let rich = rich_doc.rich.borrow().clone().unwrap();
                     let reply = replies[1].clone();
-                    rich.view.call_async_javascript_function("document.getElementById('fastra-visual').focus();document.execCommand('undo');window.fastraVisual.flush();return JSON.stringify(true);",None,None,None,None::<&gio::Cancellable>,move|v|{*reply.borrow_mut()=Some(serde_json::json!(v.is_ok()));});
+                    rich.view.call_async_javascript_function("document.getElementById('fastra-visual')?.focus();window.fastraVisual.command('undo');return JSON.stringify(true);",None,None,None,None::<&gio::Cancellable>,move|v|{*reply.borrow_mut()=Some(serde_json::json!(v.is_ok()));});
                     phase.set(11);
                     pause.set(Instant::now());
                 }

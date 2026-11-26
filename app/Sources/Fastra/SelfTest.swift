@@ -17336,7 +17336,7 @@ enum SelfTest {
         guard L10n.string("Abbrechen", language: "en") == "Cancel" else {
             finish(false, "SwiftPM-Modulbundle löst Englisch nicht auf")
         }
-        let markdownResources = ["katex.js", "highlight.js", "highlight.css", "mermaid.js", "turndown-7.2.0.js", "visual-editor.js", "markdown-presentation.js", "preview-blocks.js"]
+        let markdownResources = ["katex.js", "highlight.js", "highlight.css", "mermaid.js", "visual-editor.js", "markdown-presentation.js", "preview-blocks.js"]
         guard markdownResources.allSatisfy({ MarkdownPreviewAssets.resource(named: $0) != nil }) else {
             finish(false, "lokale Markdown-Renderbibliotheken fehlen im gepackten Ressourcenbundle")
         }
@@ -22009,7 +22009,7 @@ enum SelfTest {
                 diagnostics.append("Such-Fokuszustand: " + Mirror(reflecting: ws.markdownVisualFind).children.filter { ["request", "pendingEditorFocusRequest"].contains($0.label ?? "") }.map { "\($0.label ?? "?")=\($0.value)" }.joined(separator: ", "))
                 let foreground = NSWorkspace.shared.frontmostApplication
                 let native = "\(label): aktiv=\(NSApp.isActive), key=\(window.isKeyWindow), Frontmost=\(foreground?.bundleIdentifier ?? "nil")/\(foreground?.processIdentifier ?? -1), Responder=\(String(describing: window.firstResponder)), Textsuche=\(ws.markdownVisualFind.isPresented), Menüanzahl=\(trackingMenus.count), Undoziel=\(String(describing: NSApp.target(forAction: NSSelectorFromString("undo:"))))"
-                let state = try? await ws.visualMarkdownEditor?.web?.evaluateJavaScript("({undo:document.queryCommandEnabled('undo'),redo:document.queryCommandEnabled('redo'),editable:document.getElementById('fastra-visual').isContentEditable,active:document.activeElement?.id,selection:getSelection().anchorNode?.parentElement?.outerHTML,rows:document.querySelector('table')?.rows.length,source:fastraVisual.markdown()})")
+                let state = try? await ws.visualMarkdownEditor?.web?.evaluateJavaScript("({undo:fastraVisual.canUndo(),redo:fastraVisual.canRedo(),editable:document.getElementById('fastra-visual').isContentEditable,active:document.activeElement?.id,selection:getSelection().anchorNode?.parentElement?.outerHTML,rows:document.querySelector('table')?.rows.length,source:fastraVisual.markdown()})")
                 diagnostics.append(native + "; WebKit=" + String(describing: state))
             }
             func require(_ success: Bool, _ message: String) throws {
@@ -23249,7 +23249,7 @@ enum SelfTest {
                 try require(FileManager.default.fileExists(atPath: base.appendingPathComponent("images/original.png").path), "Ungesicherter Plattenstand verliert sein Bild")
                 ws.saveActiveTab()
                 try await wait { !FileManager.default.fileExists(atPath: base.appendingPathComponent("images/original.png").path) }
-                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
                 try await wait { ws.activeTab?.content == source }
                 try require(FileManager.default.fileExists(atPath: base.appendingPathComponent("images/original.png").path), "Undo stellt Bilddatei nicht wieder her")
                 ws.saveActiveTab()
@@ -23316,7 +23316,7 @@ enum SelfTest {
                 await capture("visual-line-break")
                 ws.saveActiveTab()
                 try await wait { (try? String(contentsOf: file)) == withBreak }
-                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
                 try await wait { ws.activeTab?.content == source }
                 try await placeBreakCursor()
                 guard let toolbarRoot = window.contentView,
@@ -23326,7 +23326,7 @@ enum SelfTest {
                 try require(sendMouseClick(at: breakButton.convert(CGPoint(x: breakButton.bounds.midX, y: breakButton.bounds.midY), to: nil),
                     in: window, modifiers: [], viaApp: true), "Umbruch-Button konnte nicht bedient werden")
                 try await wait { ws.activeTab?.content == withBreak }
-                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
                 try await wait { ws.activeTab?.content == source }
                 try await placeBreakCursor()
                 postKey("\r", keyCode: 36, windowNumber: window.windowNumber)
@@ -23334,7 +23334,7 @@ enum SelfTest {
                 try require(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p:not([data-md-edit-boundary])').length") as? Int == (paragraphCount ?? 0) + 1,
                     "Return muss einen zusätzlichen Absatz erzeugen")
                 try require(!MarkdownRichText.htmlFragment(markdown: ws.activeTab!.content).contains("<br"), "Return erzeugt einen Zeilenumbruch statt eines Absatzes")
-                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
                 try await wait { ws.activeTab?.content == source }
                 ws.saveActiveTab()
                 try await wait { (try? String(contentsOf: file)) == source }
@@ -23371,10 +23371,10 @@ enum SelfTest {
                 postHistoryKey(windowNumber: window.windowNumber)
                 try await wait { ws.activeTab?.content == formatted }
                 stage = "Toolbar-Undo"
-                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
                 try await wait { ws.activeTab?.content == source }
                 _ = try await web.evaluateJavaScript("""
-                    {const item=document.querySelectorAll('#fastra-visual li')[1],r=document.createRange();r.selectNodeContents(item);r.collapse(false);
+                    {const item=document.querySelectorAll('#fastra-visual li')[1],target=item.querySelector('p')||item,r=document.createRange();r.selectNodeContents(target);r.collapse(false);
                     document.getElementById('fastra-visual').focus();getSelection().removeAllRanges();getSelection().addRange(r);}
                     """)
                 postKey("\t", keyCode: 48, windowNumber: window.windowNumber)
@@ -23401,13 +23401,13 @@ enum SelfTest {
                 // skriptgesteuerte Ereignisse unterschiedlich gruppieren.
                 // Nach jedem Schritt prüfen, damit die Einrückung erhalten bleibt.
                 for step in 1...3 {
-                    let undone = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();fastraVisual.markdown();") as? String
+                    let undone = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();fastraVisual.markdown();") as? String
                     diagnostic += "\nUndo \(step): " + (undone ?? "nil").debugDescription
                     if undone == nested { break }
                 }
                 try await wait { ws.activeTab?.content == nested }
                 stage = "Undo Einrückung"
-                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
                 try await wait { ws.activeTab?.content == source }
                 stage = "Letzte Eingabe speichern"
                 _ = try await web.evaluateJavaScript("document.querySelector('#fastra-visual p:not([data-md-edit-boundary])').textContent='Letzte Eingabe';")
@@ -23437,7 +23437,7 @@ enum SelfTest {
                 _ = try await spacesWeb.evaluateJavaScript("""
                     {const r=document.createRange();r.selectNodeContents(document.getElementById('fastra-visual'));
                     getSelection().removeAllRanges();getSelection().addRange(r);
-                    document.execCommand('insertHTML',false,'<p>Vor<strong>&nbsp;Fett&nbsp;</strong>danach</p><p>Vor<mark>&nbsp;Textmarker&nbsp;</mark>danach</p>');fastraVisual.flush();}
+                    fastraVisual.command('insertHTML','<p>Vor<strong>&nbsp;Fett&nbsp;</strong>danach</p><p>Vor<mark>&nbsp;Textmarker&nbsp;</mark>danach</p>');fastraVisual.flush();}
                     """)
                 try await wait { ws.activeTab?.content.contains("Textmarker") == true }
                 for _ in 0..<3 {
@@ -23466,7 +23466,7 @@ enum SelfTest {
                 try FileManager.default.moveItem(at: spacesDirectory, to: renamedDirectory)
                 ws.checkExternalChanges()
                 try await wait { ws.activeTab?.url?.path == renamedDirectory.appendingPathComponent("Umbenannt.md").path }
-                _ = try await renameWeb.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                _ = try await renameWeb.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
                 try await wait { ws.activeTab?.content.contains("Zusatz") == false }
                 try require(try await renameWeb.evaluateJavaScript("document.querySelector('#fastra-visual strong')?.textContent === '\\u00a0Fett\\u00a0' && document.querySelector('#fastra-visual mark')?.textContent === '\\u00a0Textmarker\\u00a0'") as? Bool == true,
                             "Umbenennung verliert Stile oder den WYSIWYG-Verlauf")

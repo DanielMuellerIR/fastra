@@ -549,8 +549,7 @@ final class DocumentFileLoads {
                 adapter.setLoading(tabID: target.id, value: false)
                 return false
             }
-            adapter.publishReload(tabID: target.id, loaded: loaded, afterDiskMutation: true)
-            return true
+            return adapter.publishReload(tabID: target.id, loaded: loaded, afterDiskMutation: true)
         case .failure:
             adapter.failReload(tabID: target.id, expectedURL: target.url)
             return false

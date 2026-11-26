@@ -39,11 +39,15 @@ final class ApplyRecoveryDirectoryClaim {
         // die Symlinknamen /var und /tmp verkürzen und No-follow verletzen.
         rootURL = root
         self.sessionName = sessionName
-        let rootFD = open(rootURL.path, ApplyFileSystem.rootDirectoryReadFlags)
-        guard rootFD >= 0 else { throw ApplyFileSystem.posixError() }
+        let rootOpened = try ApplyFileSystem.openRootDirectory(at: rootURL)
+        let rootFD = rootOpened.descriptor
         var sessionFD: Int32?
         do {
-            let rootInfo = try Self.protectedDirectory(rootFD)
+            try Self.requireProtectedDirectory(rootOpened.info)
+            guard try !ApplyFileSystem.hasMutatingExtendedACL(rootFD) else {
+                throw Rejection.unprotectedDirectory
+            }
+            let rootInfo = rootOpened.info
             let actualRootIdentity = FileIdentity(stat: rootInfo)
             if let expectedRootIdentity, expectedRootIdentity != actualRootIdentity {
                 throw Rejection.changedDirectory
@@ -86,8 +90,7 @@ final class ApplyRecoveryDirectoryClaim {
         }
         // Erneutes No-follow-Öffnen erkennt auch einen nachträglich eingefügten
         // Elternsymlink. lstat allein würde solche Zwischenkomponenten folgen.
-        let namedRoot = open(rootURL.path, ApplyFileSystem.rootDirectoryReadFlags)
-        guard namedRoot >= 0 else { throw ApplyFileSystem.posixError() }
+        let namedRoot = try ApplyFileSystem.openRootDirectory(at: rootURL).descriptor
         var failure: Error?
         do {
             let info = try Self.protectedDirectory(namedRoot)

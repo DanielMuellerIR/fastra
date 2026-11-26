@@ -8,7 +8,7 @@ Upstream-Lizenzdatei zusätzlich im ausgelieferten App-Bundle bei.
 
 Fastra selbst steht unter der MIT-Lizenz, © 2026 Daniel Müller (siehe `LICENSE`).
 
-Stand: 2026-11-08.
+Stand: 2026-11-26.
 
 ## Übersicht
 
@@ -29,7 +29,7 @@ Stand: 2026-11-08.
 | tree-sitter-regex | Regex-Grammatik (gelinkt) | MIT |
 | ripgrep 14.1.1 | Ordnersuche (Binary gebündelt) | MIT / Unlicense |
 | PCRE2 (libpcre2-8) | Regex-Engine für ripgrep (dylib gebündelt) | BSD-3-Clause WITH PCRE2-exception |
-| Turndown 7.2.0 | DOM-Rückkonvertierung beim visuellen Markdown-Bearbeiten (JS gebündelt) | MIT |
+| ProseMirror | Visueller Markdown-Editor (Schema, Zustand, Verlauf, Serialisierung; JS gebündelt) | MIT |
 | KaTeX | Formel-Rendering in Markdown-Vorschau (JS gebündelt) | MIT |
 | Mermaid | Diagramme in Markdown-Vorschau (JS gebündelt) | MIT |
 | highlight.js | Syntax-Highlighting in Vorschau (JS/CSS gebündelt) | BSD-3-Clause |
@@ -1224,16 +1224,15 @@ Der Rust-Katalog `crates/fastra-core/src/four_d/catalog.tsv` leitet daraus
 Namen und Befehlsnummern für die Token-Transformationen ab, ebenfalls ohne
 Beschreibungs- oder Beispieltexte.
 
-## Turndown 7.2.0
+## ProseMirror
 
-- **Quelle:** https://github.com/mixmark-io/turndown
-- **Paket:** https://registry.npmjs.org/turndown/-/turndown-7.2.0.tgz
-- **Lizenz:** MIT
+- **Quelle:** https://github.com/ProseMirror
+- **Lizenz:** MIT (gebündelte Pakete und vollständige Lizenztexte siehe `app/Sources/Fastra/Resources/MarkdownVendor/LICENSE-ProseMirror.txt`)
 
 ```text
 MIT License
 
-Copyright (c) 2017 Dom Christie
+Copyright (C) 2015-2025 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

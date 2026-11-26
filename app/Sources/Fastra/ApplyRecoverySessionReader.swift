@@ -205,17 +205,24 @@ enum ApplyRecoverySessionReader {
 
         func bindDirectory(name: String?, parent: Int?, resource: Resource) throws -> Int {
             let descriptor: Int32
+            var info = stat()
             if let parent, let name {
                 descriptor = openat(directories[parent].descriptor, name, ApplyFileSystem.childDirectoryReadFlags)
+                guard descriptor >= 0 else { throw openFailure(resource) }
+                guard fstat(descriptor, &info) == 0 else {
+                    let failure = Failure.system(resource, errno)
+                    close(descriptor)
+                    throw failure
+                }
             } else {
-                descriptor = open(root.path, ApplyFileSystem.rootDirectoryReadFlags)
-            }
-            guard descriptor >= 0 else { throw openFailure(resource) }
-            var info = stat()
-            guard fstat(descriptor, &info) == 0 else {
-                let failure = Failure.system(resource, errno)
-                close(descriptor)
-                throw failure
+                do {
+                    let opened = try ApplyFileSystem.openRootDirectory(at: root)
+                    descriptor = opened.descriptor
+                    info = opened.info
+                } catch let error as POSIXError {
+                    errno = error.code.rawValue
+                    throw openFailure(resource)
+                }
             }
             directories.append(BoundDirectory(descriptor: descriptor, resource: resource,
                 observation: DirectoryObservation(info), name: name ?? root.path, parent: parent))
@@ -266,9 +273,24 @@ enum ApplyRecoverySessionReader {
                 guard fstat(directory.descriptor, &opened) == 0 else {
                     throw Failure.system(directory.resource, errno)
                 }
-                let status = directory.parent.map {
-                    fstatat(directories[$0].descriptor, directory.name, &named, AT_SYMLINK_NOFOLLOW)
-                } ?? lstat(root.path, &named)
+                let status: Int32
+                if let parent = directory.parent {
+                    status = fstatat(directories[parent].descriptor, directory.name, &named, AT_SYMLINK_NOFOLLOW)
+                } else {
+                    let reopened: (descriptor: Int32, info: stat)
+                    do { reopened = try ApplyFileSystem.openRootDirectory(at: root) }
+                    catch let error as POSIXError {
+                        switch error.code {
+                        case .ENOENT, .ENOTDIR, .ELOOP:
+                            throw Failure.changed(directory.resource)
+                        default:
+                            throw Failure.system(directory.resource, error.code.rawValue)
+                        }
+                    }
+                    named = reopened.info
+                    guard close(reopened.descriptor) == 0 else { throw Failure.system(directory.resource, errno) }
+                    status = 0
+                }
                 guard status == 0,
                       DirectoryObservation(opened) == directory.observation,
                       DirectoryObservation(named) == directory.observation else {
@@ -315,6 +337,37 @@ enum ApplyRecoverySessionReader {
         }
     }
 
+    static func hasValidCleanupReferences(_ session: ApplySession) -> Bool {
+        for entry in session.entries {
+            if let pending = entry.pendingFile {
+                let target = URL(fileURLWithPath: entry.originalPath)
+                guard isValidCleanupReference(pending, expectedTarget: target) else { return false }
+            }
+        }
+        for pending in session.retainedPendingFiles {
+            guard isValidCleanupReference(pending, expectedTarget: nil) else { return false }
+        }
+        return true
+    }
+
+    private static func isValidCleanupReference(_ pending: ApplyPendingFile, expectedTarget: URL?) -> Bool {
+        guard valid(pending.snapshot), pending.snapshot.identity != nil,
+              let work = pending.cleanupDirectory,
+              absoluteFileURL(pending.url), absoluteFileURL(work.url), absoluteFileURL(work.preparedURL),
+              work.url.lastPathComponent.hasPrefix(".fastra-pending-work-"),
+              UUID(uuidString: String(work.url.lastPathComponent.dropFirst(".fastra-pending-work-".count))) != nil,
+              ApplyFileSystem.isApplyTemporaryFilename(work.preparedURL.lastPathComponent,
+                                                       targetName: expectedTarget?.lastPathComponent),
+              work.url.deletingLastPathComponent() == work.preparedURL.deletingLastPathComponent(),
+              (pending.url == work.preparedURL || pending.url == work.url.appendingPathComponent("anchor")) else {
+            return false
+        }
+        if let expectedTarget {
+            return work.preparedURL.deletingLastPathComponent() == expectedTarget.deletingLastPathComponent()
+        }
+        return true
+    }
+
     private static func validate(_ session: ApplySession, name: String) throws {
         guard session.schemaVersion == 2 else {
             throw Failure.unsupported(.schema(session.schemaVersion))
@@ -341,6 +394,14 @@ enum ApplyRecoverySessionReader {
             guard let applied = entry.appliedSnapshot, valid(applied) else {
                 throw Failure.unsupported(.missingAppliedBasis)
             }
+            if let pending = entry.pendingFile, let work = pending.cleanupDirectory {
+                let target = URL(fileURLWithPath: entry.originalPath)
+                guard work.preparedURL.deletingLastPathComponent() == target.deletingLastPathComponent(),
+                      ApplyFileSystem.isApplyTemporaryFilename(work.preparedURL.lastPathComponent,
+                                                               targetName: target.lastPathComponent) else {
+                    throw Failure.invalid(.manifest, .cleanupReference)
+                }
+            }
         }
         for pending in session.retainedPendingFiles + session.entries.compactMap(\.pendingFile) {
             guard valid(pending.snapshot), pending.snapshot.identity != nil else {
@@ -350,6 +411,7 @@ enum ApplyRecoverySessionReader {
             guard absoluteFileURL(pending.url), absoluteFileURL(work.url), absoluteFileURL(work.preparedURL),
                   work.url.lastPathComponent.hasPrefix(".fastra-pending-work-"),
                   UUID(uuidString: String(work.url.lastPathComponent.dropFirst(".fastra-pending-work-".count))) != nil,
+                  ApplyFileSystem.isApplyTemporaryFilename(work.preparedURL.lastPathComponent),
                   work.url.deletingLastPathComponent() == work.preparedURL.deletingLastPathComponent(),
                   (pending.url == work.preparedURL || pending.url == work.url.appendingPathComponent("anchor")) else {
                 throw Failure.invalid(.manifest, .cleanupReference)

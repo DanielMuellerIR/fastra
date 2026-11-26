@@ -166,6 +166,7 @@ final class MarkdownImportService: ObservableObject {
         }
         self.owner = owner
         ownerID = owner?.instanceID
+        state = .idle
         progress = nil
         isCancelling = false
         guard let executable = locateTool() else {

@@ -443,7 +443,7 @@ private func backupRotationPreservesReoccupiedCleanupPaths() throws {
     let fm = FileManager.default
     defer { try? fm.removeItem(at: fixture.directory) }
     let targetBefore = try FileSnapshot.readSnapshotOnly(from: fixture.target)
-    let preparedURL = fixture.directory.appendingPathComponent(".prepared.tmp")
+    let preparedURL = fixture.directory.appendingPathComponent(".\(fixture.target.lastPathComponent).fastra-apply-\(UUID().uuidString).tmp")
     let preparedBytes = Data("bar".utf8)
     let pending = try ApplyPendingFile.prepare(preparedBytes, at: preparedURL)
     let work = try #require(pending.cleanupDirectory)
@@ -1164,4 +1164,54 @@ private func recoveryUndoCleanupOnlyRepeats(replaceManifestAfterClaim: Bool) thr
     #expect(try FileSnapshot.readSnapshotOnly(from: backup) == backupBefore)
     #expect(try FileSnapshot.readSnapshotOnly(from: savedForeign) == foreign)
     #expect(try ApplyEngine.loadSession(at: session.sessionDirectory) == completed)
+}
+
+@Test("Unpersistierter Teil-Restore in Undo liefert undoConflict und schützt pendingFile bis zum Persist")
+private func undoPrePersistConflictDoesNotReturnUnpersistedPartial() throws {
+    let fm = FileManager.default
+    let directory = testTemporaryDirectory().appendingPathComponent(
+        "fastra-undo-prepersist-\(UUID().uuidString)", isDirectory: true)
+    try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: directory) }
+    let first = directory.appendingPathComponent("first.txt")
+    let second = directory.appendingPathComponent("second.txt")
+    let backups = directory.appendingPathComponent("backups", isDirectory: true)
+    let firstOriginal = Data("foo one".utf8)
+    let secondOriginal = Data("foo two".utf8)
+    try firstOriginal.write(to: first)
+    try secondOriginal.write(to: second)
+    let plan = ApplyEngine.plan(files: [first, second],
+                                options: SearchOptions(find: "foo", replace: "bar", isRegex: false))
+    let session = try ApplyEngine.apply(plan: plan, backupRoot: backups, cleanupOlderThan: nil)
+    #expect(session.entries.map(\.state) == [.applied, .applied])
+
+    // Erstes Ziel trägt bereits Originalbytes (in RAM als .restored markierbar),
+    // zweites Ziel wird temporär verschoben und durch fremde Bytes ersetzt -> Vorab-Konflikt vor jedem Persist.
+    try firstOriginal.write(to: first, options: .atomic)
+    let parkedSecond = directory.appendingPathComponent("second-parked.txt")
+    try fm.moveItem(at: second, to: parkedSecond)
+    try Data("fremder Stand".utf8).write(to: second, options: .atomic)
+
+    do {
+        _ = try ApplyEngine.undo(session)
+        Issue.record("Konflikt am zweiten Ziel hätte undoConflict auslösen müssen")
+    } catch ApplyError.undoConflict {
+    } catch ApplyError.undoFailed {
+        Issue.record("Unpersistierter RAM-Fortschritt darf kein undoFailed(partial:) liefern")
+    }
+
+    let persistedAfterConflict = try ApplyEngine.loadSession(at: session.sessionDirectory)
+    #expect(persistedAfterConflict.entries.map(\.state) == [.applied, .applied])
+    if let pending = persistedAfterConflict.entries[0].pendingFile {
+        #expect(pending.isValid)
+    }
+
+    // Nach Zurückbewegen der ursprünglichen angewendeten Datei (gleiche Inode)
+    // läuft die vollständige Rücknahme sauber durch.
+    try fm.removeItem(at: second)
+    try fm.moveItem(at: parkedSecond, to: second)
+    let undone = try ApplyEngine.undo(persistedAfterConflict)
+    #expect(undone.entries.map(\.state) == [.restored, .restored])
+    #expect(try Data(contentsOf: first) == firstOriginal)
+    #expect(try Data(contentsOf: second) == secondOriginal)
 }

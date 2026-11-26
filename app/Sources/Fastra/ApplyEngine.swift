@@ -1794,9 +1794,10 @@ extension ApplyEngine {
         // weiterhin über ihren Anker erreichbare Identität. Originalbytes
         // gelten ohne Write als restauriert. Alles andere bleibt Konflikt.
         var working = session
+        var persisted = session
         func conflictError(_ message: String) -> ApplyError {
-            if working.entries.contains(where: { $0.state == .restored }) {
-                return .undoFailed(partial: working, message: message)
+            if persisted.entries.contains(where: { $0.state == .restored }) {
+                return .undoFailed(partial: persisted, message: message)
             }
             return .undoConflict(message)
         }
@@ -1873,6 +1874,7 @@ extension ApplyEngine {
 
         if working != session || !working.retainedPendingFiles.isEmpty {
             try persist(working)
+            persisted = working
         }
         // Alle Ziele sind geprüft; ein RAM-Partial mit Cleanup-Resten muss
         // zuerst das möglicherweise ältere Plattenmanifest ablösen.
@@ -1981,6 +1983,7 @@ extension ApplyEngine {
                 // setzt den Eintrag ohne erneuten Write auf restored.
                 try persist(restoredSession)
                 working = restoredSession
+                persisted = restoredSession
                 try remove(entry.pendingFile)
             } catch let error as ApplyError {
                 if case .undoConflict(let message) = error {
@@ -2029,6 +2032,7 @@ extension ApplyEngine {
                 if let manifest {
                     let session = try JSONDecoder().decode(ApplySession.self, from: manifest.data)
                     guard !session.entries.contains(where: { $0.state == .pending }) else { continue }
+                    guard ApplyRecoverySessionReader.hasValidCleanupReferences(session) else { continue }
                     let pendingFiles = session.retainedPendingFiles + session.entries.compactMap(\.pendingFile)
                     for file in pendingFiles {
                         try claim.validateBinding()

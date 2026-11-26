@@ -163,7 +163,7 @@ pub(super) fn install_keys(ui: &Rc<Ui>, window: &impl IsA<gtk::Window>) {
             if let Some(ui) = owner
                 .upgrade()
                 .filter(|ui| {
-                    !super::application_lifecycle::quit_prompt_active()
+                    !super::close_protocol::any_prompt_active()
                         && !super::close_protocol::active(ui)
                         && !ui.window_close_dialog.get()
                 })

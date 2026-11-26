@@ -231,9 +231,20 @@ fn page_images(source:&str,session:&str,dark:bool,de:bool,image_sources:Option<&
                     let source=&image_sources.unwrap().0[dest_url.as_ref()];let uri=format!("{}{}",images::PREFIX,source.token);image_tags.push((uri.clone(),dest_url.to_string()));
                     Event::Start(Tag::Image{link_type,dest_url:uri.into(),title,id})
                 }
-                Event::Start(Tag::Link { dest_url, .. }) => {
+                Event::Start(Tag::Link {
+                    dest_url, title, ..
+                }) => {
                     links += 1;
-                    Event::Html(format!("<a href=\"{}\">", escape(&dest_url)).into())
+                    let html = if title.is_empty() {
+                        format!("<a href=\"{}\">", escape(&dest_url))
+                    } else {
+                        format!(
+                            "<a href=\"{}\" title=\"{}\">",
+                            escape(&dest_url),
+                            escape(&title)
+                        )
+                    };
+                    Event::Html(html.into())
                 }
                 Event::End(TagEnd::Link) if links > 0 => {
                     links -= 1;
@@ -279,7 +290,7 @@ fn page_html(body:&str,dark:bool,de:bool)->String {
     let text_style = format!("{}{}",visible_blank_lines::CSS,crate::fonts::web_style("fastra-rich"));
     // Die freie Fläche bleibt editierbar; flow-root hält Absatzränder innerhalb der Mindesthöhe.
     format!(
-        r#"<!doctype html><html lang="{}" data-fastra-enhanced="true" data-dark="{dark}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'none'; img-src fastra-rich:; font-src fastra-rich:; media-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; style-src 'unsafe-inline' fastra-rich:; script-src 'nonce-{nonce}' fastra-rich:"><link rel="stylesheet" href="{VENDOR}highlight.css"><style>:root{{{colors}}}{}{} #fastra-visual{{display:flow-root;outline:none;min-height:calc(100vh - 40px)}} .protected{{border:1px solid var(--border);padding:8px;color:var(--secondary)}} mark{{background:{};color:inherit}} table{{border-collapse:collapse}} td,th{{min-width:40px}} </style><script src="{VENDOR}katex.js"></script><script src="{VENDOR}highlight.js"></script><script src="{VENDOR}mermaid.js"></script><script src="{VENDOR}math.js"></script><script src="{VENDOR}turndown.js"></script><script src="{VENDOR}tables.js"></script><script src="{VENDOR}editor.js"></script></head><body><div id="fastra-visual" contenteditable="false">{body}</div></body></html>"#,
+        r#"<!doctype html><html lang="{}" data-fastra-enhanced="true" data-dark="{dark}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'none'; img-src fastra-rich:; font-src fastra-rich:; media-src 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'; style-src 'unsafe-inline' fastra-rich:; script-src 'nonce-{nonce}' fastra-rich:"><link rel="stylesheet" href="{VENDOR}highlight.css"><style>:root{{{colors}}}{}{} #fastra-visual{{display:flow-root;outline:none;min-height:calc(100vh - 40px)}} .protected{{border:1px solid var(--border);padding:8px;color:var(--secondary)}} mark{{background:{};color:inherit}} table{{border-collapse:collapse}} td,th{{min-width:40px}} </style><script src="{VENDOR}katex.js"></script><script src="{VENDOR}highlight.js"></script><script src="{VENDOR}mermaid.js"></script><script src="{VENDOR}math.js"></script><script src="{VENDOR}editor.js"></script></head><body><div id="fastra-visual" contenteditable="false">{body}</div></body></html>"#,
         if de { "de" } else { "en" },
         include_str!("../../../linux/resources/markdown.css"), text_style,
         if dark { "#665200" } else { "#FFEE9A" }
@@ -293,12 +304,6 @@ fn resource(name: &str) -> Option<&'static [u8]> {
         "highlight.js" => Some(include_bytes!("../../../app/Sources/Fastra/Resources/MarkdownVendor/highlight-11.11.1.min.js")),
         "mermaid.js" => Some(include_bytes!("../../../app/Sources/Fastra/Resources/MarkdownVendor/mermaid-11.16.0.min.js")),
         "math.js" => Some(include_bytes!("../../../linux/resources/rich-math.js")),
-        "turndown.js" => Some(include_bytes!(
-            "../../../app/Sources/Fastra/Resources/MarkdownVendor/turndown-7.2.0.js"
-        )),
-        "tables.js" => Some(include_bytes!(
-            "../../../app/Sources/Fastra/Resources/MarkdownVendor/visual-tables.js"
-        )),
         "editor.js" => Some(include_bytes!(
             "../../../app/Sources/Fastra/Resources/MarkdownVendor/visual-editor.js"
         )),
@@ -352,6 +357,7 @@ pub struct RichEditor {
     clipboard_request: Cell<u64>,
     clipboard_busy: Cell<bool>,
     images:Rc<RefCell<images::Cache>>,
+    staged_images:Rc<RefCell<Option<(u64, images::Cache)>>>,
     image_cancel:crate::viewer::Cancellation,
     assets:Rc<RefCell<asset_ui::State>>,
 }
@@ -376,13 +382,23 @@ impl RichEditor {
         if let Some(saved) = viewport::get(doc) { page.configuration["viewport"] = saved; }
         let context = webkit6::WebContext::new();
         let cached=image_cache.clone();
+        let staged_cache: Rc<RefCell<Option<(u64, images::Cache)>>> = Rc::new(RefCell::new(None));
+        let staged_scheme = staged_cache.clone();
         context.register_uri_scheme("fastra-rich",move |request| {
             if crate::fonts::serve(request, "fastra-rich") { return; }
             let uri = request.uri().unwrap_or_default();
             if let Some(bytes) = uri.strip_prefix(VENDOR).and_then(resource) {
                 let stream = gio::MemoryInputStream::from_bytes(&glib::Bytes::from_static(bytes));
                 request.finish(&stream, bytes.len() as i64, Some(if uri.ends_with(".css") { "text/css" } else { "text/javascript" }));
-            } else if let Some(token)=uri.strip_prefix(images::PREFIX){cached.borrow().serve(request,token);}else {
+            } else if let Some(token)=uri.strip_prefix(images::PREFIX){
+                if cached.borrow().lookup(token).is_some() {
+                    cached.borrow().serve(request, token);
+                } else if let Some((_, ref staged)) = *staged_scheme.borrow() {
+                    staged.serve(request, token);
+                } else {
+                    cached.borrow().serve(request, token);
+                }
+            }else {
                 request.finish_error(&mut glib::Error::new(
                     gio::IOErrorEnum::PermissionDenied,
                     "Unlisted rich editor resource",
@@ -480,7 +496,7 @@ impl RichEditor {
             operation: Cell::new(0),
             clipboard_request: Cell::new(0),
             clipboard_busy: Cell::new(false),
-            images:image_cache.clone(),image_cancel:image_cancel.clone(),assets:Rc::new(RefCell::new(asset_ui::State::default())),
+            images:image_cache.clone(),staged_images:staged_cache,image_cancel:image_cancel.clone(),assets:Rc::new(RefCell::new(asset_ui::State::default())),
         });
         asset_drop::install(&editor);
         navigation::install(&editor, &toolbar);
@@ -613,8 +629,7 @@ impl RichEditor {
                       if(!event.isComposing && event.ctrlKey && !event.altKey && !event.metaKey && ['z','y'].includes(key)){{
                         event.preventDefault();event.stopImmediatePropagation();
                         if(root.isContentEditable){{
-                          document.execCommand(event.shiftKey || key==='y'?'redo':'undo');
-                          window.fastraVisual.flush();
+                          window.fastraVisual.command(event.shiftKey || key==='y'?'redo':'undo');
                         }}
                         return;
                       }}
@@ -678,7 +693,7 @@ impl RichEditor {
         self.failed.set(true);
         self.status.set_text(self.text(de, en));
         self.view.evaluate_javascript(
-            "document.getElementById('fastra-visual').contentEditable='false'",
+            "const root=document.getElementById('fastra-visual');if(root)root.contentEditable='false';window.fastraVisual?.setFailed?.();",
             None,
             None,
             None::<&gio::Cancellable>,
@@ -961,7 +976,10 @@ impl RichEditor {
             return;
         }
         let body = if matches!(command, "undo" | "redo") {
-            format!("document.getElementById('fastra-visual').focus(); document.execCommand({}); window.fastraVisual.flush(); return JSON.stringify(true);",json!(command))
+            format!(
+                "document.getElementById('fastra-visual')?.focus(); window.fastraVisual.command({}); return JSON.stringify(true);",
+                json!(command)
+            )
         } else {
             format!(
                 "window.fastraVisual.command({}); return JSON.stringify(true);",
@@ -976,7 +994,7 @@ impl RichEditor {
         }
         self.evaluate(
             &format!(
-                "fastraVisual.command({},{}); return JSON.stringify(true);",
+                "window.fastraVisual.command({},{}); return JSON.stringify(true);",
                 json!(command),
                 json!(value)
             ),
@@ -1747,6 +1765,32 @@ mod tests {
                 .values()
                 .any(|v| v.as_str().unwrap().contains(visible_blank_lines::CLASS)));
         }
+    }
+    #[test]
+    fn link_titles_are_preserved_and_legacy_vendor_scripts_omitted() {
+        let source = "Plain [a](https://example.invalid/ \"Title \\\"q\\\" & <x>\") and [b](https://example.invalid/b) and [ref][r].\n\n[r]: https://example.invalid/r \"Ref Title\"\n";
+        let rendered = page(source, "titles", false, false).unwrap();
+        assert!(
+            rendered.fragment.contains("<a href=\"https://example.invalid/\" title=\"Title &quot;q&quot; &amp; &lt;x&gt;\">a</a>"),
+            "{}",
+            rendered.fragment
+        );
+        assert!(
+            rendered.fragment.contains("<a href=\"https://example.invalid/b\">b</a>"),
+            "{}",
+            rendered.fragment
+        );
+        assert!(
+            rendered.fragment.contains("<a href=\"https://example.invalid/r\" title=\"Ref Title\">ref</a>"),
+            "{}",
+            rendered.fragment
+        );
+        assert!(!rendered.html.contains("turndown.js"));
+        assert!(!rendered.html.contains("tables.js"));
+        assert!(rendered.html.contains("editor.js"));
+        assert!(resource("turndown.js").is_none());
+        assert!(resource("tables.js").is_none());
+        assert!(resource("editor.js").is_some());
     }
     #[test]
     fn blocks_retain_exact_source_and_protect_unknown_syntax() {

@@ -15,7 +15,7 @@ fn snapshot(editor: &Rc<RichEditor>, reply: &Rc<RefCell<Option<Value>>>, select:
     } else {
         ""
     };
-    editor.evaluate(&format!("const root=document.getElementById('fastra-visual');{select}await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return JSON.stringify({{blank:root.querySelectorAll('.fastra-visible-blank-line').length,lists:root.querySelectorAll('ul,ol').length,items:root.querySelectorAll('li').length,breaks:Array.from(root.querySelectorAll('br')).filter(n=>!n.closest('.fastra-visible-blank-line,[data-md-edit-boundary]')).length,code:Array.from(root.querySelectorAll('pre')).map(n=>n.textContent.replace(/\\n$/,'')),text:root.textContent.replace(/[ \\t\\r\\n]+/g,' ').trim()}});"),move|value|*result.borrow_mut()=value);
+    editor.evaluate(&format!("const root=document.getElementById('fastra-visual');{select}await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return JSON.stringify({{blank:root.querySelectorAll('.fastra-visible-blank-line').length,lists:root.querySelectorAll('ul,ol').length,items:root.querySelectorAll('li').length,breaks:Array.from(root.querySelectorAll('br')).filter(n=>!n.classList.contains('ProseMirror-trailingBreak')&&!n.closest('.fastra-visible-blank-line,[data-md-edit-boundary]')).length,code:Array.from(root.querySelectorAll('pre')).map(n=>n.textContent.replace(/\\n$/,'')),text:root.textContent.replace(/[ \\t\\r\\n]+/g,' ').trim()}});"),move|value|*result.borrow_mut()=value);
 }
 fn literal_code(source: &str) -> Vec<String> {
     let mut result = Vec::new();

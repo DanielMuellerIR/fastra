@@ -672,4 +672,40 @@ struct MarkdownImportOwnershipTests {
         service.convert(source, owner: owner)
         return (service, ownerID)
     }
+
+    @Test("Besitzerwechsel setzt vorherigen Umwandlungszustand vor der Zielordnerwahl auf idle zurück")
+    @MainActor
+    func convertResetsPriorStateBeforeChooseDestination() throws {
+        let folder = testTemporaryDirectory()
+            .appendingPathComponent("fastra-mdreset-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let readonly = folder.appendingPathComponent("readonly")
+        try FileManager.default.createDirectory(at: readonly, withIntermediateDirectories: true)
+        let source = readonly.appendingPathComponent("Quelle.rtf")
+        try "Quelle".write(to: source, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: readonly.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: readonly.path) }
+
+        let service = MarkdownImportService()
+        service.locateTool = { nil }
+        let ownerA = Workspace()
+        service.convert(source, owner: ownerA, chooseDestination: nil)
+        guard case .failed = service.state else {
+            Issue.record("Vorheriger Fehlschlag in Fenster A erwartet, gefunden: \(service.state)")
+            return
+        }
+
+        service.locateTool = { URL(fileURLWithPath: "/bin/echo") }
+        service.runProcess = { _, _, _, _, _ in nil }
+        let ownerB = Workspace()
+        var stateDuringChooser: MarkdownImportState?
+        service.convert(source, owner: ownerB, chooseDestination: {
+            stateDuringChooser = service.state
+            return nil
+        })
+        #expect(stateDuringChooser == .idle)
+        #expect(service.state == .cancelled)
+        #expect(service.isOwned(by: ownerB))
+    }
 }

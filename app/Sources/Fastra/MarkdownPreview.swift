@@ -230,8 +230,8 @@ enum MarkdownRichText {
            Quell-Leerzeilen als Absätze rendert. Mehrere Absätze innerhalb
            desselben Eintrags behalten einen kleinen sichtbaren Abstand. */
         ul, ol { line-height: 1.2; }
-        li > p { margin: 0; }
-        li > p + p { margin-top: 0.35em; }
+        li > p, li > .fastra-pm-li-content > p { margin: 0; }
+        li > p + p, li > .fastra-pm-li-content > p + p { margin-top: 0.35em; }
         li > ul, li > ol { margin-top: 0; margin-bottom: 0; }
         /* cmark setzt das Kästchen loser Aufgabenlisten vor den Absatz.
            Ohne eigene Position belegt es eine ganze zusätzliche Zeile. */

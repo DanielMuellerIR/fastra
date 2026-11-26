@@ -207,7 +207,7 @@ async fn scenario(ui: Rc<Ui>) {
     }
     core(ui, doc, revision, state, app, mode == "busy").await;
 }
-const RICH:&str="return JSON.stringify({source:fastraVisual.markdown(),selection:getSelection().toString(),undo:document.queryCommandEnabled('undo'),editable:document.getElementById('fastra-visual').contentEditable});";
+const RICH:&str="return JSON.stringify({source:fastraVisual.markdown(),selection:getSelection().toString(),undo:(typeof window.fastraVisual?.canUndo==='function'?window.fastraVisual.canUndo():document.queryCommandEnabled('undo')),editable:document.getElementById('fastra-visual').contentEditable});";
 async fn snapshot(editor: &crate::rich_editor::RichEditor) -> serde_json::Value {
     let began = std::time::Instant::now();
     loop {

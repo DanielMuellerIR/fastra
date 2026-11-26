@@ -889,13 +889,13 @@ to edit directly in the formatted view or use source text with a preview.
 WYSIWYG hides Markdown syntax. The format toolbar works in both modes.
 Typing, formatting and Undo happen directly in the document.
 The blank area below a short text is part of the editor too: click there to
-continue typing.
+continue typing. Intentionally visible blank lines can also be converted directly into a heading, list or quote via keyboard shortcut or the toolbar.
 When Markdown delimiters cannot express the selected formatting unambiguously,
 Fastra uses allowed HTML tags in the source so that saving and reopening preserve
 its appearance.
-On Mac, Fastra checks the visible text, inline formatting, and intentional
+On Mac, Fastra checks the visible text, block types (headings, lists, quotes), inline formatting, and intentional
 line breaks in the generated Markdown both one second after your last edit and
-before saving from WYSIWYG. If a difference or editor issue occurs, your edits
+before saving from WYSIWYG. If a difference, no-op command, or editor issue occurs, your edits
 stay in the open editor. Use the stethoscope button in the toolbar, the warning
 banner, or **Markdown → WYSIWYG Diagnostic Log…** at any time to copy an
 anonymized diagnostic without document content or save a full log for reporting.

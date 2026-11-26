@@ -15,7 +15,6 @@ enum MarkdownPreviewAssets {
         "highlight.css": ("highlight-11.11.1.min.css", "text/css"),
         "mermaid.js": ("mermaid-11.16.0.min.js", "text/javascript"),
         "preview-blocks.js": ("preview-blocks.js", "text/javascript"),
-        "turndown-7.2.0.js": ("turndown-7.2.0.js", "text/javascript"),
         "visual-editor.js": ("visual-editor.js", "text/javascript"),
         "markdown-presentation.js": ("markdown-presentation.js", "text/javascript")
     ]

@@ -130,10 +130,11 @@ pub(super) fn run(ui: Rc<Ui>) {
                 for key in ["markdown", "anchor", "offset", "scroll", "src"] {
                     assert_eq!(value[key], before[key], "refresh changed {key}");
                 }
+                assert_ne!(value["uri"], before["uri"], "refresh must update image version URI");
                 assert_eq!(doc.revision.get(), revision.get());
                 assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
                 let reply = response.clone();
-                editor.evaluate("const root=document.getElementById('fastra-visual'),image=document.createElement('img');image.dataset.mdSrc='image.png';image.src='fastra-rich://image/newly-inserted-token?v=new';root.append(image);await new Promise(r=>setTimeout(r,20));const preserved=image.getAttribute('src')==='fastra-rich://image/newly-inserted-token?v=new';image.remove();return JSON.stringify(preserved);",move|value|*reply.borrow_mut()=value);
+                editor.evaluate("const m=window.fastraLocalImageMapping||{};return JSON.stringify(!window.fastraLocalImageObserver&&!Object.prototype.hasOwnProperty.call(m,'image.png')&&Object.values(m).some(e=>e.raw==='image.png'));",move|value|*reply.borrow_mut()=value);
                 phase.set(40);
             }
             5 if !value["markdown"].as_str().unwrap_or("").contains("wordsx")

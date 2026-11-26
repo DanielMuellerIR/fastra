@@ -61,18 +61,18 @@ impl RichEditor {
             done(Err(self.replacement_error("images")));
             return;
         }
-        self.images
-            .borrow_mut()
-            .images
-            .extend(prepared.images.images);
+        // Während des WebKit-Umbaus vorgemerkte Bildbytes nur für diese Operation bereitstellen;
+        // dauerhaft in self.images erst nach vollständiger Übernahme übernehmen (Sol #4).
+        let mut staged_images = Some(prepared.images);
         let output = prepared.configuration["markdown"]
             .as_str()
             .unwrap()
             .to_owned();
-        let code = format!("const outcome=await fastraVisual.replaceSource({},{},{},{});return JSON.stringify({{ok:outcome===true,reason:outcome,...fastraVisual.clipboardState()}});", json!(expected), json!(body), prepared.configuration, json!(prepared.prefix));
+        let code = format!("const outcome=await window.fastraVisual.replaceSource({},{},{},{});return JSON.stringify({{ok:outcome===true,reason:outcome,...window.fastraVisual.clipboardState()}});", json!(expected), json!(body), prepared.configuration, json!(prepared.prefix));
         self.busy.set(true);
         let operation = self.operation.get().wrapping_add(1);
         self.operation.set(operation);
+        *self.staged_images.borrow_mut() = staged_images.take().map(|cache| (operation, cache));
         let completion = Rc::new(RefCell::new(Some(done)));
         let expired = completion.clone();
         let closed = self
@@ -86,6 +86,11 @@ impl RichEditor {
             if let Some(done) = expired.borrow_mut().take() {
                 let error = if let Some(editor) = weak.upgrade() {
                     editor.operation.set(editor.operation.get().wrapping_add(1));
+                    let mut staged = editor.staged_images.borrow_mut();
+                    if staged.as_ref().is_some_and(|(op, _)| *op == operation) {
+                        *staged = None;
+                    }
+                    drop(staged);
                     editor.busy.set(false);
                     editor.fail("Rich-Übernahme abgebrochen. Ungesicherte Ansicht bleibt erhalten; weitere Änderungen angehalten.", "Rich transfer stopped. The unsaved view is retained; further changes are held.");
                     editor.replacement_error("timeout")
@@ -99,8 +104,15 @@ impl RichEditor {
         self.evaluate(&code, move |result| {
             let Some(editor) = weak.upgrade().filter(|editor| editor.operation.get() == operation) else { return; };
             if completion.borrow().is_none() { return; }
+            let clear_staged = |ed: &RichEditor| {
+                let mut staged = ed.staged_images.borrow_mut();
+                if staged.as_ref().is_some_and(|(op, _)| *op == operation) {
+                    *staged = None;
+                }
+            };
             let revision = result.as_ref().filter(|value| value["ok"] == true && value["markdown"].as_str() == Some(output.as_str())).and_then(|value| value["revision"].as_u64());
             let Some(revision) = revision else {
+                clear_staged(&editor);
                 editor.busy.set(false);
                 let reason = result.as_ref().and_then(|value| value["reason"].as_str()).unwrap_or("failed");
                 if matches!(reason,"insert"|"incomplete"|"unsupported"|"failed") { editor.fail("Rich-Ansicht konnte nicht verlustfrei aktualisiert werden. Quelle erhalten; weitere Änderungen angehalten.", "Rich view could not be updated losslessly. Source retained; further changes are held."); }
@@ -108,15 +120,53 @@ impl RichEditor {
                 if let Some(done) = completion.borrow_mut().take() { done(Err(error)); }
                 return;
             };
+            let staged_ref_ok = editor
+                .staged_images
+                .borrow()
+                .as_ref()
+                .filter(|(op, _)| *op == operation)
+                .is_some_and(|(_, cache)| editor.images.borrow().can_extend(cache));
+            if !staged_ref_ok {
+                clear_staged(&editor);
+                editor.busy.set(false);
+                editor.fail("Rich-Ansicht konnte nicht verlustfrei aktualisiert werden. Quelle erhalten; weitere Änderungen angehalten.", "Rich view could not be updated losslessly. Source retained; further changes are held.");
+                let error = editor.replacement_error("images");
+                if let Some(done) = completion.borrow_mut().take() { done(Err(error)); }
+                return;
+            }
             let weak = Rc::downgrade(&editor);
             glib::timeout_add_local(Duration::from_millis(20), move || {
                 if completion.borrow().is_none() { return glib::ControlFlow::Break; }
                 let Some(editor) = weak.upgrade() else { return glib::ControlFlow::Break; };
+                if editor.operation.get() != operation {
+                    return glib::ControlFlow::Break;
+                }
                 let accepted = editor.input_revision.get() == revision && editor.expected.borrow().as_str() == output && editor.current().is_some();
-                if accepted || editor.failed.get() {
+                if accepted {
+                    let taken = {
+                        let mut staged = editor.staged_images.borrow_mut();
+                        if staged.as_ref().is_some_and(|(op, _)| *op == operation) {
+                            staged.take().map(|(_, c)| c)
+                        } else {
+                            None
+                        }
+                    };
+                    if let Some(cache) = taken {
+                        if editor.images.borrow().can_extend(&cache) {
+                            editor.images.borrow_mut().images.extend(cache.images);
+                        }
+                    }
                     editor.busy.set(false);
-                    let result = if accepted { Ok(()) } else { Err(editor.replacement_error("failed")) };
-                    if let Some(done) = completion.borrow_mut().take() { done(result); }
+                    if let Some(done) = completion.borrow_mut().take() { done(Ok(())); }
+                    glib::ControlFlow::Break
+                } else if editor.failed.get() {
+                    let mut staged = editor.staged_images.borrow_mut();
+                    if staged.as_ref().is_some_and(|(op, _)| *op == operation) {
+                        *staged = None;
+                    }
+                    drop(staged);
+                    editor.busy.set(false);
+                    if let Some(done) = completion.borrow_mut().take() { done(Err(editor.replacement_error("failed"))); }
                     glib::ControlFlow::Break
                 } else { glib::ControlFlow::Continue }
             });

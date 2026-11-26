@@ -32,6 +32,12 @@ enum MarkdownVisualSaveMessages {
             return L10n.string("Fastra hat bei der letzten Bearbeitung eine ungültige Blockgrenze abgefangen und sichtbaren Text geschützt.")
         case "unexpected-text-loss":
             return L10n.string("Bei einem Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) hat sich die sichtbare Textlänge unerwartet verändert.")
+        case "command-noop":
+            return L10n.string("Ein Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) konnte an der aktuellen Stelle nicht angewendet werden.")
+        case "format":
+            return L10n.string("Ein Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) hat einen unerwarteten Zustand hinterlassen.")
+        case "command-exception":
+            return L10n.string("Bei einem Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) ist ein interner Fehler aufgetreten.")
         default:
             return L10n.string("Bei der letzten Bearbeitung in der formatierten Ansicht (WYSIWYG) ist ein unerwarteter Zustand aufgetreten.")
         }
@@ -57,9 +63,7 @@ struct VisualDiagnosticAlert: Equatable {
 final class MarkdownVisualDiagnosticsController: ObservableObject {
     @Published var activeWarning: VisualDiagnosticAlert?
     @Published var dismissedWarningSignature: String?
-    @Published var lastCheckedRevision: Int?
     @Published var lastCheckPassed: Bool?
-    @Published var lastCheckAt: Date?
     @Published var lastEventCount = 0
     @Published var isSheetPresented = false
     @Published var statusNotice: String?
@@ -79,9 +83,7 @@ final class MarkdownVisualDiagnosticsController: ObservableObject {
     @MainActor func clear() {
         activeWarning = nil
         dismissedWarningSignature = nil
-        lastCheckedRevision = nil
         lastCheckPassed = nil
-        lastCheckAt = nil
         lastEventCount = 0
         statusNotice = nil
         previewRedactedReport = ""
@@ -92,8 +94,6 @@ final class MarkdownVisualDiagnosticsController: ObservableObject {
                          eventCount: Int,
                          redactedReport: String?,
                          fullReport: String?) {
-        lastCheckedRevision = revision
-        lastCheckAt = Date()
         lastEventCount = eventCount
         if let redactedReport { previewRedactedReport = redactedReport }
         if outcome == .ok {

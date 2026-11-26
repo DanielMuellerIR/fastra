@@ -253,6 +253,11 @@ struct ApplyRecoveryPreview {
             let target = URL(fileURLWithPath: entry.originalPath)
             let siblingAllowed = roots[target] == false
                 && pending.cleanupDirectory?.url.deletingLastPathComponent() == target.deletingLastPathComponent()
+                && pending.cleanupDirectory.map {
+                    ApplyFileSystem.isApplyTemporaryFilename(
+                        $0.preparedURL.lastPathComponent,
+                        targetName: target.lastPathComponent)
+                } == true
             try authorize(pending, covered: covered, siblingAllowed: siblingAllowed)
             if siblingAllowed, let work = pending.cleanupDirectory {
                 singleFileWork[work.url] = work
@@ -604,9 +609,8 @@ struct ApplyRecoveryPreview {
 
     private static func openDirectory(_ url: URL) throws -> Int32 {
         try requirePath(url)
-        let descriptor = open(url.path, ApplyFileSystem.rootDirectoryReadFlags)
-        guard descriptor >= 0 else { throw system(url) }
-        return descriptor
+        do { return try ApplyFileSystem.openRootDirectory(at: url).descriptor }
+        catch let error as POSIXError { throw Failure.system(url, error.code.rawValue) }
     }
 
     private static func children(_ descriptor: Int32, at url: URL, limit: Int) throws -> [String] {

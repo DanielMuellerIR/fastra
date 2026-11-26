@@ -108,26 +108,14 @@ fn install(editor: &Rc<RichEditor>) {
     let mapping: BTreeMap<_, _> = editor.images.borrow().images.iter().map(|(key, image)| {
         (key.clone(), json!({"raw":image.source.raw,"uri":format!("{}{key}?v={}",images::PREFIX,if image.version.is_empty(){"unavailable"}else{&image.version})}))
     }).collect();
-    // Nur Bildadressen ändern. Quellverweise, Auswahl, Text und native DOM-Rücknahme bleiben unberührt.
+    // Nur Bildadressen über ProseMirror aktualisieren, damit Dokumentzustand und Undo/Redo konsistent bleiben.
     let script = format!(
         r#"
         const mapping=JSON.parse({mapping});
-        const root=document.getElementById('fastra-visual');
-        if(!root || !window.fastraVisual)return JSON.stringify(false);
+        if(!window.fastraVisual)return JSON.stringify(false);
         window.fastraLocalImageMapping=mapping;
-        if(!window.fastraLocalImageObserver){{
-          const update=()=>{{for(const image of root.querySelectorAll('img[data-md-src]')){{
-            const current=image.getAttribute('src') || '';
-            if(!current.startsWith('fastra-rich://image/'))continue;
-            const token=current.slice('fastra-rich://image/'.length).split('?v=')[0];
-            const entry=window.fastraLocalImageMapping[token];
-            if(entry && entry.raw===image.dataset.mdSrc && current!==entry.uri)image.setAttribute('src',entry.uri);
-          }}}};
-          window.fastraLocalImageObserver=new MutationObserver(update);
-          window.fastraLocalImageObserver.observe(root,{{subtree:true,childList:true,attributes:true,attributeFilter:['src','data-md-src']}});
-          window.fastraRefreshLocalImages=update;
-        }}
-        window.fastraRefreshLocalImages();return JSON.stringify(true);
+        window.fastraVisual?.updateLocalImages?.(mapping);
+        return JSON.stringify(true);
     "#,
         mapping = json!(serde_json::to_string(&mapping).unwrap())
     );

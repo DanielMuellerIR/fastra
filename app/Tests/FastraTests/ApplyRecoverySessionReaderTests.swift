@@ -483,3 +483,66 @@ private func recoveryReaderSerialRunnerIntegrationBoundedDescriptors() throws {
     #expect(observed.backups.count == 40)
     #expect(try fixture.artifacts() == before)
 }
+
+@Test("Revalidierung erkennt nachträglich durch Symlink ersetzten Elternordner der Backup-Wurzel")
+private func recoveryReaderRejectsParentSymlinkSwapOnRevalidate() throws {
+    let fm = FileManager.default
+    let base = try ApplyPersistenceBarriers.resolvingRootAliases(
+        testTemporaryDirectory().appendingPathComponent("recovery-parent-symlink-\(UUID().uuidString)"))
+    try fm.createDirectory(at: base, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: base) }
+    let parentReal = base.appendingPathComponent("parent-real")
+    let parentAlt = base.appendingPathComponent("parent-alt")
+    let root = parentReal.appendingPathComponent("backups")
+    let target = base.appendingPathComponent("target.txt")
+    try fm.createDirectory(at: parentReal, withIntermediateDirectories: true)
+    try fm.createDirectory(at: parentAlt, withIntermediateDirectories: true)
+    try Data("foo".utf8).write(to: target)
+    let session = try ApplyEngine.apply(
+        plan: ApplyEngine.plan(files: [target], options: SearchOptions(find: "foo", replace: "bar", isRegex: false)),
+        backupRoot: root, cleanupOlderThan: nil)
+
+    var swapped = false
+    #expect(throws: RecoveryReader.Failure.changed(.root)) {
+        try RecoveryReader.read(sessionNamed: session.sessionDirectory.lastPathComponent, in: root) {
+            guard !swapped else { return }
+            swapped = true
+            try fm.moveItem(at: parentReal, to: parentAlt.appendingPathComponent("moved-real"))
+            try fm.createSymbolicLink(at: parentReal, withDestinationURL: parentAlt.appendingPathComponent("moved-real"))
+        }
+    }
+    #expect(swapped)
+}
+
+@Test("Manifest mit fremdem preparedURL-Dateinamen außerhalb des Fastra-Temp-Musters wird abgewiesen")
+private func recoveryReaderRejectsNonTemporaryPreparedURL() throws {
+    let fixture = try RecoveryReaderFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    var pendingSession: ApplySession?
+    _ = try fixture.apply { candidate in
+        if pendingSession == nil, !candidate.retainedPendingFiles.isEmpty {
+            pendingSession = candidate
+        }
+        try ApplyEngine.writeManifest(candidate)
+    }
+    let session = try #require(pendingSession)
+    try ApplyEngine.writeManifest(session)
+    let manifest = session.sessionDirectory.appendingPathComponent("manifest.json")
+    var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: manifest)) as? [String: Any])
+    var retained = try #require(json["retainedPendingFiles"] as? [[String: Any]])
+    var firstRetained = try #require(retained.first)
+    var work = try #require(firstRetained["cleanupDirectory"] as? [String: Any])
+    let oldPrepared = work["preparedURL"] as? String
+    work["preparedURL"] = fixture.control.absoluteString
+    if (firstRetained["url"] as? String) == oldPrepared {
+        firstRetained["url"] = fixture.control.absoluteString
+    }
+    firstRetained["cleanupDirectory"] = work
+    retained[0] = firstRetained
+    json["retainedPendingFiles"] = retained
+    try JSONSerialization.data(withJSONObject: json).write(to: manifest, options: .atomic)
+
+    #expect(throws: RecoveryReader.Failure.invalid(.manifest, .cleanupReference)) {
+        try fixture.read(session)
+    }
+}

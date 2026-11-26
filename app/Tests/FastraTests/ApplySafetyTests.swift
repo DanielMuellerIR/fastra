@@ -1495,19 +1495,13 @@ func undoReadDenialPreservesCauseAndRetry(firstAlreadyOriginal: Bool) throws {
     let persistedBefore = try ApplyEngine.loadSession(at: session.sessionDirectory)
     try requireEffectiveReadDenial(at: second)
     var writes = 0
-    var retry = session
     do {
         _ = try ApplyEngine.undo(session, beforeAtomicReplace: { _ in writes += 1 })
         Issue.record("Der Lesefehler muss Undo vor dem ersten Restore abbrechen")
     } catch ApplyError.undoConflict(let message) {
-        #expect(!firstAlreadyOriginal)
         expectReadDenialMessage(message, at: second)
-    } catch ApplyError.undoFailed(let partial, let message) {
-        #expect(firstAlreadyOriginal)
-        #expect(partial.entries.map(\.state) == [.restored, .applied])
-        #expect(partial.entries[1] == session.entries[1])
-        retry = partial
-        expectReadDenialMessage(message, at: second)
+    } catch ApplyError.undoFailed {
+        Issue.record("Unpersistierter RAM-Fortschritt darf bei Vorab-Konflikt kein undoFailed(partial:) liefern")
     }
     #expect(writes == 0)
     try #require(chmod(second.path, 0o600) == 0)
@@ -1515,7 +1509,7 @@ func undoReadDenialPreservesCauseAndRetry(firstAlreadyOriginal: Bool) throws {
             == targetsBefore.map { $0.snapshot })
     #expect(try backupURLs.map { try FileSnapshot.readSnapshotOnly(from: $0) } == backupsBefore)
     #expect(try ApplyEngine.loadSession(at: session.sessionDirectory) == persistedBefore)
-    let restored = try ApplyEngine.undo(retry)
+    let restored = try ApplyEngine.undo(session)
     #expect(restored.entries.map(\.state) == [.restored, .restored])
     #expect(try Data(contentsOf: first) == firstOriginal)
     #expect(try Data(contentsOf: second) == secondOriginal)

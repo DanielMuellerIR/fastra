@@ -67,7 +67,7 @@ fn unchanged(doc: &Document, revision: u64) {
     assert_eq!(doc.revision.get(), revision);
     assert!(!doc.buffer.is_modified() && !doc.buffer.can_undo());
 }
-const RICH:&str="return JSON.stringify({source:fastraVisual.markdown(),selection:getSelection().toString(),undo:document.queryCommandEnabled('undo')});";
+const RICH:&str="return JSON.stringify({source:fastraVisual.markdown(),selection:getSelection().toString(),undo:(typeof window.fastraVisual?.canUndo==='function'?window.fastraVisual.canUndo():document.queryCommandEnabled('undo'))});";
 pub(super) fn run(ui: Rc<Ui>) {
     if RUNNING.with(|r| r.replace(true)) {
         return;
@@ -252,7 +252,7 @@ async fn scenario(ui: Rc<Ui>) {
     capture(&window, "markdown-preview-off").await;
     window.close();
     glib::timeout_future(Duration::from_millis(200)).await;
-    inspect(&rich.view,"document.getElementById('fastra-visual').focus();document.execCommand('undo');fastraVisual.flush();return JSON.stringify(true);").await;
+    inspect(&rich.view,"document.getElementById('fastra-visual')?.focus();window.fastraVisual.command('undo');return JSON.stringify(true);").await;
     wait("Rich native undo", || {
         buffer_text(&rich_doc.buffer) == TEXT && rich.ready_for_saved_source()
     })

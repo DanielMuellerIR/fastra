@@ -12,6 +12,9 @@
 "Quelltext öffnen" = "Open Source";
 "Fastra hat bei der letzten Bearbeitung eine ungültige Blockgrenze abgefangen und sichtbaren Text geschützt." = "Fastra caught an invalid block boundary during the last edit and protected visible text.";
 "Bei einem Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) hat sich die sichtbare Textlänge unerwartet verändert." = "A formatting command in the formatted view (WYSIWYG) unexpectedly changed the visible text length.";
+"Ein Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) konnte an der aktuellen Stelle nicht angewendet werden." = "A formatting command in the formatted view (WYSIWYG) could not be applied at the current location.";
+"Ein Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) hat einen unerwarteten Zustand hinterlassen." = "A formatting command in the formatted view (WYSIWYG) left an unexpected state.";
+"Bei einem Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) ist ein interner Fehler aufgetreten." = "An internal error occurred during a formatting command in the formatted view (WYSIWYG).";
 "Bei der letzten Bearbeitung in der formatierten Ansicht (WYSIWYG) ist ein unerwarteter Zustand aufgetreten." = "An unexpected state occurred during the last edit in the formatted view (WYSIWYG).";
 "Abweichung in der WYSIWYG-Ansicht erkannt" = "Difference detected in WYSIWYG view";
 "Unerwartete WYSIWYG-Bearbeitung erkannt" = "Unexpected WYSIWYG edit detected";

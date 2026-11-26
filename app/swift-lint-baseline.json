@@ -732,14 +732,6 @@
       "line_sha256": "a84c32208b3d3a679e30c0940e33cb3f5b3053c31059eb8d139e894bb3fe65a0"
     },
     {
-      "file": "app/Sources/Fastra/Workspace.swift",
-      "line": 6671,
-      "character": 46,
-      "rule": "force_unwrapping",
-      "reason": "Force unwrapping should be avoided",
-      "line_sha256": "3fbb6fe9cc6b6904a14e1fc5891e19fb39340751376f6c1da6759ea258edb141"
-    },
-    {
       "file": "app/Sources/Fastra/FastraApp.swift",
       "line": 21,
       "character": 47,

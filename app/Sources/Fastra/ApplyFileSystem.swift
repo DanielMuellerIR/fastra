@@ -10,6 +10,47 @@ enum ApplyFileSystem {
     static let rootDirectoryReadFlags = directoryReadFlags | O_NOFOLLOW_ANY
     static let exclusiveRenameFlags = UInt32(RENAME_EXCL) | UInt32(RENAME_NOFOLLOW_ANY) | UInt32(RENAME_RESOLVE_BENEATH)
 
+    static func openRootDirectory(at url: URL) throws -> (descriptor: Int32, info: stat) {
+        let descriptor = open(url.path, rootDirectoryReadFlags)
+        guard descriptor >= 0 else { throw posixError() }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0 else {
+            let failure = posixError()
+            close(descriptor)
+            throw failure
+        }
+        return (descriptor, info)
+    }
+
+    static func isApplyTemporaryFilename(_ name: String, targetName: String? = nil) -> Bool {
+        guard name.hasPrefix("."), name.hasSuffix(".tmp"), !name.contains("/"), !name.utf8.contains(0) else {
+            return false
+        }
+        if let targetName {
+            guard !targetName.isEmpty, targetName != ".", targetName != "..",
+                  !targetName.contains("/"), !targetName.utf8.contains(0) else {
+                return false
+            }
+            let prefix = ".\(targetName).fastra-apply-"
+            guard name.hasPrefix(prefix) else { return false }
+            let uuidPart = String(name.dropFirst(prefix.count).dropLast(".tmp".count))
+            return UUID(uuidString: uuidPart) != nil
+        }
+        guard let marker = name.range(of: ".fastra-apply-", options: .backwards) else {
+            return false
+        }
+        let targetStart = name.index(after: name.startIndex)
+        guard marker.lowerBound > targetStart else { return false }
+        let extractedTarget = String(name[targetStart..<marker.lowerBound])
+        guard extractedTarget != ".", extractedTarget != ".." else {
+            return false
+        }
+        let uuidEnd = name.index(name.endIndex, offsetBy: -4)
+        guard marker.upperBound < uuidEnd else { return false }
+        let uuidPart = String(name[marker.upperBound..<uuidEnd])
+        return UUID(uuidString: uuidPart) != nil
+    }
+
     static func posixError() -> POSIXError {
         POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }

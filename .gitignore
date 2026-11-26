@@ -44,3 +44,6 @@ app/dist/
 
 # Lokale Linux-Pakete
 /dist/
+
+# Reproduzierbare JS-Vendor-Build-Abhängigkeiten (nur package-lock.json versionieren)
+editor-vendor/prosemirror/node_modules/

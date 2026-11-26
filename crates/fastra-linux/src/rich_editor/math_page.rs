@@ -248,8 +248,19 @@ fn fragment(
                     .into(),
                 ));
             }
-            Event::Start(Tag::Link { dest_url, .. }) => rendered.push(Event::Html(
-                format!("<a href=\"{}\">", escape(&dest_url)).into(),
+            Event::Start(Tag::Link {
+                dest_url, title, ..
+            }) => rendered.push(Event::Html(
+                if title.is_empty() {
+                    format!("<a href=\"{}\">", escape(&dest_url))
+                } else {
+                    format!(
+                        "<a href=\"{}\" title=\"{}\">",
+                        escape(&dest_url),
+                        escape(&title)
+                    )
+                }
+                .into(),
             )),
             Event::End(TagEnd::Link) => rendered.push(Event::Html("</a>".into())),
             Event::Html(raw) | Event::InlineHtml(raw) => rendered.push(Event::Html(raw)),
@@ -270,6 +281,21 @@ mod tests {
             .iter()
             .map(|b| b["source"].as_str().unwrap())
             .collect()
+    }
+    #[test]
+    fn link_titles_are_preserved_and_html_escaped() {
+        let source = "Math $x$ with [titled](https://example.invalid/ \"Quote \\\"a\\\" & <tag>\") and [plain](https://example.invalid/p).\n";
+        let page = super::page(source, "link-title", false, false, None).unwrap();
+        assert!(
+            page.fragment.contains("<a href=\"https://example.invalid/\" title=\"Quote &quot;a&quot; &amp; &lt;tag&gt;\">titled</a>"),
+            "{}",
+            page.fragment
+        );
+        assert!(
+            page.fragment.contains("<a href=\"https://example.invalid/p\">plain</a>"),
+            "{}",
+            page.fragment
+        );
     }
     #[test]
     fn math_atoms_keep_original_syntax_and_full_mixed_eol_blocks() {

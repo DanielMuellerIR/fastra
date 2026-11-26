@@ -47,7 +47,7 @@ fn mode_button(app: &gtk::Application, mode: Mode) -> gtk::ToggleButton {
         })
         .unwrap()
 }
-const INSPECT:&str="return JSON.stringify({applied:window.fastraAppearanceApplied,bg:getComputedStyle(document.body).backgroundColor,fg:getComputedStyle(document.body).color,selection:getSelection().toString(),undo:document.queryCommandEnabled('undo'),source:window.fastraVisual?.markdown(),diagram:document.querySelector('.mermaid-render svg .node rect')?getComputedStyle(document.querySelector('.mermaid-render svg .node rect')).fill:null});";
+const INSPECT:&str="return JSON.stringify({applied:window.fastraAppearanceApplied,bg:getComputedStyle(document.body).backgroundColor,fg:getComputedStyle(document.body).color,selection:getSelection().toString(),undo:(typeof window.fastraVisual?.canUndo==='function'?window.fastraVisual.canUndo():document.queryCommandEnabled('undo')),source:window.fastraVisual?.markdown(),diagram:document.querySelector('.mermaid-render svg .node rect')?getComputedStyle(document.querySelector('.mermaid-render svg .node rect')).fill:null});";
 fn inspect(view: &webkit6::WebView, result: Rc<RefCell<Option<serde_json::Value>>>) {
     view.call_async_javascript_function(
         INSPECT,
@@ -609,7 +609,7 @@ pub(super) fn run(ui: Rc<Ui>) {
                     settings(&app).close();
                     let rich = rich_doc.rich.borrow().clone().unwrap();
                     let reply = replies[1].clone();
-                    rich.view.call_async_javascript_function("document.getElementById('fastra-visual').focus();document.execCommand('undo');window.fastraVisual.flush();return JSON.stringify(true);",None,None,None,None::<&gio::Cancellable>,move|value|{*reply.borrow_mut()=Some(serde_json::json!(value.is_ok()));});
+                    rich.view.call_async_javascript_function("document.getElementById('fastra-visual')?.focus();window.fastraVisual.command('undo');return JSON.stringify(true);",None,None,None,None::<&gio::Cancellable>,move|value|{*reply.borrow_mut()=Some(serde_json::json!(value.is_ok()));});
                     phase.set(20);
                     pause.set(Instant::now());
                 }

@@ -1,5 +1,13 @@
 use super::*;
 
+thread_local! {
+    static ACTIVE_PROMPTS: Cell<usize> = const { Cell::new(0) };
+}
+
+pub(super) fn any_active() -> bool {
+    ACTIVE_PROMPTS.with(|count| count.get() > 0)
+}
+
 #[derive(Clone, Copy)]
 pub(super) enum Answer {
     Cancel,
@@ -113,6 +121,7 @@ impl Prompt {
         overlay.add_overlay(&backdrop);
         ui.window.present();
         save.grab_focus();
+        ACTIVE_PROMPTS.with(|count| count.set(count.get() + 1));
         Self {
             overlay: overlay.downgrade(),
             backdrop: backdrop.downgrade(),
@@ -124,6 +133,7 @@ impl Prompt {
 
 impl Drop for Prompt {
     fn drop(&mut self) {
+        ACTIVE_PROMPTS.with(|count| count.set(count.get().saturating_sub(1)));
         if let (Some(overlay), Some(backdrop)) = (self.overlay.upgrade(), self.backdrop.upgrade()) {
             overlay.remove_overlay(&backdrop);
         }

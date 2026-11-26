@@ -12,10 +12,10 @@ The standalone KaTeX 0.17.0 and highlight.js 11.11.1 archives and the explicit
 versions named in the bundle notices are included as well. This yields a
 conservative superset rather than dropping notices through tree-shaking guesses.
 
-Turndown 7.2.0 adds its complete MIT license. The embedded asset is byte-identical
-to `package/dist/turndown.js` from the integrity-pinned npm archive. Its browser
-build excludes `@mixmark-io/domino`, as declared by the upstream browser mapping;
-that Node-only dependency is not distributed in the embedded browser asset.
+ProseMirror (`prosemirror-*`, `orderedmap`, `rope-sequence`, `w3c-keyname`) adds
+their complete MIT licenses; `visual-editor.js` bundles those integrity-pinned
+browser runtime packages locally via esbuild without runtime telemetry or CDN
+fetches.
 
 The original vendor license files and every preserved `/*!` copyright/license
 block from the actual embedded assets are added by `stage.py`. In particular,

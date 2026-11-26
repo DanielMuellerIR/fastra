@@ -7,6 +7,26 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.243.0] — 2026-11-26
+
+### Geändert
+
+- WYSIWYG (macOS & Linux): Visueller Markdown-Editor von freiem `contenteditable`/Turndown auf lokal gebündeltes, schema- und transaktionsbasiertes ProseMirror umgestellt; geschützte Atome, GFM-Tabellen, Capture-/Originalschutz, Bild-Undo und Linux-`replaceSource` laufen nun über deterministische ProseMirror-Dokumentmodelle und -Schritte.
+
+### Behoben
+
+- WYSIWYG: Sichtbare `  `-Leerzeilen in ungesicherten Dokumenten und im Split-Modus lassen sich per Auswahl oder Kürzel (H1–H6, Listen, Zitat) direkt formatieren, ohne beim erneuten Speichern zusätzliche Leerzeilen zu erzeugen.
+- WYSIWYG: Lockere und verschachtelte Aufgaben-/Listenpunkte, Tabellenzellen mit Rand- oder Mehrfachleerzeichen sowie vollständige Löschvorgänge nach Reload bleiben beim Speichern und Rückgängigmachen konsistent.
+- macOS & Linux: Live- und Speicherdiagnose erkennen jetzt auch Blocktyp-Abweichungen (Überschriften, Listen, Zitate) und wirkungslose Befehle; Diagnoseberichte und Speicherprüfungen sind strikt tab- und generationsgebunden und schwärzen Dokumentinhalte in anonymisierten Berichten vollständig.
+
+## [v1.242.90] — 2026-11-26
+
+### Behoben
+
+- macOS: Ordner-Undo liefert bei einem Konflikt während der Vorprüfung keine unpersistierte Teilsitzung mehr zurück und prüft Tempdateinamen sowie Eltern-Symlinks bei Wiederherstellung und Altersbereinigung strenger.
+- macOS: Der Markdown-Import setzt den Zustandsindikator vor der Zielordnerwahl zurück, sodass ein anderes Fenster keinen früheren Abschluss anzeigt.
+- Linux: `Ctrl+Alt+Shift+D` zum Dateivergleich bleibt während jeder aktiven Schließrückfrage über alle Fenster gesperrt.
+
 ## [v1.242.89] — 2026-11-25
 
 ### Behoben

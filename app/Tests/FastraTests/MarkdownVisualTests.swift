@@ -1,4 +1,5 @@
 import AppKit
+import CodeEditTextView
 import SwiftUI
 import WebKit
 import PDFKit
@@ -113,7 +114,7 @@ private final class VisualImageReferenceFixture {
             messageTap = tap
         }
         schedule.setEnabled(true)
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         if viaSynchronize { coordinator.synchronize(completion) }
         try #require(await waitUntil { self.schedule.counts.arrivals == 1 })
         if !viaSynchronize { coordinator.synchronize(completion) }
@@ -286,11 +287,11 @@ struct MarkdownVisualTests {
         case "hard-break-list":
             source = "- A B\n- C\n"
             edit = "select(document.querySelector('li').firstChild,1,1);fastraVisual.command('hardBreak');fastraVisual.command('hardBreak');"
-            reopened = "document.querySelectorAll('li').length===2 && document.querySelector('li').querySelectorAll('br').length===2"
+            reopened = "document.querySelectorAll('li').length===2 && document.querySelector('li').querySelectorAll('br:not(.ProseMirror-trailingBreak)').length===2"
         default:
             source = ""
             edit = """
-                select(paragraph(),0,0);for(let i=0;i<4;i++)document.execCommand('insertParagraph');
+                select(paragraph(),0,0);for(let i=0;i<4;i++)fastraVisual.command('insertParagraph');
                 document.execCommand('insertText',false,'B');
                 """
             reopened = "document.querySelectorAll('.fastra-visible-blank-line').length===4 && paragraph().textContent==='B'"
@@ -678,7 +679,7 @@ struct MarkdownVisualTests {
             document.execCommand('insertText',false,'X');fastraVisual.flush();
             """)
         try #require(await waitUntil { workspace.activeTab?.content != source })
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content.utf8.elementsEqual(source.utf8) == true })
         #expect(try await web.evaluateJavaScript("document.querySelectorAll('[data-md-outline-ignore]').length") as? Int == 1)
         #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
@@ -692,7 +693,7 @@ struct MarkdownVisualTests {
         _ = try await web.evaluateJavaScript("""
             const p=document.querySelector('p'),r=document.createRange();r.selectNodeContents(p);
             getSelection().removeAllRanges();getSelection().addRange(r);
-            document.execCommand('insertHTML',false,'<code>A<br>  <br>B</code>');fastraVisual.flush();
+            fastraVisual.command('insertHTML','<code>A<br>  <br>B</code>');fastraVisual.flush();
             """)
         let source = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
         coordinator.load(source, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
@@ -945,7 +946,7 @@ struct MarkdownVisualTests {
             try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
             let inserted = try #require(workspace.activeTab?.content)
             fixture.schedule.setEnabled(true)
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
             #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
             var completions: [Bool] = []
@@ -971,7 +972,7 @@ struct MarkdownVisualTests {
             #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
             fixture.schedule.setEnabled(false)
             let arrivals = fixture.schedule.counts.arrivals
-            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
             try #require(await waitUntil { workspace.activeTab?.content == inserted })
             #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
             _ = try await web.evaluateJavaScript("const end=document.createRange();end.selectNodeContents(document.getElementById('fastra-visual'));end.collapse(false);getSelection().removeAllRanges();getSelection().addRange(end);document.execCommand('insertText',false,' Ende');fastraVisual.flush();")
@@ -1003,7 +1004,7 @@ struct MarkdownVisualTests {
             #expect(!FileManager.default.fileExists(atPath: fixture.first.path))
             #expect(try Data(contentsOf: fixture.second) == fixture.bytes)
             fixture.schedule.setEnabled(true)
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
             #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
             try await fixture.keepChanging(until: { workspace.activeTab?.content == firstText })
@@ -1016,7 +1017,7 @@ struct MarkdownVisualTests {
             let terminalWarnings = fixture.warnings
             #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == true)
             fixture.schedule.setEnabled(false)
-            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
             try #require(await waitUntil { workspace.activeTab?.content == secondText })
             #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == secondText)
             #expect(!FileManager.default.fileExists(atPath: fixture.first.path))
@@ -1248,7 +1249,7 @@ struct MarkdownVisualTests {
             try #require(await waitUntil { workspace.activeTab?.content.contains("images/4.png") == true })
             let inserted = try #require(workspace.activeTab?.content)
             fixture.schedule.setEnabled(true)
-            _ = try await web.evaluateJavaScript("const all=document.createRange();all.selectNodeContents(document.getElementById('fastra-visual'));getSelection().removeAllRanges();getSelection().addRange(all);document.execCommand('delete');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("const all=document.createRange();all.selectNodeContents(document.getElementById('fastra-visual'));getSelection().removeAllRanges();getSelection().addRange(all);fastraVisual.command('delete');fastraVisual.flush();")
             let target = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
             try await fixture.keepChanging(until: { workspace.activeTab?.content == target })
             try #require(await fixture.drain())
@@ -1265,7 +1266,7 @@ struct MarkdownVisualTests {
             #expect(MarkdownImageUndoBuffer.shared.byteCount > 0)
             lock.withLock { fail = false }
             fixture.schedule.setEnabled(false)
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { fixture.warnings.count == 2 })
             try #require(await fixture.drain())
             #expect(workspace.activeTab?.content == target)
@@ -1276,7 +1277,7 @@ struct MarkdownVisualTests {
             #expect(try Data(contentsOf: claim) == fixture.bytes)
             #expect(try Data(contentsOf: foreign) == Data("foreign".utf8))
             try FileManager.default.removeItem(at: foreign)
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { workspace.activeTab?.content == inserted })
             try #require(await fixture.drain())
             for number in 1...4 {
@@ -1297,12 +1298,12 @@ struct MarkdownVisualTests {
             try #require(await fixture.drain())
             #expect(completions == [true] && fixture.warnings.count == 1)
             fixture.schedule.setEnabled(false)
-            _ = try await fixture.web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            _ = try await fixture.web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
             try #require(await waitUntil { fixture.workspace.activeTab?.content == inserted })
             try #require(await fixture.drain())
             let first = fixture.schedule.counts.arrivals
             fixture.schedule.setEnabled(true)
-            _ = try await fixture.web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await fixture.web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try await fixture.keepChanging(startingAt: first, until: { fixture.workspace.activeTab?.content == "Text\n" })
             try #require(await fixture.drain())
             #expect(fixture.warnings.count == 2 && fixture.notSettledWarnings.count == 2)
@@ -1321,7 +1322,7 @@ struct MarkdownVisualTests {
             try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
             let inserted = try #require(workspace.activeTab?.content)
             fixture.schedule.setEnabled(true)
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
             switch referenceKind {
             case 1: fixture.other.tabs[0].content = "![fremd](../A/images/1.png)"
@@ -1342,7 +1343,7 @@ struct MarkdownVisualTests {
             if referenceKind != 0 { #expect(try Data(contentsOf: fixture.first) == fixture.bytes) }
             #expect(fixture.other.tabs.map(\.content) == foreignContents)
             #expect(try String(contentsOf: fixture.directory.appendingPathComponent("B/other.md"), encoding: .utf8) == "Version 0")
-            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
             try #require(await waitUntil { workspace.activeTab?.content == inserted })
             #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
             #expect(fixture.notSettledWarnings.isEmpty)
@@ -1362,7 +1363,7 @@ struct MarkdownVisualTests {
             try #require(await waitUntil { workspace.activeTab?.content.contains("images/2.png") == true })
             let inserted = try #require(workspace.activeTab?.content)
             fixture.schedule.setEnabled(true)
-            _ = try await web.evaluateJavaScript("const all=document.createRange();all.selectNodeContents(document.getElementById('fastra-visual'));getSelection().removeAllRanges();getSelection().addRange(all);document.execCommand('delete');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("const all=document.createRange();all.selectNodeContents(document.getElementById('fastra-visual'));getSelection().removeAllRanges();getSelection().addRange(all);fastraVisual.command('delete');fastraVisual.flush();")
             let target = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
             try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
             fixture.schedule.release(0)
@@ -1376,10 +1377,10 @@ struct MarkdownVisualTests {
             #expect(files.filter { FileManager.default.fileExists(atPath: $0.path) }.count == 1)
             #expect(fixture.notSettledWarnings.count == 1)
             fixture.schedule.setEnabled(false)
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { workspace.activeTab?.content == inserted })
             for file in files { #expect(try Data(contentsOf: file) == fixture.bytes) }
-            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
             try #require(await waitUntil { workspace.activeTab?.content == target })
             #expect(files.allSatisfy { !FileManager.default.fileExists(atPath: $0.path) })
             #expect(fixture.notSettledWarnings.count == 1)
@@ -1401,7 +1402,7 @@ struct MarkdownVisualTests {
             fixture.insert("a.png")
             try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
             fixture.schedule.setEnabled(true)
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
             if close { workspace.closeTab(id: sourceID) } else { workspace.selectTab(id: otherTab.id) }
             #expect(workspace.activeTabID == sourceID)
@@ -1431,7 +1432,7 @@ struct MarkdownVisualTests {
             try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
             let documentID = try #require(workspace.activeTab?.documentID)
             fixture.schedule.setEnabled(true)
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { fixture.schedule.counts.arrivals == 1 })
             workspace.tabs[0].content = "Neuer Inhalt\n"
             var completions: [Bool] = []
@@ -1455,7 +1456,7 @@ struct MarkdownVisualTests {
             #expect(workspace.activeTab?.documentID == documentID)
             if reload {
                 #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Neuer Inhalt\n")
-                _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+                _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
                 #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "Neuer Inhalt\n")
             } else {
                 print("VISUAL_REFERENCE_NEWER_MODEL_BOUNDARY browser=\(String(describing: try await web.evaluateJavaScript("fastraVisual.markdown()"))) model=\(String(describing: workspace.activeTab?.content)) warnings=\(fixture.warnings)")
@@ -1495,7 +1496,7 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { workspace.activeTab?.content.contains("images/2.png") == true })
         let inserted = try #require(workspace.activeTab?.content)
         let secondIdentity = try MarkdownImageStore.captureExisting(second).identity
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == "Text\n" && warnings.count == 1 })
         let claim = try #require(retainedClaim)
         #expect(warnings[0].contains(first.lastPathComponent))
@@ -1508,7 +1509,7 @@ struct MarkdownVisualTests {
         #expect(try Data(contentsOf: claim) == bytes)
         let retainedBytes = MarkdownImageUndoBuffer.shared.byteCount
         #expect(retainedBytes > 0)
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { warnings.count >= 2 })
         #expect(workspace.activeTab?.content == "Text\n")
         #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual img').length") as? Int == 0)
@@ -1517,7 +1518,7 @@ struct MarkdownVisualTests {
         #expect(MarkdownImageUndoBuffer.shared.byteCount == retainedBytes)
         #expect(warnings.last?.contains(claim.path) == true)
         try FileManager.default.removeItem(at: second)
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == inserted })
         #expect(try Data(contentsOf: first) == bytes)
         #expect(try Data(contentsOf: second) == bytes)
@@ -1539,7 +1540,7 @@ struct MarkdownVisualTests {
             let held = fixture.directory.appendingPathComponent("held.png")
             try FileManager.default.moveItem(at: fixture.first, to: held)
             let modificationDate = try #require(FileManager.default.attributesOfItem(atPath: held.path)[.modificationDate] as? Date)
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { workspace.activeTab?.content != inserted })
             try #require(await fixture.drain())
             let previous = try #require(workspace.activeTab?.content)
@@ -1561,7 +1562,7 @@ struct MarkdownVisualTests {
             }
             let before = updated ? try FileSnapshot.readSnapshotOnly(from: fixture.first) : nil
             let counts = fixture.schedule.counts
-            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
             if updated {
                 try #require(await waitUntil { workspace.activeTab?.content == inserted })
                 try #require(await fixture.drain())
@@ -1582,7 +1583,7 @@ struct MarkdownVisualTests {
                         Comment(rawValue: "Erwartet: " + missingMessage + "\n" + fixture.warnings.joined(separator: "\n")))
                 #expect(!FileManager.default.fileExists(atPath: fixture.first.path))
                 try FileManager.default.moveItem(at: held, to: fixture.first)
-                _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+                _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
                 try #require(await waitUntil { workspace.activeTab?.content == inserted })
                 try #require(await fixture.drain())
             }
@@ -1598,11 +1599,11 @@ struct MarkdownVisualTests {
             #expect(width == (updated ? 2 : 1))
             if updated {
                 #expect(try FileManager.default.attributesOfItem(atPath: fixture.first.path)[.modificationDate] as? Date == expectedModificationDate)
-                _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+                _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
                 try #require(await waitUntil { workspace.activeTab?.content == previous })
                 try #require(await fixture.drain())
                 #expect(try FileSnapshot.readSnapshotOnly(from: fixture.first) == before)
-                _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+                _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
                 try #require(await waitUntil { workspace.activeTab?.content == inserted })
                 try #require(await fixture.drain())
                 #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == inserted)
@@ -1666,13 +1667,13 @@ struct MarkdownVisualTests {
         _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
         coordinator.insertImages([source])
         try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == "Text\n" })
         let image = directory.appendingPathComponent("images/1.png")
         try FileManager.default.createDirectory(at: image.deletingLastPathComponent(), withIntermediateDirectories: true)
         let foreign = Data("fremd".utf8)
         try foreign.write(to: image)
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { !warnings.isEmpty })
         try #require(await waitUntil { coordinator.ready })
         let links = try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual img').length") as? Int
@@ -1702,7 +1703,7 @@ struct MarkdownVisualTests {
         if saveBeforeUndo {
             workspace.saveActiveTab()
             try #require(await waitUntil { workspace.activeTab?.isDirty == false })
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { workspace.activeTab?.content == original })
         }
         let targetDirectory = directory.appendingPathComponent("copy")
@@ -1743,7 +1744,7 @@ struct MarkdownVisualTests {
             """)
         let result = try await web.evaluateJavaScript("""
             const listAfterSpace=document.querySelectorAll('#fastra-visual li').length;
-            document.execCommand('insertText',false,'\(text)');document.execCommand('insertParagraph');fastraVisual.flush();
+            document.execCommand('insertText',false,'\(text)');fastraVisual.command('insertParagraph');fastraVisual.flush();
             JSON.stringify({listAfterSpace,markdown:fastraVisual.markdown(),html:document.getElementById('fastra-visual').innerHTML});
             """) as? String
         let data = try #require(result?.data(using: .utf8))
@@ -2163,9 +2164,9 @@ struct MarkdownVisualTests {
         find.query = "Text"; find.schedule(in: workspace)
         try #require(await waitUntil { find.status == .found })
         find.close(in: workspace)
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == changed })
         withExtendedLifetime(coordinator) {}
     }
@@ -2186,7 +2187,7 @@ struct MarkdownVisualTests {
         #expect(try await web.evaluateJavaScript("document.querySelector('#fastra-visual').textContent") as? String == expected)
         _ = try await web.evaluateJavaScript("""
             {const p=document.querySelector('#fastra-visual strong'),r=document.createRange();r.selectNodeContents(p);r.collapse(false);
-            getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('insertParagraph');fastraVisual.flush();}
+            getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('insertParagraph');fastraVisual.flush();}
             """)
         try #require(await waitUntil { workspace.activeTab?.content.contains("\n") == true })
         let source = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
@@ -2199,11 +2200,11 @@ struct MarkdownVisualTests {
         }
         _ = try await web.evaluateJavaScript("""
             {const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual'));
-            getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('delete');fastraVisual.flush();}
+            getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('delete');fastraVisual.flush();}
             """)
         try #require(await waitUntil { workspace.activeTab?.content == "" })
         #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == "")
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
     }
 
@@ -2542,9 +2543,9 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { workspace.activeTab?.content == expected })
         #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p').length") as? Int == 2)
         #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual p:first-child br').length") as? Int == 1)
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == expected })
         coordinator.load(expected, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
         try #require(await waitUntil { coordinator.ready })
@@ -2559,11 +2560,24 @@ struct MarkdownVisualTests {
         let (_, coordinator, web, window) = try await editor(source)
         defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
         let allowed = try await web.evaluateJavaScript("""
-            [{},{shiftKey:true,metaKey:true},{shiftKey:true,ctrlKey:true},{shiftKey:true,isComposing:true}]
+            [{shiftKey:true,metaKey:true},{shiftKey:true,ctrlKey:true},{shiftKey:true,isComposing:true}]
             .every(flags=>document.getElementById('fastra-visual').dispatchEvent(new KeyboardEvent('keydown',
               {key:'Enter',bubbles:true,cancelable:true,...flags})))
             """) as? Bool
         #expect(allowed == true)
+        #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
+        let plainEnterConsumed = try await web.evaluateJavaScript("""
+            (() => {
+              const root=document.getElementById('fastra-visual'),p=root.querySelector('p'),r=document.createRange();
+              r.setStart(p.firstChild,2);r.collapse(true);root.focus();getSelection().removeAllRanges();getSelection().addRange(r);
+              root.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+              fastraVisual.flush();
+              const md=fastraVisual.markdown();
+              fastraVisual.undo();fastraVisual.flush();
+              return !md.includes('<br') && !md.includes('  \\n');
+            })()
+            """) as? Bool
+        #expect(plainEnterConsumed == true)
         #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == source)
         let intercepted = try await web.evaluateJavaScript("""
             (() => {
@@ -2675,7 +2689,7 @@ struct MarkdownVisualTests {
         _ = try await web.callAsyncJavaScript("""
             const root=document.getElementById('fastra-visual'),r=document.createRange();
             r.selectNodeContents(root);getSelection().removeAllRanges();getSelection().addRange(r);
-            document.execCommand('insertHTML',false,html);fastraVisual.flush();
+            fastraVisual.command('insertHTML',html);fastraVisual.flush();
             """, arguments: ["html": html], in: nil, contentWorld: .page)
         try #require(await waitUntil { workspace.activeTab?.content != "Anfang\n" })
         let source = try #require(workspace.activeTab?.content)
@@ -2696,7 +2710,7 @@ struct MarkdownVisualTests {
         let (workspace, coordinator, web, window) = try await editor(source)
         defer { web.stopLoading(); web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
         _ = try await web.evaluateJavaScript("""
-            const p=document.querySelector('#fastra-visual > div:nth-child(2) p');
+            const p=document.querySelectorAll('#fastra-visual p')[0];
             const r=document.createRange();r.selectNodeContents(p);
             getSelection().removeAllRanges();getSelection().addRange(r);
             window.fastraVisual.command('bold');
@@ -2704,7 +2718,7 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { workspace.activeTab?.content.contains("**Ergebnis 😀**") == true })
         #expect(workspace.activeTab?.content.hasPrefix("# Original\n\n") == true)
         #expect(workspace.activeTab?.content.contains("[Link][ref]\n\n[ref]: https://example.com\n") == true)
-        _ = try await web.evaluateJavaScript("document.execCommand('undo'); window.fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo(); window.fastraVisual.flush();")
         let undone = await waitUntil { workspace.activeTab?.content == source }
         if !undone {
             Issue.record(Comment(rawValue: "Undo-Markdown: " + (workspace.activeTab?.content ?? "nil")))
@@ -2713,7 +2727,7 @@ struct MarkdownVisualTests {
         }
         try #require(undone)
         #expect(!workspace.activeTab!.isDirty)
-        _ = try await web.evaluateJavaScript("document.execCommand('redo'); window.fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo(); window.fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content.contains("**Ergebnis 😀**") == true })
         withExtendedLifetime(coordinator) {}
     }
@@ -2804,7 +2818,7 @@ struct MarkdownVisualTests {
         coordinator.updateStyle(fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "restored")
         let lightColors = try await web.evaluateJavaScript("[getComputedStyle(document.querySelector('h1')).color,getComputedStyle(document.querySelector('blockquote')).color]") as? [String]
         #expect(lightColors == ["rgb(54, 54, 54)", "rgb(115, 115, 115)"])
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         #expect(!workspace.activeTab!.isDirty)
     }
@@ -2833,7 +2847,7 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { workspace.activeTab?.content.contains("==") == false }, Comment(rawValue: after ?? "DOM fehlt"))
         #expect(light != nil && dark != nil && light != dark)
         #expect(workspace.activeTab?.content.contains("graph TD; A-->B") == true)
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         withExtendedLifetime(coordinator) {}
     }
@@ -2877,9 +2891,9 @@ struct MarkdownVisualTests {
         #expect(changed.hasSuffix("Nachher exakt\n"))
         #expect(changed.contains("**A**"))
         #expect(try await web.evaluateJavaScript("document.querySelector('table').rows.length") as? Int == 3)
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == changed })
         withExtendedLifetime(coordinator) {}
     }
@@ -2914,9 +2928,9 @@ struct MarkdownVisualTests {
         let saved = try #require(workspace.activeTab?.content)
         #expect(saved.contains("$x\\|y$"), Comment(rawValue: saved))
         #expect(saved.contains("<!-- merken \\| exakt $& $$ -->"), Comment(rawValue: saved + "\nOPAQUE=" + String(describing: diagnostic.opaqueSources) + "\nHTML=" + diagnostic.fragment.html))
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == saved })
         coordinator.load(saved, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "protected-pipes")
         try #require(await waitUntil { coordinator.ready })
@@ -2960,9 +2974,9 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { workspace.activeTab?.content.contains("**Neu**") == true })
         let pasted = try await web.evaluateJavaScript("document.querySelector('td').innerText") as? String
         #expect(pasted == "Neu", "Zellinhalt: \(String(describing: pasted))")
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content.contains("**Neu**") == true })
         #expect(try await web.evaluateJavaScript("document.querySelector('td').innerText") as? String == "Neu")
     }
@@ -3014,9 +3028,9 @@ struct MarkdownVisualTests {
         #expect(workspace.activeTab?.content.contains("<br") == false)
         #expect(try await web.evaluateJavaScript("document.querySelectorAll('td').length") as? Int == 2)
         #expect(try await web.evaluateJavaScript("document.querySelectorAll('td')[1].textContent") as? String == "Bleibt")
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content != source })
         #expect(try await web.evaluateJavaScript("document.querySelector('td').innerText") as? String == "Neu")
         #expect(workspace.activeTab?.content.contains("<br") == false)
@@ -3076,9 +3090,9 @@ struct MarkdownVisualTests {
         let dimensions = try await web.evaluateJavaScript("[document.querySelector('table').rows.length,document.querySelector('table').rows[0].cells.length]") as? [Int]
         #expect(dimensions == [command.hasPrefix("rowB") || command == "rowAfter" ? 5 : command == "deleteRow" ? 3 : 4,
                                command.hasPrefix("columnB") || command == "columnAfter" ? 4 : command == "deleteColumn" ? 2 : 3])
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == changed })
         withExtendedLifetime(coordinator) {}
     }
@@ -3103,7 +3117,7 @@ struct MarkdownVisualTests {
         #expect(workspace.activeTab?.content == saved)
         let stale = try await web.evaluateJavaScript("fastraVisual.tableCommand('deleteRow','','expired')") as? [String: Any]
         #expect(stale?["reason"] as? String == "stale")
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         coordinator.load(saved, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "tsv-reopen")
         try #require(await waitUntil { coordinator.ready })
@@ -3124,7 +3138,7 @@ struct MarkdownVisualTests {
         let saved = try #require(workspace.activeTab?.content)
         #expect(saved.contains("| --- | --- |"))
         #expect(try await web.evaluateJavaScript("document.querySelector('table').rows.length") as? Int == 3)
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         coordinator.load(saved, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "empty-table")
         try #require(await waitUntil { coordinator.ready })
@@ -3165,7 +3179,7 @@ struct MarkdownVisualTests {
         _ = try await web.evaluateJavaScript("document.getElementById('fastra-visual').dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));")
         #expect(try await web.evaluateJavaScript("fastraVisual.tableContext().row") as? Int == 1)
         #expect(try await web.evaluateJavaScript("fastraVisual.tableContext().column") as? Int == 1)
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         withExtendedLifetime(coordinator) {}
     }
@@ -3358,7 +3372,8 @@ struct MarkdownVisualTests {
         _ = try await web.evaluateJavaScript("""
             {const root=document.getElementById('fastra-visual'),r=document.createRange();
             r.setStart(root.querySelector('li:nth-child(2) strong').firstChild,0);
-            r.setEnd(root.lastElementChild.querySelector('p').firstChild,7);
+            const lastContainer=root.lastElementChild.matches('p')?root.lastElementChild:root.lastElementChild.querySelector('p');
+            r.setEnd(lastContainer.firstChild,7);
             getSelection().removeAllRanges();getSelection().addRange(r);root.dispatchEvent(new Event('copy',{bubbles:true,cancelable:true}));}
             """)
         try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
@@ -3409,7 +3424,7 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { coordinator.pasteboard.data(forType: MarkdownVisualCoordinator.clipboardType) != nil })
         if cut {
             try #require(await waitUntil { workspace.activeTab?.content != source })
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { workspace.activeTab?.content == source })
         }
         let directory = testTemporaryDirectory().appendingPathComponent("visual-paste-\(UUID().uuidString)")
@@ -3435,9 +3450,9 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { target.activeTab?.content != "Ziel\n" })
         let pasted = target.activeTab!.content
         #expect(try await targetWeb.evaluateJavaScript("JSON.stringify(" + snapshot + ")") as? String == expected, Comment(rawValue: pasted))
-        _ = try await targetWeb.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await targetWeb.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { target.activeTab?.content == "Ziel\n" })
-        _ = try await targetWeb.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await targetWeb.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { target.activeTab?.content == pasted })
         var reloadError: String?
         target.saveSafetyWarningHandler = { title, text in
@@ -3534,7 +3549,7 @@ struct MarkdownVisualTests {
             #expect(attachments == [bytes])
             coordinator.pasteboard.clearContents()
         }
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         #expect(try String(contentsOf: previous, encoding: .utf8) == source)
     }
@@ -3894,9 +3909,9 @@ struct MarkdownVisualTests {
         let source = try #require(workspace.activeTab?.content)
         let expected = "\u{00a0}\u{00a0}\u{00a0}\u{00a0}" + original.trimmingCharacters(in: .newlines)
         #expect(MarkdownRichText.htmlFragment(markdown: source).contains(expected))
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == original })
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         coordinator.load(source, documentURL: nil, fontName: PreviewFonts.systemName, fontSize: 14, darkMode: false, style: "reload")
         try #require(await waitUntil { coordinator.ready })
@@ -3918,14 +3933,14 @@ struct MarkdownVisualTests {
         let html = MarkdownRichText.htmlFragment(markdown: nested)
         #expect(html.components(separatedBy: "<ul").count + html.components(separatedBy: "<ol").count == 4, Comment(rawValue: nested + html))
         #expect(html.components(separatedBy: "<li").count == 4)
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         let undone = await waitUntil { workspace.activeTab?.content == source }
         if !undone {
             let dom = try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML")
             Issue.record(Comment(rawValue: "Undo: " + workspace.activeTab!.content + String(describing: dom)))
         }
         try #require(undone)
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == nested })
         _ = try await web.evaluateJavaScript("""
             {const item=Array.from(document.querySelectorAll('li')).find(n=>n.textContent.trim()==='Zwei'),r=document.createRange();r.selectNodeContents(item);r.collapse(false);
@@ -4039,23 +4054,23 @@ struct MarkdownVisualTests {
         #expect(unchecked.components(separatedBy: "[ ]").count == 3)
         _ = try await web.evaluateJavaScript("document.querySelector('input[type=checkbox]').click();")
         try #require(await waitUntil { workspace.activeTab?.content.contains("[x]") == true })
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == unchecked })
         _ = try await web.evaluateJavaScript("document.querySelector('input[type=checkbox]').click();")
         try #require(await waitUntil { workspace.activeTab?.content.contains("[x]") == true })
         let beforeReturn = workspace.activeTab!.content
         _ = try await web.evaluateJavaScript("""
             {const item=document.querySelectorAll('li')[1],r=document.createRange();r.selectNodeContents(item);r.collapse(false);
-            getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('insertParagraph');fastraVisual.flush();}
+            getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('insertParagraph');fastraVisual.flush();}
             """)
         try #require(await waitUntil { workspace.activeTab?.content.components(separatedBy: "[ ]").count == 3 })
         #expect(try await web.evaluateJavaScript("document.querySelectorAll('li').length") as? Int == 3)
         #expect(try await web.evaluateJavaScript("document.querySelectorAll('input[type=checkbox]').length") as? Int == 3)
-        let undone = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();fastraVisual.markdown();") as? String
+        let undone = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();fastraVisual.markdown();") as? String
         // Return und Kästchen sind native Bearbeitungsschritte wie beim
         // Erstellen einer neuen Aufgabenliste; beide müssen zurückgehen.
         if undone != beforeReturn {
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         }
         try #require(await waitUntil { workspace.activeTab?.content == beforeReturn })
         withExtendedLifetime(coordinator) {}
@@ -4082,11 +4097,11 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { workspace.activeTab?.content.contains("[x]") == true })
         var steps = [String]()
         for _ in 0..<3 {
-            steps.append(try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();fastraVisual.markdown();") as? String ?? "nil")
+            steps.append(try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();fastraVisual.markdown();") as? String ?? "nil")
             if steps.last == nested { break }
         }
         #expect(steps.last == nested, Comment(rawValue: steps.enumerated().map { "\($0.offset): \($0.element)" }.joined(separator: "\n")))
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         withExtendedLifetime(coordinator) {}
     }
@@ -4104,17 +4119,17 @@ struct MarkdownVisualTests {
         try #require(await waitUntil { workspace.activeTab?.isDirty == true })
         #expect(workspace.activeTab?.content.contains("Zwischenabsatz") == true)
         #expect(workspace.activeTab?.content.components(separatedBy: "[ ]").count == 4)
-        #expect(try await web.evaluateJavaScript("document.querySelector('#fastra-visual > div > p').textContent") as? String == "Zwischenabsatz")
+        #expect(try await web.evaluateJavaScript("document.querySelector('#fastra-visual > p').textContent") as? String == "Zwischenabsatz")
         let allTasks = workspace.activeTab!.content
         for cycle in 0..<3 {
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             let undone = await waitUntil { workspace.activeTab?.content == source }
             if !undone {
                 let dom = try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML")
                 Issue.record(Comment(rawValue: "Undo \(cycle): " + workspace.activeTab!.content + String(describing: dom)))
             }
             try #require(undone)
-            _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
             let redone = await waitUntil { workspace.activeTab?.content == allTasks }
             if !redone {
                 let dom = try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML")
@@ -4122,7 +4137,7 @@ struct MarkdownVisualTests {
             }
             try #require(redone)
         }
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         _ = try await web.evaluateJavaScript("""
             {const child=document.querySelector('li li'),r=document.createRange();r.selectNodeContents(child);
@@ -4182,7 +4197,7 @@ struct MarkdownVisualTests {
     }
 
 
-    @Test("Bild am Anfang eines Listenpunkts bleibt vor dessen Text", arguments: ["li", "ul", "[data-md-block]", "pasteEvent"])
+    @Test("Bild am Anfang eines Listenpunkts bleibt vor dessen Text", arguments: ["li", "ul", ".ProseMirror > ul", "pasteEvent"])
     @MainActor
     func regressionImageAtListStart(_ selector: String) async throws {
         let directory = testTemporaryDirectory().appendingPathComponent("visual-image-start-\(UUID().uuidString)")
@@ -4196,7 +4211,7 @@ struct MarkdownVisualTests {
         let source = "- Erster Punkt\n- Zweiter Punkt\n"
         let (workspace, coordinator, web, window) = try await editor(source, documentURL: directory.appendingPathComponent("test.md"))
         defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
-        let domSelector = selector == "pasteEvent" ? "li" : selector
+        let domSelector = selector == "pasteEvent" ? "li" : (selector == ".ProseMirror > ul" ? "ul" : selector)
         _ = try await web.evaluateJavaScript("""
             const item=document.querySelector('#fastra-visual \(domSelector)'),r=document.createRange();
             r.selectNodeContents(item);r.collapse(true);
@@ -4222,10 +4237,10 @@ struct MarkdownVisualTests {
         let data = try #require(result?.data(using: .utf8))
         let state = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(state["before"] as? Bool == true, Comment(rawValue: result ?? "DOM fehlt"))
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("images/1.png").path))
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
         #expect(try Data(contentsOf: directory.appendingPathComponent("images/1.png")) == Data(contentsOf: image))
     }
@@ -4260,7 +4275,7 @@ struct MarkdownVisualTests {
         _ = try await web.evaluateJavaScript("""
             const h=document.querySelector('#fastra-visual h1'),r=document.createRange();r.selectNodeContents(h);r.collapse(false);
             getSelection().removeAllRanges();getSelection().addRange(r);
-            document.execCommand('insertParagraph');document.execCommand('insertParagraph');fastraVisual.flush();
+            fastraVisual.command('insertParagraph');fastraVisual.command('insertParagraph');fastraVisual.flush();
             """)
         try #require(await waitUntil { workspace.activeTab?.isDirty == true })
         let saved = try #require(workspace.activeTab?.content)
@@ -4328,7 +4343,7 @@ struct MarkdownVisualTests {
         #expect(FileManager.default.fileExists(atPath: image.fileURL.path))
         workspace.saveActiveTab()
         try #require(await waitUntil { !FileManager.default.fileExists(atPath: image.fileURL.path) })
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
         #expect(try Data(contentsOf: image.fileURL) == bytes)
     }
@@ -4347,15 +4362,15 @@ struct MarkdownVisualTests {
         _ = try await web.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
         coordinator.insertImages([image])
         try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
-        _ = try await web.evaluateJavaScript("{const r=document.createRange();r.selectNode(document.querySelector('img'));getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand('delete');fastraVisual.flush();}")
+        _ = try await web.evaluateJavaScript("{const r=document.createRange();r.selectNode(document.querySelector('img'));getSelection().removeAllRanges();getSelection().addRange(r);fastraVisual.command('delete');fastraVisual.flush();}")
         try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == false })
         _ = try await web.evaluateJavaScript("document.execCommand('insertText',false,'weiter');fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content.contains("weiter") == true })
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content.contains("weiter") == false })
         // WebKit darf Delete und anschließendes Tippen zu einem Undo bündeln.
         if workspace.activeTab?.content.contains("images/1.png") == false {
-            _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         }
         try #require(await waitUntil { workspace.activeTab?.content.contains("images/1.png") == true })
         #expect(try Data(contentsOf: directory.appendingPathComponent("images/1.png")) == bytes)
@@ -4383,11 +4398,11 @@ struct MarkdownVisualTests {
         _ = try await secondWeb.evaluateJavaScript("const r=document.createRange();r.selectNodeContents(document.querySelector('p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);")
         #expect(second.pasteImages())
         try #require(await waitUntil { secondWorkspace.activeTab?.content.contains("images/2.png") == true })
-        _ = try await firstWeb.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await firstWeb.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { firstWorkspace.activeTab?.content == "Quelle\n" })
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("images/1.png").path))
         #expect(try Data(contentsOf: directory.appendingPathComponent("images/2.png")) == bytes)
-        _ = try await secondWeb.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await secondWeb.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { secondWorkspace.activeTab?.content == "Ziel\n" })
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("images/2.png").path))
     }
@@ -4454,7 +4469,7 @@ struct MarkdownVisualTests {
         #expect(object["markdown"]?.contains("$x+1$") == true)
         #expect(object["markdown"]?.contains("graph TD; A-->B") == true)
         #expect(await waitUntil { workspace.activeTab?.content.contains("x+1") == false })
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         let restored = await waitUntil { workspace.activeTab?.content == source }
         if !restored {
             let dom = try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML")
@@ -4514,7 +4529,7 @@ struct MarkdownVisualTests {
         #expect(changed.components(separatedBy: "Hallo 😀").count == 3)
         #expect(changed.hasPrefix("# Kopf\n\n"))
         #expect(changed.hasSuffix("Unberührt  _Original_ 😀\n"), Comment(rawValue: changed))
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         #expect(await waitUntil { workspace.activeTab?.content.utf8.elementsEqual(source.utf8) == true })
     }
 
@@ -4533,17 +4548,17 @@ struct MarkdownVisualTests {
         #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual script,#fastra-visual [onerror],#fastra-visual a[href^=\\\"javascript:\\\"]').length") as? Int == 0)
         #expect(workspace.activeTab?.content.hasPrefix("# Kopf\n\n") == true)
         #expect(workspace.activeTab?.content.hasSuffix("Unverändert\n") == true)
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         let restored = await waitUntil { workspace.activeTab?.content == source }
         if !restored {
             let dom = try await web.evaluateJavaScript("document.getElementById('fastra-visual').innerHTML")
             Issue.record(Comment(rawValue: "Textbaustein-Undo: " + (workspace.activeTab?.content ?? "nil") + "\nDOM=" + String(describing: dom)))
         }
         try #require(restored)
-        _ = try await web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content.contains("window.snippetAttack=1") == true })
         #expect(try await web.evaluateJavaScript("window.snippetAttack===undefined") as? Bool == true)
-        _ = try await web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == source })
         let cancelled: TextSnippetInsertionTarget = try await withCheckedThrowingContinuation { done in TextSnippetInsertionTarget.capture(in: workspace) { done.resume(with: $0) } }
         cancelled.release()
@@ -5347,15 +5362,18 @@ struct MarkdownVisualTests {
         let result = try await web.callAsyncJavaScript("""
             const unsupported=await fastraVisual.replaceSource(source,html,replacementConfiguration,'disabled');
             await fastraVisual.start(configuration);
-            const originalCommand=document.execCommand;
-            document.execCommand=function(command,...args){
-              if(command==='insertHTML'){document.getElementById('fastra-visual').innerHTML='<p>Broken</p>';return true;}
-              if(command==='undo')return false;
-              return originalCommand.call(this,command,...args);
+            const handler=window.webkit.messageHandlers.visualMarkdown;
+            const originalPost=handler.postMessage.bind(handler);
+            handler.postMessage=function(msg){
+              if(msg?.kind==='change' && !window.__injectedBreak){
+                window.__injectedBreak=true;
+                fastraVisual.command('insertText','Broken');
+              }
+              return originalPost(msg);
             };
             let failed;
             try{failed=await fastraVisual.replaceSource(source,html,replacementConfiguration,'failure');}
-            finally{document.execCommand=originalCommand;}
+            finally{handler.postMessage=originalPost;delete window.__injectedBreak;}
             const acquired=fastraVisual.prepareAction(configuration.session,'manual-fence-token');
             fastraVisual.completeAction(configuration.session,'manual-fence-token');
             return {unsupported,failed,ack:acquired.actionID,editable:document.getElementById('fastra-visual').isContentEditable,markdown:fastraVisual.markdown()};
@@ -5529,7 +5547,7 @@ struct MarkdownVisualTests {
         try await withVisualImageReferences { fixture in
             fixture.insert("a.png")
             try #require(await waitUntil { fixture.workspace.activeTab?.content.contains("images/1.png") == true })
-            _ = try await fixture.web.evaluateJavaScript("document.execCommand('undo');fastraVisual.flush();")
+            _ = try await fixture.web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
             try #require(await waitUntil { fixture.workspace.activeTab?.content == "Text\n" })
             try #require(await fixture.drain())
             try #require(MarkdownImageUndoBuffer.shared.byteCount > 0)
@@ -5721,7 +5739,7 @@ struct MarkdownVisualTests {
             """) as? Bool
         try #require(inserted == true)
         try #require(await waitUntil { workspace.activeTab?.content == edited })
-        try #require(try await web.evaluateJavaScript("document.queryCommandEnabled('undo')") as? Bool == true)
+        try #require(try await web.evaluateJavaScript("fastraVisual.canUndo()") as? Bool == true)
         let revision = workspace.tabs[0].contentRevision
         let a = try await actionHold(coordinator), b = try await actionHold(coordinator)
         defer { a.finish(); b.finish() }
@@ -5740,13 +5758,13 @@ struct MarkdownVisualTests {
         a.finish()
         #expect(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable") as? Bool == false)
         b.finish()
-        try #require(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable && document.queryCommandEnabled('undo')") as? Bool == true)
-        let undone = try await web.evaluateJavaScript("const undone=document.execCommand('undo');fastraVisual.flush();undone;") as? Bool
+        try #require(try await web.evaluateJavaScript("document.getElementById('fastra-visual').isContentEditable && fastraVisual.canUndo()") as? Bool == true)
+        let undone = try await web.evaluateJavaScript("const undone=fastraVisual.undo();fastraVisual.flush();undone;") as? Bool
         #expect(undone == true)
         try #require(await waitUntil { workspace.activeTab?.content == original })
         #expect(coordinator.markdown == original)
         #expect(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String == original)
-        let redone = try await web.evaluateJavaScript("const redone=document.execCommand('redo');fastraVisual.flush();redone;") as? Bool
+        let redone = try await web.evaluateJavaScript("const redone=fastraVisual.redo();fastraVisual.flush();redone;") as? Bool
         #expect(redone == true)
         try #require(await waitUntil { workspace.activeTab?.content == edited })
         #expect(coordinator.markdown == edited)
@@ -5817,7 +5835,7 @@ extension MarkdownVisualTests {
         #expect(initialSession == endSession && current === coordinator)
         #expect(model == "Text\n" && browserContent == "Text\n")
         #expect(!manager.fileExists(atPath: fixture.first.path) && fixture.warnings.isEmpty)
-        _ = try await currentWeb.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+        _ = try await currentWeb.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
         try #require(await waitUntil { workspace.activeTab?.content == inserted })
         try #require(await fixture.drain())
         #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
@@ -5863,7 +5881,7 @@ extension MarkdownVisualTests {
             #expect(try await neighborWeb.evaluateJavaScript("window.__renameNeighborPreparations") as? Int == 0)
             #expect(neighbor.activeTab == neighborTab)
             #expect(fixture.workspace.tabs.first { $0.id == localNeighbor.id } == localNeighbor)
-            _ = try await fixture.web.evaluateJavaScript("document.execCommand('redo');fastraVisual.flush();")
+            _ = try await fixture.web.evaluateJavaScript("fastraVisual.redo();fastraVisual.flush();")
             try #require(await waitUntil { fixture.workspace.activeTab?.content == inserted })
             try #require(await fixture.drain())
             #expect(try Data(contentsOf: fixture.first) == fixture.bytes)
@@ -6036,8 +6054,8 @@ extension MarkdownVisualTests {
               document.execCommand('insertText', false, '—');
               fastraVisual.command('hardBreak');
               document.execCommand('insertText', false, 'Bild 1a');
-              document.execCommand('insertParagraph');
-              document.execCommand('insertParagraph');
+              fastraVisual.command('insertParagraph');
+              fastraVisual.command('insertParagraph');
               document.execCommand('insertText', false, 'Fehler 2');
               function sel(t) {
                 const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n;
@@ -6067,7 +6085,7 @@ extension MarkdownVisualTests {
         #expect(visibleText == "FehlerFehler1—Bild1aFehler2", Comment(rawValue: liveHTML))
 
         // Undo macht genau den Fettdruck rückgängig, ohne Zeilen zu entfernen oder alles zu markieren.
-        _ = try await web.evaluateJavaScript("document.execCommand('undo'); fastraVisual.flush();")
+        _ = try await web.evaluateJavaScript("fastraVisual.undo(); fastraVisual.flush();")
         #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual strong').length") as? Int == 0)
         let afterUndoText = try #require(try await web.evaluateJavaScript("(() => { const c = document.getElementById('fastra-visual').cloneNode(true); c.querySelectorAll('[data-md-edit-boundary]').forEach(n => n.remove()); return c.textContent.replace(/[\\s\\u200b]+/g, ''); })()") as? String)
         #expect(afterUndoText == "FehlerFehler1—Bild1aFehler2")
@@ -6114,7 +6132,7 @@ extension MarkdownVisualTests {
               getSelection().removeAllRanges(); getSelection().addRange(r0);
               for (const line of ['Alpha', 'Beta', 'Gamma', 'Delta']) {
                 document.execCommand('insertText', false, line);
-                if (line !== 'Delta') document.execCommand('insertParagraph');
+                if (line !== 'Delta') fastraVisual.command('insertParagraph');
               }
               function sel(t) {
                 const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n;
@@ -6198,10 +6216,10 @@ extension MarkdownVisualTests {
                   document.execCommand('insertText', false, 'Fehler 1');
                   fastraVisual.command('hardBreak');
                   document.execCommand('insertText', false, '—');
-                  document.execCommand('insertParagraph');
-                  document.execCommand('insertParagraph');
+                  fastraVisual.command('insertParagraph');
+                  fastraVisual.command('insertParagraph');
                   document.execCommand('insertText', false, 'Bild 1a');
-                  document.execCommand('insertParagraph');
+                  fastraVisual.command('insertParagraph');
                   document.execCommand('insertText', false, 'Fehler 2');
                 })()
                 """)
@@ -6264,7 +6282,7 @@ extension MarkdownVisualTests {
             ) as? [String: Any]
             #expect(appearance?["outcome"] as? String == "ok", Comment(rawValue: "Step \(step) \(cmd): \(String(describing: appearance)) | md=\(md)"))
             if step % 5 == 4 {
-                _ = try await web.evaluateJavaScript("document.execCommand('undo'); fastraVisual.flush();")
+                _ = try await web.evaluateJavaScript("fastraVisual.undo(); fastraVisual.flush();")
             }
         }
         _ = workspace
@@ -6390,13 +6408,13 @@ extension MarkdownVisualTests {
             }
 
             // Ein Undo stellt den einzelnen harten Umbruch vor der Leerzeile sauber her.
-            _ = try await web.evaluateJavaScript("document.execCommand('undo'); fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.undo(); fastraVisual.flush();")
             let afterUndo = try #require(try await web.evaluateJavaScript("fastraVisual.markdown()") as? String)
             #expect(!afterUndo.contains("<br"), Comment(rawValue: afterUndo))
             #expect(afterUndo.contains("Alpha  \n") && afterUndo.contains("Beta"), Comment(rawValue: afterUndo))
 
             // Redo + echtes Speichern + Wiederöffnen
-            _ = try await web.evaluateJavaScript("document.execCommand('redo'); fastraVisual.flush();")
+            _ = try await web.evaluateJavaScript("fastraVisual.redo(); fastraVisual.flush();")
             try #require(await waitUntil { workspace.activeTab?.isDirty == true })
             workspace.saveActiveTab()
             try #require(await waitUntil { !warnings.isEmpty || workspace.activeTab?.isDirty == false })
@@ -6492,5 +6510,311 @@ extension MarkdownVisualTests {
             #expect(md.contains("A\n\n  \n\n**B**") || md.contains("A\n\n  \n\nB"), Comment(rawValue: md))
             _ = workspace
         }
+    }
+
+    @Test("Tab-gebundene visualSaveChecks überleben Tabwechsel und Editor-Abbau beim Schließen und Speichern")
+    @MainActor
+    func tabBoundVisualSaveChecksSurviveEditorTeardown() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-save-check-tab-bound-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileA = directory.appendingPathComponent("a.md")
+        let fileB = directory.appendingPathComponent("b.md")
+        try "Alpha\n".write(to: fileA, atomically: true, encoding: .utf8)
+        try "Beta\n".write(to: fileB, atomically: true, encoding: .utf8)
+
+        let workspace = Workspace(defaults: testSuiteDefaults(named: "fastra-test-visual-save-check-\(UUID().uuidString)"))
+        var tabA = EditorTab(title: "a.md", path: fileA.deletingLastPathComponent().path, url: fileA, content: "Alpha\n", diskSnapshot: try FileSnapshot.readSnapshotOnly(from: fileA))
+        tabA.markdownVisualOverride = true
+        var tabB = EditorTab(title: "b.md", path: fileB.deletingLastPathComponent().path, url: fileB, content: "Beta\n", isDirty: true, diskSnapshot: try FileSnapshot.readSnapshotOnly(from: fileB))
+        tabB.markdownVisualOverride = false
+        workspace.tabs = [tabA, tabB]
+        workspace.activeTabID = tabA.id
+
+        // Simuliert aktiven Editor für Tab A, der während eines modalen Dialogs für Tab B abgebaut wird.
+        let coordinator = MarkdownVisualCoordinator()
+        coordinator.workspace = workspace
+        coordinator.tabID = tabA.id
+        workspace.visualMarkdownEditor = coordinator
+        workspace.recordVisualSaveCheck(
+            tabID: tabA.id,
+            documentID: tabA.documentID,
+            contentRevision: tabA.contentRevision,
+            candidate: tabA.textForSaving(tabA.content),
+            outcome: .format,
+            redactedDiagnostic: "redacted-tabA-diag"
+        )
+        #expect(workspace.visualSaveCheck(for: tabA, candidate: tabA.textForSaving(tabA.content)) == .format)
+        #expect(workspace.hasTabsRequiringSaveBeforeClosing)
+
+        var saveWarnings: [MarkdownVisualCoordinator.SaveCheck] = []
+        workspace.markdownSaveWarningHandler = { saveWarnings.append($0) }
+        var closedTitles: [String] = []
+        workspace.confirmCloseHandler = { title in
+            closedTitles.append(title)
+            // Abbau des visuellen Editors während des modalen Dialogs simulieren.
+            coordinator.invalidateForSourceReplacement()
+            workspace.visualMarkdownEditor = nil
+            return title == "b.md" ? .dontSave : .save
+        }
+
+        // closeOtherTabs(keeping: tabB.id) muss Tab A wegen .format warnen und beim Speichern blockieren.
+        workspace.closeOtherTabs(keeping: tabB.id)
+        #expect(closedTitles == ["a.md"])
+        #expect(saveWarnings == [.format])
+        #expect(workspace.tabs.count == 2)
+
+        // Auch prepareToCloseWindow und returnToWelcome bleiben nach Editor-Abbau geschützt.
+        closedTitles.removeAll()
+        saveWarnings.removeAll()
+        workspace.confirmReturnToWelcomeHandler = { true }
+        var welcomeSavedTitles: [String] = []
+        workspace.confirmSaveForWelcomeHandler = { title in
+            welcomeSavedTitles.append(title)
+            return true
+        }
+        #expect(!workspace.returnToWelcome())
+        #expect(welcomeSavedTitles.contains("a.md"))
+        #expect(saveWarnings == [.format])
+
+        saveWarnings.removeAll()
+        #expect(!workspace.prepareToCloseWindow())
+        #expect(saveWarnings == [.format])
+        #expect(workspace.tabs.count == 2)
+
+        // Fehlt ein SaveCheck trotz eingeleiteter Speicherprüfung, darf write nicht still durchlassen.
+        saveWarnings.removeAll()
+        workspace.clearVisualSaveCheck(for: tabA.id)
+        workspace.beginVisualSaveCheck(tabID: tabA.id, holdID: "hold-1")
+        workspace.activeTabID = tabA.id
+        #expect(!workspace.write(tab: tabA, to: fileA))
+        #expect(saveWarnings == [.unavailable])
+        workspace.endVisualSaveCheck(tabID: tabA.id, holdID: "hold-1")
+
+        // Ein .ok-Check erlaubt das Speichern und räumt den Eintrag nach erfolgreichem Write auf.
+        saveWarnings.removeAll()
+        workspace.recordVisualSaveCheck(
+            tabID: tabA.id,
+            documentID: tabA.documentID,
+            contentRevision: tabA.contentRevision,
+            candidate: tabA.textForSaving(tabA.content),
+            outcome: .ok
+        )
+        #expect(workspace.write(tab: tabA, to: fileA))
+        #expect(saveWarnings.isEmpty)
+        #expect(workspace.visualSaveCheck(for: tabA, candidate: tabA.textForSaving(tabA.content)) == nil)
+
+        // Bearbeitung, Moduswechsel (.hex) und Tab-Schließen räumen visualSaveChecks und Diagnostics auf.
+        workspace.recordVisualSaveCheck(
+            tabID: tabA.id,
+            documentID: tabA.documentID,
+            contentRevision: workspace.tabs[0].contentRevision,
+            candidate: workspace.tabs[0].textForSaving(workspace.tabs[0].content),
+            outcome: .breaks
+        )
+        workspace.markdownVisualDiagnostics.recordLiveCheck(
+            outcome: .breaks, revision: 1, eventCount: 1, redactedReport: "r", fullReport: "f"
+        )
+        #expect(workspace.acceptVisualMarkdown("Alpha geändert\n", previous: "Alpha\n", tabID: tabA.id))
+        #expect(workspace.visualSaveCheck(for: workspace.tabs[0], candidate: "Alpha geändert\n") == nil)
+
+        workspace.recordVisualSaveCheck(
+            tabID: tabA.id,
+            documentID: tabA.documentID,
+            contentRevision: workspace.tabs[0].contentRevision,
+            candidate: workspace.tabs[0].textForSaving(workspace.tabs[0].content),
+            outcome: .text
+        )
+        workspace.setViewMode(.hex)
+        #expect(workspace.markdownVisualDiagnostics.activeWarning == nil)
+        #expect(workspace.visualSaveCheck(for: workspace.tabs[0], candidate: workspace.tabs[0].textForSaving(workspace.tabs[0].content)) == nil)
+        workspace.setViewMode(.text)
+
+        workspace.markdownVisualDiagnostics.recordAnomaly(
+            code: "command-noop", revision: 2, eventCount: 1, redactedReport: "r", fullReport: "f"
+        )
+        workspace.confirmCloseHandler = { _ in .dontSave }
+        workspace.closeTab(id: tabA.id)
+        #expect(workspace.tabs.count == 1)
+        #expect(workspace.markdownVisualDiagnostics.activeWarning == nil)
+    }
+
+    @Test("Reload, Reopen und Extern-Prüfung warten auf Undo-Abschluss und invalidieren veralteten Visual-Zustand")
+    @MainActor
+    func reloadReopenAndExternalInspectionGuardUndoAndVisualState() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("visual-reload-undo-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("note.md")
+        try "Initial\n".write(to: file, atomically: true, encoding: .utf8)
+        let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGioAAAAASUVORK5CYII=")!
+        let image = try MarkdownImageStore.storePastedData(.init(data: png, fileExtension: "png"), documentURL: file)
+
+        let workspace = Workspace(defaults: testSuiteDefaults(named: "fastra-test-visual-reload-undo-\(UUID().uuidString)"))
+        var loaded = false
+        workspace.loadFile(at: file) { loaded = $0 }
+        try #require(await waitUntil { loaded })
+        let idx = try #require(workspace.tabs.firstIndex { $0.url?.canonicalFileURL == file.canonicalFileURL })
+        workspace.tabs[idx].markdownVisualOverride = true
+        workspace.activeTabID = workspace.tabs[idx].id
+
+        let schedule = VisualImageRemovalSchedule()
+        schedule.setEnabled(true)
+        defer { schedule.releaseAll() }
+
+        let view = TextView(string: workspace.tabs[idx].content)
+        let manager = workspace.tabs[idx].undoHistory.manager(for: workspace.tabs[idx].content)
+        view.setUndoManager(manager)
+        view.replaceCharacters(in: NSRange(location: 0, length: 0), with: image.link)
+        workspace.tabs[idx].undoHistory.didEditInSource(view.string)
+        MarkdownImageUndo.register(
+            textView: view,
+            insertion: image.link,
+            storedImages: [image],
+            documentURL: file,
+            removalHooks: schedule.hooks
+        )
+        workspace.tabs[idx].content = view.string
+        workspace.tabs[idx].isDirty = false
+
+        // Asynchrones Undo in die Dateiphase treiben und festhalten.
+        manager.undo()
+        try #require(await waitUntil { schedule.counts.arrivals == 1 })
+        try #require(workspace.tabs[idx].undoHistory.isPerformingAction)
+
+        // Während undoHistory.isPerformingAction darf reloadTabFromDisk nicht sofort überschreiben.
+        #expect(workspace.reloadTabFromDisk(id: workspace.tabs[idx].id) == nil)
+
+        try "Von Platte\n".write(to: file, atomically: true, encoding: .utf8)
+        workspace.externalReloadConfirmHandler = { _ in true }
+        workspace.reloadActiveTabFromDisk()
+        try #require(workspace.tabs[idx].content != "Von Platte\n")
+
+        // Nach Abschluss des Undo wird der aufgeschobene Reload ausgeführt und leert Visual-SaveCheck/Diagnostics.
+        workspace.recordVisualSaveCheck(
+            tabID: workspace.tabs[idx].id,
+            documentID: workspace.tabs[idx].documentID,
+            contentRevision: workspace.tabs[idx].contentRevision,
+            candidate: workspace.tabs[idx].textForSaving(workspace.tabs[idx].content),
+            outcome: .format
+        )
+        workspace.markdownVisualDiagnostics.recordAnomaly(
+            code: "command-noop", revision: 1, eventCount: 1, redactedReport: "r", fullReport: "f"
+        )
+        schedule.setEnabled(false)
+        schedule.release(0)
+        try #require(await waitUntil { !workspace.tabs[idx].undoHistory.isPerformingAction && workspace.tabs[idx].content == "Von Platte\n" })
+        #expect(workspace.markdownVisualDiagnostics.activeWarning == nil)
+        #expect(workspace.visualSaveCheck(for: workspace.tabs[idx], candidate: "Von Platte\n") == nil)
+
+        // Auch reopenActiveTab invalidiert einen gebundenen Visual-Coordinator und übernimmt den neuen Stand.
+        let (ws2, coordinator, web, window) = try await editor("Alt\n", documentURL: file)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        try "Neu UTF-8\n".write(to: file, atomically: true, encoding: .utf8)
+        ws2.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
+        ws2.tabs[0].isDirty = false
+        let genBefore = coordinator.generation
+        ws2.reopenActiveTab(withEncoding: .utf8)
+        try #require(await waitUntil { ws2.tabs[0].content == "Neu UTF-8\n" && !ws2.tabs[0].isLoading })
+        #expect(coordinator.generation > genBefore)
+    }
+
+    @Test("Stale-Diagnostik wird nach Generation-Bump verworfen; command-noop lokalisiert und summary anonymisiert")
+    @MainActor
+    func staleDiagnosticsRejectedAndAnomalySummaryRedacted() async throws {
+        // 1. Lokalisierung von command-noop (de + en)
+        let detail = MarkdownVisualSaveMessages.anomalyDetail(code: "command-noop")
+        #expect(detail.contains("Formatierungsbefehl") || detail.contains("formatting command"))
+        let deDetail = L10n.string(
+            "Ein Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) konnte an der aktuellen Stelle nicht angewendet werden.",
+            language: "de"
+        )
+        #expect(deDetail.contains("Formatierungsbefehl"))
+        let enDetail = L10n.string(
+            "Ein Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) konnte an der aktuellen Stelle nicht angewendet werden.",
+            language: "en"
+        )
+        #expect(enDetail != "Ein Formatierungsbefehl in der formatierten Ansicht (WYSIWYG) konnte an der aktuellen Stelle nicht angewendet werden.")
+        #expect(enDetail.contains("formatting command"))
+
+        // 2. Redaction in recordSwiftEvent("anomaly", ...) + verzögertes clearDiagnostics nach generation &+= 1
+        let (workspace, coordinator, web, window) = try await editor("Sichtbar\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
+        let secret = "SENSITIVE_SUMMARY_DO_NOT_LEAK"
+        let session = try #require(try await web.evaluateJavaScript("fastraVisual.diagnosticReport(false).session") as? String)
+        let tabID = try #require(workspace.activeTabID)
+
+        coordinator.handleVisualMessage(
+            ["kind": "diagnosticAnomaly", "session": session, "code": "command-noop", "summary": secret, "revision": 0],
+            workspace: workspace,
+            tabID: tabID
+        )
+        try #require(await waitUntil { workspace.markdownVisualDiagnostics.activeWarning?.kind == .anomaly(code: "command-noop") })
+
+        var redacted: String?
+        var full: String?
+        coordinator.collectDiagnosticReport(includeContent: false) { report, _ in redacted = report }
+        coordinator.collectDiagnosticReport(includeContent: true) { report, _ in full = report }
+        try #require(await waitUntil { redacted != nil && full != nil })
+        #expect(redacted?.contains(secret) == false)
+        #expect(redacted?.contains("command-noop") == true)
+        #expect(full?.contains(secret) == true)
+
+        // invalidateForSourceReplacement erhöht generation VOR clearDiagnostics(deferred: true)
+        // und verhindert spätere stale Anomalien mit alter Session.
+        let generationBefore = coordinator.generation
+        coordinator.invalidateForSourceReplacement()
+        #expect(coordinator.generation == generationBefore &+ 1)
+        try #require(await waitUntil { workspace.markdownVisualDiagnostics.activeWarning == nil })
+
+        coordinator.handleVisualMessage(
+            ["kind": "diagnosticAnomaly", "session": session, "code": "format", "summary": secret, "revision": 0],
+            workspace: workspace,
+            tabID: tabID
+        )
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(workspace.markdownVisualDiagnostics.activeWarning == nil)
+    }
+
+    @Test("test_1.md-Regression: Ungespeichertes Dokument mit  -Leerzeilen im Split-/WYSIWYG-Modus setzt H1–H3 per Befehl & Auswahl sofort um")
+    @MainActor
+    func test1BlankLineHeading2SplitModeRegression() async throws {
+        let source = "# Titel\n\n  \n\nAbsatz danach\n"
+        let (workspace, coordinator, web, window) = try await editor(source, documentURL: nil)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        workspace.tabs[0].isDirty = true
+
+        // 1. Cursor direkt auf der sichtbaren `  `-Leerzeile (eingeklappte Auswahl) -> H2 greift sofort.
+        _ = try await web.evaluateJavaScript("""
+            {const blank=document.querySelector('#fastra-visual .fastra-visible-blank-line'),r=document.createRange();
+            r.selectNodeContents(blank);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);}
+            """)
+        coordinator.format(.heading2)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("## ") == true })
+        _ = try await web.evaluateJavaScript("fastraVisual.command('insertText', 'Zwischen');fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == "# Titel\n\n## Zwischen\n\nAbsatz danach\n" })
+
+        // 2. Undo stellt wieder die ursprüngliche sichtbare Leerzeile her; danach nicht-leere
+        // Range-Auswahl über die Leerzeile + `heading2` sowie Direktbefehl `.heading1` / `.heading3`.
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.undo();fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        _ = try await web.evaluateJavaScript("""
+            {const blank=document.querySelector('#fastra-visual .fastra-visible-blank-line'),r=document.createRange();
+            r.selectNode(blank);getSelection().removeAllRanges();getSelection().addRange(r);}
+            """)
+        coordinator.format(.heading2)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("## ") == true })
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual h2').length") as? Int == 1)
+
+        // Auch Web-Toolbar-/Shortcut-Befehl (heading1 / heading3 / heading4..6) auf `blank_line` prüfen.
+        _ = try await web.evaluateJavaScript("fastraVisual.undo();fastraVisual.flush();")
+        try #require(await waitUntil { workspace.activeTab?.content == source })
+        _ = try await web.evaluateJavaScript("""
+            {const blank=document.querySelector('#fastra-visual .fastra-visible-blank-line'),r=document.createRange();
+            r.selectNodeContents(blank);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);
+            fastraVisual.command('heading4');fastraVisual.flush();}
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("#### ") == true })
+        #expect(try await web.evaluateJavaScript("document.querySelectorAll('#fastra-visual h4').length") as? Int == 1)
     }
 }

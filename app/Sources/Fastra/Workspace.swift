@@ -1796,6 +1796,14 @@ final class Workspace: ObservableObject {
     /// Zeigt der aktive Tab ein Markdown-Dokument? Gemeinsame Antwort für
     /// Vorschau, Toolbar, Bild-Drop, Tab-Leiste und Markdown-Menü — alle
     /// folgen damit derselben Formatwahl wie der Sprach-Chip in der Fußzeile.
+    struct VisualSaveCheckRecord: Equatable {
+        let documentID: UUID
+        let contentRevision: UInt64
+        let candidate: String
+        let outcome: MarkdownVisualCoordinator.SaveCheck
+        let redactedDiagnostic: String?
+    }
+
     weak var visualMarkdownEditor: MarkdownVisualCoordinator?
     let documentOutline = DocumentOutlineController()
     let sourcePanes = SourcePaneRegistry()
@@ -1804,6 +1812,62 @@ final class Workspace: ObservableObject {
     let markdownVisualFind = MarkdownVisualFindController()
     let markdownTable = MarkdownTableController()
     let markdownVisualDiagnostics = MarkdownVisualDiagnosticsController()
+    private var visualSaveChecks: [UUID: VisualSaveCheckRecord] = [:]
+    private var pendingVisualSaveCheckHoldIDs: [UUID: Set<String>] = [:]
+
+    func clearMarkdownVisualDiagnostics() {
+        guard Thread.isMainThread else { return }
+        MainActor.assumeIsolated { markdownVisualDiagnostics.clear() }
+    }
+
+    func beginVisualSaveCheck(tabID: UUID, holdID: String) {
+        pendingVisualSaveCheckHoldIDs[tabID, default: []].insert(holdID)
+    }
+
+    func endVisualSaveCheck(tabID: UUID, holdID: String) {
+        guard var holds = pendingVisualSaveCheckHoldIDs[tabID] else { return }
+        holds.remove(holdID)
+        if holds.isEmpty {
+            pendingVisualSaveCheckHoldIDs.removeValue(forKey: tabID)
+        } else {
+            pendingVisualSaveCheckHoldIDs[tabID] = holds
+        }
+    }
+
+    func hasPendingVisualSaveCheck(for tabID: UUID) -> Bool {
+        !(pendingVisualSaveCheckHoldIDs[tabID]?.isEmpty ?? true)
+    }
+
+    func recordVisualSaveCheck(
+        tabID: UUID,
+        documentID: UUID,
+        contentRevision: UInt64,
+        candidate: String,
+        outcome: MarkdownVisualCoordinator.SaveCheck,
+        redactedDiagnostic: String? = nil
+    ) {
+        visualSaveChecks[tabID] = VisualSaveCheckRecord(
+            documentID: documentID,
+            contentRevision: contentRevision,
+            candidate: candidate,
+            outcome: outcome,
+            redactedDiagnostic: redactedDiagnostic
+        )
+    }
+
+    func clearVisualSaveCheck(for tabID: UUID) {
+        visualSaveChecks.removeValue(forKey: tabID)
+    }
+
+    func visualSaveCheck(for tab: EditorTab, candidate: String) -> MarkdownVisualCoordinator.SaveCheck? {
+        guard let record = visualSaveChecks[tab.id],
+              record.documentID == tab.documentID,
+              record.contentRevision == tab.contentRevision,
+              record.candidate.utf8.elementsEqual(candidate.utf8) else {
+            return nil
+        }
+        return record.outcome
+    }
 
     var activeMarkdownIsVisual: Bool {
         activeTabIsMarkdown && activeViewMode == .text
@@ -1845,6 +1909,12 @@ final class Workspace: ObservableObject {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               tabs[index].content.utf8.elementsEqual(previous.utf8),
               textEditingIsAllowed(for: tabs[index]) else { return false }
+        // Gleicher Inhalt (z. B. Synchronisation vor Tabwechsel) darf einen
+        // bestehenden Speicherbefund nicht still verwerfen (Astra #16).
+        if value.utf8.elementsEqual(previous.utf8) {
+            return true
+        }
+        clearVisualSaveCheck(for: tabID)
         if activeTabID == tabID {
             activeTabContent.wrappedValue = value
         } else {
@@ -1859,7 +1929,8 @@ final class Workspace: ObservableObject {
     func toggleMarkdownEditingMode() {
         if synchronizeVisualMarkdownBefore({ self.toggleMarkdownEditingMode() }) { return }
         guard activeTabIsMarkdown, let index = activeTabIndex else { return }
-        if Thread.isMainThread { MainActor.assumeIsolated { markdownVisualDiagnostics.clear() } }
+        clearMarkdownVisualDiagnostics()
+        clearVisualSaveCheck(for: tabs[index].id)
         tabs[index].markdownVisualOverride = !activeMarkdownIsVisual
         setViewMode(.text)
     }
@@ -2089,6 +2160,9 @@ final class Workspace: ObservableObject {
 
         let scratch = Self.makeScratchTab()
         hexSavePreviewRequestTabID = nil
+        visualSaveChecks.removeAll()
+        pendingVisualSaveCheckHoldIDs.removeAll()
+        clearMarkdownVisualDiagnostics()
         tabs = [scratch]
         activeTabID = scratch.id
         cursorLine = nil
@@ -2149,6 +2223,7 @@ final class Workspace: ObservableObject {
                     // der nächste einfache Klick ungesicherte Arbeit ersetzen.
                     self.tabs[idx].isPreview = false
                     self.tabs[idx].content = newValue
+                    self.clearVisualSaveCheck(for: tabID)
                     // Eine Inhaltsänderung entwertet die Lease der gesamten
                     // Makro-Nachbearbeitung (Rücktokenisierung und Diff).
                     self.cancelFourDMacroPostprocessing(ifTab: tabID)
@@ -2341,8 +2416,10 @@ final class Workspace: ObservableObject {
     /// unbenannter Tab enthält auch dann nichts zu sichern, wenn er nach
     /// Tippen und Löschen technisch noch als geändert markiert ist.
     private func requiresSaveBeforeClosing(_ tab: EditorTab) -> Bool {
-        if let check = visualMarkdownEditor?.saveCheck(for: tab, candidate: tab.textForSaving(tab.content)),
-           check != .ok { return true }
+        let candidate = tab.textForSaving(tab.content)
+        let check = visualSaveCheck(for: tab, candidate: candidate)
+        if let check, check != .ok { return true }
+        if check == nil, hasPendingVisualSaveCheck(for: tab.id) { return true }
         let isEmptyUntitled = tab.url == nil && tab.content.isEmpty
         return tab.hexEditSession.hasChanges || (tab.isDirty && !isEmptyUntitled)
     }
@@ -2459,6 +2536,8 @@ final class Workspace: ObservableObject {
         // Makro-Nachbearbeitung nie wieder erfüllen.
         cancelFourDMacroPostprocessing(ifTab: id)
         if hexSavePreviewRequestTabID == id { hexSavePreviewRequestTabID = nil }
+        clearVisualSaveCheck(for: id)
+        if previousActive == id { clearMarkdownVisualDiagnostics() }
         tabs.remove(at: idx)
         recentlyActiveTabIDs.removeAll { $0 == id }
         if comparisonTabID == id {
@@ -2564,10 +2643,11 @@ final class Workspace: ObservableObject {
         if let requested = hexSavePreviewRequestTabID, requested != id {
             hexSavePreviewRequestTabID = nil
         }
+        visualSaveChecks = visualSaveChecks.filter { $0.key == id }
         tabs.removeAll { $0.id != id }
         recentlyActiveTabIDs.removeAll { $0 != id }
         comparisonTabID = nil
-        if activeTabID != id, Thread.isMainThread { MainActor.assumeIsolated { markdownVisualDiagnostics.clear() } }
+        if activeTabID != id { clearMarkdownVisualDiagnostics() }
         activeTabID = id
         synchronizeProjectWithActiveTabIfNeeded()
     }
@@ -2672,6 +2752,7 @@ final class Workspace: ObservableObject {
         tabs[idx].lineEnding = ending
         tabs[idx].pendingLineEndingConversion = ending == tabs[idx].savedLineEnding ? nil : ending
         tabs[idx].hexEditSession.invalidateHistory()
+        clearVisualSaveCheck(for: tabs[idx].id)
         // Zurückschalten auf das gespeicherte Zeilenende (bei unverändertem
         // Text) macht den Tab wieder sauber — wie eine rückgängig gemachte
         // Textänderung.
@@ -2707,6 +2788,7 @@ final class Workspace: ObservableObject {
     /// `loadFile`/`reloadOpenTabs`; `isLoading`-Toggle erzwingt die Editor-
     /// Neuerzeugung, damit der neu dekodierte Inhalt sichtbar wird.
     func reopenActiveTab(withEncoding encoding: String.Encoding) {
+        if synchronizeVisualMarkdownBefore({ self.reopenActiveTab(withEncoding: encoding) }) { return }
         guard let idx = activeTabIndex, let url = tabs[idx].url else {
             NSSound.beep()   // unbenannter Tab → nichts zum Neu-Laden
             return
@@ -2714,6 +2796,7 @@ final class Workspace: ObservableObject {
         let tab = tabs[idx]
         let target = DocumentFileLoadTarget(tab)
         guard !tab.hexEditSession.isSaving,
+              !tab.undoHistory.isPerformingAction,
               !fileMutationIsInFlight(for: url) else {
             NSSound.beep()
             return
@@ -2753,9 +2836,14 @@ final class Workspace: ObservableObject {
                   current.hexEditSession.editingLineageID == hexLineage,
                   current.hexEditSession.changeRevision == hexRevision,
                   !current.hexEditSession.isSaving,
+                  !current.undoHistory.isPerformingAction,
                   !fileMutationIsInFlight(for: url) else { return }
         }
 
+        if visualMarkdownEditor?.tabID == target.id {
+            visualMarkdownEditor?.invalidateForSourceReplacement()
+        }
+        clearVisualSaveCheck(for: target.id)
         withDocumentFileLoads { loads in
             loads.reopen(target: target, encoding: encoding, loader: { reopenFileLoader })
         }
@@ -2784,6 +2872,7 @@ final class Workspace: ObservableObject {
         guard let previous = tabs[index].url else { return }
         languageChoices.moveChoices(from: previous, to: url)
         visualMarkdownEditor?.relocateDocument(from: previous, to: url)
+        clearVisualSaveCheck(for: tabs[index].id)
         tabs[index].url = url
         tabs[index].title = url.lastPathComponent
         tabs[index].path = url.deletingLastPathComponent().path
@@ -2886,7 +2975,9 @@ final class Workspace: ObservableObject {
         _ inspection: ExternalChangeInspector.Inspection,
         baseline: ExternalChangeBaseline
     ) {
-        if inspection.resolvedURL != inspection.url,
+        if inspection.resolvedURL != inspection.url
+            || visualMarkdownEditor?.tabID == inspection.tabID
+            || tabs.contains(where: { $0.id == inspection.tabID && $0.undoHistory.isPerformingAction }),
            synchronizeVisualMarkdownBefore({
                self.finishExternalChangeInspection(inspection, baseline: baseline)
            }) { return }
@@ -2993,6 +3084,7 @@ final class Workspace: ObservableObject {
               current.externalContentGeneration == tab.externalContentGeneration,
               current.externalFileUnavailable == tab.externalFileUnavailable,
               current.hasUnsavedChanges, !current.isLoading, !current.hexEditSession.isSaving,
+              !current.undoHistory.isPerformingAction,
               !self.fileMutationIsInFlight(for: inspection.resolvedURL) else { return }
         if reload {
             guard current.contentRevision == tab.contentRevision,
@@ -3023,7 +3115,12 @@ final class Workspace: ObservableObject {
             return nil
         }
         guard !tabs[idx].hexEditSession.isSaving,
+              !tabs[idx].undoHistory.isPerformingAction,
               !fileMutationIsInFlight(for: url) else { NSSound.beep(); return nil }
+        if visualMarkdownEditor?.tabID == id {
+            visualMarkdownEditor?.invalidateForSourceReplacement()
+        }
+        clearVisualSaveCheck(for: id)
         return withDocumentFileLoads { loads in
             loads.reload(target: DocumentFileLoadTarget(tabs[idx]), loader: { reloadFileLoader })
         }
@@ -3033,12 +3130,14 @@ final class Workspace: ObservableObject {
     /// from Disk"): lädt den aktiven Tab neu; dirty → gleiche Rückfrage
     /// wie die automatische Erkennung.
     func reloadActiveTabFromDisk() {
+        if synchronizeVisualMarkdownBefore({ self.reloadActiveTabFromDisk() }) { return }
         guard let idx = activeTabIndex, let url = tabs[idx].url else {
             NSSound.beep()
             return
         }
         let tab = tabs[idx]
         guard !tab.hexEditSession.isSaving,
+              !tab.undoHistory.isPerformingAction,
               !fileMutationIsInFlight(for: url) else {
             NSSound.beep()
             return
@@ -3054,7 +3153,9 @@ final class Workspace: ObservableObject {
                   current.diskSnapshot == tab.diskSnapshot,
                   current.pendingLineEndingConversion == tab.pendingLineEndingConversion,
                   current.hexEditSession.editingLineageID == hexLineage,
-                  current.hexEditSession.changeRevision == hexRevision else { return }
+                  current.hexEditSession.changeRevision == hexRevision,
+                  !current.hexEditSession.isSaving,
+                  !current.undoHistory.isPerformingAction else { return }
         }
         reloadTabFromDisk(id: tab.id)
     }
@@ -3620,8 +3721,11 @@ final class Workspace: ObservableObject {
         } else if previousURL?.canonicalFileURL != url.canonicalFileURL {
             tabs[idx].undoHistory.documentSaved(tabs[idx].content, at: url)
         }
-        if previousURL != url, visualMarkdownEditor?.tabID == tabs[idx].id {
-            visualMarkdownEditor?.invalidateForSourceReplacement()
+        if previousURL != url {
+            clearVisualSaveCheck(for: tabs[idx].id)
+            if visualMarkdownEditor?.tabID == tabs[idx].id {
+                visualMarkdownEditor?.invalidateForSourceReplacement()
+            }
         }
         // Die manuelle Formatwahl gehört zur Datei und muss deshalb am neuen
         // Pfad landen. Bei einem noch nie gespeicherten Tab war sie mangels
@@ -3650,6 +3754,7 @@ final class Workspace: ObservableObject {
         NSAlert.runWarning(title: title, text: text)
     }
     private var customMarkdownSaveWarningHandler: ((MarkdownVisualCoordinator.SaveCheck) -> Void)?
+    private var activeSaveWarningContext: (tabID: UUID, record: VisualSaveCheckRecord?)?
     var markdownSaveWarningHandler: (MarkdownVisualCoordinator.SaveCheck) -> Void {
         get {
             customMarkdownSaveWarningHandler ?? { [weak self] check in
@@ -3663,6 +3768,7 @@ final class Workspace: ObservableObject {
 
     private func presentVisualMarkdownSaveWarning(_ check: MarkdownVisualCoordinator.SaveCheck) {
         guard check != .ok else { return }
+        let captured = activeSaveWarningContext
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = MarkdownVisualSaveMessages.title
@@ -3677,7 +3783,11 @@ final class Workspace: ObservableObject {
                 markdownVisualDiagnostics.saveFullReport(from: self)
             }
         case .alertThirdButtonReturn:
-            let redacted = visualMarkdownEditor?.lastSaveDiagnosticRedacted
+            let editorRedacted = captured.flatMap { ctx in
+                visualMarkdownEditor?.tabID == ctx.tabID ? visualMarkdownEditor?.lastSaveDiagnosticRedacted : nil
+            }
+            let redacted = captured?.record?.redactedDiagnostic
+                ?? editorRedacted
                 ?? MainActor.assumeIsolated { markdownVisualDiagnostics.activeWarning?.frozenReportRedacted }
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(
@@ -3690,11 +3800,21 @@ final class Workspace: ObservableObject {
     }
 
     private func approvesVisualMarkdownSave(_ tab: EditorTab, candidate: String) -> Bool {
-        guard let editor = visualMarkdownEditor, editor.ready, editor.tabID == tab.id else { return true }
-        let outcome = editor.saveCheck(for: tab, candidate: candidate) ?? .unavailable
-        guard outcome != .ok else { return true }
-        markdownSaveWarningHandler(outcome)
-        return false
+        if let outcome = visualSaveCheck(for: tab, candidate: candidate) {
+            guard outcome != .ok else { return true }
+            activeSaveWarningContext = (tabID: tab.id, record: visualSaveChecks[tab.id])
+            defer { activeSaveWarningContext = nil }
+            markdownSaveWarningHandler(outcome)
+            return false
+        }
+        if hasPendingVisualSaveCheck(for: tab.id)
+            || (visualMarkdownEditor?.ready == true && visualMarkdownEditor?.tabID == tab.id) {
+            activeSaveWarningContext = (tabID: tab.id, record: visualSaveChecks[tab.id])
+            defer { activeSaveWarningContext = nil }
+            markdownSaveWarningHandler(.unavailable)
+            return false
+        }
+        return true
     }
 
     static func defaultSaveConflictConfirmation(_ title: String) -> Bool {
@@ -3886,6 +4006,7 @@ final class Workspace: ObservableObject {
             // Gespeicherter Stand = neue Basis: Rückgängig bis genau hierher
             // lässt den Punkt im Tab wieder verschwinden.
             tabs[finalIndex].recordSavedContentBaseline()
+            clearVisualSaveCheck(for: tab.id)
             if sameDocument {
                 tabs[finalIndex].undoHistory.documentSaved(tabs[finalIndex].content, at: url)
                 visualMarkdownEditor?.documentSaved(at: url)
@@ -4278,6 +4399,10 @@ final class Workspace: ObservableObject {
             return
         }
         tabs[idx].viewMode = mode
+        if !activeMarkdownIsVisual {
+            clearMarkdownVisualDiagnostics()
+            clearVisualSaveCheck(for: tabs[idx].id)
+        }
     }
 
     /// Bindet `HexFileView` an den Tab statt an ihre eigene Lebensdauer. Die
@@ -6726,15 +6851,19 @@ final class Workspace: ObservableObject {
         } else {
             guard let currentBasis = MainActor.assumeIsolated({ currentFolderSearchSourceBasis }) else { return false }
             sourceBasis = currentBasis
-            inputs = visibleResults.map { result in
-                ApplyTransaction.Input(
+            var mappedInputs: [ApplyTransaction.Input] = []
+            mappedInputs.reserveCapacity(visibleResults.count)
+            for result in visibleResults {
+                guard let snapshot = result.snapshot else { return false }
+                mappedInputs.append(ApplyTransaction.Input(
                     url: result.url,
-                    snapshot: result.snapshot!,
+                    snapshot: snapshot,
                     matches: result.matches.map {
                         PlannedMatch(range: $0.range, before: $0.matchText,
                                      after: $0.replacedText)
-                    })
+                    }))
             }
+            inputs = mappedInputs
         }
         let approvedInputs = inputs.filter { $0.approvedRanges?.isEmpty != true }
         let urls = approvedInputs.map(\.url)
@@ -7135,6 +7264,7 @@ final class Workspace: ObservableObject {
             tabs[idx].undoHistory.replace(tabs[idx].content, with: newContent)
             tabs[idx].content = newContent
             tabs[idx].isDirty = true
+            clearVisualSaveCheck(for: tabs[idx].id)
             // Direkte Modellmutation läuft am `activeTabContent`-Binding (und
             // damit an dessen Makro-Abbruch) vorbei. Eine Inhaltsänderung
             // entwertet die Lease der Makro-Nachbearbeitung aber genauso wie
@@ -7252,6 +7382,7 @@ final class Workspace: ObservableObject {
         tabs[tabIndex].undoHistory.replace(text, with: replaced)
         tabs[tabIndex].content = replaced
         tabs[tabIndex].isDirty = true
+        clearVisualSaveCheck(for: tabID)
         // Wie in `applyAllInOpenTabs`: Die direkte Modellmutation muss die
         // Makro-Nachbearbeitung dieses Tabs selbst abbrechen — sie umgeht
         // das `activeTabContent`-Binding.
@@ -7716,7 +7847,9 @@ extension Workspace {
             var loadedTabs = workspace.tabs
             loadedTabs[idx] = loadedTab
             workspace.tabs = Workspace.tabsRemovingEmptyScratch(loadedTabs, keeping: tabID)
+            workspace.clearVisualSaveCheck(for: tabID)
             if snapshotBound { workspace.activeTabID = tabID }
+            if workspace.activeTabID == tabID { workspace.clearMarkdownVisualDiagnostics() }
             workspace.noteRecentFile(url)
             workspace.synchronizeProjectWithActiveTabIfNeeded()
             AppDelegate.inspectRecovery(forOpenedDocument: url)
@@ -7728,9 +7861,21 @@ extension Workspace {
             workspace.tabs[index].isLoading = value
         }
 
-        func publishReload(tabID: UUID, loaded: FileLoader.LoadedFile, afterDiskMutation: Bool) {
+        @discardableResult
+        func publishReload(tabID: UUID, loaded: FileLoader.LoadedFile, afterDiskMutation: Bool) -> Bool {
             guard let workspace,
-                  let i = workspace.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+                  let i = workspace.tabs.firstIndex(where: { $0.id == tabID }) else { return false }
+            guard !workspace.tabs[i].undoHistory.isPerformingAction else {
+                workspace.tabs[i].isLoading = false
+                return false
+            }
+            if !afterDiskMutation, workspace.visualMarkdownEditor?.tabID == tabID {
+                workspace.visualMarkdownEditor?.invalidateForSourceReplacement()
+            }
+            workspace.clearVisualSaveCheck(for: tabID)
+            if workspace.activeTabID == tabID {
+                workspace.clearMarkdownVisualDiagnostics()
+            }
             workspace.tabs[i].content = loaded.content
             workspace.tabs[i].encoding = loaded.encoding
             workspace.tabs[i].bom = loaded.bom
@@ -7756,6 +7901,7 @@ extension Workspace {
             }
             // Neuer Plattenstand wird auch für Undo zur gespeicherten Basis.
             workspace.tabs[i].recordSavedContentBaseline()
+            return true
         }
 
         func failReload(tabID: UUID, expectedURL: URL?) {

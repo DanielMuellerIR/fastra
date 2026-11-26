@@ -32,6 +32,16 @@ type ActivateTab = Rc<dyn Fn(&Rc<Document>)>;
 mod close_choice;
 use close_choice::{Answer, Prompt};
 
+pub(crate) fn any_prompt_active() -> bool {
+    application_lifecycle::quit_prompt_active()
+        || close_choice::any_active()
+        || application_lifecycle::ordinary_windows().is_some_and(|windows| {
+            windows
+                .iter()
+                .any(|ui| active(ui) || ui.window_close_dialog.get())
+        })
+}
+
 #[derive(Clone)]
 pub(super) struct TabSelection {
     pub(super) keep: Option<Rc<Document>>,

@@ -7,7 +7,7 @@ enum MarkdownPresentation {
       body > :where(:not(#fastra-visual):not(#fastra-code-controls)), #fastra-visual > * {
         max-width: 650px; margin-inline: auto; box-sizing: border-box;
       }
-      body > table, body > :has(table), #fastra-visual > :has(table) { max-width: 100%; }
+      body > table, body > :has(table), #fastra-visual > table, #fastra-visual > :has(table) { max-width: 100%; }
       table { display: block; width: max-content; max-width: 100%; overflow-x: auto; margin-inline: auto; }
       pre { overflow-x: auto; box-sizing: border-box; }
       pre:has(> code) { padding-top: 2.7em; }

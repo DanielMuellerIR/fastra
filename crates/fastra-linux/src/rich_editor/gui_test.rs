@@ -272,7 +272,7 @@ pub(super) fn run(a: Rc<Ui>) {
                 assert!(!first.failed.get() && !second.failed.get());
                 *ea.borrow_mut() = Some(first);
                 *eb.borrow_mut() = Some(second.clone());
-                js(&second,"const p=document.querySelector('#fastra-visual p:not([data-md-edit-boundary])'),r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);return JSON.stringify(true);",&reply);
+                js(&second,"const p=document.querySelector('#fastra-visual p'),r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);return JSON.stringify(true);",&reply);
                 advance(2);
             }
             2 => {
@@ -356,7 +356,7 @@ pub(super) fn run(a: Rc<Ui>) {
                     "copied atom source: {copied:?}"
                 );
                 let editor = eb.borrow().clone().unwrap();
-                js(&editor,"const r=document.createRange();r.selectNode(document.querySelector('#fastra-visual p:not([data-md-edit-boundary])'));getSelection().removeAllRanges();getSelection().addRange(r);return JSON.stringify(true);",&reply);
+                js(&editor,"const r=document.createRange();r.selectNode(document.querySelector('#fastra-visual p'));getSelection().removeAllRanges();getSelection().addRange(r);return JSON.stringify(true);",&reply);
                 advance(7);
             }
             7 => {
@@ -632,7 +632,7 @@ pub(super) fn run(a: Rc<Ui>) {
                     &editor,
                     "<p><script>globalThis.injected=1</script>Unsafe</p>",
                 );
-                js(&editor,"const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual p:not([data-md-edit-boundary])'));getSelection().removeAllRanges();getSelection().addRange(r);return JSON.stringify(true);",&reply);
+                js(&editor,"const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual p'));getSelection().removeAllRanges();getSelection().addRange(r);return JSON.stringify(true);",&reply);
                 advance(20);
             }
             20 => {
@@ -669,7 +669,7 @@ pub(super) fn run(a: Rc<Ui>) {
                 let editor = eb.borrow().clone().unwrap();
                 set_html(&editor, "<p>STALE CARET</p>");
                 clipboard::delay_for_test(700);
-                js(&editor,"const root=document.querySelector('#fastra-visual'),text=root.querySelector('p:not([data-md-edit-boundary]) mark').firstChild,r=document.createRange();root.focus();r.setStart(text,1);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);window.caretBefore={a:getSelection().anchorNode,ao:getSelection().anchorOffset,f:getSelection().focusNode,fo:getSelection().focusOffset};return JSON.stringify(true);",&reply);
+                js(&editor,"const root=document.querySelector('#fastra-visual'),text=root.querySelector('p mark').firstChild,r=document.createRange();root.focus();r.setStart(text,1);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);window.caretBefore={a:getSelection().anchorNode,ao:getSelection().anchorOffset,f:getSelection().focusNode,fo:getSelection().focusOffset};return JSON.stringify(true);",&reply);
                 advance(220);
             }
             220 => {
@@ -709,7 +709,7 @@ pub(super) fn run(a: Rc<Ui>) {
                     .text()
                     .contains(b.lang.text("geändert", "changed")));
                 editor.view.clipboard().set_text("STALE CARET ABA");
-                js(&editor,"const root=document.querySelector('#fastra-visual'),text=root.querySelector('p:not([data-md-edit-boundary]) mark').firstChild,r=document.createRange();root.focus();r.setStart(text,1);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);window.caretBefore={a:getSelection().anchorNode,ao:getSelection().anchorOffset,f:getSelection().focusNode,fo:getSelection().focusOffset};return JSON.stringify(true);",&reply);
+                js(&editor,"const root=document.querySelector('#fastra-visual'),text=root.querySelector('p mark').firstChild,r=document.createRange();root.focus();r.setStart(text,1);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);window.caretBefore={a:getSelection().anchorNode,ao:getSelection().anchorOffset,f:getSelection().focusNode,fo:getSelection().focusOffset};return JSON.stringify(true);",&reply);
                 advance(223);
             }
             223 => {
@@ -766,7 +766,7 @@ pub(super) fn run(a: Rc<Ui>) {
                     .text()
                     .contains(b.lang.text("geändert", "changed")));
                 set_html(&editor, "<p>STALE</p>");
-                js(&editor,"const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual p:not([data-md-edit-boundary])'));getSelection().removeAllRanges();getSelection().addRange(r);return JSON.stringify(true);",&reply);
+                js(&editor,"const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual p'));getSelection().removeAllRanges();getSelection().addRange(r);return JSON.stringify(true);",&reply);
                 advance(23);
             }
             23 => {
@@ -869,7 +869,7 @@ pub(super) fn run(a: Rc<Ui>) {
                     .clipboard()
                     .set_content(Some(&gtk::gdk::ContentProvider::new_union(&providers)))
                     .unwrap();
-                js(&editor,"const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual p:not([data-md-edit-boundary])'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);return JSON.stringify(true);",&reply);
+                js(&editor,"const r=document.createRange();r.selectNodeContents(document.querySelector('#fastra-visual p'));r.collapse(false);getSelection().removeAllRanges();getSelection().addRange(r);return JSON.stringify(true);",&reply);
                 advance(30);
             }
             30 => {
