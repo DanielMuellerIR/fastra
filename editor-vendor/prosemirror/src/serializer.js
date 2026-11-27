@@ -52,6 +52,7 @@ function escapePlainSegment(segment, { atBlockStart = false, tableCell = false }
       .replace(/^(#{1,6})(\s|$)/, '\\$1$2')
       .replace(/^>/, '\\>')
       .replace(/^(\s*[-+*])(\s|$)/, (_, m, ws) => m.replace(/([-+*])$/, '\\$1') + ws)
+      .replace(/^([ \t]*)(-)(?=(?:[ \t]*-)+[ \t]*$)/, '$1\\$2')
       .replace(/^(\d+)([.)]) /, '$1\\$2 ');
   }
 
@@ -204,23 +205,33 @@ function serializeCodeSpan(rawText, { tableCell = false } = {}) {
     .join(tableCell ? '<br>' : '  \n');
 }
 
-function formatLinkDestination(rawHref) {
-  const href = String(rawHref || '');
+function escapeTablePipes(text) {
+  return text.replace(/\|/g, '\\|');
+}
+
+function escapeUnescapedTablePipes(text) {
+  return text.replace(/(?<!\\)(?:\\\\)*\|/g, '\\$&');
+}
+
+function formatLinkDestination(rawHref, tableCell = false, wrap = false) {
+  let href = String(rawHref || '');
   if (!href) return '';
-  if (/[\s()<>[\]\u0000-\u001f]/.test(href)) {
+  if (tableCell) href = escapeTablePipes(href).replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+  if (wrap || /[\s()<>[\]\u0000-\u001f]/.test(href)) {
     return `<${href.replace(/</g, '%3C').replace(/>/g, '%3E')}>`;
   }
   return href;
 }
 
-function formatLinkTitle(rawTitle) {
+function formatLinkTitle(rawTitle, tableCell = false) {
   if (rawTitle == null || rawTitle === '') return '';
   // Backslash, Anführungszeichen und HTML-Entity-ähnliche Sequenzen maskieren,
   // damit z. B. `title="&copy;"` beim Wiederöffnen wörtlich bleibt (Sol #16).
-  const escaped = String(rawTitle)
+  let escaped = String(rawTitle)
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
     .replace(/&(?=[A-Za-z0-9#]+;)/g, '\\&');
+  if (tableCell) escaped = escapeTablePipes(escaped).replace(/\r/g, '&#13;').replace(/\n/g, '&#10;');
   return ` "${escaped}"`;
 }
 
@@ -245,12 +256,12 @@ export function serializeInline(fragment, { opaqueSources = {}, protect = null, 
     let i = 0;
     while (i < nodes.length) {
       const node = nodes[i];
-      const sorted = sortMarks(node.marks || []).filter(m => !activeMarkKeys.has(m.type.name === 'link' ? markKey(m) : m.type.name));
+      const sorted = sortMarks(node.marks || []).filter(m => !activeMarkKeys.has(markKey(m)));
 
       if (sorted.length > 0) {
         const outer = sorted[0];
-        const key = outer.type.name === 'link' ? markKey(outer) : outer.type.name;
-        const matchFn = m => (m.type.name === 'link' ? markKey(m) === key : m.type.name === outer.type.name);
+        const key = markKey(outer);
+        const matchFn = m => markKey(m) === key;
         let j = i + 1;
         while (j < nodes.length && nodes[j].marks.some(matchFn)) j++;
 
@@ -273,8 +284,8 @@ export function serializeInline(fragment, { opaqueSources = {}, protect = null, 
           const nextNode = j < nodes.length ? nodes[j] : null;
           const prevChar = lastCharOfNode(prevNode);
           const nextChar = firstCharOfNode(nextNode);
-          const prevMarks = (prevNode?.marks || []).filter(m => !activeMarkKeys.has(m.type.name));
-          const nextMarks = (nextNode?.marks || []).filter(m => !activeMarkKeys.has(m.type.name));
+          const prevMarks = (prevNode?.marks || []).filter(m => !activeMarkKeys.has(markKey(m)));
+          const nextMarks = (nextNode?.marks || []).filter(m => !activeMarkKeys.has(markKey(m)));
 
           if (outer.type.name === 'strong') {
             out += wrapDelimiterMark(inner, 'strong', '**', prevChar, nextChar, prevMarks, nextMarks, ['strong', 'em']);
@@ -285,8 +296,8 @@ export function serializeInline(fragment, { opaqueSources = {}, protect = null, 
           } else if (outer.type.name === 'strike') {
             out += wrapDelimiterMark(inner, 'del', '~~', prevChar, nextChar, prevMarks, nextMarks, ['strike']);
           } else if (outer.type.name === 'link') {
-            const dest = formatLinkDestination(outer.attrs.href);
-            const title = formatLinkTitle(outer.attrs.title);
+            const dest = formatLinkDestination(outer.attrs.href, tableCell);
+            const title = formatLinkTitle(outer.attrs.title, tableCell);
             out += `[${inner}](${dest}${title})`;
           } else if (outer.type.name.startsWith('html_')) {
             const tag = outer.type.name.slice(5);
@@ -294,7 +305,7 @@ export function serializeInline(fragment, { opaqueSources = {}, protect = null, 
               .filter(a => outer.attrs[a] != null && outer.attrs[a] !== '')
               .map(a => ` ${a}="${escapeAttrValue(outer.attrs[a])}"`)
               .join('');
-            out += `<${tag}${attrs}>${inner}</${tag}>`;
+            out += `<${tag}${tableCell ? escapeTablePipes(attrs) : attrs}>${inner}</${tag}>`;
           } else {
             out += inner;
           }
@@ -303,7 +314,7 @@ export function serializeInline(fragment, { opaqueSources = {}, protect = null, 
         continue;
       }
 
-      out += renderLeafInline(node, atBlockStart && i === 0);
+      out += renderLeafInline(node, (atBlockStart && i === 0) || out.endsWith('\n'));
       i++;
     }
     return out;
@@ -319,17 +330,20 @@ export function serializeInline(fragment, { opaqueSources = {}, protect = null, 
     if (node.type.name === 'image') {
       const mdSrc = node.attrs.mdSrc ?? node.attrs.src ?? '';
       if (!mdSrc) return '';
-      const alt = String(node.attrs.alt || '').replace(/[\\[\]]/g, '\\$&');
-      const wrappedSrc = `<${String(mdSrc).replace(/</g, '%3C').replace(/>/g, '%3E')}>`;
-      const title = node.attrs.title ? ` "${String(node.attrs.title).replace(/[\\"]/g, '\\$&')}"` : '';
+      let alt = String(node.attrs.alt || '').replace(/[\\[\]]/g, '\\$&').replace(/&/g, '&amp;');
+      if (tableCell) alt = escapeTablePipes(alt).replace(/\r\n?|\n/g, '&#32;');
+      const wrappedSrc = formatLinkDestination(mdSrc, tableCell, true);
+      const title = formatLinkTitle(node.attrs.title, tableCell);
       return `![${alt}](${wrappedSrc}${title})`;
     }
     if (node.type.name === 'math_inline') {
       if (node.attrs.mathSourceKey && typeof opaqueSources[node.attrs.mathSourceKey] === 'string') {
-        const src = opaqueSources[node.attrs.mathSourceKey];
+        const source = opaqueSources[node.attrs.mathSourceKey];
+        const src = tableCell ? escapeUnescapedTablePipes(source) : source;
         return protect ? protect(src) : src;
       }
-      return `$${node.attrs.tex || ''}$`;
+      const tex = node.attrs.tex || '';
+      return `$${tableCell ? escapeUnescapedTablePipes(tex) : tex}$`;
     }
     if (node.type.name === 'opaque_inline') {
       if (node.attrs.mathSourceKey && typeof opaqueSources[node.attrs.mathSourceKey] === 'string') {
@@ -509,7 +523,8 @@ export function serializeBlockNode(node, { opaqueSources = {}, protect = null, i
     }
     case 'heading': {
       const hashes = '#'.repeat(Math.min(6, Math.max(1, node.attrs.level || 1)));
-      const text = serializeInline(node.content, { opaqueSources, protect, inHeading: true });
+      const text = serializeInline(node.content, { opaqueSources, protect, inHeading: true })
+        .replace(/(^|[ \t])(#+)(?=[ \t]*$)/, '$1\\$2');
       return text ? `${hashes} ${text}` : `${hashes} `;
     }
     case 'horizontal_rule':
@@ -536,7 +551,14 @@ export function serializeBlockNode(node, { opaqueSources = {}, protect = null, i
     case 'ordered_list': {
       const isOrdered = node.type.name === 'ordered_list';
       const start = isOrdered ? Math.max(0, Number(node.attrs.order ?? 1)) : 1;
-      const isLoose = !node.attrs.tight;
+      let isLoose = !node.attrs.tight;
+      node.content.forEach(item => {
+        item.content.forEach((child, _, index) => {
+          if (index > 0 && child.type.name === 'paragraph' && item.child(index - 1).type.name === 'paragraph') {
+            isLoose = true;
+          }
+        });
+      });
       const renderedItems = [];
 
       node.content.forEach((item, _offset, index) => {
@@ -660,12 +682,26 @@ export function serializeDocument(doc, {
   let output = '';
   let prevBlockWasVerbatim = true;
 
+  function lineEndingCount(text) {
+    let count = 0;
+    for (let index = text.length - 1; index >= 0 && count < 2; index--) {
+      if (text[index] !== '\r' && text[index] !== '\n') break;
+      if (text[index] === '\n' && text[index - 1] === '\r') index--;
+      count++;
+    }
+    return count;
+  }
+
+  function separateBlocks(ending) {
+    if (output) output += ending.repeat(Math.max(0, 2 - lineEndingCount(output)));
+  }
+
   function emitHiddenForBlock(fullId) {
     if (emittedHidden.has(fullId)) return;
     emittedHidden.add(fullId);
     for (const h of ctx.hiddenPrefixes?.get(fullId) || []) {
       emittedHidden.add('hidden:' + h.id);
-      if (!prevBlockWasVerbatim && !h.source.trim() && /(\r\n|\r|\n){2}$/.test(output)) {
+      if (!prevBlockWasVerbatim && !h.source.trim() && lineEndingCount(output) >= 2) {
         continue;
       }
       output += h.source;
@@ -677,6 +713,11 @@ export function serializeDocument(doc, {
     : (ctx.blocks || []).some(b => b.source?.includes('\r'))
       ? '\r'
       : '\n';
+
+  // Führende Definitionen bleiben am Dokumentanfang, auch wenn der erste
+  // sichtbare Block gelöscht oder verschoben wurde.
+  const firstVisible = ctx.blocks?.find(block => !block.hidden);
+  if (firstVisible) emitHiddenForBlock(firstVisible.id);
 
   let idx = 0;
   while (idx < topNodes.length) {
@@ -726,13 +767,7 @@ export function serializeDocument(doc, {
 
     // Vorheriger unveränderter Block mit nur einem Zeilenende vor einem geänderten
     // oder neu eingefügten Block braucht eine Trennzeile, damit kein Titel o. Ä. verklebt.
-    if (idx > 0 && output.length > 0 && !/(\r\n|\r|\n){2}$/.test(output)) {
-      if (/(\r\n|\r|\n)$/.test(output)) {
-        output += ending;
-      } else {
-        output += ending + ending;
-      }
-    }
+    if (idx > 0) separateBlocks(ending);
 
     if (original && sub === 0 && total > 1 && idx + total <= topNodes.length) {
       const group = topNodes.slice(idx, idx + total);
@@ -747,9 +782,10 @@ export function serializeDocument(doc, {
         const rendered = group.map(n => serializeBlockNode(n, { opaqueSources, protect: protector.protect })).join('\n\n');
         let text = ending !== '\n' ? rendered.replace(/\r\n?|\n/g, ending) : rendered;
         text = protector.restore(text);
-        const suffix = canonicalGroupStructure(group) === original.structure
-          ? (original.source.match(/[\r\n]*$/)?.[0] ?? ending + ending)
-          : ending + ending;
+        const rawTail = original.source.match(/[\r\n]*$/)?.[0] ?? '';
+        const needsSeparator = idx + total < topNodes.length && lineEndingCount(rawTail) < 2;
+        const suffix = !needsSeparator && canonicalGroupStructure(group) === original.structure
+          ? rawTail : ending + ending;
         output += text + suffix;
         prevBlockWasVerbatim = false;
         idx += total;
@@ -763,7 +799,7 @@ export function serializeDocument(doc, {
 
     const hasNext = idx + 1 < topNodes.length;
     const rawTail = original?.source?.match(/[\r\n]*$/)?.[0] ?? '';
-    const rawLineCount = (rawTail.match(/\r\n|\r|\n/g) || []).length;
+    const rawLineCount = lineEndingCount(rawTail);
     const safeTail = (hasNext && rawLineCount < 2) ? (ending + ending) : rawTail;
 
     if (original && total === 1 && !isSplitSingleOrigin) {
@@ -794,6 +830,8 @@ export function serializeDocument(doc, {
       !emittedHidden.has('hidden:' + b.id) &&
       (b.source.trim() || (ctx.trailingHidden?.has(b.id) && (ctx.trailingOwner === null || usedOrigins.has(ctx.trailingOwner))))
     ) {
+      if (b.source.trim() && (!prevBlockWasVerbatim || !ctx.trailingHidden?.has(b.id) ||
+          !usedOrigins.has(ctx.trailingOwner))) separateBlocks(docEnding);
       output += b.source;
     }
   }

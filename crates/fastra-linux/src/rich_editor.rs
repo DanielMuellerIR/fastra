@@ -581,7 +581,7 @@ impl RichEditor {
         link_box.append(&url);
         let insert = gtk::Button::with_label(ui.lang.text("Link einfügen", "Insert link"));
         let weak = Rc::downgrade(&editor);
-        insert.connect_clicked(move |_|{if let Some(editor)=weak.upgrade(){let value=url.text();if safe_link(&value){editor.command_value("link",&value);}else{editor.status.set_text(editor.text("Nur HTTP(S)- oder Mailto-Adresse oder interner #-Verweis. Externes Öffnen bleibt gesperrt.","Only HTTP(S) or mailto addresses or internal # references. External navigation stays blocked."));}}});
+        insert.connect_clicked(move |_|{if let Some(editor)=weak.upgrade(){let value=url.text();if safe_link(&value){editor.command_value("link",json!(value.as_str()));}else{editor.status.set_text(editor.text("Nur HTTP(S)- oder Mailto-Adresse oder interner #-Verweis. Externes Öffnen bleibt gesperrt.","Only HTTP(S) or mailto addresses or internal # references. External navigation stays blocked."));}}});
         link_box.append(&insert);
         link_popover.set_child(Some(&link_box));
         link_menu.set_popover(Some(&link_popover));
@@ -756,7 +756,8 @@ impl RichEditor {
                 if revision <= self.input_revision.get() {
                     return;
                 }
-                if self.failed.get()
+                if !self.ready.get()
+                    || self.failed.get()
                     || value["base"].as_str() != Some(self.expected.borrow().as_str())
                     || revision != self.input_revision.get() + 1
                 {
@@ -792,7 +793,7 @@ impl RichEditor {
         }
         let weak = Rc::downgrade(self);
         let before = self.expected.borrow().clone();
-        self.evaluate(&format!("return JSON.stringify(fastraVisual.rollbackImageChange({},{}));",value["inputType"],json!(before)),move|result| {
+        self.evaluate(&format!("return JSON.stringify(fastraVisual.rollbackImageChange({},{}));",revision,json!(before)),move|result| {
             if let Some(editor) = weak.upgrade() {
                 if result == Some(Value::Bool(true)) && *editor.expected.borrow() == before {
                     editor.input_revision.set(revision);
@@ -988,7 +989,7 @@ impl RichEditor {
         };
         self.evaluate(&body, |_| {});
     }
-    fn command_value(&self, command: &str, value: &str) {
+    fn command_value(&self, command: &str, value: Value) {
         if !self.ready.get() || self.busy.get() || self.failed.get() || self.current().is_none() {
             return;
         }
@@ -996,7 +997,7 @@ impl RichEditor {
             &format!(
                 "window.fastraVisual.command({},{}); return JSON.stringify(true);",
                 json!(command),
-                json!(value)
+                value
             ),
             |_| {},
         );
@@ -1008,9 +1009,7 @@ impl RichEditor {
         super::markdown_inline::table_prompt(&ui.window,ui.lang,move|columns,header|{
             if let Some(editor)=weak.upgrade(){
                 if !editor.active.get()||!editor.focused()||editor.revision.get()!=revision||editor.input_revision.get()!=input||editor.operation.get()!=operation||editor.ui.upgrade().is_none_or(|ui|ui.generation.get()!=generation){return;}
-                let head=format!("<tr>{}</tr>","<th><br></th>".repeat(columns));
-                let row=format!("<tr>{}</tr>","<td><br></td>".repeat(columns));
-                editor.command_value("insertTable",&format!("<table data-md-table=\"gfm\"><thead>{head}</thead><tbody>{row}{}</tbody></table><p><br></p>",if header {""}else{&row}));
+                editor.command_value("insertTable", json!({"rows": if header { 2 } else { 3 }, "columns": columns}));
             }
         });
     }
@@ -1072,9 +1071,24 @@ impl RichEditor {
             let finish_value = value.clone();
             let finish: Box<dyn FnOnce(bool)> = Box::new(move |assets_ok| {
                 let editor = finish_editor;
+                if !assets_ok && finish_value["imageFenceRevision"].as_u64().is_some() &&
+                    editor.operation.get() == operation && !editor.failed.get()
+                {
+                    // Die Änderungsmeldung hält die Bildrevision bis zum Rollback.
+                    editor.release();
+                    if let Some(done) = completed.borrow_mut().take() { done(false); }
+                    return;
+                }
                 let ok = assets_ok && editor.operation.get() == operation && finish_value["revision"].as_u64().zip(finish_value["markdown"].as_str()).is_some_and(|(revision,text)| editor.accept(text,revision));
                 if !ok { editor.fail("Rich-Änderungen konnten nicht synchronisiert werden. Aktion angehalten; Ansicht bleibt erhalten.","Rich changes could not be synchronized. Action held; view retained."); }
-                else { asset_ui::mark_accepted(&editor,&finish_value); if let Some(doc) = editor.current() { viewport::remember(&doc, &finish_value["viewport"]); } editor.failed.set(false); }
+                else {
+                    asset_ui::mark_accepted(&editor,&finish_value);
+                    if let Some(revision) = finish_value["imageFenceRevision"].as_u64() {
+                        asset_ui::finish_image(&editor, revision);
+                    }
+                    if let Some(doc) = editor.current() { viewport::remember(&doc, &finish_value["viewport"]); }
+                    editor.failed.set(false);
+                }
                 if !hold || !ok { editor.release(); }
                 if let Some(done) = completed.borrow_mut().take() { done(ok); }
             });

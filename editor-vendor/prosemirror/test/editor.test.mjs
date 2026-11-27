@@ -6,14 +6,15 @@ import { EditorView } from 'prosemirror-view';
 import { history, undo as pmUndo, redo as pmRedo } from 'prosemirror-history';
 
 import { schema } from '../src/schema.js';
-import { SourceContextStep } from '../src/context-step.js';
 import { parseDocumentContainer, parseHTMLToNodes, inspectAndCleanClipboardHTML } from '../src/parser.js';
 import { serializeDocument, serializeBlockNode } from '../src/serializer.js';
 import { executeVisualCommand, buildKeymap, buildInputRules } from '../src/commands.js';
 import { saveAppearance, diffAppearance, createDiagnosticsController } from '../src/diagnostics.js';
 import { installFastraVisualBridge } from '../src/bridge.js';
 
-function createDOMEnv(html = '') {
+const fixtures = new WeakMap();
+
+function createDOMEnv(t, html = '') {
   const dom = new JSDOM(`<!DOCTYPE html><html><body><div id="fastra-visual">${html}</div></body></html>`, { pretendToBeVisual: true });
   const { window } = dom;
   const { document } = window;
@@ -24,8 +25,29 @@ function createDOMEnv(html = '') {
   if (!window.Element.prototype.getClientRects) {
     window.Element.prototype.getClientRects = () => [];
   }
+  let fixture = fixtures.get(t);
+  if (!fixture) {
+    const globals = ['window', 'document', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame'];
+    const descriptors = globals.map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]);
+    fixture = [];
+    fixtures.set(t, fixture);
+    t.after(() => {
+      for (const environment of fixture) {
+        environment.window.dispatchEvent(new environment.window.Event('pagehide'));
+        environment.window.close();
+      }
+      for (const [key, descriptor] of descriptors) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else delete globalThis[key];
+      }
+    });
+  }
+  fixture.push(dom);
   globalThis.window = window;
   globalThis.document = document;
+  globalThis.getComputedStyle = window.getComputedStyle.bind(window);
+  globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+  globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
   return { dom, window, document, root: document.getElementById('fastra-visual') };
 }
 
@@ -45,8 +67,8 @@ function makeView(root, doc) {
   return view;
 }
 
-test('test_1.md: blank_line (.fastra-visible-blank-line) converts cleanly to H2 when collapsed or selected', () => {
-  const { document, root } = createDOMEnv(
+test('test_1.md: blank_line (.fastra-visible-blank-line) converts cleanly to H2 when collapsed or selected', t => {
+  const { document, root } = createDOMEnv(t,
     '<div data-md-block="0"><h1>Kopf</h1></div>' +
     '<div data-md-block="1"><div class="fastra-visible-blank-line"><br></div></div>' +
     '<div data-md-block="2"><p>Danach</p></div>'
@@ -94,8 +116,8 @@ test('test_1.md: blank_line (.fastra-visible-blank-line) converts cleanly to H2 
   view.destroy();
 });
 
-test('partial multi-subblock survival: editing subblock 1 forces clean full re-serialization without stale original source', () => {
-  const { document, root } = createDOMEnv('<div data-md-block="0"><p>Eins</p><p>Zwei</p></div>');
+test('partial multi-subblock survival: editing subblock 1 forces clean full re-serialization without stale original source', t => {
+  const { document, root } = createDOMEnv(t, '<div data-md-block="0"><p>Eins</p><p>Zwei</p></div>');
   const blocks = [{ id: 0, hidden: false, source: 'Eins\n\nZwei\n' }];
   const { doc, parsedGroups } = parseDocumentContainer(root, blocks, { schema, ownerDocument: document });
   assert.equal(doc.childCount, 2);
@@ -120,8 +142,8 @@ test('partial multi-subblock survival: editing subblock 1 forces clean full re-s
   view.destroy();
 });
 
-test('Finding #7: heading & list commands work cleanly on loose and nested lists', () => {
-  const { document, root } = createDOMEnv(
+test('Finding #7: heading & list commands work cleanly on loose and nested lists', t => {
+  const { document, root } = createDOMEnv(t,
     '<div data-md-block="0"><ul>' +
     '<li><p>Oberpunkt</p><ul><li><p>Unterpunkt</p></li></ul></li>' +
     '<li><p>Zweiter</p></li>' +
@@ -154,8 +176,8 @@ test('Finding #7: heading & list commands work cleanly on loose and nested lists
   view.destroy();
 });
 
-test('Finding #2: diagnosticReport redacts snippets/summaries when includeContent=false', () => {
-  const { document, root } = createDOMEnv('<p>Geheimer Text im Absatz</p>');
+test('Finding #2: diagnosticReport redacts snippets/summaries when includeContent=false', t => {
+  const { document, root } = createDOMEnv(t, '<p>Geheimer Text im Absatz</p>');
   const sent = [];
   const diag = createDiagnosticsController({
     postMessage: msg => sent.push(msg),
@@ -182,8 +204,8 @@ test('Finding #2: diagnosticReport redacts snippets/summaries when includeConten
   assert.ok(JSON.stringify(full).includes('Geheimer Text'));
 });
 
-test('diagnostics track block-type mismatches (paragraph vs heading2 / list) as format diff', () => {
-  const { document } = createDOMEnv('');
+test('diagnostics track block-type mismatches (paragraph vs heading2 / list) as format diff', t => {
+  const { document } = createDOMEnv(t, '');
   const live = document.createElement('div');
   live.innerHTML = '<h2>Titel</h2>';
   const saved = document.createElement('div');
@@ -193,7 +215,8 @@ test('diagnostics track block-type mismatches (paragraph vs heading2 / list) as 
   assert.equal(diff.outcome, 'format');
 });
 
-test('CommonMark flanking, &nbsp;, code span backticks, and HTML inline marks roundtrip cleanly', () => {
+test('CommonMark flanking, &nbsp;, code span backticks, and HTML inline marks roundtrip cleanly', t => {
+  const { document } = createDOMEnv(t);
   const html = '<p><strong>!</strong>A&nbsp;B <code>x`y</code> <mark>==z==</mark> <u title="hint">Unter</u></p>';
   const nodes = parseHTMLToNodes(html, { schema, ownerDocument: document });
   const doc = schema.nodes.doc.create(null, nodes);
@@ -205,8 +228,8 @@ test('CommonMark flanking, &nbsp;, code span backticks, and HTML inline marks ro
   assert.ok(md.includes('<u title="hint">Unter</u>'), `Expected inline html attribute preservation: ${md}`);
 });
 
-test('SourceContextStep makes definitions-only replaceSource cleanly undoable and redoable', () => {
-  const { document, root } = createDOMEnv('<div data-md-block="0"><p data-md-empty="true"><br></p></div>');
+test('definitions-only replaceSource changes the undoable source context', t => {
+  const { document, root } = createDOMEnv(t, '<div data-md-block="0"><p data-md-empty="true"><br></p></div>');
   const { doc } = parseDocumentContainer(root, [{ id: 0, hidden: false, source: '' }], { schema, ownerDocument: document });
   while (root.firstChild) root.firstChild.remove();
   const view = makeView(root, doc);
@@ -218,7 +241,7 @@ test('SourceContextStep makes definitions-only replaceSource cleanly undoable an
   assert.equal(serializeDocument(view.state.doc, { contexts }), '[a]: /eins\n');
 
   const tr = view.state.tr;
-  tr.step(new SourceContextStep('r:', ''));
+  tr.setDocAttribute('sourceContext', 'r:');
   view.dispatch(tr);
   assert.equal(view.state.doc.attrs.sourceContext, 'r:');
   assert.equal(serializeDocument(view.state.doc, { contexts }), '[a]: /zwei\n');
@@ -231,8 +254,8 @@ test('SourceContextStep makes definitions-only replaceSource cleanly undoable an
   view.destroy();
 });
 
-test('clipboard inspection validates and preserves safe formatting and rejects unsafe protocols', () => {
-  const { document } = createDOMEnv('');
+test('clipboard inspection validates and preserves safe formatting and rejects unsafe protocols', t => {
+  const { document } = createDOMEnv(t, '');
   const bad = inspectAndCleanClipboardHTML('<a href="javascript:alert(1)">bad</a>', false, document);
   assert.equal(bad.ok, false);
   assert.equal(bad.reason, 'url');
@@ -243,8 +266,8 @@ test('clipboard inspection validates and preserves safe formatting and rejects u
   assert.ok(good.html.includes('<mark>'));
 });
 
-test('blank_line promotes to paragraph on typing and repeated trailing hard breaks serialize cleanly without <br><br>', () => {
-  const { document, root } = createDOMEnv(
+test('blank_line promotes to paragraph on typing and repeated trailing hard breaks serialize cleanly without <br><br>', t => {
+  const { document, root } = createDOMEnv(t,
     '<div data-md-block="0"><div class="fastra-visible-blank-line"><br></div></div>'
   );
   const { doc } = parseDocumentContainer(root, [{ id: 0, hidden: false, source: '  \n\n' }], { schema, ownerDocument: document });
@@ -264,7 +287,8 @@ test('blank_line promotes to paragraph on typing and repeated trailing hard brea
   assert.equal(md, 'Zeile 1\n\n  \n\n  ');
 });
 
-test('ordered list start order, tight/loose separation, dynamic code fences, and opaque atoms roundtrip cleanly', () => {
+test('ordered list start order, tight/loose separation, dynamic code fences, and opaque atoms roundtrip cleanly', t => {
+  const { document } = createDOMEnv(t);
   const html =
     '<ol start="3"><li>Drei</li><li>Vier<ul><li>Unter</li></ul></li></ol>' +
     '<pre><code class="language-js">const x = ```fence```;</code></pre>' +
@@ -286,8 +310,8 @@ test('ordered list start order, tight/loose separation, dynamic code fences, and
   assert.equal(opaqueMd, '```mermaid\ngraph LR; A-->B\n```');
 });
 
-test('mounted bridge sends base in change, mounts directly on #fastra-visual, keeps Undo on same-session restart, and redacts printable keys', async () => {
-  const { window, document, root } = createDOMEnv('<div data-md-block="0"><p>abc</p></div>');
+test('mounted bridge sends base in change, mounts directly on #fastra-visual, keeps Undo on same-session restart, and redacts printable keys', async t => {
+  const { window, document, root } = createDOMEnv(t, '<div data-md-block="0"><p>abc</p></div>');
   document.documentElement.setAttribute('data-fastra-enhanced', 'true');
 
   const messages = [];
@@ -333,8 +357,8 @@ test('mounted bridge sends base in change, mounts directly on #fastra-visual, ke
   assert.ok(!JSON.stringify(redacted).includes('文'));
 });
 
-test('inline formatting protects math atoms, space-padding flanking preserves spaces, NBSP avoids token collision, and link titles stay escaped', () => {
-  const { document, root } = createDOMEnv('<p>before <span data-tex="x">x</span> after</p>');
+test('inline formatting protects math atoms, space-padding flanking preserves spaces, NBSP avoids token collision, and link titles stay escaped', t => {
+  const { document, root } = createDOMEnv(t, '<p>before <span data-tex="x">x</span> after</p>');
   const nodes = parseHTMLToNodes(root.innerHTML, { schema, ownerDocument: document });
   const view = makeView(root, schema.nodes.doc.create(null, nodes));
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 2, view.state.doc.content.size - 2)));
@@ -367,8 +391,8 @@ test('inline formatting protects math atoms, space-padding flanking preserves sp
   assert.ok(codeBlankMd.includes('`A`  \n`  `  \n`B`'), `Expected blank code span preserved: ${codeBlankMd}`);
 });
 
-test('DOM range selection syncs highlight and copy events, and taskList marks newly wrapped items', async () => {
-  const { window, document, root } = createDOMEnv('<div data-md-block="0"><p>Textmarker Punkt</p></div>');
+test('DOM range selection syncs highlight and copy events, and taskList marks newly wrapped items', async t => {
+  const { window, document, root } = createDOMEnv(t, '<div data-md-block="0"><p>Textmarker Punkt</p></div>');
   document.documentElement.setAttribute('data-fastra-enhanced', 'true');
   const copied = [];
   window.webkit = {
@@ -409,8 +433,8 @@ test('DOM range selection syncs highlight and copy events, and taskList marks ne
   assert.ok(root.querySelector('li[data-task="unchecked"] input[type="checkbox"]'));
 });
 
-test('Astra #7, #8 & Sol #12, #13, #14: Enter split without merge, trailing hard break blank lines, list numbering, input rules, checkbox state', () => {
-  const { document, root } = createDOMEnv('<div data-md-block="0"><p>abc</p></div>');
+test('Astra #7, #8 & Sol #12, #13, #14: Enter split without merge, trailing hard break blank lines, list numbering, input rules, checkbox state', t => {
+  const { document, root } = createDOMEnv(t, '<div data-md-block="0"><p>abc</p></div>');
   const { doc, parsedGroups } = parseDocumentContainer(root, [{ id: 0, hidden: false, source: 'abc' }], { schema, ownerDocument: document });
   const originals = new Map([['0', { source: 'abc', ...parsedGroups.get('0') }]]);
   while (root.firstChild) root.firstChild.remove();
@@ -447,8 +471,8 @@ test('Astra #7, #8 & Sol #12, #13, #14: Enter split without merge, trailing hard
   view.destroy();
 });
 
-test('Regression: blank_line delete collapses to empty markdown and table cells preserve outer spaces', () => {
-  const { document } = createDOMEnv('');
+test('Regression: blank_line delete collapses to empty markdown and table cells preserve outer spaces', t => {
+  const { document } = createDOMEnv(t, '');
   const boldAndBlank = [
     schema.nodes.paragraph.create(null, [schema.text('Bold', [schema.marks.strong.create()])]),
     schema.nodes.blank_line.create()
@@ -477,7 +501,7 @@ test('Regression: blank_line delete collapses to empty markdown and table cells 
     { id: 0, hidden: false, source: '**Bold**\n\n' },
     { id: 1, hidden: true, source: '\n\n' }
   ];
-  const { document: d2, root: r2 } = createDOMEnv('<div data-md-block="0"><p><strong>Bold</strong></p></div>');
+  const { document: d2, root: r2 } = createDOMEnv(t, '<div data-md-block="0"><p><strong>Bold</strong></p></div>');
   const { doc: d2Doc, parsedGroups: d2Groups } = parseDocumentContainer(r2, boldCtxBlocks, { schema, ownerDocument: d2 });
   const d2Contexts = new Map([['', { blocks: boldCtxBlocks, hiddenPrefixes: new Map(), trailingHidden: new Set([1]), trailingOwner: '0' }]]);
   const d2View = makeView(d2.createElement('div'), d2Doc);
@@ -493,7 +517,7 @@ test('Regression: blank_line delete collapses to empty markdown and table cells 
     { id: 2, hidden: true, source: '\n' },
     { id: 3, hidden: false, source: 'Absatz danach\n' }
   ];
-  const { document: d3, root: r3 } = createDOMEnv('<div data-md-block="0"><h1>Titel</h1></div><div data-md-block="1"><div class="fastra-visible-blank-line"><br></div></div><div data-md-block="3"><p>Absatz danach</p></div>');
+  const { document: d3, root: r3 } = createDOMEnv(t, '<div data-md-block="0"><h1>Titel</h1></div><div data-md-block="1"><div class="fastra-visible-blank-line"><br></div></div><div data-md-block="3"><p>Absatz danach</p></div>');
   const { doc: d3Doc, parsedGroups: d3Groups } = parseDocumentContainer(r3, t1Blocks, { schema, ownerDocument: d3 });
   const d3Origins = new Map();
   for (const b of t1Blocks) {
@@ -515,8 +539,8 @@ test('Regression: blank_line delete collapses to empty markdown and table cells 
   assert.ok(tMd.includes('| &#32; | &#32;&#32;D&#32;&#32; |'), tMd);
 });
 
-test('Selection preservation on fence unlock and table selectionchange context update', async () => {
-  const { document, window, root } = createDOMEnv(
+test('Selection preservation on fence unlock and table selectionchange context update', async t => {
+  const { document, window, root } = createDOMEnv(t,
     '<div data-md-block="0"><p>Hello world</p></div>' +
     '<div data-md-block="1"><table data-md-table="gfm"><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div>'
   );
@@ -563,8 +587,8 @@ test('Selection preservation on fence unlock and table selectionchange context u
   assert.equal(tableCtxMsgs.at(-1)?.context?.reason, 'selection');
 });
 
-test('NodeSelection on image survives selectionchange event', async () => {
-  const { document, window, root } = createDOMEnv(
+test('NodeSelection on image survives selectionchange event', async t => {
+  const { document, window, root } = createDOMEnv(t,
     '<div data-md-block="0"><p><img src="img.png" alt="alt"></p></div>'
   );
   globalThis.Node = window.Node;
@@ -588,7 +612,6 @@ test('NodeSelection on image survives selectionchange event', async () => {
   assert.ok(img);
   const p = img.parentNode;
   document.elementFromPoint = () => img;
-  globalThis.requestAnimationFrame = () => 0;
   img.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
   assert.equal(img.hasAttribute('data-md-selected-image'), true);
 
@@ -604,3 +627,151 @@ test('NodeSelection on image survives selectionchange event', async () => {
 
 
 
+async function mountBridge(t, html, markdown, blocks, extra = {}) {
+  const environment = createDOMEnv(t, html);
+  const { window, document } = environment;
+  document.documentElement.setAttribute('data-fastra-enhanced', 'true');
+  const messages = [];
+  const copies = [];
+  window.webkit = { messageHandlers: {
+    visualMarkdown: { postMessage: message => messages.push(message) },
+    markdownCopy: { postMessage: message => copies.push(message) }
+  } };
+  const api = installFastraVisualBridge();
+  const started = await api.start({ session: 'fixture', markdown, blocks, opaqueSources: {}, ...extra });
+  return { ...environment, api, started, messages, copies };
+}
+
+function selectContents(environment, element, collapse = false) {
+  const range = environment.document.createRange();
+  range.selectNodeContents(element);
+  if (collapse) range.collapse(true);
+  const selection = environment.window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+test('a failed start leaves the document read-only and emits no changes', async t => {
+  const { root, api, started, messages } = await mountBridge(t, '<p>Mismatch</p>', 'Source', []);
+  assert.equal(started, false);
+  assert.equal(root.contentEditable, 'false');
+  assert.equal(api.command('insertText', 'Edit'), false);
+  assert.equal(api.prepareAction(), null);
+  api.flush();
+  assert.equal(messages.some(message => message.kind === 'change'), false);
+});
+
+test('a full table cell accepts an owned local image and rolls back to its exact previous state', async t => {
+  const markdown = '| Header |\n| --- |\n| Old |\n';
+  const html = '<div data-md-block="0"><table data-md-table="gfm"><tr><th>Header</th></tr><tr><td>Old</td></tr></table></div>';
+  const env = await mountBridge(t, html, markdown, [{ id: 0, source: markdown }]);
+  assert.equal(env.started, true);
+  const { api, root, messages } = env;
+  selectContents(env, root.querySelector('td'));
+  const uri = 'fastra-preview://image/preview';
+  assert.equal(api.insertBookmarked(api.bookmark(), '<p><img src="' + uri + '" data-md-src="images/photo.png" alt="Photo"></p>',
+                                    {}, 'photo-transaction', [uri], true), true);
+  assert.equal(root.querySelector('td img[data-md-src]').getAttribute('src'), uri);
+  assert.equal(root.querySelector('td').textContent, '');
+  assert.match(api.markdown(), /!\[Photo\]\(<images\/photo\.png>\)/);
+  const change = messages.findLast(message => message.kind === 'change');
+  assert.deepEqual(change.imageTransactions, ['photo-transaction']);
+  const snapshot = api.prepareAction();
+  assert.equal(snapshot.revision, change.revision);
+  assert.equal(snapshot.imageFenceRevision, change.revision);
+  assert.equal(snapshot.inputType, 'insertFromPaste');
+  assert.equal(api.rollbackImageChange(change.revision - 1, markdown), false);
+  assert.equal(api.rollbackImageChange(change.revision, markdown), true);
+  api.completeAction('fixture');
+  api.completeImageAction('fixture', change.revision);
+  assert.equal(api.markdown(), markdown);
+  assert.equal(root.querySelector('td').textContent, 'Old');
+  assert.equal(api.canUndo(), false);
+  assert.equal(root.contentEditable, 'true');
+});
+
+test('Linux clipboard TSV expands a table and rich HTML in a code block becomes plain text', async t => {
+  const text = '| First |\n| --- |\n| Old |\n\n' + '~~~\ncode\n~~~\n';
+  const blocks = [{ id: 0, source: text.split('~~~')[0] }, { id: 1, source: '~~~\ncode\n~~~\n' }];
+  const html = '<div data-md-block="0"><table data-md-table="gfm"><tr><th>First</th></tr><tr><td>Old</td></tr></table></div>' +
+    '<div data-md-block="1"><pre><code>code\n</code></pre></div>';
+  const env = await mountBridge(t, html, text, blocks);
+  const { api, root } = env;
+  assert.equal(env.started, true);
+  selectContents(env, root.querySelector('td'));
+  assert.equal(api.insertClipboardText(api.bookmarkClipboard(), 'new\tsecond\nnext\tlast'), true);
+  assert.deepEqual([...root.querySelectorAll('td')].map(cell => cell.textContent), ['new', 'second', 'next', 'last']);
+  selectContents(env, root.querySelector('pre code'));
+  assert.equal(api.insertClipboardHTML(api.bookmarkClipboard(), '<p><b>alpha</b></p><p>beta</p>').ok, true);
+  assert.equal(root.querySelector('pre code').textContent, 'alpha\nbeta');
+  assert.equal(root.querySelector('pre b'), null);
+});
+
+test('reference definitions survive deletion of their first visible block and atom boundaries match on save', async t => {
+  const definitions = '[ref]: /path\n\n';
+  const markdown = definitions + 'First\n\nLast';
+  const blocks = [{ id: 0, hidden: true, source: definitions }, { id: 1, source: 'First\n\n' }, { id: 2, source: 'Last' }];
+  const html = '<div data-md-block="1"><p>First</p></div><div data-md-block="2"><p>Last</p></div>';
+  const env = await mountBridge(t, html, markdown, blocks);
+  assert.equal(env.started, true);
+  const { document, root, window, api } = env;
+  const end = root.querySelectorAll('p')[1].firstChild;
+  const range = document.createRange();
+  range.setStart(root.querySelector('p').firstChild, 0);
+  range.setEnd(end, 0);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+  assert.equal(api.command('delete'), true);
+  assert.equal(api.markdown(), definitions + 'Last');
+
+  const live = document.createElement('div');
+  const saved = document.createElement('div');
+  live.innerHTML = '<div data-tex="a"></div><section data-md-opaque="x"></section>';
+  saved.innerHTML = '<div data-md-block="0"><div data-tex="a"></div></div>' +
+    '<div data-md-block="1"><section data-md-opaque="x"></section></div>';
+  assert.equal(diffAppearance(saveAppearance(live), saveAppearance(saved), { includeContent: false }).outcome, 'ok');
+});
+
+test('Linux source replacement renders Mermaid before adopting the source', async t => {
+  const env = await mountBridge(t, '<div data-md-block="0"><p>Before</p></div>', 'Before',
+                                [{ id: 0, source: 'Before' }], { sourceReplacements: true });
+  assert.equal(env.started, true);
+  const { api, document, root, window } = env;
+  const diagram = '~~~mermaid\nflowchart LR; A-->B\n~~~\n';
+  window.fastraEnhanceMarkdown = async holder => {
+    assert.equal(holder.isConnected, true);
+    holder.querySelector('pre').replaceWith(document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+  };
+  const html = '<div data-md-block="0"><section data-md-opaque="chart"><pre><code class="language-mermaid">flowchart LR; A--&gt;B</code></pre></section></div>';
+  assert.equal(await api.replaceSource('Before', html, { markdown: diagram, blocks: [{ id: 0, source: diagram }],
+                                                        opaqueSources: { chart: diagram } }, 'next:'), true);
+  assert.ok(root.querySelector('section svg'));
+  assert.equal(document.body.children.length, 1);
+  assert.equal(api.undo(), true);
+  assert.equal(api.markdown(), 'Before');
+});
+
+test('the native insert-table command selects the first empty cell', async t => {
+  const env = await mountBridge(t, '<div data-md-block="0"><p>Keep</p></div>', 'Keep', [{ id: 0, source: 'Keep' }]);
+  const { api, root, window } = env;
+  assert.equal(api.command('insertTable', { rows: 2, columns: 2 }), true);
+  assert.equal(root.querySelectorAll('th,td').length, 4);
+  assert.ok([...root.querySelectorAll('th,td')].every(cell => cell.textContent === ''));
+  assert.equal(root.querySelector('th').contains(window.getSelection().anchorNode), true);
+  assert.doesNotMatch(api.markdown(), /<br>/);
+});
+
+test('edited Markdown preserves literal break markers, HTML attributes and table pipes', t => {
+  const { document } = createDOMEnv(t);
+  const html = '<p>one<br>---</p><h2>Literal ###</h2>' +
+    '<p><abbr title="one">first</abbr><abbr title="two">second</abbr></p>' +
+    '<table data-md-table="gfm"><tr><th><a href="https://example.test/a|b" title="a|b">link</a></th>' +
+    '<th><img src="a|b.png" alt="a|b" title="&amp;copy;"></th></tr><tr><td>X</td><td>Y</td></tr></table>';
+  const blocks = parseHTMLToNodes(html, { schema, ownerDocument: document });
+  assert.equal(serializeBlockNode(blocks[0]), 'one  \n\\---');
+  assert.equal(serializeBlockNode(blocks[1]), '## Literal \\###');
+  assert.equal(serializeBlockNode(blocks[2]), '<abbr title="one">first</abbr><abbr title="two">second</abbr>');
+  const header = serializeBlockNode(blocks[3]).split('\n')[0];
+  assert.match(header, /\[link\]\(https:\/\/example\.test\/a\\\|b "a\\\|b"\)/);
+  assert.match(header, /!\[a\\\|b\]\(<a\\\|b\.png> "\\&copy;"\)/);
+});

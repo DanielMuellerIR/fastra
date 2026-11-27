@@ -910,8 +910,9 @@ Bearbeitungsmodus zur Stelle. Ein Häkchen markiert den aktuellen Abschnitt. Cod
 und geschütztes HTML zählen nicht als Überschriften. Der gemeinsame Sprungverlauf
 ist im Abschnitt **Dokumentgliederung und Sprungverlauf** beschrieben.
 
-**Tabellen bearbeiten:** Sobald der Cursor in einer Markdown-Tabellenzelle steht,
-zeigt eine zusätzliche Leiste die aktuelle Zeile und Spalte. Über **Zeile** und
+**Tabellen bearbeiten:** Im WYSIWYG-Modus legt **Tabelle einfügen…** leere Zellen
+an und setzt den Cursor in die erste Zelle. In einer Tabellenzelle zeigt eine
+zusätzliche Leiste die aktuelle Zeile und Spalte. Über **Zeile** und
 **Spalte** kannst du einfügen, löschen und verschieben; das Ausrichtungsmenü gilt
 für die ganze Spalte. Die Kopfzeile und die letzte Spalte bleiben erhalten.
 **Tab / Shift-Tab** wechseln zur nächsten bzw. vorigen Zelle; Tab in der letzten
@@ -953,6 +954,8 @@ erhalten. Über das Stethoskop-Symbol in der Werkzeugleiste, das Warnbanner oder
 **Markdown → WYSIWYG-Diagnoseprotokoll…** lässt sich jederzeit eine anonymisierte
 Diagnose ohne Dokumentinhalt kopieren oder ein vollständiges Protokoll für eine
 Fehlermeldung sichern.
+Aus einer Speicherwarnung exportierst du die Diagnose des Dokuments, das du
+gerade sichern wolltest.
 Geschützte HTML- und Formelbereiche lassen sich im WYSIWYG-Modus nicht
 formatieren. Fastra erklärt dies vor der Änderung; bearbeite solche Bereiche
 im Markdown-Quelltext.

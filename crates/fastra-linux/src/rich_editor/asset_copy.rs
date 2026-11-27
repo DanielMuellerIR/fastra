@@ -30,10 +30,15 @@ struct Export {
     image: Option<(&'static str, std::sync::Arc<Vec<u8>>)>,
 }
 pub(super) fn copy(editor: Rc<RichEditor>, value: Value) {
-    let Some(lease) = asset_flow::Lease::capture(&editor) else {
+    if value["session"] != editor.session {
+        return;
+    }
+    let Some(bookmark) = value["bookmark"].as_str().map(str::to_owned) else {
+        editor.evaluate("fastraVisual.cancelClipboard(); return JSON.stringify(false);", |_| {});
         return;
     };
-    let Some(bookmark) = value["bookmark"].as_str().map(str::to_owned) else {
+    let Some(lease) = asset_flow::Lease::capture(&editor) else {
+        finish(&editor, &bookmark, false, false);
         return;
     };
     let Some(sources) = value["imageSources"]
@@ -98,7 +103,7 @@ pub(super) fn copy(editor: Rc<RichEditor>, value: Value) {
         .unwrap_or_default();
     let cut = value["cut"] == true;
     let plain = value["plain"].as_str().unwrap_or("").to_owned();
-    let single = selected.len() == 1 && plain.is_empty();
+    let single = selected.len() == 1 && value["singleImage"] == true;
     let weak = Rc::downgrade(&editor);
     crate::git_view::background(
         move || {

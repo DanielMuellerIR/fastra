@@ -168,9 +168,11 @@ const nodes = {
     parseDOM: [{
       tag: 'ol',
       getAttrs(dom) {
+        const start = dom.getAttribute('start')?.trim();
+        const order = start && /^[+-]?\d+$/.test(start) ? Number(start) : 1;
         return {
           ...readBlockOrigin(dom),
-          order: dom.hasAttribute('start') ? Math.max(0, Number(dom.getAttribute('start')) || 1) : 1,
+          order: Number.isSafeInteger(order) ? Math.max(0, order) : 1,
           tight: !dom.querySelector(':scope > li > p')
         };
       }
@@ -188,6 +190,8 @@ const nodes = {
     parseDOM: [{
       tag: 'li',
       getAttrs(dom) {
+        const task = dom.getAttribute('data-task');
+        if (task === 'checked' || task === 'unchecked') return { task: task === 'checked' };
         const cb = Array.from(dom.querySelectorAll('input[type=checkbox]')).find(n => n.closest('li') === dom);
         if (!cb) return { task: null };
         return { task: cb.hasAttribute('checked') || cb.checked === true };
@@ -334,8 +338,7 @@ const nodes = {
     attrs: {
       ...blockOriginAttrs(),
       tex: { default: '' },
-      mathSourceKey: { default: null },
-      rawHTML: { default: '' }
+      mathSourceKey: { default: null }
     },
     parseDOM: [{
       tag: 'div[data-tex]',
@@ -344,8 +347,7 @@ const nodes = {
         return {
           ...readBlockOrigin(dom),
           tex: dom.getAttribute('data-tex') || '',
-          mathSourceKey: dom.getAttribute('data-md-math-source') || null,
-          rawHTML: dom.outerHTML
+          mathSourceKey: dom.getAttribute('data-md-math-source') || null
         };
       }
     }],
@@ -466,8 +468,7 @@ const nodes = {
     attrs: {
       tex: { default: '' },
       mathSourceKey: { default: null },
-      displayMode: { default: false },
-      rawHTML: { default: '' }
+      displayMode: { default: false }
     },
     parseDOM: [{
       tag: 'span[data-tex]',
@@ -476,8 +477,7 @@ const nodes = {
         return {
           tex: dom.getAttribute('data-tex') || '',
           mathSourceKey: dom.getAttribute('data-md-math-source') || null,
-          displayMode: dom.classList.contains('math-block'),
-          rawHTML: dom.outerHTML
+          displayMode: dom.classList.contains('math-block')
         };
       }
     }],

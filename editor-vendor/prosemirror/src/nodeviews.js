@@ -33,6 +33,81 @@ function applyImageNodeAttrs(img, node, imageUrlOverrides) {
   else img.removeAttribute('data-md-image-ending');
 }
 
+function setMathSource(dom, key) {
+  if (key) dom.setAttribute('data-md-math-source', key);
+  else dom.removeAttribute('data-md-math-source');
+}
+
+function mathNodeView(node, view) {
+  let current = node;
+  const document = view.dom.ownerDocument;
+  const inline = node.isInline;
+  const dom = document.createElement(inline ? 'span' : 'div');
+  dom.setAttribute('contenteditable', 'false');
+
+  function render(target) {
+    const { tex, mathSourceKey, displayMode } = target.attrs;
+    const display = !inline || !!displayMode;
+    dom.className = display ? 'math-block' : 'math-inline';
+    dom.setAttribute('data-tex', tex || '');
+    setMathSource(dom, mathSourceKey);
+    const katex = document.defaultView?.katex;
+    if (katex) {
+      try {
+        katex.render(tex || '', dom, { displayMode: display, throwOnError: false, trust: false });
+        dom.setAttribute('data-rendered', 'true');
+        return;
+      } catch (_) {
+        // Bei einem Renderfehler bleibt die TeX-Quelle sichtbar.
+      }
+    }
+    dom.removeAttribute('data-rendered');
+    dom.textContent = tex || '';
+  }
+
+  render(node);
+  return {
+    dom,
+    update(updated) {
+      if (updated.type !== current.type) return false;
+      if (updated.attrs.tex !== current.attrs.tex ||
+          updated.attrs.mathSourceKey !== current.attrs.mathSourceKey ||
+          updated.attrs.displayMode !== current.attrs.displayMode) render(updated);
+      current = updated;
+      return true;
+    },
+    ignoreMutation() { return true; }
+  };
+}
+
+function opaqueNodeView(node, view) {
+  let current = node;
+  const dom = view.dom.ownerDocument.createElement(node.attrs.tag || (node.isInline ? 'span' : 'section'));
+  dom.setAttribute('contenteditable', 'false');
+
+  function render(target) {
+    if (target.attrs.className) dom.className = target.attrs.className;
+    else dom.removeAttribute('class');
+    dom.setAttribute('data-md-opaque', target.attrs.opaqueKey || '');
+    setMathSource(dom, target.attrs.mathSourceKey);
+    // Geschützte Renderer-Fragmente umgehen den Clipboard-Parser, der interne Attribute entfernt.
+    const html = target.attrs.rawHTML || '';
+    if (dom.innerHTML !== html) dom.innerHTML = html;
+  }
+
+  render(node);
+  return {
+    dom,
+    update(updated) {
+      if (updated.type !== current.type || updated.attrs.tag !== current.attrs.tag) return false;
+      render(updated);
+      current = updated;
+      return true;
+    },
+    ignoreMutation() { return true; }
+  };
+}
+
 export function createNodeViews({
   getImageOverrides,
   isBlocked,
@@ -72,6 +147,7 @@ export function createNodeViews({
       function sync(target) {
         current = target;
         dom.setAttribute('data-task', target.attrs.task ? 'checked' : 'unchecked');
+        checkbox.toggleAttribute('checked', !!target.attrs.task);
         checkbox.checked = !!target.attrs.task;
         if (checkbox.parentNode !== dom) dom.prepend(checkbox);
         dom.insertBefore(contentDOM, checkbox.nextSibling);
@@ -146,156 +222,9 @@ export function createNodeViews({
       };
     },
 
-    math_block(node, view) {
-      let current = node;
-      const doc = view.dom.ownerDocument;
-      const win = doc.defaultView;
-      const dom = doc.createElement('div');
-      function sync(target) {
-        current = target;
-        dom.className = 'math-block';
-        dom.setAttribute('data-tex', target.attrs.tex || '');
-        dom.setAttribute('contenteditable', 'false');
-        if (target.attrs.mathSourceKey) dom.setAttribute('data-md-math-source', target.attrs.mathSourceKey);
-        else dom.removeAttribute('data-md-math-source');
-
-        if (win?.katex?.render) {
-          try {
-            win.katex.render(target.attrs.tex || '', dom, { displayMode: true, throwOnError: false });
-            dom.setAttribute('data-rendered', 'true');
-            return;
-          } catch (_) {
-            // Fallback auf unveränderte Textquelle bei Syntaxfehler.
-          }
-        }
-        dom.textContent = target.attrs.tex || '';
-      }
-      sync(node);
-      return {
-        dom,
-        update(updated) {
-          if (updated.type !== current.type) return false;
-          if (
-            updated.attrs.tex === current.attrs.tex &&
-            updated.attrs.mathSourceKey === current.attrs.mathSourceKey
-          ) {
-            current = updated;
-            return true;
-          }
-          sync(updated);
-          return true;
-        },
-        ignoreMutation() {
-          return true;
-        }
-      };
-    },
-
-    math_inline(node, view) {
-      let current = node;
-      const doc = view.dom.ownerDocument;
-      const win = doc.defaultView;
-      const dom = doc.createElement('span');
-      function sync(target) {
-        current = target;
-        dom.className = target.attrs.displayMode ? 'math-block' : 'math-inline';
-        dom.setAttribute('data-tex', target.attrs.tex || '');
-        dom.setAttribute('contenteditable', 'false');
-        if (target.attrs.mathSourceKey) dom.setAttribute('data-md-math-source', target.attrs.mathSourceKey);
-        else dom.removeAttribute('data-md-math-source');
-
-        if (win?.katex?.render) {
-          try {
-            win.katex.render(target.attrs.tex || '', dom, {
-              displayMode: !!target.attrs.displayMode,
-              throwOnError: false
-            });
-            dom.setAttribute('data-rendered', 'true');
-            return;
-          } catch (_) {
-            // Fallback auf unveränderte Textquelle.
-          }
-        }
-        dom.textContent = target.attrs.tex || '';
-      }
-      sync(node);
-      return {
-        dom,
-        update(updated) {
-          if (updated.type !== current.type) return false;
-          if (
-            updated.attrs.tex === current.attrs.tex &&
-            updated.attrs.mathSourceKey === current.attrs.mathSourceKey &&
-            updated.attrs.displayMode === current.attrs.displayMode
-          ) {
-            current = updated;
-            return true;
-          }
-          sync(updated);
-          return true;
-        },
-        ignoreMutation() {
-          return true;
-        }
-      };
-    },
-
-    opaque_block(node, view) {
-      let current = node;
-      const dom = view.dom.ownerDocument.createElement(node.attrs.tag || 'section');
-      function sync(target) {
-        current = target;
-        if (target.attrs.className) dom.className = target.attrs.className;
-        else dom.removeAttribute('class');
-        dom.setAttribute('data-md-opaque', target.attrs.opaqueKey || '');
-        dom.setAttribute('contenteditable', 'false');
-        if (target.attrs.mathSourceKey) dom.setAttribute('data-md-math-source', target.attrs.mathSourceKey);
-        else dom.removeAttribute('data-md-math-source');
-        if (target.attrs.rawHTML && dom.innerHTML !== target.attrs.rawHTML) {
-          dom.innerHTML = target.attrs.rawHTML;
-        }
-      }
-      sync(node);
-      return {
-        dom,
-        update(updated) {
-          if (updated.type !== current.type || updated.attrs.tag !== current.attrs.tag) return false;
-          sync(updated);
-          return true;
-        },
-        ignoreMutation() {
-          return true;
-        }
-      };
-    },
-
-    opaque_inline(node, view) {
-      let current = node;
-      const dom = view.dom.ownerDocument.createElement(node.attrs.tag || 'span');
-      function sync(target) {
-        current = target;
-        if (target.attrs.className) dom.className = target.attrs.className;
-        else dom.removeAttribute('class');
-        dom.setAttribute('data-md-opaque', target.attrs.opaqueKey || '');
-        dom.setAttribute('contenteditable', 'false');
-        if (target.attrs.mathSourceKey) dom.setAttribute('data-md-math-source', target.attrs.mathSourceKey);
-        else dom.removeAttribute('data-md-math-source');
-        if (target.attrs.rawHTML && dom.innerHTML !== target.attrs.rawHTML) {
-          dom.innerHTML = target.attrs.rawHTML;
-        }
-      }
-      sync(node);
-      return {
-        dom,
-        update(updated) {
-          if (updated.type !== current.type) return false;
-          sync(updated);
-          return true;
-        },
-        ignoreMutation() {
-          return true;
-        }
-      };
-    }
+    math_block: mathNodeView,
+    math_inline: mathNodeView,
+    opaque_block: opaqueNodeView,
+    opaque_inline: opaqueNodeView
   };
 }

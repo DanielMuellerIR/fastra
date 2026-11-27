@@ -1,13 +1,13 @@
 import { Fragment, Slice } from 'prosemirror-model';
 import { TextSelection, NodeSelection, Selection } from 'prosemirror-state';
 import { findWrapping } from 'prosemirror-transform';
-import { setBlockType, wrapIn, lift, chainCommands, newlineInCode, createParagraphNear, liftEmptyBlock, splitBlock, toggleMark } from 'prosemirror-commands';
+import { wrapIn, lift, chainCommands, newlineInCode, createParagraphNear, liftEmptyBlock, splitBlock, toggleMark, baseKeymap, selectNodeBackward, selectNodeForward } from 'prosemirror-commands';
 import { wrapInList, splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
 import { undo as pmUndo, redo as pmRedo, undoDepth, redoDepth, closeHistory } from 'prosemirror-history';
 import { inputRules, InputRule } from 'prosemirror-inputrules';
 import { keymap } from 'prosemirror-keymap';
 import { schema as defaultSchema, INLINE_HTML_MARK_NAMES } from './schema.js';
-import { parseHTMLToNodes } from './parser.js';
+import { parseHTMLToNodes, sanitizePasteHTML } from './parser.js';
 
 function isMarkActive(state, markType) {
   const { from, $from, to, empty } = state.selection;
@@ -31,11 +31,6 @@ function insideCellOrProtected(state, schema) {
       return { protectedAtom: true, containsProtected: true, inTable: false, cell: null };
     }
   }
-  const nodeAt = $from.nodeAfter;
-  if ($from.pos === $to.pos && nodeAt && (nodeAt.type === schema.nodes.math_inline || nodeAt.type === schema.nodes.opaque_inline)) {
-    return { protectedAtom: true, containsProtected: true, inTable: false, cell: null };
-  }
-
   let containsProtected = false;
   let containsTable = false;
   if (from < to) {
@@ -162,7 +157,8 @@ function splitLeafByHardBreaksIfPartial(tr, schema, node, pos, selFrom, selTo, l
 function liftSelectedListItemsWithOrder(state, schema) {
   const { $from, $to } = state.selection;
   const listAncestor = findNearestListAncestor($from, schema);
-  if (!listAncestor) return null;
+  if (!listAncestor || $to.depth < listAncestor.depth ||
+      $to.before(listAncestor.depth) !== listAncestor.pos) return null;
 
   const { node: listNode, pos: listPos } = listAncestor;
   const isOrdered = listNode.type === schema.nodes.ordered_list;
@@ -170,7 +166,7 @@ function liftSelectedListItemsWithOrder(state, schema) {
 
   // Direkt betroffene Listenpunkte auf Ebene von `listNode` bestimmen.
   const firstIdx = $from.index(listAncestor.depth);
-  const lastIdx = $to.depth >= listAncestor.depth ? $to.index(listAncestor.depth) : firstIdx;
+  const lastIdx = $to.index(listAncestor.depth);
 
   // Wenn tiefer verschachtelte Liste angehoben wird oder der einfache
   // Standardschritt reicht und kein nummerierter Nachlauf geändert werden muss:
@@ -222,6 +218,21 @@ function liftSelectedListItemsWithOrder(state, schema) {
   if (beforeItems.length) caretPos += replacements[0].nodeSize;
   tr.setSelection(TextSelection.near(tr.doc.resolve(caretPos + 1)));
   return tr;
+}
+
+function convertCodeLineBreaks(tr, node, pos, schema) {
+  if (node.type !== schema.nodes.code_block) return;
+  const lines = node.textContent.split('\n');
+  if (lines.length === 1) return;
+  const content = [];
+  lines.forEach((line, index) => {
+    if (index) content.push(schema.nodes.hard_break.create());
+    if (line) content.push(schema.text(line));
+  });
+  const selection = tr.selection.toJSON();
+  tr.replaceWith(pos + 1, pos + node.nodeSize - 1, content);
+  // Ein LF und ein Umbruchknoten belegen jeweils dieselbe Modellposition.
+  tr.setSelection(Selection.fromJSON(tr.doc, selection));
 }
 
 function applyHeadingOrParagraph(state, dispatch, schema, { level = null }) {
@@ -317,6 +328,7 @@ function applyHeadingOrParagraph(state, dispatch, schema, { level = null }) {
         mdBlockSub: node.attrs.mdBlockSub || 0,
         mdBlockTotal: node.attrs.mdBlockTotal || 1
       }, node.marks);
+      convertCodeLineBreaks(editTr, node, pos, schema);
       blockChanged = true;
     }
   } else {
@@ -331,6 +343,7 @@ function applyHeadingOrParagraph(state, dispatch, schema, { level = null }) {
           mdBlockSub: node.attrs.mdBlockSub || 0,
           mdBlockTotal: node.attrs.mdBlockTotal || 1
         }, node.marks);
+        convertCodeLineBreaks(editTr, node, pos, schema);
         blockChanged = true;
       }
       const cFrom = pos + 1;
@@ -501,7 +514,7 @@ function toggleListMode(state, dispatch, schema, mode /* 'bullet' | 'ordered' | 
           mdBlockId: parentList.attrs.mdBlockId || null,
           mdBlockSub: parentList.attrs.mdBlockSub || 0,
           mdBlockTotal: parentList.attrs.mdBlockTotal || 1,
-          order: parentList.attrs.order || 1,
+          order: parentList.attrs.order ?? 1,
           tight: parentList.attrs.tight !== false
         }
       : {
@@ -526,7 +539,6 @@ function toggleListMode(state, dispatch, schema, mode /* 'bullet' | 'ordered' | 
   }
 
   const listType = mode === 'ordered' ? schema.nodes.ordered_list : schema.nodes.bullet_list;
-  const itemAttrs = mode === 'task' ? { task: false } : { task: null };
   const range = $from.blockRange($to);
   if (!range) return false;
 
@@ -618,7 +630,6 @@ function insertHardBreakCommand(state, dispatch, schema) {
 
   if (!ctx.inTable && $from.parent.type === schema.nodes.blank_line) {
     if (!dispatch) return true;
-    const baseTr = prepTr.steps.length ? prepTr : state.tr;
     const pos = $from.pos;
     const splitTr = workState.tr.split(pos, 1, [{ type: schema.nodes.blank_line }]);
     if (prepTr.steps.length) dispatchMerged(state, [prepTr, splitTr], dispatch);
@@ -682,13 +693,6 @@ function insertHardBreakCommand(state, dispatch, schema) {
 function clearOriginOnSplitBlock(state, dispatch, baseCommand) {
   return baseCommand(state, tr => {
     const newDoc = tr.doc;
-    const oldCounts = new Map();
-    state.doc.forEach(n => {
-      if (n.attrs?.mdBlockId != null) {
-        const k = `${n.attrs.mdContext || ''}${n.attrs.mdBlockId}`;
-        oldCounts.set(k, (oldCounts.get(k) || 0) + 1);
-      }
-    });
     const seen = new Set();
     let fix = tr;
     let offset = 0;
@@ -805,13 +809,13 @@ export function buildInputRules(schema = defaultSchema) {
     new InputRule(/^([-+*])\s$/, (state, _match, start, end) =>
       wrapParagraphAsList(state, start, end, schema.nodes.bullet_list, { tight: true }, { task: null })
     ),
-    new InputRule(/^(\d+)\.\s$/, (state, match, start, end) =>
+    new InputRule(/^(\d{1,9})\.\s$/, (state, match, start, end) =>
       wrapParagraphAsList(
         state,
         start,
         end,
         schema.nodes.ordered_list,
-        { order: Math.max(0, Number(match[1]) || 1), tight: true },
+        { order: Number(match[1]), tight: true },
         { task: null }
       )
     ),
@@ -856,8 +860,41 @@ export function buildKeymap({
   onUndo,
   onRedo
 }) {
+  function deleteInDirection(key, direction) {
+    return (state, dispatch, view) => {
+      if (isBlocked()) return true;
+      const { $from, $to, empty } = state.selection;
+      const table = insideCellOrProtected(state, schema);
+      if (table.inTable && !$from.sameParent($to)) return true;
+      if (empty) {
+        const adjacent = $pos => direction < 0 ? $pos.nodeBefore : $pos.nodeAfter;
+        const atEdge = direction < 0 ? $from.parentOffset === 0 : $from.parentOffset === $from.parent.content.size;
+        if (atEdge && table.inTable) return true;
+        if (!$from.parent.isTextblock && adjacent($from)?.isAtom && NodeSelection.isSelectable(adjacent($from))) {
+          const pos = direction < 0 ? $from.pos - adjacent($from).nodeSize : $from.pos;
+          if (dispatch) dispatch(state.tr.setSelection(NodeSelection.create(state.doc, pos)));
+          return true;
+        }
+        if (atEdge && $from.depth > 0) {
+          const boundary = state.doc.resolve(direction < 0 ? $from.before() : $from.after());
+          const type = adjacent(boundary)?.type;
+          if (type === schema.nodes.math_block || type === schema.nodes.opaque_block) {
+            return (direction < 0 ? selectNodeBackward : selectNodeForward)(state, dispatch, view);
+          }
+        }
+      }
+      return baseKeymap[key](state, dispatch, view);
+    };
+  }
+  const backspace = deleteInDirection('Backspace', -1);
+  const deleteForward = deleteInDirection('Delete', 1);
   return keymap({
     Enter: buildEnterCommand(schema),
+    Backspace: backspace,
+    'Mod-Backspace': backspace,
+    'Shift-Backspace': backspace,
+    Delete: deleteForward,
+    'Mod-Delete': deleteForward,
     'Shift-Enter': (state, dispatch) => {
       if (isBlocked()) return true;
       if (onHardBreak) return onHardBreak(state, dispatch);
@@ -913,7 +950,6 @@ export function executeVisualCommand(view, command, value, {
   tableEditor,
   postMessage,
   session,
-  onBeforeImageMetaChange,
   onHistoryCommand
 } = {}) {
   if (command === 'undo' || command === 'redo') {
@@ -942,9 +978,8 @@ export function executeVisualCommand(view, command, value, {
   let didChange = false;
   const dispatch = tr => {
     const withBoundary = command === 'insertText' ? tr : closeHistory(tr);
-    const wrapped = onBeforeImageMetaChange ? onBeforeImageMetaChange(withBoundary) : withBoundary;
-    if (wrapped.docChanged || wrapped.storedMarksSet) didChange = true;
-    view.dispatch(wrapped);
+    if (withBoundary.docChanged || withBoundary.storedMarksSet) didChange = true;
+    view.dispatch(withBoundary);
   };
 
   let handled = false;
@@ -1059,9 +1094,15 @@ export function executeVisualCommand(view, command, value, {
       }
       break;
     }
-    case 'insertTable':
+    case 'insertTable': {
+      const result = tableEditor?.insertTable(value?.rows, value?.columns);
+      if (result && !result.ok) postMessage?.({ kind: 'tableError', session, reason: result.reason });
+      return { executed: result?.ok === true, changed: result?.ok === true, reason: 'table' };
+    }
     case 'insertHTML': {
-      const nodes = parseHTMLToNodes(String(value || ''), { schema, ownerDocument: view.dom.ownerDocument });
+      const ownerDocument = view.dom.ownerDocument;
+      const html = sanitizePasteHTML(String(value || ''), ownerDocument);
+      const nodes = parseHTMLToNodes(html, { schema, ownerDocument });
       if (nodes.length) {
         const slice = new Slice(Fragment.fromArray(nodes), 0, 0);
         dispatch(state.tr.replaceSelection(slice).scrollIntoView());

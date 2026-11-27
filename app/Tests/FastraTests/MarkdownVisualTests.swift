@@ -373,7 +373,7 @@ struct MarkdownVisualTests {
           arguments: MarkdownFormatCommand.allCases, [false, true])
     @MainActor
     func formatOptionsSaveReopen(_ command: MarkdownFormatCommand, _ dark: Bool) async throws {
-        var source = "Vor Ergebnis danach\n", value = "", selector = "p", expectation: String
+        var source = "Vor Ergebnis danach\n", value: Any = "", selector = "p", expectation: String
         switch command {
         case .bold: expectation = "document.querySelector('strong,b')?.textContent === 'Ergebnis'"
         case .italic: expectation = "document.querySelector('em,i')?.textContent === 'Ergebnis'"
@@ -397,8 +397,8 @@ struct MarkdownVisualTests {
             expectation = "document.querySelector('a')?.getAttribute('href') === 'https://example.invalid/ziel'"
         case .insertTable:
             source = "Ergebnis\n"
-            value = "<table data-md-table=\"gfm\"><thead><tr><th>Kopf</th></tr></thead><tbody><tr><td>Zelle</td></tr></tbody></table><p><br></p>"
-            expectation = "document.querySelector('th')?.textContent === 'Kopf' && document.querySelector('td')?.textContent === 'Zelle'"
+            value = ["rows": 2, "columns": 2]
+            expectation = "document.querySelectorAll('th').length === 2 && document.querySelectorAll('td').length === 2 && [...document.querySelectorAll('th,td')].every(cell => cell.textContent === '')"
         }
         let selection = """
             const p=document.querySelector('#fastra-visual \(selector)'),walker=document.createTreeWalker(p,NodeFilter.SHOW_TEXT);
@@ -554,7 +554,7 @@ struct MarkdownVisualTests {
 
     @MainActor
     private func assertFormatPersistence(_ source: String, selection: String, dark: Bool,
-                                         command: MarkdownFormatCommand, value: String = "", expectation: String,
+                                         command: MarkdownFormatCommand, value: Any = "", expectation: String,
                                          afterFormat: String = "") async throws {
         let directory = testTemporaryDirectory().appendingPathComponent("visual-format-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

@@ -30,22 +30,9 @@ export function preprocessDOMForParse(container, { stripBlockOrigin = false } = 
     });
   }
 
-  // Gerenderte Mermaid-Blöcke / KaTeX-Blöcke zurück auf ihre atomare Hülle reduzieren,
-  // damit ProseMirror beim Parsen keine inneren SVGs/Spans als bearbeitbaren Text einliest.
-  container.querySelectorAll('[data-md-opaque]').forEach(node => {
-    if (node.dataset.mdOpaqueHTML === undefined) {
-      node.dataset.mdOpaqueHTML = node.innerHTML;
-    }
-  });
-  container.querySelectorAll('[data-tex]').forEach(node => {
-    if (node.dataset.mdMathHTML === undefined) {
-      node.dataset.mdMathHTML = node.outerHTML;
-    }
-  });
-
-  // Einzelne leere Checkbox-Spans / Render-Hilfstexte in Codeblöcken normalisieren.
+  // Geschütztes SVG- und HTML-Markup bleibt für die atomare Darstellung erhalten.
   container.querySelectorAll('pre code').forEach(code => {
-    code.textContent = code.textContent;
+    if (!code.closest('[data-md-opaque],[data-tex]')) code.textContent = code.textContent;
   });
 
   // In sichtbaren Leerzeilen (.fastra-visible-blank-line) und leeren Absätzen
@@ -379,8 +366,6 @@ export function parseDocumentContainer(container, blocks, {
     }
   }
 
-  // Bei der initialen Anlage über `data-md-opaque` ggf. innerHTML retten, falls `innerHTML`
-  // im parseDOM-Schritt schon vorab abgelegt wurde.
   const doc = schema.nodes.doc.create({ sourceContext: mdContext }, topNodes);
   return { doc, parsedGroups };
 }
@@ -402,46 +387,65 @@ export function parseHTMLToNodes(html, { schema = defaultSchema, ownerDocument =
   return nodes;
 }
 
+function clipboardURL(value, scheme, relative = false) {
+  const url = value.trim();
+  if (!url || /[\s\\\u0000-\u001f\u007f]/.test(url) || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  if (scheme.test(url) || (relative && !url.startsWith('/') && /^[^:/]+(?:\/|$)/.test(url))) return url;
+  return null;
+}
+
+function inlineClipboardStyles(node) {
+  if ((node.tagName !== 'SPAN' && node.tagName !== 'FONT') ||
+      node.closest('pre,code') || !node.style) return [];
+  const { backgroundColor, fontWeight, fontStyle, textDecorationLine } = node.style;
+  return [
+    backgroundColor && !['transparent', 'rgba(0, 0, 0, 0)'].includes(backgroundColor) && 'mark',
+    textDecorationLine?.includes('line-through') && 'del',
+    (fontWeight === 'bold' || Number(fontWeight) >= 600) && 'strong',
+    (fontStyle === 'italic' || fontStyle === 'oblique') && 'em'
+  ].filter(Boolean);
+}
+
+function replaceStyledInline(node, tags, ownerDocument) {
+  let content = ownerDocument.createDocumentFragment();
+  content.append(...node.childNodes);
+  for (const tag of tags) {
+    const wrap = ownerDocument.createElement(tag);
+    wrap.append(content);
+    content = wrap;
+  }
+  node.replaceWith(content);
+}
+
 /**
  * Bereinigt eingefügtes HTML aus der System-Zwischenablage (Fremdquellen).
  */
 export function sanitizePasteHTML(html, ownerDocument = document) {
   const template = ownerDocument.createElement('template');
   template.innerHTML = html || '';
-  template.content.querySelectorAll('script,style,iframe,object,embed,svg,math,link,meta').forEach(n => n.remove());
+  template.content.querySelectorAll('script,style,iframe,object,embed,svg,math,link,meta,template').forEach(n => n.remove());
   template.content.querySelectorAll('*').forEach(n => {
     const language = n.tagName === 'CODE' ? n.className.match(/(?:^|\s)language-([\w+-]+)(?=\s|$)/)?.[1] : null;
-    const isStyledInline = (n.tagName === 'SPAN' || n.tagName === 'FONT') &&
-      !n.closest('pre,code,[data-md-opaque],[data-tex]') &&
-      !n.hasAttribute('data-md-spaces');
-    const marked = isStyledInline && n.style?.backgroundColor && !['transparent', 'rgba(0, 0, 0, 0)'].includes(n.style.backgroundColor);
-    const bold = isStyledInline && (n.style?.fontWeight === 'bold' || Number(n.style?.fontWeight) >= 600);
-    const italic = isStyledInline && (n.style?.fontStyle === 'italic' || n.style?.fontStyle === 'oblique');
-    const strike = isStyledInline && n.style?.textDecorationLine?.includes('line-through');
+    const styles = inlineClipboardStyles(n);
 
     for (const a of Array.from(n.attributes)) {
       if (!ALLOWED_PASTE_ATTRS.has(a.name)) n.removeAttribute(a.name);
     }
     if (language) n.className = 'language-' + language;
     if (n.tagName === 'IMG') {
-      const src = n.getAttribute('src') || '';
-      if (/^(https?:|[^:/]+(?:\/|$))/i.test(src)) n.dataset.mdSrc = src;
-      else n.remove();
-    }
-    if (n.hasAttribute('href') && !/^(https?:|mailto:|#|[^:/]+(?:\/|$))/i.test(n.getAttribute('href') || '')) {
-      n.removeAttribute('href');
-    }
-    if (marked || bold || italic || strike) {
-      const frag = ownerDocument.createDocumentFragment();
-      while (n.firstChild) frag.appendChild(n.firstChild);
-      let wrapped = frag;
-      for (const tag of [marked ? 'mark' : null, strike ? 'del' : null, bold ? 'strong' : null, italic ? 'em' : null].filter(Boolean)) {
-        const el = ownerDocument.createElement(tag);
-        el.append(wrapped);
-        wrapped = el;
+      const src = clipboardURL(n.getAttribute('src') || '', /^https?:\/\//i, true);
+      if (src === null) n.remove();
+      else {
+        n.setAttribute('src', src);
+        n.dataset.mdSrc = src;
       }
-      n.replaceWith(wrapped);
     }
+    if (n.hasAttribute('href')) {
+      const href = clipboardURL(n.getAttribute('href'), /^(?:https?:\/\/|mailto:|#)/i, true);
+      if (href === null) n.removeAttribute('href');
+      else n.setAttribute('href', href);
+    }
+    if (styles.length) replaceStyledInline(n, styles, ownerDocument);
   });
   return template.innerHTML;
 }
@@ -482,18 +486,11 @@ export function inspectAndCleanClipboardHTML(html, collectImages = false, ownerD
       return { ok: false, reason: node.tagName === 'IMG' ? 'images' : 'format' };
     }
     if (node.hasAttribute('href')) {
-      const href = node.getAttribute('href') || '';
-      if (!(/^(https?:\/\/|#)/i.test(href.trim()) && !/[\u0000-\u001f\u007f]/.test(href))) {
-        return { ok: false, reason: 'url' };
-      }
+      const href = clipboardURL(node.getAttribute('href'), /^(?:https?:\/\/|#)/i);
+      if (href === null) return { ok: false, reason: 'url' };
+      node.setAttribute('href', href);
     }
-    const marked = (node.tagName === 'SPAN' || node.tagName === 'FONT')
-      && node.style?.backgroundColor
-      && !['transparent', 'rgba(0, 0, 0, 0)'].includes(node.style.backgroundColor);
-    const bold = (node.tagName === 'SPAN' || node.tagName === 'FONT')
-      && /^(bold|[6-9]00)$/.test(node.style?.fontWeight || '');
-    const italic = (node.tagName === 'SPAN' || node.tagName === 'FONT')
-      && node.style?.fontStyle === 'italic';
+    const styles = inlineClipboardStyles(node);
 
     for (const attr of Array.from(node.attributes)) {
       const permitted = (node.tagName === 'A' && (attr.name === 'href' || attr.name === 'title'))
@@ -503,15 +500,7 @@ export function inspectAndCleanClipboardHTML(html, collectImages = false, ownerD
     }
 
     if (node.tagName === 'SPAN' || node.tagName === 'FONT') {
-      const fragment = ownerDocument.createDocumentFragment();
-      fragment.append(...node.childNodes);
-      let content = fragment;
-      for (const tag of [marked ? 'mark' : null, bold ? 'strong' : null, italic ? 'em' : null].filter(Boolean)) {
-        const wrap = ownerDocument.createElement(tag);
-        wrap.append(content);
-        content = wrap;
-      }
-      node.replaceWith(content);
+      replaceStyledInline(node, styles, ownerDocument);
     }
   }
 

@@ -12213,153 +12213,6 @@
     return hist ? hist.undone.eventCount : 0;
   }
 
-  // node_modules/prosemirror-dropcursor/dist/index.js
-  function dropCursor(options = {}) {
-    return new Plugin({
-      view(editorView) {
-        return new DropCursorView(editorView, options);
-      }
-    });
-  }
-  var DropCursorView = class {
-    constructor(editorView, options) {
-      var _a;
-      this.editorView = editorView;
-      this.cursorPos = null;
-      this.element = null;
-      this.timeout = -1;
-      this.lastDragEvent = null;
-      this.width = (_a = options.width) !== null && _a !== void 0 ? _a : 1;
-      this.color = options.color === false ? void 0 : options.color || "black";
-      this.class = options.class;
-      this.handlers = ["dragover", "dragend", "drop", "dragleave"].map((name) => {
-        let handler = (e) => {
-          this[name](e);
-        };
-        editorView.dom.addEventListener(name, handler);
-        return { name, handler };
-      });
-    }
-    destroy() {
-      this.setCursor(null);
-      this.handlers.forEach(({ name, handler }) => this.editorView.dom.removeEventListener(name, handler));
-    }
-    update(editorView, prevState) {
-      if (this.cursorPos != null && prevState.doc != editorView.state.doc) {
-        if (this.lastDragEvent) {
-          let target = this.computeTarget(this.lastDragEvent);
-          if (target == this.cursorPos)
-            this.updateOverlay();
-          else
-            this.setCursor(target);
-        } else {
-          this.updateOverlay();
-        }
-      }
-    }
-    setCursor(pos) {
-      if (pos == this.cursorPos)
-        return;
-      this.cursorPos = pos;
-      if (pos == null) {
-        this.element.parentNode.removeChild(this.element);
-        this.element = null;
-      } else {
-        this.updateOverlay();
-      }
-    }
-    updateOverlay() {
-      let $pos = this.editorView.state.doc.resolve(this.cursorPos);
-      let isBlock = !$pos.parent.inlineContent, rect;
-      let editorDOM = this.editorView.dom, editorRect = editorDOM.getBoundingClientRect();
-      let scaleX = editorRect.width / editorDOM.offsetWidth, scaleY = editorRect.height / editorDOM.offsetHeight;
-      if (isBlock) {
-        let before = $pos.nodeBefore, after = $pos.nodeAfter;
-        if (before || after) {
-          let node = this.editorView.nodeDOM(this.cursorPos - (before ? before.nodeSize : 0));
-          if (node) {
-            let nodeRect = node.getBoundingClientRect();
-            let top = before ? nodeRect.bottom : nodeRect.top;
-            if (before && after)
-              top = (top + this.editorView.nodeDOM(this.cursorPos).getBoundingClientRect().top) / 2;
-            let halfWidth = this.width / 2 * scaleY;
-            rect = { left: nodeRect.left, right: nodeRect.right, top: top - halfWidth, bottom: top + halfWidth };
-          }
-        }
-      }
-      if (!rect) {
-        let coords = this.editorView.coordsAtPos(this.cursorPos);
-        let halfWidth = this.width / 2 * scaleX;
-        rect = { left: coords.left - halfWidth, right: coords.left + halfWidth, top: coords.top, bottom: coords.bottom };
-      }
-      let parent = this.editorView.dom.offsetParent;
-      if (!this.element) {
-        this.element = parent.appendChild(document.createElement("div"));
-        if (this.class)
-          this.element.className = this.class;
-        this.element.style.cssText = "position: absolute; z-index: 50; pointer-events: none;";
-        if (this.color) {
-          this.element.style.backgroundColor = this.color;
-        }
-      }
-      this.element.classList.toggle("prosemirror-dropcursor-block", isBlock);
-      this.element.classList.toggle("prosemirror-dropcursor-inline", !isBlock);
-      let parentLeft, parentTop;
-      if (!parent || parent == document.body && getComputedStyle(parent).position == "static") {
-        parentLeft = -pageXOffset;
-        parentTop = -pageYOffset;
-      } else {
-        let rect2 = parent.getBoundingClientRect();
-        let parentScaleX = rect2.width / parent.offsetWidth, parentScaleY = rect2.height / parent.offsetHeight;
-        parentLeft = rect2.left - parent.scrollLeft * parentScaleX;
-        parentTop = rect2.top - parent.scrollTop * parentScaleY;
-      }
-      this.element.style.left = (rect.left - parentLeft) / scaleX + "px";
-      this.element.style.top = (rect.top - parentTop) / scaleY + "px";
-      this.element.style.width = (rect.right - rect.left) / scaleX + "px";
-      this.element.style.height = (rect.bottom - rect.top) / scaleY + "px";
-    }
-    scheduleRemoval(timeout) {
-      clearTimeout(this.timeout);
-      this.timeout = setTimeout(() => this.setCursor(null), timeout);
-    }
-    computeTarget(event) {
-      let pos = this.editorView.posAtCoords({ left: event.clientX, top: event.clientY });
-      let node = pos && pos.inside >= 0 && this.editorView.state.doc.nodeAt(pos.inside);
-      let disableDropCursor = node && node.type.spec.disableDropCursor;
-      let disabled = typeof disableDropCursor == "function" ? disableDropCursor(this.editorView, pos, event) : disableDropCursor;
-      if (!pos || disabled)
-        return null;
-      let target = pos.pos;
-      if (this.editorView.dragging && this.editorView.dragging.slice) {
-        let point = dropPoint(this.editorView.state.doc, target, this.editorView.dragging.slice);
-        if (point != null)
-          target = point;
-      }
-      return target;
-    }
-    dragover(event) {
-      if (!this.editorView.editable)
-        return;
-      this.lastDragEvent = event;
-      let target = this.computeTarget(event);
-      if (target != null) {
-        this.setCursor(target);
-        this.scheduleRemoval(5e3);
-      }
-    }
-    dragend() {
-      this.scheduleRemoval(20);
-    }
-    drop() {
-      this.scheduleRemoval(20);
-    }
-    dragleave(event) {
-      if (!this.editorView.dom.contains(event.relatedTarget))
-        this.setCursor(null);
-    }
-  };
-
   // node_modules/w3c-keyname/index.js
   var base = {
     8: "Backspace",
@@ -12924,9 +12777,11 @@
       parseDOM: [{
         tag: "ol",
         getAttrs(dom) {
+          const start = dom.getAttribute("start")?.trim();
+          const order = start && /^[+-]?\d+$/.test(start) ? Number(start) : 1;
           return {
             ...readBlockOrigin(dom),
-            order: dom.hasAttribute("start") ? Math.max(0, Number(dom.getAttribute("start")) || 1) : 1,
+            order: Number.isSafeInteger(order) ? Math.max(0, order) : 1,
             tight: !dom.querySelector(":scope > li > p")
           };
         }
@@ -12944,6 +12799,8 @@
       parseDOM: [{
         tag: "li",
         getAttrs(dom) {
+          const task = dom.getAttribute("data-task");
+          if (task === "checked" || task === "unchecked") return { task: task === "checked" };
           const cb = Array.from(dom.querySelectorAll("input[type=checkbox]")).find((n) => n.closest("li") === dom);
           if (!cb) return { task: null };
           return { task: cb.hasAttribute("checked") || cb.checked === true };
@@ -13090,8 +12947,7 @@
       attrs: {
         ...blockOriginAttrs(),
         tex: { default: "" },
-        mathSourceKey: { default: null },
-        rawHTML: { default: "" }
+        mathSourceKey: { default: null }
       },
       parseDOM: [{
         tag: "div[data-tex]",
@@ -13100,8 +12956,7 @@
           return {
             ...readBlockOrigin(dom),
             tex: dom.getAttribute("data-tex") || "",
-            mathSourceKey: dom.getAttribute("data-md-math-source") || null,
-            rawHTML: dom.outerHTML
+            mathSourceKey: dom.getAttribute("data-md-math-source") || null
           };
         }
       }],
@@ -13222,8 +13077,7 @@
       attrs: {
         tex: { default: "" },
         mathSourceKey: { default: null },
-        displayMode: { default: false },
-        rawHTML: { default: "" }
+        displayMode: { default: false }
       },
       parseDOM: [{
         tag: "span[data-tex]",
@@ -13232,8 +13086,7 @@
           return {
             tex: dom.getAttribute("data-tex") || "",
             mathSourceKey: dom.getAttribute("data-md-math-source") || null,
-            displayMode: dom.classList.contains("math-block"),
-            rawHTML: dom.outerHTML
+            displayMode: dom.classList.contains("math-block")
           };
         }
       }],
@@ -13386,43 +13239,6 @@
   var schema = new Schema({ nodes, marks });
   var INLINE_HTML_MARK_NAMES = INLINE_HTML_TAGS.map((t) => `html_${t}`);
 
-  // src/context-step.js
-  var SourceContextStep = class _SourceContextStep extends Step {
-    constructor(nextContext, prevContext = "") {
-      super();
-      this.nextContext = nextContext;
-      this.prevContext = prevContext;
-    }
-    apply(doc3) {
-      const updated = doc3.type.create(
-        { ...doc3.attrs, sourceContext: this.nextContext },
-        doc3.content,
-        doc3.marks
-      );
-      return StepResult.ok(updated);
-    }
-    invert(doc3) {
-      return new _SourceContextStep(this.prevContext, this.nextContext);
-    }
-    map() {
-      return this;
-    }
-    merge() {
-      return null;
-    }
-    toJSON() {
-      return {
-        stepType: "fastraSourceContext",
-        nextContext: this.nextContext,
-        prevContext: this.prevContext
-      };
-    }
-    static fromJSON(_schema, json) {
-      return new _SourceContextStep(json.nextContext || "", json.prevContext || "");
-    }
-  };
-  Step.jsonID("fastraSourceContext", SourceContextStep);
-
   // src/parser.js
   var INLINE_WRAP_TAGS = /* @__PURE__ */ new Set(["STRONG", "B", "EM", "I", "MARK", "DEL", "S", "STRIKE", "SPAN", "FONT"]);
   var ALLOWED_PASTE_ATTRS = /* @__PURE__ */ new Set(["href", "src", "alt", "title", "align", "colspan", "rowspan", "start", "type", "checked", "data-md-table", "data-task"]);
@@ -13483,18 +13299,8 @@
         n.removeAttribute("data-fastra-md-block-total");
       });
     }
-    container.querySelectorAll("[data-md-opaque]").forEach((node) => {
-      if (node.dataset.mdOpaqueHTML === void 0) {
-        node.dataset.mdOpaqueHTML = node.innerHTML;
-      }
-    });
-    container.querySelectorAll("[data-tex]").forEach((node) => {
-      if (node.dataset.mdMathHTML === void 0) {
-        node.dataset.mdMathHTML = node.outerHTML;
-      }
-    });
     container.querySelectorAll("pre code").forEach((code) => {
-      code.textContent = code.textContent;
+      if (!code.closest("[data-md-opaque],[data-tex]")) code.textContent = code.textContent;
     });
     container.querySelectorAll("div.fastra-visible-blank-line, p[data-md-empty]").forEach((el) => {
       const children = Array.from(el.childNodes);
@@ -13781,40 +13587,57 @@
     parsed.content.forEach((n) => nodes2.push(stripOriginFromNode(n)));
     return nodes2;
   }
+  function clipboardURL(value, scheme, relative = false) {
+    const url = value.trim();
+    if (!url || /[\s\\\u0000-\u001f\u007f]/.test(url) || /[\u0000-\u001f\u007f]/.test(value)) return null;
+    if (scheme.test(url) || relative && !url.startsWith("/") && /^[^:/]+(?:\/|$)/.test(url)) return url;
+    return null;
+  }
+  function inlineClipboardStyles(node) {
+    if (node.tagName !== "SPAN" && node.tagName !== "FONT" || node.closest("pre,code") || !node.style) return [];
+    const { backgroundColor, fontWeight, fontStyle, textDecorationLine } = node.style;
+    return [
+      backgroundColor && !["transparent", "rgba(0, 0, 0, 0)"].includes(backgroundColor) && "mark",
+      textDecorationLine?.includes("line-through") && "del",
+      (fontWeight === "bold" || Number(fontWeight) >= 600) && "strong",
+      (fontStyle === "italic" || fontStyle === "oblique") && "em"
+    ].filter(Boolean);
+  }
+  function replaceStyledInline(node, tags, ownerDocument) {
+    let content = ownerDocument.createDocumentFragment();
+    content.append(...node.childNodes);
+    for (const tag of tags) {
+      const wrap2 = ownerDocument.createElement(tag);
+      wrap2.append(content);
+      content = wrap2;
+    }
+    node.replaceWith(content);
+  }
   function sanitizePasteHTML(html, ownerDocument = document) {
     const template = ownerDocument.createElement("template");
     template.innerHTML = html || "";
-    template.content.querySelectorAll("script,style,iframe,object,embed,svg,math,link,meta").forEach((n) => n.remove());
+    template.content.querySelectorAll("script,style,iframe,object,embed,svg,math,link,meta,template").forEach((n) => n.remove());
     template.content.querySelectorAll("*").forEach((n) => {
       const language = n.tagName === "CODE" ? n.className.match(/(?:^|\s)language-([\w+-]+)(?=\s|$)/)?.[1] : null;
-      const isStyledInline = (n.tagName === "SPAN" || n.tagName === "FONT") && !n.closest("pre,code,[data-md-opaque],[data-tex]") && !n.hasAttribute("data-md-spaces");
-      const marked = isStyledInline && n.style?.backgroundColor && !["transparent", "rgba(0, 0, 0, 0)"].includes(n.style.backgroundColor);
-      const bold = isStyledInline && (n.style?.fontWeight === "bold" || Number(n.style?.fontWeight) >= 600);
-      const italic = isStyledInline && (n.style?.fontStyle === "italic" || n.style?.fontStyle === "oblique");
-      const strike = isStyledInline && n.style?.textDecorationLine?.includes("line-through");
+      const styles = inlineClipboardStyles(n);
       for (const a of Array.from(n.attributes)) {
         if (!ALLOWED_PASTE_ATTRS.has(a.name)) n.removeAttribute(a.name);
       }
       if (language) n.className = "language-" + language;
       if (n.tagName === "IMG") {
-        const src = n.getAttribute("src") || "";
-        if (/^(https?:|[^:/]+(?:\/|$))/i.test(src)) n.dataset.mdSrc = src;
-        else n.remove();
-      }
-      if (n.hasAttribute("href") && !/^(https?:|mailto:|#|[^:/]+(?:\/|$))/i.test(n.getAttribute("href") || "")) {
-        n.removeAttribute("href");
-      }
-      if (marked || bold || italic || strike) {
-        const frag = ownerDocument.createDocumentFragment();
-        while (n.firstChild) frag.appendChild(n.firstChild);
-        let wrapped = frag;
-        for (const tag of [marked ? "mark" : null, strike ? "del" : null, bold ? "strong" : null, italic ? "em" : null].filter(Boolean)) {
-          const el = ownerDocument.createElement(tag);
-          el.append(wrapped);
-          wrapped = el;
+        const src = clipboardURL(n.getAttribute("src") || "", /^https?:\/\//i, true);
+        if (src === null) n.remove();
+        else {
+          n.setAttribute("src", src);
+          n.dataset.mdSrc = src;
         }
-        n.replaceWith(wrapped);
       }
+      if (n.hasAttribute("href")) {
+        const href = clipboardURL(n.getAttribute("href"), /^(?:https?:\/\/|mailto:|#)/i, true);
+        if (href === null) n.removeAttribute("href");
+        else n.setAttribute("href", href);
+      }
+      if (styles.length) replaceStyledInline(n, styles, ownerDocument);
     });
     return template.innerHTML;
   }
@@ -13849,28 +13672,17 @@
         return { ok: false, reason: node.tagName === "IMG" ? "images" : "format" };
       }
       if (node.hasAttribute("href")) {
-        const href = node.getAttribute("href") || "";
-        if (!(/^(https?:\/\/|#)/i.test(href.trim()) && !/[\u0000-\u001f\u007f]/.test(href))) {
-          return { ok: false, reason: "url" };
-        }
+        const href = clipboardURL(node.getAttribute("href"), /^(?:https?:\/\/|#)/i);
+        if (href === null) return { ok: false, reason: "url" };
+        node.setAttribute("href", href);
       }
-      const marked = (node.tagName === "SPAN" || node.tagName === "FONT") && node.style?.backgroundColor && !["transparent", "rgba(0, 0, 0, 0)"].includes(node.style.backgroundColor);
-      const bold = (node.tagName === "SPAN" || node.tagName === "FONT") && /^(bold|[6-9]00)$/.test(node.style?.fontWeight || "");
-      const italic = (node.tagName === "SPAN" || node.tagName === "FONT") && node.style?.fontStyle === "italic";
+      const styles = inlineClipboardStyles(node);
       for (const attr of Array.from(node.attributes)) {
         const permitted = node.tagName === "A" && (attr.name === "href" || attr.name === "title") || node.tagName === "OL" && attr.name === "start" || (node.tagName === "TH" || node.tagName === "TD") && (attr.name === "align" || attr.name === "colspan" || attr.name === "rowspan");
         if (!permitted) node.removeAttribute(attr.name);
       }
       if (node.tagName === "SPAN" || node.tagName === "FONT") {
-        const fragment = ownerDocument.createDocumentFragment();
-        fragment.append(...node.childNodes);
-        let content = fragment;
-        for (const tag of [marked ? "mark" : null, bold ? "strong" : null, italic ? "em" : null].filter(Boolean)) {
-          const wrap2 = ownerDocument.createElement(tag);
-          wrap2.append(content);
-          content = wrap2;
-        }
-        node.replaceWith(content);
+        replaceStyledInline(node, styles, ownerDocument);
       }
     }
     return { ok: true, html: template.innerHTML, images };
@@ -13908,7 +13720,7 @@
   function escapePlainSegment(segment, { atBlockStart: atBlockStart2 = false, tableCell = false } = {}) {
     let out = segment.replace(/\\/g, "\\\\").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\*/g, "\\*").replace(/_/g, "\\_").replace(/`/g, "\\`").replace(/\[/g, "\\[").replace(/\]/g, "\\]").replace(new RegExp("[$~]|(?<!\\\\)=(?==)|(?<==)=", "g"), "\\$&");
     if (atBlockStart2) {
-      out = out.replace(/^(#{1,6})(\s|$)/, "\\$1$2").replace(/^>/, "\\>").replace(/^(\s*[-+*])(\s|$)/, (_, m, ws) => m.replace(/([-+*])$/, "\\$1") + ws).replace(/^(\d+)([.)]) /, "$1\\$2 ");
+      out = out.replace(/^(#{1,6})(\s|$)/, "\\$1$2").replace(/^>/, "\\>").replace(/^(\s*[-+*])(\s|$)/, (_, m, ws) => m.replace(/([-+*])$/, "\\$1") + ws).replace(/^([ \t]*)(-)(?=(?:[ \t]*-)+[ \t]*$)/, "$1\\$2").replace(/^(\d+)([.)]) /, "$1\\$2 ");
     }
     if (tableCell) {
       out = out.replace(/\|/g, "\\|").replace(/ {2,}/g, (s) => "&#32;".repeat(s.length));
@@ -14016,17 +13828,25 @@
       return out;
     }).join(tableCell ? "<br>" : "  \n");
   }
-  function formatLinkDestination(rawHref) {
-    const href = String(rawHref || "");
+  function escapeTablePipes(text) {
+    return text.replace(/\|/g, "\\|");
+  }
+  function escapeUnescapedTablePipes(text) {
+    return text.replace(new RegExp("(?<!\\\\)(?:\\\\\\\\)*\\|", "g"), "\\$&");
+  }
+  function formatLinkDestination(rawHref, tableCell = false, wrap2 = false) {
+    let href = String(rawHref || "");
     if (!href) return "";
-    if (/[\s()<>[\]\u0000-\u001f]/.test(href)) {
+    if (tableCell) href = escapeTablePipes(href).replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+    if (wrap2 || /[\s()<>[\]\u0000-\u001f]/.test(href)) {
       return `<${href.replace(/</g, "%3C").replace(/>/g, "%3E")}>`;
     }
     return href;
   }
-  function formatLinkTitle(rawTitle) {
+  function formatLinkTitle(rawTitle, tableCell = false) {
     if (rawTitle == null || rawTitle === "") return "";
-    const escaped = String(rawTitle).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/&(?=[A-Za-z0-9#]+;)/g, "\\&");
+    let escaped = String(rawTitle).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/&(?=[A-Za-z0-9#]+;)/g, "\\&");
+    if (tableCell) escaped = escapeTablePipes(escaped).replace(/\r/g, "&#13;").replace(/\n/g, "&#10;");
     return ` "${escaped}"`;
   }
   function serializeInline(fragment, { opaqueSources = {}, protect = null, tableCell = false, inHeading = false } = {}) {
@@ -14048,11 +13868,11 @@
       let i = 0;
       while (i < nodes2.length) {
         const node = nodes2[i];
-        const sorted = sortMarks(node.marks || []).filter((m) => !activeMarkKeys.has(m.type.name === "link" ? markKey(m) : m.type.name));
+        const sorted = sortMarks(node.marks || []).filter((m) => !activeMarkKeys.has(markKey(m)));
         if (sorted.length > 0) {
           const outer = sorted[0];
-          const key = outer.type.name === "link" ? markKey(outer) : outer.type.name;
-          const matchFn = (m) => m.type.name === "link" ? markKey(m) === key : m.type.name === outer.type.name;
+          const key = markKey(outer);
+          const matchFn = (m) => markKey(m) === key;
           let j = i + 1;
           while (j < nodes2.length && nodes2[j].marks.some(matchFn)) j++;
           const subNodes = nodes2.slice(i, j);
@@ -14073,8 +13893,8 @@
             const nextNode = j < nodes2.length ? nodes2[j] : null;
             const prevChar = lastCharOfNode(prevNode);
             const nextChar = firstCharOfNode(nextNode);
-            const prevMarks = (prevNode?.marks || []).filter((m) => !activeMarkKeys.has(m.type.name));
-            const nextMarks = (nextNode?.marks || []).filter((m) => !activeMarkKeys.has(m.type.name));
+            const prevMarks = (prevNode?.marks || []).filter((m) => !activeMarkKeys.has(markKey(m)));
+            const nextMarks = (nextNode?.marks || []).filter((m) => !activeMarkKeys.has(markKey(m)));
             if (outer.type.name === "strong") {
               out += wrapDelimiterMark(inner, "strong", "**", prevChar, nextChar, prevMarks, nextMarks, ["strong", "em"]);
             } else if (outer.type.name === "em") {
@@ -14084,13 +13904,13 @@
             } else if (outer.type.name === "strike") {
               out += wrapDelimiterMark(inner, "del", "~~", prevChar, nextChar, prevMarks, nextMarks, ["strike"]);
             } else if (outer.type.name === "link") {
-              const dest = formatLinkDestination(outer.attrs.href);
-              const title = formatLinkTitle(outer.attrs.title);
+              const dest = formatLinkDestination(outer.attrs.href, tableCell);
+              const title = formatLinkTitle(outer.attrs.title, tableCell);
               out += `[${inner}](${dest}${title})`;
             } else if (outer.type.name.startsWith("html_")) {
               const tag = outer.type.name.slice(5);
               const attrs = ["title", "dir", "lang"].filter((a) => outer.attrs[a] != null && outer.attrs[a] !== "").map((a) => ` ${a}="${escapeAttrValue(outer.attrs[a])}"`).join("");
-              out += `<${tag}${attrs}>${inner}</${tag}>`;
+              out += `<${tag}${tableCell ? escapeTablePipes(attrs) : attrs}>${inner}</${tag}>`;
             } else {
               out += inner;
             }
@@ -14098,7 +13918,7 @@
           i = j;
           continue;
         }
-        out += renderLeafInline(node, atBlockStart2 && i === 0);
+        out += renderLeafInline(node, atBlockStart2 && i === 0 || out.endsWith("\n"));
         i++;
       }
       return out;
@@ -14113,17 +13933,20 @@
       if (node.type.name === "image") {
         const mdSrc = node.attrs.mdSrc ?? node.attrs.src ?? "";
         if (!mdSrc) return "";
-        const alt = String(node.attrs.alt || "").replace(/[\\[\]]/g, "\\$&");
-        const wrappedSrc = `<${String(mdSrc).replace(/</g, "%3C").replace(/>/g, "%3E")}>`;
-        const title = node.attrs.title ? ` "${String(node.attrs.title).replace(/[\\"]/g, "\\$&")}"` : "";
+        let alt = String(node.attrs.alt || "").replace(/[\\[\]]/g, "\\$&").replace(/&/g, "&amp;");
+        if (tableCell) alt = escapeTablePipes(alt).replace(/\r\n?|\n/g, "&#32;");
+        const wrappedSrc = formatLinkDestination(mdSrc, tableCell, true);
+        const title = formatLinkTitle(node.attrs.title, tableCell);
         return `![${alt}](${wrappedSrc}${title})`;
       }
       if (node.type.name === "math_inline") {
         if (node.attrs.mathSourceKey && typeof opaqueSources[node.attrs.mathSourceKey] === "string") {
-          const src = opaqueSources[node.attrs.mathSourceKey];
+          const source = opaqueSources[node.attrs.mathSourceKey];
+          const src = tableCell ? escapeUnescapedTablePipes(source) : source;
           return protect ? protect(src) : src;
         }
-        return `$${node.attrs.tex || ""}$`;
+        const tex = node.attrs.tex || "";
+        return `$${tableCell ? escapeUnescapedTablePipes(tex) : tex}$`;
       }
       if (node.type.name === "opaque_inline") {
         if (node.attrs.mathSourceKey && typeof opaqueSources[node.attrs.mathSourceKey] === "string") {
@@ -14273,7 +14096,7 @@ ${blanks}` : blanks;
       }
       case "heading": {
         const hashes = "#".repeat(Math.min(6, Math.max(1, node.attrs.level || 1)));
-        const text = serializeInline(node.content, { opaqueSources, protect, inHeading: true });
+        const text = serializeInline(node.content, { opaqueSources, protect, inHeading: true }).replace(/(^|[ \t])(#+)(?=[ \t]*$)/, "$1\\$2");
         return text ? `${hashes} ${text}` : `${hashes} `;
       }
       case "horizontal_rule":
@@ -14299,7 +14122,14 @@ ${fence}`;
       case "ordered_list": {
         const isOrdered = node.type.name === "ordered_list";
         const start = isOrdered ? Math.max(0, Number(node.attrs.order ?? 1)) : 1;
-        const isLoose = !node.attrs.tight;
+        let isLoose = !node.attrs.tight;
+        node.content.forEach((item) => {
+          item.content.forEach((child, _, index) => {
+            if (index > 0 && child.type.name === "paragraph" && item.child(index - 1).type.name === "paragraph") {
+              isLoose = true;
+            }
+          });
+        });
         const renderedItems = [];
         node.content.forEach((item, _offset, index) => {
           const marker = isOrdered ? `${start + index}. ` : "- ";
@@ -14397,18 +14227,32 @@ $$`;
     }
     let output = "";
     let prevBlockWasVerbatim = true;
+    function lineEndingCount(text) {
+      let count = 0;
+      for (let index = text.length - 1; index >= 0 && count < 2; index--) {
+        if (text[index] !== "\r" && text[index] !== "\n") break;
+        if (text[index] === "\n" && text[index - 1] === "\r") index--;
+        count++;
+      }
+      return count;
+    }
+    function separateBlocks(ending) {
+      if (output) output += ending.repeat(Math.max(0, 2 - lineEndingCount(output)));
+    }
     function emitHiddenForBlock(fullId) {
       if (emittedHidden.has(fullId)) return;
       emittedHidden.add(fullId);
       for (const h of ctx.hiddenPrefixes?.get(fullId) || []) {
         emittedHidden.add("hidden:" + h.id);
-        if (!prevBlockWasVerbatim && !h.source.trim() && /(\r\n|\r|\n){2}$/.test(output)) {
+        if (!prevBlockWasVerbatim && !h.source.trim() && lineEndingCount(output) >= 2) {
           continue;
         }
         output += h.source;
       }
     }
     const docEnding = (ctx.blocks || []).some((b) => b.source?.includes("\r\n")) ? "\r\n" : (ctx.blocks || []).some((b) => b.source?.includes("\r")) ? "\r" : "\n";
+    const firstVisible = ctx.blocks?.find((block) => !block.hidden);
+    if (firstVisible) emitHiddenForBlock(firstVisible.id);
     let idx = 0;
     while (idx < topNodes.length) {
       const node = topNodes[idx];
@@ -14443,13 +14287,7 @@ $$`;
       const sourceEnding = original?.source?.includes("\r\n") ? "\r\n" : original?.source?.includes("\r") ? "\r" : docEnding;
       const imgEnding = findImageEnding(node);
       const ending = imgEnding || sourceEnding;
-      if (idx > 0 && output.length > 0 && !/(\r\n|\r|\n){2}$/.test(output)) {
-        if (/(\r\n|\r|\n)$/.test(output)) {
-          output += ending;
-        } else {
-          output += ending + ending;
-        }
-      }
+      if (idx > 0) separateBlocks(ending);
       if (original && sub === 0 && total > 1 && idx + total <= topNodes.length) {
         const group = topNodes.slice(idx, idx + total);
         const sameGroup = group.every(
@@ -14459,7 +14297,9 @@ $$`;
           const rendered2 = group.map((n) => serializeBlockNode(n, { opaqueSources, protect: protector.protect })).join("\n\n");
           let text2 = ending !== "\n" ? rendered2.replace(/\r\n?|\n/g, ending) : rendered2;
           text2 = protector.restore(text2);
-          const suffix = canonicalGroupStructure(group) === original.structure ? original.source.match(/[\r\n]*$/)?.[0] ?? ending + ending : ending + ending;
+          const rawTail2 = original.source.match(/[\r\n]*$/)?.[0] ?? "";
+          const needsSeparator = idx + total < topNodes.length && lineEndingCount(rawTail2) < 2;
+          const suffix = !needsSeparator && canonicalGroupStructure(group) === original.structure ? rawTail2 : ending + ending;
           output += text2 + suffix;
           prevBlockWasVerbatim = false;
           idx += total;
@@ -14471,7 +14311,7 @@ $$`;
       text = protector.restore(text);
       const hasNext = idx + 1 < topNodes.length;
       const rawTail = original?.source?.match(/[\r\n]*$/)?.[0] ?? "";
-      const rawLineCount = (rawTail.match(/\r\n|\r|\n/g) || []).length;
+      const rawLineCount = lineEndingCount(rawTail);
       const safeTail = hasNext && rawLineCount < 2 ? ending + ending : rawTail;
       if (original && total === 1 && !isSplitSingleOrigin) {
         const suffix = canonicalGroupStructure([node]) === original.structure ? safeTail : ending + ending;
@@ -14489,6 +14329,7 @@ $$`;
     }
     for (const b of ctx.blocks || []) {
       if (b.hidden && !emittedHidden.has("hidden:" + b.id) && (b.source.trim() || ctx.trailingHidden?.has(b.id) && (ctx.trailingOwner === null || usedOrigins.has(ctx.trailingOwner)))) {
+        if (b.source.trim() && (!prevBlockWasVerbatim || !ctx.trailingHidden?.has(b.id) || !usedOrigins.has(ctx.trailingOwner))) separateBlocks(docEnding);
         output += b.source;
       }
     }
@@ -14513,6 +14354,74 @@ $$`;
     else img.removeAttribute("data-md-image-transaction");
     if (node.attrs.imageEnding) img.setAttribute("data-md-image-ending", node.attrs.imageEnding);
     else img.removeAttribute("data-md-image-ending");
+  }
+  function setMathSource(dom, key) {
+    if (key) dom.setAttribute("data-md-math-source", key);
+    else dom.removeAttribute("data-md-math-source");
+  }
+  function mathNodeView(node, view) {
+    let current = node;
+    const document2 = view.dom.ownerDocument;
+    const inline = node.isInline;
+    const dom = document2.createElement(inline ? "span" : "div");
+    dom.setAttribute("contenteditable", "false");
+    function render(target) {
+      const { tex, mathSourceKey, displayMode } = target.attrs;
+      const display = !inline || !!displayMode;
+      dom.className = display ? "math-block" : "math-inline";
+      dom.setAttribute("data-tex", tex || "");
+      setMathSource(dom, mathSourceKey);
+      const katex = document2.defaultView?.katex;
+      if (katex) {
+        try {
+          katex.render(tex || "", dom, { displayMode: display, throwOnError: false, trust: false });
+          dom.setAttribute("data-rendered", "true");
+          return;
+        } catch (_) {
+        }
+      }
+      dom.removeAttribute("data-rendered");
+      dom.textContent = tex || "";
+    }
+    render(node);
+    return {
+      dom,
+      update(updated) {
+        if (updated.type !== current.type) return false;
+        if (updated.attrs.tex !== current.attrs.tex || updated.attrs.mathSourceKey !== current.attrs.mathSourceKey || updated.attrs.displayMode !== current.attrs.displayMode) render(updated);
+        current = updated;
+        return true;
+      },
+      ignoreMutation() {
+        return true;
+      }
+    };
+  }
+  function opaqueNodeView(node, view) {
+    let current = node;
+    const dom = view.dom.ownerDocument.createElement(node.attrs.tag || (node.isInline ? "span" : "section"));
+    dom.setAttribute("contenteditable", "false");
+    function render(target) {
+      if (target.attrs.className) dom.className = target.attrs.className;
+      else dom.removeAttribute("class");
+      dom.setAttribute("data-md-opaque", target.attrs.opaqueKey || "");
+      setMathSource(dom, target.attrs.mathSourceKey);
+      const html = target.attrs.rawHTML || "";
+      if (dom.innerHTML !== html) dom.innerHTML = html;
+    }
+    render(node);
+    return {
+      dom,
+      update(updated) {
+        if (updated.type !== current.type || updated.attrs.tag !== current.attrs.tag) return false;
+        render(updated);
+        current = updated;
+        return true;
+      },
+      ignoreMutation() {
+        return true;
+      }
+    };
   }
   function createNodeViews({
     getImageOverrides,
@@ -14549,6 +14458,7 @@ $$`;
         function sync(target) {
           current = target;
           dom.setAttribute("data-task", target.attrs.task ? "checked" : "unchecked");
+          checkbox.toggleAttribute("checked", !!target.attrs.task);
           checkbox.checked = !!target.attrs.task;
           if (checkbox.parentNode !== dom) dom.prepend(checkbox);
           dom.insertBefore(contentDOM, checkbox.nextSibling);
@@ -14615,143 +14525,10 @@ $$`;
           }
         };
       },
-      math_block(node, view) {
-        let current = node;
-        const doc3 = view.dom.ownerDocument;
-        const win = doc3.defaultView;
-        const dom = doc3.createElement("div");
-        function sync(target) {
-          current = target;
-          dom.className = "math-block";
-          dom.setAttribute("data-tex", target.attrs.tex || "");
-          dom.setAttribute("contenteditable", "false");
-          if (target.attrs.mathSourceKey) dom.setAttribute("data-md-math-source", target.attrs.mathSourceKey);
-          else dom.removeAttribute("data-md-math-source");
-          if (win?.katex?.render) {
-            try {
-              win.katex.render(target.attrs.tex || "", dom, { displayMode: true, throwOnError: false });
-              dom.setAttribute("data-rendered", "true");
-              return;
-            } catch (_) {
-            }
-          }
-          dom.textContent = target.attrs.tex || "";
-        }
-        sync(node);
-        return {
-          dom,
-          update(updated) {
-            if (updated.type !== current.type) return false;
-            if (updated.attrs.tex === current.attrs.tex && updated.attrs.mathSourceKey === current.attrs.mathSourceKey) {
-              current = updated;
-              return true;
-            }
-            sync(updated);
-            return true;
-          },
-          ignoreMutation() {
-            return true;
-          }
-        };
-      },
-      math_inline(node, view) {
-        let current = node;
-        const doc3 = view.dom.ownerDocument;
-        const win = doc3.defaultView;
-        const dom = doc3.createElement("span");
-        function sync(target) {
-          current = target;
-          dom.className = target.attrs.displayMode ? "math-block" : "math-inline";
-          dom.setAttribute("data-tex", target.attrs.tex || "");
-          dom.setAttribute("contenteditable", "false");
-          if (target.attrs.mathSourceKey) dom.setAttribute("data-md-math-source", target.attrs.mathSourceKey);
-          else dom.removeAttribute("data-md-math-source");
-          if (win?.katex?.render) {
-            try {
-              win.katex.render(target.attrs.tex || "", dom, {
-                displayMode: !!target.attrs.displayMode,
-                throwOnError: false
-              });
-              dom.setAttribute("data-rendered", "true");
-              return;
-            } catch (_) {
-            }
-          }
-          dom.textContent = target.attrs.tex || "";
-        }
-        sync(node);
-        return {
-          dom,
-          update(updated) {
-            if (updated.type !== current.type) return false;
-            if (updated.attrs.tex === current.attrs.tex && updated.attrs.mathSourceKey === current.attrs.mathSourceKey && updated.attrs.displayMode === current.attrs.displayMode) {
-              current = updated;
-              return true;
-            }
-            sync(updated);
-            return true;
-          },
-          ignoreMutation() {
-            return true;
-          }
-        };
-      },
-      opaque_block(node, view) {
-        let current = node;
-        const dom = view.dom.ownerDocument.createElement(node.attrs.tag || "section");
-        function sync(target) {
-          current = target;
-          if (target.attrs.className) dom.className = target.attrs.className;
-          else dom.removeAttribute("class");
-          dom.setAttribute("data-md-opaque", target.attrs.opaqueKey || "");
-          dom.setAttribute("contenteditable", "false");
-          if (target.attrs.mathSourceKey) dom.setAttribute("data-md-math-source", target.attrs.mathSourceKey);
-          else dom.removeAttribute("data-md-math-source");
-          if (target.attrs.rawHTML && dom.innerHTML !== target.attrs.rawHTML) {
-            dom.innerHTML = target.attrs.rawHTML;
-          }
-        }
-        sync(node);
-        return {
-          dom,
-          update(updated) {
-            if (updated.type !== current.type || updated.attrs.tag !== current.attrs.tag) return false;
-            sync(updated);
-            return true;
-          },
-          ignoreMutation() {
-            return true;
-          }
-        };
-      },
-      opaque_inline(node, view) {
-        let current = node;
-        const dom = view.dom.ownerDocument.createElement(node.attrs.tag || "span");
-        function sync(target) {
-          current = target;
-          if (target.attrs.className) dom.className = target.attrs.className;
-          else dom.removeAttribute("class");
-          dom.setAttribute("data-md-opaque", target.attrs.opaqueKey || "");
-          dom.setAttribute("contenteditable", "false");
-          if (target.attrs.mathSourceKey) dom.setAttribute("data-md-math-source", target.attrs.mathSourceKey);
-          else dom.removeAttribute("data-md-math-source");
-          if (target.attrs.rawHTML && dom.innerHTML !== target.attrs.rawHTML) {
-            dom.innerHTML = target.attrs.rawHTML;
-          }
-        }
-        sync(node);
-        return {
-          dom,
-          update(updated) {
-            if (updated.type !== current.type) return false;
-            sync(updated);
-            return true;
-          },
-          ignoreMutation() {
-            return true;
-          }
-        };
-      }
+      math_block: mathNodeView,
+      math_inline: mathNodeView,
+      opaque_block: opaqueNodeView,
+      opaque_inline: opaqueNodeView
     };
   }
 
@@ -15247,6 +15024,7 @@ $$`;
   for (let key in pcBaseKeymap)
     macBaseKeymap[key] = pcBaseKeymap[key];
   var mac4 = typeof navigator != "undefined" ? /Mac|iP(hone|[oa]d)/.test(navigator.platform) : typeof os != "undefined" && os.platform ? os.platform() == "darwin" : false;
+  var baseKeymap = mac4 ? macBaseKeymap : pcBaseKeymap;
 
   // node_modules/prosemirror-schema-list/dist/index.js
   function wrapInList(listType, attrs = null) {
@@ -15567,10 +15345,6 @@ $$`;
         return { protectedAtom: true, containsProtected: true, inTable: false, cell: null };
       }
     }
-    const nodeAt = $from.nodeAfter;
-    if ($from.pos === $to.pos && nodeAt && (nodeAt.type === schema2.nodes.math_inline || nodeAt.type === schema2.nodes.opaque_inline)) {
-      return { protectedAtom: true, containsProtected: true, inTable: false, cell: null };
-    }
     let containsProtected = false;
     let containsTable = false;
     if (from2 < to) {
@@ -15674,12 +15448,12 @@ $$`;
   function liftSelectedListItemsWithOrder(state, schema2) {
     const { $from, $to } = state.selection;
     const listAncestor = findNearestListAncestor($from, schema2);
-    if (!listAncestor) return null;
+    if (!listAncestor || $to.depth < listAncestor.depth || $to.before(listAncestor.depth) !== listAncestor.pos) return null;
     const { node: listNode, pos: listPos } = listAncestor;
     const isOrdered = listNode.type === schema2.nodes.ordered_list;
     const baseOrder = isOrdered ? Math.max(0, Number(listNode.attrs.order ?? 1)) : 1;
     const firstIdx = $from.index(listAncestor.depth);
-    const lastIdx = $to.depth >= listAncestor.depth ? $to.index(listAncestor.depth) : firstIdx;
+    const lastIdx = $to.index(listAncestor.depth);
     if (listNode.childCount === 1 || lastIdx === listNode.childCount - 1) {
       let liftTr = null;
       if (liftListItem(schema2.nodes.list_item)(state, (t) => {
@@ -15722,6 +15496,19 @@ $$`;
     if (beforeItems.length) caretPos += replacements[0].nodeSize;
     tr.setSelection(TextSelection.near(tr.doc.resolve(caretPos + 1)));
     return tr;
+  }
+  function convertCodeLineBreaks(tr, node, pos, schema2) {
+    if (node.type !== schema2.nodes.code_block) return;
+    const lines = node.textContent.split("\n");
+    if (lines.length === 1) return;
+    const content = [];
+    lines.forEach((line, index) => {
+      if (index) content.push(schema2.nodes.hard_break.create());
+      if (line) content.push(schema2.text(line));
+    });
+    const selection = tr.selection.toJSON();
+    tr.replaceWith(pos + 1, pos + node.nodeSize - 1, content);
+    tr.setSelection(Selection.fromJSON(tr.doc, selection));
   }
   function applyHeadingOrParagraph(state, dispatch, schema2, { level = null }) {
     const ctx = insideCellOrProtected(state, schema2);
@@ -15808,6 +15595,7 @@ $$`;
           mdBlockSub: node.attrs.mdBlockSub || 0,
           mdBlockTotal: node.attrs.mdBlockTotal || 1
         }, node.marks);
+        convertCodeLineBreaks(editTr, node, pos, schema2);
         blockChanged = true;
       }
     } else {
@@ -15822,6 +15610,7 @@ $$`;
             mdBlockSub: node.attrs.mdBlockSub || 0,
             mdBlockTotal: node.attrs.mdBlockTotal || 1
           }, node.marks);
+          convertCodeLineBreaks(editTr, node, pos, schema2);
           blockChanged = true;
         }
         const cFrom = pos + 1;
@@ -15963,7 +15752,7 @@ $$`;
         mdBlockId: parentList.attrs.mdBlockId || null,
         mdBlockSub: parentList.attrs.mdBlockSub || 0,
         mdBlockTotal: parentList.attrs.mdBlockTotal || 1,
-        order: parentList.attrs.order || 1,
+        order: parentList.attrs.order ?? 1,
         tight: parentList.attrs.tight !== false
       } : {
         mdContext: parentList.attrs.mdContext || "",
@@ -15985,7 +15774,6 @@ $$`;
       return true;
     }
     const listType = mode === "ordered" ? schema2.nodes.ordered_list : schema2.nodes.bullet_list;
-    const itemAttrs = mode === "task" ? { task: false } : { task: null };
     const range = $from.blockRange($to);
     if (!range) return false;
     const prepTr = state.tr;
@@ -16063,7 +15851,6 @@ $$`;
     }
     if (!ctx.inTable && $from.parent.type === schema2.nodes.blank_line) {
       if (!dispatch) return true;
-      const baseTr = prepTr.steps.length ? prepTr : state.tr;
       const pos = $from.pos;
       const splitTr = workState.tr.split(pos, 1, [{ type: schema2.nodes.blank_line }]);
       if (prepTr.steps.length) dispatchMerged(state, [prepTr, splitTr], dispatch);
@@ -16120,13 +15907,6 @@ $$`;
   function clearOriginOnSplitBlock(state, dispatch, baseCommand) {
     return baseCommand(state, (tr) => {
       const newDoc = tr.doc;
-      const oldCounts = /* @__PURE__ */ new Map();
-      state.doc.forEach((n) => {
-        if (n.attrs?.mdBlockId != null) {
-          const k = `${n.attrs.mdContext || ""}${n.attrs.mdBlockId}`;
-          oldCounts.set(k, (oldCounts.get(k) || 0) + 1);
-        }
-      });
       const seen = /* @__PURE__ */ new Set();
       let fix = tr;
       let offset = 0;
@@ -16233,13 +16013,13 @@ $$`;
         (state, _match, start, end) => wrapParagraphAsList(state, start, end, schema2.nodes.bullet_list, { tight: true }, { task: null })
       ),
       new InputRule(
-        /^(\d+)\.\s$/,
+        /^(\d{1,9})\.\s$/,
         (state, match, start, end) => wrapParagraphAsList(
           state,
           start,
           end,
           schema2.nodes.ordered_list,
-          { order: Math.max(0, Number(match[1]) || 1), tight: true },
+          { order: Number(match[1]), tight: true },
           { task: null }
         )
       ),
@@ -16285,8 +16065,41 @@ $$`;
     onUndo,
     onRedo
   }) {
+    function deleteInDirection(key, direction) {
+      return (state, dispatch, view) => {
+        if (isBlocked()) return true;
+        const { $from, $to, empty: empty2 } = state.selection;
+        const table = insideCellOrProtected(state, schema2);
+        if (table.inTable && !$from.sameParent($to)) return true;
+        if (empty2) {
+          const adjacent = ($pos) => direction < 0 ? $pos.nodeBefore : $pos.nodeAfter;
+          const atEdge = direction < 0 ? $from.parentOffset === 0 : $from.parentOffset === $from.parent.content.size;
+          if (atEdge && table.inTable) return true;
+          if (!$from.parent.isTextblock && adjacent($from)?.isAtom && NodeSelection.isSelectable(adjacent($from))) {
+            const pos = direction < 0 ? $from.pos - adjacent($from).nodeSize : $from.pos;
+            if (dispatch) dispatch(state.tr.setSelection(NodeSelection.create(state.doc, pos)));
+            return true;
+          }
+          if (atEdge && $from.depth > 0) {
+            const boundary = state.doc.resolve(direction < 0 ? $from.before() : $from.after());
+            const type = adjacent(boundary)?.type;
+            if (type === schema2.nodes.math_block || type === schema2.nodes.opaque_block) {
+              return (direction < 0 ? selectNodeBackward : selectNodeForward)(state, dispatch, view);
+            }
+          }
+        }
+        return baseKeymap[key](state, dispatch, view);
+      };
+    }
+    const backspace2 = deleteInDirection("Backspace", -1);
+    const deleteForward = deleteInDirection("Delete", 1);
     return keymap({
       Enter: buildEnterCommand(schema2),
+      Backspace: backspace2,
+      "Mod-Backspace": backspace2,
+      "Shift-Backspace": backspace2,
+      Delete: deleteForward,
+      "Mod-Delete": deleteForward,
       "Shift-Enter": (state, dispatch) => {
         if (isBlocked()) return true;
         if (onHardBreak) return onHardBreak(state, dispatch);
@@ -16341,7 +16154,6 @@ $$`;
     tableEditor,
     postMessage,
     session,
-    onBeforeImageMetaChange,
     onHistoryCommand
   } = {}) {
     if (command === "undo" || command === "redo") {
@@ -16375,9 +16187,8 @@ $$`;
     let didChange = false;
     const dispatch = (tr) => {
       const withBoundary = command === "insertText" ? tr : closeHistory(tr);
-      const wrapped = onBeforeImageMetaChange ? onBeforeImageMetaChange(withBoundary) : withBoundary;
-      if (wrapped.docChanged || wrapped.storedMarksSet) didChange = true;
-      view.dispatch(wrapped);
+      if (withBoundary.docChanged || withBoundary.storedMarksSet) didChange = true;
+      view.dispatch(withBoundary);
     };
     let handled = false;
     switch (command) {
@@ -16487,9 +16298,15 @@ $$`;
         }
         break;
       }
-      case "insertTable":
+      case "insertTable": {
+        const result = tableEditor?.insertTable(value?.rows, value?.columns);
+        if (result && !result.ok) postMessage?.({ kind: "tableError", session, reason: result.reason });
+        return { executed: result?.ok === true, changed: result?.ok === true, reason: "table" };
+      }
       case "insertHTML": {
-        const nodes2 = parseHTMLToNodes(String(value || ""), { schema: schema2, ownerDocument: view.dom.ownerDocument });
+        const ownerDocument = view.dom.ownerDocument;
+        const html = sanitizePasteHTML(String(value || ""), ownerDocument);
+        const nodes2 = parseHTMLToNodes(html, { schema: schema2, ownerDocument });
         if (nodes2.length) {
           const slice2 = new Slice(Fragment.fromArray(nodes2), 0, 0);
           dispatch(state.tr.replaceSelection(slice2).scrollIntoView());
@@ -16676,13 +16493,16 @@ $$`;
         return;
       }
       const tag = node.tagName;
+      const isBlock = blockSet.test(tag);
       if (tag === "INPUT" && node.type === "checkbox") return;
       if (node.classList?.contains("fastra-pm-li-content") || tag === "DIV" && node.classList?.contains("ProseMirror")) {
         for (const child of node.childNodes) visit(child, style, tableCell);
         return;
       }
       if (node.hasAttribute("data-tex") || node.hasAttribute("data-md-opaque")) {
+        if (isBlock) boundary();
         addText("\uFFFC", style);
+        if (isBlock) boundary();
         return;
       }
       if (tag === "DIV" && node.classList?.contains("fastra-visible-blank-line")) {
@@ -16694,7 +16514,6 @@ $$`;
           return;
         }
       }
-      const isBlock = blockSet.test(tag);
       if (tag === "BR") {
         pendingBreaks++;
         return;
@@ -16703,21 +16522,14 @@ $$`;
         boundary();
         const semantic = semanticBlockTag(tag);
         const liParent = tag === "P" ? node.closest?.("li") : null;
-        const listAncestor = liParent ? node.closest?.("ul,ol") : null;
-        const listHasLooseItem = !!(listAncestor && Array.from(listAncestor.querySelectorAll("li")).some((li) => {
-          if (li.closest("ul,ol") !== listAncestor) return false;
-          const innerBlocks = Array.from(li.querySelectorAll("p,div.fastra-visible-blank-line,ul,ol,blockquote,pre,table,hr")).filter((b) => b.closest("li") === li);
-          return innerBlocks.length > 1;
-        }));
-        const singleParagraphTightItem = !!liParent;
         const emptyPlaceholderParagraph = tag === "P" && !node.textContent.replace(/\u200b/g, "").length && !node.querySelector("img:not(.ProseMirror-separator),[data-tex],[data-md-opaque],hr,table,pre,input");
-        if (semantic && !singleParagraphTightItem && !emptyPlaceholderParagraph && !(tag === "DIV" && (node.classList.contains("fastra-visible-blank-line") || node.hasAttribute("data-md-block")))) {
+        if (semantic && !liParent && !emptyPlaceholderParagraph && !(tag === "DIV" && (node.classList.contains("fastra-visible-blank-line") || node.hasAttribute("data-md-block")))) {
           blockTypes.push(semantic);
         }
       }
       const before = text.length;
       const breakCount = totalBreaks;
-      if (tag === "IMG" || node.hasAttribute("data-tex") || node.hasAttribute("data-md-opaque") && (tag !== "SECTION" || node.matches(":has(.mermaid-render, code.language-mermaid)"))) {
+      if (tag === "IMG") {
         addText("\uFFFC", style);
       } else {
         let nextStyle = style | (tags[tag] || 0);
@@ -16983,8 +16795,7 @@ $$`;
       recordAnomaly,
       compareSave,
       inspect,
-      report,
-      canonicalGroupStructure
+      report
     };
   }
 
@@ -17034,9 +16845,8 @@ $$`;
   }
   function singleLineHTML(html, document2, parser, cellType, { allowLineBreak = false } = {}) {
     const template = document2.createElement("template");
-    template.innerHTML = html;
+    template.innerHTML = sanitizePasteHTML(html, document2);
     const fragment = template.content;
-    fragment.querySelectorAll("script,style,iframe,object,embed,svg,math,link,meta,template").forEach((node) => node.remove());
     const blocks = [...fragment.querySelectorAll("p,div")];
     const forbidden = allowLineBreak ? "table,pre,ul,ol,li,blockquote,h1,h2,h3,h4,h5,h6,hr" : "br,table,pre,ul,ol,li,blockquote,h1,h2,h3,h4,h5,h6,hr";
     if (fragment.querySelector(forbidden) || blocks.filter((node) => !node.querySelector("p,div")).length > 1) return null;
@@ -17047,21 +16857,10 @@ $$`;
     if (/[\r\n]/.test(fragment.textContent)) return null;
     for (const node of fragment.querySelectorAll("*")) {
       for (const { name } of [...node.attributes]) {
-        if (!["href", "src", "title", "alt"].includes(name)) node.removeAttribute(name);
-      }
-      const href = node.getAttribute("href");
-      if (href !== null && !safeClipboardURL(href, /^(?:https?:|mailto:|#)/i)) node.removeAttribute("href");
-      if (node.localName === "img") {
-        const src = node.getAttribute("src") || "";
-        if (!safeClipboardURL(src, /^https?:/i)) node.remove();
-        else node.setAttribute("data-md-src", src);
+        if (!["href", "src", "title", "alt", "data-md-src"].includes(name)) node.removeAttribute(name);
       }
     }
     return parser.parse(fragment, { topNode: cellType.create(), preserveWhitespace: true }).content;
-  }
-  function safeClipboardURL(value, scheme) {
-    const url = value.trim();
-    return !/[\s\u0000-\u001f\u007f]/.test(url) && (scheme.test(url) || /^[^:/]+(?:\/|$)/.test(url) && !/^[\\/]/.test(url));
   }
   function createTableEditor({
     view,
@@ -17412,6 +17211,17 @@ $$`;
       }
       return selectCell(found2, Math.floor(index / colCount), index % colCount).ok;
     }
+    function rejectOversizedTabAtDOM(event) {
+      if (event.key !== "Tab" || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || event.isComposing || blocked()) return false;
+      const anchor = document2?.getSelection?.()?.anchorNode;
+      const cell = (anchor?.nodeType === 1 ? anchor : anchor?.parentElement)?.closest?.("td,th");
+      const row = cell?.closest("tr");
+      const tableDOM = row?.closest("table");
+      if (!tableDOM || !dom?.contains(tableDOM) || tableDOM.getAttribute("data-md-table") !== "gfm" || tableDOM.querySelector("[colspan],[rowspan],table")) return false;
+      if (row.rowIndex !== tableDOM.rows.length - 1 || cell.cellIndex !== row.cells.length - 1 || fits(tableDOM.rows.length + 1, row.cells.length)) return false;
+      fail("size");
+      return true;
+    }
     function handleKeyDown2(viewOrEvent, maybeEvent) {
       const event = maybeEvent ?? viewOrEvent;
       if (!["Shift", "Alt", "Control", "Meta"].includes(event.key)) setMouseSelection(false);
@@ -17422,22 +17232,6 @@ $$`;
       if (event.isComposing || event.ctrlKey || event.metaKey) return false;
       if (event.key === "Tab") {
         if (event.altKey) return false;
-        if (!event.shiftKey) {
-          const winSel = document2?.getSelection?.();
-          const anchorNode = winSel?.anchorNode;
-          const cellEl = (anchorNode?.nodeType === 1 ? anchorNode : anchorNode?.parentElement)?.closest?.("td,th");
-          const rowEl = cellEl?.closest?.("tr");
-          const tableEl = rowEl?.closest?.("table");
-          if (tableEl && dom?.contains(tableEl)) {
-            const domRows = tableEl.rows.length;
-            const domCols = rowEl.cells.length;
-            if (rowEl.rowIndex === domRows - 1 && cellEl.cellIndex === domCols - 1 && !fits(domRows + 1, domCols)) {
-              event.preventDefault?.();
-              fail("size");
-              return true;
-            }
-          }
-        }
         return navigate(event.shiftKey);
       }
       if (event.key !== "Enter" && event.key !== "Escape") return false;
@@ -17474,6 +17268,13 @@ $$`;
       if (!result.ok) fail(result.reason);
       return true;
     }
+    function pasteText(text) {
+      const found2 = locate();
+      if (!found2) return null;
+      const result = found2.reason ? failure(found2.reason) : /[\t\r\n]/.test(text) ? execute("pasteTSV", { text }) : pasteCell(found2, { text }, true);
+      if (!result.ok) fail(result.reason);
+      return result.ok;
+    }
     function handleCopy(viewOrEvent, maybeEvent) {
       const event = maybeEvent ?? viewOrEvent;
       const found2 = locate();
@@ -17509,10 +17310,12 @@ $$`;
       execute,
       insertTable,
       handleKeyDown: handleKeyDown2,
+      rejectOversizedTabAtDOM,
       handlePaste,
       handleCopy,
       handleClick: handleClick2,
       navigate,
+      pasteText,
       syncToolbar,
       command: (name, value, token) => execute(name, { value, token }),
       get selectingWithMouse() {
@@ -17593,6 +17396,7 @@ $$`;
     let base2 = "";
     let revision = 0;
     let composing = false;
+    let notifyCompositionEnd = false;
     let fenced = false;
     let failed = false;
     let initializing = false;
@@ -17604,6 +17408,9 @@ $$`;
     let imageFenceRevision = null;
     let lastImageTransactions = "[]";
     let lastInputType = "";
+    let emittedInputType = "";
+    let pendingInputType = "";
+    let emittedEditorState = null;
     let clipboardLimit = 0;
     let copiedHTML = null;
     let lastTableContext = null;
@@ -17612,6 +17419,7 @@ $$`;
     let mouseDragAnchor = null;
     let mouseDragStart = null;
     let mouseDragMoved = false;
+    let mouseDragHadButtons = false;
     let sourceReplacementEnabled = false;
     let sourceContextBytes = 0;
     let bookmarkID = 0;
@@ -17945,11 +17753,12 @@ $$`;
     }
     function emitChangeIfNeeded(forceImageTransactions = null) {
       clearPendingEmitTimer();
-      if (!view || composing) return;
+      if (!view || initializing || failed || composing) return;
       const previousBase = base2;
       const current = serialize();
       const currentImageTx = forceImageTransactions || collectOrderedImageTransactions(view.state.doc);
       const currentImageState = JSON.stringify(currentImageTx);
+      if (currentImageState === lastImageTransactions && imageFenceRevision === null) lastPreOpSnapshot = null;
       if (current === previousBase && currentImageState === lastImageTransactions) {
         notifyHistoryAndOutline();
         return;
@@ -17962,7 +17771,9 @@ $$`;
       revision += 1;
       base2 = current;
       lastImageTransactions = currentImageState;
+      emittedEditorState = view.state;
       const hist = getHistoryState(view.state);
+      emittedInputType = lastInputType;
       postMessage({
         kind: "change",
         session,
@@ -17970,7 +17781,7 @@ $$`;
         markdown: current,
         revision,
         imageTransactions: currentImageTx,
-        inputType: lastInputType,
+        inputType: emittedInputType,
         viewport: viewportPosition(),
         historyState: hist,
         ...hist
@@ -17981,6 +17792,7 @@ $$`;
     }
     function scheduleEmitChange() {
       clearPendingEmitTimer();
+      pendingInputType = lastInputType;
       pendingEmitTimer = setTimeout(() => {
         pendingEmitTimer = null;
         emitChangeIfNeeded();
@@ -18049,6 +17861,16 @@ $$`;
       });
       if (tr.docChanged) view.dispatch(tr);
     }
+    function imageNodePosition(target) {
+      const img = target?.closest?.("img");
+      if (!img || img.closest("[data-md-opaque],[data-tex]")) return null;
+      try {
+        const pos = view.posAtDOM(img, 0);
+        if (view.state.doc.nodeAt(pos)?.type === schema.nodes.image && view.nodeDOM(pos) === img) return pos;
+      } catch (_) {
+      }
+      return null;
+    }
     function createEditorView(doc3, rawContainer) {
       domObserverPausedForOversizedTable = false;
       lastEditableProp = null;
@@ -18077,7 +17899,6 @@ $$`;
           history(),
           buildInputRules(schema),
           km,
-          dropCursor(),
           gapCursor(),
           createBridgePlugin()
         ]
@@ -18092,21 +17913,6 @@ $$`;
         }),
         handleKeyDown(v, event) {
           if (event.isComposing) return false;
-          if (event.key === "Tab" && !event.shiftKey && !event.altKey) {
-            const winSel = document.getSelection?.();
-            const aNode = winSel?.anchorNode;
-            const cellEl = (aNode?.nodeType === 1 ? aNode : aNode?.parentElement)?.closest?.("td,th");
-            const rowEl = cellEl?.closest?.("tr");
-            const tableEl = rowEl?.closest?.("table");
-            if (tableEl && root?.contains(tableEl)) {
-              const domRows = tableEl.rows.length;
-              const domCols = rowEl.cells.length;
-              if (rowEl.rowIndex === domRows - 1 && cellEl.cellIndex === domCols - 1 && (domRows + 1 > 1e3 || (domRows + 1) * domCols > 1e4)) {
-                postMessage({ kind: "tableError", session, reason: "size" });
-                return true;
-              }
-            }
-          }
           syncDOMSelectionToProseMirror();
           if (tableEditorInstance?.handleKeyDown?.(v, event)) return true;
           return false;
@@ -18145,6 +17951,10 @@ $$`;
           compositionend() {
             composing = false;
             emitChangeIfNeeded();
+            if (notifyCompositionEnd) {
+              notifyCompositionEnd = false;
+              postMessage({ kind: "retryExternalCheck", session });
+            }
             return false;
           },
           paste(_view, event) {
@@ -18170,14 +17980,14 @@ $$`;
             }
             if (html) {
               event.preventDefault();
-              const cleaned = sanitizePasteHTML(html, root.ownerDocument);
-              if (tableEditorInstance?.context?.() && !/[\r\n]/.test(plain)) {
-                const cellTry = insertCellHTMLIntoActiveTable(cleaned, true);
-                if (cellTry !== null) return true;
+              if (isCodeSelection(view.state.selection)) {
+                insertPlainText(view.state.selection, plain || clipboardPlainText(html));
+                return true;
               }
+              const cleaned = sanitizePasteHTML(html, root.ownerDocument);
               const slice2 = buildPasteSlice(cleaned);
               if (slice2) {
-                applyTransaction2(view.state.tr.replaceSelection(slice2).scrollIntoView(), { inputType: "insertFromPaste" });
+                applyTransaction2(closeHistory(view.state.tr).replaceSelection(slice2).scrollIntoView(), { inputType: "insertFromPaste" });
               }
               return true;
             }
@@ -18189,8 +17999,6 @@ $$`;
             if (coords) {
               applyTransaction2(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(coords.pos))), { allowFenced: true });
             }
-            const paths = Array.from(event.dataTransfer?.files || [], (f) => f.name);
-            postMessage({ kind: "drop", session, paths });
             return true;
           },
           dragover(_view, event) {
@@ -18198,16 +18006,10 @@ $$`;
             return false;
           },
           contextmenu(_view, event) {
-            const img = event.target?.closest?.("img");
-            if (!img || fenced) return false;
+            const pos = imageNodePosition(event.target);
+            if (pos === null || fenced) return false;
             event.preventDefault();
-            const pos = view.posAtDOM(img, 0);
-            if (pos >= 0) {
-              try {
-                applyTransaction2(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
-              } catch (_) {
-              }
-            }
+            applyTransaction2(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
             postMessage({ kind: "imageMenu", session, x: event.clientX, y: event.clientY });
             return true;
           },
@@ -18216,16 +18018,10 @@ $$`;
               event.preventDefault();
               return true;
             }
-            const img = event.target?.closest?.("img");
-            if (img) {
+            const pos = imageNodePosition(event.target);
+            if (pos !== null) {
               event.preventDefault();
-              try {
-                const pos = view.posAtDOM(img, 0);
-                if (pos >= 0) {
-                  applyTransaction2(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
-                }
-              } catch (_) {
-              }
+              applyTransaction2(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
               return true;
             }
             if (event.target?.closest?.("a")) {
@@ -18248,14 +18044,20 @@ $$`;
             return;
           }
           const prevState = view.state;
-          const prevMarkdown = serialize();
-          const prevImages = JSON.stringify(collectOrderedImageTransactions(prevState.doc));
           let candidateState = prevState.apply(tr);
-          const nextImages = JSON.stringify(collectOrderedImageTransactions(candidateState.doc));
-          if (tr.docChanged && prevImages !== nextImages) {
-            if (lastInputType.startsWith("history")) {
-              lastPreOpSnapshot = { markdown: prevMarkdown, editorState: prevState };
-            } else if (tr.getMeta("addToHistory") !== false) {
+          const imageChanged = tr.docChanged && JSON.stringify(collectOrderedImageTransactions(prevState.doc)) !== JSON.stringify(collectOrderedImageTransactions(candidateState.doc));
+          if (imageChanged) {
+            const inputType = lastInputType;
+            if (imageFenceRevision === null && lastPreOpSnapshot === null) {
+              if (!composing && serialize() !== base2) {
+                lastInputType = pendingInputType;
+                emitChangeIfNeeded();
+                lastInputType = inputType;
+              }
+              const editorState = composing ? emittedEditorState : prevState;
+              lastPreOpSnapshot = { revision: revision + 1, markdown: base2, editorState };
+            }
+            if (!inputType.startsWith("history") && tr.getMeta("addToHistory") !== false) {
               const sepState = prevState.apply(closeHistory(prevState.tr));
               candidateState = sepState.apply(tr);
             }
@@ -18264,7 +18066,7 @@ $$`;
           observeClipboardSelection();
           if (tr.docChanged) {
             if (!composing) {
-              if (flushingDom || prevImages !== nextImages || tr.getMeta("fastraImmediate") === true) {
+              if (flushingDom || imageChanged || tr.getMeta("fastraImmediate") === true) {
                 emitChangeIfNeeded();
               } else {
                 scheduleEmitChange();
@@ -18429,6 +18231,8 @@ $$`;
       });
       event.preventDefault();
       event.stopPropagation();
+      const first = slice2.content.childCount === 1 ? slice2.content.firstChild : null;
+      const singleImage = first?.type === schema.nodes.image || first?.type === schema.nodes.paragraph && first.childCount === 1 && first.firstChild.type === schema.nodes.image;
       const plain = view.state.doc.textBetween(from2, to, "\n", "\n");
       const htmlStr = holder.innerHTML;
       const enc = new TextEncoder();
@@ -18445,6 +18249,7 @@ $$`;
         html: htmlStr,
         markdown,
         imageSources,
+        singleImage,
         session,
         bookmark: key,
         cut: isCut
@@ -18482,31 +18287,29 @@ $$`;
       const nodes2 = parseHTMLToNodes(htmlString, { schema, ownerDocument: doc3 });
       return nodes2.length ? new Slice(Fragment.fromArray(nodes2), 0, 0) : null;
     }
-    function insertCellHTMLIntoActiveTable(html, singleLine) {
-      if (!singleLine || !tables?.context?.() || tables.context()?.reason) return null;
-      const { $from, $to, empty: empty2 } = view.state.selection;
-      let cellPos = null;
-      let cellNode = null;
-      for (let d = $from.depth; d > 0; d--) {
-        const n = $from.node(d);
-        if (n.type === schema.nodes.table_cell || n.type === schema.nodes.table_header) {
-          cellPos = $from.before(d);
-          cellNode = n;
-          break;
-        }
+    function isCodeSelection({ $from, $to }) {
+      return $from.sameParent($to) && $from.parent.type === schema.nodes.code_block;
+    }
+    function clipboardPlainText(html) {
+      const nodes2 = parseHTMLToNodes(sanitizePasteHTML(html, document), { schema, ownerDocument: document });
+      const fragment = Fragment.fromArray(nodes2);
+      return fragment.textBetween(0, fragment.size, "\n", (node) => node.type === schema.nodes.hard_break ? "\n" : "");
+    }
+    function insertPlainText(selection, value) {
+      const text = value.replace(/\r\n?|\n/g, "\n");
+      if (!text) return false;
+      const tr = closeHistory(view.state.tr.setSelection(selection));
+      if (isCodeSelection(selection)) {
+        tr.insertText(text);
+      } else if (!text.includes("\n")) {
+        tr.insertText(text.replaceAll("	", "\xA0\xA0\xA0\xA0"));
+      } else {
+        const paragraphs = text.split("\n").map((line) => line ? schema.nodes.paragraph.create(null, schema.text(line.replaceAll("	", "\xA0\xA0\xA0\xA0"))) : schema.nodes.blank_line.create());
+        tr.replaceSelection(Slice.maxOpen(Fragment.fromArray(paragraphs)));
       }
-      if (!cellNode || empty2) return null;
-      if ($from.pos !== cellPos + 1 || $to.pos !== cellPos + cellNode.nodeSize - 1) return null;
-      const template = document.createElement("template");
-      template.innerHTML = html;
-      if (template.content.querySelector("br,table,pre,ul,ol,blockquote,h1,h2,h3,h4,h5,h6") || Array.from(template.content.querySelectorAll("p,div")).filter((n) => !n.querySelector("p,div")).length > 1) {
-        return null;
-      }
-      Array.from(template.content.childNodes).filter((n) => n.nodeType === 3 && /[\r\n]/.test(n.data) && !n.data.trim()).forEach((n) => n.remove());
-      template.content.querySelectorAll("p,div").forEach((n) => n.replaceWith(...n.childNodes));
-      const result = tables.command("pasteCell", template.innerHTML);
-      if (!result.ok) postMessage({ kind: "tableError", session, reason: result.reason });
-      return result.ok;
+      if (!tr.docChanged) return false;
+      applyTransaction2(tr.scrollIntoView(), { inputType: "insertFromPaste" });
+      return true;
     }
     function runHistory(dir) {
       if (!view || fenced || failed) return false;
@@ -18524,29 +18327,17 @@ $$`;
           "keydown",
           (event) => {
             if (event.isComposing) return;
-            if (event.key === "Tab" && !event.shiftKey && !event.altKey) {
-              const winSel = document.getSelection?.();
-              const aNode = winSel?.anchorNode;
-              const cellEl = (aNode?.nodeType === 1 ? aNode : aNode?.parentElement)?.closest?.("td,th");
-              const rowEl = cellEl?.closest?.("tr");
-              const tableEl = rowEl?.closest?.("table");
-              if (tableEl && targetRoot.contains(tableEl)) {
-                const domRows = tableEl.rows.length;
-                const domCols = rowEl.cells.length;
-                if (rowEl.rowIndex === domRows - 1 && cellEl.cellIndex === domCols - 1 && (domRows + 1 > 1e3 || (domRows + 1) * domCols > 1e4)) {
-                  event.preventDefault();
-                  event.stopImmediatePropagation();
-                  try {
-                    view?.domObserver?.observer?.takeRecords?.();
-                    if (Array.isArray(view?.domObserver?.queue)) view.domObserver.queue.length = 0;
-                    view?.domObserver?.stop?.();
-                    domObserverPausedForOversizedTable = true;
-                  } catch (_) {
-                  }
-                  postMessage({ kind: "tableError", session, reason: "size" });
-                  return;
-                }
+            if (tables?.rejectOversizedTabAtDOM(event)) {
+              event.preventDefault();
+              event.stopImmediatePropagation();
+              try {
+                view?.domObserver?.observer?.takeRecords?.();
+                if (Array.isArray(view?.domObserver?.queue)) view.domObserver.queue.length = 0;
+                view?.domObserver?.stop?.();
+                domObserverPausedForOversizedTable = true;
+              } catch (_) {
               }
+              return;
             }
             if (domObserverPausedForOversizedTable) {
               try {
@@ -18574,6 +18365,7 @@ $$`;
             selectingWithMouse = true;
             mouseDragStart = { x: e.clientX, y: e.clientY };
             mouseDragMoved = false;
+            mouseDragHadButtons = false;
             try {
               const coords = view?.posAtCoords?.({ left: e.clientX, top: e.clientY });
               mouseDragAnchor = coords && typeof coords.pos === "number" ? coords.pos : null;
@@ -18607,11 +18399,27 @@ $$`;
       }
       if (!globalListenersInstalled) {
         globalListenersInstalled = true;
+        window.addEventListener("pagehide", (event) => {
+          if (event.persisted) return;
+          clearPendingEmitTimer();
+          tables?.destroy();
+          view?.destroy();
+          tables = null;
+          view = null;
+        });
         document.addEventListener(
           "mousemove",
           (e) => {
             if (!selectingWithMouse || fenced || composing || domObserverPausedForOversizedTable || !view || !root) return;
-            if (e.buttons !== 0 || mouseDragAnchor === null || !mouseDragStart) return;
+            if (e.buttons !== 0) {
+              mouseDragHadButtons = true;
+              return;
+            }
+            if (mouseDragHadButtons) {
+              finishMouseSelection();
+              return;
+            }
+            if (mouseDragAnchor === null || !mouseDragStart) return;
             if (!mouseDragMoved && Math.hypot(e.clientX - mouseDragStart.x, e.clientY - mouseDragStart.y) < 4) return;
             mouseDragMoved = true;
             try {
@@ -18658,6 +18466,8 @@ $$`;
           }
         };
         document.addEventListener("mouseup", finishMouseSelection, true);
+        document.addEventListener("pointercancel", finishMouseSelection, true);
+        document.documentElement.addEventListener("mouseleave", finishMouseSelection);
         document.addEventListener("selectionchange", () => {
           if (initializing || fenced || composing || selectingWithMouse || domObserverPausedForOversizedTable || !view || !root) return;
           if (view.state.selection instanceof NodeSelection) return;
@@ -18780,6 +18590,7 @@ $$`;
         return true;
       },
       async start(configuration) {
+        if (failed) return false;
         initializing = true;
         const nextRoot = document.getElementById("fastra-visual");
         if (session !== configuration.session) {
@@ -18794,7 +18605,12 @@ $$`;
         updateFence();
         const until = Date.now() + 5e3;
         while (!document.documentElement.hasAttribute("data-fastra-enhanced")) {
-          if (Date.now() >= until) return false;
+          if (Date.now() >= until) {
+            failed = true;
+            initializing = false;
+            updateFence();
+            return false;
+          }
           await new Promise((r) => setTimeout(r, 10));
         }
         clipboardLimit = configuration.clipboardLimit || 0;
@@ -18830,22 +18646,22 @@ $$`;
         root.setAttribute("aria-multiline", "true");
         installDOMListeners(root);
         lastImageTransactions = JSON.stringify(collectOrderedImageTransactions(view.state.doc));
+        emittedEditorState = view.state;
         diagnostics.pushDiagnosticEvent("start", {
           blockCount: (configuration.blocks || []).length,
           markdownLen: base2.length,
           empty: !base2.length
         });
         if (serialize() !== base2) {
+          failed = true;
           initializing = false;
           updateFence();
           return false;
         }
-        const hasViewportTarget = configuration.viewport && [configuration.viewport.x, configuration.viewport.y].every((n) => Number.isFinite(n) && n >= 0 && n <= 1e8);
-        if (hasViewportTarget) viewportRestoring = true;
+        await restoreViewport(configuration.viewport);
         initializing = false;
         updateFence();
         root.focus({ preventScroll: true });
-        await restoreViewport(configuration.viewport);
         notifyHistoryAndOutline();
         return true;
       },
@@ -18903,6 +18719,7 @@ $$`;
             "quote",
             "link"
           ].includes(command) || command === "hardBreak" && !hadNonEmptySelection;
+          emitChangeIfNeeded();
           if (checkTextLoss && afterTextLen < beforeTextLen) {
             diagnostics.recordAnomaly(
               "unexpected-text-loss",
@@ -18910,7 +18727,6 @@ $$`;
               { command, beforeTextLen, afterTextLen }
             );
           }
-          emitChangeIfNeeded();
           return true;
         } catch (err) {
           diagnostics.recordAnomaly("command-exception", `Command ${command} threw: ${err?.message || err}`, { command });
@@ -18960,7 +18776,6 @@ $$`;
           }
           const nextUri = typeof entry === "string" ? entry : entry?.uri;
           if (nextUri && nextUri !== node.attrs.src) {
-            imageUrlOverrides.set(nextUri, nextUri);
             tr.setNodeMarkup(pos, null, { ...node.attrs, src: nextUri });
           }
           return true;
@@ -19027,7 +18842,6 @@ $$`;
         const saved = bookmarks.get(key);
         bookmarks.delete(key);
         if (!saved || saved.base !== serialize() || !currentClipboardSelection(saved)) return false;
-        Object.assign(opaqueSources, atoms || {});
         const template = document.createElement("template");
         template.innerHTML = html;
         if (transaction) {
@@ -19040,18 +18854,20 @@ $$`;
           });
         }
         const sel = Selection.fromJSON(view.state.doc, saved.selectionJSON);
-        if (singleLine && tables?.context?.()) {
-          view.dispatch(view.state.tr.setSelection(sel).setMeta("fastraAllowFenced", true));
-          const res = insertCellHTMLIntoActiveTable(template.innerHTML, true);
-          if (res !== null) {
-            emitChangeIfNeeded();
-            return res;
-          }
+        if (isCodeSelection(sel)) {
+          if (transaction) return false;
+          return insertPlainText(sel, clipboardPlainText(html));
         }
         const slice2 = buildPasteSlice(template.innerHTML);
         if (!slice2) return false;
         const tr = closeHistory(view.state.tr.setSelection(sel));
+        if (singleLine && tables?.context?.()) {
+          const { $from, $to } = sel;
+          if (tables.context().reason || !$from.sameParent($to) || ![schema.nodes.table_cell, schema.nodes.table_header].includes($from.parent.type) || !$from.parent.type.validContent(slice2.content)) return false;
+        }
         tr.replaceSelection(slice2).scrollIntoView();
+        if (!tr.docChanged) return false;
+        Object.assign(opaqueSources, atoms || {});
         applyTransaction2(tr, { inputType: "insertFromPaste" });
         return true;
       },
@@ -19074,7 +18890,18 @@ $$`;
           const tx = ownedImages.get(n.getAttribute("data-md-src"));
           if (tx) n.dataset.mdImageTransaction = tx;
         });
-        if (composing || fenced || serialize() !== expected) return "stale";
+        if (holder.querySelector("pre > code.language-mermaid") && window.fastraEnhanceMarkdown) {
+          const owner = view;
+          const ownerSession = session;
+          holder.style.cssText = "position:fixed;left:-100000px;visibility:hidden;pointer-events:none";
+          document.body.append(holder);
+          try {
+            await window.fastraEnhanceMarkdown(holder);
+          } finally {
+            holder.remove();
+          }
+          if (owner !== view || ownerSession !== session || composing || fenced || serialize() !== expected || contexts.has(prefix) || sourceContextBytes + cost > MAX_SOURCE_CONTEXT_BYTES) return "stale";
+        }
         const { doc: parsedDoc, parsedGroups } = parseDocumentContainer(holder, configuration.blocks, {
           schema,
           mdContext: prefix,
@@ -19098,10 +18925,9 @@ $$`;
         Object.assign(opaqueSources, trialOpaque);
         sourceContextBytes += cost;
         const prevDoc = view.state.doc;
-        const prevContext = prevDoc.attrs.sourceContext || "";
         const tr = view.state.tr;
         tr.replaceWith(0, prevDoc.content.size, parsedDoc.content);
-        tr.step(new SourceContextStep(prefix, prevContext));
+        tr.setDocAttribute("sourceContext", prefix);
         tr.setSelection(Selection.atStart(tr.doc));
         applyTransaction2(closeHistory(tr), { inputType: "replaceSource" });
         if (serialize() !== configuration.markdown) {
@@ -19158,9 +18984,10 @@ $$`;
         bookmarks.delete(key);
         if (fenced || !view || !saved || saved.base !== serialize() || !currentClipboardSelection(saved)) return false;
         const sel = Selection.fromJSON(view.state.doc, saved.selectionJSON);
-        const tr = view.state.tr.setSelection(sel).insertText(String(text || "")).scrollIntoView();
-        applyTransaction2(tr, { inputType: "insertFromPaste" });
-        return true;
+        if (!text) return false;
+        if (!view.state.selection.eq(sel)) view.dispatch(view.state.tr.setSelection(sel));
+        const tableResult = tables?.pasteText(text);
+        return tableResult ?? insertPlainText(sel, text);
       },
       cancelClipboard() {
         if (clipboardBookmark !== null) {
@@ -19198,12 +19025,16 @@ $$`;
         await window.fastraUpdateMarkdownTheme?.(root, dark);
         window.fastraMarkdownPresentation?.update?.();
       },
-      prepareAction(expectedSession, actionID) {
+      prepareAction(expectedSession, actionID, retryAfterComposition = false) {
         const isNative = arguments.length !== 0;
-        if (isNative && (arguments.length !== 2 || expectedSession !== session || typeof actionID !== "string" || !actionID.length || nativeActionIDs.has(actionID))) {
+        if (isNative && (arguments.length < 2 || arguments.length > 3 || expectedSession !== session || typeof actionID !== "string" || !actionID.length || nativeActionIDs.has(actionID))) {
           return null;
         }
-        if (composing) return { composing: true };
+        if (initializing || failed) return null;
+        if (composing) {
+          if (retryAfterComposition) notifyCompositionEnd = true;
+          return { composing: true };
+        }
         syncFromDOM();
         emitChangeIfNeeded();
         if (isNative) nativeActionIDs.add(actionID);
@@ -19218,7 +19049,8 @@ $$`;
           markdown: serialize(),
           revision,
           imageTransactions,
-          inputType: lastInputType,
+          inputType: emittedInputType,
+          imageFenceRevision,
           viewport: viewportPosition(),
           historyState: view ? getHistoryState(view.state) : { canUndo: false, canRedo: false, undoDepth: 0, redoDepth: 0 }
         };
@@ -19253,12 +19085,14 @@ $$`;
       completeImageAction(expectedSession, expectedRevision) {
         if (expectedSession !== session || expectedRevision !== imageFenceRevision) return;
         imageFenceRevision = null;
+        lastPreOpSnapshot = null;
         updateFence();
       },
-      rollbackImageChange(inputType, previous) {
-        if (!view) return false;
-        if (lastPreOpSnapshot && lastPreOpSnapshot.markdown === previous && lastPreOpSnapshot.editorState) {
+      rollbackImageChange(expectedRevision, previous) {
+        if (!view || expectedRevision !== imageFenceRevision) return false;
+        if (lastPreOpSnapshot?.revision === expectedRevision && lastPreOpSnapshot.markdown === previous) {
           view.updateState(lastPreOpSnapshot.editorState);
+          emittedEditorState = view.state;
           base2 = previous;
           lastImageTransactions = JSON.stringify(collectOrderedImageTransactions(view.state.doc));
           lastPreOpSnapshot = null;
@@ -19267,17 +19101,7 @@ $$`;
           notifyHistoryAndOutline();
           return true;
         }
-        let reverted = false;
-        const prevType = lastInputType;
-        lastInputType = inputType === "historyUndo" ? "historyRedo" : "historyUndo";
-        const fn = inputType === "historyUndo" ? redo : undo;
-        reverted = fn(view.state, (tr) => applyTransaction2(tr, { allowFenced: true, inputType: lastInputType }));
-        lastInputType = prevType;
-        if (!reverted || serialize() !== previous) return false;
-        base2 = previous;
-        lastImageTransactions = JSON.stringify(collectOrderedImageTransactions(view.state.doc));
-        lastPreOpSnapshot = null;
-        return true;
+        return false;
       },
       viewport: viewportPosition,
       markdown: serialize,

@@ -1,4 +1,3 @@
-import { canonicalGroupStructure } from './parser.js';
 
 const DIAGNOSTIC_MAX_EVENTS = 200;
 const DIAGNOSTIC_MAX_BYTES = 262144;
@@ -185,6 +184,7 @@ export function saveAppearance(container, inputType = '') {
       return;
     }
     const tag = node.tagName;
+    const isBlock = blockSet.test(tag);
     if (tag === 'INPUT' && node.type === 'checkbox') return;
     if (node.classList?.contains('fastra-pm-li-content') || (tag === 'DIV' && node.classList?.contains('ProseMirror'))) {
       for (const child of node.childNodes) visit(child, style, tableCell);
@@ -192,7 +192,9 @@ export function saveAppearance(container, inputType = '') {
     }
 
     if (node.hasAttribute('data-tex') || node.hasAttribute('data-md-opaque')) {
+      if (isBlock) boundary();
       addText('\ufffc', style);
+      if (isBlock) boundary();
       return;
     }
     if (tag === 'DIV' && node.classList?.contains('fastra-visible-blank-line')) {
@@ -205,7 +207,6 @@ export function saveAppearance(container, inputType = '') {
         return;
       }
     }
-    const isBlock = blockSet.test(tag);
     if (tag === 'BR') {
       pendingBreaks++;
       return;
@@ -214,23 +215,12 @@ export function saveAppearance(container, inputType = '') {
       boundary();
       const semantic = semanticBlockTag(tag);
       const liParent = tag === 'P' ? node.closest?.('li') : null;
-      const listAncestor = liParent ? node.closest?.('ul,ol') : null;
-      const listHasLooseItem = !!(
-        listAncestor &&
-        Array.from(listAncestor.querySelectorAll('li')).some(li => {
-          if (li.closest('ul,ol') !== listAncestor) return false;
-          const innerBlocks = Array.from(li.querySelectorAll('p,div.fastra-visible-blank-line,ul,ol,blockquote,pre,table,hr'))
-            .filter(b => b.closest('li') === li);
-          return innerBlocks.length > 1;
-        })
-      );
-      const singleParagraphTightItem = !!liParent;
       const emptyPlaceholderParagraph = tag === 'P' &&
         !node.textContent.replace(/\u200b/g, '').length &&
         !node.querySelector('img:not(.ProseMirror-separator),[data-tex],[data-md-opaque],hr,table,pre,input');
       if (
         semantic &&
-        !singleParagraphTightItem &&
+        !liParent &&
         !emptyPlaceholderParagraph &&
         !(tag === 'DIV' && (node.classList.contains('fastra-visible-blank-line') || node.hasAttribute('data-md-block')))
       ) {
@@ -240,11 +230,7 @@ export function saveAppearance(container, inputType = '') {
 
     const before = text.length;
     const breakCount = totalBreaks;
-    if (
-      tag === 'IMG' ||
-      node.hasAttribute('data-tex') ||
-      (node.hasAttribute('data-md-opaque') && (tag !== 'SECTION' || node.matches(':has(.mermaid-render, code.language-mermaid)')))
-    ) {
+    if (tag === 'IMG') {
       addText('\ufffc', style);
     } else {
       let nextStyle = style | (tags[tag] || 0);
@@ -535,6 +521,5 @@ export function createDiagnosticsController({
     compareSave,
     inspect,
     report,
-    canonicalGroupStructure
   };
 }

@@ -1,11 +1,9 @@
 import { EditorState, Plugin, Selection, TextSelection, NodeSelection, AllSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { history, undo as pmUndo, redo as pmRedo, closeHistory } from 'prosemirror-history';
-import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
 import { Fragment, Slice, DOMSerializer } from 'prosemirror-model';
 import { schema } from './schema.js';
-import { SourceContextStep } from './context-step.js';
 import {
   parseDocumentContainer,
   parseHTMLToNodes,
@@ -59,6 +57,7 @@ export function installFastraVisualBridge() {
   let base = '';
   let revision = 0;
   let composing = false;
+  let notifyCompositionEnd = false;
   let fenced = false;
   let failed = false;
   let initializing = false;
@@ -70,6 +69,9 @@ export function installFastraVisualBridge() {
   let imageFenceRevision = null;
   let lastImageTransactions = '[]';
   let lastInputType = '';
+  let emittedInputType = '';
+  let pendingInputType = '';
+  let emittedEditorState = null;
   let clipboardLimit = 0;
   let copiedHTML = null;
   let lastTableContext = null;
@@ -78,6 +80,7 @@ export function installFastraVisualBridge() {
   let mouseDragAnchor = null;
   let mouseDragStart = null;
   let mouseDragMoved = false;
+  let mouseDragHadButtons = false;
   let sourceReplacementEnabled = false;
   let sourceContextBytes = 0;
   let bookmarkID = 0;
@@ -491,11 +494,12 @@ export function installFastraVisualBridge() {
 
   function emitChangeIfNeeded(forceImageTransactions = null) {
     clearPendingEmitTimer();
-    if (!view || composing) return;
+    if (!view || initializing || failed || composing) return;
     const previousBase = base;
     const current = serialize();
     const currentImageTx = forceImageTransactions || collectOrderedImageTransactions(view.state.doc);
     const currentImageState = JSON.stringify(currentImageTx);
+    if (currentImageState === lastImageTransactions && imageFenceRevision === null) lastPreOpSnapshot = null;
     if (current === previousBase && currentImageState === lastImageTransactions) {
       notifyHistoryAndOutline();
       return;
@@ -509,8 +513,10 @@ export function installFastraVisualBridge() {
     revision += 1;
     base = current;
     lastImageTransactions = currentImageState;
+    emittedEditorState = view.state;
 
     const hist = getHistoryState(view.state);
+    emittedInputType = lastInputType;
     postMessage({
       kind: 'change',
       session,
@@ -518,7 +524,7 @@ export function installFastraVisualBridge() {
       markdown: current,
       revision,
       imageTransactions: currentImageTx,
-      inputType: lastInputType,
+      inputType: emittedInputType,
       viewport: viewportPosition(),
       historyState: hist,
       ...hist
@@ -531,6 +537,7 @@ export function installFastraVisualBridge() {
 
   function scheduleEmitChange() {
     clearPendingEmitTimer();
+    pendingInputType = lastInputType;
     pendingEmitTimer = setTimeout(() => {
       pendingEmitTimer = null;
       emitChangeIfNeeded();
@@ -606,6 +613,16 @@ export function installFastraVisualBridge() {
     if (tr.docChanged) view.dispatch(tr);
   }
 
+  function imageNodePosition(target) {
+    const img = target?.closest?.('img');
+    if (!img || img.closest('[data-md-opaque],[data-tex]')) return null;
+    try {
+      const pos = view.posAtDOM(img, 0);
+      if (view.state.doc.nodeAt(pos)?.type === schema.nodes.image && view.nodeDOM(pos) === img) return pos;
+    } catch (_) {}
+    return null;
+  }
+
   function createEditorView(doc, rawContainer) {
     domObserverPausedForOversizedTable = false;
     lastEditableProp = null;
@@ -637,7 +654,6 @@ export function installFastraVisualBridge() {
         history(),
         buildInputRules(schema),
         km,
-        dropCursor(),
         gapCursor(),
         createBridgePlugin()
       ]
@@ -655,21 +671,6 @@ export function installFastraVisualBridge() {
       }),
       handleKeyDown(v, event) {
         if (event.isComposing) return false;
-        if (event.key === 'Tab' && !event.shiftKey && !event.altKey) {
-          const winSel = document.getSelection?.();
-          const aNode = winSel?.anchorNode;
-          const cellEl = (aNode?.nodeType === 1 ? aNode : aNode?.parentElement)?.closest?.('td,th');
-          const rowEl = cellEl?.closest?.('tr');
-          const tableEl = rowEl?.closest?.('table');
-          if (tableEl && root?.contains(tableEl)) {
-            const domRows = tableEl.rows.length;
-            const domCols = rowEl.cells.length;
-            if (rowEl.rowIndex === domRows - 1 && cellEl.cellIndex === domCols - 1 && (domRows + 1 > 1000 || (domRows + 1) * domCols > 10000)) {
-              postMessage({ kind: 'tableError', session, reason: 'size' });
-              return true;
-            }
-          }
-        }
         syncDOMSelectionToProseMirror();
         if (tableEditorInstance?.handleKeyDown?.(v, event)) return true;
         return false;
@@ -708,6 +709,10 @@ export function installFastraVisualBridge() {
         compositionend() {
           composing = false;
           emitChangeIfNeeded();
+          if (notifyCompositionEnd) {
+            notifyCompositionEnd = false;
+            postMessage({ kind: 'retryExternalCheck', session });
+          }
           return false;
         },
         paste(_view, event) {
@@ -733,14 +738,14 @@ export function installFastraVisualBridge() {
           }
           if (html) {
             event.preventDefault();
-            const cleaned = sanitizePasteHTML(html, root.ownerDocument);
-            if (tableEditorInstance?.context?.() && !/[\r\n]/.test(plain)) {
-              const cellTry = insertCellHTMLIntoActiveTable(cleaned, true);
-              if (cellTry !== null) return true;
+            if (isCodeSelection(view.state.selection)) {
+              insertPlainText(view.state.selection, plain || clipboardPlainText(html));
+              return true;
             }
+            const cleaned = sanitizePasteHTML(html, root.ownerDocument);
             const slice = buildPasteSlice(cleaned);
             if (slice) {
-              applyTransaction(view.state.tr.replaceSelection(slice).scrollIntoView(), { inputType: 'insertFromPaste' });
+              applyTransaction(closeHistory(view.state.tr).replaceSelection(slice).scrollIntoView(), { inputType: 'insertFromPaste' });
             }
             return true;
           }
@@ -752,8 +757,6 @@ export function installFastraVisualBridge() {
           if (coords) {
             applyTransaction(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(coords.pos))), { allowFenced: true });
           }
-          const paths = Array.from(event.dataTransfer?.files || [], f => f.name);
-          postMessage({ kind: 'drop', session, paths });
           return true;
         },
         dragover(_view, event) {
@@ -761,15 +764,10 @@ export function installFastraVisualBridge() {
           return false;
         },
         contextmenu(_view, event) {
-          const img = event.target?.closest?.('img');
-          if (!img || fenced) return false;
+          const pos = imageNodePosition(event.target);
+          if (pos === null || fenced) return false;
           event.preventDefault();
-          const pos = view.posAtDOM(img, 0);
-          if (pos >= 0) {
-            try {
-              applyTransaction(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
-            } catch (_) {}
-          }
+          applyTransaction(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
           postMessage({ kind: 'imageMenu', session, x: event.clientX, y: event.clientY });
           return true;
         },
@@ -778,15 +776,10 @@ export function installFastraVisualBridge() {
             event.preventDefault();
             return true;
           }
-          const img = event.target?.closest?.('img');
-          if (img) {
+          const pos = imageNodePosition(event.target);
+          if (pos !== null) {
             event.preventDefault();
-            try {
-              const pos = view.posAtDOM(img, 0);
-              if (pos >= 0) {
-                applyTransaction(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
-              }
-            } catch (_) {}
+            applyTransaction(view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos)));
             return true;
           }
           if (event.target?.closest?.('a')) {
@@ -809,16 +802,22 @@ export function installFastraVisualBridge() {
           return;
         }
         const prevState = view.state;
-        const prevMarkdown = serialize();
-        const prevImages = JSON.stringify(collectOrderedImageTransactions(prevState.doc));
         let candidateState = prevState.apply(tr);
-        const nextImages = JSON.stringify(collectOrderedImageTransactions(candidateState.doc));
-
-        if (tr.docChanged && prevImages !== nextImages) {
-          if (lastInputType.startsWith('history')) {
-            // Kompletter EditorState vor dem Bildschritt für konsistenten Rollback (Astra #14).
-            lastPreOpSnapshot = { markdown: prevMarkdown, editorState: prevState };
-          } else if (tr.getMeta('addToHistory') !== false) {
+        const imageChanged = tr.docChanged &&
+          JSON.stringify(collectOrderedImageTransactions(prevState.doc)) !== JSON.stringify(collectOrderedImageTransactions(candidateState.doc));
+        if (imageChanged) {
+          const inputType = lastInputType;
+          if (imageFenceRevision === null && lastPreOpSnapshot === null) {
+            if (!composing && serialize() !== base) {
+              lastInputType = pendingInputType;
+              emitChangeIfNeeded();
+              lastInputType = inputType;
+            }
+            // Eine laufende Komposition hat noch keine veröffentlichte Teilrevision.
+            const editorState = composing ? emittedEditorState : prevState;
+            lastPreOpSnapshot = { revision: revision + 1, markdown: base, editorState };
+          }
+          if (!inputType.startsWith('history') && tr.getMeta('addToHistory') !== false) {
             // History-Gruppe vor der Bildänderung trennen (Astra #13).
             const sepState = prevState.apply(closeHistory(prevState.tr));
             candidateState = sepState.apply(tr);
@@ -830,7 +829,7 @@ export function installFastraVisualBridge() {
 
         if (tr.docChanged) {
           if (!composing) {
-            if (flushingDom || prevImages !== nextImages || tr.getMeta('fastraImmediate') === true) {
+            if (flushingDom || imageChanged || tr.getMeta('fastraImmediate') === true) {
               emitChangeIfNeeded();
             } else {
               scheduleEmitChange();
@@ -1016,6 +1015,9 @@ export function installFastraVisualBridge() {
     event.preventDefault();
     event.stopPropagation();
 
+    const first = slice.content.childCount === 1 ? slice.content.firstChild : null;
+    const singleImage = first?.type === schema.nodes.image ||
+      (first?.type === schema.nodes.paragraph && first.childCount === 1 && first.firstChild.type === schema.nodes.image);
     const plain = view.state.doc.textBetween(from, to, '\n', '\n');
     const htmlStr = holder.innerHTML;
     const enc = new TextEncoder();
@@ -1033,6 +1035,7 @@ export function installFastraVisualBridge() {
       html: htmlStr,
       markdown,
       imageSources,
+      singleImage,
       session,
       bookmark: key,
       cut: isCut
@@ -1078,38 +1081,33 @@ export function installFastraVisualBridge() {
     return nodes.length ? new Slice(Fragment.fromArray(nodes), 0, 0) : null;
   }
 
-  function insertCellHTMLIntoActiveTable(html, singleLine) {
-    if (!singleLine || !tables?.context?.() || tables.context()?.reason) return null;
-    const { $from, $to, empty } = view.state.selection;
-    let cellPos = null;
-    let cellNode = null;
-    for (let d = $from.depth; d > 0; d--) {
-      const n = $from.node(d);
-      if (n.type === schema.nodes.table_cell || n.type === schema.nodes.table_header) {
-        cellPos = $from.before(d);
-        cellNode = n;
-        break;
-      }
-    }
-    if (!cellNode || empty) return null;
-    if ($from.pos !== cellPos + 1 || $to.pos !== cellPos + cellNode.nodeSize - 1) return null;
+  function isCodeSelection({ $from, $to }) {
+    return $from.sameParent($to) && $from.parent.type === schema.nodes.code_block;
+  }
 
-    const template = document.createElement('template');
-    template.innerHTML = html;
-    if (
-      template.content.querySelector('br,table,pre,ul,ol,blockquote,h1,h2,h3,h4,h5,h6') ||
-      Array.from(template.content.querySelectorAll('p,div')).filter(n => !n.querySelector('p,div')).length > 1
-    ) {
-      return null;
-    }
-    Array.from(template.content.childNodes)
-      .filter(n => n.nodeType === 3 && /[\r\n]/.test(n.data) && !n.data.trim())
-      .forEach(n => n.remove());
-    template.content.querySelectorAll('p,div').forEach(n => n.replaceWith(...n.childNodes));
+  function clipboardPlainText(html) {
+    const nodes = parseHTMLToNodes(sanitizePasteHTML(html, document), { schema, ownerDocument: document });
+    const fragment = Fragment.fromArray(nodes);
+    return fragment.textBetween(0, fragment.size, '\n', node => node.type === schema.nodes.hard_break ? '\n' : '');
+  }
 
-    const result = tables.command('pasteCell', template.innerHTML);
-    if (!result.ok) postMessage({ kind: 'tableError', session, reason: result.reason });
-    return result.ok;
+  function insertPlainText(selection, value) {
+    const text = value.replace(/\r\n?|\n/g, '\n');
+    if (!text) return false;
+    const tr = closeHistory(view.state.tr.setSelection(selection));
+    if (isCodeSelection(selection)) {
+      tr.insertText(text);
+    } else if (!text.includes('\n')) {
+      tr.insertText(text.replaceAll('\t', '\u00a0\u00a0\u00a0\u00a0'));
+    } else {
+      const paragraphs = text.split('\n').map(line => line
+        ? schema.nodes.paragraph.create(null, schema.text(line.replaceAll('\t', '\u00a0\u00a0\u00a0\u00a0')))
+        : schema.nodes.blank_line.create());
+      tr.replaceSelection(Slice.maxOpen(Fragment.fromArray(paragraphs)));
+    }
+    if (!tr.docChanged) return false;
+    applyTransaction(tr.scrollIntoView(), { inputType: 'insertFromPaste' });
+    return true;
   }
 
   function runHistory(dir) {
@@ -1129,32 +1127,16 @@ export function installFastraVisualBridge() {
         'keydown',
         event => {
           if (event.isComposing) return;
-          if (event.key === 'Tab' && !event.shiftKey && !event.altKey) {
-            const winSel = document.getSelection?.();
-            const aNode = winSel?.anchorNode;
-            const cellEl = (aNode?.nodeType === 1 ? aNode : aNode?.parentElement)?.closest?.('td,th');
-            const rowEl = cellEl?.closest?.('tr');
-            const tableEl = rowEl?.closest?.('table');
-            if (tableEl && targetRoot.contains(tableEl)) {
-              const domRows = tableEl.rows.length;
-              const domCols = rowEl.cells.length;
-              if (
-                rowEl.rowIndex === domRows - 1 &&
-                cellEl.cellIndex === domCols - 1 &&
-                (domRows + 1 > 1000 || (domRows + 1) * domCols > 10000)
-              ) {
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                try {
-                  view?.domObserver?.observer?.takeRecords?.();
-                  if (Array.isArray(view?.domObserver?.queue)) view.domObserver.queue.length = 0;
-                  view?.domObserver?.stop?.();
-                  domObserverPausedForOversizedTable = true;
-                } catch (_) {}
-                postMessage({ kind: 'tableError', session, reason: 'size' });
-                return;
-              }
-            }
+          if (tables?.rejectOversizedTabAtDOM(event)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            try {
+              view?.domObserver?.observer?.takeRecords?.();
+              if (Array.isArray(view?.domObserver?.queue)) view.domObserver.queue.length = 0;
+              view?.domObserver?.stop?.();
+              domObserverPausedForOversizedTable = true;
+            } catch (_) {}
+            return;
           }
           if (domObserverPausedForOversizedTable) {
             try { view?.domObserver?.start?.(); } catch (_) {}
@@ -1178,6 +1160,7 @@ export function installFastraVisualBridge() {
           selectingWithMouse = true;
           mouseDragStart = { x: e.clientX, y: e.clientY };
           mouseDragMoved = false;
+          mouseDragHadButtons = false;
           try {
             const coords = view?.posAtCoords?.({ left: e.clientX, top: e.clientY });
             mouseDragAnchor = coords && typeof coords.pos === 'number' ? coords.pos : null;
@@ -1215,13 +1198,29 @@ export function installFastraVisualBridge() {
 
     if (!globalListenersInstalled) {
       globalListenersInstalled = true;
+      window.addEventListener('pagehide', event => {
+        if (event.persisted) return;
+        clearPendingEmitTimer();
+        tables?.destroy();
+        view?.destroy();
+        tables = null;
+        view = null;
+      });
       // Synthetische AppKit-Drag-Events kommen in WebKit oft mit `buttons === 0` an;
       // ProseMirror bricht `MouseDown.move` dann sofort ab, deshalb hier nachführen.
       document.addEventListener(
         'mousemove',
         e => {
           if (!selectingWithMouse || fenced || composing || domObserverPausedForOversizedTable || !view || !root) return;
-          if (e.buttons !== 0 || mouseDragAnchor === null || !mouseDragStart) return;
+          if (e.buttons !== 0) {
+            mouseDragHadButtons = true;
+            return;
+          }
+          if (mouseDragHadButtons) {
+            finishMouseSelection();
+            return;
+          }
+          if (mouseDragAnchor === null || !mouseDragStart) return;
           if (!mouseDragMoved && Math.hypot(e.clientX - mouseDragStart.x, e.clientY - mouseDragStart.y) < 4) return;
           mouseDragMoved = true;
           try {
@@ -1267,6 +1266,8 @@ export function installFastraVisualBridge() {
         }
       };
       document.addEventListener('mouseup', finishMouseSelection, true);
+      document.addEventListener('pointercancel', finishMouseSelection, true);
+      document.documentElement.addEventListener('mouseleave', finishMouseSelection);
       document.addEventListener('selectionchange', () => {
         if (initializing || fenced || composing || selectingWithMouse || domObserverPausedForOversizedTable || !view || !root) return;
         if (view.state.selection instanceof NodeSelection) return;
@@ -1389,6 +1390,7 @@ export function installFastraVisualBridge() {
       return true;
     },
     async start(configuration) {
+      if (failed) return false;
       initializing = true;
       const nextRoot = document.getElementById('fastra-visual');
       if (session !== configuration.session) {
@@ -1410,7 +1412,12 @@ export function installFastraVisualBridge() {
 
       const until = Date.now() + 5000;
       while (!document.documentElement.hasAttribute('data-fastra-enhanced')) {
-        if (Date.now() >= until) return false;
+        if (Date.now() >= until) {
+          failed = true;
+          initializing = false;
+          updateFence();
+          return false;
+        }
         await new Promise(r => setTimeout(r, 10));
       }
 
@@ -1453,6 +1460,7 @@ export function installFastraVisualBridge() {
       installDOMListeners(root);
 
       lastImageTransactions = JSON.stringify(collectOrderedImageTransactions(view.state.doc));
+      emittedEditorState = view.state;
       diagnostics.pushDiagnosticEvent('start', {
         blockCount: (configuration.blocks || []).length,
         markdownLen: base.length,
@@ -1460,19 +1468,16 @@ export function installFastraVisualBridge() {
       });
 
       if (serialize() !== base) {
+        failed = true;
         initializing = false;
         updateFence();
         return false;
       }
 
-      const hasViewportTarget =
-        configuration.viewport &&
-        [configuration.viewport.x, configuration.viewport.y].every(n => Number.isFinite(n) && n >= 0 && n <= 100000000);
-      if (hasViewportTarget) viewportRestoring = true;
+      await restoreViewport(configuration.viewport);
       initializing = false;
       updateFence();
       root.focus({ preventScroll: true });
-      await restoreViewport(configuration.viewport);
       notifyHistoryAndOutline();
       return true;
     },
@@ -1514,6 +1519,7 @@ export function installFastraVisualBridge() {
           'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6',
           'plainParagraph', 'bulletList', 'orderedList', 'taskList', 'quote', 'link'
         ].includes(command) || (command === 'hardBreak' && !hadNonEmptySelection);
+        emitChangeIfNeeded();
         if (checkTextLoss && afterTextLen < beforeTextLen) {
           diagnostics.recordAnomaly(
             'unexpected-text-loss',
@@ -1521,7 +1527,6 @@ export function installFastraVisualBridge() {
             { command, beforeTextLen, afterTextLen }
           );
         }
-        emitChangeIfNeeded();
         return true;
       } catch (err) {
         diagnostics.recordAnomaly('command-exception', `Command ${command} threw: ${err?.message || err}`, { command });
@@ -1575,7 +1580,6 @@ export function installFastraVisualBridge() {
         }
         const nextUri = typeof entry === 'string' ? entry : entry?.uri;
         if (nextUri && nextUri !== node.attrs.src) {
-          imageUrlOverrides.set(nextUri, nextUri);
           tr.setNodeMarkup(pos, null, { ...node.attrs, src: nextUri });
         }
         return true;
@@ -1643,7 +1647,6 @@ export function installFastraVisualBridge() {
       bookmarks.delete(key);
       if (!saved || saved.base !== serialize() || !currentClipboardSelection(saved)) return false;
 
-      Object.assign(opaqueSources, atoms || {});
       const template = document.createElement('template');
       template.innerHTML = html;
       if (transaction) {
@@ -1657,19 +1660,22 @@ export function installFastraVisualBridge() {
       }
 
       const sel = Selection.fromJSON(view.state.doc, saved.selectionJSON);
-      if (singleLine && tables?.context?.()) {
-        view.dispatch(view.state.tr.setSelection(sel).setMeta('fastraAllowFenced', true));
-        const res = insertCellHTMLIntoActiveTable(template.innerHTML, true);
-        if (res !== null) {
-          emitChangeIfNeeded();
-          return res;
-        }
+      if (isCodeSelection(sel)) {
+        if (transaction) return false;
+        return insertPlainText(sel, clipboardPlainText(html));
       }
-
       const slice = buildPasteSlice(template.innerHTML);
       if (!slice) return false;
       const tr = closeHistory(view.state.tr.setSelection(sel));
+      if (singleLine && tables?.context?.()) {
+        const { $from, $to } = sel;
+        if (tables.context().reason || !$from.sameParent($to) ||
+            ![schema.nodes.table_cell, schema.nodes.table_header].includes($from.parent.type) ||
+            !$from.parent.type.validContent(slice.content)) return false;
+      }
       tr.replaceSelection(slice).scrollIntoView();
+      if (!tr.docChanged) return false;
+      Object.assign(opaqueSources, atoms || {});
       applyTransaction(tr, { inputType: 'insertFromPaste' });
       return true;
     },
@@ -1694,7 +1700,20 @@ export function installFastraVisualBridge() {
         if (tx) n.dataset.mdImageTransaction = tx;
       });
 
-      if (composing || fenced || serialize() !== expected) return 'stale';
+      if (holder.querySelector('pre > code.language-mermaid') && window.fastraEnhanceMarkdown) {
+        // Der Renderer benötigt verbundene DOM-Knoten, bevor ProseMirror sie als Atom übernimmt.
+        const owner = view;
+        const ownerSession = session;
+        holder.style.cssText = 'position:fixed;left:-100000px;visibility:hidden;pointer-events:none';
+        document.body.append(holder);
+        try {
+          await window.fastraEnhanceMarkdown(holder);
+        } finally {
+          holder.remove();
+        }
+        if (owner !== view || ownerSession !== session || composing || fenced ||
+            serialize() !== expected || contexts.has(prefix) || sourceContextBytes + cost > MAX_SOURCE_CONTEXT_BYTES) return 'stale';
+      }
 
       const { doc: parsedDoc, parsedGroups } = parseDocumentContainer(holder, configuration.blocks, {
         schema,
@@ -1725,10 +1744,9 @@ export function installFastraVisualBridge() {
       sourceContextBytes += cost;
 
       const prevDoc = view.state.doc;
-      const prevContext = prevDoc.attrs.sourceContext || '';
       const tr = view.state.tr;
       tr.replaceWith(0, prevDoc.content.size, parsedDoc.content);
-      tr.step(new SourceContextStep(prefix, prevContext));
+      tr.setDocAttribute('sourceContext', prefix);
       tr.setSelection(Selection.atStart(tr.doc));
       applyTransaction(closeHistory(tr), { inputType: 'replaceSource' });
 
@@ -1786,9 +1804,10 @@ export function installFastraVisualBridge() {
       bookmarks.delete(key);
       if (fenced || !view || !saved || saved.base !== serialize() || !currentClipboardSelection(saved)) return false;
       const sel = Selection.fromJSON(view.state.doc, saved.selectionJSON);
-      const tr = view.state.tr.setSelection(sel).insertText(String(text || '')).scrollIntoView();
-      applyTransaction(tr, { inputType: 'insertFromPaste' });
-      return true;
+      if (!text) return false;
+      if (!view.state.selection.eq(sel)) view.dispatch(view.state.tr.setSelection(sel));
+      const tableResult = tables?.pasteText(text);
+      return tableResult ?? insertPlainText(sel, text);
     },
     cancelClipboard() {
       if (clipboardBookmark !== null) {
@@ -1835,12 +1854,16 @@ export function installFastraVisualBridge() {
       await window.fastraUpdateMarkdownTheme?.(root, dark);
       window.fastraMarkdownPresentation?.update?.();
     },
-    prepareAction(expectedSession, actionID) {
+    prepareAction(expectedSession, actionID, retryAfterComposition = false) {
       const isNative = arguments.length !== 0;
-      if (isNative && (arguments.length !== 2 || expectedSession !== session || typeof actionID !== 'string' || !actionID.length || nativeActionIDs.has(actionID))) {
+      if (isNative && (arguments.length < 2 || arguments.length > 3 || expectedSession !== session || typeof actionID !== 'string' || !actionID.length || nativeActionIDs.has(actionID))) {
         return null;
       }
-      if (composing) return { composing: true };
+      if (initializing || failed) return null;
+      if (composing) {
+        if (retryAfterComposition) notifyCompositionEnd = true;
+        return { composing: true };
+      }
       // Ausstehende DOM-Eingaben synchron einlesen, BEVOR die Sperre aktiviert wird (Astra #4).
       syncFromDOM();
       emitChangeIfNeeded();
@@ -1858,7 +1881,8 @@ export function installFastraVisualBridge() {
         markdown: serialize(),
         revision,
         imageTransactions,
-        inputType: lastInputType,
+        inputType: emittedInputType,
+        imageFenceRevision,
         viewport: viewportPosition(),
         historyState: view ? getHistoryState(view.state) : { canUndo: false, canRedo: false, undoDepth: 0, redoDepth: 0 }
       };
@@ -1893,13 +1917,15 @@ export function installFastraVisualBridge() {
     completeImageAction(expectedSession, expectedRevision) {
       if (expectedSession !== session || expectedRevision !== imageFenceRevision) return;
       imageFenceRevision = null;
+      lastPreOpSnapshot = null;
       updateFence();
     },
-    rollbackImageChange(inputType, previous) {
-      if (!view) return false;
-      if (lastPreOpSnapshot && lastPreOpSnapshot.markdown === previous && lastPreOpSnapshot.editorState) {
+    rollbackImageChange(expectedRevision, previous) {
+      if (!view || expectedRevision !== imageFenceRevision) return false;
+      if (lastPreOpSnapshot?.revision === expectedRevision && lastPreOpSnapshot.markdown === previous) {
         // Exakten EditorState inkl. Doc, Selection & History atomar wiederherstellen (Astra #14).
         view.updateState(lastPreOpSnapshot.editorState);
+        emittedEditorState = view.state;
         base = previous;
         lastImageTransactions = JSON.stringify(collectOrderedImageTransactions(view.state.doc));
         lastPreOpSnapshot = null;
@@ -1908,17 +1934,7 @@ export function installFastraVisualBridge() {
         notifyHistoryAndOutline();
         return true;
       }
-      let reverted = false;
-      const prevType = lastInputType;
-      lastInputType = inputType === 'historyUndo' ? 'historyRedo' : 'historyUndo';
-      const fn = inputType === 'historyUndo' ? pmRedo : pmUndo;
-      reverted = fn(view.state, tr => applyTransaction(tr, { allowFenced: true, inputType: lastInputType }));
-      lastInputType = prevType;
-      if (!reverted || serialize() !== previous) return false;
-      base = previous;
-      lastImageTransactions = JSON.stringify(collectOrderedImageTransactions(view.state.doc));
-      lastPreOpSnapshot = null;
-      return true;
+      return false;
     },
     viewport: viewportPosition,
     markdown: serialize,

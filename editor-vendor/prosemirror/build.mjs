@@ -14,6 +14,7 @@ const licenseOut = path.join(repoRoot, 'app/Sources/Fastra/Resources/MarkdownVen
  * `.ProseMirror-separator`-Hilfsknoten von `IMG` auf `WBR`, damit DOM-Abfragen
  * wie `document.querySelector('img')` ausschließlich echte Dokumentbilder treffen.
  */
+let appliedSeparatorPatch = false;
 const patchProseMirrorSeparatorPlugin = {
   name: 'fastra-patch-prosemirror-separator',
   setup(build) {
@@ -33,12 +34,13 @@ const patchProseMirrorSeparatorPlugin = {
         }
         source = source.replaceAll(needle, next);
       }
+      appliedSeparatorPatch = true;
       return { contents: source, loader: 'js' };
     });
   }
 };
 
-await esbuild.build({
+const bundle = await esbuild.build({
   entryPoints: [path.join(__dirname, 'src/index.js')],
   bundle: true,
   format: 'iife',
@@ -48,16 +50,19 @@ await esbuild.build({
   legalComments: 'none',
   plugins: [patchProseMirrorSeparatorPlugin],
   outfile: outFile,
+  write: false,
   banner: {
     js: '/* Fastras lokale WYSIWYG-Schicht auf ProseMirror-Basis (MIT). Originalquellen bleiben im geschlossenen Editorzustand. */'
   }
 });
 
+if (!appliedSeparatorPatch) throw new Error('ProseMirror-separator patch did not run');
+
 // Lizenztext reproduzierbar aus den installierten Laufzeit-Abhängigkeiten erzeugen.
 const lock = JSON.parse(fs.readFileSync(path.join(__dirname, 'package-lock.json'), 'utf8'));
 const runtimePackages = Object.entries(lock.packages || {})
   .filter(([pkgPath, info]) => pkgPath && !info.dev)
-  .sort(([a], [b]) => a.localeCompare(b));
+  .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
 
 const sections = [
   'Fastra bundles the following MIT-licensed ProseMirror packages and runtime dependencies in visual-editor.js:',
@@ -77,10 +82,12 @@ for (const [pkgPath, info] of runtimePackages) {
     }
   }
   sections.push(`=== ${pkgName} ${info.version} (${info.license || 'MIT'}) ===`);
-  if (licenseText) sections.push(licenseText);
+  if (!licenseText) throw new Error('Missing license text for ' + pkgName);
+  sections.push(licenseText);
   sections.push('');
 }
 
+fs.writeFileSync(outFile, bundle.outputFiles[0].contents);
 fs.writeFileSync(licenseOut, sections.join('\n'), 'utf8');
 console.log(`Built ${path.relative(repoRoot, outFile)} (${fs.statSync(outFile).size} bytes)`);
 console.log(`Wrote ${path.relative(repoRoot, licenseOut)} (${runtimePackages.length} packages)`);

@@ -1802,6 +1802,7 @@ final class Workspace: ObservableObject {
         let candidate: String
         let outcome: MarkdownVisualCoordinator.SaveCheck
         let redactedDiagnostic: String?
+        let fullDiagnostic: String?
     }
 
     weak var visualMarkdownEditor: MarkdownVisualCoordinator?
@@ -1844,14 +1845,16 @@ final class Workspace: ObservableObject {
         contentRevision: UInt64,
         candidate: String,
         outcome: MarkdownVisualCoordinator.SaveCheck,
-        redactedDiagnostic: String? = nil
+        redactedDiagnostic: String? = nil,
+        fullDiagnostic: String? = nil
     ) {
         visualSaveChecks[tabID] = VisualSaveCheckRecord(
             documentID: documentID,
             contentRevision: contentRevision,
             candidate: candidate,
             outcome: outcome,
-            redactedDiagnostic: redactedDiagnostic
+            redactedDiagnostic: redactedDiagnostic,
+            fullDiagnostic: fullDiagnostic
         )
     }
 
@@ -1880,7 +1883,8 @@ final class Workspace: ObservableObject {
 
     @discardableResult
     func synchronizeVisualMarkdownBefore(_ action: @escaping () -> Void, onFailure: (() -> Void)? = nil,
-                                         checkingSave: Bool = false, relocatedMarkdown: String? = nil) -> Bool {
+                                         checkingSave: Bool = false, relocatedMarkdown: String? = nil,
+                                         warnOnComposition: Bool = true) -> Bool {
         // Auch Quelltext-Bild-Undo besitzt eine kurze asynchrone Dateiphase.
         // Speichern, Schließen und Ansichtswechsel warten auf deren Abschluss.
         if let history = tabs.first(where: { $0.undoHistory.isPerformingAction })?.undoHistory {
@@ -1888,7 +1892,8 @@ final class Workspace: ObservableObject {
             return true
         }
         guard !performingVisualAction, let editor = visualMarkdownEditor, editor.ready else { return false }
-        editor.synchronize(holdingInput: true, checkingSave: checkingSave, relocatedMarkdown: relocatedMarkdown) { [weak self] succeeded, hold in
+        editor.synchronize(holdingInput: true, checkingSave: checkingSave, relocatedMarkdown: relocatedMarkdown,
+                           warnOnComposition: warnOnComposition) { [weak self] succeeded, hold in
             defer { hold?.finish() }
             guard succeeded, let self else { onFailure?(); return }
             self.performingVisualAction = true
@@ -2975,12 +2980,6 @@ final class Workspace: ObservableObject {
         _ inspection: ExternalChangeInspector.Inspection,
         baseline: ExternalChangeBaseline
     ) {
-        if inspection.resolvedURL != inspection.url
-            || visualMarkdownEditor?.tabID == inspection.tabID
-            || tabs.contains(where: { $0.id == inspection.tabID && $0.undoHistory.isPerformingAction }),
-           synchronizeVisualMarkdownBefore({
-               self.finishExternalChangeInspection(inspection, baseline: baseline)
-           }) { return }
         // Während der Prüfung eingegangene Anlässe jetzt nachholen —
         // unabhängig davon, ob dieses Ergebnis unten noch verwertbar
         // ist. Die Nachprüfung startet mit frischem Modellzustand.
@@ -3012,6 +3011,12 @@ final class Workspace: ObservableObject {
             shouldRecheck = true
             return
         }
+        if inspection.resolvedURL == inspection.url, let after = inspection.observation,
+           after == baseline.observed { return }
+        if visualMarkdownEditor?.tabID == inspection.tabID || self.tabs[idx].undoHistory.isPerformingAction,
+           synchronizeVisualMarkdownBefore({
+               self.finishExternalChangeInspection(inspection, baseline: baseline)
+           }, warnOnComposition: false) { return }
 
         // Ein verschwundener, unlesbarer oder nicht mehr regulärer
         // Pfad ist gerade bei einem zuvor sauberen Tab gefährlich:
@@ -3754,7 +3759,7 @@ final class Workspace: ObservableObject {
         NSAlert.runWarning(title: title, text: text)
     }
     private var customMarkdownSaveWarningHandler: ((MarkdownVisualCoordinator.SaveCheck) -> Void)?
-    private var activeSaveWarningContext: (tabID: UUID, record: VisualSaveCheckRecord?)?
+    private var activeSaveWarningRecord: VisualSaveCheckRecord?
     var markdownSaveWarningHandler: (MarkdownVisualCoordinator.SaveCheck) -> Void {
         get {
             customMarkdownSaveWarningHandler ?? { [weak self] check in
@@ -3768,7 +3773,7 @@ final class Workspace: ObservableObject {
 
     private func presentVisualMarkdownSaveWarning(_ check: MarkdownVisualCoordinator.SaveCheck) {
         guard check != .ok else { return }
-        let captured = activeSaveWarningContext
+        let captured = activeSaveWarningRecord
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = MarkdownVisualSaveMessages.title
@@ -3780,18 +3785,12 @@ final class Workspace: ObservableObject {
         switch alert.runModal() {
         case .alertSecondButtonReturn:
             MainActor.assumeIsolated {
-                markdownVisualDiagnostics.saveFullReport(from: self)
+                markdownVisualDiagnostics.saveReport(captured?.fullDiagnostic)
             }
         case .alertThirdButtonReturn:
-            let editorRedacted = captured.flatMap { ctx in
-                visualMarkdownEditor?.tabID == ctx.tabID ? visualMarkdownEditor?.lastSaveDiagnosticRedacted : nil
-            }
-            let redacted = captured?.record?.redactedDiagnostic
-                ?? editorRedacted
-                ?? MainActor.assumeIsolated { markdownVisualDiagnostics.activeWarning?.frozenReportRedacted }
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(
-                redacted ?? "Fastra \(AppInfo.version) · WYSIWYG save · \(check.rawValue)",
+                captured?.redactedDiagnostic ?? "Fastra \(AppInfo.version) · WYSIWYG save · \(check.rawValue)",
                 forType: .string
             )
         default:
@@ -3802,15 +3801,17 @@ final class Workspace: ObservableObject {
     private func approvesVisualMarkdownSave(_ tab: EditorTab, candidate: String) -> Bool {
         if let outcome = visualSaveCheck(for: tab, candidate: candidate) {
             guard outcome != .ok else { return true }
-            activeSaveWarningContext = (tabID: tab.id, record: visualSaveChecks[tab.id])
-            defer { activeSaveWarningContext = nil }
+            let previous = activeSaveWarningRecord
+            activeSaveWarningRecord = visualSaveChecks[tab.id]
+            defer { activeSaveWarningRecord = previous }
             markdownSaveWarningHandler(outcome)
             return false
         }
         if hasPendingVisualSaveCheck(for: tab.id)
             || (visualMarkdownEditor?.ready == true && visualMarkdownEditor?.tabID == tab.id) {
-            activeSaveWarningContext = (tabID: tab.id, record: visualSaveChecks[tab.id])
-            defer { activeSaveWarningContext = nil }
+            let previous = activeSaveWarningRecord
+            activeSaveWarningRecord = nil
+            defer { activeSaveWarningRecord = previous }
             markdownSaveWarningHandler(.unavailable)
             return false
         }

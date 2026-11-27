@@ -185,27 +185,32 @@ final class MarkdownVisualDiagnosticsController: ObservableObject {
 
     @MainActor func saveFullReport(from workspace: Workspace, completion: ((URL?) -> Void)? = nil) {
         resolveReport(includeContent: true, from: workspace) { [weak self] text in
-            guard let self, let text else {
-                self?.statusNotice = L10n.string("Das Diagnoseprotokoll ist derzeit nicht verfügbar.")
-                completion?(nil)
-                return
-            }
-            let panel = NSSavePanel()
-            panel.allowedContentTypes = [.json]
-            panel.canCreateDirectories = true
-            panel.nameFieldStringValue = Self.defaultFileName()
-            guard panel.runModal() == .OK, let url = panel.url else {
-                completion?(nil)
-                return
-            }
-            do {
-                try Data(text.utf8).write(to: url, options: .atomic)
-                self.statusNotice = L10n.format("Diagnoseprotokoll gespeichert: %@", url.lastPathComponent)
-                completion?(url)
-            } catch {
-                self.statusNotice = error.localizedDescription
-                completion?(nil)
-            }
+            guard let self else { completion?(nil); return }
+            self.saveReport(text, completion: completion)
+        }
+    }
+
+    @MainActor func saveReport(_ text: String?, completion: ((URL?) -> Void)? = nil) {
+        guard let text else {
+            statusNotice = L10n.string("Das Diagnoseprotokoll ist derzeit nicht verfügbar.")
+            completion?(nil)
+            return
+        }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = Self.defaultFileName()
+        guard panel.runModal() == .OK, let url = panel.url else {
+            completion?(nil)
+            return
+        }
+        do {
+            try Data(text.utf8).write(to: url, options: .atomic)
+            statusNotice = L10n.format("Diagnoseprotokoll gespeichert: %@", url.lastPathComponent)
+            completion?(url)
+        } catch {
+            statusNotice = error.localizedDescription
+            completion?(nil)
         }
     }
 

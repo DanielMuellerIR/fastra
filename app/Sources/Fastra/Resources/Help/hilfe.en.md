@@ -861,8 +861,9 @@ The **document outline** lists Markdown headings and jumps in the current editin
 mode. A checkmark marks the current section. Code blocks and protected HTML do not
 count as headings. The shared history is described under **Document outline and jump history**.
 
-**Editing tables:** Placing the cursor in a Markdown table cell shows a context
-bar with the current row and column. **Row** and **Column** offer insertion,
+**Editing tables:** In WYSIWYG mode, **Insert table…** creates empty cells and
+places the cursor in the first cell. In a table cell, a context bar shows the
+current row and column. **Row** and **Column** offer insertion,
 deletion and moving; alignment applies to the whole column. The header row and
 last column are protected. **Tab / Shift-Tab** select the next or previous cell.
 Tab in the last cell appends a data row. At the row or cell limit, a message
@@ -899,6 +900,7 @@ before saving from WYSIWYG. If a difference, no-op command, or editor issue occu
 stay in the open editor. Use the stethoscope button in the toolbar, the warning
 banner, or **Markdown → WYSIWYG Diagnostic Log…** at any time to copy an
 anonymized diagnostic without document content or save a full log for reporting.
+A save warning exports the diagnostic for the document you were saving.
 Protected HTML and math content cannot be formatted in WYSIWYG mode. Fastra
 explains this before making changes; edit these parts in the Markdown source.
 

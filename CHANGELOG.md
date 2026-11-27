@@ -7,6 +7,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.243.1] — 2026-11-27
+
+### Behoben
+
+- WYSIWYG bleibt nach einer fehlgeschlagenen Startprüfung schreibgeschützt. Speicherdiagnosen sind an das betroffene Dokument gebunden, auch beim Sichern eines Hintergrundtabs.
+- Neue Markdown-Tabellen beginnen mit leeren Zellen und dem Cursor in der ersten Zelle. Das Einfügen lokaler Bilder und geschützter Inhalte erhält ihre Metadaten. Klartext und TSV werden passend zur Zellauswahl eingefügt.
+- Bildänderungen und ihre Rücknahme bleiben bei abgelehnter Synchronisierung mit dem Dokumentverlauf konsistent. Linux stellt beim Kopieren eines einzelnen lokalen Bildes zusätzlich das Bildformat bereit.
+- Bearbeitetes Markdown erhält führende Referenzdefinitionen, Blockgrenzen, Listen ab null, Aufgabenstatus, Inline-Attribute und wörtliche Markdown-Zeichen. Geschützte Blockformeln und Diagramme lösen beim Speichern keine falsche Textverlustwarnung aus.
+- Einfügen in Codeblöcke erhält die Textzeilen. Die unter Linux aus der Quelle übernommene Rich-Ansicht rendert Mermaid-Diagramme.
+
 ## [v1.243.0] — 2026-11-26
 
 ### Geändert

@@ -2,6 +2,7 @@ import { GapCursor } from 'prosemirror-gapcursor';
 import { closeHistory } from 'prosemirror-history';
 import { DOMParser, Fragment } from 'prosemirror-model';
 import { Selection, TextSelection } from 'prosemirror-state';
+import { sanitizePasteHTML } from './parser.js';
 
 const maxRows = 1000;
 const maxColumns = 100;
@@ -40,9 +41,8 @@ function parseTSV(text, row, column, rowCount, colCount) {
 
 function singleLineHTML(html, document, parser, cellType, { allowLineBreak = false } = {}) {
   const template = document.createElement('template');
-  template.innerHTML = html;
+  template.innerHTML = sanitizePasteHTML(html, document);
   const fragment = template.content;
-  fragment.querySelectorAll('script,style,iframe,object,embed,svg,math,link,meta,template').forEach(node => node.remove());
   const blocks = [...fragment.querySelectorAll('p,div')];
   const forbidden = allowLineBreak
     ? 'table,pre,ul,ol,li,blockquote,h1,h2,h3,h4,h5,h6,hr'
@@ -59,23 +59,10 @@ function singleLineHTML(html, document, parser, cellType, { allowLineBreak = fal
 
   for (const node of fragment.querySelectorAll('*')) {
     for (const { name } of [...node.attributes]) {
-      if (!['href', 'src', 'title', 'alt'].includes(name)) node.removeAttribute(name);
-    }
-    const href = node.getAttribute('href');
-    if (href !== null && !safeClipboardURL(href, /^(?:https?:|mailto:|#)/i)) node.removeAttribute('href');
-    if (node.localName === 'img') {
-      const src = node.getAttribute('src') || '';
-      if (!safeClipboardURL(src, /^https?:/i)) node.remove();
-      else node.setAttribute('data-md-src', src);
+      if (!['href', 'src', 'title', 'alt', 'data-md-src'].includes(name)) node.removeAttribute(name);
     }
   }
   return parser.parse(fragment, { topNode: cellType.create(), preserveWhitespace: true }).content;
-}
-
-function safeClipboardURL(value, scheme) {
-  const url = value.trim();
-  return !/[\s\u0000-\u001f\u007f]/.test(url) &&
-    (scheme.test(url) || (/^[^:/]+(?:\/|$)/.test(url) && !/^[\\/]/.test(url)));
 }
 
 export function createTableEditor({
@@ -429,6 +416,21 @@ export function createTableEditor({
     return selectCell(found, Math.floor(index / colCount), index % colCount).ok;
   }
 
+  function rejectOversizedTabAtDOM(event) {
+    if (event.key !== 'Tab' || event.shiftKey || event.altKey || event.metaKey ||
+        event.ctrlKey || event.isComposing || blocked()) return false;
+    const anchor = document?.getSelection?.()?.anchorNode;
+    const cell = (anchor?.nodeType === 1 ? anchor : anchor?.parentElement)?.closest?.('td,th');
+    const row = cell?.closest('tr');
+    const tableDOM = row?.closest('table');
+    if (!tableDOM || !dom?.contains(tableDOM) || tableDOM.getAttribute('data-md-table') !== 'gfm' ||
+        tableDOM.querySelector('[colspan],[rowspan],table')) return false;
+    if (row.rowIndex !== tableDOM.rows.length - 1 || cell.cellIndex !== row.cells.length - 1 ||
+        fits(tableDOM.rows.length + 1, row.cells.length)) return false;
+    fail('size');
+    return true;
+  }
+
   function handleKeyDown(viewOrEvent, maybeEvent) {
     const event = maybeEvent ?? viewOrEvent;
     if (!['Shift', 'Alt', 'Control', 'Meta'].includes(event.key)) setMouseSelection(false);
@@ -439,23 +441,6 @@ export function createTableEditor({
     if (event.isComposing || event.ctrlKey || event.metaKey) return false;
     if (event.key === 'Tab') {
       if (event.altKey) return false;
-      if (!event.shiftKey) {
-        // Synthetisch erweiterte DOM-Tabellen vor dem ProseMirror-Navigationsschritt auf Limit prüfen.
-        const winSel = document?.getSelection?.();
-        const anchorNode = winSel?.anchorNode;
-        const cellEl = (anchorNode?.nodeType === 1 ? anchorNode : anchorNode?.parentElement)?.closest?.('td,th');
-        const rowEl = cellEl?.closest?.('tr');
-        const tableEl = rowEl?.closest?.('table');
-        if (tableEl && dom?.contains(tableEl)) {
-          const domRows = tableEl.rows.length;
-          const domCols = rowEl.cells.length;
-          if (rowEl.rowIndex === domRows - 1 && cellEl.cellIndex === domCols - 1 && !fits(domRows + 1, domCols)) {
-            event.preventDefault?.();
-            fail('size');
-            return true;
-          }
-        }
-      }
       return navigate(event.shiftKey);
     }
     if (event.key !== 'Enter' && event.key !== 'Escape') return false;
@@ -494,6 +479,16 @@ export function createTableEditor({
     return true;
   }
 
+  function pasteText(text) {
+    const found = locate();
+    if (!found) return null;
+    const result = found.reason ? failure(found.reason)
+      : /[\t\r\n]/.test(text) ? execute('pasteTSV', { text })
+        : pasteCell(found, { text }, true);
+    if (!result.ok) fail(result.reason);
+    return result.ok;
+  }
+
   function handleCopy(viewOrEvent, maybeEvent) {
     const event = maybeEvent ?? viewOrEvent;
     const found = locate();
@@ -526,7 +521,8 @@ export function createTableEditor({
   document?.defaultView?.addEventListener('blur', finishMouseSelection);
 
   return {
-    context, execute, insertTable, handleKeyDown, handlePaste, handleCopy, handleClick, navigate, syncToolbar,
+    context, execute, insertTable, handleKeyDown, rejectOversizedTabAtDOM,
+    handlePaste, handleCopy, handleClick, navigate, pasteText, syncToolbar,
     command: (name, value, token) => execute(name, { value, token }),
     get selectingWithMouse() { return mouseSelection; },
     set selectingWithMouse(active) { setMouseSelection(Boolean(active)); },

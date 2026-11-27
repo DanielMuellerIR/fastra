@@ -310,7 +310,9 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     }
     private var imageTransactions: [String: ImageTransaction] = [:]
     private var initialImageTransactions: [String: String] = [:]
-    private var reconcilingImages = false
+    private var reconcilingImageRevision: Int?
+    private var reconcilingImages: Bool { reconcilingImageRevision != nil }
+    private var rejectedImageRevision: Int?
     private var imageReconciliationWaiters: [(UInt64, String, Bool) -> Void] = []
     private var imageHistoryResetPending = false
     private var currentFontName = PreviewFonts.systemName
@@ -376,7 +378,6 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         let full: [String: Any]
     }
     private var swiftDiagnosticEvents: [SwiftDiagnosticEvent] = []
-    private(set) var lastSaveDiagnosticRedacted: String?
 
     private func recordSwiftEvent(_ kind: String, details: [String: Any] = [:], fullOnlyDetails: [String: Any] = [:]) {
         var redactedEntry: [String: Any] = [
@@ -549,7 +550,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
 
     /// Der Browser hält Bildaktionen kurz an, bis die Dateiseite abgeschlossen
     /// ist. Text und Dateien werden dadurch in derselben Reihenfolge bestätigt.
-    private func reconcileImageUndo(_ visibleIDs: [String], previous: String, inputType: String,
+    private func reconcileImageUndo(_ visibleIDs: [String], previous: String, inputType: String, revision: Int,
                                     newEdit: Bool, attemptsRemaining: Int = 3,
                                     accept: @escaping () -> Bool,
                                     completion: @escaping (Bool) -> Void) {
@@ -574,7 +575,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             return
         }
         guard !reconcilingImages else { completion(false); return }
-        reconcilingImages = true
+        reconcilingImageRevision = revision
         let request = generation
         let expectedSession = session
         let url = documentURL
@@ -643,7 +644,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 var awaitingFileFinalization = false
                 defer { if !awaitingFileFinalization { MarkdownImageUndoSideEffect.pendingIO.leave() } }
                 let finish: (Bool) -> Void = { [self] accepted in
-                    reconcilingImages = false
+                    reconcilingImageRevision = nil
                     let waiters = imageReconciliationWaiters
                     imageReconciliationWaiters.removeAll()
                     completion(accepted && requestIsCurrent())
@@ -657,8 +658,8 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                     return
                 }
                 if referenceCheck.isStale, attemptsRemaining > 1 {
-                    reconcilingImages = false
-                    reconcileImageUndo(visibleIDs, previous: previous, inputType: inputType, newEdit: newEdit,
+                    reconcilingImageRevision = nil
+                    reconcileImageUndo(visibleIDs, previous: previous, inputType: inputType, revision: revision, newEdit: newEdit,
                                        attemptsRemaining: attemptsRemaining - 1, accept: accept) { accepted in
                         completion(accepted)
                         invalidations.forEach { $0() }
@@ -722,8 +723,9 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                     }
                     finish(true)
                 } else {
-                    web?.callAsyncJavaScript("return window.fastraVisual.rollbackImageChange(inputType, previous);",
-                        arguments: ["inputType": inputType, "previous": previous], in: nil, in: .page) { [weak self] result in
+                    rejectedImageRevision = revision
+                    web?.callAsyncJavaScript("return window.fastraVisual.rollbackImageChange(revision, previous);",
+                        arguments: ["revision": revision, "previous": previous], in: nil, in: .page) { [weak self] result in
                             guard let self, generation == request else { return }
                             if case .success(let value) = result, value as? Bool == true { return }
                             load(previous, documentURL: documentURL, fontName: currentFontName,
@@ -822,7 +824,6 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         liveCheckWorkItem?.cancel()
         liveCheckWorkItem = nil
         lastLiveCheckedState = nil
-        lastSaveDiagnosticRedacted = nil
         historyState = HistoryState()
         clearDiagnostics()
         discardImageUndo()
@@ -837,6 +838,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         let request = generation
         session = UUID().uuidString
         ready = false
+        rejectedImageRevision = nil
         recordSwiftEvent("load", details: ["length": source.count, "hasURL": documentURL != nil])
         scheduleTableReset()
         pending = nil
@@ -896,14 +898,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 guard let self, self.generation == request, self.documentIdentityMatches else { return }
                 let started: Bool
                 if case .success(let value) = result {
-                    if let ok = value as? Bool {
-                        started = ok
-                    } else if let dict = value as? [String: Any], dict["ok"] as? Bool == true {
-                        started = true
-                        self.updateHistoryState(dict["historyState"] ?? dict)
-                    } else {
-                        started = false
-                    }
+                    started = value as? Bool == true
                 } else {
                     started = false
                 }
@@ -919,6 +914,8 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                         workspace.markdownVisualFind.editorBecameReady(in: workspace)
                     }
                 } else {
+                    self.ready = false
+                    self.web?.evaluateJavaScript("window.fastraVisual?.setFailed()")
                     self.workspace?.saveSafetyWarningHandler(L10n.string("Markdown-Ansicht konnte nicht gestartet werden"),
                         L10n.string("Der Dokumentinhalt blieb erhalten. Bitte öffne das Dokument erneut oder wechsle mit dem Umschalter zur Quelltext-Ansicht."))
                 }
@@ -948,6 +945,9 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     func handleVisualMessage(_ body: [String: Any], workspace: Workspace, tabID: UUID) {
         guard body["session"] as? String == session else { return }
         switch body["kind"] as? String {
+        case "retryExternalCheck":
+            guard ready else { return }
+            workspace.checkExternalChanges(only: tabID)
         case "viewport":
             guard body["revision"] as? Int == acceptedInputRevision else { return }
             rememberViewport(body["viewport"])
@@ -969,10 +969,12 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         case "historyState":
             updateHistoryState(body["historyState"] ?? body)
         case "change":
-            guard let base = body["base"] as? String,
+            guard ready, let base = body["base"] as? String,
                   let value = body["markdown"] as? String,
                   let tab = workspace.tabs.first(where: { $0.id == tabID && $0.content.utf8.elementsEqual(base.utf8) }) else { return }
             let revision = body["revision"] as? Int ?? acceptedInputRevision
+            // Das Snapshot-Ergebnis und die Änderungsmeldung können dieselbe Bildrevision liefern.
+            guard reconcilingImageRevision != revision, rejectedImageRevision != revision else { return }
             let request = generation, capturedSession = session
             let documentID = loadedDocumentID, url = documentURL
             guard workspace.textEditingIsAllowed(for: tab) else {
@@ -980,7 +982,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                 return
             }
             reconcileImageUndo(body["imageTransactions"] as? [String] ?? [], previous: base,
-                               inputType: body["inputType"] as? String ?? "", newEdit: true, accept: { [self] in
+                               inputType: body["inputType"] as? String ?? "", revision: revision, newEdit: true, accept: { [self] in
                 guard generation == request, session == capturedSession, loadedDocumentID == documentID,
                       documentURL == url, documentIdentityMatches,
                       workspace.acceptVisualMarkdown(value, previous: base, tabID: tabID) else { return false }
@@ -1091,6 +1093,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     }
 
     func synchronize(holdingInput: Bool, checkingSave: Bool = false, relocatedMarkdown: String? = nil,
+                     warnOnComposition: Bool = true,
                      _ completion: @escaping (Bool, ActionHold?) -> Void) {
         if reconcilingImages {
             let request = generation, capturedSession = session
@@ -1104,7 +1107,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                     return
                 }
                 synchronize(holdingInput: holdingInput, checkingSave: checkingSave,
-                            relocatedMarkdown: relocatedMarkdown, completion)
+                            relocatedMarkdown: relocatedMarkdown, warnOnComposition: warnOnComposition, completion)
             }
             return
         }
@@ -1126,12 +1129,15 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             completion(succeeded, succeeded && holdingInput ? hold : nil)
             if succeeded && !holdingInput { hold.finish() }
         }
-        web.callAsyncJavaScript("return window.fastraVisual.prepareAction(session, actionID);",
-                                arguments: ["session": requestSession, "actionID": hold.id], in: nil, in: .page) { [self] result in
+        web.callAsyncJavaScript("return window.fastraVisual.prepareAction(session, actionID, retryAfterComposition);",
+                                arguments: ["session": requestSession, "actionID": hold.id,
+                                            "retryAfterComposition": !warnOnComposition], in: nil, in: .page) { [self] result in
             guard ready, generation == request, session == requestSession else { respond(false); return }
             if case .success(let value) = result, let snapshot = value as? [String: Any], snapshot["composing"] as? Bool == true {
-                workspace?.saveSafetyWarningHandler(L10n.string("Texteingabe noch nicht abgeschlossen"),
-                    L10n.string("Bitte schließe die aktuelle Zeicheneingabe ab und führe den Befehl danach erneut aus."))
+                if warnOnComposition {
+                    workspace?.saveSafetyWarningHandler(L10n.string("Texteingabe noch nicht abgeschlossen"),
+                        L10n.string("Bitte schließe die aktuelle Zeicheneingabe ab und führe den Befehl danach erneut aus."))
+                }
                 respond(false)
                 return
             }
@@ -1140,6 +1146,16 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                   snapshot["session"] as? String == requestSession, snapshot["actionID"] as? String == hold.id,
                   let content = snapshot["markdown"] as? String,
                   let revision = snapshot["revision"] as? Int, revision >= acceptedInputRevision else {
+                respond(false)
+                return
+            }
+            if reconcilingImages {
+                hold.finish()
+                synchronize(holdingInput: holdingInput, checkingSave: checkingSave, relocatedMarkdown: relocatedMarkdown,
+                            warnOnComposition: warnOnComposition, completion)
+                return
+            }
+            if let imageFence = snapshot["imageFenceRevision"] as? Int, imageFence == rejectedImageRevision {
                 respond(false)
                 return
             }
@@ -1155,7 +1171,8 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             }
             let base = markdown
             reconcileImageUndo(snapshot["imageTransactions"] as? [String] ?? [], previous: base,
-                               inputType: snapshot["inputType"] as? String ?? "", newEdit: revision > acceptedInputRevision, accept: { [self] in
+                               inputType: snapshot["inputType"] as? String ?? "", revision: revision,
+                               newEdit: revision > acceptedInputRevision, accept: { [self] in
                 guard generation == request, session == requestSession, loadedDocumentID == documentID,
                       documentURL == url, documentIdentityMatches,
                       workspace.acceptVisualMarkdown(content, previous: base, tabID: tabID) else { return false }
@@ -1226,14 +1243,14 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                                     completion(false)
                                     return
                                 }
-                                self.lastSaveDiagnosticRedacted = redacted
                                 workspace.recordVisualSaveCheck(
                                     tabID: tab.id,
                                     documentID: documentID,
                                     contentRevision: contentRevision,
                                     candidate: candidate,
                                     outcome: outcome,
-                                    redactedDiagnostic: redacted
+                                    redactedDiagnostic: redacted,
+                                    fullDiagnostic: full
                                 )
                                 workspace.endVisualSaveCheck(tabID: tab.id, holdID: hold.id)
                                 MainActor.assumeIsolated {
@@ -1359,7 +1376,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         case .highlight:      commandName = "highlight"
         case .hardBreak:      commandName = "hardBreak"
         }
-        var value = ""
+        var value: Any = ""
         if command == .link {
             let alert = NSAlert()
             alert.messageText = L10n.string("Link einfügen")
@@ -1374,25 +1391,19 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
             value = field.stringValue
         } else if command == .insertTable {
             guard let configuration = MarkdownAssist.promptForTable() else { return }
-            let header = "<tr>" + String(repeating: "<th><br></th>", count: configuration.columns) + "</tr>"
-            let row = "<tr>" + String(repeating: "<td><br></td>", count: configuration.columns) + "</tr>"
-            value = "<table data-md-table=\"gfm\"><thead>" + header + "</thead><tbody>"
-                + row + (configuration.header ? "" : row) + "</tbody></table><p><br></p>"
+            value = ["rows": configuration.header ? 2 : 3, "columns": configuration.columns]
         }
         execute(commandName, value: value)
         MarkdownAssist.noteFirstUse(in: workspace)
     }
 
-    func execute(_ command: String, value: String) {
+    func execute(_ command: String, value: Any) {
         let request = generation
         let capturedSession = session
         recordSwiftEvent("execute", details: ["command": command])
         web?.callAsyncJavaScript("return window.fastraVisual.command(command, value);",
-                                 arguments: ["command": command, "value": value], in: nil, in: .page) { [weak self] result in
+                                 arguments: ["command": command, "value": value], in: nil, in: .page) { [weak self] _ in
             guard let self, self.ready, self.generation == request, self.session == capturedSession else { return }
-            if case .success(let value) = result {
-                self.updateHistoryState(value)
-            }
             self.scheduleLiveAppearanceCheck()
         }
     }
