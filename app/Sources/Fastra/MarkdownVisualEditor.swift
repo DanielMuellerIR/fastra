@@ -309,6 +309,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
     }
     let assets = MarkdownPreviewSchemeHandler()
     private var imageSources: [String: String] = [:]
+    private var unresolvedImageSources: [String] = []
     var markdown = ""
     var style = ""
     private(set) var documentURL: URL?
@@ -821,6 +822,36 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         documentURL = url
         style = "\(currentFontName)|\(currentFontSize)|\(currentDarkMode)|\(url.path)"
         recordSwiftEvent("adoptURL")
+        let sources = unresolvedImageSources
+        unresolvedImageSources.removeAll()
+        guard !sources.isEmpty else { return }
+        let request = generation, expectedSession = session
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var urls: [String: URL] = [:]
+            var sourcesByToken: [String: String] = [:]
+            var addresses: [String: String] = [:]
+            for source in sources {
+                let escaped = source.replacingOccurrences(of: "&", with: "&amp;")
+                    .replacingOccurrences(of: "\"", with: "&quot;").replacingOccurrences(of: "<", with: "&lt;")
+                let image = MarkdownImages.resolve(in: "<img src=\"\(escaped)\">", relativeTo: url)
+                guard let token = image.imageURLs.keys.first else { continue }
+                urls.merge(image.imageURLs) { _, new in new }
+                sourcesByToken[token] = source
+                addresses[source] = "\(MarkdownPreviewAssets.scheme)://image/\(token)"
+            }
+            let resolved = (urls: urls, sources: sourcesByToken, addresses: addresses)
+            DispatchQueue.main.async {
+                guard let self, self.generation == request, self.session == expectedSession,
+                      self.documentURL == url, self.documentIdentityMatches else { return }
+                self.assets.addImageURLs(resolved.urls)
+                self.imageSources.merge(resolved.sources) { _, new in new }
+                self.web?.callAsyncJavaScript(
+                    "return window.fastraVisual.refreshImageSources(addresses, null, session);",
+                    arguments: ["addresses": resolved.addresses, "session": expectedSession],
+                    in: nil, in: .page
+                ) { _ in }
+            }
+        }
     }
 
     func relocateDocument(from previous: URL, to url: URL) {
@@ -887,6 +918,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         currentFontSize = fontSize
         currentDarkMode = darkMode
         markdown = source
+        unresolvedImageSources.removeAll()
         loadedDocumentID = workspace?.tabs.first(where: { $0.id == tabID })?.documentID
         self.documentURL = documentURL
         self.style = style
@@ -943,6 +975,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
         guard let data,
               let blocks = try? JSONSerialization.jsonObject(with: data) else { return }
         var configuration: [String: Any] = ["blocks": blocks, "opaqueSources": pending.opaqueSources, "markdown": markdown, "session": session, "imageTransactions": initialImageTransactions]
+        configuration["trackUnresolvedImages"] = documentURL == nil
         if let tab = workspace?.tabs.first(where: { $0.id == tabID }),
            let saved = tab.markdownVisualViewport, saved.documentID == tab.documentID,
            saved.revision == tab.contentRevision, tab.content.utf8.elementsEqual(markdown.utf8) {
@@ -1255,6 +1288,7 @@ final class MarkdownVisualCoordinator: NSObject, WKNavigationDelegate, WKScriptM
                       documentURL == url, documentIdentityMatches,
                       workspace.acceptVisualMarkdown(content, previous: base, tabID: tabID) else { return false }
                 markdown = content; acceptedInputRevision = revision
+                unresolvedImageSources = snapshot["unresolvedImageSources"] as? [String] ?? []
                 updateHistoryState(snapshot["historyState"])
                 rememberViewport(snapshot["viewport"])
                 return true

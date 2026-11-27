@@ -100,6 +100,8 @@ export function installFastraVisualBridge() {
   const bookmarks = new Map();
   const opaqueSources = Object.create(null);
   const imageUrlOverrides = new Map();
+  const unresolvedImageSources = new Set();
+  let trackUnresolvedImages = false;
   const originals = new Map();
   const contexts = new Map();
 
@@ -577,6 +579,7 @@ export function installFastraVisualBridge() {
         if (!transactions.some(tr => tr.docChanged)) return null;
         let fixTr = null;
         newState.doc.descendants((node, pos) => {
+          rememberUnresolvedImage(node);
           if (node.type === schema.nodes.blank_line && node.content.size > 0) {
             if (!fixTr) fixTr = newState.tr;
             fixTr.setNodeMarkup(pos, schema.nodes.paragraph, {
@@ -603,6 +606,12 @@ export function installFastraVisualBridge() {
         return fixTr;
       }
     });
+  }
+
+  function rememberUnresolvedImage(node) {
+    if (trackUnresolvedImages && node.type === schema.nodes.image && !node.attrs.src && node.attrs.mdSrc) {
+      unresolvedImageSources.add(node.attrs.mdSrc);
+    }
   }
 
   function applyTransaction(tr, { allowFenced = false, inputType = '' } = {}) {
@@ -634,7 +643,7 @@ export function installFastraVisualBridge() {
     const tr = view.state.tr.setMeta('addToHistory', false).setMeta('fastraAllowFenced', true);
     doc.descendants((node, pos) => {
       if (node.type === schema.nodes.image) {
-        const mapped = node.attrs.src ? imageUrlOverrides.get(node.attrs.src) : null;
+        const mapped = imageUrlOverrides.get(node.attrs.src || node.attrs.mdSrc);
         if (mapped && mapped !== node.attrs.src) {
           tr.setNodeMarkup(pos, null, { ...node.attrs, src: mapped });
         }
@@ -1145,9 +1154,12 @@ export function installFastraVisualBridge() {
     } else if (!text.includes('\n')) {
       tr.insertText(text.replaceAll('\t', '\u00a0\u00a0\u00a0\u00a0'));
     } else {
-      const paragraphs = text.split('\n').map(line => (/[ \t]*$/.test(line) && line.trim() === '')
+      const marks = view.state.storedMarks || (selection.empty
+        ? selection.$from.marks()
+        : selection.$from.marksAcross(selection.$to) || []);
+      const paragraphs = text.split('\n').map(line => /^[ \t]*$/.test(line)
         ? schema.nodes.blank_line.create()
-        : schema.nodes.paragraph.create(null, schema.text(line.replaceAll('\t', '\u00a0\u00a0\u00a0\u00a0'))));
+        : schema.nodes.paragraph.create(null, schema.text(line.replaceAll('\t', '\u00a0\u00a0\u00a0\u00a0'), marks)));
       tr.replaceSelection(Slice.maxOpen(Fragment.fromArray(paragraphs)));
     }
     if (!tr.docChanged) return false;
@@ -1439,7 +1451,9 @@ export function installFastraVisualBridge() {
         nativeActionIDs.clear();
         originals.clear();
         contexts.clear();
+        unresolvedImageSources.clear();
       }
+      trackUnresolvedImages = configuration.trackUnresolvedImages === true;
       const sameMountedSession =
         !!view &&
         view.dom === nextRoot &&
@@ -1497,6 +1511,7 @@ export function installFastraVisualBridge() {
       });
       buildContextEntry(configuration, '', parsedGroups, originals, contexts, opaqueSources);
 
+      if (trackUnresolvedImages) doc.descendants(rememberUnresolvedImage);
       createEditorView(doc, root);
       root.setAttribute('role', 'textbox');
       root.setAttribute('aria-multiline', 'true');
@@ -1577,8 +1592,8 @@ export function installFastraVisualBridge() {
         throw err;
       }
     },
-    refreshImageSources(addresses, transactions) {
-      if (!view) return;
+    refreshImageSources(addresses, transactions, expectedSession = session) {
+      if (!view || expectedSession !== session) return;
       for (const [srcKey, url] of Object.entries(addresses || {})) {
         if (typeof url === 'string' && url) imageUrlOverrides.set(srcKey, url);
       }
@@ -1933,6 +1948,7 @@ export function installFastraVisualBridge() {
       if (isNative) {
         snapshot.session = session;
         snapshot.actionID = actionID;
+        if (trackUnresolvedImages) snapshot.unresolvedImageSources = [...unresolvedImageSources];
       }
       return snapshot;
     },

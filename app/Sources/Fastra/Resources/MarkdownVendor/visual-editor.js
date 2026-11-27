@@ -13725,7 +13725,7 @@
     };
   }
   function escapePlainSegment(segment, { atBlockStart: atBlockStart2 = false, tableCell = false } = {}) {
-    let out = segment.replace(/\\/g, "\\\\").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\*/g, "\\*").replace(/_/g, "\\_").replace(/`/g, "\\`").replace(/\[/g, "\\[").replace(/\]/g, "\\]").replace(new RegExp("[$~]|(?<!\\\\)=(?==)|(?<==)=", "g"), "\\$&");
+    let out = segment.replace(/\\/g, "\\\\").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\*/g, "\\*").replace(/_/g, "\\_").replace(/`/g, "\\`").replace(/\[/g, "\\[").replace(/\]/g, "\\]").replace(/\b(https?)(?=:\/\/):/gi, "$1\\:").replace(/\b(www)\./gi, "$1\\.").replace(new RegExp("[$~]|(?<!\\\\)=(?==)|(?<==)=", "g"), "\\$&");
     if (atBlockStart2) {
       out = out.replace(/^([ \t]{0,3})(#{1,6})(?=\s|$)/, "$1\\$2").replace(/^([ \t]{0,3})>/, "$1\\>").replace(/^([ \t]*[-+*])(\s|$)/, (_, m, ws) => m.replace(/([-+*])$/, "\\$1") + ws).replace(/^([ \t]{0,3})(-)(?=(?:[ \t]*[-:|])+[ \t]*$)/, "$1\\$2").replace(/^([ \t]{0,3})(-)(?=[ \t]*\|)/, "$1\\$2").replace(/^([ \t]{0,3})(=+)(?=[ \t]*$)/, "$1\\$2").replace(/^([ \t]{0,3})(\d{1,9})([.)])(?=\s|$)/, "$1$2\\$3").replace(/^(?: {4}| {0,3}\t)(?=\S)/, (m) => (m[0] === "	" ? "&#9;" : "&#32;") + m.slice(1));
     }
@@ -15474,8 +15474,10 @@ $$`;
     const { $from, $to } = state.selection;
     const range = $from.blockRange($to, (node) => node.type === schema2.nodes.blockquote);
     if (!range) return false;
-    if (!dispatch) return true;
-    return lift2(state, dispatch);
+    const target = liftTarget(range);
+    if (target == null) return false;
+    if (dispatch) dispatch(state.tr.lift(range, target).scrollIntoView());
+    return true;
   }
   function findAncestorOfType(pos, type) {
     for (let d = pos.depth; d >= 0; d--) {
@@ -15585,11 +15587,22 @@ $$`;
     const baseOrder = isOrdered ? Math.max(0, Number(listNode.attrs.order ?? 1)) : 1;
     const firstIdx = $from.index(listAncestor.depth);
     const lastIdx = $to.index(listAncestor.depth);
-    if (firstIdx === lastIdx && (listNode.childCount === 1 || lastIdx === listNode.childCount - 1)) {
+    const nested = $from.node(listAncestor.depth - 1).type === schema2.nodes.list_item;
+    if (nested || firstIdx === lastIdx && lastIdx === listNode.childCount - 1) {
       let liftTr = null;
       if (liftListItem(schema2.nodes.list_item)(state, (t) => {
         liftTr = t;
       })) {
+        if (nested && isOrdered) {
+          const lifted = $from.blockRange($to, (node) => node.firstChild?.type === schema2.nodes.list_item);
+          if (lifted && lifted.depth === listAncestor.depth && lifted.endIndex < listNode.childCount) {
+            const remainingPos = liftTr.mapping.map(lifted.end + 1);
+            const remaining = findNearestListAncestor(liftTr.doc.resolve(remainingPos), schema2);
+            if (remaining?.node.type === listNode.type && remaining.node.firstChild === listNode.child(lifted.endIndex)) {
+              liftTr.setNodeMarkup(remaining.pos, null, { ...remaining.node.attrs, order: baseOrder + lifted.endIndex });
+            }
+          }
+        }
         return liftTr;
       }
       return null;
@@ -15670,7 +15683,7 @@ $$`;
     tr.replaceWith(pos + 1, pos + node.nodeSize - 1, content);
     tr.setSelection(Selection.fromJSON(tr.doc, selection));
   }
-  function applyHeadingOrParagraph(state, dispatch, schema2, { level = null }) {
+  function applyHeadingOrParagraph(state, dispatch, schema2, { level = null, preserveInlineMarks = false }) {
     const ctx = insideCellOrProtected(state, schema2);
     if (level === null && ctx.inTable && ctx.cell) {
       const from3 = ctx.cell.pos + 1;
@@ -15814,7 +15827,7 @@ $$`;
         );
       }
     } else {
-      const marksToRemove = inlineMarkTypesToStrip(schema2);
+      const marksToRemove = preserveInlineMarks ? [] : inlineMarkTypesToStrip(schema2);
       for (let i = targets.length - 1; i >= 0; i--) {
         const { node, pos } = targets[i];
         if (node.type !== schema2.nodes.paragraph) {
@@ -15828,6 +15841,7 @@ $$`;
           convertCodeLineBreaks(editTr, node, pos, schema2);
           blockChanged = true;
         }
+        if (!marksToRemove.length) continue;
         const cFrom = pos + 1;
         const cTo = pos + node.nodeSize - 1;
         let hasMark = false;
@@ -15907,19 +15921,13 @@ $$`;
         }
       }
       if (!dispatch) return true;
-      const mixedRes = applyHeadingOrParagraph(state, null, schema2, { level: null });
+      const order = mode === "ordered" && fromList?.node.type === schema2.nodes.ordered_list ? fromList.node.attrs.order + $from.index(fromList.depth) : 1;
       let workState = state;
       const mixedSteps = [];
-      if (mixedRes.handled) {
-        let appliedTr = null;
-        applyHeadingOrParagraph(state, (tr) => {
-          appliedTr = tr;
-        }, schema2, { level: null });
-        if (appliedTr) {
-          mixedSteps.push(appliedTr);
-          workState = state.apply(appliedTr);
-        }
-      }
+      applyHeadingOrParagraph(state, (tr) => {
+        mixedSteps.push(tr);
+        workState = state.apply(tr);
+      }, schema2, { preserveInlineMarks: true });
       const listType2 = mode === "ordered" ? schema2.nodes.ordered_list : schema2.nodes.bullet_list;
       const { $from: wFrom, $to: wTo } = workState.selection;
       const wRange = wFrom.blockRange(wTo);
@@ -15945,7 +15953,8 @@ $$`;
         workState = workState.apply(prepTr2);
       }
       let wrapped = false;
-      wrapInList(listType2, { tight: true })(workState, (tr2) => {
+      const listAttrs = mode === "ordered" ? { tight: true, order } : { tight: true };
+      wrapInList(listType2, listAttrs)(workState, (tr2) => {
         if (mode === "task") {
           const markFrom = Math.min(tr2.selection.from, tr2.doc.content.size);
           const markTo = Math.min(tr2.selection.to, tr2.doc.content.size);
@@ -16169,7 +16178,7 @@ $$`;
               mdEmpty: false
             }, beforeSlice));
           }
-          const blankCount = afterSlice.size > 0 ? totalBreaks : totalBreaks + 1;
+          const blankCount = totalBreaks + 2 - Number(beforeSlice.size > 0) - Number(afterSlice.size > 0);
           for (let b = 0; b < blankCount; b++) {
             blocks.push(schema2.nodes.blank_line.create());
           }
@@ -16177,9 +16186,9 @@ $$`;
             blocks.push(schema2.nodes.paragraph.create({ mdEmpty: false }, afterSlice));
           }
           splitTr.replaceWith($from.before(), $from.after(), blocks);
-          let tailOffset = $from.before();
-          for (let b = 0; b < blocks.length - 1; b++) tailOffset += blocks[b].nodeSize;
-          splitTr.setSelection(TextSelection.near(splitTr.doc.resolve(tailOffset + 1)));
+          let cursor = $from.before() + 1;
+          for (let b = 0; b <= beforeBreaks; b++) cursor += blocks[b].nodeSize;
+          splitTr.setSelection(TextSelection.create(splitTr.doc, cursor));
           if (prepTr.steps.length) dispatchMerged(state, [prepTr, splitTr], dispatch);
           else dispatch(splitTr.scrollIntoView());
           return true;
@@ -16781,6 +16790,7 @@ $$`;
     const tags = { B: 1, STRONG: 1, I: 2, EM: 2, MARK: 4, DEL: 8, S: 8, STRIKE: 8, CODE: 16 };
     let text = "";
     let space = false;
+    let spaceHref = null;
     let pendingBreaks = 0;
     let totalBreaks = 0;
     const formats = [];
@@ -16801,10 +16811,12 @@ $$`;
       }
       pendingBreaks = 0;
       space = !!text;
+      spaceHref = null;
     }
-    function addText(value, style) {
+    function addText(value, style, href) {
       for (const word of String(value || "").replace(/\u200b/g, "").match(/[^ \t\r\n\f]+|[ \t\r\n\f]+/g) || []) {
         if (/^[ \t\r\n\f]/.test(word)) {
+          if (!space) spaceHref = href;
           space = !!text;
           continue;
         }
@@ -16812,6 +16824,7 @@ $$`;
           recordBreaks(pendingBreaks);
           pendingBreaks = 0;
           space = !!text;
+          spaceHref = null;
         }
         if (space) {
           text += " ";
@@ -16819,6 +16832,15 @@ $$`;
         }
         const start = text.length;
         text += word;
+        if (href !== null) {
+          const previous = links.at(-1);
+          if (previous?.[2] === href && (previous[1] === start || spaceHref === href && previous[1] === start - 1)) {
+            previous[1] = text.length;
+          } else {
+            links.push([start, text.length, href]);
+          }
+        }
+        spaceHref = null;
         if (style) {
           const previous = formats.at(-1);
           if (previous?.[1] === start && previous[2] === style) previous[1] = text.length;
@@ -16826,15 +16848,15 @@ $$`;
         }
       }
     }
-    function visit(node, style, tableCell = false) {
+    function visit(node, style, tableCell = false, href = null) {
       if (node.nodeType === 3) {
         if (tableCell) {
           node.data.split(/\r\n?|\n/).forEach((part, index) => {
             if (index) pendingBreaks++;
-            addText(part, style);
+            addText(part, style, href);
           });
         } else {
-          addText(node.data, style);
+          addText(node.data, style, href);
         }
         return;
       }
@@ -16851,16 +16873,14 @@ $$`;
         const startAttr = node.getAttribute("start")?.trim();
         listStarts.push(startAttr && /^[+-]?\d+$/.test(startAttr) ? Number(startAttr) : 1);
       }
-      if (tag === "A" && node.hasAttribute("href")) {
-        links.push(node.getAttribute("href") || "");
-      }
+      if (tag === "A" && node.hasAttribute("href")) href = node.getAttribute("href");
       if (node.classList?.contains("fastra-pm-li-content") || tag === "DIV" && node.classList?.contains("ProseMirror")) {
-        for (const child of node.childNodes) visit(child, style, tableCell);
+        for (const child of node.childNodes) visit(child, style, tableCell, href);
         return;
       }
       if (node.hasAttribute("data-tex") || node.hasAttribute("data-md-opaque")) {
         if (isBlock) boundary();
-        addText("\uFFFC", style);
+        addText("\uFFFC", style, href);
         if (isBlock) boundary();
         return;
       }
@@ -16895,7 +16915,7 @@ $$`;
       const before = text.length;
       const breakCount = totalBreaks;
       if (tag === "IMG") {
-        addText("\uFFFC", style);
+        addText("\uFFFC", style, href);
       } else {
         let nextStyle = style | (tags[tag] || 0);
         if (tag === "SPAN" || tag === "FONT") {
@@ -16906,7 +16926,7 @@ $$`;
           if (css?.textDecorationLine?.includes("line-through")) nextStyle |= 8;
         }
         const preWrap = tableCell || (tag === "TD" || tag === "TH") && !!node.closest("table[data-md-table=gfm]");
-        for (const child of node.childNodes) visit(child, nextStyle, preWrap);
+        for (const child of node.childNodes) visit(child, nextStyle, preWrap, href);
       }
       if (isBlock) {
         if (text.length === before && totalBreaks === breakCount && pendingBreaks) {
@@ -17835,6 +17855,8 @@ $$`;
     const bookmarks = /* @__PURE__ */ new Map();
     const opaqueSources = /* @__PURE__ */ Object.create(null);
     const imageUrlOverrides = /* @__PURE__ */ new Map();
+    const unresolvedImageSources = /* @__PURE__ */ new Set();
+    let trackUnresolvedImages = false;
     const originals = /* @__PURE__ */ new Map();
     const contexts = /* @__PURE__ */ new Map();
     function postMessage(payload) {
@@ -18226,6 +18248,7 @@ $$`;
           if (!transactions.some((tr) => tr.docChanged)) return null;
           let fixTr = null;
           newState.doc.descendants((node, pos) => {
+            rememberUnresolvedImage(node);
             if (node.type === schema.nodes.blank_line && node.content.size > 0) {
               if (!fixTr) fixTr = newState.tr;
               fixTr.setNodeMarkup(pos, schema.nodes.paragraph, {
@@ -18251,6 +18274,11 @@ $$`;
           return fixTr;
         }
       });
+    }
+    function rememberUnresolvedImage(node) {
+      if (trackUnresolvedImages && node.type === schema.nodes.image && !node.attrs.src && node.attrs.mdSrc) {
+        unresolvedImageSources.add(node.attrs.mdSrc);
+      }
     }
     function applyTransaction2(tr, { allowFenced = false, inputType = "" } = {}) {
       if (!view) return false;
@@ -18278,7 +18306,7 @@ $$`;
       const tr = view.state.tr.setMeta("addToHistory", false).setMeta("fastraAllowFenced", true);
       doc3.descendants((node, pos) => {
         if (node.type === schema.nodes.image) {
-          const mapped = node.attrs.src ? imageUrlOverrides.get(node.attrs.src) : null;
+          const mapped = imageUrlOverrides.get(node.attrs.src || node.attrs.mdSrc);
           if (mapped && mapped !== node.attrs.src) {
             tr.setNodeMarkup(pos, null, { ...node.attrs, src: mapped });
           }
@@ -18744,7 +18772,8 @@ $$`;
       } else if (!text.includes("\n")) {
         tr.insertText(text.replaceAll("	", "\xA0\xA0\xA0\xA0"));
       } else {
-        const paragraphs = text.split("\n").map((line) => /[ \t]*$/.test(line) && line.trim() === "" ? schema.nodes.blank_line.create() : schema.nodes.paragraph.create(null, schema.text(line.replaceAll("	", "\xA0\xA0\xA0\xA0"))));
+        const marks2 = view.state.storedMarks || (selection.empty ? selection.$from.marks() : selection.$from.marksAcross(selection.$to) || []);
+        const paragraphs = text.split("\n").map((line) => /^[ \t]*$/.test(line) ? schema.nodes.blank_line.create() : schema.nodes.paragraph.create(null, schema.text(line.replaceAll("	", "\xA0\xA0\xA0\xA0"), marks2)));
         tr.replaceSelection(Slice.maxOpen(Fragment.fromArray(paragraphs)));
       }
       if (!tr.docChanged) return false;
@@ -19028,7 +19057,9 @@ $$`;
           nativeActionIDs.clear();
           originals.clear();
           contexts.clear();
+          unresolvedImageSources.clear();
         }
+        trackUnresolvedImages = configuration.trackUnresolvedImages === true;
         const sameMountedSession = !!view && view.dom === nextRoot && root === nextRoot && session === configuration.session && nextRoot?.classList?.contains("ProseMirror");
         session = configuration.session;
         root = nextRoot;
@@ -19073,6 +19104,7 @@ $$`;
           ownerDocument: document
         });
         buildContextEntry(configuration, "", parsedGroups, originals, contexts, opaqueSources);
+        if (trackUnresolvedImages) doc3.descendants(rememberUnresolvedImage);
         createEditorView(doc3, root);
         root.setAttribute("role", "textbox");
         root.setAttribute("aria-multiline", "true");
@@ -19163,8 +19195,8 @@ $$`;
           throw err;
         }
       },
-      refreshImageSources(addresses, transactions) {
-        if (!view) return;
+      refreshImageSources(addresses, transactions, expectedSession = session) {
+        if (!view || expectedSession !== session) return;
         for (const [srcKey, url] of Object.entries(addresses || {})) {
           if (typeof url === "string" && url) imageUrlOverrides.set(srcKey, url);
         }
@@ -19487,6 +19519,7 @@ $$`;
         if (isNative) {
           snapshot.session = session;
           snapshot.actionID = actionID;
+          if (trackUnresolvedImages) snapshot.unresolvedImageSources = [...unresolvedImageSources];
         }
         return snapshot;
       },

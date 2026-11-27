@@ -3599,7 +3599,6 @@ final class Workspace: ObservableObject {
         }
         guard tabs[idx].displayMode == .text else { NSSound.beep(); return }
         guard !tabs[idx].isLoading else { NSSound.beep(); return }
-        guard approvesVisualMarkdownSave(tabs[idx], candidate: tabs[idx].textForSaving(tabs[idx].content)) else { return }
         let panel = NSSavePanel()
         let stateCapture = SavePanelStateCapture()
         panel.delegate = stateCapture
@@ -3770,61 +3769,49 @@ final class Workspace: ObservableObject {
     var saveSafetyWarningHandler: (String, String) -> Void = { title, text in
         NSAlert.runWarning(title: title, text: text)
     }
-    private var customMarkdownSaveWarningHandler: ((MarkdownVisualCoordinator.SaveCheck) -> Void)?
-    private var activeSaveWarningRecord: VisualSaveCheckRecord?
-    var markdownSaveWarningHandler: (MarkdownVisualCoordinator.SaveCheck) -> Void {
-        get {
-            customMarkdownSaveWarningHandler ?? { [weak self] check in
-                self?.presentVisualMarkdownSaveWarning(check)
-            }
-        }
-        set {
-            customMarkdownSaveWarningHandler = newValue
-        }
-    }
+    var markdownSaveWarningHandler: ((MarkdownVisualCoordinator.SaveCheck, Bool) -> Bool)?
 
-    private func presentVisualMarkdownSaveWarning(_ check: MarkdownVisualCoordinator.SaveCheck) {
-        guard check != .ok else { return }
-        let captured = activeSaveWarningRecord
+    private func presentVisualMarkdownSaveWarning(_ check: MarkdownVisualCoordinator.SaveCheck,
+                                                  record: VisualSaveCheckRecord?) -> Bool {
+        if let handler = markdownSaveWarningHandler {
+            return handler(check, record != nil) && record != nil
+        }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = MarkdownVisualSaveMessages.title
+        alert.messageText = record == nil ? MarkdownVisualSaveMessages.title : MarkdownVisualSaveMessages.confirmTitle
         alert.informativeText = MarkdownVisualSaveMessages.detail(for: check)
-            + "\n\n" + MarkdownVisualSaveMessages.saveFailureInfo
-        alert.addButton(withTitle: L10n.string("OK"))
+            + "\n\n" + (record == nil ? MarkdownVisualSaveMessages.saveFailureInfo : MarkdownVisualSaveMessages.confirmInfo)
+        alert.addButton(withTitle: L10n.string("Abbrechen")).keyEquivalent = "\r"
         alert.addButton(withTitle: L10n.string("Protokoll sichern…"))
         alert.addButton(withTitle: L10n.string("Diagnose kopieren"))
-        switch alert.runModal() {
+        let saveAnyway = record.map { _ in alert.addButton(withTitle: L10n.string("Trotzdem speichern")) }
+        let response = alert.runModal()
+        if let saveAnyway, response.rawValue == saveAnyway.tag { return true }
+        switch response {
         case .alertSecondButtonReturn:
             MainActor.assumeIsolated {
-                markdownVisualDiagnostics.saveReport(captured?.fullDiagnostic)
+                markdownVisualDiagnostics.saveReport(record?.fullDiagnostic)
             }
         case .alertThirdButtonReturn:
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(
-                captured?.redactedDiagnostic ?? "Fastra \(AppInfo.version) · WYSIWYG save · \(check.rawValue)",
+                record?.redactedDiagnostic ?? "Fastra \(AppInfo.version) · WYSIWYG save · \(check.rawValue)",
                 forType: .string
             )
         default:
             break
         }
+        return false
     }
 
     private func approvesVisualMarkdownSave(_ tab: EditorTab, candidate: String) -> Bool {
         if let outcome = visualSaveCheck(for: tab, candidate: candidate) {
             guard outcome != .ok else { return true }
-            let previous = activeSaveWarningRecord
-            activeSaveWarningRecord = visualSaveChecks[tab.id]
-            defer { activeSaveWarningRecord = previous }
-            markdownSaveWarningHandler(outcome)
-            return false
+            return presentVisualMarkdownSaveWarning(outcome, record: visualSaveChecks[tab.id])
         }
         if hasPendingVisualSaveCheck(for: tab.id)
             || (visualMarkdownEditor?.ready == true && visualMarkdownEditor?.tabID == tab.id) {
-            let previous = activeSaveWarningRecord
-            activeSaveWarningRecord = nil
-            defer { activeSaveWarningRecord = previous }
-            markdownSaveWarningHandler(.unavailable)
+            _ = presentVisualMarkdownSaveWarning(.unavailable, record: nil)
             return false
         }
         return true
@@ -3878,6 +3865,7 @@ final class Workspace: ObservableObject {
             // Normales Speichern erhält auch gemischte Umbrüche bytegenau.
             let savedContent = tab.textForSaving(relocatedMarkdown ?? tab.content)
             guard approvesVisualMarkdownSave(tab, candidate: savedContent) else { return false }
+            guard tabStillMatches() else { throw CoordinatedSaveError.tabChanged }
             guard let out = FileLoader.encodedData(
                 content: savedContent, encoding: tab.encoding,
                 bom: tab.bom, lineEnding: tab.lineEnding, preservingLineEndings: true

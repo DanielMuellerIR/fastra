@@ -61,8 +61,9 @@ struct MarkdownVisualLongSessionTests {
         workspace.saveSafetyWarningHandler = { title, text in
             safetyErrors.append("\(title): \(text)")
         }
-        workspace.markdownSaveWarningHandler = { check in
+        workspace.markdownSaveWarningHandler = { check, _ in
             saveWarnings.append(check)
+            return false
         }
         coordinator.load(
             tab.content,
@@ -99,6 +100,142 @@ struct MarkdownVisualLongSessionTests {
         return (ws, coord, web, win)
     }
 
+    @Test("Eingefügte HTTP-Adresse und formatierter Link bestehen die WYSIWYG-Speicherprüfung")
+    @MainActor
+    func pastedPlainURLAndFormattedLinkSave() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("wysiwyg-link-save-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("Links.md")
+        let source = "[a **b** c](https://example.com)\n\nAdresse:\n"
+        let urlText = "http://example.com/path?a=one_two&b=two"
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        let (workspace, coordinator, web, window, _, _) = try await openVisualEditor(source, documentURL: file)
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
+        var warning: MarkdownVisualCoordinator.SaveCheck?
+        workspace.markdownSaveWarningHandler = { check, _ in
+            warning = check
+            return false
+        }
+        _ = try await web.callAsyncJavaScript("""
+            const root = document.querySelector('#fastra-visual');
+            const range = document.createRange();
+            range.selectNodeContents(root.lastElementChild);
+            range.collapse(false);
+            getSelection().removeAllRanges();
+            getSelection().addRange(range);
+            const clipboardData = new DataTransfer();
+            clipboardData.setData('text/plain', ' ' + urlText);
+            root.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+            """, arguments: ["urlText": urlText], in: nil, in: .page)
+        try #require(await waitUntil { workspace.activeTab?.isDirty == true })
+        workspace.saveActiveTab()
+        try #require(await waitUntil { workspace.activeTab?.isDirty == false || warning != nil })
+        #expect(warning == nil)
+        let saved = try String(contentsOf: file, encoding: .utf8)
+        #expect(saved.contains("http\\://example.com/path?a=one\\_two&amp;b=two"))
+        let rendered = MarkdownVisualDocument.render(saved, documentURL: file).fragment.html
+        #expect(rendered.contains("Adresse: http://example.com/path?a=one_two&amp;b=two"))
+        #expect(rendered.contains("<a href=\"https://example.com\">a <strong>b</strong> c</a>"))
+        withExtendedLifetime(coordinator) {}
+    }
+
+    @Test("Trotzdem speichern darf nur einen synchronisierten Markdown-Stand schreiben")
+    @MainActor
+    func saveAnywayRequiresCheckedCandidate() throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("wysiwyg-save-anyway-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("Weiter.md")
+        let workspace = Workspace(defaults: testSuiteDefaults(named: "fastra-save-anyway-\(UUID().uuidString)"))
+        let tab = EditorTab(title: "Weiter.md", path: directory.path, content: "Aktuelle Änderungen\n")
+        workspace.tabs = [tab]
+        workspace.activeTabID = tab.id
+        workspace.beginVisualSaveCheck(tabID: tab.id, holdID: "pending")
+        workspace.markdownSaveWarningHandler = { check, canSave in
+            #expect(check == .unavailable)
+            #expect(!canSave)
+            return true
+        }
+        #expect(!workspace.write(tab: tab, to: file, expectedTargetState: .absent))
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+
+        workspace.endVisualSaveCheck(tabID: tab.id, holdID: "pending")
+        workspace.recordVisualSaveCheck(tabID: tab.id, documentID: tab.documentID,
+                                        contentRevision: tab.contentRevision,
+                                        candidate: tab.textForSaving(tab.content), outcome: .text)
+        workspace.markdownSaveWarningHandler = { check, canSave in
+            #expect(check == .text)
+            #expect(canSave)
+            return false
+        }
+        #expect(!workspace.write(tab: tab, to: file, expectedTargetState: .absent))
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+
+        workspace.saveSafetyWarningHandler = { _, _ in }
+        workspace.markdownSaveWarningHandler = { _, canSave in
+            #expect(canSave)
+            workspace.activeTabContent.wrappedValue = "Neuerer Stand\n"
+            return true
+        }
+        #expect(!workspace.write(tab: tab, to: file, expectedTargetState: .absent))
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        let current = try #require(workspace.activeTab)
+        workspace.recordVisualSaveCheck(tabID: current.id, documentID: current.documentID,
+                                        contentRevision: current.contentRevision,
+                                        candidate: current.textForSaving(current.content), outcome: .text)
+        workspace.markdownSaveWarningHandler = { check, canSave in
+            #expect(check == .text)
+            #expect(canSave)
+            return true
+        }
+        #expect(workspace.write(tab: current, to: file, expectedTargetState: .absent))
+        #expect(try String(contentsOf: file, encoding: .utf8) == current.content)
+    }
+
+    @Test("Undo lädt ein relatives Bild nach dem ersten Speichern aus dem Zielordner")
+    @MainActor
+    func firstSaveResolvesImageRestoredByUndo() async throws {
+        let directory = testTemporaryDirectory().appendingPathComponent("wysiwyg-undo-image-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("Bild.md")
+        let image = directory.appendingPathComponent("sample.png")
+        let bitmap = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 10, pixelsHigh: 10,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        try #require(bitmap.representation(using: .png, properties: [:])).write(to: image)
+
+        let (workspace, coordinator, web, window, _, _) = try await openVisualEditor("Text ![Bild](sample.png)\n")
+        defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close() }
+        _ = try await web.evaluateJavaScript("""
+            const image = document.querySelector('#fastra-visual img');
+            const range = document.createRange();
+            range.selectNode(image);
+            getSelection().removeAllRanges();
+            getSelection().addRange(range);
+            fastraVisual.command('delete');
+            """)
+        try #require(await waitUntil { workspace.activeTab?.content.contains("sample.png") == false })
+        let tabID = try #require(workspace.activeTabID)
+        var saved: Bool?
+        workspace.saveTabAs(id: tabID, to: file, expectedTargetState: .absent, isMarkdown: true) { saved = $0 }
+        try #require(await waitUntil(timeout: 10) { saved != nil })
+        try #require(saved == true)
+        coordinator.performHistoryUndo()
+        try #require(await waitUntil { workspace.activeTab?.content.contains("sample.png") == true })
+        let deadline = Date().addingTimeInterval(4)
+        var width: Int?
+        repeat {
+            width = try await web.evaluateJavaScript("document.querySelector('#fastra-visual img')?.naturalWidth ?? 0") as? Int
+            if width == 10 { break }
+            try await Task.sleep(for: .milliseconds(25))
+        } while Date() < deadline
+        let resolvedSource = try await web.evaluateJavaScript("document.querySelector('#fastra-visual img')?.getAttribute('src')") as? String
+        #expect(width == 10, "src=\(resolvedSource ?? "nil"), assets=\(coordinator.assets.imageURLSnapshot().count)")
+    }
+
     @Test("Neue unbenannte Protokoll-Datei behält alle Leerzeilen und Undo über erstes Speichern, Weiterarbeiten und Wiederöffnen")
     @MainActor
     func untitledProtocolSaveAndContinueEditingPreservesBlankLinesAndUndo() async throws {
@@ -117,7 +254,10 @@ struct MarkdownVisualLongSessionTests {
         var safetyErrors: [String] = []
         var saveWarnings: [MarkdownVisualCoordinator.SaveCheck] = []
         workspace.saveSafetyWarningHandler = { title, text in safetyErrors.append("\(title): \(text)") }
-        workspace.markdownSaveWarningHandler = { saveWarnings.append($0) }
+        workspace.markdownSaveWarningHandler = { check, _ in
+            saveWarnings.append(check)
+            return false
+        }
 
         // Realistisches längeres Protokoll im frischen ungesicherten Tab aufbauen
         _ = try await web.evaluateJavaScript("""
@@ -340,7 +480,10 @@ struct MarkdownVisualLongSessionTests {
             }
             workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
             var saveWarnings: [MarkdownVisualCoordinator.SaveCheck] = []
-            workspace.markdownSaveWarningHandler = { saveWarnings.append($0) }
+            workspace.markdownSaveWarningHandler = { check, _ in
+                saveWarnings.append(check)
+                return false
+            }
 
             let roundResult = try await web.evaluateJavaScript("""
                 (() => {
@@ -527,7 +670,10 @@ struct MarkdownVisualLongSessionTests {
             withExtendedLifetime((workspace, coordinator)) {}
         }
         var saveWarnings: [MarkdownVisualCoordinator.SaveCheck] = []
-        workspace.markdownSaveWarningHandler = { saveWarnings.append($0) }
+        workspace.markdownSaveWarningHandler = { check, _ in
+            saveWarnings.append(check)
+            return false
+        }
 
         // 1. Kopieren + Einfügen in Codeblock über Fastras privates Clipboard-Format
         _ = try await web.evaluateJavaScript("""

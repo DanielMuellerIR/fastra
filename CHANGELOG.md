@@ -7,6 +7,16 @@ Versionsschema: `v0.x` bis zum produktiven Funktionsumfang, `v1.0` beim Release.
 
 ---
 
+## [v1.243.3] — 2026-11-27
+
+### Behoben
+
+- WYSIWYG speichert eingefügte HTTP-Adressen als Text mit unveränderten Zeichen und vergleicht formatierte Links anhand ihres Ziels und Textbereichs.
+- macOS bietet bei einer WYSIWYG-Speicherwarnung „Trotzdem speichern“ für den geprüften Markdown-Stand an. Die Schaltflächen im Diagnoseprotokoll sind vollständig lesbar.
+- Beim Umwandeln und Ausrücken bleiben Listenpunkte, Startnummern und Inline-Formatierungen erhalten. Das erneute Umschalten eines Zitats stellt eine enthaltene Liste wieder her.
+- Shift+Return vor einem Umbruch setzt die Einfügemarke auf die neue Zeile. Mehrzeiliger Klartext behält geschützte Leerzeichen und die Formatierung an der Einfügestelle.
+- macOS löst relative Bilder aus dem Undo-Verlauf nach dem ersten Speichern am neuen Dokumentpfad auf.
+
 ## [v1.243.2] — 2026-11-27
 
 ### Behoben

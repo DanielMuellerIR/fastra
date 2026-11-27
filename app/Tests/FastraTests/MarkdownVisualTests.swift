@@ -305,7 +305,10 @@ struct MarkdownVisualTests {
         defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
         workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
         var failure: MarkdownVisualCoordinator.SaveCheck?
-        workspace.markdownSaveWarningHandler = { failure = $0 }
+        workspace.markdownSaveWarningHandler = { check, _ in
+            failure = check
+            return false
+        }
         let paragraph = "const paragraph=()=>document.querySelector('#fastra-visual p:not([data-md-edit-boundary])');"
         _ = try await web.evaluateJavaScript("""
             (()=>{\(paragraph)
@@ -342,7 +345,10 @@ struct MarkdownVisualTests {
         workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
         var warnings: [MarkdownVisualCoordinator.SaveCheck] = []
         var writes = 0
-        workspace.markdownSaveWarningHandler = { warnings.append($0) }
+        workspace.markdownSaveWarningHandler = { check, _ in
+            warnings.append(check)
+            return false
+        }
         workspace.saveBeforeCoordinateHandler = { _ in writes += 1 }
         let tabID = try #require(workspace.activeTabID)
         _ = try await web.evaluateJavaScript("""
@@ -2466,8 +2472,9 @@ struct MarkdownVisualTests {
         WorkspaceWindowRegistry.register(workspace, for: window)
         var error: String?
         workspace.saveSafetyWarningHandler = { title, text in error = title + text }
-        workspace.markdownSaveWarningHandler = { check in
+        workspace.markdownSaveWarningHandler = { check, _ in
             Issue.record(Comment(rawValue: "WYSIWYG-Speicherprüfung: \(check.rawValue)"))
+            return false
         }
         coordinator.load(tab.content, documentURL: tab.url, fontName: PreviewFonts.systemName,
                          fontSize: 14, darkMode: darkMode, style: "test")
@@ -6038,7 +6045,10 @@ extension MarkdownVisualTests {
         defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
         workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
         var saveWarnings: [MarkdownVisualCoordinator.SaveCheck] = []
-        workspace.markdownSaveWarningHandler = { saveWarnings.append($0) }
+        workspace.markdownSaveWarningHandler = { check, _ in
+            saveWarnings.append(check)
+            return false
+        }
 
         _ = try await web.evaluateJavaScript("""
             (() => {
@@ -6384,7 +6394,10 @@ extension MarkdownVisualTests {
             defer { web.configuration.userContentController.removeAllScriptMessageHandlers(); window.close(); withExtendedLifetime(coordinator) {} }
             workspace.tabs[0].diskSnapshot = try FileSnapshot.readSnapshotOnly(from: file)
             var warnings: [MarkdownVisualCoordinator.SaveCheck] = []
-            workspace.markdownSaveWarningHandler = { warnings.append($0) }
+            workspace.markdownSaveWarningHandler = { check, _ in
+                warnings.append(check)
+                return false
+            }
 
             _ = try await web.evaluateJavaScript("""
                 (() => {
@@ -6548,7 +6561,10 @@ extension MarkdownVisualTests {
         #expect(workspace.hasTabsRequiringSaveBeforeClosing)
 
         var saveWarnings: [MarkdownVisualCoordinator.SaveCheck] = []
-        workspace.markdownSaveWarningHandler = { saveWarnings.append($0) }
+        workspace.markdownSaveWarningHandler = { check, _ in
+            saveWarnings.append(check)
+            return false
+        }
         var closedTitles: [String] = []
         workspace.confirmCloseHandler = { title in
             closedTitles.append(title)

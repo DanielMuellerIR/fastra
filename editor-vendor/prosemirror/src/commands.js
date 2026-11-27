@@ -1,6 +1,6 @@
 import { Fragment, Slice } from 'prosemirror-model';
 import { TextSelection, NodeSelection, Selection } from 'prosemirror-state';
-import { findWrapping } from 'prosemirror-transform';
+import { findWrapping, liftTarget } from 'prosemirror-transform';
 import { wrapIn, lift, chainCommands, newlineInCode, createParagraphNear, liftEmptyBlock, splitBlock, toggleMark, baseKeymap, selectNodeBackward, selectNodeForward } from 'prosemirror-commands';
 import { wrapInList, splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
 import { undo as pmUndo, redo as pmRedo, undoDepth, redoDepth, closeHistory } from 'prosemirror-history';
@@ -66,8 +66,10 @@ function unwrapBlockquote(state, dispatch, schema) {
   const { $from, $to } = state.selection;
   const range = $from.blockRange($to, node => node.type === schema.nodes.blockquote);
   if (!range) return false;
-  if (!dispatch) return true;
-  return lift(state, dispatch);
+  const target = liftTarget(range);
+  if (target == null) return false;
+  if (dispatch) dispatch(state.tr.lift(range, target).scrollIntoView());
+  return true;
 }
 
 function findAncestorOfType(pos, type) {
@@ -201,10 +203,24 @@ function liftSelectedListItemsWithOrder(state, schema) {
   const firstIdx = $from.index(listAncestor.depth);
   const lastIdx = $to.index(listAncestor.depth);
 
-  // Einzel-Listenpunkt am Listenende oder tiefer verschachtelter Lift: Standard-liftListItem.
-  if (firstIdx === lastIdx && (listNode.childCount === 1 || lastIdx === listNode.childCount - 1)) {
+  // In verschachtelten Listen bleiben ausgerückte Einträge Listenpunkte.
+  const nested = $from.node(listAncestor.depth - 1).type === schema.nodes.list_item;
+  if (nested || (firstIdx === lastIdx && lastIdx === listNode.childCount - 1)) {
     let liftTr = null;
     if (liftListItem(schema.nodes.list_item)(state, t => { liftTr = t; })) {
+      if (nested && isOrdered) {
+        const lifted = $from.blockRange($to, node => node.firstChild?.type === schema.nodes.list_item);
+        if (lifted && lifted.depth === listAncestor.depth && lifted.endIndex < listNode.childCount) {
+          // ProseMirror hängt den Nachlauf unter den letzten ausgerückten Punkt.
+          // Der neue Container muss mit der Nummer seines ersten Eintrags beginnen.
+          const remainingPos = liftTr.mapping.map(lifted.end + 1);
+          const remaining = findNearestListAncestor(liftTr.doc.resolve(remainingPos), schema);
+          if (remaining?.node.type === listNode.type &&
+              remaining.node.firstChild === listNode.child(lifted.endIndex)) {
+            liftTr.setNodeMarkup(remaining.pos, null, { ...remaining.node.attrs, order: baseOrder + lifted.endIndex });
+          }
+        }
+      }
       return liftTr;
     }
     return null;
@@ -296,7 +312,7 @@ function convertCodeLineBreaks(tr, node, pos, schema) {
   tr.setSelection(Selection.fromJSON(tr.doc, selection));
 }
 
-function applyHeadingOrParagraph(state, dispatch, schema, { level = null }) {
+function applyHeadingOrParagraph(state, dispatch, schema, { level = null, preserveInlineMarks = false }) {
   const ctx = insideCellOrProtected(state, schema);
   if (level === null && ctx.inTable && ctx.cell) {
     const from = ctx.cell.pos + 1;
@@ -458,7 +474,7 @@ function applyHeadingOrParagraph(state, dispatch, schema, { level = null }) {
       );
     }
   } else {
-    const marksToRemove = inlineMarkTypesToStrip(schema);
+    const marksToRemove = preserveInlineMarks ? [] : inlineMarkTypesToStrip(schema);
     for (let i = targets.length - 1; i >= 0; i--) {
       const { node, pos } = targets[i];
       if (node.type !== schema.nodes.paragraph) {
@@ -472,6 +488,7 @@ function applyHeadingOrParagraph(state, dispatch, schema, { level = null }) {
         convertCodeLineBreaks(editTr, node, pos, schema);
         blockChanged = true;
       }
+      if (!marksToRemove.length) continue;
       const cFrom = pos + 1;
       const cTo = pos + node.nodeSize - 1;
       let hasMark = false;
@@ -569,17 +586,15 @@ function toggleListMode(state, dispatch, schema, mode /* 'bullet' | 'ordered' | 
 
     // Gemischte Auswahl aus Liste und Normalabsatz einheitlich auf Ziel-Listenart bringen.
     if (!dispatch) return true;
-    const mixedRes = applyHeadingOrParagraph(state, null, schema, { level: null });
+    const order = mode === 'ordered' && fromList?.node.type === schema.nodes.ordered_list
+      ? fromList.node.attrs.order + $from.index(fromList.depth)
+      : 1;
     let workState = state;
     const mixedSteps = [];
-    if (mixedRes.handled) {
-      let appliedTr = null;
-      applyHeadingOrParagraph(state, tr => { appliedTr = tr; }, schema, { level: null });
-      if (appliedTr) {
-        mixedSteps.push(appliedTr);
-        workState = state.apply(appliedTr);
-      }
-    }
+    applyHeadingOrParagraph(state, tr => {
+      mixedSteps.push(tr);
+      workState = state.apply(tr);
+    }, schema, { preserveInlineMarks: true });
     const listType = mode === 'ordered' ? schema.nodes.ordered_list : schema.nodes.bullet_list;
     const { $from: wFrom, $to: wTo } = workState.selection;
     const wRange = wFrom.blockRange(wTo);
@@ -605,7 +620,8 @@ function toggleListMode(state, dispatch, schema, mode /* 'bullet' | 'ordered' | 
       workState = workState.apply(prepTr);
     }
     let wrapped = false;
-    wrapInList(listType, { tight: true })(workState, tr2 => {
+    const listAttrs = mode === 'ordered' ? { tight: true, order } : { tight: true };
+    wrapInList(listType, listAttrs)(workState, tr2 => {
       if (mode === 'task') {
         const markFrom = Math.min(tr2.selection.from, tr2.doc.content.size);
         const markTo = Math.min(tr2.selection.to, tr2.doc.content.size);
@@ -863,7 +879,7 @@ function insertHardBreakCommand(state, dispatch, schema) {
             mdEmpty: false
           }, beforeSlice));
         }
-        const blankCount = afterSlice.size > 0 ? totalBreaks : totalBreaks + 1;
+        const blankCount = totalBreaks + 2 - Number(beforeSlice.size > 0) - Number(afterSlice.size > 0);
         for (let b = 0; b < blankCount; b++) {
           blocks.push(schema.nodes.blank_line.create());
         }
@@ -871,9 +887,9 @@ function insertHardBreakCommand(state, dispatch, schema) {
           blocks.push(schema.nodes.paragraph.create({ mdEmpty: false }, afterSlice));
         }
         splitTr.replaceWith($from.before(), $from.after(), blocks);
-        let tailOffset = $from.before();
-        for (let b = 0; b < blocks.length - 1; b++) tailOffset += blocks[b].nodeSize;
-        splitTr.setSelection(TextSelection.near(splitTr.doc.resolve(tailOffset + 1)));
+        let cursor = $from.before() + 1;
+        for (let b = 0; b <= beforeBreaks; b++) cursor += blocks[b].nodeSize;
+        splitTr.setSelection(TextSelection.create(splitTr.doc, cursor));
         if (prepTr.steps.length) dispatchMerged(state, [prepTr, splitTr], dispatch);
         else dispatch(splitTr.scrollIntoView());
         return true;

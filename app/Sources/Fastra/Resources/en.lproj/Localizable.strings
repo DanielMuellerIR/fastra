@@ -1,6 +1,8 @@
 /* Fastra — English user interface */
 
 "Dokument konnte nicht gespeichert werden" = "Document could not be saved";
+"Dokument trotzdem speichern?" = "Save the document anyway?";
+"„Trotzdem speichern“ schreibt den aktuellen Markdown-Stand. Die formatierte Ansicht kann sich beim Wiederöffnen ändern. Mit „Abbrechen“ bleiben deine Änderungen im Editor erhalten." = "Save Anyway writes the current Markdown. The formatted view may change when you reopen the document. Cancel keeps your edits in the editor.";
 "Beim Speichern aus der formatierten Ansicht (WYSIWYG) würde sich der Text verändern." = "Saving from the formatted view (WYSIWYG) would alter the text.";
 "Beim Speichern aus der formatierten Ansicht (WYSIWYG) würden Formatierungen verloren gehen oder sich verändern." = "Saving from the formatted view (WYSIWYG) would lose or alter formatting.";
 "Beim Speichern aus der formatierten Ansicht (WYSIWYG) würden Zeilenumbrüche oder Leerzeilen verloren gehen oder sich verändern." = "Saving from the formatted view (WYSIWYG) would lose or alter line breaks or blank lines.";

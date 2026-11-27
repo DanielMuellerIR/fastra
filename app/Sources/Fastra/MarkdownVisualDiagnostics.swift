@@ -26,6 +26,14 @@ enum MarkdownVisualSaveMessages {
         L10n.string("Deine Änderungen bleiben im offenen Editor erhalten. Du kannst das Diagnoseprotokoll sichern oder kopieren, um den Fehler zu melden, oder in die Quelltext-Ansicht wechseln.")
     }
 
+    static var confirmTitle: String {
+        L10n.string("Dokument trotzdem speichern?")
+    }
+
+    static var confirmInfo: String {
+        L10n.string("„Trotzdem speichern“ schreibt den aktuellen Markdown-Stand. Die formatierte Ansicht kann sich beim Wiederöffnen ändern. Mit „Abbrechen“ bleiben deine Änderungen im Editor erhalten.")
+    }
+
     static func anomalyDetail(code: String) -> String {
         switch code {
         case "boundary-rescued":
@@ -289,16 +297,20 @@ struct MarkdownVisualDiagnosticSheet: View {
                     .foregroundStyle(Theme.accentReadable)
             }
 
+            Button("Diagnose ohne Dokumentinhalt kopieren") {
+                controller.copyReport(includeContent: false, from: workspace)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+
             HStack(spacing: 8) {
-                Button("Diagnose ohne Dokumentinhalt kopieren") {
-                    controller.copyReport(includeContent: false, from: workspace)
-                }
                 Button("Vollständiges Protokoll kopieren") {
                     controller.copyReport(includeContent: true, from: workspace)
                 }
+                .fixedSize(horizontal: true, vertical: false)
                 Button("Vollständiges Protokoll sichern…") {
                     controller.saveFullReport(from: workspace)
                 }
+                .fixedSize(horizontal: true, vertical: false)
                 .keyboardShortcut(.defaultAction)
                 Spacer()
                 Button("Schließen") { controller.isSheetPresented = false }

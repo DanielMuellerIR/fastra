@@ -36,6 +36,8 @@ function makeProtector(opaqueSources) {
 }
 
 function escapePlainSegment(segment, { atBlockStart = false, tableCell = false } = {}) {
+  // Ein Klartext-URL bleibt Text. Der GFM-Autolink-Scanner würde sonst
+  // Markdown-Entities im URL-Text übernehmen, bevor sie dekodiert werden.
   let out = segment
     .replace(/\\/g, '\\\\')
     .replace(/&/g, '&amp;')
@@ -45,6 +47,8 @@ function escapePlainSegment(segment, { atBlockStart = false, tableCell = false }
     .replace(/`/g, '\\`')
     .replace(/\[/g, '\\[')
     .replace(/\]/g, '\\]')
+    .replace(/\b(https?)(?=:\/\/):/gi, '$1\\:')
+    .replace(/\b(www)\./gi, '$1\\.')
     .replace(/[$~]|(?<!\\)=(?==)|(?<==)=/g, '\\$&');
 
   if (atBlockStart) {

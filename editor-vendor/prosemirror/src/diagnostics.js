@@ -116,6 +116,7 @@ export function saveAppearance(container, inputType = '') {
   const tags = { B: 1, STRONG: 1, I: 2, EM: 2, MARK: 4, DEL: 8, S: 8, STRIKE: 8, CODE: 16 };
   let text = '';
   let space = false;
+  let spaceHref = null;
   let pendingBreaks = 0;
   let totalBreaks = 0;
   const formats = [];
@@ -138,11 +139,13 @@ export function saveAppearance(container, inputType = '') {
     }
     pendingBreaks = 0;
     space = !!text;
+    spaceHref = null;
   }
 
-  function addText(value, style) {
+  function addText(value, style, href) {
     for (const word of String(value || '').replace(/\u200b/g, '').match(/[^ \t\r\n\f]+|[ \t\r\n\f]+/g) || []) {
       if (/^[ \t\r\n\f]/.test(word)) {
+        if (!space) spaceHref = href;
         space = !!text;
         continue;
       }
@@ -150,6 +153,7 @@ export function saveAppearance(container, inputType = '') {
         recordBreaks(pendingBreaks);
         pendingBreaks = 0;
         space = !!text;
+        spaceHref = null;
       }
       if (space) {
         text += ' ';
@@ -157,6 +161,16 @@ export function saveAppearance(container, inputType = '') {
       }
       const start = text.length;
       text += word;
+      if (href !== null) {
+        const previous = links.at(-1);
+        if (previous?.[2] === href &&
+            (previous[1] === start || (spaceHref === href && previous[1] === start - 1))) {
+          previous[1] = text.length;
+        } else {
+          links.push([start, text.length, href]);
+        }
+      }
+      spaceHref = null;
       if (style) {
         const previous = formats.at(-1);
         if (previous?.[1] === start && previous[2] === style) previous[1] = text.length;
@@ -165,15 +179,15 @@ export function saveAppearance(container, inputType = '') {
     }
   }
 
-  function visit(node, style, tableCell = false) {
+  function visit(node, style, tableCell = false, href = null) {
     if (node.nodeType === 3) {
       if (tableCell) {
         node.data.split(/\r\n?|\n/).forEach((part, index) => {
           if (index) pendingBreaks++;
-          addText(part, style);
+          addText(part, style, href);
         });
       } else {
-        addText(node.data, style);
+        addText(node.data, style, href);
       }
       return;
     }
@@ -196,17 +210,15 @@ export function saveAppearance(container, inputType = '') {
       const startAttr = node.getAttribute('start')?.trim();
       listStarts.push(startAttr && /^[+-]?\d+$/.test(startAttr) ? Number(startAttr) : 1);
     }
-    if (tag === 'A' && node.hasAttribute('href')) {
-      links.push(node.getAttribute('href') || '');
-    }
+    if (tag === 'A' && node.hasAttribute('href')) href = node.getAttribute('href');
     if (node.classList?.contains('fastra-pm-li-content') || (tag === 'DIV' && node.classList?.contains('ProseMirror'))) {
-      for (const child of node.childNodes) visit(child, style, tableCell);
+      for (const child of node.childNodes) visit(child, style, tableCell, href);
       return;
     }
 
     if (node.hasAttribute('data-tex') || node.hasAttribute('data-md-opaque')) {
       if (isBlock) boundary();
-      addText('\ufffc', style);
+      addText('\ufffc', style, href);
       if (isBlock) boundary();
       return;
     }
@@ -253,7 +265,7 @@ export function saveAppearance(container, inputType = '') {
     const before = text.length;
     const breakCount = totalBreaks;
     if (tag === 'IMG') {
-      addText('\ufffc', style);
+      addText('\ufffc', style, href);
     } else {
       let nextStyle = style | (tags[tag] || 0);
       if (tag === 'SPAN' || tag === 'FONT') {
@@ -264,7 +276,7 @@ export function saveAppearance(container, inputType = '') {
         if (css?.textDecorationLine?.includes('line-through')) nextStyle |= 8;
       }
       const preWrap = tableCell || ((tag === 'TD' || tag === 'TH') && !!node.closest('table[data-md-table=gfm]'));
-      for (const child of node.childNodes) visit(child, nextStyle, preWrap);
+      for (const child of node.childNodes) visit(child, nextStyle, preWrap, href);
     }
 
     if (isBlock) {

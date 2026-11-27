@@ -229,6 +229,24 @@ function setCaretInBlock(env, selector, index, atEnd = true) {
   sel.addRange(r);
 }
 
+test('Plain multiline paste preserves nonbreaking spaces and insertion marks', async t => {
+  const { root, document, window, api } = await mountMarkdown(t, '**ABC**');
+  const range = document.createRange();
+  range.setStart(root.querySelector('strong').firstChild, 1);
+  range.collapse(true);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+  const event = new window.Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', {
+    value: {
+      files: [],
+      getData: type => type === 'text/plain' ? 'u\n\u00a0\nv' : ''
+    }
+  });
+  root.dispatchEvent(event);
+  assert.equal(api.markdown(), '**Au**\n\n**&nbsp;**\n\n**vBC**\n\n');
+});
+
 test('Suite A: Diagnostic-report protocol session preserves all blank lines across Enter, Paste, Undo, and Reload', async t => {
   const env = await mountMarkdown(t, '', 'diag-repro');
   const { api, root, document, window } = env;
@@ -516,6 +534,33 @@ test('Suite C: Targeted unit regressions for serializer, parser, commands, diagn
     assert.equal(executeVisualCommand(mixedView, 'bulletList', null, { schema }).executed, true);
     assert.equal(serializeDocument(mixedView.state.doc, {}), '- Item 1\n- Item 2\n- After\n\n');
     mixedView.destroy();
+
+    const numbered = parseHTMLToNodes('<ol start="7"><li><strong>Seven</strong></li><li>Eight</li></ol><p>Nine</p>',
+      { schema, ownerDocument: document });
+    const numberedView = makeView(document.createElement('div'), schema.nodes.doc.create(null, numbered));
+    numberedView.dispatch(numberedView.state.tr.setSelection(TextSelection.create(numberedView.state.doc, 3, numberedView.state.doc.content.size - 1)));
+    assert.equal(executeVisualCommand(numberedView, 'orderedList', null, { schema }).executed, true);
+    assert.equal(serializeDocument(numberedView.state.doc, {}), '7. **Seven**\n8. Eight\n9. Nine\n\n');
+    numberedView.destroy();
+
+    const nested = parseHTMLToNodes('<ul><li>Parent<ul><li>One</li><li>Two</li></ul></li><li>Sibling</li></ul>',
+      { schema, ownerDocument: document });
+    const nestedView = makeView(document.createElement('div'), schema.nodes.doc.create(null, nested));
+    const positions = new Map();
+    nestedView.state.doc.descendants((node, pos) => { if (node.isText) positions.set(node.text, pos); });
+    nestedView.dispatch(nestedView.state.tr.setSelection(TextSelection.create(nestedView.state.doc, positions.get('One'), positions.get('Two') + 3)));
+    assert.equal(executeVisualCommand(nestedView, 'bulletList', null, { schema }).executed, true);
+    assert.equal(serializeDocument(nestedView.state.doc, {}), '- Parent\n- One\n- Two\n- Sibling\n\n');
+    nestedView.destroy();
+
+    const nestedOrdered = parseHTMLToNodes('<ol><li>Parent<ol start="7"><li>Seven</li><li>Eight</li><li>Nine</li></ol></li></ol>',
+      { schema, ownerDocument: document });
+    const nestedOrderedView = makeView(document.createElement('div'), schema.nodes.doc.create(null, nestedOrdered));
+    nestedOrderedView.state.doc.descendants((node, pos) => { if (node.isText) positions.set(node.text, pos); });
+    nestedOrderedView.dispatch(nestedOrderedView.state.tr.setSelection(TextSelection.create(nestedOrderedView.state.doc, positions.get('Eight'))));
+    assert.equal(executeVisualCommand(nestedOrderedView, 'orderedList', null, { schema }).executed, true);
+    assert.equal(nestedOrderedView.state.doc.firstChild.lastChild.lastChild.attrs.order, 9);
+    nestedOrderedView.destroy();
   }
 
   // 5. Shift+Enter vor <br>, in Listen und Teil-Überschrift mit <br>
@@ -525,6 +570,8 @@ test('Suite C: Targeted unit regressions for serializer, parser, commands, diagn
     v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 2)));
     executeVisualCommand(v, 'hardBreak', null, { schema });
     assert.equal(serializeDocument(v.state.doc, {}), 'A\n\n  \n\nB\n\n');
+    v.dispatch(v.state.tr.insertText('X'));
+    assert.equal(serializeDocument(v.state.doc, {}), 'A\n\nX\n\nB\n\n');
     v.destroy();
 
     const liP = schema.nodes.bullet_list.create({ tight: true }, [
@@ -567,6 +614,15 @@ test('Suite C: Targeted unit regressions for serializer, parser, commands, diagn
     assert.ok(escMd.includes('&#32;   notCode'), escMd);
     assert.ok(escMd.includes('\\&copy;'), escMd);
 
+    const quoted = parseHTMLToNodes('<ul><li>One</li><li>Two</li></ul>', { schema, ownerDocument: document });
+    const quoteView = makeView(document.createElement('div'), schema.nodes.doc.create(null, quoted));
+    const beforeQuote = quoteView.state.doc;
+    assert.equal(executeVisualCommand(quoteView, 'quote', null, { schema }).executed, true);
+    assert.equal(quoteView.state.doc.firstChild.firstChild.type, schema.nodes.bullet_list);
+    assert.equal(executeVisualCommand(quoteView, 'quote', null, { schema }).executed, true);
+    assert.ok(quoteView.state.doc.eq(beforeQuote));
+    quoteView.destroy();
+
     // Zwei direkt aufeinanderfolgende geordnete Listen wechseln das Trennzeichen (. vs )),
     // damit CommonMark sie beim erneuten Öffnen nicht in eine Liste mit Start 8 verschmilzt.
     const twoOls = schema.nodes.doc.create(null, [
@@ -593,6 +649,12 @@ test('Suite C: Targeted unit regressions for serializer, parser, commands, diagn
     const linkB = document.createElement('div');
     linkB.innerHTML = '<p><a href="https://two.example">x</a></p>';
     assert.equal(diffAppearance(saveAppearance(linkA), saveAppearance(linkB)).outcome, 'format');
+
+    linkA.innerHTML = '<p><a href="/x">a </a><strong><a href="/x">b</a></strong><a href="/x"> c</a></p>';
+    linkB.innerHTML = '<p><a href="/x">a <strong>b</strong> c</a></p>';
+    assert.equal(diffAppearance(saveAppearance(linkA), saveAppearance(linkB)).outcome, 'ok');
+    linkB.innerHTML = '<p>a <strong><a href="/x">b</a></strong> c</p>';
+    assert.equal(diffAppearance(saveAppearance(linkA), saveAppearance(linkB)).diff.kind, 'links');
   }
 
   // 8. Bridge: 80ms-Debounce-Rennen unterdrückt falsches liveCheck-Text-Banner; Cursor nach <br>; Oversized Tab stoppt Observer nicht; Codeblock-Paste ohne Bild-Transaction

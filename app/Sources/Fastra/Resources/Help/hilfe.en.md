@@ -901,6 +901,8 @@ stay in the open editor. Use the stethoscope button in the toolbar, the warning
 banner, or **Markdown → WYSIWYG Diagnostic Log…** at any time to copy an
 anonymized diagnostic without document content or save a full log for reporting.
 A save warning exports the diagnostic for the document you were saving.
+**Save Anyway** writes the checked Markdown. The formatted view may look
+different when you reopen it. **Cancel** keeps the edits in the editor.
 Protected HTML and math content cannot be formatted in WYSIWYG mode. Fastra
 explains this before making changes; edit these parts in the Markdown source.
 
